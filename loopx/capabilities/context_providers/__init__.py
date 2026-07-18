@@ -8,12 +8,18 @@ from .base import (
     ContextProviderRetrieval,
     ContextProviderSync,
 )
-from .openviking import OpenVikingContextProvider
-from .factory import build_context_provider
+from .factory import build_context_provider, register_context_provider
+from .openviking import (
+    OpenVikingContextProvider,
+    build_openviking_context_provider,
+)
 from .service_ownership import (
     context_provider_service_restarted,
     load_context_provider_service_ownership,
 )
+
+
+register_context_provider("openviking", build_openviking_context_provider)
 
 __all__ = [
     "ContextProviderItem",
@@ -21,6 +27,7 @@ __all__ = [
     "ContextProviderSync",
     "OpenVikingContextProvider",
     "build_context_provider",
+    "register_context_provider",
     "context_provider_service_restarted",
     "load_context_provider_service_ownership",
     "canonical_context_text",

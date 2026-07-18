@@ -688,3 +688,15 @@ class OpenVikingContextProvider:
             reconciliation_performed=reconciliation_performed,
             retry_disposition=retry_disposition,
         )
+
+
+def build_openviking_context_provider(
+    config: Mapping[str, Any],
+) -> OpenVikingContextProvider:
+    return OpenVikingContextProvider(
+        executable=str(config.get("provider_binary") or "ov"),
+        minimum_version=str(
+            config.get("minimum_provider_version") or DEFAULT_MINIMUM_VERSION
+        ),
+        actor_peer_id=str(config.get("actor_peer_id") or "").strip() or None,
+    )

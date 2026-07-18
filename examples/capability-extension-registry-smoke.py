@@ -11,9 +11,18 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_cli(*args: str) -> dict[str, object]:
+def run_cli(runtime_root: Path, *args: str) -> dict[str, object]:
     result = subprocess.run(
-        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--runtime-root",
+            str(runtime_root),
+            "--format",
+            "json",
+            *args,
+        ],
         cwd=ROOT,
         check=True,
         capture_output=True,
@@ -23,6 +32,7 @@ def run_cli(*args: str) -> dict[str, object]:
 
 
 with tempfile.TemporaryDirectory(prefix="loopx-extension-registry-") as raw_temp:
+    runtime_root = Path(raw_temp) / "runtime"
     manifest = Path(raw_temp) / "extension.toml"
     manifest.write_text(
         """\
@@ -46,17 +56,20 @@ next_real_step = "Keep explicit enablement bounded."
         encoding="utf-8",
     )
 
-    baseline = run_cli("capability", "list")
+    baseline = run_cli(runtime_root, "capability", "list")
     assert [item["id"] for item in baseline["capabilities"]] == [
         "issue-fix",
         "semantic-preference",
         "reward-memory",
         "content-ops",
         "value-connectors",
+        "explore",
+        "auto-research",
     ]
     assert all(item["provider_id"] == "loopx-core" for item in baseline["capabilities"])
 
     composed = run_cli(
+        runtime_root,
         "capability",
         "list",
         "--extension-manifest",
@@ -65,8 +78,13 @@ next_real_step = "Keep explicit enablement bounded."
     assert composed["capabilities"][-1]["id"] == "example-report"
     assert composed["capabilities"][-1]["origin"] == "extension"
     assert composed["providers"][-1]["id"] == "example-extension"
+    assert composed["providers"][-1]["declared"] is True
+    assert composed["providers"][-1]["installed"] is False
+    assert composed["providers"][-1]["enabled"] is False
+    assert composed["providers"][-1]["ready"] is False
 
     detail = run_cli(
+        runtime_root,
         "capability",
         "show",
         "example-report",
@@ -75,16 +93,25 @@ next_real_step = "Keep explicit enablement bounded."
     )
     assert detail["capability"]["capability_kind"] == "projection_sink"
     assert detail["capability"]["provider_id"] == "example-extension"
+    assert detail["capability"]["provider_state"]["ready"] is False
 
-    lark_manifest = ROOT / "loopx" / "extensions" / "lark" / "extension.toml"
+    installed = run_cli(
+        runtime_root,
+        "extension",
+        "install",
+        "--bundled",
+        "loopx-lark",
+        "--execute",
+    )
+    assert installed["doctor"]["verified"] is True, installed
     lark = run_cli(
+        runtime_root,
         "capability",
         "show",
         "lark-event-inbox",
-        "--extension-manifest",
-        str(lark_manifest),
     )
     assert lark["capability"]["origin"] == "extension", lark
     assert lark["capability"]["provider_id"] == "loopx-lark", lark
+    assert lark["capability"]["provider_state"]["ready"] is True, lark
 
 print("capability-extension-registry-smoke: ok")

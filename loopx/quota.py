@@ -2337,26 +2337,26 @@ def record_quota_monitor_poll(
     next_due_at: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
-    next_claimed_by: str | None = None, scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
+    next_claimed_by: str | None = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(
-        status_payload,
-        goal_id=safe_goal_id,
-        agent_id=agent_id,
-        available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-    )
+    def should_run(current_status: dict[str, Any]) -> dict[str, Any]:
+        return build_quota_should_run(current_status,
+            goal_id=safe_goal_id,
+            agent_id=agent_id,
+            available_capabilities=available_capabilities,
+            scheduler_execution_context=scheduler_execution_context,
+            operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+        )
+    before = should_run(status_payload)
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,
         goal_id=safe_goal_id,
         render_markdown=_render_quota_monitor_poll_markdown,
-        after_decision=lambda after_status: build_quota_should_run(
-            after_status,
-            goal_id=safe_goal_id,
-            agent_id=agent_id,
-            available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-        ),
+        after_decision=should_run,
         registry_path=registry_path,
         execute=execute,
         source=source,

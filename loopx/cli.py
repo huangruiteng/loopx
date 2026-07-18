@@ -336,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
 
     capability_result = handle_capability_command(
         args,
+        runtime_root_arg=args.runtime_root,
         output_format=output_format,
         print_payload=print_payload,
     )
