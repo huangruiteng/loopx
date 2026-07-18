@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module
+from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
 from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
+)
+from loopx.control_plane.scheduler.state import (
+    SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
 )
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
@@ -134,3 +141,72 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
     assert next_hint["codex_app"]["stateful_backoff"]["progression_index"] == 1
     assert next_hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
     assert next_hint["codex_app"]["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60"
+
+
+def test_acked_human_gate_advances_despite_unrelated_historical_host_failure(
+    monkeypatch,
+) -> None:
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(scheduler_hint_module, "now_utc", lambda: now)
+    payload = build_quota_should_run(
+        _status_payload(gate_action_kind="refine_benchmark_treatment"),
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=APP_CONTEXT,
+    )
+    first_rrule = payload["scheduler_hint"]["codex_app"]["stateful_backoff"][
+        "current_rrule"
+    ]
+    historical_failure = {
+        "schema_version": SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
+        "target_rrule": "FREQ=MINUTELY;INTERVAL=3",
+        "observed_host_rrule": first_rrule,
+        "failure_kind": "timeout",
+        "failure_count": 1,
+        "failed_at": now.isoformat(),
+    }
+
+    host_matched = build_scheduler_hint(
+        payload,
+        user_action_required=True,
+        codex_app_scheduler_state={
+            "reset_token": "previous-active-work",
+            "identity_signature": "previous-active-work",
+            "progression_index": 0,
+            "progression_minutes": [3, 6, 10],
+            "last_applied_rrule": first_rrule,
+            "updated_at": now.isoformat(),
+            "host_update_failures": [historical_failure],
+        },
+        codex_app_current_rrule=first_rrule,
+        scheduler_execution_context=APP_CONTEXT,
+    )
+    matched_app = host_matched["codex_app"]
+    assert matched_app["stateful_backoff"]["apply_needed"] is False
+    assert matched_app["stateful_backoff"]["ack_needed"] is True
+    assert matched_app["ack_hint"]["after"] == "matching_host_rrule_observed"
+
+    fallback_ack = build_codex_app_scheduler_ack_event(
+        {"goal_id": GOAL_ID, "scheduler_hint": host_matched},
+        agent_id=AGENT_ID,
+        applied_rrule=first_rrule,
+        generated_at=now.isoformat(),
+    )
+    settled_state = fallback_ack["scheduler_ack_event"]["scheduler_state"]
+    assert settled_state["last_applied_rrule"] == first_rrule
+    assert settled_state["host_update_failures"] == [historical_failure]
+
+    elapsed = now + timedelta(minutes=30)
+    monkeypatch.setattr(scheduler_hint_module, "now_utc", lambda: elapsed)
+    next_hint = build_scheduler_hint(
+        payload,
+        user_action_required=True,
+        codex_app_scheduler_state=settled_state,
+        codex_app_current_rrule=first_rrule,
+        scheduler_execution_context=APP_CONTEXT,
+    )
+
+    next_app = next_hint["codex_app"]
+    assert next_app["stateful_backoff"]["progression_index"] == 1
+    assert next_app["recommended_rrule"] == "FREQ=MINUTELY;INTERVAL=60"
+    assert next_app["stateful_backoff"]["apply_needed"] is True

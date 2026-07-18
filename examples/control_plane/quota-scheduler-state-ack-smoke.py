@@ -34,6 +34,7 @@ from loopx.control_plane.scheduler.scheduler_hint import (  # noqa: E402
     build_scheduler_hint as _build_scheduler_hint,
 )
 from loopx.control_plane.scheduler.state import (  # noqa: E402
+    SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
     SCHEDULER_STATE_SCHEMA_VERSION,
     load_scheduler_state,
     write_scheduler_state,
@@ -1379,6 +1380,23 @@ def assert_cli_host_match_ack_after_ambiguous_update() -> None:
         assert ack["scheduler_state_mutated"] is True, ack
         assert ack["host_match_ack"] is True, ack
 
+        scheduler_state_path = Path(ack["scheduler_state_path"])
+        persisted = json.loads(scheduler_state_path.read_text(encoding="utf-8"))
+        historical_failure = {
+            "schema_version": SCHEDULER_HOST_UPDATE_FAILURE_SCHEMA_VERSION,
+            "target_rrule": "FREQ=MINUTELY;INTERVAL=3",
+            "observed_host_rrule": first_rrule,
+            "failure_kind": "timeout",
+            "failure_count": 1,
+            "failed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        persisted["host_update_failures"] = [historical_failure]
+        persisted["host_update_failure"] = historical_failure
+        scheduler_state_path.write_text(
+            json.dumps(persisted, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
         settled = run_cli(
             root,
             "quota",
@@ -1397,8 +1415,10 @@ def assert_cli_host_match_ack_after_ambiguous_update() -> None:
         assert settled_app["stateful_backoff"]["apply_needed"] is False, settled
         assert "recommended_rrule" not in settled_app, settled
         assert settled_app["stateful_backoff"]["host_observation"]["status"] == "matches_recommended", settled
+        assert settled_app["stateful_backoff"]["host_update_failures"] == [
+            historical_failure
+        ], settled
 
-        scheduler_state_path = Path(ack["scheduler_state_path"])
         persisted = json.loads(scheduler_state_path.read_text(encoding="utf-8"))
         persisted["updated_at"] = "2000-01-01T00:00:00+00:00"
         scheduler_state_path.write_text(
@@ -1424,6 +1444,9 @@ def assert_cli_host_match_ack_after_ambiguous_update() -> None:
         assert advanced_app["stateful_backoff"]["apply_needed"] is True, advanced
         assert advanced_app["recommended_rrule"] != first_rrule, advanced
         assert advanced_app["host_action"] == "update_current_heartbeat_rrule", advanced
+        assert advanced_app["stateful_backoff"]["host_update_failures"] == [
+            historical_failure
+        ], advanced
 
 
 def assert_cli_ignores_corrupt_scheduler_state() -> None:

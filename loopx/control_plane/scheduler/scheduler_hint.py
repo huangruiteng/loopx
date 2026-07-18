@@ -790,7 +790,21 @@ def build_scheduler_hint(
                     applied_index = int(scheduler_state.get("progression_index"))
                 except (TypeError, ValueError):
                     applied_index = -1
-                if all_host_update_failures:
+                applied_target_rrule = (
+                    rrule_for_minutes(codex_cadence_progression[applied_index])
+                    if 0 <= applied_index < len(codex_cadence_progression)
+                    else ""
+                )
+                current_cadence_acknowledged = (
+                    normalize_scheduler_rrule(
+                        scheduler_state.get("last_applied_rrule")
+                    )
+                    == applied_target_rrule
+                )
+                if all_host_update_failures and not current_cadence_acknowledged:
+                    # A failed current target has not settled, so advancing would
+                    # skip the cadence that the host never applied. Failures for
+                    # other targets do not invalidate a successful current ACK.
                     next_index = applied_index
                 elif not advance_same_identity:
                     next_index = 0
