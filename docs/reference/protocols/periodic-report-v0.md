@@ -119,6 +119,12 @@ adapters and project profiles:
 - project products may index historical artifacts without changing run
   identity or delivery truth.
 
+The built-in presentation adapters include linear Markdown and a
+self-contained `html_artifact_v0` renderer. The HTML renderer is a zero-build,
+single-file projection with optional local interaction. Hosting or generating
+a shareable URL remains a separate sink action with its own idempotency and
+readback receipt; it is not renderer authority.
+
 The core rejects raw content, messages, logs, transcripts, credentials, secret
 fields, and private paths. Public packets retain only compact references and
 digests.

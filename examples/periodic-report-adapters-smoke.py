@@ -21,6 +21,9 @@ from loopx.capabilities.periodic_report import (  # noqa: E402
 from loopx.presentation.renderers.periodic_report_markdown import (  # noqa: E402
     periodic_report_markdown_renderer_adapter,
 )
+from loopx.presentation.renderers.periodic_report_html import (  # noqa: E402
+    periodic_report_html_renderer_adapter,
+)
 from loopx.extensions.lark.presentation.periodic_report import (  # noqa: E402
     periodic_report_lark_sink_adapter,
 )
@@ -67,6 +70,7 @@ def main() -> None:
             collect=release_source,
         )
     )
+    registry.register_renderer(periodic_report_html_renderer_adapter())
     registry.register_renderer(periodic_report_markdown_renderer_adapter())
     registry.register_sink(
         periodic_report_lark_sink_adapter(
@@ -114,6 +118,7 @@ def main() -> None:
         sources=[issue_source, release],
     )
     artifact = registry.render("markdown_v0", document)
+    html_artifact = registry.render("html_artifact_v0", document)
     lark_preview = registry.deliver(
         "lark_delivery",
         artifact,
@@ -140,6 +145,9 @@ def main() -> None:
     assert all(item["status"] == "pending" for item in previews)
     assert all(item["external_writes_performed"] is False for item in previews)
     assert archive_preview["memory_reference"]["full_report_copied"] is False
+    assert html_artifact["renderer_kind"] == "html"
+    assert html_artifact["single_file"] is True
+    assert "Fix retrieval regression" in html_artifact["content"]
     print("periodic-report-adapters-smoke: ok")
 
 

@@ -37,3 +37,18 @@ idempotency, retry, and receipt contract even when no provider is installed.
 Optional or independently versioned collectors, renderers, archive stores, and
 message transports remain extension providers (or built-in adapters) that
 implement the capability's ports without owning its lifecycle.
+
+## Built-in renderers
+
+- `markdown_v0` produces a compact linear artifact for documents and message
+  adapters.
+- `html_artifact_v0` produces a self-contained, zero-build HTML artifact with
+  responsive section cards, source-health summaries, section filtering, and
+  text search. It has no external runtime dependency and escapes all source
+  content before rendering.
+
+HTML generation is separate from publication. A static-site, Lark HTML, or
+other hosting adapter may publish the artifact and return an exact readback
+receipt, but the renderer neither chooses a destination nor performs a write.
+Project profiles still own language, layout policy, audience, cadence, and
+selection rules.
