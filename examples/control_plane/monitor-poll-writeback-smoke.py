@@ -795,28 +795,80 @@ def assert_cli_help_names_capability_sensitive_commands() -> None:
         assert command in option_help, (command, option_help)
 
 
+def cli_monitor_poll_scheduler_hints(registry_path: Path, *scheduler_args: str) -> tuple[dict, dict]:
+    payload = run_cli(
+        registry_path,
+        "quota",
+        "monitor-poll",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        *scheduler_args,
+        "--todo-id",
+        TODO_ID,
+        "--result-hash",
+        "old",
+    )
+    return payload["before"]["scheduler_hint"], payload["after"]["scheduler_hint"]
+
+
 def assert_cli_monitor_poll_preserves_codex_app_scheduler_context() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-codex-app-") as tmp:
-        registry_path, _state_file = write_fixture(Path(tmp))
-        payload = run_cli(
-            registry_path,
-            "quota",
-            "monitor-poll",
-            "--goal-id",
-            GOAL_ID,
-            "--agent-id",
-            AGENT_ID,
-            "--codex-app",
-            "--todo-id",
-            TODO_ID,
-            "--result-hash",
-            "old",
-        )
+        hints = cli_monitor_poll_scheduler_hints(write_fixture(Path(tmp))[0], "--codex-app")
+        for scheduler_hint in hints:
+            assert scheduler_hint["codex_app"]["applicability"] == "applicable", scheduler_hint
+            assert scheduler_hint["action"] != "repair_scheduler_execution_context", scheduler_hint
 
-        for decision in (payload["before"], payload["after"]):
-            scheduler_hint = decision["scheduler_hint"]
-            assert scheduler_hint["codex_app"]["applicability"] == "applicable", decision
-            assert scheduler_hint["action"] != "repair_scheduler_execution_context", decision
+
+def assert_cli_monitor_poll_preserves_outer_controller_scheduler_context() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-outer-controller-") as tmp:
+        hints = cli_monitor_poll_scheduler_hints(
+            write_fixture(Path(tmp))[0], "--runtime-profile", "outer_controller"
+        )
+        for scheduler_hint in hints:
+            execution_context = scheduler_hint["execution_context"]
+            execution_phase = scheduler_hint["execution_phase"]
+            assert scheduler_hint["action"] != "repair_scheduler_execution_context", scheduler_hint
+            assert scheduler_hint["codex_app"]["applicability"] == "not_applicable", scheduler_hint
+            assert "stateful_backoff" not in scheduler_hint["codex_app"], scheduler_hint
+            assert (
+                execution_context["host_surface"],
+                execution_context["scheduler_owner"],
+                execution_context["execution_mode"],
+                execution_context["valid"],
+            ) == ("generic_cli", "outer_controller", "isolated_headless", True), scheduler_hint
+            assert execution_phase["disposition"] == "outer_controller_owned", scheduler_hint
+            assert execution_phase["completed"] is True, scheduler_hint
+            assert execution_phase["apply_needed"] is False, scheduler_hint
+            assert execution_phase["ack_needed"] is False, scheduler_hint
+
+
+def assert_cli_monitor_poll_invalid_scheduler_context_fails_closed() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-monitor-poll-invalid-context-") as tmp:
+        hints = cli_monitor_poll_scheduler_hints(
+            write_fixture(Path(tmp))[0],
+            "--host-surface",
+            "generic_cli",
+            "--scheduler-owner",
+            "outer_controller",
+            "--execution-mode",
+            "interactive",
+        )
+        for scheduler_hint in hints:
+            execution_context = scheduler_hint["execution_context"]
+            execution_phase = scheduler_hint["execution_phase"]
+            assert scheduler_hint["action"] == "repair_scheduler_execution_context", scheduler_hint
+            assert scheduler_hint["codex_app"]["applicability"] == "blocked_invalid_context", scheduler_hint
+            assert "stateful_backoff" not in scheduler_hint["codex_app"], scheduler_hint
+            assert execution_context["valid"] is False, scheduler_hint
+            assert execution_context["errors"] == [
+                "outer_controller requires execution_mode=isolated_headless"
+            ], scheduler_hint
+            assert execution_phase["disposition"] == "contract_error", scheduler_hint
+            assert execution_phase["completed"] is False, scheduler_hint
+            assert execution_phase["apply_needed"] is False, scheduler_hint
+            assert execution_phase["ack_needed"] is False, scheduler_hint
 
 
 def assert_writeback_helper_preview_contract() -> None:
@@ -933,6 +985,8 @@ def main() -> int:
     assert_cli_help_names_capability_sensitive_commands()
     assert_cli_monitor_poll_uses_should_run_lookback()
     assert_cli_monitor_poll_preserves_codex_app_scheduler_context()
+    assert_cli_monitor_poll_preserves_outer_controller_scheduler_context()
+    assert_cli_monitor_poll_invalid_scheduler_context_fails_closed()
     assert_writeback_helper_preview_contract()
     assert_unchanged_writeback()
     assert_interleaved_monitor_stalls_replan_blocked_benchmark()
