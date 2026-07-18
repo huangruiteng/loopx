@@ -1,0 +1,29 @@
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_32e2a9a204a8e4::t_a41cab4da4c735 513-550,1001
+loopx/control_plane/agents/capability_gate.py
+  s_32e2a9a204a8e4::t_8f8ac953fe0ec1 321-324,352-354,356-357,359,361,363,377,379,389
+loopx/control_plane/todos/projection.py
+  s_32e2a9a204a8e4::t_505e85a7ca9c72 395-397
+loopx/control_plane/work_items/primary_action.py
+  s_32e2a9a204a8e4::t_8e5b9952f3251b 45-62
+skills/loopx-self-repair/references/repair-patterns.md
+  s_32e2a9a204a8e4::t_f653154c73ef4a 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "57620ee5dd1d46484bc14b4895d920314d03649b",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
