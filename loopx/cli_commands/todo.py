@@ -22,7 +22,12 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-from .todo_argument_validation import unsupported_todo_options, validate_capability_gap_options, validate_shared_todo_options
+from .todo_argument_validation import (
+    unsupported_todo_options,
+    validate_capability_gap_options,
+    validate_shared_todo_options,
+    validate_successor_routing_options,
+)
 from .todo_event import RolloutEventAppender, append_todo_rollout_event
 
 
@@ -764,18 +769,7 @@ def handle_todo_command(
                 raise ValueError(
                     "todo complete does not update --continuation-policy; use todo update first"
                 )
-            if args.next_continuation_policy and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-continuation-policy requires --next-agent-todo"
-                )
-            if args.next_task_repository and not args.next_agent_todo:
-                raise ValueError("--next-task-repository requires --next-agent-todo")
-            if args.next_required_capabilities and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-required-capability requires --next-agent-todo"
-                )
-            if args.next_excluded_agents and not args.next_agent_todo:
-                raise ValueError("--next-excluded-agent requires --next-agent-todo")
+            validate_successor_routing_options(args)
             payload = complete_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -833,18 +827,7 @@ def handle_todo_command(
                 raise ValueError(
                     "todo supersede does not update --continuation-policy; use todo update first"
                 )
-            if args.next_continuation_policy and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-continuation-policy requires --next-agent-todo"
-                )
-            if args.next_task_repository and not args.next_agent_todo:
-                raise ValueError("--next-task-repository requires --next-agent-todo")
-            if args.next_required_capabilities and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-required-capability requires --next-agent-todo"
-                )
-            if args.next_excluded_agents and not args.next_agent_todo:
-                raise ValueError("--next-excluded-agent requires --next-agent-todo")
+            validate_successor_routing_options(args)
             if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo supersede does not update current todo routing metadata; use todo update first")
             if args.successor_todo_ids:
