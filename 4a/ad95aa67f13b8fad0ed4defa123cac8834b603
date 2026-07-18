@@ -1,0 +1,27 @@
+loopx/capabilities/periodic_report/adapters.py
+  s_32e2a9a204a8e4::t_3bb52adf854133 298-300
+loopx/capabilities/periodic_report/archive.py
+  s_32e2a9a204a8e4::t_369cfdd6bf992f 197-199
+loopx/capabilities/periodic_report/core.py
+  s_32e2a9a204a8e4::t_6dd67fca76322f 440-441
+tests/capabilities/test_periodic_report.py
+  s_32e2a9a204a8e4::t_7b703a47691b6e 146-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4aad95aa67f13b8fad0ed4defa123cac8834b603",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
