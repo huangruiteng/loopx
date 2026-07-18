@@ -62,6 +62,13 @@ contract, while an extension is an independently managed provider that may
 offer one or more capabilities. The provider-aware registration and manifest
 boundary is documented in [extensions.md](reference/extensions.md).
 
+Operator-inbox urgency is one such inward contract. Quota consumes the
+content-free `operator_inbox_urgency_v0` read model from the control plane; it
+does not import the Lark provider. The existing Lark config, event files,
+capability key, lane names, and CLI remain compatibility surfaces while the
+provider delegates urgency projection to that contract. Provider files should
+move only after this read-model and work-lane parity remains characterized.
+
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source
 manifests, experiment boards, validation surface maps, and gated handoff

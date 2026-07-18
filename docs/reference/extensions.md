@@ -220,3 +220,10 @@ The executable v0 runtime intentionally does not:
 
 These boundaries keep activation reversible and auditable while leaving package
 distribution and service setup to explicit operator-owned workflows.
+
+Provider migration follows the same direction. Core routing consumes compact
+provider-neutral read models, while provider packages own collection, transport,
+credentials, and external effects. For example, quota reads
+`operator_inbox_urgency_v0`; the current Lark inbox API is a compatibility
+delegate and preserves its existing CLI and work-lane output until a later
+provider-file move has independent parity evidence.
