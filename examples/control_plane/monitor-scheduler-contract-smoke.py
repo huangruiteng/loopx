@@ -14,6 +14,9 @@ from loopx.control_plane.testing.quota_fixtures import quota_status_payload  # n
 from loopx.control_plane.scheduler import monitor_todo as monitor_todo_module  # noqa: E402
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module  # noqa: E402
 from loopx.control_plane.scheduler import time as scheduler_time  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.runtime import time as runtime_time  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 
@@ -24,6 +27,9 @@ PAST_DUE_AT = "2000-01-01T00:00:00+00:00"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
 EXPIRED_AT = "2000-01-01T00:05:00+00:00"
 FROZEN_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 FRONTIER_REPLAN_ACK_RUNS = [
     {
         "classification": "monitor_scheduler_replan_ack",
@@ -180,6 +186,7 @@ def guard_for(
             agent_id=agent_id,
             available_capabilities=available_capabilities,
             include_scheduler_detail=include_scheduler_detail,
+            scheduler_execution_context=APP_SCHEDULER_CONTEXT,
         )
     finally:
         scheduler_hint_module.now_utc = original_scheduler_now

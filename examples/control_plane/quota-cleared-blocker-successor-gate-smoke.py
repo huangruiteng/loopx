@@ -12,6 +12,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.quota import build_quota_should_run  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.status import compact_todo_group  # noqa: E402
 from loopx.control_plane.todos.handoff_gate import (  # noqa: E402
     build_todo_handoff_gate_lanes,
@@ -23,6 +26,9 @@ from loopx.control_plane.todos.handoff_gate import (  # noqa: E402
 GOAL_ID = "cleared-blocker-successor-gate-fixture"
 BLOCKED_AGENT = "codex-value-explorer"
 PRIMARY_AGENT = "codex-main-control"
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def todo_item(
@@ -290,6 +296,7 @@ def assert_cleared_blocker_requires_successor_replan() -> None:
         ),
         goal_id=GOAL_ID,
         agent_id=BLOCKED_AGENT,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert payload["decision"] == "successor_replan_required", payload
     assert payload["should_run"] is True, payload

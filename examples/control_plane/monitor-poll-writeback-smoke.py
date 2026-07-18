@@ -349,6 +349,7 @@ def assert_unchanged_writeback() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--codex-app",
         )
         assert followup["decision"] == "autonomous_replan_required", followup
         assert followup["effective_action"] == "autonomous_replan_required", followup
@@ -479,6 +480,7 @@ def assert_material_transition_followup() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
+            "--codex-app",
         )
         assert handoff["ok"] is True, handoff
         assert handoff["decision"] == "run", handoff

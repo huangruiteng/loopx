@@ -18,6 +18,9 @@ from loopx.quota import (  # noqa: E402
 from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
     build_goal_frontier_projection_context_from_status,
 )
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.todos.quota_summary import (  # noqa: E402
     select_quota_todo_summary,
 )
@@ -28,6 +31,9 @@ GOAL_ID = "replan-decision-plane-fixture"
 PRIMARY_AGENT = "codex-main-control"
 SIDE_AGENT = "codex-side-bypass"
 FUTURE_DUE_AT = "2999-01-01T00:00:00+00:00"
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 GLOBAL_REPLAN_OBLIGATION = {
@@ -1353,6 +1359,7 @@ def assert_monitor_schedule_gap_requires_bounded_repair() -> None:
         status_payload([monitor_item(cadence=None, next_due_at=None)], replan_obligation=None),
         goal_id=GOAL_ID,
         agent_id=SIDE_AGENT,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert guard["decision"] == "run", guard
     assert guard["effective_action"] == "normal_run", guard
