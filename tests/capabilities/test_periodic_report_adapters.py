@@ -23,7 +23,7 @@ from loopx.capabilities.periodic_report.adapters import (
 from loopx.presentation.renderers.periodic_report_markdown import (
     periodic_report_markdown_renderer_adapter,
 )
-from loopx.presentation.sinks.lark.periodic_report import (
+from loopx.extensions.lark.presentation.periodic_report import (
     periodic_report_lark_sink_adapter,
 )
 from loopx.presentation.sinks.openviking_periodic_report import (
