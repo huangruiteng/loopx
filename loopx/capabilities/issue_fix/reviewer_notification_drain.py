@@ -29,7 +29,7 @@ ISSUE_FIX_REVIEWER_NOTIFICATION_DRAIN_SCHEMA_VERSION = (
     "issue_fix_reviewer_notification_drain_v0"
 )
 MetadataLoader = Callable[..., tuple[Optional[dict[str, Any]], Optional[str]]]
-SemanticHistoryMatcher = Callable[[str, Mapping[str, Any]], bool | None]
+SemanticHistoryMatcher = Callable[[str, Mapping[str, Any]], Optional[bool]]
 
 
 def _row_with_live_lifecycle_facts(
