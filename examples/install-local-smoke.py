@@ -186,6 +186,7 @@ def main() -> int:
             "LOOPX_SHELL_PROFILE": str(profile),
             "LOOPX_INSTALL_SKILL": "1",
             "LOOPX_PROMOTE_DEFAULT": "1",
+            "LOOPX_PYTHON": sys.executable,
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
@@ -222,6 +223,8 @@ def main() -> int:
         assert wrapper.resolve() != REPO_ROOT / "scripts" / "loopx", wrapper.resolve()
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
+        release_python = release_root / ".loopx-python"
+        assert release_python.read_text(encoding="utf-8").strip() == sys.executable
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
         runtime_package = release_root / "loopx" / "control_plane" / "runtime"
         assert (runtime_package / "run_compaction.py").is_file(), release_root
@@ -257,6 +260,27 @@ def main() -> int:
         assert (bin_dir / "goal-harness-canary.legacy-disabled").is_symlink()
         assert canary_wrapper.resolve() == REPO_ROOT / "scripts" / "loopx", canary_wrapper.resolve()
         assert profile.read_text(encoding="utf-8").count("LoopX local CLI") == 1, profile.read_text()
+
+        unsupported_host_bin = root / "unsupported-host-bin"
+        unsupported_host_bin.mkdir()
+        unsupported_python = unsupported_host_bin / "python3"
+        unsupported_python.write_text("#!/usr/bin/env bash\nexit 86\n", encoding="utf-8")
+        unsupported_python.chmod(0o755)
+        promoted_env = {
+            key: value
+            for key, value in env.items()
+            if key != "LOOPX_PYTHON"
+        }
+        promoted_env["PATH"] = f"{unsupported_host_bin}:{bin_dir}:{promoted_env['PATH']}"
+        promoted_doctor = subprocess.run(
+            ["loopx", "--format", "json", "doctor"],
+            cwd=root,
+            env=promoted_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        assert json.loads(promoted_doctor.stdout)["ok"] is True, promoted_doctor.stdout
 
         skill = codex_home / "skills" / "loopx-project" / "SKILL.md"
         assert not skill.parent.is_symlink(), skill.parent

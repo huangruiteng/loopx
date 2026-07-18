@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -282,6 +283,7 @@ def main() -> None:
                 "LOOPX_SHELL_PROFILE": str(home / ".profile"),
                 "LOOPX_ARCHIVE_URL": f"file://{archive}",
                 "LOOPX_INSTALL_CANARY": "0",
+                "LOOPX_PYTHON": sys.executable,
                 "CODEX_CALLED_MARKER": str(codex_called_marker),
                 "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
