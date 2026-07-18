@@ -1,0 +1,41 @@
+loopx/capabilities/periodic_report/__init__.py
+  s_e3f612788718c1::t_482c08320230bd 11-14,23,26
+loopx/capabilities/periodic_report/archive.py
+  s_ce78287262030e::t_da3328830bbdfe 1-376
+loopx/presentation/sinks/openviking_periodic_report.py
+  s_9a5a2bd944fdcb::t_ad473bd38bc004 11-14,34,54-63,71-75,78-84,87-90,92-96,102-103,106-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c666d7fdd85e73cc9085b2a32938aa816066154c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
