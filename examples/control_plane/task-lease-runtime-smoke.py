@@ -288,6 +288,8 @@ def main() -> int:
             )
         )
         assert released["released"] is True, released
+        assert released["lease"]["status"] == "released", released
+        assert released["lease"]["released_at"] == released["lease"]["updated_at"], released
         assert payload(cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", TODO_A))["active"] is False
 
     print("task-lease-runtime-smoke ok")

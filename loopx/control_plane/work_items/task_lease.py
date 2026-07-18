@@ -704,12 +704,16 @@ def release_task_lease(
         ):
             raise TaskLeaseError("lease owner or idempotency key mismatch", code="lease_cas_mismatch")
         remove_lease(lease_path)
+        released_lease = dict(lease)
+        released_lease["status"] = "released"
+        released_lease["released_at"] = isoformat(at)
+        released_lease["updated_at"] = isoformat(at)
         return {
             "ok": True,
             "schema_version": TASK_LEASE_SCHEMA_VERSION,
             "action": "release",
             "released": True,
-            "lease": lease,
+            "lease": released_lease,
             "lease_path": str(lease_path),
         }
 
