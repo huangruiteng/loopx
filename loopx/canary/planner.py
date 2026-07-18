@@ -355,7 +355,9 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Control-plane maintainability ratchet",
         "purpose": (
             "Report control-plane dependency debt, oversized decision functions, and "
-            "compatibility facades while rejecting unreviewed debt or stale exceptions."
+            "compatibility facades while rejecting unreviewed debt, magnitude growth, or "
+            "stale exceptions. This intentionally replaces the repository-wide exact Python "
+            "line budget with semantic control-plane and public-facade checks."
         ),
         "catalog_families": ["Planning Governance", "State And Boundary"],
         "trigger_hints": (

@@ -31,10 +31,16 @@ COMPATIBILITY_FACADE_PATHS = {
 }
 
 
-def _exception(reason: str, retirement_plan: str) -> dict[str, str]:
+def _exception(
+    reason: str,
+    retirement_plan: str,
+    *,
+    metric_ceilings: Mapping[str, int] | None = None,
+) -> dict[str, Any]:
     return {
         "reason": reason,
         "retirement_plan": retirement_plan,
+        **({"metric_ceilings": dict(metric_ceilings)} if metric_ceilings else {}),
     }
 
 
@@ -92,7 +98,74 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
     ),
 }
 
-REVIEWED_MAINTAINABILITY_EXCEPTIONS: dict[str, dict[str, str]] = {
+_OVERSIZED_DECISION_METRIC_CEILINGS = {
+    "loopx.control_plane.agents.agent_scope:_agent_scope_no_candidate_frontier": {
+        "statements": 97,
+        "decision_points": 69,
+    },
+    "loopx.control_plane.agents.capability_gate:build_capability_gate": {
+        "statements": 101,
+        "decision_points": 58,
+    },
+    "loopx.control_plane.quota.goal_boundary:goal_boundary": {
+        "statements": 96,
+        "decision_points": 66,
+    },
+    "loopx.control_plane.quota.heartbeat_recommendation:build_heartbeat_recommendation": {
+        "statements": 63,
+        "decision_points": 64,
+    },
+    "loopx.control_plane.runtime.benchmark_comparison:benchmark_comparison_decision_note": {
+        "statements": 97,
+        "decision_points": 45,
+    },
+    "loopx.control_plane.runtime.benchmark_experiment_report:compact_benchmark_experiment_report": {
+        "statements": 100,
+        "decision_points": 49,
+    },
+    "loopx.control_plane.runtime.goal_start_control_score:build_goal_start_product_mode_control_score": {
+        "statements": 109,
+        "decision_points": 81,
+    },
+    "loopx.control_plane.runtime.skillsbench_post_run_debug:build_skillsbench_post_run_debug_gate": {
+        "statements": 113,
+        "decision_points": 97,
+    },
+    "loopx.control_plane.scheduler.scheduler_hint:build_scheduler_hint.hint": {
+        "statements": 93,
+        "decision_points": 71,
+    },
+    "loopx.control_plane.todos.contract:parse_todo_metadata_line": {
+        "statements": 119,
+        "decision_points": 60,
+    },
+    "loopx.control_plane.todos.contract:format_todo_metadata_line": {
+        "statements": 129,
+        "decision_points": 77,
+    },
+    "loopx.control_plane.turn_driver.executor:run_loopx_turn_once": {
+        "statements": 114,
+        "decision_points": 51,
+    },
+    "loopx.status:compact_benchmark_run": {
+        "statements": 337,
+        "decision_points": 168,
+    },
+    "loopx.status:compact_active_user_assisted_pilot": {
+        "statements": 124,
+        "decision_points": 71,
+    },
+    "loopx.quota:build_quota_plan": {
+        "statements": 61,
+        "decision_points": 69,
+    },
+    "loopx.quota:build_quota_should_run": {
+        "statements": 366,
+        "decision_points": 264,
+    },
+}
+
+REVIEWED_MAINTAINABILITY_EXCEPTIONS: dict[str, dict[str, Any]] = {
     "dependency_debt:loopx.status->loopx.benchmark_adapters.skillsbench_verifier_bootstrap": _exception(
         "Status still applies one benchmark bootstrap compatibility projection.",
         "Move the bootstrap attribution into the benchmark runtime projection and delete the edge.",
@@ -100,15 +173,18 @@ REVIEWED_MAINTAINABILITY_EXCEPTIONS: dict[str, dict[str, str]] = {
     "compatibility_facade:loopx.quota": _exception(
         "The public loopx.quota import surface remains a supported compatibility contract.",
         "Keep internal consumers on canonical modules and shrink exports as callers migrate.",
+        metric_ceilings={"package_reexport_count": 95, "source_module_count": 35},
     ),
     "compatibility_facade:loopx.status": _exception(
         "The public loopx.status import surface remains a supported compatibility contract.",
         "Keep internal consumers on canonical modules and shrink exports as callers migrate.",
+        metric_ceilings={"package_reexport_count": 117, "source_module_count": 50},
     ),
     **{
         f"oversized_decision_function:{symbol}": _exception(
             _EXISTING_DECISION_DEBT_REASON,
             retirement_plan,
+            metric_ceilings=_OVERSIZED_DECISION_METRIC_CEILINGS[symbol],
         )
         for symbol, retirement_plan in _OVERSIZED_DECISION_RETIREMENT_PLANS.items()
     },
@@ -137,6 +213,25 @@ def _resolved_module(node: ast.ImportFrom, *, package_name: str) -> str:
     return resolve_name("." * node.level + module, package_name)
 
 
+def _existing_submodule(
+    module: str,
+    imported_name: str,
+    *,
+    package_root: Path,
+) -> str | None:
+    if not module or imported_name == "*":
+        return None
+    candidate = f"{module}.{imported_name}"
+    package_prefix = package_root.name + "."
+    if not candidate.startswith(package_prefix):
+        return None
+    relative_parts = candidate[len(package_prefix) :].split(".")
+    candidate_path = package_root.joinpath(*relative_parts)
+    if candidate_path.with_suffix(".py").is_file() or candidate_path.is_dir():
+        return candidate
+    return None
+
+
 def resolved_imports(path: Path, *, package_root: Path) -> set[str]:
     package_name = _package_name(path, package_root)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -148,6 +243,17 @@ def resolved_imports(path: Path, *, package_root: Path) -> set[str]:
             module = _resolved_module(node, package_name=package_name)
             if module:
                 imports.add(module)
+                imports.update(
+                    candidate
+                    for alias in node.names
+                    if (
+                        candidate := _existing_submodule(
+                            module,
+                            alias.name,
+                            package_root=package_root,
+                        )
+                    )
+                )
     return imports
 
 
@@ -156,16 +262,28 @@ def _resolved_from_imports(
     *,
     package_root: Path,
 ) -> dict[str, set[str]]:
-    package_name = _package_name(path, package_root) if path.is_relative_to(package_root) else ""
+    package_name = (
+        _package_name(path, package_root) if path.is_relative_to(package_root) else ""
+    )
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: dict[str, set[str]] = {}
     for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        module = _resolved_module(node, package_name=package_name)
-        if not module:
-            continue
-        imports.setdefault(module, set()).update(alias.name for alias in node.names)
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.setdefault(alias.name, set()).add("*")
+        elif isinstance(node, ast.ImportFrom):
+            module = _resolved_module(node, package_name=package_name)
+            if not module:
+                continue
+            imports.setdefault(module, set()).update(alias.name for alias in node.names)
+            for alias in node.names:
+                candidate = _existing_submodule(
+                    module,
+                    alias.name,
+                    package_root=package_root,
+                )
+                if candidate:
+                    imports.setdefault(candidate, set()).add("*")
     return imports
 
 
@@ -193,6 +311,20 @@ def _top_level_package_imports(
 
 def _matches_prefix(value: str, prefixes: Sequence[str]) -> bool:
     return any(value == prefix or value.startswith(prefix + ".") for prefix in prefixes)
+
+
+def _outermost_matching_imports(
+    imports: Sequence[str] | set[str],
+    prefixes: Sequence[str],
+) -> list[str]:
+    matches = sorted(value for value in imports if _matches_prefix(value, prefixes))
+    return [
+        value
+        for value in matches
+        if not any(
+            value.startswith(parent + ".") for parent in matches if parent != value
+        )
+    ]
 
 
 def _finding_id(category: str, identity: str) -> str:
@@ -247,33 +379,39 @@ def collect_dependency_debt(
     findings: list[dict[str, Any]] = []
     control_plane_paths = sorted(control_plane_root.rglob("*.py"))
     if tracked_paths is not None:
-        control_plane_paths = [path for path in control_plane_paths if path in tracked_paths]
+        control_plane_paths = [
+            path for path in control_plane_paths if path in tracked_paths
+        ]
     for path in control_plane_paths:
         source = _module_name(path, package_root)
-        for target in sorted(resolved_imports(path, package_root=package_root)):
-            if _matches_prefix(target, CONTROL_PLANE_FORBIDDEN_DEPENDENCY_PREFIXES):
-                findings.append(
-                    _dependency_finding(
-                        source=source,
-                        target=target,
-                        path=path,
-                        repository_root=repository_root,
-                        rule="control_plane_outward_dependency",
-                    )
-                )
-
-    status_path = package_root / "status.py"
-    for target in sorted(resolved_imports(status_path, package_root=package_root)):
-        if _matches_prefix(target, STATUS_FORBIDDEN_DEPENDENCY_PREFIXES):
+        for target in _outermost_matching_imports(
+            resolved_imports(path, package_root=package_root),
+            CONTROL_PLANE_FORBIDDEN_DEPENDENCY_PREFIXES,
+        ):
             findings.append(
                 _dependency_finding(
-                    source="loopx.status",
+                    source=source,
                     target=target,
-                    path=status_path,
+                    path=path,
                     repository_root=repository_root,
-                    rule="status_outward_dependency",
+                    rule="control_plane_outward_dependency",
                 )
             )
+
+    status_path = package_root / "status.py"
+    for target in _outermost_matching_imports(
+        resolved_imports(status_path, package_root=package_root),
+        STATUS_FORBIDDEN_DEPENDENCY_PREFIXES,
+    ):
+        findings.append(
+            _dependency_finding(
+                source="loopx.status",
+                target=target,
+                path=status_path,
+                repository_root=repository_root,
+                rule="status_outward_dependency",
+            )
+        )
 
     facade_exports = {
         module: set(
@@ -284,13 +422,14 @@ def collect_dependency_debt(
         )
         for module, relative_path in COMPATIBILITY_FACADE_PATHS.items()
     }
-    facade_paths = {repository_root / path for path in COMPATIBILITY_FACADE_PATHS.values()}
+    facade_paths = {
+        repository_root / path for path in COMPATIBILITY_FACADE_PATHS.values()
+    }
     internal_paths = [
         path
         for root in (package_root, repository_root / "scripts")
         for path in root.rglob("*.py")
-        if path not in facade_paths
-        and (tracked_paths is None or path in tracked_paths)
+        if path not in facade_paths and (tracked_paths is None or path in tracked_paths)
     ]
     for path in sorted(internal_paths):
         source = (
@@ -303,7 +442,12 @@ def collect_dependency_debt(
         ):
             if target not in facade_exports:
                 continue
-            for imported_name in sorted(imported_names & facade_exports[target]):
+            facade_consumers = (
+                {"*"}
+                if "*" in imported_names
+                else imported_names & facade_exports[target]
+            )
+            for imported_name in sorted(facade_consumers):
                 findings.append(
                     _dependency_finding(
                         source=source,
@@ -471,7 +615,9 @@ def collect_compatibility_facades(repository_root: Path) -> list[dict[str, Any]]
                 "module": module,
                 "metrics": {
                     "package_reexport_count": len(public_exports),
-                    "source_module_count": len({imports[name] for name in public_exports}),
+                    "source_module_count": len(
+                        {imports[name] for name in public_exports}
+                    ),
                 },
                 "source_modules": sorted({imports[name] for name in public_exports}),
                 "package_reexports": public_exports,
@@ -483,41 +629,87 @@ def collect_compatibility_facades(repository_root: Path) -> list[dict[str, Any]]
 def evaluate_maintainability_findings(
     findings: Sequence[Mapping[str, Any]],
     *,
-    reviewed_exceptions: Mapping[str, Mapping[str, str]],
+    reviewed_exceptions: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     finding_ids = {str(item.get("id") or "") for item in findings}
-    invalid_exceptions = [
+    invalid_exceptions = {
         exception_id
         for exception_id, exception in reviewed_exceptions.items()
         if not exception_id
         or not str(exception.get("reason") or "").strip()
         or not str(exception.get("retirement_plan") or "").strip()
-    ]
+    }
     stale_exception_ids = sorted(set(reviewed_exceptions) - finding_ids)
     evaluated: list[dict[str, Any]] = []
+    magnitude_regressions: list[dict[str, Any]] = []
     for finding in findings:
         finding_id = str(finding.get("id") or "")
         exception = reviewed_exceptions.get(finding_id)
-        evaluated.append(
-            {
-                **dict(finding),
-                "review_state": "reviewed_exception" if exception else "unreviewed",
-                **({"reviewed_exception": dict(exception)} if exception else {}),
-            }
-        )
+        metrics = finding.get("metrics")
+        metric_ceilings = exception.get("metric_ceilings") if exception else None
+        metric_regressions: list[dict[str, Any]] = []
+        if exception and isinstance(metrics, Mapping):
+            if not isinstance(metric_ceilings, Mapping) or set(metric_ceilings) != set(
+                metrics
+            ):
+                invalid_exceptions.add(finding_id)
+            elif any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+                for value in metric_ceilings.values()
+            ):
+                invalid_exceptions.add(finding_id)
+            else:
+                metric_regressions = [
+                    {
+                        "metric": metric,
+                        "actual": metrics[metric],
+                        "ceiling": metric_ceilings[metric],
+                    }
+                    for metric in sorted(metrics)
+                    if metrics[metric] > metric_ceilings[metric]
+                ]
+        review_state = "unreviewed"
+        if exception:
+            review_state = (
+                "reviewed_exception_exceeded"
+                if metric_regressions
+                else "reviewed_exception"
+            )
+        evaluated_finding = {
+            **dict(finding),
+            "review_state": review_state,
+            **({"reviewed_exception": dict(exception)} if exception else {}),
+            **(
+                {"metric_regressions": metric_regressions} if metric_regressions else {}
+            ),
+        }
+        evaluated.append(evaluated_finding)
+        if metric_regressions:
+            magnitude_regressions.append(evaluated_finding)
     unreviewed = [item for item in evaluated if item["review_state"] == "unreviewed"]
     return {
-        "ok": not unreviewed and not stale_exception_ids and not invalid_exceptions,
+        "ok": (
+            not unreviewed
+            and not stale_exception_ids
+            and not invalid_exceptions
+            and not magnitude_regressions
+        ),
         "finding_count": len(evaluated),
         "category_counts": dict(
-            sorted(Counter(str(item.get("category") or "unknown") for item in evaluated).items())
+            sorted(
+                Counter(
+                    str(item.get("category") or "unknown") for item in evaluated
+                ).items()
+            )
         ),
         "reviewed_exception_count": len(evaluated) - len(unreviewed),
         "unreviewed_count": len(unreviewed),
         "stale_exception_count": len(stale_exception_ids),
         "invalid_exception_count": len(invalid_exceptions),
+        "magnitude_regression_count": len(magnitude_regressions),
         "findings": evaluated,
         "unreviewed_findings": unreviewed,
+        "magnitude_regressions": magnitude_regressions,
         "stale_exceptions": [
             {
                 "id": exception_id,
@@ -525,14 +717,16 @@ def evaluate_maintainability_findings(
             }
             for exception_id in stale_exception_ids
         ],
-        "invalid_exceptions": invalid_exceptions,
+        "invalid_exceptions": sorted(invalid_exceptions),
     }
 
 
 def build_control_plane_maintainability_report(
     repository_root: Path,
     *,
-    reviewed_exceptions: Mapping[str, Mapping[str, str]] = REVIEWED_MAINTAINABILITY_EXCEPTIONS,
+    reviewed_exceptions: Mapping[
+        str, Mapping[str, Any]
+    ] = REVIEWED_MAINTAINABILITY_EXCEPTIONS,
 ) -> dict[str, Any]:
     tracked_paths = tracked_python_paths(repository_root)
     findings = [
@@ -555,9 +749,16 @@ def build_control_plane_maintainability_report(
             "decision_point_limit": DECISION_POINT_LIMIT,
             "exception_contract": (
                 "stable finding id plus non-empty reason and retirement_plan; "
-                "new debt and stale exceptions fail"
+                "metric-bearing debt also requires non-increasing metric ceilings; "
+                "new debt, magnitude growth, and stale exceptions fail"
             ),
             "freezes_exact_line_counts": False,
+            "repository_scope_decision": (
+                "This profile intentionally replaces the repository-wide exact Python line "
+                "budget with semantic checks for control-plane modules and the supported "
+                "quota/status compatibility facades; it does not retain a coarse all-file "
+                "hotspot limit."
+            ),
         },
         **evaluation,
     }
@@ -575,6 +776,7 @@ def render_control_plane_maintainability_report(payload: Mapping[str, Any]) -> s
         f"- reviewed_exceptions: {payload.get('reviewed_exception_count', 0)}",
         f"- unreviewed: {payload.get('unreviewed_count', 0)}",
         f"- stale_exceptions: {payload.get('stale_exception_count', 0)}",
+        f"- magnitude_regressions: {payload.get('magnitude_regression_count', 0)}",
     ]
     for finding in payload.get("unreviewed_findings") or []:
         lines.append(
@@ -582,6 +784,13 @@ def render_control_plane_maintainability_report(payload: Mapping[str, Any]) -> s
         )
     for exception in payload.get("stale_exceptions") or []:
         lines.append(f"- remove stale exception: {exception.get('id')}")
+    for finding in payload.get("magnitude_regressions") or []:
+        for regression in finding.get("metric_regressions") or []:
+            lines.append(
+                "- reviewed debt worsened: "
+                f"{finding.get('id')} {regression.get('metric')}="
+                f"{regression.get('actual')} ceiling={regression.get('ceiling')}"
+            )
     for exception_id in payload.get("invalid_exceptions") or []:
         lines.append(f"- invalid exception metadata: {exception_id}")
     return "\n".join(lines) + "\n"
