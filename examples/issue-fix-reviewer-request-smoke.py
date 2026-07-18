@@ -22,10 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.issue_fix.reviewer_request import (  # noqa: E402
-    ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION,
-    build_issue_fix_reviewer_request_packet,
-)
+from loopx.capabilities.issue_fix.reviewer_request import ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION  # noqa: E402
 from loopx.capabilities.issue_fix.reviewer_cli import (  # noqa: E402
     handle_issue_fix_reviewer_command,
 )
@@ -59,7 +56,9 @@ from loopx.extensions.runtime import (  # noqa: E402
     default_extension_state_file,
     install_extension,
 )
-
+from examples.issue_fix_reviewer_notification_test_support import (  # noqa: E402
+    build_issue_fix_reviewer_request_packet,
+)
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -1003,6 +1002,7 @@ def main() -> int:
             "lark.inbox.read",
             "lark.inbox.write",
             "lark.reply.send",
+            "lark.reviewer_notification.send",
         ]
         assert (
             cli_packet["secondary_notifications"]["results"][0][

@@ -21,12 +21,12 @@ from loopx.capabilities.issue_fix.pr_lifecycle import (  # noqa: E402
 from loopx.capabilities.issue_fix.reviewer_notification import (  # noqa: E402
     reviewer_notification_idempotency_key,
 )
-from loopx.capabilities.issue_fix.reviewer_notification_drain import (  # noqa: E402
-    drain_issue_fix_reviewer_notification_queue,
-)
 from loopx.domain_packs.issue_fix import (  # noqa: E402
     persist_issue_fix_reviewer_notification_state,
     upsert_issue_fix_pr_lifecycle_ledger_jsonl,
+)
+from examples.issue_fix_reviewer_notification_test_support import (  # noqa: E402
+    drain_issue_fix_reviewer_notification_queue,
 )
 
 

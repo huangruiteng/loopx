@@ -13,6 +13,9 @@ LARK_INBOX_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "lark_inbox.py"
 ISSUE_FIX_REVIEWER_CLI_MODULE = (
     PACKAGE_ROOT / "capabilities" / "issue_fix" / "reviewer_cli.py"
 )
+ISSUE_FIX_REVIEWER_NOTIFICATION_MODULE = (
+    PACKAGE_ROOT / "capabilities" / "issue_fix" / "reviewer_notification.py"
+)
 LARK_EXTENSION_ROOT = PACKAGE_ROOT / "extensions" / "lark"
 LEGACY_LARK_CAPABILITY_ROOT = PACKAGE_ROOT / "capabilities" / "lark"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
@@ -155,3 +158,24 @@ def test_issue_fix_reviewer_uses_provider_neutral_inbox_hooks() -> None:
         for dependency in imports
     )
     assert "loopx.capabilities.issue_fix.provider_hooks" in imports
+
+
+def test_issue_fix_reviewer_notification_provider_is_extension_owned() -> None:
+    imports = _resolved_imports(ISSUE_FIX_REVIEWER_NOTIFICATION_MODULE)
+    source = ISSUE_FIX_REVIEWER_NOTIFICATION_MODULE.read_text(encoding="utf-8")
+    extension_module = LARK_EXTENSION_ROOT / "reviewer_notification.py"
+
+    assert not any(
+        dependency == "loopx.extensions.lark"
+        or dependency.startswith("loopx.extensions.lark.")
+        for dependency in imports
+    )
+    assert "lark-cli" not in source
+    assert "lark_chat" not in source
+    assert "reader_profile" not in source
+    assert "_lark_result" not in source
+    assert extension_module.is_file()
+    assert (
+        "loopx.capabilities.issue_fix.reviewer_notification"
+        in _resolved_imports(extension_module)
+    )

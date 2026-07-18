@@ -17,8 +17,11 @@ if str(ROOT) not in sys.path:
 from loopx.capabilities.issue_fix.reviewer_notification import (  # noqa: E402
     ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_INPUT_SCHEMA_VERSION,
     ISSUE_FIX_REVIEWER_NOTIFICATION_SINKS_RESULT_SCHEMA_VERSION,
-    build_issue_fix_reviewer_notification_sinks_result,
+    build_issue_fix_reviewer_notification_sinks_result as build_core_result,
     with_reviewer_notification_state,
+)
+from examples.issue_fix_reviewer_notification_test_support import (  # noqa: E402
+    build_issue_fix_reviewer_notification_sinks_result,
 )
 
 
@@ -319,6 +322,22 @@ def fake_provider_adapter(**kwargs: Any) -> dict[str, Any]:
 
 
 def main() -> int:
+    core_without_provider = build_core_result(
+        repo="owner/repo",
+        pr_number=42,
+        pr_url="https://github.com/owner/repo/pull/42",
+        author_handle="@current-author",
+        reviewer_handles=["@service-owner"],
+        sinks_input=fixture(),
+        execute=False,
+        runner=FakeSinkRunner(),
+    )
+    assert core_without_provider["ok"] is False, core_without_provider
+    assert (
+        core_without_provider["blocker"]
+        == "reviewer_notification_sink_unsupported"
+    ), core_without_provider
+
     provider_neutral = build_issue_fix_reviewer_notification_sinks_result(
         repo="owner/repo",
         pr_number=42,

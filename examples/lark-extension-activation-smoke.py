@@ -145,7 +145,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert active["extension_activation"] == {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.0.0",
+        "provider_version": "1.1.0",
         "revision": installed["revision"],
         "enabled": True,
         "doctor_verified": True,
@@ -159,6 +159,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
             "lark.inbox.read",
             "lark.inbox.write",
             "lark.reply.send",
+            "lark.reviewer_notification.send",
         ],
     }, reviewer_active
 
@@ -200,8 +201,8 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     upgraded_manifest = temp / "loopx-lark-v1.1.toml"
     upgraded_manifest.write_text(
         bundled_manifest.read_text(encoding="utf-8").replace(
-            'version = "1.0.0"',
             'version = "1.1.0"',
+            'version = "1.2.0"',
             1,
         ),
         encoding="utf-8",
