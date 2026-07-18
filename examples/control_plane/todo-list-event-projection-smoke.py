@@ -250,6 +250,8 @@ def main() -> int:
             "agent",
             "--todo-id",
             EVENT_GATE_TODO_ID,
+            "--agent-id",
+            SIDE_AGENT,
             "--claimed-by",
             SIDE_AGENT,
             "--evidence",

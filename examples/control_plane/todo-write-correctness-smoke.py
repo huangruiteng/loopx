@@ -272,6 +272,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             "todo_existing",
+            "--agent-id",
+            AGENT_ID,
             "--claimed-by",
             AGENT_ID,
             "--note",

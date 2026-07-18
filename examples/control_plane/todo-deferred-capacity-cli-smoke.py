@@ -26,6 +26,7 @@ from todo_lifecycle_fixtures import (  # noqa: E402
 
 
 CAPACITY_RESUME = "capacity_available:short_pool"
+ACTOR_AGENT_ID = "codex-side-bypass"
 
 
 def remove_legacy_placeholder(state_file: Path) -> None:
@@ -171,6 +172,8 @@ def assert_open_to_deferred_update() -> None:
             GOAL_ID,
             "--todo-id",
             todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
             "--status",
             "deferred",
             "--resume-when",
@@ -187,6 +190,8 @@ def assert_open_to_deferred_update() -> None:
             GOAL_ID,
             "--todo-id",
             todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
             "--status",
             "deferred",
             "--resume-when",
