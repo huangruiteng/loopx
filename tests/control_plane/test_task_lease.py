@@ -200,4 +200,5 @@ def test_task_lease_lifecycle_preserves_idempotency_and_versions(
     assert released["lease"]["status"] == "released"
     assert released["lease"]["released_at"] == now.isoformat().replace("+00:00", "Z")
     assert released["lease"]["updated_at"] == released["lease"]["released_at"]
+    assert task_lease.lease_is_active(released["lease"], at=now) is False
     assert not Path(str(released["lease_path"])).exists()

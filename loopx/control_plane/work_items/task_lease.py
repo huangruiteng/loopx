@@ -288,6 +288,8 @@ def lease_expires_at(lease: dict[str, Any] | None) -> datetime | None:
 def lease_is_active(lease: dict[str, Any] | None, *, at: datetime | None = None) -> bool:
     if not lease or lease.get("schema_version") != TASK_LEASE_SCHEMA_VERSION:
         return False
+    if lease.get("status") != "active":
+        return False
     expires_at = lease_expires_at(lease)
     return bool(expires_at and expires_at > (at or now_utc()))
 
