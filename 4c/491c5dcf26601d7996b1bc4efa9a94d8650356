@@ -1,0 +1,23 @@
+docs/capabilities/semantic-preference/README.md
+  s_32e2a9a204a8e4::t_34ccd073a580b8 46-52,69-70
+docs/reference/extensions.md
+  s_32e2a9a204a8e4::t_979001fd4fb40c 32-36,39,51-54,94-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4c491c5dcf26601d7996b1bc4efa9a94d8650356",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
