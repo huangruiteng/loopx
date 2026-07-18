@@ -1,0 +1,25 @@
+docs/capabilities/explore/README.md
+  s_32e2a9a204a8e4::t_640bd0f40499e2 22-24
+docs/integration.md
+  s_32e2a9a204a8e4::t_ee96ebe3ae90e8 68-70,73
+docs/reference/extensions.md
+  s_32e2a9a204a8e4::t_d0792c1638e8de 248-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eee074c0d0715c1bee56b53eee758c247ac167f2",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
