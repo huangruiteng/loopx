@@ -1,0 +1,49 @@
+docs/project-agent-todo-contract.md
+  s_e3f612788718c1::t_66fefb8ed77ae8 251-253,259-260,271-280,334,349,393,430,448,469,481,524
+examples/auto-research-worker-turn-smoke.py
+  s_e3f612788718c1::t_8dc6d093515433 477
+examples/cli-control-plane-command-modularization-smoke.py
+  s_e3f612788718c1::t_fabed5e4882346 74,79-80,127
+examples/control_plane/peer-agent-continuation-state-machine-smoke.py
+  s_e3f612788718c1::t_af7acccfdc2025 123-124,161-162
+examples/control_plane/todo-cli-smoke.py
+  s_e3f612788718c1::t_c1bdd54b56a8f4 116-117,368-369,484-485,505-506,621-622,676-677,706-707,709-710,720-721,746-747,766-767,784-785
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_e3f612788718c1::t_b341317f26a661 80-81,102-103,154-155,209-210,233-234,303-304,362-363,378-379,416-417,471-472,498-499,545-546,586-587,633-634,678-679,703-704
+examples/control_plane/todo-user-gate-scope-smoke.py
+  s_9a5a2bd944fdcb::t_5f35371b0cb5c2 238,276,288,370,384,418,449,512
+examples/control_plane/todo_lifecycle_fixtures.py
+  s_e3f612788718c1::t_cbfa1a933c612a 138-139,197-198,258-259,315-316,369-370,384-385,447-448,471-472,528-529
+tests/control_plane/test_todo_decision_scope_cli_validation.py
+  s_e3f612788718c1::t_7307ab6c6c6204 99-100,142-143
+tests/control_plane/test_todo_decision_scope_lifecycle.py
+  s_e3f612788718c1::t_310dac1a132a9c 208
+tests/control_plane/test_todo_mutation_authority.py
+  s_e3f612788718c1::t_843e8f7f2513bf 1-374
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "31e803da5d2e919bc59d0a58e5de21c093e5c854",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
