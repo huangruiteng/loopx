@@ -17,6 +17,7 @@ verify -> complete_task (which also spends one quota slot after writeback).
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,12 +32,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
 from goal_state import goal_context
 
 mcp = FastMCP("loopx")
-
-
-
-import shutil as _shutil
+CLAUDE_RUNTIME_PROFILE_ARGS = ["--runtime-profile", "claude_code"]
+CLAUDE_LEGACY_SCHEDULER_ARGS = [
+    "--host-surface", "claude_code",
+    "--scheduler-owner", "agent_cli_loop",
+    "--execution-mode", "interactive",
+]
 def _gh_prefix():
-    _exe = _shutil.which("loopx")
+    _exe = shutil.which("loopx")
     return [_exe] if _exe else [__import__("sys").executable, "-m", "loopx.cli"]
 
 def _state() -> dict:
@@ -54,14 +57,42 @@ def _agent_id():
     return _state().get("agent_id")
 
 
-def _gh(args: list[str]) -> str:
+def _runtime_profile_flag_is_unsupported(out: subprocess.CompletedProcess) -> bool:
+    diagnostic = str(out.stderr or "").lower()
+    return (
+        out.returncode == 2
+        and "--runtime-profile" in diagnostic
+        and (
+            "unrecognized arguments" in diagnostic
+            or "invalid choice" in diagnostic
+        )
+    )
+
+
+def _gh(args: list[str], *, legacy_args: list[str] | None = None) -> str:
     goal_id, registry = _ctx()
     cmd = list(_gh_prefix())
     if registry:
         cmd += ["--registry", registry]
-    cmd += args
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    out = subprocess.run([*cmd, *args], capture_output=True, text=True, timeout=30)
+    if (
+        legacy_args is not None
+        and _runtime_profile_flag_is_unsupported(out)
+    ):
+        out = subprocess.run(
+            [*cmd, *legacy_args], capture_output=True, text=True, timeout=30
+        )
     return (out.stdout or "") + (("\n" + out.stderr) if out.returncode else "")
+
+
+def _should_run_args(goal_id: str, agent_id: str | None) -> tuple[list[str], list[str]]:
+    common = ["--format", "json", "quota", "should-run", "--goal-id", goal_id]
+    if agent_id:
+        common += ["--agent-id", agent_id]
+    return (
+        [*common, *CLAUDE_RUNTIME_PROFILE_ARGS],
+        [*common, *CLAUDE_LEGACY_SCHEDULER_ARGS],
+    )
 
 
 def _no_goal_msg() -> str:
@@ -74,11 +105,8 @@ def should_run() -> str:
     gid, _ = _ctx()
     if not gid:
         return _no_goal_msg()
-    args = ["--format", "json", "quota", "should-run", "--goal-id", gid]
-    aid = _agent_id()
-    if aid:
-        args += ["--agent-id", aid]
-    return _gh(args)
+    args, legacy_args = _should_run_args(gid, _agent_id())
+    return _gh(args, legacy_args=legacy_args)
 
 
 @mcp.tool()
@@ -87,11 +115,8 @@ def list_todos() -> str:
     gid, _ = _ctx()
     if not gid:
         return _no_goal_msg()
-    args = ["--format", "json", "quota", "should-run", "--goal-id", gid]
-    aid = _agent_id()
-    if aid:
-        args += ["--agent-id", aid]
-    return _gh(args)
+    args, legacy_args = _should_run_args(gid, _agent_id())
+    return _gh(args, legacy_args=legacy_args)
 
 
 @mcp.tool()

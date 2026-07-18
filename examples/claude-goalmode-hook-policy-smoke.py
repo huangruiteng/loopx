@@ -11,6 +11,8 @@ denylist, unknown tools deferred.
 """
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -32,6 +34,82 @@ def decision(tool, sr, **tool_input):
 
 
 def main() -> int:
+    commands = []
+    real_run = goal_policy.subprocess.run
+    real_prefix = goal_policy._gh_prefix
+    goal_policy._gh_prefix = lambda: ["loopx"]
+
+    def capture_run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps({"should_run": True}), ""
+        )
+
+    goal_policy.subprocess.run = capture_run
+    try:
+        assert goal_policy.should_run("/r", "g", "cc") is True
+    finally:
+        goal_policy.subprocess.run = real_run
+        goal_policy._gh_prefix = real_prefix
+    assert commands == [
+        [
+            "loopx", "--registry", "/r", "--format", "json", "quota",
+            "should-run", "--goal-id", "g", "--agent-id", "cc",
+            "--runtime-profile", "claude_code",
+        ]
+    ], commands
+
+    commands.clear()
+
+    def capture_legacy_fallback(command, **_kwargs):
+        commands.append(command)
+        if "--runtime-profile" in command:
+            return subprocess.CompletedProcess(
+                command,
+                2,
+                "",
+                "loopx: error: unrecognized arguments: --runtime-profile claude_code",
+            )
+        return subprocess.CompletedProcess(
+            command, 0, json.dumps({"should_run": True}), ""
+        )
+
+    goal_policy._gh_prefix = lambda: ["loopx"]
+    goal_policy.subprocess.run = capture_legacy_fallback
+    try:
+        assert goal_policy.should_run("/r", "g", "cc") is True
+    finally:
+        goal_policy.subprocess.run = real_run
+        goal_policy._gh_prefix = real_prefix
+    assert len(commands) == 2, commands
+    assert commands[0][-2:] == ["--runtime-profile", "claude_code"], commands
+    assert commands[1][-6:] == [
+        "--host-surface", "claude_code",
+        "--scheduler-owner", "agent_cli_loop",
+        "--execution-mode", "interactive",
+    ], commands
+
+    commands.clear()
+
+    def capture_health_failure(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            json.dumps({"should_run": False, "status": "quota_collection_failed"}),
+            "",
+        )
+
+    goal_policy._gh_prefix = lambda: ["loopx"]
+    goal_policy.subprocess.run = capture_health_failure
+    try:
+        assert goal_policy.should_run("/r", "g", "cc") is False
+    finally:
+        goal_policy.subprocess.run = real_run
+        goal_policy._gh_prefix = real_prefix
+    assert len(commands) == 1, commands
+    assert commands[0][-2:] == ["--runtime-profile", "claude_code"], commands
+
     # should_run == False: the gate is closed for everything except read-only.
     assert decision("Task", False, description="x", prompt="y") == "deny", \
         "Task must be DENIED when should_run=false (it can spawn a writing subagent)"

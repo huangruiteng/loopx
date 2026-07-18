@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
+import shlex
 import subprocess
 from pathlib import Path
 
 import scripts.skillsbench_docker_command_file_bridge as bridge_module
+from loopx.benchmark_adapters.skillsbench_bridge_guard import (
+    LOOPX_COMMAND_INSTRUMENTATION_SOURCE,
+)
 from loopx.benchmark_core.container_exec import parse_container_exit_status
 from scripts.skillsbench_docker_command_file_bridge import (
     MARKER_CONTENT,
@@ -19,6 +24,26 @@ def _bridge() -> DockerCommandFileBridge:
         compose_files=["/tmp/demo-project/compose.yaml"],
         service="main",
     )
+
+
+def _loopx_subcommands(command: str) -> list[str]:
+    namespace = {"re": re, "shlex": shlex}
+    exec(LOOPX_COMMAND_INSTRUMENTATION_SOURCE, namespace)
+    return namespace["loopx_subcommands"](command)
+
+
+def test_loopx_subcommands_skip_compact_and_custom_scheduler_bindings() -> None:
+    compact = (
+        "loopx --format json quota should-run --goal-id g "
+        "--available-capability network --runtime-profile outer_controller"
+    )
+    custom = (
+        "loopx --format json quota should-run --goal-id g "
+        "-H codex_cli -O agent_cli_loop -M isolated_headless"
+    )
+
+    assert _loopx_subcommands(compact) == ["quota", "should-run"]
+    assert _loopx_subcommands(custom) == ["quota", "should-run"]
 
 
 def test_container_exit_status_parser_fails_closed() -> None:

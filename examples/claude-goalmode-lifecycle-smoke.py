@@ -19,11 +19,33 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "loopx" / "claude_goal_mode" / "hooks"))
 import goal_state  # noqa: E402
+
+
+def _load_loopx_mcp_for_smoke():
+    fastmcp_module = types.ModuleType("mcp.server.fastmcp")
+
+    class FakeFastMCP:
+        def __init__(self, _name):
+            pass
+
+        def tool(self):
+            return lambda func: func
+
+    fastmcp_module.FastMCP = FakeFastMCP
+    sys.modules["mcp"] = types.ModuleType("mcp")
+    sys.modules["mcp.server"] = types.ModuleType("mcp.server")
+    sys.modules["mcp.server.fastmcp"] = fastmcp_module
+    mcp_dir = REPO_ROOT / "loopx" / "claude_goal_mode" / "mcp"
+    sys.path.insert(0, str(mcp_dir))
+    import loopx_mcp
+
+    return loopx_mcp
 
 
 def loopx(args, home=None, **kw):
@@ -76,8 +98,10 @@ def test_goal_context_prefers_armed_goal():
 
 def test_complete_with_next_todo_uses_registered_agent():
     with tempfile.TemporaryDirectory(prefix="loopx-next-") as d:
-        home = Path(d) / "home"; home.mkdir()
-        proj = Path(d) / "proj"; proj.mkdir()
+        home = Path(d) / "home"
+        home.mkdir()
+        proj = Path(d) / "proj"
+        proj.mkdir()
         gid = "cc-lifecycle"
         state_file = f".claude/goals/{gid}/ACTIVE_GOAL_STATE.md"
         r = loopx(["bootstrap", "--project", str(proj), "--goal-id", gid,
@@ -114,9 +138,59 @@ def test_complete_with_next_todo_uses_registered_agent():
         assert "cc-controller" not in state, f"next todo must not reference cc-controller:\n{state}"
 
 
+def test_mcp_should_run_prefers_profile_and_falls_back_for_old_cli():
+    loopx_mcp = _load_loopx_mcp_for_smoke()
+    commands = []
+    loopx_mcp._ctx = lambda: ("g", "/r")
+    loopx_mcp._agent_id = lambda: "cc"
+    loopx_mcp._gh_prefix = lambda: ["loopx"]
+
+    def capture_run(command, **_kwargs):
+        commands.append(command)
+        if "--runtime-profile" in command:
+            return subprocess.CompletedProcess(
+                command,
+                2,
+                "",
+                "loopx: error: argument --runtime-profile: invalid choice: "
+                "'claude_code' (choose from 'codex_app_heartbeat')",
+            )
+        return subprocess.CompletedProcess(command, 0, '{"should_run": true}', "")
+
+    loopx_mcp.subprocess.run = capture_run
+
+    assert loopx_mcp.should_run() == '{"should_run": true}'
+    assert len(commands) == 2, commands
+    assert commands[0][-2:] == ["--runtime-profile", "claude_code"], commands
+    assert commands[1][-6:] == [
+        "--host-surface", "claude_code",
+        "--scheduler-owner", "agent_cli_loop",
+        "--execution-mode", "interactive",
+    ], commands
+
+    commands.clear()
+
+    def capture_health_failure(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            '{"should_run": false, "status": "quota_collection_failed"}',
+            "",
+        )
+
+    loopx_mcp.subprocess.run = capture_health_failure
+    assert loopx_mcp.should_run().strip() == (
+        '{"should_run": false, "status": "quota_collection_failed"}'
+    )
+    assert len(commands) == 1, commands
+    assert commands[0][-2:] == ["--runtime-profile", "claude_code"], commands
+
+
 def main() -> int:
     test_goal_context_prefers_armed_goal()
     test_complete_with_next_todo_uses_registered_agent()
+    test_mcp_should_run_prefers_profile_and_falls_back_for_old_cli()
     print("claude-goalmode-lifecycle-smoke ok")
     return 0
 
