@@ -17,6 +17,7 @@ Current contracts:
 - [Action packet router comparison v0](protocol-action-packet-router-comparison-v0.md)
 - [task_graph_projection_v0](task-graph-projection-v0.md)
 - [agent_management_projection_v0](agent-management-projection-v0.md)
+- [agent_material_frontier_v0](agent-material-frontier-v0.md)
 - [todo_detail_cold_path_v0](todo-detail-cold-path-v0.md)
 - [long_horizon_agent_state_protocol_v0](long-horizon-agent-state-protocol-v0.md)
 - [model_behavior_qualification_v0](model-behavior-qualification-v0.md)
