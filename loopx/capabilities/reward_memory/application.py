@@ -29,6 +29,7 @@ REWARD_MEMORY_APPLICATION_RECEIPT_SCHEMA_VERSION = (
 REWARD_MEMORY_APPLICATION_SCHEMA_VERSION = "reward_memory_application_v0"
 
 RECALL_MODES = {"function_boundary", "bounded_agentic_search"}
+RECALL_QUERY_KINDS = {"business_recall", "ingest_verification"}
 APPLICATION_OUTCOMES = {
     "applied",
     "ignored",
@@ -281,6 +282,21 @@ def _queries(raw: object, mode: str) -> list[dict[str, str]]:
     return result
 
 
+def _query_evidence(queries: Sequence[Mapping[str, str]]) -> list[dict[str, Any]]:
+    """Expose bounded query identity without persisting provider query text."""
+
+    return [
+        {
+            "query_digest": hashlib.sha256(item["query"].encode("utf-8")).hexdigest()[
+                :16
+            ],
+            "query_summary": item["query_summary"],
+            "exact_query_exposed": False,
+        }
+        for item in queries
+    ]
+
+
 def build_reward_memory_recall_request(
     corpus: Mapping[str, Any],
     request: Mapping[str, Any],
@@ -307,6 +323,11 @@ def build_reward_memory_recall_request(
         "observed_at": _observed_at(request.get("observed_at")),
         "conflict_state": str(request.get("conflict_state") or "").strip(),
     }
+    query_kind = str(request.get("query_kind") or "business_recall").strip()
+    if query_kind not in RECALL_QUERY_KINDS:
+        raise ValueError("query_kind must be business_recall or ingest_verification")
+    recall_request["query_kind"] = query_kind
+    recall_request["query_evidence"] = _query_evidence(recall_request["queries"])
     limit = recall_request["limit"]
     if (
         isinstance(limit, bool)
@@ -487,6 +508,8 @@ def execute_reward_memory_recall(
         "corpus_id": corpus["corpus_id"],
         "surface_id": request["surface_id"],
         "mode": request["mode"],
+        "query_kind": request["query_kind"],
+        "query_evidence": list(request["query_evidence"]),
         "provider_id": binding["provider_id"],
         "result_count": 0,
         "results": [],
@@ -621,6 +644,8 @@ def _receipt(
         "corpus_id": session.public_packet["corpus_id"],
         "surface_id": session.public_packet["surface_id"],
         "mode": session.public_packet["mode"],
+        "query_kind": str(session.public_packet.get("query_kind") or "business_recall"),
+        "query_evidence": list(session.public_packet.get("query_evidence") or []),
         "outcome": outcome,
         "memory_ref_digests": sorted(
             {
@@ -634,6 +659,9 @@ def _receipt(
         "current_artifact_verified": current_artifact_verified,
         "result_readback_verified": bool(
             session.public_packet.get("result_readback_verified")
+        ),
+        "provider_call_count": int(
+            session.public_packet.get("provider_call_count") or 0
         ),
         "model_reasoning_preserved": True,
         "grants_new_action_authority": False,

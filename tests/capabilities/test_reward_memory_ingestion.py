@@ -278,6 +278,17 @@ def test_atomic_ingest_writes_reads_back_and_deduplicates() -> None:
     assert first["memory_available_for_recall"] is True
     assert first["external_writes_performed"] is True
     assert first["write"]["write_count"] == 1
+    evidence = first["execution_evidence"]
+    assert evidence["verified_result"] == "ingest_exact_readback_verified"
+    assert evidence["unknowns"] == []
+    minimum = evidence["minimum_evidence"]
+    assert minimum["query_kind"] == "ingest_verification"
+    assert minimum["provider_call_count"] == 1
+    assert minimum["exact_readback_verified"] is True
+    assert minimum["application_receipt"] is None
+    assert len(minimum["query_evidence"]) == 1
+    assert len(minimum["query_evidence"][0]["query_digest"]) == 16
+    assert minimum["query_evidence"][0]["exact_query_exposed"] is False
     assert second["status"] == "activated"
     assert second["candidate_ref"] == first["candidate_ref"]
     assert second["deduplicated"] is True
@@ -303,6 +314,10 @@ def test_dry_run_needs_no_provider_call() -> None:
     assert receipt["status"] == "planned"
     assert receipt["write"]["status"] == "planned"
     assert receipt["memory_available_for_recall"] is False
+    assert receipt["execution_evidence"]["verified_result"] == (
+        "ingest_provider_not_called"
+    )
+    assert receipt["execution_evidence"]["minimum_evidence"]["provider_call_count"] == 0
     assert provider.sync_calls == 0
     assert provider.retrieve_calls == 0
 

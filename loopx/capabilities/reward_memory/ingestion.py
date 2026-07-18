@@ -440,6 +440,7 @@ def ingest_reward_memory_candidate(
             "surface_id": surface_id,
             "revision_ref": scope.get("revision_ref"),
             "mode": "function_boundary",
+            "query_kind": "ingest_verification",
             "queries": [
                 {
                     "query": f"{candidate_ref} {candidate['content_summary']}",

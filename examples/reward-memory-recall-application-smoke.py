@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -16,6 +17,9 @@ sys.path.insert(0, str(REPO_ROOT))
 from loopx.capabilities.context_providers.base import (  # noqa: E402
     ContextProviderItem,
     ContextProviderRetrieval,
+)
+from loopx.capabilities.context_providers.openviking import (  # noqa: E402
+    OpenVikingContextProvider,
 )
 from loopx.capabilities.issue_fix.reward_memory import (  # noqa: E402
     run_issue_fix_patch_planning_reward_memory,
@@ -76,11 +80,56 @@ class FakeProvider:
         raise AssertionError("Stage-3 recall must not call provider sync")
 
 
-def corpus(*, corpus_id: str, class_id: str, surface: str) -> dict[str, Any]:
+class OpenVikingRewardMemoryRunner:
+    """Exercise the real provider adapter without requiring a live daemon."""
+
+    def __init__(self, *, resource_ref: str, content: str) -> None:
+        self.resource_ref = resource_ref
+        self.content = content
+        self.calls: list[list[str]] = []
+
+    def __call__(
+        self, command: list[str], **_kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(command)
+        args = command[1:]
+        if args == ["--version"]:
+            stdout = "openviking 0.4.9.dev11\n"
+        elif args[:2] == ["status", "-o"]:
+            stdout = json.dumps({"status": "healthy"})
+        elif args[0] == "search":
+            stdout = json.dumps(
+                {
+                    "result": {
+                        "resources": [
+                            {
+                                "uri": self.resource_ref,
+                                "abstract": "Bounded reviewed reward-memory policy.",
+                                "score": 0.93,
+                            }
+                        ]
+                    }
+                }
+            )
+        elif args[0] == "read":
+            assert args[1] == self.resource_ref
+            stdout = json.dumps({"result": {"content": self.content}})
+        else:
+            raise AssertionError(command)
+        return subprocess.CompletedProcess(command, 0, stdout=stdout)
+
+
+def corpus(
+    *,
+    corpus_id: str,
+    class_id: str,
+    surface: str,
+    provider_id: str = "fake_provider",
+) -> dict[str, Any]:
     return {
         "corpus_id": corpus_id,
         "class_id": class_id,
-        "provider_id": "fake_provider",
+        "provider_id": provider_id,
         "owner_ref": "provider_scope_owner",
         "source_of_truth": "reviewed_owner_feedback",
         "read_authority": "module_scoped",
@@ -180,10 +229,10 @@ def item(active_record: Mapping[str, Any], ref: str) -> ContextProviderItem:
     )
 
 
-def binding(corpus_id: str) -> dict[str, Any]:
+def binding(corpus_id: str, *, provider_id: str = "fake_provider") -> dict[str, Any]:
     return {
         "corpus_id": corpus_id,
-        "provider_id": "fake_provider",
+        "provider_id": provider_id,
         "actor_peer_id": "project-example",
         "namespace": "reward_memory",
         "scope_ref": SCOPE_REF,
@@ -213,6 +262,7 @@ def main() -> None:
         corpus_id="openviking_patch_policy",
         class_id="hard_policy",
         surface=issue_surface,
+        provider_id="openviking",
     )
     peer_scope = "viking://user/example/peers/project-example/memories"
     peer_corpus = issue_corpus | {
@@ -241,7 +291,9 @@ def main() -> None:
         read_authority_checkpoint=checkpoint("openviking_patch_policy", issue_surface),
     )
     for invalid_actor in (None, "project-other"):
-        invalid_binding = binding("openviking_patch_policy") | {
+        invalid_binding = binding(
+            "openviking_patch_policy", provider_id="openviking"
+        ) | {
             "scope_ref": peer_scope,
             "actor_peer_id": invalid_actor,
         }
@@ -270,8 +322,14 @@ def main() -> None:
         activated_at=OBSERVED_AT,
     )
     assert active_issue["provider_write_performed"] is False
-    issue_provider = FakeProvider(
-        (item(active_issue, "viking://resources/reward-memory/example/policy.json"),)
+    issue_resource_ref = "viking://resources/reward-memory/example/policy.json"
+    issue_runner = OpenVikingRewardMemoryRunner(
+        resource_ref=issue_resource_ref,
+        content=json.dumps(active_issue, ensure_ascii=False),
+    )
+    issue_provider = OpenVikingContextProvider(
+        executable="ov-contract",
+        runner=issue_runner,
     )
 
     def apply_plan(base: Any, items: Any) -> dict[str, Any]:
@@ -309,7 +367,7 @@ def main() -> None:
         },
         conflict_state="clear",
         read_authority_checkpoint=checkpoint("openviking_patch_policy", issue_surface),
-        provider_binding=binding("openviking_patch_policy"),
+        provider_binding=binding("openviking_patch_policy", provider_id="openviking"),
         application_id="issue-fix:example:patch-plan",
         artifact_ref="patch-plan:example",
         apply_memory=apply_plan,
@@ -325,7 +383,26 @@ def main() -> None:
     assert receipt["current_artifact_verified"] is True
     assert receipt["result_readback_verified"] is True
     assert len(receipt["memory_ref_digests"]) == 1
+    assert receipt["query_kind"] == "business_recall"
+    assert receipt["provider_call_count"] == 1
+    assert len(receipt["query_evidence"]) == 1
+    evidence = issue_result["execution_evidence"]
+    assert evidence["verified_result"] == "memory_applied"
+    assert evidence["unknowns"] == []
+    minimum = evidence["minimum_evidence"]
+    assert minimum["query_kind"] == "business_recall"
+    assert minimum["provider_call_count"] == 1
+    assert minimum["exact_readback_verified"] is True
+    assert minimum["application_receipt"]["outcome"] == "applied"
+    assert len(minimum["query_evidence"][0]["query_digest"]) == 16
+    assert minimum["query_evidence"][0]["exact_query_exposed"] is False
     assert issue_result["automatic_recall"] is False
+    assert [command[1] for command in issue_runner.calls] == [
+        "--version",
+        "status",
+        "search",
+        "read",
+    ]
 
     reviewer_surface = "reviewer_artifact.summary"
     reviewer_corpus = corpus(
@@ -564,7 +641,7 @@ def main() -> None:
     blocked_provider = FakeProvider(())
     blocked_session = execute_reward_memory_recall(
         blocked_request,
-        provider_binding=binding("openviking_patch_policy"),
+        provider_binding=binding("openviking_patch_policy", provider_id="openviking"),
         provider=blocked_provider,
     )
     assert blocked_session.public_packet["status"] == "guard_blocked"
@@ -587,7 +664,7 @@ def main() -> None:
         },
         conflict_state="clear",
         read_authority_checkpoint=checkpoint("openviking_patch_policy", issue_surface),
-        provider_binding=binding("openviking_patch_policy"),
+        provider_binding=binding("openviking_patch_policy", provider_id="openviking"),
         application_id="issue-fix:example:unavailable",
         apply_memory=apply_plan,
         provider=unavailable_provider,
@@ -597,6 +674,16 @@ def main() -> None:
     assert unavailable_result["recall"]["provider_failure_is_user_gate"] is False
     assert unavailable_result["recall"]["setup_hints"]["configure"]
     assert unavailable_result["application"]["fail_open_preserved_base"] is True
+    unavailable_evidence = unavailable_result["execution_evidence"]
+    assert unavailable_evidence["verified_result"] == (
+        "provider_called_without_verified_recall"
+    )
+    assert unavailable_evidence["unknowns"] == [
+        "exact_recall_readback_unknown",
+        "memory_application_effect_unknown",
+    ]
+    assert unavailable_evidence["minimum_evidence"]["provider_call_count"] == 1
+    assert unavailable_evidence["minimum_evidence"]["exact_readback_verified"] is False
 
     failed_application = apply_reward_memory_recall(
         {"change_scope": "memory_retrieval"},
@@ -623,7 +710,9 @@ def main() -> None:
                     "openviking_patch_policy", issue_surface
                 ),
             ),
-            provider_binding=binding("openviking_patch_policy"),
+            provider_binding=binding(
+                "openviking_patch_policy", provider_id="openviking"
+            ),
             provider=issue_provider,
         ),
         application_id="issue-fix:example:failed-application",
