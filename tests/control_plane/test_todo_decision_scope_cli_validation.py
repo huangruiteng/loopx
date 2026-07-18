@@ -96,6 +96,8 @@ def test_todo_update_can_narrow_global_gate_without_consuming_decision(
         "--clear-global-gate",
         "--blocks-agent",
         DELIVERY_AGENT,
+        "--agent-id",
+        DELIVERY_AGENT,
         registry_path=registry_path,
     )
 
@@ -137,6 +139,8 @@ def test_todo_update_rejects_unsafe_global_gate_clear_without_data_loss(
         "--todo-id",
         gate["todo_id"],
         "--clear-global-gate",
+        "--agent-id",
+        DELIVERY_AGENT,
         *extra_args,
         registry_path=registry_path,
     )

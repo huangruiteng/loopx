@@ -474,6 +474,7 @@ def main() -> int:
             todo_id=successor_ids[0],
             role="agent",
             claimed_by=CURATOR_AGENT_ID,
+            agent_id=CURATOR_AGENT_ID,
             note="auto-research curator review routed the next hypothesis round",
             evidence="state-summary agent=research-curator action=review_research_contract linked next hypothesis successor",
             successor_todo_ids=curator_successor_ids,

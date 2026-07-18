@@ -205,6 +205,7 @@ def test_superseded_gate_does_not_consume_required_scope(tmp_path: Path) -> None
         goal_id=GOAL_ID,
         todo_id=gate["todo_id"],
         role="user",
+        agent_id=AGENT_ID,
         reason="approval request replaced without granting authority",
     )
 

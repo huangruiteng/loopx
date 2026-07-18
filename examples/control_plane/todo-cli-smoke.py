@@ -113,6 +113,8 @@ def main() -> int:
             blocked_todo["todo_id"],
             "--claimed-by",
             "codex-main-control",
+            "--agent-id",
+            "codex-main-control",
         )
         assert "todo claim requires status=open" in blocked_claim["error"], blocked_claim
 
@@ -363,6 +365,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             scoped_gate["todo_id"],
+            "--agent-id",
+            "codex-side-bypass",
             "--decision-scope",
             "direction:lane:external_publish_channel",
         )
@@ -477,6 +481,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             monitor_payload["todo_id"],
+            "--agent-id",
+            "codex-side-bypass",
             "--cadence",
             "2d",
             "--next-due-at",
@@ -496,6 +502,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             agent_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--cadence",
             "1d",
         )
@@ -610,6 +618,8 @@ def main() -> int:
             metadata_payload["todo_id"],
             "--claimed-by",
             "codex-main-control",
+            "--agent-id",
+            "codex-main-control",
         )
         assert claim_payload["changed"] is True, claim_payload
         assert claim_payload["claimed_by"] == "codex-main-control", claim_payload
@@ -663,6 +673,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             metadata_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--note",
             "Claim-preserving progress note.",
         )
@@ -691,9 +703,11 @@ def main() -> int:
             metadata_payload["todo_id"],
             "--claimed-by",
             "codex-side-bypass",
+            "--agent-id",
+            "codex-side-bypass",
         )
-        assert "already claimed_by='codex-main-control'" in conflicting_claim["error"], conflicting_claim
-        assert "clear or transfer" in conflicting_claim["error"], conflicting_claim
+        assert "cannot claim" in conflicting_claim["error"], conflicting_claim
+        assert "claimed_by='codex-main-control'" in conflicting_claim["error"], conflicting_claim
 
         clear_claim_payload = run_cli(
             registry_path,
@@ -703,6 +717,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             metadata_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--clear-claim",
         )
         assert clear_claim_payload["changed"] is True, clear_claim_payload
@@ -727,6 +743,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             metadata_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--text",
             UPDATED_AGENT_TODO,
             "--evidence",
@@ -745,6 +763,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             metadata_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--status",
             "done",
             "--evidence",
@@ -761,6 +781,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             metadata_payload["todo_id"],
+            "--agent-id",
+            "codex-main-control",
             "--evidence",
             "Validated compact evidence summary.",
             "--no-follow-up",

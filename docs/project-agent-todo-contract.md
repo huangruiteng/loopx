@@ -248,14 +248,16 @@ loopx register-agent \
   --execute
 ```
 
-Then claim through the dedicated command. `--claimed-by` is required for
-`todo claim` and must match one of the registered agent ids:
+Then claim through the dedicated command. `--claimed-by` records the durable
+owner, while `--agent-id` attributes the peer performing this mutation. For a
+self-claim they are both required and must name the same registered agent:
 
 ```bash
 loopx todo claim \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
-  --claimed-by codex-main-control
+  --claimed-by codex-main-control \
+  --agent-id codex-main-control
 ```
 
 Old projects that do not yet have `coordination.registered_agents` are
@@ -266,12 +268,16 @@ registration writes the source registry named by the global projection; if the
 shared global registry is not writable, it fails before changing that source so
 the control plane does not drift into a half-registered state.
 
-Use `--clear-claim` when an operator or peer reassigns a todo or an agent releases
-work. `claimed_by` is visibility, not a runtime lease: it does not bypass quota,
-user gates, write-scope checks, or validation. `todo add/update/complete` also
-accept `--claimed-by`, but the value is checked against the same registered
-agent list. Old projects without `coordination.registered_agents` fail closed
-before ownership metadata can be written.
+Use `--clear-claim` when an owning peer reassigns a todo or releases work.
+`claimed_by` is visibility, not a runtime lease: it does not bypass quota, user
+gates, write-scope checks, validation, or actor authorization. On registered
+multi-agent goals, `todo claim/update/complete/supersede` require `--agent-id`;
+the actor must not be excluded and must match the current `claimed_by` owner
+when one exists. An exact linked `user_gate` decision scope is the narrow
+exception: its typed approve/reject/cancel completion is attributed to the
+owner/controller decision instead of an agent actor. Old projects without
+`coordination.registered_agents` still fail closed before ownership metadata
+can be written.
 `todo claim` is non-destructive: if another registered agent already owns the
 todo, it fails closed instead of silently replacing `claimed_by`. Transfer
 ownership with an explicit `todo update --clear-claim` or
@@ -325,6 +331,7 @@ Complete the current todo and atomically register the next executable todo:
 loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
+  --agent-id <registered-agent> \
   --evidence "<public-safe artifact or result>" \
   --next-agent-todo "<public-safe next executable action>" \
   --next-task-class advancement_task \
@@ -339,6 +346,7 @@ loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-peer-a \
+  --agent-id codex-peer-a \
   --evidence "<public-safe artifact or result>" \
   --next-agent-todo "Continue the next bounded task." \
   --next-claimed-by codex-peer-b \
@@ -382,6 +390,7 @@ loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-peer-a \
+  --agent-id codex-peer-a \
   --self-merged \
   --evidence "<public-safe commit, validation, and self-merge summary>"
 ```
@@ -418,6 +427,7 @@ loopx todo complete \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
   --claimed-by codex-peer-a \
+  --agent-id codex-peer-a \
   --self-merged \
   --evidence "<public-safe commit, validation, and self-merge summary>" \
   --next-agent-todo "Continue the next small docs/productization slice." \
@@ -435,6 +445,7 @@ Use `todo update` for lower-level, non-terminal status changes:
 loopx todo update \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
+  --agent-id <registered-agent> \
   --status blocked \
   --reason "<public-safe blocker>" \
   --task-class blocker
@@ -455,6 +466,7 @@ machine-readable condition instead of living only in prose:
 loopx todo update \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
+  --agent-id <registered-agent> \
   --status deferred \
   --resume-when todo_done:<blocking_todo_id> \
   --reason "<public-safe deferred rationale>"
@@ -466,6 +478,7 @@ Use `todo supersede` when the current open todo should be retired and replaced:
 loopx todo supersede \
   --goal-id <goal-id> \
   --todo-id <todo_id> \
+  --agent-id <registered-agent> \
   --reason "<public-safe reason>" \
   --next-agent-todo "<replacement executable action>"
 ```
@@ -508,6 +521,7 @@ is never written back. Repair legacy review records explicitly:
 loopx todo update \
   --goal-id <goal-id> \
   --todo-id <todo-id> \
+  --agent-id <registered-agent> \
   --role agent \
   --continuation-policy independent_handoff \
   --excluded-agent <author>

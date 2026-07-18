@@ -71,13 +71,13 @@ def assert_help_surfaces() -> None:
     )
     assert_contains(
         complete_help.stdout,
-        "This is not lifecycle actor",
+        "lifecycle actor; registered multi-agent goals require",
         "todo complete agent-id help",
     )
     assert_contains(
         complete_help.stdout,
-        "attribution; todo complete uses --claimed-by",
-        "todo complete claimed-by help",
+        "exact linked user_gate decision_scope",
+        "todo complete controller override help",
     )
 
     quota_help = run_cli("quota", "--help")
@@ -118,20 +118,13 @@ def assert_todo_error_payload() -> None:
             "complete",
             "--goal-id",
             "cli-modular-smoke",
-            "--todo-id",
-            "todo_123456789abc",
             "--agent-id",
             "codex-side-bypass",
         )
     assert result.returncode == 1, result.stdout
     payload = json.loads(result.stdout)
     assert payload["ok"] is False, payload
-    assert payload["error"] == (
-        "todo complete does not support --agent-id; --agent-id scopes todo "
-        "list/suggest and user-gate authoring, not lifecycle actor attribution. "
-        "Omit it; use --claimed-by only on commands that explicitly support "
-        "ownership changes."
-    ), payload
+    assert payload["error"] == "todo complete requires --todo-id", payload
 
 
 def assert_todo_markdown_error_payload() -> None:

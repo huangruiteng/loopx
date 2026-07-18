@@ -235,6 +235,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id=approval["todo_id"],
             role="user",
+            agent_id=PRIMARY_AGENT,
             evidence="user authorized the exact bounded cleanup",
         )
         assert approval_completed["unblock_resume"]["state"] == "resumed", approval_completed
@@ -272,6 +273,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id=approvals[0]["todo_id"],
             role="user",
+            agent_id=PRIMARY_AGENT,
             evidence="first exact authorization",
         )
         assert first_approval["unblock_resume"]["state"] == "other_user_blockers_active", first_approval
@@ -283,6 +285,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id=approvals[1]["todo_id"],
             role="user",
+            agent_id=PRIMARY_AGENT,
             evidence="second exact authorization",
         )
         assert second_approval["unblock_resume"]["state"] == "resumed", second_approval
@@ -364,6 +367,7 @@ def main() -> int:
             todo_id=str(agent_todo["todo_id"]),
             role="agent",
             claimed_by=PRIMARY_AGENT,
+            agent_id=PRIMARY_AGENT,
             evidence="fixture validation",
             next_user_todo="Approve publishing the release notes.",
         )
@@ -377,6 +381,7 @@ def main() -> int:
                 goal_id=GOAL_ID,
                 todo_id=str(agent_todo["todo_id"]),
                 role="agent",
+                agent_id=PRIMARY_AGENT,
                 global_gate=True,
                 dry_run=True,
             ),
@@ -410,6 +415,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id="todo_unscoped_gate",
             role="user",
+            agent_id=PRIMARY_AGENT,
             status="done",
         )
         assert closed["changed"] is True, closed
@@ -440,6 +446,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id="todo_untyped_user",
             role="user",
+            agent_id=PRIMARY_AGENT,
             status="done",
         )
         assert closed_untyped["changed"] is True, closed_untyped
@@ -502,6 +509,7 @@ def main() -> int:
             goal_id=GOAL_ID,
             todo_id="todo_removed_agent_gate",
             role="agent",
+            agent_id=PRIMARY_AGENT,
             clear_blocks_agent=True,
         )
         assert repaired_agent_gate["blocks_agent"] is None, repaired_agent_gate
