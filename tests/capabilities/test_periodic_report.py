@@ -153,9 +153,7 @@ def test_partial_and_unknown_states_preserve_retry_evidence() -> None:
     assert payload["run_state"]["status"] == "partial"
     assert payload["retry"]["allowed"] is True
     assert payload["retry"]["next_attempt"] == 2
-    assert payload["retry"]["retryable_components"] == [
-        "delivery:team_delivery"
-    ]
+    assert payload["retry"]["retryable_components"] == ["delivery:team_delivery"]
 
     unknown = _request()
     unknown["source_snapshots"][0] = {  # type: ignore[index]
