@@ -1,0 +1,23 @@
+examples/control_plane/monitor-poll-writeback-smoke.py
+  s_9a5a2bd944fdcb::t_3487a43bb99001 798-815,818-821,823-871,988-989
+loopx/quota.py
+  s_9a5a2bd944fdcb::t_f488bf145af5a4 2344-2346,2349-2357,2362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ef8681b8a3870bd193d9bdc7b3b9ccd7d9771d72",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
