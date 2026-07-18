@@ -155,9 +155,11 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx/control_plane/scheduler/ack.py",
             "loopx/control_plane/scheduler/scheduler_hint.py",
             "loopx/control_plane/scheduler/state.py",
+            "loopx/control_plane/scheduler/state_transition_rules.py",
             "loopx/cli_commands/quota",
             "quota-scheduler-state-ack-smoke.py",
             "quota-scheduler-registry-route-smoke.py",
+            "monitor-scheduler-contract-smoke.py",
         ),
         "checks": [
             {
@@ -169,6 +171,11 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/control_plane/quota-scheduler-registry-route-smoke.py",
                 "tier": "default",
                 "reason": "guards ACK writes on the registry/runtime route that emitted the hint",
+            },
+            {
+                "command": "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
+                "tier": "default",
+                "reason": "guards multi-monitor cadence selection and current-agent lane independence",
             },
         ],
     },
