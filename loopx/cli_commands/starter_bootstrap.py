@@ -17,6 +17,7 @@ from ..bootstrap_command_pack import (
 )
 from ..host_loop_activation import (
     AgentTypeError,
+    SUPPORTED_AGENT_TYPES,
     build_agent_type_catalog,
     render_agent_type_catalog_markdown,
 )
@@ -70,14 +71,7 @@ def handle_agent_onboard_command(
         exc = AgentTypeError(
             value=None,
             reason="--agent-type is required unless --list-agent-types is used",
-            suggestions=[
-                "codex-app",
-                "codex-ide-plugin",
-                "codex-cli",
-                "claude-code",
-                "manual",
-                "other-agent",
-            ],
+            suggestions=SUPPORTED_AGENT_TYPES,
         )
         print_payload(exc.to_payload(), args.format, render_agent_onboarding_markdown)
         return 2
