@@ -52,6 +52,8 @@ jobs:
             offset: 400
           - shard: 5
             offset: 500
+          - shard: 6
+            offset: 600
     env:
       SHARD_LIMIT: "100"
       SMOKE_TIMEOUT_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.timeout_seconds || '120' }}

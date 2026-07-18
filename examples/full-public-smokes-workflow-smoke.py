@@ -3,11 +3,23 @@
 
 from __future__ import annotations
 
+import re
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.canary.runner import build_canary_smoke_suite_run  # noqa: E402
+
+
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "full-public-smokes.yml"
+MATRIX_ENTRY_RE = re.compile(
+    r"^\s+- shard: (?P<shard>\d+)\n\s+offset: (?P<offset>\d+)$",
+    re.MULTILINE,
+)
+SHARD_LIMIT_RE = re.compile(r'^\s+SHARD_LIMIT: "(?P<limit>\d+)"$', re.MULTILINE)
 
 
 def main() -> int:
@@ -45,11 +57,27 @@ def main() -> int:
     assert "pull-requests: write" not in text
     assert "sec" + "rets." not in text
 
-    for shard, offset in enumerate(range(0, 600, 100)):
-        assert f"shard: {shard}" in text, shard
-        assert f"offset: {offset}" in text, offset
+    matrix = [
+        (int(match.group("shard")), int(match.group("offset")))
+        for match in MATRIX_ENTRY_RE.finditer(text)
+    ]
+    limit_match = SHARD_LIMIT_RE.search(text)
+    assert limit_match is not None
+    shard_limit = int(limit_match.group("limit"))
+    assert matrix == [
+        (shard, shard * shard_limit) for shard in range(len(matrix))
+    ], matrix
 
-    print("full-public-smokes-workflow-smoke ok")
+    inventory = build_canary_smoke_suite_run(suite="full-public", execute=False)
+    inventory_count = int(inventory["matched_check_count"])
+    capacity = len(matrix) * shard_limit
+    assert capacity >= inventory_count, (capacity, inventory_count)
+    assert capacity - inventory_count < shard_limit, (capacity, inventory_count)
+
+    print(
+        "full-public-smokes-workflow-smoke ok "
+        f"inventory={inventory_count} capacity={capacity}"
+    )
     return 0
 
 
