@@ -20,10 +20,16 @@ from loopx.todos import (
 GOAL_ID = "todo-mutation-authority"
 AUTHOR_AGENT = "codex-author"
 REVIEW_AGENT = "codex-review"
+ORCHESTRATION_AGENT = "codex-orchestrator"
 DECISION_SCOPE = "direction:action:publish_release"
 
 
-def _write_fixture(tmp_path: Path, *, multi_agent: bool = True) -> tuple[Path, Path]:
+def _write_fixture(
+    tmp_path: Path,
+    *,
+    multi_agent: bool = True,
+    lifecycle_authority: list[dict] | None = None,
+) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
     state = repo / "ACTIVE_GOAL_STATE.md"
@@ -42,7 +48,17 @@ def _write_fixture(tmp_path: Path, *, multi_agent: bool = True) -> tuple[Path, P
         + "\n",
         encoding="utf-8",
     )
-    agents = [AUTHOR_AGENT, REVIEW_AGENT] if multi_agent else [AUTHOR_AGENT]
+    agents = (
+        [AUTHOR_AGENT, REVIEW_AGENT, ORCHESTRATION_AGENT]
+        if multi_agent
+        else [AUTHOR_AGENT]
+    )
+    coordination = {
+        "agent_model": "peer_v1",
+        "registered_agents": agents,
+    }
+    if lifecycle_authority is not None:
+        coordination["todo_lifecycle_authority"] = lifecycle_authority
     registry = tmp_path / "registry.global.json"
     registry.write_text(
         json.dumps(
@@ -55,10 +71,7 @@ def _write_fixture(tmp_path: Path, *, multi_agent: bool = True) -> tuple[Path, P
                         "repo": str(repo),
                         "state_file": state.name,
                         "adapter": {"kind": "harness_self_improvement"},
-                        "coordination": {
-                            "agent_model": "peer_v1",
-                            "registered_agents": agents,
-                        },
+                        "coordination": coordination,
                     }
                 ]
             }
@@ -188,7 +201,7 @@ def test_owner_actor_update_returns_typed_receipt(tmp_path: Path) -> None:
         "actor_agent_id": AUTHOR_AGENT,
         "todo_id": todo["todo_id"],
         "claim_owner": AUTHOR_AGENT,
-        "registered_agent_count": 2,
+        "registered_agent_count": 3,
     }
     assert _agent_todo(state, todo["todo_id"])["note"] == "owner-attributed update"
 
@@ -370,5 +383,158 @@ def test_author_cannot_replace_explicit_independent_review(
                 agent_id=AUTHOR_AGENT,
                 reason="author cannot replace review",
             )
+
+    assert state.read_text(encoding="utf-8") == before
+
+
+def test_delegated_orchestrator_can_complete_claimed_todo_with_reason(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(
+        tmp_path,
+        lifecycle_authority=[
+            {
+                "agent_id": ORCHESTRATION_AGENT,
+                "actions": ["complete", "reassign", "supersede"],
+                "requires_reason": True,
+            }
+        ],
+    )
+    todo = _add_agent_todo(registry, claimed_by=REVIEW_AGENT)
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        agent_id=ORCHESTRATION_AGENT,
+        authority_reason="Verified the worker result and closed the stalled lane.",
+        evidence="validation://orchestrator-closeout",
+    )
+
+    assert result["mutation_authority"] == {
+        "schema_version": "todo_mutation_authority_v0",
+        "command": "complete",
+        "mode": "delegated_orchestration_override",
+        "actor_agent_id": ORCHESTRATION_AGENT,
+        "todo_id": todo["todo_id"],
+        "claim_owner": REVIEW_AGENT,
+        "authority_action": "complete",
+        "authority_source": "coordination.todo_lifecycle_authority",
+        "authority_reason": "Verified the worker result and closed the stalled lane.",
+        "requires_reason": True,
+        "registered_agent_count": 3,
+    }
+    assert _agent_todo(state, todo["todo_id"])["status"] == "done"
+
+
+def test_delegated_orchestrator_requires_reason_before_state_write(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(
+        tmp_path,
+        lifecycle_authority=[
+            {
+                "agent_id": ORCHESTRATION_AGENT,
+                "actions": ["complete"],
+                "requires_reason": True,
+            }
+        ],
+    )
+    todo = _add_agent_todo(registry, claimed_by=REVIEW_AGENT)
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="requires --authority-reason"):
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            agent_id=ORCHESTRATION_AGENT,
+            evidence="must remain atomic",
+        )
+
+    assert state.read_text(encoding="utf-8") == before
+
+
+def test_delegated_orchestration_authority_is_action_scoped(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(
+        tmp_path,
+        lifecycle_authority=[
+            {
+                "agent_id": ORCHESTRATION_AGENT,
+                "actions": ["reassign"],
+                "requires_reason": True,
+            }
+        ],
+    )
+    todo = _add_agent_todo(registry, claimed_by=REVIEW_AGENT)
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not grant action='complete'"):
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            agent_id=ORCHESTRATION_AGENT,
+            authority_reason="This grant only permits reassignment.",
+            evidence="unauthorized-action",
+        )
+    assert state.read_text(encoding="utf-8") == before
+
+    with pytest.raises(ValueError, match="does not grant action='update'"):
+        update_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            agent_id=ORCHESTRATION_AGENT,
+            claimed_by=AUTHOR_AGENT,
+            status="done",
+            authority_reason="A reassign grant cannot carry another mutation.",
+        )
+    assert state.read_text(encoding="utf-8") == before
+
+    result = update_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        agent_id=ORCHESTRATION_AGENT,
+        claimed_by=AUTHOR_AGENT,
+        authority_reason="Move the stalled work to an available peer.",
+    )
+
+    assert result["mutation_authority"]["authority_action"] == "reassign"
+    assert _agent_todo(state, todo["todo_id"])["claimed_by"] == AUTHOR_AGENT
+
+
+def test_delegated_override_never_bypasses_explicit_exclusion(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(
+        tmp_path,
+        lifecycle_authority=[
+            {
+                "agent_id": ORCHESTRATION_AGENT,
+                "actions": ["complete", "supersede"],
+                "requires_reason": True,
+            }
+        ],
+    )
+    todo = _add_agent_todo(
+        registry,
+        claimed_by=REVIEW_AGENT,
+        excluded_agents=[ORCHESTRATION_AGENT],
+    )
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="is excluded from mutating"):
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            agent_id=ORCHESTRATION_AGENT,
+            authority_reason="An explicit exclusion remains authoritative.",
+            evidence="must-not-write",
+        )
 
     assert state.read_text(encoding="utf-8") == before

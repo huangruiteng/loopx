@@ -60,6 +60,8 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "clear_registered_agents",
     "agent_profiles",
     "clear_agent_profiles",
+    "todo_lifecycle_authority",
+    "clear_todo_lifecycle_authority",
     "agent_model",
     "supervisor_agent",
     "supervised_agents",
@@ -354,6 +356,22 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         clear_agent_profiles = body.get("clear_agent_profiles")
         if clear_agent_profiles is not None and not isinstance(clear_agent_profiles, list):
             raise ValueError("clear_agent_profiles must be a list of strings")
+        todo_lifecycle_authority = body.get("todo_lifecycle_authority")
+        if (
+            todo_lifecycle_authority is not None
+            and not isinstance(todo_lifecycle_authority, list)
+        ):
+            raise ValueError("todo_lifecycle_authority must be a list of objects")
+        clear_todo_lifecycle_authority = body.get(
+            "clear_todo_lifecycle_authority"
+        )
+        if (
+            clear_todo_lifecycle_authority is not None
+            and not isinstance(clear_todo_lifecycle_authority, list)
+        ):
+            raise ValueError(
+                "clear_todo_lifecycle_authority must be a list of strings"
+            )
         supervised_agents = body.get("supervised_agents")
         if supervised_agents is not None and not isinstance(supervised_agents, list):
             raise ValueError("supervised_agents must be a list of strings")
@@ -382,6 +400,12 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "clear_agent_profiles": (
                 [str(item) for item in clear_agent_profiles]
                 if clear_agent_profiles is not None
+                else None
+            ),
+            "todo_lifecycle_authority": todo_lifecycle_authority,
+            "clear_todo_lifecycle_authority": (
+                [str(item) for item in clear_todo_lifecycle_authority]
+                if clear_todo_lifecycle_authority is not None
                 else None
             ),
             "agent_model": body.get("agent_model"),
@@ -428,6 +452,10 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             clear_registered_agents=values["clear_registered_agents"],
             agent_profiles=values["agent_profiles"],
             clear_agent_profiles=values["clear_agent_profiles"],
+            todo_lifecycle_authority=values["todo_lifecycle_authority"],
+            clear_todo_lifecycle_authority=values[
+                "clear_todo_lifecycle_authority"
+            ],
             agent_model=values["agent_model"],
             supervisor_agent=values["supervisor_agent"],
             supervised_agents=values["supervised_agents"],

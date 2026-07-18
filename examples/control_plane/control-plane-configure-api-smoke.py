@@ -197,6 +197,13 @@ def configure_payload() -> dict[str, Any]:
         "allowed_domains": ["docs", "validation"],
         "clear_allowed_domains": False,
         "registered_agents": ["codex-main-control", "codex-side-bypass"],
+        "todo_lifecycle_authority": [
+            {
+                "agent_id": "codex-main-control",
+                "actions": ["complete", "reassign", "supersede"],
+                "requires_reason": True,
+            }
+        ],
         "agent_model": "peer_v1",
         "clear_registered_agents": False,
         "write_scope": ["docs/**", "tests/**"],
@@ -234,6 +241,9 @@ def main() -> None:
             assert dry["written"] is False, dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["agent_model"] == "peer_v1", dry
+            assert dry["after"]["todo_lifecycle_authority"] == configure_payload()[
+                "todo_lifecycle_authority"
+            ], dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             assert goal_from_registry(registry)["quota"]["compute"] == 1
@@ -301,6 +311,9 @@ def main() -> None:
             assert dry["preview_id"], dry
             assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
             assert dry["after"]["agent_model"] == "peer_v1", dry
+            assert dry["after"]["todo_lifecycle_authority"] == configure_payload()[
+                "todo_lifecycle_authority"
+            ], dry
             assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
             assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
             status, stale = request_json(
@@ -338,6 +351,9 @@ def main() -> None:
             assert goal["spawn_policy"]["allowed_domains"] == ["docs", "validation"], goal
             assert goal["coordination"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], goal
             assert goal["coordination"]["agent_model"] == "peer_v1", goal
+            assert goal["coordination"]["todo_lifecycle_authority"] == (
+                configure_payload()["todo_lifecycle_authority"]
+            ), goal
             assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
             status, refreshed = request_json("GET", f"{base_url}/status.json")
             assert status == 200, refreshed

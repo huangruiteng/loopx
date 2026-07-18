@@ -77,9 +77,7 @@ from .control_plane.todos.event_writeback import (
     event_projection_todo_context,
 )
 from .control_plane.todos.monitor_metadata import require_monitor_metadata_scope
-from .control_plane.todos.mutation_authority import (
-    authorize_todo_lifecycle_mutation,
-)
+from .control_plane.todos.mutation_authority import authorize_todo_lifecycle_mutation, todo_update_authority_action
 from .control_plane.todos.succession_warning import build_open_parent_successor_advisory
 from .control_plane.todos.todo_index import MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL
 from .control_plane.todos.text import (
@@ -1226,7 +1224,7 @@ def update_goal_todo(
     excluded_agents: list[str] | None = None,
     clear_excluded_agents: bool = False,
     global_gate: bool = False, clear_global_gate: bool = False,
-    agent_id: str | None = None,
+    agent_id: str | None = None, authority_reason: str | None = None,
     unblocks_todo_id: str | None = None,
     successor_todo_ids: list[str] | None = None,
     resume_when: str | None = None,
@@ -1291,12 +1289,31 @@ def update_goal_todo(
         target_role = role or existing_role
         authority_todo = dict(existing_block)
         authority_todo["role"] = target_role
+        authority_action = todo_update_authority_action(
+            existing_role=existing_role,
+            role=role,
+            claimed_by=claimed_by,
+            clear_claim=clear_claim,
+            other_values=(
+                text, status, note, evidence, reason, task_class, action_kind,
+                task_repository, continuation_policy, required_write_scopes,
+                required_capabilities, target_capabilities,
+                explore_result_node_refs, decision_scope,
+                required_decision_scopes, blocks_agent, clear_blocks_agent,
+                excluded_agents, clear_excluded_agents, global_gate,
+                clear_global_gate, unblocks_todo_id, successor_todo_ids,
+                resume_when, no_followup,
+            ),
+            monitor_metadata=monitor_metadata,
+        )
         mutation_authority = authorize_todo_lifecycle_mutation(
             registry_path=registry_path,
             goal_id=goal_id,
             command="claim" if claim_only else "update",
             todo=authority_todo,
             actor_agent_id=effective_agent_id,
+            authority_action=None if claim_only else authority_action,
+            authority_reason=authority_reason,
             requested_claimed_by=effective_claimed_by,
         )
         target_task_class = task_class or str(existing_block.get("task_class") or "")
@@ -1474,7 +1491,7 @@ def complete_goal_todo(
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
     self_merged: bool = False,
-    agent_id: str | None = None,
+    agent_id: str | None = None, authority_reason: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -1538,7 +1555,7 @@ def complete_goal_todo(
             goal_id=goal_id,
             command="complete",
             todo=completion_todo,
-            actor_agent_id=agent_id,
+            actor_agent_id=agent_id, authority_reason=authority_reason,
             requested_claimed_by=claimed_by,
             decision_outcome=effective_decision_outcome,
             decision_target=decision_target,
@@ -1754,7 +1771,7 @@ def supersede_goal_todo(
     next_action_kind: str | None = None,
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
-    agent_id: str | None = None,
+    agent_id: str | None = None, authority_reason: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -1783,7 +1800,7 @@ def supersede_goal_todo(
             goal_id=goal_id,
             command="supersede",
             todo=authority_todo,
-            actor_agent_id=agent_id,
+            actor_agent_id=agent_id, authority_reason=authority_reason,
         )
         effective_next_claimed_by = (
             require_registered_agent_id(

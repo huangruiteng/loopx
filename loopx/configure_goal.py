@@ -33,6 +33,9 @@ from .control_plane.reward_memory import (
     reward_memory_goal_policy_summary,
 )
 from .control_plane.todos.contract import normalize_todo_claimed_by
+from .control_plane.todos.mutation_authority import (
+    normalize_todo_lifecycle_authority,
+)
 from .control_plane.agents.legacy_migration import (
     completed_peer_agent_runtime_migration,
     legacy_agent_hierarchy_present,
@@ -188,6 +191,9 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
     orchestration = compact_orchestration_policy(goal.get("spawn_policy"))
     coordination = goal.get("coordination") if isinstance(goal.get("coordination"), dict) else {}
     agent_model = agent_runtime_model_for_goal(goal)
+    registered_agents = normalize_registered_agents(
+        coordination.get("registered_agents")
+    )
     summary = {
         "quota": {
             "compute": quota.get("compute"),
@@ -204,7 +210,11 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
         "waiting_on": goal.get("waiting_on"),
         "write_scope": _clean_write_scope(coordination.get("write_scope") or []) or [],
         "checkpointed_boundary_authority": checkpointed_boundary_authority_summary(coordination),
-        "registered_agents": normalize_registered_agents(coordination.get("registered_agents")),
+        "registered_agents": registered_agents,
+        "todo_lifecycle_authority": normalize_todo_lifecycle_authority(
+            coordination.get("todo_lifecycle_authority"),
+            registered_agents=registered_agents,
+        ),
         "agent_profiles": deepcopy(
             coordination.get("agent_profiles")
             if isinstance(coordination.get("agent_profiles"), dict)
@@ -392,6 +402,8 @@ def configure_goal(
     clear_registered_agents: bool = False,
     agent_profiles: list[dict[str, Any]] | None = None,
     clear_agent_profiles: list[str] | None = None,
+    todo_lifecycle_authority: list[dict[str, Any]] | None = None,
+    clear_todo_lifecycle_authority: list[str] | None = None,
     agent_model: str | None = None,
     automation_prompt_migration_ack: str | None = None,
     supervisor_agent: str | None = None,
@@ -518,6 +530,9 @@ def configure_goal(
     registered_agents = _clean_registered_agents(registered_agents)
     reward_memory_agents = _clean_registered_agents(reward_memory_agents)
     clear_agent_profiles = _clean_registered_agents(clear_agent_profiles)
+    clear_todo_lifecycle_authority = _clean_registered_agents(
+        clear_todo_lifecycle_authority
+    )
     supervised_agents = _clean_registered_agents(supervised_agents)
     write_scope = _clean_write_scope(write_scope)
     issue_fix_reviewer_notification_config = _local_private_config_path(
@@ -606,6 +621,19 @@ def configure_goal(
         raise ValueError(
             "cannot write and clear the same agent profile: "
             + ", ".join(profile_conflicts)
+        )
+    normalized_todo_lifecycle_authority = normalize_todo_lifecycle_authority(
+        todo_lifecycle_authority,
+        registered_agents=effective_registered_agents,
+    )
+    authority_conflicts = sorted(
+        {entry["agent_id"] for entry in normalized_todo_lifecycle_authority}
+        & set(clear_todo_lifecycle_authority or [])
+    )
+    if authority_conflicts:
+        raise ValueError(
+            "cannot write and clear the same todo lifecycle authority grant: "
+            + ", ".join(authority_conflicts)
         )
 
     before_goal = deepcopy(goal)
@@ -807,6 +835,8 @@ def configure_goal(
         or registered_agents is not None
         or normalized_agent_profiles
         or clear_agent_profiles
+        or normalized_todo_lifecycle_authority
+        or clear_todo_lifecycle_authority
         or agent_model is not None
         or automation_prompt_migration_ack is not None
         or supervisor_agent is not None
@@ -824,6 +854,7 @@ def configure_goal(
             coordination.pop("agent_model", None)
             coordination.pop("agent_profiles", None)
             coordination.pop("supervisor", None)
+            coordination.pop("todo_lifecycle_authority", None)
         elif registered_agents is not None:
             coordination["registered_agents"] = registered_agents
             existing_profiles = (
@@ -840,6 +871,22 @@ def configure_goal(
                 coordination["agent_profiles"] = retained_profiles
             else:
                 coordination.pop("agent_profiles", None)
+            retained_authority = [
+                entry
+                for entry in coordination.get("todo_lifecycle_authority") or []
+                if isinstance(entry, Mapping)
+                and normalize_todo_claimed_by(entry.get("agent_id"))
+                in registered_agents
+            ]
+            if retained_authority:
+                coordination["todo_lifecycle_authority"] = (
+                    normalize_todo_lifecycle_authority(
+                        retained_authority,
+                        registered_agents=registered_agents,
+                    )
+                )
+            else:
+                coordination.pop("todo_lifecycle_authority", None)
         if not clear_registered_agents:
             coordination["agent_model"] = effective_agent_model
         if not clear_registered_agents and (
@@ -857,6 +904,33 @@ def configure_goal(
                 coordination["agent_profiles"] = profiles
             else:
                 coordination.pop("agent_profiles", None)
+        if not clear_registered_agents and (
+            normalized_todo_lifecycle_authority
+            or clear_todo_lifecycle_authority
+        ):
+            current_authority = normalize_todo_lifecycle_authority(
+                coordination.get("todo_lifecycle_authority"),
+                registered_agents=normalize_registered_agents(
+                    coordination.get("registered_agents")
+                ),
+            )
+            authority_by_agent = {
+                entry["agent_id"]: entry for entry in current_authority
+            }
+            for authority_agent_id in clear_todo_lifecycle_authority or []:
+                authority_by_agent.pop(authority_agent_id, None)
+            authority_by_agent.update(
+                {
+                    entry["agent_id"]: entry
+                    for entry in normalized_todo_lifecycle_authority
+                }
+            )
+            if authority_by_agent:
+                coordination["todo_lifecycle_authority"] = list(
+                    authority_by_agent.values()
+                )
+            else:
+                coordination.pop("todo_lifecycle_authority", None)
         if automation_prompt_migration_ack is not None and not migration_already_completed:
             coordination = migrate_coordination_to_peer_v1(
                 coordination,

@@ -359,6 +359,25 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         default=None,
         help="Registered agent id whose advisory profile should be removed. Repeatable.",
     )
+    configure_goal_parser.add_argument(
+        "--todo-lifecycle-authority-json",
+        dest="todo_lifecycle_authority_jsons",
+        action="append",
+        default=None,
+        help=(
+            "JSON grant with agent_id, actions, and requires_reason for explicit "
+            "cross-owner todo lifecycle overrides. Repeatable."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-todo-lifecycle-authority",
+        action="append",
+        default=None,
+        help=(
+            "Registered agent id whose todo lifecycle authority grant should be "
+            "removed. Repeatable."
+        ),
+    )
     register_peer_runtime_arguments(configure_goal_parser)
     register_peer_supervisor_arguments(configure_goal_parser)
     configure_goal_parser.add_argument(
@@ -648,6 +667,10 @@ def handle_registry_admin_command(
                 json.loads(raw_profile)
                 for raw_profile in (args.agent_profile_jsons or [])
             ]
+            todo_lifecycle_authority = [
+                json.loads(raw_grant)
+                for raw_grant in (args.todo_lifecycle_authority_jsons or [])
+            ]
             payload = configure_goal_with_global_sync(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -671,6 +694,10 @@ def handle_registry_admin_command(
                 clear_registered_agents=bool(args.clear_registered_agents),
                 agent_profiles=agent_profiles,
                 clear_agent_profiles=args.clear_agent_profiles,
+                todo_lifecycle_authority=todo_lifecycle_authority,
+                clear_todo_lifecycle_authority=(
+                    args.clear_todo_lifecycle_authority
+                ),
                 agent_model=args.agent_model,
                 automation_prompt_migration_ack=args.ack_automation_prompt_migration,
                 supervisor_agent=args.supervisor_agent,

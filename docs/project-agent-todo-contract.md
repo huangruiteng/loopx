@@ -152,6 +152,42 @@ Work authority comes from `claimed_by`, task leases, the goal/write boundary,
 and typed continuation policy. Functional profile roles and scope summaries are
 advisory; they do not make one identity the default reviewer or leader.
 
+Ordinary lifecycle mutations follow todo ownership. A goal may separately
+delegate narrow cross-owner actions to an orchestration agent:
+
+```yaml
+coordination:
+  todo_lifecycle_authority:
+    - agent_id: codex-main-control
+      actions: [complete, reassign, supersede]
+      requires_reason: true
+```
+
+Configure the equivalent registry value without hand-editing state:
+
+```bash
+loopx configure-goal \
+  --goal-id <goal-id> \
+  --todo-lifecycle-authority-json \
+  '{"agent_id":"codex-main-control","actions":["complete","reassign","supersede"],"requires_reason":true}' \
+  --execute
+```
+
+The delegated agent must already be registered. Each override is action-scoped
+and emits a typed receipt containing the actor, original owner, authority
+source, and public-safe `--authority-reason`. Delegation never bypasses an
+explicit `excluded_agents` boundary. `coordination.supervisor` remains a
+proposal-only observation role and does not imply lifecycle authority.
+
+```bash
+loopx todo complete \
+  --goal-id <goal-id> \
+  --todo-id <todo-id> \
+  --agent-id codex-main-control \
+  --authority-reason "Verified the result and closed the stalled lane." \
+  --evidence "<public-safe evidence>"
+```
+
 An agent todo can name a different task repository without copying agent scope
 into todo metadata:
 

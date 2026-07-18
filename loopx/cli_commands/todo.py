@@ -80,6 +80,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument("--evidence", help="Public-safe evidence pointer or short result for complete/update.")
     todo_parser.add_argument("--reason", help="Public-safe reason for blocked/deferred/supersede transitions.")
     todo_parser.add_argument(
+        "--authority-reason",
+        help=(
+            "For a delegated lifecycle override, record the public-safe reason. "
+            "Required when the matching coordination.todo_lifecycle_authority "
+            "grant sets requires_reason=true."
+        ),
+    )
+    todo_parser.add_argument(
         "--task-class",
         choices=["advancement_task", "continuous_monitor", "user_gate", "user_action", "blocker"],
         help=(
@@ -662,6 +670,7 @@ def handle_todo_command(
                 global_gate=bool(args.global_gate),
                 clear_global_gate=bool(args.clear_global_gate),
                 agent_id=args.agent_id,
+                authority_reason=args.authority_reason,
                 unblocks_todo_id=args.unblocks_todo_id,
                 successor_todo_ids=args.successor_todo_ids,
                 resume_when=args.resume_when,
@@ -731,6 +740,7 @@ def handle_todo_command(
                 next_excluded_agents=args.next_excluded_agents,
                 self_merged=bool(args.self_merged),
                 agent_id=args.agent_id,
+                authority_reason=args.authority_reason,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),
@@ -790,6 +800,7 @@ def handle_todo_command(
                 next_continuation_policy=args.next_continuation_policy,
                 next_excluded_agents=args.next_excluded_agents,
                 agent_id=args.agent_id,
+                authority_reason=args.authority_reason,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),

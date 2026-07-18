@@ -13,6 +13,7 @@ TODO_OPTION_FIELDS = (
     ("--note", "note"),
     ("--evidence", "evidence"),
     ("--reason", "reason"),
+    ("--authority-reason", "authority_reason"),
     ("--task-class", "task_class"),
     ("--action-kind", "action_kind"),
     ("--task-repository", "task_repository"),
@@ -86,6 +87,15 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     }
     global_gate_allowed = args.todo_command in {"add", "update"}
     clear_global_gate_allowed = args.todo_command == "update"
+    authority_reason_allowed = args.todo_command in {
+        "update",
+        "complete",
+        "supersede",
+    }
+    if args.authority_reason and not authority_reason_allowed:
+        raise ValueError(
+            "--authority-reason is supported only by todo update/complete/supersede"
+        )
     if (
         args.todo_command not in {"suggest", "capture-followups"}
         and args.agent_id
