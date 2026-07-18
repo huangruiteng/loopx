@@ -1,0 +1,31 @@
+loopx/cli_commands/todo.py
+  s_9a5a2bd944fdcb::t_87776b7ddad442 360-375,493-496,594-595,680-683,771-776,796-797,840-845,865-866,886-889
+loopx/cli_commands/todo_argument_validation.py
+  s_9a5a2bd944fdcb::t_9bb21d66223140 52-53
+loopx/control_plane/todos/event_writeback.py
+  s_9a5a2bd944fdcb::t_c766c03dfacefe 28,34,148-149,182-198,271-272,300-301,340-341,360-361
+loopx/event_sourced_state.py
+  s_9a5a2bd944fdcb::t_7264746cde3572 22,36,275-277,287-289,299-300,307-308,595,606-608,633-634,641-642,703-712,864,868
+loopx/state_projection.py
+  s_9a5a2bd944fdcb::t_6b3a46b7a33093 28,87,515-517
+loopx/todos.py
+  s_9a5a2bd944fdcb::t_95d73ae2e45436 1387-1388,1397-1400,1535-1536,1597-1598,1679-1680,1688-1691,1791-1792
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ca3f0a2598eac4e30d400958160d70dff6fd48a5",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
