@@ -1,0 +1,63 @@
+docs/new-project-codex-prompt.md
+  s_32e2a9a204a8e4::t_72d5109b8641e3 138,141-145
+examples/agent-diagnose-packet-smoke.py
+  s_32e2a9a204a8e4::t_23510751fcdf9f 405-406
+examples/control_plane/quota-spend-agent-identity-smoke.py
+  s_32e2a9a204a8e4::t_2de6480ee21c6d 115-116
+examples/project/project-prompt-smoke.py
+  s_32e2a9a204a8e4::t_ceb96cc2f7dad9 107,165
+examples/skillsbench-benchmark-run-smoke.py
+  s_32e2a9a204a8e4::t_ea295ff18451e3 1583,2961,3716
+loopx/benchmark_adapters/skillsbench_acp_relay.py
+  s_32e2a9a204a8e4::t_c2fee6dab0d3e8 2100
+loopx/benchmark_adapters/skillsbench_turn_runtime.py
+  s_32e2a9a204a8e4::t_00d36ce1aa4ab8 252
+loopx/benchmark_adapters/terminal_bench.py
+  s_32e2a9a204a8e4::t_af2ce0ff77df05 8193,8196
+loopx/benchmark_case_state.py
+  s_32e2a9a204a8e4::t_217d811cd48a36 448,851
+loopx/bootstrap.py
+  s_32e2a9a204a8e4::t_71befbd9d6e364 900
+loopx/capabilities/cross_runtime/impl_review.py
+  s_32e2a9a204a8e4::t_01c8885246ea64 169,193
+loopx/control_plane/agents/supervisor.py
+  s_32e2a9a204a8e4::t_b4f0c954cfd56e 433
+loopx/control_plane/quota/turn_envelope.py
+  s_32e2a9a204a8e4::t_5681e3c276eb36 705-707
+loopx/control_plane/scheduler/execution_context.py
+  s_32e2a9a204a8e4::t_f173fbac4facb4 35-67,250-260,262-289,305,310,318-320
+loopx/demo.py
+  s_32e2a9a204a8e4::t_224c5a40ac532d 151
+loopx/host_loop_activation.py
+  s_32e2a9a204a8e4::t_0af76fa52e5e5d 6,26-33
+loopx/review_packet.py
+  s_32e2a9a204a8e4::t_a0a752c245dbb5 149
+loopx/visible_multi_agent_launcher.py
+  s_32e2a9a204a8e4::t_7e67b5ed22da0c 512
+tests/control_plane/test_cli_output_budget.py
+  s_32e2a9a204a8e4::t_d4e92063c40805 11-12,14,27,694-767
+tests/control_plane/test_scheduler_execution_context.py
+  s_32e2a9a204a8e4::t_292e8df675cff6 16,39-66,195-257,274,276
+tests/test_host_loop_activation.py
+  s_32e2a9a204a8e4::t_692cf3b867528c 11,31-55
+tests/test_turn_envelope.py
+  s_32e2a9a204a8e4::t_9a4c55b788e07c 335-373
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1f5ff16820cf765cb773355031d09521c9b1e9b3",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
