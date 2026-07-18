@@ -1,0 +1,31 @@
+examples/control_plane/monitor-scheduler-contract-smoke.py
+  s_e3f612788718c1::t_6577c847c546d7 17-19,30-32,189
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_e3f612788718c1::t_7d99235edd54a8 15-17,30-32,685,904
+examples/control_plane/quota-cleared-blocker-successor-gate-smoke.py
+  s_e3f612788718c1::t_b71f731e9b9c7b 15-17,29-31,299
+examples/control_plane/quota-plan-smoke.py
+  s_e3f612788718c1::t_df044e9d1a341d 27-29,53-57,975-979,988-992,1055
+examples/control_plane/quota-replan-decision-plane-smoke.py
+  s_e3f612788718c1::t_7c50fce71a144e 21-23,34-36,1362
+examples/control_plane/quota-terminal-no-followup-smoke.py
+  s_e3f612788718c1::t_aa294d9424d4c7 18-20,27-29,116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d39d467262557023bfdc0cda55750db3d2f2ef46",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
