@@ -29,13 +29,14 @@ Every registered capability declares three provider-facing fields:
 - `visibility`: `public` or `internal`;
 - `provider_id`: `loopx-core` or the extension manifest id.
 
-The built-in catalog remains the default source. Explicitly enabled extension
-manifests are validated and appended in caller order. Duplicate capability or
-provider ids fail closed. Internal registrations remain available to the
-registry but are omitted from the public catalog.
+The built-in catalog remains the default source. Extension manifests declare
+providers and contracts; the extension runtime state is the only source for
+whether each provider is installed, enabled, and doctor-ready. Duplicate
+capability or provider ids fail closed. Internal registrations remain available
+to the registry but are omitted from the public catalog.
 
 Catalog discovery does not scan arbitrary directories or import extension
-Python code. A caller can compose one manifest into a catalog read explicitly:
+Python code. A caller can add a declaration-only manifest to a catalog read:
 
 ```bash
 loopx capability list \
@@ -47,7 +48,10 @@ loopx capability show lark-kanban \
   --format json
 ```
 
-The activation store is separate from catalog composition. `loopx extension`
+The resulting provider reports `declared=true` and
+`installed=enabled=ready=false`. The normal CLI read also composes installed
+providers from `<runtime-root>/extensions/state.json`, so the catalog and
+runtime dispatch see the same active manifest revision. `loopx extension`
 registers an already-installed subprocess entrypoint only after the manifest,
 API, permission, and doctor checks pass. It does not download packages or grant
 new permissions.
@@ -87,10 +91,15 @@ interpreters, or Python module sources fail closed until a new executed doctor
 succeeds; a failed executed doctor clears the stale proof without switching
 revisions.
 
-An enabled implementation is resolved by capability id, versioned protocol,
-declared permission, current revision, and current doctor proof. Domain config
-may add bounded provider arguments, but cannot replace the manifest entrypoint,
-timeout, protocol, or permission contract.
+An enabled implementation is resolved by capability id and versioned protocol,
+then checked against its declared permission, current revision, and current
+doctor proof. Callers do not need to copy an extension id into normal config.
+Disabled or stale implementations remain visible in the catalog but are not
+dispatch candidates. When multiple enabled, doctor-ready extensions implement
+the same capability/protocol pair, resolution fails closed until the caller
+selects the intended provider during migration. Domain config may add bounded
+provider arguments, but cannot replace the manifest entrypoint, timeout,
+protocol, or permission contract.
 
 Compatibility delegates use the same revision-bound readiness rule. Every
 configured `loopx lark-inbox` operation resolves the enabled `loopx-lark`

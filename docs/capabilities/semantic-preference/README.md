@@ -29,7 +29,6 @@ does not branch on `issue_fix`, `content_ops`, or any other domain name.
   "enabled": true,
   "provider": {
     "id": "local_memory",
-    "extension_id": "semantic-preference-provider",
     "args": ["--project", "."]
   },
   "surfaces": {
@@ -44,10 +43,13 @@ does not branch on `issue_fix`, `content_ops`, or any other domain name.
 }
 ```
 
-`extension_id` resolves only from enabled, doctor-verified local activation
-state. `args` are appended after the manifest-owned entrypoint arguments. The
-manifest owns protocol, permission, timeout, and doctor; config cannot override
-them. `extension_state_file` is an optional local-private override for tests or
+LoopX resolves the installed provider from the `semantic-preference` capability
+and `semantic_preference_provider_v0` protocol in runtime state. `args` are
+appended after the manifest-owned entrypoint arguments. The manifest owns
+protocol, permission, timeout, and doctor; config cannot override them.
+`extension_id` remains an optional compatibility selector when migrating an
+existing config or disambiguating multiple installed implementations.
+`extension_state_file` is an optional local-private override for tests or
 specialized embeddings; the CLI's global `--runtime-root` selects the normal
 isolated runtime. If an activated extension is later disabled or unavailable,
 recall follows the surface's existing `fail_open` or `fail_closed` policy.
@@ -64,7 +66,8 @@ provider object with:
 }
 ```
 
-`argv` and `extension_id` are mutually exclusive.
+`argv` and `extension_id` are mutually exclusive. Omitting both selects the
+unique installed extension implementation from runtime state.
 
 A domain module owns the surface id, query, context keys, and decision about
 how recalled items influence its output. Adding another module is a config
