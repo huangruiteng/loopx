@@ -1,0 +1,23 @@
+examples/periodic-report-adapters-smoke.py
+  s_ce78287262030e::t_84b93945034dfc 24
+tests/capabilities/test_periodic_report_adapters.py
+  s_ce78287262030e::t_3224c350a12d54 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "99ce3ac8e9bb17a35bd2dc2c9dfa87b02047b43e",
+  "prompts": {},
+  "sessions": {
+    "s_ce78287262030e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7515-a03a-7322-9902-2e203d31cc54",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
