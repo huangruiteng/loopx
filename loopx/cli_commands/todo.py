@@ -198,8 +198,24 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--claimed-by",
         help=(
-            "For todo add/claim/update/complete, soft-claim the todo for a registered "
-            "public-safe agent id such as codex-main-control."
+            "For agent todo add/claim/update/complete, soft-claim execution for a "
+            "registered public-safe agent id such as codex-main-control. User todos "
+            "use --bound-agent or --goal-bound instead."
+        ),
+    )
+    todo_parser.add_argument(
+        "--bound-agent",
+        help=(
+            "For user todo add/update, bind reminder delivery and post-response "
+            "continuation to one registered agent lane. This is not a gate."
+        ),
+    )
+    todo_parser.add_argument(
+        "--goal-bound",
+        action="store_true",
+        help=(
+            "For user todo add/update, explicitly bind the item to the whole goal "
+            "instead of one agent lane."
         ),
     )
     todo_parser.add_argument(
@@ -367,9 +383,10 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--agent-id",
         help=(
-            "For todo add on role=user task-class=user_gate, mark the authoring "
-            "registered agent; when --blocks-agent is omitted, the gate blocks "
-            "this agent. For claim/update/complete/supersede, attribute the "
+            "For user todo add, mark the authoring registered agent and bind the "
+            "user response continuation to that lane; for user_gate, the gate also "
+            "blocks this agent when --blocks-agent is omitted. For "
+            "claim/update/complete/supersede, attribute the "
             "lifecycle actor; registered multi-agent goals require it unless an "
             "exact linked user_gate decision_scope supplies the typed owner/controller "
             "override. For list/suggest, select the project agent lane."
@@ -488,6 +505,8 @@ def handle_todo_command(
                 decision_scope=args.decision_scope,
                 required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
+                bound_agent=args.bound_agent,
+                goal_bound=bool(args.goal_bound),
                 blocks_agent=args.blocks_agent,
                 excluded_agents=args.excluded_agents,
                 global_gate=bool(args.global_gate),
@@ -531,6 +550,8 @@ def handle_todo_command(
                     ("--decision-scope", args.decision_scope),
                     ("--required-decision-scope", args.required_decision_scopes),
                     ("--decision-outcome", args.decision_outcome),
+                    ("--bound-agent", args.bound_agent),
+                    ("--goal-bound", args.goal_bound),
                     ("--blocks-agent", args.blocks_agent),
                     ("--clear-blocks-agent", args.clear_blocks_agent),
                     ("--excluded-agent", args.excluded_agents),
@@ -605,6 +626,8 @@ def handle_todo_command(
                 args.decision_scope,
                 args.required_decision_scopes,
                 args.claimed_by,
+                args.bound_agent,
+                args.goal_bound,
                 args.blocks_agent,
                 args.clear_blocks_agent,
                 args.excluded_agents,
@@ -663,6 +686,8 @@ def handle_todo_command(
                 decision_scope=args.decision_scope,
                 required_decision_scopes=args.required_decision_scopes,
                 claimed_by=args.claimed_by,
+                bound_agent=args.bound_agent,
+                goal_bound=bool(args.goal_bound),
                 blocks_agent=args.blocks_agent,
                 clear_blocks_agent=bool(args.clear_blocks_agent),
                 excluded_agents=args.excluded_agents,
@@ -695,7 +720,7 @@ def handle_todo_command(
                 )
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if args.task_repository or args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
+            if args.task_repository or args.bound_agent or args.goal_bound or args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")

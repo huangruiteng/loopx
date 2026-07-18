@@ -17,6 +17,8 @@ SELECTED_TODO_COMPACT_FIELDS = (
     "task_repository",
     "required_write_scopes",
     "claimed_by",
+    "bound_agent",
+    "goal_bound",
     "blocks_agent",
     "excluded_agents",
     "unblocks_todo_id",

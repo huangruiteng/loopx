@@ -20,6 +20,7 @@ from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_blocks_agent,
+    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_excluded_agents,
     normalize_todo_global_gate,
@@ -116,6 +117,10 @@ def agent_scope_item_claimed_by(item: dict[str, Any]) -> str | None:
 
 def agent_scope_item_blocks_agent(item: dict[str, Any]) -> str | None:
     return normalize_todo_blocks_agent(item.get("blocks_agent"))
+
+
+def agent_scope_item_bound_agent(item: dict[str, Any]) -> str | None:
+    return normalize_todo_bound_agent(item.get("bound_agent"))
 
 
 def agent_scope_item_excluded_agents(item: dict[str, Any]) -> list[str]:
@@ -303,6 +308,45 @@ def _agent_scope_filter_user_gate_items(
             ),
             "current_agent_blocking_open_count": len(current_agent_items),
             "other_agent_scoped_open_count": len(other_agent_scoped_items),
+        },
+    )
+
+
+def _agent_scope_filter_user_action_items(
+    open_items: list[dict[str, Any]],
+    *,
+    agent_identity: dict[str, Any] | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any] | None]:
+    if not isinstance(agent_identity, dict):
+        return open_items, [], None
+    agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
+    if not agent_id:
+        return open_items, [], None
+
+    current_agent_items: list[dict[str, Any]] = []
+    other_agent_items: list[dict[str, Any]] = []
+    for item in open_items:
+        # claimed_by is a read-only compatibility fallback for user actions
+        # written before bound_agent became a first-class routing relation.
+        bound_agent = agent_scope_item_bound_agent(item) or agent_scope_item_claimed_by(item)
+        if bound_agent and bound_agent != agent_id:
+            other_agent_items.append(item)
+            continue
+        current_agent_items.append(item)
+    if not other_agent_items:
+        return open_items, [], None
+    return (
+        current_agent_items,
+        other_agent_items,
+        {
+            "schema_version": "agent_scoped_user_action_filter_v0",
+            "agent_id": agent_id,
+            "policy": (
+                "user actions bound to another agent remain diagnostic-only and "
+                "must not enter this agent's reminder channel"
+            ),
+            "current_agent_user_action_open_count": len(current_agent_items),
+            "other_agent_bound_user_action_open_count": len(other_agent_items),
         },
     )
 
@@ -495,7 +539,7 @@ def _first_monitor_todo_text(agent_todo_summary: dict[str, Any] | None) -> str |
     return None
 
 
-def _agent_scoped_user_gate_override(
+def _agent_scoped_user_todo_override(
     *,
     state: str,
     item: dict[str, Any],
@@ -511,32 +555,67 @@ def _agent_scoped_user_gate_override(
         return None
     if _open_todo_count(user_todo_summary) > 0:
         return None
-    other_count = _open_todo_count(
+    other_gate_count = _open_todo_count(
         {"open_count": user_todo_summary.get("other_agent_scoped_open_count")}
     )
-    if other_count <= 0:
-        return None
     if item.get("operator_question") or item.get("missing_gates"):
         return None
     selected_action = _first_executable_todo_text(agent_todo_summary)
     if not selected_action:
         selected_action = _first_monitor_todo_text(agent_todo_summary)
-    if not selected_action:
-        return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
-    return {
-        "schema_version": "agent_scoped_user_gate_override_v0",
-        "kind": "agent_scoped_user_gate_override",
+    if other_gate_count > 0:
+        if not selected_action:
+            return None
+        return {
+            "schema_version": "agent_scoped_user_gate_override_v0",
+            "kind": "agent_scoped_user_gate_override",
+            "agent_id": agent_id,
+            "from_state": "operator_gate",
+            "to_state": "eligible",
+            "other_agent_scoped_open_count": other_gate_count,
+            "selected_action": selected_action,
+            "reason": (
+                "the open user gate is scoped to another agent via blocks_agent or "
+                "claimed_by; this agent still has an executable in-scope todo"
+            ),
+        }
+    other_action_count = _open_todo_count(
+        {
+            "open_count": user_todo_summary.get(
+                "other_agent_bound_user_action_open_count"
+            )
+        }
+    )
+    if other_action_count <= 0:
+        return None
+    result: dict[str, Any] = {
+        "schema_version": "agent_scoped_user_action_override_v0",
+        "kind": "agent_scoped_user_action_override",
         "agent_id": agent_id,
         "from_state": "operator_gate",
-        "to_state": "eligible",
-        "other_agent_scoped_open_count": other_count,
-        "selected_action": selected_action,
+        "to_state": "eligible" if selected_action else "waiting",
+        "other_agent_bound_user_action_open_count": other_action_count,
         "reason": (
-            "the open user gate is scoped to another agent via blocks_agent or claimed_by; "
-            "this agent still has an executable in-scope todo"
+            "the only open user actions are bound to another agent; they remain "
+            "diagnostic-only for this lane and cannot create an operator gate"
         ),
+        "quota_patch": {
+            "safe_bypass_allowed": False,
+            "safe_bypass_kind": None,
+            "blocked_action_scope": None,
+        },
+        "item_patch": {
+            "status": "active_state_agent_todo" if selected_action else "agent_scope_wait",
+            "waiting_on": "codex" if selected_action else "agent_scope",
+            "recommended_action": (
+                selected_action or "wait for work or a user action bound to this agent"
+            ),
+        },
     }
+    if selected_action:
+        result["selected_action"] = selected_action
+    return result
 
 
 def _count_advancement_items(items: Any, *, claimed_by: str | None = None) -> int:

@@ -19,6 +19,7 @@ from .contract import (
     normalize_todo_action_kind,
     normalize_todo_task_repository,
     normalize_todo_blocks_agent,
+    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
     normalize_todo_decision_outcome,
@@ -26,6 +27,7 @@ from .contract import (
     normalize_todo_decision_scope_outcomes,
     normalize_todo_excluded_agents,
     normalize_todo_global_gate,
+    normalize_todo_goal_bound,
     normalize_todo_id,
     normalize_todo_id_list,
     normalize_todo_no_followup,
@@ -352,6 +354,12 @@ def structured_todo_item(
     claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
     if claimed_by:
         normalized["claimed_by"] = claimed_by
+    bound_agent = normalize_todo_bound_agent(item.get("bound_agent"))
+    if bound_agent:
+        normalized["bound_agent"] = bound_agent
+    goal_bound = normalize_todo_goal_bound(item.get("goal_bound"))
+    if goal_bound is not None:
+        normalized["goal_bound"] = goal_bound
     blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
     if blocks_agent:
         normalized["blocks_agent"] = blocks_agent
@@ -405,6 +413,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "decision_outcome",
         "decision_scope_outcomes",
         "claimed_by",
+        "bound_agent",
+        "goal_bound",
         "blocks_agent",
         "excluded_agents",
         "global_gate",

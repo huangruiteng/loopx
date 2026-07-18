@@ -10,6 +10,8 @@ from ...agent_registry import (
 )
 from .contract import (
     TODO_TASK_CLASS_USER_GATE,
+    normalize_todo_blocks_agent,
+    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
@@ -233,6 +235,15 @@ def authorize_todo_lifecycle_mutation(
         raise ValueError(
             f"agent_id={normalized_actor!r} is excluded from mutating todo_id="
             f"{normalized_todo_id!r}"
+        )
+    bound_agent = normalize_todo_bound_agent(todo.get("bound_agent"))
+    if not bound_agent and str(todo.get("role") or "") == "user":
+        bound_agent = normalize_todo_blocks_agent(todo.get("blocks_agent"))
+    if bound_agent and bound_agent != normalized_actor:
+        raise ValueError(
+            f"agent_id={normalized_actor!r} cannot {command} user todo_id="
+            f"{normalized_todo_id!r}; its response continuation is bound to "
+            f"bound_agent={bound_agent!r}"
         )
     claim_owner = normalize_todo_claimed_by(todo.get("claimed_by"))
     if claim_owner and claim_owner != normalized_actor:

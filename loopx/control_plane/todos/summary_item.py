@@ -41,6 +41,8 @@ TODO_SUMMARY_COMPACT_FIELDS = (
     "decision_outcome",
     "decision_scope_outcomes",
     "claimed_by",
+    "bound_agent",
+    "goal_bound",
     "blocks_agent",
     "excluded_agents",
     "global_gate",

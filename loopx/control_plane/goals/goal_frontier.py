@@ -278,6 +278,7 @@ def _autonomous_replan_owner_agent_ids(
     owner_keys = (
         "agent_id",
         "claimed_by",
+        "bound_agent",
         "owner_agent",
         "target_agent",
         "blocks_agent",

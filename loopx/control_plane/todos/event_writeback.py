@@ -26,6 +26,7 @@ from .contract import (
     build_todo_id,
     merge_todo_id_lists,
     normalize_todo_claimed_by,
+    normalize_todo_bound_agent,
     normalize_todo_continuation_policy,
     normalize_todo_excluded_agents,
     normalize_todo_id,
@@ -145,6 +146,8 @@ def _append_event_projected_successor(
     continuation_policy: str | None,
     claimed_by: str | None,
     dry_run: bool,
+    bound_agent: str | None = None,
+    goal_bound: bool | None = None,
     blocks_agent: str | None = None,
     excluded_agents: list[str] | None = None,
     unblocks_todo_id: str | None = None,
@@ -185,6 +188,10 @@ def _append_event_projected_successor(
         payload["continuation_policy"] = effective_continuation_policy
     if blocks_agent:
         payload["blocks_agent"] = blocks_agent
+    if bound_agent:
+        payload["bound_agent"] = normalize_todo_bound_agent(bound_agent)
+    if goal_bound is not None:
+        payload["goal_bound"] = goal_bound
     normalized_excluded_agents = normalize_todo_excluded_agents(excluded_agents)
     if claimed_by in normalized_excluded_agents:
         raise ValueError(
@@ -242,6 +249,8 @@ def _append_event_projected_successor(
         "action_kind": action_kind,
         "continuation_policy": effective_continuation_policy,
         "claimed_by": claimed_by,
+        "bound_agent": bound_agent,
+        "goal_bound": goal_bound,
         "blocks_agent": blocks_agent,
         "excluded_agents": normalized_excluded_agents,
         "unblocks_todo_id": unblocks_todo_id,
@@ -323,6 +332,7 @@ def complete_event_projected_goal_todo(
                 action_kind="gate",
                 continuation_policy=None,
                 claimed_by=None,
+                bound_agent=next_user_blocks_agent,
                 blocks_agent=next_user_blocks_agent,
                 unblocks_todo_id=None,
                 dry_run=dry_run,

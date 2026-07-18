@@ -48,8 +48,8 @@ TODO_METADATA_FIELDS = (
     "task_repository", "required_write_scopes", "required_capabilities", "target_capabilities",
     "explore_result_node_refs",
     "decision_scope", "required_decision_scopes", "decision_outcome",
-    "decision_scope_outcomes", "claimed_by", "blocks_agent",
-    "excluded_agents", "global_gate", "unblocks_todo_id", "successor_todo_ids",
+    "decision_scope_outcomes", "claimed_by", "bound_agent", "goal_bound",
+    "blocks_agent", "excluded_agents", "global_gate", "unblocks_todo_id", "successor_todo_ids",
     "resume_when", "no_followup", *TODO_MONITOR_METADATA_FIELDS, "note", "evidence",
     "reason", "completed_at", "updated_at", "superseded_by",
 )
@@ -264,6 +264,14 @@ def normalize_todo_claimed_by(value: Any) -> str | None:
 
 def normalize_todo_blocks_agent(value: Any) -> str | None:
     return normalize_todo_claimed_by(value)
+
+
+def normalize_todo_bound_agent(value: Any) -> str | None:
+    return normalize_todo_claimed_by(value)
+
+
+def normalize_todo_goal_bound(value: Any) -> bool | None:
+    return normalize_todo_global_gate(value)
 
 
 def normalize_todo_excluded_agents(value: Any) -> list[str]:
@@ -813,6 +821,14 @@ def parse_todo_metadata_line(line: str) -> dict[str, Any] | None:
             claimed_by = normalize_todo_claimed_by(value)
             if claimed_by:
                 metadata["claimed_by"] = claimed_by
+        elif key == "bound_agent":
+            bound_agent = normalize_todo_bound_agent(value)
+            if bound_agent:
+                metadata["bound_agent"] = bound_agent
+        elif key == "goal_bound":
+            goal_bound = normalize_todo_goal_bound(value)
+            if goal_bound is not None:
+                metadata["goal_bound"] = goal_bound
         elif key == "blocks_agent":
             blocks_agent = normalize_todo_blocks_agent(value)
             if blocks_agent:
@@ -872,6 +888,8 @@ def format_todo_metadata_line(
     decision_outcome: str | None = None,
     decision_scope_outcomes: Any = None,
     claimed_by: str | None = None,
+    bound_agent: str | None = None,
+    goal_bound: bool | None = None,
     blocks_agent: str | None = None,
     excluded_agents: Any = None,
     global_gate: bool | None = None,
@@ -1029,6 +1047,13 @@ def format_todo_metadata_line(
         raise ValueError("claimed_by must be a public-safe agent token such as codex-main-control")
     if normalized_claimed_by:
         fields.append(f"claimed_by={encode_metadata_value(normalized_claimed_by)}")
+    normalized_bound_agent = normalize_todo_bound_agent(bound_agent)
+    if bound_agent and not normalized_bound_agent:
+        raise ValueError("bound_agent must be a public-safe agent token such as codex-main-control")
+    if normalized_bound_agent:
+        fields.append(f"bound_agent={encode_metadata_value(normalized_bound_agent)}")
+    if goal_bound is not None:
+        fields.append(f"goal_bound={encode_metadata_value('true' if goal_bound else 'false')}")
     normalized_blocks_agent = normalize_todo_blocks_agent(blocks_agent)
     if blocks_agent and not normalized_blocks_agent:
         raise ValueError("blocks_agent must be a public-safe agent token such as codex-side-bypass")
@@ -1129,7 +1154,7 @@ def todo_block_metadata(block: dict[str, Any]) -> dict[str, Any]:
             normalized = normalize_todo_decision_scope_outcomes(value)
         elif key == "no_followup":
             normalized = normalize_todo_no_followup(value)
-        elif key == "global_gate":
+        elif key in {"global_gate", "goal_bound"}:
             normalized = normalize_todo_global_gate(value)
         else:
             normalized = str(value).strip()
@@ -1223,7 +1248,7 @@ def metadata_line_for_todo_block(
                 metadata[key] = normalized
             else:
                 metadata.pop(key, None)
-        elif key == "global_gate":
+        elif key in {"global_gate", "goal_bound"}:
             normalized = normalize_todo_global_gate(value)
             if normalized is not None:
                 metadata[key] = normalized

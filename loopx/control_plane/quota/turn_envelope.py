@@ -256,6 +256,8 @@ def _selected_todo(
         "task_repository",
         "continuation_policy",
         "claimed_by",
+        "bound_agent",
+        "goal_bound",
         "blocks_agent",
         "unblocks_todo_id",
         "next_due_at",

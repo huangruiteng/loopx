@@ -119,6 +119,7 @@ def build_event_store_migration_bridge(
                 "todo status",
                 "priority and planner order",
                 "claimed_by",
+                "user todo binding",
                 "gate refs",
                 "projection head sequence",
             ],

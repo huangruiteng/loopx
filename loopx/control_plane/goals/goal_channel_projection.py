@@ -165,6 +165,8 @@ def _compact_todo(item: Mapping[str, Any]) -> dict[str, Any] | None:
         "todo_id",
         "priority",
         "claimed_by",
+        "bound_agent",
+        "goal_bound",
         "task_class",
         "action_kind",
         "task_repository",

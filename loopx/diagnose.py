@@ -257,6 +257,7 @@ def _compact_quota_signals(quota: dict[str, Any]) -> dict[str, Any]:
         "agent_identity",
         "agent_lane_next_action",
         "agent_scoped_user_gate_override",
+        "agent_scoped_user_action_override",
         "agent_scope_frontier",
         "goal_frontier_projection",
         "autonomous_replan_decision",

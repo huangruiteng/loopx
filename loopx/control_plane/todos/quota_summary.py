@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..agents.agent_scope import (
+    _agent_scope_filter_user_action_items,
     _agent_scope_filter_user_gate_items,
     _agent_scope_selectable_todo_item,
 )
@@ -63,6 +64,8 @@ QUOTA_PAYLOAD_ITEM_FIELDS = (
     "required_capabilities",
     "missing_capabilities",
     "claimed_by",
+    "bound_agent",
+    "goal_bound",
     "blocks_agent",
     "excluded_agents",
     "global_gate",
@@ -110,6 +113,7 @@ QUOTA_PAYLOAD_LANE_LIMITS = {
     "current_agent_claimed_monitor_items": QUOTA_PAYLOAD_VISIBILITY_LANE_LIMIT,
     "claimed_by_others_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "other_agent_scoped_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
+    "other_agent_bound_user_action_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "user_action_items": QUOTA_PAYLOAD_USER_ACTION_ITEM_LIMIT,
     "resume_blocked_items": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
     "handoff_gates": QUOTA_PAYLOAD_DIAGNOSTIC_LANE_LIMIT,
@@ -123,6 +127,8 @@ class _QuotaTodoLanes:
     all_open_items: list[dict[str, Any]]
     blocking_open_items: list[dict[str, Any]]
     user_action_open_items: list[dict[str, Any]]
+    other_agent_bound_user_action_items: list[dict[str, Any]]
+    user_action_agent_scope_filter: dict[str, Any] | None
     other_agent_scoped_items: list[dict[str, Any]]
     agent_scope_filter: dict[str, Any] | None
     open_items: list[dict[str, Any]]
@@ -251,15 +257,25 @@ def _build_quota_todo_lanes(
 ) -> _QuotaTodoLanes:
     blocking_open_items = all_open_items
     user_action_open_items: list[dict[str, Any]] = []
+    other_agent_bound_user_action_items: list[dict[str, Any]] = []
+    user_action_agent_scope_filter: dict[str, Any] | None = None
     other_agent_scoped_items: list[dict[str, Any]] = []
     agent_scope_filter: dict[str, Any] | None = None
     if filter_user_gate_blocks_agent:
         gate_candidate_items = [
             item for item in all_open_items if is_user_gate_todo_item(item)
         ]
-        user_action_open_items = [
+        user_action_candidate_items = [
             item for item in all_open_items if not is_user_gate_todo_item(item)
         ]
+        (
+            user_action_open_items,
+            other_agent_bound_user_action_items,
+            user_action_agent_scope_filter,
+        ) = _agent_scope_filter_user_action_items(
+            user_action_candidate_items,
+            agent_identity=agent_identity,
+        )
         (
             blocking_open_items,
             other_agent_scoped_items,
@@ -332,14 +348,16 @@ def _build_quota_todo_lanes(
         else []
     )
     open_count = source_open_count
-    if claim_scope is not None:
+    if filter_user_gate_blocks_agent:
+        open_count = len(open_items) + len(user_action_open_items)
+    elif claim_scope is not None:
         open_count = len(open_items)
-    if agent_scope_filter is not None:
-        open_count = len(blocking_open_items)
     return _QuotaTodoLanes(
         all_open_items=all_open_items,
         blocking_open_items=blocking_open_items,
         user_action_open_items=user_action_open_items,
+        other_agent_bound_user_action_items=other_agent_bound_user_action_items,
+        user_action_agent_scope_filter=user_action_agent_scope_filter,
         other_agent_scoped_items=other_agent_scoped_items,
         agent_scope_filter=agent_scope_filter,
         open_items=open_items,
@@ -482,9 +500,10 @@ def summarize_user_todos_for_quota(
         )
     if lanes.claim_scope:
         summary["claim_scope"] = lanes.claim_scope
+    if filter_user_gate_blocks_agent:
+        summary["all_open_count"] = value.get("open_count", len(all_open_items))
     if lanes.agent_scope_filter:
         summary["agent_scope_filter"] = lanes.agent_scope_filter
-        summary["all_open_count"] = value.get("open_count", len(all_open_items))
         summary["other_agent_scoped_open_count"] = len(lanes.other_agent_scoped_items)
         summary["other_agent_scoped_items"] = [
             compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
@@ -495,6 +514,17 @@ def summarize_user_todos_for_quota(
         summary["user_action_items"] = [
             compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in lanes.user_action_open_items[:TODO_VISIBILITY_LANE_LIMIT]
+        ]
+    if lanes.user_action_agent_scope_filter:
+        summary["user_action_agent_scope_filter"] = lanes.user_action_agent_scope_filter
+        summary["other_agent_bound_user_action_open_count"] = len(
+            lanes.other_agent_bound_user_action_items
+        )
+        summary["other_agent_bound_user_action_items"] = [
+            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in lanes.other_agent_bound_user_action_items[
+                :TODO_VISIBILITY_LANE_LIMIT
+            ]
         ]
     return summary
 
@@ -723,6 +753,17 @@ def summarize_project_asset_todos_for_quota(
         summary["user_action_items"] = [
             compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
             for item in lanes.user_action_open_items[:TODO_VISIBILITY_LANE_LIMIT]
+        ]
+    if lanes.user_action_agent_scope_filter:
+        summary["user_action_agent_scope_filter"] = lanes.user_action_agent_scope_filter
+        summary["other_agent_bound_user_action_open_count"] = len(
+            lanes.other_agent_bound_user_action_items
+        )
+        summary["other_agent_bound_user_action_items"] = [
+            compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+            for item in lanes.other_agent_bound_user_action_items[
+                :TODO_VISIBILITY_LANE_LIMIT
+            ]
         ]
     return summary
 

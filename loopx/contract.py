@@ -25,8 +25,10 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_USER_GATE,
     TODO_TASK_PATTERN,
     decode_metadata_value,
+    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_excluded_agents,
+    normalize_todo_goal_bound,
     normalize_removed_todo_continuation_policy,
     normalize_todo_status,
     parse_todo_metadata_line,
@@ -406,6 +408,24 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
             if role == "user" and status not in TERMINAL_TODO_STATUSES:
                 checked += 1
                 global_gate = metadata.get("global_gate") is True
+                bound_agent = normalize_todo_bound_agent(metadata.get("bound_agent"))
+                goal_bound = normalize_todo_goal_bound(metadata.get("goal_bound")) is True
+                effective_bound_agent = (
+                    bound_agent
+                    or (
+                        blocks_agent
+                        if task_class == TODO_TASK_CLASS_USER_GATE
+                        else None
+                    )
+                    or claimed_by
+                )
+                effective_goal_bound = bool(
+                    goal_bound
+                    or (
+                        global_gate
+                        and task_class == TODO_TASK_CLASS_USER_GATE
+                    )
+                )
                 if task_class not in {TODO_TASK_CLASS_USER_ACTION, TODO_TASK_CLASS_USER_GATE}:
                     errors.append(
                         f"{goal_id}: open user todo {todo_id} requires task_class=user_gate "
@@ -422,6 +442,61 @@ def _active_state_user_gate_scope_errors(registry: dict[str, Any]) -> tuple[list
                     errors.append(
                         f"{goal_id}: open user_gate todo {todo_id} in multi-agent goal "
                         "cannot set both blocks_agent and global_gate=true "
+                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                    )
+                elif bound_agent and goal_bound:
+                    errors.append(
+                        f"{goal_id}: open user todo {todo_id} cannot set both "
+                        "bound_agent and goal_bound=true "
+                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                    )
+                elif (
+                    task_class == TODO_TASK_CLASS_USER_GATE
+                    and global_gate
+                    and bound_agent
+                ):
+                    errors.append(
+                        f"{goal_id}: goal-wide user_gate todo {todo_id} cannot set "
+                        "bound_agent; its response binding is goal_bound=true "
+                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                    )
+                elif (
+                    task_class == TODO_TASK_CLASS_USER_GATE
+                    and blocks_agent
+                    and goal_bound
+                ):
+                    errors.append(
+                        f"{goal_id}: agent-scoped user_gate todo {todo_id} cannot set "
+                        "goal_bound=true "
+                        f"(state_file={state_file}, line={index + 1}, text={text})"
+                    )
+                elif (
+                    task_class == TODO_TASK_CLASS_USER_GATE
+                    and blocks_agent
+                    and bound_agent
+                    and bound_agent != blocks_agent
+                ):
+                    errors.append(
+                        f"{goal_id}: agent-scoped user_gate todo {todo_id} must bind "
+                        f"to blocks_agent={blocks_agent!r}, not bound_agent="
+                        f"{bound_agent!r} (state_file={state_file}, line={index + 1}, "
+                        f"text={text})"
+                    )
+                elif bound_agent and registered_agents and bound_agent not in registered_agents:
+                    errors.append(
+                        f"{goal_id}: open user todo {todo_id} has bound_agent="
+                        f"{bound_agent!r}, which is not registered for this goal "
+                        f"(registered_agents={', '.join(registered_agents)}, "
+                        f"state_file={state_file}, line={index + 1}, text={text})"
+                    )
+                elif (
+                    len(registered_agents) > 1
+                    and not effective_bound_agent
+                    and not effective_goal_bound
+                ):
+                    errors.append(
+                        f"{goal_id}: open user todo {todo_id} in multi-agent goal "
+                        "requires bound_agent=<registered-agent> or goal_bound=true "
                         f"(state_file={state_file}, line={index + 1}, text={text})"
                     )
                 elif (

@@ -13,7 +13,7 @@ from .control_plane.agents.agent_scope import (
     _agent_scope_deferred_resume_candidates,
     _agent_scope_frontier_action,
     _agent_scope_no_candidate_frontier,
-    _agent_scoped_user_gate_override,
+    _agent_scoped_user_todo_override,
     _scoped_user_gate_fallback,
 )
 from .control_plane.agents.agent_lane_recommendation import (
@@ -1262,27 +1262,26 @@ def build_quota_should_run(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
         )
-        agent_scoped_user_gate_override = _agent_scoped_user_gate_override(
+        agent_scoped_user_todo_override = _agent_scoped_user_todo_override(
             state=state,
             item=item,
             user_todo_summary=user_todo_summary,
             agent_todo_summary=agent_todo_summary,
             agent_identity=agent_identity,
         )
-        if agent_scoped_user_gate_override:
+        if agent_scoped_user_todo_override:
+            state = str(agent_scoped_user_todo_override["to_state"])
+            reason = str(agent_scoped_user_todo_override["reason"])
             quota = {
                 **quota,
-                "state": "eligible",
-                "agent_scoped_user_gate_override": agent_scoped_user_gate_override,
-                "reason": agent_scoped_user_gate_override["reason"],
+                **agent_scoped_user_todo_override.pop("quota_patch", {}),
+                "state": state,
+                str(agent_scoped_user_todo_override["kind"]): agent_scoped_user_todo_override,
+                "reason": reason,
             }
-            state = "eligible"
-            normal_delivery_allowed = bool(plan.get("ok"))
-            recovery_allowed = _recovery_delivery_allowed(
-                quota,
-                plan_ok=bool(plan.get("ok")),
-            )
-            reason = str(agent_scoped_user_gate_override["reason"])
+            item = {**item, **agent_scoped_user_todo_override.pop("item_patch", {})}
+            normal_delivery_allowed = bool(plan.get("ok")) and state == "eligible"
+            recovery_allowed = _recovery_delivery_allowed(quota, plan_ok=bool(plan.get("ok")))
         outcome_floor_blocker_projected = (
             recovery_allowed
             and _outcome_floor_blocker_already_projected(agent_todo_summary)
@@ -1947,8 +1946,8 @@ def build_quota_should_run(
             payload["workspace_guard"] = workspace_guard
         if automation_prompt_upgrade:
             payload["automation_prompt_upgrade"] = automation_prompt_upgrade
-        if agent_scoped_user_gate_override:
-            payload["agent_scoped_user_gate_override"] = agent_scoped_user_gate_override
+        if agent_scoped_user_todo_override:
+            payload[str(agent_scoped_user_todo_override["kind"])] = agent_scoped_user_todo_override
         if payload_work_lane_contract:
             payload["work_lane_contract"] = payload_work_lane_contract
         if monitor_debt_arbitration.get("active"):

@@ -13,7 +13,7 @@ def build_todo_write_hint(goal_id: str) -> dict[str, str]:
         ),
         "user_action_command_template": (
             f"loopx todo add --goal-id {goal_id} --role user "
-            "--task-class user_action --text '<non-blocking user todo>'"
+            "--task-class user_action --bound-agent <id> --text '<action>'"
         ),
         "agent_todo_command_template": (
             f"loopx todo add --goal-id {goal_id} --role agent --text '<agent action>'"

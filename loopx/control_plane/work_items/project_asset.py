@@ -474,6 +474,8 @@ PROJECT_ASSET_TODO_DISPLAY_FIELDS = (
     "decision_scope",
     "required_decision_scopes",
     "claimed_by",
+    "bound_agent",
+    "goal_bound",
     "blocks_agent",
     "excluded_agents",
     "global_gate",

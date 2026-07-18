@@ -68,6 +68,51 @@ def require_user_gate_scope(
     )
 
 
+def require_user_todo_binding(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    role: str,
+    task_class: str | None,
+    bound_agent: str | None,
+    goal_bound: bool | None,
+    blocks_agent: str | None,
+    global_gate: bool | None,
+) -> None:
+    if role != "user":
+        if bound_agent or goal_bound:
+            raise ValueError("bound_agent and goal_bound are only valid for user todos")
+        return
+    if bound_agent and goal_bound:
+        raise ValueError(
+            "user todo cannot set both bound_agent and goal_bound=true; bind the "
+            "continuation to one agent lane or explicitly to the whole goal"
+        )
+    if task_class == TODO_TASK_CLASS_USER_GATE:
+        if global_gate and (bound_agent or goal_bound is not True):
+            raise ValueError(
+                "a goal-wide user_gate must use goal_bound=true and cannot bind "
+                "its continuation to one agent"
+            )
+        if blocks_agent and (
+            goal_bound or not bound_agent or bound_agent != blocks_agent
+        ):
+            raise ValueError(
+                "an agent-scoped user_gate must bind to the same agent named by "
+                "blocks_agent"
+            )
+    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+    if len(registered_agents) <= 1:
+        return
+    if bound_agent or goal_bound is True:
+        return
+    raise ValueError(
+        "multi-agent user todo requires an explicit binding: pass --bound-agent "
+        "<registered-agent> (or --agent-id <registered-agent> for authoring), "
+        "or pass --goal-bound for an intentionally goal-wide user todo"
+    )
+
+
 def resolve_user_gate_global_gate_update(
     *,
     role: str,

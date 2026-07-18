@@ -27,6 +27,8 @@ TODO_OPTION_FIELDS = (
     ("--decision-scope", "decision_scope"),
     ("--required-decision-scope", "required_decision_scopes"),
     ("--claimed-by", "claimed_by"),
+    ("--bound-agent", "bound_agent"),
+    ("--goal-bound", "goal_bound"),
     ("--blocks-agent", "blocks_agent"),
     ("--clear-blocks-agent", "clear_blocks_agent"),
     ("--excluded-agent", "excluded_agents"),
@@ -73,10 +75,10 @@ def unsupported_todo_options(
 
 
 def validate_shared_todo_options(args: argparse.Namespace) -> None:
-    agent_id_allowed_for_gate_authoring = (
+    agent_id_allowed_for_user_authoring = (
         args.todo_command == "add"
         and args.role == "user"
-        and args.task_class == "user_gate"
+        and args.task_class in {"user_gate", "user_action"}
     )
     agent_id_allowed_for_read = args.todo_command == "list"
     agent_id_allowed_for_lifecycle = args.todo_command in {
@@ -99,13 +101,13 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     if (
         args.todo_command not in {"suggest", "capture-followups"}
         and args.agent_id
-        and not agent_id_allowed_for_gate_authoring
+        and not agent_id_allowed_for_user_authoring
         and not agent_id_allowed_for_read
         and not agent_id_allowed_for_lifecycle
     ):
         raise ValueError(
             f"todo {args.todo_command} does not support --agent-id; --agent-id "
-            "scopes todo list/suggest, user-gate authoring, and lifecycle actor "
+            "scopes todo list/suggest, user-todo authoring, and lifecycle actor "
             "attribution only."
         )
     if args.global_gate and not global_gate_allowed:

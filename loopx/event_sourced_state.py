@@ -23,9 +23,12 @@ from .control_plane.todos.contract import (
     normalize_removed_todo_continuation_policy,
     normalize_todo_action_kind,
     normalize_todo_blocks_agent,
+    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
     normalize_todo_excluded_agents,
+    normalize_todo_global_gate,
+    normalize_todo_goal_bound,
     normalize_todo_id,
     normalize_todo_id_list,
     normalize_todo_status,
@@ -277,6 +280,9 @@ def backfill_todo_events_from_markdown(
             record.get("required_write_scopes")
         )
         blocks_agent = normalize_todo_blocks_agent(record.get("blocks_agent"))
+        bound_agent = normalize_todo_bound_agent(record.get("bound_agent"))
+        goal_bound = normalize_todo_goal_bound(record.get("goal_bound"))
+        global_gate = normalize_todo_global_gate(record.get("global_gate"))
         excluded_agents = normalize_todo_excluded_agents(record.get("excluded_agents"))
         if task_class:
             payload["task_class"] = task_class
@@ -290,6 +296,12 @@ def backfill_todo_events_from_markdown(
             payload["required_write_scopes"] = required_write_scopes
         if blocks_agent:
             payload["blocks_agent"] = blocks_agent
+        if bound_agent:
+            payload["bound_agent"] = bound_agent
+        if goal_bound is not None:
+            payload["goal_bound"] = goal_bound
+        if global_gate is not None:
+            payload["global_gate"] = global_gate
         if excluded_agents:
             payload["excluded_agents"] = excluded_agents
         events.append(
@@ -579,6 +591,9 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
         payload.get("required_write_scopes")
     )
     blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
+    bound_agent = normalize_todo_bound_agent(payload.get("bound_agent"))
+    goal_bound = normalize_todo_goal_bound(payload.get("goal_bound"))
+    global_gate = normalize_todo_global_gate(payload.get("global_gate"))
     excluded_agents = normalize_todo_excluded_agents(payload.get("excluded_agents"))
     claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
     todo: dict[str, Any] = {
@@ -607,6 +622,12 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
         todo["required_write_scopes"] = required_write_scopes
     if blocks_agent:
         todo["blocks_agent"] = blocks_agent
+    if bound_agent:
+        todo["bound_agent"] = bound_agent
+    if goal_bound is not None:
+        todo["goal_bound"] = goal_bound
+    if global_gate is not None:
+        todo["global_gate"] = global_gate
     if excluded_agents:
         todo["excluded_agents"] = excluded_agents
     unblocks_todo_id = normalize_todo_id(payload.get("unblocks_todo_id"))
@@ -662,6 +683,18 @@ def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None
         blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
         if blocks_agent:
             todo["blocks_agent"] = blocks_agent
+        bound_agent = normalize_todo_bound_agent(payload.get("bound_agent"))
+        if bound_agent:
+            todo["bound_agent"] = bound_agent
+            todo.pop("goal_bound", None)
+        goal_bound = normalize_todo_goal_bound(payload.get("goal_bound"))
+        if goal_bound is not None:
+            todo["goal_bound"] = goal_bound
+            if goal_bound:
+                todo.pop("bound_agent", None)
+        global_gate = normalize_todo_global_gate(payload.get("global_gate"))
+        if global_gate is not None:
+            todo["global_gate"] = global_gate
         if update_excluded_agents:
             todo["excluded_agents"] = update_excluded_agents
         for key in TODO_MONITOR_METADATA_FIELDS:
@@ -802,8 +835,11 @@ def render_todo_markdown(item: dict[str, Any]) -> list[str]:
         removed_continuation_policy=item.get("removed_continuation_policy"),
         required_write_scopes=item.get("required_write_scopes"),
         claimed_by=item.get("claimed_by"),
+        bound_agent=item.get("bound_agent"),
+        goal_bound=item.get("goal_bound"),
         blocks_agent=item.get("blocks_agent"),
         excluded_agents=item.get("excluded_agents"),
+        global_gate=item.get("global_gate"),
         unblocks_todo_id=item.get("unblocks_todo_id"),
         successor_todo_ids=item.get("successor_todo_ids"),
         no_followup=True if item.get("no_followup") == "true" else None,
