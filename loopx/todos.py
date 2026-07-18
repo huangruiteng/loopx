@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -58,10 +57,14 @@ from .control_plane.todos.contract import (
 )
 from .control_plane.todos.active_state_editing import (
     TODO_SECTION_HEADINGS,
+    find_todo_block,
     insert_into_existing_section,
     insert_new_section,
     replace_updated_at,
     section_bounds,
+    set_todo_marker,
+    set_todo_text,
+    todo_metadata_would_change,
     todo_blocks,
 )
 from .control_plane.todos.completed_archive import archive_completed_todo_lines
@@ -74,6 +77,9 @@ from .control_plane.todos.event_writeback import (
     event_projection_todo_context,
 )
 from .control_plane.todos.monitor_metadata import require_monitor_metadata_scope
+from .control_plane.todos.mutation_authority import (
+    authorize_todo_lifecycle_mutation,
+)
 from .control_plane.todos.succession_warning import build_open_parent_successor_advisory
 from .control_plane.todos.todo_index import MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL
 from .control_plane.todos.text import (
@@ -550,76 +556,6 @@ def link_generated_successor_todo_ids(
     update_result["metadata_updated"] = bool(update_result.get("metadata_updated") or metadata_updated)
     update_result["changed"] = bool(update_result.get("changed") or metadata_updated)
     return metadata_updated
-
-
-def todo_metadata_would_change(lines: list[str], block: dict[str, Any], metadata_line: str | None) -> bool:
-    if not metadata_line:
-        return False
-    start = int(block["start"])
-    end = int(block["end"])
-    for index in range(start + 1, end):
-        if parse_todo_metadata_line(lines[index]) is not None:
-            return lines[index] != metadata_line
-    return True
-
-
-def set_todo_marker(lines: list[str], block: dict[str, Any], status: str) -> bool:
-    marker = todo_marker_for_status(status)
-    index = int(block["start"])
-    updated = re.sub(r"^(\s*[-*]\s+\[)[ xX-](\]\s+)", rf"\1{marker}\2", lines[index], count=1)
-    if updated == lines[index]:
-        return False
-    lines[index] = updated
-    return True
-
-
-def set_todo_text(lines: list[str], block: dict[str, Any], text: str, *, status: str) -> bool:
-    normalized = normalize_new_todo(text)
-    if normalize_todo_text(str(block.get("text") or "")) == normalized:
-        return False
-
-    start = int(block["start"])
-    end = int(block["end"])
-    marker = todo_marker_for_status(status)
-    replacement = f"- [{marker}] {normalized}"
-    continuation_indexes = [
-        index
-        for index in range(start + 1, end)
-        if lines[index].startswith((" ", "\t"))
-        and parse_todo_metadata_line(lines[index]) is None
-    ]
-    lines[start] = replacement
-    for index in reversed(continuation_indexes):
-        del lines[index]
-    block["text"] = normalized
-    block["end"] = end - len(continuation_indexes)
-    return True
-
-
-def find_todo_block(
-    lines: list[str],
-    *,
-    todo_id: str,
-    role: str | None = None,
-) -> tuple[str, str, int, int, dict[str, Any]] | None:
-    roles = [role] if role else list(TODO_SECTION_HEADINGS)
-    for candidate_role in roles:
-        if candidate_role not in TODO_SECTION_HEADINGS:
-            continue
-        bounds = section_bounds(lines, candidate_role)
-        if not bounds:
-            continue
-        start, end, section = bounds
-        for block in todo_blocks(
-            lines,
-            start,
-            end,
-            role=candidate_role,
-            source_section=section,
-        ):
-            if block.get("todo_id") == todo_id:
-                return candidate_role, section, start, end, block
-    return None
 
 
 def add_todo_to_lines(
@@ -1337,22 +1273,14 @@ def update_goal_todo(
             if agent_id
             else None
         )
-        inferred_blocks_agent = blocks_agent
-        if (
-            effective_agent_id
-            and not inferred_blocks_agent
-            and role == "user"
-            and task_class == TODO_TASK_CLASS_USER_GATE
-        ):
-            inferred_blocks_agent = effective_agent_id
         effective_blocks_agent = (
             require_registered_agent_id(
                 registry_path=registry_path,
                 goal_id=goal_id,
-                agent_id=inferred_blocks_agent,
+                agent_id=blocks_agent,
                 field="blocks_agent",
             )
-            if inferred_blocks_agent
+            if blocks_agent
             else None
         )
         existing_block_match = find_todo_block(lines, todo_id=todo_id, role=role)
@@ -1361,6 +1289,16 @@ def update_goal_todo(
             raise ValueError(f"todo_id {normalized_todo_id!r} was not found in active user or agent todos")
         existing_role, _section, _start, _end, existing_block = existing_block_match
         target_role = role or existing_role
+        authority_todo = dict(existing_block)
+        authority_todo["role"] = target_role
+        mutation_authority = authorize_todo_lifecycle_mutation(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            command="claim" if claim_only else "update",
+            todo=authority_todo,
+            actor_agent_id=effective_agent_id,
+            requested_claimed_by=effective_claimed_by,
+        )
         target_task_class = task_class or str(existing_block.get("task_class") or "")
         if target_role == "agent" and blocks_agent:
             raise ValueError(
@@ -1407,14 +1345,6 @@ def update_goal_todo(
         existing_blocks_agent = normalize_todo_blocks_agent(existing_block.get("blocks_agent"))
         existing_global_gate = normalize_todo_global_gate(existing_block.get("global_gate"))
         target_blocks_agent = None if clear_blocks_agent else effective_blocks_agent or existing_blocks_agent
-        if (
-            effective_agent_id
-            and not target_blocks_agent
-            and target_role == "user"
-            and target_task_class == TODO_TASK_CLASS_USER_GATE
-        ):
-            target_blocks_agent = effective_agent_id
-            effective_blocks_agent = effective_agent_id
         target_global_gate = resolve_user_gate_global_gate_update(
             role=target_role,
             task_class=target_task_class,
@@ -1501,6 +1431,7 @@ def update_goal_todo(
         "changed": changed,
         "goal_id": goal_id,
         "agent_id": effective_agent_id,
+        "mutation_authority": mutation_authority,
         **update_result,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
@@ -1543,6 +1474,7 @@ def complete_goal_todo(
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
     self_merged: bool = False,
+    agent_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -1581,6 +1513,35 @@ def complete_goal_todo(
             completion_todo,
             decision_outcome,
             materialized=bool(completion_match),
+        )
+        if completion_todo is None:
+            normalized_todo_id = normalize_todo_id(todo_id) or todo_id
+            raise ValueError(
+                f"todo_id {normalized_todo_id!r} was not found in active user or agent todos"
+            )
+        decision_target = None
+        target_todo_id = normalize_todo_id(completion_todo.get("unblocks_todo_id"))
+        if target_todo_id:
+            target_match = find_todo_block(
+                lines,
+                todo_id=target_todo_id,
+                role="agent",
+            )
+            if target_match:
+                target_role, _target_section, _target_start, _target_end, target_block = (
+                    target_match
+                )
+                decision_target = dict(target_block)
+                decision_target["role"] = target_role
+        mutation_authority = authorize_todo_lifecycle_mutation(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            command="complete",
+            todo=completion_todo,
+            actor_agent_id=agent_id,
+            requested_claimed_by=claimed_by,
+            decision_outcome=effective_decision_outcome,
+            decision_target=decision_target,
         )
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
@@ -1660,6 +1621,7 @@ def complete_goal_todo(
                     dry_run=dry_run,
                 )
                 event_result["linked_successor_id"] = completion_policy.linked_successor_id
+                event_result["mutation_authority"] = mutation_authority
                 return event_result
         update_result = apply_todo_update_to_lines(
             lines,
@@ -1764,6 +1726,7 @@ def complete_goal_todo(
         "changed": changed,
         "next_todos": next_results,
         "linked_successor_id": completion_policy.linked_successor_id,
+        "mutation_authority": mutation_authority,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,
@@ -1791,6 +1754,7 @@ def supersede_goal_todo(
     next_action_kind: str | None = None,
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
+    agent_id: str | None = None,
     project: Path | None = None,
     state_file: Path | None = None,
     dry_run: bool = False,
@@ -1805,6 +1769,22 @@ def supersede_goal_todo(
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
         updated_at = now_local()
+        current_match = find_todo_block(lines, todo_id=todo_id, role=role)
+        if not current_match:
+            normalized_todo_id = normalize_todo_id(todo_id) or todo_id
+            raise ValueError(
+                f"todo_id {normalized_todo_id!r} was not found in active user or agent todos"
+            )
+        current_role, _section, _start, _end, current_block = current_match
+        authority_todo = dict(current_block)
+        authority_todo["role"] = current_role
+        mutation_authority = authorize_todo_lifecycle_mutation(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            command="supersede",
+            todo=authority_todo,
+            actor_agent_id=agent_id,
+        )
         effective_next_claimed_by = (
             require_registered_agent_id(
                 registry_path=registry_path,
@@ -1942,6 +1922,7 @@ def supersede_goal_todo(
         "goal_id": goal_id,
         **update_result,
         "changed": changed,
+        "mutation_authority": mutation_authority,
         "next_todos": next_results,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,

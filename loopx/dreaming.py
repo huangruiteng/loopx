@@ -5,6 +5,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .agent_registry import registered_agent_ids_from_registry
 from .feedback import validate_local_control_text, validate_public_safe_text
 from .history import collect_history, load_registry, write_reserved_run_artifacts
 from .paths import resolve_runtime_root
@@ -464,7 +465,11 @@ def record_dreaming_proposal_decision(
                 dry_run=False,
             )
             promoted_todo_id = str(todo_result.get("todo_id") or "") or None
-            if promoted_todo_id:
+            registered_agents = registered_agent_ids_from_registry(
+                registry_path,
+                safe_goal_id,
+            )
+            if promoted_todo_id and (claimed_by or len(registered_agents) <= 1):
                 todo_evidence_result = update_goal_todo(
                     registry_path=registry_path,
                     goal_id=safe_goal_id,
@@ -472,6 +477,7 @@ def record_dreaming_proposal_decision(
                     todo_id=promoted_todo_id,
                     evidence=f"dreaming_proposal:{proposal_id}",
                     note="Approved dreaming proposal promoted to normal Agent Todo.",
+                    agent_id=claimed_by,
                     dry_run=False,
                 )
             active_state_mutated = bool(

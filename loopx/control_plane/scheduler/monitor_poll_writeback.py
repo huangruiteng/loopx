@@ -121,6 +121,7 @@ def write_monitor_poll_todo_state(
         role="agent",
         reason=reason_summary,
         monitor_metadata=monitor_metadata,
+        agent_id=agent_id,
         dry_run=not execute,
     )
     next_results: list[dict[str, Any]] = []

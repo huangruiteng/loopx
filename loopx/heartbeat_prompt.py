@@ -208,10 +208,10 @@ def render_peer_agent_scope_instruction(
     scope_text = scope_text.rstrip(".!?")
     claim_command = (
         f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> "
-        f"--claimed-by {agent_id}"
+        f"--claimed-by {agent_id} --agent-id {agent_id}"
         if agent_id
         else f"{cli_bin} todo claim --goal-id {goal_id} --todo-id <todo_id> "
-        "--claimed-by <agent_id>"
+        "--claimed-by <agent_id> --agent-id <agent_id>"
     )
     peer_rule = (
         "You are an equal peer agent. Claim or lease in-scope work before delivery; "
@@ -228,7 +228,7 @@ def render_peer_agent_scope_instruction(
     if compact:
         return (
             f"Agent identity and scope: agent_id `{identity}`; model: peer_v1; "
-            f"scope: {scope_text}. {peer_rule} Claim with `{claim_command}`. "
+            f"scope: {scope_text}. {peer_rule} Claim: `{claim_command}`. "
             "Do not write scope into todo metadata."
         )
     return f"""Agent identity and scope:

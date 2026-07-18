@@ -2104,7 +2104,8 @@ class SkillsBenchLocalAcpRelay:
                 "write",
                 f"{cli_prefix} todo claim --goal-id {shlex.quote(case_goal_id)} "
                 f"--todo-id {shlex.quote(case_todo_id)} "
-                f"--claimed-by {shlex.quote(case_agent_id)}",
+                f"--claimed-by {shlex.quote(case_agent_id)} "
+                f"--agent-id {shlex.quote(case_agent_id)}",
             ),
             (
                 "todo update",
@@ -2112,7 +2113,8 @@ class SkillsBenchLocalAcpRelay:
                 f"{cli_prefix} todo update --goal-id {shlex.quote(case_goal_id)} "
                 f"--todo-id {shlex.quote(case_todo_id)} --status open "
                 f"--note {note} --evidence {evidence} "
-                f"--claimed-by {shlex.quote(case_agent_id)}",
+                f"--claimed-by {shlex.quote(case_agent_id)} "
+                f"--agent-id {shlex.quote(case_agent_id)}",
             ),
             (
                 "refresh-state",

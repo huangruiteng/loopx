@@ -616,7 +616,7 @@ def _agent_lane_frontier_hint(
             if target_todo_id:
                 action = (
                     f"loopx todo claim --goal-id {goal_id} --todo-id {target_todo_id} "
-                    f"--claimed-by {agent_id}"
+                    f"--claimed-by {agent_id} --agent-id {agent_id}"
                 )
             return build_hint(
                 AgentLaneFrontierHintDecision.CLAIM_UNOWNED_IN_SCOPE,
@@ -647,7 +647,8 @@ def _agent_lane_frontier_hint(
                 quiet_noop_allowed=False,
                 next_cli_action=(
                     f"loopx todo complete --goal-id {goal_id} --todo-id {cleared_todo_id} "
-                    "--no-follow-up --evidence '<public-safe rationale>'"
+                    f"--agent-id {agent_id} --no-follow-up "
+                    "--evidence '<public-safe rationale>'"
                 ),
             )
         monitor_candidates = (
@@ -673,7 +674,7 @@ def _agent_lane_frontier_hint(
                 quiet_noop_allowed=False,
                 next_cli_action=(
                     f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_blocker_id} "
-                    "--evidence '<validated gate evidence>'"
+                    f"--agent-id {agent_id} --evidence '<validated gate evidence>'"
                     if monitor_blocker_id
                     else None
                 ),

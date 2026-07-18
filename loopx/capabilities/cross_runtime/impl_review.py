@@ -175,7 +175,7 @@ def build_cross_runtime_impl_review_demo_packet(
             "step": "claim_implementation_todo",
             "command": (
                 f"loopx todo claim --goal-id {goal_id} --todo-id <implementation_todo_id> "
-                f"--claimed-by {implementer_agent_id}"
+                f"--claimed-by {implementer_agent_id} --agent-id {implementer_agent_id}"
             ),
             "would_write": True,
             "execution_allowed_in_packet": False,

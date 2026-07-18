@@ -254,7 +254,10 @@ def _claim_command(*, goal_id: str, todo_id: str, agent_id: str | None) -> str |
     owner = normalize_todo_claimed_by(agent_id)
     if not owner:
         return None
-    return f"loopx todo claim --goal-id {goal_id} --todo-id {todo_id} --claimed-by {owner}"
+    return (
+        f"loopx todo claim --goal-id {goal_id} --todo-id {todo_id} "
+        f"--claimed-by {owner} --agent-id {owner}"
+    )
 
 
 def resolve_todo_branch_plan_gate(

@@ -317,6 +317,7 @@ def _complete_selected_todo(
         todo_id=todo_id,
         role="agent",
         claimed_by=agent_id,
+        agent_id=agent_id,
         note=f"auto-research state summary completed {action}",
         evidence=(
             f"state-summary agent={agent_id} action={action} wrote public-safe local artifact "

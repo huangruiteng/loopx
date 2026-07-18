@@ -455,7 +455,8 @@ def build_benchmark_case_lifecycle_packet(
                         f"{case_cli_prefix} todo claim "
                         f"--goal-id {shlex.quote(case_goal_id)} "
                         f"--todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} "
-                        f"--claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID}"
+                        f"--claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}"
                     ),
                 ),
                 _packet_line(
@@ -474,6 +475,7 @@ def build_benchmark_case_lifecycle_packet(
                         f"--goal-id {shlex.quote(case_goal_id)} "
                         f"--todo-id {BENCHMARK_CASE_LOOPX_TODO_ID} "
                         f"--claimed-by {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} "
                         "--evidence local_validation_done"
                     ),
                 ),

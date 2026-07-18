@@ -73,11 +73,17 @@ def unsupported_todo_options(
 
 def validate_shared_todo_options(args: argparse.Namespace) -> None:
     agent_id_allowed_for_gate_authoring = (
-        args.todo_command in {"add", "update"}
+        args.todo_command == "add"
         and args.role == "user"
         and args.task_class == "user_gate"
     )
     agent_id_allowed_for_read = args.todo_command == "list"
+    agent_id_allowed_for_lifecycle = args.todo_command in {
+        "claim",
+        "update",
+        "complete",
+        "supersede",
+    }
     global_gate_allowed = args.todo_command in {"add", "update"}
     clear_global_gate_allowed = args.todo_command == "update"
     if (
@@ -85,12 +91,12 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
         and args.agent_id
         and not agent_id_allowed_for_gate_authoring
         and not agent_id_allowed_for_read
+        and not agent_id_allowed_for_lifecycle
     ):
         raise ValueError(
             f"todo {args.todo_command} does not support --agent-id; --agent-id "
-            "scopes todo list/suggest and user-gate authoring, not lifecycle "
-            "actor attribution. Omit it; use --claimed-by only on commands that "
-            "explicitly support ownership changes."
+            "scopes todo list/suggest, user-gate authoring, and lifecycle actor "
+            "attribution only."
         )
     if args.global_gate and not global_gate_allowed:
         raise ValueError(

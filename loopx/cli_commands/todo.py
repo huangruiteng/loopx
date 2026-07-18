@@ -359,12 +359,12 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument(
         "--agent-id",
         help=(
-            "For todo add/update on role=user task-class=user_gate, mark the "
-            "authoring registered agent; when --blocks-agent is omitted, the "
-            "gate blocks this agent. For todo suggest, name the project agent "
-            "that should perform the repository analysis. This is not lifecycle "
-            "actor attribution; todo complete uses --claimed-by only when changing "
-            "the current todo owner."
+            "For todo add on role=user task-class=user_gate, mark the authoring "
+            "registered agent; when --blocks-agent is omitted, the gate blocks "
+            "this agent. For claim/update/complete/supersede, attribute the "
+            "lifecycle actor; registered multi-agent goals require it unless an "
+            "exact linked user_gate decision_scope supplies the typed owner/controller "
+            "override. For list/suggest, select the project agent lane."
         ),
     )
     todo_parser.add_argument(
@@ -551,7 +551,7 @@ def handle_todo_command(
             ]
             if unsupported:
                 raise ValueError(
-                    "todo claim only accepts --todo-id, --claimed-by, optional --role, "
+                    "todo claim only accepts --todo-id, --claimed-by, --agent-id, optional --role, "
                     "--project, --state-file, and --dry-run; unsupported: "
                     + ", ".join(unsupported)
                 )
@@ -561,6 +561,7 @@ def handle_todo_command(
                 todo_id=args.todo_id,
                 role=args.role,
                 claimed_by=args.claimed_by,
+                agent_id=args.agent_id,
                 claim_only=True,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
@@ -729,6 +730,7 @@ def handle_todo_command(
                 next_continuation_policy=args.next_continuation_policy,
                 next_excluded_agents=args.next_excluded_agents,
                 self_merged=bool(args.self_merged),
+                agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),
@@ -787,6 +789,7 @@ def handle_todo_command(
                 next_action_kind=args.next_action_kind,
                 next_continuation_policy=args.next_continuation_policy,
                 next_excluded_agents=args.next_excluded_agents,
+                agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
                 dry_run=bool(args.dry_run),

@@ -47,6 +47,7 @@ def append_todo_rollout_event(
             "changed": bool(payload.get("changed")),
             "added": bool(payload.get("added")),
             "already_exists": bool(payload.get("already_exists")),
+            "mutation_authority": payload.get("mutation_authority"),
         },
     )
     capability_gap_status = str(

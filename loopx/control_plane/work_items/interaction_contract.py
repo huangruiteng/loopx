@@ -492,6 +492,11 @@ def interaction_next_cli_actions(
         agent_identity,
         available_capabilities=available_capabilities,
     )
+    lifecycle_actor_args = (
+        f" --agent-id {shlex.quote(str(agent_identity.get('agent_id')).strip())}"
+        if agent_identity.get("agent_id")
+        else ""
+    )
     try:
         scheduler_args = render_scheduler_execution_args(
             scheduler_execution_context=scheduler_execution_context,
@@ -567,8 +572,8 @@ def interaction_next_cli_actions(
             )
             gated_todo_id = str(first_candidate.get("todo_id") or "<gated_todo_id>")
             return [
-                f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_todo_id} --evidence '<validated gate evidence>'",
-                f"loopx todo update --goal-id {goal_id} --todo-id {gated_todo_id} --note '<public-safe gate repair reason>'",
+                f"loopx todo complete --goal-id {goal_id} --todo-id {monitor_todo_id}{lifecycle_actor_args} --evidence '<validated gate evidence>'",
+                f"loopx todo update --goal-id {goal_id} --todo-id {gated_todo_id}{lifecycle_actor_args} --note '<public-safe gate repair reason>'",
                 f"loopx refresh-state --goal-id {goal_id} --classification standing_monitor_gate_repair_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
                 f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
             ]
@@ -591,7 +596,7 @@ def interaction_next_cli_actions(
         first_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
-            f"loopx todo update --goal-id {goal_id} --todo-id {todo_id} --status open --note '<public-safe successor replan reason>'",
+            f"loopx todo update --goal-id {goal_id} --todo-id {todo_id}{lifecycle_actor_args} --status open --note '<public-safe successor replan reason>'",
             f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]

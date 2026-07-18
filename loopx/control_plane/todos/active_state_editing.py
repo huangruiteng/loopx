@@ -12,8 +12,10 @@ from .contract import (
     normalize_todo_status,
     parse_todo_metadata_line,
     todo_done_for_status,
+    todo_marker_for_status,
     todo_status_from_marker,
 )
+from .text import normalize_new_todo
 from .todo_summary import normalize_todo_text
 
 
@@ -38,6 +40,91 @@ def section_bounds(lines: list[str], role: str) -> tuple[int, int, str] | None:
                 break
         return index, end, heading
     return None
+
+
+def find_todo_block(
+    lines: list[str],
+    *,
+    todo_id: str,
+    role: str | None = None,
+) -> tuple[str, str, int, int, dict[str, Any]] | None:
+    roles = [role] if role else list(TODO_SECTION_HEADINGS)
+    for candidate_role in roles:
+        if candidate_role not in TODO_SECTION_HEADINGS:
+            continue
+        bounds = section_bounds(lines, candidate_role)
+        if not bounds:
+            continue
+        start, end, section = bounds
+        for block in todo_blocks(
+            lines,
+            start,
+            end,
+            role=candidate_role,
+            source_section=section,
+        ):
+            if block.get("todo_id") == todo_id:
+                return candidate_role, section, start, end, block
+    return None
+
+
+def todo_metadata_would_change(
+    lines: list[str],
+    block: dict[str, Any],
+    metadata_line: str | None,
+) -> bool:
+    if not metadata_line:
+        return False
+    start = int(block["start"])
+    end = int(block["end"])
+    for index in range(start + 1, end):
+        if parse_todo_metadata_line(lines[index]) is not None:
+            return lines[index] != metadata_line
+    return True
+
+
+def set_todo_marker(lines: list[str], block: dict[str, Any], status: str) -> bool:
+    marker = todo_marker_for_status(status)
+    index = int(block["start"])
+    updated = re.sub(
+        r"^(\s*[-*]\s+\[)[ xX-](\]\s+)",
+        rf"\1{marker}\2",
+        lines[index],
+        count=1,
+    )
+    if updated == lines[index]:
+        return False
+    lines[index] = updated
+    return True
+
+
+def set_todo_text(
+    lines: list[str],
+    block: dict[str, Any],
+    text: str,
+    *,
+    status: str,
+) -> bool:
+    normalized = normalize_new_todo(text)
+    if normalize_todo_text(str(block.get("text") or "")) == normalized:
+        return False
+
+    start = int(block["start"])
+    end = int(block["end"])
+    marker = todo_marker_for_status(status)
+    replacement = f"- [{marker}] {normalized}"
+    continuation_indexes = [
+        index
+        for index in range(start + 1, end)
+        if lines[index].startswith((" ", "\t"))
+        and parse_todo_metadata_line(lines[index]) is None
+    ]
+    lines[start] = replacement
+    for index in reversed(continuation_indexes):
+        del lines[index]
+    block["text"] = normalized
+    block["end"] = end - len(continuation_indexes)
+    return True
 
 
 def heading_index(lines: list[str], heading: str) -> int | None:
