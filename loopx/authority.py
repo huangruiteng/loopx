@@ -48,6 +48,13 @@ AUTHORITY_REGISTRY_SUMMARY_FIELDS = (
     "conflict_risk",
 )
 
+AUTHORITY_REGISTRY_CANONICAL_FIELDS = (
+    "default_entry_docs",
+    "topic_authority",
+    "project_materials",
+    "deprecated_sources",
+)
+
 
 def now_local() -> str:
     return now_local_iso()
@@ -143,6 +150,23 @@ def normalize_topic_authority(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     return {}
+
+
+def authority_registry_has_canonical_fields(raw: dict[str, Any]) -> bool:
+    """Return whether a registry carries source data richer than a summary."""
+
+    return any(key in raw for key in AUTHORITY_REGISTRY_CANONICAL_FIELDS)
+
+
+def apply_authority_registry_summary(
+    authority_registry: dict[str, Any],
+    summary: dict[str, Any],
+) -> None:
+    """Refresh co-located summary fields without replacing canonical source data."""
+
+    for key in AUTHORITY_REGISTRY_SUMMARY_FIELDS:
+        if key in summary:
+            authority_registry[key] = summary[key]
 
 
 def compact_registered_authority_source(
@@ -416,6 +440,7 @@ def register_authority_source(
     updated_registry["updated_at"] = registered_at
     summary = compact_authority_registry(goal, project=Path(str(goal.get("repo"))).expanduser() if goal.get("repo") else None)
     summary.pop("default_entries", None)
+    apply_authority_registry_summary(authority_registry, summary)
     if not dry_run:
         write_json(registry_path, updated_registry)
 
@@ -565,6 +590,7 @@ def import_doc_registry_authority(
     updated_registry["updated_at"] = registered_at
     summary = compact_authority_registry(goal, project=Path(str(goal.get("repo"))).expanduser() if goal.get("repo") else None)
     summary.pop("default_entries", None)
+    apply_authority_registry_summary(authority_registry, summary)
     if not dry_run:
         write_json(registry_path, updated_registry)
 
@@ -716,7 +742,11 @@ def compact_authority_registry(goal: dict[str, Any] | None, *, project: Path | N
             "default_entries": [],
         }
 
-    compact = authority_registry_from_compact(raw)
+    compact = (
+        None
+        if authority_registry_has_canonical_fields(raw)
+        else authority_registry_from_compact(raw)
+    )
     if compact:
         path_text = _path_text(compact.get("path"))
         resolved_path = _resolve_project_path(project, path_text)
@@ -791,6 +821,4 @@ def authority_registry_from_compact(raw: dict[str, Any]) -> dict[str, Any] | Non
 
 
 def goal_authority_registry_summary(goal: dict[str, Any] | None) -> dict[str, Any]:
-    raw = goal.get("authority_registry") if goal and isinstance(goal.get("authority_registry"), dict) else {}
-    compact = authority_registry_from_compact(raw) if raw else None
-    return compact or authority_registry_summary(goal)
+    return authority_registry_summary(goal)
