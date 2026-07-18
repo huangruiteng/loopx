@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any
 
-from loopx.capabilities.issue_fix.periodic_report import (
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.capabilities.issue_fix.periodic_report import (  # noqa: E402
     issue_fix_periodic_report_source_adapter,
 )
-from loopx.capabilities.periodic_report import (
+from loopx.capabilities.periodic_report import (  # noqa: E402
     PeriodicReportAdapterRegistry,
     PeriodicReportSourceAdapter,
     build_periodic_report_document,
     build_periodic_report_source_result,
 )
-from loopx.presentation.renderers.periodic_report_markdown import (
+from loopx.presentation.renderers.periodic_report_markdown import (  # noqa: E402
     periodic_report_markdown_renderer_adapter,
 )
-from loopx.presentation.sinks.lark.periodic_report import (
+from loopx.presentation.sinks.lark.periodic_report import (  # noqa: E402
     periodic_report_lark_sink_adapter,
 )
-from loopx.presentation.sinks.openviking_periodic_report import (
+from loopx.presentation.sinks.openviking_periodic_report import (  # noqa: E402
     periodic_report_openviking_sink_adapter,
 )
 

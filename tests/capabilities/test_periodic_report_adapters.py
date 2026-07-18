@@ -15,6 +15,10 @@ from loopx.capabilities.periodic_report import (
     build_periodic_report_source_result,
     build_periodic_report_trigger_decision,
 )
+from loopx.capabilities.periodic_report.adapters import (
+    ARTIFACT_SCHEMA,
+    PeriodicReportRendererAdapter,
+)
 from loopx.presentation.renderers.periodic_report_markdown import (
     periodic_report_markdown_renderer_adapter,
 )
@@ -300,6 +304,44 @@ def test_registry_rejects_identity_drift_and_duplicate_adapters() -> None:
     second.register_source(drifting)
     with pytest.raises(ValueError, match="different source_id"):
         second.collect("declared_source", {})
+
+
+def test_registry_rejects_renderer_artifact_for_another_document() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    stale = periodic_report_markdown_renderer_adapter().render(
+        {**document, "title": "Another report"}
+    )
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_renderer(
+        PeriodicReportRendererAdapter(
+            renderer_id="stale_v0",
+            renderer_kind="markdown",
+            render=lambda _: {
+                **stale,
+                "schema_version": ARTIFACT_SCHEMA,
+                "renderer_id": "stale_v0",
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not match document"):
+        registry.render("stale_v0", document)
 
 
 def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:

@@ -395,6 +395,7 @@ def _normalize_artifact_result(
     *,
     expected_renderer_id: str | None = None,
     expected_renderer_kind: str | None = None,
+    expected_document: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     artifact = _mapping(raw, "artifact")
     _reject_private_fields(artifact, "artifact")
@@ -420,6 +421,20 @@ def _normalize_artifact_result(
     )
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", document_digest):
         raise ValueError("artifact.document_digest must use sha256")
+    if expected_document is not None:
+        expected_document_digest = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    expected_document,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        )
+        if document_digest != expected_document_digest:
+            raise ValueError("artifact.document_digest does not match document")
     boundary = _mapping(artifact.get("boundary"), "artifact.boundary")
     for field in (
         "schedule_policy_applied",
@@ -527,6 +542,7 @@ class PeriodicReportAdapterRegistry:
             adapter.render(document),
             expected_renderer_id=adapter.renderer_id,
             expected_renderer_kind=adapter.renderer_kind,
+            expected_document=document,
         )
 
     def deliver(

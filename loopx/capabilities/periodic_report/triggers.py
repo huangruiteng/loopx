@@ -241,7 +241,9 @@ def _normalize_candidates(raw: object, evaluated_at: str) -> list[dict[str, Any]
         if kind not in _REPORTABLE_KINDS | _NON_REPORTABLE_KINDS:
             raise ValueError(f"{label}.trigger_kind is invalid")
         observed_at = _timestamp(item.get("observed_at"), f"{label}.observed_at")
-        if observed_at > evaluated_at:
+        observed_value = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        evaluated_value = datetime.fromisoformat(evaluated_at.replace("Z", "+00:00"))
+        if observed_value > evaluated_value:
             raise ValueError(f"{label}.observed_at must not be in the future")
         source_ref = _text(item.get("source_ref"), f"{label}.source_ref", maximum=500)
         evidence_digest = _text(

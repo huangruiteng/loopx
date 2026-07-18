@@ -144,7 +144,9 @@ def _normalize_window(raw: object) -> dict[str, str]:
     window = _object(raw, "period_window")
     start_at = _timestamp(window.get("start_at"), "period_window.start_at")
     end_at = _timestamp(window.get("end_at"), "period_window.end_at")
-    if start_at >= end_at:
+    start_value = datetime.fromisoformat(start_at.replace("Z", "+00:00"))
+    end_value = datetime.fromisoformat(end_at.replace("Z", "+00:00"))
+    if start_value >= end_value:
         raise ValueError("period_window.start_at must be earlier than end_at")
     return {"start_at": start_at, "end_at": end_at}
 

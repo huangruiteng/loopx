@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import json
 
+import pytest
+
 from loopx.capabilities.periodic_report import (
     build_periodic_report_run,
     build_periodic_report_trigger_decision,
@@ -133,6 +135,21 @@ def test_cadence_due_is_selected_while_control_plane_noise_is_suppressed() -> No
     assert {item["reason"] for item in first["suppressed_triggers"]} == {
         "non_material_control_plane_event"
     }
+
+
+def test_future_fractional_trigger_is_rejected_chronologically() -> None:
+    request = _trigger_request(
+        _candidate(
+            "manual",
+            source_ref="manual:future",
+            evidence_digest="sha256:future",
+            facts={"authorized": True},
+            observed_at="2026-07-20T01:00:00.100000Z",
+        )
+    )
+
+    with pytest.raises(ValueError, match="must not be in the future"):
+        build_periodic_report_trigger_decision(request)
 
 
 def test_vision_requires_validated_closure_and_continuation() -> None:

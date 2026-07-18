@@ -119,6 +119,17 @@ def test_periodic_report_run_is_deterministic_and_provider_neutral() -> None:
     assert "monday" not in encoded.lower()
 
 
+def test_report_window_uses_chronological_timestamp_order() -> None:
+    request = _request()
+    request["period_window"] = {
+        "start_at": "2026-07-20T00:00:00.100000Z",
+        "end_at": "2026-07-20T00:00:00Z",
+    }
+
+    with pytest.raises(ValueError, match="start_at must be earlier"):
+        build_periodic_report_run(request)
+
+
 def test_success_requires_exact_sink_idempotency_and_readback() -> None:
     payload = build_periodic_report_run(_successful_request())
 
