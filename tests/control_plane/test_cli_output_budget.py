@@ -606,6 +606,52 @@ def test_real_cli_output_stays_inside_the_characterized_baseline(
             assert formats["markdown"]["json_parseable"] is False
 
 
+def test_status_and_quota_json_ignore_compatibility_reexport_bindings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "compat") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[0],
+        )
+        commands = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )
+
+        def semantic_receipts() -> dict[str, dict[str, object]]:
+            receipts: dict[str, dict[str, object]] = {}
+            for surface_id in ("status", "quota_should_run"):
+                exit_code, text = _invoke_cli(commands[surface_id])
+                assert exit_code == 0, (surface_id, text)
+                measurement = measure_cli_output(text, output_format="json")
+                payload = measurement["payload"]
+                assert isinstance(payload, dict)
+                receipts[surface_id] = {
+                    "top_level_keys": sorted(payload),
+                    "json_shape_paths": measurement["json_shape_paths"],
+                    "action_signature_sha256": measurement[
+                        "action_signature_sha256"
+                    ],
+                }
+            return receipts
+
+        baseline = semantic_receipts()
+
+        import loopx.quota as quota_facade
+        import loopx.status as status_facade
+
+        for facade in (status_facade, quota_facade):
+            for export_name in facade._PUBLIC_COMPAT_REEXPORTS:
+                monkeypatch.setattr(facade, export_name, object())
+
+        assert semantic_receipts() == baseline
+
+
 def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path) -> None:
     small = _measure_scenario(tmp_path / "small", SCENARIOS[0])
     crowded = _measure_scenario(tmp_path / "crowded", SCENARIOS[1])

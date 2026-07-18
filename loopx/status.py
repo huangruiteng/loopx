@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 import re
 from typing import Any
@@ -45,20 +44,15 @@ from .history import collect_history, load_registry
 from .history import STATUS_NEUTRAL_CLASSIFICATIONS as HISTORY_STATUS_NEUTRAL_CLASSIFICATIONS
 from .interface_budget import interface_budget_cadence_for_runs
 from .long_task_cadence import build_long_task_cadence_hint
-from .materials import extract_review_materials
 from .operator_gate import DEFAULT_OPERATOR_GATE, default_operator_question, normalize_operator_question
 from .orchestration import compact_orchestration_policy
 from .paths import global_registry_path, resolve_runtime_root
 from .control_plane.work_items.task_graph import (
-    TASK_GRAPH_MAX_USER_GATE_NODES,
-    TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
-    TASK_GRAPH_SOURCE_OF_TRUTH,
     build_task_graph_projection as _build_task_graph_projection_read_model,
 )
 from .control_plane.work_items.project_asset import (
-    PROJECT_ASSET_TODO_PROJECTION_GAP_SCHEMA_VERSION,
-    TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
-    TODO_PROJECTION_VIEW_SCHEMA_VERSION,
+    TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION as TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION,
+    TODO_PROJECTION_VIEW_SCHEMA_VERSION as TODO_PROJECTION_VIEW_SCHEMA_VERSION,
     attach_active_state_project_asset_fields as _attach_active_state_project_asset_fields,
     build_project_asset,
     enrich_project_asset as _enrich_project_asset_read_model,
@@ -66,7 +60,7 @@ from .control_plane.work_items.project_asset import (
     project_asset_latest_validation,
     project_asset_quota_state,
     project_asset_quota_summary,
-    project_asset_summary_is_public_safe,
+    project_asset_summary_is_public_safe as project_asset_summary_is_public_safe,
     project_asset_todo_projection_gap,
     project_asset_user_todo_open_count,
 )
@@ -79,8 +73,6 @@ from .control_plane.work_items.autonomous_candidates import (
     MAX_AUTONOMOUS_TODO_CANDIDATES as _MAX_AUTONOMOUS_TODO_CANDIDATES,
     autonomous_backlog_candidates as _autonomous_backlog_candidates_read_model,
     autonomous_monitor_candidates as _autonomous_monitor_candidates_read_model,
-    autonomous_priority_label,
-    autonomous_priority_rank,
 )
 from .control_plane.agents.agent_lane_recommendation import (
     compact_agent_lane_recommendation as _compact_agent_lane_recommendation_read_model,
@@ -93,11 +85,7 @@ from .control_plane.goals.active_state_sections import (
     active_state_sections as _active_state_sections_read_model,
 )
 from .control_plane.goals.active_state_metadata import (
-    AGENT_TODO_HEADER_MARKERS,
-    TODO_ARCHIVE_HEADER_MARKERS,
-    USER_TODO_HEADER_MARKERS,
     parse_state_frontmatter,
-    todo_role_for_heading,
 )
 from .control_plane.goals.active_state_event_projection import (
     active_state_event_projection_fields as _active_state_event_projection_fields_read_model,
@@ -106,8 +94,6 @@ from .control_plane.goals.active_state_event_projection import (
 from .control_plane.todos.active_state_todos import (
     MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION as _MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION,
     active_state_todo_fields as _active_state_todo_fields_read_model,
-    attach_monitor_writeback_contract,
-    redacted_status_todo_fields,
 )
 from .control_plane.todos.active_state_todo_parser import (
     parse_active_state_todos,
@@ -141,8 +127,6 @@ from .control_plane.work_items.autonomous_replan_obligation import (
     autonomous_replan_obligation_from_runs as _autonomous_replan_obligation_from_runs_read_model,
     autonomous_replan_periodic_review_from_runs as _autonomous_replan_periodic_review_from_runs_read_model,
     build_autonomous_replan_obligation as _build_autonomous_replan_obligation_read_model,
-    normalized_run_history_stall_signature as _normalized_run_history_stall_signature,
-    run_history_monitor_target as _run_history_monitor_target,
     run_history_monitor_wait_already_acknowledged as _run_history_monitor_wait_already_acknowledged_read_model,
     run_history_stall_signal as _run_history_stall_signal_read_model,
 )
@@ -191,7 +175,6 @@ from .control_plane.runtime.benchmark_event_timeline import (
 from .control_plane.runtime.benchmark_comparison import (
     benchmark_comparison_decision_note as _benchmark_comparison_decision_note_read_model,
     compact_benchmark_comparison as _compact_benchmark_comparison_read_model,
-    compact_comparison_delta as _compact_comparison_delta,
 )
 from .control_plane.runtime.benchmark_attempt_accounting import (
     compact_benchmark_attempt_accounting as _compact_benchmark_attempt_accounting,
@@ -248,11 +231,9 @@ from .control_plane.handoff.handoff_runs import (
 )
 from .control_plane.goals.global_registry_shadow import (
     attach_global_registry_shadow_finding,
-    compact_global_registry_shadow_finding,
 )
 from .control_plane.goals.global_registry_health import (
     collect_global_registry_health as _collect_global_registry_health_read_model,
-    global_registry_finding,
 )
 from .control_plane.goals.path_resolution import resolve_goal_local_path, same_path
 from .control_plane.goals.goal_channel import (
@@ -272,9 +253,7 @@ from .control_plane.work_items.lifecycle import (
     run_lifecycle_phase as _run_lifecycle_phase_read_model,
 )
 from .control_plane.runtime.session_runtime import (
-    attach_session_runtime_projection,
     compact_session_runtime_projection_from_run,
-    compact_session_runtime_readonly_projection,
     legacy_runtime_goal_attention as _legacy_runtime_goal_attention_read_model,
 )
 from .control_plane.runtime.skillsbench_post_run_debug import (
@@ -306,46 +285,26 @@ from .control_plane.todos.todo_summary import (
     active_state_todo_attention_item as _active_state_todo_attention_item_read_model,
     active_next_action_todo_ids,
     attach_dependency_blockers,
-    apply_resume_conditions,
-    claimed_visibility_items,
-    compact_active_next_action_todo_item,
-    compact_todo_group,
-    compact_todo_item,
-    dependency_blocker_summary,
-    first_open_todo_item,
+    claimed_visibility_items as claimed_visibility_items,
+    compact_todo_group as compact_todo_group,
+    compact_todo_item as compact_todo_item,
     first_open_todo_text,
     normalize_todo_text,
-    normalized_pr_ref_parts,
     open_todo_items,
-    pr_merged_condition,
     project_asset_todo_summary,
-    rollout_event_pr_refs,
-    structured_todo_item,
     sync_connected_attention_action_from_todos as _sync_connected_attention_action_from_todos_read_model,
-    todo_lane_items,
-    todo_item_expires_at,
+    todo_lane_items as todo_lane_items,
     todo_item_is_actionable_open,
-    todo_item_is_deferred,
-    todo_item_is_due_monitor,
-    todo_item_missing_monitor_schedule,
-    todo_item_next_due_at,
+    todo_item_is_deferred as todo_item_is_deferred,
+    todo_item_is_due_monitor as todo_item_is_due_monitor,
+    todo_item_missing_monitor_schedule as todo_item_missing_monitor_schedule,
+    todo_item_next_due_at as todo_item_next_due_at,
     todo_item_task_class,
-    todo_priority_parts,
-    todo_priority_rank,
-    todo_projection_sort_key,
+    todo_projection_sort_key as todo_projection_sort_key,
 )
 from .control_plane.todos.todo_index import (
     MAX_TODO_INDEX_ITEMS,
     MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
-    TODO_INDEX_ITEM_SCHEMA_VERSION,
-    TODO_INDEX_SCHEMA_VERSION,
-)
-from .control_plane.quota.usage_summary import (
-    USAGE_PROXY_NOTE,
-    blank_usage_goal,
-    is_automation_run,
-    is_progress_signal_run,
-    quota_spend_slots,
 )
 from .promotion_gate import build_promotion_gate
 from .quota import quota_status, quota_with_handoff_outcome_floor
@@ -362,22 +321,31 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
-    TODO_TASK_PATTERN,
-    normalize_required_capabilities,
-    normalize_required_write_scopes,
-    normalize_todo_blocks_agent,
-    normalize_todo_claimed_by,
-    normalize_todo_id,
-    normalize_todo_resume_when,
     normalize_todo_status,
-    normalize_todo_task_class,
-    parse_todo_metadata_line,
+    normalize_todo_task_class as normalize_todo_task_class,
     todo_done_for_status,
-    todo_status_from_marker,
 )
 from .control_plane.todos.projection import (
-    todo_item_is_expired_monitor,
+    todo_item_is_expired_monitor as todo_item_is_expired_monitor,
 )
+
+
+_PUBLIC_COMPAT_REEXPORTS = {
+    "TODO_PROJECTION_DETAIL_POINTER_SCHEMA_VERSION": "loopx.control_plane.work_items.project_asset",
+    "TODO_PROJECTION_VIEW_SCHEMA_VERSION": "loopx.control_plane.work_items.project_asset",
+    "project_asset_summary_is_public_safe": "loopx.control_plane.work_items.project_asset",
+    "claimed_visibility_items": "loopx.control_plane.todos.todo_summary",
+    "compact_todo_group": "loopx.control_plane.todos.todo_summary",
+    "compact_todo_item": "loopx.control_plane.todos.todo_summary",
+    "todo_lane_items": "loopx.control_plane.todos.todo_summary",
+    "todo_item_is_deferred": "loopx.control_plane.todos.todo_summary",
+    "todo_item_is_due_monitor": "loopx.control_plane.todos.todo_summary",
+    "todo_item_missing_monitor_schedule": "loopx.control_plane.todos.todo_summary",
+    "todo_item_next_due_at": "loopx.control_plane.todos.todo_summary",
+    "todo_projection_sort_key": "loopx.control_plane.todos.todo_summary",
+    "normalize_todo_task_class": "loopx.control_plane.todos.contract",
+    "todo_item_is_expired_monitor": "loopx.control_plane.todos.projection",
+}
 
 
 CODEX_READY_CLASSIFICATIONS = {
