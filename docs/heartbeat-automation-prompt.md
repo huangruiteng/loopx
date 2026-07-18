@@ -43,6 +43,11 @@ Do not paste the full lifecycle protocol into the visible goal text, and do not
 use a short goal text such as "advance TODO" as the recurring automation body.
 The short text names the goal; the generated task body enforces quota, gates,
 steering audit, writeback, refresh, and spend accounting.
+For Codex App, the generated quota command carries the compact explicit runtime
+profile `--runtime-profile codex_app_heartbeat` (generated commands use the
+equivalent compact alias `--codex-app`). The prompt does not restate the
+three scheduler ownership fields as prose. Other hosts generate their real typed
+execution context instead of inheriting App cadence by omission.
 Do not hand-edit per-project lifecycle branches into one automation prompt.
 Project-specific behavior belongs in the LoopX registry, active-state
 sections, adapter output, or narrow boundary rules. If a lifecycle rule is
@@ -279,7 +284,7 @@ if ! command -v loopx >/dev/null 2>&1; then
   fi
 fi
 loopx doctor >/dev/null
-loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat
 
 If that preflight still fails, do not do implementation work, adapter work,
 file edits, research, project exploration, or quota spend in this turn. Return
@@ -531,7 +536,7 @@ Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
 export `$HOME/.local/bin` onto PATH and run `loopx doctor`; if the CLI is
 still unavailable, quietly report that preflight failure and do no work. Then
-run `loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>`. If it
+run `loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat`. If it
 returns `should_run=false`, ask about operator gates with NOTIFY using
 `gate_prompt` unless the same unresolved gate was already surfaced recently. If
 the payload says `notify_user_on_open_todo=true`, ask up to three open

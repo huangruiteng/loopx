@@ -380,6 +380,15 @@ def build_scheduler_hint(payload, *, scheduler_execution_context=None, ...):
 
 纯函数意味着它不能声称“RRULE 已更新”。它只能返回 `apply_needed`、推荐 interval、reset token 和 ack plan；effect 必须由 host 执行。
 
+Execution context 也必须由调用方显式提供。缺少 context 的通用调用会返回
+`repair_scheduler_execution_context`，不会再假定自己运行在 Codex App。
+Codex App heartbeat 的兼容入口是明确的
+`--runtime-profile codex_app_heartbeat`（生成命令使用等价的紧凑别名
+`--codex-app`）；Codex CLI、Claude Code 和外部
+controller 则传各自的 `host_surface`、`scheduler_owner` 和
+`execution_mode`。这样测试与真实 host 使用同一个 typed contract，而不是靠一个
+库级 legacy 默认碰巧命中 App 行为。
+
 ### 2. Stateful backoff 的 identity 不只是 goal id
 
 源码构建的 identity keys 包含：

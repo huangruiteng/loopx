@@ -25,9 +25,15 @@ from loopx.interface_budget import build_interface_budget_cadence  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import collect_status  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 
 
 GOAL_ID = "interface-budget-goal"
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 CONTRACT_DOC = REPO_ROOT / "docs" / "interface-budget-contract.md"
 SURFACE_BUDGETS = {
     "heartbeat_prompt_json": {
@@ -263,7 +269,11 @@ def assert_cadence_projection(
     assert projected["headroom_remaining"] == 0, projected
     assert projected["recommendation"] == "rerun_hot_path_interface_budget_smoke", projected
 
-    quota_payload = build_quota_should_run(status_payload, goal_id=GOAL_ID)
+    quota_payload = build_quota_should_run(
+        status_payload,
+        goal_id=GOAL_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     assert quota_payload["should_run"] is True, quota_payload
     assert quota_payload["interface_budget_cadence"]["overdue"] is False, quota_payload
     assert quota_payload["interface_budget_cadence"]["tightest_surface"] == cadence["tightest_surface"], quota_payload
@@ -284,10 +294,18 @@ def main() -> int:
         assert status_items, status_payload
         assert "task_graph_projection" not in status_items[0], status_items[0]
         assert status_payload["runtime_projection_routes"] == {"healthy": True}
-        quota_payload = build_quota_should_run(status_payload, goal_id=GOAL_ID)
+        quota_payload = build_quota_should_run(
+            status_payload,
+            goal_id=GOAL_ID,
+            scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+        )
         review_packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
         handoff_payload = review_packet_handoff_only_payload(review_packet)
-        heartbeat_payload = build_heartbeat_prompt(goal_id=GOAL_ID, thin=True)
+        heartbeat_payload = build_heartbeat_prompt(
+            goal_id=GOAL_ID,
+            thin=True,
+            runtime_profile="codex_app_heartbeat",
+        )
 
         assert quota_payload["should_run"] is True, quota_payload
         reset_policy = quota_payload["scheduler_hint"]["reset_policy"]

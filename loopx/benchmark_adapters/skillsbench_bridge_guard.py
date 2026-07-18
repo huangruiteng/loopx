@@ -110,16 +110,19 @@ def loopx_subcommands(command: str) -> list[str]:
         "--goal-id", "--todo-id", "--claimed-by", "--status", "--note",
         "--evidence", "--classification", "--registry", "--runtime-root",
         "--slots", "--source", "--format", "--project", "--goal-text",
-        "--agent-id", "--host-surface", "--role", "--task-class",
-        "--action-kind", "--text",
+        "--agent-id", "--available-capability", "--runtime-profile",
+        "--host-surface", "--scheduler-owner", "--execution-mode",
+        "-H", "-O", "-M", "--role", "--task-class", "--action-kind",
+        "--text",
     }
     for token in tokens[1:]:
         if skip:
             skip = False
             continue
+        if token in valued_options:
+            skip = True
+            continue
         if token.startswith("--"):
-            if "=" not in token and token in valued_options:
-                skip = True
             continue
         if token.startswith("-"):
             continue

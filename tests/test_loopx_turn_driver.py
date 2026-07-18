@@ -418,6 +418,155 @@ def test_quota_cli_projects_outer_controller_without_codex_app_action(
     assert hint["execution_phase"]["ack_needed"] is False
 
 
+def test_quota_cli_without_scheduler_context_fails_closed(tmp_path: Path) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert hint["action"] == "repair_scheduler_execution_context"
+    assert hint["execution_context"]["valid"] is False
+    assert hint["codex_app"]["applicability"] == "blocked_invalid_context"
+
+
+@pytest.mark.parametrize(
+    "profile_args",
+    (
+        ["--runtime-profile", "codex_app_heartbeat"],
+        ["--codex-app"],
+    ),
+)
+def test_quota_cli_codex_app_profile_is_explicit_and_applicable(
+    tmp_path: Path,
+    profile_args: list[str],
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                *profile_args,
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    hint = payload["scheduler_hint"]
+    assert exit_code == 0, payload
+    assert "execution_context" not in hint
+    assert "execution_phase" not in hint
+    assert hint["codex_app"]["applicability"] == "applicable"
+    assert "stateful_backoff" in hint["codex_app"]
+
+
+def test_quota_cli_short_context_flags_preserve_all_typed_fields(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "quota",
+                "should-run",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "-H",
+                "generic_cli",
+                "-O",
+                "agent_cli_loop",
+                "-M",
+                "interactive",
+                "--scan-root",
+                str(project),
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    context = payload["scheduler_hint"]["execution_context"]
+    assert exit_code == 0, payload
+    assert context["host_surface"] == "generic_cli"
+    assert context["scheduler_owner"] == "agent_cli_loop"
+    assert context["execution_mode"] == "interactive"
+    assert context["codex_app_applicability"] == "not_applicable"
+
+
+def test_heartbeat_cli_codex_app_alias_reaches_generated_quota_guard(
+    tmp_path: Path,
+) -> None:
+    _, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "heartbeat-prompt",
+                "--thin",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--codex-app",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["runtime_profile"] == "codex_app_heartbeat"
+    assert "--codex-app" in payload["quota_guard_command"]
+    assert "--codex-app" in payload["task_body"]
+
+
 def test_turn_cli_consumes_live_state_without_writes(
     tmp_path: Path,
 ) -> None:

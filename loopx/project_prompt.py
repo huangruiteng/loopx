@@ -5,8 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from .bootstrap import default_goal_id
+from .control_plane.scheduler.execution_context import (
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    render_scheduler_execution_args,
+)
 from .control_plane.todos.contract import normalize_required_capabilities
-
 
 DEFAULT_HANDOFF_OBJECTIVE = "<OBJECTIVE_FROM_GOAL_DOC>"
 DEFAULT_HANDOFF_DOMAIN = "<DOMAIN>"
@@ -15,6 +18,11 @@ DEFAULT_HANDOFF_ADAPTER_STATUS = "connected-read-only"
 DEFAULT_HANDOFF_NEXT_PROBE = "(omit --next-probe until a read-only pre-tick command exists)"
 SHARED_GLOBAL_REGISTRY = '"$HOME/.codex/loopx/registry.global.json"'
 NO_CLONE_INSTALL_URL = "https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh"
+CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT = {
+    "host_surface": "codex_cli",
+    "scheduler_owner": "agent_cli_loop",
+    "execution_mode": "interactive",
+}
 
 
 def shell_arg(value: str) -> str:
@@ -72,13 +80,20 @@ def render_quota_guard_command(
     cli_bin: str = "loopx",
     agent_id: str | None = None,
     available_capabilities: Any = None,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: dict[str, Any] | None = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     capability_args = render_available_capability_args(available_capabilities)
+    scheduler_args = render_scheduler_execution_args(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
+    )
     return (
         f"{shell_arg(cli_bin)} --format json "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
-        f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}{capability_args}"
+        f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}"
+        f"{capability_args}{scheduler_args}"
     )
 
 
@@ -142,13 +157,20 @@ def render_heartbeat_prompt_command(
     agent_scope: str = "Codex CLI /goal visible TUI loop",
     body: str = "thin",
     available_capabilities: Any = None,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: dict[str, Any] | None = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
     capability_args = render_available_capability_args(available_capabilities)
+    scheduler_args = render_scheduler_execution_args(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
+    )
     return (
         f"{shell_arg(cli_bin)} heartbeat-prompt --{shell_arg(body)} "
         f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}{capability_args}"
+        f"{scheduler_args}"
     )
 
 
@@ -160,13 +182,20 @@ def render_heartbeat_prompt_json_command(
     agent_scope: str = "Codex CLI /goal visible TUI loop",
     body: str = "thin",
     available_capabilities: Any = None,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: dict[str, Any] | None = None,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     scope_arg = f" --agent-scope {shell_arg(agent_scope)}" if agent_id else ""
     capability_args = render_available_capability_args(available_capabilities)
+    scheduler_args = render_scheduler_execution_args(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
+    )
     return (
         f"{shell_arg(cli_bin)} --format json heartbeat-prompt --{shell_arg(body)} "
         f"--goal-id {shell_arg(goal_id)}{agent_arg}{scope_arg}{capability_args}"
+        f"{scheduler_args}"
     )
 
 
@@ -246,7 +275,12 @@ def build_new_project_prompt(
         write_scope=write_scope,
         cli_bin="loopx",
     )
-    quota_guard_command = render_quota_guard_command(resolved_goal_id)
+    quota_guard_command = render_quota_guard_command(
+        resolved_goal_id,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
     quota_spend_command = render_quota_spend_command(resolved_goal_id)
     refresh_command = render_refresh_state_command(resolved_goal_id)
     prompt = render_prompt_text(
@@ -326,6 +360,7 @@ def build_codex_cli_bootstrap_message(
         resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        scheduler_execution_context=CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT,
     )
     quota_spend_command = render_quota_spend_command(
         resolved_goal_id,
@@ -337,11 +372,13 @@ def build_codex_cli_bootstrap_message(
         resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        scheduler_execution_context=CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT,
     )
     heartbeat_prompt_json_command = render_heartbeat_prompt_json_command(
         resolved_goal_id,
         cli_bin=cli_bin,
         agent_id=agent_id,
+        scheduler_execution_context=CODEX_CLI_VISIBLE_SCHEDULER_CONTEXT,
     )
     install_repair_command = render_codex_cli_no_clone_preflight(cli_bin=cli_bin)
     refresh_command = render_refresh_state_command(

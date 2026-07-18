@@ -11,18 +11,25 @@ import tempfile
 from pathlib import Path
 from types import ModuleType
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = REPO_ROOT / "examples" / "control_plane" / "quota_plan_fixtures.py"
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.work_items.interaction_contract import interaction_next_cli_actions  # noqa: E402
 from loopx.control_plane.quota.slot_accounting import (  # noqa: E402
     _latest_unspent_accountable_delivery_run,
 )
-from loopx.quota import build_quota_monitor_poll_event, build_quota_slot_spend_event  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+)
+from loopx.control_plane.work_items.interaction_contract import (  # noqa: E402
+    interaction_next_cli_actions,
+)
+from loopx.quota import (  # noqa: E402
+    build_quota_monitor_poll_event,
+    build_quota_slot_spend_event,
+)
 
 
 def load_quota_plan_fixture() -> ModuleType:
@@ -99,11 +106,14 @@ def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> Non
         },
         mode="monitor_quiet_skip",
         available_capabilities=available_capabilities,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
     )
 
     assert actions == [
-        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --execute",
-        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli",
+        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --runtime-profile outer_controller --execute",
+        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --runtime-profile outer_controller",
     ], actions
 
 

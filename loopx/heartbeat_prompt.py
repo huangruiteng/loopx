@@ -11,6 +11,7 @@ from .project_prompt import (
     render_quota_guard_command,
     render_quota_spend_command,
     render_refresh_state_command,
+    render_scheduler_execution_args,
 )
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
@@ -291,6 +292,8 @@ def build_heartbeat_prompt(
     agent_profile: dict[str, Any] | None = None,
     registered_agents: list[str] | tuple[str, ...] | None = None,
     available_capabilities: list[str] | tuple[str, ...] | None = None,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not (full or compact or brief or thin):
         thin = True
@@ -359,6 +362,8 @@ def build_heartbeat_prompt(
         cli_bin=cli_bin,
         agent_id=normalized_agent_id,
         available_capabilities=normalized_available_capabilities,
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
     )
     quota_spend_command = render_quota_spend_command(
         goal_id,
@@ -381,10 +386,14 @@ def build_heartbeat_prompt(
         delivery_outcome="outcome_progress",
     )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
-    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
-    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
-    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
-    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}"
+    scheduler_args = render_scheduler_execution_args(
+        runtime_profile=runtime_profile,
+        scheduler_execution_context=scheduler_execution_context,
+    )
+    expanded_prompt_command = f"{cli_bin} heartbeat-prompt --full --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
+    compact_prompt_command = f"{cli_bin} heartbeat-prompt --compact --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
+    brief_prompt_command = f"{cli_bin} heartbeat-prompt --brief --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
+    thin_prompt_command = f"{cli_bin} heartbeat-prompt --thin --goal-id {goal_id}{active_state_arg}{agent_args}{capability_args}{scheduler_args}"
     if thin:
         task_body_renderer = render_thin_heartbeat_task_body
     elif brief:
@@ -428,6 +437,8 @@ def build_heartbeat_prompt(
         "agent_scope_source": agent_scope_source,
         "agent_profile": agent_profile_prompt_projection(agent_profile),
         "registered_agents": normalized_registered_agents,
+        "runtime_profile": runtime_profile,
+        "scheduler_execution_context": scheduler_execution_context,
         "expanded_prompt_command": expanded_prompt_command,
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
@@ -451,6 +462,9 @@ def build_heartbeat_prompt(
         "task_body": task_body,
     }
     payload["agent_model"] = AgentRuntimeModel.PEER_V1.value
+    if thin:
+        payload.pop("compact_prompt_command", None)
+        payload.pop("brief_prompt_command", None)
     return payload
 
 
@@ -944,7 +958,16 @@ def render_thin_heartbeat_task_body(
     scope_sentence = f"\n{agent_scope_instruction}" if agent_scope_instruction else ""
     quota_guard_instruction = (
         f"`{quota_guard_command}`"
-        if "--available-capability" in quota_guard_command
+        if any(
+            marker in quota_guard_command
+            for marker in (
+                "--available-capability",
+                "--runtime-profile",
+                "--codex-app",
+                "--host-surface",
+                " -H ",
+            )
+        )
         else "`quota should-run`"
     )
     return f"""Advance `{goal_id}` from {active_state}.

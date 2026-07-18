@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 
 from loopx.control_plane.scheduler import scheduler_hint as scheduler_hint_module
 from loopx.control_plane.scheduler.ack import build_codex_app_scheduler_ack_event
+from loopx.control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 
 
@@ -11,6 +14,9 @@ GOAL_ID = "scheduler-backoff-convergence"
 AGENT_ID = "codex-fixture"
 HOST_15 = "FREQ=MINUTELY;INTERVAL=15"
 HOST_30 = "FREQ=MINUTELY;INTERVAL=30"
+APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def _monitor_decision(*, now: datetime, minutes_until_due: int) -> dict:
@@ -67,6 +73,7 @@ def _hint(
         decision,
         codex_app_scheduler_state=scheduler_state,
         codex_app_current_rrule=host_rrule,
+        scheduler_execution_context=APP_CONTEXT,
     )
 
 

@@ -8,7 +8,10 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from loopx.cli import main as cli_main
+from loopx.control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from loopx.control_plane.testing.cli_output_budget import (
     CLI_OUTPUT_BUDGET_BY_ID,
     CLI_OUTPUT_BUDGET_SPECS,
@@ -21,6 +24,7 @@ from loopx.control_plane.testing.cli_output_budget import (
     measure_cli_output,
     public_manifest,
 )
+from loopx.heartbeat_prompt import build_heartbeat_prompt
 from loopx.help_surface import COMMAND_GROUPS
 from loopx.rollout_event_log import rollout_event_log_path
 
@@ -662,3 +666,102 @@ def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> 
                 text=text,
                 measurement=measurement,
             )
+
+
+def test_turn_envelope_cli_preserves_codex_app_scheduler_binding(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path, state_file = _write_fixture(
+        tmp_path,
+        SCENARIOS[0],
+    )
+    command = _mode_variant_commands(
+        project=project,
+        runtime=runtime,
+        registry_path=registry_path,
+        state_file=state_file,
+        output_format="json",
+    )["quota_should_run_turn_envelope"]
+
+    exit_code, text = _invoke_cli([*command, "--codex-app"])
+
+    assert exit_code == 0, text
+    payload = json.loads(text)
+    assert payload["detail_ref"]["full_decision"] == (
+        "loopx --format json quota should-run "
+        f"--goal-id {GOAL_ID} --agent-id {AGENT_IDS[0]} --codex-app"
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected_binding"),
+    (
+        (SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT, "--codex-app"),
+        (
+            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+            "--runtime-profile codex_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+            "--runtime-profile claude_code",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
+            "--runtime-profile generic_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER,
+            "--runtime-profile outer_controller",
+        ),
+    ),
+)
+def test_first_class_runtime_profiles_fit_thin_prompt_budget_and_cli_round_trip(
+    tmp_path: Path,
+    profile: SchedulerRuntimeProfile,
+    expected_binding: str,
+) -> None:
+    project, runtime, registry_path, state_file = _write_fixture(
+        tmp_path,
+        SCENARIOS[0],
+    )
+    prompt = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=state_file,
+        agent_id=AGENT_IDS[0],
+        thin=True,
+        runtime_profile=profile.value,
+    )
+
+    assert prompt["interface_budget"]["within_budget"] is True
+    assert expected_binding in prompt["quota_guard_command"]
+    assert expected_binding in prompt["task_body"]
+    assert " -H " not in prompt["quota_guard_command"]
+    assert " -O " not in prompt["quota_guard_command"]
+    assert " -M " not in prompt["quota_guard_command"]
+
+    exit_code, text = _invoke_cli(
+        [
+            "--registry",
+            str(registry_path),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--runtime-profile",
+            profile.value,
+        ]
+    )
+
+    assert exit_code == 0, text
+    payload = json.loads(text)
+    assert payload["scheduler_hint"].get("action") != (
+        "repair_scheduler_execution_context"
+    )

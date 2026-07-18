@@ -9,6 +9,9 @@ from loopx.control_plane.scheduler.arbitration import (
     build_scheduler_arbitration,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from loopx.control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.work_items.interaction_contract import (
     build_interaction_contract,
 )
@@ -20,6 +23,17 @@ AGENT_SCOPE_ACTIONS = {
     "reassignment_required",
     "successor_replan_required",
 }
+APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
+
+
+def _app_scheduler_hint(payload: dict, **kwargs) -> dict:
+    return build_scheduler_hint(
+        payload,
+        scheduler_execution_context=APP_CONTEXT,
+        **kwargs,
+    )
 
 
 def _payload(
@@ -157,7 +171,7 @@ def test_interaction_contract_drives_scheduler(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -178,7 +192,7 @@ def test_raw_should_run_cannot_override_blocking_gate() -> None:
         quiet_noop_allowed=False,
     )
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -198,7 +212,7 @@ def test_raw_should_run_false_cannot_silently_cancel_final_contract_delivery() -
         quiet_noop_allowed=False,
     )
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -221,7 +235,7 @@ def test_branch_order_mutation_is_killed_by_final_contract() -> None:
     mutated["automation_liveness"]["automation_action"] = "execute_bounded_work"
     mutated["execution_obligation"]["must_attempt_work"] = True
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         mutated,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -243,7 +257,7 @@ def test_raw_terminal_liveness_cannot_override_active_final_contract() -> None:
         "stop_terminal_no_followup"
     )
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -285,7 +299,7 @@ def test_terminal_contract_with_open_action_fails_closed() -> None:
         quiet_noop_allowed=False,
     )
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )
@@ -308,7 +322,7 @@ def test_structurally_invalid_contract_fails_closed() -> None:
     )
     del payload["interaction_contract"]["agent_channel"]["quiet_noop_allowed"]
 
-    hint = build_scheduler_hint(
+    hint = _app_scheduler_hint(
         payload,
         agent_scope_frontier_actions=AGENT_SCOPE_ACTIONS,
     )

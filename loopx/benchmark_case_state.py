@@ -4,6 +4,10 @@ import posixpath
 import re
 import shlex
 
+from .control_plane.scheduler.execution_context import (
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    render_scheduler_execution_args,
+)
 from .control_plane.todos.contract import build_todo_id
 
 BENCHMARK_CASE_ACTIVE_STATE_SCHEMA_VERSION = (
@@ -440,7 +444,8 @@ def build_benchmark_case_lifecycle_packet(
                     (
                         f"{case_cli_prefix} quota should-run "
                         f"--goal-id {shlex.quote(case_goal_id)} "
-                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID}"
+                        f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} "
+                        "--runtime-profile outer_controller"
                     ),
                 ),
                 _packet_line(
@@ -710,6 +715,23 @@ def benchmark_case_loopx_command_prefix(
     return " ".join(parts)
 
 
+def benchmark_case_outer_controller_quota_guard_command(
+    *,
+    cli_prefix: str,
+    goal_id: str,
+    agent_id: str,
+) -> str:
+    """Return the typed quota guard used by case-local benchmark controllers."""
+
+    scheduler_args = render_scheduler_execution_args(
+        scheduler_execution_context=GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+    )
+    return (
+        f"{cli_prefix} quota should-run --goal-id {goal_id} "
+        f"--agent-id {agent_id}{scheduler_args}"
+    )
+
+
 def benchmark_case_loopx_install_command(
     *,
     goal_id: str,
@@ -825,7 +847,8 @@ def benchmark_case_loopx_install_command(
     quota_cmd = (
         f"{cli_prefix} quota should-run "
         f"--goal-id {shlex.quote(goal_id)} "
-        f"--agent-id {shlex.quote(case_agent_id)}"
+        f"--agent-id {shlex.quote(case_agent_id)} "
+        "--runtime-profile outer_controller"
     )
     refresh_cmd = (
         f"{cli_prefix} refresh-state "

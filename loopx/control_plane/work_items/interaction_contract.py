@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+from collections.abc import Mapping
 from typing import Any
 
 from ..agents.agent_scope_frontier import (
@@ -10,6 +11,10 @@ from ..agents.agent_scope_frontier import (
 from ..agents.capability_gate import runtime_capabilities_for_cli_projection
 from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
 from ..goals.goal_vision_wait import exact_blocked_successor_wait_state
+from ..scheduler.execution_context import (
+    SchedulerExecutionContextResolution,
+    render_scheduler_execution_args,
+)
 from ..todos.contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_ACTION,
@@ -24,7 +29,6 @@ from .primary_action import (
     protocol_first_candidate_action as _protocol_first_candidate_action,
     protocol_monitor_action as _protocol_monitor_action,
 )
-
 
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
 INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION = "interaction_response_plan_v0"
@@ -142,6 +146,9 @@ def finalize_user_gate_notification_cooldown(
     payload: dict[str, Any],
     *,
     available_capabilities: Any = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
 ) -> None:
     scheduler_hint = payload.get("scheduler_hint")
     cooldown = (
@@ -160,6 +167,7 @@ def finalize_user_gate_notification_cooldown(
     payload["interaction_contract"] = build_interaction_contract(
         payload,
         available_capabilities=available_capabilities,
+        scheduler_execution_context=scheduler_execution_context,
     )
     attach_user_action_compat_fields(payload)
 
@@ -470,6 +478,9 @@ def interaction_next_cli_actions(
     *,
     mode: str,
     available_capabilities: Any = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
 ) -> list[str]:
     goal_id = str(payload.get("goal_id") or "<GOAL_ID>")
     agent_identity = (
@@ -480,6 +491,24 @@ def interaction_next_cli_actions(
     scoped_cli_args = _scoped_cli_args(
         agent_identity,
         available_capabilities=available_capabilities,
+    )
+    try:
+        scheduler_args = render_scheduler_execution_args(
+            scheduler_execution_context=scheduler_execution_context,
+        )
+    except ValueError:
+        scheduler_args = ""
+    typed_quota_guard = (
+        f"loopx --format json quota should-run --goal-id {goal_id}"
+        f"{scoped_cli_args}{scheduler_args}"
+        if scheduler_args
+        else "rerun the typed quota_guard from the current host packet"
+    )
+    typed_monitor_poll = (
+        f"loopx quota monitor-poll --goal-id {goal_id}{scoped_cli_args}"
+        f"{scheduler_args} --execute"
+        if scheduler_args
+        else "use the current host packet's typed monitor command"
     )
     capability_resolution_actions = build_capability_resolution_writeback_actions(
         payload.get("capability_gate"),
@@ -513,8 +542,8 @@ def interaction_next_cli_actions(
         ]
     if mode == "monitor_quiet_skip":
         return [
-            f"loopx quota monitor-poll --goal-id {goal_id}{scoped_cli_args} --execute",
-            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
+            typed_monitor_poll,
+            typed_quota_guard,
         ]
     if mode == AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED.value:
         agent_scope_frontier = (
@@ -571,13 +600,13 @@ def interaction_next_cli_actions(
         and _blocked_successor_wait_observation_required(payload)
     ):
         return [
-            f"loopx quota monitor-poll --goal-id {goal_id}{scoped_cli_args} --execute",
-            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
+            typed_monitor_poll,
+            typed_quota_guard,
         ]
     if _agent_scope_frontier_action(mode) is not None:
         return [
             "no quota spend while this agent has no in-scope runnable candidate",
-            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
+            typed_quota_guard,
         ]
     if mode == "external_evidence_observation":
         return [
@@ -588,7 +617,7 @@ def interaction_next_cli_actions(
     if mode == "agent_workspace_repair":
         return [
             "create or switch to an independent git worktree/branch",
-            f"loopx --format json quota should-run --goal-id {goal_id}{scoped_cli_args}",
+            typed_quota_guard,
         ]
     if mode == "autonomous_replan":
         lane_action = _protocol_first_candidate_action(payload)
@@ -898,12 +927,16 @@ def _build_interaction_cli_channel(
     mode: str,
     spend_after_validation: bool,
     available_capabilities: Any = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
 ) -> dict[str, Any]:
     return {
         "next_cli_actions": interaction_next_cli_actions(
             payload,
             mode=mode,
             available_capabilities=available_capabilities,
+            scheduler_execution_context=scheduler_execution_context,
         ),
         "spend_allowed_now": False,
         "spend_after_validation": spend_after_validation,
@@ -1003,6 +1036,9 @@ def build_interaction_contract(
     payload: dict[str, Any],
     *,
     available_capabilities: Any = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
 ) -> dict[str, Any]:
     execution_obligation = (
         payload.get("execution_obligation")
@@ -1068,6 +1104,7 @@ def build_interaction_contract(
             mode=mode,
             spend_after_validation=spend_after_validation,
             available_capabilities=available_capabilities,
+            scheduler_execution_context=scheduler_execution_context,
         ),
     }
     response_plan = _build_interaction_response_plan(

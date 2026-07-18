@@ -8,6 +8,9 @@ from loopx.control_plane.goals.goal_frontier import (
 )
 from loopx.control_plane.quota.monitor_poll import build_quota_monitor_poll_event
 from loopx.control_plane.quota.markdown import render_quota_should_run_markdown
+from loopx.control_plane.scheduler.execution_context import (
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+)
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
@@ -110,7 +113,14 @@ def _status_payload(
 
 
 def _quota(payload: dict) -> dict:
-    return build_quota_should_run(payload, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    return build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
 
 
 def _blocked_wait_polls() -> list[dict]:

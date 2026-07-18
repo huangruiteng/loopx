@@ -509,6 +509,7 @@ def build_visible_multi_agent_payload_from_spec(
                 "mkdir -p \"$LOOPX_PANE_ARTIFACT_DIR\" && "
                 "$LOOPX_PANE_LOOPX_JSON quota should-run "
                 f"--goal-id {_q(goal_id)} --agent-id {_q(agent_id)} "
+                "--runtime-profile codex_cli "
                 "> \"$LOOPX_PANE_ARTIFACT_DIR/quota.public.json\""
             ),
             "frontier": "agent-scoped LoopX todo/quota/frontier projection",

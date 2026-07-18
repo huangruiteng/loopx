@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
+from .control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
     normalize_todo_claimed_by,
@@ -16,6 +17,22 @@ from .project_prompt import (
 SCHEMA_VERSION = "loopx_host_loop_activation_v1"
 AGENT_TYPE_CATALOG_SCHEMA_VERSION = "loopx_agent_type_catalog_v0"
 IDENTITY_SELECTION_SCHEMA_VERSION = "loopx_host_loop_identity_selection_v0"
+
+
+def scheduler_command_binding_for_agent_type(
+    agent_type: str,
+) -> dict[str, Any]:
+    canonical = normalize_agent_type(agent_type)
+    runtime_profile = {
+        "codex-app": SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        "codex-ide": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+    }.get(canonical)
+    if runtime_profile is not None:
+        return {"runtime_profile": runtime_profile.value}
+    return {}
+
 
 SUPPORTED_AGENT_TYPES = [
     "codex-app",
@@ -249,6 +266,7 @@ def _heartbeat_commands(
         "other-agent": "Custom agent host loop gated by LoopX",
     }
     agent_scope = scope_by_type.get(agent_type, scope_by_type["other-agent"])
+    scheduler_binding = scheduler_command_binding_for_agent_type(agent_type)
     return {
         "heartbeat_prompt_json": render_heartbeat_prompt_json_command(
             goal_id,
@@ -256,6 +274,7 @@ def _heartbeat_commands(
             agent_id=agent_id,
             agent_scope=agent_scope,
             available_capabilities=available_capabilities,
+            **scheduler_binding,
         ),
         "heartbeat_prompt": render_heartbeat_prompt_command(
             goal_id,
@@ -263,6 +282,7 @@ def _heartbeat_commands(
             agent_id=agent_id,
             agent_scope=agent_scope,
             available_capabilities=available_capabilities,
+            **scheduler_binding,
         ),
     }
 

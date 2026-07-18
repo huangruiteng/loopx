@@ -166,7 +166,7 @@ def build_cross_runtime_impl_review_demo_packet(
             "step": "check_implementation_quota",
             "command": (
                 f"loopx --format json quota should-run --goal-id {goal_id} "
-                f"--agent-id {implementer_agent_id}"
+                f"--agent-id {implementer_agent_id} --runtime-profile generic_cli"
             ),
             "would_write": False,
             "execution_allowed_in_packet": False,
@@ -190,7 +190,7 @@ def build_cross_runtime_impl_review_demo_packet(
             "step": "check_review_quota",
             "command": (
                 f"loopx --format json quota should-run --goal-id {goal_id} "
-                f"--agent-id {reviewer_agent_id}"
+                f"--agent-id {reviewer_agent_id} --runtime-profile generic_cli"
             ),
             "would_write": False,
             "execution_allowed_in_packet": False,

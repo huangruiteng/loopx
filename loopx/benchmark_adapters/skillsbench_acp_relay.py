@@ -2096,7 +2096,8 @@ class SkillsBenchLocalAcpRelay:
                 "quota should-run",
                 "read",
                 f"{cli_prefix} quota should-run --goal-id {shlex.quote(case_goal_id)} "
-                f"--agent-id {shlex.quote(case_agent_id)}",
+                f"--agent-id {shlex.quote(case_agent_id)} "
+                "--runtime-profile outer_controller",
             ),
             (
                 "todo claim",

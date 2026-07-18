@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-
 
 SCHEDULER_EXECUTION_CONTEXT_SCHEMA_VERSION = "scheduler_execution_context_v0"
 
@@ -28,6 +28,50 @@ class ExecutionMode(str, Enum):
     INTERACTIVE = "interactive"
     ISOLATED_HEADLESS = "isolated_headless"
     HOSTED_AUTOMATION = "hosted_automation"
+
+
+class SchedulerRuntimeProfile(str, Enum):
+    CODEX_APP_HEARTBEAT = "codex_app_heartbeat"
+    CODEX_CLI_VISIBLE = "codex_cli"
+    CLAUDE_CODE_VISIBLE = "claude_code"
+    GENERIC_CLI_AGENT_LOOP = "generic_cli"
+    GENERIC_CLI_OUTER_CONTROLLER = "outer_controller"
+
+
+_SCHEDULER_RUNTIME_PROFILE_CONTEXTS = {
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT: (
+        HostSurface.CODEX_APP,
+        SchedulerOwner.HOST_AUTOMATION,
+        ExecutionMode.HOSTED_AUTOMATION,
+    ),
+    SchedulerRuntimeProfile.CODEX_CLI_VISIBLE: (
+        HostSurface.CODEX_CLI,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE: (
+        HostSurface.CLAUDE_CODE,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP: (
+        HostSurface.GENERIC_CLI,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER: (
+        HostSurface.GENERIC_CLI,
+        SchedulerOwner.OUTER_CONTROLLER,
+        ExecutionMode.ISOLATED_HEADLESS,
+    ),
+}
+
+
+GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT = {
+    "host_surface": HostSurface.GENERIC_CLI.value,
+    "scheduler_owner": SchedulerOwner.OUTER_CONTROLLER.value,
+    "execution_mode": ExecutionMode.ISOLATED_HEADLESS.value,
+}
 
 
 @dataclass(frozen=True)
@@ -136,13 +180,15 @@ def resolve_scheduler_execution_context(
     if isinstance(value, SchedulerExecutionContextResolution):
         return value
     if value is None:
-        context = SchedulerExecutionContext(
-            host_surface=HostSurface.CODEX_APP,
-            scheduler_owner=SchedulerOwner.HOST_AUTOMATION,
-            execution_mode=ExecutionMode.HOSTED_AUTOMATION,
-            source="compatibility_default",
+        return SchedulerExecutionContextResolution(
+            context=None,
+            errors=(
+                "missing required field: host_surface",
+                "missing required field: scheduler_owner",
+                "missing required field: execution_mode",
+            ),
+            supplied=None,
         )
-        return SchedulerExecutionContextResolution(context=context)
 
     supplied = dict(value)
     missing = [
@@ -189,6 +235,99 @@ def resolve_scheduler_execution_context(
     )
 
 
+def scheduler_execution_context_for_runtime_profile(
+    value: str | SchedulerRuntimeProfile,
+) -> SchedulerExecutionContextResolution:
+    try:
+        profile = SchedulerRuntimeProfile(value)
+    except ValueError:
+        return SchedulerExecutionContextResolution(
+            context=None,
+            errors=("unsupported scheduler runtime profile",),
+            supplied={"source": f"runtime_profile:{value}"},
+        )
+
+    host_surface, scheduler_owner, execution_mode = (
+        _SCHEDULER_RUNTIME_PROFILE_CONTEXTS[profile]
+    )
+    return resolve_scheduler_execution_context(
+        {
+            "host_surface": host_surface.value,
+            "scheduler_owner": scheduler_owner.value,
+            "execution_mode": execution_mode.value,
+            "source": f"runtime_profile:{profile.value}",
+        }
+    )
+
+
+def scheduler_runtime_profile_for_execution_context(
+    value: Mapping[str, Any] | SchedulerExecutionContextResolution | None,
+) -> SchedulerRuntimeProfile | None:
+    resolution = resolve_scheduler_execution_context(value)
+    if not resolution.ok or resolution.context is None:
+        return None
+    signature = (
+        resolution.context.host_surface,
+        resolution.context.scheduler_owner,
+        resolution.context.execution_mode,
+    )
+    return next(
+        (
+            profile
+            for profile, profile_signature in _SCHEDULER_RUNTIME_PROFILE_CONTEXTS.items()
+            if signature == profile_signature
+        ),
+        None,
+    )
+
+
+def _render_scheduler_runtime_profile_args(
+    profile: SchedulerRuntimeProfile,
+) -> str:
+    if profile is SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT:
+        return " --codex-app"
+    return f" --runtime-profile {shlex.quote(profile.value)}"
+
+
+def render_scheduler_execution_args(
+    *,
+    runtime_profile: str | None = None,
+    scheduler_execution_context: (
+        Mapping[str, Any] | SchedulerExecutionContextResolution | None
+    ) = None,
+) -> str:
+    if runtime_profile and scheduler_execution_context:
+        raise ValueError(
+            "runtime_profile and scheduler_execution_context are mutually exclusive"
+        )
+    if runtime_profile:
+        try:
+            profile = SchedulerRuntimeProfile(runtime_profile)
+        except ValueError as exc:
+            raise ValueError(
+                f"unsupported scheduler runtime profile: {runtime_profile}"
+            ) from exc
+        return _render_scheduler_runtime_profile_args(profile)
+    if scheduler_execution_context is None:
+        return ""
+    resolution = resolve_scheduler_execution_context(scheduler_execution_context)
+    if not resolution.ok or resolution.context is None:
+        raise ValueError(
+            "invalid scheduler_execution_context: " + "; ".join(resolution.errors)
+        )
+    profile = scheduler_runtime_profile_for_execution_context(resolution)
+    if profile is not None:
+        return _render_scheduler_runtime_profile_args(profile)
+    context = resolution.context
+    return "".join(
+        (
+            f" -H {shlex.quote(context.host_surface.value)}",
+            f" -O {shlex.quote(context.scheduler_owner.value)}",
+            f" -M {shlex.quote(context.execution_mode.value)}",
+        )
+    )
+
+
 def scheduler_execution_context_for_turn(
     *,
     host: str,
@@ -228,10 +367,7 @@ def apply_scheduler_execution_context(
     if not resolution.ok or resolution.context is None:
         raise ValueError("cannot apply an invalid scheduler execution context")
     context = resolution.context
-    if context.source == "compatibility_default":
-        return result
 
-    result["execution_context"] = resolution.projection()
     codex_app = (
         result.get("codex_app") if isinstance(result.get("codex_app"), dict) else {}
     )
@@ -248,7 +384,7 @@ def apply_scheduler_execution_context(
         )
         ack_needed = backoff.get("ack_needed") is True
         result["codex_app"] = codex_app
-        result["execution_phase"] = {
+        execution_phase = {
             "schema_version": "scheduler_execution_phase_v0",
             "host_surface": context.host_surface.value,
             "scheduler_owner": context.scheduler_owner.value,
@@ -260,8 +396,13 @@ def apply_scheduler_execution_context(
             "ack_needed": ack_needed,
             "acknowledged": False,
         }
+        cold_path = result.get("cold_path_detail")
+        if isinstance(cold_path, dict):
+            cold_path["execution_context"] = resolution.projection()
+            cold_path["execution_phase"] = execution_phase
         return result
 
+    result["execution_context"] = resolution.projection()
     result["codex_app"] = {
         "applicability": "not_applicable",
         "reason_code": f"cadence_owned_by_{context.scheduler_owner.value}",

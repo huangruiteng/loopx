@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
+from loopx.control_plane.scheduler.execution_context import (
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
@@ -12,6 +15,9 @@ from loopx.quota import build_quota_should_run
 
 GOAL_ID = "user-gate-lane-progress-fixture"
 AGENT_ID = "codex-main-control"
+APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def _status_payload(*, gate_action_kind: str) -> dict:
@@ -64,6 +70,7 @@ def test_unrelated_user_gate_allows_ready_deferred_successor_replan() -> None:
         _status_payload(gate_action_kind="approve_product_first_screen"),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
+        scheduler_execution_context=APP_CONTEXT,
     )
 
     fallback = payload["scoped_user_gate_fallback"]
@@ -85,6 +92,7 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
         _status_payload(gate_action_kind="refine_benchmark_treatment"),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
+        scheduler_execution_context=APP_CONTEXT,
     )
 
     assert "scoped_user_gate_fallback" not in payload
@@ -118,6 +126,7 @@ def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> Non
             "last_applied_rrule": initial_backoff["current_rrule"],
         },
         codex_app_current_rrule=initial_backoff["current_rrule"],
+        scheduler_execution_context=APP_CONTEXT,
     )
 
     assert next_hint["cadence_class"] == "human_gate"

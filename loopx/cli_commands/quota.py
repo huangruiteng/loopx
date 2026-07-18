@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from ..quota import (
@@ -25,6 +25,11 @@ from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
 from ..control_plane.quota.markdown import render_quota_scheduler_failure_markdown
+from ..control_plane.scheduler.execution_context import (
+    SchedulerExecutionContextResolution,
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
@@ -42,6 +47,41 @@ RolloutEventAppender = Callable[..., dict[str, object]]
 
 def default_public_scan_root() -> str:
     return str(Path(__file__).resolve().parents[2])
+
+
+def _scheduler_execution_context_from_args(
+    args: argparse.Namespace,
+) -> Mapping[str, object] | SchedulerExecutionContextResolution | None:
+    explicit_scheduler_fields = (
+        args.host_surface,
+        args.scheduler_owner,
+        args.execution_mode,
+    )
+    if args.codex_app and (args.runtime_profile or any(explicit_scheduler_fields)):
+        raise ValueError(
+            "--codex-app cannot be combined with --runtime-profile, "
+            "--host-surface, --scheduler-owner, or --execution-mode"
+        )
+    if args.runtime_profile and any(explicit_scheduler_fields):
+        raise ValueError(
+            "--runtime-profile cannot be combined with --host-surface, "
+            "--scheduler-owner, or --execution-mode"
+        )
+    runtime_profile = (
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
+        if args.codex_app
+        else args.runtime_profile
+    )
+    if runtime_profile:
+        return scheduler_execution_context_for_runtime_profile(runtime_profile)
+    if any(explicit_scheduler_fields):
+        return {
+            "host_surface": args.host_surface,
+            "scheduler_owner": args.scheduler_owner,
+            "execution_mode": args.execution_mode,
+            "source": "quota_cli_invocation",
+        }
+    return None
 
 
 def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
@@ -104,16 +144,38 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--runtime-profile",
+        choices=[profile.value for profile in SchedulerRuntimeProfile],
+        help=(
+            "Explicit scheduler runtime shortcut for a known host boundary. "
+            "Cannot be combined with --host-surface, --scheduler-owner, or "
+            "--execution-mode."
+        ),
+    )
+    quota_parser.add_argument(
+        "-A",
+        "--codex-app",
+        action="store_true",
+        help=(
+            "Compact explicit alias for --runtime-profile "
+            "codex_app_heartbeat. Cannot be combined with another scheduler "
+            "runtime or execution context."
+        ),
+    )
+    quota_parser.add_argument(
+        "-H",
         "--host-surface",
         choices=["codex_app", "codex_cli", "generic_cli", "claude_code", "local_scheduler"],
         help="Host surface that will consume this scheduler projection.",
     )
     quota_parser.add_argument(
+        "-O",
         "--scheduler-owner",
         choices=["host_automation", "agent_cli_loop", "outer_controller", "none"],
         help="Runtime that owns the next cadence decision.",
     )
     quota_parser.add_argument(
+        "-M",
         "--execution-mode",
         choices=["interactive", "isolated_headless", "hosted_automation"],
         help="Execution mode paired with --host-surface and --scheduler-owner.",
@@ -260,19 +322,17 @@ def handle_quota_command(
                 )
         elif isinstance(status_payload.get("projection_cache"), dict):
             cache_metadata = dict(status_payload["projection_cache"])
+        scheduler_context = None
+        if args.quota_command in {
+            "should-run",
+            "scheduler-ack",
+            "scheduler-ack-current",
+            "scheduler-fail-current",
+        }:
+            scheduler_context = _scheduler_execution_context_from_args(args)
         if args.quota_command == "should-run":
             if not args.goal_id:
                 raise ValueError("`loopx quota should-run` requires --goal-id")
-            scheduler_context = (
-                {
-                    "host_surface": args.host_surface,
-                    "scheduler_owner": args.scheduler_owner,
-                    "execution_mode": args.execution_mode,
-                    "source": "quota_cli_invocation",
-                }
-                if any((args.host_surface, args.scheduler_owner, args.execution_mode))
-                else None
-            )
             payload = build_live_quota_should_run_decision(
                 status_payload,
                 goal_id=args.goal_id,
@@ -330,6 +390,7 @@ def handle_quota_command(
                 reason_summary=args.reason_summary,
                 use_current_hint=bool(args.use_current_hint or args.quota_command == "scheduler-ack-current"),
                 host_match_observed=bool(getattr(args, "host_match_observed", False)),
+                scheduler_execution_context=scheduler_context,
             )
         elif args.quota_command == "scheduler-fail-current":
             if not args.goal_id:
@@ -352,6 +413,7 @@ def handle_quota_command(
                 agent_id=args.agent_id,
                 available_capabilities=args.available_capabilities,
                 codex_app_current_rrule=observed_rrule,
+                scheduler_execution_context=scheduler_context,
             )
             payload = record_quota_scheduler_failure_for_decision(
                 failure_decision,
@@ -518,7 +580,10 @@ def handle_quota_command(
             allow_failed=args.quota_command == "should-run",
         )
     if bool(getattr(args, "turn_envelope", False)):
-        payload = build_turn_envelope(payload)
+        payload = build_turn_envelope(
+            payload,
+            scheduler_execution_context=scheduler_context,
+        )
     renderer = (
         render_turn_envelope_markdown
         if bool(getattr(args, "turn_envelope", False))

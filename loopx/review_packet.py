@@ -139,15 +139,15 @@ def build_read_only_map_command(status_payload: dict[str, Any], goal_id: str) ->
 
 
 def build_quota_should_run_command(status_payload: dict[str, Any], goal_id: str) -> str:
-    return "\n".join(
-        [
-            "loopx \\",
-            f"  --registry {shlex.quote(str(status_payload.get('registry') or '<registry>'))} \\",
-            f"  --runtime-root {shlex.quote(str(status_payload.get('runtime_root') or '<runtime-root>'))} \\",
-            "  --format json \\",
-            "  quota should-run \\",
-            f"  --goal-id {shlex.quote(goal_id)}",
-        ]
+    return " ".join(
+        (
+            "loopx",
+            f"--registry {shlex.quote(str(status_payload.get('registry') or '<registry>'))}",
+            "--format json",
+            "quota should-run",
+            f"--goal-id {shlex.quote(goal_id)}",
+            "--runtime-profile generic_cli",
+        )
     )
 
 

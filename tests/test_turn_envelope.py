@@ -13,6 +13,10 @@ from loopx.control_plane.quota.turn_envelope import (
     quota_action_signature_document,
     turn_envelope_action_signature_document,
 )
+from loopx.control_plane.scheduler.execution_context import (
+    SchedulerRuntimeProfile,
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.work_items.interaction_contract import (
     build_protocol_action_packet,
 )
@@ -312,6 +316,70 @@ def test_turn_envelope_preserves_action_boundary_and_writeback() -> None:
     assert envelope["compaction"]["envelope_json_bytes"] == len(
         json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
     )
+
+
+def test_turn_envelope_full_decision_preserves_codex_app_profile() -> None:
+    envelope = build_turn_envelope(
+        _full_decision(),
+        scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+        ),
+    )
+
+    assert envelope["detail_ref"]["full_decision"] == (
+        "loopx --format json quota should-run --goal-id fixture-goal "
+        "--agent-id codex-fixture --codex-app"
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected_arg"),
+    (
+        (
+            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+            "--runtime-profile codex_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+            "--runtime-profile claude_code",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
+            "--runtime-profile generic_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER,
+            "--runtime-profile outer_controller",
+        ),
+    ),
+)
+def test_turn_envelope_full_decision_compacts_first_class_profiles(
+    profile: SchedulerRuntimeProfile,
+    expected_arg: str,
+) -> None:
+    envelope = build_turn_envelope(
+        _full_decision(),
+        scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
+            profile
+        ),
+    )
+
+    command = envelope["detail_ref"]["full_decision"]
+    assert expected_arg in command
+    assert " -H " not in command
+    assert " -O " not in command
+    assert " -M " not in command
+
+
+def test_turn_envelope_unbound_full_decision_is_not_executable() -> None:
+    full_decision = build_turn_envelope(_full_decision())["detail_ref"][
+        "full_decision"
+    ]
+
+    assert full_decision == (
+        "rerun the typed quota_guard from the current host packet"
+    )
+    assert "quota should-run" not in full_decision
 
 
 def test_turn_envelope_preserves_exact_scheduler_ack_argv() -> None:

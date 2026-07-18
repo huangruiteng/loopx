@@ -323,7 +323,10 @@ def handle_turn_command(
                 "schema_version": LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
                 **resume_identity,
             }
-        turn_envelope = build_turn_envelope(decision)
+        turn_envelope = build_turn_envelope(
+            decision,
+            scheduler_execution_context=scheduler_context,
+        )
         if args.turn_command == "run-once" and args.host == "codex-cli" and not supplied_resume_fields:
             session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
         payload = build_loopx_turn_plan(

@@ -41,6 +41,7 @@ Claude Code analogue of Codex's identity-scoped heartbeat prompt.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -63,6 +64,12 @@ DESTRUCTIVE = (
     "rm -rf", "rm -fr", "mkfs", "dd if=", ":(){", "shutdown", "reboot",
     "git push --force", "git reset --hard", "> /dev/sd", "format ",
 )
+CLAUDE_RUNTIME_PROFILE_ARGS = ["--runtime-profile", "claude_code"]
+CLAUDE_LEGACY_SCHEDULER_ARGS = [
+    "--host-surface", "claude_code",
+    "--scheduler-owner", "agent_cli_loop",
+    "--execution-mode", "interactive",
+]
 
 
 def within(path: str, root: str) -> bool:
@@ -75,11 +82,10 @@ def within(path: str, root: str) -> bool:
         return False
 
 
-
-import shutil as _shutil
 def _gh_prefix():
-    _exe = _shutil.which("loopx")
+    _exe = shutil.which("loopx")
     return [_exe] if _exe else [__import__("sys").executable, "-m", "loopx.cli"]
+
 
 def emit(decision=None, reason=""):
     if decision is None:
@@ -94,6 +100,18 @@ def emit(decision=None, reason=""):
     }))
 
 
+def _runtime_profile_flag_is_unsupported(out: subprocess.CompletedProcess) -> bool:
+    diagnostic = str(out.stderr or "").lower()
+    return (
+        out.returncode == 2
+        and "--runtime-profile" in diagnostic
+        and (
+            "unrecognized arguments" in diagnostic
+            or "invalid choice" in diagnostic
+        )
+    )
+
+
 def should_run(registry, goal_id, agent_id=None) -> bool | None:
     """Return True/False from loopx quota should-run, or None if unknown."""
     if not goal_id:
@@ -105,11 +123,27 @@ def should_run(registry, goal_id, agent_id=None) -> bool | None:
     if agent_id:
         cmd += ["--agent-id", agent_id]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        data = json.loads(out.stdout or "{}")
-        return bool(data.get("should_run"))
+        out = subprocess.run(
+            [*cmd, *CLAUDE_RUNTIME_PROFILE_ARGS],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if _runtime_profile_flag_is_unsupported(out):
+            out = subprocess.run(
+                [*cmd, *CLAUDE_LEGACY_SCHEDULER_ARGS],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
     except Exception:
         return None  # caller fails CLOSED on None for non-read-only tools
+    try:
+        data = json.loads(out.stdout or "{}")
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    should_run_value = data.get("should_run")
+    return should_run_value if isinstance(should_run_value, bool) else None
 
 
 def decide(ev: dict) -> dict:

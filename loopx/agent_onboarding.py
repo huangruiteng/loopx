@@ -11,6 +11,7 @@ from .host_loop_activation import (
     build_host_loop_activation_packet,
     normalize_agent_type,
     render_agent_type_catalog_markdown,
+    scheduler_command_binding_for_agent_type,
 )
 from .project_prompt import (
     render_available_capability_args,
@@ -130,6 +131,7 @@ def build_agent_onboarding_packet(
                 cli_bin=cli_bin,
                 agent_id=str(selected_agent_id) if selected_agent_id else None,
                 available_capabilities=normalized_available_capabilities,
+                **scheduler_command_binding_for_agent_type(canonical_agent_type),
             )
             if activation_allowed
             else None

@@ -176,19 +176,15 @@ def build_codex_app_scheduler_ack_hint(
         safe_goal_id,
         "--agent-id",
         safe_agent_id,
+        "-A",
     ]
     for capability in safe_available_capabilities:
         cli_args.extend(["--available-capability", capability])
-    cli_args.extend(
-        [
-            "--surface",
-            safe_surface,
-            "--state-key",
-            safe_state_key,
-            "--applied-rrule",
-            safe_rrule,
-        ]
-    )
+    if safe_surface != CODEX_APP_SURFACE:
+        cli_args.extend(["--surface", safe_surface])
+    if safe_state_key != CODEX_APP_STATEFUL_BACKOFF_STATE_KEY:
+        cli_args.extend(["--state-key", safe_state_key])
+    cli_args.extend(["--applied-rrule", safe_rrule])
     if host_match_observed:
         cli_args.extend(
             [
@@ -254,6 +250,7 @@ def build_codex_app_scheduler_failure_hint(
         safe_goal_id,
         "--agent-id",
         safe_agent_id,
+        "-A",
     ]
     for capability in safe_capabilities:
         cli_args.extend(["--available-capability", capability])
