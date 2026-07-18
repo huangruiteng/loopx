@@ -445,9 +445,7 @@ def build_benchmark_case_lifecycle_packet(
                         f"{case_cli_prefix} quota should-run "
                         f"--goal-id {shlex.quote(case_goal_id)} "
                         f"--agent-id {BENCHMARK_CASE_LOOPX_AGENT_ID} "
-                        "--host-surface generic_cli "
-                        "--scheduler-owner outer_controller "
-                        "--execution-mode isolated_headless"
+                        "--runtime-profile outer_controller"
                     ),
                 ),
                 _packet_line(
@@ -850,9 +848,7 @@ def benchmark_case_loopx_install_command(
         f"{cli_prefix} quota should-run "
         f"--goal-id {shlex.quote(goal_id)} "
         f"--agent-id {shlex.quote(case_agent_id)} "
-        "--host-surface generic_cli "
-        "--scheduler-owner outer_controller "
-        "--execution-mode isolated_headless"
+        "--runtime-profile outer_controller"
     )
     refresh_cmd = (
         f"{cli_prefix} refresh-state "

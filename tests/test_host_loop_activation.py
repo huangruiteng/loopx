@@ -8,6 +8,7 @@ from loopx.host_loop_activation import (
     agent_type_for_host_surface,
     build_host_loop_activation_packet,
     normalize_agent_type,
+    scheduler_command_binding_for_agent_type,
 )
 
 
@@ -27,9 +28,31 @@ def test_codex_ide_is_an_exact_host_type_with_visible_goal_activation() -> None:
     assert packet["host_mutation"]["owner"] == "Codex IDE composer"
     assert packet["host_mutation"]["host_command"] == "/goal <task_body>"
     assert "automation_update" not in str(packet)
-    assert "-H codex_cli" in packet["commands"]["heartbeat_prompt"]
-    assert "-O agent_cli_loop" in packet["commands"]["heartbeat_prompt"]
-    assert "-M interactive" in packet["commands"]["heartbeat_prompt"]
+    assert (
+        "--runtime-profile codex_cli"
+        in packet["commands"]["heartbeat_prompt"]
+    )
+    assert " -H " not in packet["commands"]["heartbeat_prompt"]
+    assert " -O " not in packet["commands"]["heartbeat_prompt"]
+    assert " -M " not in packet["commands"]["heartbeat_prompt"]
+
+
+@pytest.mark.parametrize(
+    ("agent_type", "runtime_profile"),
+    (
+        ("codex-app", "codex_app_heartbeat"),
+        ("codex-cli", "codex_cli"),
+        ("codex-ide", "codex_cli"),
+        ("claude-code", "claude_code"),
+    ),
+)
+def test_first_class_hosts_bind_one_runtime_profile(
+    agent_type: str,
+    runtime_profile: str,
+) -> None:
+    assert scheduler_command_binding_for_agent_type(agent_type) == {
+        "runtime_profile": runtime_profile
+    }
 
 
 def test_codex_app_activation_uses_narrow_runtime_profile() -> None:

@@ -104,7 +104,7 @@ def assert_quota_guard(text: str) -> None:
     assert 'install_script="$HOME/loopx/scripts/install-local.sh"' in text, text
     assert "loopx doctor >/dev/null" in text, text
     assert 'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id' in text, text
-    assert "-H generic_cli -O outer_controller -M isolated_headless" in normalized, text
+    assert "--runtime-profile outer_controller" in normalized, text
     positions = []
     for phrase in MUST_HAVE:
         assert phrase in normalized, text
@@ -162,7 +162,7 @@ def main() -> int:
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
         "quota should-run --goal-id new-project-main-control "
-        "-H generic_cli -O outer_controller -M isolated_headless"
+        "--runtime-profile outer_controller"
     ), payload
     assert payload["quota_spend_command"] == (
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" '

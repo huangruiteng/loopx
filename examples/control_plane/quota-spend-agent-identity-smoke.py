@@ -112,8 +112,8 @@ def assert_monitor_poll_next_cli_action_preserves_agent_id(agent_id: str) -> Non
     )
 
     assert actions == [
-        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli -H generic_cli -O outer_controller -M isolated_headless --execute",
-        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli -H generic_cli -O outer_controller -M isolated_headless",
+        f"loopx quota monitor-poll --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --runtime-profile outer_controller --execute",
+        f"loopx --format json quota should-run --goal-id scoped-monitor-goal --agent-id {agent_id} --available-capability shell --available-capability network --available-capability github_cli --runtime-profile outer_controller",
     ], actions
 
 

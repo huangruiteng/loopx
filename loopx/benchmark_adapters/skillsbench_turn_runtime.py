@@ -249,9 +249,7 @@ def run_skillsbench_loopx_turn(
             f"{prefix} quota should-run "
             f"--goal-id {shlex.quote(config.goal_id)} "
             f"--agent-id {shlex.quote(config.agent_id)} "
-            "--host-surface generic_cli "
-            "--scheduler-owner outer_controller "
-            "--execution-mode isolated_headless"
+            "--runtime-profile outer_controller"
         )
         payload = bridge.loopx_json(command)
         hint = payload.get("scheduler_hint")

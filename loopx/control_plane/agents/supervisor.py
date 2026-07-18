@@ -430,7 +430,7 @@ from read-only agent status and thin evidence projections. Do not impersonate
 another peer's quota guard or reconstruct this packet from raw transcripts:
 
 ```bash
-{cli_bin} --format json quota should-run --goal-id {shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)} --host-surface codex_cli --scheduler-owner agent_cli_loop --execution-mode interactive
+{cli_bin} --format json quota should-run --goal-id {shlex.quote(goal_id)} --agent-id {shlex.quote(agent_id)} --runtime-profile codex_cli
 {observe_command}
 ```
 

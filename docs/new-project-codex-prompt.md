@@ -135,8 +135,13 @@ loopx new-project-prompt \
    先问 compute guard：
 
    ```bash
-   loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID> -H generic_cli -O outer_controller -M isolated_headless
+   loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <STABLE_GOAL_ID> --runtime-profile outer_controller
    ```
+
+   Codex App 使用紧凑别名 `--codex-app`；其他常见宿主只传一个
+   `--runtime-profile`（`codex_cli`、`claude_code`、`generic_cli` 或
+   `outer_controller`）。只有自定义执行上下文才同时传 `--host-surface`、
+   `--scheduler-owner` 和 `--execution-mode`。
 
    如果返回 `state=operator_gate`，把它当成人/控制器交互，而不是安静 skip：优先读取
    payload 里的 `gate_prompt`、`operator_question`、`recommended_action`、

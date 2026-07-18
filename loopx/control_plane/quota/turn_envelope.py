@@ -7,7 +7,6 @@ from typing import Any
 
 from ..scheduler.execution_context import (
     SchedulerExecutionContextResolution,
-    SchedulerRuntimeProfile,
     render_scheduler_execution_args,
     resolve_scheduler_execution_context,
 )
@@ -703,16 +702,9 @@ def _cold_path(
     resolution = resolve_scheduler_execution_context(scheduler_execution_context)
     scheduler_args = ""
     if resolution.ok and resolution.context is not None:
-        if resolution.context.source == (
-            f"runtime_profile:{SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value}"
-        ):
-            scheduler_args = render_scheduler_execution_args(
-                runtime_profile=SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value,
-            )
-        else:
-            scheduler_args = render_scheduler_execution_args(
-                scheduler_execution_context=resolution,
-            )
+        scheduler_args = render_scheduler_execution_args(
+            scheduler_execution_context=resolution,
+        )
     return {
         "full_decision": (
             f"loopx --format json quota should-run --goal-id {goal_id}"

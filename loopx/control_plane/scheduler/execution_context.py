@@ -32,6 +32,39 @@ class ExecutionMode(str, Enum):
 
 class SchedulerRuntimeProfile(str, Enum):
     CODEX_APP_HEARTBEAT = "codex_app_heartbeat"
+    CODEX_CLI_VISIBLE = "codex_cli"
+    CLAUDE_CODE_VISIBLE = "claude_code"
+    GENERIC_CLI_AGENT_LOOP = "generic_cli"
+    GENERIC_CLI_OUTER_CONTROLLER = "outer_controller"
+
+
+_SCHEDULER_RUNTIME_PROFILE_CONTEXTS = {
+    SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT: (
+        HostSurface.CODEX_APP,
+        SchedulerOwner.HOST_AUTOMATION,
+        ExecutionMode.HOSTED_AUTOMATION,
+    ),
+    SchedulerRuntimeProfile.CODEX_CLI_VISIBLE: (
+        HostSurface.CODEX_CLI,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE: (
+        HostSurface.CLAUDE_CODE,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP: (
+        HostSurface.GENERIC_CLI,
+        SchedulerOwner.AGENT_CLI_LOOP,
+        ExecutionMode.INTERACTIVE,
+    ),
+    SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER: (
+        HostSurface.GENERIC_CLI,
+        SchedulerOwner.OUTER_CONTROLLER,
+        ExecutionMode.ISOLATED_HEADLESS,
+    ),
+}
 
 
 GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT = {
@@ -214,17 +247,46 @@ def scheduler_execution_context_for_runtime_profile(
             supplied={"source": f"runtime_profile:{value}"},
         )
 
-    if profile is SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT:
-        return resolve_scheduler_execution_context(
-            {
-                "host_surface": HostSurface.CODEX_APP.value,
-                "scheduler_owner": SchedulerOwner.HOST_AUTOMATION.value,
-                "execution_mode": ExecutionMode.HOSTED_AUTOMATION.value,
-                "source": f"runtime_profile:{profile.value}",
-            }
-        )
+    host_surface, scheduler_owner, execution_mode = (
+        _SCHEDULER_RUNTIME_PROFILE_CONTEXTS[profile]
+    )
+    return resolve_scheduler_execution_context(
+        {
+            "host_surface": host_surface.value,
+            "scheduler_owner": scheduler_owner.value,
+            "execution_mode": execution_mode.value,
+            "source": f"runtime_profile:{profile.value}",
+        }
+    )
 
-    raise AssertionError(f"unhandled scheduler runtime profile: {profile.value}")
+
+def scheduler_runtime_profile_for_execution_context(
+    value: Mapping[str, Any] | SchedulerExecutionContextResolution | None,
+) -> SchedulerRuntimeProfile | None:
+    resolution = resolve_scheduler_execution_context(value)
+    if not resolution.ok or resolution.context is None:
+        return None
+    signature = (
+        resolution.context.host_surface,
+        resolution.context.scheduler_owner,
+        resolution.context.execution_mode,
+    )
+    return next(
+        (
+            profile
+            for profile, profile_signature in _SCHEDULER_RUNTIME_PROFILE_CONTEXTS.items()
+            if signature == profile_signature
+        ),
+        None,
+    )
+
+
+def _render_scheduler_runtime_profile_args(
+    profile: SchedulerRuntimeProfile,
+) -> str:
+    if profile is SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT:
+        return " --codex-app"
+    return f" --runtime-profile {shlex.quote(profile.value)}"
 
 
 def render_scheduler_execution_args(
@@ -240,14 +302,12 @@ def render_scheduler_execution_args(
         )
     if runtime_profile:
         try:
-            normalized_profile = SchedulerRuntimeProfile(runtime_profile).value
+            profile = SchedulerRuntimeProfile(runtime_profile)
         except ValueError as exc:
             raise ValueError(
                 f"unsupported scheduler runtime profile: {runtime_profile}"
             ) from exc
-        if normalized_profile == SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value:
-            return " --codex-app"
-        return f" --runtime-profile {shlex.quote(normalized_profile)}"
+        return _render_scheduler_runtime_profile_args(profile)
     if scheduler_execution_context is None:
         return ""
     resolution = resolve_scheduler_execution_context(scheduler_execution_context)
@@ -255,6 +315,9 @@ def render_scheduler_execution_args(
         raise ValueError(
             "invalid scheduler_execution_context: " + "; ".join(resolution.errors)
         )
+    profile = scheduler_runtime_profile_for_execution_context(resolution)
+    if profile is not None:
+        return _render_scheduler_runtime_profile_args(profile)
     context = resolution.context
     return "".join(
         (

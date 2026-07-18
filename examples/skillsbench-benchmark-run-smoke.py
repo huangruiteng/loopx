@@ -1580,7 +1580,7 @@ def test_goal_start_agent_runs_guided_slash_contract_before_solving() -> None:
     assert "todo add" in prompt
     assert "refresh-state" in prompt
     assert "quota should-run" in prompt
-    assert "-H generic_cli -O outer_controller -M isolated_headless" in prompt
+    assert "--runtime-profile outer_controller" in prompt
     assert "todo claim" in prompt
     assert "host-preseeded approximation" in prompt
     assert "heartbeat-prompt" in prompt
@@ -2958,7 +2958,7 @@ def test_product_mode_declared_done_requires_case_state_depth() -> None:
         assert prompt is not None, trace
         assert "Mandatory LoopX lifecycle checkpoint" in prompt
         assert "quota should-run --goal-id skillsbench-case" in prompt
-        assert "-H generic_cli -O outer_controller -M isolated_headless" in prompt
+        assert "--runtime-profile outer_controller" in prompt
         assert "todo claim --goal-id skillsbench-case" in prompt
         assert "todo update --goal-id skillsbench-case" in prompt
         assert "refresh-state --goal-id skillsbench-case" in prompt
@@ -3713,7 +3713,7 @@ def test_product_mode_missing_lifecycle_prompts_exact_checkpoint() -> None:
         assert prompt is not None, trace
         assert "Mandatory LoopX lifecycle checkpoint" in prompt
         assert "quota should-run --goal-id skillsbench-case" in prompt
-        assert "-H generic_cli -O outer_controller -M isolated_headless" in prompt
+        assert "--runtime-profile outer_controller" in prompt
         assert "todo claim --goal-id skillsbench-case" in prompt
         assert "todo update --goal-id skillsbench-case" in prompt
         assert "refresh-state --goal-id skillsbench-case" in prompt

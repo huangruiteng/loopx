@@ -402,10 +402,8 @@ def main() -> int:
             if " quota should-run " in command
         ]
         assert len(quota_commands) == 1, scoped_selected
-        assert (
-            "-H generic_cli -O outer_controller -M isolated_headless"
-            in quota_commands[0]
-        ), quota_commands
+        assert "--runtime-profile outer_controller" in quota_commands[0], quota_commands
+        assert " -H " not in quota_commands[0], quota_commands
 
         capability_registry = write_capability_scoped_registry(root, runtime)
         capability_blocked = run_cli(

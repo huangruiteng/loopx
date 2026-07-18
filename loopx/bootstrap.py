@@ -897,7 +897,7 @@ def bootstrap_project(
             f"loopx --registry {relative_state_file(project, registry_path)} registry",
             f"loopx --registry {relative_state_file(project, registry_path)} status",
             f"loopx --registry {relative_state_file(project, registry_path)} check --scan-root {project}",
-            f"loopx --format json --registry {runtime_root / 'registry.global.json'} quota should-run --goal-id {goal_id} --host-surface generic_cli --scheduler-owner agent_cli_loop --execution-mode interactive",
+            f"loopx --format json --registry {runtime_root / 'registry.global.json'} quota should-run --goal-id {goal_id} --runtime-profile generic_cli",
             f"loopx --registry {relative_state_file(project, registry_path)} refresh-state --goal-id {goal_id}",
             f"loopx --registry {runtime_root / 'registry.global.json'} status",
             f"loopx --registry {relative_state_file(project, registry_path)} history --goal-id {goal_id}",

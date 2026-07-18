@@ -332,6 +332,45 @@ def test_turn_envelope_full_decision_preserves_codex_app_profile() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("profile", "expected_arg"),
+    (
+        (
+            SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+            "--runtime-profile codex_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+            "--runtime-profile claude_code",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
+            "--runtime-profile generic_cli",
+        ),
+        (
+            SchedulerRuntimeProfile.GENERIC_CLI_OUTER_CONTROLLER,
+            "--runtime-profile outer_controller",
+        ),
+    ),
+)
+def test_turn_envelope_full_decision_compacts_first_class_profiles(
+    profile: SchedulerRuntimeProfile,
+    expected_arg: str,
+) -> None:
+    envelope = build_turn_envelope(
+        _full_decision(),
+        scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
+            profile
+        ),
+    )
+
+    command = envelope["detail_ref"]["full_decision"]
+    assert expected_arg in command
+    assert " -H " not in command
+    assert " -O " not in command
+    assert " -M " not in command
+
+
 def test_turn_envelope_unbound_full_decision_is_not_executable() -> None:
     full_decision = build_turn_envelope(_full_decision())["detail_ref"][
         "full_decision"

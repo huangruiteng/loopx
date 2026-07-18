@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
+from .control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
     normalize_todo_claimed_by,
@@ -22,24 +23,14 @@ def scheduler_command_binding_for_agent_type(
     agent_type: str,
 ) -> dict[str, Any]:
     canonical = normalize_agent_type(agent_type)
-    if canonical == "codex-app":
-        return {"runtime_profile": "codex_app_heartbeat"}
-    if canonical in {"codex-cli", "codex-ide"}:
-        return {
-            "scheduler_execution_context": {
-                "host_surface": "codex_cli",
-                "scheduler_owner": "agent_cli_loop",
-                "execution_mode": "interactive",
-            }
-        }
-    if canonical == "claude-code":
-        return {
-            "scheduler_execution_context": {
-                "host_surface": "claude_code",
-                "scheduler_owner": "agent_cli_loop",
-                "execution_mode": "interactive",
-            }
-        }
+    runtime_profile = {
+        "codex-app": SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        "codex-ide": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+    }.get(canonical)
+    if runtime_profile is not None:
+        return {"runtime_profile": runtime_profile.value}
     return {}
 
 
