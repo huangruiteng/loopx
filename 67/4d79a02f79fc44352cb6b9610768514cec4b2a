@@ -1,0 +1,27 @@
+examples/canary/premerge-validation-gate-smoke.py
+  s_32e2a9a204a8e4::t_bbbb748643776b 158-168,486
+examples/canary/smoke-suite-runner-smoke.py
+  s_32e2a9a204a8e4::t_1f3d97a1624262 213
+loopx/canary/premerge.py
+  s_32e2a9a204a8e4::t_89eaf0fdf735b4 46-51,288-289
+loopx/canary/smoke_profiles.py
+  s_32e2a9a204a8e4::t_99e07c9dc1c08a 75-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "674d79a02f79fc44352cb6b9610768514cec4b2a",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
