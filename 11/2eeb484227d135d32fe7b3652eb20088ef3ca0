@@ -1,0 +1,33 @@
+docs/capabilities/README.md
+  s_76ee28abb3c3a4::t_03b128e84ed357 9-11
+docs/capabilities/periodic-report/README.md
+  s_32e2a9a204a8e4::t_dcd4a2ee214c11 9,13-27,34-39
+docs/reference/protocols/periodic-report-v0.md
+  s_32e2a9a204a8e4::t_bda1bd004e7ca4 8-17,28-63,76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "112eeb484227d135d32fe7b3652eb20088ef3ca0",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
