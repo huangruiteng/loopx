@@ -55,8 +55,16 @@ def write_planned_registry(root: Path) -> Path:
                         "state_file": state_file,
                         "authority_sources": [{"kind": "doc", "role": "primary", "path": "README.md"}],
                         "authority_registry": {
+                            "declared": True,
+                            "required": True,
                             "path": "docs/meta/DOC_REGISTRY.yaml",
+                            "path_exists": False,
                             "read_status": "read",
+                            "default_entry_count": 99,
+                            "default_entries_checked": 99,
+                            "default_entries_present": 99,
+                            "topic_authority_count": 99,
+                            "project_material_count": 99,
                             "default_entry_docs": [
                                 "docs/TODO.md",
                                 "docs/meta/DOC_REGISTRY.yaml",
@@ -197,6 +205,7 @@ def main() -> int:
         assert "planned_adapter_requires_controller_opt_in" not in after["residual_risks"], after
         assert "do not append real run history or grant write-control" in after["recommended_action"], after
         project_map = after["project_map"]
+        assert project_map["authority_registry_path_exists"] is True, project_map
         assert project_map["authority_registry_default_entry_count"] == 2, project_map
         assert project_map["authority_registry_default_entries_present"] == 2, project_map
         assert project_map["topic_authority_count"] == 1, project_map

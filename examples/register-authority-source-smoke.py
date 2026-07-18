@@ -50,8 +50,14 @@ def write_fixture(root: Path) -> tuple[Path, Path, Path]:
                         "requires_authority_registry": True,
                         "authority_sources": [],
                         "authority_registry": {
+                            "declared": True,
+                            "required": True,
                             "path": "docs/meta/DOC_REGISTRY.yaml",
+                            "path_exists": True,
                             "read_status": "not_read",
+                            "default_entry_count": 0,
+                            "topic_authority_count": 12,
+                            "project_material_count": 12,
                         },
                         "adapter": {
                             "kind": "fixture_connected_readonly_v0",
@@ -151,6 +157,10 @@ def main() -> int:
         assert dry["entry"]["source_ref_redacted"] is True, dry
         assert dry["entry"]["source_ref_kind"] == "url", dry
         assert dry["entry"]["source_ref_sha256"] == hashlib.sha256(SOURCE_REF.encode("utf-8")).hexdigest(), dry
+        dry_summary = dry["authority_registry_summary"]
+        assert dry_summary["path_exists"] is False, dry_summary
+        assert dry_summary["topic_authority_count"] == 1, dry_summary
+        assert dry_summary["project_material_count"] == 1, dry_summary
         assert registry.read_text(encoding="utf-8") == before, "dry-run must not mutate registry"
 
         written = run_cli(registry, runtime, *registration_args())
@@ -169,6 +179,9 @@ def main() -> int:
         assert material["source_ref_redacted"] is True, material
         assert "source_ref" not in material, material
         assert goal["authority_registry"]["topic_authority"]["product_vision"] == SOURCE_ID, goal
+        assert goal["authority_registry"]["path_exists"] is False, goal
+        assert goal["authority_registry"]["topic_authority_count"] == 1, goal
+        assert goal["authority_registry"]["project_material_count"] == 1, goal
         assert goal["authority_sources"][0]["id"] == SOURCE_ID, goal["authority_sources"]
 
         global_path = Path(written["global_sync"]["global_registry"])
