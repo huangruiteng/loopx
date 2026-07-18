@@ -19,6 +19,7 @@ from loopx.capabilities.lark.event_inbox import (  # noqa: E402
     project_lark_event_inbox_urgency,
 )
 from loopx.control_plane.work_items.operator_inbox import (  # noqa: E402
+    LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
     project_operator_inbox_urgency,
 )
 from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
@@ -134,6 +135,18 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
+        (inbox / "invalid_event.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "lark_event_inbox_event_v0",
+                    "event_id": "invalid event id",
+                    "message_id": "om_invalid_event",
+                    "create_time": "2026-07-15T00:00:01Z",
+                    "content": "@Project Review Bot 这条无效事件不能进入 urgency？",
+                }
+            ),
+            encoding="utf-8",
+        )
 
         decision = build_quota_should_run(status_payload(project), goal_id=GOAL_ID)
         assert decision["should_run"] is True, decision
@@ -147,13 +160,20 @@ def main() -> None:
         assert lane["direct_question_count"] == 1, lane
         assert lane["reply_to_bot_count"] == 0, lane
         assert lane["pending_count"] == 1, lane
-        assert decision["execution_obligation"]["contract_obligation"] == lane["obligation"]
+        assert (
+            decision["execution_obligation"]["contract_obligation"]
+            == lane["obligation"]
+        )
         assert "durable effect" in decision["recommended_action"], decision
-        urgency = decision["goal_boundary"]["capabilities"]["lark_event_inbox"]["urgency"]
+        urgency = decision["goal_boundary"]["capabilities"]["lark_event_inbox"][
+            "urgency"
+        ]
         assert urgency["schema_version"] == "lark_event_inbox_urgency_v0", urgency
         assert urgency["reply_due"] is True, urgency
         assert urgency["local_private_content_returned"] is False, urgency
-        assert "items" not in urgency and "message_id" not in json.dumps(urgency), urgency
+        assert "items" not in urgency and "message_id" not in json.dumps(urgency), (
+            urgency
+        )
         parity_now = datetime(2026, 7, 15, 0, 10, tzinfo=timezone.utc)
         compatibility = project_lark_event_inbox_urgency(
             project=project,
@@ -163,9 +183,7 @@ def main() -> None:
         generic = project_operator_inbox_urgency(
             project=project,
             config_path=config,
-            config_schema_version="lark_event_inbox_config_v0",
-            event_schema_version="lark_event_inbox_event_v0",
-            processed_schema_version="lark_event_inbox_processed_v0",
+            source_contract=LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
             now=parity_now,
         )
         compatibility["schema_version"] = "operator_inbox_urgency_v0"

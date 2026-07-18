@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from ...control_plane.work_items.operator_inbox import (
+    LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
     operator_inbox_attention_kind,
     project_operator_inbox_urgency,
 )
@@ -197,9 +198,7 @@ def project_lark_event_inbox_urgency(
     urgency = project_operator_inbox_urgency(
         project=project,
         config_path=config_path,
-        config_schema_version=CONFIG_SCHEMA_VERSION,
-        event_schema_version=EVENT_SCHEMA_VERSION,
-        processed_schema_version=PROCESSED_SCHEMA_VERSION,
+        source_contract=LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
         now=now,
     )
     urgency["schema_version"] = "lark_event_inbox_urgency_v0"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -12,6 +13,36 @@ OPERATOR_INBOX_URGENCY_SCHEMA_VERSION = "operator_inbox_urgency_v0"
 CAPTURE_SCOPES = {"addressed_only", "configured_chat_all"}
 QUESTION_SIGNAL_PATTERN = re.compile(
     r"[?？]|(?:请问|怎么|怎样|为何|为什么|是不是|是否|能否|可以吗|行吗|结论呢|回复吗)"
+)
+
+
+@dataclass(frozen=True)
+class OperatorInboxSourceContract:
+    config_schema_version: str
+    event_schema_version: str
+    processed_schema_version: str
+    message_id_pattern: re.Pattern[str]
+    event_id_pattern: re.Pattern[str]
+    sender_profile_pattern: re.Pattern[str]
+    required_sender_identity: str
+    reply_flag_field: str
+    operator_display_name_field: str
+    destination_field: str
+    destination_pattern: re.Pattern[str]
+
+
+LARK_OPERATOR_INBOX_SOURCE_CONTRACT = OperatorInboxSourceContract(
+    config_schema_version="lark_event_inbox_config_v0",
+    event_schema_version="lark_event_inbox_event_v0",
+    processed_schema_version="lark_event_inbox_processed_v0",
+    message_id_pattern=re.compile(r"om_[A-Za-z0-9_-]+"),
+    event_id_pattern=re.compile(r"[A-Za-z0-9:_-]{1,200}"),
+    sender_profile_pattern=re.compile(r"[A-Za-z0-9._-]{1,100}"),
+    required_sender_identity="bot",
+    reply_flag_field="reply_to_bot",
+    operator_display_name_field="bot_display_name",
+    destination_field="chat_id",
+    destination_pattern=re.compile(r"oc_[A-Za-z0-9_-]+"),
 )
 
 
@@ -42,19 +73,25 @@ def _read_mapping(path: Path) -> Mapping[str, Any]:
 def _pending_events(
     inbox: Path,
     *,
-    event_schema_version: str,
-    processed_schema_version: str,
+    source_contract: OperatorInboxSourceContract,
 ) -> list[dict[str, Any]]:
     processed_path = inbox / "processed.json"
     processed: set[str] = set()
     if processed_path.is_file():
         processed_payload = _read_mapping(processed_path)
-        if processed_payload.get("schema_version") != processed_schema_version:
+        if (
+            processed_payload.get("schema_version")
+            != source_contract.processed_schema_version
+        ):
             raise ValueError("operator inbox processed-state schema is invalid")
         message_ids = processed_payload.get("message_ids")
         if not isinstance(message_ids, list):
             raise ValueError("operator inbox processed message_ids must be a list")
-        processed = {str(value).strip() for value in message_ids if str(value).strip()}
+        processed = {
+            str(value)
+            for value in message_ids
+            if source_contract.message_id_pattern.fullmatch(str(value))
+        }
 
     events: dict[str, dict[str, Any]] = {}
     for path in sorted(inbox.glob("*.json")) if inbox.is_dir() else []:
@@ -65,10 +102,13 @@ def _pending_events(
         except (OSError, ValueError, json.JSONDecodeError):
             continue
         message_id = str(payload.get("message_id") or "").strip()
+        event_id = str(payload.get("event_id") or message_id).strip()
+        parent_id = str(payload.get("parent_id") or "").strip()
         content = " ".join(str(payload.get("content") or "").split())[:1200]
         if (
-            payload.get("schema_version") != event_schema_version
-            or not message_id
+            payload.get("schema_version") != source_contract.event_schema_version
+            or not source_contract.message_id_pattern.fullmatch(message_id)
+            or not source_contract.event_id_pattern.fullmatch(event_id)
             or not content
         ):
             continue
@@ -81,8 +121,8 @@ def _pending_events(
                 "reply_context_verified": payload.get("reply_context_verified") is True,
                 "reply_to_operator": bool(
                     payload.get("reply_context_verified") is True
-                    and str(payload.get("parent_id") or "").strip()
-                    and payload.get("reply_to_bot") is True
+                    and source_contract.message_id_pattern.fullmatch(parent_id)
+                    and payload.get(source_contract.reply_flag_field) is True
                 ),
             },
         )
@@ -143,9 +183,7 @@ def project_operator_inbox_urgency(
     *,
     project: str | Path,
     config_path: str | Path,
-    config_schema_version: str,
-    event_schema_version: str,
-    processed_schema_version: str,
+    source_contract: OperatorInboxSourceContract,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Project provider-owned inbox files into a content-free control-plane read model."""
@@ -158,9 +196,34 @@ def project_operator_inbox_urgency(
     except ValueError as exc:
         raise ValueError("operator inbox config must stay inside the project") from exc
     config = _read_mapping(path)
-    if config.get("schema_version") != config_schema_version:
+    if config.get("schema_version") != source_contract.config_schema_version:
         raise ValueError("operator inbox config schema is invalid")
     enabled = config.get("enabled") is True
+    capture_scope = str(config.get("capture_scope") or "addressed_only").strip()
+    if capture_scope not in CAPTURE_SCOPES:
+        raise ValueError("operator inbox capture_scope is invalid")
+    reply = config.get("reply")
+    if reply is not None and not isinstance(reply, Mapping):
+        raise ValueError("operator inbox reply config must be an object")
+    reply = reply if isinstance(reply, Mapping) else {}
+    reply_enabled = reply.get("enabled") is True
+    operator_display_name = " ".join(
+        str(reply.get(source_contract.operator_display_name_field) or "").split()
+    )[:100]
+    sender_profile = str(reply.get("sender_profile") or "").strip()
+    sender_identity = str(reply.get("sender_identity") or "").strip()
+    destination = str(reply.get(source_contract.destination_field) or "").strip()
+    if reply_enabled and (
+        capture_scope != "configured_chat_all"
+        or not source_contract.sender_profile_pattern.fullmatch(sender_profile)
+        or sender_profile.lower() == "default"
+        or sender_identity != source_contract.required_sender_identity
+        or not operator_display_name
+        or not source_contract.destination_pattern.fullmatch(destination)
+    ):
+        raise ValueError(
+            "enabled operator inbox reply does not satisfy its source contract"
+        )
     if not enabled:
         return {
             "schema_version": OPERATOR_INBOX_URGENCY_SCHEMA_VERSION,
@@ -174,26 +237,10 @@ def project_operator_inbox_urgency(
             "local_private_content_returned": False,
         }
 
-    capture_scope = str(config.get("capture_scope") or "addressed_only").strip()
-    if capture_scope not in CAPTURE_SCOPES:
-        raise ValueError("operator inbox capture_scope is invalid")
-    reply = config.get("reply")
-    reply = reply if isinstance(reply, Mapping) else {}
-    reply_enabled = reply.get("enabled") is True
-    operator_display_name = " ".join(
-        str(
-            reply.get("bot_display_name") or reply.get("operator_display_name") or ""
-        ).split()
-    )[:100]
-    if reply_enabled and not operator_display_name:
-        raise ValueError(
-            "enabled operator inbox reply requires an operator display name"
-        )
     inbox = _safe_inbox_path(root, config.get("inbox_dir"))
     pending = _pending_events(
         inbox,
-        event_schema_version=event_schema_version,
-        processed_schema_version=processed_schema_version,
+        source_contract=source_contract,
     )
     kinds = [
         operator_inbox_attention_kind(
