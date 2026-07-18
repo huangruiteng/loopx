@@ -1,0 +1,27 @@
+docs/product/presentation-surface-layout.md
+  s_e3f612788718c1::t_970c1c25fff306 47-48
+examples/control_plane/repo-python-line-budget-smoke.py
+  s_e3f612788718c1::t_ff00a2df696335 65
+loopx/canary/planner.py
+  s_e3f612788718c1::t_c0218d2a31a3b2 869
+loopx/presentation/README.md
+  s_e3f612788718c1::t_2995d4452fe433 28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "172b79385dd189968c848e0561554acee8bb7d90",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
