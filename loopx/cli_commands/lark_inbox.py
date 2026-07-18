@@ -6,6 +6,13 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from ..extensions.lark import (
+    LARK_COLLECTOR_PERMISSION,
+    LARK_EXTENSION_ID,
+    LARK_INBOX_READ_PERMISSION,
+    LARK_INBOX_WRITE_PERMISSION,
+    LARK_REPLY_PERMISSION,
+)
 from ..extensions.lark.event_inbox import (
     acknowledge_lark_event_inbox,
     ingest_lark_event_inbox,
@@ -18,6 +25,10 @@ from ..extensions.lark.event_collector import (
     plan_lark_event_collector,
 )
 from ..extensions.lark.event_collector_runtime import run_lark_event_collector
+from ..extensions.runtime import (
+    default_extension_state_file,
+    resolve_extension_activation,
+)
 from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
@@ -152,6 +163,41 @@ def _read_stdin_events() -> list[object]:
     raise ValueError("lark inbox ingest input must be an event object or event array")
 
 
+def _required_extension_permissions(command: str) -> tuple[str, ...]:
+    if command == "drain":
+        return (LARK_INBOX_READ_PERMISSION,)
+    if command in {"ack", "ingest"}:
+        return (LARK_INBOX_WRITE_PERMISSION,)
+    if command == "reply":
+        return (LARK_REPLY_PERMISSION,)
+    return (LARK_COLLECTOR_PERMISSION,)
+
+
+def _resolve_lark_activation(
+    command: str,
+    *,
+    runtime_root_arg: str | None,
+) -> dict[str, object]:
+    return resolve_extension_activation(
+        LARK_EXTENSION_ID,
+        state_file=default_extension_state_file(runtime_root_arg),
+        required_permissions=_required_extension_permissions(command),
+    )
+
+
+def _disabled_inbox_projection() -> dict[str, object]:
+    return {
+        "ok": True,
+        "schema_version": "lark_event_inbox_projection_v0",
+        "enabled": False,
+        "configured": False,
+        "pending_count": 0,
+        "items": [],
+        "local_private_content_returned": False,
+        "external_reads_performed": False,
+    }
+
+
 def _render(payload: dict[str, object]) -> str:
     lines = [
         "# Lark Event Inbox",
@@ -171,36 +217,37 @@ def handle_lark_inbox_command(
     args: argparse.Namespace,
     *,
     registry_path: Path,
+    runtime_root_arg: str | None,
     output_format: Callable[..., str],
     print_payload: Callable,
 ) -> int | None:
     if args.command != "lark-inbox":
         return None
+    activation: dict[str, object] | None = None
     try:
-        if args.lark_inbox_command == "drain":
+        inbox_commands = {"drain", "ack", "reply", "ingest"}
+        project: Path | None = None
+        config_path: str | None = None
+        if args.lark_inbox_command in inbox_commands:
             project, config_path = _inbox_context(args, registry_path)
             if config_path is None:
-                payload = {
-                    "ok": True,
-                    "schema_version": "lark_event_inbox_projection_v0",
-                    "enabled": False,
-                    "configured": False,
-                    "pending_count": 0,
-                    "items": [],
-                    "local_private_content_returned": False,
-                    "external_reads_performed": False,
-                }
+                if args.lark_inbox_command != "drain":
+                    raise ValueError("goal does not configure a Lark event inbox")
+                payload = _disabled_inbox_projection()
                 print_payload(payload, output_format(args), _render)
                 return 0
+
+        activation = _resolve_lark_activation(
+            args.lark_inbox_command,
+            runtime_root_arg=runtime_root_arg,
+        )
+        if args.lark_inbox_command == "drain":
             payload = inspect_lark_event_inbox(
                 project=project,
                 config_path=config_path,
                 limit=args.limit,
             )
         elif args.lark_inbox_command == "ack":
-            project, config_path = _inbox_context(args, registry_path)
-            if config_path is None:
-                raise ValueError("goal does not configure a Lark event inbox")
             payload = acknowledge_lark_event_inbox(
                 project=project,
                 config_path=config_path,
@@ -208,9 +255,6 @@ def handle_lark_inbox_command(
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "reply":
-            project, config_path = _inbox_context(args, registry_path)
-            if config_path is None:
-                raise ValueError("goal does not configure a Lark event inbox")
             payload = reply_lark_event_inbox(
                 project=project,
                 config_path=config_path,
@@ -219,9 +263,6 @@ def handle_lark_inbox_command(
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "ingest":
-            project, config_path = _inbox_context(args, registry_path)
-            if config_path is None:
-                raise ValueError("goal does not configure a Lark event inbox")
             payload = ingest_lark_event_inbox(
                 project=project,
                 config_path=config_path,
@@ -232,11 +273,13 @@ def handle_lark_inbox_command(
             payload = plan_lark_event_collector(
                 project=args.project,
                 config_path=args.config,
+                runtime_root=runtime_root_arg,
             )
         elif args.lark_inbox_command == "collector-install":
             payload = install_lark_event_collector(
                 project=args.project,
                 config_path=args.config,
+                runtime_root=runtime_root_arg,
                 execute=args.execute,
             )
         elif args.lark_inbox_command == "collector-run":
@@ -250,6 +293,7 @@ def handle_lark_inbox_command(
             payload = inspect_lark_event_collector(
                 project=args.project,
                 config_path=args.config,
+                runtime_root=runtime_root_arg,
                 probe_event_bus=args.probe_event_bus,
             )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -258,5 +302,7 @@ def handle_lark_inbox_command(
             "schema_version": "lark_event_inbox_error_v0",
             "error": str(exc),
         }
+    if activation is not None and payload.get("ok"):
+        payload["extension_activation"] = activation
     print_payload(payload, output_format(args), _render)
     return 0 if payload.get("ok") else 1

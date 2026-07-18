@@ -188,7 +188,12 @@ def _executable_prefix(executable: str) -> list[str]:
     return [executable]
 
 
-def _collector_argv(config: Mapping[str, Any], executable: str) -> list[str]:
+def _collector_argv(
+    config: Mapping[str, Any],
+    executable: str,
+    *,
+    runtime_root: str | Path | None = None,
+) -> list[str]:
     prefix = _executable_prefix(executable)
     repo_root = Path(__file__).resolve().parents[3]
     discovered = shutil.which("loopx")
@@ -197,17 +202,21 @@ def _collector_argv(config: Mapping[str, Any], executable: str) -> list[str]:
     )
     if not loopx_executable.is_file():
         raise ValueError("loopx executable is unavailable for collector runtime")
-    argv = [
-        str(loopx_executable),
-        "lark-inbox",
-        "collector-run",
-        "--project",
-        str(config["project"]),
-        "--config",
-        str(config["config_path"]),
-        "--lark-cli-executable",
-        executable,
-    ]
+    argv = [str(loopx_executable)]
+    if runtime_root is not None:
+        argv.extend(["--runtime-root", str(Path(runtime_root).expanduser().resolve())])
+    argv.extend(
+        [
+            "lark-inbox",
+            "collector-run",
+            "--project",
+            str(config["project"]),
+            "--config",
+            str(config["config_path"]),
+            "--lark-cli-executable",
+            executable,
+        ]
+    )
     if len(prefix) == 2:
         argv.extend(["--node-executable", prefix[0]])
     return argv
@@ -247,9 +256,17 @@ def _service_payload(config: Mapping[str, Any], argv: Sequence[str]) -> bytes:
     ).encode()
 
 
-def _plan(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[str], bytes]:
+def _plan(
+    config: Mapping[str, Any],
+    *,
+    runtime_root: str | Path | None = None,
+) -> tuple[dict[str, Any], list[str], bytes]:
     executable = shutil.which(str(config["lark_cli_bin"]))
-    argv = _collector_argv(config, executable or str(config["lark_cli_bin"]))
+    argv = _collector_argv(
+        config,
+        executable or str(config["lark_cli_bin"]),
+        runtime_root=runtime_root,
+    )
     service_payload = _service_payload(config, argv)
     return (
         {
@@ -284,10 +301,13 @@ def _plan(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[str], bytes]:
 
 
 def plan_lark_event_collector(
-    *, project: str | Path, config_path: str | Path
+    *,
+    project: str | Path,
+    config_path: str | Path,
+    runtime_root: str | Path | None = None,
 ) -> dict[str, Any]:
     config = load_lark_event_collector_config(project=project, config_path=config_path)
-    plan, _, _ = _plan(config)
+    plan, _, _ = _plan(config, runtime_root=runtime_root)
     return plan
 
 
@@ -307,11 +327,12 @@ def install_lark_event_collector(
     *,
     project: str | Path,
     config_path: str | Path,
+    runtime_root: str | Path | None = None,
     execute: bool = False,
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     config = load_lark_event_collector_config(project=project, config_path=config_path)
-    plan, _, _ = _plan(config)
+    plan, _, _ = _plan(config, runtime_root=runtime_root)
     if not config["enabled"]:
         raise ValueError("cannot install a disabled lark collector")
     if not plan["lark_cli_available"]:
@@ -326,7 +347,7 @@ def install_lark_event_collector(
             "execute": execute,
             "install_hint": "Upgrade lark-cli to a version with event consume support.",
         }
-    argv = _collector_argv(config, str(executable))
+    argv = _collector_argv(config, str(executable), runtime_root=runtime_root)
     service_payload = _service_payload(config, argv)
     if not execute:
         return {
@@ -379,11 +400,12 @@ def inspect_lark_event_collector(
     *,
     project: str | Path,
     config_path: str | Path,
+    runtime_root: str | Path | None = None,
     probe_event_bus: bool = False,
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     config = load_lark_event_collector_config(project=project, config_path=config_path)
-    plan, _, _ = _plan(config)
+    plan, _, _ = _plan(config, runtime_root=runtime_root)
     service_path = _service_file(config)
     if config["supervisor"] == "launchd":
         observed = _run(

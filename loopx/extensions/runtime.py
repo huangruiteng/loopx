@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from copy import deepcopy
 import hashlib
@@ -22,6 +22,7 @@ from .readiness import (
 EXTENSION_STATE_SCHEMA_VERSION = "loopx_extension_state_v0"
 EXTENSION_OPERATION_SCHEMA_VERSION = "loopx_extension_operation_v0"
 EXTENSION_BINDING_SCHEMA_VERSION = "loopx_extension_runtime_binding_v0"
+EXTENSION_ACTIVATION_SCHEMA_VERSION = "loopx_extension_activation_v0"
 MAX_REVISIONS = 5
 
 
@@ -467,14 +468,11 @@ def _verified_entrypoint(entry: Mapping[str, Any]) -> Path | None:
     return identity[0]
 
 
-def resolve_extension_binding(
+def _resolved_active_extension(
     extension_id: str,
     *,
     state_file: str | Path,
-    capability_id: str,
-    protocol: str,
-    permission: str,
-) -> dict[str, Any]:
+) -> tuple[str, Path, Mapping[str, Any]]:
     state = _read_state(Path(state_file).expanduser())
     entry = state["extensions"].get(extension_id)
     if not isinstance(entry, dict):
@@ -489,6 +487,62 @@ def resolve_extension_binding(
     manifest = snapshot.get("manifest")
     if not isinstance(manifest, Mapping):
         raise ValueError("extension active manifest is invalid")
+    return active_revision, verified_entrypoint, manifest
+
+
+def resolve_extension_activation(
+    extension_id: str,
+    *,
+    state_file: str | Path,
+    required_permissions: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Resolve one enabled, revision-bound extension compatibility delegate."""
+
+    active_revision, _, manifest = _resolved_active_extension(
+        extension_id,
+        state_file=state_file,
+    )
+    provider = manifest.get("provider")
+    if not isinstance(provider, Mapping):
+        raise ValueError("extension active manifest is incomplete")
+    declared_permissions = {
+        str(permission)
+        for permission in provider.get("permissions") or []
+        if str(permission).strip()
+    }
+    required = {
+        str(permission).strip()
+        for permission in required_permissions
+        if str(permission).strip()
+    }
+    missing = sorted(required - declared_permissions)
+    if missing:
+        raise ValueError(
+            f"extension `{extension_id}` does not declare permissions {missing}"
+        )
+    return {
+        "schema_version": EXTENSION_ACTIVATION_SCHEMA_VERSION,
+        "extension_id": extension_id,
+        "provider_version": provider.get("version"),
+        "revision": active_revision,
+        "enabled": True,
+        "doctor_verified": True,
+        "required_permissions": sorted(required),
+    }
+
+
+def resolve_extension_binding(
+    extension_id: str,
+    *,
+    state_file: str | Path,
+    capability_id: str,
+    protocol: str,
+    permission: str,
+) -> dict[str, Any]:
+    active_revision, verified_entrypoint, manifest = _resolved_active_extension(
+        extension_id,
+        state_file=state_file,
+    )
     provider = manifest.get("provider")
     runtime = _runtime(manifest)
     implementations = manifest.get("implementations")
