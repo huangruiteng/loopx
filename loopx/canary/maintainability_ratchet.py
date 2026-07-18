@@ -171,9 +171,10 @@ REVIEWED_MAINTAINABILITY_EXCEPTIONS: dict[str, dict[str, Any]] = {
         "Move the bootstrap attribution into the benchmark runtime projection and delete the edge.",
     ),
     "compatibility_facade:loopx.quota": _exception(
-        "The public loopx.quota import surface remains a supported compatibility contract.",
+        "The public loopx.quota import surface remains a supported compatibility contract, "
+        "including presentation-owned quota event renderers.",
         "Keep internal consumers on canonical modules and shrink exports as callers migrate.",
-        metric_ceilings={"package_reexport_count": 95, "source_module_count": 35},
+        metric_ceilings={"package_reexport_count": 95, "source_module_count": 36},
     ),
     "compatibility_facade:loopx.status": _exception(
         "The public loopx.status import surface remains a supported compatibility contract.",
