@@ -11,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.quota.markdown import (  # noqa: E402
+from loopx.presentation.renderers.quota_markdown import (  # noqa: E402
     render_quota_markdown,
     render_quota_should_run_markdown,
 )

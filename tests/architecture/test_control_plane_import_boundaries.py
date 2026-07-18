@@ -25,12 +25,6 @@ FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.cli_commands",
     "loopx.presentation",
 )
-ALLOWED_DEPENDENCY_DEBT = {
-    (
-        "loopx.control_plane.quota.markdown",
-        "loopx.presentation.markdown",
-    ),
-}
 STATUS_FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.benchmark_adapters",
     "loopx.presentation",
@@ -78,11 +72,18 @@ def test_control_plane_does_not_gain_outward_dependencies() -> None:
         )
     }
 
-    unexpected = outward_dependencies - ALLOWED_DEPENDENCY_DEBT
-    assert not unexpected, (
+    assert not outward_dependencies, (
         "control-plane code must not depend on presentation, CLI, capability, or "
-        f"benchmark-adapter layers; unexpected edges: {sorted(unexpected)}"
+        f"benchmark-adapter layers; unexpected edges: {sorted(outward_dependencies)}"
     )
+
+
+def test_quota_markdown_is_owned_by_the_presentation_layer() -> None:
+    legacy_renderer = CONTROL_PLANE_ROOT / "quota" / "markdown.py"
+    imports = _resolved_imports(QUOTA_MODULE)
+
+    assert not legacy_renderer.exists()
+    assert "loopx.presentation.renderers.quota_markdown" in imports
 
 
 def test_status_outward_dependency_debt_only_shrinks() -> None:

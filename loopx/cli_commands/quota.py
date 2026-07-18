@@ -24,7 +24,9 @@ from ..control_plane.quota.live_decision import build_live_quota_should_run_deci
 from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
-from ..control_plane.quota.markdown import render_quota_scheduler_failure_markdown
+from ..presentation.renderers.quota_markdown import (
+    render_quota_scheduler_failure_markdown,
+)
 from ..control_plane.scheduler.execution_context import (
     SchedulerExecutionContextResolution,
     SchedulerRuntimeProfile,

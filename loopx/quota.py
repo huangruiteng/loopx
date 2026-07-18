@@ -80,7 +80,7 @@ from .control_plane.quota.recent_runs import (
     goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
 )
-from .control_plane.quota.markdown import (
+from .presentation.renderers.quota_markdown import (
     render_quota_markdown,
     render_quota_scheduler_ack_markdown,
     render_quota_should_run_markdown,

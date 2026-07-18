@@ -7,7 +7,6 @@ from loopx.control_plane.goals.goal_frontier import (
     build_goal_frontier_projection_context_from_status,
 )
 from loopx.control_plane.quota.monitor_poll import build_quota_monitor_poll_event
-from loopx.control_plane.quota.markdown import render_quota_should_run_markdown
 from loopx.control_plane.scheduler.execution_context import (
     GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
 )
@@ -20,7 +19,7 @@ from loopx.control_plane.work_items.autonomous_replan_ack import (
     latest_blocked_successor_frontier_identity,
 )
 from loopx.presentation.renderers.status_markdown import render_status_markdown
-from loopx.quota import build_quota_should_run
+from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.state_refresh import build_state_refresh_record
 from loopx.status import autonomous_replan_obligation_from_runs, compact_run
 

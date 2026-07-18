@@ -6,9 +6,11 @@ from ...control_plane import control_plane_policy_summary
 from ...execution_profile import execution_profile_summary
 from ...long_task_cadence import long_task_cadence_hint_summary
 from ...orchestration import orchestration_policy_summary
-from ...presentation.markdown import as_dict, as_list, markdown_scalar
-from ..runtime.decision_freshness import DECISION_FRESHNESS_WARNING_ITEM_LIMIT
-from .states import QUOTA_STATE_ORDER
+from ...control_plane.quota.states import QUOTA_STATE_ORDER
+from ...control_plane.runtime.decision_freshness import (
+    DECISION_FRESHNESS_WARNING_ITEM_LIMIT,
+)
+from ..markdown import as_dict, as_list, markdown_scalar
 
 
 def render_quota_markdown(payload: dict[str, Any]) -> str:
