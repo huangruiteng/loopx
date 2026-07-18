@@ -1,0 +1,27 @@
+docs/README.md
+  s_32e2a9a204a8e4::t_e2de20fd550968 42-43,94
+docs/capabilities/semantic-preference/README.md
+  s_32e2a9a204a8e4::t_b552e130edc7ef 17-20,32-33,47-68,122-126
+docs/capabilities/semantic-preference/openviking-project-peer.md
+  s_32e2a9a204a8e4::t_ef55ba596d3ca1 76-88,95-97,104,116-124
+docs/extensions.md
+  s_32e2a9a204a8e4::t_dcb2aeb726c476 19-21,37-38,50-81,151-153,164-170,183-200,204,208-209,213-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e1a7833f2eed1bbb32b3389c47b93bbc3449a4af",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
