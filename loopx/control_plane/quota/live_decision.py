@@ -68,6 +68,7 @@ def build_live_quota_should_run_decision(
     host_observation_resolver: HostObservationResolver | None = None,
     route_source: str = "quota_cli_invocation",
     scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build one live CLI decision while keeping host observation injectable."""
 
@@ -94,6 +95,7 @@ def build_live_quota_should_run_decision(
         include_scheduler_detail=include_scheduler_detail,
         codex_app_current_rrule=observed_rrule,
         scheduler_execution_context=resolved_context,
+        operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     bind_scheduler_followup_cli_routes(
         payload,

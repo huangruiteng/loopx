@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -93,7 +93,6 @@ from .control_plane.quota.scheduler_ack import (
 from .control_plane.quota.selected_todo_projection import (
     selected_todo_projection as _selected_todo_projection,
 )
-from .control_plane.work_items.operator_inbox import project_operator_inbox_urgency as _project_operator_inbox_urgency
 from .capabilities.reward_memory.experiment import (
     resolve_reward_memory_experiment_from_status as _resolve_reward_memory_experiment_from_status,
 )
@@ -1207,7 +1206,7 @@ def build_quota_should_run(
     agent_id: str | None = None,
     available_capabilities: Any = None,
     include_scheduler_detail: bool = False, codex_app_current_rrule: Any = None,
-    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     resolved_scheduler_context = resolve_scheduler_execution_context(
@@ -1316,8 +1315,7 @@ def build_quota_should_run(
             registry_path=(
                 Path(boundary_registry_value) if boundary_registry_value else None
             ),
-            operator_inbox_urgency_projector=_project_operator_inbox_urgency,
-            reward_memory_experiment_status=reward_memory_experiment_status,
+            operator_inbox_urgency_projector=operator_inbox_urgency_projector, reward_memory_experiment_status=reward_memory_experiment_status,
         )
         workspace_guard = None
         automation_prompt_upgrade = _automation_prompt_upgrade(
@@ -2220,14 +2218,14 @@ def build_quota_slot_preview(
     goal_id: str,
     slots: int = 1,
     agent_id: str | None = None,
-    available_capabilities: Any = None,
+    available_capabilities: Any = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = str(goal_id or "").strip()
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
         agent_id=agent_id,
-        available_capabilities=available_capabilities,
+        available_capabilities=available_capabilities, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     return build_quota_slot_preview_for_decision(
         status_payload,
@@ -2239,7 +2237,7 @@ def build_quota_slot_preview(
             after_status,
             goal_id=safe_goal_id,
             agent_id=agent_id,
-            available_capabilities=available_capabilities,
+            available_capabilities=available_capabilities, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
         ),
         quota_status_builder=quota_status,
         self_repair_spend_actions=SELF_REPAIR_SPEND_ACTIONS,
@@ -2278,7 +2276,7 @@ def record_quota_scheduler_ack(
     reset_token: str | None = None,
     identity_signature: str | None = None,
     reason_summary: str | None = None, use_current_hint: bool = False, host_match_observed: bool = False,
-    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     safe_agent_id = normalize_todo_claimed_by(agent_id)
@@ -2287,7 +2285,7 @@ def record_quota_scheduler_ack(
         goal_id=safe_goal_id,
         agent_id=safe_agent_id,
         available_capabilities=available_capabilities, codex_app_current_rrule=applied_rrule if host_match_observed else None,
-        scheduler_execution_context=scheduler_execution_context,
+        scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
@@ -2340,14 +2338,14 @@ def record_quota_monitor_poll(
     next_due_at: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
-    next_claimed_by: str | None = None, scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    next_claimed_by: str | None = None, scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     before = build_quota_should_run(
         status_payload,
         goal_id=safe_goal_id,
         agent_id=agent_id,
-        available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context,
+        available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     return record_quota_monitor_poll_for_decision(
         before,
@@ -2357,7 +2355,7 @@ def record_quota_monitor_poll(
             after_status,
             goal_id=safe_goal_id,
             agent_id=agent_id,
-            available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context,
+            available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
         ),
         registry_path=registry_path,
         execute=execute,
@@ -2381,10 +2379,10 @@ def build_quota_slot_void_preview(
     *,
     goal_id: str,
     voided_run_generated_at: str,
-    agent_id: str | None = None,
+    agent_id: str | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id)
+    before = build_quota_should_run(status_payload, goal_id=safe_goal_id, agent_id=agent_id, operator_inbox_urgency_projector=operator_inbox_urgency_projector)
     return build_quota_slot_void_preview_for_decision(
         status_payload,
         goal_id=safe_goal_id,
@@ -2401,14 +2399,14 @@ def void_quota_slot(
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
-    agent_id: str | None = None,
+    agent_id: str | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     preview = build_quota_slot_void_preview(
         status_payload,
         goal_id=safe_goal_id,
         voided_run_generated_at=voided_run_generated_at,
-        agent_id=agent_id,
+        agent_id=agent_id, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     if not preview.get("ok"):
         return preview
@@ -2431,7 +2429,7 @@ def spend_quota_slot(
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     agent_id: str | None = None,
-    available_capabilities: Any = None,
+    available_capabilities: Any = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     preview = build_quota_slot_preview(
@@ -2439,7 +2437,7 @@ def spend_quota_slot(
         goal_id=safe_goal_id,
         slots=slots,
         agent_id=agent_id,
-        available_capabilities=available_capabilities,
+        available_capabilities=available_capabilities, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
     )
     if not preview.get("ok"):
         return preview

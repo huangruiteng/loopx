@@ -19,6 +19,7 @@ from ..extensions.lark.event_inbox import (
     ingest_lark_event_inbox,
     inspect_lark_event_inbox,
     lark_event_inbox_contains_text,
+    project_lark_event_inbox_urgency,
 )
 from ..extensions.lark.inbox_reply import reply_lark_event_inbox
 from ..extensions.lark.reviewer_notification import (
@@ -189,6 +190,28 @@ def _resolve_lark_activation(
         state_file=default_extension_state_file(runtime_root_arg),
         required_permissions=_required_extension_permissions(command),
     )
+
+
+def build_lark_operator_inbox_urgency_projector(
+    *, runtime_root_arg: str | Path | None
+) -> Callable[..., dict[str, object]]:
+    """Compose activation proof with the extension-owned private config read."""
+
+    def project(
+        *, project: str | Path, config_path: str | Path
+    ) -> dict[str, object]:
+        _resolve_lark_activation(
+            "drain",
+            runtime_root_arg=(
+                str(runtime_root_arg) if runtime_root_arg is not None else None
+            ),
+        )
+        return project_lark_event_inbox_urgency(
+            project=project,
+            config_path=config_path,
+        )
+
+    return project
 
 
 def build_lark_issue_fix_reviewer_provider_hooks(

@@ -16,7 +16,6 @@ from ..todos.contract import (
     normalize_required_capabilities,
     normalize_required_write_scopes,
 )
-from ..work_items.operator_inbox import LARK_OPERATOR_INBOX_SOURCE_CONTRACT
 
 
 def quota_execution_profile_summary(value: Any) -> dict[str, Any] | None:
@@ -174,11 +173,6 @@ def goal_boundary(
                 urgency = operator_inbox_urgency_projector(
                     project=project,
                     config_path=config_path,
-                    source_contract=LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
-                )
-                urgency["schema_version"] = "lark_event_inbox_urgency_v0"
-                urgency["reply_to_bot_count"] = urgency.pop(
-                    "reply_to_operator_count", 0
                 )
                 inbox_capability["urgency"] = urgency
             except (OSError, ValueError):
