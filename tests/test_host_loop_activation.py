@@ -92,3 +92,44 @@ def test_ambiguous_codex_requires_app_ide_or_cli_selection() -> None:
         normalize_agent_type("codex")
 
     assert caught.value.suggestions == ["codex-app", "codex-ide", "codex-cli"]
+
+
+def test_pi_is_an_additive_interactive_host_without_a_scheduler() -> None:
+    assert normalize_agent_type("pi coding agent") == "pi"
+    assert agent_type_for_host_surface("pi") == "pi"
+
+    packet = build_host_loop_activation_packet(
+        agent_type="pi",
+        goal_id="fixture-goal",
+        agent_id="pi-main",
+        registered_agents=["pi-main"],
+    )
+
+    assert packet["host_surface"] == "pi_interactive_bounded_turns"
+    assert packet["activation_method"] == "run_pi_quota_gated_bounded_turns"
+    assert packet["host_mutation"]["host_command"] == "/loopx-turn"
+    assert packet["setup_command"] == "loopx-pi-install"
+    assert "scheduler" in str(packet).lower()
+
+
+@pytest.mark.parametrize(
+    ("agent_type", "activation_method"),
+    [
+        ("codex-app", "create_or_update_codex_app_automation"),
+        ("codex-ide", "set_visible_goal"),
+        ("codex-cli", "set_visible_goal"),
+        ("claude-code", "arm_loopx_then_run_native_loop"),
+        ("manual", "external_loop_driver"),
+        ("other-agent", "external_loop_driver"),
+    ],
+)
+def test_existing_agent_activation_routes_remain_unchanged(
+    agent_type: str,
+    activation_method: str,
+) -> None:
+    packet = build_host_loop_activation_packet(
+        agent_type=agent_type,
+        goal_id="fixture-goal",
+    )
+
+    assert packet["activation_method"] == activation_method

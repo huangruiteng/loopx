@@ -306,6 +306,7 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
         "codex-ide",
         "codex-cli-tui",
         "claude-code",
+        "pi",
         "shell",
     ]
     ide = next(choice for choice in choices if choice["host_surface"] == "codex-ide")
@@ -339,3 +340,44 @@ def test_codex_ide_uses_visible_goal_and_preserves_compact_parity(
     assert activation["activation_method"] == "set_visible_goal"
     assert activation["host_mutation"]["host_command"] == "/goal <task_body>"
     assert _host_shadow_document(compact) == _host_shadow_document(detailed)
+
+
+def test_pi_guided_packet_keeps_scheduler_steps_out_of_interactive_turns(
+    tmp_path: Path,
+) -> None:
+    project = _write_connected_project(tmp_path)
+    common = {
+        "project": project,
+        "goal_id": GOAL_ID,
+        "agent_id": AGENT_ID,
+        "cli_bin": "loopx",
+        "goal_text": GOAL_TEXT,
+        "available_capabilities": ["filesystem_write"],
+        "include_command_pack_detail": False,
+    }
+
+    pi_packet = build_start_goal_guided_packet(host_surface="pi", **common)
+    codex_packet = build_start_goal_guided_packet(host_surface="codex-app", **common)
+
+    activation = pi_packet["command_pack"]["host_loop_activation"]
+    assert activation["host_surface"] == "pi_interactive_bounded_turns"
+    assert activation["activation_input_command"] == "/loopx-turn"
+    assert (
+        pi_packet["command_pack"]["goal_start_contract"]["activation"][
+            "begin_automation_when_quota_allows"
+        ]
+        is False
+    )
+
+    pi_step_ids = [step["id"] for step in pi_packet["guided_transaction"]["ordered_steps"]]
+    codex_step_ids = [
+        step["id"] for step in codex_packet["guided_transaction"]["ordered_steps"]
+    ]
+    assert "scheduler_ack_when_needed" not in pi_step_ids
+    assert "scheduler_ack_when_needed" in codex_step_ids
+    quota_step = next(
+        step
+        for step in pi_packet["guided_transaction"]["ordered_steps"]
+        if step["id"] == "quota_guard"
+    )
+    assert "does not apply scheduler hints" in quota_step["purpose"]

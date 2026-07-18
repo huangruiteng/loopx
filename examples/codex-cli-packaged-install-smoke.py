@@ -41,6 +41,7 @@ def main() -> None:
                 "docs",
                 "man",
                 "examples",
+                "integrations",
                 "README.md",
                 "pyproject.toml",
                 "LICENSE",

@@ -199,6 +199,10 @@ def main() -> int:
         assert f"- executable: {bin_dir / 'loopx'}" in install.stdout, install.stdout
         assert "- release: " in install.stdout, install.stdout
         assert f"- canary executable: {bin_dir / 'loopx-canary'}" in install.stdout, install.stdout
+        assert (
+            f"- pi package installer: {bin_dir / 'loopx-pi-install'} (opt-in)"
+            in install.stdout
+        ), install.stdout
         assert "- executable compatibility: none" in install.stdout, install.stdout
         assert (
             f"- legacy command disabled: {bin_dir / 'goal-harness.legacy-disabled'}"
@@ -216,13 +220,20 @@ def main() -> int:
         assert f"claude skills: {home / '.claude' / 'skills'}" in install.stdout, install.stdout
 
         wrapper = bin_dir / "loopx"
+        pi_installer = bin_dir / "loopx-pi-install"
         assert wrapper.is_symlink(), wrapper
+        assert pi_installer.is_symlink(), pi_installer
         assert not (bin_dir / "goal-harness").exists()
         assert (bin_dir / "goal-harness.legacy-disabled").is_symlink()
         assert wrapper.resolve() != REPO_ROOT / "scripts" / "loopx", wrapper.resolve()
         assert wrapper.resolve().name == "loopx", wrapper.resolve()
         release_root = wrapper.resolve().parents[1]
+        assert pi_installer.resolve() == release_root / "scripts" / "install-pi-package.sh"
         assert (release_root / "loopx" / "cli.py").is_file(), release_root
+        assert (release_root / "integrations" / "pi" / "package.json").is_file(), release_root
+        assert (
+            release_root / "integrations" / "pi" / "extensions" / "loopx.ts"
+        ).is_file(), release_root
         runtime_package = release_root / "loopx" / "control_plane" / "runtime"
         assert (runtime_package / "run_compaction.py").is_file(), release_root
         assert (runtime_package / "session_runtime.py").is_file(), release_root

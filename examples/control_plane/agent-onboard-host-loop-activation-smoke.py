@@ -46,6 +46,7 @@ def main() -> int:
         "codex-ide",
         "codex-cli",
         "claude-code",
+        "pi",
         "manual",
         "other-agent",
     } <= agent_types
@@ -55,16 +56,30 @@ def main() -> int:
     assert agent_type_for_host_surface("chat-box") == "codex-app"
     assert agent_type_for_host_surface("codex-ide") == "codex-ide"
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
+    assert agent_type_for_host_surface("pi") == "pi"
 
     codex_app = build_host_loop_activation_packet(agent_type="codex-app", goal_id="demo")
     codex_ide = build_host_loop_activation_packet(agent_type="codex-ide", goal_id="demo")
     codex_cli = build_host_loop_activation_packet(agent_type="codex-cli", goal_id="demo")
     claude_code = build_host_loop_activation_packet(agent_type="claude-code", goal_id="demo")
+    pi = build_host_loop_activation_packet(agent_type="pi", goal_id="demo")
     assert codex_app["activation_method"] == "create_or_update_codex_app_automation", codex_app
     assert codex_ide["activation_method"] == "set_visible_goal", codex_ide
     assert codex_ide["host_mutation"]["host_command"] == "/goal <task_body>", codex_ide
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
     assert claude_code["host_mutation"]["host_command"] == "/loop", claude_code
+    assert pi["host_mutation"]["host_command"] == "/loopx-turn", pi
+    assert pi["activation_method"] == "run_pi_quota_gated_bounded_turns", pi
+
+    pi_onboarding = build_agent_onboarding_packet(
+        project=REPO_ROOT,
+        agent_type="pi",
+        goal_id="pi-demo",
+        agent_id="pi-main",
+    )
+    assert "scheduler" not in pi_onboarding["recommended_start"].lower(), pi_onboarding
+    assert pi_onboarding["commands"]["install_command_facade"] == "loopx-pi-install"
+    assert "--host-surface pi" in pi_onboarding["commands"]["bootstrap_command_pack"]
     gated_activation = build_host_loop_activation_packet(
         agent_type="codex-app",
         goal_id="multi-agent-demo",
