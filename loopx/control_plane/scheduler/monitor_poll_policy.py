@@ -19,7 +19,7 @@ DUE_MONITOR_OBLIGATION = "attempt_due_monitor"
 
 def allows_no_spend_blocked_successor_wait_poll(decision: dict[str, Any]) -> bool:
     return bool(
-        decision.get("effective_action") == "agent_scope_wait"
+        decision.get("effective_action") in {"agent_scope_wait", "monitor_quiet_skip"}
         and decision.get("should_run") is False
         and decision.get("requires_user_action") is not True
         and exact_blocked_successor_wait_state(decision)

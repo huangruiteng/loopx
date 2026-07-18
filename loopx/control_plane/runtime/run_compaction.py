@@ -64,6 +64,14 @@ VISION_CHECKPOINT_TRIGGER_FIELDS = (
     "kind",
     "delivery_outcome",
 )
+QUOTA_MONITOR_TARGET_COMPACT_FIELDS = (
+    "schema_version",
+    "target_id",
+    "monitor_mode",
+    "effective_action",
+    "agent_id",
+    "frontier_identity",
+)
 RUN_BASE_COMPACT_FIELDS = (
     "generated_at",
     "run_id",
@@ -197,6 +205,25 @@ def compact_vision_checkpoint(checkpoint: Any) -> dict[str, Any] | None:
     return compact or None
 
 
+def compact_quota_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
+    if str(run.get("classification") or "") != "quota_monitor_poll":
+        return None
+    target = run.get("monitor_target")
+    if not isinstance(target, dict):
+        event = run.get("monitor_event")
+        target = event.get("monitor_target") if isinstance(event, dict) else None
+    if not isinstance(target, dict):
+        return None
+    if not str(target.get("target_id") or "").strip():
+        return None
+    compact = {
+        field: target[field]
+        for field in QUOTA_MONITOR_TARGET_COMPACT_FIELDS
+        if field in target
+    }
+    return compact or None
+
+
 def compact_run_base(
     run: dict[str, Any],
     *,
@@ -225,6 +252,10 @@ def compact_run_base(
     vision_checkpoint = compact_vision_checkpoint(run.get("vision_checkpoint"))
     if vision_checkpoint:
         compact["vision_checkpoint"] = vision_checkpoint
+
+    monitor_target = compact_quota_monitor_target(run)
+    if monitor_target:
+        compact["monitor_target"] = monitor_target
 
     reward = compact_human_reward(run.get("human_reward"))
     if reward:

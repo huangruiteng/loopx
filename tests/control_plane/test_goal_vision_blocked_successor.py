@@ -22,7 +22,7 @@ from loopx.control_plane.work_items.autonomous_replan_ack import (
 from loopx.presentation.renderers.status_markdown import render_status_markdown
 from loopx.quota import build_quota_should_run
 from loopx.state_refresh import build_state_refresh_record
-from loopx.status import autonomous_replan_obligation_from_runs
+from loopx.status import autonomous_replan_obligation_from_runs, compact_run
 
 
 GOAL_ID = "vision-blocked-successor-fixture"
@@ -230,6 +230,48 @@ def test_two_identical_blocked_successor_waits_trigger_bounded_replan() -> None:
         "create_successor",
         "record_wait_continuation",
     ]
+
+
+def test_compacted_monitor_quiet_vision_waits_trigger_bounded_replan() -> None:
+    guard = _quota(_status_payload())
+    guard.update(
+        {
+            "decision": "skip",
+            "effective_action": "monitor_quiet_skip",
+            "should_run": False,
+            "normal_delivery_allowed": False,
+        }
+    )
+    polls = [
+        build_quota_monitor_poll_event(
+            guard,
+            generated_at="2026-07-16T00:02:00+00:00",
+        ),
+        build_quota_monitor_poll_event(
+            guard,
+            generated_at="2026-07-16T00:01:00+00:00",
+        ),
+    ]
+
+    assert {
+        poll["monitor_target"]["monitor_mode"]
+        for poll in polls
+    } == {"blocked_successor_wait_without_material_transition"}
+    compacted_polls = [compact_run(poll) for poll in polls]
+    compact_target = compacted_polls[0]["monitor_target"]
+    assert compact_target["target_id"] == polls[0]["monitor_target"]["target_id"]
+    assert compact_target["frontier_identity"] == polls[0]["monitor_target"][
+        "frontier_identity"
+    ]
+    assert "monitor_event" not in compacted_polls[0]
+
+    replanned = _quota_with_replan_runs([*compacted_polls, _vision_run()])
+
+    assert replanned["decision"] == "autonomous_replan_required"
+    assert replanned["should_run"] is True
+    trigger = replanned["autonomous_replan_obligation"]["triggers"][0]
+    assert trigger["kind"] == "blocked_successor_no_progress_repeat"
+    assert trigger["frontier_identity"] == compact_target["frontier_identity"]
 
 
 def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
