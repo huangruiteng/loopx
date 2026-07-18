@@ -1,0 +1,75 @@
+loopx/cli_commands/todo.py
+  s_76ee28abb3c3a4::t_90b5eb6d598b77 201-218,386-389,508-509,553-554,629-630,689-690,723
+loopx/cli_commands/todo_argument_validation.py
+  s_76ee28abb3c3a4::t_5a560701244c80 30-31,78,81,104,110
+loopx/contract.py
+  s_76ee28abb3c3a4::t_45891cb70c4ffa 28,31,411-428,446-500
+loopx/control_plane/agents/agent_scope.py
+  s_76ee28abb3c3a4::t_9f560a02333c14 23,122-125,315-353,542,558,567-594,597-598,600-601,603-614,616-618
+loopx/control_plane/goals/goal_channel_projection.py
+  s_76ee28abb3c3a4::t_eb4ee6b7e82ba3 168-169
+loopx/control_plane/goals/goal_frontier.py
+  s_76ee28abb3c3a4::t_575ec9a754d1d4 281
+loopx/control_plane/quota/selected_todo_projection.py
+  s_76ee28abb3c3a4::t_c9ea3eef0a9a44 20-21
+loopx/control_plane/quota/turn_envelope.py
+  s_76ee28abb3c3a4::t_8983eae4d72a6b 259-260
+loopx/control_plane/runtime/event_store_migration_bridge.py
+  s_76ee28abb3c3a4::t_0c5fcc769adbe0 122
+loopx/control_plane/testing/decision_replay.py
+  s_76ee28abb3c3a4::t_787773ecfb3cfa 23,34-35
+loopx/control_plane/todos/contract.py
+  s_76ee28abb3c3a4::t_80fdb99858431d 51-52,269-276,824-831,891-892,1050-1056,1157,1251
+loopx/control_plane/todos/event_writeback.py
+  s_76ee28abb3c3a4::t_080c1c1e655d53 29,149-150,191-194,252-253,335
+loopx/control_plane/todos/line_update.py
+  s_76ee28abb3c3a4::t_89d850b878ce5a 1-302
+loopx/control_plane/todos/markdown.py
+  s_76ee28abb3c3a4::t_097e530e883ee5 65-68,115-116
+loopx/control_plane/todos/mutation_authority.py
+  s_76ee28abb3c3a4::t_07812e19364476 13-14,239-247
+loopx/control_plane/todos/quota_summary.py
+  s_76ee28abb3c3a4::t_2f59c31e18e56d 7,67-68,116,130-131,260-261,268,271-278,351-353,359-360,503-504,518-528,757-767
+loopx/control_plane/todos/summary_item.py
+  s_76ee28abb3c3a4::t_c53cb13ffdd90c 44-45
+loopx/control_plane/todos/todo_summary.py
+  s_76ee28abb3c3a4::t_48273ea5d7fa52 22,30,357-362,416-417
+loopx/control_plane/todos/write_hint.py
+  s_76ee28abb3c3a4::t_bdeb70d925b95f 16
+loopx/control_plane/todos/write_policy.py
+  s_76ee28abb3c3a4::t_1cdcce5885adce 71-115
+loopx/control_plane/work_items/project_asset.py
+  s_76ee28abb3c3a4::t_054b0f1b300572 477-478
+loopx/diagnose.py
+  s_76ee28abb3c3a4::t_23a02a4577ad14 260
+loopx/event_sourced_state.py
+  s_76ee28abb3c3a4::t_24778bc1f5e81d 26,30-31,283-285,299-304,594-596,625-630,686-697,838-839,842
+loopx/presentation/renderers/goal_channel_html.py
+  s_76ee28abb3c3a4::t_ae700e26f72771 127-134,142-148
+loopx/presentation/sinks/lark/projection_rows.py
+  s_76ee28abb3c3a4::t_ff75618a90545f 16,35-37
+loopx/quota.py
+  s_76ee28abb3c3a4::t_9fe029b90a3ee5 16,1265,1272-1274,1277-1280,1282-1284,1949-1950
+loopx/state_projection.py
+  s_76ee28abb3c3a4::t_4d961e99720e61 16,21,93-94,539-544
+loopx/todos.py
+  s_76ee28abb3c3a4::t_77d25868b4e5a1 35,41,75-78,91-96,251-252,565-566,639-640,686-691,750-751,786-787,814-818,857,876-894,910-919,947-950,993-994,1056-1057,1081-1082,1122-1131,1151,1169-1173,1218-1219,1228-1248,1256-1265,1311-1320,1607,1793
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5a7d50909754c552867a8e3cd2e123bace4a0be1",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
