@@ -31,6 +31,10 @@ GATE_TODO_ID = "todo_markdown_gate_done"
 DEPENDENT_TODO_ID = "todo_event_dependent"
 EVENT_GATE_TODO_ID = "todo_event_non_delivery_gate"
 EVENT_SUCCESSOR_TODO_ID = "todo_event_same_agent_successor"
+EVENT_ATOMIC_SOURCE_TODO_ID = "todo_event_atomic_handoff_source"
+EVENT_ATOMIC_SUCCESSOR_TEXT = "Independently review the event-projected delivery"
+SUCCESSOR_REPOSITORY = "git:github.com/huangruiteng/loopx"
+SUCCESSOR_CAPABILITIES = ["network", "external_evidence_poll"]
 
 
 def write_fixture(root: Path) -> tuple[Path, Path, Path]:
@@ -240,6 +244,21 @@ def main() -> int:
                 },
             )
         )
+        store.append(
+            event(
+                "evt-atomic-handoff-source",
+                TODO_ADDED,
+                EVENT_ATOMIC_SOURCE_TODO_ID,
+                {
+                    "role": "agent",
+                    "priority": "P1",
+                    "title": "Deliver an event-projected implementation",
+                    "task_class": "advancement_task",
+                    "action_kind": "implement",
+                    "claimed_by": SIDE_AGENT,
+                },
+            )
+        )
         completed = run_cli(
             registry_path,
             "todo",
@@ -261,6 +280,59 @@ def main() -> int:
         )
         assert completed["linked_successor_id"] == EVENT_SUCCESSOR_TODO_ID, completed
         assert completed["self_merged"] is False, completed
+
+        atomic_handoff = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--todo-id",
+            EVENT_ATOMIC_SOURCE_TODO_ID,
+            "--agent-id",
+            SIDE_AGENT,
+            "--claimed-by",
+            SIDE_AGENT,
+            "--evidence",
+            "public-safe event-projected implementation evidence",
+            "--next-agent-todo",
+            EVENT_ATOMIC_SUCCESSOR_TEXT,
+            "--next-claimed-by",
+            PRIMARY_AGENT,
+            "--next-action-kind",
+            "review",
+            "--next-task-repository",
+            SUCCESSOR_REPOSITORY,
+            "--next-required-capability",
+            "network",
+            "--next-required-capability",
+            "external_evidence_poll",
+            "--next-excluded-agent",
+            SIDE_AGENT,
+        )
+        atomic_successor = atomic_handoff["next_todos"][0]
+        assert atomic_successor["claimed_by"] == PRIMARY_AGENT, atomic_handoff
+        assert atomic_successor["excluded_agents"] == [SIDE_AGENT], atomic_handoff
+        assert atomic_successor["task_repository"] == SUCCESSOR_REPOSITORY, atomic_handoff
+        assert atomic_successor["required_capabilities"] == SUCCESSOR_CAPABILITIES, (
+            atomic_handoff
+        )
+        projected_atomic = run_cli(
+            registry_path,
+            "todo",
+            "list",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            atomic_successor["todo_id"],
+        )
+        atomic_item = projected_atomic["todos"][0]
+        assert atomic_item["claimed_by"] == PRIMARY_AGENT, atomic_item
+        assert atomic_item["excluded_agents"] == [SIDE_AGENT], atomic_item
+        assert atomic_item["task_repository"] == SUCCESSOR_REPOSITORY, atomic_item
+        assert atomic_item["required_capabilities"] == SUCCESSOR_CAPABILITIES, atomic_item
 
         event_log.unlink()
         fallback = run_cli(registry_path, "todo", "list", "--goal-id", GOAL_ID, "--role", "agent")
