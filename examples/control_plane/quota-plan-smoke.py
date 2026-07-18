@@ -24,6 +24,9 @@ from loopx.quota import (  # noqa: E402
     render_quota_markdown,
     render_quota_should_run_markdown,
 )
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 
 from quota_plan_fixtures import (  # noqa: E402
     _nested_value,
@@ -44,6 +47,11 @@ from quota_plan_fixtures import (  # noqa: E402
     run_cli_slot_void_execute,
     run_cli_throttled_should_run,
     scheduler_reset_profile_snapshot,
+)
+
+
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
 )
 
 
@@ -964,7 +972,11 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
         "run_history": {"goals": [first_map_goal, mapped_goal]},
     }
 
-    first_decision = build_quota_should_run(payload, goal_id="first-map")
+    first_decision = build_quota_should_run(
+        payload,
+        goal_id="first-map",
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     first_rec = first_decision["heartbeat_recommendation"]
 
     assert first_decision["should_run"] is True, first_decision
@@ -973,7 +985,11 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
     assert first_rec["notify"] == "NOTIFY", first_rec
     assert "append exactly one heartbeat spend" in first_rec["spend_policy"], first_rec
 
-    mapped_decision = build_quota_should_run(payload, goal_id="mapped-quiet")
+    mapped_decision = build_quota_should_run(
+        payload,
+        goal_id="mapped-quiet",
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
+    )
     mapped_rec = mapped_decision["heartbeat_recommendation"]
     mapped_markdown = render_quota_should_run_markdown(mapped_decision)
 
@@ -1036,6 +1052,7 @@ def assert_heartbeat_recommendation_lifecycle() -> None:
         payload,
         goal_id="mapped-quiet",
         include_scheduler_detail=True,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     detailed_scheduler = mapped_detailed["scheduler_hint"]
     local_scheduler = detailed_scheduler["cold_path_detail"]["local_scheduler"]

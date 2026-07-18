@@ -15,12 +15,18 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
     goal_frontier_is_terminal_no_followup,
 )
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.status import compact_todo_group  # noqa: E402
 
 
 GOAL_ID = "terminal-no-followup-fixture"
 AGENT_ID = "codex-main-control"
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def completed_todos(*, role: str, count: int = 1) -> dict:
@@ -107,6 +113,7 @@ def assert_terminal_guard_stops_recurring_automation() -> None:
         status_payload(),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert guard["status"] == "active", guard
     assert guard["state"] == "terminal_no_followup", guard

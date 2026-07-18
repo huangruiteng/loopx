@@ -12,6 +12,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.todos.decision_scope import todo_gate_relation  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    scheduler_execution_context_for_runtime_profile,
+)
 from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
     quota_status_payload,
     quota_todo_item,
@@ -24,6 +27,9 @@ GOAL_ID = "agent-scoped-user-gate-fixture"
 PRIMARY_AGENT = "codex-main-control"
 PRODUCT_AGENT = "codex-product-capability"
 VALUE_AGENT = "codex-value-explorer"
+APP_SCHEDULER_CONTEXT = scheduler_execution_context_for_runtime_profile(
+    "codex_app_heartbeat"
+)
 
 
 def coordination(*agents: str, primary_agent: str = PRIMARY_AGENT) -> dict:
@@ -676,6 +682,7 @@ def assert_scoped_gate_rejects_capability_ineligible_only_fallback() -> None:
         capability_ineligible_only_fallback_status_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-main-control",
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     capability_gate = payload["capability_gate"]
     assert capability_gate["action"] == "skip", capability_gate
@@ -894,6 +901,7 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
         scoped_no_candidate_status_payload(),
         goal_id=GOAL_ID,
         agent_id="codex-product-capability",
+        scheduler_execution_context=APP_SCHEDULER_CONTEXT,
     )
     assert payload["decision"] == "skip", payload
     assert payload["effective_action"] == "monitor_quiet_skip", payload
