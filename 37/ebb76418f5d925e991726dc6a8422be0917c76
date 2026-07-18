@@ -1,0 +1,23 @@
+loopx/control_plane/work_items/task_lease.py
+  s_32e2a9a204a8e4::t_35594a833287e3 291-292
+tests/control_plane/test_task_lease.py
+  s_32e2a9a204a8e4::t_95e41981d5cb93 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "37ebb76418f5d925e991726dc6a8422be0917c76",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
