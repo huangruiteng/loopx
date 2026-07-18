@@ -161,7 +161,7 @@ do not choose a directory from the feature name alone:
 
 Record the placement rationale before editing: capability id, provider id,
 whether the provider is built-in or extension-delivered, and why the nearest
-existing owner is or is not sufficient. See `docs/extensions.md` for the full
+existing owner is or is not sufficient. See `docs/reference/extensions.md` for the full
 decision guide.
 
 Before adding a new module, builder, protocol field, CLI option, fixture, smoke

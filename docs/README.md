@@ -39,7 +39,7 @@ incident report, or launch draft.
   shortest public route from no-clone install to one-message TUI bootstrap and
   proof-capture fixtures.
 - [Architecture](architecture.md): core concepts and control-plane shape.
-- [Extensions and capabilities](extensions.md): declarative manifests,
+- [Extensions and capabilities](reference/extensions.md): declarative manifests,
   doctor-verified subprocess activation, and reversible provider lifecycle.
 - [Integration guide](integration.md): how to connect a project to LoopX,
   including public-safe Lark or Feishu reply card payloads.
@@ -91,7 +91,7 @@ incident report, or launch draft.
 - [Core control-plane graphs](product/core-control-plane/README.md)
 - [State interaction model](state-interaction-model.md)
 - [Interaction pattern catalog](interaction-pattern-catalog.md)
-- [Extensions and capabilities](extensions.md)
+- [Extensions and capabilities](reference/extensions.md)
 - [Field-derived patterns](field-derived-patterns.md)
 - [Public/private boundary](public-private-boundary.md)
 

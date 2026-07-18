@@ -60,7 +60,7 @@ architectural separation.
 Capabilities and extensions are also orthogonal: a capability is a product
 contract, while an extension is an independently managed provider that may
 offer one or more capabilities. The provider-aware registration and manifest
-boundary is documented in [extensions.md](extensions.md).
+boundary is documented in [extensions.md](reference/extensions.md).
 
 LoopX should still absorb field-tested project-control mechanisms such
 as authority registries, current-belief TODOs, managed external-source

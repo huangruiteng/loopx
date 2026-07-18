@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-GUIDE = (ROOT / "docs" / "extensions.md").read_text(encoding="utf-8")
+GUIDE = (ROOT / "docs" / "reference" / "extensions.md").read_text(encoding="utf-8")
 
 for anchor in (
     "## Capability And Extension Placement",
