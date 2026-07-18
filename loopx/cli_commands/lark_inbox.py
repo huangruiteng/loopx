@@ -12,6 +12,7 @@ from ..extensions.lark import (
     LARK_INBOX_READ_PERMISSION,
     LARK_INBOX_WRITE_PERMISSION,
     LARK_REPLY_PERMISSION,
+    LARK_REVIEWER_NOTIFICATION_PERMISSION,
 )
 from ..extensions.lark.event_inbox import (
     acknowledge_lark_event_inbox,
@@ -20,6 +21,9 @@ from ..extensions.lark.event_inbox import (
     lark_event_inbox_contains_text,
 )
 from ..extensions.lark.inbox_reply import reply_lark_event_inbox
+from ..extensions.lark.reviewer_notification import (
+    lark_reviewer_notification_sink,
+)
 from ..extensions.lark.event_collector import (
     inspect_lark_event_collector,
     install_lark_event_collector,
@@ -30,7 +34,7 @@ from ..extensions.runtime import (
     default_extension_state_file,
     resolve_extension_activation,
 )
-from ..capabilities.issue_fix.provider_hooks import ReviewerInboxHooks
+from ..capabilities.issue_fix.provider_hooks import IssueFixReviewerProviderHooks
 from ..control_plane.runtime.goal_project_route import resolve_goal_project_route
 
 
@@ -187,9 +191,9 @@ def _resolve_lark_activation(
     )
 
 
-def build_lark_issue_fix_reviewer_inbox_hooks(
+def build_lark_issue_fix_reviewer_provider_hooks(
     *, runtime_root_arg: str | None
-) -> ReviewerInboxHooks:
+) -> IssueFixReviewerProviderHooks:
     activation = resolve_extension_activation(
         LARK_EXTENSION_ID,
         state_file=default_extension_state_file(runtime_root_arg),
@@ -197,12 +201,14 @@ def build_lark_issue_fix_reviewer_inbox_hooks(
             LARK_INBOX_READ_PERMISSION,
             LARK_INBOX_WRITE_PERMISSION,
             LARK_REPLY_PERMISSION,
+            LARK_REVIEWER_NOTIFICATION_PERMISSION,
         ),
     )
-    return ReviewerInboxHooks(
+    return IssueFixReviewerProviderHooks(
         inspect=inspect_lark_event_inbox,
         acknowledge=acknowledge_lark_event_inbox,
         contains_text=lark_event_inbox_contains_text,
+        notification_adapter=lark_reviewer_notification_sink,
         activation=activation,
     )
 

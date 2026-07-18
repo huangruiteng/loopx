@@ -88,7 +88,7 @@ from .evidence_log import handle_evidence_log_command, register_evidence_log_com
 from .explore import handle_explore_command, register_explore_commands
 from .history import handle_history_command, register_history_command
 from .lark_inbox import (
-    build_lark_issue_fix_reviewer_inbox_hooks,
+    build_lark_issue_fix_reviewer_provider_hooks,
     handle_lark_inbox_command,
     register_lark_inbox_commands,
 )

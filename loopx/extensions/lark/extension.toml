@@ -1,12 +1,13 @@
 schema_version = "loopx_extension_manifest_v0"
 id = "loopx-lark"
-version = "1.0.0"
+version = "1.1.0"
 requires_loopx_api = ">=1,<2"
 permissions = [
   "lark.inbox.read",
   "lark.inbox.write",
   "lark.reply.send",
   "lark.collector.manage",
+  "lark.reviewer_notification.send",
 ]
 
 [runtime]
@@ -27,3 +28,14 @@ real_world_anchor = "host-collected project feedback from a configured Lark chat
 user_value = "Collect, inspect, reply to, and acknowledge bounded Lark feedback without making chat the control-plane source of truth."
 entry_command = "loopx lark-inbox drain --goal-id <goal-id>"
 next_real_step = "Install and explicitly enable the bundled provider before configuring a project inbox."
+
+[[provides]]
+id = "lark-reviewer-notification"
+kind = "notification_sink"
+title = "Lark reviewer notification"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "verified reviewer requests sent through a project-dedicated Lark app"
+user_value = "Deliver idempotent reviewer notifications with identity, membership, semantic-dedupe, and readback verification."
+entry_command = "loopx issue-fix reviewer-request --goal-id <goal-id> --url <pr-url>"
+next_real_step = "Install or upgrade and explicitly enable the bundled provider before configuring a Lark reviewer notification sink."

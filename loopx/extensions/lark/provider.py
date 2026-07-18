@@ -19,6 +19,9 @@ REQUIRED_EXPORTS = {
         "inspect_lark_event_inbox",
     ),
     "loopx.extensions.lark.inbox_reply": ("reply_lark_event_inbox",),
+    "loopx.extensions.lark.reviewer_notification": (
+        "lark_reviewer_notification_sink",
+    ),
 }
 
 

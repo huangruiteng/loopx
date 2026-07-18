@@ -60,7 +60,7 @@ from .pr_lifecycle import (
     validate_issue_fix_pr_lifecycle_monitor_packet,
 )
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
-from .provider_hooks import ReviewerInboxHooksFactory
+from .provider_hooks import IssueFixReviewerProviderHooksFactory
 from . import pr_gate_reconcile_cli
 from .reviewer_cli import (
     REVIEWER_COMMANDS,
@@ -872,7 +872,9 @@ def handle_issue_fix_command(
     *,
     registry_path: Path | None = None,
     runtime_root_arg: str | None = None,
-    reviewer_inbox_hooks_factory: ReviewerInboxHooksFactory | None = None,
+    reviewer_provider_hooks_factory: (
+        IssueFixReviewerProviderHooksFactory | None
+    ) = None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int:
@@ -884,7 +886,7 @@ def handle_issue_fix_command(
             registry_path=registry_path,
             generated_at=generated_at,
             delivery_observed_at=invocation_at,
-            reviewer_inbox_hooks_factory=reviewer_inbox_hooks_factory,
+            reviewer_provider_hooks_factory=reviewer_provider_hooks_factory,
         )
         if reviewer_result is not None:
             payload, renderer = reviewer_result
