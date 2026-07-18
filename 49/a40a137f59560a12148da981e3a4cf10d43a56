@@ -1,0 +1,33 @@
+examples/control_plane/presentation-markdown-primitives-smoke.py
+  s_e3f612788718c1::t_62883f7fe45e4e 14
+loopx/cli_commands/quota.py
+  s_e3f612788718c1::t_f7f3253cdd9658 27-29
+loopx/presentation/renderers/quota_markdown.py
+  s_e3f612788718c1::t_76ac822b500692 9-13
+loopx/quota.py
+  s_e3f612788718c1::t_eb22e5adf4402b 83
+tests/architecture/test_control_plane_import_boundaries.py
+  s_e3f612788718c1::t_370fe38cc7f091 75,77,81-88
+tests/control_plane/test_goal_vision_blocked_successor.py
+  s_e3f612788718c1::t_52d51990d49b41 22
+tests/presentation/test_quota_markdown_boundary.py
+  s_e3f612788718c1::t_5e6a1a7987e20c 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49a40a137f59560a12148da981e3a4cf10d43a56",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
