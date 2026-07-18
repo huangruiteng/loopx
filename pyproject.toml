@@ -23,6 +23,7 @@ test = [
 
 [project.scripts]
 loopx = "loopx.cli:main"
+loopx-lark-provider = "loopx.extensions.lark.provider:main"
 loopx-openviking-semantic-preference = "loopx.extensions.openviking_semantic_preference.provider:main"
 
 [tool.setuptools.packages.find]
@@ -30,6 +31,7 @@ include = ["loopx*"]
 
 [tool.setuptools.package-data]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
+"loopx.extensions.lark" = ["extension.toml"]
 "loopx.extensions.openviking_semantic_preference" = ["extension.toml"]
 
 [tool.mypy]

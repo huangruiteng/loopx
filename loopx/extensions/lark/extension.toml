@@ -1,0 +1,29 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "loopx-lark"
+version = "1.0.0"
+requires_loopx_api = ">=1,<2"
+permissions = [
+  "lark.inbox.read",
+  "lark.inbox.write",
+  "lark.reply.send",
+  "lark.collector.manage",
+]
+
+[runtime]
+protocol = "lark_extension_lifecycle_v0"
+entrypoint = "loopx-lark-provider"
+args = []
+doctor_args = ["--doctor"]
+required_permissions = []
+timeout_seconds = 30
+
+[[provides]]
+id = "lark-event-inbox"
+kind = "event_inbox"
+title = "Lark event inbox"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "host-collected project feedback from a configured Lark chat"
+user_value = "Collect, inspect, reply to, and acknowledge bounded Lark feedback without making chat the control-plane source of truth."
+entry_command = "loopx lark-inbox drain --goal-id <goal-id>"
+next_real_step = "Install and explicitly enable the bundled provider before configuring a project inbox."

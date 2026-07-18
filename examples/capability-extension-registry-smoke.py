@@ -76,4 +76,15 @@ next_real_step = "Keep explicit enablement bounded."
     assert detail["capability"]["capability_kind"] == "projection_sink"
     assert detail["capability"]["provider_id"] == "example-extension"
 
+    lark_manifest = ROOT / "loopx" / "extensions" / "lark" / "extension.toml"
+    lark = run_cli(
+        "capability",
+        "show",
+        "lark-event-inbox",
+        "--extension-manifest",
+        str(lark_manifest),
+    )
+    assert lark["capability"]["origin"] == "extension", lark
+    assert lark["capability"]["provider_id"] == "loopx-lark", lark
+
 print("capability-extension-registry-smoke: ok")

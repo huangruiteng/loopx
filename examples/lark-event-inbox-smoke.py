@@ -450,6 +450,30 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
+        runtime_root = project / "runtime"
+        installed_extension = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "install",
+                "--bundled",
+                "loopx-lark",
+                "--execute",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert installed_extension.returncode == 0, installed_extension.stderr
         discovered = subprocess.run(
             [
                 sys.executable,
@@ -457,6 +481,8 @@ def main() -> None:
                 "loopx.cli",
                 "--registry",
                 str(registry),
+                "--runtime-root",
+                str(runtime_root),
                 "--format",
                 "json",
                 "lark-inbox",
@@ -510,6 +536,8 @@ def main() -> None:
                 "loopx.cli",
                 "--registry",
                 str(shared_registry),
+                "--runtime-root",
+                str(runtime_root),
                 "--format",
                 "json",
                 "lark-inbox",
@@ -535,6 +563,8 @@ def main() -> None:
                 "loopx.cli",
                 "--registry",
                 str(registry),
+                "--runtime-root",
+                str(runtime_root),
                 "--format",
                 "json",
                 "lark-inbox",

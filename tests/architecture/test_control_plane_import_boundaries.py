@@ -10,6 +10,7 @@ CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
 QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
 LARK_INBOX_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "lark_inbox.py"
+LARK_EXTENSION_ROOT = PACKAGE_ROOT / "extensions" / "lark"
 LEGACY_LARK_CAPABILITY_ROOT = PACKAGE_ROOT / "capabilities" / "lark"
 FORBIDDEN_DEPENDENCY_PREFIXES = (
     "loopx.benchmark_adapters",
@@ -136,4 +137,7 @@ def test_lark_inbox_provider_is_owned_by_the_extension_layer() -> None:
         "loopx.extensions.lark.event_collector_runtime",
         "loopx.extensions.lark.event_inbox",
         "loopx.extensions.lark.inbox_reply",
+        "loopx.extensions.runtime",
     } <= imports
+    assert (LARK_EXTENSION_ROOT / "extension.toml").is_file()
+    assert (LARK_EXTENSION_ROOT / "provider.py").is_file()

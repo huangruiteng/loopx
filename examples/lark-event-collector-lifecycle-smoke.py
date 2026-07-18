@@ -92,6 +92,28 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
     previous_path = os.environ.get("PATH")
     os.environ["HOME"] = str(home)
     os.environ["PATH"] = f"{bin_dir}:{previous_path or ''}"
+    runtime_root = temp / "runtime"
+    installed_extension = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "loopx.cli",
+            "--runtime-root",
+            str(runtime_root),
+            "--format",
+            "json",
+            "extension",
+            "install",
+            "--bundled",
+            "loopx-lark",
+            "--execute",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert installed_extension.returncode == 0, installed_extension.stderr
     calls: list[list[str]] = []
 
     def runner(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
@@ -103,7 +125,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         return completed(argv)
 
     try:
-        plan = plan_lark_event_collector(project=project, config_path=collector_config)
+        plan = plan_lark_event_collector(
+            project=project,
+            config_path=collector_config,
+            runtime_root=runtime_root,
+        )
         assert plan["status"] == "install_ready", plan
         assert plan["thread_complete"] is True, plan
         assert plan["profile_bound"] is True, plan
@@ -115,6 +141,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         preview = install_lark_event_collector(
             project=project,
             config_path=collector_config,
+            runtime_root=runtime_root,
             runner=runner,
         )
         assert preview["status"] == "preview_ready", preview
@@ -126,6 +153,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         installed = install_lark_event_collector(
             project=project,
             config_path=collector_config,
+            runtime_root=runtime_root,
             execute=True,
             runner=runner,
         )
@@ -139,7 +167,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         assert str(lark_cli) in plist_text, plist_text
         service_argv = plistlib.loads(plist.read_bytes())["ProgramArguments"]
         assert Path(service_argv[0]).name == "loopx", service_argv
-        assert service_argv[1:3] == ["lark-inbox", "collector-run"], service_argv
+        assert service_argv[1:3] == [
+            "--runtime-root",
+            str(runtime_root.resolve()),
+        ], service_argv
+        assert service_argv[3:5] == ["lark-inbox", "collector-run"], service_argv
         assert service_argv[service_argv.index("--lark-cli-executable") + 1] == str(
             lark_cli
         ), service_argv
@@ -242,6 +274,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-collector-") as raw:
         status = inspect_lark_event_collector(
             project=project,
             config_path=collector_config,
+            runtime_root=runtime_root,
             probe_event_bus=True,
             runner=runner,
         )
@@ -417,6 +450,8 @@ else:
                 "loopx.cli",
                 "--format",
                 "json",
+                "--runtime-root",
+                str(runtime_root),
                 "lark-inbox",
                 "collector-plan",
                 "--project",
