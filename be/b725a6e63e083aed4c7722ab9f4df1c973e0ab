@@ -1,0 +1,29 @@
+docs/reference/protocols/agent-management-projection-v0.md
+  s_76ee28abb3c3a4::t_cb71922598a3d9 36-37,111-112,162-163,192-231
+docs/reference/protocols/agent-material-frontier-v0.md
+  s_76ee28abb3c3a4::t_0eba7acaca62b7 105-109,114-132,135-140
+examples/control_plane/agent-material-handoff-projection-smoke.py
+  s_76ee28abb3c3a4::t_8e26778a546c6c 1-222
+loopx/control_plane/agents/management_projection.py
+  s_76ee28abb3c3a4::t_4b01ab0276b50d 9-13,192-210,482,540-550,570-580,592
+loopx/control_plane/agents/material_handoff.py
+  s_76ee28abb3c3a4::t_63091273371bc2 1-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "beb725a6e63e083aed4c7722ab9f4df1c973e0ab",
+  "prompts": {},
+  "sessions": {
+    "s_76ee28abb3c3a4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0dc3-1b68-7ce3-9ec0-f36f03f3030e",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
