@@ -108,20 +108,32 @@ def main() -> None:
         sources=[issue_source, release],
     )
     artifact = registry.render("markdown_v0", document)
-    previews = [
-        registry.deliver(
-            sink_id,
-            artifact,
-            {"execute": False, "idempotency_key": f"preview-{sink_id}"},
-        )
-        for sink_id in ("lark_delivery", "openviking_archive")
-    ]
+    lark_preview = registry.deliver(
+        "lark_delivery",
+        artifact,
+        {"execute": False, "idempotency_key": "preview-lark_delivery"},
+    )
+    archive_preview = registry.deliver(
+        "openviking_archive",
+        artifact,
+        {
+            "execute": False,
+            "idempotency_key": "preview-openviking_archive",
+            "document": document,
+            "archive_root_uri": "viking://resources/reports",
+            "delivery_receipts": [],
+            "semantic_tags": ["maintenance"],
+            "memory_conclusions": [],
+        },
+    )
+    previews = [lark_preview, archive_preview]
     assert {item["source_id"] for item in document["source_snapshots"]} == {
         "issue_fix",
         "release_notes",
     }
     assert all(item["status"] == "pending" for item in previews)
     assert all(item["external_writes_performed"] is False for item in previews)
+    assert archive_preview["memory_reference"]["full_report_copied"] is False
     print("periodic-report-adapters-smoke: ok")
 
 

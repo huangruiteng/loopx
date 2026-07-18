@@ -10,6 +10,7 @@ from loopx.capabilities.issue_fix.periodic_report import (
 from loopx.capabilities.periodic_report import (
     PeriodicReportAdapterRegistry,
     PeriodicReportSourceAdapter,
+    build_periodic_report_archive_bundle,
     build_periodic_report_document,
     build_periodic_report_source_result,
 )
@@ -86,6 +87,30 @@ def _release_source(_: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _archive_context(document: dict[str, Any], *, execute: bool) -> dict[str, Any]:
+    return {
+        "execute": execute,
+        "idempotency_key": "archive-live" if execute else "archive-preview",
+        "document": document,
+        "archive_root_uri": "viking://resources/reports",
+        "delivery_receipts": [
+            {
+                "sink_id": "lark_delivery",
+                "sink_kind": "lark_card",
+                "sink_role": "delivery",
+                "status": "sent",
+                "receipt_ref": "message:example",
+                "result_id": "message-result-example",
+                "readback_verified": True,
+            }
+        ],
+        "semantic_tags": ["maintenance", "weekly"],
+        "memory_conclusions": [
+            "Regression coverage should remain attached to the merged change."
+        ],
+    }
+
+
 def _registry(*, calls: list[str]) -> PeriodicReportAdapterRegistry:
     registry = PeriodicReportAdapterRegistry()
     registry.register_source(issue_fix_periodic_report_source_adapter())
@@ -113,13 +138,27 @@ def _registry(*, calls: list[str]) -> PeriodicReportAdapterRegistry:
         )
     )
 
-    def ov_write(payload: dict[str, Any], key: str) -> dict[str, str]:
-        assert payload["semantic_type"] == "periodic_report"
+    archived: dict[str, dict[str, str]] = {}
+
+    def ov_write(payload: dict[str, Any], key: str) -> dict[str, Any]:
+        assert payload["semantic_type"] == "periodic_report_archive"
+        assert payload["manifest"]["memory_policy"]["full_report_copied"] is False
         calls.append(f"openviking:{key}")
-        return {
-            "resource_uri": "viking://resources/reports/2026-w29",
-            "result_id": "result-2026-w29",
-        }
+        resources = []
+        for resource in payload["resources"]:
+            result_id = f"result-{resource['resource_kind']}"
+            archived[resource["resource_uri"]] = {
+                "result_id": result_id,
+                "content_digest": resource["content_digest"],
+            }
+            resources.append(
+                {
+                    "resource_kind": resource["resource_kind"],
+                    "resource_uri": resource["resource_uri"],
+                    "result_id": result_id,
+                }
+            )
+        return {"resources": resources}
 
     registry.register_sink(
         periodic_report_openviking_sink_adapter(
@@ -127,7 +166,7 @@ def _registry(*, calls: list[str]) -> PeriodicReportAdapterRegistry:
             readback=lambda ref: {
                 "verified": True,
                 "resource_uri": ref,
-                "result_id": "result-2026-w29",
+                **archived[ref],
             },
         )
     )
@@ -222,11 +261,17 @@ def test_sink_preview_has_no_effect_and_execute_requires_exact_readback() -> Non
     archive = registry.deliver(
         "openviking_archive",
         artifact,
-        {"execute": True, "idempotency_key": "archive-live"},
+        _archive_context(document, execute=True),
     )
     assert lark["status"] == "sent"
     assert archive["status"] == "sent"
-    assert archive["result_id"] == "result-2026-w29"
+    assert archive["result_id"] == "result-manifest"
+    assert {item["resource_kind"] for item in archive["resource_receipts"]} == {
+        "manifest",
+        "report_body",
+    }
+    assert archive["memory_reference"]["full_report_copied"] is False
+    assert "content" not in archive["memory_reference"]
     assert calls == ["lark:delivery-live", "openviking:archive-live"]
     for result in (lark, archive):
         assert result["readback_verified"] is True
@@ -254,3 +299,113 @@ def test_registry_rejects_identity_drift_and_duplicate_adapters() -> None:
     second.register_source(drifting)
     with pytest.raises(ValueError, match="different source_id"):
         second.collect("declared_source", {})
+
+
+def test_archive_bundle_keeps_resource_history_separate_from_memory() -> None:
+    calls: list[str] = []
+    registry = _registry(calls=calls)
+    source = registry.collect("issue_fix", _issue_fix_projection())
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    artifact = registry.render("markdown_v0", document)
+    context = _archive_context(document, execute=False)
+    bundle = build_periodic_report_archive_bundle(
+        artifact=artifact,
+        document=document,
+        archive_root_uri=context["archive_root_uri"],
+        delivery_receipts=context["delivery_receipts"],
+        semantic_tags=context["semantic_tags"],
+        memory_conclusions=context["memory_conclusions"],
+    )
+    assert [item["resource_kind"] for item in bundle["resources"]] == [
+        "report_body",
+        "manifest",
+    ]
+    assert bundle["manifest"]["source_snapshots"][0]["source_id"] == "issue_fix"
+    assert bundle["manifest"]["title"] == "Weekly maintenance"
+    assert bundle["manifest"]["delivery_receipts"][0]["sink_id"] == "lark_delivery"
+    assert bundle["boundary"]["project_resource_is_history_source_of_truth"] is True
+    assert bundle["memory_reference"] == {
+        "schema_version": "periodic_report_memory_reference_v0",
+        "archive_id": bundle["archive_id"],
+        "report_uri": bundle["resources"][0]["resource_uri"],
+        "manifest_uri": bundle["resources"][1]["resource_uri"],
+        "semantic_tags": ["maintenance", "periodic_report", "weekly"],
+        "conclusions": [
+            "Regression coverage should remain attached to the merged change."
+        ],
+        "distillation_required": True,
+        "full_report_copied": False,
+    }
+
+
+def test_archive_sink_fails_closed_on_result_id_or_digest_drift() -> None:
+    source = build_periodic_report_source_result(
+        source_id="release_notes",
+        source_kind="release_activity",
+        status="complete",
+        observed_at="2026-07-20T00:40:00Z",
+        sections=[],
+    )
+    document = build_periodic_report_document(
+        title="Weekly maintenance",
+        generated_at="2026-07-20T01:00:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "maintenance", "profile_version": "v1"},
+        sources=[source],
+    )
+    renderer = periodic_report_markdown_renderer_adapter()
+    artifact = renderer.render(document)
+    written: dict[str, dict[str, str]] = {}
+
+    def write(payload: dict[str, Any], _: str) -> dict[str, Any]:
+        resources = []
+        for item in payload["resources"]:
+            result_id = f"result-{item['resource_kind']}"
+            written[item["resource_uri"]] = {
+                "result_id": result_id,
+                "content_digest": item["content_digest"],
+            }
+            resources.append(
+                {
+                    "resource_kind": item["resource_kind"],
+                    "resource_uri": item["resource_uri"],
+                    "result_id": result_id,
+                }
+            )
+        return {"resources": resources}
+
+    sink = periodic_report_openviking_sink_adapter(
+        write=write,
+        readback=lambda uri: {
+            "verified": True,
+            "resource_uri": uri,
+            "result_id": written[uri]["result_id"],
+            "content_digest": (
+                "sha256:" + "0" * 64
+                if uri.endswith("manifest.json")
+                else written[uri]["content_digest"]
+            ),
+        },
+    )
+    registry = PeriodicReportAdapterRegistry()
+    registry.register_sink(sink)
+    result = registry.deliver(
+        "openviking_archive",
+        artifact,
+        _archive_context(document, execute=True),
+    )
+    assert result["status"] == "unknown"
+    assert result["retryable"] is True
+    assert result["readback_verified"] is False
