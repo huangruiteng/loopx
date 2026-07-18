@@ -14,6 +14,10 @@ config. Config files inside a git project must be ignored; tracked configs are
 rejected. LoopX never copies the provider command, config path, recalled
 semantic content, or raw provider errors into receipts.
 
+The preferred provider path is an explicitly activated extension. The
+compatibility path still accepts a direct subprocess `argv`; both paths use the
+same core request, response, failure-policy, and receipt contracts.
+
 ## Module-owned surfaces
 
 `surfaces` is a mapping keyed by arbitrary module-qualified ids. The runtime
@@ -25,13 +29,8 @@ does not branch on `issue_fix`, `content_ops`, or any other domain name.
   "enabled": true,
   "provider": {
     "id": "local_memory",
-    "argv": ["semantic-preference-provider"],
-    "timeout_seconds": 30,
-    "probe_argv": ["semantic-preference-provider", "doctor"],
-    "setup_hints": {
-      "install": "Install the provider from its official distribution.",
-      "configure": "Configure it locally, then rerun this doctor with --execute."
-    }
+    "extension_id": "semantic-preference-provider",
+    "args": ["--project", "."]
   },
   "surfaces": {
     "issue_fix.pr_description": {
@@ -44,6 +43,28 @@ does not branch on `issue_fix`, `content_ops`, or any other domain name.
   }
 }
 ```
+
+`extension_id` resolves only from enabled, doctor-verified local activation
+state. `args` are appended after the manifest-owned entrypoint arguments. The
+manifest owns protocol, permission, timeout, and doctor; config cannot override
+them. `extension_state_file` is an optional local-private override for tests or
+specialized embeddings; the CLI's global `--runtime-root` selects the normal
+isolated runtime. If an activated extension is later disabled or unavailable,
+recall follows the surface's existing `fail_open` or `fail_closed` policy.
+
+For a legacy provider that has not adopted the extension manifest, replace the
+provider object with:
+
+```json
+{
+  "id": "local_memory",
+  "argv": ["semantic-preference-provider"],
+  "timeout_seconds": 30,
+  "probe_argv": ["semantic-preference-provider", "doctor"]
+}
+```
+
+`argv` and `extension_id` are mutually exclusive.
 
 A domain module owns the surface id, query, context keys, and decision about
 how recalled items influence its output. Adding another module is a config
@@ -98,11 +119,11 @@ Provider stderr and non-zero output are reduced to a bounded failure kind.
 the caller with an actionable error. Provider failures do not become user
 gates automatically.
 
-`provider.id`, `probe_argv`, and `setup_hints` are optional. They provide
-provider-neutral discovery without teaching LoopX how to install one specific
-memory system. `probe_argv` must be a read-only health check owned by the
-provider. The doctor never installs packages, starts services, changes config,
-or writes credentials; setup hints are guidance for an explicit operator action.
+`provider.id` and `setup_hints` are optional. Legacy `probe_argv` must be a
+read-only health check owned by the provider. Extension providers use the
+manifest doctor instead. Neither doctor path installs packages, starts
+services, changes config, or writes credentials; setup hints remain guidance
+for an explicit operator action.
 
 ## CLI
 

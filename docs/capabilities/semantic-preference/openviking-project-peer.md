@@ -73,26 +73,35 @@ native extractor and complete the four-step readback above.
 
 ## Local-private hook config
 
-Keep the config ignored and untracked. Provider paths and OpenViking service
-configuration remain local:
+First activate the bundled provider. This command registers the preinstalled
+entrypoint only after a read-only `ov status` doctor succeeds; it does not
+install or configure OpenViking:
+
+```bash
+loopx extension install \
+  --bundled openviking-semantic-preference \
+  --execute \
+  --format json
+```
+
+Keep the hook config ignored and untracked. OpenViking service configuration
+remains local:
 
 ```json
 {
   "schema_version": "semantic_preference_hook_config_v0",
   "enabled": true,
   "provider": {
-    "argv": [
-      "loopx",
-      "semantic-preference",
-      "openviking-provider",
+    "id": "openviking_semantic_preference",
+    "extension_id": "openviking-semantic-preference",
+    "args": [
       "--project",
       ".",
       "--user-space",
       "default",
       "--max-find-calls",
       "1"
-    ],
-    "timeout_seconds": 30
+    ]
   },
   "surfaces": {
     "issue_fix.pr_description": {
@@ -104,9 +113,15 @@ configuration remain local:
 }
 ```
 
-Add `--ov-bin` or `--cli-config` to the provider argv only when the local
-OpenViking installation needs explicit paths. Use `--doctor` with the same
-arguments for a read-only `ov status` probe.
+Expose `ov` on `PATH` and keep OpenViking's normal local configuration ready
+before activation. `loopx extension doctor openviking-semantic-preference
+--execute` repeats the read-only `ov status` probe. Hook `args` may still carry
+project-scoping options; they do not alter the manifest-owned doctor.
+
+`loopx semantic-preference openviking-provider` remains a delegating
+compatibility alias. New integrations should use the extension activation and
+`extension_id` binding so disable, upgrade, rollback, API compatibility,
+permission, and doctor state remain inspectable in one lifecycle.
 
 The consuming function remains the final application boundary. For Issue Fix,
 `build_issue_fix_pr_description()` owns one recall, fail-open preservation,

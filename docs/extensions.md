@@ -16,9 +16,9 @@ LoopX Core
 |-- capability contracts
 |-- built-in capability registrations
 `-- extension runtime
-      |-- extension A -- provides capabilities
-      |-- extension B -- provides capabilities
-      `-- extension C -- provides capabilities
+      |-- extension A -- provides a new capability
+      |-- extension B -- implements a core capability
+      `-- extension C -- remains disabled
 ```
 
 ## Registration Model
@@ -34,9 +34,8 @@ manifests are validated and appended in caller order. Duplicate capability or
 provider ids fail closed. Internal registrations remain available to the
 registry but are omitted from the public catalog.
 
-The initial runtime does not scan arbitrary directories and does not import
-extension Python code while reading the catalog. A caller enables a manifest
-for one catalog operation explicitly:
+Catalog discovery does not scan arbitrary directories or import extension
+Python code. A caller can compose one manifest into a catalog read explicitly:
 
 ```bash
 loopx capability list \
@@ -48,10 +47,38 @@ loopx capability show lark-kanban \
   --format json
 ```
 
-This explicit read path establishes the registration contract without
-prematurely defining an installer, package repository, or global activation
-store. Those lifecycle surfaces can later provide the same validated manifest
-paths to the registry.
+The activation store is separate from catalog composition. `loopx extension`
+registers an already-installed subprocess entrypoint only after the manifest,
+API, permission, and doctor checks pass. It does not download packages or grant
+new permissions.
+
+## Runtime Lifecycle
+
+The lifecycle is local, explicit, and dry-run by default:
+
+```bash
+# Inspect the bundled OpenViking pilot, then activate it only if doctor passes.
+loopx extension install \
+  --bundled openviking-semantic-preference \
+  --execute \
+  --format json
+
+loopx extension list --format json
+loopx extension doctor openviking-semantic-preference --execute --format json
+loopx extension disable openviking-semantic-preference --execute --format json
+```
+
+For a separately distributed provider, pass `--manifest <extension.toml>`.
+`upgrade` validates and probes the new manifest before changing the active
+revision. `rollback` probes the previous revision before switching back. A
+failed probe leaves the current revision untouched. Activation state contains
+validated manifest snapshots and revision ids in the private LoopX runtime
+root; it does not contain provider output or credentials.
+
+An enabled implementation is resolved by capability id, versioned protocol,
+declared permission, current revision, and current doctor proof. Domain config
+may add bounded provider arguments, but cannot replace the manifest entrypoint,
+timeout, protocol, or permission contract.
 
 ## Placement Decision For Agents
 
@@ -121,8 +148,9 @@ capability when it shares the core release and lifecycle.
 
 ## Manifest Contract
 
-An extension manifest is declarative TOML. `[[provides]]` records carry enough
-metadata to enter the capability catalog without loading provider code.
+An extension manifest is declarative TOML. `[[provides]]` records add new
+capability contracts to the catalog. `[[implements]]` binds a provider runtime
+to an existing core-owned capability without duplicating that capability id.
 The v0 runtime exposes integer extension API version `1` and accepts bounded
 integer constraints such as `>=1,<2`; incompatible manifests fail closed.
 
@@ -132,6 +160,13 @@ id = "loopx-lark"
 version = "1.0.0"
 requires_loopx_api = ">=1,<2"
 permissions = ["read_status", "read_todos", "external_write"]
+
+[runtime]
+protocol = "lark_kanban_provider_v0"
+entrypoint = "loopx-lark-kanban"
+doctor_args = ["--doctor"]
+required_permissions = ["read_status", "read_todos"]
+timeout_seconds = 30
 
 [[provides]]
 id = "lark-kanban"
@@ -145,19 +180,35 @@ entry_command = "loopx lark-kanban sync"
 next_real_step = "Validate one explicitly enabled owner-approved sink."
 ```
 
-`permissions` are declared provider metadata in this stage. Declaring a
-permission does not grant it: existing LoopX goal boundaries, user gates, and
-external-write authorization still decide whether an operation may execute.
+The bundled OpenViking pilot uses `[[implements]]` instead:
+
+```toml
+[runtime]
+protocol = "semantic_preference_provider_v0"
+entrypoint = "loopx-openviking-semantic-preference"
+doctor_args = ["--doctor"]
+required_permissions = ["semantic_preference.read"]
+
+[[implements]]
+capability_id = "semantic-preference"
+protocol = "semantic_preference_provider_v0"
+```
+
+Runtime-required permissions must be a subset of the provider's declared
+permissions. Declaring either does not grant authority: existing LoopX goal
+boundaries, user gates, and external-write authorization still decide whether
+an operation may execute.
 
 ## Scope Boundaries
 
-This first stage intentionally does not:
+The executable v0 runtime intentionally does not:
 
 - rename or move existing capability implementation directories;
 - infer capabilities from Python packages;
-- install, enable, disable, or upgrade extension packages;
+- download, build, or install extension packages;
+- start services, create credentials, or edit provider configuration;
 - import an extension entrypoint during catalog discovery;
 - let manifest permissions bypass LoopX control-plane authority.
 
-These omissions keep the registry useful now while leaving package and
-lifecycle policy to a later, evidence-backed call site.
+These boundaries keep activation reversible and auditable while leaving package
+distribution and service setup to explicit operator-owned workflows.
