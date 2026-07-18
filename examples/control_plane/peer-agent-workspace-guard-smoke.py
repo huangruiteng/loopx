@@ -169,6 +169,8 @@ def set_task_repository(project: Path, runtime: Path, registry_path: Path) -> No
         "agent",
         "--todo-id",
         "todo_workspace_guard",
+        "--agent-id",
+        PEER_ALPHA,
         "--task-repository",
         "https://example.invalid/loopx/task-repo.git",
         registry_path=registry_path,
