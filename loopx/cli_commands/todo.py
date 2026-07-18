@@ -229,6 +229,15 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     todo_parser.add_argument(
+        "--clear-global-gate",
+        action="store_true",
+        help=(
+            "For todo update on a user_gate, remove global_gate. In a multi-agent "
+            "goal, provide --blocks-agent in the same update so the gate retains "
+            "an explicit lane scope."
+        ),
+    )
+    todo_parser.add_argument(
         "--unblocks-todo-id",
         help=(
             "For todo add/update, link this todo to the blocked todo it unblocks, "
@@ -519,6 +528,7 @@ def handle_todo_command(
                     ("--excluded-agent", args.excluded_agents),
                     ("--clear-excluded-agents", args.clear_excluded_agents),
                     ("--global-gate", args.global_gate),
+                    ("--clear-global-gate", args.clear_global_gate),
                     ("--unblocks-todo-id", args.unblocks_todo_id),
                     ("--successor-todo-id", args.successor_todo_ids),
                     ("--resume-when", args.resume_when),
@@ -591,6 +601,7 @@ def handle_todo_command(
                 args.excluded_agents,
                 args.clear_excluded_agents,
                 args.global_gate,
+                args.clear_global_gate,
                 args.unblocks_todo_id,
                 args.successor_todo_ids,
                 args.resume_when,
@@ -648,6 +659,7 @@ def handle_todo_command(
                 excluded_agents=args.excluded_agents,
                 clear_excluded_agents=bool(args.clear_excluded_agents),
                 global_gate=bool(args.global_gate),
+                clear_global_gate=bool(args.clear_global_gate),
                 agent_id=args.agent_id,
                 unblocks_todo_id=args.unblocks_todo_id,
                 successor_todo_ids=args.successor_todo_ids,
@@ -673,7 +685,7 @@ def handle_todo_command(
                 )
             if args.claimed_by and args.clear_claim:
                 raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
-            if args.task_repository or args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
+            if args.task_repository or args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
             if args.monitor_target_key or args.cadence or args.next_due_at or args.expires_at:
                 raise ValueError("todo complete does not support monitor schedule metadata; use todo update before completion")
@@ -756,7 +768,7 @@ def handle_todo_command(
                 )
             if args.next_excluded_agents and not args.next_agent_todo:
                 raise ValueError("--next-excluded-agent requires --next-agent-todo")
-            if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.unblocks_todo_id or args.resume_when:
+            if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo supersede does not update current todo routing metadata; use todo update first")
             if args.successor_todo_ids:
                 raise ValueError("todo supersede does not support --successor-todo-id; use --next-agent-todo or update the source todo before supersede")

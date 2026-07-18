@@ -66,3 +66,25 @@ def require_user_gate_scope(
         "when the gate blocks one lane, or pass --global-gate when it genuinely "
         "blocks every registered agent"
     )
+
+
+def resolve_user_gate_global_gate_update(
+    *,
+    role: str,
+    task_class: str | None,
+    existing_global_gate: bool | None,
+    global_gate: bool,
+    clear_global_gate: bool,
+) -> bool | None:
+    if global_gate and clear_global_gate:
+        raise ValueError(
+            "todo update accepts either global_gate or clear_global_gate, not both"
+        )
+    if (global_gate or clear_global_gate) and not (
+        role == "user" and task_class == TODO_TASK_CLASS_USER_GATE
+    ):
+        field = "clear_global_gate" if clear_global_gate else "global_gate"
+        raise ValueError(f"{field} is only valid for user_gate todos")
+    if clear_global_gate:
+        return None
+    return True if global_gate else existing_global_gate

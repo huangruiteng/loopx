@@ -84,7 +84,7 @@ from .control_plane.todos.unblock_resume import (
     apply_completed_user_todo_lifecycle,
     require_completion_decision_outcome,
 )
-from .control_plane.todos.write_policy import require_user_gate_scope, require_user_todo_task_class
+from .control_plane.todos.write_policy import require_user_gate_scope, require_user_todo_task_class, resolve_user_gate_global_gate_update
 
 
 ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE = max(0, MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE - 2)
@@ -1079,7 +1079,7 @@ def apply_todo_update_to_lines(
     blocks_agent: str | None = None,
     clear_blocks_agent: bool = False,
     excluded_agents: list[str] | None = None,
-    global_gate: bool | None = None,
+    global_gate: bool | None = None, clear_global_gate: bool = False,
     unblocks_todo_id: str | None = None,
     successor_todo_ids: list[str] | None = None,
     resume_when: str | None = None,
@@ -1189,7 +1189,9 @@ def apply_todo_update_to_lines(
         updates["blocks_agent"] = None
     if excluded_agents is not None:
         updates["excluded_agents"] = excluded_agents
-    if global_gate is not None:
+    if clear_global_gate:
+        updates["global_gate"] = None
+    elif global_gate is not None:
         updates["global_gate"] = global_gate
     if unblocks_todo_id:
         updates["unblocks_todo_id"] = unblocks_todo_id
@@ -1287,7 +1289,7 @@ def update_goal_todo(
     clear_blocks_agent: bool = False,
     excluded_agents: list[str] | None = None,
     clear_excluded_agents: bool = False,
-    global_gate: bool = False,
+    global_gate: bool = False, clear_global_gate: bool = False,
     agent_id: str | None = None,
     unblocks_todo_id: str | None = None,
     successor_todo_ids: list[str] | None = None,
@@ -1300,11 +1302,6 @@ def update_goal_todo(
     state_file: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    if global_gate and (
-        (role is not None and role != "user")
-        or (task_class is not None and task_class != TODO_TASK_CLASS_USER_GATE)
-    ):
-        raise ValueError("global_gate is only valid for user_gate todos")
     if excluded_agents and clear_excluded_agents:
         raise ValueError(
             "todo update accepts either excluded_agents or clear_excluded_agents, not both"
@@ -1409,8 +1406,6 @@ def update_goal_todo(
             )
         existing_blocks_agent = normalize_todo_blocks_agent(existing_block.get("blocks_agent"))
         existing_global_gate = normalize_todo_global_gate(existing_block.get("global_gate"))
-        if global_gate and not (target_role == "user" and target_task_class == TODO_TASK_CLASS_USER_GATE):
-            raise ValueError("global_gate is only valid for user_gate todos")
         target_blocks_agent = None if clear_blocks_agent else effective_blocks_agent or existing_blocks_agent
         if (
             effective_agent_id
@@ -1420,7 +1415,13 @@ def update_goal_todo(
         ):
             target_blocks_agent = effective_agent_id
             effective_blocks_agent = effective_agent_id
-        target_global_gate = True if global_gate else existing_global_gate
+        target_global_gate = resolve_user_gate_global_gate_update(
+            role=target_role,
+            task_class=target_task_class,
+            existing_global_gate=existing_global_gate,
+            global_gate=global_gate,
+            clear_global_gate=clear_global_gate,
+        )
         if target_status != TODO_STATUS_DONE:
             require_user_todo_task_class(
                 role=target_role,
@@ -1477,6 +1478,7 @@ def update_goal_todo(
             clear_blocks_agent=clear_blocks_agent,
             excluded_agents=effective_excluded_agents,
             global_gate=True if global_gate else None,
+            clear_global_gate=clear_global_gate,
             unblocks_todo_id=normalized_unblocks_todo_id,
             successor_todo_ids=normalized_successor_todo_ids if successor_todo_ids is not None else None,
             resume_when=normalized_resume_when,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,8 @@ from loopx.control_plane.testing.canary_harness import (
 GOAL_ID = "decision-scope-cli-validation"
 VALID_SCOPE = "direction:action:release_route"
 INVALID_SCOPE = "not-a-decision-scope"
+DELIVERY_AGENT = "codex-delivery"
+OTHER_AGENT = "codex-review"
 
 
 def _write_fixture(tmp_path: Path) -> tuple[Path, Path]:
@@ -46,6 +49,101 @@ def _write_fixture(tmp_path: Path) -> tuple[Path, Path]:
 
 def _scope_args(flag: str, values: list[str]) -> list[str]:
     return [part for value in values for part in (flag, value)]
+
+
+def _register_agents(registry_path: Path) -> None:
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["goals"][0]["coordination"] = {
+        "agent_model": "peer_v1",
+        "registered_agents": [DELIVERY_AGENT, OTHER_AGENT],
+    }
+    registry_path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _add_global_gate(registry_path: Path) -> dict:
+    return run_json_cli(
+        "todo",
+        "add",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "user",
+        "--task-class",
+        "user_gate",
+        "--text",
+        "Approve pausing every agent.",
+        "--global-gate",
+        registry_path=registry_path,
+    )
+
+
+def test_todo_update_can_narrow_global_gate_without_consuming_decision(
+    tmp_path: Path,
+) -> None:
+    registry_path, state_file = _write_fixture(tmp_path)
+    _register_agents(registry_path)
+    gate = _add_global_gate(registry_path)
+
+    updated = run_json_cli(
+        "todo",
+        "update",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "user",
+        "--todo-id",
+        gate["todo_id"],
+        "--clear-global-gate",
+        "--blocks-agent",
+        DELIVERY_AGENT,
+        registry_path=registry_path,
+    )
+
+    assert updated["status"] == "open", updated
+    assert updated["blocks_agent"] == DELIVERY_AGENT, updated
+    assert updated["global_gate"] is None, updated
+    state_text = state_file.read_text(encoding="utf-8")
+    assert f"blocks_agent={DELIVERY_AGENT}" in state_text
+    assert "global_gate=" not in state_text
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "error_fragment"),
+    [
+        ([], "multi-agent user_gate requires an explicit scope"),
+        (
+            ["--global-gate"],
+            "todo update accepts either global_gate or clear_global_gate, not both",
+        ),
+    ],
+)
+def test_todo_update_rejects_unsafe_global_gate_clear_without_data_loss(
+    tmp_path: Path,
+    extra_args: list[str],
+    error_fragment: str,
+) -> None:
+    registry_path, state_file = _write_fixture(tmp_path)
+    _register_agents(registry_path)
+    gate = _add_global_gate(registry_path)
+    original = state_file.read_text(encoding="utf-8")
+
+    returncode, payload = run_json_cli_result(
+        "todo",
+        "update",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "user",
+        "--todo-id",
+        gate["todo_id"],
+        "--clear-global-gate",
+        *extra_args,
+        registry_path=registry_path,
+    )
+
+    assert returncode != 0, payload
+    assert error_fragment in payload["error"], payload
+    assert state_file.read_text(encoding="utf-8") == original
 
 
 @pytest.mark.parametrize(

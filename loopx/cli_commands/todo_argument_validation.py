@@ -31,6 +31,7 @@ TODO_OPTION_FIELDS = (
     ("--excluded-agent", "excluded_agents"),
     ("--clear-excluded-agents", "clear_excluded_agents"),
     ("--global-gate", "global_gate"),
+    ("--clear-global-gate", "clear_global_gate"),
     ("--unblocks-todo-id", "unblocks_todo_id"),
     ("--successor-todo-id", "successor_todo_ids"),
     ("--resume-when", "resume_when"),
@@ -78,6 +79,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     )
     agent_id_allowed_for_read = args.todo_command == "list"
     global_gate_allowed = args.todo_command in {"add", "update"}
+    clear_global_gate_allowed = args.todo_command == "update"
     if (
         args.todo_command not in {"suggest", "capture-followups"}
         and args.agent_id
@@ -93,6 +95,10 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     if args.global_gate and not global_gate_allowed:
         raise ValueError(
             "--global-gate is supported only by todo add/update for user_gate items"
+        )
+    if args.clear_global_gate and not clear_global_gate_allowed:
+        raise ValueError(
+            "--clear-global-gate is supported only by todo update for user_gate items"
         )
     if (
         args.todo_command not in {"suggest", "capture-followups"}
