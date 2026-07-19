@@ -525,17 +525,24 @@ def _build_mode_option(
         else meta.get("turn_host")
     )
     if mode == MODE_VISIBLE_TUI:
-        connector_id = (
-            VISIBLE_HOST_CONNECTOR_IDS[host_identity]
-            if host_identity in VISIBLE_HOST_CONNECTOR_IDS
-            else "unresolved_visible_host"
+        connector_id = VISIBLE_HOST_CONNECTOR_IDS.get(host_identity or "")
+        host_resolution = (
+            "resolved"
+            if connector_id
+            else (
+                "identity_required"
+                if host_identity is None
+                else "unregistered_host_identity"
+            )
         )
     else:
         connector_id = meta["connector_id"]
+        host_resolution = "resolved"
     return {
         "mode": mode,
         "summary": meta["summary"],
         "connector_id": connector_id,
+        "host_resolution": host_resolution,
         "host_identity": effective_turn_host if mode == MODE_VISIBLE_TUI else None,
         "capability_ready": _mode_capability_ready(mode, host_capabilities, host_identity),
         "required_host_capabilities": list(meta["required_capabilities"]),

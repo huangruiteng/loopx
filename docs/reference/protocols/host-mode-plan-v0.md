@@ -72,9 +72,14 @@ A coarse `visible_session` capability cannot distinguish Codex CLI, Claude Code,
 or another generic visible host such as OpenCode. The planner therefore fails
 closed for `visible_tui` unless an explicit, catalog-registered `host_identity`
 is supplied (`--host-identity`, currently `codex-cli` or `claude-code`). With no
-identity, the visible option reports `connector_id=unresolved_visible_host`,
-`turn_mapping.host=null`, `capability_ready=false`, a blocking reason naming the
-missing identity, and a stop-first next step; no Codex CLI default is fabricated.
+identity, the visible option reports `connector_id=null`,
+`host_resolution=identity_required`, `turn_mapping.host=null`,
+`capability_ready=false`, a blocking reason naming the missing identity, and a
+stop-first next step; no Codex CLI default is fabricated. An unregistered
+identity similarly yields `connector_id=null` with
+`host_resolution=unregistered_host_identity`. The resolution state lives in the
+separately typed `host_resolution` field so the `connector_id` field only ever
+carries real runtime connector catalog ids.
 With an identity, the typed mapping is used: `codex-cli` -> `codex_cli_tui`,
 `claude-code` -> `claude_code_loop`. Every emitted connector id must exist in the
 runtime connector catalog; an identity with no registered catalog connector
@@ -164,6 +169,8 @@ A fixture or implementation is acceptable when:
 8. visible `host_identity` is required when `visible_tui` is selected, is
    preserved for distinct hosts such as Codex CLI and Claude Code in the
    connector id, Turn mapping, and preview commands, and every emitted connector
-   id exists in the runtime connector catalog;
+   id exists in the runtime connector catalog (unresolved mappings emit
+   `connector_id=null` plus a typed `host_resolution` instead of a non-catalog
+   value);
 9. handoffs preserve the selected agent id and expose target readiness; and
 10. unknown intent or host capability values fail closed with suggestions.

@@ -178,10 +178,13 @@ def test_visible_mode_fails_closed_without_host_identity() -> None:
     plan = build_workflow_identity_plan("watch_each_turn", host_identity=None)
     visible = option(plan, MODE_VISIBLE_TUI)
     assert visible["capability_ready"] is False, visible
-    assert visible["connector_id"] == "unresolved_visible_host", visible
+    # Unresolved mapping must not emit a non-catalog connector id; the
+    # resolution state lives in a separately typed field instead.
+    assert visible["connector_id"] is None, visible
+    assert visible["host_resolution"] == "identity_required", visible
     assert visible["turn_mapping"]["host"] is None, visible
     assert plan["selected_capability_ready"] is False, plan
-    assert plan["selected_connector_id"] == "unresolved_visible_host", plan
+    assert plan["selected_connector_id"] is None, plan
     assert plan["selected_turn_mapping"]["host"] is None, plan
     assert any("host_identity" in reason for reason in plan["selected_blocking_reasons"]), plan
     assert plan["operator_next_steps"][0]["kind"] == "stop", plan
@@ -194,22 +197,34 @@ def test_visible_mode_fails_closed_for_unregistered_host_identity() -> None:
     plan = build_workflow_identity_plan("watch_each_turn", host_identity="generic-cli")
     visible = option(plan, MODE_VISIBLE_TUI)
     assert visible["capability_ready"] is False, visible
-    assert visible["connector_id"] == "unresolved_visible_host", visible
+    assert visible["connector_id"] is None, visible
+    assert visible["host_resolution"] == "unregistered_host_identity", visible
     assert plan["selected_capability_ready"] is False, plan
+    assert plan["selected_connector_id"] is None, plan
     assert any("no registered catalog connector" in reason for reason in plan["selected_blocking_reasons"]), plan
 
 
 def test_emitted_connector_ids_exist_in_catalog() -> None:
     catalog = CONNECTOR_CATALOG_PATH.read_text()
+    # Resolved identities emit only catalog-registered connector ids.
     for host_identity in ["codex-cli", "claude-code"]:
         plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
         connector = plan["selected_connector_id"]
+        assert connector is not None, (host_identity, plan)
         assert f"`{connector}`" in catalog, (connector, "missing from runtime connector catalog")
+    # Unresolved paths (omitted or unregistered identity) must not emit any
+    # non-catalog value in the connector id field.
+    for host_identity in [None, "generic-cli"]:
+        plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
+        assert plan["selected_connector_id"] is None, (host_identity, plan)
+        visible = option(plan, MODE_VISIBLE_TUI)
+        assert visible["connector_id"] is None, (host_identity, visible)
     for intent, mode in INTENT_TO_MODE.items():
         if mode == MODE_HYBRID_HANDOFF:
             continue  # selector-internal handoff contract, not a catalog connector
         plan = build_full_plan(intent)
         connector = plan["selected_connector_id"]
+        assert connector is not None, (intent, plan)
         assert f"`{connector}`" in catalog, (intent, connector, "missing from runtime connector catalog")
 
 
