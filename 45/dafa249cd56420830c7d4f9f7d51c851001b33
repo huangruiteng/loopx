@@ -1,0 +1,23 @@
+loopx/control_plane/todos/completion_policy.py
+  s_e3f612788718c1::t_8762120d1212ef 8,12,99
+tests/control_plane/test_completion_policy.py
+  s_e3f612788718c1::t_b2a62ede7aac20 3,5,8-16,21-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "45dafa249cd56420830c7d4f9f7d51c851001b33",
+  "prompts": {},
+  "sessions": {
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
