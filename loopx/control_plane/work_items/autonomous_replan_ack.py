@@ -49,18 +49,33 @@ def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] 
 
 def latest_blocked_successor_frontier_identity(
     latest_runs: list[dict[str, Any]] | None,
+    *,
+    agent_id: str | None = None,
 ) -> str | None:
+    normalized_agent_id = str(agent_id or "").strip()
     for run in latest_runs or []:
         if not isinstance(run, dict):
             continue
-        classification = str(run.get("classification") or "").strip()
-        if classification != "quota_monitor_poll":
-            return None
         target = (
             run.get("monitor_target")
             if isinstance(run.get("monitor_target"), dict)
             else {}
         )
+        if normalized_agent_id:
+            run_agent_id = str(run.get("agent_id") or "").strip()
+            target_agent_id = str(target.get("agent_id") or "").strip()
+            if run_agent_id and target_agent_id and run_agent_id != target_agent_id:
+                if normalized_agent_id in {run_agent_id, target_agent_id}:
+                    return None
+                continue
+            attributed_agent_id = run_agent_id or target_agent_id
+            if not attributed_agent_id:
+                return None
+            if attributed_agent_id != normalized_agent_id:
+                continue
+        classification = str(run.get("classification") or "").strip()
+        if classification != "quota_monitor_poll":
+            return None
         if target.get("monitor_mode") != (
             "blocked_successor_wait_without_material_transition"
         ):

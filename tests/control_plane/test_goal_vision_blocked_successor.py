@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 
 import pytest
 
+from examples.control_plane.quota_plan_fixtures import (
+    SCOPED_AGENT_ID,
+    write_cli_fixture,
+)
 from loopx.cli_commands.status import attach_agent_lane_next_actions
 from loopx.control_plane.goals.goal_frontier import (
     build_goal_frontier_projection_context_from_status,
@@ -22,7 +27,7 @@ from loopx.control_plane.work_items.autonomous_replan_ack import (
 )
 from loopx.presentation.renderers.status_markdown import render_status_markdown
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
-from loopx.state_refresh import build_state_refresh_record
+from loopx.state_refresh import build_state_refresh_record, refresh_state_run
 from loopx.status import autonomous_replan_obligation_from_runs, compact_run
 
 
@@ -364,6 +369,101 @@ def test_refresh_ack_preserves_the_observed_blocked_successor_identity(
     assert record["autonomous_replan_ack"]["frontier_identity"] == (
         frontier_identity
     )
+
+
+def test_refresh_ack_recovers_only_the_current_agent_frontier(tmp_path) -> None:
+    registry_path, runtime_root, _ = write_cli_fixture(
+        tmp_path / "fixture",
+        scoped_agents=True,
+    )
+    peer_agent_id = "codex-main-control"
+    current_frontier = "current-agent-frontier"
+    peer_frontier = "newer-peer-frontier"
+
+    def monitor_poll(*, agent_id: str, frontier_identity: str, generated_at: str) -> dict:
+        return {
+            "goal_id": "half-speed",
+            "classification": "quota_monitor_poll",
+            "generated_at": generated_at,
+            "agent_id": agent_id,
+            "monitor_target": {
+                "monitor_mode": "blocked_successor_wait_without_material_transition",
+                "agent_id": agent_id,
+                "frontier_identity": frontier_identity,
+            },
+        }
+
+    runs = [
+        monitor_poll(
+            agent_id=peer_agent_id,
+            frontier_identity=peer_frontier,
+            generated_at="2099-01-01T00:03:00+00:00",
+        ),
+        monitor_poll(
+            agent_id=SCOPED_AGENT_ID,
+            frontier_identity=current_frontier,
+            generated_at="2099-01-01T00:02:00+00:00",
+        ),
+    ]
+    assert latest_blocked_successor_frontier_identity(runs) == peer_frontier
+    assert latest_blocked_successor_frontier_identity(
+        runs,
+        agent_id=SCOPED_AGENT_ID,
+    ) == current_frontier
+
+    unscoped_poll = monitor_poll(
+        agent_id=SCOPED_AGENT_ID,
+        frontier_identity="goal-level-frontier",
+        generated_at="2099-01-01T00:04:00+00:00",
+    )
+    unscoped_poll.pop("agent_id")
+    unscoped_poll["monitor_target"].pop("agent_id")
+    assert latest_blocked_successor_frontier_identity([unscoped_poll]) == (
+        "goal-level-frontier"
+    )
+    assert (
+        latest_blocked_successor_frontier_identity(
+            [unscoped_poll],
+            agent_id=SCOPED_AGENT_ID,
+        )
+        is None
+    )
+
+    conflicting_poll = monitor_poll(
+        agent_id=SCOPED_AGENT_ID,
+        frontier_identity="conflicting-frontier",
+        generated_at="2099-01-01T00:05:00+00:00",
+    )
+    conflicting_poll["monitor_target"]["agent_id"] = peer_agent_id
+    assert (
+        latest_blocked_successor_frontier_identity(
+            [conflicting_poll],
+            agent_id=SCOPED_AGENT_ID,
+        )
+        is None
+    )
+
+    index_path = runtime_root / "goals" / "half-speed" / "runs" / "index.jsonl"
+    with index_path.open("a", encoding="utf-8") as index_file:
+        for run in reversed(runs):
+            index_file.write(json.dumps(run, ensure_ascii=False) + "\n")
+
+    payload = refresh_state_run(
+        registry_path=registry_path,
+        runtime_root_override=None,
+        goal_id="half-speed",
+        project=None,
+        state_file=None,
+        classification="autonomous_replan_recorded",
+        recommended_action="Continue the current agent replan.",
+        agent_id=SCOPED_AGENT_ID,
+        autonomous_replan_recorded=True,
+        repair_delta_kinds=["watch_lane_continuation"],
+        dry_run=True,
+        sync_global=False,
+    )
+
+    assert payload["autonomous_replan_ack"]["frontier_identity"] == current_frontier
 
 
 def test_status_projects_exact_blocker_and_resume_contract() -> None:

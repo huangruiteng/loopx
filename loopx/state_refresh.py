@@ -963,7 +963,10 @@ def refresh_state_run(
             )
         ]
         autonomous_replan_frontier_identity = (
-            latest_blocked_successor_frontier_identity(newest_first_runs)
+            latest_blocked_successor_frontier_identity(
+                newest_first_runs,
+                agent_id=normalized_agent_id or None,
+            )
         )
     generated_at = now_local()
     active_state_next_action_update: dict[str, Any] | None = None
