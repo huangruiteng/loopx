@@ -389,6 +389,40 @@ loopx todo update \
 
 只有真正影响所有 peer 的 gate 才使用 `--global-gate`。不要因为不确定就扩大阻塞面。
 
+在 multi-agent goal 中，`blocks_agent` 和 `global_gate=true` 都缺失时，语义不是
+“默认全局阻塞”，而是“authority scope 不完整”。把不确定性扩大成全局 gate 会让一个
+局部决策冻结所有独立 lane，也无法从状态解释用户当时究竟授权了什么。Quota 因此把它
+投影为有界修复：
+
+```python
+if len(registered_agents) > 1:
+    for gate in gates:
+        if normalize_todo_global_gate(gate.get("global_gate")):
+            continue
+        if normalize_todo_blocks_agent(gate.get("blocks_agent")):
+            continue
+        errors.append({
+            "reason_code": "multi_agent_user_gate_missing_scope",
+            "user_todo_id": normalize_todo_id(gate.get("todo_id")),
+        })
+```
+
+`build_required_decision_scope_repair_hint` 再把错误编译成
+`todo_decision_scope_projection_repair`。修复只能选择三种明确结果：绑定一个 registered
+agent、显式设为 `global_gate=true`，或把它降级为不阻塞的 `user_action`。修复完成前关闭
+normal delivery，但不伪造一项新的用户决策。
+
+这条规则至少需要两个相邻反例共同看护：
+
+```text
+unscoped gate in multi-agent goal -> control_plane_self_repair
+explicit global_gate=true         -> user_gate，所有 peer 被阻塞
+```
+
+只保留第一条测试会把“修复歧义”误实现成“永不支持全局 gate”；只保留第二条又可能让
+缺失 scope 静默扩大权限。公开回放位于
+`examples/control_plane/quota-agent-scoped-user-gate-smoke.py`。
+
 ## Resume Condition
 
 Deferred todo 必须说明何时恢复：

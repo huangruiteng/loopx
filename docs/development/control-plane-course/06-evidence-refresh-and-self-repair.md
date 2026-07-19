@@ -159,7 +159,27 @@ Outcome floor 防止 agent 用大量微小动作伪装长期推进。连续 surf
 
 ## Agent Vision 与 Acceptance Gap
 
-多 agent goal 中，每个 peer 可以有自己的 bounded vision：
+多 agent goal 中，每个 peer 有自己的 bounded vision。对同时承担 advancement 与
+continuous monitor 的长生命周期 lane，vision 不是可有可无的说明文字，而是恢复和
+replan 的基线。Agent profile 会默认把这类 lane 标成 required：
+
+```python
+def _vision_requirement(value, *, task_classes):
+    requirement = str(value or "").strip().lower()
+    if requirement:
+        return requirement
+    if {"advancement_task", "continuous_monitor"}.issubset(task_classes):
+        return "required"
+    return None
+```
+
+`goal_frontier.py::acceptance_gaps_from_agent_profile_requirement` 会在 required lane 缺少
+vision baseline 时产生 `agent_profile_vision_missing` gap。普通 delivery 或 monitor-only
+quiet 不能永久掩盖这个 gap；agent 应写入一份有界 vision，只有拥有 profile authority
+的配置方才能把 lane 显式改成 optional。短期 one-shot peer 仍可预先配置为 optional，
+避免把所有临时任务都包装成长计划。
+
+一个 bounded vision packet 包含：
 
 ```text
 vision summary
@@ -418,6 +438,60 @@ replan 应选择 watch expiry、明确 blocker、supersede monitor 或创建 run
 
 这个例子同时说明了三件事：evidence 必须归属稳定 identity；聚合 read model 不能覆盖
 per-lane truth；replan detector 与工作选择 precedence 必须在同一 fixture 中验证。
+
+### Run History 还要按 Agent Lane 归因
+
+Monitor target 的 counter 解决了 M1/M2 互相清零，但 multi-agent goal 还有第二层归因：
+另一个 peer 的新 run 也不能打断当前 peer 的 blocked-successor 或 no-progress streak。
+当前实现先从最新可归因 run 选择 accountable agent，再保留该 lane 与 goal-level neutral
+runs：
+
+```python
+accountable_agent_id = next(
+    (
+        _run_history_agent_id(run)
+        for run in latest_runs
+        if str(run.get("classification") or "").strip()
+        not in neutral_classifications
+        and _run_history_agent_id(run)
+    ),
+    None,
+)
+
+if not accountable_agent_id:
+    return [run for run in latest_runs if isinstance(run, dict)]
+
+scoped_runs = [
+    run for run in latest_runs
+    if isinstance(run, dict)
+    and _run_history_agent_id(run) in {None, accountable_agent_id}
+]
+```
+
+保留 `agent_id=None` 的 neutral run 是为了兼容真正的 goal-level 事实；选择最新
+attributable lane 则防止 peer B 的 monitor poll 重置 peer A 的停滞计数。若没有可唯一选择
+的 accountable lane，早退分支保留全部结构化 run，后续规则继续依据显式 agent scope
+判断，而不是丢弃可能相关的证据。对应回归位于
+`tests/control_plane/test_goal_vision_blocked_successor.py`。
+
+### 外部条件满足后仍要重新计算 Frontier
+
+`deferred` todo 的 `resume_when=pr_merged:<ref>` 不会因为人看到 PR 已合并就自动完成。
+公开 merge event 先满足 `resume_condition`，projection 再写出 `resume_ready=true`：
+
+```python
+condition.update(pr_merged_condition(
+    target,
+    rollout_events,
+    task_repository=item.get("task_repository"),
+))
+item["resume_ready"] = bool(condition.get("satisfied"))
+```
+
+恢复后的正确动作也不一定是重复实现。Quota 重新暴露 successor，agent 比较 merge
+evidence、acceptance 与当前代码；若目标已由其他路径满足，可以用证据记录
+`no_followup` replan delta。这个过程把“外部条件满足”“todo 可恢复”“还需不需要工作”
+分成三次可审计判断，避免 deferred work 永久沉睡，也避免 merge 后重复开工。
 
 ## Public/Private Evidence Boundary
 

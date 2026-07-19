@@ -139,6 +139,8 @@ loopx quota scheduler-ack-current \
   --agent-id <agent-id> \
   --surface codex_app \
   --state-key scheduler_hint.codex_app.stateful_backoff \
+  --reset-token <proposal-reset-token> \
+  --identity-signature <proposal-identity-signature> \
   --applied-rrule 'FREQ=MINUTELY;INTERVAL=30' \
   --execute
 ```
@@ -149,6 +151,7 @@ ACK 绑定：
 - agent；
 - host surface；
 - scheduler state key；
+- proposal reset token 与 identity signature；
 - 实际 applied RRULE。
 
 这样下一轮能够区分：
@@ -161,6 +164,33 @@ CLI acknowledged exact applied state
 ```
 
 Scheduler ACK 本身不构成 delivery，不 spend。
+
+### Proposal、Host Effect 与 Durable Receipt
+
+Scheduler 交互包含三个时间点，不能压成一个 `RRULE matches`：
+
+```text
+P: quota 产生 proposal identity 与 target RRULE
+O: host 更新 automation，并 readback observed RRULE
+R: LoopX 持久化 ACK，证明 O 对应 P
+```
+
+`O.target_matches=true` 只说明宿主当前值正确，不等于 `R.persisted=true`。如果 adapter
+先更新 RRULE，再重新计算一份已经显示 settled 的 hint，原 proposal 的 ACK obligation
+可能被跳过。完整资格测试必须保留 P 的 `state_key`、`reset_token`、
+`identity_signature` 和 target RRULE，按以下顺序验证：
+
+```text
+quota proposal
+  -> host update
+  -> host readback
+  -> ACK original proposal identity
+  -> final quota guard observes persisted scheduler state
+```
+
+最后一步不能只断言 host 仍是目标 RRULE，还要断言控制面不再返回同一 ACK obligation，
+并且 durable scheduler state 已记录对应 identity。这样才能区分“宿主碰巧已经正确”和
+“这次控制面 transition 已经结算”。
 
 ## Monitor 的 Quiet Contract
 
@@ -407,7 +437,7 @@ base_identity_keys = [
 
 只要工作身份发生 material 变化，backoff progression 就应 reset。否则“等待同一个外部结果的第 5 次 poll”和“刚切换到新 runnable todo 的第一次执行”会错误共享慢 cadence。
 
-### 3. ACK 校验的是当前 hint，不接受任意 host 回报
+### 3. ACK 同时校验 Proposal Identity 与 Host 回报
 
 `scheduler/ack.py` 中的 `build_scheduler_ack_plan` 逐层比对 state identity：
 
@@ -429,7 +459,10 @@ if not applied_rrule:
     return {"ok": False, "reason": "... requires --applied-rrule ..."}
 ```
 
-ACK 不是 delivery，所以不 spend；但没有 ACK，下一轮也不能把“建议值”当成“宿主实际值”。
+这些检查拒绝把任意 host 值写成当前 proposal 的 receipt。端到端测试还必须把 apply 前
+生成的 token 原样带过 host effect；若只在 effect 后重新读取当前 hint，测试仍可能漏掉
+ACK obligation 丢失。ACK 不是 delivery，所以不 spend；但没有 durable ACK，下一轮也
+不能把“建议值”或“当前 host 恰好匹配”当成已结算状态。
 
 ### 4. Monitor writeback 用 result hash 区分观察与推进
 

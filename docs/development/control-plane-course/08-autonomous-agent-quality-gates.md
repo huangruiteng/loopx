@@ -13,6 +13,7 @@
 3. 区分 blocking failure、advisory signal、deferred gap、`not_applicable` 和 manual hold。
 4. 解释为什么常规模型行为测试是 actual-default one-arm，而双臂只服务于明确的差分或提升声明。
 5. 为一次自主交付写出 source、oracle、decision、receipt 和 owner boundary。
+6. 判断测试替身、benchmark 分数和基础设施回执是否保留了真实产品的因果语义。
 
 ## 门禁不是“把所有测试都跑一遍”
 
@@ -62,6 +63,37 @@ Oracle 至少要写清：
 
 Characterization fixture 仍有用，但它只能记录 legacy 行为。若它与 invariant 冲突，
 应修规则并增加反例或 mutation case，不能刷新 golden 来保住错误。
+
+## 测试替身也不能改写产品合同
+
+Fake、mock 和 bridge test double 不只是测试工具；它们决定 fixture 允许什么调用。一个
+过强的 fake 会把合法实现判错，一个过弱的 fake 又会让非法路径通过。Turn bridge 的一条
+回归可以说明这类风险：创建和清理 baseline 文件是 housekeeping，只有独立 postcondition
+验证才计为 meaningful operation。错误 fake 把所有非 probe 命令都强制解释为 meaningful：
+
+```python
+# 错误：测试替身自创了“每条成功命令都必须是业务动作”的合同
+assert meaningful is True
+self.meaningful_operation_count += 1
+
+# 正确：计数服从调用方显式声明
+if meaningful:
+    self.meaningful_operation_count += 1
+```
+
+产品实现中的 `bridge.exec(..., meaningful=True)` 才定义语义动作；测试替身只应记录这项
+声明，不能根据命令是否成功、是否允许 non-zero，或是否发生在 validator 周围自行推断。
+修复后还要断言最终 count，避免把 fake 放宽成“什么都不检查”。
+
+评审 test double 时至少问四个问题：
+
+1. 参数默认值是否与真实 adapter 一致？
+2. housekeeping、observation、semantic effect 是否被分开？
+3. failure/timeout/non-zero 是否保留真实分支，而不是全部 raise 或全部 pass？
+4. fixture 是否断言最终 receipt，而不只断言调用发生过？
+
+这类失败首先是测试基础设施合同问题，不能直接归因为产品回归。只有把 fake 与真实接口
+语义校准后，CI 结果才有资格进入产品判断。
 
 ## 分层质量地图
 
@@ -558,6 +590,50 @@ integration 却漏传 facts。第四层把 surface 登记进 quality catalog 和
 `blocking_handoff_gate` 和 `vision_acceptance_gap` 谁优先。将模型层明确记为
 `not_applicable(reason)`，比为了“测试层数完整”而增加随机调用更严格。
 
+## 组合案例八：Outcome、Turn 与 Runner Readiness
+
+一个 benchmark postcondition 通过，只能证明当前 workspace 满足结果条件。它不能单独
+证明结果由本轮 agent 产生，也不能证明 LoopX 已完成 refresh、spend 与 scheduler
+closeout。Runner readiness 因此需要一组相互约束的事实：
+
+```text
+pre-agent postcondition = unsatisfied
+Turn transaction         = committed
+post-agent postcondition = satisfied
+official feedback        = blinded
+```
+
+`build_skillsbench_benchmark_runner_readiness` 把这组因果条件写成独立 checks：
+
+```python
+checks = {
+    "turn_transaction_committed": execution.get("status") == "committed",
+    "pre_agent_postcondition_checked": (
+        scored_workspace_validation.get("pre_agent_postcondition_checked") is True
+    ),
+    "pre_agent_postcondition_unsatisfied": (
+        scored_workspace_validation.get("pre_agent_postcondition_status")
+        == "unsatisfied"
+    ),
+    "post_agent_postcondition_satisfied": (
+        scored_workspace_validation.get("post_agent_postcondition_status")
+        == "satisfied"
+    ),
+    "official_feedback_blinded": (
+        scored_workspace_validation.get("oracle_feedback_used") is False
+    ),
+}
+```
+
+这组反例很重要：若 baseline 已经通过，即使 agent 又运行一次且最终仍通过，也不能声称
+runner 已证明一次有效 transition；若 Turn 未 committed，结果通过也不能替代控制面
+receipt；若 official feedback 进入执行输入，分数又失去独立性。
+
+因此复杂系统的测试要同时覆盖三层：结果层证明 postcondition，因果层证明从
+unsatisfied 到 satisfied 的变化发生在本轮，控制面层证明 Turn 已 committed。Release
+outcome baseline 可以消费 readiness receipt，但不能反过来用一个分数补齐缺失的 Turn
+事实。
+
 ## Agent 自主交付的标准顺序
 
 ```text
@@ -587,6 +663,9 @@ integration 却漏传 facts。第四层把 surface 登记进 quality catalog 和
 7. `tests/control_plane/test_actual_default_model_behavior_portfolio.py`
 8. `tests/control_plane/test_scheduler_ack_decision_table.py`
 9. `tests/control_plane/test_goal_frontier_replan_rules.py`
+10. `examples/control_plane/quota-agent-scoped-user-gate-smoke.py`
+11. `tests/control_plane/test_goal_vision_blocked_successor.py`
+12. `tests/test_skillsbench_turn_runtime.py`
 
 ## 代表性实验
 
