@@ -1137,7 +1137,7 @@ def refresh_state_run(
         if requested_classification != classification:
             index_record["requested_classification"] = requested_classification
     if agent_vision:
-        index_record["agent_vision"] = {
+        indexed_agent_vision = {
             "schema_version": agent_vision.get("schema_version"),
             "agent_id": agent_vision.get("agent_id"),
             "state": agent_vision.get("state"),
@@ -1149,6 +1149,9 @@ def refresh_state_run(
             else [],
             "vision_budget": agent_vision.get("vision_budget"),
         }
+        if isinstance(agent_vision.get("path_delta"), dict):
+            indexed_agent_vision["path_delta"] = agent_vision["path_delta"]
+        index_record["agent_vision"] = indexed_agent_vision
     if vision_checkpoint:
         index_record["vision_checkpoint"] = vision_checkpoint
     if normalized_progress_scope:

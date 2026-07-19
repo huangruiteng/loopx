@@ -460,7 +460,7 @@ def latest_agent_vision_from_runs(
         patch = vision.get("vision_patch") if isinstance(vision.get("vision_patch"), dict) else {}
         if not patch:
             continue
-        return {
+        result = {
             "schema_version": vision.get("schema_version"),
             "goal_id": goal_id,
             "agent_id": vision_agent_id or agent_id,
@@ -474,6 +474,9 @@ def latest_agent_vision_from_runs(
             else None,
             "generated_at": run.get("generated_at"),
         }
+        if isinstance(vision.get("path_delta"), dict):
+            result["path_delta"] = vision["path_delta"]
+        return result
     return None
 
 

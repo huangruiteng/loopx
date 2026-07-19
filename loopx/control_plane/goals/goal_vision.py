@@ -11,6 +11,7 @@ from .goal_vision_policy import normalize_goal_vision_advancement_policy
 
 
 GOAL_VISION_REPLAN_SCHEMA_VERSION = "goal_vision_replan_contract_v0"
+GOAL_PATH_DELTA_SCHEMA_VERSION = "goal_path_delta_v0"
 GOAL_VISION_BUDGET_ERROR = "vision_budget_exceeded"
 
 
@@ -24,6 +25,32 @@ GOAL_VISION_FIELD_LIMITS: dict[str, int] = {
     "last_patch_summary": 240,
 }
 GOAL_VISION_TOTAL_LIMIT = 1200
+GOAL_PATH_DELTA_OUTCOMES = frozenset(
+    {"continue", "replan", "wait", "no_change", "ask_human", "stop"}
+)
+GOAL_PATH_DELTA_SCALAR_LIMITS: dict[str, int] = {
+    "prior_assumption": 220,
+    "observed_reality": 220,
+    "reentry_condition": 180,
+}
+GOAL_PATH_DELTA_LIST_LIMITS: dict[str, tuple[int, int]] = {
+    "retained": (3, 120),
+    "changed": (3, 120),
+    "stopped": (3, 120),
+    "unresolved_questions": (2, 140),
+    "evidence_refs": (4, 140),
+}
+GOAL_PATH_DELTA_BUDGET_LIMITS = {
+    "path_delta.outcome": 32,
+    **{
+        f"path_delta.{field}": limit
+        for field, limit in GOAL_PATH_DELTA_SCALAR_LIMITS.items()
+    },
+    **{
+        f"path_delta.{field}[]": item_limit
+        for field, (_, item_limit) in GOAL_PATH_DELTA_LIST_LIMITS.items()
+    },
+}
 GOAL_VISION_BUDGET_COMPACT_FIELDS = (
     "schema_version",
     "status",
@@ -90,6 +117,101 @@ def _compact_public_text(value: Any, *, limit: int) -> str | None:
     return text[:limit]
 
 
+def _compact_goal_path_delta(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    schema_version = (
+        _compact_public_text(value.get("schema_version"), limit=80)
+        or GOAL_PATH_DELTA_SCHEMA_VERSION
+    )
+    compact: dict[str, Any] = {"schema_version": schema_version}
+    outcome = _compact_public_text(value.get("outcome"), limit=32)
+    if outcome in GOAL_PATH_DELTA_OUTCOMES:
+        compact["outcome"] = outcome
+    for field, limit in GOAL_PATH_DELTA_SCALAR_LIMITS.items():
+        text = _compact_public_text(value.get(field), limit=limit)
+        if text:
+            compact[field] = text
+    for field, (max_items, item_limit) in GOAL_PATH_DELTA_LIST_LIMITS.items():
+        raw_items = value.get(field)
+        if not isinstance(raw_items, list):
+            continue
+        items = [
+            text
+            for item in raw_items[:max_items]
+            if (text := _compact_public_text(item, limit=item_limit))
+        ]
+        if items:
+            compact[field] = items
+    return compact if len(compact) > 1 else None
+
+
+def _normalize_goal_path_delta(value: Any) -> tuple[dict[str, Any] | None, dict[str, int]]:
+    if value is None:
+        return None, {}
+    if not isinstance(value, dict):
+        raise ValueError("agent_vision.path_delta must be a JSON object")
+
+    outcome = str(value.get("outcome") or "").strip().lower().replace("-", "_")
+    if outcome not in GOAL_PATH_DELTA_OUTCOMES:
+        raise ValueError(
+            "agent_vision.path_delta.outcome must be one of: "
+            + ", ".join(sorted(GOAL_PATH_DELTA_OUTCOMES))
+        )
+
+    normalized: dict[str, Any] = {
+        "schema_version": GOAL_PATH_DELTA_SCHEMA_VERSION,
+        "outcome": outcome,
+    }
+    field_usage = {"path_delta.outcome": len(outcome)}
+    for field, limit in GOAL_PATH_DELTA_SCALAR_LIMITS.items():
+        raw_value = value.get(field)
+        if raw_value is None:
+            continue
+        text = _bounded_public_text(
+            field=f"path_delta.{field}", value=raw_value, limit=limit
+        )
+        if not text:
+            continue
+        normalized[field] = text
+        field_usage[f"path_delta.{field}"] = len(text)
+
+    for field, (max_items, item_limit) in GOAL_PATH_DELTA_LIST_LIMITS.items():
+        raw_items = value.get(field)
+        if raw_items is None:
+            continue
+        if not isinstance(raw_items, list):
+            raise ValueError(f"agent_vision.path_delta.{field} must be a JSON array")
+        if len(raw_items) > max_items:
+            raise ValueError(
+                f"agent_vision.path_delta.{field} has {len(raw_items)} items; "
+                f"limit is {max_items}"
+            )
+        items: list[str] = []
+        for index, item in enumerate(raw_items):
+            text = _bounded_public_text(
+                field=f"path_delta.{field}[{index}]",
+                value=item,
+                limit=item_limit,
+            )
+            if text:
+                items.append(text)
+                field_usage[f"path_delta.{field}[{index}]"] = len(text)
+        if items:
+            normalized[field] = items
+
+    if "prior_assumption" not in normalized or "observed_reality" not in normalized:
+        raise ValueError(
+            "agent_vision.path_delta requires prior_assumption and observed_reality"
+        )
+    if not any(normalized.get(field) for field in ("retained", "changed", "stopped")):
+        raise ValueError(
+            "agent_vision.path_delta requires at least one retained, changed, or "
+            "stopped item"
+        )
+    return normalized, field_usage
+
+
 def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
     """Return the public read-path shape of an agent goal-vision packet."""
 
@@ -109,6 +231,10 @@ def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
             compact_patch[field] = text
     if compact_patch:
         compact["vision_patch"] = compact_patch
+
+    path_delta = _compact_goal_path_delta(value.get("path_delta"))
+    if path_delta:
+        compact["path_delta"] = path_delta
 
     todo_delta: list[str] = []
     raw_todo_delta = value.get("todo_delta")
@@ -186,6 +312,9 @@ def normalize_goal_vision_packet(
     if not vision_patch:
         raise ValueError("agent_vision must include at least one bounded vision field")
 
+    path_delta, path_delta_usage = _normalize_goal_path_delta(packet.get("path_delta"))
+    field_usage.update(path_delta_usage)
+
     total_usage = sum(field_usage.values())
     if total_usage > GOAL_VISION_TOTAL_LIMIT:
         raise GoalVisionBudgetError(
@@ -217,7 +346,7 @@ def normalize_goal_vision_packet(
         }
     )
 
-    return {
+    normalized = {
         "schema_version": GOAL_VISION_REPLAN_SCHEMA_VERSION,
         "goal_id": goal_id,
         "agent_id": resolved_agent_id,
@@ -227,10 +356,16 @@ def normalize_goal_vision_packet(
         "vision_budget": {
             "schema_version": "goal_vision_budget_v0",
             "status": "ok",
-            "field_limits": dict(GOAL_VISION_FIELD_LIMITS),
+            "field_limits": {
+                **GOAL_VISION_FIELD_LIMITS,
+                **GOAL_PATH_DELTA_BUDGET_LIMITS,
+            },
             "field_usage": field_usage,
             "total_limit": GOAL_VISION_TOTAL_LIMIT,
             "total_usage": total_usage,
         },
         "validation": validation,
     }
+    if path_delta:
+        normalized["path_delta"] = path_delta
+    return normalized
