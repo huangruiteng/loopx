@@ -133,6 +133,21 @@ def test_opencode_install_writes_commands_bridge_and_pinned_dependencies(
     assert _row(payload, "opencode_goal_bridge")["status"] == "created"
 
 
+def test_default_and_all_surfaces_keep_opencode_opt_in(tmp_path: Path) -> None:
+    for surfaces in (None, ["all"]):
+        opencode_home = tmp_path / ("default" if surfaces is None else "all")
+        payload = install_slash_commands(
+            execute=True,
+            surfaces=surfaces,
+            codex_home=str(tmp_path / "codex"),
+            claude_home=str(tmp_path / "claude"),
+            opencode_home=str(opencode_home),
+        )
+
+        assert payload["effective_surfaces"] == ["codex", "claude-code"]
+        assert not opencode_home.exists()
+
+
 def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
     tmp_path: Path,
 ) -> None:

@@ -425,7 +425,7 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
     normalized: list[str] = []
     for surface in requested:
         if surface == "all":
-            candidates = ["codex", "claude-code", "opencode"]
+            candidates = ["codex", "claude-code"]
         elif surface == "codex":
             candidates = ["codex"]
         elif surface in {"codex-app", "codex-ide-plugin", "codex-ide", "codex-cli"}:
@@ -810,7 +810,7 @@ def install_slash_commands(
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
-            "OpenCode discovers commands and local plugins from its config directory; the LoopX bridge imports opencode-goal-plugin@0.6.5 and must replace any direct goal-plugin registration.",
+            "OpenCode is opt-in through --surface opencode; it discovers commands and local plugins from its config directory, installs package.json dependencies with Bun at startup, and requires the LoopX bridge to replace any direct goal-plugin registration.",
             "OpenCode uninstall preserves package.json dependencies because they may be shared by user-owned local plugins.",
             "Uninstall is fail-closed: it retires only files carrying the LoopX managed marker and leaves user-owned files in place.",
         ],

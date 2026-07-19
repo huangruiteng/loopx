@@ -52,8 +52,9 @@ def register_slash_commands_command(
         action="append",
         choices=["all", "codex", "codex-cli", "codex-app", "codex-ide-plugin", "codex-ide", "claude-code", "opencode"],
         help=(
-            "Host surface to install. Repeatable. Defaults to all "
-            "(Codex explicit skills, Claude Code skills, and OpenCode commands/bridge)."
+            "Host surface to install. Repeatable. Defaults to all standard surfaces "
+            "(Codex explicit skills and Claude Code skills); OpenCode requires "
+            "--surface opencode."
         ),
     )
     parser.add_argument(

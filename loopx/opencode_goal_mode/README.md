@@ -18,10 +18,14 @@ The installer writes:
 - `~/.config/opencode/loopx/goal-bridge-runtime.mjs` for the tested runtime;
 - pinned bridge dependencies in `~/.config/opencode/package.json`.
 
+OpenCode runs `bun install` for config-directory dependencies at startup, so
+the LoopX installer does not invoke a package manager. Restart OpenCode after
+installation so it installs the pinned dependencies and loads the bridge.
+
 Remove any direct `opencode-goal-plugin` entry from `opencode.json` or
 `opencode.jsonc` before installation. Loading the npm plugin and the LoopX local
 bridge together would create two independent goal runtimes, so installation
-fails closed while that conflict exists. Restart OpenCode after installation.
+fails closed while that conflict exists.
 
 ## Goal start
 
