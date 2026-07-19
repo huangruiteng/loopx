@@ -16,7 +16,9 @@ from loopx.history import collect_history
 
 
 GOAL_ID = "agent-context-retention-goal"
-SIDE_AGENT = "codex-side-bypass"
+COORDINATION_PEER = "codex-coordination-peer"
+PRODUCT_PEER = "codex-product-peer"
+TARGET_PEER = "codex-research-peer"
 
 
 def project_run_history(history: dict, *, display_limit: int = 3) -> dict:
@@ -56,9 +58,9 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                         "coordination": {
                             "agent_model": "peer_v1",
                             "registered_agents": [
-                                "codex-main-control",
-                                SIDE_AGENT,
-                                "codex-product-capability",
+                                COORDINATION_PEER,
+                                TARGET_PEER,
+                                PRODUCT_PEER,
                             ],
                         },
                     }
@@ -69,15 +71,15 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     runs = [
-        ("2026-07-06T00:06:00+00:00", "codex-main-control", "latest main"),
-        ("2026-07-06T00:05:00+00:00", "codex-product-capability", "latest product"),
-        ("2026-07-06T00:04:00+00:00", "codex-main-control", "second main"),
+        ("2026-07-06T00:06:00+00:00", COORDINATION_PEER, "latest coordination"),
+        ("2026-07-06T00:05:00+00:00", PRODUCT_PEER, "latest product"),
+        ("2026-07-06T00:04:00+00:00", COORDINATION_PEER, "second coordination"),
         (
             "2026-07-06T00:03:00+00:00",
-            SIDE_AGENT,
-            "side vision",
+            TARGET_PEER,
+            "target peer vision",
         ),
-        ("2026-07-06T00:02:00+00:00", SIDE_AGENT, "older side"),
+        ("2026-07-06T00:02:00+00:00", TARGET_PEER, "older target peer"),
     ]
     with (runs_dir / "index.jsonl").open("w", encoding="utf-8") as handle:
         for generated_at, agent_id, action in runs:
@@ -90,29 +92,29 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                 "json_path": str(runs_dir / f"{generated_at}.json"),
                 "markdown_path": str(runs_dir / f"{generated_at}.md"),
             }
-            if action == "side vision":
+            if action == "target peer vision":
                 record["agent_vision"] = {
                     "schema_version": "goal_vision_replan_contract_v0",
-                    "agent_id": SIDE_AGENT,
+                    "agent_id": TARGET_PEER,
                     "state": "active",
                     "vision_patch": {
                         "acceptance_summary": (
-                            "Keep side-lane auto-research multi-round work runnable."
+                            "Keep the research peer's multi-round work runnable."
                         ),
                         "replan_trigger_summary": (
-                            "Side-lane vision would otherwise fall out of the "
+                            "The research peer's vision would otherwise fall out of the "
                             "global run window."
                         ),
                     },
                 }
                 record["vision_checkpoint"] = {
                     "schema_version": "vision_checkpoint_v0",
-                    "agent_id": SIDE_AGENT,
+                    "agent_id": TARGET_PEER,
                     "required": True,
                     "satisfied": True,
                     "decision": "patched",
                 }
-            if action == "older side":
+            if action == "older target peer":
                 record["autonomous_replan_ack"] = {
                     "schema_version": "autonomous_replan_ack_v0",
                     "recorded": True,
@@ -141,17 +143,17 @@ def main() -> None:
                         "generated_at": "2026-07-06T00:07:00+00:00",
                         "goal_id": GOAL_ID,
                         "classification": "state_refreshed",
-                        "agent_id": SIDE_AGENT,
-                        "recommended_action": "keep side vision unchanged",
-                        "json_path": str(runs_dir / "unchanged-side-vision.json"),
-                        "markdown_path": str(runs_dir / "unchanged-side-vision.md"),
+                        "agent_id": TARGET_PEER,
+                        "recommended_action": "keep peer vision unchanged",
+                        "json_path": str(runs_dir / "unchanged-peer-vision.json"),
+                        "markdown_path": str(runs_dir / "unchanged-peer-vision.md"),
                         "vision_checkpoint": {
                             "schema_version": "vision_checkpoint_v0",
-                            "agent_id": SIDE_AGENT,
+                            "agent_id": TARGET_PEER,
                             "required": True,
                             "satisfied": True,
                             "decision": "unchanged_with_reason",
-                            "unchanged_reason": "The active side vision still applies.",
+                            "unchanged_reason": "The active peer vision still applies.",
                         },
                     },
                     ensure_ascii=False,
@@ -167,36 +169,36 @@ def main() -> None:
         goal = history["goals"][0]
         latest_runs = goal["latest_runs"]
         assert [run["recommended_action"] for run in latest_runs[:3]] == [
-            "keep side vision unchanged",
-            "latest main",
+            "keep peer vision unchanged",
+            "latest coordination",
             "latest product",
         ], latest_runs
         assert any(
-            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            run.get("agent_id") == TARGET_PEER and run.get("agent_vision")
             for run in latest_runs
         ), latest_runs
         assert any(
-            run.get("agent_id") == SIDE_AGENT and run.get("autonomous_replan_ack")
+            run.get("agent_id") == TARGET_PEER and run.get("autonomous_replan_ack")
             for run in latest_runs
         ), latest_runs
         assert len(latest_runs) == 5, latest_runs
         projected_run_history = project_run_history(history)
         projected_runs = projected_run_history["goals"][0]["latest_runs"]
         assert any(
-            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            run.get("agent_id") == TARGET_PEER and run.get("agent_vision")
             for run in projected_runs
         ), projected_runs
         assert any(
-            run.get("agent_id") == SIDE_AGENT and run.get("autonomous_replan_ack")
+            run.get("agent_id") == TARGET_PEER and run.get("autonomous_replan_ack")
             for run in projected_runs
         ), projected_runs
         assert len(projected_runs) == 5, projected_runs
         vision = latest_agent_vision_from_status_payload(
             {"run_history": projected_run_history},
             goal_id=GOAL_ID,
-            agent_id=SIDE_AGENT,
+            agent_id=TARGET_PEER,
         )
-        assert vision and vision["agent_id"] == SIDE_AGENT, vision
+        assert vision and vision["agent_id"] == TARGET_PEER, vision
         assert "global run window" in vision["vision_patch"]["replan_trigger_summary"], vision
 
         zero_budget_history = collect_history(
@@ -220,13 +222,13 @@ def main() -> None:
                         "generated_at": "2026-07-06T00:07:00+00:00",
                         "goal_id": GOAL_ID,
                         "classification": "state_refreshed",
-                        "agent_id": SIDE_AGENT,
-                        "recommended_action": "retire side vision",
-                        "json_path": str(runs_dir / "retired-side-vision.json"),
-                        "markdown_path": str(runs_dir / "retired-side-vision.md"),
+                        "agent_id": TARGET_PEER,
+                        "recommended_action": "retire peer vision",
+                        "json_path": str(runs_dir / "retired-peer-vision.json"),
+                        "markdown_path": str(runs_dir / "retired-peer-vision.md"),
                         "vision_checkpoint": {
                             "schema_version": "vision_checkpoint_v0",
-                            "agent_id": SIDE_AGENT,
+                            "agent_id": TARGET_PEER,
                             "required": True,
                             "satisfied": True,
                             "decision": "retired_or_superseded",
@@ -244,24 +246,24 @@ def main() -> None:
         )
         latest_runs = history["goals"][0]["latest_runs"]
         assert [run["recommended_action"] for run in latest_runs[:3]] == [
-            "retire side vision",
-            "latest main",
+            "retire peer vision",
+            "latest coordination",
             "latest product",
         ], latest_runs
         assert not any(
-            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            run.get("agent_id") == TARGET_PEER and run.get("agent_vision")
             for run in latest_runs
         ), latest_runs
         projected_run_history = project_run_history(history)
         projected_runs = projected_run_history["goals"][0]["latest_runs"]
         assert not any(
-            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            run.get("agent_id") == TARGET_PEER and run.get("agent_vision")
             for run in projected_runs
         ), projected_runs
         vision = latest_agent_vision_from_status_payload(
             {"run_history": projected_run_history},
             goal_id=GOAL_ID,
-            agent_id=SIDE_AGENT,
+            agent_id=TARGET_PEER,
         )
         assert vision is None, vision
     print("run-history-agent-context-retention-smoke ok")
