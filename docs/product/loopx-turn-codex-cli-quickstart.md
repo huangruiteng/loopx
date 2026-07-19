@@ -22,9 +22,8 @@ isolated project workspace, and an executable validator. The validator receives
 the normalized host result on stdin and exits zero only when the actual artifact
 or state is correct.
 
-Check the local host once with `codex doctor`. If the configured default model
-is newer than the installed Codex CLI supports, update Codex or pass a model
-already qualified for that installation with `--codex-model`.
+Check the local host once with `codex doctor`. If the default model is newer
+than the installed Codex CLI, update Codex or pass `--codex-model`.
 
 ## Run One Turn
 
@@ -77,21 +76,21 @@ state. Host observations such as requested, accepted, running, outcome-ready,
 failed, and resumed map to committed, repair, replan, or wait; they do not
 become new Turn states.
 
-Qualify a new adapter with one real task, a scenario owner, an adapter owner, a
-validator, and a measurable outcome. Add a structured event-reference field
-only after that call site proves the compact result cannot carry the evidence.
+Qualify a new adapter with a real task, scenario owner, adapter owner, validator,
+and measurable outcome. Add an event reference only after that call site proves
+the compact result cannot carry the evidence.
 
 ## Verify The Integration
 
 The repository ships a disposable qualification that keeps raw prompts,
-transcripts, stdout, stderr, credentials, and temporary workspaces out of LoopX
-state:
+transcripts, credentials, and temporary workspaces out of LoopX state:
 
 ```bash
 python3 examples/loopx-turn-codex-cli-e2e-smoke.py
 python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
   --real-codex-cli \
   --codex-model <qualified-model>
+python3 examples/loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli --two-turn-resume --codex-model <qualified-model>
 ```
 
 The first command is deterministic and model-free. The second makes one real
@@ -99,6 +98,11 @@ Codex CLI call and must report `status=committed`, `validation_status=passed`,
 one quota spend, and a replay with no side effects. A compact
 `codex_cli_model_requires_newer_codex` result is a host compatibility failure,
 not task progress; it must show zero state writes and zero quota spend.
+
+The third command makes two real calls against one temporary goal and todo. It
+starts an opaque session, then uses `codex exec resume`, validates the next
+marker, and commits separately. Success reports `session_resumed=true` and two
+quota spends. The session id remains private and is never printed or synced.
 
 That is the complete partner-facing path. Read the
 [Codex CLI adapter notes](codex-cli-automation-driver.md) for operational gaps

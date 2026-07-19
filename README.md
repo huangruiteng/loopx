@@ -487,19 +487,23 @@ From a repository checkout with Codex CLI logged in, run this disposable,
 non-benchmark example:
 
 ```bash
-python3 examples/loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli
+python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
+  --real-codex-cli \
+  --two-turn-resume
 ```
 
-It creates a temporary goal and workspace, asks Codex CLI to write one marker,
-checks the marker with an independent validator, commits exactly one Turn and
-one quota spend, then replays the same transaction to prove it has no duplicate
-effects. The temporary state is deleted and is never synced to your global
-LoopX registry. Success reports `status=committed`,
-`validation_status=passed`, and `quota_slot_spend_count=1`.
+It creates a temporary goal and workspace, advances one marker through two
+separately validated Turns, and resumes the same opaque Codex CLI session for
+the second interaction. Each Turn commits once and spends once; the example
+then replays the second transaction to prove it has no duplicate effects. The
+temporary state is deleted and is never synced to your global LoopX registry.
+Success reports `status=committed`, `validation_status=passed`,
+`second_status=committed`, `second_validation_status=passed`,
+`session_resumed=true`, and `quota_slot_spend_count=2`.
 
 Run `codex --version` first. If the configured default model requires a newer
 Codex CLI, update Codex or add `--codex-model <qualified-model>`. The
-[one-Turn Codex CLI guide](docs/product/loopx-turn-codex-cli-quickstart.md)
+[Codex CLI Turn guide](docs/product/loopx-turn-codex-cli-quickstart.md)
 shows the command for a connected project and explains the validator boundary.
 
 ### Explore Graph And Harness (Supported, Optional, Default-Off)

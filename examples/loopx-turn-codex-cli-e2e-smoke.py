@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify one LoopX Turn transaction with a fake or real Codex CLI host."""
+"""Qualify one or two LoopX Turn transactions with a Codex CLI host."""
 
 from __future__ import annotations
 
@@ -19,13 +19,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.cli import main as cli_main  # noqa: E402
+from loopx.control_plane.turn_driver import (  # noqa: E402
+    load_loopx_turn_plan_from_journal,
+)
 
 
 GOAL_ID = "loopx-turn-real-cli-e2e"
 AGENT_ID = "codex-turn-e2e"
 TODO_ID = "todo_turnreale2e01"
 MARKER_NAME = "docs/turn-e2e-marker.txt"
-MARKER_VALUE = "loopx-turn-real-e2e-ok"
+MARKER_VALUES = (
+    "loopx-turn-real-e2e-step-one",
+    "loopx-turn-real-e2e-step-two",
+)
 
 
 def _write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
@@ -50,8 +56,9 @@ def _write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
                 "## Agent Todo",
                 "",
                 (
-                    f"- [ ] [P0] Create `{MARKER_NAME}` in the current workspace "
-                    f"with exact content `{MARKER_VALUE}` and report validated progress."
+                    f"- [ ] [P0] Advance `{MARKER_NAME}` by exactly one step per "
+                    f"Turn: missing -> `{MARKER_VALUES[0]}` -> `{MARKER_VALUES[1]}`. "
+                    "Report validated progress after each step."
                 ),
                 (
                     f"  <!-- loopx:todo todo_id={TODO_ID} status=open "
@@ -118,7 +125,9 @@ import sys
 args = sys.argv[1:]
 prompt = sys.stdin.read()
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
-pathlib.Path({MARKER_NAME!r}).write_text({MARKER_VALUE!r}, encoding="utf-8")
+resumed = "resume" in args
+marker_value = {MARKER_VALUES[1]!r} if resumed else {MARKER_VALUES[0]!r}
+pathlib.Path({MARKER_NAME!r}).write_text(marker_value, encoding="utf-8")
 print(json.dumps({{
     "type": "thread.started",
     "thread_id": "session-fixture-0001",
@@ -144,13 +153,13 @@ output_path.write_text(json.dumps({{
     return executable
 
 
-def _validator_command() -> list[str]:
+def _validator_command(expected_marker: str) -> list[str]:
     program = (
         "import json,pathlib,sys; "
         "json.load(sys.stdin); "
         f"p=pathlib.Path({MARKER_NAME!r}); "
         "raise SystemExit(0 if p.is_file() and "
-        f"p.read_text(encoding='utf-8').strip() == {MARKER_VALUE!r} else 9)"
+        f"p.read_text(encoding='utf-8').strip() == {expected_marker!r} else 9)"
     )
     return [sys.executable, "-c", program]
 
@@ -172,6 +181,7 @@ def _base_argv(
     codex_bin: Path,
     model: str | None,
     timeout_seconds: float,
+    expected_marker: str,
 ) -> list[str]:
     argv = [
         "--registry",
@@ -197,7 +207,7 @@ def _base_argv(
         "--codex-sandbox",
         "workspace-write",
         "--validation-command-json",
-        json.dumps(_validator_command()),
+        json.dumps(_validator_command(expected_marker)),
         "--scan-root",
         str(registry.parent.parent),
         "--no-global-sync",
@@ -220,11 +230,33 @@ def _quota_spend_count(runtime: Path) -> int:
     )
 
 
+def _marker_matches(workspace: Path, expected: str) -> bool:
+    marker = workspace / MARKER_NAME
+    return marker.is_file() and marker.read_text(encoding="utf-8").strip() == expected
+
+
+def _session_action(runtime: Path, turn_key: object) -> str | None:
+    if not isinstance(turn_key, str):
+        return None
+    plan = load_loopx_turn_plan_from_journal(
+        runtime,
+        goal_id=GOAL_ID,
+        turn_key=turn_key,
+    )
+    session = plan.get("session")
+    return str(session.get("action")) if isinstance(session, dict) else None
+
+
 def _summary(
     *,
     real_codex_cli: bool,
+    two_turn_resume: bool,
     first_exit_code: int,
     first: dict[str, Any],
+    first_marker_valid: bool,
+    second_exit_code: int | None,
+    second: dict[str, Any] | None,
+    second_marker_valid: bool | None,
     replay_exit_code: int | None,
     replay: dict[str, Any] | None,
     runtime: Path,
@@ -237,8 +269,12 @@ def _summary(
     return {
         "schema_version": "loopx_turn_real_cli_e2e_v0",
         "real_codex_cli_invoked": real_codex_cli,
+        "two_turn_resume_requested": two_turn_resume,
         "model_explicit": model_explicit,
         "first_exit_code": first_exit_code,
+        "first_session_action": _session_action(
+            runtime, first.get("resume_turn_key")
+        ),
         "status": first.get("status"),
         "reason": first.get("reason"),
         "result_kind": first.get("result_kind"),
@@ -247,10 +283,35 @@ def _summary(
             validation.get("status") if isinstance(validation, dict) else None
         ),
         "effects": effects if isinstance(effects, dict) else {},
-        "marker_valid": (
-            (workspace / MARKER_NAME).is_file()
-            and (workspace / MARKER_NAME).read_text(encoding="utf-8").strip()
-            == MARKER_VALUE
+        "first_marker_valid": first_marker_valid,
+        "second_exit_code": second_exit_code,
+        "second_status": second.get("status") if isinstance(second, dict) else None,
+        "second_receipt_status": (
+            second.get("receipt", {}).get("status")
+            if isinstance(second, dict) and isinstance(second.get("receipt"), dict)
+            else None
+        ),
+        "second_validation_status": (
+            second.get("validation", {}).get("status")
+            if isinstance(second, dict) and isinstance(second.get("validation"), dict)
+            else None
+        ),
+        "second_effects": (
+            second.get("effects") if isinstance(second, dict) else None
+        ),
+        "second_session_action": (
+            _session_action(runtime, second.get("resume_turn_key"))
+            if isinstance(second, dict)
+            else None
+        ),
+        "second_marker_valid": second_marker_valid,
+        "session_resumed": (
+            isinstance(second, dict)
+            and _session_action(runtime, second.get("resume_turn_key")) == "resume"
+        ),
+        "marker_valid": _marker_matches(
+            workspace,
+            MARKER_VALUES[1] if two_turn_resume else MARKER_VALUES[0],
         ),
         "quota_slot_spend_count": _quota_spend_count(runtime),
         "replay_exit_code": replay_exit_code,
@@ -265,11 +326,19 @@ def main() -> int:
     parser.add_argument(
         "--real-codex-cli",
         action="store_true",
-        help="Invoke one real Codex CLI turn instead of the no-model fixture binary.",
+        help="Invoke the real Codex CLI host instead of the no-model fixture binary.",
     )
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
+    parser.add_argument(
+        "--two-turn-resume",
+        action="store_true",
+        help=(
+            "Run two separately validated transactions on one opaque Codex CLI "
+            "session, then replay the second transaction idempotently."
+        ),
+    )
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="loopx-turn-real-cli-e2e-") as directory:
@@ -292,19 +361,42 @@ def main() -> int:
             codex_bin=codex_bin,
             model=args.codex_model,
             timeout_seconds=args.timeout_seconds,
+            expected_marker=MARKER_VALUES[0],
         )
         first_exit_code, first = _run_cli([*base, "--execute"])
+        first_marker_valid = _marker_matches(workspace, MARKER_VALUES[0])
+        second_exit_code: int | None = None
+        second: dict[str, Any] | None = None
+        second_marker_valid: bool | None = None
+        if args.two_turn_resume and first_exit_code == 0:
+            second_base = _base_argv(
+                registry=registry,
+                runtime=runtime,
+                workspace=workspace,
+                codex_bin=codex_bin,
+                model=args.codex_model,
+                timeout_seconds=args.timeout_seconds,
+                expected_marker=MARKER_VALUES[1],
+            )
+            second_exit_code, second = _run_cli([*second_base, "--execute"])
+            second_marker_valid = _marker_matches(workspace, MARKER_VALUES[1])
         replay_exit_code: int | None = None
         replay: dict[str, Any] | None = None
-        turn_key = first.get("resume_turn_key")
+        replay_source = second if isinstance(second, dict) else first
+        turn_key = replay_source.get("resume_turn_key")
         if first_exit_code == 0 and isinstance(turn_key, str):
             replay_exit_code, replay = _run_cli(
                 [*base, "--resume-turn-key", turn_key, "--execute"]
             )
         summary = _summary(
             real_codex_cli=bool(args.real_codex_cli),
+            two_turn_resume=bool(args.two_turn_resume),
             first_exit_code=first_exit_code,
             first=first,
+            first_marker_valid=first_marker_valid,
+            second_exit_code=second_exit_code,
+            second=second,
+            second_marker_valid=second_marker_valid,
             replay_exit_code=replay_exit_code,
             replay=replay,
             runtime=runtime,
@@ -325,6 +417,17 @@ def main() -> int:
         "quota_spent": False,
         "scheduler_acknowledged": False,
     }
+    committed_effects = expected_effects
+    two_turn_ok = (
+        summary["second_exit_code"] == 0
+        and summary["second_status"] == "committed"
+        and summary["second_receipt_status"] == "committed"
+        and summary["second_validation_status"] == "passed"
+        and summary["second_effects"] == committed_effects
+        and summary["second_marker_valid"] is True
+        and summary["second_session_action"] == "resume"
+        and summary["session_resumed"] is True
+    ) if args.two_turn_resume else True
     return 0 if (
         summary["first_exit_code"] == 0
         and summary["status"] == "committed"
@@ -332,7 +435,9 @@ def main() -> int:
         and summary["validation_status"] == "passed"
         and summary["effects"] == expected_effects
         and summary["marker_valid"] is True
-        and summary["quota_slot_spend_count"] == 1
+        and summary["first_marker_valid"] is True
+        and summary["quota_slot_spend_count"] == (2 if args.two_turn_resume else 1)
+        and two_turn_ok
         and summary["replay_exit_code"] == 0
         and summary["replay_effects"] == replay_effects
         and summary["loopx_raw_host_output_recorded"] is False

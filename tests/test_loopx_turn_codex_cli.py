@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -362,3 +364,34 @@ def test_codex_cli_host_discards_missing_resume_session(
     envelope = first_request["turn_envelope"]
     assert isinstance(envelope, dict)
     assert codex_cli_session_binding(runtime_root, envelope) is None
+
+
+def test_public_e2e_smoke_runs_two_transactions_on_one_session() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"),
+            "--two-turn-resume",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["first_session_action"] == "start_new"
+    assert payload["second_session_action"] == "resume"
+    assert payload["session_resumed"] is True
+    assert payload["first_marker_valid"] is True
+    assert payload["second_marker_valid"] is True
+    assert payload["quota_slot_spend_count"] == 2
+    assert payload["replay_effects"] == {
+        "host_invoked": False,
+        "quota_spent": False,
+        "scheduler_acknowledged": False,
+        "state_written": False,
+    }
