@@ -1,0 +1,293 @@
+docs/architecture.md
+  s_9a5a2bd944fdcb::t_0485dc96515ad4 60-73
+docs/capabilities/issue-fix/README.md
+  s_9a5a2bd944fdcb::t_ef5da5cfd9e572 453-476
+docs/capabilities/lark-event-inbox.md
+  s_9a5a2bd944fdcb::t_c917447ccf0f3d 57-62
+docs/capabilities/semantic-preference/README.md
+  s_9a5a2bd944fdcb::t_400fb792dc001d 46-52,69-70
+docs/capabilities/value-connectors/README.md
+  s_9a5a2bd944fdcb::t_55dca7c89b40c8 74-85,88-101
+docs/development/control-plane-course/03-work-graph-and-peers.md
+  s_9a5a2bd944fdcb::t_b37380642f8b50 16,120,127-174,266-308,765-766,775-779,788-789
+docs/development/control-plane-course/05-host-scheduler-and-heartbeat.md
+  s_9a5a2bd944fdcb::t_db6362aab80b26 15-16,475-511,531,540-541,558
+docs/development/control-plane-course/07-engineering-a-control-plane-rule.md
+  s_9a5a2bd944fdcb::t_de733fa5ec75c0 16,161-241,753-755
+docs/development/control-plane-course/08-autonomous-agent-quality-gates.md
+  s_9a5a2bd944fdcb::t_d87178b79519e3 510-560,589
+docs/development/control-plane-course/09-extension-layer.md
+  s_9a5a2bd944fdcb::t_703078522535da 342,759
+docs/development/control-plane-course/README.md
+  s_9a5a2bd944fdcb::t_8a2fe4dfac7fdd 5-9,23,25,27
+docs/product/core-control-plane/bounded-context-layout.md
+  s_9a5a2bd944fdcb::t_c0c1368c5cf92c 17,21,59-69
+docs/project-agent-todo-contract.md
+  s_9a5a2bd944fdcb::t_1cf7ee8d86af0d 476-480
+docs/reference/extensions.md
+  s_9a5a2bd944fdcb::t_9f6c3469913647 32-36,39,51-54,89-102,114-119,203,239-247,265-268
+docs/reference/protocols/agent-management-projection-v0.md
+  s_9a5a2bd944fdcb::t_ea380f5ae0b63b 232-237
+docs/reference/protocols/multi-agent-three-layer-minimality-v0.md
+  s_9a5a2bd944fdcb::t_8dc89797fb45f2 25,91
+docs/reference/protocols/multi-agent-visible-launcher-v0.md
+  s_9a5a2bd944fdcb::t_63817dbc60db76 27
+docs/reference/protocols/value-connector-plan-v0.md
+  s_9a5a2bd944fdcb::t_3362afd792a618 5-9
+examples/auto-research-demo-e2e-worker-loop-smoke.py
+  s_9a5a2bd944fdcb::t_b0dab3ac331a71 44
+examples/auto-research-dev-thin-preset-smoke.py
+  s_9a5a2bd944fdcb::t_be6804593ef4d9 17,26-28
+examples/auto-research-user-contract-entry-smoke.py
+  s_9a5a2bd944fdcb::t_6c579e5ed19e55 31
+examples/auto-research-visible-launch-policy-smoke.py
+  s_9a5a2bd944fdcb::t_8aa1e898857bb3 12
+examples/auto-research-worker-turn-smoke.py
+  s_9a5a2bd944fdcb::t_cdcd079925f8b9 32-34
+examples/canary/catalog-planner-smoke.py
+  s_9a5a2bd944fdcb::t_ba47dc7e51a717 214,254-273,617
+examples/canary/catalog-run-e2e-smoke.py
+  s_9a5a2bd944fdcb::t_67a4b7c5d775a2 128
+examples/canary/premerge-validation-gate-smoke.py
+  s_9a5a2bd944fdcb::t_adbcd218c5ccab 417,425-429,449-453,470-474,480,501
+examples/canary/smoke-suite-runner-smoke.py
+  s_9a5a2bd944fdcb::t_1e9f54213880e9 138,232,252
+examples/capability-extension-registry-smoke.py
+  s_9a5a2bd944fdcb::t_dc1d9eac2e7742 14,16-25,35,59,67-68,71-108,111,120-123,126,135,137-145,147,154
+examples/control_plane/active-state-metadata-readmodel-smoke.py
+  s_9a5a2bd944fdcb::t_6c7af912993485 42
+examples/control_plane/agent-material-handoff-projection-smoke.py
+  s_9a5a2bd944fdcb::t_09f444e5371692 28,169-193,198,201,205-221,223,225-231,243-277
+examples/control_plane/auto-research-role-successor-completion-smoke.py
+  s_9a5a2bd944fdcb::t_6eb609fc18a614 77-83,94-106,113-137,176
+examples/control_plane/bounded-context-namespace-smoke.py
+  s_9a5a2bd944fdcb::t_9d0fbd7fea084a 26-30,118-148,182
+examples/control_plane/control-plane-integrated-canary-smoke.py
+  s_9a5a2bd944fdcb::t_ebbba3a5c0ec24 387-388,686-687
+examples/control_plane/control-plane-maintainability-ratchet-smoke.py
+  s_9a5a2bd944fdcb::t_7d396dd9b440ac 5-6,10-12,14-17,21-23,25-28,33,35-40,44
+examples/control_plane/global-registry-health-readmodel-smoke.py
+  s_9a5a2bd944fdcb::t_b179e067e632cf 157,166-168
+examples/control_plane/goal-frontier-replan-rules-smoke.py
+  s_9a5a2bd944fdcb::t_7751ff5ed91172 1-119
+examples/control_plane/lark-inbox-priority-smoke.py
+  s_9a5a2bd944fdcb::t_24a795db28f616 18,151-155,225-227,241-245
+examples/control_plane/monitor-poll-writeback-smoke.py
+  s_9a5a2bd944fdcb::t_13da1001da6e0a 798-815,818-821,823-871,988-989
+examples/control_plane/public-safety-readmodel-smoke.py
+  s_9a5a2bd944fdcb::t_a6fe56f9839693 27,151
+examples/control_plane/quota-agent-scoped-user-gate-smoke.py
+  s_9a5a2bd944fdcb::t_d90ae75b3387b7 233-273,305-340,1040
+examples/control_plane/quota-todo-summary-readmodel-smoke.py
+  s_9a5a2bd944fdcb::t_d546357a8a10b2 120,122,137-141
+examples/control_plane/todo-concurrent-write-lock-smoke.py
+  s_9a5a2bd944fdcb::t_1e9a3b92f8b2ec 185-186
+examples/control_plane/todo-deferred-capacity-cli-smoke.py
+  s_9a5a2bd944fdcb::t_0f78ec104b0aa9 29,175-176,193-194
+examples/control_plane/todo-lifecycle-cli-smoke.py
+  s_9a5a2bd944fdcb::t_08099cbaaf7f51 43-46,465-485,537-542,549-554,570-571
+examples/control_plane/todo-list-event-projection-smoke.py
+  s_9a5a2bd944fdcb::t_d6b227c58a60a8 34-37,247-261,272-273,284-336
+examples/control_plane/todo-readmodel-boundary-smoke.py
+  s_9a5a2bd944fdcb::t_7112e930496031 87,114-128,140,188,192,249-250,348
+examples/control_plane/todo-suggestion-prompt-smoke.py
+  s_9a5a2bd944fdcb::t_33bfe370ba0ce2 191-194
+examples/control_plane/todo-write-correctness-smoke.py
+  s_9a5a2bd944fdcb::t_91a159ff5e138d 275-276
+examples/cross-runtime-impl-review-demo-smoke.py
+  s_9a5a2bd944fdcb::t_b7d20c0ed621ff 16
+examples/generic-multi-agent-one-command-smoke.py
+  s_9a5a2bd944fdcb::t_508699161a3d35 459-461
+examples/generic-multi-agent-runner-kernel-smoke.py
+  s_9a5a2bd944fdcb::t_b526240a5bbcf5 14,26,148-153
+examples/generic-multi-agent-spec-contract-smoke.py
+  s_9a5a2bd944fdcb::t_4075ba5df87837 25
+examples/issue-fix-capability-gap-metrics-smoke.py
+  s_9a5a2bd944fdcb::t_cd0dd97e4cb73c 25-26,81-82,102-103
+examples/lark-extension-activation-smoke.py
+  s_9a5a2bd944fdcb::t_b139016269e7f6 120-125,155-160,176,203-210,249-254,267,270-271
+examples/multi-agent-collective-round-ledger-smoke.py
+  s_9a5a2bd944fdcb::t_362d3bc3f7f8f9 15
+examples/multi-agent-role-successor-todos-smoke.py
+  s_9a5a2bd944fdcb::t_08ab249909309d 16
+examples/multi-agent-visible-launcher-protocol-smoke.py
+  s_9a5a2bd944fdcb::t_45e1ad9a56bee6 79
+examples/project/project-agent-adoption-smoke.py
+  s_9a5a2bd944fdcb::t_e777e38c6254a1 27-34,111-131,144,147-148,150-159,162-169,177,209,230,252
+examples/value-connectors-github-public-probe-smoke.py
+  s_9a5a2bd944fdcb::t_ee43a69dfd0623 6,21,24-25,88,117-132,136-144
+examples/visible-codex-executable-resolution-smoke.py
+  s_9a5a2bd944fdcb::t_e7d859edcea1c0 16
+examples/visible-multi-agent-launcher-smoke.py
+  s_9a5a2bd944fdcb::t_07cbe1dba96402 19,86,89-91
+examples/visible-multi-agent-state-aware-wake-smoke.py
+  s_9a5a2bd944fdcb::t_0ced52e9ede508 16-19
+loopx/canary/maintainability_ratchet.py
+  s_9a5a2bd944fdcb::t_b943e4c3448757 1-797
+loopx/canary/planner.py
+  s_9a5a2bd944fdcb::t_647dd53494c0be 355,357-360,366-369,381,384-385,914
+loopx/canary/premerge.py
+  s_9a5a2bd944fdcb::t_8d2988d0d9a7a6 82
+loopx/canary/qualification_profiles.py
+  s_9a5a2bd944fdcb::t_d67c3306d740a5 101-136
+loopx/canary/quality_surface_catalog.py
+  s_9a5a2bd944fdcb::t_39af50db4489a4 131-173
+loopx/canary/runner.py
+  s_9a5a2bd944fdcb::t_45f64ce0111ca8 28-30
+loopx/canary/smoke_profiles.py
+  s_9a5a2bd944fdcb::t_d2cf591ad249bc 99,114
+loopx/capabilities/auto_research/cli.py
+  s_9a5a2bd944fdcb::t_a642cf53b1f710 40
+loopx/capabilities/auto_research/defaults.py
+  s_9a5a2bd944fdcb::t_3cdd9b7483c020 3
+loopx/capabilities/auto_research/demo_e2e.py
+  s_9a5a2bd944fdcb::t_2403f7aca4c06f 27
+loopx/capabilities/auto_research/preset.py
+  s_9a5a2bd944fdcb::t_1cfd40fd16ac6c 21
+loopx/capabilities/auto_research/worker_runtime.py
+  s_9a5a2bd944fdcb::t_c2a9cfb2b5c5a1 25
+loopx/capabilities/catalog.py
+  s_9a5a2bd944fdcb::t_1826ca3654498a 8,35-44,102-111,209,228,683-684,687-688,706,712,718,744,767-875,892,906-907,914-915,917,922-925,938,940-943,953,955-958,966-967,969-972,984-985,987-991,1010,1034
+loopx/capabilities/context_providers/__init__.py
+  s_9a5a2bd944fdcb::t_cbe21d316fbbb5 11-15,21-23,30
+loopx/capabilities/context_providers/factory.py
+  s_9a5a2bd944fdcb::t_efdfe641489c0d 3,7-22,29-32
+loopx/capabilities/context_providers/openviking.py
+  s_9a5a2bd944fdcb::t_9fed94105a966d 691-702
+loopx/capabilities/registry.py
+  s_9a5a2bd944fdcb::t_d2b23a8afb43e1 28,50-67,141-145,148-157
+loopx/capabilities/semantic_preference/contract.py
+  s_9a5a2bd944fdcb::t_cd0a37ea78208d 14-15,149-153,157,160-173,183-198,261,265,463
+loopx/capabilities/value_connectors/cli.py
+  s_9a5a2bd944fdcb::t_eede3b4f7f74cd 9,14-16
+loopx/capabilities/value_connectors/install_check.py
+  s_9a5a2bd944fdcb::t_2ecc27f4269e7c 1-161
+loopx/capabilities/value_connectors/source_map.py
+  s_9a5a2bd944fdcb::t_1f763f53cbdb32 22-71,109,257,265,319-326,374-375,394-395,415-416
+loopx/cli.py
+  s_e3f612788718c1::t_7dc57c737d1b56 62,96,343
+loopx/cli_commands/__init__.py
+  s_9a5a2bd944fdcb::t_c0912588c8b872 107,239,294
+loopx/cli_commands/benchmark_review_lifecycle.py
+  s_9a5a2bd944fdcb::t_13011d37bce4eb 28-31,36
+loopx/cli_commands/capability.py
+  s_9a5a2bd944fdcb::t_bce5217b288a1c 12,29-30,69,76,79-82,88
+loopx/cli_commands/history.py
+  s_9a5a2bd944fdcb::t_f7ea0419cbbd0e 15-21
+loopx/cli_commands/lark_inbox.py
+  s_9a5a2bd944fdcb::t_20b204d63b78c4 22,195-216
+loopx/cli_commands/quota.py
+  s_9a5a2bd944fdcb::t_5558b2e463cb8a 22-25,27-28,30,43,295-299,358,384,408,432,459,476
+loopx/cli_commands/review_batch.py
+  s_9a5a2bd944fdcb::t_5ed4f4967871f7 10-13
+loopx/cli_commands/starter.py
+  s_9a5a2bd944fdcb::t_44c503b1f41d67 7
+loopx/cli_commands/todo.py
+  s_9a5a2bd944fdcb::t_24e247be751cc3 25-30,365-380,498-501,599-600,685-688,772,790-791,830,848-849,869-872
+loopx/cli_commands/todo_argument_validation.py
+  s_9a5a2bd944fdcb::t_bfab2930a8b947 52-53,155-165
+loopx/cli_commands/turn.py
+  s_9a5a2bd944fdcb::t_3d93bbc0fe3e8f 30,283-287,310,469,489
+loopx/control_plane/agents/agent_scope.py
+  s_9a5a2bd944fdcb::t_efefabb0a5c9c4 556-558
+loopx/control_plane/agents/management_projection.py
+  s_9a5a2bd944fdcb::t_0639b5a3460c2a 192-194,201,207,209-210,214-242,515,573-583
+loopx/control_plane/agents/multi_agent/role_successor.py
+  s_9a5a2bd944fdcb::t_ee8e57b074896a 7-8
+loopx/control_plane/agents/multi_agent/visible_launch_policy.py
+  s_9a5a2bd944fdcb::t_557814c60a3d61 9
+loopx/control_plane/goals/goal_frontier.py
+  s_9a5a2bd944fdcb::t_262a9eb69909dc 21-25,1212-1257,1304,1350-1351,1398
+loopx/control_plane/goals/goal_frontier_replan_rules.py
+  s_9a5a2bd944fdcb::t_dd373b66efe7b8 1-169
+loopx/control_plane/quota/live_decision.py
+  s_9a5a2bd944fdcb::t_13bb890aef68c2 71,98
+loopx/control_plane/quota/monitor_poll.py
+  s_9a5a2bd944fdcb::t_54a51cfcb682ca 280,432
+loopx/control_plane/quota/slot_accounting.py
+  s_9a5a2bd944fdcb::t_8e814359db775e 671,731,743,803
+loopx/control_plane/todos/event_writeback.py
+  s_9a5a2bd944fdcb::t_a86bddd4722aa4 28,34,148-149,182-198,271-272,300-301,340-341,360-361
+loopx/dreaming.py
+  s_9a5a2bd944fdcb::t_094bed66bf8b14 14
+loopx/event_sourced_state.py
+  s_9a5a2bd944fdcb::t_fc70558fcc3955 22,36,275-277,287-289,299-300,307-308,595,606-608,633-634,641-642,703-712,864,868
+loopx/extensions/lark/event_inbox.py
+  s_9a5a2bd944fdcb::t_1ffb102db45c77 10,24-36,208
+loopx/extensions/lark/extension.toml
+  s_9a5a2bd944fdcb::t_9b0220a3edb1f1 3,16
+loopx/extensions/lark/provider.py
+  s_9a5a2bd944fdcb::t_0cf4e549e9b2f4 20
+loopx/extensions/manifest.py
+  s_9a5a2bd944fdcb::t_4fd371082c384b 14,50-71,89,96-99,220-223
+loopx/extensions/readiness.py
+  s_9a5a2bd944fdcb::t_2a01e00adfb42d 4,6,11,18-23,31,35,37-38,53-104,111,125,146-150,165
+loopx/extensions/runtime.py
+  s_9a5a2bd944fdcb::t_2ca556e48fdab5 3,16,19,452-454,466-467,471-567,574,585,674,676,682-702
+loopx/history.py
+  s_9a5a2bd944fdcb::t_0d8f0b840717c5 37-38,42
+loopx/presentation/renderers/quota_event_markdown.py
+  s_9a5a2bd944fdcb::t_62aed1706e0ecb 1-114
+loopx/quota.py
+  s_9a5a2bd944fdcb::t_842d9a4c36febb 4,25,69-70,78-79,104,183-193,1208,1317,2220,2227,2239,2278,2287,2340-2342,2345-2353,2358-2359,2382,2385,2402,2409,2418,2433,2441,2451
+loopx/state_projection.py
+  s_9a5a2bd944fdcb::t_a7f381a6344d8c 28,87,515-517
+loopx/status.py
+  s_9a5a2bd944fdcb::t_e0a8fb33b509c8 54-55,63,288-290,296,298-301,303,325,329,333-350
+loopx/todo_followups.py
+  s_9a5a2bd944fdcb::t_f0da17c37ae102 10
+loopx/todos.py
+  s_9a5a2bd944fdcb::t_fa60bacf6bb589 17,79,1387-1388,1397-1400,1535-1536,1597-1598,1679-1680,1688-1691,1791-1792
+loopx/visible_multi_agent_launcher.py
+  s_9a5a2bd944fdcb::t_a248de37a578a5 12,24,28,32,729
+loopx/visible_multi_agent_tmux.py
+  s_9a5a2bd944fdcb::t_7692ca5b587dc0 10
+scripts/skillsbench_automation_loop.py
+  s_9a5a2bd944fdcb::t_13e9b7d8cda0c3 14455,14458,15323,15326
+tests/architecture/test_control_plane_import_boundaries.py
+  s_9a5a2bd944fdcb::t_9e2e83422a9d6e 4,9-11,15-28,82-180,201-204,208-275,300-317,319-322
+tests/canary/test_maintainability_ratchet.py
+  s_9a5a2bd944fdcb::t_f87822dee3013f 1-187
+tests/capabilities/test_capability_extension_registry.py
+  s_9a5a2bd944fdcb::t_2d58ba88c15f27 5,14-17,19-23,33-34,38-56,64,103-110,114,131-134,139-144,194,201-202,219-220,232-316
+tests/capabilities/test_review_batch.py
+  s_9a5a2bd944fdcb::t_19017cf1f5f806 8
+tests/control_plane/test_cli_output_budget.py
+  s_9a5a2bd944fdcb::t_cb1b3b38c059d9 609-654
+tests/control_plane/test_goal_frontier_replan_rules.py
+  s_9a5a2bd944fdcb::t_beabd74f2e4090 1-185
+tests/extensions/test_extension_runtime.py
+  s_9a5a2bd944fdcb::t_9bd74bac2ab047 7,14-17,29-30,95-198,509-531,583-586,593-598,603-634
+tests/extensions/test_lark_urgency_composition.py
+  s_9a5a2bd944fdcb::t_1b11d6a1ef8907 1-77
+tests/presentation/test_quota_markdown_renderers.py
+  s_9a5a2bd944fdcb::t_2a4a909dffe6ba 1-101
+tests/test_skillsbench_turn_launcher.py
+  s_9a5a2bd944fdcb::t_7a80564fce7ba7 12,16,29-32,87-90,110-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d6a3ece0fae7423be6d77dcea27b741d492c167c",
+  "prompts": {},
+  "sessions": {
+    "s_9a5a2bd944fdcb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9170-0e1e-76e3-9a0f-76b55c831170",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
