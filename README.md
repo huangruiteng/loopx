@@ -103,25 +103,7 @@ writeback, and public/private boundaries stay visible to the next turn.
 LoopX 把一次静态目标变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-### Long-running loop state, in practice
-
-These are compact excerpts from two real LoopX-managed work graphs. The first
-keeps an engineering objective moving across issue/PR delivery, review, and
-control-plane improvement. The second preserves a long ML experiment chain
-across baselines, negative evidence, human decisions, replanning, and serving
-constraints.
-
-<p align="center">
-  <img src="docs/assets/long-running-loop-openviking-trajectory.png" alt="LoopX long-running OpenViking issue and PR trajectory" width="320">
-</p>
-
-<p align="center">
-  <img src="docs/assets/long-running-loop-ml-experiment-trajectory.png" alt="LoopX long-running ML experiment decision trajectory" width="760">
-</p>
-
-The diagrams are state projections, not raw chat transcripts. They show the
-part that must survive executor restarts: goal branches, accepted and rejected
-evidence, owner gates, replans, review routes, and the next executable frontier.
+![LoopX control-plane board](docs/assets/control-plane-board.svg)
 
 ## Who Should Try It
 
@@ -151,8 +133,8 @@ evidence branches and decisions preserved across agent turns.
 
 **Open-source issue fix: PR delivery and reusable capability evolve together.**
 
-<a href="docs/assets/openviking-issue-fix-explore.png">
-  <img src="docs/assets/openviking-issue-fix-explore.png" alt="Open-source issue-fix Explore graph linking focused PR delivery with reusable LoopX capabilities">
+<a href="docs/assets/long-running-loop-openviking-trajectory.png">
+  <img src="docs/assets/long-running-loop-openviking-trajectory.png" alt="Open-source issue-fix trajectory linking focused PR delivery with reusable LoopX capabilities" width="360">
 </a>
 
 LoopX's creator uses this path as an
@@ -166,8 +148,8 @@ authoritative.
 **Auto ML Experiment: hypotheses, matched evidence, invalid lineages, running
 replicates, and promote/stop gates remain visible in one graph.**
 
-<a href="docs/assets/auto-ml-experiment-explore.jpg">
-  <img src="docs/assets/auto-ml-experiment-explore.jpg" alt="Auto ML Experiment Explore graph with experiment lineages, evidence gates, and promotion decisions" width="760">
+<a href="docs/assets/long-running-loop-ml-experiment-trajectory.png">
+  <img src="docs/assets/long-running-loop-ml-experiment-trajectory.png" alt="Auto ML Experiment trajectory with experiment lineages, evidence gates, and promotion decisions" width="760">
 </a>
 
 **Auto Research: proposer, executor, and evaluator/promoter agents iterate in
