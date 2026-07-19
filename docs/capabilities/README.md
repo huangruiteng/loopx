@@ -6,6 +6,9 @@ modules, CLI entrypoints, and smokes under the capability they serve.
 
 Current capability paths:
 
+- [periodic-report](periodic-report/README.md): evaluate cadence and material
+  progress triggers, then compose deterministic provider-neutral report runs
+  with source, artifact, archive, and delivery receipts.
 - [issue-fix](issue-fix/README.md) ([中文](issue-fix/README.zh-CN.md)): turn
   public GitHub issue/PR signals into focused fixes, explainable reviewer
   routes, authority-gated PRs, and monitored lifecycle outcomes.

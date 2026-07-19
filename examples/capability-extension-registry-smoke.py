@@ -61,6 +61,7 @@ next_real_step = "Keep explicit enablement bounded."
         "issue-fix",
         "semantic-preference",
         "reward-memory",
+        "periodic-report",
         "content-ops",
         "value-connectors",
         "explore",

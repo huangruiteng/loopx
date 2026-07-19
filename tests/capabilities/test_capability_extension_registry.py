@@ -27,6 +27,7 @@ BUILTIN_IDS = [
     "issue-fix",
     "semantic-preference",
     "reward-memory",
+    "periodic-report",
     "content-ops",
     "value-connectors",
     "explore",

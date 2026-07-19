@@ -531,6 +531,63 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
+        "id": "periodic-report",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Provider-neutral periodic and progress report runs",
+        "status": "active-preview",
+        "real_world_anchor": "scheduled and milestone project reports with verified archive and delivery",
+        "user_value": (
+            "Give projects one deterministic trigger, report run, receipt, "
+            "partial-state, and retry contract without hard-coding a domain, "
+            "provider, cadence, or destination."
+        ),
+        "entry_command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
+        "commands": [
+            {
+                "command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
+                "purpose": "Select, coalesce, cool down, and deduplicate cadence or material progress triggers without provider effects.",
+                "write_boundary": "local trigger decision only; no source read, schedule mutation, rendering, archive write, message delivery, or provider write",
+            },
+            {
+                "command": "loopx periodic-report compose-run --request-json <request.json> --format json",
+                "purpose": "Normalize one typed report attempt and derive stable run/sink idempotency, state, and retry evidence.",
+                "write_boundary": "local contract output only; no source read, rendering, archive write, message delivery, or provider write",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "periodic_report_trigger_decision_v0",
+                "module": "loopx.capabilities.periodic_report.triggers",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_v0",
+                "module": "loopx.capabilities.periodic_report.core",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+        ],
+        "smokes": [
+            "python3 examples/periodic-report-smoke.py",
+            "python3 examples/periodic-report-adapters-smoke.py",
+        ],
+        "docs": [
+            "docs/capabilities/periodic-report/README.md",
+            "docs/reference/protocols/periodic-report-v0.md",
+        ],
+        "boundaries": [
+            "The core owns material trigger classification, coalescing, cooldown/deduplication, period/profile binding, deterministic identity, receipts, run state, and retry projection.",
+            "Profiles own schedule calculation, enabled trigger kinds, minimum interval, timezone, sections, audience, and project policy.",
+            "Adapters own domain source collection; renderers and sinks own all provider effects and verified readback.",
+            "Raw content, messages, logs, transcripts, credentials, secrets, and private paths are rejected.",
+        ],
+        "next_real_step": (
+            "Prove one project-owned profile and exact delivery/archive retry readback "
+            "without adding project semantics or schedule policy to the core."
+        ),
+    },
+    {
         "id": "content-ops",
         "origin": "builtin",
         "visibility": "public",

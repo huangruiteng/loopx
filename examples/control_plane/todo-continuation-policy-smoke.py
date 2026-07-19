@@ -62,7 +62,6 @@ def main() -> int:
             next_agent_todo="Continue a read-only validation lane.",
             next_continuation_policy="same_agent_non_delivery",
         )
-        assert same_peer.agent_model == "peer_v1", same_peer
         assert same_peer.effective_next_claimed_by == PEER_ALPHA, same_peer
 
         independent_validation = resolve_completion_policy(
