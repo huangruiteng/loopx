@@ -79,9 +79,7 @@ def _loopx_cli_failure_category(stdout: Any, stderr: Any) -> str:
     except json.JSONDecodeError:
         payload = {}
     error = " ".join(
-        f"{payload.get('error') if isinstance(payload, dict) else ''} {stderr or ''}"
-        .lower()
-        .split()
+        f"{payload.get('error') if isinstance(payload, dict) else ''} {stderr or ''}".lower().split()
     )
     classifiers = (
         (r"/app/\.local/bin/loopx.*not found", "case_loopx_cli_missing"),
@@ -106,7 +104,13 @@ class SkillsBenchTurnBridge:
         self._config = config
         self.meaningful_operation_count = 0
 
-    def exec(self, command: str, *, meaningful: bool = False) -> dict[str, Any]:
+    def exec(
+        self,
+        command: str,
+        *,
+        meaningful: bool = False,
+        allow_nonzero: bool = False,
+    ) -> dict[str, Any]:
         request = {
             "operation": "exec",
             "cwd": "/app",
@@ -142,8 +146,19 @@ class SkillsBenchTurnBridge:
             raise SkillsBenchTurnBridgeError("bridge response was not an object")
         if payload.get("schema_version") != SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION:
             raise SkillsBenchTurnBridgeError("bridge operation schema was unsupported")
-        if payload.get("ok") is not True or payload.get("exit_code") != 0:
-            exit_code = payload.get("exit_code")
+        exit_code = payload.get("exit_code")
+        if payload.get("ok") is not True or exit_code != 0:
+            if (
+                allow_nonzero
+                and isinstance(exit_code, int)
+                and not isinstance(exit_code, bool)
+                and exit_code != 0
+            ):
+                return {
+                    "ok": False,
+                    "exit_code": exit_code,
+                    "elapsed_ms": int((time.monotonic() - started) * 1000),
+                }
             raise SkillsBenchTurnBridgeError(
                 "scored-workspace command failed",
                 category=_loopx_cli_failure_category(
@@ -161,6 +176,7 @@ class SkillsBenchTurnBridge:
             self.meaningful_operation_count += 1
         return {
             "ok": True,
+            "exit_code": 0,
             "stdout": str(payload.get("stdout") or ""),
             "elapsed_ms": int((time.monotonic() - started) * 1000),
         }
@@ -245,6 +261,31 @@ def _callback_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _validation_baseline(
+    bridge: SkillsBenchTurnBridge,
+    config: SkillsBenchTurnRuntimeConfig,
+) -> dict[str, Any]:
+    """Observe whether the task postcondition is satisfied before agent work."""
+
+    try:
+        result = bridge.exec(config.validation_command, allow_nonzero=True)
+    except SkillsBenchTurnBridgeError as exc:
+        raise SkillsBenchTurnBridgeError(
+            str(exc),
+            stage="validation_baseline",
+            category=exc.category,
+            exit_code=exc.exit_code,
+        ) from exc
+    return {
+        "schema_version": "skillsbench_validation_baseline_v0",
+        "status": "already_satisfied" if result.get("ok") is True else "unsatisfied",
+        "postcondition_kind": "task_declared_independent_command",
+        "exit_code": result.get("exit_code"),
+        "raw_command_recorded": False,
+        "raw_output_recorded": False,
+    }
+
+
 def run_skillsbench_loopx_turn(
     *,
     prompt: str,
@@ -261,6 +302,7 @@ def run_skillsbench_loopx_turn(
         )
     bridge = SkillsBenchTurnBridge(config)
     plan = _turn_plan(bridge, config)
+    validation_baseline = _validation_baseline(bridge, config)
     prefix = _case_cli_prefix(config)
 
     def host_runner(request: Mapping[str, Any]) -> dict[str, Any]:
@@ -356,6 +398,15 @@ def run_skillsbench_loopx_turn(
         ),
         "independent": True,
         "validator_kind": "skillsbench_scored_workspace_command",
+        "pre_agent_postcondition_checked": True,
+        "pre_agent_postcondition_status": validation_baseline["status"],
+        "post_agent_postcondition_status": (
+            "satisfied"
+            if isinstance(execution.get("validation"), dict)
+            and execution["validation"].get("status") == "passed"
+            else "unsatisfied"
+        ),
+        "baseline_contract": "task_declared_independent_postcondition",
         "oracle_feedback_used": False,
         "meaningful_operation_count": bridge.meaningful_operation_count,
         "raw_validator_output_recorded": False,
@@ -363,6 +414,48 @@ def run_skillsbench_loopx_turn(
         "raw_verifier_output_recorded": False,
     }
     return execution, scored_validation
+
+
+def build_skillsbench_benchmark_runner_readiness(
+    *,
+    execution: Mapping[str, Any],
+    scored_workspace_validation: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Reduce a Turn outcome to a compact, public-safe runner capability receipt."""
+
+    checks = {
+        "turn_transaction_committed": execution.get("status") == "committed",
+        "pre_agent_postcondition_checked": (
+            scored_workspace_validation.get("pre_agent_postcondition_checked") is True
+        ),
+        "pre_agent_postcondition_unsatisfied": (
+            scored_workspace_validation.get("pre_agent_postcondition_status")
+            == "unsatisfied"
+        ),
+        "post_agent_postcondition_satisfied": (
+            scored_workspace_validation.get("post_agent_postcondition_status")
+            == "satisfied"
+        ),
+        "official_feedback_blinded": (
+            scored_workspace_validation.get("oracle_feedback_used") is False
+        ),
+    }
+    blockers = [name for name, passed in checks.items() if not passed]
+    return {
+        "schema_version": "skillsbench_benchmark_runner_readiness_v0",
+        "capability": "benchmark_runner",
+        "status": "ready" if not blockers else "blocked",
+        "ready": not blockers,
+        "checks": checks,
+        "blocker_codes": blockers,
+        "evidence_kind": "committed_turn_with_independent_postcondition_baseline",
+        "raw_task_text_recorded": False,
+        "raw_validator_output_recorded": False,
+        "raw_verifier_output_recorded": False,
+        "raw_trajectory_recorded": False,
+        "credential_values_recorded": False,
+        "local_paths_recorded": False,
+    }
 
 
 def build_skillsbench_loopx_turn_trace(
@@ -384,6 +477,10 @@ def build_skillsbench_loopx_turn_trace(
         "task_id": task_id,
         "loopx_turn_execution": dict(execution),
         "scored_workspace_validation": dict(scored_workspace_validation),
+        "benchmark_runner_readiness": build_skillsbench_benchmark_runner_readiness(
+            execution=execution,
+            scored_workspace_validation=scored_workspace_validation,
+        ),
         "official_feedback_blinded": True,
         "reward_feedback_forwarded": False,
         "boundary": {
@@ -444,6 +541,12 @@ def build_skillsbench_loopx_turn_failure_trace(
         "status": "not_attempted",
         "independent": True,
         "validator_kind": "skillsbench_scored_workspace_command",
+        "pre_agent_postcondition_checked": error.stage == "validation_baseline",
+        "pre_agent_postcondition_status": (
+            "check_failed" if error.stage == "validation_baseline" else "not_attempted"
+        ),
+        "post_agent_postcondition_status": "not_attempted",
+        "baseline_contract": "task_declared_independent_postcondition",
         "oracle_feedback_used": False,
         "meaningful_operation_count": 0,
         "raw_validator_output_recorded": False,

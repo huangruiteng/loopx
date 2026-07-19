@@ -15,6 +15,13 @@ LOOPX_TURN_PUBLIC_BOUNDARY_FIELDS = (
     "credentials_recorded",
     "local_paths_recorded",
 )
+LOOPX_TURN_RUNNER_READINESS_CHECKS = (
+    "turn_transaction_committed",
+    "pre_agent_postcondition_checked",
+    "pre_agent_postcondition_unsatisfied",
+    "post_agent_postcondition_satisfied",
+    "official_feedback_blinded",
+)
 
 
 def skillsbench_loopx_turn_route_contract() -> dict[str, Any]:
@@ -73,8 +80,11 @@ def add_skillsbench_loopx_turn_arguments(parser: Any) -> None:
         default=None,
         help=(
             "Private scored-workspace postcondition command for the experimental "
-            "LoopX Turn Agent CLI route. The command is executed only through "
-            "the sandbox bridge and is never written to public compact traces."
+            "LoopX Turn Agent CLI route. It must be safe to run before and after "
+            "each agent Turn; the pre-agent result qualifies the validation "
+            "baseline without blocking later Turns whose overall postcondition "
+            "is already satisfied. The command is executed only through the "
+            "sandbox bridge and is never written to public compact traces."
         ),
     )
 
@@ -208,11 +218,19 @@ def _public_validation(value: Any) -> dict[str, Any]:
         return {}
     validation = {
         key: label
-        for key in ("schema_version", "status", "validator_kind")
+        for key in (
+            "schema_version",
+            "status",
+            "validator_kind",
+            "pre_agent_postcondition_status",
+            "post_agent_postcondition_status",
+            "baseline_contract",
+        )
         if (label := _public_label(value.get(key), limit=120))
     }
     for key in (
         "independent",
+        "pre_agent_postcondition_checked",
         "oracle_feedback_used",
         "raw_validator_output_recorded",
         "raw_task_text_recorded",
@@ -224,6 +242,82 @@ def _public_validation(value: Any) -> dict[str, Any]:
     if isinstance(operation_count, int) and not isinstance(operation_count, bool):
         validation["meaningful_operation_count"] = max(0, operation_count)
     return validation
+
+
+def _public_runner_readiness(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    receipt = {
+        key: label
+        for key in ("schema_version", "capability", "status", "evidence_kind")
+        if (label := _public_label(value.get(key), limit=120))
+    }
+    if isinstance(value.get("ready"), bool):
+        receipt["ready"] = value["ready"]
+    checks = value.get("checks")
+    if isinstance(checks, dict):
+        receipt["checks"] = {
+            key: checks[key]
+            for key in LOOPX_TURN_RUNNER_READINESS_CHECKS
+            if isinstance(checks.get(key), bool)
+        }
+    blockers = [
+        blocker
+        for blocker in _public_label_list(value.get("blocker_codes"), limit=80)
+        if blocker in LOOPX_TURN_RUNNER_READINESS_CHECKS
+    ]
+    if blockers:
+        receipt["blocker_codes"] = blockers
+    for key in (
+        "raw_task_text_recorded",
+        "raw_validator_output_recorded",
+        "raw_verifier_output_recorded",
+        "raw_trajectory_recorded",
+        "credential_values_recorded",
+        "local_paths_recorded",
+    ):
+        if isinstance(value.get(key), bool):
+            receipt[key] = value[key]
+    return receipt
+
+
+def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any]:
+    ready_count = sum(item.get("ready") is True for item in receipts)
+    blockers = sorted(
+        {
+            blocker
+            for item in receipts
+            for blocker in item.get("blocker_codes", [])
+            if isinstance(blocker, str) and blocker
+        }
+    )
+    return {
+        "schema_version": "skillsbench_benchmark_runner_readiness_v0",
+        "capability": "benchmark_runner",
+        "status": "ready" if ready_count else "blocked",
+        "ready": ready_count > 0,
+        "proven_turn_count": ready_count,
+        "observed_turn_count": len(receipts),
+        "blocker_codes": [] if ready_count else blockers,
+        "raw_task_text_recorded": any(
+            item.get("raw_task_text_recorded") is True for item in receipts
+        ),
+        "raw_validator_output_recorded": any(
+            item.get("raw_validator_output_recorded") is True for item in receipts
+        ),
+        "raw_verifier_output_recorded": any(
+            item.get("raw_verifier_output_recorded") is True for item in receipts
+        ),
+        "raw_trajectory_recorded": any(
+            item.get("raw_trajectory_recorded") is True for item in receipts
+        ),
+        "credential_values_recorded": any(
+            item.get("credential_values_recorded") is True for item in receipts
+        ),
+        "local_paths_recorded": any(
+            item.get("local_paths_recorded") is True for item in receipts
+        ),
+    }
 
 
 def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
@@ -263,6 +357,7 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
 class SkillsBenchTurnTraceSummary:
     executions: list[dict[str, Any]] = field(default_factory=list)
     validations: list[dict[str, Any]] = field(default_factory=list)
+    readiness_receipts: list[dict[str, Any]] = field(default_factory=list)
     boundary: dict[str, bool] = field(
         default_factory=lambda: dict.fromkeys(LOOPX_TURN_PUBLIC_BOUNDARY_FIELDS, False)
     )
@@ -272,6 +367,10 @@ class SkillsBenchTurnTraceSummary:
             self.executions.append(execution)
         if validation := _public_validation(payload.get("scored_workspace_validation")):
             self.validations.append(validation)
+        if readiness := _public_runner_readiness(
+            payload.get("benchmark_runner_readiness")
+        ):
+            self.readiness_receipts.append(readiness)
         source_fields = {
             "raw_task_text_recorded": ("raw_task_text_recorded",),
             "raw_verifier_output_recorded": ("raw_verifier_output_recorded",),
@@ -288,6 +387,10 @@ class SkillsBenchTurnTraceSummary:
             return
         trace["loopx_turn_executions"] = list(self.executions)
         trace["scored_workspace_validation"] = _aggregate_validations(self.validations)
+        if self.readiness_receipts:
+            trace["benchmark_runner_readiness"] = _aggregate_runner_readiness(
+                self.readiness_receipts
+            )
         trace["loopx_turn_public_boundary"] = dict(self.boundary)
         trace["official_feedback_blinded"] = True
         trace["reward_feedback_forwarded"] = False
@@ -308,6 +411,9 @@ def sync_skillsbench_loopx_turn_trace_into_compact(
     validation = trace.get("scored_workspace_validation")
     if isinstance(validation, dict):
         compact["scored_workspace_validation"] = dict(validation)
+    readiness = trace.get("benchmark_runner_readiness")
+    if isinstance(readiness, dict):
+        compact["benchmark_runner_readiness"] = dict(readiness)
     trace_boundary = trace.get("loopx_turn_public_boundary")
     trace_boundary = trace_boundary if isinstance(trace_boundary, dict) else {}
     boundary = compact.get("public_boundary")
