@@ -40,6 +40,42 @@ about the work.
 | `worker_bridge` | Worker bridge | External executor, task container, or remote worker bridge | Worker event, bridge message, or runner sidecar | Bridge emits compact public-safe state, todo, evidence, or benchmark-run payload | Worker heartbeat/status and compact counter trace | Host-specific stop/reset maps back to scheduler hints and outcome policy | Quota event for accepted work; no leaderboard/score claim from bridge-only evidence | Dashboard/frontstage projection and compact evidence timeline | Strip raw logs, local paths, private traces, task text, and credentials | Worker bridge install/status smoke proves source mount, writeback contract, and private-boundary stripping. |
 | `computer_use_runtime` | Browser, desktop, or app automation runtime | Visible or replayable UI execution surface | Approved connector plan, bounded todo, host replay event, or user takeover handoff | Compact action plan, observation, receipt, gate, and evidence-handle writeback | Host-owned replay/screenshot pointer plus compact receipt fields | Stop at unknown modal, privacy ambiguity, or final external action; scheduler hints still come from LoopX quota | Quota spend only after validated receipt and LoopX writeback; readiness/profile checks stay no-spend | Review card with intended action, forbidden actions, evidence handle, and takeover path | Do not copy credentials, cookies, raw screenshots, private UI bodies, or perform sends/purchases/production mutations without exact gate | Synthetic capability/action/receipt smokes prove gate-before-write, raw-evidence stripping, and concrete user-question projection. |
 
+## External Tool Extension Candidates
+
+An MCP server can play two different roles around LoopX:
+
+- a **LoopX host adapter** exposes LoopX lifecycle reads and controlled writes
+  to an MCP-capable host;
+- an **external tool extension** exposes another product's tools to the host and
+  remains a replaceable provider behind a LoopX outcome capability.
+
+The entries below are discovery notes, not availability claims. Cataloging an
+extension does not add a LoopX feature, advertise an available capability, or
+grant credentials, network access, private reads, or external-write authority.
+
+| id | upstream surface | status | possible LoopX binding | boundary before integration | promotion evidence |
+| --- | --- | --- | --- | --- | --- |
+| `official_xmcp` | X Developer Platform [XMCP](https://github.com/xdevplatform/xmcp) and [official MCP documentation](https://docs.x.com/tools/mcp) | `catalogued_not_integrated`; no LoopX install check or live qualification | Optional MCP provider for the existing `content-ops` / `social_browser_x` outcome path; not a new capability and not a replacement control plane | Host owns OAuth material and X API cost/rate limits. Start with an explicit read-only tool allowlist. Posting, replies, likes, follows, DMs, account changes, paid queries, and private expansion require exact LoopX gates. Do not project raw posts, timelines, DMs, tokens, or MCP payloads into public state. | Provider-neutral operation map; credential-free install/readiness check; metadata-only public-read packet; exact write/private/cost gate plan; compact receipt; focused contract smoke. Live X E2E is a later owner-authorized qualification, not required for catalog status. |
+
+XMCP is an official local MCP server that derives more than 200 tools from the
+X API OpenAPI specification at startup. Its upstream allowlist is therefore a
+security and cost boundary, not only an output-budget optimization. A LoopX
+adapter should expose a small operation profile such as public account lookup
+and bounded recent search instead of forwarding the complete generated tool
+surface. Streaming and webhook endpoints are outside XMCP's request/response
+surface; durable monitoring still needs a separate host scheduler or event
+connector governed by normal LoopX monitor contracts.
+
+X also hosts a documentation-only MCP at `https://docs.x.com/mcp`. That server
+may help an implementation agent inspect current X API documentation, but it
+does not provide social-source evidence and must not be reported as
+`social_browser_x` runtime readiness.
+
+Promote an extension candidate to a capability path only when the user outcome,
+provider-neutral packet, CLI entrypoint, gate model, and focused smoke are all
+stable. Until then, the extension remains interchangeable infrastructure behind
+an existing capability.
+
 ## Projection Rules
 
 - LoopX kernel objects remain authoritative: registry, active goal state, todo,
@@ -75,6 +111,7 @@ maintainer's local automation:
 - [Heartbeat automation prompt](heartbeat-automation-prompt.md)
 - [Host integration surface v0](reference/protocols/host-integration-surface-v0.md)
 - [Computer-use runtime connector v0](reference/protocols/computer-use-runtime-connector-v0.md)
+- [Value connectors](capabilities/value-connectors/README.md)
 - [Session runtime to LoopX projection v0](reference/protocols/session-runtime-loopx-projection-v0.md)
 - [Worker bridge install contract](worker-bridge-install-contract.md)
 - [Quota allocation](quota-allocation.md)
