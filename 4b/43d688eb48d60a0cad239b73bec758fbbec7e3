@@ -1,0 +1,47 @@
+docs/capabilities/content-ops/README.md
+  s_e3f612788718c1::t_c75b5961cef28b 52-63
+docs/capabilities/value-connectors/README.md
+  s_e3f612788718c1::t_672c8eb47f65d3 82-86,95
+docs/reference/protocols/value-connector-plan-v0.md
+  s_e3f612788718c1::t_f3e9f8b977a798 6-9,85
+examples/value-connectors-github-public-probe-smoke.py
+  s_32e2a9a204a8e4::t_56e4e4dfa672c9 128-132,149
+loopx/capabilities/catalog.py
+  s_32e2a9a204a8e4::t_1c183f7f292556 599-603
+loopx/capabilities/content_ops/social_browser_x.py
+  s_e3f612788718c1::t_176bf6b6ac3a1b 1-107
+loopx/capabilities/content_ops/surface.py
+  s_e3f612788718c1::t_5976a53a7b0cb5 16,18-24,500
+loopx/capabilities/value_connectors/install_check.py
+  s_32e2a9a204a8e4::t_de48821871daed 7-8,95
+loopx/capabilities/value_connectors/source_map.py
+  s_32e2a9a204a8e4::t_c4538b4affe23a 6-10,45-46,119,186
+tests/capabilities/test_value_connector_social_profile.py
+  s_e3f612788718c1::t_d2d36811de4f3d 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4b43d688eb48d60a0cad239b73bec758fbbec7e3",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    },
+    "s_e3f612788718c1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eefa3-dc14-7660-a19e-e1d386d7f467",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
