@@ -85,7 +85,9 @@ def test_semantic_instruction_requires_exact_peer_route() -> None:
     assert "same_agent_non_delivery" in instruction
 
 
-def test_semantic_instruction_preserves_candidate_scheduler_and_vision_exactly() -> None:
+def test_semantic_instruction_preserves_candidate_scheduler_and_vision_exactly() -> (
+    None
+):
     instruction = " ".join(
         _decision_instruction(
             arm="candidate_packet", semantic_contract_required=True
@@ -94,18 +96,19 @@ def test_semantic_instruction_preserves_candidate_scheduler_and_vision_exactly()
 
     assert "copy packet.scheduler exactly" in instruction
     assert "without filtering or reconstruction" in instruction
-    assert (
-        "packet.contract_capsule.vision_continuation_audit exactly" in instruction
-    )
+    assert "packet.contract_capsule.vision_continuation_audit exactly" in instruction
     assert "including trigger_kinds" in instruction
     assert "full packet" not in instruction
 
 
 def test_semantic_instruction_is_arm_scoped() -> None:
     full_instruction = " ".join(
-        _decision_instruction(arm="full_packet", semantic_contract_required=True).split()
+        _decision_instruction(
+            arm="full_packet", semantic_contract_required=True
+        ).split()
     )
 
+    assert "first interaction_contract.user_channel.actions value" in full_instruction
     assert "project scheduler_hint" in full_instruction
     assert "copy packet.scheduler exactly" not in full_instruction
 

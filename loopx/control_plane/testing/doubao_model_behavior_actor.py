@@ -166,7 +166,8 @@ def _semantic_contract_instruction(*, arm: str) -> str:
 """
     elif arm == "full_packet":
         packet_rules = """
-- concrete_user_question: first user.actions value, else null.
+- concrete_user_question: first interaction_contract.user_channel.actions
+  value, else null.
 - required_reads: use interaction_contract.required_reads, falling back to
   packet.required_reads. Keep at most five object entries with a non-empty
   command and only command plus optional kind, reason, and source. Non-object
@@ -476,7 +477,7 @@ class DoubaoModelBehaviorActor(ModelBehaviorActor):
                 arm=str(canonical_request["arm"]),
                 semantic_contract_required=bool(
                     canonical_request["semantic_contract_required"]
-                )
+                ),
             ),
             provider_input=_provider_input(canonical_request),
         )
