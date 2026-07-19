@@ -450,6 +450,30 @@ sync the management surface, record residual risk, and choose one of:
 One merged PR proves a delivery slice. Repeating the loop on independent issues
 tests whether the system is a durable employee rather than a scripted demo.
 
+## Public GitHub Signal Provider
+
+Issue-fix owns the body-free public GitHub probe and reply-monitor provider in
+`loopx.capabilities.issue_fix.github_public`. Existing CLI callers keep using
+the compatibility commands:
+
+```bash
+loopx value-connectors github-public-probe \
+  --url https://github.com/owner/repo/issues/1 \
+  --fetch-metadata \
+  --format json
+
+loopx value-connectors github-reply-monitor \
+  --issue-url https://github.com/owner/repo/issues/1 \
+  --after-comment-url https://github.com/owner/repo/issues/1#issuecomment-123 \
+  --fetch-metadata \
+  --format json
+```
+
+The CLI name and packet schemas remain stable. Only implementation ownership
+moved: probes and monitor signals now evolve with the issue-to-PR outcome they
+feed, while connector installation and generic approval planning remain in the
+compatibility facade.
+
 ## Implemented Surfaces
 
 | Surface | Command or path | Current responsibility |
