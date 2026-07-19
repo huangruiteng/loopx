@@ -61,10 +61,14 @@ def _capability_missing_action(missing: list[str]) -> str:
 
 def _capability_resolution(missing: list[str]) -> dict[str, Any]:
     owner_missing = [
-        capability for capability in missing if capability in CAPABILITY_OWNER_GATE_HINTS
+        capability
+        for capability in missing
+        if capability in CAPABILITY_OWNER_GATE_HINTS
     ]
     repair_missing = [
-        capability for capability in missing if capability in CAPABILITY_REPAIR_BRIDGE_HINTS
+        capability
+        for capability in missing
+        if capability in CAPABILITY_REPAIR_BRIDGE_HINTS
     ]
     unsupported_missing = [
         capability
@@ -302,115 +306,109 @@ def _sort_capability_runnable_candidates(
     )
 
 
-def build_capability_gate(
-    agent_todo_summary: dict[str, Any] | None,
-    *,
-    available_capabilities: list[str],
-    agent_identity: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    if not isinstance(agent_todo_summary, dict):
-        return None
-    monitor_capability_blocked_due_items = agent_todo_summary.get(
-        "monitor_capability_blocked_due_items"
-    )
-    blocked_monitor_items = (
-        monitor_capability_blocked_due_items
-        if isinstance(monitor_capability_blocked_due_items, list)
+def _select_advancement_candidate_source(
+    agent_todo_summary: dict[str, Any],
+) -> tuple[list[Any], str]:
+    active_next_items = agent_todo_summary.get("active_next_action_executable_items")
+    backlog_items = agent_todo_summary.get("executable_backlog_items")
+    first_executable_items = agent_todo_summary.get("first_executable_items")
+    if isinstance(active_next_items, list) and active_next_items:
+        return (
+            [
+                *active_next_items,
+                *(backlog_items if isinstance(backlog_items, list) else []),
+            ],
+            "agent_todo_summary.active_next_action_executable_items",
+        )
+    if isinstance(backlog_items, list) and backlog_items:
+        return backlog_items, "agent_todo_summary.executable_backlog_items"
+    if isinstance(first_executable_items, list) and first_executable_items:
+        return first_executable_items, "agent_todo_summary.first_executable_items"
+    return [], "agent_todo_summary.executable_backlog_items"
+
+
+def _collect_capability_gate_candidates(
+    agent_todo_summary: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str]:
+    raw_items, source = _select_advancement_candidate_source(agent_todo_summary)
+    due_monitor_items = (
+        agent_todo_summary.get("monitor_due_items")
+        if isinstance(agent_todo_summary.get("monitor_due_items"), list)
         else []
     )
-    monitor_due_items_value = agent_todo_summary.get("monitor_due_items")
-    runnable_monitor_items = (
-        monitor_due_items_value if isinstance(monitor_due_items_value, list) else []
-    )
-    active_next_action_executable_items = agent_todo_summary.get(
-        "active_next_action_executable_items"
-    )
-    executable_backlog_items = agent_todo_summary.get("executable_backlog_items")
-    first_executable_items = agent_todo_summary.get("first_executable_items")
-    if (
-        isinstance(active_next_action_executable_items, list)
-        and active_next_action_executable_items
-    ):
-        raw_items = [
-            *active_next_action_executable_items,
-            *(
-                executable_backlog_items
-                if isinstance(executable_backlog_items, list)
-                else []
-            ),
-        ]
-        source = "agent_todo_summary.active_next_action_executable_items"
-    elif isinstance(executable_backlog_items, list) and executable_backlog_items:
-        raw_items = executable_backlog_items
-        source = "agent_todo_summary.executable_backlog_items"
-    elif isinstance(first_executable_items, list) and first_executable_items:
-        raw_items = first_executable_items
-        source = "agent_todo_summary.first_executable_items"
-    else:
-        raw_items = []
-        source = "agent_todo_summary.executable_backlog_items"
-    monitor_sources: list[str] = []
-    if runnable_monitor_items:
-        monitor_sources.append("agent_todo_summary.monitor_due_items")
-    if blocked_monitor_items:
-        monitor_sources.append("agent_todo_summary.monitor_capability_blocked_due_items")
-    if monitor_sources:
-        has_advancement_items = bool(raw_items)
-        raw_items = [*raw_items, *runnable_monitor_items, *blocked_monitor_items]
-        source = (
-            "+".join([source, *monitor_sources])
-            if has_advancement_items
-            else "+".join(monitor_sources)
+    blocked_due_monitor_items = (
+        agent_todo_summary.get("monitor_capability_blocked_due_items")
+        if isinstance(
+            agent_todo_summary.get("monitor_capability_blocked_due_items"), list
         )
-    deduped_raw_items: list[Any] = []
-    seen_raw: set[tuple[str, str]] = set()
+        else []
+    )
+    monitor_sources: list[str] = []
+    if due_monitor_items:
+        monitor_sources.append("agent_todo_summary.monitor_due_items")
+    if blocked_due_monitor_items:
+        monitor_sources.append(
+            "agent_todo_summary.monitor_capability_blocked_due_items"
+        )
+    if monitor_sources:
+        source_parts = [source, *monitor_sources] if raw_items else monitor_sources
+        source = "+".join(source_parts)
+        raw_items = [*raw_items, *due_monitor_items, *blocked_due_monitor_items]
+
+    deduped_items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
     for item in raw_items:
         if not isinstance(item, dict):
-            deduped_raw_items.append(item)
             continue
         identity = _capability_item_identity(item)
-        if identity in seen_raw:
+        if identity in seen:
             continue
-        seen_raw.add(identity)
-        deduped_raw_items.append(item)
-    raw_items = deduped_raw_items
+        seen.add(identity)
+        deduped_items.append(item)
+
     due_monitor_identities = {
         _capability_item_identity(item)
-        for item in [*runnable_monitor_items, *blocked_monitor_items]
+        for item in [*due_monitor_items, *blocked_due_monitor_items]
         if isinstance(item, dict)
     }
-    candidates = [
-        item
-        for item in raw_items
-        if isinstance(item, dict)
-        and todo_item_is_actionable_open(item)
-        and (
-            todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-            or _capability_item_identity(item) in due_monitor_identities
-        )
-    ]
-    if not candidates:
-        return None
+    return (
+        [
+            item
+            for item in deduped_items
+            if todo_item_is_actionable_open(item)
+            and (
+                todo_item_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+                or _capability_item_identity(item) in due_monitor_identities
+            )
+        ],
+        source,
+    )
 
-    available = available_capabilities_with_defaults(available_capabilities)
+
+def _match_capability_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    available_capabilities: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
     blocked: list[dict[str, Any]] = []
     runnable: list[dict[str, Any]] = []
     saw_requirement = False
     for item in candidates:
         required = normalize_required_capabilities(item.get("required_capabilities"))
         targets = normalize_target_capabilities(item.get("target_capabilities"))
-        if required or targets:
-            saw_requirement = True
+        saw_requirement = saw_requirement or bool(required or targets)
         missing = missing_required_capabilities(
             item,
-            available_capabilities=available,
+            available_capabilities=available_capabilities,
         )
-        missing_targets = [
-            capability for capability in targets if capability not in available
-        ]
         if missing:
             blocked.append(_capability_candidate_item(item, missing=missing))
             continue
+        missing_targets = [
+            capability
+            for capability in targets
+            if capability not in available_capabilities
+        ]
         runnable.append(
             _capability_candidate_item(
                 item,
@@ -418,87 +416,90 @@ def build_capability_gate(
                 missing_target_capabilities=missing_targets,
             )
         )
+    return blocked, runnable, saw_requirement
 
-    if not saw_requirement and not blocked:
-        return None
-    if runnable:
-        runnable, candidate_order_policy = _sort_capability_runnable_candidates(
-            runnable,
-            agent_identity=agent_identity,
-        )
-        runnable_required: list[str] = []
-        blocked_missing: list[str] = []
-        repair_missing: list[str] = []
-        for item in runnable:
-            for capability in item.get("required_capabilities") or []:
-                if capability not in runnable_required:
-                    runnable_required.append(str(capability))
-            if item.get("capability_repair_mode") is True:
-                for capability in item.get("missing_target_capabilities") or []:
-                    if capability not in repair_missing:
-                        repair_missing.append(str(capability))
-        for item in blocked:
-            for capability in item.get("missing_capabilities") or []:
-                if capability not in blocked_missing:
-                    blocked_missing.append(str(capability))
-        resolution_bindings = _blocked_capability_resolution_bindings(blocked)
-        owner_missing = _binding_capabilities(resolution_bindings, owner="user")
-        for capability in _binding_capabilities(resolution_bindings, owner="agent"):
-            if capability not in repair_missing:
-                repair_missing.append(capability)
-        unsupported_missing = _binding_capabilities(
-            resolution_bindings,
-            owner="capability_gate",
-        )
-        return {
-            "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
-            "source": source,
-            "required": runnable_required,
-            "available": available,
-            "missing": [],
-            "action": "run",
-            "decision_owner": "agent",
-            "selection_policy": "agent_steering_audit_over_runnable_candidates",
-            "candidate_order_policy": candidate_order_policy or "projection_order",
-            "runnable_count": len(runnable),
-            "runnable_candidates": runnable,
-            "blocked_candidates": blocked,
-            "blocked_missing": blocked_missing,
-            "owner_missing": owner_missing,
-            "repair_missing": repair_missing,
-            "unsupported_missing": unsupported_missing,
-            "resolution_bindings": resolution_bindings,
-            "repair_candidate_count": sum(
-                1 for item in runnable if item.get("capability_repair_mode") is True
-            ),
-            "reason": "capability gate projected runnable candidate set; agent chooses the actual todo",
-            "owner_action": _owner_capability_action(resolution_bindings),
-        }
 
-    missing_all: list[str] = []
-    required_all: list[str] = []
-    for item in blocked:
-        for capability in item.get("required_capabilities") or []:
-            if capability not in required_all:
-                required_all.append(str(capability))
-        for capability in item.get("missing_capabilities") or []:
-            if capability not in missing_all:
-                missing_all.append(str(capability))
-    resolution = _capability_resolution(missing_all)
+def _unique_candidate_values(
+    candidates: list[dict[str, Any]],
+    field: str,
+) -> list[str]:
+    values: list[str] = []
+    for item in candidates:
+        for value in item.get(field) or []:
+            normalized = str(value)
+            if normalized not in values:
+                values.append(normalized)
+    return values
+
+
+def _build_runnable_capability_gate(
+    *,
+    source: str,
+    available: list[str],
+    blocked: list[dict[str, Any]],
+    runnable: list[dict[str, Any]],
+    agent_identity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    runnable, candidate_order_policy = _sort_capability_runnable_candidates(
+        runnable,
+        agent_identity=agent_identity,
+    )
     resolution_bindings = _blocked_capability_resolution_bindings(blocked)
-    action = str(resolution["action"])
-    owner_missing = list(resolution["owner_missing"])
-    repair_missing = list(resolution["repair_missing"])
+    repair_missing = _unique_candidate_values(
+        [item for item in runnable if item.get("capability_repair_mode") is True],
+        "missing_target_capabilities",
+    )
+    for capability in _binding_capabilities(resolution_bindings, owner="agent"):
+        if capability not in repair_missing:
+            repair_missing.append(capability)
     return {
         "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
         "source": source,
-        "required": required_all,
+        "required": _unique_candidate_values(runnable, "required_capabilities"),
         "available": available,
-        "missing": missing_all,
-        "action": action,
-        "decision_owner": resolution["decision_owner"],
-        "owner_missing": owner_missing,
+        "missing": [],
+        "action": "run",
+        "decision_owner": "agent",
+        "selection_policy": "agent_steering_audit_over_runnable_candidates",
+        "candidate_order_policy": candidate_order_policy or "projection_order",
+        "runnable_count": len(runnable),
+        "runnable_candidates": runnable,
+        "blocked_candidates": blocked,
+        "blocked_missing": _unique_candidate_values(blocked, "missing_capabilities"),
+        "owner_missing": _binding_capabilities(resolution_bindings, owner="user"),
         "repair_missing": repair_missing,
+        "unsupported_missing": _binding_capabilities(
+            resolution_bindings,
+            owner="capability_gate",
+        ),
+        "resolution_bindings": resolution_bindings,
+        "repair_candidate_count": sum(
+            1 for item in runnable if item.get("capability_repair_mode") is True
+        ),
+        "reason": "capability gate projected runnable candidate set; agent chooses the actual todo",
+        "owner_action": _owner_capability_action(resolution_bindings),
+    }
+
+
+def _build_blocked_capability_gate(
+    *,
+    source: str,
+    available: list[str],
+    blocked: list[dict[str, Any]],
+) -> dict[str, Any]:
+    missing = _unique_candidate_values(blocked, "missing_capabilities")
+    resolution = _capability_resolution(missing)
+    resolution_bindings = _blocked_capability_resolution_bindings(blocked)
+    return {
+        "schema_version": CAPABILITY_GATE_SCHEMA_VERSION,
+        "source": source,
+        "required": _unique_candidate_values(blocked, "required_capabilities"),
+        "available": available,
+        "missing": missing,
+        "action": str(resolution["action"]),
+        "decision_owner": resolution["decision_owner"],
+        "owner_missing": list(resolution["owner_missing"]),
+        "repair_missing": list(resolution["repair_missing"]),
         "unsupported_missing": resolution["unsupported_missing"],
         "resolution_steps": resolution["resolution_steps"],
         "resolution_bindings": resolution_bindings,
@@ -510,3 +511,37 @@ def build_capability_gate(
         "reason": "all visible executable todo candidates require unavailable capabilities",
         "owner_action": _owner_capability_action(resolution_bindings),
     }
+
+
+def build_capability_gate(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    available_capabilities: list[str],
+    agent_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    candidates, source = _collect_capability_gate_candidates(agent_todo_summary)
+    if not candidates:
+        return None
+
+    available = available_capabilities_with_defaults(available_capabilities)
+    blocked, runnable, saw_requirement = _match_capability_candidates(
+        candidates,
+        available_capabilities=available,
+    )
+    if not saw_requirement and not blocked:
+        return None
+    if runnable:
+        return _build_runnable_capability_gate(
+            source=source,
+            available=available,
+            blocked=blocked,
+            runnable=runnable,
+            agent_identity=agent_identity,
+        )
+    return _build_blocked_capability_gate(
+        source=source,
+        available=available,
+        blocked=blocked,
+    )

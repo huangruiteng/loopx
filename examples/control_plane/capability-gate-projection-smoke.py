@@ -91,8 +91,12 @@ def assert_candidate_compaction_contract() -> None:
         missing_target_capabilities=["benchmark_runner"],
     )
     assert candidate["todo_id"] == "todo_bridge", candidate
-    assert candidate["required_capabilities"] == ["shell", "benchmark_runner"], candidate
-    assert candidate["target_capabilities"] == ["status_quota_read_model_refactor"], candidate
+    assert candidate["required_capabilities"] == ["shell", "benchmark_runner"], (
+        candidate
+    )
+    assert candidate["target_capabilities"] == ["status_quota_read_model_refactor"], (
+        candidate
+    )
     assert candidate["missing_capabilities"] == ["benchmark_runner"], candidate
     assert candidate["missing_target_capabilities"] == ["benchmark_runner"], candidate
     assert candidate["capability_action"] == "repair_bridge", candidate
@@ -196,7 +200,9 @@ def assert_gate_prefers_active_next_and_exposes_blocked_fallback() -> None:
     )
     assert gate is not None
     assert gate["schema_version"] == "capability_gate_v0", gate
-    assert gate["source"] == "agent_todo_summary.active_next_action_executable_items", gate
+    assert gate["source"] == "agent_todo_summary.active_next_action_executable_items", (
+        gate
+    )
     assert gate["action"] == "run", gate
     assert gate["decision_owner"] == "agent", gate
     assert gate["runnable_candidates"][0]["todo_id"] == "todo_local_refactor", gate
@@ -345,6 +351,44 @@ def assert_requirement_free_advancement_does_not_create_gate() -> None:
     assert gate is None
 
 
+def assert_due_monitor_source_composes_with_advancement() -> None:
+    advancement = todo(
+        "todo_local_delivery",
+        6,
+        "P1",
+        claimed_by=AGENT_ID,
+        required_capabilities=["shell"],
+    )
+    monitor = todo(
+        "todo_network_monitor",
+        7,
+        "P1",
+        claimed_by=AGENT_ID,
+        required_capabilities=["network"],
+    )
+    monitor["task_class"] = "continuous_monitor"
+    gate = build_capability_gate(
+        {
+            "executable_backlog_items": [advancement],
+            "monitor_due_items": [monitor],
+        },
+        available_capabilities=["shell"],
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
+    )
+    assert gate is not None
+    assert gate["action"] == "run", gate
+    assert gate["source"] == (
+        "agent_todo_summary.executable_backlog_items+"
+        "agent_todo_summary.monitor_due_items"
+    ), gate
+    assert [item["todo_id"] for item in gate["runnable_candidates"]] == [
+        "todo_local_delivery"
+    ], gate
+    assert [item["todo_id"] for item in gate["blocked_candidates"]] == [
+        "todo_network_monitor"
+    ], gate
+
+
 def main() -> int:
     assert_missing_action_contract()
     assert_candidate_compaction_contract()
@@ -356,6 +400,7 @@ def main() -> int:
     assert_all_blocked_runtime_capability_routes_to_agent_repair()
     assert_all_blocked_owner_capability_stops_delivery()
     assert_requirement_free_advancement_does_not_create_gate()
+    assert_due_monitor_source_composes_with_advancement()
     print("capability-gate-projection-smoke ok")
     return 0
 

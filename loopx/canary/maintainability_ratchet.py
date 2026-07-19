@@ -48,9 +48,6 @@ _EXISTING_DECISION_DEBT_REASON = (
     "Existing multi-branch control-plane decision owner predates the ratchet."
 )
 _OVERSIZED_DECISION_RETIREMENT_PLANS = {
-    "loopx.control_plane.agents.capability_gate:build_capability_gate": (
-        "Separate capability matching, fallback selection, and projection rendering."
-    ),
     "loopx.control_plane.quota.goal_boundary:goal_boundary": (
         "Split registry boundary resolution from capability and write-scope projection."
     ),
@@ -93,10 +90,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
 }
 
 _OVERSIZED_DECISION_METRIC_CEILINGS = {
-    "loopx.control_plane.agents.capability_gate:build_capability_gate": {
-        "statements": 101,
-        "decision_points": 58,
-    },
     "loopx.control_plane.quota.goal_boundary:goal_boundary": {
         "statements": 96,
         "decision_points": 66,
