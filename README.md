@@ -103,7 +103,25 @@ writeback, and public/private boundaries stay visible to the next turn.
 LoopX 把一次静态目标变成能持续流转的动态 loop：该等人的地方明确等人，
 不该空等的安全侧路继续推进，下一轮 agent 总能读到目标、边界、证据和交接。
 
-![LoopX control-plane board](docs/assets/control-plane-board.svg)
+### Long-running loop state, in practice
+
+These are compact excerpts from two real LoopX-managed work graphs. The first
+keeps an engineering objective moving across issue/PR delivery, review, and
+control-plane improvement. The second preserves a long ML experiment chain
+across baselines, negative evidence, human decisions, replanning, and serving
+constraints.
+
+<p align="center">
+  <img src="docs/assets/long-running-loop-openviking-trajectory.png" alt="LoopX long-running OpenViking issue and PR trajectory" width="320">
+</p>
+
+<p align="center">
+  <img src="docs/assets/long-running-loop-ml-experiment-trajectory.png" alt="LoopX long-running ML experiment decision trajectory" width="760">
+</p>
+
+The diagrams are state projections, not raw chat transcripts. They show the
+part that must survive executor restarts: goal branches, accepted and rejected
+evidence, owner gates, replans, review routes, and the next executable frontier.
 
 ## Who Should Try It
 
