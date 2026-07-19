@@ -25,6 +25,9 @@ When the user provides text after `/loopx`, the host should:
      generated `heartbeat-prompt` task body.
    - `codex-cli`: set the visible Codex CLI TUI to `/goal <task_body>`.
    - `claude-code`: arm LoopX with `/loopx <task>`, then run native `/loop`.
+   - `opencode`: call `loopx_goal_activate` from the installed LoopX OpenCode
+     bridge; the bridge gates idle continuation and timer wakes through
+     `quota should-run` and completes only on validated terminal no-follow-up.
    - `manual` / `other-agent`: wire the external loop driver described by
      `loopx agent-onboard`.
 7. If the host cannot mutate that surface, report the exact pasteable gate
