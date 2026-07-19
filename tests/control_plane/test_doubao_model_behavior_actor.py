@@ -83,7 +83,7 @@ def test_semantic_instruction_requires_exact_peer_route() -> None:
     assert "same_agent_non_delivery" in instruction
 
 
-def test_semantic_instruction_preserves_candidate_scheduler_and_vision_exactly() -> None:
+def test_semantic_instruction_preserves_bounded_scheduler_and_vision_contract() -> None:
     instruction = " ".join(
         _decision_instruction(semantic_contract_required=True).split()
     )
@@ -94,6 +94,12 @@ def test_semantic_instruction_preserves_candidate_scheduler_and_vision_exactly()
         "packet.contract_capsule.vision_continuation_audit exactly" in instruction
     )
     assert "including trigger_kinds" in instruction
+    assert "reason_code, spend_policy" in instruction
+    assert "apply_needed, ack_needed, state_status" in instruction
+    assert "host_update_failure object containing only non-null" in instruction
+    assert "ack_cli_args_detail_ref to exactly" in instruction
+    assert "failure_cli_args_detail_ref to exactly" in instruction
+    assert "decision, trigger_kinds" in instruction
 
 
 def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -> None:

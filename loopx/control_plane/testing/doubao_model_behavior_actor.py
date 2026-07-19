@@ -168,15 +168,24 @@ fields and normalize them as follows. Never copy schema placeholders.
   from interaction_contract.cli_channel; use []/false/null when absent.
 - scheduler_action: for a candidate copy packet.scheduler exactly, preserving
   every key, nested object, array, and value without filtering. For a full
-  packet project scheduler_hint using only non-null action, cadence_class, spend_policy, and a
-  codex_app object containing only non-null apply, host_action,
-  recommended_rrule, no_spend_for_cadence_change, stateful_backoff
-  {state_key,current_rrule,apply_needed,state_status}, and ack_cli_args copied
-  from ack_hint.cli_args. Use {} when absent.
+  packet project scheduler_hint using only non-null action, cadence_class,
+  reason_code, spend_policy, and a codex_app object containing only non-null
+  apply, host_action, recommended_rrule, no_spend_for_cadence_change, and
+  stateful_backoff. In stateful_backoff keep only non-null state_key,
+  current_rrule, apply_needed, ack_needed, state_status, plus a
+  host_update_failure object containing only non-null target_rrule,
+  observed_host_rrule, failure_kind, and failure_count. Copy ack_hint.cli_args
+  to ack_cli_args only when it is a non-empty string array starting with loopx;
+  otherwise, when cli_args is present, set ack_cli_args_detail_ref to exactly
+  {"reason":"omitted_to_preserve_executable_argv","request":
+  "loopx quota should-run --include-scheduler-detail"}. When
+  failure_hint.cli_args is present, set failure_cli_args_detail_ref to exactly
+  {"reason":"cold_path_until_host_update_failure","request":
+  "loopx quota should-run --include-scheduler-detail"}. Use {} when absent.
 - vision_continuation: for a candidate copy
   packet.contract_capsule.vision_continuation_audit exactly, preserving every
   key, array, and value, including trigger_kinds. For a full packet copy only
-  non-null schema_version, required, decision,
+  non-null schema_version, required, decision, trigger_kinds,
   selected_todo_is_goal_completion, closeout_allowed_without_evidence,
   required_before_closeout, and recommended_action from
   vision_continuation_audit. Use {} when absent.
