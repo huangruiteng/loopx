@@ -121,9 +121,13 @@ adapters and project profiles:
 
 The built-in presentation adapters include linear Markdown and a
 self-contained `html_artifact_v0` renderer. The HTML renderer is a zero-build,
-single-file projection with optional local interaction. Hosting or generating
-a shareable URL remains a separate sink action with its own idempotency and
-readback receipt; it is not renderer authority.
+single-file projection with optional local interaction. Its default
+`editorial_dense_v1` presentation keeps normalized item facts visible and
+moves profile identity, source health, generation metadata, and digests into a
+collapsed supporting appendix. It embeds the Markdown rendering generated from
+the same document for copy/export and records that companion artifact digest.
+Hosting or generating a shareable URL remains a separate sink action with its
+own idempotency and readback receipt; it is not renderer authority.
 
 The core rejects raw content, messages, logs, transcripts, credentials, secret
 fields, and private paths. Public packets retain only compact references and

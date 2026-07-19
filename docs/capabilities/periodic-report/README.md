@@ -8,7 +8,7 @@ presentation, and destinations to profiles and adapters.
 | --- | --- |
 | CLI | `loopx periodic-report evaluate-trigger --request-json <path>` and `compose-run` |
 | Protocol | [`periodic_report_v0`](../../reference/protocols/periodic-report-v0.md) |
-| Smoke | `python3 examples/periodic-report-smoke.py` |
+| Smokes | `python3 examples/periodic-report-smoke.py` and `python3 examples/periodic-report-html-smoke.py` |
 
 The capability is intentionally effect-free. It first evaluates scheduled or
 material progress facts into a deterministic trigger receipt, then composes a
@@ -42,10 +42,38 @@ implement the capability's ports without owning its lifecycle.
 
 - `markdown_v0` produces a compact linear artifact for documents and message
   adapters.
-- `html_artifact_v0` produces a self-contained, zero-build HTML artifact with
-  responsive section cards, source-health summaries, section filtering, and
-  text search. It has no external runtime dependency and escapes all source
+- `html_artifact_v0` produces a self-contained, zero-build editorial report
+  with dense outcome rows, responsive section navigation, text search,
+  Markdown copy, and print/PDF controls. Its default `editorial_dense_v1`
+  profile keeps the report body focused on title, status, tags, summary,
+  next action, and evidence. Generation metadata, source status, and digests
+  live in a collapsed supporting appendix instead of interrupting the report.
+  The renderer has no external runtime dependency and escapes all source
   content before rendering.
+
+Both built-in renderers consume the exact same normalized document. The HTML
+artifact records the companion Markdown digest, so a caller can prove that the
+shareable page and linear message/document version carry the same primary
+content. The public fixture at
+`examples/fixtures/periodic-report-editorial-dense.public.json` demonstrates a
+reusable, project-neutral report.
+
+## Default editorial contract
+
+The reusable renderer deliberately separates audience content from operational
+receipts:
+
+- visible body: outcomes, evidence, impact or risk expressed in the summary,
+  status, and a concrete next action when one exists;
+- collapsed supporting context: profile identity, generation time, source
+  health, snapshot digests, and renderer lineage;
+- omitted by default: narration about how the report was generated, tool-use
+  commentary, local paths, raw logs, or policy explanations that do not change
+  an audience decision.
+
+Source adapters and profiles still decide what is material. The renderer does
+not guess business semantics or silently rewrite a weak report; it gives all
+projects one readable default once their facts have been normalized.
 
 HTML generation is separate from publication. A static-site, Lark HTML, or
 other hosting adapter may publish the artifact and return an exact readback
