@@ -222,8 +222,9 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         "--host-match-observed",
         action="store_true",
         help=(
-            "A bound scheduler hint observed the applied RRULE on the host, so "
-            "persist its exact reset-token/identity binding without a host write."
+            "A bound scheduler hint has authoritative host proof from a successful "
+            "update or matching readback, so persist its exact reset-token/identity "
+            "binding."
         ),
     )
     quota_parser.add_argument(

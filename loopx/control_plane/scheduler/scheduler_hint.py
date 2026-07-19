@@ -830,6 +830,10 @@ def build_scheduler_hint(
             effective_host_rrule=effective_host_rrule,
             current_rrule=current_rrule,
             current_rrule_already_applied=current_rrule_already_applied,
+            scheduler_state_acknowledges_current_rrule=(
+                state_status == "same_identity"
+                and normalize_scheduler_rrule(last_applied_rrule) == current_rrule
+            ),
             all_host_update_failures=all_host_update_failures,
             recorded_host_failure=recorded_host_failure,
         )
@@ -955,7 +959,11 @@ def build_scheduler_hint(
                         if apply_needed
                         else "matching_host_rrule_observed"
                     ),
-                    host_match_observed=host_match_ack_needed,
+                    # An ACK hint is executable only after either a successful
+                    # host update or a matching host readback. Carry that proof
+                    # and the originating identity so scheduler-ack-current
+                    # cannot recompute an unbound hint and silently no-op.
+                    host_match_observed=True,
                 )
         scheduler_hint = {
             "schema_version": SCHEDULER_HINT_SCHEMA_VERSION,

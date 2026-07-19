@@ -422,6 +422,7 @@ def assert_scheduler_ack_plan_validation() -> None:
         "applied_rrule": codex_app["recommended_rrule"],
         "reset_token": backoff["reset_token"],
         "identity_signature": backoff["identity_signature"],
+        "host_match_observed": True,
     }, ack_hint
     assert ack_cli_args == [
         "quota",
@@ -433,6 +434,11 @@ def assert_scheduler_ack_plan_validation() -> None:
         "-A",
         "--applied-rrule",
         ack_args["applied_rrule"],
+        "--host-match-observed",
+        "--reset-token",
+        ack_args["reset_token"],
+        "--identity-signature",
+        ack_args["identity_signature"],
         "--execute",
     ], ack_hint
     with_capabilities = active_payload()
@@ -805,8 +811,10 @@ def assert_cli_scheduler_ack_progression() -> None:
             str(runtime.resolve()),
         ], first
         assert first_ack_cli_args[4:6] == ["quota", "scheduler-ack-current"], first
-        assert "--reset-token" not in first_ack_cli_args, first
-        assert "--identity-signature" not in first_ack_cli_args, first
+        assert first_ack_args["host_match_observed"] is True, first
+        assert "--host-match-observed" in first_ack_cli_args, first
+        assert first_ack_args["reset_token"] in first_ack_cli_args, first
+        assert first_ack_args["identity_signature"] in first_ack_cli_args, first
 
         current_hint_preview = run_cli(
             root,
@@ -924,8 +932,10 @@ def assert_cli_scheduler_ack_progression() -> None:
             assert current_ack_args["applied_rrule"] == current_rrule, current
             assert current_ack_args["reset_token"], current
             assert current_ack_args["identity_signature"], current
-            assert "--reset-token" not in current_ack_cli_args, current
-            assert "--identity-signature" not in current_ack_cli_args, current
+            assert current_ack_args["host_match_observed"] is True, current
+            assert "--host-match-observed" in current_ack_cli_args, current
+            assert current_ack_args["reset_token"] in current_ack_cli_args, current
+            assert current_ack_args["identity_signature"] in current_ack_cli_args, current
             ack = run_cli(
                 root,
                 *current_ack_cli_args,

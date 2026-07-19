@@ -134,6 +134,7 @@ def decide_scheduler_host_transition(
     effective_host_rrule: str,
     current_rrule: str,
     current_rrule_already_applied: bool,
+    scheduler_state_acknowledges_current_rrule: bool,
     all_host_update_failures: Collection[Mapping[str, Any]],
     recorded_host_failure: Mapping[str, Any] | None,
 ) -> SchedulerHostDecision:
@@ -157,7 +158,11 @@ def decide_scheduler_host_transition(
     if (
         observed_host_rrule
         and current_rrule_already_applied
-        and (state_status != "same_identity" or current_target_has_failure)
+        and (
+            not scheduler_state_acknowledges_current_rrule
+            or state_status != "same_identity"
+            or current_target_has_failure
+        )
     ):
         transition = SchedulerHostTransition.HOST_MATCH_ACK_REQUIRED
     elif current_rrule_already_applied and state_status == "same_identity":

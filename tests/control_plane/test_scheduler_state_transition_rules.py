@@ -158,6 +158,12 @@ HOST_CASES = [
         "expected": SchedulerHostTransition.HOST_MATCH_ACK_REQUIRED,
     },
     {
+        "id": "matching_host_new_progression_requires_ack",
+        "already_applied": True,
+        "persisted": False,
+        "expected": SchedulerHostTransition.HOST_MATCH_ACK_REQUIRED,
+    },
+    {
         "id": "matching_host_acks_current_target_failure",
         "already_applied": True,
         "failures": [_failure(target=TARGET_15, host=HOST_60)],
@@ -216,6 +222,7 @@ def test_scheduler_host_transition_table(case: dict) -> None:
         effective_host_rrule=case.get("effective", observed),
         current_rrule=TARGET_15,
         current_rrule_already_applied=case.get("already_applied", False),
+        scheduler_state_acknowledges_current_rrule=case.get("persisted", True),
         all_host_update_failures=case.get("failures", []),
         recorded_host_failure=case.get("recorded"),
     )
@@ -246,6 +253,7 @@ def test_unrelated_failure_order_does_not_change_host_transition() -> None:
             effective_host_rrule=TARGET_15,
             current_rrule=TARGET_15,
             current_rrule_already_applied=True,
+            scheduler_state_acknowledges_current_rrule=True,
             all_host_update_failures=failures,
             recorded_host_failure=failures[-1],
         ).transition
