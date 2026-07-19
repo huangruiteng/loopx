@@ -104,7 +104,7 @@ def handle_slash_commands_command(
             opencode_home=args.opencode_home,
         )
         print_payload(payload, output_format(args), render_slash_command_install_markdown)
-        return 0
+        return 0 if payload.get("ok") is True else 1
     payload = build_slash_command_catalog(
         cli_bin=args.cli_bin,
         include_legacy_aliases=not bool(args.no_legacy_aliases),

@@ -732,6 +732,29 @@ def main() -> int:
         assert "age_hours=" in stale_install.stderr, stale_install.stderr
         assert "non-blocking" in stale_install.stderr, stale_install.stderr
 
+        blocked_opencode_root = home / ".config" / "opencode-blocked"
+        blocked_opencode_root.mkdir(parents=True)
+        (blocked_opencode_root / "opencode.jsonc").write_text(
+            "{ invalid\n",
+            encoding="utf-8",
+        )
+        blocked_opencode_install = run_install(
+            {
+                **env,
+                "LOOPX_INSTALL_OPENCODE": "1",
+                "OPENCODE_CONFIG_DIR": str(blocked_opencode_root),
+            },
+            "install-smoke-opencode-blocked",
+        )
+        assert (
+            "loopx OpenCode bridge: install attempted; run manually:"
+            in blocked_opencode_install.stdout
+        ), blocked_opencode_install.stdout
+        assert (blocked_opencode_root / "commands" / "loopx.md").is_file()
+        assert not (blocked_opencode_root / "plugins" / "loopx-goal.js").exists()
+        assert not (blocked_opencode_root / "loopx" / "goal-bridge-runtime.mjs").exists()
+        assert not (blocked_opencode_root / "package.json").exists()
+
         opencode_install = run_install(
             {**env, "LOOPX_INSTALL_OPENCODE": "1"},
             "install-smoke-opencode",

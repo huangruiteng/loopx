@@ -14,14 +14,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+def run_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "loopx.cli", *args],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=True,
+        check=check,
     )
 
 
@@ -362,6 +362,32 @@ def main() -> int:
         assert (bridge_home / "plugins" / "loopx-goal.js").is_file(), bridge
         assert (bridge_home / "loopx" / "goal-bridge-runtime.mjs").is_file(), bridge
         assert (bridge_home / "package.json").is_file(), bridge
+
+        blocked_bridge_home = root / "opencode-bridge-blocked"
+        blocked_bridge_home.mkdir()
+        (blocked_bridge_home / "opencode.jsonc").write_text(
+            "{ invalid\n",
+            encoding="utf-8",
+        )
+        blocked_bridge_result = run_cli(
+            "--format",
+            "json",
+            "slash-commands",
+            "--install",
+            "--surface",
+            "opencode",
+            "--with-goal-bridge",
+            "--opencode-home",
+            str(blocked_bridge_home),
+            check=False,
+        )
+        assert blocked_bridge_result.returncode == 1, blocked_bridge_result
+        blocked_bridge = json.loads(blocked_bridge_result.stdout)
+        assert blocked_bridge["ok"] is False, blocked_bridge
+        assert not (blocked_bridge_home / "commands" / "loopx.md").exists(), blocked_bridge
+        assert not (blocked_bridge_home / "plugins" / "loopx-goal.js").exists(), blocked_bridge
+        assert not (blocked_bridge_home / "loopx" / "goal-bridge-runtime.mjs").exists(), blocked_bridge
+        assert not (blocked_bridge_home / "package.json").exists(), blocked_bridge
 
     print("slash-command-install-smoke ok")
     return 0
