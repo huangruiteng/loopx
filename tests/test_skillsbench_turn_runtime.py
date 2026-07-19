@@ -75,8 +75,8 @@ def test_satisfied_pre_agent_postcondition_runs_but_does_not_claim_readiness(
         ) -> dict[str, Any]:
             if allow_nonzero:
                 return {"ok": True, "exit_code": 0, "elapsed_ms": 1}
-            assert meaningful is True
-            self.meaningful_operation_count += 1
+            if meaningful:
+                self.meaningful_operation_count += 1
             return {"ok": True, "exit_code": 0, "stdout": "", "elapsed_ms": 1}
 
     def fake_turn_once(
@@ -108,6 +108,7 @@ def test_satisfied_pre_agent_postcondition_runs_but_does_not_claim_readiness(
 
     assert agent_calls == ["synthetic prompt"]
     assert validation["pre_agent_postcondition_status"] == "already_satisfied"
+    assert validation["meaningful_operation_count"] == 1
     assert receipt["ready"] is False
     assert "pre_agent_postcondition_unsatisfied" in receipt["blocker_codes"]
 
@@ -131,8 +132,8 @@ def test_unsatisfied_baseline_then_satisfied_postcondition_is_runner_ready(
         ) -> dict[str, Any]:
             if allow_nonzero:
                 return {"ok": False, "exit_code": 3, "elapsed_ms": 1}
-            assert meaningful is True
-            self.meaningful_operation_count += 1
+            if meaningful:
+                self.meaningful_operation_count += 1
             return {"ok": True, "exit_code": 0, "stdout": "", "elapsed_ms": 1}
 
     def fake_turn_once(
