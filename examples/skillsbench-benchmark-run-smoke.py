@@ -5715,6 +5715,10 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert "archive.ubuntu.com/ubuntu" in staged_text
         assert "security.ubuntu.com/ubuntu" in staged_text
         assert DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN in staged_text, staged_text
+        assert "https://deb.debian.org" in staged_text, staged_text
+        assert staged_text.index("https://deb.debian.org") < staged_text.index(
+            "apt-get update -qq"
+        ), staged_text
         assert 'Acquire::Retries "5";' in staged_text, staged_text
 
 
@@ -6711,6 +6715,8 @@ def test_skillsbench_runner_plan_supports_baseline_route() -> None:
             CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
         )
         assert "xz-utils" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
+        assert "https://deb.debian.org" in CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD
+        assert "https://deb.debian.org" in CODEX_ACP_RUNTIME_DEPS_SETUP_CMD
         assert (
             CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD.index("command -v curl")
             < CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD.index("apt-get")

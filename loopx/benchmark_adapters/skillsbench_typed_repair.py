@@ -485,7 +485,28 @@ def build_skillsbench_typed_repair_prompt(
     loop_alignment_contract: str,
     persistent_constraint_clause: str = "",
     trigger_kind: str = "declared_done_below_passing_reward",
+    outer_turn_owns_lifecycle: bool = False,
+    task_instruction: str = "",
 ) -> str:
+    if outer_turn_owns_lifecycle:
+        task_clause = (
+            "\n\n--- TASK INSTRUCTION ---\n" + task_instruction
+            if task_instruction
+            else ""
+        )
+        return (
+            f"Scheduled typed repair round {scheduled_round} of {max_rounds}. "
+            "The previous public Turn receipt requires recovery. The outer "
+            "Turn owns the case-local LoopX plan, todo state, writeback, and "
+            "quota spend. Do not invoke external LoopX CLI, enter /goal mode, "
+            "or edit .loopx/.codex control state. Continue in the same task "
+            "workspace and perform one concrete task-facing repair or local "
+            "validation. A later typed Turn will independently validate the "
+            "workspace and decide whether to commit; this repair counts as "
+            "progress only if that later Turn receipt commits. "
+            f"{persistent_constraint_clause}"
+            f"{task_clause}"
+        )
     turn_recovery_clause = (
         " The previous public Turn receipt requires recovery. This round counts "
         "as validation progress only if a later Turn receipt commits, or if a "
@@ -525,6 +546,8 @@ def resolve_skillsbench_typed_repair_response(
     case_state_path: str,
     loop_alignment_contract: str = "",
     persistent_constraint_clause: str,
+    outer_turn_owns_lifecycle: bool = False,
+    task_instruction: str = "",
 ) -> tuple[bool, str | None]:
     """Resolve one controller action into a public prompt or typed stop."""
 
@@ -552,6 +575,8 @@ def resolve_skillsbench_typed_repair_response(
         loop_alignment_contract=loop_alignment_contract,
         persistent_constraint_clause=persistent_constraint_clause,
         trigger_kind=decision.get("trigger_kind", ""),
+        outer_turn_owns_lifecycle=outer_turn_owns_lifecycle,
+        task_instruction=task_instruction,
     )
 
 

@@ -9,6 +9,7 @@ the Turn executor own writeback and the single quota spend.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shlex
@@ -33,6 +34,7 @@ SKILLSBENCH_LOOPX_TURN_TRACE_SCHEMA_VERSION = (
 SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION = (
     "skillsbench_remote_command_file_bridge_operation_response_v0"
 )
+SKILLSBENCH_TURN_BASELINE_ENV = "LOOPX_TURN_BASELINE_FILE"
 
 AgentPromptRunner = Callable[[str], str]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
@@ -250,6 +252,12 @@ def _host_result(request: Mapping[str, Any], response: str) -> dict[str, Any]:
     }
 
 
+def _turn_baseline_path(request: Mapping[str, Any]) -> str:
+    turn_key = str(request.get("turn_key") or "")
+    digest = hashlib.sha256(turn_key.encode("utf-8")).hexdigest()[:24]
+    return f"/tmp/loopx-turn-agent-baseline-{digest}"
+
+
 def _callback_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "ok": payload.get("ok") is True,
@@ -304,16 +312,33 @@ def run_skillsbench_loopx_turn(
     plan = _turn_plan(bridge, config)
     validation_baseline = _validation_baseline(bridge, config)
     prefix = _case_cli_prefix(config)
+    baseline_path = ""
 
     def host_runner(request: Mapping[str, Any]) -> dict[str, Any]:
+        nonlocal baseline_path
+        baseline_path = _turn_baseline_path(request)
+        bridge.exec(f"umask 077; : > {shlex.quote(baseline_path)}")
         return _host_result(request, agent_runner(prompt))
 
     def validator(
         _plan: Mapping[str, Any],
         _result: Mapping[str, Any],
     ) -> Mapping[str, Any]:
+        if not baseline_path:
+            return {
+                "status": "failed",
+                "validator_kind": "skillsbench_scored_workspace_command",
+                "summary": "independent scored-workspace baseline was unavailable",
+                "recovery_kind": "repair_required",
+                "exit_code": 1,
+            }
+        validation_command = (
+            f"env {SKILLSBENCH_TURN_BASELINE_ENV}="
+            f"{shlex.quote(baseline_path)} sh -c "
+            f"{shlex.quote(config.validation_command)}"
+        )
         try:
-            bridge.exec(config.validation_command, meaningful=True)
+            bridge.exec(validation_command, meaningful=True)
         except SkillsBenchTurnBridgeError:
             return {
                 "status": "failed",
@@ -374,20 +399,27 @@ def run_skillsbench_loopx_turn(
             }
         return dict(phase)
 
-    execution = run_loopx_turn_once(
-        plan,
-        host_runner=host_runner,
-        project=Path("/app"),
-        runtime_root=config.runtime_root,
-        goal_id=config.goal_id,
-        timeout_seconds=config.agent_timeout_seconds,
-        execute=True,
-        retry_failed=True,
-        task_validator=validator,
-        writeback=writeback,
-        spend=spend,
-        scheduler=scheduler,
-    )
+    try:
+        execution = run_loopx_turn_once(
+            plan,
+            host_runner=host_runner,
+            project=Path("/app"),
+            runtime_root=config.runtime_root,
+            goal_id=config.goal_id,
+            timeout_seconds=config.agent_timeout_seconds,
+            execute=True,
+            retry_failed=True,
+            task_validator=validator,
+            writeback=writeback,
+            spend=spend,
+            scheduler=scheduler,
+        )
+    finally:
+        if baseline_path:
+            try:
+                bridge.exec(f"rm -f {shlex.quote(baseline_path)}")
+            except SkillsBenchTurnBridgeError:
+                pass
     scored_validation = {
         "schema_version": "skillsbench_scored_workspace_validation_v0",
         "status": (

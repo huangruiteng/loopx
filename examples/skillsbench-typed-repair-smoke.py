@@ -74,11 +74,15 @@ def committed_turn_execution() -> dict[str, object]:
     }
 
 
-def write_failed_turn_trace(trace_dir: Path, index: int) -> None:
+def write_turn_trace(
+    trace_dir: Path,
+    index: int,
+    execution: dict[str, object],
+) -> None:
     payload = {
         "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
         "trace_kind": "loopx_turn_execution",
-        "loopx_turn_execution": failed_turn_execution(),
+        "loopx_turn_execution": execution,
         "boundary": {
             key: False
             for key in (
@@ -235,6 +239,21 @@ def test_turn_recovery_requires_todo_or_committed_validation_delta() -> None:
     assert "reward" not in prompt.lower(), prompt
     assert "verifier" not in prompt.lower(), prompt
 
+    outer_owned_prompt = build_skillsbench_typed_repair_prompt(
+        scheduled_round=5,
+        max_rounds=8,
+        case_state_path="/app/.codex/goals/case/ACTIVE_GOAL_STATE.md",
+        loop_alignment_contract="",
+        trigger_kind="turn_transaction_recovery",
+        outer_turn_owns_lifecycle=True,
+        task_instruction="Repair the synthetic task output.",
+    )
+    assert "outer Turn owns" in outer_owned_prompt, outer_owned_prompt
+    assert "Do not invoke external LoopX CLI" in outer_owned_prompt, outer_owned_prompt
+    assert "quota should-run" not in outer_owned_prompt, outer_owned_prompt
+    assert "create one scoped successor" not in outer_owned_prompt, outer_owned_prompt
+    assert "Repair the synthetic task output." in outer_owned_prompt, outer_owned_prompt
+
 
 def test_turn_recovery_controller_stops_or_continues_from_receipts() -> None:
     repeated_failure_trace = base_trace()
@@ -334,19 +353,46 @@ def test_turn_blind_controller_consumes_recovery_receipts() -> None:
                 },
             )
             assert asyncio.run(user.run(0, "Fix the workbook.")) is not None
-            write_failed_turn_trace(trace_dir, 1)
+            write_turn_trace(trace_dir, 1, failed_turn_execution())
             repair_prompt = asyncio.run(
                 user.run(1, "Fix the workbook.", round_result)
             )
             assert "later Turn receipt commits" in repair_prompt, repair_prompt
             assert trace["product_mode_typed_repair_pending"] is True, trace
-            write_failed_turn_trace(trace_dir, 2)
+            write_turn_trace(trace_dir, 2, failed_turn_execution())
             assert asyncio.run(
                 user.run(2, "Fix the workbook.", round_result)
             ) is None
             assert trace["product_mode_typed_repair_terminal_reason"] == (
                 "turn_repair_round_without_todo_or_committed_validation_delta"
             ), trace
+
+        committed_trace = {
+            "schema_version": "skillsbench_loopx_controller_trace_v0",
+            "route": "loopx-turn-agent-cli",
+            "round_rewards": [],
+        }
+        with tempfile.TemporaryDirectory(prefix="turn-commit-controller-") as tmp:
+            trace_dir = Path(tmp)
+            user = _build_blind_loop_user(
+                route="loopx-turn-agent-cli",
+                max_rounds=8,
+                trace=committed_trace,
+                plan={
+                    "route": "loopx-turn-agent-cli",
+                    "host_local_acp_relay_trace_dir": str(trace_dir),
+                    "runner_prerequisites": {},
+                },
+            )
+            assert asyncio.run(user.run(0, "Fix the workbook.")) is not None
+            write_turn_trace(trace_dir, 1, committed_turn_execution())
+            assert asyncio.run(
+                user.run(1, "Fix the workbook.", round_result)
+            ) is None
+            assert committed_trace["last_decision"] == (
+                "stop_after_loopx_turn_commit"
+            ), committed_trace
+            assert committed_trace.get("product_mode_typed_repair_pending") is not True
 
 
 def test_unchanged_frontier_has_typed_terminal_receipt() -> None:

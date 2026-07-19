@@ -154,6 +154,7 @@ from loopx.benchmark_core import (  # noqa: E402
     compact_benchmark_canonical_lifecycle,
     read_container_file_via_compose_copy,
     run_container_command_with_exit_status,
+    run_container_command_with_output_capture,
     write_benchmark_run_observable_status,
 )
 from loopx.benchmark_core.loop_protocol import (  # noqa: E402
@@ -180,6 +181,7 @@ from loopx.control_plane.runtime.goal_start_control_score import (
     goal_start_public_text_list as _goal_start_public_text_list,
     goal_start_public_todo_id_list as _goal_start_public_todo_id_list,
 )
+from loopx.control_plane.turn_driver import loopx_turn_execution_committed
 
 
 class SkillsBenchRunnerInterrupted(RuntimeError):
@@ -460,6 +462,13 @@ CODEX_ACP_RUNTIME_CONTAINER_BOOTSTRAP_CMD = (
     "  exit 0; "
     "fi; "
     "if command -v apt-get >/dev/null 2>&1; then "
+    "  for apt_source in /etc/apt/sources.list "
+    "/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do "
+    "    [ -f \"$apt_source\" ] || continue; "
+    "    sed -i 's|http://deb.debian.org|https://deb.debian.org|g; "
+    "s|http://security.debian.org|https://security.debian.org|g' "
+    "\"$apt_source\"; "
+    "  done; "
     "  apt_cache=/var/cache/apt/archives; "
     "  rm -f \"$apt_cache\"/*.deb; "
     "  mkdir -p \"$apt_cache/partial\"; "
@@ -516,6 +525,13 @@ CODEX_ACP_RUNTIME_DEPS_SETUP_CMD = (
     "2>/dev/null | grep -q .; then exit 0; fi; "
     "export DEBIAN_FRONTEND=noninteractive; "
     "if command -v apt-get >/dev/null 2>&1; then "
+    "  for apt_source in /etc/apt/sources.list "
+    "/etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do "
+    "    [ -f \"$apt_source\" ] || continue; "
+    "    sed -i 's|http://deb.debian.org|https://deb.debian.org|g; "
+    "s|http://security.debian.org|https://security.debian.org|g' "
+    "\"$apt_source\"; "
+    "  done; "
     "  apt_cache=/var/cache/apt/archives; "
     "  rm -f \"$apt_cache\"/*.deb; "
     "  mkdir -p \"$apt_cache/partial\"; "
@@ -1992,6 +2008,67 @@ def _host_local_acp_docker_bridge_command(
     return shlex.join(command)
 
 
+def install_benchflow_docker_exec_output_capture(
+    env: Any,
+    *,
+    plan: dict[str, Any],
+) -> Any:
+    """Make BenchFlow Docker exec results reliable for host-local runners."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    existing = getattr(env, "_loopx_output_capture_original_exec", None)
+    if existing is not None:
+        return existing
+    original_exec = getattr(env, "exec", None)
+    compose_fn = getattr(env, "_run_docker_compose_command", None)
+    if not callable(original_exec) or not callable(compose_fn):
+        prerequisites["host_local_acp_docker_exec_capture_status"] = "unsupported"
+        return None
+
+    async def file_reader(
+        path: str,
+        service: str,
+        remaining: float,
+    ) -> bytes | None:
+        return await read_container_file_via_compose_copy(
+            compose_fn,
+            path,
+            service=service,
+            timeout_sec=max(1.0, remaining),
+        )
+
+    async def exec_with_output_capture(*args: Any, **kwargs: Any) -> Any:
+        command = kwargs.get("command")
+        positional_command = command is None and bool(args)
+        if command is None and positional_command:
+            command = args[0]
+        if not isinstance(command, str):
+            return await original_exec(*args, **kwargs)
+        call_kwargs = dict(kwargs)
+        call_kwargs.pop("command", None)
+        call_args = args[1:] if positional_command else args
+        try:
+            timeout_sec = float(call_kwargs.get("timeout_sec") or 3600)
+        except (TypeError, ValueError):
+            timeout_sec = 3600
+        return await run_container_command_with_output_capture(
+            original_exec,
+            command,
+            timeout_sec=max(1.0, timeout_sec),
+            exec_args=call_args,
+            exec_kwargs=call_kwargs,
+            file_reader_fn=file_reader,
+        )
+
+    setattr(env, "_loopx_output_capture_original_exec", original_exec)
+    setattr(env, "exec", exec_with_output_capture)
+    prerequisites["host_local_acp_docker_exec_capture_status"] = "installed"
+    prerequisites["host_local_acp_docker_exec_capture_required"] = True
+    prerequisites["host_local_acp_docker_exec_capture_compose_copy"] = True
+    prerequisites["host_local_acp_docker_exec_capture_raw_output_recorded"] = False
+    return original_exec
+
+
 def _host_local_acp_codex_exec_preflight_command(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -2624,6 +2701,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "remote_command_file_bridge_agent_transport_mode",
         "host_local_acp_sandbox_bridge_mode",
         "host_local_acp_session_adapter_status",
+        "host_local_acp_docker_exec_capture_status",
         "host_local_acp_pwd_probe_status",
         "host_local_acp_pwd_probe_exception_type",
         "host_local_acp_pwd_probe_stdout_type",
@@ -2670,6 +2748,10 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "codex_acp_runtime_launch_preflight",
         "codex_acp_runtime_launch_preflight_raw_logs_read",
         "host_local_acp_launch",
+        "host_local_acp_docker_exec_capture_required",
+        "host_local_acp_docker_exec_capture_compose_copy",
+        "host_local_acp_docker_exec_capture_raw_output_recorded",
+        "host_local_acp_docker_exec_capture_preflight",
         "host_local_acp_sandbox_bridge_configured",
         "host_local_acp_sandbox_bridge_path_recorded",
         "host_local_acp_target_env_forwarded",
@@ -7615,6 +7697,10 @@ def patch_dockerfile_codex_acp_runtime_tools(dockerfile: Path) -> bool:
         "      exit 0; \\\n"
         "    fi; \\\n"
         "    if command -v apt-get >/dev/null 2>&1; then \\\n"
+        "      for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \\\n"
+        "        [ -f \"$apt_source\" ] || continue; \\\n"
+        "        sed -i 's|http://deb.debian.org|https://deb.debian.org|g; s|http://security.debian.org|https://security.debian.org|g' \"$apt_source\"; \\\n"
+        "      done; \\\n"
         "      mkdir -p /etc/apt/apt.conf.d; \\\n"
         "      printf '%s\\n' \\\n"
         "        'Acquire::Retries \"5\";' \\\n"
@@ -12298,6 +12384,19 @@ def _build_blind_loop_user(
                 return None
             if round_result is not None and _is_loopx_turn_agent_cli_route(route):
                 _merge_host_local_acp_relay_trace_summary(plan or {}, trace)
+                turn_executions = trace.get("loopx_turn_executions")
+                latest_turn = (
+                    turn_executions[-1]
+                    if isinstance(turn_executions, list) and turn_executions
+                    else None
+                )
+                if isinstance(latest_turn, Mapping) and loopx_turn_execution_committed(
+                    latest_turn
+                ):
+                    _inc_counter(trace, "controller_action_decisions")
+                    _inc_counter(trace, "stop_decision_count")
+                    trace["last_decision"] = "stop_after_loopx_turn_commit"
+                    return None
                 handled, response = resolve_skillsbench_typed_repair_response(
                     trace,
                     agent_round=round,
@@ -12310,6 +12409,8 @@ def _build_blind_loop_user(
                     ),
                     case_state_path=PRODUCT_MODE_CASE_STATE_PATH,
                     persistent_constraint_clause=self._persistent_constraint_clause,
+                    outer_turn_owns_lifecycle=True,
+                    task_instruction=instruction,
                 )
                 if handled:
                     return response
@@ -13915,6 +14016,8 @@ async def run_benchflow_case(
 
     def _record_container_mount_injection(env: Any, environment: str) -> Any:
         prerequisites = plan.setdefault("runner_prerequisites", {})
+        if args.host_local_acp_launch and environment == "docker":
+            install_benchflow_docker_exec_output_capture(env, plan=plan)
         if container_mounts and environment == "docker":
             existing_mounts = getattr(env, "_mounts_json", None) or []
             missing_mounts = [
@@ -13980,6 +14083,29 @@ async def run_benchflow_case(
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "skipped"
         prerequisites["codex_acp_runtime_launch_preflight_raw_logs_read"] = False
         try:
+            prerequisites["host_local_acp_install_stage"] = (
+                "docker_exec_capture_preflight"
+            )
+            capture_probe = await self._env.exec(
+                "printf loopx-exec-stdout; "
+                "printf loopx-exec-stderr >&2; "
+                "exit 7",
+                timeout_sec=10,
+            )
+            capture_probe_ok = (
+                int(getattr(capture_probe, "return_code", 0)) == 7
+                and (getattr(capture_probe, "stdout", "") or "")
+                == "loopx-exec-stdout"
+                and (getattr(capture_probe, "stderr", "") or "")
+                == "loopx-exec-stderr"
+            )
+            prerequisites["host_local_acp_docker_exec_capture_preflight"] = (
+                capture_probe_ok
+            )
+            if not capture_probe_ok:
+                raise RuntimeError(
+                    "host-local ACP Docker exec capture preflight failed"
+                )
             prerequisites["host_local_acp_install_stage"] = "pwd_probe"
             try:
                 cwd_result = await self._env.exec("pwd", timeout_sec=10)

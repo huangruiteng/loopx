@@ -129,3 +129,88 @@ async def run_container_command_with_exit_status(
                 user="root",
                 service=service,
             )
+
+
+async def run_container_command_with_output_capture(
+    exec_fn: Callable[..., Awaitable[Any]],
+    command: str,
+    *,
+    timeout_sec: float,
+    exec_args: tuple[Any, ...] = (),
+    exec_kwargs: Mapping[str, Any] | None = None,
+    poll_interval_sec: float = 0.5,
+    file_reader_fn: Callable[[str, str, float], Awaitable[bytes | str | None]],
+) -> Any:
+    """Run a command when attached container exec output is untrustworthy.
+
+    Some Docker client/daemon combinations execute ``compose exec`` but return
+    empty output and status 0 immediately. Capture all three result channels in
+    container files, then read them through the compose copy path.
+    """
+
+    capture_dir = f"/tmp/loopx-benchmark-exec-capture/{uuid.uuid4().hex}"
+    stdout_path = f"{capture_dir}/stdout"
+    stderr_path = f"{capture_dir}/stderr"
+    status_path = f"{capture_dir}/status"
+    kwargs = dict(exec_kwargs or {})
+    kwargs["timeout_sec"] = timeout_sec
+    service = kwargs.get("service", "main")
+    deadline = time.monotonic() + timeout_sec
+    bounded_command = (
+        f"timeout {shlex.quote(str(max(1.0, timeout_sec)))} "
+        f"sh -c {shlex.quote(command)}"
+    )
+    captured_command = (
+        f"{bounded_command} > {shlex.quote(stdout_path)} "
+        f"2> {shlex.quote(stderr_path)}"
+    )
+    try:
+        result = await exec_fn(
+            wrap_container_command_with_exit_status(
+                captured_command,
+                status_path,
+            ),
+            *exec_args,
+            **kwargs,
+        )
+        captured_exit_code = None
+        while captured_exit_code is None:
+            remaining = deadline - time.monotonic()
+            payload = await file_reader_fn(status_path, service, remaining)
+            captured_exit_code = parse_container_exit_status(payload)
+            if captured_exit_code is None:
+                if remaining <= 0:
+                    raise asyncio.TimeoutError(
+                        "container output capture completion marker timed out"
+                    )
+                await asyncio.sleep(min(poll_interval_sec, remaining))
+
+        remaining = max(1.0, deadline - time.monotonic())
+        stdout = await file_reader_fn(stdout_path, service, remaining)
+        stderr = await file_reader_fn(stderr_path, service, remaining)
+        if stdout is None or stderr is None:
+            raise RuntimeError("container output capture unavailable")
+
+        def decoded(value: bytes | str) -> str:
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return value
+
+        update = {
+            "return_code": captured_exit_code,
+            "stdout": decoded(stdout),
+            "stderr": decoded(stderr),
+        }
+        if hasattr(result, "model_copy"):
+            return result.model_copy(update=update)
+        for field, value in update.items():
+            setattr(result, field, value)
+        return result
+    finally:
+        with contextlib.suppress(Exception):
+            await exec_fn(
+                f"rm -rf {shlex.quote(capture_dir)}",
+                timeout_sec=10,
+                user="root",
+                service=service,
+            )

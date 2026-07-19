@@ -33,6 +33,7 @@ from .container_exec import (
     parse_container_exit_status,
     read_container_file_via_compose_copy,
     run_container_command_with_exit_status,
+    run_container_command_with_output_capture,
     wrap_container_command_with_exit_status,
 )
 from .lifecycle import (
@@ -204,6 +205,7 @@ __all__ = [
     "RunHandle",
     "read_container_file_via_compose_copy",
     "run_container_command_with_exit_status",
+    "run_container_command_with_output_capture",
     "RUN_PERMISSION_POLICY_SCHEMA_VERSION",
     "RUN_PERMISSION_QUOTA_PROJECTION_SCHEMA_VERSION",
     "RunPermissionAction",

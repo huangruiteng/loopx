@@ -178,7 +178,14 @@ def _run_success(root: Path) -> dict[str, Any]:
         (paths["workspace"] / "solution.ok").write_text("ok\n", encoding="utf-8")
         return "agent completed the public smoke task"
 
-    config = _config(paths, validation_command="test -f /app/solution.ok")
+    validation_command = (
+        "python3 -c 'import os,pathlib,sys; "
+        "baseline=pathlib.Path(os.environ[\"LOOPX_TURN_BASELINE_FILE\"]); "
+        "output=pathlib.Path(\"/app/solution.ok\"); "
+        "sys.exit(0 if baseline.is_file() and output.is_file() and "
+        "output.stat().st_mtime_ns > baseline.stat().st_mtime_ns else 1)'"
+    )
+    config = _config(paths, validation_command=validation_command)
     execution, validation = run_skillsbench_loopx_turn(
         prompt="Create the requested public smoke marker.",
         agent_runner=agent_runner,
