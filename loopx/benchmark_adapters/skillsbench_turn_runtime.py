@@ -10,6 +10,7 @@ the Turn executor own writeback and the single quota spend.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import time
@@ -54,9 +55,45 @@ class SkillsBenchTurnRuntimeConfig:
 class SkillsBenchTurnBridgeError(RuntimeError):
     """A compact failure raised at the host/scored-workspace boundary."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str = "bridge_operation",
+        category: str = "bridge_operation_failed",
+        exit_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.category = category
+        self.exit_code = exit_code
+
 
 class SkillsBenchTurnAgentFailure(RuntimeError):
     """A recoverable host Agent CLI failure that must not commit a Turn."""
+
+
+def _loopx_cli_failure_category(stdout: Any) -> str:
+    try:
+        payload = json.loads(str(stdout or ""))
+    except json.JSONDecodeError:
+        return "scored_workspace_command_failed"
+    if not isinstance(payload, dict):
+        return "scored_workspace_command_failed"
+    error = " ".join(str(payload.get("error") or "").lower().split())
+    classifiers = (
+        (r"python 3\.11\+ is required", "unsupported_python_runtime"),
+        (r"permission denied", "scored_workspace_permission_denied"),
+        (r"no such file|not found", "scored_workspace_path_missing"),
+        (r"unknown agent|agent .*not registered", "case_agent_not_registered"),
+        (r"goal .*not found|no matching goal", "case_goal_not_found"),
+        (r"public boundary|private material", "case_public_boundary_rejected"),
+        (r"operator inbox|lark", "case_operator_inbox_projection_failed"),
+    )
+    for pattern, category in classifiers:
+        if re.search(pattern, error):
+            return category
+    return "loopx_cli_command_failed"
 
 
 class SkillsBenchTurnBridge:
@@ -88,7 +125,10 @@ class SkillsBenchTurnBridge:
                 "bridge operation did not complete"
             ) from exc
         if proc.returncode != 0:
-            raise SkillsBenchTurnBridgeError("bridge command returned non-zero")
+            raise SkillsBenchTurnBridgeError(
+                "bridge command returned non-zero",
+                exit_code=proc.returncode,
+            )
         try:
             payload = json.loads(proc.stdout)
         except json.JSONDecodeError as exc:
@@ -98,7 +138,16 @@ class SkillsBenchTurnBridge:
         if payload.get("schema_version") != SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION:
             raise SkillsBenchTurnBridgeError("bridge operation schema was unsupported")
         if payload.get("ok") is not True or payload.get("exit_code") != 0:
-            raise SkillsBenchTurnBridgeError("scored-workspace command failed")
+            exit_code = payload.get("exit_code")
+            raise SkillsBenchTurnBridgeError(
+                "scored-workspace command failed",
+                category=_loopx_cli_failure_category(payload.get("stdout")),
+                exit_code=(
+                    exit_code
+                    if isinstance(exit_code, int) and not isinstance(exit_code, bool)
+                    else None
+                ),
+            )
         if payload.get("stdout_truncated") is True:
             raise SkillsBenchTurnBridgeError("scored-workspace stdout was truncated")
         if meaningful:
@@ -140,9 +189,21 @@ def _turn_plan(
         "--host generic-cli --execution-mode isolated-headless "
         "--include-transaction-detail --scan-root /app --limit 5"
     )
-    payload = bridge.loopx_json(command)
+    try:
+        payload = bridge.loopx_json(command)
+    except SkillsBenchTurnBridgeError as exc:
+        raise SkillsBenchTurnBridgeError(
+            str(exc),
+            stage="turn_plan",
+            category=exc.category,
+            exit_code=exc.exit_code,
+        ) from exc
     if payload.get("ok") is not True:
-        raise SkillsBenchTurnBridgeError("LoopX Turn plan was not executable")
+        raise SkillsBenchTurnBridgeError(
+            "LoopX Turn plan was not executable",
+            stage="turn_plan",
+            category="loopx_turn_plan_not_executable",
+        )
     return payload
 
 
@@ -335,6 +396,62 @@ def build_skillsbench_loopx_turn_trace(
     }
 
 
+def build_skillsbench_loopx_turn_failure_trace(
+    *,
+    route: str,
+    benchmark_id: str,
+    task_id: str,
+    error: SkillsBenchTurnBridgeError,
+) -> dict[str, Any]:
+    """Build a public-safe receipt when Turn fails before execution exists."""
+
+    failure: dict[str, Any] = {
+        "category": error.category,
+    }
+    if error.exit_code is not None:
+        failure["exit_code"] = error.exit_code
+    execution = {
+        "schema_version": "loopx_turn_execution_v0",
+        "mode": "run_once",
+        "status": "failed",
+        "execution_mode": "isolated-headless",
+        "result_kind": "repair_required",
+        "quota_slot_spend_count": 0,
+        "failure": failure,
+        "receipt": {
+            "status": "failed",
+            "result_kind": "repair_required",
+            "failed_phase": error.stage,
+            "next_phase": error.stage,
+            "completed_phases": [],
+        },
+        "effects": {
+            "host_invoked": False,
+            "state_written": False,
+            "quota_spent": False,
+            "scheduler_acknowledged": False,
+        },
+    }
+    validation = {
+        "schema_version": "skillsbench_scored_workspace_validation_v0",
+        "status": "not_attempted",
+        "independent": True,
+        "validator_kind": "skillsbench_scored_workspace_command",
+        "oracle_feedback_used": False,
+        "meaningful_operation_count": 0,
+        "raw_validator_output_recorded": False,
+        "raw_task_text_recorded": False,
+        "raw_verifier_output_recorded": False,
+    }
+    return build_skillsbench_loopx_turn_trace(
+        route=route,
+        benchmark_id=benchmark_id,
+        task_id=task_id,
+        execution=execution,
+        scored_workspace_validation=validation,
+    )
+
+
 def run_skillsbench_loopx_turn_relay(
     *,
     prompt: str,
@@ -360,26 +477,39 @@ def run_skillsbench_loopx_turn_relay(
         )[:120]
         or "session"
     )
-    execution, scored_validation = run_skillsbench_loopx_turn(
-        prompt=prompt,
-        agent_runner=agent_runner,
-        config=SkillsBenchTurnRuntimeConfig(
-            bridge_command=bridge_command,
-            validation_command=validation_command,
-            goal_id=relay_config.loopx_case_goal_id,
-            agent_id=relay_config.loopx_case_agent_id,
-            runtime_root=Path(trace_root).parent
-            / ".loopx-turn-runtime"
-            / runtime_session,
-            bridge_timeout_seconds=max(
-                1.0, relay_config.remote_command_file_bridge_timeout_sec
+    try:
+        execution, scored_validation = run_skillsbench_loopx_turn(
+            prompt=prompt,
+            agent_runner=agent_runner,
+            config=SkillsBenchTurnRuntimeConfig(
+                bridge_command=bridge_command,
+                validation_command=validation_command,
+                goal_id=relay_config.loopx_case_goal_id,
+                agent_id=relay_config.loopx_case_agent_id,
+                runtime_root=Path(trace_root).parent
+                / ".loopx-turn-runtime"
+                / runtime_session,
+                bridge_timeout_seconds=max(
+                    1.0, relay_config.remote_command_file_bridge_timeout_sec
+                ),
+                agent_timeout_seconds=max(1.0, float(relay_config.timeout_sec)),
+                case_cli_path=relay_config.loopx_case_cli_path,
+                case_registry_path=relay_config.loopx_case_registry_path,
+                case_runtime_root=relay_config.loopx_case_runtime_root,
             ),
-            agent_timeout_seconds=max(1.0, float(relay_config.timeout_sec)),
-            case_cli_path=relay_config.loopx_case_cli_path,
-            case_registry_path=relay_config.loopx_case_registry_path,
-            case_runtime_root=relay_config.loopx_case_runtime_root,
-        ),
-    )
+        )
+    except SkillsBenchTurnBridgeError as exc:
+        trace_writer(
+            build_skillsbench_loopx_turn_failure_trace(
+                route=relay_config.route,
+                benchmark_id=relay_config.dataset,
+                task_id=relay_config.task_id,
+                error=exc,
+            )
+        )
+        return recoverable_codex_turn_failure_message(
+            f"loopx_turn_{exc.stage}_{exc.category}"
+        )
     trace_writer(
         build_skillsbench_loopx_turn_trace(
             route=relay_config.route,

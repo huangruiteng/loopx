@@ -8,6 +8,7 @@ import shlex
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 
@@ -22,6 +23,7 @@ from loopx.benchmark_adapters.skillsbench_turn_runtime import (  # noqa: E402
     SkillsBenchTurnRuntimeConfig,
     build_skillsbench_loopx_turn_trace,
     run_skillsbench_loopx_turn,
+    run_skillsbench_loopx_turn_relay,
 )
 from loopx.benchmark_adapters.skillsbench_turn_route import (  # noqa: E402
     sync_skillsbench_loopx_turn_trace_into_compact,
@@ -298,6 +300,90 @@ def _run_recoverable_host_failure(root: Path) -> dict[str, Any]:
     }
 
 
+def _run_turn_plan_failure(root: Path) -> dict[str, Any]:
+    bridge = root / "failing-plan-bridge.py"
+    bridge.write_text(
+        """#!/usr/bin/env python3
+import json
+
+print(json.dumps({
+    "schema_version": "skillsbench_remote_command_file_bridge_operation_response_v0",
+    "ok": False,
+    "exit_code": 13,
+    "stdout": json.dumps({
+        "ok": False,
+        "mode": "plan",
+        "error": "Permission denied: SENSITIVE_PATH_SENTINEL",
+    }),
+    "stderr": "SENSITIVE_STDERR_SENTINEL",
+    "stdout_truncated": False,
+    "stderr_truncated": False,
+}))
+""",
+        encoding="utf-8",
+    )
+    traces: list[dict[str, Any]] = []
+
+    def unexpected_agent_invocation(_prompt: str) -> str:
+        raise AssertionError("Turn plan failure must not invoke the Agent CLI")
+
+    response = run_skillsbench_loopx_turn_relay(
+        prompt="Public fixture prompt.",
+        session_id="turn-plan-failure",
+        relay_config=SimpleNamespace(
+            remote_command_file_bridge_command=(
+                f"{shlex.quote(sys.executable)} {shlex.quote(str(bridge))}"
+            ),
+            loopx_turn_validation_command="unrecorded-validator-command",
+            worker_public_trace_dir=str(root / "public-trace"),
+            loopx_case_goal_id=GOAL_ID,
+            loopx_case_agent_id=AGENT_ID,
+            remote_command_file_bridge_timeout_sec=30.0,
+            timeout_sec=60.0,
+            loopx_case_cli_path="/app/.local/bin/loopx",
+            loopx_case_registry_path="/app/.loopx/registry.json",
+            loopx_case_runtime_root="/app/.loopx/runtime",
+            route=LOOPX_TURN_AGENT_CLI_ROUTE,
+            dataset="skillsbench",
+            task_id="public-smoke-case",
+        ),
+        agent_runner=unexpected_agent_invocation,
+        trace_writer=traces.append,
+    )
+    assert len(traces) == 1, traces
+    execution = traces[0].get("loopx_turn_execution", {})
+    validation = traces[0].get("scored_workspace_validation", {})
+    boundary = traces[0].get("boundary", {})
+    assert execution.get("status") == "failed", execution
+    assert execution.get("receipt", {}).get("failed_phase") == "turn_plan", execution
+    assert execution.get("failure") == {
+        "category": "scored_workspace_permission_denied",
+        "exit_code": 13,
+    }, execution
+    assert execution.get("effects") == {
+        "host_invoked": False,
+        "state_written": False,
+        "quota_spent": False,
+        "scheduler_acknowledged": False,
+    }, execution
+    assert validation.get("status") == "not_attempted", validation
+    assert validation.get("meaningful_operation_count") == 0, validation
+    assert all(value is False for value in boundary.values()), boundary
+    public_trace = json.dumps(traces[0], sort_keys=True)
+    assert "SENSITIVE_PATH_SENTINEL" not in public_trace, public_trace
+    assert "SENSITIVE_STDERR_SENTINEL" not in public_trace, public_trace
+    assert "loopx_turn_turn_plan_scored_workspace_permission_denied" in response, (
+        response
+    )
+    return {
+        "execution_status": execution.get("status"),
+        "failed_phase": execution.get("receipt", {}).get("failed_phase"),
+        "failure_category": execution.get("failure", {}).get("category"),
+        "validator_invoked": validation.get("meaningful_operation_count") != 0,
+        "raw_material_recorded": False,
+    }
+
+
 def main() -> int:
     route_contract = skillsbench_route_contract(LOOPX_TURN_AGENT_CLI_ROUTE)
     assert route_contract.get("product_mode") is True, route_contract
@@ -338,6 +424,10 @@ def main() -> int:
         prefix="skillsbench-loopx-turn-host-failure-"
     ) as value:
         recoverable_host_failure = _run_recoverable_host_failure(Path(value))
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-loopx-turn-plan-failure-"
+    ) as value:
+        turn_plan_failure = _run_turn_plan_failure(Path(value))
     with tempfile.TemporaryDirectory(prefix="skillsbench-loopx-turn-missing-") as value:
         paths = _write_fixture(Path(value))
         try:
@@ -365,6 +455,7 @@ def main() -> int:
                 "success": success,
                 "failure": failure,
                 "recoverable_host_failure": recoverable_host_failure,
+                "turn_plan_failure": turn_plan_failure,
                 "missing_validator_failed_closed": True,
                 "model_invoked": False,
                 "remote_job_launched": False,

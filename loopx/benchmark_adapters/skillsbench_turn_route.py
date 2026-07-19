@@ -178,6 +178,17 @@ def _public_execution(value: Any) -> dict[str, Any]:
         if public_receipt:
             execution["receipt"] = public_receipt
 
+    failure = value.get("failure")
+    if isinstance(failure, dict):
+        public_failure: dict[str, Any] = {}
+        if category := _public_label(failure.get("category"), limit=120):
+            public_failure["category"] = category
+        exit_code = failure.get("exit_code")
+        if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+            public_failure["exit_code"] = exit_code
+        if public_failure:
+            execution["failure"] = public_failure
+
     effects = value.get("effects")
     if isinstance(effects, dict):
         execution["effects"] = {
