@@ -477,16 +477,34 @@ def assert_user_action_is_non_blocking_notice() -> None:
 
 
 def assert_monitor_quiet_skip_is_no_spend() -> None:
-    payload = finalize(
-        base_payload(
-            should_run=False,
-            effective_action="monitor_quiet_skip",
-            work_lane=monitor_quiet_lane(),
-            heartbeat_mode="monitor_quiet_until_material_transition",
-        )
+    payload = base_payload(
+        should_run=False,
+        effective_action="monitor_quiet_skip",
+        work_lane=monitor_quiet_lane(),
+        heartbeat_mode="monitor_quiet_until_material_transition",
     )
+    user_action = {
+        "todo_id": "todo_user_action_pending",
+        "status": "open",
+        "task_class": "user_action",
+        "text": "Review the already surfaced optional repository setting.",
+    }
+    payload["user_todo_summary"] = compact_quota_todo_summary_for_payload(
+        {
+            "first_open_items": [user_action],
+            "user_action_open_count": 1,
+            "user_action_items": [user_action],
+        }
+    )
+    payload = finalize(payload)
     contract = payload["interaction_contract"]
     assert contract["mode"] == "monitor_quiet_skip", payload
+    assert contract["user_channel"]["action_required"] is False, contract
+    assert contract["user_channel"]["notify"] == "DONT_NOTIFY", contract
+    assert contract["user_channel"]["non_blocking"] is True, contract
+    assert contract["user_channel"]["actions"] == [
+        "Review the already surfaced optional repository setting."
+    ], contract
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
     assert contract["cli_channel"]["spend_after_validation"] is False, contract

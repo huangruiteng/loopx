@@ -874,6 +874,7 @@ def _build_interaction_user_channel(
     payload: dict[str, Any],
     heartbeat_recommendation: dict[str, Any],
     *,
+    mode: str,
     user_required: bool,
 ) -> dict[str, Any]:
     actions = projected_user_channel_actions(payload, limit=3)
@@ -881,10 +882,15 @@ def _build_interaction_user_channel(
         not user_required
         and user_channel_notice_todo_actions(payload.get("user_todo_summary"), limit=3)
     )
+    unchanged_monitor_notice = bool(
+        non_blocking_notice
+        and mode == "monitor_quiet_skip"
+        and heartbeat_recommendation.get("notify") == "DONT_NOTIFY"
+    )
     channel: dict[str, Any] = {
         "action_required": user_required,
         "notify": "NOTIFY"
-        if user_required or non_blocking_notice
+        if user_required or (non_blocking_notice and not unchanged_monitor_notice)
         else "DONT_NOTIFY"
         if _user_gate_notification_suppressed(payload)
         else heartbeat_recommendation.get("notify", "DONT_NOTIFY"),
@@ -1088,6 +1094,7 @@ def build_interaction_contract(
     user_channel = _build_interaction_user_channel(
         payload,
         heartbeat_recommendation,
+        mode=mode,
         user_required=user_required,
     )
     agent_channel = _build_interaction_agent_channel(
