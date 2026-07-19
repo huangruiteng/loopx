@@ -168,6 +168,10 @@ def build_agent_onboarding_packet(
                 else ""
             )
         )
+    if canonical_agent_type == "opencode":
+        commands["opencode_bridge_preflight"] = (
+            f"{shell_arg(cli_bin)} slash-commands --install --surface opencode"
+        )
     return {
         "ok": True,
         "schema_version": SCHEMA_VERSION,
