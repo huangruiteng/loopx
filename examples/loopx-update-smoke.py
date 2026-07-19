@@ -17,12 +17,13 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from loopx import __version__  # noqa: E402
 from loopx.release_manifest import release_version_tag  # noqa: E402
-from loopx.self_update import (
+from loopx.self_update import (  # noqa: E402
     DEFAULT_UPDATE_REF,
     _installer_env_for_source,
     build_rollback_plan,
     build_update_plan,
     execute_rollback_plan,
+    execute_update_plan,
     render_update_plan_markdown,
 )
 
@@ -194,6 +195,87 @@ def test_explicit_archive_url_reaches_installer() -> None:
     assert "LOOPX_ARCHIVE_URL=https://example.invalid/loopx.tar.gz" in payload["plan"]["install_command"], payload
     installer_env = _installer_env_for_source(payload["source"], base_env={})
     assert installer_env["LOOPX_ARCHIVE_URL"] == "https://example.invalid/loopx.tar.gz", installer_env
+
+
+def test_active_release_python_reaches_installer() -> None:
+    with TemporaryDirectory() as tmpdir:
+        release_root = Path(tmpdir) / "release"
+        release_root.mkdir()
+        (release_root / ".loopx-python").write_text(f"{sys.executable}\n", encoding="utf-8")
+        source = {"repo": "example/loopx", "ref": "stable"}
+
+        inherited = _installer_env_for_source(
+            source,
+            base_env={},
+            current_release_root=release_root,
+        )
+        assert inherited["LOOPX_PYTHON"] == sys.executable, inherited
+
+        explicit = _installer_env_for_source(
+            source,
+            base_env={"LOOPX_PYTHON": "/explicit/python"},
+            current_release_root=release_root,
+        )
+        assert explicit["LOOPX_PYTHON"] == "/explicit/python", explicit
+
+
+def test_active_release_python_marker_fails_closed() -> None:
+    with TemporaryDirectory() as tmpdir:
+        release_root = Path(tmpdir) / "release"
+        release_root.mkdir()
+        source = {"repo": "example/loopx", "ref": "stable"}
+        try:
+            _installer_env_for_source(
+                source,
+                base_env={},
+                current_release_root=release_root,
+            )
+        except ValueError as exc:
+            assert "missing its persisted Python runtime" in str(exc), exc
+        else:
+            raise AssertionError("missing release Python marker must fail closed")
+
+        (release_root / ".loopx-python").write_text("\n", encoding="utf-8")
+        try:
+            _installer_env_for_source(
+                source,
+                base_env={},
+                current_release_root=release_root,
+            )
+        except ValueError as exc:
+            assert "empty persisted Python runtime" in str(exc), exc
+        else:
+            raise AssertionError("empty release Python marker must fail closed")
+
+
+def test_execute_update_uses_persisted_release_python() -> None:
+    with TemporaryDirectory() as tmpdir:
+        release_root = Path(tmpdir) / "release"
+        release_root.mkdir()
+        missing_python = str(release_root / "missing-python")
+        (release_root / ".loopx-python").write_text(f"{missing_python}\n", encoding="utf-8")
+        payload = build_update_plan(
+            execute=True,
+            doctor_payload=fake_doctor_payload_for_release(release_root),
+        )
+        failed = subprocess.CompletedProcess(
+            args=[],
+            returncode=2,
+            stdout="",
+            stderr="loopx installer error: Python executable not found",
+        )
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch(
+            "loopx.self_update.subprocess.run",
+            side_effect=[failed, failed],
+        ) as run:
+            result = execute_update_plan(payload)
+
+        assert result["ok"] is False, result
+        assert run.call_count == 2, run.call_args_list
+        install_env = run.call_args_list[0].kwargs["env"]
+        doctor_env = run.call_args_list[1].kwargs["env"]
+        assert install_env["LOOPX_PYTHON"] == missing_python, install_env
+        assert doctor_env["LOOPX_PYTHON"] == missing_python, doctor_env
 
 
 def test_fresh_check_is_noop_recommendation() -> None:
@@ -380,6 +462,9 @@ def main() -> int:
     test_module_plan()
     test_default_source_uses_stable_ref()
     test_explicit_archive_url_reaches_installer()
+    test_active_release_python_reaches_installer()
+    test_active_release_python_marker_fails_closed()
+    test_execute_update_uses_persisted_release_python()
     test_fresh_check_is_noop_recommendation()
     test_check_compares_selected_source_version()
     test_check_degrades_when_source_version_is_unavailable()

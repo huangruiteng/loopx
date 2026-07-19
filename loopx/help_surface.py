@@ -102,6 +102,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "command": "loopx turn plan --goal-id <goal-id> --agent-id <agent-id>",
                 "purpose": "Plan one governed external-host turn from live LoopX state without launching an agent or writing state.",
             },
+            {
+                "command": "loopx host-mode-plan --goal-id <goal-id> --intent <intent> --host-capability <capability>",
+                "purpose": "Select a safe host mode (visible, isolated headless Turn, gateway, timer, hybrid) and show the matching Turn/quota preview commands.",
+            },
         ],
     },
     {

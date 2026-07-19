@@ -32,7 +32,18 @@ def main() -> None:
         tmp = Path(td)
         archive = tmp / "loopx.tar.gz"
         home = tmp / "home"
+        fake_bin = tmp / "fake-bin"
+        unexpected_python_marker = tmp / "unexpected-python3"
         home.mkdir()
+        fake_bin.mkdir()
+        fake_python = fake_bin / "python3"
+        fake_python.write_text(
+            "#!/usr/bin/env bash\n"
+            f"touch {unexpected_python_marker!s}\n"
+            "exit 86\n",
+            encoding="utf-8",
+        )
+        fake_python.chmod(0o755)
 
         with tarfile.open(archive, "w:gz") as tar:
             for name in (
@@ -59,9 +70,11 @@ def main() -> None:
                 "LOOPX_ARCHIVE_URL": f"file://{archive}",
                 "LOOPX_INSTALL_CANARY": "0",
                 "LOOPX_PYTHON": sys.executable,
+                "PATH": f"{fake_bin}:{env.get('PATH', '')}",
             }
         )
         subprocess.run(["bash", str(script)], check=True, env=env, cwd=tmp)
+        assert not unexpected_python_marker.exists(), unexpected_python_marker
 
         installed = home / ".local" / "bin" / "loopx"
         assert installed.exists(), installed

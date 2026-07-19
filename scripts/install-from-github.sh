@@ -5,6 +5,7 @@ repo="${LOOPX_REPO:-huangruiteng/loopx}"
 ref="${LOOPX_REF:-stable}"
 archive_url_override="${LOOPX_ARCHIVE_URL:-}"
 archive_url="$archive_url_override"
+python_bin="${LOOPX_PYTHON:-python3}"
 export LOOPX_REPO="$repo"
 export LOOPX_REF="$ref"
 
@@ -17,7 +18,7 @@ need() {
 
 need curl
 need tar
-need python3
+need "$python_bin"
 
 if [[ -n "${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-}" \
   && ! "$LOOPX_RESOLVED_SOURCE_GIT_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
@@ -30,7 +31,7 @@ if [[ -z "$archive_url" ]]; then
     echo "loopx installer error: LOOPX_REPO must use GitHub owner/name syntax" >&2
     exit 2
   fi
-  commit_api_url="$(python3 - "$repo" "$ref" <<'PY'
+  commit_api_url="$("$python_bin" - "$repo" "$ref" <<'PY'
 from urllib.parse import quote
 import sys
 
@@ -46,7 +47,7 @@ PY
     -H 'Accept: application/vnd.github+json' \
     -H 'User-Agent: LoopX-installer' \
     "$commit_api_url")"
-  resolved_commit="$(LOOPX_COMMIT_JSON="$commit_json" python3 - <<'PY'
+  resolved_commit="$(LOOPX_COMMIT_JSON="$commit_json" "$python_bin" - <<'PY'
 import json
 import os
 
@@ -74,7 +75,7 @@ mkdir -p "$extract_dir"
 
 echo "loopx installer: downloading $archive_url" >&2
 curl -fsSL "$archive_url" -o "$archive_path"
-archive_sha256="$(python3 - "$archive_path" <<'PY'
+archive_sha256="$("$python_bin" - "$archive_path" <<'PY'
 from pathlib import Path
 import hashlib
 import sys

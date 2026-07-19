@@ -50,6 +50,7 @@ def main() -> int:
             "LOOPX_INSTALL_CANARY": "0",
             "LOOPX_INSTALL_SKILL": "0",
             "LOOPX_PROMOTE_DEFAULT": "1",
+            "LOOPX_PYTHON": sys.executable,
             "PATH": os.environ.get("PATH", ""),
             "SHELL": "/bin/zsh",
         }
@@ -73,7 +74,8 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="loopx-proj-") as d:
         proj, other_home = Path(d) / "proj", Path(d) / "home"
-        proj.mkdir(); other_home.mkdir()
+        proj.mkdir()
+        other_home.mkdir()
         env = {**os.environ, "HOME": str(other_home)}  # prove it doesn't touch ~/.claude
         # dry-run writes nothing
         r = _install_py(["--scope", "project", "--project", str(proj), "--skip-mcp", "--dry-run"], env=env)

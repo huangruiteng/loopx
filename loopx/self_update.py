@@ -19,6 +19,7 @@ ROLLBACK_PREVIOUS_ALIAS = "previous"
 SOURCE_VERSION_CHECK_SCHEMA_VERSION = "loopx_source_version_check_v0"
 SOURCE_VERSION_CHECK_TIMEOUT_SECONDS = 3
 SOURCE_VERSION_READ_LIMIT_BYTES = 64 * 1024
+PERSISTED_PYTHON_FILENAME = ".loopx-python"
 _PACKAGE_VERSION_PATTERN = re.compile(r'^__version__\s*=\s*"([^"]+)"$', re.MULTILINE)
 
 
@@ -71,8 +72,24 @@ def _installer_env_for_source(
     source: dict[str, Any],
     *,
     base_env: dict[str, str] | None = None,
+    current_release_root: str | Path | None = None,
 ) -> dict[str, str]:
-    env = dict(base_env or os.environ)
+    env = dict(os.environ if base_env is None else base_env)
+    if not env.get("LOOPX_PYTHON") and current_release_root is not None:
+        marker = Path(current_release_root) / PERSISTED_PYTHON_FILENAME
+        try:
+            persisted_python = marker.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(
+                "active LoopX release snapshot is missing its persisted Python runtime; "
+                "set LOOPX_PYTHON to a Python 3.11+ executable before retrying"
+            ) from exc
+        if not persisted_python:
+            raise ValueError(
+                "active LoopX release snapshot has an empty persisted Python runtime; "
+                "set LOOPX_PYTHON to a Python 3.11+ executable before retrying"
+            )
+        env["LOOPX_PYTHON"] = persisted_python
     env["LOOPX_REPO"] = str(source.get("repo") or DEFAULT_UPDATE_REPO)
     env["LOOPX_REF"] = str(source.get("ref") or DEFAULT_UPDATE_REF)
     if source.get("channel") == "github_archive_url_override" and source.get("archive_url"):
@@ -406,7 +423,15 @@ def build_update_plan(
 def execute_update_plan(payload: dict[str, Any], *, timeout_seconds: int = 600) -> dict[str, Any]:
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
     installer_url = str(source.get("installer_url") or NO_CLONE_INSTALL_URL)
-    env = _installer_env_for_source(source)
+    plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
+    backup = plan.get("backup") if isinstance(plan.get("backup"), dict) else {}
+    current_release_root = backup.get("current_release_root")
+    env = _installer_env_for_source(
+        source,
+        current_release_root=(
+            current_release_root if isinstance(current_release_root, str) else None
+        ),
+    )
     install_result = subprocess.run(
         ["bash", "-lc", f"curl -fsSL {shlex.quote(installer_url)} | bash"],
         text=True,
