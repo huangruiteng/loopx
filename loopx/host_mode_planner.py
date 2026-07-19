@@ -86,7 +86,7 @@ _MODE_METADATA: dict[str, dict[str, Any]] = {
         "turn_host": "generic-cli",
         "turn_execution_mode": "isolated-headless",
         "scheduler_owner": "outer_controller",
-        "required_capabilities": [CAP_SERVICE_TIMER, CAP_SHELL, CAP_LOOPX_TURN],
+        "required_capabilities": [CAP_SERVICE_TIMER, CAP_SHELL, CAP_LOOPX_TURN, CAP_TYPED_HOST_ADAPTER, CAP_INDEPENDENT_VALIDATOR],
         "summary": "Let a shell, cron, launchd, or service timer wake bounded LoopX Turn previews/runs.",
         "extra_proofs": [*_TURN_PROOFS, "scheduler_hint_backoff", "no_spend_quiet_monitor"],
     },
@@ -119,6 +119,22 @@ SUPPORTED_HOST_CAPABILITIES = [
     CAP_SHELL,
 ]
 _INTENT_PRIMARY_MODE = {meta["intent"]: mode for mode, meta in _MODE_METADATA.items()}
+
+# Host identities that map to a concrete visible Turn host. Visible TUI mapping
+# requires an explicit host identity so Codex CLI, Claude Code, and generic CLI
+# sessions keep their real host binding instead of a hard-coded Codex default.
+SUPPORTED_TURN_HOST_IDENTITIES = sorted(SUPPORTED_HOSTS)
+
+
+CAPABILITY_GUIDANCE = {
+    CAP_VISIBLE_SESSION: "A visible session is required so the user can watch, steer, or take over safely.",
+    CAP_LOOPX_TURN: "LoopX Turn support is required before headless execution can be trusted.",
+    CAP_TYPED_HOST_ADAPTER: "A typed host adapter is required so the host returns one machine-checkable result instead of free-form prose.",
+    CAP_INDEPENDENT_VALIDATOR: "An independent validator is required so LoopX does not trust the host's own completion claim.",
+    CAP_CHAT_GATEWAY: "A chat or webhook gateway is required before work can be created from an external intake surface.",
+    CAP_SERVICE_TIMER: "A service timer, cron, launchd, or equivalent wake mechanism is required for timer keepalive.",
+    CAP_SHELL: "Shell execution is required so the host can run LoopX preview and guard commands.",
+}
 
 
 class HostModePlanError(ValueError):
@@ -168,16 +184,25 @@ def _normalize_supported(values: Any, *, field: str, supported: list[str], requi
     return tokens
 
 
+def _missing_mode_capabilities(mode: str, host_capabilities: list[str]) -> list[str]:
+    if mode == MODE_HYBRID_HANDOFF:
+        return []
+    required = _MODE_METADATA[mode]["required_capabilities"]
+    return [capability for capability in required if capability not in host_capabilities]
+
+
+def _ready_concrete_modes(host_capabilities: list[str]) -> list[str]:
+    return [
+        candidate
+        for candidate in CANONICAL_MODES
+        if candidate != MODE_HYBRID_HANDOFF and not _missing_mode_capabilities(candidate, host_capabilities)
+    ]
+
+
 def _mode_capability_ready(mode: str, host_capabilities: list[str]) -> bool:
     if mode == MODE_HYBRID_HANDOFF:
-        ready_modes = [
-            candidate
-            for candidate in CANONICAL_MODES
-            if candidate != MODE_HYBRID_HANDOFF and _mode_capability_ready(candidate, host_capabilities)
-        ]
-        return len(ready_modes) >= 2
-    required = _MODE_METADATA[mode]["required_capabilities"]
-    return all(capability in host_capabilities for capability in required)
+        return len(_ready_concrete_modes(host_capabilities)) >= 2
+    return not _missing_mode_capabilities(mode, host_capabilities)
 
 
 def _turn_plan_command(
@@ -187,12 +212,17 @@ def _turn_plan_command(
     mode: str,
     cli_bin: str,
     available_capabilities: list[str] | None,
+    host_identity: str | None,
 ) -> str | None:
     meta = _MODE_METADATA[mode]
     turn_host = meta.get("turn_host")
     execution_mode = meta.get("turn_execution_mode")
     if not turn_host or not execution_mode:
         return None
+    if mode == MODE_VISIBLE_TUI:
+        # Visible mode keeps the caller's explicit host identity instead of
+        # assuming every visible session is Codex CLI.
+        turn_host = host_identity or turn_host
     if turn_host not in SUPPORTED_HOSTS:
         raise HostModePlanError(
             reason=f"unsupported Turn host mapped by {mode}: {turn_host}",
@@ -213,10 +243,12 @@ def _turn_plan_command(
     )
 
 
-def _scheduler_context(mode: str) -> dict[str, Any] | None:
+def _scheduler_context(mode: str, host_identity: str | None = None) -> dict[str, Any] | None:
     meta = _MODE_METADATA[mode]
     turn_host = meta.get("turn_host")
     execution_mode = meta.get("turn_execution_mode")
+    if mode == MODE_VISIBLE_TUI and host_identity:
+        turn_host = host_identity
     if not turn_host or not execution_mode:
         if mode == MODE_IM_GATEWAY:
             return None
@@ -237,8 +269,9 @@ def _mode_quota_guard(
     agent_id: str | None,
     cli_bin: str,
     available_capabilities: list[str] | None,
+    host_identity: str | None = None,
 ) -> str:
-    scheduler_context = _scheduler_context(mode)
+    scheduler_context = _scheduler_context(mode, host_identity)
     runtime_profile = None
     if mode == MODE_IM_GATEWAY:
         runtime_profile = None
@@ -254,6 +287,125 @@ def _mode_quota_guard(
     )
 
 
+def _blocking_reasons(mode: str, host_capabilities: list[str]) -> list[str]:
+    if mode == MODE_HYBRID_HANDOFF:
+        ready_modes = _ready_concrete_modes(host_capabilities)
+        if len(ready_modes) >= 2:
+            return []
+        return [
+            "Hybrid handoff requires at least two concrete ready modes so work can move between runtime surfaces safely."
+        ]
+    return [
+        CAPABILITY_GUIDANCE[capability]
+        for capability in _missing_mode_capabilities(mode, host_capabilities)
+    ]
+
+
+def _recommended_next_steps(
+    *,
+    mode: str,
+    host_capabilities: list[str],
+    turn_plan_command: str | None,
+    quota_guard_command: str,
+) -> list[dict[str, Any]]:
+    missing = _missing_mode_capabilities(mode, host_capabilities)
+    steps: list[dict[str, Any]] = []
+    if mode == MODE_HYBRID_HANDOFF:
+        ready_modes = _ready_concrete_modes(host_capabilities)
+        if len(ready_modes) < 2:
+            steps.append(
+                {
+                    "step": 1,
+                    "kind": "stop",
+                    "action": "Do not plan a hybrid handoff yet; make at least two concrete host modes ready first.",
+                    "command": None,
+                    "no_spend": True,
+                }
+            )
+        else:
+            steps.append(
+                {
+                    "step": 1,
+                    "kind": "preview",
+                    "action": "Preview the target mode before changing host surfaces.",
+                    "command": quota_guard_command,
+                    "no_spend": True,
+                }
+            )
+        steps.append(
+            {
+                "step": len(steps) + 1,
+                "kind": "handoff_gate",
+                "action": "Escalate back to visible_tui whenever a user gate, ambiguous decision, missing validator, or risky action appears.",
+                "command": None,
+                "no_spend": True,
+            }
+        )
+        return steps
+
+    if missing:
+        steps.append(
+            {
+                "step": 1,
+                "kind": "stop",
+                "action": "Stop before attempting this host mode; fill the missing host capabilities first.",
+                "command": None,
+                "no_spend": True,
+            }
+        )
+        for capability in missing:
+            steps.append(
+                {
+                    "step": len(steps) + 1,
+                    "kind": "capability_gap",
+                    "capability": capability,
+                    "action": CAPABILITY_GUIDANCE[capability],
+                    "command": None,
+                    "no_spend": True,
+                }
+            )
+        steps.append(
+            {
+                "step": len(steps) + 1,
+                "kind": "repreview",
+                "action": "Re-run loopx host-mode-plan after the missing capabilities are configured.",
+                "command": None,
+                "no_spend": True,
+            }
+        )
+        return steps
+
+    steps.append(
+        {
+            "step": 1,
+            "kind": "guard_preview",
+            "action": "Run the quota guard preview to confirm current LoopX state before host setup.",
+            "command": quota_guard_command,
+            "no_spend": True,
+        }
+    )
+    if turn_plan_command:
+        steps.append(
+            {
+                "step": len(steps) + 1,
+                "kind": "turn_preview",
+                "action": "Run the LoopX Turn plan preview before launching or resuming any host execution.",
+                "command": turn_plan_command,
+                "no_spend": True,
+            }
+        )
+    steps.append(
+        {
+            "step": len(steps) + 1,
+            "kind": "handoff_gate",
+            "action": "Escalate back to visible_tui whenever a user gate, ambiguous decision, missing validator, or risky action appears.",
+            "command": None,
+            "no_spend": True,
+        }
+    )
+    return steps
+
+
 def _build_mode_option(
     *,
     mode: str,
@@ -262,39 +414,67 @@ def _build_mode_option(
     host_capabilities: list[str],
     cli_bin: str,
     available_capabilities: list[str] | None,
+    host_identity: str | None,
 ) -> dict[str, Any]:
     meta = _MODE_METADATA[mode]
+    turn_plan_command = _turn_plan_command(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        mode=mode,
+        cli_bin=cli_bin,
+        available_capabilities=available_capabilities,
+        host_identity=host_identity,
+    )
+    quota_guard_command = _mode_quota_guard(
+        mode=mode,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        cli_bin=cli_bin,
+        available_capabilities=available_capabilities,
+        host_identity=host_identity,
+    )
+    effective_turn_host = (
+        host_identity if mode == MODE_VISIBLE_TUI and host_identity else meta.get("turn_host")
+    )
     return {
         "mode": mode,
         "summary": meta["summary"],
-        "connector_id": meta["connector_id"],
+        "connector_id": (
+            f"{host_identity}_visible_tui"
+            if mode == MODE_VISIBLE_TUI and host_identity
+            else meta["connector_id"]
+        ),
+        "host_identity": effective_turn_host if mode == MODE_VISIBLE_TUI else None,
         "capability_ready": _mode_capability_ready(mode, host_capabilities),
         "required_host_capabilities": list(meta["required_capabilities"]),
+        "missing_host_capabilities": _missing_mode_capabilities(mode, host_capabilities),
+        "blocking_reasons": _blocking_reasons(mode, host_capabilities),
+        "recommended_next_steps": _recommended_next_steps(
+            mode=mode,
+            host_capabilities=host_capabilities,
+            turn_plan_command=turn_plan_command,
+            quota_guard_command=quota_guard_command,
+        ),
         "turn_mapping": {
-            "host": meta.get("turn_host"),
+            "host": effective_turn_host,
             "execution_mode": meta.get("turn_execution_mode"),
             "scheduler_owner": meta.get("scheduler_owner"),
-            "plan_command": _turn_plan_command(
-                goal_id=goal_id,
-                agent_id=agent_id,
-                mode=mode,
-                cli_bin=cli_bin,
-                available_capabilities=available_capabilities,
-            ),
+            "plan_command": turn_plan_command,
         },
-        "scheduler_execution_context": _scheduler_context(mode),
-        "quota_guard_command": _mode_quota_guard(
-            mode=mode,
-            goal_id=goal_id,
-            agent_id=agent_id,
-            cli_bin=cli_bin,
-            available_capabilities=available_capabilities,
-        ),
+        "scheduler_execution_context": _scheduler_context(mode, host_identity),
+        "quota_guard_command": quota_guard_command,
         "required_proofs": [*_SHARED_PROOFS, *meta["extra_proofs"]],
     }
 
 
-def _transitions(*, goal_id: str, agent_id: str | None, cli_bin: str, available_capabilities: list[str] | None) -> list[dict[str, Any]]:
+def _transitions(
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    cli_bin: str,
+    available_capabilities: list[str] | None,
+    host_identity: str | None,
+) -> list[dict[str, Any]]:
     def transition(
         transition_id: str,
         from_mode: str,
@@ -316,6 +496,7 @@ def _transitions(*, goal_id: str, agent_id: str | None, cli_bin: str, available_
                 mode=to_mode,
                 cli_bin=cli_bin,
                 available_capabilities=available_capabilities,
+                host_identity=host_identity,
             ),
             "guard_command": _mode_quota_guard(
                 mode=to_mode,
@@ -323,6 +504,7 @@ def _transitions(*, goal_id: str, agent_id: str | None, cli_bin: str, available_
                 agent_id=agent_id,
                 cli_bin=cli_bin,
                 available_capabilities=available_capabilities,
+                host_identity=host_identity,
             ),
         }
 
@@ -367,6 +549,7 @@ def build_host_mode_plan(
     registered_agents: list[str] | None = None,
     cli_bin: str = "loopx",
     available_capabilities: list[str] | None = None,
+    host_identity: str | None = None,
 ) -> dict[str, Any]:
     """Build a read-only host-mode selector plan on top of LoopX Turn.
 
@@ -386,6 +569,19 @@ def build_host_mode_plan(
         required=False,
     )
     available = _normalize_tokens(available_capabilities)
+    normalized_host_identity = None
+    if host_identity:
+        # Host identities are Turn host kinds and already use dashes
+        # (codex-cli, claude-code, generic-cli); normalize case without
+        # converting dashes to underscores.
+        candidate = str(host_identity).strip().lower()
+        if candidate not in SUPPORTED_TURN_HOST_IDENTITIES:
+            raise HostModePlanError(
+                reason=f"unsupported host_identity: {candidate}",
+                field="host_identity",
+                suggestions=SUPPORTED_TURN_HOST_IDENTITIES,
+            )
+        normalized_host_identity = candidate
     identity = _identity_state(agent_id=agent_id, registered_agents=registered_agents)
     raw_scoped = identity.get("selected_agent_id")
     scoped_agent_id = str(raw_scoped) if raw_scoped else None
@@ -400,6 +596,7 @@ def build_host_mode_plan(
             host_capabilities=caps,
             cli_bin=cli_bin,
             available_capabilities=available,
+            host_identity=normalized_host_identity,
         )
         for mode in ordered_modes
     ]
@@ -414,10 +611,14 @@ def build_host_mode_plan(
         "agent_id": scoped_agent_id,
         "user_intent": intents,
         "host_capabilities": caps,
+        "host_identity": normalized_host_identity,
         "selected_mode": primary_mode,
         "selected_connector_id": selected["connector_id"],
         "selected_turn_mapping": selected["turn_mapping"],
         "selected_capability_ready": selected["capability_ready"],
+        "selected_missing_host_capabilities": selected["missing_host_capabilities"],
+        "selected_blocking_reasons": selected["blocking_reasons"],
+        "operator_next_steps": selected["recommended_next_steps"],
         "mode_options": mode_options,
         "identity_contract": identity,
         "guard_command": selected["quota_guard_command"],
@@ -444,6 +645,7 @@ def build_host_mode_plan(
             agent_id=scoped_agent_id,
             cli_bin=cli_bin,
             available_capabilities=available,
+            host_identity=normalized_host_identity,
         ),
         "boundary": {
             "selector_is_authoritative": False,
@@ -499,6 +701,8 @@ def render_host_mode_plan_markdown(payload: dict[str, Any]) -> str:
         f"- selected_mode: `{payload.get('selected_mode')}`",
         f"- selected_connector_id: `{payload.get('selected_connector_id')}`",
         f"- selected_capability_ready: `{payload.get('selected_capability_ready')}`",
+        f"- host_identity: `{payload.get('host_identity')}`",
+        f"- selected_missing_host_capabilities: `{', '.join(payload.get('selected_missing_host_capabilities') or [])}`",
         f"- user_intent: `{', '.join(payload.get('user_intent') or [])}`",
         f"- host_capabilities: `{', '.join(payload.get('host_capabilities') or [])}`",
         "",
@@ -539,6 +743,18 @@ def render_host_mode_plan_markdown(payload: dict[str, Any]) -> str:
     if selected_option:
         lines.extend(["", "## Selected Mode Required Proofs", ""])
         lines.extend(f"- {proof}" for proof in selected_option.get("required_proofs") or [])
+    if payload.get("selected_blocking_reasons"):
+        lines.extend(["", "## Blocking Reasons", ""])
+        lines.extend(f"- {reason}" for reason in payload.get("selected_blocking_reasons") or [])
+    if payload.get("operator_next_steps"):
+        lines.extend(["", "## Operator Next Steps", ""])
+        for step in payload.get("operator_next_steps") or []:
+            if not isinstance(step, dict):
+                continue
+            line = f"{step.get('step')}. [{step.get('kind')}] {step.get('action')}"
+            if step.get("command"):
+                line += f" — `{step.get('command')}`"
+            lines.append(line)
     lines.extend(["", "## Handoffs", ""])
     for transition in payload.get("transitions") or []:
         if isinstance(transition, dict):

@@ -23,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.host_mode_planner import (  # noqa: E402
     CANONICAL_MODES,
+    SUPPORTED_TURN_HOST_IDENTITIES,
     MODE_HYBRID_HANDOFF,
     MODE_IM_GATEWAY,
     MODE_ISOLATED_HEADLESS_TURN,
@@ -81,6 +82,7 @@ def build_full_plan(intent: str) -> dict[str, object]:
         agent_id="codex-main-control",
         registered_agents=["codex-main-control", "codex-side-peer"],
         available_capabilities=["shell", "network"],
+        host_identity="codex-cli",
     )
 
 
@@ -122,15 +124,49 @@ def test_headless_maps_to_loopx_turn_plan_not_parallel_runner() -> None:
 
 
 def test_visible_mode_stays_visible_and_scoped() -> None:
-    plan = build_full_plan("watch_each_turn")
+    plan = build_workflow_identity_plan("watch_each_turn", host_identity="codex-cli")
     selected = plan["selected_turn_mapping"]
     assert selected["host"] == "codex-cli", selected
     assert selected["execution_mode"] == "interactive-visible", selected
     assert selected["scheduler_owner"] == "agent_cli_loop", selected
+    assert "--host codex-cli" in selected["plan_command"], selected
     assert "--agent-id codex-main-control" in selected["plan_command"], selected
     visible = option(plan, MODE_VISIBLE_TUI)
-    assert visible["connector_id"] == "codex_cli_tui", visible
+    assert visible["connector_id"] == "codex-cli_visible_tui", visible
     assert visible["capability_ready"] is True, visible
+    assert plan["host_identity"] == "codex-cli", plan
+
+
+def build_workflow_identity_plan(intent: str, host_identity: str | None) -> dict[str, object]:
+    return build_host_mode_plan(
+        goal_id="workflow-selector-fixture",
+        user_intent=intent,
+        host_capabilities=[
+            "visible_session",
+            "loopx_turn",
+            "typed_host_adapter",
+            "independent_validator",
+            "chat_gateway",
+            "service_timer",
+            "shell",
+        ],
+        agent_id="codex-main-control",
+        registered_agents=["codex-main-control", "codex-side-peer"],
+        available_capabilities=["shell", "network"],
+        host_identity=host_identity,
+    )
+
+
+def test_visible_mode_preserves_distinct_host_identities() -> None:
+    for host_identity in ["claude-code", "generic-cli"]:
+        plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
+        selected = plan["selected_turn_mapping"]
+        assert selected["host"] == host_identity, (host_identity, selected)
+        assert f"--host {host_identity}" in selected["plan_command"], selected
+        visible = option(plan, MODE_VISIBLE_TUI)
+        assert visible["connector_id"] == f"{host_identity}_visible_tui", visible
+        assert visible["host_identity"] == host_identity, visible
+        assert plan["host_identity"] == host_identity, plan
 
 
 def test_readiness_fails_closed_without_required_host_capabilities() -> None:
@@ -148,6 +184,41 @@ def test_readiness_fails_closed_without_required_host_capabilities() -> None:
         "typed_host_adapter",
         "independent_validator",
     ], headless
+    assert headless["missing_host_capabilities"] == [
+        "typed_host_adapter",
+        "independent_validator",
+    ], headless
+    assert any("typed host adapter" in reason for reason in headless["blocking_reasons"]), headless
+    assert any("independent validator" in reason for reason in headless["blocking_reasons"]), headless
+    steps = headless["recommended_next_steps"]
+    assert steps[0]["kind"] == "stop", steps
+    assert any(step["kind"] == "capability_gap" for step in steps), steps
+    assert steps[-1]["kind"] == "repreview", steps
+    assert plan["selected_capability_ready"] is False, plan
+    assert plan["selected_missing_host_capabilities"] == [
+        "typed_host_adapter",
+        "independent_validator",
+    ], plan
+    assert plan["operator_next_steps"][0]["kind"] == "stop", plan
+
+
+def test_shell_service_fails_closed_without_adapter_and_validator() -> None:
+    # Regression: with only service_timer, shell, and loopx_turn the planner
+    # previously reported shell_service ready even though its required proofs
+    # include typed_host_adapter and independent_validation.
+    plan = build_host_mode_plan(
+        goal_id="workflow-selector-fixture",
+        user_intent="timer_keepalive",
+        host_capabilities=["service_timer", "shell", "loopx_turn"],
+        agent_id="codex-main-control",
+        registered_agents=["codex-main-control"],
+    )
+    shell_service = option(plan, MODE_SHELL_SERVICE)
+    assert shell_service["capability_ready"] is False, shell_service
+    assert shell_service["missing_host_capabilities"] == [
+        "typed_host_adapter",
+        "independent_validator",
+    ], shell_service
     assert plan["selected_capability_ready"] is False, plan
 
 
@@ -159,7 +230,10 @@ def test_hybrid_requires_two_ready_modes_and_names_handoffs() -> None:
         agent_id="codex-main-control",
         registered_agents=["codex-main-control"],
     )
-    assert option(one_ready, MODE_HYBRID_HANDOFF)["capability_ready"] is False, one_ready
+    hybrid_one = option(one_ready, MODE_HYBRID_HANDOFF)
+    assert hybrid_one["capability_ready"] is False, hybrid_one
+    assert hybrid_one["blocking_reasons"], hybrid_one
+    assert hybrid_one["recommended_next_steps"][0]["kind"] == "stop", hybrid_one
 
     two_ready = build_host_mode_plan(
         goal_id="workflow-selector-fixture",
@@ -245,13 +319,29 @@ def test_markdown_and_docs_are_wired() -> None:
     markdown = render_host_mode_plan_markdown(plan)
     assert_contains(markdown, "LoopX Host Mode Plan", "markdown")
     assert_contains(markdown, "loopx turn plan", "markdown")
+    assert_contains(markdown, "Operator Next Steps", "markdown")
+    assert_contains(markdown, "Escalate back to visible_tui", "markdown")
     assert_contains(markdown, "Why This Helps", "markdown")
     assert_public_safe(markdown, "markdown")
+
+    blocked = build_host_mode_plan(
+        goal_id="workflow-selector-fixture",
+        user_intent="continue_without_ui",
+        host_capabilities=["loopx_turn"],
+        agent_id="codex-main-control",
+        registered_agents=["codex-main-control"],
+    )
+    blocked_markdown = render_host_mode_plan_markdown(blocked)
+    assert_contains(blocked_markdown, "Blocking Reasons", "blocked markdown")
+    assert_contains(blocked_markdown, "typed host adapter", "blocked markdown")
+    assert_contains(blocked_markdown, "Stop before attempting this host mode", "blocked markdown")
+    assert_public_safe(blocked_markdown, "blocked markdown")
 
     contract = CONTRACT_PATH.read_text()
     assert_contains(contract, "dry_run_host_mode_selector", "workflow contract")
     assert_contains(contract, "loopx turn plan", "workflow contract")
     assert_contains(contract, "independent validation", "workflow contract")
+    assert_contains(contract, "typed_host_adapter", "workflow contract")
     assert_public_safe(contract, "workflow contract")
 
     turn_contract = TURN_CONTRACT_PATH.read_text()
@@ -270,7 +360,9 @@ def main() -> int:
     test_intent_selects_distinct_host_modes()
     test_headless_maps_to_loopx_turn_plan_not_parallel_runner()
     test_visible_mode_stays_visible_and_scoped()
+    test_visible_mode_preserves_distinct_host_identities()
     test_readiness_fails_closed_without_required_host_capabilities()
+    test_shell_service_fails_closed_without_adapter_and_validator()
     test_hybrid_requires_two_ready_modes_and_names_handoffs()
     test_identity_gate_and_no_spend_boundary()
     test_unknown_values_fail_closed()

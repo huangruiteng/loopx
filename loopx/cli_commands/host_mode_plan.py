@@ -6,6 +6,7 @@ from collections.abc import Callable
 from ..host_mode_planner import (
     SUPPORTED_HOST_CAPABILITIES,
     SUPPORTED_INTENTS,
+    SUPPORTED_TURN_HOST_IDENTITIES,
     HostModePlanError,
     build_host_mode_plan,
     render_host_mode_plan_markdown,
@@ -57,6 +58,16 @@ def register_host_mode_plan_command(
     )
     parser.add_argument("--agent-id", help="Registered agent id to scope Turn and quota preview commands.")
     parser.add_argument(
+        "--host-identity",
+        choices=SUPPORTED_TURN_HOST_IDENTITIES,
+        help=(
+            "Explicit visible host identity. Required to keep visible_tui mapped to the "
+            "actual host instead of assuming Codex CLI. One of: "
+            + ", ".join(SUPPORTED_TURN_HOST_IDENTITIES)
+            + "."
+        ),
+    )
+    parser.add_argument(
         "--registered-agent",
         dest="registered_agents",
         action="append",
@@ -94,6 +105,7 @@ def handle_host_mode_plan_command(
             registered_agents=args.registered_agents or None,
             cli_bin=args.cli_bin,
             available_capabilities=args.available_capabilities or None,
+            host_identity=args.host_identity,
         )
     except HostModePlanError as exc:
         payload = exc.to_payload()

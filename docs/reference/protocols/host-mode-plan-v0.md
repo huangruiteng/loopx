@@ -39,7 +39,7 @@ without inventing a parallel runner or a second workflow authority.
 | `visible_tui` | `codex_cli_tui` connector | user wants to watch or steer each turn | `visible_session` |
 | `isolated_headless_turn` | `loopx_turn_v0` with `generic-cli` and `isolated-headless` | bounded unattended work through typed host results | `loopx_turn`, `typed_host_adapter`, `independent_validator` |
 | `im_gateway` | gateway/webhook connector | chat or another surface should create durable work | `chat_gateway` |
-| `shell_service` | shell worker plus LoopX Turn | cron, launchd, service timer, or manual shell wakeup | `service_timer`, `shell`, `loopx_turn` |
+| `shell_service` | shell worker plus LoopX Turn | cron, launchd, service timer, or manual shell wakeup | `service_timer`, `shell`, `loopx_turn`, `typed_host_adapter`, `independent_validator` |
 | `hybrid_handoff` | explicit transition contract | one mode should escalate or continue in another | at least two concrete modes ready |
 
 ## Intent And Capability Signals
@@ -65,6 +65,28 @@ Public-safe `host_capabilities` signals are:
 The first intent selects `selected_mode`. Every mode option still reports
 `capability_ready` so an operator can see whether the selected host can actually
 run the desired mode.
+
+## Visible Host Identity
+
+A coarse `visible_session` capability cannot distinguish Codex CLI, Claude Code,
+or another generic CLI host. The planner therefore accepts an explicit
+`host_identity` input (`codex-cli`, `claude-code`, or `generic-cli`). For
+`visible_tui`, the returned `turn_mapping.host`, connector id, Turn plan command,
+and scheduler execution context all preserve that identity instead of hard-coding
+Codex CLI. When no `host_identity` is supplied, visible mapping falls back to the
+Codex CLI default for backwards compatibility; pass `--host-identity` whenever
+the actual host is known.
+
+## Readiness And Proofs
+
+Readiness fails closed: a mode only reports `capability_ready=true` when every
+capability listed in `required_host_capabilities` is advertised. Because
+`shell_service` proves typed host results and independent validation, those
+capabilities are part of its requirement; a host with only `service_timer`,
+`shell`, and `loopx_turn` is not ready. Each mode option also reports
+`missing_host_capabilities`, human-readable `blocking_reasons`, and
+`recommended_next_steps` so an operator knows what to fill in before attempting
+the mode.
 
 ## Shape
 
@@ -127,5 +149,10 @@ A fixture or implementation is acceptable when:
 6. the boundary says the selector does not execute, write, spend, infer
    production permission, infer credential access, or infer destructive
    authority;
-7. handoffs preserve the selected agent id and expose target readiness; and
-8. unknown intent or host capability values fail closed with suggestions.
+7. no selected mode reports `capability_ready=true` while a capability-backed
+   required proof is unavailable (including `shell_service` requiring both
+   `typed_host_adapter` and `independent_validator`);
+8. visible `host_identity` is preserved for distinct hosts such as Codex CLI and
+   Claude Code in the connector id, Turn mapping, and preview commands;
+9. handoffs preserve the selected agent id and expose target readiness; and
+10. unknown intent or host capability values fail closed with suggestions.
