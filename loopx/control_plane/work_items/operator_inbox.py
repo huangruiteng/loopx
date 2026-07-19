@@ -31,21 +31,6 @@ class OperatorInboxSourceContract:
     destination_pattern: re.Pattern[str]
 
 
-LARK_OPERATOR_INBOX_SOURCE_CONTRACT = OperatorInboxSourceContract(
-    config_schema_version="lark_event_inbox_config_v0",
-    event_schema_version="lark_event_inbox_event_v0",
-    processed_schema_version="lark_event_inbox_processed_v0",
-    message_id_pattern=re.compile(r"om_[A-Za-z0-9_-]+"),
-    event_id_pattern=re.compile(r"[A-Za-z0-9:_-]{1,200}"),
-    sender_profile_pattern=re.compile(r"[A-Za-z0-9._-]{1,100}"),
-    required_sender_identity="bot",
-    reply_flag_field="reply_to_bot",
-    operator_display_name_field="bot_display_name",
-    destination_field="chat_id",
-    destination_pattern=re.compile(r"oc_[A-Za-z0-9_-]+"),
-)
-
-
 def _safe_inbox_path(project: Path, raw_path: object) -> Path:
     relative = PurePosixPath(str(raw_path or "").strip().replace("\\", "/"))
     if (

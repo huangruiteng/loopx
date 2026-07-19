@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 
 from ...control_plane.work_items.operator_inbox import (
-    LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
+    OperatorInboxSourceContract,
     operator_inbox_attention_kind,
     project_operator_inbox_urgency,
 )
@@ -21,6 +21,19 @@ MESSAGE_ID_PATTERN = re.compile(r"om_[A-Za-z0-9_-]+")
 EVENT_ID_PATTERN = re.compile(r"[A-Za-z0-9:_-]{1,200}")
 SAFE_PROFILE_PATTERN = re.compile(r"[A-Za-z0-9._-]{1,100}")
 CHAT_ID_PATTERN = re.compile(r"oc_[A-Za-z0-9_-]+")
+LARK_OPERATOR_INBOX_SOURCE_CONTRACT = OperatorInboxSourceContract(
+    config_schema_version=CONFIG_SCHEMA_VERSION,
+    event_schema_version=EVENT_SCHEMA_VERSION,
+    processed_schema_version=PROCESSED_SCHEMA_VERSION,
+    message_id_pattern=MESSAGE_ID_PATTERN,
+    event_id_pattern=EVENT_ID_PATTERN,
+    sender_profile_pattern=SAFE_PROFILE_PATTERN,
+    required_sender_identity="bot",
+    reply_flag_field="reply_to_bot",
+    operator_display_name_field="bot_display_name",
+    destination_field="chat_id",
+    destination_pattern=CHAT_ID_PATTERN,
+)
 
 
 def _safe_inbox_path(project: str | Path, raw_path: str) -> Path:
@@ -192,7 +205,7 @@ def project_lark_event_inbox_urgency(
     config_path: str | Path,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Compatibility delegate for the provider-neutral urgency projection."""
+    """Bind the generic urgency projector to the extension-owned Lark contract."""
 
     load_lark_event_inbox_config(project=project, config_path=config_path)
     urgency = project_operator_inbox_urgency(

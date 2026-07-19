@@ -22,7 +22,7 @@ from loopx.visible_multi_agent_launcher import (  # noqa: E402
     TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
     build_visible_multi_agent_payload_from_spec,
 )
-from loopx.capabilities.multi_agent.contract import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.contract import (  # noqa: E402
     DECENTRALIZED_A2A_DRIVER_CONTRACT_SCHEMA_VERSION,
     GENERIC_MULTI_AGENT_COMPACT_STATUS_SCHEMA_VERSION,
     GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION,

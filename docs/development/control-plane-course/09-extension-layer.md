@@ -339,7 +339,7 @@ LoopX 的 multi-agent 产品采用三层 minimality：
 | Preset | domain roles、handoff hints、metric/evidence adapter、defaults | runner lifecycle、通用 replan、TUI、claim/quota protocol |
 | Kernel | runner、真实 Codex TUI panes、workspace-safe launch、pane-local tick、todo/evidence/status、vision/replan | domain-specific research/support/sales 语义 |
 
-一个新产品不应 copy Auto Research runner。它只写自己的薄 preset，然后复用 `loopx/capabilities/multi_agent/`。
+一个新产品不应 copy Auto Research runner。它只写自己的薄 preset，然后复用 `loopx/control_plane/agents/multi_agent/`。
 
 Kernel 的关键 invariant：
 
@@ -756,7 +756,7 @@ configure preview
 2. `docs/capabilities/explore/README.md`
 3. `loopx/capabilities/explore/`
 4. `docs/reference/protocols/multi-agent-three-layer-minimality-v0.md`
-5. `loopx/capabilities/multi_agent/`
+5. `loopx/control_plane/agents/multi_agent/`
 6. `docs/guides/auto-research-command-path.md`
 7. `loopx/capabilities/auto_research/preset.py`
 8. `docs/reference/protocols/peer-supervisor-v0.md`

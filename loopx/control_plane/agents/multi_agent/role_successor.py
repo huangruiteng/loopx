@@ -4,8 +4,8 @@ import shlex
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from ...agent_registry import registered_agent_ids_from_registry
-from ...todos import add_goal_todo
+from loopx.agent_registry import registered_agent_ids_from_registry
+from loopx.todos import add_goal_todo
 
 
 MULTI_AGENT_ROLE_SUCCESSOR_TODOS_SCHEMA_VERSION = "multi_agent_role_successor_todos_v0"

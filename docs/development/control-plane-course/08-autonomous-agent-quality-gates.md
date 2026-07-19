@@ -507,6 +507,57 @@ if candidate["git_dirty"]:
 ready，返回值仍固定 `automatic_release_promotion_allowed=False`，owner decision 没被
 测试 reducer 吞掉。
 
+## 组合案例七：行为保持的规则优先级重构
+
+在 [PR #2320](https://github.com/huangruiteng/loopx/pull/2320) 中，goal-frontier replan
+从隐式 `if` 链提取成 ordered rules；它没有新增 public payload，
+但它仍是 high-risk change：一次顺序漂移就可能让 agent 在已有工作时错误 replan，或在
+frontier 耗尽时永久等待。第 7 讲解释了实现结构；这里关注门禁怎样证明“移动了政策，但
+没有改变政策”。
+
+第一层是完整 decision table。每个 case 不只设置目标条件，还叠加一个更低优先级条件，
+证明 first-match precedence：
+
+```python
+@pytest.mark.parametrize(
+    ("overrides", "expected_rule", "derives_obligation"),
+    [
+        (
+            {"blocking_handoff_gate_count": 1, "acceptance_gap_count": 1},
+            GoalFrontierReplanRule.BLOCKING_HANDOFF_GATE,
+            False,
+        ),
+        (
+            {"succession_gap_count": 1, "acceptance_gap_count": 1},
+            GoalFrontierReplanRule.TODO_SUCCESSION_GAP,
+            True,
+        ),
+        (
+            {"monitor_only_lane": True, "monitor_count": 1},
+            GoalFrontierReplanRule.MONITOR_FRONTIER_EXHAUSTED,
+            True,
+        ),
+    ],
+)
+def test_goal_frontier_replan_decision_table(...):
+    decision = select_goal_frontier_replan_rule(
+        replace(GoalFrontierReplanFacts(), **overrides)
+    )
+    assert decision.rule is expected_rule
+    assert decision.derives_obligation is derives_obligation
+```
+
+第二层是 metamorphic test：不改变当前 agent 的 source facts，只扩大其他 peer 的 backlog，
+结果必须不变；再加入当前 agent 自己的 runnable advancement，结果必须翻转。它检查的是
+agent-scope invariant，不是某份固定 JSON。
+
+第三层让 focused smoke 经由 `build_quota_should_run` 验证最终路由，防止纯 selector 正确、
+integration 却漏传 facts。第四层把 surface 登记进 quality catalog 和 risk-based canary。
+
+这类确定性重构不运行 Doubao。模型可以判断 packet 是否易于理解，却不应决定
+`blocking_handoff_gate` 和 `vision_acceptance_gap` 谁优先。将模型层明确记为
+`not_applicable(reason)`，比为了“测试层数完整”而增加随机调用更严格。
+
 ## Agent 自主交付的标准顺序
 
 ```text
@@ -535,6 +586,7 @@ ready，返回值仍固定 `automatic_release_promotion_allowed=False`，owner d
 6. `tests/control_plane/test_cli_output_budget.py`
 7. `tests/control_plane/test_actual_default_model_behavior_portfolio.py`
 8. `tests/control_plane/test_scheduler_ack_decision_table.py`
+9. `tests/control_plane/test_goal_frontier_replan_rules.py`
 
 ## 代表性实验
 

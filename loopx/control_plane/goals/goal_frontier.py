@@ -18,6 +18,11 @@ from ..work_items.autonomous_replan_obligation import (
     build_autonomous_replan_obligation_payload,
 )
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
+from .goal_frontier_replan_rules import (
+    GoalFrontierReplanFacts,
+    GoalFrontierReplanRule,
+    select_goal_frontier_replan_rule,
+)
 from .goal_vision_policy import goal_vision_repeats_advancement_until_closed
 from .goal_vision_state import (
     goal_vision_state_is_closed,
@@ -1167,11 +1172,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     monitor/vision semantics in its scheduler path.
     """
 
-    if autonomous_replan_is_required(existing_replan_obligation):
-        return None
-    if _blocking_handoff_gate_count(agent_todo_summary, agent_id=agent_id) > 0:
-        return None
-
     user_counts = _summary_task_counts(user_todo_summary)
     agent_counts = _summary_task_counts(agent_todo_summary)
     frontier_counts = _frontier_advancement_counts(
@@ -1190,11 +1190,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         item.get("kind") == VISION_SUCCESSOR_GAP_TRIGGER
         for item in compact_acceptance_gaps
     )
-    if (
-        _ready_deferred_successor_count(agent_todo_summary, agent_id=agent_id) > 0
-        and not successor_vision_required
-    ):
-        return None
     acceptance_allows_watch_lane_continuation = bool(
         compact_acceptance_gaps
         and not any(
@@ -1210,17 +1205,56 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             delta_kind="watch_lane_continuation",
         )
     )
-    if user_counts.get("open", 0) > 0:
-        return None
     succession_gap_items = _succession_gap_items(
         agent_todo_summary,
         agent_id=agent_id,
     )
-    if (
-        succession_gap_items
-        and agent_counts.get("advancement", 0) == 0
-        and total_frontier_advancement == 0
-    ):
+    long_chain_trigger = _long_todo_chain_trigger(
+        agent_todo_summary=agent_todo_summary,
+        agent_counts=agent_counts,
+        frontier_counts=frontier_counts,
+        agent_id=agent_id,
+    )
+    replan_rule = select_goal_frontier_replan_rule(
+        GoalFrontierReplanFacts(
+            existing_replan_required=autonomous_replan_is_required(
+                existing_replan_obligation
+            ),
+            blocking_handoff_gate_count=_blocking_handoff_gate_count(
+                agent_todo_summary,
+                agent_id=agent_id,
+            ),
+            ready_deferred_successor_count=_ready_deferred_successor_count(
+                agent_todo_summary,
+                agent_id=agent_id,
+            ),
+            successor_vision_required=successor_vision_required,
+            user_open_count=user_counts.get("open", 0),
+            succession_gap_count=len(succession_gap_items),
+            agent_advancement_count=agent_counts.get("advancement", 0),
+            total_frontier_advancement=total_frontier_advancement,
+            acceptance_gap_count=len(compact_acceptance_gaps),
+            selectable_frontier_advancement=selectable_frontier_advancement,
+            acceptance_allows_watch_lane_continuation=(
+                acceptance_allows_watch_lane_continuation
+            ),
+            long_todo_chain_triggered=long_chain_trigger is not None,
+            long_todo_chain_acknowledged=autonomous_replan_ack_has_frontier_delta(
+                latest_replan_ack
+            ),
+            watch_lane_continuation_acknowledged=(
+                _autonomous_replan_ack_has_delta_kind(
+                    latest_replan_ack,
+                    delta_kind="watch_lane_continuation",
+                )
+            ),
+            monitor_only_lane=_is_monitor_only_lane(work_lane_contract),
+            monitor_count=agent_counts.get("monitor", 0),
+        )
+    )
+    if not replan_rule.derives_obligation:
+        return None
+    if replan_rule.rule is GoalFrontierReplanRule.TODO_SUCCESSION_GAP:
         triggers = [
             {
                 "kind": TODO_SUCCESSION_GAP_TRIGGER,
@@ -1267,18 +1301,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "the next advancement todo, or record explicit no-follow-up"
             ),
         )
-    if (
-        compact_acceptance_gaps
-        and (
-            successor_vision_required
-            or (
-                # Another peer's claimed work cannot satisfy this agent's
-                # scoped vision or checkpoint acceptance gap.
-                selectable_frontier_advancement == 0
-            )
-        )
-        and not acceptance_allows_watch_lane_continuation
-    ):
+    if replan_rule.rule is GoalFrontierReplanRule.VISION_ACCEPTANCE_GAP:
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             agent_id=agent_id,
@@ -1324,15 +1347,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "record no-follow-up"
             ),
         )
-    long_chain_trigger = _long_todo_chain_trigger(
-        agent_todo_summary=agent_todo_summary,
-        agent_counts=agent_counts,
-        frontier_counts=frontier_counts,
-        agent_id=agent_id,
-    )
-    if long_chain_trigger and not autonomous_replan_ack_has_frontier_delta(
-        latest_replan_ack
-    ):
+    if replan_rule.rule is GoalFrontierReplanRule.LONG_TODO_CHAIN:
+        assert long_chain_trigger is not None
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             agent_id=agent_id,
@@ -1379,21 +1395,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "is weak, group/prune work, and write a concrete todo or vision delta"
             ),
         )
-    # Empty monitor-only frontiers require an explicit watch continuation.
-    # Generic vision, next-action, or no-followup writebacks can close other
-    # replan obligations, but they do not prove that an active goal intended
-    # to stop generating advancement work.
-    if _autonomous_replan_ack_has_delta_kind(
-        latest_replan_ack,
-        delta_kind="watch_lane_continuation",
-    ):
-        return None
-    if not _is_monitor_only_lane(work_lane_contract):
-        return None
-    if agent_counts.get("monitor", 0) <= 0:
-        return None
-    if agent_counts.get("advancement", 0) > 0 or total_frontier_advancement > 0:
-        return None
+    assert replan_rule.rule is GoalFrontierReplanRule.MONITOR_FRONTIER_EXHAUSTED
     future_schedule_present = _monitor_only_lane_has_future_schedule(agent_todo_summary)
 
     return build_autonomous_replan_obligation_payload(

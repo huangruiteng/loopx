@@ -229,6 +229,12 @@ from current goal authority and its own agent-scoped requirements and receipts.
 The optional cold-path input does not create an agent row, claim, or task by
 itself.
 
+The cold-path join is scoped by `(goal_id, agent_id)`, not agent identity alone.
+An explicit status goal filter takes precedence, followed by the current todo's
+goal and then a single unambiguous row goal. When a multi-goal agent row has no
+unique goal context, LoopX omits the material enrichment instead of selecting a
+frontier by input order.
+
 ## Stale Claim Hint
 
 `stale_claim_hint` is an observability warning, not an automatic reclaim rule.

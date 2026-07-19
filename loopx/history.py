@@ -34,12 +34,12 @@ from .presentation.markdown import (
     markdown_table_row,
     markdown_table_separator,
 )
-from .quota import (
-    QUOTA_MONITOR_POLL_CLASSIFICATION,
+from .control_plane.quota.monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
+from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_SPENT_CLASSIFICATION,
     QUOTA_SLOT_VOIDED_CLASSIFICATION,
-    goal_quota_with_spend_ledger,
 )
+from .quota import goal_quota_with_spend_ledger
 from .registry import read_json, registry_goals
 
 

@@ -117,6 +117,12 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     )
     kanban_schema_args = ("lark-kanban", "schema")
     explore_schema_args = ("explore", "schema")
+    quota_args = (
+        "quota",
+        "should-run",
+        "--goal-id",
+        "lark-extension-fixture",
+    )
 
     missing = run_cli(
         registry,
@@ -146,6 +152,12 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "not installed" in str(explore_missing["error"]), explore_missing
+    quota_missing = run_cli(
+        registry, runtime_root, *quota_args, expected_returncode=1
+    )
+    assert quota_missing["goal_boundary"]["capabilities"]["lark_event_inbox"][
+        "urgency"
+    ]["projection_status"] == "unavailable", quota_missing
 
     installed = run_cli(
         registry,
@@ -161,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert active["extension_activation"] == {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.2.0",
+        "provider_version": "1.3.1",
         "revision": installed["revision"],
         "enabled": True,
         "doctor_verified": True,
@@ -188,6 +200,14 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         **active["extension_activation"],
         "required_permissions": ["lark.projection_sink.use"],
     }, explore_active
+    quota_active = run_cli(
+        registry, runtime_root, *quota_args, expected_returncode=1
+    )
+    active_urgency = quota_active["goal_boundary"]["capabilities"][
+        "lark_event_inbox"
+    ]["urgency"]
+    assert active_urgency["schema_version"] == "lark_event_inbox_urgency_v0"
+    assert active_urgency.get("projection_status") != "unavailable"
 
     disabled = run_cli(
         registry,
@@ -226,6 +246,12 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
         expected_returncode=1,
     )
     assert "is disabled" in str(explore_blocked["error"]), explore_blocked
+    quota_disabled = run_cli(
+        registry, runtime_root, *quota_args, expected_returncode=1
+    )
+    assert quota_disabled["goal_boundary"]["capabilities"]["lark_event_inbox"][
+        "urgency"
+    ]["projection_status"] == "unavailable", quota_disabled
 
     enabled = run_cli(
         registry,
@@ -238,11 +264,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert enabled["doctor"]["verified"] is True, enabled
 
     bundled_manifest = ROOT / "loopx" / "extensions" / "lark" / "extension.toml"
-    upgraded_manifest = temp / "loopx-lark-v1.3.toml"
+    upgraded_manifest = temp / "loopx-lark-v1.4.toml"
     upgraded_manifest.write_text(
         bundled_manifest.read_text(encoding="utf-8").replace(
-            'version = "1.2.0"',
-            'version = "1.3.0"',
+            'version = "1.3.1"',
+            'version = "1.4.0"',
             1,
         ),
         encoding="utf-8",

@@ -129,6 +129,49 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "surface_id": "goal-frontier-replan",
+        "title": "Goal-frontier replan obligation and precedence",
+        "risk": "high",
+        "canary_profile_id": "goal-frontier-replan-rules",
+        "owner_paths": [
+            "loopx/control_plane/goals/goal_frontier.py",
+            "loopx/control_plane/goals/goal_frontier_replan_rules.py",
+            "loopx/control_plane/work_items/autonomous_replan_ack.py",
+        ],
+        "semantic_oracle": {
+            "source_kind": "specification",
+            "refs": [
+                "docs/reference/protocols/goal-vision-replan-contract-v0.md"
+            ],
+            "independence_rationale": (
+                "The goal-vision contract defines when an agent-local frontier is "
+                "exhausted, blocked, or already advancing before the ordered rule "
+                "selector and quota projection are exercised."
+            ),
+        },
+        "layers": {
+            "unit_contract": _covered(
+                "tests/control_plane/test_goal_frontier_replan_rules.py",
+                "tests/control_plane/test_goal_vision_succession.py",
+                "tests/control_plane/test_goal_vision_blocked_successor.py",
+            ),
+            "durable_smoke": _covered(
+                "examples/control_plane/goal-frontier-replan-rules-smoke.py",
+                "examples/control_plane/quota-replan-decision-plane-smoke.py",
+            ),
+            "catalog_canary": _covered("goal-frontier-replan-rules"),
+            "host_upgrade": _not_applicable(
+                "Host continuity does not decide whether an agent-local goal frontier requires replanning."
+            ),
+            "model_behavior": _not_applicable(
+                "Replan precedence is a deterministic control-plane invariant, not a model judgment."
+            ),
+            "release_gate": _covered(
+                "loopx canary premerge --profile goal-frontier-replan-rules"
+            ),
+        },
+    },
+    {
         "surface_id": "agent-facing-cli-output",
         "title": "Agent-facing guided projection and output budgets",
         "risk": "high",

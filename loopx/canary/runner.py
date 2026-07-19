@@ -25,7 +25,9 @@ EXPLICIT_GROUPED_SMOKES = {
     "dashboard-demo-readiness-smoke.py",
 }
 GIT_REQUIRED_SCRIPTS = {
-    "repo-python-line-budget-smoke.py": "requires git ls-files over tracked Python files",
+    "control-plane-maintainability-ratchet-smoke.py": (
+        "requires git ls-files so untracked local artifacts do not enter the report"
+    ),
 }
 SERIAL_SMOKE_SCRIPTS = {
     "issue-fix-acceptance-loop-smoke.py": (

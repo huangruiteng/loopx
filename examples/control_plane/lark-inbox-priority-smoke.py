@@ -15,11 +15,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.extensions.lark.event_inbox import (  # noqa: E402
+    LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
     acknowledge_lark_event_inbox,
     project_lark_event_inbox_urgency,
 )
 from loopx.control_plane.work_items.operator_inbox import (  # noqa: E402
-    LARK_OPERATOR_INBOX_SOURCE_CONTRACT,
     project_operator_inbox_urgency,
 )
 from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
@@ -148,7 +148,11 @@ def main() -> None:
             encoding="utf-8",
         )
 
-        decision = build_quota_should_run(status_payload(project), goal_id=GOAL_ID)
+        decision = build_quota_should_run(
+            status_payload(project),
+            goal_id=GOAL_ID,
+            operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
+        )
         assert decision["should_run"] is True, decision
         assert decision["effective_action"] == "lark_inbox_reply_due", decision
         assert decision["monitor_debt_arbitration"]["active"] is True, decision
@@ -218,7 +222,9 @@ def main() -> None:
             encoding="utf-8",
         )
         reply_decision = build_quota_should_run(
-            status_payload(project), goal_id=GOAL_ID
+            status_payload(project),
+            goal_id=GOAL_ID,
+            operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
         )
         reply_lane = reply_decision["work_lane_contract"]
         assert reply_decision["effective_action"] == "lark_inbox_reply_due", (
@@ -232,7 +238,11 @@ def main() -> None:
             message_ids=["om_verified_bot_reply"],
             execute=True,
         )
-        after_ack = build_quota_should_run(status_payload(project), goal_id=GOAL_ID)
+        after_ack = build_quota_should_run(
+            status_payload(project),
+            goal_id=GOAL_ID,
+            operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
+        )
         assert after_ack["work_lane_contract"]["lane"] == "advancement_task", after_ack
         assert after_ack["effective_action"] == "normal_run", after_ack
 

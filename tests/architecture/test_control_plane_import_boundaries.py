@@ -1,14 +1,31 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from importlib.util import resolve_name
 from pathlib import Path
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "loopx"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_ROOT = REPOSITORY_ROOT / "loopx"
+SCRIPTS_ROOT = REPOSITORY_ROOT / "scripts"
 CONTROL_PLANE_ROOT = PACKAGE_ROOT / "control_plane"
 STATUS_MODULE = PACKAGE_ROOT / "status.py"
 QUOTA_MODULE = PACKAGE_ROOT / "quota.py"
+PUBLIC_CONTRACT_ROOTS = (
+    REPOSITORY_ROOT / "tests",
+    REPOSITORY_ROOT / "examples",
+    REPOSITORY_ROOT / "scripts",
+    REPOSITORY_ROOT / "regression",
+)
+PUBLIC_COMPAT_FACADES = {
+    "loopx.status": STATUS_MODULE,
+    "loopx.quota": QUOTA_MODULE,
+}
+GOAL_BOUNDARY_MODULE = CONTROL_PLANE_ROOT / "quota" / "goal_boundary.py"
+OPERATOR_INBOX_MODULE = CONTROL_PLANE_ROOT / "work_items" / "operator_inbox.py"
+QUOTA_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "quota.py"
+TURN_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "turn.py"
 LARK_INBOX_CLI_MODULE = PACKAGE_ROOT / "cli_commands" / "lark_inbox.py"
 ISSUE_FIX_REVIEWER_CLI_MODULE = (
     PACKAGE_ROOT / "capabilities" / "issue_fix" / "reviewer_cli.py"
@@ -62,6 +79,105 @@ def _resolved_imports(path: Path) -> set[str]:
     return imports
 
 
+def _resolved_from_imports(path: Path) -> dict[str, set[str]]:
+    package_name = ""
+    if path.is_relative_to(PACKAGE_ROOT):
+        module_name = _module_name(path)
+        package_name = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imports: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        if node.level:
+            if not package_name:
+                continue
+            module = resolve_name("." * node.level + module, package_name)
+        imports.setdefault(module, set()).update(alias.name for alias in node.names)
+    return imports
+
+
+def _top_level_imported_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        alias.asname or alias.name
+        for node in tree.body
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+
+
+def _top_level_function_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def _top_level_import_bindings(path: Path) -> dict[str, str]:
+    module_name = _module_name(path)
+    package_name = module_name.rpartition(".")[0]
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    bindings: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level:
+                module = resolve_name("." * node.level + module, package_name)
+            for alias in node.names:
+                bindings[alias.asname or alias.name] = f"{module}.{alias.name}"
+    return bindings
+
+
+def _public_import_only_bindings(path: Path) -> dict[str, str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    loaded_names = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    }
+    return {
+        name: target
+        for name, target in _top_level_import_bindings(path).items()
+        if name != "annotations" and not name.startswith("_") and name not in loaded_names
+    }
+
+
+def _public_contract_evidence() -> dict[tuple[str, str], set[str]]:
+    evidence: dict[tuple[str, str], set[str]] = {}
+    for root in PUBLIC_CONTRACT_ROOTS:
+        for path in root.rglob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                if node.module not in PUBLIC_COMPAT_FACADES:
+                    continue
+                for alias in node.names:
+                    evidence.setdefault((node.module, alias.name), set()).add(
+                        str(path.relative_to(REPOSITORY_ROOT))
+                    )
+    for path in (REPOSITORY_ROOT / "docs").rglob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        for facade_name in PUBLIC_COMPAT_FACADES:
+            facade = importlib.import_module(facade_name)
+            for export_name in facade._PUBLIC_COMPAT_REEXPORTS:
+                if (
+                    f"{facade_name}.{export_name}" in text
+                    or f"from {facade_name} import {export_name}" in text
+                ):
+                    evidence.setdefault((facade_name, export_name), set()).add(
+                        str(path.relative_to(REPOSITORY_ROOT))
+                    )
+    return evidence
+
+
 def test_control_plane_does_not_gain_outward_dependencies() -> None:
     outward_dependencies = {
         (_module_name(path), dependency)
@@ -82,9 +198,81 @@ def test_control_plane_does_not_gain_outward_dependencies() -> None:
 def test_quota_markdown_is_owned_by_the_presentation_layer() -> None:
     legacy_renderer = CONTROL_PLANE_ROOT / "quota" / "markdown.py"
     imports = _resolved_imports(QUOTA_MODULE)
+    cli_imports = _resolved_from_imports(QUOTA_CLI_MODULE)
+    presentation_renderers = cli_imports.get(
+        "loopx.presentation.renderers.quota_event_markdown", set()
+    )
 
     assert not legacy_renderer.exists()
     assert "loopx.presentation.renderers.quota_markdown" in imports
+    assert {
+        "render_quota_monitor_poll_markdown",
+        "render_quota_slot_preview_markdown",
+    } <= presentation_renderers
+    assert "loopx.presentation.renderers.quota_event_markdown" in imports
+    assert "render_quota_monitor_poll_markdown" not in _top_level_function_names(
+        CONTROL_PLANE_ROOT / "quota" / "monitor_poll.py"
+    )
+    assert "render_quota_slot_preview_markdown" not in _top_level_function_names(
+        CONTROL_PLANE_ROOT / "quota" / "slot_accounting.py"
+    )
+
+
+def test_internal_consumers_bypass_status_and_quota_reexport_routes() -> None:
+    facade_reexports = {
+        "loopx.status": _top_level_imported_names(STATUS_MODULE),
+        "loopx.quota": _top_level_imported_names(QUOTA_MODULE),
+    }
+    internal_paths = (
+        path
+        for root in (PACKAGE_ROOT, SCRIPTS_ROOT)
+        for path in root.rglob("*.py")
+        if path not in {STATUS_MODULE, QUOTA_MODULE}
+    )
+    indirect_imports = {
+        (_module_name(path) if path.is_relative_to(PACKAGE_ROOT) else str(path.relative_to(REPOSITORY_ROOT)), facade, name)
+        for path in internal_paths
+        for facade, imported_names in _resolved_from_imports(path).items()
+        if facade in facade_reexports
+        for name in imported_names & facade_reexports[facade]
+    }
+
+    assert not indirect_imports, (
+        "repository-internal consumers must import extracted symbols from their "
+        f"canonical modules instead of status/quota re-export routes: {sorted(indirect_imports)}"
+    )
+
+
+def test_public_facade_import_only_reexports_match_the_audited_allowlist() -> None:
+    for facade_name, source_path in PUBLIC_COMPAT_FACADES.items():
+        facade = importlib.import_module(facade_name)
+        allowlist = getattr(facade, "_PUBLIC_COMPAT_REEXPORTS")
+        import_only_bindings = _public_import_only_bindings(source_path)
+
+        assert import_only_bindings == {
+            export_name: f"{canonical_module}.{export_name}"
+            for export_name, canonical_module in allowlist.items()
+        }
+        for export_name, canonical_module_name in allowlist.items():
+            canonical_module = importlib.import_module(canonical_module_name)
+            assert getattr(facade, export_name) is getattr(
+                canonical_module, export_name
+            )
+
+
+def test_public_facade_compatibility_entries_have_contract_evidence() -> None:
+    evidence = _public_contract_evidence()
+    missing_evidence: list[tuple[str, str]] = []
+    for facade_name in PUBLIC_COMPAT_FACADES:
+        facade = importlib.import_module(facade_name)
+        for export_name in facade._PUBLIC_COMPAT_REEXPORTS:
+            if not evidence.get((facade_name, export_name)):
+                missing_evidence.append((facade_name, export_name))
+
+    assert not missing_evidence, (
+        "import-only compatibility exports need a repository consumer or explicit "
+        f"public documentation; remove stale entries: {missing_evidence}"
+    )
 
 
 def test_status_outward_dependency_debt_only_shrinks() -> None:
@@ -109,11 +297,29 @@ def test_status_outward_dependency_debt_only_shrinks() -> None:
     )
 
 
-def test_quota_operator_inbox_dependency_points_inward() -> None:
-    imports = _resolved_imports(QUOTA_MODULE)
+def test_quota_receives_lark_urgency_only_through_cli_composition() -> None:
+    for module in (QUOTA_MODULE, GOAL_BOUNDARY_MODULE):
+        imports = _resolved_imports(module)
+        assert not any(
+            dependency == "loopx.extensions.lark"
+            or dependency.startswith("loopx.extensions.lark.")
+            for dependency in imports
+        )
 
-    assert "loopx.capabilities.lark.event_inbox" not in imports
-    assert "loopx.control_plane.work_items.operator_inbox" in imports
+    assert "loopx.cli_commands.lark_inbox" in _resolved_imports(QUOTA_CLI_MODULE)
+    assert "loopx.cli_commands.lark_inbox" in _resolved_imports(TURN_CLI_MODULE)
+
+
+def test_lark_operator_inbox_contract_is_extension_owned() -> None:
+    core_source = OPERATOR_INBOX_MODULE.read_text(encoding="utf-8")
+    extension_source = (LARK_EXTENSION_ROOT / "event_inbox.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "LARK_OPERATOR_INBOX_SOURCE_CONTRACT" not in core_source
+    assert "lark_event_inbox_config_v0" not in core_source
+    assert "LARK_OPERATOR_INBOX_SOURCE_CONTRACT" in extension_source
+    assert "OperatorInboxSourceContract" in extension_source
 
 
 def test_lark_inbox_provider_is_owned_by_the_extension_layer() -> None:

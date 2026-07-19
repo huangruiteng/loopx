@@ -19,6 +19,56 @@ SOURCE_PROFILE_IDS = {
     "finance_market_snapshot",
 }
 
+OUTCOME_PROVIDER_BINDINGS: dict[str, dict[str, str | None]] = {
+    "github_public_channel": {
+        "outcome_capability_id": "issue-fix",
+        "provider_binding_state": "migrated",
+        "provider_module": "loopx.capabilities.issue_fix.github_public",
+    },
+    "github_public_reply_monitor": {
+        "outcome_capability_id": "issue-fix",
+        "provider_binding_state": "migrated",
+        "provider_module": "loopx.capabilities.issue_fix.github_public",
+    },
+    "content_ops_public_handle": {
+        "outcome_capability_id": "content-ops",
+        "provider_binding_state": "native",
+        "provider_module": "loopx.capabilities.content_ops.surface",
+    },
+    "social_browser_x": {
+        "outcome_capability_id": "content-ops",
+        "provider_binding_state": "mapped",
+        "provider_module": None,
+    },
+    "agent_reach_ops_source_map": {
+        "outcome_capability_id": "content-ops",
+        "provider_binding_state": "mapped",
+        "provider_module": None,
+    },
+    "finance_market_snapshot": {
+        "outcome_capability_id": "finance-value-discovery",
+        "provider_binding_state": "mapped",
+        "provider_module": None,
+    },
+    "botmail_identity": {
+        "outcome_capability_id": "content-ops",
+        "provider_binding_state": "mapped",
+        "provider_module": None,
+    },
+    "community_channel": {
+        "outcome_capability_id": "content-ops",
+        "provider_binding_state": "mapped",
+        "provider_module": None,
+    },
+}
+
+
+def _outcome_provider_binding(connector_id: str) -> dict[str, str | None]:
+    binding = OUTCOME_PROVIDER_BINDINGS.get(connector_id)
+    if binding is None:
+        raise ValueError(f"connector {connector_id!r} has no outcome provider binding")
+    return dict(binding)
+
 
 def _source_profile(
     *,
@@ -56,6 +106,7 @@ def _source_profile(
             "requested action would capture raw private content",
             "requested action would perform an external write without an audit gate",
         ],
+        **_outcome_provider_binding(connector_id),
     }
 
 
@@ -203,6 +254,7 @@ def _action_gated_profiles() -> list[dict[str, Any]]:
             "purpose": "email or botmail identity for replies and outreach",
             "safe_prepare_command": "loopx value-connectors plan --connector-id botmail_identity --connector-kind botmail_identity ... --format json",
             "write_gate": "exact sender, recipient, subject, body, metric, and stop condition required",
+            **_outcome_provider_binding("botmail_identity"),
         },
         {
             "connector_id": "community_channel",
@@ -210,6 +262,7 @@ def _action_gated_profiles() -> list[dict[str, Any]]:
             "purpose": "community reply or post after channel-rule review",
             "safe_prepare_command": "loopx value-connectors plan --connector-id community_channel --connector-kind community_channel ... --format json",
             "write_gate": "exact channel, account identity, message, value metric, and channel-rule fit required",
+            **_outcome_provider_binding("community_channel"),
         },
     ]
 
@@ -263,6 +316,14 @@ def build_value_connector_source_map_packet(*, connector: str = "all") -> dict[s
         "source_profile_count": len(profiles),
         "action_gated_profile_count": len(action_gated),
         "external_write_blocked_by_default": True,
+        "compatibility_facade": True,
+        "new_profile_ownership_allowed": False,
+        "mapped_profile_count": len(profiles) + len(action_gated),
+        "migrated_profile_count": sum(
+            1
+            for profile in [*profiles, *action_gated]
+            if profile.get("provider_binding_state") in {"migrated", "native"}
+        ),
         "read_first_loop": [
             "choose source profile",
             "run only the read/metadata command",
@@ -310,6 +371,8 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
         f"- external_reads_performed: `{payload.get('external_reads_performed')}`",
         f"- external_writes_performed: `{payload.get('external_writes_performed')}`",
         f"- agent_can_start_without_docs: `{projection.get('agent_can_start_without_docs')}`",
+        f"- compatibility_facade: `{projection.get('compatibility_facade')}`",
+        f"- new_profile_ownership_allowed: `{projection.get('new_profile_ownership_allowed')}`",
         f"- source_profile_count: `{projection.get('source_profile_count')}`",
         f"- action_gated_profile_count: `{projection.get('action_gated_profile_count')}`",
         "",
@@ -328,6 +391,8 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
                 "",
                 f"- status: `{profile.get('status')}`",
                 f"- boundary: `{profile.get('boundary')}`",
+                f"- outcome_capability_id: `{profile.get('outcome_capability_id')}`",
+                f"- provider_binding_state: `{profile.get('provider_binding_state')}`",
                 f"- evidence_schema: `{profile.get('evidence_schema')}`",
                 f"- maturity_hint: {profile.get('maturity_hint')}",
                 "- commands:",
@@ -347,6 +412,8 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
             lines.extend(
                 [
                     f"- `{profile.get('connector_id')}`: {profile.get('purpose')}",
+                    f"  - outcome_capability_id: `{profile.get('outcome_capability_id')}`",
+                    f"  - provider_binding_state: `{profile.get('provider_binding_state')}`",
                     f"  - gate: {profile.get('write_gate')}",
                 ]
             )

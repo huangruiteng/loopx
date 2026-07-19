@@ -230,6 +230,47 @@ def other_agent_gate_with_non_due_monitor_payload() -> dict:
     )
 
 
+def other_agent_gate_with_current_user_action_payload() -> dict:
+    primary_login_gate = todo_item(
+        todo_id="todo_primary_runner_login",
+        text="Log in to the primary agent runner before resuming its evaluation.",
+        role="user",
+        task_class="user_gate",
+        action_kind="runner_login",
+        blocks_agent="codex-main-control",
+    )
+    value_user_action = todo_item(
+        todo_id="todo_value_review_material",
+        text="Review the value-lane handoff material when convenient.",
+        role="user",
+        task_class="user_action",
+        action_kind="review_handoff_material",
+        claimed_by="codex-value-explorer",
+        priority="P1",
+    )
+    value_agent_todo = todo_item(
+        todo_id="todo_value_review_pr",
+        text="[P1] Review the value-lane projection PR.",
+        claimed_by="codex-value-explorer",
+        action_kind="review_value_projection",
+        priority="P1",
+    )
+    return status_fixture_payload(
+        status="active_state_user_todo",
+        waiting_on="controller",
+        severity="action",
+        recommended_action="Primary runner login is pending.",
+        quota_state="operator_gate",
+        quota_extra={"reason": "open user gate"},
+        user_todos=todo_summary_items(
+            [value_user_action, primary_login_gate],
+            source_section="User Todo",
+        ),
+        agent_todos=todo_summary(value_agent_todo, source_section="Agent Todo"),
+        coordination_payload=coordination(VALUE_AGENT),
+    )
+
+
 def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
     payload = build_quota_should_run(
         status_payload(),
@@ -259,6 +300,42 @@ def assert_other_agent_user_gate_does_not_block_current_agent() -> None:
         "agent_todo_summary.first_executable_items"
     ), payload
     assert payload["selected_todo"]["selected_by"] == "current_agent_claimed_todo", payload
+
+
+def assert_current_user_action_does_not_preserve_other_agent_operator_gate() -> None:
+    payload = build_quota_should_run(
+        other_agent_gate_with_current_user_action_payload(),
+        goal_id=GOAL_ID,
+        agent_id=VALUE_AGENT,
+    )
+    assert payload["decision"] == "run", payload
+    assert payload["state"] == "eligible", payload
+    assert payload["should_run"] is True, payload
+    assert payload["normal_delivery_allowed"] is True, payload
+    assert payload["requires_user_action"] is True, payload
+    assert payload["notify_user_on_open_todo"] is True, payload
+    assert "notify_user_on_gate" not in payload, payload
+
+    summary = payload["user_todo_summary"]
+    assert summary["open_count"] == 1, summary
+    assert summary["user_action_open_count"] == 1, summary
+    assert summary["first_open_items"][0]["todo_id"] == "todo_value_review_material", summary
+    assert summary["other_agent_scoped_open_count"] == 1, summary
+    assert summary["other_agent_scoped_items"][0]["todo_id"] == "todo_primary_runner_login", summary
+
+    override = payload["agent_scoped_user_gate_override"]
+    assert override["from_state"] == "operator_gate", override
+    assert override["to_state"] == "eligible", override
+    assert override["other_agent_scoped_open_count"] == 1, override
+    assert payload["selected_todo"]["todo_id"] == "todo_value_review_pr", payload
+    assert "scoped_user_gate_fallback" not in payload, payload
+
+    contract = payload["interaction_contract"]
+    assert contract["mode"] == "bounded_delivery_with_user_notice", contract
+    assert contract["user_channel"]["action_required"] is True, contract
+    assert contract["user_channel"]["notify"] == "NOTIFY", contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    assert contract["agent_channel"]["delivery_allowed"] is True, contract
 
 
 def assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane() -> None:
@@ -960,6 +1037,7 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
 
 def main() -> int:
     assert_other_agent_user_gate_does_not_block_current_agent()
+    assert_current_user_action_does_not_preserve_other_agent_operator_gate()
     assert_other_agent_user_gate_does_not_notify_non_due_monitor_lane()
     assert_target_agent_still_blocks_on_its_user_gate()
     assert_unscoped_user_gate_requires_projection_repair()

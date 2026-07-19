@@ -14,7 +14,7 @@ if str(ROOT) not in sys.path:
 from loopx.capabilities.auto_research.preset import (  # noqa: E402
     build_auto_research_minimal_a2a_recipe,
 )
-from loopx.capabilities.multi_agent.recipe import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.recipe import (  # noqa: E402
     DEFAULT_DECENTRALIZED_A2A_PROOF_CONTRACT,
     build_minimal_decentralized_a2a_recipe,
     parse_multi_agent_role_spec_lines,
@@ -23,7 +23,9 @@ from loopx.capabilities.multi_agent.recipe import (  # noqa: E402
 
 def main() -> int:
     preset_source = ROOT / "loopx" / "capabilities" / "auto_research" / "preset.py"
-    generic_source = ROOT / "loopx" / "capabilities" / "multi_agent" / "recipe.py"
+    generic_source = (
+        ROOT / "loopx" / "control_plane" / "agents" / "multi_agent" / "recipe.py"
+    )
     preset_text = preset_source.read_text(encoding="utf-8")
     generic_text = generic_source.read_text(encoding="utf-8")
 

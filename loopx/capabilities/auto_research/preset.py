@@ -18,7 +18,7 @@ from .role_profiles import (
     auto_research_successor_specs_for_action,
     knn_demo_visible_first_steps,
 )
-from ..multi_agent.recipe import (
+from ...control_plane.agents.multi_agent.recipe import (
     build_minimal_decentralized_a2a_recipe,
     parse_multi_agent_role_spec_lines,
 )

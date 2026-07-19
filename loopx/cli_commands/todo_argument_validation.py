@@ -49,6 +49,8 @@ TODO_OPTION_FIELDS = (
     ("--next-claimed-by", "next_claimed_by"),
     ("--next-task-class", "next_task_class"),
     ("--next-action-kind", "next_action_kind"),
+    ("--next-task-repository", "next_task_repository"),
+    ("--next-required-capability", "next_required_capabilities"),
     ("--next-continuation-policy", "next_continuation_policy"),
     ("--next-excluded-agent", "next_excluded_agents"),
     ("--self-merged", "self_merged"),
@@ -150,3 +152,14 @@ def validate_capability_gap_options(args: argparse.Namespace) -> None:
             "fixed and real_callsite_verified capability gaps require "
             "public-safe --evidence"
         )
+
+
+def validate_successor_routing_options(args: argparse.Namespace) -> None:
+    if args.next_continuation_policy and not args.next_agent_todo:
+        raise ValueError("--next-continuation-policy requires --next-agent-todo")
+    if args.next_task_repository and not args.next_agent_todo:
+        raise ValueError("--next-task-repository requires --next-agent-todo")
+    if args.next_required_capabilities and not args.next_agent_todo:
+        raise ValueError("--next-required-capability requires --next-agent-todo")
+    if args.next_excluded_agents and not args.next_agent_todo:
+        raise ValueError("--next-excluded-agent requires --next-agent-todo")

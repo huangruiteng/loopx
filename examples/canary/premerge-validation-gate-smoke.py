@@ -414,7 +414,7 @@ def assert_external_dirty_worktree_uses_caller_repo() -> None:
         assert all(check["ok"] for check in passed_payload["direct_checks"]), passed_payload
 
 
-def assert_inherited_line_budget_red_is_advisory_only() -> None:
+def assert_inherited_maintainability_red_is_advisory_only() -> None:
     inherited_run = {
         "ok": False,
         "warning_count": 0,
@@ -422,8 +422,11 @@ def assert_inherited_line_budget_red_is_advisory_only() -> None:
             {
                 "ok": False,
                 "status": "failed",
-                "command": "python3 examples/control_plane/repo-python-line-budget-smoke.py",
-                "stderr_tail": "loopx/benchmark_adapters/skillsbench_acp_relay.py has 3775 lines",
+                "command": "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py",
+                "stdout_tail": (
+                    "- unreviewed finding: dependency_debt:loopx.status->"
+                    "loopx.presentation path=loopx/status.py"
+                ),
             }
         ],
     }
@@ -443,8 +446,11 @@ def assert_inherited_line_budget_red_is_advisory_only() -> None:
             {
                 "ok": False,
                 "status": "failed",
-                "command": "python3 examples/control_plane/repo-python-line-budget-smoke.py",
-                "stderr_tail": "loopx/benchmark_adapters/skillsbench_acp_relay.py has 3775 lines",
+                "command": "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py",
+                "stdout_tail": (
+                    "- unreviewed finding: dependency_debt:loopx.status->"
+                    "loopx.presentation path=loopx/status.py"
+                ),
             }
         ],
     }
@@ -461,14 +467,17 @@ def assert_inherited_line_budget_red_is_advisory_only() -> None:
             {
                 "ok": False,
                 "status": "failed",
-                "command": "python3 examples/control_plane/repo-python-line-budget-smoke.py",
-                "stderr_tail": "loopx/canary/premerge.py has 2200 lines",
+                "command": "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py",
+                "stdout_tail": (
+                    "- unreviewed finding: oversized_decision_function:"
+                    "loopx.status:new_hot_path path=loopx/status.py"
+                ),
             }
         ],
     }
     still_failed = downgrade_inherited_baseline_failures(
         current_diff_run,
-        changed_files=["loopx/canary/premerge.py"],
+        changed_files=["loopx/status.py"],
     )
     assert still_failed["ok"] is False, still_failed
     assert still_failed["selected_checks"][0]["status"] == "failed", still_failed
@@ -489,7 +498,7 @@ def main() -> None:
     assert_no_changes_does_not_mask_direct_failures()
     assert_installed_wrapper_uses_bound_python_and_redirects_to_checkout()
     assert_external_dirty_worktree_uses_caller_repo()
-    assert_inherited_line_budget_red_is_advisory_only()
+    assert_inherited_maintainability_red_is_advisory_only()
     print("premerge-validation-gate-smoke ok")
 
 

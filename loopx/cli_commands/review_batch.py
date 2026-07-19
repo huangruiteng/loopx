@@ -7,7 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .core import bind_review_batch_decisions, build_review_batch
+from ..control_plane.handoff.review_batch import (
+    bind_review_batch_decisions,
+    build_review_batch,
+)
 
 
 PrintPayload = Callable[

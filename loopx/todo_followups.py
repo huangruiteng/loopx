@@ -6,8 +6,8 @@ from typing import Any
 
 from .file_lock import exclusive_file_lock
 from .state_refresh import now_local
-from .status import normalize_todo_text
 from .control_plane.todos.contract import TODO_TASK_CLASS_ADVANCEMENT
+from .control_plane.todos.todo_summary import normalize_todo_text
 from .todos import (
     TODO_SECTION_HEADINGS,
     add_todo_to_lines,

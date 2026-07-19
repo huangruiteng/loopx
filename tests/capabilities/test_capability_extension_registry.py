@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -10,7 +11,16 @@ from loopx.capabilities.catalog import (
     build_capability_detail_packet,
     build_capability_registry,
 )
+from loopx.capabilities.context_providers import (
+    OpenVikingContextProvider,
+    build_context_provider,
+)
 from loopx.cli import main
+from loopx.extensions.runtime import (
+    default_extension_state_file,
+    disable_extension,
+    install_extension,
+)
 
 
 BUILTIN_IDS = [
@@ -20,10 +30,30 @@ BUILTIN_IDS = [
     "periodic-report",
     "content-ops",
     "value-connectors",
+    "explore",
+    "auto-research",
 ]
 
 
-def _write_manifest(path: Path, *, capability_id: str = "sample-report") -> Path:
+def _write_manifest(
+    path: Path,
+    *,
+    capability_id: str = "sample-report",
+    entrypoint: Path | None = None,
+) -> Path:
+    runtime = (
+        ""
+        if entrypoint is None
+        else f'''\
+
+[runtime]
+protocol = "sample_report_provider_v0"
+entrypoint = {json.dumps(str(entrypoint))}
+doctor_args = ["--doctor"]
+required_permissions = []
+timeout_seconds = 5
+'''
+    )
     path.write_text(
         f'''\
 schema_version = "loopx_extension_manifest_v0"
@@ -31,7 +61,7 @@ id = "sample-extension"
 version = "1.2.3"
 requires_loopx_api = ">=1,<2"
 permissions = ["read_status"]
-runtime_entrypoint = "module.that.must.not.be.imported"
+{runtime}
 
 [[provides]]
 id = "{capability_id}"
@@ -70,11 +100,18 @@ def test_builtin_catalog_preserves_order_and_marks_provider() -> None:
         assert item["visibility"] == "public"
         assert item["provider_id"] == "loopx-core"
     assert packet["providers"] == [
-        {"id": "loopx-core", "origin": "builtin", "enabled": True}
+        {
+            "id": "loopx-core",
+            "origin": "builtin",
+            "declared": True,
+            "installed": True,
+            "enabled": True,
+            "ready": True,
+        }
     ]
 
 
-def test_enabled_manifest_composes_public_capability_without_importing_code(
+def test_declared_manifest_composes_public_capability_without_claiming_readiness(
     tmp_path: Path,
 ) -> None:
     manifest = _write_manifest(tmp_path / "extension.toml")
@@ -91,10 +128,19 @@ def test_enabled_manifest_composes_public_capability_without_importing_code(
     assert packet["providers"][-1] == {
         "id": "sample-extension",
         "origin": "extension",
-        "enabled": True,
+        "declared": True,
+        "installed": False,
+        "enabled": False,
+        "ready": False,
         "version": "1.2.3",
         "requires_loopx_api": ">=1,<2",
         "permissions": ["read_status"],
+    }
+    assert extension["provider_state"] == {
+        "declared": True,
+        "installed": False,
+        "enabled": False,
+        "ready": False,
     }
 
     detail = build_capability_detail_packet("sample-report", [manifest])
@@ -145,12 +191,15 @@ def test_cli_lists_and_shows_explicit_extension_manifest(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest = _write_manifest(tmp_path / "extension.toml")
+    runtime_root = tmp_path / "runtime"
 
     assert (
         main(
             [
                 "--format",
                 "json",
+                "--runtime-root",
+                str(runtime_root),
                 "capability",
                 "list",
                 "--extension-manifest",
@@ -167,6 +216,8 @@ def test_cli_lists_and_shows_explicit_extension_manifest(
             [
                 "--format",
                 "json",
+                "--runtime-root",
+                str(runtime_root),
                 "capability",
                 "show",
                 "sample-report",
@@ -178,6 +229,91 @@ def test_cli_lists_and_shows_explicit_extension_manifest(
     )
     shown = json.loads(capsys.readouterr().out)
     assert shown["capability"]["provider_id"] == "sample-extension"
+    assert shown["capability"]["provider_state"]["ready"] is False
+
+
+def test_installed_runtime_is_catalog_truth_and_cli_default(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    provider = tmp_path / "provider"
+    provider.write_text(
+        f"#!{sys.executable}\nimport sys\nraise SystemExit(0)\n",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = _write_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+    )
+    runtime_root = tmp_path / "runtime"
+    state_file = default_extension_state_file(runtime_root)
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    packet = build_capability_catalog_packet(extension_state_file=state_file)
+    extension = packet["capabilities"][-1]
+    assert extension["id"] == "sample-report"
+    assert extension["provider_state"] == {
+        "declared": True,
+        "installed": True,
+        "enabled": True,
+        "ready": True,
+    }
+
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "capability",
+                "show",
+                "sample-report",
+            ]
+        )
+        == 0
+    )
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["capability"]["provider_state"]["ready"] is True
+
+    disable_extension("sample-extension", state_file=state_file, execute=True)
+    disabled = build_capability_detail_packet(
+        "sample-report",
+        extension_state_file=state_file,
+    )
+    assert disabled["capability"]["provider_state"] == {
+        "declared": True,
+        "installed": True,
+        "enabled": False,
+        "ready": False,
+    }
+
+
+def test_active_explore_and_auto_research_records_point_to_real_smokes() -> None:
+    repository = Path(__file__).resolve().parents[2]
+    for capability_id in ("explore", "auto-research"):
+        record = build_capability_detail_packet(capability_id)["capability"]
+        assert record["provider_state"]["ready"] is True
+        assert record["smokes"]
+        for command in record["smokes"]:
+            prefix = "python3 "
+            assert command.startswith(prefix)
+            assert (repository / command.removeprefix(prefix)).is_file()
+
+
+def test_context_provider_factory_dispatches_through_registered_builder() -> None:
+    provider = build_context_provider(
+        {
+            "provider": "openviking",
+            "provider_binary": "custom-ov",
+            "actor_peer_id": "project-example",
+        }
+    )
+
+    assert isinstance(provider, OpenVikingContextProvider)
+    assert provider.executable == "custom-ov"
+    assert provider.actor_peer_id == "project-example"
 
 
 def test_cli_rejects_unknown_capability_without_traceback(

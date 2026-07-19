@@ -2,6 +2,11 @@
 
 Status: public-safe connector planning and starter runtime contract v0.
 
+`loopx value-connectors` is a compatibility CLI and protocol facade. Generic
+planning, install checks, and source mapping remain here. The public GitHub
+probe and reply-monitor implementations are owned by `issue-fix` and are still
+invoked through the commands below so existing callers do not change.
+
 `value_connector_plan_v0` is a compact contract for external-value connector
 calls. It sits before real connector execution so LoopX can separate useful
 business-development work from unsafe automation.

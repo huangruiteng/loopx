@@ -24,10 +24,7 @@ def assert_status_uses_direct_read_models() -> None:
         status_module._compact_loopx_command_records
         is public_safety_read_model.compact_loopx_command_records
     )
-    assert (
-        status_module.compact_session_runtime_readonly_projection
-        is session_runtime_read_model.compact_session_runtime_readonly_projection
-    )
+    assert not hasattr(status_module, "compact_session_runtime_readonly_projection")
     assert (
         status_module.compact_session_runtime_projection_from_run
         is session_runtime_read_model.compact_session_runtime_projection_from_run
@@ -151,7 +148,7 @@ def assert_session_runtime_defaults() -> None:
         "attention_item": {"kind": "todo", "title": "  Public\nTitle  "},
     }
 
-    compact = status_module.compact_session_runtime_readonly_projection(projection)
+    compact = session_runtime_read_model.compact_session_runtime_readonly_projection(projection)
     assert compact == {
         "schema_version": SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION,
         "mode": "read_only",

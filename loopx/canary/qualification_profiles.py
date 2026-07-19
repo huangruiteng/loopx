@@ -99,6 +99,42 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     {
+        "id": "goal-frontier-replan-rules",
+        "title": "Goal-frontier replan rule ordering",
+        "quality_risk": "high",
+        "purpose": (
+            "Qualify ordered goal-frontier replan precedence independently from "
+            "payload rendering and broader scheduler composition."
+        ),
+        "catalog_families": [
+            "Work Routing",
+            "Planning Governance",
+            "State And Boundary",
+        ],
+        "trigger_hints": (
+            "goal frontier replan",
+            "goal_frontier_replan_rules",
+            "loopx/control_plane/goals/goal_frontier.py",
+            "loopx/control_plane/goals/goal_frontier_replan_rules.py",
+            "goal-frontier-replan-rules-smoke.py",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/control_plane/goal-frontier-replan-rules-smoke.py",
+                "tier": "default",
+                "reason": (
+                    "guards ordered replan precedence, peer-lane isolation, and "
+                    "monitor-frontier exhaustion through quota routing"
+                ),
+            },
+            {
+                "command": "python3 examples/control_plane/quota-replan-decision-plane-smoke.py",
+                "tier": "deep",
+                "reason": "covers the wider replan decision plane and peer ownership contract",
+            },
+        ],
+    },
+    {
         "id": "scheduler-ack-route",
         "title": "Scheduler ACK state and route binding",
         "quality_risk": "high",

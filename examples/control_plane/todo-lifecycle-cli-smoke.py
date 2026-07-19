@@ -40,6 +40,10 @@ from todo_lifecycle_fixtures import (  # noqa: E402
 )
 
 
+SUCCESSOR_REPOSITORY = "git:github.com/huangruiteng/loopx"
+SUCCESSOR_CAPABILITIES = ["network", "external_evidence_poll"]
+
+
 def assert_peer_monitor_no_followup() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-peer-monitor-no-followup-") as tmp:
         registry_path, state_file = write_fixture(Path(tmp))
@@ -458,6 +462,27 @@ def main() -> int:
         assert side_review_added["added"] is True, side_review_added
         side_review_todo_id = side_review_added["todo_id"]
 
+        missing_successor = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            side_review_todo_id,
+            "--claimed-by",
+            "codex-side-bypass",
+            "--agent-id",
+            "codex-side-bypass",
+            "--evidence",
+            "side-worktree-contract-diff",
+            "--next-task-repository",
+            SUCCESSOR_REPOSITORY,
+        )
+        assert "--next-task-repository requires --next-agent-todo" in (
+            missing_successor["error"]
+        ), missing_successor
+
         side_review_claim_error = run_cli_error(
             registry_path,
             "todo",
@@ -509,12 +534,24 @@ def main() -> int:
             "codex-side-bypass",
             "--next-action-kind",
             "review",
+            "--next-task-repository",
+            SUCCESSOR_REPOSITORY,
+            "--next-required-capability",
+            "network",
+            "--next-required-capability",
+            "external_evidence_poll",
         )
         assert side_completed["changed"] is True, side_completed
         review_todo_id = side_completed["next_todos"][0]["todo_id"]
         assert side_completed["next_todos"][0]["claimed_by"] == "codex-main-control", side_completed
         assert side_completed["next_todos"][0]["blocks_agent"] is None, side_completed
         assert side_completed["next_todos"][0]["excluded_agents"] == ["codex-side-bypass"], side_completed
+        assert side_completed["next_todos"][0]["task_repository"] == (
+            SUCCESSOR_REPOSITORY
+        ), side_completed
+        assert side_completed["next_todos"][0]["required_capabilities"] == (
+            SUCCESSOR_CAPABILITIES
+        ), side_completed
         assert side_completed["next_todos"][0]["unblocks_todo_id"] == side_review_todo_id, side_completed
         assert side_completed["successor_todo_ids"] == [review_todo_id], side_completed
         items = parsed_items(state_file)
@@ -530,6 +567,8 @@ def main() -> int:
         assert review_item["action_kind"] == "review", review_item
         assert review_item.get("blocks_agent") is None, review_item
         assert review_item["excluded_agents"] == ["codex-side-bypass"], review_item
+        assert review_item["task_repository"] == SUCCESSOR_REPOSITORY, review_item
+        assert review_item["required_capabilities"] == SUCCESSOR_CAPABILITIES, review_item
         assert review_item["unblocks_todo_id"] == side_review_todo_id, review_item
         assert review_item.get("updated_at"), review_item
         assert side_completed["next_todos"][0].get("updated_at") == review_item["updated_at"], side_completed

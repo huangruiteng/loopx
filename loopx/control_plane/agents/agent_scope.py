@@ -553,7 +553,9 @@ def _agent_scoped_user_todo_override(
         return None
     if not isinstance(user_todo_summary, dict):
         return None
-    if _open_todo_count(user_todo_summary) > 0:
+    # A non-blocking user_action may still need a reminder without preserving
+    # an operator gate inherited from a different agent's user_gate.
+    if _open_user_gate_todo_items(user_todo_summary):
         return None
     other_gate_count = _open_todo_count(
         {"open_count": user_todo_summary.get("other_agent_scoped_open_count")}

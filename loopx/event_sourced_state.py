@@ -19,6 +19,7 @@ from .control_plane.todos.contract import (
     build_todo_id,
     format_todo_metadata_line,
     normalize_explicit_todo_task_class,
+    normalize_required_capabilities,
     normalize_required_write_scopes,
     normalize_removed_todo_continuation_policy,
     normalize_todo_action_kind,
@@ -32,6 +33,7 @@ from .control_plane.todos.contract import (
     normalize_todo_id,
     normalize_todo_id_list,
     normalize_todo_status,
+    normalize_todo_task_repository,
     parse_todo_metadata_line,
     todo_done_for_status,
     todo_marker_for_status,
@@ -270,6 +272,9 @@ def backfill_todo_events_from_markdown(
         }
         task_class = normalize_explicit_todo_task_class(record.get("task_class"))
         action_kind = normalize_todo_action_kind(record.get("action_kind"))
+        task_repository = normalize_todo_task_repository(
+            record.get("task_repository")
+        )
         continuation_policy = normalize_todo_continuation_policy(
             record.get("continuation_policy")
         )
@@ -278,6 +283,9 @@ def backfill_todo_events_from_markdown(
         )
         required_write_scopes = normalize_required_write_scopes(
             record.get("required_write_scopes")
+        )
+        required_capabilities = normalize_required_capabilities(
+            record.get("required_capabilities")
         )
         blocks_agent = normalize_todo_blocks_agent(record.get("blocks_agent"))
         bound_agent = normalize_todo_bound_agent(record.get("bound_agent"))
@@ -288,12 +296,16 @@ def backfill_todo_events_from_markdown(
             payload["task_class"] = task_class
         if action_kind:
             payload["action_kind"] = action_kind
+        if task_repository:
+            payload["task_repository"] = task_repository
         if continuation_policy:
             payload["continuation_policy"] = continuation_policy
         if removed_continuation_policy:
             payload["removed_continuation_policy"] = removed_continuation_policy
         if required_write_scopes:
             payload["required_write_scopes"] = required_write_scopes
+        if required_capabilities:
+            payload["required_capabilities"] = required_capabilities
         if blocks_agent:
             payload["blocks_agent"] = blocks_agent
         if bound_agent:
@@ -580,6 +592,7 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
     )
     task_class = normalize_explicit_todo_task_class(payload.get("task_class"))
     action_kind = normalize_todo_action_kind(payload.get("action_kind"))
+    task_repository = normalize_todo_task_repository(payload.get("task_repository"))
     continuation_policy = normalize_todo_continuation_policy(
         payload.get("continuation_policy")
     )
@@ -589,6 +602,9 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
     )
     required_write_scopes = normalize_required_write_scopes(
         payload.get("required_write_scopes")
+    )
+    required_capabilities = normalize_required_capabilities(
+        payload.get("required_capabilities")
     )
     blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
     bound_agent = normalize_todo_bound_agent(payload.get("bound_agent"))
@@ -614,12 +630,16 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
         todo["task_class"] = task_class
     if action_kind:
         todo["action_kind"] = action_kind
+    if task_repository:
+        todo["task_repository"] = task_repository
     if removed_continuation_policy:
         todo["removed_continuation_policy"] = removed_continuation_policy
     elif continuation_policy:
         todo["continuation_policy"] = continuation_policy
     if required_write_scopes:
         todo["required_write_scopes"] = required_write_scopes
+    if required_capabilities:
+        todo["required_capabilities"] = required_capabilities
     if blocks_agent:
         todo["blocks_agent"] = blocks_agent
     if bound_agent:
@@ -680,6 +700,16 @@ def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None
         )
         if required_write_scopes:
             todo["required_write_scopes"] = required_write_scopes
+        task_repository = normalize_todo_task_repository(
+            payload.get("task_repository")
+        )
+        if task_repository:
+            todo["task_repository"] = task_repository
+        required_capabilities = normalize_required_capabilities(
+            payload.get("required_capabilities")
+        )
+        if required_capabilities:
+            todo["required_capabilities"] = required_capabilities
         blocks_agent = normalize_todo_blocks_agent(payload.get("blocks_agent"))
         if blocks_agent:
             todo["blocks_agent"] = blocks_agent
@@ -831,9 +861,11 @@ def render_todo_markdown(item: dict[str, Any]) -> list[str]:
         status=status,
         task_class=item.get("task_class"),
         action_kind=item.get("action_kind"),
+        task_repository=item.get("task_repository"),
         continuation_policy=item.get("continuation_policy"),
         removed_continuation_policy=item.get("removed_continuation_policy"),
         required_write_scopes=item.get("required_write_scopes"),
+        required_capabilities=item.get("required_capabilities"),
         claimed_by=item.get("claimed_by"),
         bound_agent=item.get("bound_agent"),
         goal_bound=item.get("goal_bound"),

@@ -473,7 +473,11 @@ loopx todo complete \
 Without `--self-merged`, no implicit review route is created. For independent
 review, use `--next-action-kind review --next-continuation-policy
 independent_handoff`; add `--next-excluded-agent <author>` only when the review
-must remain open to multiple peers while excluding the author.
+must remain open to multiple peers while excluding the author. When that
+successor belongs to a specific repository or needs execution capabilities,
+set `--next-task-repository <git:host/path>` and repeat
+`--next-required-capability <capability>` in the same completion command. The
+successor is then fully routable before its executor exclusions take effect.
 
 Use `todo update` for lower-level, non-terminal status changes:
 

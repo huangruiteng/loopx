@@ -29,13 +29,14 @@ Every registered capability declares three provider-facing fields:
 - `visibility`: `public` or `internal`;
 - `provider_id`: `loopx-core` or the extension manifest id.
 
-The built-in catalog remains the default source. Explicitly enabled extension
-manifests are validated and appended in caller order. Duplicate capability or
-provider ids fail closed. Internal registrations remain available to the
-registry but are omitted from the public catalog.
+The built-in catalog remains the default source. Extension manifests declare
+providers and contracts; the extension runtime state is the only source for
+whether each provider is installed, enabled, and doctor-ready. Duplicate
+capability or provider ids fail closed. Internal registrations remain available
+to the registry but are omitted from the public catalog.
 
 Catalog discovery does not scan arbitrary directories or import extension
-Python code. A caller can compose one manifest into a catalog read explicitly:
+Python code. A caller can add a declaration-only manifest to a catalog read:
 
 ```bash
 loopx capability list \
@@ -47,7 +48,10 @@ loopx capability show lark-kanban \
   --format json
 ```
 
-The activation store is separate from catalog composition. `loopx extension`
+The resulting provider reports `declared=true` and
+`installed=enabled=ready=false`. The normal CLI read also composes installed
+providers from `<runtime-root>/extensions/state.json`, so the catalog and
+runtime dispatch see the same active manifest revision. `loopx extension`
 registers an already-installed subprocess entrypoint only after the manifest,
 API, permission, and doctor checks pass. It does not download packages or grant
 new permissions.
@@ -82,14 +86,20 @@ root; it does not contain provider output or credentials.
 `disable` is reversible, but `enable` never trusts an earlier readiness result:
 it reruns the configured doctor and changes the enabled bit only after that
 probe succeeds. A successful doctor binds readiness to both the active manifest
-revision and the resolved executable identity. Missing or replaced executables
-fail closed until a new executed doctor succeeds; a failed executed doctor
-clears the stale proof without switching revisions.
+revision and the resolved runtime identity. Missing or replaced executables,
+interpreters, or Python module sources fail closed until a new executed doctor
+succeeds; a failed executed doctor clears the stale proof without switching
+revisions.
 
-An enabled implementation is resolved by capability id, versioned protocol,
-declared permission, current revision, and current doctor proof. Domain config
-may add bounded provider arguments, but cannot replace the manifest entrypoint,
-timeout, protocol, or permission contract.
+An enabled implementation is resolved by capability id and versioned protocol,
+then checked against its declared permission, current revision, and current
+doctor proof. Callers do not need to copy an extension id into normal config.
+Disabled or stale implementations remain visible in the catalog but are not
+dispatch candidates. When multiple enabled, doctor-ready extensions implement
+the same capability/protocol pair, resolution fails closed until the caller
+selects the intended provider during migration. Domain config may add bounded
+provider arguments, but cannot replace the manifest entrypoint, timeout,
+protocol, or permission contract.
 
 Compatibility delegates use the same revision-bound readiness rule. Every
 configured `loopx lark-inbox` operation resolves the enabled `loopx-lark`
@@ -100,6 +110,12 @@ upgrade and rollback affect new invocations without changing project
 configuration. Extension lifecycle commands do not terminate an already
 running host-managed collector process; stop or restart that supervisor service
 separately when changing the active provider revision.
+
+Quota and Turn composition apply the same read gate. They inject the Lark
+extension's urgency projector only after resolving `lark.inbox.read`; provider
+profile/chat schema and private config reads stay in the extension. If the
+extension is missing, disabled, or stale, urgency is unavailable and cannot
+activate a Lark work lane. This adds no agent-facing CLI arguments.
 
 ## Placement Decision For Agents
 
@@ -184,7 +200,7 @@ permissions = ["read_status", "read_todos", "external_write"]
 
 [runtime]
 protocol = "lark_kanban_provider_v0"
-entrypoint = "loopx-lark-kanban"
+python_module = "loopx.extensions.lark.provider"
 doctor_args = ["--doctor"]
 required_permissions = ["read_status", "read_todos"]
 timeout_seconds = 30
@@ -220,6 +236,15 @@ permissions. Declaring either does not grant authority: existing LoopX goal
 boundaries, user gates, and external-write authorization still decide whether
 an operation may execute.
 
+Every executable runtime declares exactly one launch target. Use `entrypoint`
+for a separately installed executable such as the OpenViking provider. Use
+`python_module` for a provider shipped in the LoopX Python package. Module
+providers run as `<current-loopx-python> -m <module>` and their doctor proof is
+bound to both that interpreter and the resolved module source. This lets a
+clean source checkout and a local LoopX release activate bundled providers
+without separately installing a console script; catalog discovery remains
+declarative and does not import the module.
+
 ## Scope Boundaries
 
 The executable v0 runtime intentionally does not:
@@ -237,8 +262,10 @@ distribution and service setup to explicit operator-owned workflows.
 Provider migration follows the same direction. Core routing consumes compact
 provider-neutral read models, while provider packages own collection, transport,
 credentials, and external effects. For example, quota reads
-`operator_inbox_urgency_v0`. Lark inbox collection, reply transport, and
-provider-owned configuration live under `loopx/extensions/lark/`; the existing
+`operator_inbox_urgency_v0` through an injected projector. The generic parser
+and read-model contract stay in the control plane; Lark schema, identity,
+destination, collection, reply transport, and provider-owned configuration live
+under `loopx/extensions/lark/`. The existing
 `loopx lark-inbox` command remains a direct compatibility delegate, but it now
 requires an installed, enabled, doctor-verified `loopx-lark` revision with the
 operation's declared permission. The provider subprocess currently implements

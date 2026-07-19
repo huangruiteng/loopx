@@ -74,8 +74,13 @@ def write_fixture(root: Path, *, auto_research: bool) -> tuple[Path, Path, Path]
     return project, runtime, registry_path
 
 
-def complete_proposer(registry_path: Path, runtime: Path) -> tuple[int, dict]:
-    return run_json_cli_result(
+def complete_proposer(
+    registry_path: Path,
+    runtime: Path,
+    *,
+    actor_agent_id: str | None = PROPOSER,
+) -> tuple[int, dict]:
+    cli_args = [
         "todo",
         "complete",
         "--goal-id",
@@ -86,14 +91,48 @@ def complete_proposer(registry_path: Path, runtime: Path) -> tuple[int, dict]:
         PROPOSER_TODO,
         "--claimed-by",
         PROPOSER,
-        "--evidence",
-        "fixture produced a public-safe hypothesis packet",
-        "--successor-todo-id",
-        EXECUTOR_TODO,
+    ]
+    if actor_agent_id is not None:
+        cli_args.extend(["--agent-id", actor_agent_id])
+    cli_args.extend(
+        [
+            "--evidence",
+            "fixture produced a public-safe hypothesis packet",
+            "--successor-todo-id",
+            EXECUTOR_TODO,
+        ]
+    )
+    return run_json_cli_result(
+        *cli_args,
         registry_path=registry_path,
         runtime_root=runtime,
         cwd=REPO_ROOT,
     )
+
+
+def assert_actor_attribution_fails_closed() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-role-successor-actor-") as tmp:
+        project, runtime, registry_path = write_fixture(Path(tmp), auto_research=True)
+        state_path = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+        before = state_path.read_text(encoding="utf-8")
+
+        missing_code, missing = complete_proposer(
+            registry_path,
+            runtime,
+            actor_agent_id=None,
+        )
+        assert missing_code == 1, missing
+        assert "requires --agent-id" in missing["error"], missing
+        assert state_path.read_text(encoding="utf-8") == before
+
+        wrong_code, wrong = complete_proposer(
+            registry_path,
+            runtime,
+            actor_agent_id=CURATOR,
+        )
+        assert wrong_code == 1, wrong
+        assert f"claimed_by={PROPOSER!r}" in wrong["error"], wrong
+        assert state_path.read_text(encoding="utf-8") == before
 
 
 def assert_auto_research_role_successor_allowed() -> None:
@@ -134,6 +173,7 @@ def assert_generic_peer_route_links_existing_successor() -> None:
 
 
 def main() -> None:
+    assert_actor_attribution_fails_closed()
     assert_auto_research_role_successor_allowed()
     assert_generic_peer_route_links_existing_successor()
     print("auto-research-role-successor-completion-smoke ok")

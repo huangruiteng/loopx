@@ -54,6 +54,12 @@ candidate revision before switching it. A goal with no Lark inbox pointer still
 returns the existing quiet disabled drain projection and does not require the
 extension, so projects that do not use Lark remain unaffected.
 
+Quota and Turn planning also resolve `lark.inbox.read` before the extension
+opens the local-private profile/chat config. A missing, disabled, or stale
+extension yields an unavailable urgency projection, does not read that config,
+and cannot schedule a Lark reply lane. The compatibility CLI performs this
+composition internally; agents do not pass a provider, profile, or alias.
+
 The collector service is a separate host lifecycle. Disabling or switching the
 extension blocks its next `collector-run` start but does not signal a process
 that is already consuming events. Stop or restart the configured launchd or

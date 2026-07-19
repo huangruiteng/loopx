@@ -22,7 +22,7 @@ from .research_state import (
     build_research_evidence_graph_from_rollout_events,
     normalize_auto_research_action,
 )
-from ..multi_agent.role_successor import (
+from ...control_plane.agents.multi_agent.role_successor import (
     apply_role_successor_todos,
     first_successor_followup,
 )

@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.multi_agent.collective_round_ledger import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.collective_round_ledger import (  # noqa: E402
     MULTI_AGENT_COLLECTIVE_ROUND_LEDGER_SCHEMA_VERSION,
     build_multi_agent_collective_round_ledger,
 )

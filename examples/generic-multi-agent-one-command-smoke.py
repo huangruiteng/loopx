@@ -456,7 +456,9 @@ def main() -> int:
         launcher_source = (ROOT / "loopx/visible_multi_agent_launcher.py").read_text(
             encoding="utf-8"
         )
-        contract_source = (ROOT / "loopx/capabilities/multi_agent/contract.py").read_text(
+        contract_source = (
+            ROOT / "loopx/control_plane/agents/multi_agent/contract.py"
+        ).read_text(
             encoding="utf-8"
         )
         assert "scoped_loopx_wrapper" in launcher_source

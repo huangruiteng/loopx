@@ -352,19 +352,21 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "repo-architecture-budget",
-        "title": "Repository architecture budget",
+        "title": "Control-plane maintainability ratchet",
         "purpose": (
-            "Keep Python source files below a default line budget, with explicit legacy "
-            "allowlist entries for oversized modules that need staged refactors."
+            "Report control-plane dependency debt, oversized decision functions, and "
+            "compatibility facades while rejecting unreviewed debt, magnitude growth, or "
+            "stale exceptions. This intentionally replaces the repository-wide exact Python "
+            "line budget with semantic control-plane and public-facade checks."
         ),
         "catalog_families": ["Planning Governance", "State And Boundary"],
         "trigger_hints": (
             "architecture",
             "architecture budget",
-            "file length",
-            "line budget",
-            "large file",
-            "mega-file",
+            "maintainability",
+            "dependency debt",
+            "decision function",
+            "compatibility facade",
             "refactor",
             "quota.py",
             "status.py",
@@ -376,11 +378,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/control_plane/repo-python-line-budget-smoke.py",
+                "command": "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py",
                 "tier": "default",
                 "reason": (
-                    "fails when a Python source file grows beyond the default limit or "
-                    "its current legacy allowlist budget"
+                    "fails on unreviewed maintainability debt or an exception whose "
+                    "underlying debt has been retired"
                 ),
             },
         ],
@@ -909,7 +911,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx demo impl-review",
             "cross_runtime_impl_review_demo_packet_v0",
             "docs/product/cross-runtime-impl-review-demo.md",
-            "loopx/capabilities/cross_runtime",
+            "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
         ),
         "checks": [

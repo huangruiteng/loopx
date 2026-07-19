@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.multi_agent.visible_launch_policy import (
+from loopx.control_plane.agents.multi_agent.visible_launch_policy import (
     make_visible_wake_callback,
     resolve_codex_trust_workspace,
     resolve_visible_launch_policy,

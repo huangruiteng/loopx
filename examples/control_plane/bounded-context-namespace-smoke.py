@@ -23,6 +23,11 @@ LEGACY_ROOT_MODULES = {
     "loopx/status_projection_cache.py": "loopx.control_plane.runtime.status_projection_cache",
     "loopx/task_lease.py": "loopx.control_plane.work_items.task_lease",
 }
+LEGACY_CAPABILITY_PACKAGES = {
+    "loopx/capabilities/cross_runtime/": "loopx.control_plane.handoff.cross_runtime_impl_review",
+    "loopx/capabilities/multi_agent/": "loopx.control_plane.agents.multi_agent",
+    "loopx/capabilities/review_batch/": "loopx.control_plane.handoff.review_batch",
+}
 CANONICAL_MODULES = {
     "loopx.control_plane.runtime.local_state_write_correctness",
     "loopx.control_plane.runtime.status_projection_cache",
@@ -110,6 +115,37 @@ def assert_moved_root_modules_stay_in_bounded_contexts() -> None:
     }
 
 
+def assert_rehomed_capability_packages_stay_in_bounded_contexts() -> None:
+    files = tracked_files()
+    offenders = sorted(
+        prefix
+        for prefix in LEGACY_CAPABILITY_PACKAGES
+        if any(
+            path.startswith(prefix) and (REPO_ROOT / path).exists()
+            for path in files
+        )
+    )
+    assert offenders == [], {
+        "reason": "internal control-plane packages should not return under capabilities",
+        "offenders": offenders,
+        "canonical_modules": {
+            prefix: LEGACY_CAPABILITY_PACKAGES[prefix] for prefix in offenders
+        },
+    }
+
+    for prefix, canonical_module in LEGACY_CAPABILITY_PACKAGES.items():
+        legacy_module = prefix.rstrip("/").replace("/", ".")
+        assert importlib.util.find_spec(legacy_module) is None, {
+            "reason": "removed internal capability imports should fail instead of using shims",
+            "legacy_module": legacy_module,
+            "canonical_module": canonical_module,
+        }
+        assert importlib.util.find_spec(canonical_module) is not None, {
+            "reason": "canonical bounded-context import must be available",
+            "canonical_module": canonical_module,
+        }
+
+
 def assert_moved_root_imports_are_not_shimmed() -> None:
     for path, canonical_module in LEGACY_ROOT_MODULES.items():
         root_module = path[:-3].replace("/", ".")
@@ -143,6 +179,7 @@ def assert_repo_local_imports_use_bounded_contexts() -> None:
 def main() -> int:
     assert_no_tracked_legacy_projection_package()
     assert_moved_root_modules_stay_in_bounded_contexts()
+    assert_rehomed_capability_packages_stay_in_bounded_contexts()
     assert_moved_root_imports_are_not_shimmed()
     assert_repo_local_imports_use_bounded_contexts()
     print("bounded-context-namespace-smoke ok")

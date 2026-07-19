@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.multi_agent.runtime_scripts import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.runtime_scripts import (  # noqa: E402
     CODEX_TUI_EXEC_PY as _CODEX_TUI_EXEC_PY,
     SCOPED_LOOPX_WRAPPER_PY as _SCOPED_LOOPX_WRAPPER_PY,
 )
@@ -83,10 +83,12 @@ def main() -> int:
     tmux_source = (ROOT / "loopx/visible_multi_agent_tmux.py").read_text(
         encoding="utf-8"
     )
-    contract_source = (ROOT / "loopx/capabilities/multi_agent/contract.py").read_text(
+    contract_source = (ROOT / "loopx/control_plane/agents/multi_agent/contract.py").read_text(
         encoding="utf-8"
     )
-    runtime_source = (ROOT / "loopx/capabilities/multi_agent/runtime_scripts.py").read_text(
+    runtime_source = (
+        ROOT / "loopx/control_plane/agents/multi_agent/runtime_scripts.py"
+    ).read_text(
         encoding="utf-8"
     )
     assert "from ...visible_multi_agent_launcher import" in auto_research_cli

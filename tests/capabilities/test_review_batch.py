@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from loopx.capabilities.review_batch import (
+from loopx.control_plane.handoff.review_batch import (
     bind_review_batch_decisions,
     build_review_batch,
 )

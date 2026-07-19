@@ -9,11 +9,6 @@ from ..quota import (
     build_quota_should_run,
     record_quota_monitor_poll,
     record_quota_scheduler_ack,
-    render_quota_markdown,
-    render_quota_monitor_poll_markdown,
-    render_quota_scheduler_ack_markdown,
-    render_quota_should_run_markdown,
-    render_quota_slot_preview_markdown,
     spend_quota_slot,
     void_quota_slot,
 )
@@ -24,8 +19,15 @@ from ..control_plane.quota.live_decision import build_live_quota_should_run_deci
 from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
+from ..presentation.renderers.quota_event_markdown import (
+    render_quota_monitor_poll_markdown,
+    render_quota_slot_preview_markdown,
+)
 from ..presentation.renderers.quota_markdown import (
+    render_quota_markdown,
+    render_quota_scheduler_ack_markdown,
     render_quota_scheduler_failure_markdown,
+    render_quota_should_run_markdown,
 )
 from ..control_plane.scheduler.execution_context import (
     SchedulerExecutionContextResolution,
@@ -38,6 +40,7 @@ from ..control_plane.runtime.status_projection_cache import (
     write_status_projection_cache,
 )
 from ..presentation.renderers.turn_envelope_markdown import render_turn_envelope_markdown
+from .lark_inbox import build_lark_operator_inbox_urgency_projector
 
 
 PrintPayload = Callable[
@@ -289,6 +292,11 @@ def handle_quota_command(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
         )
+        operator_inbox_urgency_projector = (
+            build_lark_operator_inbox_urgency_projector(
+                runtime_root_arg=runtime_root,
+            )
+        )
         status_payload = None
         cache_metadata = None
         use_projection_cache = bool(getattr(args, "use_projection_cache", False))
@@ -347,6 +355,7 @@ def handle_quota_command(
                 runtime_root=runtime_root,
                 host_observation_resolver=resolve_codex_app_automation_rrule,
                 scheduler_execution_context=scheduler_context,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
         elif args.quota_command == "monitor-poll":
             if not args.goal_id:
@@ -372,6 +381,7 @@ def handle_quota_command(
                 next_user_todo=args.next_user_todo,
                 next_claimed_by=args.next_claimed_by,
                 scheduler_execution_context=scheduler_context,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
         elif args.quota_command in {"scheduler-ack", "scheduler-ack-current"}:
             if not args.goal_id:
@@ -395,6 +405,7 @@ def handle_quota_command(
                 use_current_hint=bool(args.use_current_hint or args.quota_command == "scheduler-ack-current"),
                 host_match_observed=bool(getattr(args, "host_match_observed", False)),
                 scheduler_execution_context=scheduler_context,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
         elif args.quota_command == "scheduler-fail-current":
             if not args.goal_id:
@@ -418,6 +429,7 @@ def handle_quota_command(
                 available_capabilities=args.available_capabilities,
                 codex_app_current_rrule=observed_rrule,
                 scheduler_execution_context=scheduler_context,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
             payload = record_quota_scheduler_failure_for_decision(
                 failure_decision,
@@ -444,6 +456,7 @@ def handle_quota_command(
                 source=args.source,
                 agent_id=args.agent_id,
                 available_capabilities=args.available_capabilities,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
         elif args.quota_command == "void-slot":
             if not args.goal_id:
@@ -460,6 +473,7 @@ def handle_quota_command(
                 source=args.source,
                 reason_summary=args.reason_summary,
                 agent_id=args.agent_id,
+                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
             )
         else:
             payload = build_quota_plan(status_payload, mode=args.quota_command)

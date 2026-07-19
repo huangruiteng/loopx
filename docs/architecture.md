@@ -57,6 +57,20 @@ generic compact benchmark fields; its shipped schema remains compatible. Hiding
 an adapter dependency inside a function or dynamic import does not count as
 architectural separation.
 
+### Status And Quota Facades
+
+`loopx.status` and `loopx.quota` remain compatibility entry points for their
+facade-owned behavior. Imported implementations belong to their canonical
+bounded modules; the only compatibility-only re-exports are the keys in each
+facade's `_PUBLIC_COMPAT_REEXPORTS` map, whose values name the canonical owner.
+
+New repository code must import the canonical owner. A compatibility-only
+entry may remain while a public example, regression, or documented import
+contract consumes it. Zero-consumer, undocumented entries are removed instead
+of becoming permanent accidental API. Removing a retained entry requires an
+explicit migration or deprecation step, and status/quota CLI JSON parity must
+stay characterized independently of the compatibility binding.
+
 Capabilities and extensions are also orthogonal: a capability is a product
 contract, while an extension is an independently managed provider that may
 offer one or more capabilities. The provider-aware registration and manifest

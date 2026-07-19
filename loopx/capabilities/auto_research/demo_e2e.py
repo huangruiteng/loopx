@@ -24,7 +24,7 @@ from .preset import (
 from .rollout_append import append_auto_research_rollout_events
 from .user_contract import build_auto_research_user_contract
 from .worker_loop import run_auto_research_worker_loop
-from ..multi_agent.collective_round_ledger import (
+from ...control_plane.agents.multi_agent.collective_round_ledger import (
     build_multi_agent_collective_round_ledger,
 )
 from ...control_plane.todos.contract import normalize_required_write_scopes

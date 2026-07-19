@@ -27,6 +27,7 @@ from ..quota import spend_quota_slot
 from ..state_refresh import refresh_state_run
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..todos import update_goal_todo
+from .lark_inbox import build_lark_operator_inbox_urgency_projector
 
 
 PrintPayload = Callable[
@@ -279,6 +280,11 @@ def handle_turn_command(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
         )
+        operator_inbox_urgency_projector = (
+            build_lark_operator_inbox_urgency_projector(
+                runtime_root_arg=runtime_root,
+            )
+        )
         status_payload = collect_status(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
@@ -301,6 +307,7 @@ def handle_turn_command(
             runtime_root=runtime_root,
             route_source="loopx_turn_plan",
             scheduler_execution_context=scheduler_context,
+            operator_inbox_urgency_projector=operator_inbox_urgency_projector,
         )
         resume_identity = {
             "goal_id": args.resume_goal_id,
@@ -459,6 +466,7 @@ def handle_turn_command(
                     source="adapter",
                     agent_id=args.agent_id,
                     available_capabilities=args.available_capabilities,
+                    operator_inbox_urgency_projector=operator_inbox_urgency_projector,
                 )
 
             def scheduler(_spend_payload: dict[str, object]) -> dict[str, object]:
@@ -478,6 +486,7 @@ def handle_turn_command(
                     runtime_root=runtime_root,
                     route_source="loopx_turn_run_once",
                     scheduler_execution_context=turn_scheduler_context,
+                    operator_inbox_urgency_projector=operator_inbox_urgency_projector,
                 )
                 hint = latest.get("scheduler_hint") if isinstance(latest.get("scheduler_hint"), dict) else {}
                 phase = hint.get("execution_phase")

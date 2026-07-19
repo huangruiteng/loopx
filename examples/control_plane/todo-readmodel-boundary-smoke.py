@@ -17,7 +17,6 @@ from loopx import boundary_authority as boundary_authority_module  # noqa: E402
 from loopx import interface_budget as interface_budget_module  # noqa: E402
 from loopx import quota as quota_module  # noqa: E402
 from loopx.control_plane.goals import active_state_metadata as active_state_metadata_read_model  # noqa: E402
-from loopx.control_plane.goals import global_registry_health as global_registry_health_read_model  # noqa: E402
 from loopx.control_plane.work_items import attention_item as attention_item_read_model  # noqa: E402
 from loopx.control_plane.work_items import autonomous_candidates as autonomous_read_model  # noqa: E402
 from loopx.control_plane.work_items import autonomous_replan_ack as replan_ack_read_model  # noqa: E402
@@ -26,13 +25,10 @@ from loopx.control_plane.goals import path_resolution as path_resolution_read_mo
 from loopx.control_plane.agents import management_projection as management_projection_read_model  # noqa: E402
 from loopx.control_plane.runtime import agent_scoped_evidence_log as evidence_log_read_model  # noqa: E402
 from loopx.control_plane.runtime import run_compaction as run_compaction_read_model  # noqa: E402
-from loopx.control_plane.runtime import session_runtime as session_runtime_read_model  # noqa: E402
 from loopx.control_plane.runtime import status_projection_cache as status_cache_read_model  # noqa: E402
 from loopx.control_plane.runtime import time as runtime_time_read_model  # noqa: E402
 from loopx.control_plane.scheduler import time as scheduler_time_read_model  # noqa: E402
-from loopx.control_plane.quota import usage_summary as usage_summary_read_model  # noqa: E402
 from loopx.control_plane.todos import active_state_todo_parser as active_state_todo_parser_read_model  # noqa: E402
-from loopx.control_plane.todos import active_state_todos as active_state_todos_read_model  # noqa: E402
 from loopx.control_plane.todos import monitor_metadata as monitor_metadata_read_model  # noqa: E402
 from loopx.control_plane.todos import projection as todo_projection_read_model  # noqa: E402
 from loopx.control_plane.todos import todo_summary as todo_read_model  # noqa: E402
@@ -88,26 +84,19 @@ def fixture_todos() -> dict:
     }
 
 
-def assert_direct_status_aliases() -> None:
+def assert_status_compatibility_boundary() -> None:
     assert status_module.parse_state_frontmatter is active_state_metadata_read_model.parse_state_frontmatter
-    assert status_module.todo_role_for_heading is active_state_metadata_read_model.todo_role_for_heading
     assert status_module.same_path is path_resolution_read_model.same_path
     assert status_module.resolve_goal_local_path is path_resolution_read_model.resolve_goal_local_path
     assert status_module.parse_active_state_todos is active_state_todo_parser_read_model.parse_active_state_todos
-    assert status_module.attach_monitor_writeback_contract is active_state_todos_read_model.attach_monitor_writeback_contract
-    assert status_module.redacted_status_todo_fields is active_state_todos_read_model.redacted_status_todo_fields
     assert status_module.todo_item_is_expired_monitor is todo_projection_read_model.todo_item_is_expired_monitor
     assert status_module.open_todo_items is todo_read_model.open_todo_items
     assert status_module.todo_lane_items is todo_read_model.todo_lane_items
     assert status_module.first_open_todo_text is todo_read_model.first_open_todo_text
-    assert status_module.first_open_todo_item is todo_read_model.first_open_todo_item
     assert status_module.project_asset_todo_summary is todo_read_model.project_asset_todo_summary
-    assert status_module.dependency_blocker_summary is todo_read_model.dependency_blocker_summary
     assert status_module.attach_dependency_blockers is todo_read_model.attach_dependency_blockers
     assert status_module.autonomous_replan_ack_recorded is replan_ack_read_model.autonomous_replan_ack_recorded
     assert status_module.compact_autonomous_replan_ack is replan_ack_read_model.compact_autonomous_replan_ack
-    assert status_module.global_registry_finding is global_registry_health_read_model.global_registry_finding
-    assert status_module.attach_session_runtime_projection is session_runtime_read_model.attach_session_runtime_projection
     assert status_module.compact_human_reward is run_compaction_read_model.compact_human_reward
     assert status_module.compact_operator_gate is run_compaction_read_model.compact_operator_gate
     assert status_module.compact_operator_gate_resume_contract is run_compaction_read_model.compact_operator_gate_resume_contract
@@ -122,10 +111,21 @@ def assert_direct_status_aliases() -> None:
     assert quota_module._parse_timestamp is runtime_time_read_model.parse_timestamp
     assert boundary_authority_module._parse_timestamp is runtime_time_read_model.parse_timestamp
     assert interface_budget_module.parse_timestamp is runtime_time_read_model.parse_timestamp
-    assert status_module.quota_spend_slots is usage_summary_read_model.quota_spend_slots
-    assert status_module.is_automation_run is usage_summary_read_model.is_automation_run
-    assert status_module.is_progress_signal_run is usage_summary_read_model.is_progress_signal_run
-    assert status_module.blank_usage_goal is usage_summary_read_model.blank_usage_goal
+    removed_import_only_aliases = {
+        "attach_monitor_writeback_contract",
+        "attach_session_runtime_projection",
+        "blank_usage_goal",
+        "compact_global_registry_shadow_finding",
+        "dependency_blocker_summary",
+        "first_open_todo_item",
+        "global_registry_finding",
+        "is_automation_run",
+        "is_progress_signal_run",
+        "quota_spend_slots",
+        "redacted_status_todo_fields",
+        "todo_role_for_heading",
+    }
+    assert removed_import_only_aliases.isdisjoint(vars(status_module))
 
 
 def assert_wrapper_parity() -> None:
@@ -137,7 +137,7 @@ def assert_wrapper_parity() -> None:
         "monitor_open_items",
     )
     assert status_module.first_open_todo_text(todos) == todo_read_model.first_open_todo_text(todos)
-    assert status_module.first_open_todo_item(todos) == todo_read_model.first_open_todo_item(todos)
+    assert todo_read_model.first_open_todo_item(todos)["index"] == 1
     assert status_module.project_asset_todo_summary(
         todos,
         role="agent",
@@ -185,13 +185,11 @@ def assert_dependency_blocker_parity() -> None:
             },
         },
     ]
-    assert status_module.dependency_blocker_summary(
-        items,
-        current_goal_id="current",
-    ) == todo_read_model.dependency_blocker_summary(
+    summary = todo_read_model.dependency_blocker_summary(
         items,
         current_goal_id="current",
     )
+    assert summary["open_count"] == 1, summary
 
     status_items = deepcopy(items)
     direct_items = deepcopy(items)
@@ -248,9 +246,8 @@ def assert_global_registry_shadow_parity() -> None:
         "message": "registry points at stale projection",
         "recommended_action": "refresh the public-safe state projection",
     }
-    assert status_module.compact_global_registry_shadow_finding(
-        finding
-    ) == global_registry_shadow_read_model.compact_global_registry_shadow_finding(finding)
+    compact = global_registry_shadow_read_model.compact_global_registry_shadow_finding(finding)
+    assert compact["kind"] == "state_shadow", compact
 
     status_item = {"project_asset": {"goal_id": "loopx-meta"}}
     direct_item = deepcopy(status_item)
@@ -348,7 +345,7 @@ def assert_control_plane_has_no_status_reverse_imports() -> None:
 
 
 def main() -> None:
-    assert_direct_status_aliases()
+    assert_status_compatibility_boundary()
     assert_control_plane_has_no_status_reverse_imports()
     assert_wrapper_parity()
     assert_dependency_blocker_parity()

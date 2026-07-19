@@ -12,7 +12,8 @@
 2. 解释 thin prompt 为什么比项目专属大 prompt 更可靠。
 3. 读懂 scheduler hint、stateful backoff 和 bound ACK。
 4. 区分 quiet skip、monitor poll、wait、run-now 和 terminal stop。
-5. 设计一个不会重复 spend、不会无限刷盘的 host adapter。
+5. 解释为什么 monitor-poll 的 before/after decision 必须共享同一 execution context。
+6. 设计一个不会重复 spend、不会无限刷盘的 host adapter。
 
 ## Host 是触发器，不是第二控制面
 
@@ -471,7 +472,43 @@ if material_change and next_user_todo:
 
 因此“看了一眼但没变化”通常是 no-spend observation；“新证据改变 frontier 并写回 successor”才可能成为 accountable delivery。
 
-### 5. 一次真实 host 循环
+### 5. Monitor-poll 的前后决策必须共享 Execution Context
+
+一次 monitor poll 会先计算 `before`，写回 observation，再用新状态计算 `after`。两次
+decision 必须使用同一个 typed scheduler context：
+
+```python
+before = build_quota_should_run(
+    status_payload,
+    goal_id=goal_id,
+    agent_id=agent_id,
+    scheduler_execution_context=scheduler_execution_context,
+)
+return record_quota_monitor_poll_for_decision(
+    before,
+    status_payload,
+    after_decision=lambda after_status: build_quota_should_run(
+        after_status,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        scheduler_execution_context=scheduler_execution_context,
+    ),
+    ...,
+)
+```
+
+Execution context 不是渲染选项，而是 decision input。若 CLI 入口识别出 Codex App，
+但 wrapper 只把 context 传给 `before`，`after` 会误以为自己处在未知 host，返回
+`repair_scheduler_execution_context`。这不是 monitor 产生了新阻塞，而是调用链丢失
+了 authority context。
+
+对应回归应同时证明：
+
+1. App context 在 before/after 都保持 App scheduler contract；
+2. generic CLI context 在 before/after 都保持 external-controller contract；
+3. 非法或缺失 context 两边一致 fail closed，不能由 wrapper 静默补默认值。
+
+### 6. 一次真实 host 循环
 
 ```text
 App tick
@@ -491,6 +528,7 @@ App tick
 - `scheduler_hint.py:457`：观察非法 execution context 如何 fail closed；
 - `scheduler/ack.py:120`：依次改错 state key、reset token、identity signature；
 - `write_monitor_poll_todo_state:98`：比较 hash 相同、hash 变化、显式 material change；
+- `record_quota_monitor_poll`：确认 before/after 收到同一个 scheduler context；
 - host adapter：确认只有 host 层真正调用 automation update。
 
 ### 读完这一段应能回答
@@ -499,7 +537,8 @@ App tick
 2. 为什么 ACK 不消耗 delivery slot？
 3. 哪些字段变化应 reset stateful backoff？
 4. unchanged monitor 为什么必须写 `next_due_at`？
-5. automation 为什么在 quiet wait 时仍可能保持 active？
+5. 为什么 monitor writeback 不能重新猜测 host surface？
+6. automation 为什么在 quiet wait 时仍可能保持 active？
 
 ## 代码阅读路线
 
@@ -516,6 +555,7 @@ App tick
 - `examples/control_plane/quota-scheduler-state-ack-smoke.py`
 - `examples/control_plane/interaction-scheduler-authority-smoke.py`
 - `examples/control_plane/monitor-scheduler-contract-smoke.py`
+- `examples/control_plane/monitor-poll-writeback-smoke.py`
 - `examples/control_plane/quota-terminal-no-followup-smoke.py`
 
 ## 常见实现错误
