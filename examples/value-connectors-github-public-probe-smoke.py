@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -17,9 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.value_connectors.github_public import (  # noqa: E402
+from loopx.capabilities.issue_fix.github_public import (  # noqa: E402
     GITHUB_PUBLIC_CHANNEL_PROBE_PACKET_SCHEMA_VERSION,
     GITHUB_PUBLIC_REPLY_MONITOR_PACKET_SCHEMA_VERSION,
+)
+from loopx.capabilities.value_connectors.install_check import (  # noqa: E402
     VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION,
 )
 from loopx.capabilities.value_connectors.planner import (  # noqa: E402
@@ -82,6 +85,7 @@ def run_cli(
 
 
 def main() -> int:
+    assert importlib.util.find_spec("loopx.capabilities.value_connectors.github_public") is None
     install = json.loads(
         run_cli(["--format", "json", "value-connectors", "install-check"]).stdout
     )
@@ -110,9 +114,34 @@ def main() -> int:
     assert "social_browser_x" in profile_ids, profile_ids
     assert "agent_reach_ops_source_map" in profile_ids, profile_ids
     assert "finance_market_snapshot" in profile_ids, profile_ids
+    profiles = {
+        item["connector_id"]: item for item in source_map["source_profiles"]
+    }
+    assert profiles["github_public_channel"]["outcome_capability_id"] == "issue-fix"
+    assert profiles["github_public_reply_monitor"]["provider_binding_state"] == "migrated"
+    assert (
+        profiles["github_public_reply_monitor"]["provider_module"]
+        == "loopx.capabilities.issue_fix.github_public"
+    )
+    assert profiles["content_ops_public_handle"]["provider_binding_state"] == "native"
+    assert profiles["social_browser_x"]["outcome_capability_id"] == "content-ops"
+    assert profiles["agent_reach_ops_source_map"]["outcome_capability_id"] == "content-ops"
+    assert (
+        profiles["finance_market_snapshot"]["outcome_capability_id"]
+        == "finance-value-discovery"
+    )
     action_ids = {item["connector_id"] for item in source_map["action_gated_profiles"]}
     assert "botmail_identity" in action_ids, action_ids
     assert "community_channel" in action_ids, action_ids
+    actions = {
+        item["connector_id"]: item for item in source_map["action_gated_profiles"]
+    }
+    assert actions["botmail_identity"]["outcome_capability_id"] == "content-ops"
+    assert actions["community_channel"]["outcome_capability_id"] == "content-ops"
+    assert source_map["projection"]["compatibility_facade"] is True
+    assert source_map["projection"]["new_profile_ownership_allowed"] is False
+    assert source_map["projection"]["mapped_profile_count"] == 8
+    assert source_map["projection"]["migrated_profile_count"] == 3
     assert source_map["generic_evidence_card_schema"]["operation"] == "read", source_map
     assert "loopx value-connectors plan" in source_map["agent_prompt"], source_map
     assert_public_safe(source_map)

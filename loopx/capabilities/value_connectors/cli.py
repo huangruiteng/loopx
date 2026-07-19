@@ -6,12 +6,14 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from .github_public import (
+from ..issue_fix.github_public import (
     build_github_public_channel_probe_packet,
     build_github_public_reply_monitor_packet,
-    build_value_connector_install_check_packet,
     render_github_public_channel_probe_markdown,
     render_github_public_reply_monitor_markdown,
+)
+from .install_check import (
+    build_value_connector_install_check_packet,
     render_value_connector_install_check_markdown,
 )
 from .planner import (

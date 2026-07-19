@@ -33,6 +33,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "write_boundary": "read-only external metadata; no issue comment, PR, or todo write",
             },
             {
+                "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --fetch-metadata --format json",
+                "purpose": "Use the compatibility CLI to fetch the issue-fix-owned public GitHub probe packet.",
+                "write_boundary": "public metadata read only; no issue bodies, comments, PRs, account changes, or writes",
+            },
+            {
+                "command": "loopx value-connectors github-reply-monitor --issue-url <github-issue-or-pr-url> --after-comment-url <github-issue-comment-url> --fetch-metadata --format json",
+                "purpose": "Use the compatibility CLI to detect public maintainer replies through the issue-fix provider.",
+                "write_boundary": "public comment metadata read only; no comment bodies, thread bump, or external write",
+            },
+            {
                 "command": "loopx content-ops issue-fix-intake --format json",
                 "purpose": "Project public issue metadata into an issue-fix intake packet.",
                 "write_boundary": "fixture-only; no external read or write",
@@ -89,6 +99,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "implemented_protocols": [
+            {
+                "schema_version": "github_public_channel_probe_packet_v0",
+                "module": "loopx.capabilities.issue_fix.github_public",
+                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
+            {
+                "schema_version": "github_public_reply_monitor_packet_v0",
+                "module": "loopx.capabilities.issue_fix.github_public",
+                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
             {
                 "schema_version": "github_issue_metadata_preview_v0",
                 "module": "loopx.capabilities.issue_fix.metadata_preview",
@@ -186,6 +206,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "smokes": [
+            "python3 examples/value-connectors-github-public-probe-smoke.py",
             "python3 examples/issue-fix-workflow-plan-smoke.py",
             "python3 examples/issue-fix-repository-context-smoke.py",
             "python3 examples/issue-fix-feasibility-smoke.py",
@@ -204,6 +225,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "docs": [
             "docs/capabilities/issue-fix/README.md",
+            "docs/reference/protocols/value-connector-plan-v0.md",
             "docs/capabilities/issue-fix/openviking-pilot-handoff.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-discovered-issue-promotion-v0.md",
@@ -601,13 +623,12 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "origin": "builtin",
         "visibility": "public",
         "provider_id": "loopx-core",
-        "title": "External value connector starters",
-        "status": "active-preview",
+        "title": "Value connector compatibility facade",
+        "status": "compatibility-facade",
         "real_world_anchor": "external channel intake for revenue, cost, demand, and connector reuse",
         "user_value": (
-            "Install and run public-safe connector starters that turn external "
-            "channel metadata into LoopX value signals while gating account "
-            "setup, sends, posts, and private reads."
+            "Keep existing connector commands and packet schemas stable while "
+            "each profile moves to the outcome capability that serves callers."
         ),
         "entry_command": "loopx value-connectors source-map --format json",
         "commands": [
@@ -625,16 +646,19 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --format json",
                 "purpose": "Validate a public GitHub channel URL and build a connector call packet.",
                 "write_boundary": "no network read unless --fetch-metadata is provided",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --fetch-metadata --format json",
                 "purpose": "Fetch allowlisted public GitHub metadata without body/comment/timeline content.",
                 "write_boundary": "public metadata read only; no comments, PRs, account changes, or writes",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors github-reply-monitor --issue-url <github-issue-or-pr-url> --after-comment-url <github-issue-comment-url> --fetch-metadata --format json",
                 "purpose": "Detect public maintainer replies after a LoopX comment without capturing comment bodies.",
                 "write_boundary": "public comment metadata read only; no comment bodies, thread bump, or external write",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors plan --connector-id <id> ... --format json",
@@ -659,18 +683,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
             },
             {
-                "schema_version": "github_public_channel_probe_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
-                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
-            },
-            {
-                "schema_version": "github_public_reply_monitor_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
-                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
-            },
-            {
                 "schema_version": "value_connector_install_check_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
+                "module": "loopx.capabilities.value_connectors.install_check",
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
             },
             {
@@ -693,8 +707,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Every connector call must include a money, cost, demand, or capability metric plus a kill condition.",
         ],
         "next_real_step": (
-            "Use reply-monitor signals to graduate only explicit maintainer interest "
-            "into public triage notes or paid-path discovery; otherwise stop without bumps."
+            "Move one mapped profile at a time to its declared outcome capability, "
+            "keeping this CLI and its packet schemas stable until callers migrate."
         ),
     },
     {

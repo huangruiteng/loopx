@@ -67,6 +67,44 @@ next_real_step = "Keep explicit enablement bounded."
         "auto-research",
     ]
     assert all(item["provider_id"] == "loopx-core" for item in baseline["capabilities"])
+    value_summary = next(
+        item for item in baseline["capabilities"] if item["id"] == "value-connectors"
+    )
+    assert value_summary["status"] == "compatibility-facade", value_summary
+
+    issue_fix = run_cli(runtime_root, "capability", "show", "issue-fix")["capability"]
+    issue_fix_protocols = {
+        item["schema_version"]: item
+        for item in issue_fix["implemented_protocols"]
+    }
+    assert (
+        issue_fix_protocols["github_public_channel_probe_packet_v0"]["module"]
+        == "loopx.capabilities.issue_fix.github_public"
+    ), issue_fix_protocols
+    assert (
+        issue_fix_protocols["github_public_reply_monitor_packet_v0"]["module"]
+        == "loopx.capabilities.issue_fix.github_public"
+    ), issue_fix_protocols
+
+    value_connectors = run_cli(
+        runtime_root, "capability", "show", "value-connectors"
+    )["capability"]
+    value_protocols = {
+        item["schema_version"]: item
+        for item in value_connectors["implemented_protocols"]
+    }
+    assert "github_public_channel_probe_packet_v0" not in value_protocols
+    assert (
+        value_protocols["value_connector_install_check_packet_v0"]["module"]
+        == "loopx.capabilities.value_connectors.install_check"
+    )
+    github_commands = [
+        item
+        for item in value_connectors["commands"]
+        if "github-" in item["command"]
+    ]
+    assert github_commands
+    assert all(item["compatibility_for"] == "issue-fix" for item in github_commands)
 
     composed = run_cli(
         runtime_root,
