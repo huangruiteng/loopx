@@ -117,6 +117,7 @@ def assert_scheduler_ack_route_profile_keeps_independent_checks() -> None:
     assert [check["command"] for check in profile["checks"]] == [
         "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
         "python3 examples/control_plane/quota-scheduler-registry-route-smoke.py",
+        "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
     ], profile
 
 
