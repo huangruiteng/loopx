@@ -72,9 +72,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
     "loopx.control_plane.runtime.skillsbench_post_run_debug:build_skillsbench_post_run_debug_gate": (
         "Separate debug evidence classification from the final gate projection."
     ),
-    "loopx.control_plane.scheduler.scheduler_hint:build_scheduler_hint.hint": (
-        "Promote the nested hint assembler into smaller scheduler policy projections."
-    ),
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": (
         "Replace branch-heavy field parsing with the canonical todo field schema."
     ),
@@ -130,10 +127,6 @@ _OVERSIZED_DECISION_METRIC_CEILINGS = {
     "loopx.control_plane.runtime.skillsbench_post_run_debug:build_skillsbench_post_run_debug_gate": {
         "statements": 113,
         "decision_points": 97,
-    },
-    "loopx.control_plane.scheduler.scheduler_hint:build_scheduler_hint.hint": {
-        "statements": 93,
-        "decision_points": 71,
     },
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": {
         "statements": 119,
