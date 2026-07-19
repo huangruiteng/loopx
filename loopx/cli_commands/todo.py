@@ -410,7 +410,9 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "claim/update/complete/supersede, attribute the "
             "lifecycle actor; registered multi-agent goals require it unless an "
             "exact linked user_gate decision_scope supplies the typed owner/controller "
-            "override. For list/suggest, select the project agent lane."
+            "override. For list/suggest, select the project agent lane. Agent todo "
+            "add intentionally does not accept this option; use --claimed-by to "
+            "assign execution, or omit both options to leave the todo unclaimed."
         ),
     )
     todo_parser.add_argument(

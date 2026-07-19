@@ -186,12 +186,11 @@ def main() -> int:
         assert rejected.returncode == 1, rejected.stdout
         error_payload = json.loads(rejected.stdout)
         assert error_payload["error"].startswith(
-            "todo add does not support --agent-id;"
+            "todo add does not support --agent-id for agent todos;"
         ), error_payload
         error = error_payload["error"]
-        assert "todo list/suggest" in error, error_payload
-        assert "user-todo authoring" in error, error_payload
-        assert "lifecycle actor attribution only" in error, error_payload
+        assert "use --claimed-by <registered-agent>" in error, error_payload
+        assert "omit both options to leave the todo unclaimed" in error, error_payload
 
     print("todo-suggestion-prompt-smoke: ok")
     return 0

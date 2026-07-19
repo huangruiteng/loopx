@@ -79,6 +79,16 @@ def assert_help_surfaces() -> None:
         "exact linked user_gate decision_scope",
         "todo complete controller override help",
     )
+    assert_contains(
+        complete_help.stdout,
+        "todo add intentionally does not accept this option",
+        "todo agent-id help",
+    )
+    assert_contains(
+        complete_help.stdout,
+        "use --claimed-by to assign execution",
+        "todo agent-id recovery help",
+    )
 
     quota_help = run_cli("quota", "--help")
     assert quota_help.returncode == 0, quota_help.stderr

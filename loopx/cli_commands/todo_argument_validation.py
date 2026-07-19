@@ -107,6 +107,13 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
         and not agent_id_allowed_for_read
         and not agent_id_allowed_for_lifecycle
     ):
+        if args.todo_command == "add" and args.role == "agent":
+            raise ValueError(
+                "todo add does not support --agent-id for agent todos; omit "
+                "--agent-id and use --claimed-by <registered-agent> only when "
+                "assigning execution, or omit both options to leave the todo "
+                "unclaimed."
+            )
         raise ValueError(
             f"todo {args.todo_command} does not support --agent-id; --agent-id "
             "scopes todo list/suggest, user-todo authoring, and lifecycle actor "
