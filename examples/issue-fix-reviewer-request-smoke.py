@@ -139,8 +139,10 @@ def metadata(
     requested: list[str] | None = None,
     comments: list[dict[str, Any]] | None = None,
     reviewed: list[str] | None = None,
+    body: str | None = None,
+    head_ref: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "author": {"login": "current-author"},
         "closingIssuesReferences": [
             {
@@ -157,6 +159,11 @@ def metadata(
         "title": "fix: reject file URI for consistency check",
         "url": "https://github.com/owner/repo/pull/42",
     }
+    if body is not None:
+        payload["body"] = body
+    if head_ref is not None:
+        payload["headRefOid"] = head_ref
+    return payload
 
 
 class FakeGitHubRunner:
@@ -1968,6 +1975,161 @@ def main() -> int:
         assert resumed_drain["verified_pr_count"] == 1
         assert drain_calls[-1]["number"] == 103
         assert len(drain_calls) == 3
+
+        publication_template = (
+            "## Summary\n\n- Describe the change.\n\n"
+            "## Validation\n\n- [ ] Focused regression passed.\n\n"
+            "## Boundary Checklist\n\n- [ ] No private material included.\n"
+        )
+        publication_body = publication_template.replace(
+            "- [ ] Focused regression passed.",
+            "- [x] Focused regression passed.",
+        )
+        publication_head = "a" * 40
+        write(path / ".github/PULL_REQUEST_TEMPLATE.md", publication_template)
+        write(
+            path / ".loopx/config/semantic-preference.json",
+            json.dumps(
+                {
+                    "schema_version": "semantic_preference_hook_config_v0",
+                    "enabled": True,
+                    "surfaces": {
+                        "issue_fix.pr_description": {
+                            "query": "PR description preferences",
+                            "failure_policy": "fail_open",
+                        }
+                    },
+                }
+            ),
+        )
+        gated_combined = FakeCombinedRunner(
+            FakeGitHubRunner(
+                before=metadata(body=publication_body, head_ref=publication_head)
+            )
+        )
+        missing_publication_evidence = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=gated_combined,
+        )
+        assert missing_publication_evidence["ok"] is False
+        assert missing_publication_evidence["blocker"] == (
+            "pr_description_publication_evidence_required"
+        )
+        assert missing_publication_evidence["selected_reviewers"] == []
+        assert missing_publication_evidence["external_writes_performed"] is False
+        assert missing_publication_evidence["pr_description_publication_gate"][
+            "required_evidence_inputs"
+        ] == ["pr_description_build_json", "pr_description_head_ref"]
+        assert missing_publication_evidence["secondary_notification_status"] == (
+            "skipped_pr_description_publication_blocked"
+        )
+        assert gated_combined.github.edits == 0
+        assert gated_combined.github.comments == 0
+        assert gated_combined.lark_calls == []
+        assert_public_safe(missing_publication_evidence)
+
+        publication_build = {
+            "schema_version": "issue_fix_pr_description_build_v0",
+            "description": publication_body,
+            "semantic_preference": {
+                "surface": "issue_fix.pr_description",
+                "receipt": {
+                    "schema_version": (
+                        "semantic_preference_application_receipt_v0"
+                    ),
+                    "surface": "issue_fix.pr_description",
+                    "application_id": "fixture-pr-42-description",
+                    "outcome": "applied",
+                    "preference_ref_digests": ["0123456789abcdef"],
+                    "artifact_ref": "fixture_pr_42_description",
+                },
+            },
+        }
+        verified_runner = FakeGitHubRunner(
+            before=metadata(body=publication_body, head_ref=publication_head),
+            after=metadata(
+                requested=["service-owner"],
+                body=publication_body,
+                head_ref=publication_head,
+            ),
+        )
+        verified_publication = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            pr_description_build=publication_build,
+            pr_description_head_ref=publication_head,
+            execute=True,
+            runner=verified_runner,
+        )
+        assert verified_publication["ok"] is True, verified_publication
+        assert verified_publication["pr_description_publication_gate"]["status"] == (
+            "verified"
+        )
+        assert verified_publication["review_request_verified"] is True
+        assert verified_runner.edits == 1
+        assert_public_safe(verified_publication)
+
+        publication_metadata_path = path / "publication-metadata.json"
+        publication_build_path = path / "publication-build.json"
+        write(
+            publication_metadata_path,
+            json.dumps(metadata(body=publication_body, head_ref=publication_head)),
+        )
+        write(publication_build_path, json.dumps(publication_build))
+        publication_cli = subprocess.run(
+            [
+                *loopx_cli,
+                "issue-fix",
+                "reviewer-request",
+                "--url",
+                "https://github.com/owner/repo/pull/42",
+                "--repo-path",
+                str(path),
+                "--base-ref",
+                "main",
+                "--metadata-json",
+                str(publication_metadata_path),
+                "--pr-description-build-json",
+                str(publication_build_path),
+                "--pr-description-head-ref",
+                publication_head,
+            ],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        )
+        publication_cli_packet = json.loads(publication_cli.stdout)
+        assert publication_cli_packet["pr_description_publication_gate"]["ok"] is True
+        assert publication_cli_packet["external_writes_performed"] is False
+        assert_public_safe(publication_cli_packet)
+
+        mismatched_build = json.loads(json.dumps(publication_build))
+        mismatched_build["description"] += "\nUnverified mutation.\n"
+        mismatched_runner = FakeGitHubRunner(
+            before=metadata(body=publication_body, head_ref=publication_head)
+        )
+        mismatched_publication = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            pr_description_build=mismatched_build,
+            pr_description_head_ref=publication_head,
+            execute=True,
+            runner=mismatched_runner,
+        )
+        assert mismatched_publication["ok"] is False
+        assert mismatched_publication["blocker"] == (
+            "pr_description_publication_verification_failed"
+        )
+        assert mismatched_runner.edits == 0
+        assert_public_safe(mismatched_publication)
 
         subprocess.run(
             [
