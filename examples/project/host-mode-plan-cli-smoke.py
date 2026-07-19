@@ -73,7 +73,7 @@ def test_cli_selects_headless_turn_and_scopes_agent_id() -> None:
     assert "--available-capability shell" in command, command
     assert payload["selected_missing_host_capabilities"] == [], payload
     assert payload["selected_blocking_reasons"] == [], payload
-    assert payload["operator_next_steps"][0]["kind"] == "guard_preview", payload
+    assert payload["operator_next_steps"][0]["kind"] == "state_preview", payload
     assert any(step["kind"] == "turn_preview" for step in payload["operator_next_steps"]), payload
     assert payload["boundary"]["turn_envelope_is_authoritative_for_execution"] is True, payload
 

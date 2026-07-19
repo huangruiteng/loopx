@@ -125,6 +125,14 @@ _INTENT_PRIMARY_MODE = {meta["intent"]: mode for mode, meta in _MODE_METADATA.it
 # sessions keep their real host binding instead of a hard-coded Codex default.
 SUPPORTED_TURN_HOST_IDENTITIES = sorted(SUPPORTED_HOSTS)
 
+# Typed host identity -> runtime connector catalog id. Only identities with a
+# registered catalog connector may emit a host-specific visible mapping; any
+# other identity fails closed instead of fabricating a connector id.
+VISIBLE_HOST_CONNECTOR_IDS: dict[str, str] = {
+    "codex-cli": "codex_cli_tui",
+    "claude-code": "claude_code_loop",
+}
+
 
 CAPABILITY_GUIDANCE = {
     CAP_VISIBLE_SESSION: "A visible session is required so the user can watch, steer, or take over safely.",
@@ -191,17 +199,30 @@ def _missing_mode_capabilities(mode: str, host_capabilities: list[str]) -> list[
     return [capability for capability in required if capability not in host_capabilities]
 
 
-def _ready_concrete_modes(host_capabilities: list[str]) -> list[str]:
+def _ready_concrete_modes(
+    host_capabilities: list[str], host_identity: str | None = None
+) -> list[str]:
     return [
         candidate
         for candidate in CANONICAL_MODES
-        if candidate != MODE_HYBRID_HANDOFF and not _missing_mode_capabilities(candidate, host_capabilities)
+        if candidate != MODE_HYBRID_HANDOFF
+        and not _missing_mode_capabilities(candidate, host_capabilities)
+        and not (
+            candidate == MODE_VISIBLE_TUI
+            and host_identity not in VISIBLE_HOST_CONNECTOR_IDS
+        )
     ]
 
 
-def _mode_capability_ready(mode: str, host_capabilities: list[str]) -> bool:
+def _mode_capability_ready(
+    mode: str, host_capabilities: list[str], host_identity: str | None = None
+) -> bool:
+    if mode == MODE_VISIBLE_TUI and host_identity not in VISIBLE_HOST_CONNECTOR_IDS:
+        # Without an explicit catalog-registered host identity, a generic
+        # visible_session cannot establish which host is present; fail closed.
+        return False
     if mode == MODE_HYBRID_HANDOFF:
-        return len(_ready_concrete_modes(host_capabilities)) >= 2
+        return len(_ready_concrete_modes(host_capabilities, host_identity)) >= 2
     return not _missing_mode_capabilities(mode, host_capabilities)
 
 
@@ -220,9 +241,29 @@ def _turn_plan_command(
     if not turn_host or not execution_mode:
         return None
     if mode == MODE_VISIBLE_TUI:
-        # Visible mode keeps the caller's explicit host identity instead of
-        # assuming every visible session is Codex CLI.
-        turn_host = host_identity or turn_host
+        # Visible mode requires an explicit, catalog-registered host identity.
+        # Without it, a coarse `visible_session` capability cannot distinguish
+        # Codex CLI, Claude Code, or OpenCode, so claiming any concrete host
+        # would fabricate attribution.
+        if not host_identity:
+            raise HostModePlanError(
+                reason=(
+                    "visible_tui requires an explicit host_identity; a generic "
+                    "visible_session capability cannot identify the actual host"
+                ),
+                field="host_identity",
+                suggestions=sorted(VISIBLE_HOST_CONNECTOR_IDS),
+            )
+        if host_identity not in VISIBLE_HOST_CONNECTOR_IDS:
+            raise HostModePlanError(
+                reason=(
+                    f"host_identity {host_identity!r} has no registered catalog "
+                    "connector for visible mode"
+                ),
+                field="host_identity",
+                suggestions=sorted(VISIBLE_HOST_CONNECTOR_IDS),
+            )
+        turn_host = host_identity
     if turn_host not in SUPPORTED_HOSTS:
         raise HostModePlanError(
             reason=f"unsupported Turn host mapped by {mode}: {turn_host}",
@@ -247,8 +288,13 @@ def _scheduler_context(mode: str, host_identity: str | None = None) -> dict[str,
     meta = _MODE_METADATA[mode]
     turn_host = meta.get("turn_host")
     execution_mode = meta.get("turn_execution_mode")
-    if mode == MODE_VISIBLE_TUI and host_identity:
-        turn_host = host_identity
+    if mode == MODE_VISIBLE_TUI:
+        if host_identity in VISIBLE_HOST_CONNECTOR_IDS:
+            turn_host = host_identity
+        else:
+            # No honest host binding exists without an explicit registered
+            # identity; do not project a fabricated host context.
+            return None
     if not turn_host or not execution_mode:
         if mode == MODE_IM_GATEWAY:
             return None
@@ -287,9 +333,11 @@ def _mode_quota_guard(
     )
 
 
-def _blocking_reasons(mode: str, host_capabilities: list[str]) -> list[str]:
+def _blocking_reasons(
+    mode: str, host_capabilities: list[str], host_identity: str | None = None
+) -> list[str]:
     if mode == MODE_HYBRID_HANDOFF:
-        ready_modes = _ready_concrete_modes(host_capabilities)
+        ready_modes = _ready_concrete_modes(host_capabilities, host_identity)
         if len(ready_modes) >= 2:
             return []
         return [
@@ -307,11 +355,12 @@ def _recommended_next_steps(
     host_capabilities: list[str],
     turn_plan_command: str | None,
     quota_guard_command: str,
+    host_identity: str | None = None,
 ) -> list[dict[str, Any]]:
     missing = _missing_mode_capabilities(mode, host_capabilities)
     steps: list[dict[str, Any]] = []
     if mode == MODE_HYBRID_HANDOFF:
-        ready_modes = _ready_concrete_modes(host_capabilities)
+        ready_modes = _ready_concrete_modes(host_capabilities, host_identity)
         if len(ready_modes) < 2:
             steps.append(
                 {
@@ -375,11 +424,41 @@ def _recommended_next_steps(
         )
         return steps
 
+    if mode == MODE_IM_GATEWAY:
+        steps.append(
+            {
+                "step": 1,
+                "kind": "intake",
+                "action": "Create durable work from the chat or webhook intake surface; the gateway itself does not execute.",
+                "command": None,
+                "no_spend": True,
+            }
+        )
+        steps.append(
+            {
+                "step": 2,
+                "kind": "state_preview",
+                "action": "Confirm current LoopX state is safe to proceed after intake is recorded.",
+                "command": quota_guard_command,
+                "no_spend": True,
+            }
+        )
+        steps.append(
+            {
+                "step": 3,
+                "kind": "handoff_gate",
+                "action": "Choose an execution mode for the durable work: isolated_headless_turn for unattended runs, visible_tui when a user gate or ambiguous decision appears.",
+                "command": None,
+                "no_spend": True,
+            }
+        )
+        return steps
+
     steps.append(
         {
             "step": 1,
-            "kind": "guard_preview",
-            "action": "Run the quota guard preview to confirm current LoopX state before host setup.",
+            "kind": "state_preview",
+            "action": "Confirm current LoopX state is safe to proceed before host setup.",
             "command": quota_guard_command,
             "no_spend": True,
         }
@@ -389,7 +468,7 @@ def _recommended_next_steps(
             {
                 "step": len(steps) + 1,
                 "kind": "turn_preview",
-                "action": "Run the LoopX Turn plan preview before launching or resuming any host execution.",
+                "action": "Preview the bounded run before launching or resuming any host execution.",
                 "command": turn_plan_command,
                 "no_spend": True,
             }
@@ -417,13 +496,20 @@ def _build_mode_option(
     host_identity: str | None,
 ) -> dict[str, Any]:
     meta = _MODE_METADATA[mode]
-    turn_plan_command = _turn_plan_command(
-        goal_id=goal_id,
-        agent_id=agent_id,
-        mode=mode,
-        cli_bin=cli_bin,
-        available_capabilities=available_capabilities,
-        host_identity=host_identity,
+    visible_unresolved = (
+        mode == MODE_VISIBLE_TUI and host_identity not in VISIBLE_HOST_CONNECTOR_IDS
+    )
+    turn_plan_command = (
+        None
+        if visible_unresolved
+        else _turn_plan_command(
+            goal_id=goal_id,
+            agent_id=agent_id,
+            mode=mode,
+            cli_bin=cli_bin,
+            available_capabilities=available_capabilities,
+            host_identity=host_identity,
+        )
     )
     quota_guard_command = _mode_quota_guard(
         mode=mode,
@@ -431,32 +517,58 @@ def _build_mode_option(
         agent_id=agent_id,
         cli_bin=cli_bin,
         available_capabilities=available_capabilities,
-        host_identity=host_identity,
+        host_identity=host_identity if host_identity in VISIBLE_HOST_CONNECTOR_IDS else None,
     )
     effective_turn_host = (
-        host_identity if mode == MODE_VISIBLE_TUI and host_identity else meta.get("turn_host")
+        host_identity
+        if mode == MODE_VISIBLE_TUI and host_identity in VISIBLE_HOST_CONNECTOR_IDS
+        else meta.get("turn_host")
     )
+    if mode == MODE_VISIBLE_TUI:
+        connector_id = (
+            VISIBLE_HOST_CONNECTOR_IDS[host_identity]
+            if host_identity in VISIBLE_HOST_CONNECTOR_IDS
+            else "unresolved_visible_host"
+        )
+    else:
+        connector_id = meta["connector_id"]
     return {
         "mode": mode,
         "summary": meta["summary"],
-        "connector_id": (
-            f"{host_identity}_visible_tui"
-            if mode == MODE_VISIBLE_TUI and host_identity
-            else meta["connector_id"]
-        ),
+        "connector_id": connector_id,
         "host_identity": effective_turn_host if mode == MODE_VISIBLE_TUI else None,
-        "capability_ready": _mode_capability_ready(mode, host_capabilities),
+        "capability_ready": _mode_capability_ready(mode, host_capabilities, host_identity),
         "required_host_capabilities": list(meta["required_capabilities"]),
         "missing_host_capabilities": _missing_mode_capabilities(mode, host_capabilities),
-        "blocking_reasons": _blocking_reasons(mode, host_capabilities),
+        "blocking_reasons": (
+            _blocking_reasons(mode, host_capabilities, host_identity)
+            if not (mode == MODE_VISIBLE_TUI and visible_unresolved)
+            else [
+                (
+                    "visible_tui requires an explicit host_identity "
+                    "(--host-identity); a generic visible_session capability "
+                    "cannot identify the actual host."
+                )
+                if host_identity is None
+                else (
+                    f"host_identity {host_identity!r} has no registered catalog "
+                    "connector for visible mode."
+                )
+            ]
+        ),
         "recommended_next_steps": _recommended_next_steps(
             mode=mode,
             host_capabilities=host_capabilities,
             turn_plan_command=turn_plan_command,
             quota_guard_command=quota_guard_command,
+            host_identity=host_identity,
         ),
         "turn_mapping": {
-            "host": effective_turn_host,
+            "host": (
+                effective_turn_host
+                if not (mode == MODE_VISIBLE_TUI and visible_unresolved)
+                else None
+            ),
             "execution_mode": meta.get("turn_execution_mode"),
             "scheduler_owner": meta.get("scheduler_owner"),
             "plan_command": turn_plan_command,
@@ -475,6 +587,20 @@ def _transitions(
     available_capabilities: list[str] | None,
     host_identity: str | None,
 ) -> list[dict[str, Any]]:
+    def target_turn_command(to_mode: str) -> str | None:
+        try:
+            return _turn_plan_command(
+                goal_id=goal_id,
+                agent_id=agent_id,
+                mode=to_mode,
+                cli_bin=cli_bin,
+                available_capabilities=available_capabilities,
+                host_identity=host_identity,
+            )
+        except HostModePlanError:
+            # A visible target without a catalog-registered identity has no
+            # honest preview command; emit none rather than a fabricated host.
+            return None
     def transition(
         transition_id: str,
         from_mode: str,
@@ -490,21 +616,14 @@ def _transitions(
             "preserves_agent_id": True,
             "spends_quota": False,
             "target_readiness": target_readiness,
-            "target_turn_plan_command": _turn_plan_command(
-                goal_id=goal_id,
-                agent_id=agent_id,
-                mode=to_mode,
-                cli_bin=cli_bin,
-                available_capabilities=available_capabilities,
-                host_identity=host_identity,
-            ),
+            "target_turn_plan_command": target_turn_command(to_mode),
             "guard_command": _mode_quota_guard(
                 mode=to_mode,
                 goal_id=goal_id,
                 agent_id=agent_id,
                 cli_bin=cli_bin,
                 available_capabilities=available_capabilities,
-                host_identity=host_identity,
+                host_identity=host_identity if host_identity in VISIBLE_HOST_CONNECTOR_IDS else None,
             ),
         }
 
@@ -601,6 +720,31 @@ def build_host_mode_plan(
         for mode in ordered_modes
     ]
     selected = mode_options[0]
+    if primary_mode == MODE_VISIBLE_TUI and normalized_host_identity not in VISIBLE_HOST_CONNECTOR_IDS:
+        selected = dict(selected)
+        selected["capability_ready"] = False
+        if normalized_host_identity is None:
+            selected["blocking_reasons"] = [
+                "visible_tui requires an explicit host_identity (--host-identity); "
+                "a generic visible_session capability cannot identify the actual host."
+            ]
+        else:
+            selected["blocking_reasons"] = [
+                f"host_identity {normalized_host_identity!r} has no registered catalog "
+                "connector for visible mode."
+            ]
+        selected["recommended_next_steps"] = [
+            {
+                "step": 1,
+                "kind": "stop",
+                "action": (
+                    "Re-run with --host-identity set to a catalog-registered visible host "
+                    "(" + ", ".join(sorted(VISIBLE_HOST_CONNECTOR_IDS)) + ")."
+                ),
+                "command": None,
+                "no_spend": True,
+            }
+        ]
 
     return {
         "ok": True,
@@ -622,7 +766,15 @@ def build_host_mode_plan(
         "mode_options": mode_options,
         "identity_contract": identity,
         "guard_command": selected["quota_guard_command"],
-        "next_preview_command": selected["turn_mapping"].get("plan_command") or selected["quota_guard_command"],
+        "next_preview_command": (
+            selected["turn_mapping"].get("plan_command")
+            or selected["quota_guard_command"]
+            if not (
+                primary_mode == MODE_VISIBLE_TUI
+                and normalized_host_identity not in VISIBLE_HOST_CONNECTOR_IDS
+            )
+            else selected["quota_guard_command"]
+        ),
         "no_spend_policy": {
             "selector_preview": True,
             "turn_plan_preview": True,
@@ -706,17 +858,36 @@ def render_host_mode_plan_markdown(payload: dict[str, Any]) -> str:
         f"- user_intent: `{', '.join(payload.get('user_intent') or [])}`",
         f"- host_capabilities: `{', '.join(payload.get('host_capabilities') or [])}`",
         "",
-        "## Next Preview Command",
-        "",
-        "```bash",
-        str(payload.get("next_preview_command") or ""),
-        "```",
-        "",
-        "## Runtime Modes",
-        "",
-        "| mode | connector | ready | Turn host | execution mode | scheduler owner | summary |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
+    selected_ready = payload.get("selected_capability_ready") is True
+    if selected_ready:
+        lines.extend(
+            [
+                "## Next Preview Command",
+                "",
+                "```bash",
+                str(payload.get("next_preview_command") or ""),
+                "```",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "## Not Ready Yet",
+                "",
+                "Do not run this host mode yet. Fill the gaps below first; the preview command becomes meaningful only after the mode is ready.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
+            "## Runtime Modes",
+            "",
+            "| mode | connector | ready | Turn host | execution mode | scheduler owner | summary |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
     for option in payload.get("mode_options") or []:
         if not isinstance(option, dict):
             continue

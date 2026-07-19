@@ -132,7 +132,7 @@ def test_visible_mode_stays_visible_and_scoped() -> None:
     assert "--host codex-cli" in selected["plan_command"], selected
     assert "--agent-id codex-main-control" in selected["plan_command"], selected
     visible = option(plan, MODE_VISIBLE_TUI)
-    assert visible["connector_id"] == "codex-cli_visible_tui", visible
+    assert visible["connector_id"] == "codex_cli_tui", visible
     assert visible["capability_ready"] is True, visible
     assert plan["host_identity"] == "codex-cli", plan
 
@@ -158,15 +158,59 @@ def build_workflow_identity_plan(intent: str, host_identity: str | None) -> dict
 
 
 def test_visible_mode_preserves_distinct_host_identities() -> None:
-    for host_identity in ["claude-code", "generic-cli"]:
+    expected_connectors = {
+        "codex-cli": "codex_cli_tui",
+        "claude-code": "claude_code_loop",
+    }
+    for host_identity, connector_id in expected_connectors.items():
         plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
         selected = plan["selected_turn_mapping"]
         assert selected["host"] == host_identity, (host_identity, selected)
         assert f"--host {host_identity}" in selected["plan_command"], selected
         visible = option(plan, MODE_VISIBLE_TUI)
-        assert visible["connector_id"] == f"{host_identity}_visible_tui", visible
+        assert visible["connector_id"] == connector_id, visible
         assert visible["host_identity"] == host_identity, visible
         assert plan["host_identity"] == host_identity, plan
+        assert plan["selected_connector_id"] == connector_id, plan
+
+
+def test_visible_mode_fails_closed_without_host_identity() -> None:
+    plan = build_workflow_identity_plan("watch_each_turn", host_identity=None)
+    visible = option(plan, MODE_VISIBLE_TUI)
+    assert visible["capability_ready"] is False, visible
+    assert visible["connector_id"] == "unresolved_visible_host", visible
+    assert visible["turn_mapping"]["host"] is None, visible
+    assert plan["selected_capability_ready"] is False, plan
+    assert plan["selected_connector_id"] == "unresolved_visible_host", plan
+    assert plan["selected_turn_mapping"]["host"] is None, plan
+    assert any("host_identity" in reason for reason in plan["selected_blocking_reasons"]), plan
+    assert plan["operator_next_steps"][0]["kind"] == "stop", plan
+    # No fabricated codex-cli preview command when identity is unknown.
+    assert "--host codex-cli" not in plan["next_preview_command"], plan
+    assert "codex-cli" not in str(plan["next_preview_command"]), plan
+
+
+def test_visible_mode_fails_closed_for_unregistered_host_identity() -> None:
+    plan = build_workflow_identity_plan("watch_each_turn", host_identity="generic-cli")
+    visible = option(plan, MODE_VISIBLE_TUI)
+    assert visible["capability_ready"] is False, visible
+    assert visible["connector_id"] == "unresolved_visible_host", visible
+    assert plan["selected_capability_ready"] is False, plan
+    assert any("no registered catalog connector" in reason for reason in plan["selected_blocking_reasons"]), plan
+
+
+def test_emitted_connector_ids_exist_in_catalog() -> None:
+    catalog = CONNECTOR_CATALOG_PATH.read_text()
+    for host_identity in ["codex-cli", "claude-code"]:
+        plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
+        connector = plan["selected_connector_id"]
+        assert f"`{connector}`" in catalog, (connector, "missing from runtime connector catalog")
+    for intent, mode in INTENT_TO_MODE.items():
+        if mode == MODE_HYBRID_HANDOFF:
+            continue  # selector-internal handoff contract, not a catalog connector
+        plan = build_full_plan(intent)
+        connector = plan["selected_connector_id"]
+        assert f"`{connector}`" in catalog, (intent, connector, "missing from runtime connector catalog")
 
 
 def test_readiness_fails_closed_without_required_host_capabilities() -> None:
@@ -246,6 +290,7 @@ def test_hybrid_requires_two_ready_modes_and_names_handoffs() -> None:
         ],
         agent_id="codex-main-control",
         registered_agents=["codex-main-control"],
+        host_identity="codex-cli",
     )
     assert option(two_ready, MODE_HYBRID_HANDOFF)["capability_ready"] is True, two_ready
     transition_ids = {item["transition"] for item in two_ready["transitions"]}
@@ -361,6 +406,9 @@ def main() -> int:
     test_headless_maps_to_loopx_turn_plan_not_parallel_runner()
     test_visible_mode_stays_visible_and_scoped()
     test_visible_mode_preserves_distinct_host_identities()
+    test_visible_mode_fails_closed_without_host_identity()
+    test_visible_mode_fails_closed_for_unregistered_host_identity()
+    test_emitted_connector_ids_exist_in_catalog()
     test_readiness_fails_closed_without_required_host_capabilities()
     test_shell_service_fails_closed_without_adapter_and_validator()
     test_hybrid_requires_two_ready_modes_and_names_handoffs()

@@ -69,13 +69,16 @@ run the desired mode.
 ## Visible Host Identity
 
 A coarse `visible_session` capability cannot distinguish Codex CLI, Claude Code,
-or another generic CLI host. The planner therefore accepts an explicit
-`host_identity` input (`codex-cli`, `claude-code`, or `generic-cli`). For
-`visible_tui`, the returned `turn_mapping.host`, connector id, Turn plan command,
-and scheduler execution context all preserve that identity instead of hard-coding
-Codex CLI. When no `host_identity` is supplied, visible mapping falls back to the
-Codex CLI default for backwards compatibility; pass `--host-identity` whenever
-the actual host is known.
+or another generic visible host such as OpenCode. The planner therefore fails
+closed for `visible_tui` unless an explicit, catalog-registered `host_identity`
+is supplied (`--host-identity`, currently `codex-cli` or `claude-code`). With no
+identity, the visible option reports `connector_id=unresolved_visible_host`,
+`turn_mapping.host=null`, `capability_ready=false`, a blocking reason naming the
+missing identity, and a stop-first next step; no Codex CLI default is fabricated.
+With an identity, the typed mapping is used: `codex-cli` -> `codex_cli_tui`,
+`claude-code` -> `claude_code_loop`. Every emitted connector id must exist in the
+runtime connector catalog; an identity with no registered catalog connector
+fails closed instead of emitting a dynamic string.
 
 ## Readiness And Proofs
 
@@ -86,7 +89,13 @@ capabilities are part of its requirement; a host with only `service_timer`,
 `shell`, and `loopx_turn` is not ready. Each mode option also reports
 `missing_host_capabilities`, human-readable `blocking_reasons`, and
 `recommended_next_steps` so an operator knows what to fill in before attempting
-the mode.
+the mode. When a mode is not ready, the first recommended step is `stop`: the
+operator fills the gaps and re-runs the selector before any preview command is
+treated as runnable. When `im_gateway` is ready, its steps are intake-first:
+create durable work from the chat/webhook surface, confirm LoopX state is safe
+to proceed, then choose an execution mode (`isolated_headless_turn` for
+unattended runs or `visible_tui` for user gates) without treating the gateway
+as an executor.
 
 ## Shape
 
@@ -152,7 +161,9 @@ A fixture or implementation is acceptable when:
 7. no selected mode reports `capability_ready=true` while a capability-backed
    required proof is unavailable (including `shell_service` requiring both
    `typed_host_adapter` and `independent_validator`);
-8. visible `host_identity` is preserved for distinct hosts such as Codex CLI and
-   Claude Code in the connector id, Turn mapping, and preview commands;
+8. visible `host_identity` is required when `visible_tui` is selected, is
+   preserved for distinct hosts such as Codex CLI and Claude Code in the
+   connector id, Turn mapping, and preview commands, and every emitted connector
+   id exists in the runtime connector catalog;
 9. handoffs preserve the selected agent id and expose target readiness; and
 10. unknown intent or host capability values fail closed with suggestions.
