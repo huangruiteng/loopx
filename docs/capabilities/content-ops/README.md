@@ -49,3 +49,15 @@ turning LoopX into a raw platform archive or untracked publisher. Even when an
 owner grants broad posting discretion, the agent should still record the exact
 body, account/channel, source map, timing, and stop condition before an external
 post.
+
+## Social Browser Provider
+
+`content-ops` owns the built-in `social_browser_x` provider because public
+social observation, source promotion, draft preparation, and publish gates are
+content outcomes. The provider supplies one shared source profile, install
+check, and metadata-only connector trial. The `value-connectors` CLI remains a
+compatibility facade and delegates those packets without changing their output.
+
+The provider does not open a browser, read a timeline, or publish. A real
+browser session remains owner-controlled, and every external write still needs
+the exact account, body, media/link plan, source references, and stop condition.

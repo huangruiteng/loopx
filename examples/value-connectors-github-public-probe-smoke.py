@@ -125,6 +125,11 @@ def main() -> int:
     )
     assert profiles["content_ops_public_handle"]["provider_binding_state"] == "native"
     assert profiles["social_browser_x"]["outcome_capability_id"] == "content-ops"
+    assert profiles["social_browser_x"]["provider_binding_state"] == "migrated"
+    assert (
+        profiles["social_browser_x"]["provider_module"]
+        == "loopx.capabilities.content_ops.social_browser_x"
+    )
     assert profiles["agent_reach_ops_source_map"]["outcome_capability_id"] == "content-ops"
     assert (
         profiles["finance_market_snapshot"]["outcome_capability_id"]
@@ -141,7 +146,7 @@ def main() -> int:
     assert source_map["projection"]["compatibility_facade"] is True
     assert source_map["projection"]["new_profile_ownership_allowed"] is False
     assert source_map["projection"]["mapped_profile_count"] == 8
-    assert source_map["projection"]["migrated_profile_count"] == 3
+    assert source_map["projection"]["migrated_profile_count"] == 4
     assert source_map["generic_evidence_card_schema"]["operation"] == "read", source_map
     assert "loopx value-connectors plan" in source_map["agent_prompt"], source_map
     assert_public_safe(source_map)

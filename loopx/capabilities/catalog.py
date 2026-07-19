@@ -596,6 +596,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.content_ops.surface",
                 "doc": "docs/reference/protocols/content-ops-surface-v0.md",
             },
+            {
+                "schema_version": "content_ops_social_browser_x_provider_v0",
+                "module": "loopx.capabilities.content_ops.social_browser_x",
+                "doc": "docs/capabilities/content-ops/README.md",
+            },
         ],
         "smokes": [
             "python3 examples/content-ops-exploration-plan-smoke.py",

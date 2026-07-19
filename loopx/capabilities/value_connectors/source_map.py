@@ -3,6 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from ..content_ops.social_browser_x import (
+    SOCIAL_BROWSER_X_PROVIDER_MODULE,
+    build_social_browser_x_provider_packet,
+)
+
 
 VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION = "value_connector_source_map_packet_v0"
 VALUE_CONNECTOR_SOURCE_PROFILE_SCHEMA_VERSION = "value_connector_source_profile_v0"
@@ -37,8 +42,8 @@ OUTCOME_PROVIDER_BINDINGS: dict[str, dict[str, str | None]] = {
     },
     "social_browser_x": {
         "outcome_capability_id": "content-ops",
-        "provider_binding_state": "mapped",
-        "provider_module": None,
+        "provider_binding_state": "migrated",
+        "provider_module": SOCIAL_BROWSER_X_PROVIDER_MODULE,
     },
     "agent_reach_ops_source_map": {
         "outcome_capability_id": "content-ops",
@@ -111,6 +116,7 @@ def _source_profile(
 
 
 def _source_profiles() -> list[dict[str, Any]]:
+    social_browser_x = build_social_browser_x_provider_packet()
     return [
         _source_profile(
             connector_id="github_public_channel",
@@ -177,29 +183,7 @@ def _source_profiles() -> list[dict[str, Any]]:
                 "the next step would scrape private timeline material",
             ],
         ),
-        _source_profile(
-            connector_id="social_browser_x",
-            status="profile_ready_when_browser_available",
-            route_type="browser-backed public/social channel",
-            boundary="logged_in_read",
-            safe_uses=[
-                "read public or account-visible X metadata through an owner-approved browser profile",
-                "prepare source-mapped drafts for LoopX posts or replies",
-                "monitor published posts after an audited publish record exists",
-            ],
-            commands=[
-                "loopx content-ops observe-public-handle --url https://x.com/<handle> --source-item-id <stable-source-id> --no-fetch --format json",
-                "loopx value-connectors plan --connector-id social_browser_x --connector-kind browser_social_channel --channel 'X public post via browser' --stage external_write_request --target-ref '<exact post>' --target-url https://x.com/<handle> --external-write-requested --money-metric '<demand metric>' --success-metric '<success metric>' --kill-condition '<stop condition>' --format json",
-            ],
-            evidence_schema="x_draft_packet_v0 or content_ops_public_handle_observation_packet_v0",
-            maturity_hint="Use repeated public signals and concrete workflow-owner replies; avoid platform drama as proof.",
-            write_gate="exact account, final body, media/link plan, timing, source refs, and stop condition required",
-            stop_conditions=[
-                "active account identity is unclear",
-                "source requires private DMs, private lists, or hidden timeline expansion",
-                "post/reply/media upload would execute without an audit record",
-            ],
-        ),
+        _source_profile(**social_browser_x["source_profile"]),
         _source_profile(
             connector_id="agent_reach_ops_source_map",
             status="field_derived_pattern",

@@ -79,9 +79,11 @@ call planning, but it does not own new user outcomes. Each profile declares the
 outcome capability that serves callers; implementations move there one proven
 profile at a time while these CLI commands stay stable.
 
-The first completed migration is the public GitHub probe and reply monitor.
-Their implementation and protocol ownership now live under `issue-fix`; the
-existing `loopx value-connectors ...` commands delegate to that provider.
+The first completed migrations are the public GitHub probe/reply monitor and
+the `social_browser_x` profile. GitHub implementation and protocol ownership
+live under `issue-fix`; the social source, install, and content-ops trial
+contracts live under `content-ops`. Existing `loopx value-connectors ...`
+commands delegate to those providers.
 
 ## Connector Profiles
 
@@ -90,7 +92,7 @@ existing `loopx value-connectors ...` commands delegate to that provider.
 | `github_public_channel` | `issue-fix` | migrated | yes | none |
 | `github_public_reply_monitor` | `issue-fix` | migrated | yes | none |
 | `content_ops_public_handle` | `content-ops` | native | public-handle observation | none |
-| `social_browser_x` | `content-ops` | mapped | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
+| `social_browser_x` | `content-ops` | migrated | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
 | `finance_market_snapshot` | `finance-value-discovery` | mapped | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
 | `agent_reach_ops_source_map` | `content-ops` | mapped | `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json`; [profile note](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
 | `botmail_identity` | `content-ops` | mapped | install-check only | exact send gate required |

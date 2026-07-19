@@ -13,14 +13,15 @@ from .connector_packets import (
     source_item_and_trial_from_private_gate_packet,
     source_item_and_trial_from_public_packet,
 )
+from .social_browser_x import build_social_browser_x_provider_packet
 from .markdown import (
-    render_content_ops_chatview_report_markdown,
-    render_content_ops_exploration_plan_markdown,
-    render_content_ops_packet_aggregation_markdown,
-    render_content_ops_preview_markdown,
-    render_content_ops_private_connector_gate_markdown,
-    render_content_ops_public_handle_observation_markdown,
-    render_content_ops_walkthrough_artifact_markdown,
+    render_content_ops_chatview_report_markdown as render_content_ops_chatview_report_markdown,
+    render_content_ops_exploration_plan_markdown as render_content_ops_exploration_plan_markdown,
+    render_content_ops_packet_aggregation_markdown as render_content_ops_packet_aggregation_markdown,
+    render_content_ops_preview_markdown as render_content_ops_preview_markdown,
+    render_content_ops_private_connector_gate_markdown as render_content_ops_private_connector_gate_markdown,
+    render_content_ops_public_handle_observation_markdown as render_content_ops_public_handle_observation_markdown,
+    render_content_ops_walkthrough_artifact_markdown as render_content_ops_walkthrough_artifact_markdown,
 )
 from .schemas import (
     ANGLE_CANDIDATE_SCHEMA_VERSION,
@@ -496,22 +497,7 @@ def build_content_ops_surface_fixture(
         }
     ]
     connector_trials = [
-        {
-            "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
-            "trial_id": "trial_x_ego_lite_browser",
-            "surface": "x_public_feed",
-            "tool_hint": "ego-lite browser",
-            "access_mode": "public_metadata_only",
-            "source_status": "public",
-            "freshness": "unknown",
-            "allowed_use": "metadata_only",
-            "trial_state": "ready_for_metadata_trial",
-            "proposed_source_item_id": "source_x_public_signal_001",
-            "terms_note": "public/terms-aware signal intake; no login, posting, or raw timeline capture in LoopX state",
-            "promotion_target": "source_item_v0",
-            "requires_user_gate": False,
-            "external_write_allowed": False,
-        },
+        build_social_browser_x_provider_packet()["connector_trial"],
         {
             "schema_version": CONNECTOR_TRIAL_SCHEMA_VERSION,
             "trial_id": "trial_wechat_chatlog_alpha",

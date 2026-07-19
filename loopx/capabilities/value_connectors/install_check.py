@@ -4,6 +4,8 @@ import shutil
 from collections.abc import Mapping
 from typing import Any
 
+from ..content_ops.social_browser_x import build_social_browser_x_provider_packet
+
 
 VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION = (
     "value_connector_install_check_packet_v0"
@@ -90,26 +92,7 @@ def build_value_connector_install_check_packet(
             "external_write_capability": True,
             "write_gate": "channel rules, account identity, exact message, and value metric required",
         },
-        {
-            "connector_id": "social_browser_x",
-            "status": "ready" if shutil.which("ego-browser") else "needs_ego_browser",
-            "install": [
-                "Install ego lite / ego-browser and log in to X in the user-owned browser profile.",
-                "Use LoopX to plan X account setup, research, draft, publish, and reply-monitor calls before browser execution.",
-                "loopx content-ops observe-public-handle --url https://x.com/loopxops --source-item-id source_x_loopx_public_handle --no-fetch --format json",
-                "loopx value-connectors plan --connector-id social_browser_x --connector-kind browser_social_channel --channel 'X public post via ego-browser' --stage external_write_request --target-ref 'one approved LoopX post' --target-url https://x.com/loopxops --external-write-requested --money-metric 'qualified workflow owner asks for LoopX setup help' --success-metric 'one audit, demo, or setup request' --kill-condition 'spam hiding, account-health degradation, or no workflow owner signal' --format json",
-            ],
-            "optional_tools": [
-                {
-                    "tool": "ego-browser",
-                    "installed": shutil.which("ego-browser") is not None,
-                    "needed_for": "logged-in browser research, profile maintenance, uploads, approved posts, and reply monitoring",
-                    "install_hint": "Install ego lite, then confirm `ego-browser nodejs` can open the target site.",
-                }
-            ],
-            "external_write_capability": True,
-            "write_gate": "exact account identity, body, image, link, mentions, and stop condition required before any X write",
-        },
+        build_social_browser_x_provider_packet()["install_check"],
     ]
     selected = [
         item

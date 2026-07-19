@@ -3,9 +3,10 @@
 Status: public-safe connector planning and starter runtime contract v0.
 
 `loopx value-connectors` is a compatibility CLI and protocol facade. Generic
-planning, install checks, and source mapping remain here. The public GitHub
-probe and reply-monitor implementations are owned by `issue-fix` and are still
-invoked through the commands below so existing callers do not change.
+planning and the stable command surface remain here. Public GitHub probes are
+owned by `issue-fix`; the `social_browser_x` source, install, and connector-trial
+contracts are owned by `content-ops`. Existing callers still invoke the commands
+below while the facade delegates to those providers.
 
 `value_connector_plan_v0` is a compact contract for external-value connector
 calls. It sits before real connector execution so LoopX can separate useful
@@ -81,6 +82,7 @@ loopx value-connectors plan \
 | `connector_approval_gate_v0` | Exact-call approval gate for account setup, external writes, sends, publishing, or private expansion. |
 | `github_public_channel_probe_packet_v0` | Starter connector output for public GitHub issue/PR/discussion metadata. |
 | `github_public_reply_monitor_packet_v0` | Starter connector output for public maintainer reply detection after a LoopX comment. |
+| `content_ops_social_browser_x_provider_v0` | Content-ops-owned source, install, and metadata-only trial contract behind the compatibility facade. |
 | `finance_market_snapshot_profile_v0` | Candidate profile for quote/fund/news/announcement pulls with source, freshness, uncertainty, and no-investment-advice gates. |
 | `finance_market_snapshot_probe_packet_v0` | No-credential public-source probe packet for Eastmoney/Futu/GitHub OSS source readiness, gates, and fallback decisions. |
 | `value_connector_install_check_packet_v0` | Local install/use checklist for connector starters. |
