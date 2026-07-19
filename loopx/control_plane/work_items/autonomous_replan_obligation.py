@@ -57,6 +57,44 @@ def _single_public_agent_id(items: list[dict[str, Any]]) -> str | None:
     return next(iter(agent_ids)) if len(agent_ids) == 1 else None
 
 
+def _run_history_agent_id(run: dict[str, Any]) -> str | None:
+    agent_id = str(run.get("agent_id") or "").strip()
+    if agent_id:
+        return agent_id
+    monitor_target = run_history_monitor_target(run)
+    if isinstance(monitor_target, dict):
+        return str(monitor_target.get("agent_id") or "").strip() or None
+    return None
+
+
+def _latest_agent_run_history(
+    latest_runs: list[dict[str, Any]] | None,
+    *,
+    neutral_classifications: set[str],
+) -> list[dict[str, Any]]:
+    """Keep the newest attributable agent lane while preserving goal-level runs."""
+
+    accountable_agent_id = next(
+        (
+            _run_history_agent_id(run)
+            for run in latest_runs or []
+            if isinstance(run, dict)
+            and str(run.get("classification") or "").strip()
+            not in neutral_classifications
+            and _run_history_agent_id(run)
+        ),
+        None,
+    )
+    if not accountable_agent_id:
+        return [run for run in latest_runs or [] if isinstance(run, dict)]
+    return [
+        run
+        for run in latest_runs or []
+        if isinstance(run, dict)
+        and _run_history_agent_id(run) in {None, accountable_agent_id}
+    ]
+
+
 def run_history_monitor_target(run: dict[str, Any]) -> dict[str, Any] | None:
     target = run.get("monitor_target")
     if isinstance(target, dict):
@@ -525,9 +563,14 @@ def autonomous_replan_obligation_from_runs(
     dead_monitor_repeat_schema_version: str,
     periodic_run_threshold: int,
 ) -> dict[str, Any] | None:
+    scoped_latest_runs = _latest_agent_run_history(
+        latest_runs,
+        neutral_classifications=neutral_classifications,
+    )
+
     def periodic_review() -> dict[str, Any] | None:
         return autonomous_replan_periodic_review_from_runs(
-            latest_runs,
+            scoped_latest_runs,
             agent_todos=agent_todos,
             autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
             neutral_classifications=neutral_classifications,
@@ -537,7 +580,7 @@ def autonomous_replan_obligation_from_runs(
 
     signals: list[dict[str, Any]] = []
     signal_scan_limit = max(autonomous_replan_stall_threshold, dead_monitor_repeat_threshold)
-    for run in latest_runs or []:
+    for run in scoped_latest_runs:
         if not isinstance(run, dict):
             continue
         classification = str(run.get("classification") or "").strip()
@@ -624,7 +667,7 @@ def autonomous_replan_obligation_from_runs(
         if monitor_classifications != {"quota_monitor_poll"}:
             return periodic_review()
         if run_history_monitor_wait_already_acknowledged(
-            latest_runs,
+            scoped_latest_runs,
             signal_count=len(monitor_signals),
             autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
             neutral_classifications=neutral_classifications,

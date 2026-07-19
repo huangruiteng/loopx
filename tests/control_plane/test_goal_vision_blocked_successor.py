@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
 from loopx.cli_commands.status import attach_agent_lane_next_actions
@@ -228,6 +230,34 @@ def test_two_identical_blocked_successor_waits_trigger_bounded_replan() -> None:
         "discover_safe_successor",
         "create_successor",
         "record_wait_continuation",
+    ]
+
+
+def test_interleaved_peer_monitor_does_not_reset_blocked_successor_replan() -> None:
+    polls = _blocked_wait_polls()
+    peer_poll = deepcopy(polls[0])
+    peer_poll["agent_id"] = PRIMARY_AGENT
+    peer_identity = {
+        "agent_id": PRIMARY_AGENT,
+        "target_id": "peer-monitor-target",
+        "frontier_identity": "peer-frontier",
+    }
+    peer_poll["monitor_target"].update(peer_identity)
+    peer_poll["monitor_event"]["agent_id"] = PRIMARY_AGENT
+    peer_poll["monitor_event"]["monitor_target"].update(peer_identity)
+
+    replanned = _quota_with_replan_runs(
+        [polls[0], peer_poll, polls[1], _vision_run()]
+    )
+
+    assert replanned["decision"] == "autonomous_replan_required"
+    obligation = replanned["autonomous_replan_obligation"]
+    assert obligation["agent_id"] == AGENT_ID
+    trigger = obligation["triggers"][0]
+    assert trigger["kind"] == "blocked_successor_no_progress_repeat"
+    assert trigger["monitor_target_id"] == polls[0]["monitor_target"]["target_id"]
+    assert trigger["frontier_identity"] == polls[0]["monitor_target"][
+        "frontier_identity"
     ]
 
 
