@@ -125,6 +125,7 @@ def assert_compact_runtime_policy_complete(
     assert ack_args["applied_rrule"] == codex_app["recommended_rrule"], (name, compact)
     assert ack_args["reset_token"] == stateful_backoff["reset_token"], (name, compact)
     assert ack_args["identity_signature"] == stateful_backoff["identity_signature"], (name, compact)
+    assert ack_args["host_match_observed"] is True, (name, compact)
     expected_cli_args = [
         "quota",
         "scheduler-ack-current",
@@ -135,6 +136,11 @@ def assert_compact_runtime_policy_complete(
         "-A",
         "--applied-rrule",
         ack_args["applied_rrule"],
+        "--host-match-observed",
+        "--reset-token",
+        ack_args["reset_token"],
+        "--identity-signature",
+        ack_args["identity_signature"],
         "--execute",
     ]
     if expected_registry_path is not None and expected_runtime_root is not None:
@@ -290,7 +296,7 @@ def assert_compact_scheduler(name: str, source_payload: dict) -> None:
     assert "automation_update" in reset_detail["codex_app_apply"], (name, detailed)
     assert len(reset_detail["profile_signature"]) == 12, (name, detailed)
     assert json_size(compact) < json_size(detailed), (name, json_size(compact), json_size(detailed))
-    assert json_size(compact) <= 3_350, (name, json_size(compact))
+    assert json_size(compact) <= 3_450, (name, json_size(compact))
 
 
 def run_should_run_cli(
