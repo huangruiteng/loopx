@@ -22,11 +22,7 @@ from .control_plane.agents.agent_lane_recommendation import (
     selected_recommended_action_from_work_lane,
 )
 from .control_plane.agents.workspace_guard import build_agent_workspace_guard
-from .control_plane.agents.identity import (
-    build_identity_aware_prompt_upgrade,
-    build_quota_agent_identity,
-    quota_registered_agents,
-)
+from .control_plane.agents.identity import build_identity_aware_prompt_upgrade, build_quota_agent_identity
 from .control_plane import compact_control_plane_policy
 from .execution_profile import (
     execution_profile_outcome_floor,
@@ -70,24 +66,19 @@ from .control_plane.quota.decision_summary import (
 )
 from .control_plane.quota.goal_boundary import effective_available_capabilities as _effective_available_capabilities, goal_boundary as _goal_boundary, quota_execution_profile_summary as _quota_execution_profile_summary
 from .control_plane.quota.monitor_poll import (
-    QUOTA_MONITOR_POLL_CLASSIFICATION,
-    build_quota_monitor_poll_event,
+    QUOTA_MONITOR_POLL_CLASSIFICATION as QUOTA_MONITOR_POLL_CLASSIFICATION,
+    build_quota_monitor_poll_event as build_quota_monitor_poll_event,
     record_quota_monitor_poll_for_decision,
-    render_quota_monitor_poll_markdown,
 )
 from .control_plane.quota.recent_runs import (
     build_monitor_debt_arbitration as _build_monitor_debt_arbitration,
     goal_latest_runs as _goal_latest_runs,
     recent_external_monitor_observation_unchanged as _recent_external_monitor_observation_unchanged,
 )
-from .presentation.renderers.quota_markdown import (
-    render_quota_markdown,
-    render_quota_scheduler_ack_markdown,
-    render_quota_should_run_markdown,
-)
+from .presentation.renderers.quota_event_markdown import render_quota_monitor_poll_markdown as _render_quota_monitor_poll_markdown, render_quota_slot_preview_markdown as _render_quota_slot_preview_markdown, render_quota_slot_preview_markdown as render_quota_slot_preview_markdown
+from .presentation.renderers.quota_markdown import render_quota_markdown as render_quota_markdown, render_quota_scheduler_ack_markdown as render_quota_scheduler_ack_markdown, render_quota_should_run_markdown as render_quota_should_run_markdown
 from .control_plane.quota.scheduler_ack import (
     QUOTA_SCHEDULER_ACK_CLASSIFICATION,
-    build_quota_scheduler_ack_event,
     record_quota_scheduler_ack_for_decision,
 )
 from .control_plane.quota.selected_todo_projection import (
@@ -110,12 +101,11 @@ from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_VOIDED_CLASSIFICATION,
     build_quota_slot_preview_for_decision,
     build_quota_slot_spend_event as _build_quota_slot_spend_event,
-    build_quota_slot_void_event,
+    build_quota_slot_void_event as build_quota_slot_void_event,
     build_quota_slot_void_preview_for_decision,
     load_quota_event_from_run,
     record_quota_slot_spend_from_preview,
     record_quota_slot_void_from_preview,
-    render_quota_slot_preview_markdown,
 )
 from .control_plane.quota.spend_sources import (
     DEFAULT_SLOT_SPEND_SOURCE,
@@ -157,7 +147,6 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_BLOCKER,
     normalize_todo_claimed_by,
     normalize_todo_status,
-    normalize_todo_task_class,
 )
 from .control_plane.todos.summary_item import (
     compact_todo_summary_item,
@@ -180,7 +169,6 @@ from .control_plane.todos.quota_summary import (
     compact_quota_todo_summary_for_payload,
     select_quota_todo_source_items,
     select_quota_todo_summary,
-    summarize_user_todos_for_quota,
 )
 from .control_plane.todos.user_gate import (
     build_gate_prompt as _build_gate_prompt,
@@ -190,6 +178,17 @@ from .control_plane.todos.user_gate import (
     user_gate_todo_notify_reason as _user_gate_todo_notify_reason,
 )
 from .control_plane.todos.write_hint import build_todo_write_hint
+
+
+_PUBLIC_COMPAT_REEXPORTS = {
+    "QUOTA_MONITOR_POLL_CLASSIFICATION": "loopx.control_plane.quota.monitor_poll",
+    "build_quota_monitor_poll_event": "loopx.control_plane.quota.monitor_poll",
+    "render_quota_markdown": "loopx.presentation.renderers.quota_markdown",
+    "render_quota_scheduler_ack_markdown": "loopx.presentation.renderers.quota_markdown",
+    "render_quota_should_run_markdown": "loopx.presentation.renderers.quota_markdown",
+    "build_quota_slot_void_event": "loopx.control_plane.quota.slot_accounting",
+    "render_quota_slot_preview_markdown": "loopx.presentation.renderers.quota_event_markdown",
+}
 
 
 DEFAULT_COMPUTE_QUOTA = 1.0
@@ -2338,25 +2337,26 @@ def record_quota_monitor_poll(
     next_due_at: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
-    next_claimed_by: str | None = None, scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None, operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
+    next_claimed_by: str | None = None,
+    scheduler_execution_context: Mapping[str, Any] | SchedulerExecutionContextResolution | None = None,
+    operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
-    before = build_quota_should_run(
-        status_payload,
-        goal_id=safe_goal_id,
-        agent_id=agent_id,
-        available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-    )
+    def should_run(current_status: dict[str, Any]) -> dict[str, Any]:
+        return build_quota_should_run(current_status,
+            goal_id=safe_goal_id,
+            agent_id=agent_id,
+            available_capabilities=available_capabilities,
+            scheduler_execution_context=scheduler_execution_context,
+            operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+        )
+    before = should_run(status_payload)
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,
         goal_id=safe_goal_id,
-        after_decision=lambda after_status: build_quota_should_run(
-            after_status,
-            goal_id=safe_goal_id,
-            agent_id=agent_id,
-            available_capabilities=available_capabilities, scheduler_execution_context=scheduler_execution_context, operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-        ),
+        render_markdown=_render_quota_monitor_poll_markdown,
+        after_decision=should_run,
         registry_path=registry_path,
         execute=execute,
         source=source,
@@ -2415,6 +2415,7 @@ def void_quota_slot(
         preview,
         status_payload,
         goal_id=safe_goal_id,
+        render_markdown=_render_quota_slot_preview_markdown,
         execute=execute,
         source=source,
         reason_summary=reason_summary,
@@ -2447,6 +2448,7 @@ def spend_quota_slot(
         status_payload,
         goal_id=safe_goal_id,
         self_repair_spend_actions=SELF_REPAIR_SPEND_ACTIONS,
+        render_markdown=_render_quota_slot_preview_markdown,
         execute=execute,
         source=source,
     )

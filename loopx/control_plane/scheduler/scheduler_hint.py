@@ -28,6 +28,10 @@ from .state import (
     rrule_for_minutes,
     scheduler_rrule_interval_minutes,
 )
+from .state_transition_rules import (
+    decide_scheduler_cadence_transition,
+    decide_scheduler_host_transition,
+)
 from .time import parse_scheduler_timestamp
 
 
@@ -763,8 +767,6 @@ def build_scheduler_hint(
             "final_quota_replan_check": final_replan_check,
             "no_spend_for_stop": True,
         }
-        current_index = 0
-        state_status = "missing"
         scheduler_state = (
             codex_app_scheduler_state
             if isinstance(codex_app_scheduler_state, dict)
@@ -778,51 +780,20 @@ def build_scheduler_hint(
             ),
             reference_time=scheduler_now,
         )
-        same_identity = False
-        if scheduler_state:
-            same_identity = (
-                scheduler_state.get("reset_token") == reset_token
-                and scheduler_state.get("identity_signature") == identity_signature
-            )
-            if same_identity:
-                state_status = "same_identity"
-                try:
-                    applied_index = int(scheduler_state.get("progression_index"))
-                except (TypeError, ValueError):
-                    applied_index = -1
-                applied_target_rrule = (
-                    rrule_for_minutes(codex_cadence_progression[applied_index])
-                    if 0 <= applied_index < len(codex_cadence_progression)
-                    else ""
-                )
-                current_cadence_acknowledged = (
-                    normalize_scheduler_rrule(
-                        scheduler_state.get("last_applied_rrule")
-                    )
-                    == applied_target_rrule
-                )
-                if all_host_update_failures and not current_cadence_acknowledged:
-                    # A failed current target has not settled, so advancing would
-                    # skip the cadence that the host never applied. Failures for
-                    # other targets do not invalidate a successful current ACK.
-                    next_index = applied_index
-                elif not advance_same_identity:
-                    next_index = 0
-                elif _scheduler_progression_interval_elapsed(
-                    scheduler_state,
-                    current_time=scheduler_now,
-                ):
-                    next_index = applied_index + 1
-                else:
-                    # An ACK settles the current target. A same-turn or early
-                    # reconciliation must verify convergence, not manufacture
-                    # the next backoff target before that cadence has elapsed.
-                    next_index = applied_index
-                current_index = min(
-                    max(next_index, 0), len(codex_cadence_progression) - 1
-                )
-            else:
-                state_status = "reset_required"
+        cadence_decision = decide_scheduler_cadence_transition(
+            codex_cadence_progression,
+            scheduler_state=scheduler_state,
+            reset_token=reset_token,
+            identity_signature=identity_signature,
+            advance_same_identity=advance_same_identity,
+            applied_interval_elapsed=_scheduler_progression_interval_elapsed(
+                scheduler_state,
+                current_time=scheduler_now,
+            ),
+            has_host_update_failures=bool(all_host_update_failures),
+        )
+        current_index = cadence_decision.current_index
+        state_status = cadence_decision.state_status
         current_interval = codex_cadence_progression[current_index]
         current_rrule = rrule_for_minutes(current_interval)
         last_applied_rrule = str(scheduler_state.get("last_applied_rrule") or "").strip()
@@ -853,33 +824,19 @@ def build_scheduler_hint(
                 last_applied_rrule=effective_host_rrule,
                 current_rrule=current_rrule,
             )
-        current_target_has_failure = any(
-            normalize_scheduler_rrule(failure.get("target_rrule"))
-            == current_rrule
-            for failure in all_host_update_failures
+        host_decision = decide_scheduler_host_transition(
+            state_status=state_status,
+            observed_host_rrule=observed_host_rrule,
+            effective_host_rrule=effective_host_rrule,
+            current_rrule=current_rrule,
+            current_rrule_already_applied=current_rrule_already_applied,
+            all_host_update_failures=all_host_update_failures,
+            recorded_host_failure=recorded_host_failure,
         )
-        host_match_ack_needed = (
-            bool(observed_host_rrule)
-            and current_rrule_already_applied
-            and (state_status != "same_identity" or current_target_has_failure)
-        )
-        base_apply_needed = (
-            not current_rrule_already_applied
-            or (state_status != "same_identity" and not host_match_ack_needed)
-        )
-        failed_target_rrule = normalize_scheduler_rrule(
-            (recorded_host_failure or {}).get("target_rrule")
-        )
-        failed_observed_host_rrule = normalize_scheduler_rrule(
-            (recorded_host_failure or {}).get("observed_host_rrule")
-        )
-        host_failure_suppressed = bool(
-            base_apply_needed
-            and failed_target_rrule == current_rrule
-            and failed_observed_host_rrule == effective_host_rrule
-        )
-        apply_needed = base_apply_needed and not host_failure_suppressed
-        ack_needed = apply_needed or host_match_ack_needed
+        apply_needed = host_decision.apply_needed
+        ack_needed = host_decision.ack_needed
+        host_match_ack_needed = host_decision.host_match_ack_needed
+        host_failure_suppressed = host_decision.host_failure_suppressed
         if host_failure_suppressed:
             state_status = "host_update_failure_suppressed"
         stateful_backoff_detail = {

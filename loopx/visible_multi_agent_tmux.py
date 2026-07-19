@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterable
 from hashlib import sha256
 
-from .capabilities.multi_agent.contract import (
+from .control_plane.agents.multi_agent.contract import (
     PANE_LOCAL_A2A_WAKEUP_PROMPT,
     build_decentralized_a2a_driver_contract,
 )

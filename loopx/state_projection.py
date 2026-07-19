@@ -25,6 +25,7 @@ from .control_plane.todos.contract import (
     normalize_todo_required_decision_scopes,
     normalize_todo_resume_when,
     normalize_todo_status,
+    normalize_todo_task_repository,
     normalize_todo_task_class,
     parse_todo_metadata_line,
     todo_done_for_status,
@@ -83,6 +84,7 @@ NEXT_ACTION_USER_WAIT_PATTERN = re.compile(
 )
 TODO_METADATA_KEYS = (
     "action_kind",
+    "task_repository",
     "continuation_policy",
     "required_write_scopes",
     "required_capabilities",
@@ -510,6 +512,9 @@ def _normalize_structured_todo_item(
         normalized["title"] = title
     if action_kind:
         normalized["action_kind"] = action_kind
+    task_repository = normalize_todo_task_repository(item.get("task_repository"))
+    if task_repository:
+        normalized["task_repository"] = task_repository
     continuation_policy = normalize_todo_continuation_policy(
         item.get("continuation_policy")
     )

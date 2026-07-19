@@ -11,6 +11,8 @@ from typing import Any, Mapping, Sequence
 from ...extensions.runtime import (
     default_extension_state_file,
     doctor_installed_extension,
+    resolve_capability_binding,
+    resolve_capability_extension_id,
     resolve_extension_binding,
 )
 
@@ -144,13 +146,31 @@ def _extension_state_file(
     return Path(value).expanduser()
 
 
+def _uses_extension_provider(provider: Mapping[str, Any]) -> bool:
+    return _extension_id(provider) is not None or provider.get("argv") is None
+
+
+def _resolved_extension_id(
+    provider: Mapping[str, Any],
+    *,
+    runtime_root: str | Path | None = None,
+) -> str:
+    extension_id = _extension_id(provider)
+    if extension_id is not None:
+        return extension_id
+    return resolve_capability_extension_id(
+        state_file=_extension_state_file(provider, runtime_root),
+        capability_id="semantic-preference",
+        protocol=SEMANTIC_PREFERENCE_PROTOCOL,
+    )
+
+
 def _provider_binding(
     provider: Mapping[str, Any],
     *,
     runtime_root: str | Path | None = None,
 ) -> tuple[list[str], int]:
-    extension_id = _extension_id(provider)
-    if extension_id is not None:
+    if _uses_extension_provider(provider):
         if provider.get("probe_argv") is not None:
             raise ValueError("extension providers use the extension doctor")
         if provider.get("timeout_seconds") is not None:
@@ -160,12 +180,22 @@ def _provider_binding(
             label="provider args",
             allow_empty=True,
         )
-        binding = resolve_extension_binding(
-            extension_id,
-            state_file=_extension_state_file(provider, runtime_root),
-            capability_id="semantic-preference",
-            protocol=SEMANTIC_PREFERENCE_PROTOCOL,
-            permission=SEMANTIC_PREFERENCE_PERMISSION,
+        extension_id = _extension_id(provider)
+        binding = (
+            resolve_extension_binding(
+                extension_id,
+                state_file=_extension_state_file(provider, runtime_root),
+                capability_id="semantic-preference",
+                protocol=SEMANTIC_PREFERENCE_PROTOCOL,
+                permission=SEMANTIC_PREFERENCE_PERMISSION,
+            )
+            if extension_id is not None
+            else resolve_capability_binding(
+                state_file=_extension_state_file(provider, runtime_root),
+                capability_id="semantic-preference",
+                protocol=SEMANTIC_PREFERENCE_PROTOCOL,
+                permission=SEMANTIC_PREFERENCE_PERMISSION,
+            )
         )
         return [*[str(value) for value in binding["argv"]], *args], int(
             binding["timeout_seconds"]
@@ -228,12 +258,11 @@ def provider_doctor(
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", provider_id):
         raise ValueError("provider id must use lower-snake token syntax")
     hints = _setup_hints(provider)
-    extension_id = _extension_id(provider)
-    if extension_id is not None:
+    if _uses_extension_provider(provider):
         if provider.get("probe_argv") is not None:
             raise ValueError("extension providers use the extension doctor")
         doctor = doctor_installed_extension(
-            extension_id,
+            _resolved_extension_id(provider, runtime_root=runtime_root),
             state_file=_extension_state_file(provider, runtime_root),
             execute=execute,
         )
@@ -431,7 +460,7 @@ def recall(
     try:
         argv, timeout = _provider_binding(provider, runtime_root=runtime_root)
     except ValueError:
-        if execute and provider.get("extension_id") is not None:
+        if execute and _uses_extension_provider(provider):
             return _unavailable(surface_id, policy, "extension_binding_unavailable")
         raise
     request = {

@@ -277,6 +277,7 @@ def record_quota_monitor_poll_for_decision(
     *,
     goal_id: str,
     after_decision: Callable[[dict[str, Any]], dict[str, Any]],
+    render_markdown: Callable[[dict[str, Any]], str],
     registry_path: Path | None = None,
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
@@ -428,7 +429,7 @@ def record_quota_monitor_poll_for_decision(
     after_status = deepcopy(status_payload)
     if execute:
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_monitor_poll_markdown(record) + "\n", encoding="utf-8")
+        markdown_path.write_text(render_markdown(record) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
         run_history = after_status.get("run_history") if isinstance(after_status.get("run_history"), dict) else {}
@@ -477,54 +478,3 @@ def record_quota_monitor_poll_for_decision(
             f"{goal_id} effective_action={before.get('effective_action')}"
         ),
     }
-
-
-def render_quota_monitor_poll_markdown(payload: dict[str, Any]) -> str:
-    if payload.get("ok") is False:
-        return "\n".join(
-            [
-                "# LoopX Quota Monitor Poll",
-                "",
-                "- ok: `False`",
-                f"- mode: `{payload.get('mode') or 'monitor-poll'}`",
-                f"- goal_id: `{payload.get('goal_id') or ''}`",
-                f"- appended: `{bool(payload.get('appended'))}`",
-                f"- registry_mutated: `{bool(payload.get('registry_mutated'))}`",
-                f"- agent_id: `{payload.get('agent_id') or ''}`",
-                f"- source: `{payload.get('source') or ''}`",
-                f"- todo_id: `{payload.get('todo_id') or ''}`",
-                f"- target_key: `{payload.get('target_key') or ''}`",
-                f"- material_change: `{bool(payload.get('material_change'))}`",
-                f"- reason: {payload.get('reason') or 'monitor-poll rejected'}",
-            ]
-        )
-    event = payload.get("monitor_event") if isinstance(payload.get("monitor_event"), dict) else {}
-    before = event.get("before") if isinstance(event.get("before"), dict) else {}
-    todo_writeback = event.get("todo_writeback") if isinstance(event.get("todo_writeback"), dict) else {}
-    lines = [
-        "# LoopX Quota Monitor Poll",
-        "",
-        f"- goal_id: `{payload.get('goal_id')}`",
-        f"- classification: `{payload.get('classification')}`",
-        f"- agent_id: `{payload.get('agent_id') or event.get('agent_id') or ''}`",
-        f"- source: `{event.get('source')}`",
-        f"- effective_action: `{before.get('effective_action')}`",
-        f"- monitor_target: `{(event.get('monitor_target') or {}).get('target_id') if isinstance(event.get('monitor_target'), dict) else ''}`",
-        f"- todo_id: `{event.get('todo_id') or ''}`",
-        f"- target_key: `{event.get('target_key') or ''}`",
-        f"- material_change: `{event.get('material_change')}`",
-        f"- should_run: `{before.get('should_run')}`",
-        f"- self_repair_allowed: `{before.get('self_repair_allowed')}`",
-        f"- state: `{before.get('state')}`",
-        f"- health_check: {payload.get('health_check')}",
-        f"- reason: {event.get('reason_summary')}",
-    ]
-    if todo_writeback:
-        lines.append(
-            "- todo_writeback: "
-            f"dry_run={todo_writeback.get('dry_run')} "
-            f"consecutive_no_change={todo_writeback.get('consecutive_no_change')} "
-            f"last_checked_at={todo_writeback.get('last_checked_at')} "
-            f"next_due_at={todo_writeback.get('next_due_at')}"
-        )
-    return "\n".join(lines)

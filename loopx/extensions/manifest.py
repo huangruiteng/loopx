@@ -217,7 +217,10 @@ def load_extension_manifest(path: str | Path) -> dict[str, Any]:
         "provider": {
             "id": extension_id,
             "origin": "extension",
-            "enabled": True,
+            "declared": True,
+            "installed": False,
+            "enabled": False,
+            "ready": False,
             "version": version,
             "requires_loopx_api": requires_loopx_api,
             "permissions": permissions,

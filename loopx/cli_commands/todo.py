@@ -22,7 +22,12 @@ from ..todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-from .todo_argument_validation import unsupported_todo_options, validate_capability_gap_options, validate_shared_todo_options
+from .todo_argument_validation import (
+    unsupported_todo_options,
+    validate_capability_gap_options,
+    validate_shared_todo_options,
+    validate_successor_routing_options,
+)
 from .todo_event import RolloutEventAppender, append_todo_rollout_event
 
 
@@ -358,6 +363,22 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     )
     todo_parser.add_argument("--next-action-kind", help="Action kind for --next-agent-todo.")
     todo_parser.add_argument(
+        "--next-task-repository",
+        help=(
+            "Credential-free Git repository identity for --next-agent-todo, such as "
+            "git:github.com/owner/repo."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-required-capability",
+        dest="next_required_capabilities",
+        action="append",
+        help=(
+            "Execution capability required by --next-agent-todo. Repeat for multiple "
+            "capabilities."
+        ),
+    )
+    todo_parser.add_argument(
         "--next-continuation-policy",
         choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
         help="Continuation policy for --next-agent-todo.",
@@ -474,6 +495,10 @@ def handle_todo_command(
                 )
             if args.next_claimed_by:
                 raise ValueError("todo add does not support --next-claimed-by")
+            if args.next_task_repository:
+                raise ValueError("todo add does not support --next-task-repository")
+            if args.next_required_capabilities:
+                raise ValueError("todo add does not support --next-required-capability")
             if args.next_continuation_policy:
                 raise ValueError("todo add does not support --next-continuation-policy")
             if args.next_excluded_agents:
@@ -571,6 +596,8 @@ def handle_todo_command(
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
+                    ("--next-task-repository", args.next_task_repository),
+                    ("--next-required-capability", args.next_required_capabilities),
                     ("--next-continuation-policy", args.next_continuation_policy),
                     ("--next-excluded-agent", args.next_excluded_agents),
                     ("--self-merged", args.self_merged),
@@ -655,6 +682,10 @@ def handle_todo_command(
                 raise ValueError("todo update does not support --follow-up; use `todo capture-followups`")
             if args.next_claimed_by:
                 raise ValueError("todo update does not support --next-claimed-by")
+            if args.next_task_repository:
+                raise ValueError("todo update does not support --next-task-repository")
+            if args.next_required_capabilities:
+                raise ValueError("todo update does not support --next-required-capability")
             if args.next_continuation_policy:
                 raise ValueError("todo update does not support --next-continuation-policy")
             if args.next_excluded_agents:
@@ -738,12 +769,7 @@ def handle_todo_command(
                 raise ValueError(
                     "todo complete does not update --continuation-policy; use todo update first"
                 )
-            if args.next_continuation_policy and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-continuation-policy requires --next-agent-todo"
-                )
-            if args.next_excluded_agents and not args.next_agent_todo:
-                raise ValueError("--next-excluded-agent requires --next-agent-todo")
+            validate_successor_routing_options(args)
             payload = complete_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -761,6 +787,8 @@ def handle_todo_command(
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
+                next_task_repository=args.next_task_repository,
+                next_required_capabilities=args.next_required_capabilities,
                 next_continuation_policy=args.next_continuation_policy,
                 next_excluded_agents=args.next_excluded_agents,
                 self_merged=bool(args.self_merged),
@@ -799,12 +827,7 @@ def handle_todo_command(
                 raise ValueError(
                     "todo supersede does not update --continuation-policy; use todo update first"
                 )
-            if args.next_continuation_policy and not args.next_agent_todo:
-                raise ValueError(
-                    "--next-continuation-policy requires --next-agent-todo"
-                )
-            if args.next_excluded_agents and not args.next_agent_todo:
-                raise ValueError("--next-excluded-agent requires --next-agent-todo")
+            validate_successor_routing_options(args)
             if args.blocks_agent or args.clear_blocks_agent or args.excluded_agents or args.clear_excluded_agents or args.global_gate or args.clear_global_gate or args.unblocks_todo_id or args.resume_when:
                 raise ValueError("todo supersede does not update current todo routing metadata; use todo update first")
             if args.successor_todo_ids:
@@ -822,6 +845,8 @@ def handle_todo_command(
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
+                next_task_repository=args.next_task_repository,
+                next_required_capabilities=args.next_required_capabilities,
                 next_continuation_policy=args.next_continuation_policy,
                 next_excluded_agents=args.next_excluded_agents,
                 agent_id=args.agent_id,
@@ -841,6 +866,10 @@ def handle_todo_command(
                 raise ValueError("todo archive-completed does not support executor exclusions")
             if args.next_claimed_by:
                 raise ValueError("todo archive-completed does not support --next-claimed-by")
+            if args.next_task_repository or args.next_required_capabilities:
+                raise ValueError(
+                    "todo archive-completed does not support successor routing metadata"
+                )
             if args.self_merged:
                 raise ValueError("todo archive-completed does not support --self-merged")
             if args.no_follow_up:

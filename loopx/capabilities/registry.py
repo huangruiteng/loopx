@@ -25,7 +25,7 @@ def _required_string(record: Mapping[str, Any], key: str, *, context: str) -> st
 
 
 class CapabilityRegistry:
-    """Compose capability records from built-in and enabled extension providers."""
+    """Compose capability records and their provider lifecycle truth."""
 
     def __init__(self) -> None:
         self._providers: dict[str, dict[str, Any]] = {}
@@ -47,7 +47,24 @@ class CapabilityRegistry:
         normalized = deepcopy(dict(provider))
         normalized["id"] = provider_id
         normalized["origin"] = origin
-        normalized["enabled"] = bool(provider.get("enabled", True))
+        declared = bool(provider.get("declared", True))
+        installed = bool(provider.get("installed", origin == "builtin"))
+        enabled = bool(provider.get("enabled", installed))
+        ready = bool(provider.get("ready", enabled))
+        if installed and not declared:
+            raise ValueError(f"provider `{provider_id}` cannot be installed but undeclared")
+        if enabled and not installed:
+            raise ValueError(f"provider `{provider_id}` cannot be enabled but uninstalled")
+        if ready and not enabled:
+            raise ValueError(f"provider `{provider_id}` cannot be ready but disabled")
+        normalized.update(
+            {
+                "declared": declared,
+                "installed": installed,
+                "enabled": enabled,
+                "ready": ready,
+            }
+        )
         self._providers[provider_id] = normalized
 
     def register_capability(self, record: Mapping[str, Any]) -> None:
@@ -121,9 +138,23 @@ class CapabilityRegistry:
 
     def _with_implementations(self, record: Mapping[str, Any]) -> dict[str, Any]:
         normalized = deepcopy(dict(record))
+        provider = self._providers[str(record["provider_id"])]
+        normalized["provider_state"] = {
+            key: bool(provider[key])
+            for key in ("declared", "installed", "enabled", "ready")
+        }
         implementations = self._implementations.get(str(record["id"]), [])
         if implementations:
-            normalized["implementation_providers"] = deepcopy(implementations)
+            normalized["implementation_providers"] = [
+                deepcopy(item)
+                | {
+                    "provider_state": {
+                        key: bool(self._providers[str(item["provider_id"])][key])
+                        for key in ("declared", "installed", "enabled", "ready")
+                    }
+                }
+                for item in implementations
+            ]
         return normalized
 
     def capability_ids(self, *, include_internal: bool = False) -> list[str]:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import nullcontext
 from copy import deepcopy
 import hashlib
@@ -471,6 +471,102 @@ def _verified_entrypoint(
     return identity
 
 
+def _active_manifest(entry: Mapping[str, Any]) -> Mapping[str, Any]:
+    active_revision = str(entry.get("active_revision") or "")
+    snapshot = _entry_for_revision(entry, active_revision)
+    manifest = snapshot.get("manifest")
+    if not isinstance(manifest, Mapping):
+        raise ValueError("extension active manifest is invalid")
+    return manifest
+
+
+def extension_catalog_entries(
+    extension_manifest_paths: Iterable[str | Path] = (),
+    *,
+    state_file: str | Path | None = None,
+) -> list[dict[str, Any]]:
+    """Compose declared manifests with installed runtime lifecycle state."""
+
+    manifests: dict[str, Mapping[str, Any]] = {}
+    lifecycle: dict[str, dict[str, Any]] = {}
+    for manifest_path in extension_manifest_paths:
+        manifest = load_extension_manifest(manifest_path)
+        extension_id = str(manifest["provider"]["id"])
+        if extension_id in manifests:
+            raise ValueError(f"duplicate capability provider `{extension_id}`")
+        manifests[extension_id] = manifest
+        lifecycle[extension_id] = {
+            "declared": True,
+            "installed": False,
+            "enabled": False,
+            "ready": False,
+        }
+
+    if state_file is not None:
+        state = _read_state(Path(state_file).expanduser())
+        for extension_id, entry in state["extensions"].items():
+            if not isinstance(entry, Mapping):
+                raise ValueError(f"extension `{extension_id}` runtime entry is invalid")
+            manifest = _active_manifest(entry)
+            provider = manifest.get("provider")
+            if not isinstance(provider, Mapping) or provider.get("id") != extension_id:
+                raise ValueError(f"extension `{extension_id}` active manifest is invalid")
+            manifests[extension_id] = manifest
+            enabled = bool(entry.get("enabled"))
+            lifecycle[extension_id] = {
+                "declared": True,
+                "installed": True,
+                "enabled": enabled,
+                "ready": enabled and _verified_entrypoint(entry) is not None,
+                "active_revision": str(entry.get("active_revision") or ""),
+            }
+
+    entries: list[dict[str, Any]] = []
+    for extension_id, manifest in manifests.items():
+        normalized = deepcopy(dict(manifest))
+        normalized["provider"] = deepcopy(dict(manifest["provider"])) | lifecycle[
+            extension_id
+        ]
+        entries.append(normalized)
+    return entries
+
+
+def resolve_capability_extension_id(
+    *,
+    state_file: str | Path,
+    capability_id: str,
+    protocol: str,
+) -> str:
+    """Resolve one ready extension implementation without caller aliases."""
+
+    matching: list[str] = []
+    for entry in extension_catalog_entries(state_file=state_file):
+        provider = entry.get("provider")
+        if not isinstance(provider, Mapping) or not provider.get("ready"):
+            continue
+        implementations = entry.get("implementations")
+        if not isinstance(implementations, list):
+            continue
+        if any(
+            isinstance(item, Mapping)
+            and item.get("capability_id") == capability_id
+            and item.get("protocol") == protocol
+            for item in implementations
+        ):
+            matching.append(str(entry["provider"]["id"]))
+    if not matching:
+        raise ValueError(
+            f"no enabled, doctor-ready extension implements `{capability_id}` "
+            f"with protocol `{protocol}`"
+        )
+    if len(matching) != 1:
+        raise ValueError(
+            f"multiple enabled, doctor-ready extensions implement `{capability_id}` "
+            f"with protocol `{protocol}`: {matching}"
+        )
+    return matching[0]
+
+
 def _resolved_active_extension(
     extension_id: str,
     *,
@@ -486,10 +582,7 @@ def _resolved_active_extension(
     verified_entrypoint = _verified_entrypoint(entry)
     if verified_entrypoint is None:
         raise ValueError(f"extension `{extension_id}` doctor readiness is stale")
-    snapshot = _entry_for_revision(entry, active_revision)
-    manifest = snapshot.get("manifest")
-    if not isinstance(manifest, Mapping):
-        raise ValueError("extension active manifest is invalid")
+    manifest = _active_manifest(entry)
     return active_revision, verified_entrypoint, manifest
 
 
@@ -586,3 +679,24 @@ def resolve_extension_binding(
         ],
         "timeout_seconds": runtime["timeout_seconds"],
     }
+
+
+def resolve_capability_binding(
+    *,
+    state_file: str | Path,
+    capability_id: str,
+    protocol: str,
+    permission: str,
+) -> dict[str, Any]:
+    extension_id = resolve_capability_extension_id(
+        state_file=state_file,
+        capability_id=capability_id,
+        protocol=protocol,
+    )
+    return resolve_extension_binding(
+        extension_id,
+        state_file=state_file,
+        capability_id=capability_id,
+        protocol=protocol,
+        permission=permission,
+    )

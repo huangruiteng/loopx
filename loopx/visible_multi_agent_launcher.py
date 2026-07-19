@@ -9,7 +9,7 @@ import time
 from collections.abc import Iterable
 from pathlib import Path
 
-from .capabilities.multi_agent.contract import (
+from .control_plane.agents.multi_agent.contract import (
     GENERIC_MULTI_AGENT_ROLE_PROFILE_SCHEMA_VERSION,
     INTERACTIVE_TUI_CONTRACT_SCHEMA_VERSION,
     TUI_MULTI_AGENT_RUNNER_CONTRACT_SCHEMA_VERSION,
@@ -21,15 +21,15 @@ from .capabilities.multi_agent.contract import (
     generic_role_prompt as _generic_role_prompt,
     role_skill_profile as _role_skill_profile,
 )
-from .capabilities.multi_agent.codex_executable import (
+from .control_plane.agents.multi_agent.codex_executable import (
     resolve_codex_executable,
     write_codex_compatibility_shim,
 )
-from .capabilities.multi_agent.runtime_scripts import (
+from .control_plane.agents.multi_agent.runtime_scripts import (
     CODEX_TUI_EXEC_PY as _CODEX_TUI_EXEC_PY,
     SCOPED_LOOPX_WRAPPER_PY as _SCOPED_LOOPX_WRAPPER_PY,
 )
-from .capabilities.multi_agent.visible_wake_scheduler import (
+from .control_plane.agents.multi_agent.visible_wake_scheduler import (
     DEFAULT_READINESS_POLL_SECONDS,
     STATE_AWARE_WAKE_MODEL,
     resolve_initial_wake_plan,
@@ -726,7 +726,7 @@ def _start_auto_wake_loop(
         / "auto-wake.public.jsonl"
     )
     wake_command = (
-        "exec python3 -m loopx.capabilities.multi_agent.visible_wake_scheduler "
+        "exec python3 -m loopx.control_plane.agents.multi_agent.visible_wake_scheduler "
         f"--cli-bin {_q(cli_bin)} --tmux-bin {_q(tmux_bin)} "
         f"--registry {_q(registry)} --runtime-root {_q(runtime_root)} "
         f"--goal-id {_q(goal_id)} --session {_q(session)} "

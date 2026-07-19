@@ -71,17 +71,34 @@ The reply monitor follows the same boundary: it only captures comment author,
 association, timestamp, and URL metadata, then emits either
 `prepare_public_triage_note` or `wait_no_bump`.
 
+## Ownership And Compatibility
+
+`value-connectors` is the compatibility facade for existing connector commands
+and packet schemas. It owns shared install checks, source mapping, and gated
+call planning, but it does not own new user outcomes. Each profile declares the
+outcome capability that serves callers; implementations move there one proven
+profile at a time while these CLI commands stay stable.
+
+The first completed migration is the public GitHub probe and reply monitor.
+Their implementation and protocol ownership now live under `issue-fix`; the
+existing `loopx value-connectors ...` commands delegate to that provider.
+
 ## Connector Profiles
 
-| Connector | Current state | User can run now | External write behavior |
-| --- | --- | --- | --- |
-| `github_public_channel` | implemented starter | yes | none |
-| `github_public_reply_monitor` | implemented starter | yes | none |
-| `social_browser_x` | ego-browser-backed profile | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
-| `finance_market_snapshot` | probed candidate profile | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
-| `agent_reach_ops_source_map` | field-derived source profile | `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json`; [profile note](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
-| `botmail_identity` | host connector profile | install-check only | exact send gate required |
-| `community_channel` | host/browser connector profile | install-check and plan | exact account/message gate required |
+| Connector | Outcome capability | Binding | User can run now | External write behavior |
+| --- | --- | --- | --- | --- |
+| `github_public_channel` | `issue-fix` | migrated | yes | none |
+| `github_public_reply_monitor` | `issue-fix` | migrated | yes | none |
+| `content_ops_public_handle` | `content-ops` | native | public-handle observation | none |
+| `social_browser_x` | `content-ops` | mapped | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
+| `finance_market_snapshot` | `finance-value-discovery` | mapped | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
+| `agent_reach_ops_source_map` | `content-ops` | mapped | `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json`; [profile note](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
+| `botmail_identity` | `content-ops` | mapped | install-check only | exact send gate required |
+| `community_channel` | `content-ops` | mapped | install-check and plan | exact account/message gate required |
+
+`migrated` means the implementation module is owned by the outcome capability.
+`native` means the command already lived there. `mapped` records the intended
+owner without pretending that the implementation has moved.
 
 ## Why This Is Not Just A Plan
 

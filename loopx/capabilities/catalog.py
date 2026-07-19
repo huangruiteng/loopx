@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .registry import CapabilityRegistry
-from ..extensions.manifest import load_extension_manifest
+from ..extensions.runtime import extension_catalog_entries
 
 
 CAPABILITY_CATALOG_SCHEMA_VERSION = "loopx_capability_catalog_v0"
@@ -31,6 +31,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "command": "loopx content-ops issue-fix-metadata-preview --url <github-issue-url> --fetch-metadata --format json",
                 "purpose": "Fetch body-free public GitHub issue/PR metadata.",
                 "write_boundary": "read-only external metadata; no issue comment, PR, or todo write",
+            },
+            {
+                "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --fetch-metadata --format json",
+                "purpose": "Use the compatibility CLI to fetch the issue-fix-owned public GitHub probe packet.",
+                "write_boundary": "public metadata read only; no issue bodies, comments, PRs, account changes, or writes",
+            },
+            {
+                "command": "loopx value-connectors github-reply-monitor --issue-url <github-issue-or-pr-url> --after-comment-url <github-issue-comment-url> --fetch-metadata --format json",
+                "purpose": "Use the compatibility CLI to detect public maintainer replies through the issue-fix provider.",
+                "write_boundary": "public comment metadata read only; no comment bodies, thread bump, or external write",
             },
             {
                 "command": "loopx content-ops issue-fix-intake --format json",
@@ -89,6 +99,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "implemented_protocols": [
+            {
+                "schema_version": "github_public_channel_probe_packet_v0",
+                "module": "loopx.capabilities.issue_fix.github_public",
+                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
+            {
+                "schema_version": "github_public_reply_monitor_packet_v0",
+                "module": "loopx.capabilities.issue_fix.github_public",
+                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
+            },
             {
                 "schema_version": "github_issue_metadata_preview_v0",
                 "module": "loopx.capabilities.issue_fix.metadata_preview",
@@ -186,6 +206,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             },
         ],
         "smokes": [
+            "python3 examples/value-connectors-github-public-probe-smoke.py",
             "python3 examples/issue-fix-workflow-plan-smoke.py",
             "python3 examples/issue-fix-repository-context-smoke.py",
             "python3 examples/issue-fix-feasibility-smoke.py",
@@ -204,6 +225,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "docs": [
             "docs/capabilities/issue-fix/README.md",
+            "docs/reference/protocols/value-connector-plan-v0.md",
             "docs/capabilities/issue-fix/openviking-pilot-handoff.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-workflow-contract-v0.md",
             "docs/capabilities/issue-fix/protocols/issue-fix-discovered-issue-promotion-v0.md",
@@ -601,13 +623,12 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "origin": "builtin",
         "visibility": "public",
         "provider_id": "loopx-core",
-        "title": "External value connector starters",
-        "status": "active-preview",
+        "title": "Value connector compatibility facade",
+        "status": "compatibility-facade",
         "real_world_anchor": "external channel intake for revenue, cost, demand, and connector reuse",
         "user_value": (
-            "Install and run public-safe connector starters that turn external "
-            "channel metadata into LoopX value signals while gating account "
-            "setup, sends, posts, and private reads."
+            "Keep existing connector commands and packet schemas stable while "
+            "each profile moves to the outcome capability that serves callers."
         ),
         "entry_command": "loopx value-connectors source-map --format json",
         "commands": [
@@ -625,16 +646,19 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --format json",
                 "purpose": "Validate a public GitHub channel URL and build a connector call packet.",
                 "write_boundary": "no network read unless --fetch-metadata is provided",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors github-public-probe --url <github-issue-or-pr-url> --fetch-metadata --format json",
                 "purpose": "Fetch allowlisted public GitHub metadata without body/comment/timeline content.",
                 "write_boundary": "public metadata read only; no comments, PRs, account changes, or writes",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors github-reply-monitor --issue-url <github-issue-or-pr-url> --after-comment-url <github-issue-comment-url> --fetch-metadata --format json",
                 "purpose": "Detect public maintainer replies after a LoopX comment without capturing comment bodies.",
                 "write_boundary": "public comment metadata read only; no comment bodies, thread bump, or external write",
+                "compatibility_for": "issue-fix",
             },
             {
                 "command": "loopx value-connectors plan --connector-id <id> ... --format json",
@@ -659,18 +683,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
             },
             {
-                "schema_version": "github_public_channel_probe_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
-                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
-            },
-            {
-                "schema_version": "github_public_reply_monitor_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
-                "doc": "docs/reference/protocols/value-connector-plan-v0.md",
-            },
-            {
                 "schema_version": "value_connector_install_check_packet_v0",
-                "module": "loopx.capabilities.value_connectors.github_public",
+                "module": "loopx.capabilities.value_connectors.install_check",
                 "doc": "docs/reference/protocols/value-connector-plan-v0.md",
             },
             {
@@ -693,8 +707,115 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "Every connector call must include a money, cost, demand, or capability metric plus a kill condition.",
         ],
         "next_real_step": (
-            "Use reply-monitor signals to graduate only explicit maintainer interest "
-            "into public triage notes or paid-path discovery; otherwise stop without bumps."
+            "Move one mapped profile at a time to its declared outcome capability, "
+            "keeping this CLI and its packet schemas stable until callers migrate."
+        ),
+    },
+    {
+        "id": "explore",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Explore evidence topology",
+        "status": "active-preview",
+        "real_world_anchor": (
+            "goal-scoped questions, hypotheses, experiments, findings, and result projections"
+        ),
+        "user_value": (
+            "Keep exploration outcomes queryable and attributable instead of leaving them "
+            "only in chat or a presentation sink."
+        ),
+        "entry_command": "loopx explore summary --goal-id <goal-id> --format json",
+        "commands": [
+            {
+                "command": "loopx explore finding --goal-id <goal-id> --title <finding> --evidence-ref <ref> --format json",
+                "purpose": "Append one public-safe, attributable finding to the canonical result log.",
+                "write_boundary": "goal-scoped local result log only; no sink or external write",
+            },
+            {
+                "command": "loopx explore summary --goal-id <goal-id> --format json",
+                "purpose": "Fold canonical result events into the bounded operator projection.",
+                "write_boundary": "read-only projection over the goal result log",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "loopx_explore_result_event_v0",
+                "module": "loopx.capabilities.explore.result_log",
+                "doc": "docs/capabilities/explore/README.md",
+            },
+            {
+                "schema_version": "loopx_explore_result_projection_v0",
+                "module": "loopx.capabilities.explore.result_log",
+                "doc": "docs/capabilities/explore/README.md",
+            },
+        ],
+        "smokes": [
+            "python3 examples/explore-result-layer-smoke.py",
+            "python3 examples/explore-todo-result-node-linkage-smoke.py",
+        ],
+        "docs": ["docs/capabilities/explore/README.md"],
+        "boundaries": [
+            "Canonical result events are the source of truth; Lark and other sinks render projections only.",
+            "Evidence refs must be public-safe relative refs or opaque ids, never credentials, raw private payloads, or local absolute paths.",
+        ],
+        "next_real_step": (
+            "Register findings and terminal outcomes through the result log before refreshing any display sink."
+        ),
+    },
+    {
+        "id": "auto-research",
+        "origin": "builtin",
+        "visibility": "public",
+        "provider_id": "loopx-core",
+        "title": "Decentralized auto-research preset",
+        "status": "experimental",
+        "real_world_anchor": (
+            "one-question research contracts with role-scoped workers, evidence packets, and a visible frontier"
+        ),
+        "user_value": (
+            "Launch a thin multi-agent research recipe while reusing LoopX todo, quota, "
+            "history, evidence, and continuation contracts."
+        ),
+        "entry_command": "loopx auto-research <open-question>",
+        "commands": [
+            {
+                "command": "loopx auto-research <open-question>",
+                "purpose": "Render the fixed one-question contract, bounded plan, and exact start command.",
+                "write_boundary": "stateless contract output only",
+            },
+            {
+                "command": "loopx auto-research start <open-question> --execute",
+                "purpose": "Create an isolated goal and launch visible role-scoped workers through the shared multi-agent runtime.",
+                "write_boundary": "local goal, workspace, and visible launcher state; no publication, benchmark submission, or protected external action",
+            },
+        ],
+        "implemented_protocols": [
+            {
+                "schema_version": "auto_research_user_contract_v0",
+                "module": "loopx.capabilities.auto_research.user_contract",
+                "doc": "docs/guides/auto-research-command-path.md",
+            },
+            {
+                "schema_version": "decentralized_auto_research_projection_v0",
+                "module": "loopx.capabilities.auto_research.research_state",
+                "doc": "docs/reference/protocols/decentralized-auto-research-state-v0.md",
+            },
+        ],
+        "smokes": [
+            "python3 examples/auto-research-user-contract-entry-smoke.py",
+            "python3 examples/auto-research-worker-turn-smoke.py",
+        ],
+        "docs": [
+            "docs/guides/auto-research-command-path.md",
+            "docs/product/decentralized-auto-research-showcase.md",
+        ],
+        "boundaries": [
+            "The preset reuses shared control-plane and multi-agent contracts; it is not a second scheduler or runner.",
+            "Completion and uplift require role-authored evidence and projected outcomes; the launcher does not manufacture research results.",
+        ],
+        "next_real_step": (
+            "Use the one-question entrypoint for bounded research and preserve every promoted or rejected outcome in canonical evidence."
         ),
     },
 )
@@ -711,6 +832,7 @@ def _summary(record: Mapping[str, Any]) -> dict[str, Any]:
         "origin": record["origin"],
         "visibility": record["visibility"],
         "provider_id": record["provider_id"],
+        "provider_state": record["provider_state"],
         "real_world_anchor": record["real_world_anchor"],
         "entry_command": record["entry_command"],
         "implemented_protocol_count": len(record.get("implemented_protocols") or []),
@@ -724,19 +846,26 @@ def _summary(record: Mapping[str, Any]) -> dict[str, Any]:
 
 def build_capability_registry(
     extension_manifest_paths: Iterable[str | Path] = (),
+    *,
+    extension_state_file: str | Path | None = None,
 ) -> CapabilityRegistry:
     registry = CapabilityRegistry()
     registry.register_provider(
         {
             "id": "loopx-core",
             "origin": "builtin",
+            "declared": True,
+            "installed": True,
             "enabled": True,
+            "ready": True,
         }
     )
     for record in BUILTIN_CAPABILITIES:
         registry.register_capability(record)
-    for manifest_path in extension_manifest_paths:
-        manifest = load_extension_manifest(manifest_path)
+    for manifest in extension_catalog_entries(
+        extension_manifest_paths,
+        state_file=extension_state_file,
+    ):
         registry.register_provider(manifest["provider"])
         for record in manifest["capabilities"]:
             registry.register_capability(record)
@@ -749,8 +878,12 @@ def capability_ids(
     extension_manifest_paths: Iterable[str | Path] = (),
     *,
     include_internal: bool = False,
+    extension_state_file: str | Path | None = None,
 ) -> list[str]:
-    return build_capability_registry(extension_manifest_paths).capability_ids(
+    return build_capability_registry(
+        extension_manifest_paths,
+        extension_state_file=extension_state_file,
+    ).capability_ids(
         include_internal=include_internal
     )
 
@@ -760,8 +893,12 @@ def get_capability(
     extension_manifest_paths: Iterable[str | Path] = (),
     *,
     include_internal: bool = False,
+    extension_state_file: str | Path | None = None,
 ) -> dict[str, Any]:
-    return build_capability_registry(extension_manifest_paths).get(
+    return build_capability_registry(
+        extension_manifest_paths,
+        extension_state_file=extension_state_file,
+    ).get(
         capability_id,
         include_internal=include_internal,
     )
@@ -769,8 +906,13 @@ def get_capability(
 
 def build_capability_catalog_packet(
     extension_manifest_paths: Iterable[str | Path] = (),
+    *,
+    extension_state_file: str | Path | None = None,
 ) -> dict[str, Any]:
-    registry = build_capability_registry(extension_manifest_paths)
+    registry = build_capability_registry(
+        extension_manifest_paths,
+        extension_state_file=extension_state_file,
+    )
     return {
         "ok": True,
         "schema_version": CAPABILITY_CATALOG_SCHEMA_VERSION,
@@ -782,8 +924,14 @@ def build_capability_catalog_packet(
 def build_capability_detail_packet(
     capability_id: str,
     extension_manifest_paths: Iterable[str | Path] = (),
+    *,
+    extension_state_file: str | Path | None = None,
 ) -> dict[str, Any]:
-    record = get_capability(capability_id, extension_manifest_paths)
+    record = get_capability(
+        capability_id,
+        extension_manifest_paths,
+        extension_state_file=extension_state_file,
+    )
     return {
         "ok": True,
         "schema_version": CAPABILITY_DETAIL_SCHEMA_VERSION,
@@ -802,6 +950,7 @@ def render_capability_catalog_markdown(payload: dict[str, Any]) -> str:
                 "",
                 f"- status: `{item.get('status')}`",
                 f"- provider: `{item.get('provider_id')}` ({item.get('origin')})",
+                f"- provider_state: `{item.get('provider_state')}`",
                 f"- visibility: `{item.get('visibility')}`",
                 f"- anchor: {item.get('real_world_anchor')}",
                 f"- entry: `{item.get('entry_command')}`",
@@ -825,6 +974,7 @@ def render_capability_detail_markdown(payload: dict[str, Any]) -> str:
         f"- id: `{record.get('id')}`",
         f"- status: `{record.get('status')}`",
         f"- provider: `{record.get('provider_id')}` ({record.get('origin')})",
+        f"- provider_state: `{record.get('provider_state')}`",
         f"- visibility: `{record.get('visibility')}`",
         f"- anchor: {record.get('real_world_anchor')}",
         f"- value: {record.get('user_value')}",

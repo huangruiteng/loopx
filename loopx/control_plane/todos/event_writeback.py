@@ -25,11 +25,13 @@ from .contract import (
     TODO_STATUS_OPEN,
     build_todo_id,
     merge_todo_id_lists,
+    normalize_required_capabilities,
     normalize_todo_claimed_by,
     normalize_todo_bound_agent,
     normalize_todo_continuation_policy,
     normalize_todo_excluded_agents,
     normalize_todo_id,
+    normalize_todo_task_repository,
     todo_done_for_status,
 )
 from .text import (
@@ -143,6 +145,8 @@ def _append_event_projected_successor(
     fields: dict[str, Any],
     task_class: str | None,
     action_kind: str | None,
+    task_repository: str | None,
+    required_capabilities: list[str] | None,
     continuation_policy: str | None,
     claimed_by: str | None,
     dry_run: bool,
@@ -175,6 +179,23 @@ def _append_event_projected_successor(
         payload["task_class"] = task_class
     if action_kind:
         payload["action_kind"] = action_kind
+    normalized_task_repository = normalize_todo_task_repository(task_repository)
+    if task_repository and not normalized_task_repository:
+        raise ValueError(
+            "todo task_repository must be a credential-free Git remote or canonical "
+            "git:<host>/<path> identity"
+        )
+    if normalized_task_repository:
+        payload["task_repository"] = normalized_task_repository
+    normalized_required_capabilities = normalize_required_capabilities(
+        required_capabilities
+    )
+    if required_capabilities and not normalized_required_capabilities:
+        raise ValueError(
+            "required_capabilities must contain public-safe capability tokens"
+        )
+    if normalized_required_capabilities:
+        payload["required_capabilities"] = normalized_required_capabilities
     normalized_continuation_policy = normalize_todo_continuation_policy(
         continuation_policy
     )
@@ -247,6 +268,8 @@ def _append_event_projected_successor(
         "todo_id": todo_id,
         "task_class": task_class,
         "action_kind": action_kind,
+        "task_repository": normalized_task_repository,
+        "required_capabilities": normalized_required_capabilities,
         "continuation_policy": effective_continuation_policy,
         "claimed_by": claimed_by,
         "bound_agent": bound_agent,
@@ -274,6 +297,8 @@ def complete_event_projected_goal_todo(
     next_claimed_by: str | None,
     next_task_class: str | None,
     next_action_kind: str | None,
+    next_task_repository: str | None,
+    next_required_capabilities: list[str] | None,
     next_continuation_policy: str | None,
     self_merged: bool,
     next_excluded_agents: list[str],
@@ -312,6 +337,8 @@ def complete_event_projected_goal_todo(
                 fields=context["fields"],
                 task_class=next_task_class or "advancement_task",
                 action_kind=next_action_kind,
+                task_repository=next_task_repository,
+                required_capabilities=next_required_capabilities,
                 continuation_policy=next_continuation_policy,
                 claimed_by=next_claimed_by,
                 excluded_agents=next_excluded_agents,
@@ -330,6 +357,8 @@ def complete_event_projected_goal_todo(
                 fields=context["fields"],
                 task_class="user_gate",
                 action_kind="gate",
+                task_repository=None,
+                required_capabilities=None,
                 continuation_policy=None,
                 claimed_by=None,
                 bound_agent=next_user_blocks_agent,

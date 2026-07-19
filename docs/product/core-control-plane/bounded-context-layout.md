@@ -14,11 +14,11 @@ New control-plane code should live under `loopx.control_plane`:
 | `work_items` | Attention items, work-item selection, work-item read models, lifecycle and delivery signals. |
 | `goals` | Goal state, active-state sections, registry health, and goal-level planning surfaces. |
 | `todos` | Todo parsing summaries, todo-derived attention helpers, and todo handoff summaries. |
-| `agents` | Agent-scope filtering, lane recommendation, capability gates, and subagent activity. |
+| `agents` | Agent-scope filtering, lane recommendation, capability gates, subagent activity, and the reusable multi-agent execution kernel. |
 | `quota` | Quota-specific control-plane helpers. |
 | `scheduler` | Scheduler-facing monitor display and cadence helpers. |
 | `runtime` | Runtime/session projections and run-compaction helpers. |
-| `handoff` | Handoff readiness, handoff state, and handoff-run classification. |
+| `handoff` | Handoff readiness, handoff state, handoff-run classification, cross-runtime review packets, and exact review-decision batching. |
 
 Repo-local control-plane code, examples, and smokes should import the owning
 bounded context directly. Do not add compatibility shims for internal moves; if
@@ -56,3 +56,14 @@ When moving an existing module:
 
 This keeps the kernel architecture clean without preserving internal shims that
 invite future code to grow in the wrong namespace.
+
+## Compatibility Decisions
+
+The July 2026 package-ownership migration removed the internal
+`loopx.capabilities.multi_agent`, `loopx.capabilities.cross_runtime`, and
+`loopx.capabilities.review_batch` import paths. Their implementations now live
+under the owning `agents` and `handoff` contexts, while the `review-batch` CLI
+registration lives under `loopx.cli_commands`. These paths had no maintained
+external compatibility window, so the migration updates active callers and
+tests directly instead of keeping wrappers that would preserve the wrong
+ownership boundary.

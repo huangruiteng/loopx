@@ -117,9 +117,9 @@ def assert_agent_scoped_user_gate_and_monitor_state() -> None:
         filter_user_gate_blocks_agent=True,
     )
     assert summary is not None
-    assert summary["open_count"] == 1, summary
+    assert summary["open_count"] == 4, summary
     assert summary["all_open_count"] == 5, summary
-    assert summary["user_action_open_count"] == 4, summary
+    assert summary["user_action_open_count"] == 3, summary
     assert summary["other_agent_scoped_open_count"] == 1, summary
     assert summary["gate_open_items"][0]["todo_id"] == "todo_gate_current", summary
     assert {
@@ -133,8 +133,12 @@ def assert_agent_scoped_user_gate_and_monitor_state() -> None:
         "todo_monitor_due",
         "todo_monitor_gap",
         "todo_refactor_next",
-        "todo_other_agent_next",
     }, summary
+    assert summary["other_agent_bound_user_action_open_count"] == 1, summary
+    assert {
+        item.get("todo_id")
+        for item in summary["other_agent_bound_user_action_items"]
+    } == {"todo_other_agent_next"}, summary
 
     assert summary["monitor_due_count"] == 0, summary
     assert summary["monitor_due_items"] == [], summary

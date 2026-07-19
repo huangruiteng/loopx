@@ -11,7 +11,10 @@ import sys
 
 import pytest
 
-from loopx.capabilities.catalog import build_capability_detail_packet
+from loopx.capabilities.catalog import (
+    build_capability_catalog_packet,
+    build_capability_detail_packet,
+)
 from loopx.capabilities.semantic_preference.cli import (
     _register_legacy_openviking_provider_arguments,
 )
@@ -23,6 +26,8 @@ from loopx.extensions.runtime import (
     enable_extension,
     extension_status,
     install_extension,
+    resolve_capability_binding,
+    resolve_capability_extension_id,
     resolve_extension_activation,
     resolve_extension_binding,
     rollback_extension,
@@ -501,6 +506,29 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     )
     state_file = tmp_path / "extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
+    assert (
+        resolve_capability_extension_id(
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+        )
+        == "test-semantic-extension"
+    )
+    capability_binding = resolve_capability_binding(
+        state_file=state_file,
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )
+    assert capability_binding["argv"] == [str(provider)]
+    catalog = build_capability_catalog_packet(extension_state_file=state_file)
+    catalog_provider = next(
+        item
+        for item in catalog["providers"]
+        if item["id"] == "test-semantic-extension"
+    )
+    assert catalog_provider["active_revision"] == capability_binding["revision"]
+    assert catalog_provider["ready"] is True
     project = tmp_path / "project"
     project.mkdir()
     config = tmp_path / "semantic-preference.json"
@@ -511,7 +539,6 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
                 "enabled": True,
                 "provider": {
                     "id": "openviking_semantic_preference",
-                    "extension_id": "test-semantic-extension",
                     "extension_state_file": str(state_file),
                     "args": ["--project", str(project)],
                 },
@@ -553,15 +580,56 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     assert unavailable["status"] == "provider_unavailable"
     assert unavailable["failure_kind"] == "extension_binding_unavailable"
 
-    detail = build_capability_detail_packet("semantic-preference", [manifest])
+    detail = build_capability_detail_packet(
+        "semantic-preference",
+        extension_state_file=state_file,
+    )
     assert detail["capability"]["implementation_providers"] == [
         {
             "capability_id": "semantic-preference",
             "protocol": "semantic_preference_provider_v0",
             "provider_id": "test-semantic-extension",
             "provider_version": "1.0.0",
+            "provider_state": {
+                "declared": True,
+                "installed": True,
+                "enabled": False,
+                "ready": False,
+            },
         }
     ]
+
+
+def test_capability_resolution_ignores_disabled_implementations(
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    state_file = tmp_path / "extensions.json"
+    for extension_id in ("first-provider", "second-provider"):
+        manifest = _manifest(
+            tmp_path / f"{extension_id}.toml",
+            entrypoint=provider,
+            version="1.0.0",
+            extension_id=extension_id,
+        )
+        install_extension(manifest, state_file=state_file, execute=True)
+
+    with pytest.raises(ValueError, match="multiple enabled, doctor-ready"):
+        resolve_capability_extension_id(
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+        )
+
+    disable_extension("first-provider", state_file=state_file, execute=True)
+    assert (
+        resolve_capability_extension_id(
+            state_file=state_file,
+            capability_id="semantic-preference",
+            protocol="semantic_preference_provider_v0",
+        )
+        == "second-provider"
+    )
 
 
 def test_extension_cli_installs_preinstalled_runtime(

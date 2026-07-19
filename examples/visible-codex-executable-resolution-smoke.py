@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.multi_agent.codex_executable import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.codex_executable import (  # noqa: E402
     resolve_codex_executable,
     write_codex_compatibility_shim,
 )

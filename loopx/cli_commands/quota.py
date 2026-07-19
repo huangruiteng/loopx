@@ -16,11 +16,13 @@ from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
 from ..upgrade import resolve_codex_app_automation_rrule
 from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
-from ..control_plane.quota.monitor_poll import render_quota_monitor_poll_markdown
 from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
-from ..control_plane.quota.slot_accounting import render_quota_slot_preview_markdown
+from ..presentation.renderers.quota_event_markdown import (
+    render_quota_monitor_poll_markdown,
+    render_quota_slot_preview_markdown,
+)
 from ..presentation.renderers.quota_markdown import (
     render_quota_markdown,
     render_quota_scheduler_ack_markdown,

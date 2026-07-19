@@ -117,6 +117,7 @@ def assert_scheduler_ack_route_profile_keeps_independent_checks() -> None:
     assert [check["command"] for check in profile["checks"]] == [
         "python3 examples/control_plane/quota-scheduler-state-ack-smoke.py",
         "python3 examples/control_plane/quota-scheduler-registry-route-smoke.py",
+        "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
     ], profile
 
 
@@ -211,7 +212,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
         if profile["id"] == "repo-architecture-budget"
     )
     architecture_commands = [check["command"] for check in architecture_profile["checks"]]
-    assert "python3 examples/control_plane/repo-python-line-budget-smoke.py" in architecture_commands, (
+    assert "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in architecture_commands, (
         architecture_profile
     )
 
@@ -614,7 +615,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
 
     cross_runtime_payload = build_catalog_canary_plan(
         changed_files=[
-            "loopx/capabilities/cross_runtime/impl_review.py",
+            "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
             "docs/product/cross-runtime-impl-review-demo.md",
         ],

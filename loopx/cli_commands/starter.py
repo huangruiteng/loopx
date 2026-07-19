@@ -4,7 +4,7 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
-from ..capabilities.cross_runtime import (
+from ..control_plane.handoff.cross_runtime_impl_review import (
     DEFAULT_GOAL_ID as DEFAULT_IMPL_REVIEW_GOAL_ID,
     DEFAULT_IMPLEMENTER_AGENT_ID,
     DEFAULT_REQUIREMENT,

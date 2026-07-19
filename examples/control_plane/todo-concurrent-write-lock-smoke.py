@@ -182,6 +182,8 @@ def main() -> int:
                 GOAL_ID,
                 "--todo-id",
                 target_id,
+                "--agent-id",
+                "codex-side-bypass",
                 "--status",
                 "blocked",
                 "--reason",

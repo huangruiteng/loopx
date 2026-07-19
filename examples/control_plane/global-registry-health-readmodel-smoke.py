@@ -154,7 +154,7 @@ def main() -> None:
             for finding in orphan_findings
         ), orphan_findings
 
-        finding = status_module.global_registry_finding(
+        finding = health_read_model.global_registry_finding(
             kind="fixture",
             severity="info",
             message="fixture finding",
@@ -163,15 +163,9 @@ def main() -> None:
             path=state_file,
             goal_ids=["fresh"],
         )
-        assert finding == health_read_model.global_registry_finding(
-            kind="fixture",
-            severity="info",
-            message="fixture finding",
-            recommended_action="keep parity",
-            goal_id="fresh",
-            path=state_file,
-            goal_ids=["fresh"],
-        )
+        assert finding["kind"] == "fixture", finding
+        assert finding["goal_id"] == "fresh", finding
+        assert not hasattr(status_module, "global_registry_finding")
 
     print("global-registry-health-readmodel-smoke ok")
 

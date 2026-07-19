@@ -37,7 +37,7 @@ from .user_contract import (
     infer_auto_research_output_language,
     normalize_auto_research_preset_id,
 )
-from ..multi_agent.visible_launch_policy import (
+from ...control_plane.agents.multi_agent.visible_launch_policy import (
     make_visible_launcher_callback,
     make_visible_wake_callback,
     resolve_codex_trust_workspace,

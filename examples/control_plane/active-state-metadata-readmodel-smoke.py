@@ -38,8 +38,8 @@ malformed
         "普通章节": None,
     }
     for heading, expected in headings.items():
-        assert status_module.todo_role_for_heading(heading) == expected, heading
         assert metadata_read_model.todo_role_for_heading(heading) == expected, heading
+    assert not hasattr(status_module, "todo_role_for_heading")
 
     print("active-state-metadata-readmodel-smoke ok")
 

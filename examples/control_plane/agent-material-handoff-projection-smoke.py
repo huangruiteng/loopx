@@ -25,6 +25,7 @@ from loopx.control_plane.agents.material_handoff import (  # noqa: E402
 
 
 GOAL_ID = "material-handoff-fixture"
+OTHER_GOAL_ID = "other-material-handoff-fixture"
 SOURCE_AGENT = "agent-builder"
 SUCCESSOR_AGENT = "agent-reviewer"
 SOURCE_TODO = "todo_material_source"
@@ -165,34 +166,69 @@ def assert_successor_rebuilds_frontier(note: dict) -> dict:
     return successor
 
 
-def assert_agent_management_cold_path(successor: dict) -> None:
+def other_goal_frontier() -> dict:
+    return build_agent_material_frontier(
+        goal_id=OTHER_GOAL_ID,
+        agent_id=SUCCESSOR_AGENT,
+        authority_registry={"project_materials": {}},
+        todos={
+            "todo_id": "todo_other_goal",
+            "material_refs": [
+                {
+                    "material_id": "other-goal-only",
+                    "relation": "required",
+                }
+            ],
+        },
+        generated_at="2026-07-19T00:03:00Z",
+    )
+
+
+def management_payload(
+    *,
+    frontiers: list[dict],
+    goal_filter: str | None = GOAL_ID,
+    goal_ids: list[str] | None = None,
+    include_todo: bool = True,
+) -> dict:
     payload = {
-        "goal_filter": GOAL_ID,
         "run_history": {
             "goals": [
                 {
-                    "id": GOAL_ID,
+                    "id": goal_id,
                     "coordination": {"registered_agents": [SUCCESSOR_AGENT]},
                 }
+                for goal_id in (goal_ids or [GOAL_ID])
             ]
         },
         "todo_index": {
-            "items": [
-                {
-                    "role": "agent",
-                    "todo_id": SUCCESSOR_TODO,
-                    "goal_id": GOAL_ID,
-                    "status": "open",
-                    "task_class": "advancement_task",
-                    "action_kind": "independent_review",
-                    "claimed_by": SUCCESSOR_AGENT,
-                    "text": "Review the material-aware handoff.",
-                    "handoff_note": legacy_handoff_note(),
-                }
-            ]
+            "items": (
+                [
+                    {
+                        "role": "agent",
+                        "todo_id": SUCCESSOR_TODO,
+                        "goal_id": GOAL_ID,
+                        "status": "open",
+                        "task_class": "advancement_task",
+                        "action_kind": "independent_review",
+                        "claimed_by": SUCCESSOR_AGENT,
+                        "text": "Review the material-aware handoff.",
+                        "handoff_note": legacy_handoff_note(),
+                    }
+                ]
+                if include_todo
+                else []
+            )
         },
-        "agent_material_frontiers": [successor],
+        "agent_material_frontiers": frontiers,
     }
+    if goal_filter:
+        payload["goal_filter"] = goal_filter
+    return payload
+
+
+def assert_agent_management_cold_path(successor: dict) -> None:
+    payload = management_payload(frontiers=[successor])
     projection = build_agent_management_projection(payload)
     row = projection["agents"][0]
     assert row["agent_id"] == SUCCESSOR_AGENT, row
@@ -203,6 +239,41 @@ def assert_agent_management_cold_path(successor: dict) -> None:
     assert row["material_frontier"]["summary"] == successor["summary"], row
     assert row["handoff_note"]["schema_version"] == "handoff_note_v1", row
     assert row["handoff_note"]["material_refs"] == row["material_frontier"]["material_refs"], row
+
+    other = other_goal_frontier()
+    exact = build_agent_management_projection(
+        management_payload(frontiers=[successor, other])
+    )["agents"][0]
+    exact_material_ids = {
+        ref["material_id"] for ref in exact["material_frontier"]["material_refs"]
+    }
+    assert "design-current" in exact_material_ids, exact
+    assert "other-goal-only" not in exact_material_ids, exact
+
+    cross_goal = build_agent_management_projection(
+        management_payload(frontiers=[other])
+    )["agents"][0]
+    assert "material_frontier" not in cross_goal, cross_goal
+    assert "handoff_note" not in cross_goal, cross_goal
+
+    current_todo = build_agent_management_projection(
+        management_payload(
+            frontiers=[other, successor],
+            goal_filter=None,
+            goal_ids=[GOAL_ID, OTHER_GOAL_ID],
+        )
+    )["agents"][0]
+    assert current_todo["material_frontier"]["summary"] == successor["summary"], current_todo
+
+    ambiguous = build_agent_management_projection(
+        management_payload(
+            frontiers=[successor, other],
+            goal_filter=None,
+            goal_ids=[GOAL_ID, OTHER_GOAL_ID],
+            include_todo=False,
+        )
+    )["agents"][0]
+    assert "material_frontier" not in ambiguous, ambiguous
 
     payload.pop("agent_material_frontiers")
     legacy = build_agent_management_projection(payload)["agents"][0]

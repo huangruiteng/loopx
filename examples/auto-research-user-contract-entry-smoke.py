@@ -28,7 +28,7 @@ from loopx.capabilities.auto_research.bootstrap_contract import (  # noqa: E402
     auto_research_start_command_text,
     build_auto_research_contract_acceptance,
 )
-from loopx.capabilities.multi_agent.visible_launch_policy import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.visible_launch_policy import (  # noqa: E402
     resolve_codex_trust_workspace,
     resolve_visible_launch_policy,
 )

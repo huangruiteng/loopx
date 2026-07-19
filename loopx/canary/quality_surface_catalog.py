@@ -95,7 +95,9 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         "owner_paths": [
             "loopx/control_plane/quota/live_decision.py",
             "loopx/control_plane/scheduler/ack.py",
+            "loopx/control_plane/scheduler/scheduler_hint.py",
             "loopx/control_plane/scheduler/state.py",
+            "loopx/control_plane/scheduler/state_transition_rules.py",
         ],
         "semantic_oracle": {
             "source_kind": "specification",
@@ -111,10 +113,13 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "tests/test_loopx_turn_driver.py",
                 "tests/control_plane/test_scheduler_ack_decision_table.py",
                 "tests/control_plane/test_scheduler_backoff_convergence.py",
+                "tests/control_plane/test_scheduler_host_failure_cache.py",
+                "tests/control_plane/test_scheduler_state_transition_rules.py",
             ),
             "durable_smoke": _covered(
                 "examples/control_plane/quota-scheduler-state-ack-smoke.py",
                 "examples/control_plane/quota-scheduler-registry-route-smoke.py",
+                "examples/control_plane/monitor-scheduler-contract-smoke.py",
             ),
             "catalog_canary": _covered("scheduler-ack-route"),
             "host_upgrade": _not_applicable(

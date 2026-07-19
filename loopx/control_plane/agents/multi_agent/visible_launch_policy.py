@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
-from ...visible_multi_agent_launcher import wake_visible_multi_agent_panes
+from loopx.visible_multi_agent_launcher import wake_visible_multi_agent_panes
 
 
 @dataclass(frozen=True)

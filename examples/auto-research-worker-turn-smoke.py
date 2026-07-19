@@ -29,7 +29,9 @@ from loopx.capabilities.auto_research.preset import (  # noqa: E402
 from loopx.capabilities.auto_research.rollout_append import (  # noqa: E402
     append_auto_research_rollout_events,
 )
-from loopx.capabilities.multi_agent.role_successor import apply_role_successor_todos  # noqa: E402
+from loopx.control_plane.agents.multi_agent.role_successor import (  # noqa: E402
+    apply_role_successor_todos,
+)
 from loopx.todos import add_goal_todo, complete_goal_todo  # noqa: E402
 
 from examples.auto_research_lightweight_fixture import (  # noqa: E402

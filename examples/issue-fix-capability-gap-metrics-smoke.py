@@ -22,6 +22,8 @@ from todo_lifecycle_fixtures import (  # noqa: E402
     write_fixture,
 )
 
+ACTOR_AGENT_ID = "codex-main-control"
+
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="loopx-capability-gap-metrics-") as tmp:
@@ -76,6 +78,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
             "--role",
             "agent",
             "--target-capability",
@@ -95,6 +99,8 @@ def main() -> int:
             GOAL_ID,
             "--todo-id",
             todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
             "--role",
             "agent",
             "--target-capability",

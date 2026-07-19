@@ -1020,6 +1020,7 @@ def assert_cli_scheduler_failure_circuit_breaker() -> None:
             target_rrule = first_app["recommended_rrule"]
             failure_hint = first_app["failure_hint"]
             assert first_app["stateful_backoff"]["apply_needed"] is True, first
+            assert first_app["no_spend_for_cadence_change"] is True, first
             assert failure_hint["route_binding"]["registry_bound"] is True, first
 
             failure = run_cli(
@@ -1053,6 +1054,7 @@ def assert_cli_scheduler_failure_circuit_breaker() -> None:
             suppressed_app = suppressed["scheduler_hint"]["codex_app"]
             assert suppressed_app["stateful_backoff"]["apply_needed"] is False, suppressed
             assert suppressed_app["stateful_backoff"]["ack_needed"] is False, suppressed
+            assert suppressed_app["no_spend_for_cadence_change"] is True, suppressed
             assert suppressed_app["stateful_backoff"]["state_status"] == (
                 "host_update_failure_suppressed"
             ), suppressed

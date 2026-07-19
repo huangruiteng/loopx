@@ -76,7 +76,7 @@ def main() -> int:
             "multi_agent_three_layer_minimality_contract_v0",
             "both the user-facing recipe and the domain preset stay thin",
             "Kernel Module",
-            "loopx/capabilities/multi_agent/",
+            "loopx/control_plane/agents/multi_agent/",
             "generic_multi_agent_role_profile_v0",
             "multi_agent_three_layer_minimality_contract_v0",
             "compact human status",

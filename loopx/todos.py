@@ -1384,6 +1384,8 @@ def complete_goal_todo(
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
+    next_task_repository: str | None = None,
+    next_required_capabilities: list[str] | None = None,
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
     self_merged: bool = False,
@@ -1392,6 +1394,10 @@ def complete_goal_todo(
     state_file: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    if next_task_repository and not next_agent_todo:
+        raise ValueError("--next-task-repository requires --next-agent-todo")
+    if next_required_capabilities and not next_agent_todo:
+        raise ValueError("--next-required-capability requires --next-agent-todo")
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1526,6 +1532,8 @@ def complete_goal_todo(
                     next_claimed_by=effective_next_claimed_by,
                     next_task_class=next_task_class,
                     next_action_kind=next_action_kind,
+                    next_task_repository=next_task_repository,
+                    next_required_capabilities=next_required_capabilities,
                     next_continuation_policy=next_continuation_policy,
                     self_merged=effective_self_merged,
                     next_excluded_agents=effective_next_excluded_agents,
@@ -1586,6 +1594,8 @@ def complete_goal_todo(
                     ),
                     task_class=next_task_class or "advancement_task",
                     action_kind=next_action_kind,
+                    task_repository=next_task_repository,
+                    required_capabilities=next_required_capabilities,
                     continuation_policy=next_continuation_policy,
                     claimed_by=effective_next_claimed_by,
                     excluded_agents=effective_next_excluded_agents,
@@ -1666,6 +1676,8 @@ def supersede_goal_todo(
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
+    next_task_repository: str | None = None,
+    next_required_capabilities: list[str] | None = None,
     next_continuation_policy: str | None = None,
     next_excluded_agents: list[str] | None = None,
     agent_id: str | None = None, authority_reason: str | None = None,
@@ -1673,6 +1685,10 @@ def supersede_goal_todo(
     state_file: Path | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    if next_task_repository and not next_agent_todo:
+        raise ValueError("--next-task-repository requires --next-agent-todo")
+    if next_required_capabilities and not next_agent_todo:
+        raise ValueError("--next-required-capability requires --next-agent-todo")
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1772,6 +1788,8 @@ def supersede_goal_todo(
                     ),
                     task_class=next_task_class or "advancement_task",
                     action_kind=next_action_kind,
+                    task_repository=next_task_repository,
+                    required_capabilities=next_required_capabilities,
                     continuation_policy=next_continuation_policy,
                     claimed_by=effective_next_claimed_by,
                     excluded_agents=effective_next_excluded_agents,

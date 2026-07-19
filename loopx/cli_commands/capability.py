@@ -9,6 +9,7 @@ from ..capabilities.catalog import (
     render_capability_catalog_markdown,
     render_capability_detail_markdown,
 )
+from ..extensions.runtime import default_extension_state_file
 
 
 PrintPayload = Callable[
@@ -25,8 +26,8 @@ def _add_extension_manifest_argument(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=[],
         help=(
-            "Explicitly enable one declarative extension manifest for this "
-            "catalog read. Repeat for multiple manifests."
+            "Declare one extension manifest for this catalog read without "
+            "installing or enabling it. Repeat for multiple manifests."
         ),
     )
     parser.set_defaults(capability_operation_parser=parser)
@@ -65,20 +66,26 @@ def register_capability_commands(
 def handle_capability_command(
     args: argparse.Namespace,
     *,
+    runtime_root_arg: str | None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int | None:
     if args.command != "capability":
         return None
     manifest_paths = tuple(args.extension_manifest)
+    state_file = default_extension_state_file(runtime_root_arg)
     try:
         if args.capability_command == "list":
-            payload = build_capability_catalog_packet(manifest_paths)
+            payload = build_capability_catalog_packet(
+                manifest_paths,
+                extension_state_file=state_file,
+            )
             renderer = render_capability_catalog_markdown
         elif args.capability_command == "show":
             payload = build_capability_detail_packet(
                 args.capability_id,
                 manifest_paths,
+                extension_state_file=state_file,
             )
             renderer = render_capability_detail_markdown
         else:

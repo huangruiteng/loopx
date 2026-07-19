@@ -668,6 +668,7 @@ def record_quota_slot_void_from_preview(
     status_payload: dict[str, Any],
     *,
     goal_id: str,
+    render_markdown: Callable[[dict[str, Any]], str],
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
@@ -727,7 +728,7 @@ def record_quota_slot_void_from_preview(
         payload["after"] = record["quota_event"]["after"]
     if execute:
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
+        markdown_path.write_text(render_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
     return payload
@@ -739,6 +740,7 @@ def record_quota_slot_spend_from_preview(
     *,
     goal_id: str,
     self_repair_spend_actions: set[str] | frozenset[str],
+    render_markdown: Callable[[dict[str, Any]], str],
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
 ) -> dict[str, Any]:
@@ -798,53 +800,7 @@ def record_quota_slot_spend_from_preview(
         payload["after"] = record["quota_event"]["after"]
     if execute:
         json_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        markdown_path.write_text(render_quota_slot_preview_markdown(payload) + "\n", encoding="utf-8")
+        markdown_path.write_text(render_markdown(payload) + "\n", encoding="utf-8")
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
     return payload
-
-
-def render_quota_slot_preview_markdown(payload: dict[str, Any]) -> str:
-    before = payload.get("before") if isinstance(payload.get("before"), dict) else {}
-    after = payload.get("after") if isinstance(payload.get("after"), dict) else {}
-    before_quota = before.get("quota") if isinstance(before.get("quota"), dict) else before
-    after_quota = after.get("quota") if isinstance(after.get("quota"), dict) else after
-    lines = [
-        "# LoopX Quota Slot Preview",
-        "",
-        f"- ok: `{payload.get('ok')}`",
-        f"- dry_run: `{payload.get('dry_run')}`",
-        f"- goal_id: `{payload.get('goal_id')}`",
-        f"- classification: `{payload.get('classification') or QUOTA_SLOT_SPENT_CLASSIFICATION}`",
-        f"- agent_id: `{payload.get('agent_id') or ''}`",
-        f"- slots: `{payload.get('slots')}`",
-        f"- appended: `{payload.get('appended')}`",
-        f"- registry_mutated: `{payload.get('registry_mutated')}`",
-        f"- would_throttle: `{payload.get('would_throttle')}`",
-    ]
-    if payload.get("json_path"):
-        lines.append(f"- json_path: `{payload.get('json_path')}`")
-    if payload.get("index_path"):
-        lines.append(f"- index_path: `{payload.get('index_path')}`")
-    if payload.get("reason"):
-        lines.append(f"- reason: {payload.get('reason')}")
-    if before:
-        lines.append(
-            "- before: "
-            f"state={before.get('state')} "
-            f"should_run={before.get('should_run')} "
-            f"slots={before_quota.get('spent_slots')}/{before_quota.get('allowed_slots')}"
-        )
-    if after:
-        lines.append(
-            "- after: "
-            f"state={after.get('state')} "
-            f"should_run={after.get('should_run')} "
-            f"slots={after_quota.get('spent_slots')}/{after_quota.get('allowed_slots')}"
-        )
-        summary = after.get("plan_summary") if isinstance(after.get("plan_summary"), dict) else {}
-        if summary:
-            lines.append(f"- after_plan_next_automatic_turn: {summary.get('next_automatic_turn') or 'none'}")
-    if payload.get("rolling_window_note"):
-        lines.append(f"- rolling_window_note: {payload.get('rolling_window_note')}")
-    return "\n".join(lines)

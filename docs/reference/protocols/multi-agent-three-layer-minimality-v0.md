@@ -22,7 +22,7 @@ rather than a second product-specific runner.
 
 ## Contract Shape
 
-The reusable helper lives in `loopx/capabilities/multi_agent/contract.py`:
+The reusable helper lives in `loopx/control_plane/agents/multi_agent/contract.py`:
 
 ```python
 build_three_layer_minimality_contract(
@@ -88,7 +88,7 @@ role defaults, role profiles, successor declarations, seed todo wording, and
 thin wrappers around generic helpers. Reusable A2A proof fields such as
 `broadcaster_selects_todo=false`, `each_pane_reads_own_quota_frontier=true`,
 and `leader_agent_required=false` belong to
-`loopx/capabilities/multi_agent/recipe.py`.
+`loopx/control_plane/agents/multi_agent/recipe.py`.
 
 This keeps the developer-facing promise honest: future products should be able
 to copy the pattern by writing their own short preset, not by importing
