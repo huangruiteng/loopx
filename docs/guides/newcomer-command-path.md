@@ -39,6 +39,7 @@ matches the surface you already use:
 | Codex App | `$loopx <task text>` or `/skills` -> `loopx` in the project thread | The app heartbeat automation. Let the agent install or refresh the generated LoopX heartbeat body; start at the bootstrap cadence, then follow `quota should-run.scheduler_hint`. |
 | Codex CLI | `codex` from the project root, then paste `loopx codex-cli-bootstrap-message --project .` output | Current verified Codex CLI builds do not load user-installed `/loopx` or `/prompts:loopx` commands. Keep the executor visible, then set the generated `/goal <thin task_body>`. |
 | Claude Code | Install LoopX, then `/loopx <task text>` | The installer registers lightweight slash-command skills. Enable the opt-in adapter only when Claude Code's native `/loop` should be gated by LoopX `should_run`. |
+| OpenCode | Install the OpenCode surface, then `/loopx <task text>` | The bridge writes commands, plugin, runtime, and pinned dependencies. After todos are written, call `loopx_goal_activate` to bind the quota-gated goal loop. |
 | Other agent or shell | `loopx start-goal --guided --project . --goal-text "<task text>" --host-surface <exact-host>` | The guided packet previews the same transaction an agent should execute: inspect or connect state, plan todos, refresh status, activate a host loop, run quota, and ack scheduler hints when needed. If the surface has no runner hook, LoopX can track state but the user drives it manually. |
 
 ## One CLI Quickstart
