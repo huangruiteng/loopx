@@ -24,7 +24,7 @@ from loopx.cli import main as cli_main  # noqa: E402
 GOAL_ID = "loopx-turn-real-cli-e2e"
 AGENT_ID = "codex-turn-e2e"
 TODO_ID = "todo_turnreale2e01"
-MARKER_NAME = "turn-e2e-marker.txt"
+MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_VALUE = "loopx-turn-real-e2e-ok"
 
 
@@ -34,6 +34,7 @@ def _write_fixture(root: Path) -> tuple[Path, Path, Path, Path]:
     workspace = root / "workspace"
     runtime.mkdir(parents=True)
     workspace.mkdir(parents=True)
+    (workspace / "docs").mkdir()
     state = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     state.parent.mkdir(parents=True)
     state.write_text(

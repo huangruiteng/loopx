@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 QUICKSTART = REPO_ROOT / "docs" / "product" / "loopx-turn-codex-cli-quickstart.md"
+README = REPO_ROOT / "README.md"
 
 
 def main() -> int:
@@ -17,6 +18,7 @@ def main() -> int:
         encoding="utf-8"
     )
     docs_index = (REPO_ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    readme = README.read_text(encoding="utf-8")
 
     assert len(text.splitlines()) <= 110, "quickstart must remain one page"
     for required in [
@@ -53,6 +55,14 @@ def main() -> int:
     link = "loopx-turn-codex-cli-quickstart.md"
     assert link in product_index, "product index link"
     assert f"product/{link}" in docs_index, "docs index link"
+    for required in [
+        "Try One Governed Turn Locally",
+        "loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli",
+        "status=committed",
+        "validation_status=passed",
+        "quota_slot_spend_count=1",
+    ]:
+        assert required in readme, f"README local Turn quickstart: {required}"
 
     print("loopx-turn-codex-cli-quickstart-smoke ok")
     return 0
