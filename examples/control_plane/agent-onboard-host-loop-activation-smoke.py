@@ -46,6 +46,7 @@ def main() -> int:
         "codex-ide-plugin",
         "codex-cli",
         "claude-code",
+        "opencode",
         "manual",
         "other-agent",
     } <= agent_types
@@ -56,16 +57,21 @@ def main() -> int:
     assert agent_type_for_host_surface("codex-ide-plugin") == "codex-ide-plugin"
     assert agent_type_for_host_surface("codex-ide") == "codex-ide-plugin"
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
+    assert agent_type_for_host_surface("opencode") == "opencode"
 
     codex_app = build_host_loop_activation_packet(agent_type="codex-app", goal_id="demo")
     codex_ide = build_host_loop_activation_packet(agent_type="codex-ide-plugin", goal_id="demo")
     codex_cli = build_host_loop_activation_packet(agent_type="codex-cli", goal_id="demo")
     claude_code = build_host_loop_activation_packet(agent_type="claude-code", goal_id="demo")
+    opencode = build_host_loop_activation_packet(agent_type="opencode", goal_id="demo")
     assert codex_app["activation_method"] == "create_or_update_codex_app_automation", codex_app
     assert codex_ide["activation_method"] == "set_visible_goal", codex_ide
     assert codex_ide["host_mutation"]["host_command"] == "/goal <task_body>", codex_ide
     assert codex_cli["host_mutation"]["host_command"] == "/goal <task_body>", codex_cli
     assert claude_code["host_mutation"]["host_command"] == "/loop", claude_code
+    assert opencode["activation_method"] == "activate_loopx_opencode_goal_bridge", opencode
+    assert opencode["host_mutation"]["host_tool"] == "loopx_goal_activate", opencode
+    assert "--runtime-profile generic_cli" in opencode["commands"]["heartbeat_prompt"], opencode
     gated_activation = build_host_loop_activation_packet(
         agent_type="codex-app",
         goal_id="multi-agent-demo",
@@ -270,6 +276,21 @@ def main() -> int:
         assert "--host-surface codex-ide-plugin" in ide_bootstrap, ide_onboarding
         assert "worker-bridge" not in ide_bootstrap, ide_onboarding
         assert "visible IDE plugin" in ide_onboarding["recommended_start"], ide_onboarding
+
+        opencode_onboarding = build_agent_onboarding_packet(
+            project=project,
+            agent_type="opencode",
+            goal_id="multi-agent-goal",
+            agent_id="codex-product-capability",
+            cli_bin=cli_bin,
+        )
+        assert "--host-surface opencode" in opencode_onboarding["commands"]["bootstrap_command_pack"]
+        assert opencode_onboarding["commands"]["install_command_facade"].endswith(
+            "--surface opencode"
+        )
+        assert opencode_onboarding["host_loop_activation"]["host_mutation"]["host_tool"] == (
+            "loopx_goal_activate"
+        )
 
     return 0
 

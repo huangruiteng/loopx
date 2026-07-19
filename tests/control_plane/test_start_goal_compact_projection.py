@@ -306,6 +306,7 @@ def test_cli_without_host_returns_read_only_host_selection_gate(
         "codex-ide-plugin",
         "codex-cli-tui",
         "claude-code",
+        "opencode",
         "shell",
     ]
     ide = next(choice for choice in choices if choice["host_surface"] == "codex-ide-plugin")
