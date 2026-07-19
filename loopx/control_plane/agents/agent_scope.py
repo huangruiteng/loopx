@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from .agent_scope_frontier import (
@@ -1095,6 +1096,426 @@ def _agent_scope_route_continuation_replan_candidates(
     return sorted(unique, key=_todo_projection_sort_key)
 
 
+@dataclass(frozen=True)
+class _AgentScopeNoCandidateContext:
+    agent_id: str
+    summary: dict[str, Any]
+    current_agent_count: int
+    unclaimed_count: int
+    has_advancement_contract: bool
+
+    @property
+    def candidate_counts(self) -> dict[str, int]:
+        return {
+            "current_agent_claimed_advancement_count": self.current_agent_count,
+            "unclaimed_advancement_count": self.unclaimed_count,
+        }
+
+
+def _selected_candidate_priority_frontier(
+    *,
+    agent_id: str,
+    summary: dict[str, Any],
+    selected: dict[str, Any],
+) -> dict[str, Any] | None:
+    candidates = _agent_scope_deferred_resume_candidates(summary, agent_id=agent_id)
+    if not candidates:
+        return None
+    first = candidates[0]
+    if _todo_projection_sort_key(first)[0] >= _todo_projection_sort_key(selected)[0]:
+        return None
+    candidate_todo_id = str(first.get("todo_id") or "").strip() or "<todo_id>"
+    selected_todo_id = str(selected.get("todo_id") or "").strip() or "<open_todo_id>"
+    return build_agent_scope_frontier_payload(
+        agent_id=agent_id,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated priority successor replan/todo writeback",
+        reason=(
+            f"ready deferred successor {candidate_todo_id} has higher priority than "
+            f"selected open advancement {selected_todo_id}; its lifecycle must be "
+            "resolved before lower-priority delivery"
+        ),
+        recommended_action=(
+            "Run a bounded successor replan before lower-priority delivery: reopen, "
+            f"supersede, or record a no-follow-up rationale for {candidate_todo_id}."
+        ),
+        requires_replan=True,
+        candidate_counts={
+            "deferred_resume_candidate_count": len(candidates),
+            "preempted_open_candidate_count": 1,
+        },
+        extra_fields={
+            "deferred_resume_candidates": candidates[:3],
+            "preempted_open_candidate": compact_todo_summary_item(
+                selected,
+                text=str(selected.get("text") or "").strip(),
+            ),
+            "priority_preemption": True,
+        },
+    )
+
+
+def _agent_scope_advancement_counts(
+    summary: dict[str, Any],
+    *,
+    agent_id: str,
+) -> tuple[int, int]:
+    current = max(
+        int(summary.get("current_agent_claimed_advancement_count") or 0),
+        _count_advancement_items(
+            summary.get("current_agent_claimed_advancement_items"),
+            claimed_by=agent_id,
+        ),
+    )
+    unclaimed = _selectable_unclaimed_advancement_count(summary)
+    executable_items = summary.get("executable_backlog_items")
+    if isinstance(executable_items, list):
+        current = max(
+            current,
+            _count_advancement_items(executable_items, claimed_by=agent_id),
+        )
+        unclaimed = _count_advancement_items(
+            executable_items,
+            claimed_by="__unclaimed__",
+        )
+    return current, unclaimed
+
+
+def _monitor_blocked_resume_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    candidates = _agent_scope_monitor_blocked_resume_candidates(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not candidates:
+        return None
+    first = candidates[0]
+    candidate_id = str(first.get("todo_id") or "").strip() or "<todo_id>"
+    monitor_id = (
+        str(first.get("blocking_monitor_todo_id") or "").strip()
+        or "<monitor_todo_id>"
+    )
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated standing-monitor gate repair/todo writeback",
+        reason=(
+            f"current agent {context.agent_id} has advancement todo {candidate_id} gated "
+            f"by open continuous_monitor {monitor_id}; a standing monitor cannot be the "
+            "todo_done prerequisite for autonomous continuation"
+        ),
+        recommended_action=(
+            "Run a bounded gate-model repair before quiet wait: close/supersede "
+            f"{monitor_id} after validated evidence, or rewrite {candidate_id} to use "
+            "a non-blocking monitor contract before delivery."
+        ),
+        requires_replan=True,
+        candidate_counts={
+            **context.candidate_counts,
+            "monitor_blocked_resume_candidate_count": len(candidates),
+        },
+        extra_fields={"monitor_blocked_resume_candidates": candidates[:3]},
+    )
+
+
+def _deferred_resume_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    candidates = _agent_scope_deferred_resume_candidates(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not candidates:
+        return None
+    candidate_id = str(candidates[0].get("todo_id") or "").strip() or "<todo_id>"
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated successor replan/todo writeback",
+        reason=(
+            f"current agent {context.agent_id} has no open current/unclaimed advancement "
+            "candidate, but a deferred successor resume condition is satisfied"
+        ),
+        recommended_action=(
+            "Run a bounded successor replan before delivery: reopen, supersede, or "
+            f"record a no-follow-up rationale for {candidate_id}."
+        ),
+        requires_replan=True,
+        candidate_counts={
+            **context.candidate_counts,
+            "deferred_resume_candidate_count": len(candidates),
+        },
+        extra_fields={"deferred_resume_candidates": candidates[:3]},
+    )
+
+
+def _blocked_successor_wait_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    candidates = todo_summary_blocked_successor_items(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not candidates:
+        return None
+    first = candidates[0]
+    candidate_id = str(first.get("todo_id") or "").strip() or "<todo_id>"
+    resume_when = str(first.get("resume_when") or "").strip()
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+        quiet_noop_allowed=True,
+        spend_policy="no quota spend while an exact successor resume condition is pending",
+        reason=(
+            f"current agent {context.agent_id} has exact blocked successor {candidate_id} "
+            f"waiting on {resume_when}; another successor replan would duplicate the "
+            "existing route"
+        ),
+        recommended_action=(
+            f"Keep {context.agent_id} active but quiet until {resume_when} becomes ready; "
+            "then resume ordinary todo/deferred-successor routing automatically."
+        ),
+        requires_replan=False,
+        candidate_counts={
+            **context.candidate_counts,
+            "blocked_successor_wait_count": len(candidates),
+        },
+        extra_fields={"blocked_successor_wait_candidates": candidates[:3]},
+    )
+
+
+def _route_continuation_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    candidates = _agent_scope_route_continuation_replan_candidates(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not candidates:
+        return None
+    first = candidates[0]
+    route_label = (
+        str(
+            first.get("route_id")
+            or first.get("route_key")
+            or first.get("todo_id")
+            or ""
+        ).strip()
+        or "<route>"
+    )
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated route continuation replan/todo writeback",
+        reason=(
+            f"current agent {context.agent_id} has no open current/unclaimed advancement "
+            "candidate, but the route continuation projection requires a successor "
+            f"replan for {route_label}"
+        ),
+        recommended_action=(
+            "Run a bounded route continuation replan before quiet wait: create or claim "
+            f"the next concrete {context.agent_id}/unclaimed advancement todo for "
+            f"{route_label}, or record an explicit no-follow-up rationale."
+        ),
+        requires_replan=True,
+        candidate_counts={
+            **context.candidate_counts,
+            "route_continuation_replan_candidate_count": len(candidates),
+        },
+        extra_fields={"route_continuation_replan_candidates": candidates[:3]},
+    )
+
+
+def _blocking_handoff_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    gates = _agent_scope_blocking_handoff_gates(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not gates:
+        return None
+    claimants = sorted(
+        {
+            claimed_by
+            for item in gates
+            for claimed_by in [agent_scope_item_claimed_by(item)]
+            if claimed_by
+        }
+    )
+    owner = ", ".join(claimants) or "the owning agent"
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
+        quiet_noop_allowed=True,
+        spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
+        reason=(
+            f"current agent {context.agent_id} has no current/unclaimed advancement "
+            f"candidate; blocking handoff work is claimed by {owner}"
+        ),
+        recommended_action=(
+            f"Keep {context.agent_id} active but quiet: wait for {owner} to finish the "
+            "blocking handoff, reassign it, or create a concrete current-agent/"
+            "unclaimed advancement todo before delivery."
+        ),
+        candidate_counts={
+            **context.candidate_counts,
+            "blocking_handoff_gate_count": len(gates),
+        },
+        extra_fields={
+            "other_claimants": claimants,
+            "blocking_handoff_claimants": claimants,
+            "blocking_handoff_gates": gates[:3],
+        },
+    )
+
+
+def _cleared_handoff_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    gates = _agent_scope_cleared_without_successor_handoff_gates(
+        context.summary,
+        agent_id=context.agent_id,
+    )
+    if not gates:
+        return None
+    first = gates[0]
+    blocker_id = str(first.get("todo_id") or "").strip() or "<todo_id>"
+    unblocks_id = normalize_todo_id(first.get("unblocks_todo_id"))
+    target_text = f" for unblocked todo {unblocks_id}" if unblocks_id else ""
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
+        quiet_noop_allowed=False,
+        spend_policy="spend once after validated successor replan/todo writeback",
+        reason=(
+            f"current agent {context.agent_id} has no open current/unclaimed advancement "
+            f"candidate, but blocking handoff {blocker_id}{target_text} is already done "
+            "without a projected successor"
+        ),
+        recommended_action=(
+            "Run a bounded successor replan before quiet wait: reopen or supersede "
+            f"{blocker_id} into a concrete {context.agent_id}/unclaimed advancement "
+            "todo, or record an explicit no-follow-up rationale."
+        ),
+        requires_replan=True,
+        candidate_counts={
+            **context.candidate_counts,
+            "cleared_without_successor_handoff_count": len(gates),
+        },
+        extra_fields={"cleared_without_successor_handoff_gates": gates[:3]},
+    )
+
+
+def _other_agent_or_exhausted_frontier(
+    context: _AgentScopeNoCandidateContext,
+) -> dict[str, Any] | None:
+    claimed_items = context.summary.get("claimed_advancement_open_items")
+    claimed_items = claimed_items if isinstance(claimed_items, list) else []
+    other_items = [
+        item
+        for item in claimed_items
+        if isinstance(item, dict)
+        and _todo_item_is_actionable_open(item)
+        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
+        and agent_scope_item_claimed_by(item) not in {None, "", context.agent_id}
+    ]
+    if not context.has_advancement_contract and not other_items:
+        return None
+    other_claimants = sorted(
+        {
+            claimed_by
+            for item in other_items
+            for claimed_by in [agent_scope_item_claimed_by(item)]
+            if claimed_by
+        }
+    )
+    blocking_claimants = sorted(
+        {
+            claimed_by
+            for item in other_items
+            if context.agent_id in agent_scope_item_excluded_agents(item)
+            for claimed_by in [agent_scope_item_claimed_by(item)]
+            if claimed_by
+        }
+    )
+    if blocking_claimants:
+        action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
+        owner = ", ".join(blocking_claimants)
+        reason = (
+            f"current agent {context.agent_id} has no current/unclaimed advancement "
+            f"candidate; blocking handoff work is claimed by {owner}"
+        )
+        recommended_action = (
+            f"Keep {context.agent_id} active but quiet: wait for {owner} to finish the "
+            "blocking handoff, reassign it, or create a concrete current-agent/"
+            "unclaimed advancement todo before delivery."
+        )
+    elif other_items:
+        action = AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
+        owner = ", ".join(other_claimants) or "the owning agent"
+        reason = (
+            f"current agent {context.agent_id} has no current/unclaimed advancement "
+            f"candidate; visible advancement work is claimed by {owner}"
+        )
+        recommended_action = (
+            f"Keep {context.agent_id} active but quiet: wait for {owner} to finish, "
+            "reassign, or create a concrete current-agent/unclaimed advancement todo "
+            "before delivery."
+        )
+    else:
+        action = AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED
+        reason = (
+            f"current agent {context.agent_id} has no projected current/unclaimed "
+            "advancement candidate despite a goal-level advancement lane"
+        )
+        recommended_action = (
+            f"Keep {context.agent_id} active but quiet until LoopX projects a concrete "
+            "current-agent or unclaimed advancement todo, or another peer transfers work."
+        )
+    claim_scope = context.summary.get("claim_scope")
+    claim_scope = claim_scope if isinstance(claim_scope, dict) else {}
+    return build_agent_scope_frontier_payload(
+        agent_id=context.agent_id,
+        action=action,
+        quiet_noop_allowed=True,
+        spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
+        reason=reason,
+        recommended_action=recommended_action,
+        candidate_counts={
+            **context.candidate_counts,
+            "other_agent_claimed_advancement_count": len(other_items),
+            "other_agent_claimed_open_count": int(
+                claim_scope.get("other_agent_claimed_open_count") or 0
+            ),
+        },
+        extra_fields={
+            "other_claimants": other_claimants,
+            "blocking_handoff_claimants": blocking_claimants,
+            "other_agent_claimed_items": [
+                compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
+                for item in other_items[:3]
+            ],
+        },
+    )
+
+
+_AGENT_SCOPE_NO_CANDIDATE_RULES = (
+    _monitor_blocked_resume_frontier,
+    _deferred_resume_frontier,
+    _blocked_successor_wait_frontier,
+    _route_continuation_frontier,
+    _blocking_handoff_frontier,
+    _cleared_handoff_frontier,
+    _other_agent_or_exhausted_frontier,
+)
+
+
 def _agent_scope_no_candidate_frontier(
     *,
     agent_identity: dict[str, Any] | None,
@@ -1103,434 +1524,41 @@ def _agent_scope_no_candidate_frontier(
     work_lane_contract: dict[str, Any] | None,
     candidate_should_run: bool,
 ) -> dict[str, Any] | None:
-    if not candidate_should_run:
-        return None
-    if not _agent_identity_has_scoped_lane(agent_identity):
+    if not candidate_should_run or not _agent_identity_has_scoped_lane(agent_identity):
         return None
     agent_id = normalize_todo_claimed_by(agent_identity.get("agent_id"))
     if not agent_id or not isinstance(agent_todo_summary, dict):
         return None
-    agent_label = "agent"
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):
         return None
     if isinstance(agent_lane_next_action, dict):
-        deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
-            agent_todo_summary,
+        return _selected_candidate_priority_frontier(
             agent_id=agent_id,
+            summary=agent_todo_summary,
+            selected=agent_lane_next_action,
         )
-        if deferred_resume_candidates:
-            first_candidate = deferred_resume_candidates[0]
-            if _todo_projection_sort_key(first_candidate)[0] < _todo_projection_sort_key(
-                agent_lane_next_action
-            )[0]:
-                candidate_todo_id = (
-                    str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
-                )
-                selected_todo_id = (
-                    str(agent_lane_next_action.get("todo_id") or "").strip()
-                    or "<open_todo_id>"
-                )
-                return build_agent_scope_frontier_payload(
-                    agent_id=agent_id,
-                    action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
-                    quiet_noop_allowed=False,
-                    spend_policy=(
-                        "spend once after validated priority successor replan/todo writeback"
-                    ),
-                    reason=(
-                        f"ready deferred successor {candidate_todo_id} has higher priority "
-                        f"than selected open advancement {selected_todo_id}; its lifecycle "
-                        "must be resolved before lower-priority delivery"
-                    ),
-                    recommended_action=(
-                        "Run a bounded successor replan before lower-priority delivery: "
-                        f"reopen, supersede, or record a no-follow-up rationale for "
-                        f"{candidate_todo_id}."
-                    ),
-                    requires_replan=True,
-                    candidate_counts={
-                        "deferred_resume_candidate_count": len(
-                            deferred_resume_candidates
-                        ),
-                        "preempted_open_candidate_count": 1,
-                    },
-                    extra_fields={
-                        "deferred_resume_candidates": deferred_resume_candidates[:3],
-                        "preempted_open_candidate": compact_todo_summary_item(
-                            agent_lane_next_action,
-                            text=str(agent_lane_next_action.get("text") or "").strip(),
-                        ),
-                        "priority_preemption": True,
-                    },
-                )
-        return None
     if work_lane_contract_requires_current_agent_attempt(work_lane_contract):
         return None
-    has_advancement_contract = (
-        isinstance(work_lane_contract, dict)
-        and work_lane_contract.get("lane") == TODO_TASK_CLASS_ADVANCEMENT
-        and work_lane_contract.get("must_attempt_work") is True
-    )
 
-    current_agent_count = int(agent_todo_summary.get("current_agent_claimed_advancement_count") or 0)
-    current_agent_count = max(
-        current_agent_count,
-        _count_advancement_items(
-            agent_todo_summary.get("current_agent_claimed_advancement_items"),
-            claimed_by=agent_id,
+    current_count, unclaimed_count = _agent_scope_advancement_counts(
+        agent_todo_summary,
+        agent_id=agent_id,
+    )
+    if current_count > 0 or unclaimed_count > 0:
+        return None
+    context = _AgentScopeNoCandidateContext(
+        agent_id=agent_id,
+        summary=agent_todo_summary,
+        current_agent_count=current_count,
+        unclaimed_count=unclaimed_count,
+        has_advancement_contract=bool(
+            isinstance(work_lane_contract, dict)
+            and work_lane_contract.get("lane") == TODO_TASK_CLASS_ADVANCEMENT
+            and work_lane_contract.get("must_attempt_work") is True
         ),
     )
-    unclaimed_count = _selectable_unclaimed_advancement_count(agent_todo_summary)
-    executable_items = agent_todo_summary.get("executable_backlog_items")
-    if isinstance(executable_items, list):
-        current_agent_count = max(
-            current_agent_count,
-            _count_advancement_items(executable_items, claimed_by=agent_id),
-        )
-        unclaimed_count = _count_advancement_items(
-            executable_items,
-            claimed_by="__unclaimed__",
-        )
-    if current_agent_count > 0 or unclaimed_count > 0:
-        return None
-
-    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if monitor_blocked_resume_candidates:
-        first_candidate = monitor_blocked_resume_candidates[0]
-        candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
-        monitor_todo_id = (
-            str(first_candidate.get("blocking_monitor_todo_id") or "").strip()
-            or "<monitor_todo_id>"
-        )
-        reason = (
-            f"current {agent_label} {agent_id} has advancement todo {candidate_todo_id} "
-            f"gated by open continuous_monitor {monitor_todo_id}; a standing monitor "
-            "cannot be the todo_done prerequisite for autonomous continuation"
-        )
-        recommended_action = (
-            "Run a bounded gate-model repair before quiet wait: close/supersede "
-            f"{monitor_todo_id} after validated evidence, or rewrite {candidate_todo_id} "
-            "to use a non-blocking monitor contract before delivery."
-        )
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
-            quiet_noop_allowed=False,
-            spend_policy="spend once after validated standing-monitor gate repair/todo writeback",
-            reason=reason,
-            recommended_action=recommended_action,
-            requires_replan=True,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "monitor_blocked_resume_candidate_count": len(monitor_blocked_resume_candidates),
-            },
-            extra_fields={
-                "monitor_blocked_resume_candidates": monitor_blocked_resume_candidates[:3],
-            },
-        )
-
-    deferred_resume_candidates = _agent_scope_deferred_resume_candidates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if deferred_resume_candidates:
-        first_candidate = deferred_resume_candidates[0]
-        candidate_todo_id = str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
-        reason = (
-            f"current {agent_label} {agent_id} has no open current/unclaimed "
-            "advancement candidate, but a deferred successor resume condition is satisfied"
-        )
-        recommended_action = (
-            "Run a bounded successor replan before delivery: reopen, supersede, "
-            f"or record a no-follow-up rationale for {candidate_todo_id}."
-        )
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
-            quiet_noop_allowed=False,
-            spend_policy="spend once after validated successor replan/todo writeback",
-            reason=reason,
-            recommended_action=recommended_action,
-            requires_replan=True,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "deferred_resume_candidate_count": len(deferred_resume_candidates),
-            },
-            extra_fields={"deferred_resume_candidates": deferred_resume_candidates[:3]},
-        )
-
-    blocked_successor_wait_candidates = todo_summary_blocked_successor_items(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if blocked_successor_wait_candidates:
-        first_candidate = blocked_successor_wait_candidates[0]
-        candidate_todo_id = (
-            str(first_candidate.get("todo_id") or "").strip() or "<todo_id>"
-        )
-        resume_when = str(first_candidate.get("resume_when") or "").strip()
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
-            quiet_noop_allowed=True,
-            spend_policy=(
-                "no quota spend while an exact successor resume condition is pending"
-            ),
-            reason=(
-                f"current {agent_label} {agent_id} has exact blocked successor "
-                f"{candidate_todo_id} waiting on {resume_when}; another successor "
-                "replan would duplicate the existing route"
-            ),
-            recommended_action=(
-                f"Keep {agent_id} active but quiet until {resume_when} becomes ready; "
-                "then resume ordinary todo/deferred-successor routing automatically."
-            ),
-            requires_replan=False,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "blocked_successor_wait_count": len(
-                    blocked_successor_wait_candidates
-                ),
-            },
-            extra_fields={
-                "blocked_successor_wait_candidates": (
-                    blocked_successor_wait_candidates[:3]
-                ),
-            },
-        )
-
-    route_continuation_replan_candidates = _agent_scope_route_continuation_replan_candidates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if route_continuation_replan_candidates:
-        first_candidate = route_continuation_replan_candidates[0]
-        route_label = (
-            str(
-                first_candidate.get("route_id")
-                or first_candidate.get("route_key")
-                or first_candidate.get("todo_id")
-                or ""
-            ).strip()
-            or "<route>"
-        )
-        reason = (
-            f"current {agent_label} {agent_id} has no open current/unclaimed "
-            "advancement candidate, but the route continuation projection "
-            f"requires a successor replan for {route_label}"
-        )
-        recommended_action = (
-            "Run a bounded route continuation replan before quiet wait: create or "
-            f"claim the next concrete {agent_id}/unclaimed advancement todo for "
-            f"{route_label}, or record an explicit no-follow-up rationale."
-        )
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
-            quiet_noop_allowed=False,
-            spend_policy="spend once after validated route continuation replan/todo writeback",
-            reason=reason,
-            recommended_action=recommended_action,
-            requires_replan=True,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "route_continuation_replan_candidate_count": len(
-                    route_continuation_replan_candidates
-                ),
-            },
-            extra_fields={
-                "route_continuation_replan_candidates": route_continuation_replan_candidates[:3],
-            },
-        )
-
-    blocking_handoff_gates = _agent_scope_blocking_handoff_gates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if blocking_handoff_gates:
-        blocking_handoff_claimants = sorted(
-            {
-                claimed_by
-                for item in blocking_handoff_gates
-                for claimed_by in [agent_scope_item_claimed_by(item)]
-                if claimed_by
-            }
-        )
-        owner = ", ".join(blocking_handoff_claimants) or "the owning agent"
-        reason = (
-            f"current {agent_label} {agent_id} has no current/unclaimed advancement "
-            f"candidate; blocking handoff work is claimed by {owner}"
-        )
-        recommended_action = (
-            f"Keep {agent_id} active but quiet: wait for {owner} to finish the "
-            "blocking handoff, reassign it, or create a concrete current-agent/"
-            "unclaimed advancement todo before delivery."
-        )
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.AGENT_SCOPE_WAIT,
-            quiet_noop_allowed=True,
-            spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
-            reason=reason,
-            recommended_action=recommended_action,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "blocking_handoff_gate_count": len(blocking_handoff_gates),
-            },
-            extra_fields={
-                "other_claimants": blocking_handoff_claimants,
-                "blocking_handoff_claimants": blocking_handoff_claimants,
-                "blocking_handoff_gates": blocking_handoff_gates[:3],
-            },
-        )
-
-    cleared_handoff_gates = _agent_scope_cleared_without_successor_handoff_gates(
-        agent_todo_summary,
-        agent_id=agent_id,
-    )
-    if cleared_handoff_gates:
-        first_item = cleared_handoff_gates[0]
-        blocker_todo_id = str(first_item.get("todo_id") or "").strip() or "<todo_id>"
-        unblocks_todo_id = normalize_todo_id(first_item.get("unblocks_todo_id"))
-        target_text = (
-            f" for unblocked todo {unblocks_todo_id}"
-            if unblocks_todo_id
-            else ""
-        )
-        reason = (
-            f"current {agent_label} {agent_id} has no open current/unclaimed "
-            f"advancement candidate, but blocking handoff {blocker_todo_id}"
-            f"{target_text} is already done without a projected successor"
-        )
-        recommended_action = (
-            "Run a bounded successor replan before quiet wait: reopen or supersede "
-            f"{blocker_todo_id} into a concrete {agent_id}/unclaimed advancement todo, "
-            "or record an explicit no-follow-up rationale."
-        )
-        return build_agent_scope_frontier_payload(
-            agent_id=agent_id,
-            action=AgentScopeFrontierAction.SUCCESSOR_REPLAN_REQUIRED,
-            quiet_noop_allowed=False,
-            spend_policy="spend once after validated successor replan/todo writeback",
-            reason=reason,
-            recommended_action=recommended_action,
-            requires_replan=True,
-            candidate_counts={
-                "current_agent_claimed_advancement_count": current_agent_count,
-                "unclaimed_advancement_count": unclaimed_count,
-                "cleared_without_successor_handoff_count": len(cleared_handoff_gates),
-            },
-            extra_fields={
-                "cleared_without_successor_handoff_gates": cleared_handoff_gates[:3],
-            },
-        )
-
-    claimed_advancement_items = (
-        agent_todo_summary.get("claimed_advancement_open_items")
-        if isinstance(agent_todo_summary.get("claimed_advancement_open_items"), list)
-        else []
-    )
-    other_advancement_items = [
-        item
-        for item in claimed_advancement_items
-        if isinstance(item, dict)
-        and _todo_item_is_actionable_open(item)
-        and _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT
-        and agent_scope_item_claimed_by(item) not in {None, "", agent_id}
-    ]
-    other_claimants = sorted(
-        {
-            claimed_by
-            for item in other_advancement_items
-            for claimed_by in [agent_scope_item_claimed_by(item)]
-            if claimed_by
-        }
-    )
-    blocking_handoff_items = [
-        item
-        for item in other_advancement_items
-        if agent_id in agent_scope_item_excluded_agents(item)
-    ]
-    blocking_handoff_claimants = sorted(
-        {
-            claimed_by
-            for item in blocking_handoff_items
-            for claimed_by in [agent_scope_item_claimed_by(item)]
-            if claimed_by
-        }
-    )
-    claim_scope = (
-        agent_todo_summary.get("claim_scope")
-        if isinstance(agent_todo_summary.get("claim_scope"), dict)
-        else {}
-    )
-    if not has_advancement_contract and not other_advancement_items:
-        return None
-    if other_advancement_items:
-        if blocking_handoff_claimants:
-            action = AgentScopeFrontierAction.AGENT_SCOPE_WAIT
-            owner = ", ".join(blocking_handoff_claimants)
-            reason = (
-                f"current {agent_label} {agent_id} has no current/unclaimed advancement "
-                f"candidate; blocking handoff work is claimed by {owner}"
-            )
-            recommended_action = (
-                f"Keep {agent_id} active but quiet: wait for {owner} to finish the "
-                "blocking handoff, reassign it, or create a concrete current-agent/"
-                "unclaimed advancement todo before delivery."
-            )
-        else:
-            action = AgentScopeFrontierAction.REASSIGNMENT_REQUIRED
-            owner = ", ".join(other_claimants) or "the owning agent"
-            reason = (
-                f"current {agent_label} {agent_id} has no current/unclaimed advancement "
-                f"candidate; visible advancement work is claimed by {owner}"
-            )
-            recommended_action = (
-                f"Keep {agent_id} active but quiet: wait for {owner} to finish, "
-                "reassign, or create a concrete current-agent/unclaimed advancement "
-                "todo before delivery."
-            )
-    else:
-        action = AgentScopeFrontierAction.AGENT_SCOPE_EXHAUSTED
-        reason = (
-            f"current {agent_label} {agent_id} has no projected current/unclaimed "
-            "advancement candidate despite a goal-level advancement lane"
-        )
-        recommended_action = (
-            f"Keep {agent_id} active but quiet until LoopX projects a concrete "
-            "current-agent or unclaimed advancement todo, or another peer transfers work."
-        )
-
-    return build_agent_scope_frontier_payload(
-        agent_id=agent_id,
-        action=action,
-        quiet_noop_allowed=True,
-        spend_policy="no quota spend while the current agent has no in-scope runnable candidate",
-        reason=reason,
-        recommended_action=recommended_action,
-        candidate_counts={
-            "current_agent_claimed_advancement_count": current_agent_count,
-            "unclaimed_advancement_count": unclaimed_count,
-            "other_agent_claimed_advancement_count": len(other_advancement_items),
-            "other_agent_claimed_open_count": int(
-                claim_scope.get("other_agent_claimed_open_count") or 0
-            ),
-        },
-        extra_fields={
-            "other_claimants": other_claimants,
-            "blocking_handoff_claimants": blocking_handoff_claimants,
-            "other_agent_claimed_items": [
-                compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-                for item in other_advancement_items[:3]
-            ],
-        },
-    )
+    for rule in _AGENT_SCOPE_NO_CANDIDATE_RULES:
+        frontier = rule(context)
+        if frontier is not None:
+            return frontier
+    return None

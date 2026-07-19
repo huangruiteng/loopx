@@ -449,6 +449,87 @@ def assert_other_agent_frontier_wait_contract() -> None:
     assert hint["quiet_noop_allowed"] is True
 
 
+def assert_no_candidate_rule_precedence() -> None:
+    monitor_blocked = todo(
+        "todo_monitor_blocked",
+        "[P1] Resume after monitor evidence.",
+        index=1,
+        claimed_by=AGENT_ID,
+        resume_ready=False,
+        resume_condition={
+            "target_status": "open",
+            "target_task_class": "continuous_monitor",
+            "target_todo_id": "todo_monitor",
+        },
+    )
+    deferred_ready = todo(
+        "todo_deferred_ready",
+        "[P1] Resume the ready deferred successor.",
+        index=2,
+        status="deferred",
+        claimed_by=AGENT_ID,
+        resume_ready=True,
+    )
+    route_replan = todo(
+        "todo_route_replan",
+        "[P1] Continue the projected route.",
+        index=3,
+        route_continuation_replan_required=True,
+    )
+    other_agent_item = todo(
+        "todo_primary_owned",
+        "[P1] Work owned by another peer.",
+        index=4,
+        claimed_by=PRIMARY_AGENT,
+    )
+    base_summary = {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_priority_open_items": [],
+        "claimed_advancement_open_items": [other_agent_item],
+        "claim_scope": {"other_agent_claimed_open_count": 1},
+    }
+    cases = [
+        (
+            {
+                "current_agent_monitor_blocked_resume_candidates": [monitor_blocked],
+                "current_agent_deferred_resume_candidates": [deferred_ready],
+                "unclaimed_route_continuation_replan_candidates": [route_replan],
+            },
+            "monitor_blocked_resume_candidates",
+            "successor_replan_required",
+        ),
+        (
+            {
+                "current_agent_deferred_resume_candidates": [deferred_ready],
+                "unclaimed_route_continuation_replan_candidates": [route_replan],
+            },
+            "deferred_resume_candidates",
+            "successor_replan_required",
+        ),
+        (
+            {"unclaimed_route_continuation_replan_candidates": [route_replan]},
+            "route_continuation_replan_candidates",
+            "successor_replan_required",
+        ),
+        ({}, "other_agent_claimed_items", "reassignment_required"),
+    ]
+    for extra_summary, expected_field, expected_action in cases:
+        frontier = _agent_scope_no_candidate_frontier(
+            agent_identity=agent_identity(),
+            agent_todo_summary={**base_summary, **extra_summary},
+            agent_lane_next_action=None,
+            work_lane_contract={
+                "lane": "advancement_task",
+                "must_attempt_work": True,
+                "obligation": "open_agent_todo",
+            },
+            candidate_should_run=True,
+        )
+        assert frontier is not None, (expected_field, frontier)
+        assert frontier["action"] == expected_action, frontier
+        assert expected_field in frontier, frontier
+
+
 def main() -> None:
     assert_agent_scope_user_gate_filter_contract()
     assert_scoped_user_gate_fallback_contract()
@@ -457,6 +538,7 @@ def main() -> None:
     assert_agent_scope_frontier_and_hint_contract()
     assert_executor_exclusions_survive_precomputed_resume_lanes()
     assert_other_agent_frontier_wait_contract()
+    assert_no_candidate_rule_precedence()
     print("agent-scope-projection-characterization-smoke ok")
 
 
