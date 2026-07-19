@@ -5,11 +5,9 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from ...agent_registry import (
-    load_goal_from_registry,
     registered_agent_ids_from_registry,
     require_registered_agent_id,
 )
-from ..agents.runtime_model import agent_runtime_model_for_goal
 from .contract import (
     TodoContinuationPolicy,
     normalize_todo_claimed_by,
@@ -32,7 +30,6 @@ class LinkedSuccessor:
 
 @dataclass(frozen=True)
 class CompletionPolicy:
-    agent_model: str
     effective_claimed_by: str | None
     registered_agents: list[str]
     effective_next_claimed_by: str | None
@@ -97,9 +94,6 @@ def resolve_completion_policy(
         else None
     )
     registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-    agent_model = agent_runtime_model_for_goal(
-        load_goal_from_registry(registry_path, goal_id)
-    )
     effective_next_claimed_by = (
         require_registered_agent_id(
             registry_path=registry_path,
@@ -147,7 +141,6 @@ def resolve_completion_policy(
     if effective_next_excluded_agents and not next_agent_todo:
         raise ValueError("--next-excluded-agent requires --next-agent-todo")
     return CompletionPolicy(
-        agent_model=agent_model.value,
         effective_claimed_by=effective_claimed_by,
         registered_agents=registered_agents,
         effective_next_claimed_by=effective_next_claimed_by,
