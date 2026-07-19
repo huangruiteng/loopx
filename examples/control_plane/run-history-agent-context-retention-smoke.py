@@ -11,11 +11,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from loopx.control_plane.goals.goal_frontier import latest_agent_vision_from_status_payload
+from loopx.control_plane.runtime.run_history import build_run_history
 from loopx.history import collect_history
 
 
 GOAL_ID = "agent-context-retention-goal"
 SIDE_AGENT = "codex-side-bypass"
+
+
+def project_run_history(history: dict) -> dict:
+    return build_run_history(
+        history,
+        latest_run=lambda goal: goal.get("latest_status_run"),
+        goal_lifecycle_fields=lambda goal, run: {
+            "lifecycle_phase": "active",
+            "lifecycle_flags": [],
+        },
+        subagent_activity_for_goal=lambda goal: None,
+        compact_run=lambda run: dict(run),
+        quota_status=lambda goal: {},
+        display_limit=3,
+    )
 
 
 def write_fixture(root: Path) -> tuple[Path, Path]:
@@ -145,8 +161,14 @@ def main() -> None:
             run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
             for run in latest_runs
         ), latest_runs
+        projected_run_history = project_run_history(history)
+        projected_runs = projected_run_history["goals"][0]["latest_runs"]
+        assert any(
+            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            for run in projected_runs
+        ), projected_runs
         vision = latest_agent_vision_from_status_payload(
-            {"run_history": {"goals": history["goals"]}},
+            {"run_history": projected_run_history},
             goal_id=GOAL_ID,
             agent_id=SIDE_AGENT,
         )
@@ -194,8 +216,14 @@ def main() -> None:
             run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
             for run in latest_runs
         ), latest_runs
+        projected_run_history = project_run_history(history)
+        projected_runs = projected_run_history["goals"][0]["latest_runs"]
+        assert not any(
+            run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
+            for run in projected_runs
+        ), projected_runs
         vision = latest_agent_vision_from_status_payload(
-            {"run_history": {"goals": history["goals"]}},
+            {"run_history": projected_run_history},
             goal_id=GOAL_ID,
             agent_id=SIDE_AGENT,
         )

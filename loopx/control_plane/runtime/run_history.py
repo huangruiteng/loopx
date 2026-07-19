@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from ...boundary_authority import checkpointed_boundary_authority_summary
+from .run_context_retention import latest_runs_with_agent_context
 
 
 LatestRun = Callable[[dict[str, Any]], Optional[dict[str, Any]]]
@@ -74,7 +75,10 @@ def build_run_history(
             if isinstance(run, dict)
         ]
         if display_limit is not None:
-            latest_runs = latest_runs[:display_limit]
+            latest_runs = latest_runs_with_agent_context(
+                latest_runs,
+                limit=display_limit,
+            )
         goals.append(
             {
                 "id": goal.get("id"),
