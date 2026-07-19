@@ -28,6 +28,7 @@ def scheduler_command_binding_for_agent_type(
         "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "codex-ide-plugin": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+        "opencode": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
     }.get(canonical)
     if runtime_profile is not None:
         return {"runtime_profile": runtime_profile.value}
@@ -39,6 +40,7 @@ SUPPORTED_AGENT_TYPES = [
     "codex-ide-plugin",
     "codex-cli",
     "claude-code",
+    "opencode",
     "manual",
     "other-agent",
 ]
@@ -87,6 +89,12 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
         "host_loop": "native /loop gated by LoopX",
         "entry": "/loopx <task> then /loop",
         "accepted_inputs": ["claude-code", "claude_code", "claude code", "cc"],
+    },
+    "opencode": {
+        "display_name": "OpenCode",
+        "host_loop": "visible OpenCode goal plugin gated by LoopX",
+        "entry": "/loopx <task> with the LoopX OpenCode bridge installed",
+        "accepted_inputs": ["opencode", "open-code", "open_code", "open code"],
     },
     "manual": {
         "display_name": "Manual shell / external scheduler",
@@ -147,6 +155,7 @@ HOST_SURFACE_TO_AGENT_TYPE = {
     "codex-ide": "codex-ide-plugin",
     "codex-cli-tui": "codex-cli",
     "claude-code": "claude-code",
+    "opencode": "opencode",
     "shell": "manual",
     "http": "other-agent",
     "worker-bridge": "other-agent",
@@ -269,6 +278,7 @@ def _heartbeat_commands(
         "codex-ide-plugin": "Codex IDE plugin /goal visible task loop",
         "codex-cli": "Codex CLI /goal visible TUI loop",
         "claude-code": "Claude Code native /loop gated by LoopX",
+        "opencode": "OpenCode visible goal loop gated by LoopX",
         "manual": "External scheduler or manual shell LoopX poll",
         "other-agent": "Custom agent host loop gated by LoopX",
     }
@@ -463,6 +473,43 @@ def _claude_code_activation(commands: dict[str, str], cli_bin: str) -> dict[str,
     }
 
 
+def _opencode_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any]:
+    return {
+        "host_surface": "opencode_visible_goal_mode",
+        "entry_command_hint": "/loopx <task>",
+        "activation_method": "activate_loopx_opencode_goal_bridge",
+        "activation_input_command": commands["heartbeat_prompt_json"],
+        "setup_command": f"{cli_bin} slash-commands --install --surface opencode",
+        "host_mutation": {
+            "owner": "OpenCode LoopX goal bridge",
+            "host_tool": "loopx_goal_activate",
+            "tool_argument_mapping": {
+                "goalId": "heartbeat_prompt.goal_id",
+                "objective": "heartbeat_prompt.task_body",
+                "agentId": "heartbeat_prompt.agent_id when present",
+                "registryPath": "explicit registry path when present",
+                "availableCapabilities": "declared host capabilities when present",
+            },
+            "cli_can_mutate_directly": False,
+            "missing_host_tool_gate": (
+                "The LoopX OpenCode bridge or loopx_goal_activate tool is unavailable; "
+                "install the OpenCode surface and restart OpenCode before claiming "
+                "autonomous heartbeat support."
+            ),
+        },
+        "activation_steps": [
+            "Install or refresh the LoopX OpenCode surface when needed.",
+            "Run the heartbeat-prompt JSON command after project state and todos are written.",
+            "Call loopx_goal_activate with goalId from goal_id, objective from task_body, and optional agentId, registryPath, or availableCapabilities when those values are present.",
+            "Let the bridge gate every idle continuation and timer wake through LoopX quota should-run.",
+        ],
+        "success_criteria": [
+            "The visible OpenCode session has a LoopX-backed goal bound through loopx_goal_activate.",
+            "Quiet waits make no model call, active work auto-continues, and validated terminal no-follow-up stops the goal.",
+        ],
+    }
+
+
 def _manual_activation(commands: dict[str, str]) -> dict[str, Any]:
     return {
         "host_surface": "external_scheduler_or_manual_shell",
@@ -527,6 +574,8 @@ def build_host_loop_activation_packet(
         surface = _codex_cli_activation(commands)
     elif canonical == "claude-code":
         surface = _claude_code_activation(commands, cli_bin)
+    elif canonical == "opencode":
+        surface = _opencode_activation(commands, cli_bin)
     else:
         surface = _manual_activation(commands)
         if canonical == "other-agent":

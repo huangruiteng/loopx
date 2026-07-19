@@ -20,6 +20,8 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
     assert agent_type_for_host_surface("codex-ide") == "codex-ide-plugin"
     assert agent_type_for_host_surface("codex-app") == "codex-app"
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
+    assert normalize_agent_type("Open Code") == "opencode"
+    assert agent_type_for_host_surface("opencode") == "opencode"
 
     packet = build_host_loop_activation_packet(
         agent_type="codex-ide-plugin",
@@ -49,6 +51,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
         ("codex-cli", "codex_cli"),
         ("codex-ide-plugin", "codex_cli"),
         ("claude-code", "claude_code"),
+        ("opencode", "generic_cli"),
     ),
 )
 def test_first_class_hosts_bind_one_runtime_profile(
@@ -90,6 +93,21 @@ def test_codex_app_thin_prompt_embeds_profile_only_in_quota_command() -> None:
     assert "compact_prompt_command" not in prompt
     assert "brief_prompt_command" not in prompt
     assert prompt["interface_budget"]["within_budget"] is True
+
+
+def test_opencode_activation_uses_bridge_tool_and_generic_cli_quota() -> None:
+    packet = build_host_loop_activation_packet(
+        agent_type="opencode",
+        goal_id="fixture-goal",
+        agent_id="opencode-fixture",
+        registered_agents=["opencode-fixture"],
+    )
+
+    assert packet["host_surface"] == "opencode_visible_goal_mode"
+    assert packet["activation_method"] == "activate_loopx_opencode_goal_bridge"
+    assert packet["host_mutation"]["host_tool"] == "loopx_goal_activate"
+    assert packet["setup_command"].endswith("--surface opencode")
+    assert "--runtime-profile generic_cli" in packet["commands"]["heartbeat_prompt"]
 
 
 def test_ambiguous_codex_requires_app_ide_or_cli_selection() -> None:

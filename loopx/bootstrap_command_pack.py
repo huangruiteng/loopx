@@ -39,6 +39,7 @@ START_GOAL_HOST_SURFACES = (
     "codex-ide-plugin",
     "codex-cli-tui",
     "claude-code",
+    "opencode",
     "shell",
 )
 
@@ -247,6 +248,7 @@ def build_start_goal_host_surface_selection_packet(
         "codex-ide-plugin": "Codex IDE plugin; activate its visible goal mode",
         "codex-cli-tui": "terminal Codex TUI with visible /goal support",
         "claude-code": "Claude Code with native /loop",
+        "opencode": "OpenCode with the LoopX goal bridge and quota-gated heartbeat",
         "shell": "manual shell or an explicitly configured external scheduler",
     }
     choices: list[dict[str, Any]] = []

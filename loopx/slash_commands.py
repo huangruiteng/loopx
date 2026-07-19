@@ -67,6 +67,7 @@ def build_slash_command_catalog(
                     "codex-app": "create/update Codex App heartbeat automation from heartbeat-prompt task_body",
                     "codex-cli": "set visible Codex CLI TUI `/goal <task_body>`",
                     "claude-code": "arm LoopX with `/loopx <task>`, then run native `/loop`",
+                    "opencode": "call `loopx_goal_activate` so the OpenCode bridge gates idle continuation and timers through LoopX",
                     "manual": "wire an external scheduler or run quota/status manually",
                     "other-agent": "use the custom host loop driver declared by `loopx agent-onboard`",
                 },

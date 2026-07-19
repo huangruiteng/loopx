@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
 
+from .opencode_goal_mode import plugin_source, runtime_source
 from .slash_commands import build_slash_command_catalog
 
 
@@ -18,6 +20,10 @@ EXISTING_LOOPX_CAPABILITY_SKILL_SIGNATURES = (
     "# LoopX PR Review",
     "Run `loopx pr-review` first",
 )
+OPENCODE_GOAL_DEPENDENCIES = {
+    "@opencode-ai/plugin": ">=1.17.15 <2",
+    "opencode-goal-plugin": "0.6.5",
+}
 
 
 def _managed_marker(*, command: str, surface: str) -> str:
@@ -76,6 +82,31 @@ def _openai_skill_metadata(*, command: str, display_name: str, short_description
     )
 
 
+def _opencode_command_body(spec: dict[str, Any]) -> str:
+    return "\n\n".join(
+        [
+            _front_matter(
+                fields={
+                    "description": str(spec["description"]),
+                    "agent": "build",
+                }
+            ),
+            _managed_marker(command=str(spec["command"]), surface="opencode-command"),
+            f"Treat this as the LoopX `{spec['command']}` OpenCode command.",
+            (
+                "The exact current host is OpenCode. For goal start, pass "
+                "`--host-surface opencode` and use `loopx_goal_activate` from the "
+                "returned host-loop activation packet."
+            ),
+            "\n".join(str(item) for item in spec["instructions"]),
+            (
+                "Keep public/private boundaries intact and do not perform external "
+                "writes unless the active LoopX state or owner explicitly authorizes them."
+            ),
+        ]
+    ) + "\n"
+
+
 def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list[dict[str, Any]]:
     specs: list[dict[str, Any]] = [
         {
@@ -85,14 +116,14 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "argument_hint": "[task text]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
-                "Before start-goal, identify the exact current host: use `codex-app` for the desktop app, `codex-ide-plugin` only for the IDE plugin, or `codex-cli-tui` for the terminal TUI.",
+                "Before start-goal, identify the exact current host: use `codex-app` for the desktop app, `codex-ide-plugin` only for the IDE plugin, `codex-cli-tui` for the terminal TUI, or `opencode` for OpenCode.",
                 f"If arguments are present, preserve them as the task text and run `{cli_bin} start-goal --guided --project . --goal-text \"$ARGUMENTS\" --host-surface <exact-current-host>` before planning work. If the host is unclear, omit the flag once and follow the returned host-surface selection gate.",
                 f"If that packet exposes a goal-selection gate, rerun one exact choice before any mutation. When the user asks to create or become a new peer/meta/supervisor agent, do not reuse an existing registered identity: choose a new public-safe agent id, preview then apply `{cli_bin} register-agent --goal-id <selected-goal-id> --agent-id <new-agent-id> --execute`, and rerun start-goal with explicit `--goal-id` and `--agent-id` before todo writeback.",
                 f"If arguments are empty, inspect `{cli_bin} bootstrap-command-pack --project .`, `{cli_bin} status`, and `{cli_bin} slash-commands` before changing files.",
-                f"Use `{cli_bin} agent-onboard --list-agent-types` when the host runtime is unclear; pass an exact type such as `codex-app`, `codex-ide-plugin`, `codex-cli`, or `claude-code`, never ambiguous `codex`.",
+                f"Use `{cli_bin} agent-onboard --list-agent-types` when the host runtime is unclear; pass an exact type such as `codex-app`, `codex-ide-plugin`, `codex-cli`, `claude-code`, or `opencode`, never ambiguous `codex`.",
                 f"Do not configure optional features during first-run. Only when the task needs bounded child agents or Explore, inspect `{cli_bin} configure-goal --goal-id <resolved-goal-id>` and its `configuration_catalog`; preview before explicit apply and never auto-enable a feature merely because it exists.",
                 "When project work is started, plan ordered P0/P1/P2 todos, write them through LoopX todo state, refresh state, activate the host loop if missing/stale, run quota, and complete one bounded delivery segment through validation plus LoopX writeback or an exact blocker; do not return merely after setup, planning, or claim.",
-                "Host loop activation means Codex App heartbeat automation, Codex IDE plugin or CLI visible `/goal <task_body>`, Claude Code native `/loop`, or a custom host-loop gate from `loopx agent-onboard`.",
+                "Host loop activation means Codex App heartbeat automation, Codex IDE plugin or CLI visible `/goal <task_body>`, Claude Code native `/loop`, OpenCode `loopx_goal_activate`, or a custom host-loop gate from `loopx agent-onboard`.",
                 "If this session cannot mutate the host loop surface, surface the exact pasteable gate instead of saying LoopX is autonomously connected.",
             ],
         },
@@ -228,12 +259,173 @@ def _claude_home(value: str | None = None) -> Path:
     return Path(raw).expanduser()
 
 
+def _opencode_home(value: str | None = None) -> Path:
+    raw = value or os.environ.get("OPENCODE_CONFIG_DIR")
+    if not raw:
+        config_home = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        raw = str(Path(config_home) / "opencode")
+    return Path(raw).expanduser()
+
+
+def _strip_jsonc_comments(content: str) -> str:
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(content):
+        char = content[index]
+        next_char = content[index + 1] if index + 1 < len(content) else ""
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(content) and content[index] not in "\r\n":
+                output.append(" ")
+                index += 1
+            continue
+        if char == "/" and next_char == "*":
+            output.extend((" ", " "))
+            index += 2
+            while index < len(content):
+                if index + 1 < len(content) and content[index : index + 2] == "*/":
+                    output.extend((" ", " "))
+                    index += 2
+                    break
+                output.append("\n" if content[index] == "\n" else " ")
+                index += 1
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _strip_jsonc_trailing_commas(content: str) -> str:
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(content):
+        char = content[index]
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+        if char == ",":
+            lookahead = index + 1
+            while lookahead < len(content) and content[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(content) and content[lookahead] in "]}":
+                index += 1
+                continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _opencode_direct_goal_plugin_conflicts(root: Path) -> tuple[list[str], list[str]]:
+    conflicts: list[str] = []
+    invalid: list[str] = []
+    goal_plugins = {
+        "opencode-goal-plugin",
+        "@heimoshuiyu/opencode-goal-plugin",
+        "@prevalentware/opencode-goal-plugin",
+    }
+    for name in ("opencode.json", "opencode.jsonc"):
+        path = root / name
+        if not path.exists():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+            if path.suffix == ".jsonc":
+                content = _strip_jsonc_trailing_commas(_strip_jsonc_comments(content))
+            payload = json.loads(content)
+        except (json.JSONDecodeError, OSError):
+            invalid.append(str(path))
+            continue
+        if not isinstance(payload, dict):
+            invalid.append(str(path))
+            continue
+        plugins = payload.get("plugin") or []
+        if isinstance(plugins, str):
+            plugins = [plugins]
+        if not isinstance(plugins, list):
+            invalid.append(str(path))
+            continue
+        if any(
+            str(plugin) == package or str(plugin).startswith(f"{package}@")
+            for plugin in plugins
+            for package in goal_plugins
+        ):
+            conflicts.append(str(path))
+    return conflicts, invalid
+
+
+def _target_package_dependencies(
+    path: Path,
+    dependencies: dict[str, str],
+    *,
+    execute: bool,
+) -> str:
+    if path.exists():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return "blocked_invalid_user_package_json"
+        if not isinstance(payload, dict):
+            return "blocked_invalid_user_package_json"
+        current = payload.get("dependencies")
+        if current is None:
+            current = {}
+        if not isinstance(current, dict):
+            return "blocked_invalid_user_package_json"
+        wanted = {**current, **dependencies}
+        if wanted == current:
+            return "unchanged"
+        payload["dependencies"] = wanted
+        status = "updated" if execute else "would_update"
+    else:
+        payload = {"private": True, "dependencies": dependencies}
+        status = "created" if execute else "would_create"
+    if execute:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    return status
+
+
 def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
     requested = surfaces or ["all"]
     normalized: list[str] = []
     for surface in requested:
         if surface == "all":
-            candidates = ["codex", "claude-code"]
+            candidates = ["codex", "claude-code", "opencode"]
         elif surface == "codex":
             candidates = ["codex"]
         elif surface in {"codex-app", "codex-ide-plugin", "codex-ide", "codex-cli"}:
@@ -255,11 +447,13 @@ def install_slash_commands(
     include_legacy_aliases: bool = True,
     codex_home: str | None = None,
     claude_home: str | None = None,
+    opencode_home: str | None = None,
 ) -> dict[str, Any]:
     specs = _command_prompt_specs(cli_bin=cli_bin, include_legacy_aliases=include_legacy_aliases)
     effective_surfaces = _normalize_surfaces(surfaces)
     codex_root = _codex_home(codex_home)
     claude_root = _claude_home(claude_home)
+    opencode_root = _opencode_home(opencode_home)
     installed: list[dict[str, Any]] = []
 
     if "codex" in effective_surfaces:
@@ -443,13 +637,151 @@ def install_slash_commands(
                 }
             )
 
+    if "opencode" in effective_surfaces:
+        commands_dir = opencode_root / "commands"
+        for spec in specs:
+            path = commands_dir / f"{spec['name']}.md"
+            status = (
+                _retire_status(path, execute=execute)
+                if uninstall
+                else _target_status(
+                    path,
+                    _opencode_command_body(spec),
+                    execute=execute,
+                )
+            )
+            installed.append(
+                {
+                    "surface": "opencode",
+                    "host_surfaces": ["opencode"],
+                    "mechanism": "opencode_commands",
+                    "command": spec["command"],
+                    "path": str(path),
+                    "status": status,
+                    "invoke_as": [str(spec["command"])],
+                }
+            )
+
+        plugin_path = opencode_root / "plugins" / "loopx-goal.js"
+        runtime_path = opencode_root / "loopx" / "goal-bridge-runtime.mjs"
+        package_path = opencode_root / "package.json"
+        if uninstall:
+            for mechanism, path in (
+                ("opencode_goal_bridge", plugin_path),
+                ("opencode_goal_bridge_runtime", runtime_path),
+            ):
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": mechanism,
+                        "command": "/goal",
+                        "path": str(path),
+                        "status": _retire_status(path, execute=execute),
+                        "invoke_as": ["/goal", "loopx_goal_activate"],
+                    }
+                )
+            installed.append(
+                {
+                    "surface": "opencode",
+                    "host_surfaces": ["opencode"],
+                    "mechanism": "opencode_goal_dependencies",
+                    "command": "/goal",
+                    "path": str(package_path),
+                    "status": "preserved_shared_dependencies",
+                    "invoke_as": [],
+                }
+            )
+        else:
+            conflicts, invalid_configs = _opencode_direct_goal_plugin_conflicts(opencode_root)
+            if invalid_configs:
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": "opencode_goal_bridge",
+                        "command": "/goal",
+                        "path": str(plugin_path),
+                        "status": "blocked_invalid_opencode_config",
+                        "invoke_as": [],
+                        "reason": (
+                            "Repair the listed OpenCode JSON/JSONC config before installing "
+                            "the bridge so direct plugin conflicts can be checked safely."
+                        ),
+                        "invalid_configs": invalid_configs,
+                    }
+                )
+            elif conflicts:
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": "opencode_goal_bridge",
+                        "command": "/goal",
+                        "path": str(plugin_path),
+                        "status": "blocked_conflicting_direct_plugin",
+                        "invoke_as": [],
+                        "reason": (
+                            "Remove direct goal-plugin registration from the listed "
+                            "OpenCode config, then rerun installation. The bridge imports "
+                            "the pinned plugin and both must not be loaded independently."
+                        ),
+                        "conflicts": conflicts,
+                    }
+                )
+            else:
+                package_status = _target_package_dependencies(
+                    package_path,
+                    OPENCODE_GOAL_DEPENDENCIES,
+                    execute=execute,
+                )
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": "opencode_goal_dependencies",
+                        "command": "/goal",
+                        "path": str(package_path),
+                        "status": package_status,
+                        "invoke_as": [],
+                    }
+                )
+                if package_status == "blocked_invalid_user_package_json":
+                    installed.append(
+                        {
+                            "surface": "opencode",
+                            "host_surfaces": ["opencode"],
+                            "mechanism": "opencode_goal_bridge",
+                            "command": "/goal",
+                            "path": str(plugin_path),
+                            "status": package_status,
+                            "invoke_as": [],
+                        }
+                    )
+                else:
+                    for mechanism, path, content in (
+                        ("opencode_goal_bridge_runtime", runtime_path, runtime_source()),
+                        ("opencode_goal_bridge", plugin_path, plugin_source()),
+                    ):
+                        installed.append(
+                            {
+                                "surface": "opencode",
+                                "host_surfaces": ["opencode"],
+                                "mechanism": mechanism,
+                                "command": "/goal",
+                                "path": str(path),
+                                "status": _target_status(path, content, execute=execute),
+                                "invoke_as": ["/goal", "loopx_goal_activate"],
+                            }
+                        )
+
     status_counts: dict[str, int] = {}
     for item in installed:
         status = str(item["status"])
         status_counts[status] = status_counts.get(status, 0) + 1
 
     return {
-        "ok": True,
+        "ok": not any(status.startswith("blocked_") for status in status_counts),
         "schema_version": SCHEMA_VERSION,
         "operation": "uninstall" if uninstall else "install",
         "execute": execute,
@@ -463,6 +795,9 @@ def install_slash_commands(
             "codex_prompt_dir": None,
             "codex_skill_dir": str(codex_root / "skills") if "codex" in effective_surfaces else None,
             "claude_skill_dir": str(claude_root / "skills") if "claude-code" in effective_surfaces else None,
+            "opencode_command_dir": str(opencode_root / "commands") if "opencode" in effective_surfaces else None,
+            "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces else None,
+            "opencode_package_path": str(opencode_root / "package.json") if "opencode" in effective_surfaces else None,
             "status_counts": status_counts,
             "skip_policy": (
                 "Uninstall removes only LoopX-managed files; user files without a LoopX managed marker are preserved"
@@ -475,6 +810,8 @@ def install_slash_commands(
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
+            "OpenCode discovers commands and local plugins from its config directory; the LoopX bridge imports opencode-goal-plugin@0.6.5 and must replace any direct goal-plugin registration.",
+            "OpenCode uninstall preserves package.json dependencies because they may be shared by user-owned local plugins.",
             "Uninstall is fail-closed: it retires only files carrying the LoopX managed marker and leaves user-owned files in place.",
         ],
     }
@@ -493,12 +830,18 @@ def render_slash_command_install_markdown(payload: dict[str, Any]) -> str:
     codex_prompt_dir = payload.get("summary", {}).get("codex_prompt_dir")
     codex_skill_dir = payload.get("summary", {}).get("codex_skill_dir")
     claude_skill_dir = payload.get("summary", {}).get("claude_skill_dir")
+    opencode_command_dir = payload.get("summary", {}).get("opencode_command_dir")
+    opencode_plugin_path = payload.get("summary", {}).get("opencode_plugin_path")
     if codex_prompt_dir:
         lines.append(f"- codex prompts: `{codex_prompt_dir}`")
     if codex_skill_dir:
         lines.append(f"- codex skills: `{codex_skill_dir}`")
     if claude_skill_dir:
         lines.append(f"- claude skills: `{claude_skill_dir}`")
+    if opencode_command_dir:
+        lines.append(f"- opencode commands: `{opencode_command_dir}`")
+    if opencode_plugin_path:
+        lines.append(f"- opencode bridge: `{opencode_plugin_path}`")
     counts = payload.get("summary", {}).get("status_counts") or {}
     if isinstance(counts, dict) and counts:
         count_text = ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
