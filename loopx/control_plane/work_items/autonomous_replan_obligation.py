@@ -12,6 +12,7 @@ SectionEntries = Callable[[list[str]], list[str]]
 
 
 MAX_AUTONOMOUS_REPLAN_TRIGGERS = 3
+AUTONOMOUS_REPLAN_STALL_THRESHOLD = 2
 AUTONOMOUS_REPLAN_TRIGGER_PATTERNS = (
     (
         "periodic_review",

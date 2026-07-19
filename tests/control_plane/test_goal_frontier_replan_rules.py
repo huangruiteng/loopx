@@ -74,6 +74,16 @@ from loopx.control_plane.goals.goal_frontier_replan_rules import (
             GoalFrontierReplanRule.WATCH_LANE_CONTINUATION_ACKNOWLEDGED,
             False,
         ),
+        (
+            {
+                "monitor_no_change_streak_triggered": True,
+                "monitor_only_lane": True,
+                "monitor_count": 1,
+                "total_frontier_advancement": 1,
+            },
+            GoalFrontierReplanRule.MONITOR_NO_CHANGE_STREAK,
+            True,
+        ),
         ({}, GoalFrontierReplanRule.NOT_MONITOR_ONLY, False),
         (
             {"monitor_only_lane": True},

@@ -16,6 +16,7 @@ from ..work_items.autonomous_replan_ack import (
     latest_autonomous_replan_ack_for_projection,
 )
 from ..work_items.autonomous_replan_obligation import (
+    AUTONOMOUS_REPLAN_STALL_THRESHOLD,
     build_autonomous_replan_obligation_payload,
 )
 from ..work_items.repair_delta import repair_delta_kinds_have_frontier_delta
@@ -42,6 +43,7 @@ AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 GOAL_TERMINAL_STATE_SCHEMA_VERSION = "goal_terminal_state_v0"
 GOAL_TERMINAL_SOURCE_COMPLETENESS_SCHEMA_VERSION = "goal_terminal_source_completeness_v0"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
+MONITOR_NO_CHANGE_STREAK_TRIGGER = "monitor_no_change_streak"
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
 VISION_SUCCESSOR_GAP_TRIGGER = "vision_successor_required"
@@ -942,6 +944,57 @@ def _summary_task_counts(summary: dict[str, Any] | None) -> dict[str, int]:
     }
 
 
+def _monitor_no_change_streak_trigger(
+    agent_todo_summary: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    if not isinstance(agent_todo_summary, dict):
+        return None
+    monitor_items = agent_todo_summary.get("monitor_open_items")
+    if not isinstance(monitor_items, list):
+        return None
+
+    stalled: list[tuple[int, str, dict[str, Any]]] = []
+    for item in monitor_items:
+        if not isinstance(item, dict):
+            continue
+        if not _todo_item_is_actionable_open(item):
+            continue
+        if _todo_task_class(item) != TODO_TASK_CLASS_MONITOR:
+            continue
+        claimed_by = agent_scope_item_claimed_by(item)
+        if agent_id and claimed_by != agent_id:
+            continue
+        no_change_count = safe_non_negative_int(item.get("consecutive_no_change"))
+        if no_change_count < AUTONOMOUS_REPLAN_STALL_THRESHOLD:
+            continue
+        target_key = str(
+            item.get("target_key") or item.get("todo_id") or "monitor"
+        ).strip()
+        stalled.append((no_change_count, target_key, item))
+    if not stalled:
+        return None
+
+    no_change_count, target_key, monitor = min(
+        stalled,
+        key=lambda entry: (-entry[0], entry[1]),
+    )
+    return {
+        "kind": MONITOR_NO_CHANGE_STREAK_TRIGGER,
+        "section": "agent_todo_summary.monitor_open_items",
+        "text": (
+            f"monitor {target_key} recorded {no_change_count} consecutive "
+            "unchanged polls without selectable advancement"
+        ),
+        "todo_id": monitor.get("todo_id"),
+        "monitor_target_id": target_key,
+        "run_count": no_change_count,
+        "threshold": AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        "agent_id": agent_id,
+    }
+
+
 def _frontier_advancement_counts(
     *,
     agent_todo_summary: dict[str, Any] | None,
@@ -1229,6 +1282,14 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         frontier_counts["current_agent_claimed_advancement_count"]
         + frontier_counts["unclaimed_advancement_count"]
     )
+    monitor_no_change_trigger = (
+        _monitor_no_change_streak_trigger(
+            agent_todo_summary,
+            agent_id=agent_id,
+        )
+        if selectable_frontier_advancement == 0
+        else None
+    )
     compact_acceptance_gaps = [
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
@@ -1294,6 +1355,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                     latest_replan_ack,
                     delta_kind="watch_lane_continuation",
                 )
+            ),
+            monitor_no_change_streak_triggered=(
+                monitor_no_change_trigger is not None
             ),
             monitor_only_lane=_is_monitor_only_lane(work_lane_contract),
             monitor_count=agent_counts.get("monitor", 0),
@@ -1442,6 +1506,42 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "is weak, group/prune work, and write a concrete todo or vision delta"
             ),
         )
+    if replan_rule.rule is GoalFrontierReplanRule.MONITOR_NO_CHANGE_STREAK:
+        assert monitor_no_change_trigger is not None
+        return build_autonomous_replan_obligation_payload(
+            schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            agent_id=agent_id,
+            include_agent_id=True,
+            stall_threshold=AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+            trigger_count=1,
+            triggers=[monitor_no_change_trigger],
+            guidance_actions=[
+                "set_watch_expiry",
+                "write_blocker",
+                "supersede_monitor",
+                "create_successor",
+            ],
+            todo_actions=[
+                {
+                    "action": "add",
+                    "role": "agent",
+                    "priority": "P1",
+                    "text": (
+                        "resolve the stalled monitor lane with an expiry, blocker, "
+                        "supersede transition, or runnable successor"
+                    ),
+                }
+            ],
+            stop_condition=(
+                "stop if the replan requires private material, credentials, "
+                "destructive git, production actions, or owner-only decisions"
+            ),
+            recommended_action=(
+                "resolve the current agent's stalled monitor lane before another "
+                "quiet poll: set an expiry, write a blocker, supersede the monitor, "
+                "or create runnable successor work"
+            ),
+        )
     assert replan_rule.rule is GoalFrontierReplanRule.MONITOR_FRONTIER_EXHAUSTED
     future_schedule_present = _monitor_only_lane_has_future_schedule(agent_todo_summary)
 
@@ -1510,11 +1610,19 @@ def build_goal_frontier_projection_from_summaries(
         agent_todo_summary=agent_todo_summary,
         agent_id=agent_id,
     )
+    selectable_frontier_advancement = (
+        frontier_counts["current_agent_claimed_advancement_count"]
+        + frontier_counts["unclaimed_advancement_count"]
+    )
     monitor_only_lane = bool(
         _is_monitor_only_lane(work_lane_contract)
         and agent_counts.get("monitor", 0) > 0
         and agent_counts.get("advancement", 0) == 0
-        and sum(frontier_counts.values()) == 0
+        and (
+            selectable_frontier_advancement == 0
+            if agent_id
+            else sum(frontier_counts.values()) == 0
+        )
     )
     projection = build_goal_frontier_projection(
         goal_id=goal_id,

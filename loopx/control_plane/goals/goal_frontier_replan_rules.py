@@ -19,6 +19,7 @@ class GoalFrontierReplanRule(str, Enum):
     LONG_TODO_CHAIN = "long_todo_chain"
     LONG_TODO_CHAIN_ACKNOWLEDGED = "long_todo_chain_acknowledged"
     WATCH_LANE_CONTINUATION_ACKNOWLEDGED = "watch_lane_continuation_acknowledged"
+    MONITOR_NO_CHANGE_STREAK = "monitor_no_change_streak"
     NOT_MONITOR_ONLY = "not_monitor_only"
     NO_OPEN_MONITOR = "no_open_monitor"
     ADVANCEMENT_REMAINS = "advancement_remains"
@@ -44,6 +45,7 @@ class GoalFrontierReplanFacts:
     long_todo_chain_triggered: bool = False
     long_todo_chain_acknowledged: bool = False
     watch_lane_continuation_acknowledged: bool = False
+    monitor_no_change_streak_triggered: bool = False
     monitor_only_lane: bool = False
     monitor_count: int = 0
 
@@ -132,6 +134,14 @@ def select_goal_frontier_replan_rule(
             facts.watch_lane_continuation_acknowledged,
             False,
             "an explicit watch-lane continuation covers the empty frontier",
+        ),
+        (
+            GoalFrontierReplanRule.MONITOR_NO_CHANGE_STREAK,
+            facts.monitor_only_lane
+            and facts.monitor_count > 0
+            and facts.monitor_no_change_streak_triggered,
+            True,
+            "the current agent monitor crossed the no-change replan threshold",
         ),
         (
             GoalFrontierReplanRule.NOT_MONITOR_ONLY,
