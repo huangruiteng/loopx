@@ -778,7 +778,9 @@ def assert_capability_skip_yields_to_monitor_schedule_repair() -> None:
     assert lane["selected_todo_id"] == "todo_capability_skip_monitor_gap", lane
     assert guard["heartbeat_recommendation"]["recommended_mode"] != "capability_skip", guard
     assert guard["execution_obligation"]["contract_obligation"] == "repair_monitor_schedule_metadata", guard
-    assert "todo_adv_1" not in guard["interaction_contract"]["agent_channel"]["primary_action"], guard
+    primary_action = guard["interaction_contract"]["agent_channel"]["primary_action"]
+    assert "todo_capability_skip_monitor_gap" in primary_action, guard
+    assert "Advance the runtime contract slice" not in primary_action, guard
     assert guard["scheduler_hint"]["cadence_class"] == "active_work", guard
 
 

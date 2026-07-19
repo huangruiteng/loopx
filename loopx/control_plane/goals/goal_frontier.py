@@ -744,6 +744,14 @@ def build_vision_continuation_audit(
         )
         if text
     ]
+    trigger_kinds = [
+        kind
+        for kind in (
+            _compact_projection_text(gap.get("kind"), limit=80)
+            for gap in compact_acceptance_gaps
+        )
+        if kind
+    ]
     audit: dict[str, Any] = {
         "schema_version": VISION_CONTINUATION_AUDIT_SCHEMA_VERSION,
         "required": True,
@@ -752,6 +760,7 @@ def build_vision_continuation_audit(
         "selected_todo_is_goal_completion": False,
         "closeout_allowed_without_evidence": False,
         "trigger_count": len(compact_acceptance_gaps),
+        "trigger_kinds": list(dict.fromkeys(trigger_kinds))[:5],
         "acceptance_gaps": compact_acceptance_gaps[:5],
         "vision_gap_judge": vision_gap_judge,
         "authoritative_evidence_kinds": [

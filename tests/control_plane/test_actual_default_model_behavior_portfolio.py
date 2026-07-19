@@ -208,6 +208,9 @@ def _turn_source(
 
 def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
     packets = _entry_packets(tmp_path)
+    production_packets = build_actual_default_model_behavior_scenario_packets(
+        tmp_path / "required-vision"
+    )
     packets.update(
         {
             "turn_selected_todo": build_turn_envelope(_turn_source(human_gate=False)),
@@ -224,6 +227,15 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
                 )
             ),
             "turn_human_gate": build_turn_envelope(_turn_source(human_gate=True)),
+            "turn_required_vision_replan": production_packets[
+                "turn_required_vision_replan"
+            ],
+            "turn_scoped_gate_successor_replan": production_packets[
+                "turn_scoped_gate_successor_replan"
+            ],
+            "turn_capability_monitor_repair": production_packets[
+                "turn_capability_monitor_repair"
+            ],
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
                 executable_todo_count=1,
@@ -251,19 +263,34 @@ def _turn_decision(request: Mapping[str, Any]) -> dict[str, Any]:
     action = dict(signature["action"])
     user = dict(signature["user"])
     selected = dict(action.get("selected_todo") or {})
-    user_gate = bool(user["action_required"])
+    response_plan = signature.get("response_plan")
+    blocking_user_gate = bool(
+        isinstance(response_plan, Mapping)
+        and response_plan.get("decision") == "ask_user"
+    )
+    must_attempt = bool(action["must_attempt"])
+    delivery_allowed = bool(action["delivery_allowed"])
+    quiet_noop_allowed = bool(action["quiet_noop_allowed"])
+    if blocking_user_gate:
+        route = "ask_user"
+    elif must_attempt and delivery_allowed:
+        route = "execute"
+    elif quiet_noop_allowed:
+        route = "wait"
+    else:
+        route = "stop"
     return {
         "schema_version": MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
-        "decision": "ask_user" if user_gate else "execute",
+        "decision": route,
         "selected_todo_id": selected.get("todo_id"),
-        "user_action_required": user_gate,
-        "must_attempt_work": bool(action["must_attempt"]),
-        "delivery_allowed": bool(action["delivery_allowed"]),
-        "quiet_noop_allowed": bool(action["quiet_noop_allowed"]),
+        "user_action_required": bool(user["action_required"]),
+        "must_attempt_work": must_attempt,
+        "delivery_allowed": delivery_allowed,
+        "quiet_noop_allowed": quiet_noop_allowed,
         "external_write_requested": False,
         "intended_action_kinds": (
             ["notify", "wait"]
-            if user_gate
+            if blocking_user_gate
             else ["inspect", "edit", "test", "writeback", "spend"]
         ),
         "reason_codes": ["source_aligned"],
@@ -316,6 +343,36 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
         "silent_wait_allowed": False,
     }
     assert gate["action_signature"]["matches"] is True
+    replan = packets["turn_required_vision_replan"]
+    assert replan["action"]["selected_todo"] is None
+    assert replan["action"]["must_attempt"] is True
+    assert replan["action"]["quiet_noop_allowed"] is False
+    semantics = model_behavior_semantic_contract_from_packet(
+        replan,
+        arm="candidate_packet",
+    )
+    vision = semantics["vision_continuation"]
+    assert vision["required"] is True
+    assert vision["trigger_kinds"] == ["required_agent_vision_missing"]
+    assert semantics["required_reads"]
+    assert semantics["scheduler_action"]["action"] == "run_now"
+    scoped = packets["turn_scoped_gate_successor_replan"]
+    assert scoped["user"]["action_required"] is True
+    assert scoped["action"]["must_attempt"] is True
+    assert scoped.get("response_plan") is None
+    assert scoped["action"]["selected_todo"]["todo_id"] == (
+        "todo_portfolio_deferred"
+    )
+    capability = packets["turn_capability_monitor_repair"]
+    assert capability["action"]["selected_todo"]["todo_id"] == (
+        "todo_portfolio_monitor_schedule"
+    )
+    assert "todo_portfolio_monitor_schedule" in capability["action"][
+        "primary_action"
+    ]
+    assert capability["contract_capsule"]["capability_monitor_fallback"][
+        "mode"
+    ] == "monitor_schedule_metadata_repair"
     assert set(packets) == {
         item["scenario_id"]
         for item in actual_default_model_behavior_scenario_catalog()["scenarios"]
@@ -405,7 +462,14 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
     catalog = actual_default_model_behavior_scenario_catalog()
 
     assert catalog["topology"] == "actual_default_one_arm"
-    assert len(catalog["scenarios"]) == 9
+    assert len(catalog["scenarios"]) == 12
+    composed = [
+        scenario
+        for scenario in catalog["scenarios"]
+        if scenario["scenario_family"] == "control_plane_composition"
+    ]
+    assert len(composed) == 3
+    assert all(len(scenario["composition_dimensions"]) == 4 for scenario in composed)
     assert all(
         scenario["repeat_policy"]
         == {
@@ -485,3 +549,105 @@ def test_portfolio_oracle_catches_wrong_same_agent_route(tmp_path: Path) -> None
         "semantic_contract_incomplete",
         "semantic_contract_mismatch:peer_route",
     ]
+
+
+def test_portfolio_oracle_rejects_quiet_wait_for_required_vision_replan(
+    tmp_path: Path,
+) -> None:
+    def quiet_wait_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        result = _turn_actor(request)
+        semantics = result["decision"]["semantic_contract"]
+        vision = semantics["vision_continuation"]
+        if "required_agent_vision_missing" in vision.get("trigger_kinds", []):
+            result["decision"] = {
+                **result["decision"],
+                "decision": "wait",
+                "intended_action_kinds": ["wait"],
+            }
+        return result
+
+    result = run_actual_default_model_behavior_portfolio(
+        _scenario_packets(tmp_path),
+        qualification_id="actual-default-portfolio-required-vision-wait",
+        turn_actor=quiet_wait_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    scenario = next(
+        item
+        for item in result["scenarios"]
+        if item["scenario_id"] == "turn_required_vision_replan"
+    )
+    assert result["qualification_passed"] is False
+    assert scenario["status"] == "failed"
+    assert scenario["repeats_completed"] == 2
+    assert "source_mismatch:decision" in scenario["failure_codes"]
+
+
+def test_portfolio_oracle_rejects_treating_non_blocking_notice_as_gate(
+    tmp_path: Path,
+) -> None:
+    def blocking_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        result = _turn_actor(request)
+        packet = request["packet"]
+        if (
+            packet["user"]["action_required"] is True
+            and packet.get("response_plan") is None
+        ):
+            result["decision"] = {
+                **result["decision"],
+                "decision": "ask_user",
+                "intended_action_kinds": ["notify", "wait"],
+            }
+        return result
+
+    result = run_actual_default_model_behavior_portfolio(
+        _scenario_packets(tmp_path),
+        qualification_id="actual-default-portfolio-non-blocking-notice",
+        turn_actor=blocking_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    scenario = next(
+        item
+        for item in result["scenarios"]
+        if item["scenario_id"] == "turn_scoped_gate_successor_replan"
+    )
+    assert result["qualification_passed"] is False
+    assert scenario["status"] == "failed"
+    assert scenario["repeats_completed"] == 2
+    assert "source_mismatch:decision" in scenario["failure_codes"]
+
+
+def test_portfolio_oracle_rejects_waiting_on_capability_monitor_repair(
+    tmp_path: Path,
+) -> None:
+    def waiting_actor(request: Mapping[str, Any]) -> dict[str, Any]:
+        result = _turn_actor(request)
+        fallback = request["packet"]["contract_capsule"].get(
+            "capability_monitor_fallback"
+        )
+        if isinstance(fallback, Mapping):
+            result["decision"] = {
+                **result["decision"],
+                "decision": "wait",
+                "intended_action_kinds": ["wait"],
+            }
+        return result
+
+    result = run_actual_default_model_behavior_portfolio(
+        _scenario_packets(tmp_path),
+        qualification_id="actual-default-portfolio-capability-monitor-repair",
+        turn_actor=waiting_actor,
+        onboarding_actor=_onboarding_actor,
+    )
+
+    scenario = next(
+        item
+        for item in result["scenarios"]
+        if item["scenario_id"] == "turn_capability_monitor_repair"
+    )
+    assert result["qualification_passed"] is False
+    assert scenario["status"] == "failed"
+    assert scenario["repeats_completed"] == 2
+    assert "source_mismatch:decision" in scenario["failure_codes"]

@@ -109,6 +109,7 @@ CONTRACT_CAPSULE_FIELDS = {
         "decision",
         "selected_todo_is_goal_completion",
         "closeout_allowed_without_evidence",
+        "trigger_kinds",
         "required_before_closeout",
         "recommended_action",
     ),
