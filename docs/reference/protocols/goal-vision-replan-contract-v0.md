@@ -94,6 +94,46 @@ the same `agent_id` as the refresh run. This keeps `research-executor`,
 `evaluator-promoter`, and other roles from overwriting or satisfying each
 other's active vision.
 
+### Path Delta
+
+A machine-generated vision packet may include one optional
+`goal_path_delta_v0`. It makes a bounded loop's look-back explicit without
+adding more inline CLI flags or expanding the heartbeat prompt. The packet is
+written through the existing `--agent-vision-json` boundary and is retained in
+the same agent-scoped run-history and shared-runtime vision projection:
+
+```json
+{
+  "schema_version": "goal_path_delta_v0",
+  "outcome": "replan",
+  "prior_assumption": "The current monitor lane would produce acceptance evidence.",
+  "observed_reality": "Two bounded polls produced no material transition.",
+  "retained": ["Keep the verified monitor target and evidence refs."],
+  "changed": ["Create one runnable advancement successor."],
+  "stopped": ["Stop treating future polling as completion evidence."],
+  "unresolved_questions": ["Which successor can falsify the new path?"],
+  "reentry_condition": "Resume the monitor-only wait after successor evidence lands.",
+  "evidence_refs": ["evidence:monitor-poll-02", "todo:successor-01"]
+}
+```
+
+`outcome` is one of `continue`, `replan`, `wait`, `no_change`, `ask_human`, or
+`stop`. `prior_assumption` and `observed_reality` are required when the object
+is present, together with at least one `retained`, `changed`, or `stopped`
+item. The remaining optional lists preserve unresolved questions and
+public-safe evidence ids. The enclosing
+vision packet's `agent_id` records who made the comparison; `evidence_refs`
+point to evidence instead of copying long rationale or raw artifacts.
+
+The path delta shares the existing 1,200-character `total_agent_vision` budget.
+Scalar fields are bounded to 180-220 characters; keep/change/stop lists accept
+at most three 120-character items, unresolved questions at most two
+140-character items, and evidence refs at most four 140-character items. The
+write path rejects excess data instead of silently truncating it. This is a
+compact audit/read model, not a second planner or a new state machine. An
+honest `no_change` remains valid when the observed reality does not justify a
+different path.
+
 `state` is a lower `snake_case` lifecycle token. Domain-specific states remain
 extensible and are treated as open. The write path canonicalizes closure aliases
 such as `closed`, `satisfied`, and `vision_satisfied` to `vision_closed`, and
@@ -307,6 +347,16 @@ A valid replan writes at least one bounded delta:
     "role_scope": "Owns research framing; does not run evaluation.",
     "acceptance_summary": "One concrete successor todo plus evidence refs.",
     "replan_trigger_summary": "Frontier exhausted while acceptance remains open."
+  },
+  "path_delta": {
+    "schema_version": "goal_path_delta_v0",
+    "outcome": "replan",
+    "prior_assumption": "The existing frontier could satisfy acceptance.",
+    "observed_reality": "No runnable advancement remains.",
+    "retained": ["Keep verified evidence and the acceptance boundary."],
+    "changed": ["Route one new bounded successor."],
+    "stopped": ["Stop repeating the exhausted action."],
+    "evidence_refs": ["evidence:frontier-review-01"]
   },
   "todo_delta": ["create_successor", "retire_stale_monitor"],
   "validation": {
