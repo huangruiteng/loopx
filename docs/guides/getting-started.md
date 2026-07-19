@@ -79,6 +79,10 @@ can discover user-installed skills:
 - Claude Code: lightweight user skills under `~/.claude/skills/loopx*`, so the
   command family can appear as Claude Code slash commands without enabling the
   opt-in MCP/hook adapter.
+- OpenCode: static command files under `~/.config/opencode/commands/` expose
+  native `/loopx` slash commands after restart. The executable goal bridge
+  (timer-based idle continuation gated by LoopX quota) requires an explicit
+  `--with-goal-bridge` install.
 
 The command family is the same across surfaces, even when the host-specific
 entry point is different:
