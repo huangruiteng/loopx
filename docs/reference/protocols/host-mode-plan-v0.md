@@ -71,7 +71,8 @@ run the desired mode.
 A coarse `visible_session` capability cannot distinguish Codex CLI, Claude Code,
 or another generic visible host such as OpenCode. The planner therefore fails
 closed for `visible_tui` unless an explicit, catalog-registered `host_identity`
-is supplied (`--host-identity`, currently `codex-cli` or `claude-code`). With no
+is supplied (`--host-identity`: `codex-cli`, `claude-code`, `generic-cli`, or
+the `opencode` alias). With no
 identity, the visible option reports `connector_id=null`,
 `host_resolution=identity_required`, `turn_mapping.host=null`,
 `capability_ready=false`, a blocking reason naming the missing identity, and a
@@ -81,9 +82,12 @@ identity similarly yields `connector_id=null` with
 separately typed `host_resolution` field so the `connector_id` field only ever
 carries real runtime connector catalog ids.
 With an identity, the typed mapping is used: `codex-cli` -> `codex_cli_tui`,
-`claude-code` -> `claude_code_loop`. Every emitted connector id must exist in the
-runtime connector catalog; an identity with no registered catalog connector
-fails closed instead of emitting a dynamic string.
+`claude-code` -> `claude_code_loop`, and `generic-cli` -> `opencode_goal_loop`
+(the OpenCode visible goal loop runs through the generic-cli Turn host;
+`--host-identity opencode` is accepted as an alias for the same mapping). Every
+emitted connector id must exist in the runtime connector catalog; an identity
+with no registered catalog connector fails closed instead of emitting a dynamic
+string.
 
 ## Readiness And Proofs
 

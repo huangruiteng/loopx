@@ -131,6 +131,16 @@ SUPPORTED_TURN_HOST_IDENTITIES = sorted(SUPPORTED_HOSTS)
 VISIBLE_HOST_CONNECTOR_IDS: dict[str, str] = {
     "codex-cli": "codex_cli_tui",
     "claude-code": "claude_code_loop",
+    # OpenCode runs its visible goal loop through the generic-cli Turn host;
+    # parity lives in the selector/catalog mapping, not a new Turn host kind.
+    "generic-cli": "opencode_goal_loop",
+}
+
+# Host identities that are valid visible selections but map to the OpenCode
+# goal loop connector rather than their own Turn host kind.
+VISIBLE_OPENCODE_ALIASES: dict[str, str] = {
+    "opencode": "generic-cli",
+    "open-code": "generic-cli",
 }
 
 
@@ -710,6 +720,7 @@ def build_host_mode_plan(
         # (codex-cli, claude-code, generic-cli); normalize case without
         # converting dashes to underscores.
         candidate = str(host_identity).strip().lower()
+        candidate = VISIBLE_OPENCODE_ALIASES.get(candidate, candidate)
         if candidate not in SUPPORTED_TURN_HOST_IDENTITIES:
             raise HostModePlanError(
                 reason=f"unsupported host_identity: {candidate}",

@@ -161,6 +161,7 @@ def test_visible_mode_preserves_distinct_host_identities() -> None:
     expected_connectors = {
         "codex-cli": "codex_cli_tui",
         "claude-code": "claude_code_loop",
+        "generic-cli": "opencode_goal_loop",
     }
     for host_identity, connector_id in expected_connectors.items():
         plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
@@ -195,30 +196,39 @@ def test_visible_mode_fails_closed_without_host_identity() -> None:
     assert "codex-cli" not in str(plan["next_preview_command"]), plan
 
 
-def test_visible_mode_fails_closed_for_unregistered_host_identity() -> None:
-    plan = build_workflow_identity_plan("watch_each_turn", host_identity="generic-cli")
+def test_opencode_alias_resolves_to_goal_loop_connector() -> None:
+    plan = build_workflow_identity_plan("watch_each_turn", host_identity="opencode")
     visible = option(plan, MODE_VISIBLE_TUI)
-    assert visible["capability_ready"] is False, visible
-    assert visible["connector_id"] is None, visible
-    assert visible["host_resolution"] == "unregistered_host_identity", visible
-    assert visible["host_identity"] == "generic-cli", visible
-    assert visible["recommended_next_steps"][0]["kind"] == "stop", visible
-    assert plan["selected_capability_ready"] is False, plan
-    assert plan["selected_connector_id"] is None, plan
-    assert any("no registered catalog connector" in reason for reason in plan["selected_blocking_reasons"]), plan
+    assert visible["capability_ready"] is True, visible
+    assert visible["connector_id"] == "opencode_goal_loop", visible
+    assert visible["host_resolution"] == "resolved", visible
+    assert plan["selected_connector_id"] == "opencode_goal_loop", plan
+    assert plan["selected_turn_mapping"]["host"] == "generic-cli", plan
+    assert "--host generic-cli" in plan["next_preview_command"], plan
+
+
+def test_visible_mode_fails_closed_for_unknown_host_identity() -> None:
+    try:
+        build_workflow_identity_plan("watch_each_turn", host_identity="not-a-host")
+    except HostModePlanError as exc:
+        payload = exc.to_payload()
+    else:
+        raise AssertionError("unknown host identity should fail closed")
+    assert payload["ok"] is False, payload
+    assert payload["field"] == "host_identity", payload
 
 
 def test_emitted_connector_ids_exist_in_catalog() -> None:
     catalog = CONNECTOR_CATALOG_PATH.read_text()
     # Resolved identities emit only catalog-registered connector ids.
-    for host_identity in ["codex-cli", "claude-code"]:
+    for host_identity in ["codex-cli", "claude-code", "generic-cli", "opencode"]:
         plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
         connector = plan["selected_connector_id"]
         assert connector is not None, (host_identity, plan)
         assert f"`{connector}`" in catalog, (connector, "missing from runtime connector catalog")
     # Unresolved paths (omitted or unregistered identity) must not emit any
     # non-catalog value in the connector id field.
-    for host_identity in [None, "generic-cli"]:
+    for host_identity in [None]:
         plan = build_workflow_identity_plan("watch_each_turn", host_identity=host_identity)
         assert plan["selected_connector_id"] is None, (host_identity, plan)
         visible = option(plan, MODE_VISIBLE_TUI)
@@ -426,7 +436,8 @@ def main() -> int:
     test_visible_mode_stays_visible_and_scoped()
     test_visible_mode_preserves_distinct_host_identities()
     test_visible_mode_fails_closed_without_host_identity()
-    test_visible_mode_fails_closed_for_unregistered_host_identity()
+    test_opencode_alias_resolves_to_goal_loop_connector()
+    test_visible_mode_fails_closed_for_unknown_host_identity()
     test_emitted_connector_ids_exist_in_catalog()
     test_readiness_fails_closed_without_required_host_capabilities()
     test_shell_service_fails_closed_without_adapter_and_validator()
