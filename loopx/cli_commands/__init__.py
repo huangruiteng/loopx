@@ -179,7 +179,6 @@ from .version import handle_version_command, register_version_command
 from .worker_bridge import handle_worker_bridge_command, register_worker_bridge_commands
 
 __all__ = [
-    "build_lark_issue_fix_reviewer_provider_hooks",
     "handle_agents_last_exam_command",
     "handle_agents_last_exam_baked_input_command",
     "handle_agents_last_exam_host_codex_command",
