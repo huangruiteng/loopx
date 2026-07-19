@@ -19,7 +19,7 @@ GOAL_ID = "agent-context-retention-goal"
 SIDE_AGENT = "codex-side-bypass"
 
 
-def project_run_history(history: dict) -> dict:
+def project_run_history(history: dict, *, display_limit: int = 3) -> dict:
     return build_run_history(
         history,
         latest_run=lambda goal: goal.get("latest_status_run"),
@@ -30,7 +30,7 @@ def project_run_history(history: dict) -> dict:
         subagent_activity_for_goal=lambda goal: None,
         compact_run=lambda run: dict(run),
         quota_status=lambda goal: {},
-        display_limit=3,
+        display_limit=display_limit,
     )
 
 
@@ -112,6 +112,20 @@ def write_fixture(root: Path) -> tuple[Path, Path]:
                     "satisfied": True,
                     "decision": "patched",
                 }
+            if action == "older side":
+                record["autonomous_replan_ack"] = {
+                    "schema_version": "autonomous_replan_ack_v0",
+                    "recorded": True,
+                    "source": "fixture",
+                    "delta_contract": {
+                        "schema_version": "repair_delta_contract_v0",
+                        "required": True,
+                        "delta_present": True,
+                        "delta_kinds": ["runnable_todo_set"],
+                        "auto_evidence": [],
+                        "accepted_without_delta": False,
+                    },
+                }
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     return registry_path, runtime
 
@@ -161,12 +175,22 @@ def main() -> None:
             run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
             for run in latest_runs
         ), latest_runs
+        assert any(
+            run.get("agent_id") == SIDE_AGENT and run.get("autonomous_replan_ack")
+            for run in latest_runs
+        ), latest_runs
+        assert len(latest_runs) == 5, latest_runs
         projected_run_history = project_run_history(history)
         projected_runs = projected_run_history["goals"][0]["latest_runs"]
         assert any(
             run.get("agent_id") == SIDE_AGENT and run.get("agent_vision")
             for run in projected_runs
         ), projected_runs
+        assert any(
+            run.get("agent_id") == SIDE_AGENT and run.get("autonomous_replan_ack")
+            for run in projected_runs
+        ), projected_runs
+        assert len(projected_runs) == 5, projected_runs
         vision = latest_agent_vision_from_status_payload(
             {"run_history": projected_run_history},
             goal_id=GOAL_ID,
@@ -174,6 +198,18 @@ def main() -> None:
         )
         assert vision and vision["agent_id"] == SIDE_AGENT, vision
         assert "global run window" in vision["vision_patch"]["replan_trigger_summary"], vision
+
+        zero_budget_history = collect_history(
+            registry_path=registry_path,
+            runtime_root=runtime,
+            goal_id=GOAL_ID,
+            limit=0,
+        )
+        assert zero_budget_history["goals"][0]["latest_runs"] == [], zero_budget_history
+        zero_budget_projection = project_run_history(history, display_limit=0)
+        assert zero_budget_projection["goals"][0]["latest_runs"] == [], (
+            zero_budget_projection
+        )
     with tempfile.TemporaryDirectory(prefix="loopx-agent-context-retired-") as raw_tmp:
         registry_path, runtime = write_fixture(Path(raw_tmp))
         runs_dir = runtime / "goals" / GOAL_ID / "runs"

@@ -18,6 +18,8 @@ def latest_runs_with_agent_context(
     """Keep recent runs plus each agent's newest durable context per field."""
 
     bounded = max(0, limit)
+    if bounded == 0:
+        return []
     selected = list(runs[:bounded])
     selected_ids = {id(run) for run in selected}
     retained_context_fields: set[tuple[str, str]] = set()
