@@ -91,10 +91,10 @@ def fake_fresh_doctor_payload() -> dict[str, object]:
     return payload
 
 
-def fake_doctor_payload_for_release(release_root: Path) -> dict[str, object]:
+def fake_doctor_payload_for_release(release_root: Path, *, home: Path) -> dict[str, object]:
     return {
         "path": {
-            "loopx": str(release_root.parents[4] / ".local" / "bin" / "loopx"),
+            "loopx": str(home / ".local" / "bin" / "loopx"),
             "loopx_realpath": str(release_root / "scripts" / "loopx"),
         },
         "package": {
@@ -250,13 +250,14 @@ def test_active_release_python_marker_fails_closed() -> None:
 
 def test_execute_update_uses_persisted_release_python() -> None:
     with TemporaryDirectory() as tmpdir:
-        release_root = Path(tmpdir) / "release"
+        home = Path(tmpdir)
+        release_root = home / "release"
         release_root.mkdir()
         missing_python = str(release_root / "missing-python")
         (release_root / ".loopx-python").write_text(f"{missing_python}\n", encoding="utf-8")
         payload = build_update_plan(
             execute=True,
-            doctor_payload=fake_doctor_payload_for_release(release_root),
+            doctor_payload=fake_doctor_payload_for_release(release_root, home=home),
         )
         failed = subprocess.CompletedProcess(
             args=[],
@@ -359,7 +360,7 @@ def test_rollback_previous_executes_with_temp_home() -> None:
         current_release = write_fixture_release(home, "20260622T170342Z")
         payload = build_rollback_plan(
             release_id="previous",
-            doctor_payload=fake_doctor_payload_for_release(current_release),
+            doctor_payload=fake_doctor_payload_for_release(current_release, home=home),
             home=home,
         )
         assert payload["ok"] is True, payload
@@ -383,7 +384,7 @@ def test_rollback_restores_previous_when_doctor_fails() -> None:
         loopx_bin.symlink_to(current_release / "scripts" / "loopx")
         payload = build_rollback_plan(
             release_id=bad_release.name,
-            doctor_payload=fake_doctor_payload_for_release(current_release),
+            doctor_payload=fake_doctor_payload_for_release(current_release, home=home),
             home=home,
         )
         assert payload["ok"] is True, payload
