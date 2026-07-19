@@ -60,7 +60,7 @@ function terminalDecision() {
 
 function harness(initialDecision) {
   const store = memoryBindingStore()
-  const calls = { chat: 0, event: 0, complete: 0, quota: 0, resume: 0 }
+  const calls = { chat: 0, event: 0, complete: 0, dispose: 0, quota: 0, resume: 0 }
   const scheduled = []
   let decision = initialDecision
   const GoalPlugin = async (_context, options) => ({
@@ -98,7 +98,9 @@ function harness(initialDecision) {
         },
       }),
     },
-    dispose: async () => {},
+    dispose: async () => {
+      calls.dispose += 1
+    },
   })
   const plugin = createLoopxGoalPlugin({
     GoalPlugin,
@@ -106,14 +108,17 @@ function harness(initialDecision) {
     bindingStore: store,
     quotaProbe: async () => {
       calls.quota += 1
+      if (decision instanceof Error) throw decision
       return decision
     },
     setTimer: (callback, delay) => {
-      const timer = { callback, delay, unref() {} }
+      const timer = { callback, cleared: false, delay, unref() {} }
       scheduled.push(timer)
       return timer
     },
-    clearTimer: () => {},
+    clearTimer: (timer) => {
+      timer.cleared = true
+    },
   })
   return {
     calls,
@@ -169,6 +174,148 @@ test("gates active and quiet idle turns through LoopX quota", async () => {
   await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-idle" } } })
   assert.equal(fixture.calls.event, 1)
   assert.equal(fixture.scheduled.at(-1).delay, 180_000)
+})
+
+
+test("fails closed and schedules a bounded retry after a quota network timeout", async () => {
+  const fixture = harness(new Error("network timeout"))
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-timeout", objective: "LoopX task body" },
+    { sessionID: "session-timeout" },
+  )
+
+  await hooks.event({
+    event: { type: "session.idle", properties: { sessionID: "session-timeout" } },
+  })
+
+  assert.equal(fixture.calls.quota, 1)
+  assert.equal(fixture.calls.event, 0)
+  assert.equal(fixture.scheduled.length, 1)
+  assert.equal(fixture.scheduled[0].delay, 180_000)
+  assert.equal(fixture.scheduled[0].cleared, false)
+})
+
+
+test("fails closed when the session binding cannot be read", async () => {
+  const fixture = harness({ should_run: true, scheduler_hint: { action: "run_now" } })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-binding-error", objective: "LoopX task body" },
+    { sessionID: "session-binding-error" },
+  )
+  fixture.store.read = async () => {
+    const error = new Error("binding filesystem unavailable")
+    error.code = "EACCES"
+    throw error
+  }
+
+  await hooks.event({
+    event: { type: "session.idle", properties: { sessionID: "session-binding-error" } },
+  })
+
+  assert.equal(fixture.calls.quota, 0)
+  assert.equal(fixture.calls.event, 0)
+  assert.equal(fixture.scheduled.length, 0)
+  assert.equal(fixture.store.bindings.has("session-binding-error"), true)
+})
+
+
+test("keeps scheduled quota timers isolated between sessions", async () => {
+  const fixture = harness({
+    should_run: false,
+    scheduler_hint: {
+      action: "backoff_waiting_for_user",
+      reset_policy: { reset_token: "wait-multi" },
+      unchanged_poll: {
+        local_scheduler: {
+          recommended_interval_minutes: 3,
+          unchanged_poll_limit: 3,
+        },
+      },
+    },
+  })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  for (const sessionID of ["session-a", "session-b"]) {
+    await hooks.tool.loopx_goal_activate.execute(
+      { goalId: `goal-${sessionID}`, objective: "LoopX task body" },
+      { sessionID },
+    )
+    await hooks.event({ event: { type: "session.idle", properties: { sessionID } } })
+  }
+
+  assert.equal(fixture.scheduled.length, 2)
+  assert.equal(fixture.scheduled[0].cleared, false)
+  assert.equal(fixture.scheduled[1].cleared, false)
+
+  fixture.setDecision({ should_run: true, scheduler_hint: { action: "run_now" } })
+  await hooks.event({
+    event: { type: "session.idle", properties: { sessionID: "session-a" } },
+  })
+
+  assert.equal(fixture.scheduled[0].cleared, true)
+  assert.equal(fixture.scheduled[1].cleared, false)
+  assert.equal(fixture.calls.event, 1)
+})
+
+
+test("disposal clears every active session timer before disposing the base plugin", async () => {
+  const fixture = harness({
+    should_run: false,
+    scheduler_hint: {
+      action: "backoff_waiting_for_user",
+      reset_policy: { reset_token: "wait-dispose" },
+      unchanged_poll: {
+        local_scheduler: {
+          recommended_interval_minutes: 3,
+          unchanged_poll_limit: 3,
+        },
+      },
+    },
+  })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  for (const sessionID of ["session-dispose-a", "session-dispose-b"]) {
+    await hooks.tool.loopx_goal_activate.execute(
+      { goalId: `goal-${sessionID}`, objective: "LoopX task body" },
+      { sessionID },
+    )
+    await hooks.event({ event: { type: "session.idle", properties: { sessionID } } })
+  }
+
+  await hooks.dispose()
+
+  assert.equal(fixture.scheduled.length, 2)
+  assert.equal(fixture.scheduled.every((timer) => timer.cleared), true)
+  assert.equal(fixture.calls.dispose, 1)
+})
+
+
+test("disposal prevents an in-flight quota decision from continuing the session", async () => {
+  let releaseDecision
+  const pendingDecision = new Promise((resolve) => {
+    releaseDecision = resolve
+  })
+  const fixture = harness(pendingDecision)
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-dispose-in-flight", objective: "LoopX task body" },
+    { sessionID: "session-dispose-in-flight" },
+  )
+  const idle = hooks.event({
+    event: { type: "session.idle", properties: { sessionID: "session-dispose-in-flight" } },
+  })
+  for (let index = 0; index < 5 && fixture.calls.quota === 0; index += 1) {
+    await Promise.resolve()
+  }
+  assert.equal(fixture.calls.quota, 1)
+
+  await hooks.dispose()
+  releaseDecision({ should_run: true, scheduler_hint: { action: "run_now" } })
+  await idle
+
+  assert.equal(fixture.calls.event, 0)
+  assert.equal(fixture.scheduled.length, 0)
+  assert.equal(fixture.calls.dispose, 1)
 })
 
 

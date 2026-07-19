@@ -266,6 +266,7 @@ export function createLoopxGoalPlugin({
     const evaluations = new Map()
     const pendingGoalCommands = new Map()
     const initializedSessions = new Set()
+    let disposed = false
 
     const log = async (level, message, extra = {}) => {
       try {
@@ -357,9 +358,11 @@ export function createLoopxGoalPlugin({
     }
 
     const scheduleEvaluation = (sessionID, minutes) => {
+      if (disposed) return
       cancelScheduled(sessionID)
       const timer = setTimer(async () => {
         timers.delete(sessionID)
+        if (disposed) return
         try {
           await evaluateIdle(sessionID, {
             event: { type: "session.idle", properties: { sessionID } },
@@ -376,6 +379,7 @@ export function createLoopxGoalPlugin({
     }
 
     const evaluateIdleOnce = async (sessionID, input) => {
+      if (disposed) return
       let binding
       try {
         binding = await readBinding(sessionID)
@@ -408,6 +412,7 @@ export function createLoopxGoalPlugin({
         scheduleEvaluation(sessionID, DEFAULT_RETRY_MINUTES)
         return
       }
+      if (disposed) return
 
       const currentBinding = await readBinding(sessionID)
       if (
@@ -444,6 +449,7 @@ export function createLoopxGoalPlugin({
             })
           }
         }
+        if (disposed) return
         await baseEvent?.(input)
         return
       }
@@ -466,6 +472,7 @@ export function createLoopxGoalPlugin({
     }
 
     const evaluateIdle = (sessionID, input) => {
+      if (disposed) return Promise.resolve()
       const existing = evaluations.get(sessionID)
       if (existing) return existing
       const evaluation = evaluateIdleOnce(sessionID, input).finally(() => {
@@ -652,6 +659,7 @@ export function createLoopxGoalPlugin({
         if (sessionID) await evaluateIdle(sessionID, input)
       },
       dispose: async () => {
+        disposed = true
         for (const timer of timers.values()) clearTimer(timer)
         timers.clear()
         evaluations.clear()
