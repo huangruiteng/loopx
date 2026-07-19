@@ -45,6 +45,10 @@ from .agentissue_runner_flow import (
     register_agentissue_runner_flow_commands,
 )
 from .turn import handle_turn_command, register_turn_commands
+from .host_mode_plan import (
+    handle_host_mode_plan_command,
+    register_host_mode_plan_command,
+)
 from .benchmark_boundary import (
     handle_benchmark_boundary_command,
     register_benchmark_boundary_commands,
@@ -189,6 +193,7 @@ __all__ = [
     "handle_agents_last_exam_validation_gate_command",
     "handle_agentissue_runner_flow_command",
     "handle_turn_command",
+    "handle_host_mode_plan_command",
     "handle_benchmark_boundary_command",
     "handle_benchmark_command",
     "handle_benchmark_review_lifecycle_command",
@@ -265,6 +270,7 @@ __all__ = [
     "register_agents_last_exam_validation_gate_commands",
     "register_agentissue_runner_flow_commands",
     "register_turn_commands",
+    "register_host_mode_plan_command",
     "register_benchmark_boundary_commands",
     "register_benchmark_command_group",
     "register_benchmark_review_lifecycle_commands",

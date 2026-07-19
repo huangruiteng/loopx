@@ -46,3 +46,4 @@ Current contracts:
 - [goal_vision_replan_contract_v0](goal-vision-replan-contract-v0.md)
 - [agent_scoped_evidence_ledger_v0](agent-scoped-evidence-ledger-v0.md)
 - [peer_agent_runtime_v1](peer-agent-runtime-v1.md)
+- [host_mode_plan_v0](host-mode-plan-v0.md)

@@ -70,6 +70,7 @@ from .cli_commands import (
     handle_task_lease_command,
     handle_todo_command,
     handle_version_command,
+    handle_host_mode_plan_command,
     handle_worker_bridge_command,
     register_benchmark_command_group,
     register_turn_commands,
@@ -103,6 +104,7 @@ from .cli_commands import (
     register_task_lease_command,
     register_todo_command,
     register_version_command,
+    register_host_mode_plan_command,
     register_worker_bridge_commands,
 )
 from .cli_rollout import (
@@ -214,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
 
     register_multi_agent_commands(sub, add_subcommand_format)
     register_turn_commands(sub, add_subcommand_format)
+    register_host_mode_plan_command(sub, add_subcommand_format)
     register_preset_commands(sub, add_subcommand_format)
     register_presentation_commands(sub, add_subcommand_format)
     register_ready_score_command(sub, add_subcommand_format)
@@ -276,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
             "sync-global",
             "uninstall-project",
             "version",
+            "host-mode-plan",
         }
         and not user_supplied_registry(raw_argv)
         and not registry_path.exists()
@@ -387,6 +391,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if turn_result is not None:
         return turn_result
+
+    host_mode_plan_result = handle_host_mode_plan_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if host_mode_plan_result is not None:
+        return host_mode_plan_result
 
     preset_result = handle_preset_command(
         args,
