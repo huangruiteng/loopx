@@ -33,6 +33,7 @@ include = ["loopx*"]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
 "loopx.extensions.lark" = ["extension.toml"]
 "loopx.extensions.openviking_semantic_preference" = ["extension.toml"]
+"loopx.opencode_goal_mode" = ["*.js", "*.mjs", "README.md"]
 
 [tool.mypy]
 python_version = "3.11"
