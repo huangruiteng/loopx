@@ -13,8 +13,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from loopx.capabilities.multi_agent.runtime_scripts import CODEX_TUI_EXEC_PY  # noqa: E402
-from loopx.capabilities.multi_agent.visible_wake_scheduler import (  # noqa: E402
+from loopx.control_plane.agents.multi_agent.runtime_scripts import (  # noqa: E402
+    CODEX_TUI_EXEC_PY,
+)
+from loopx.control_plane.agents.multi_agent.visible_wake_scheduler import (  # noqa: E402
     lane_agent_map,
     run_state_aware_wake_loop,
     todo_readiness_projection,

@@ -13,7 +13,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.capabilities.cross_runtime import (  # noqa: E402
+from loopx.control_plane.handoff.cross_runtime_impl_review import (  # noqa: E402
     CROSS_RUNTIME_IMPL_REVIEW_DEMO_SCHEMA_VERSION,
     build_cross_runtime_impl_review_demo_packet,
     render_cross_runtime_impl_review_demo_markdown,

@@ -24,7 +24,7 @@ kernel owns runner/TUI/tick/todo/evidence/status mechanics.
 
 ## Kernel Module
 
-The reusable product kernel lives in `loopx/capabilities/multi_agent/`.
+The reusable control-plane kernel lives in `loopx/control_plane/agents/multi_agent/`.
 Domain capabilities should depend on that package for:
 
 - `tui_multi_agent_runner_contract_v0`;

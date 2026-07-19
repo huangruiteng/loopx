@@ -41,7 +41,7 @@ def main() -> int:
     from loopx.capabilities.auto_research.preset import default_auto_research_agent_specs
 
     runtime_scripts_source = (
-        REPO_ROOT / "loopx/capabilities/multi_agent/runtime_scripts.py"
+        REPO_ROOT / "loopx/control_plane/agents/multi_agent/runtime_scripts.py"
     ).read_text(encoding="utf-8")
     preset_source = (
         REPO_ROOT / "loopx/capabilities/auto_research/preset.py"

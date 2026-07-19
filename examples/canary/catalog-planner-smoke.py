@@ -614,7 +614,7 @@ def assert_pr_release_and_refactor_profiles_select() -> None:
 
     cross_runtime_payload = build_catalog_canary_plan(
         changed_files=[
-            "loopx/capabilities/cross_runtime/impl_review.py",
+            "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
             "docs/product/cross-runtime-impl-review-demo.md",
         ],

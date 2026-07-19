@@ -911,7 +911,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "loopx demo impl-review",
             "cross_runtime_impl_review_demo_packet_v0",
             "docs/product/cross-runtime-impl-review-demo.md",
-            "loopx/capabilities/cross_runtime",
+            "loopx/control_plane/handoff/cross_runtime_impl_review.py",
             "loopx/cli_commands/starter.py",
         ),
         "checks": [
