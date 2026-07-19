@@ -519,13 +519,9 @@ def _build_mode_option(
         available_capabilities=available_capabilities,
         host_identity=host_identity if host_identity in VISIBLE_HOST_CONNECTOR_IDS else None,
     )
-    effective_turn_host = (
-        host_identity
-        if mode == MODE_VISIBLE_TUI and host_identity in VISIBLE_HOST_CONNECTOR_IDS
-        else meta.get("turn_host")
-    )
     if mode == MODE_VISIBLE_TUI:
         connector_id = VISIBLE_HOST_CONNECTOR_IDS.get(host_identity or "")
+        effective_turn_host = host_identity if connector_id else None
         host_resolution = (
             "resolved"
             if connector_id
@@ -537,13 +533,36 @@ def _build_mode_option(
         )
     else:
         connector_id = meta["connector_id"]
+        effective_turn_host = meta.get("turn_host")
         host_resolution = "resolved"
+    recommended_next_steps = (
+        [
+            {
+                "step": 1,
+                "kind": "stop",
+                "action": (
+                    "Re-run with --host-identity set to a catalog-registered visible host "
+                    "(" + ", ".join(sorted(VISIBLE_HOST_CONNECTOR_IDS)) + ")."
+                ),
+                "command": None,
+                "no_spend": True,
+            }
+        ]
+        if visible_unresolved
+        else _recommended_next_steps(
+            mode=mode,
+            host_capabilities=host_capabilities,
+            turn_plan_command=turn_plan_command,
+            quota_guard_command=quota_guard_command,
+            host_identity=host_identity,
+        )
+    )
     return {
         "mode": mode,
         "summary": meta["summary"],
         "connector_id": connector_id,
         "host_resolution": host_resolution,
-        "host_identity": effective_turn_host if mode == MODE_VISIBLE_TUI else None,
+        "host_identity": host_identity if mode == MODE_VISIBLE_TUI else None,
         "capability_ready": _mode_capability_ready(mode, host_capabilities, host_identity),
         "required_host_capabilities": list(meta["required_capabilities"]),
         "missing_host_capabilities": _missing_mode_capabilities(mode, host_capabilities),
@@ -563,19 +582,9 @@ def _build_mode_option(
                 )
             ]
         ),
-        "recommended_next_steps": _recommended_next_steps(
-            mode=mode,
-            host_capabilities=host_capabilities,
-            turn_plan_command=turn_plan_command,
-            quota_guard_command=quota_guard_command,
-            host_identity=host_identity,
-        ),
+        "recommended_next_steps": recommended_next_steps,
         "turn_mapping": {
-            "host": (
-                effective_turn_host
-                if not (mode == MODE_VISIBLE_TUI and visible_unresolved)
-                else None
-            ),
+            "host": effective_turn_host,
             "execution_mode": meta.get("turn_execution_mode"),
             "scheduler_owner": meta.get("scheduler_owner"),
             "plan_command": turn_plan_command,
@@ -727,31 +736,6 @@ def build_host_mode_plan(
         for mode in ordered_modes
     ]
     selected = mode_options[0]
-    if primary_mode == MODE_VISIBLE_TUI and normalized_host_identity not in VISIBLE_HOST_CONNECTOR_IDS:
-        selected = dict(selected)
-        selected["capability_ready"] = False
-        if normalized_host_identity is None:
-            selected["blocking_reasons"] = [
-                "visible_tui requires an explicit host_identity (--host-identity); "
-                "a generic visible_session capability cannot identify the actual host."
-            ]
-        else:
-            selected["blocking_reasons"] = [
-                f"host_identity {normalized_host_identity!r} has no registered catalog "
-                "connector for visible mode."
-            ]
-        selected["recommended_next_steps"] = [
-            {
-                "step": 1,
-                "kind": "stop",
-                "action": (
-                    "Re-run with --host-identity set to a catalog-registered visible host "
-                    "(" + ", ".join(sorted(VISIBLE_HOST_CONNECTOR_IDS)) + ")."
-                ),
-                "command": None,
-                "no_spend": True,
-            }
-        ]
 
     return {
         "ok": True,
@@ -858,7 +842,7 @@ def render_host_mode_plan_markdown(payload: dict[str, Any]) -> str:
         f"- goal_id: `{payload.get('goal_id')}`",
         f"- agent_id: `{payload.get('agent_id')}`",
         f"- selected_mode: `{payload.get('selected_mode')}`",
-        f"- selected_connector_id: `{payload.get('selected_connector_id')}`",
+        f"- selected_connector_id: `{payload.get('selected_connector_id') or 'null'}`",
         f"- selected_capability_ready: `{payload.get('selected_capability_ready')}`",
         f"- host_identity: `{payload.get('host_identity')}`",
         f"- selected_missing_host_capabilities: `{', '.join(payload.get('selected_missing_host_capabilities') or [])}`",
@@ -902,7 +886,7 @@ def render_host_mode_plan_markdown(payload: dict[str, Any]) -> str:
         lines.append(
             "| "
             f"`{option.get('mode')}` | "
-            f"`{option.get('connector_id')}` | "
+            f"`{option.get('connector_id') or 'null'}` | "
             f"`{option.get('capability_ready')}` | "
             f"`{turn.get('host')}` | "
             f"`{turn.get('execution_mode')}` | "

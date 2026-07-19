@@ -182,7 +182,9 @@ def test_visible_mode_fails_closed_without_host_identity() -> None:
     # resolution state lives in a separately typed field instead.
     assert visible["connector_id"] is None, visible
     assert visible["host_resolution"] == "identity_required", visible
+    assert visible["host_identity"] is None, visible
     assert visible["turn_mapping"]["host"] is None, visible
+    assert visible["recommended_next_steps"][0]["kind"] == "stop", visible
     assert plan["selected_capability_ready"] is False, plan
     assert plan["selected_connector_id"] is None, plan
     assert plan["selected_turn_mapping"]["host"] is None, plan
@@ -199,6 +201,8 @@ def test_visible_mode_fails_closed_for_unregistered_host_identity() -> None:
     assert visible["capability_ready"] is False, visible
     assert visible["connector_id"] is None, visible
     assert visible["host_resolution"] == "unregistered_host_identity", visible
+    assert visible["host_identity"] == "generic-cli", visible
+    assert visible["recommended_next_steps"][0]["kind"] == "stop", visible
     assert plan["selected_capability_ready"] is False, plan
     assert plan["selected_connector_id"] is None, plan
     assert any("no registered catalog connector" in reason for reason in plan["selected_blocking_reasons"]), plan

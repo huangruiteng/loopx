@@ -124,6 +124,36 @@ def test_cli_visible_mode_preserves_host_identity() -> None:
         assert f"--host {host_identity}" in payload["next_preview_command"], payload
 
 
+def test_cli_visible_mode_fails_closed_without_registered_host() -> None:
+    for host_args, expected_identity in [
+        ([], None),
+        (["--host-identity", "generic-cli"], "generic-cli"),
+    ]:
+        proc = run_cli(
+            "--format",
+            "json",
+            "host-mode-plan",
+            "--goal-id",
+            "host-mode-plan-cli-fixture",
+            "--intent",
+            "watch_each_turn",
+            "--host-capability",
+            "visible_session",
+            *host_args,
+        )
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        visible = next(
+            option for option in payload["mode_options"] if option["mode"] == "visible_tui"
+        )
+        assert payload["selected_capability_ready"] is False, payload
+        assert payload["selected_connector_id"] is None, payload
+        assert payload["selected_turn_mapping"]["host"] is None, payload
+        assert payload["operator_next_steps"][0]["kind"] == "stop", payload
+        assert visible["host_identity"] == expected_identity, visible
+        assert visible["recommended_next_steps"][0]["kind"] == "stop", visible
+
+
 def test_cli_shell_service_fails_closed_without_adapter_and_validator() -> None:
     proc = run_cli(
         "--format",
@@ -209,6 +239,7 @@ def main() -> int:
     test_cli_selects_headless_turn_and_scopes_agent_id()
     test_cli_markdown_explains_benefits()
     test_cli_visible_mode_preserves_host_identity()
+    test_cli_visible_mode_fails_closed_without_registered_host()
     test_cli_shell_service_fails_closed_without_adapter_and_validator()
     test_cli_fails_closed_on_bad_intent()
     test_cli_reports_missing_capabilities_and_stop_steps()
