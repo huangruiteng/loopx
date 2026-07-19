@@ -9,6 +9,7 @@ from ..semantic_preference import application_receipt, recall
 
 
 BUILD_SCHEMA = "issue_fix_pr_description_build_v0"
+PUBLICATION_GATE_SCHEMA = "issue_fix_pr_description_publication_gate_v0"
 SURFACE = "issue_fix.pr_description"
 ISSUE_REFERENCE_BLOCK_SCHEMA = "issue_fix_pr_issue_reference_block_v0"
 
@@ -34,12 +35,52 @@ _CANONICAL_CLOSING_KEYWORD = {
     "resolves": "Resolves",
     "resolved": "Resolves",
 }
-
 PreferenceApplier = Callable[
     [str, Sequence[Mapping[str, Any]]],
     Mapping[str, Any],
 ]
 Recall = Callable[..., dict[str, Any]]
+
+
+def validate_issue_fix_pr_description_publication(
+    *,
+    project: str | Path,
+    build_packet: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Require only proof that the PR-description recall path executed."""
+
+    recall_required = (
+        Path(project).expanduser().resolve()
+        / ".loopx/config/semantic-preference.json"
+    ).exists()
+    preference = (
+        build_packet.get("semantic_preference")
+        if isinstance(build_packet, Mapping)
+        and build_packet.get("schema_version") == BUILD_SCHEMA
+        else None
+    )
+    preference = preference if isinstance(preference, Mapping) else {}
+    recall_executed = preference.get("recall_executed") is True
+    ok = not recall_required or recall_executed
+
+    return {
+        "ok": ok,
+        "schema_version": PUBLICATION_GATE_SCHEMA,
+        "status": (
+            "verified"
+            if recall_executed
+            else "not_required"
+            if ok
+            else "blocked"
+        ),
+        "blocker": None if ok else "pr_description_recall_evidence_required",
+        "recall_required": recall_required,
+        "recall_executed": recall_executed,
+        "recall_status": str(preference.get("recall_status") or "") or None,
+        "required_evidence_inputs": (
+            ["pr_description_build_json"] if recall_required else []
+        ),
+    }
 
 
 def _normalise_issue_references(
@@ -162,6 +203,7 @@ def _result(
     description: str,
     recall_status: str,
     application_status: str,
+    recall_executed: bool = False,
     recalled_item_count: int = 0,
     applied_preference_count: int = 0,
     receipt: Mapping[str, Any] | None = None,
@@ -182,6 +224,7 @@ def _result(
         "description_changed": description_changed or issue_reference_changed,
         "semantic_preference": {
             "surface": SURFACE,
+            "recall_executed": recall_executed,
             "recall_status": recall_status,
             "application_status": application_status,
             "recalled_item_count": recalled_item_count,
@@ -294,6 +337,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status=recall_status,
+            recall_executed=True,
             fail_open_preserved_base=recall_status == "provider_unavailable",
             issue_reference_policy=issue_reference_policy,
             corpus_inventory=corpus_inventory,
@@ -304,6 +348,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status="available_not_applied",
+            recall_executed=True,
             recalled_item_count=len(items),
             issue_reference_policy=issue_reference_policy,
             corpus_inventory=corpus_inventory,
@@ -337,6 +382,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status="application_failed",
+            recall_executed=True,
             recalled_item_count=len(items),
             receipt=application_receipt(
                 surface=SURFACE,
@@ -355,6 +401,7 @@ def build_issue_fix_pr_description(
         description=description,
         recall_status=recall_status,
         application_status=outcome,
+        recall_executed=True,
         recalled_item_count=len(items),
         applied_preference_count=len(set(applied_refs)),
         receipt=application_receipt(

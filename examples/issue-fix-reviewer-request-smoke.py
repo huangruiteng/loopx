@@ -1969,6 +1969,61 @@ def main() -> int:
         assert drain_calls[-1]["number"] == 103
         assert len(drain_calls) == 3
 
+        write(path / ".loopx/config/semantic-preference.json", "{}")
+        gated_combined = FakeCombinedRunner(FakeGitHubRunner(before=metadata()))
+        missing_publication_evidence = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            notification_sinks_input=sinks_input,
+            execute=True,
+            runner=gated_combined,
+        )
+        assert missing_publication_evidence["ok"] is False
+        assert missing_publication_evidence["blocker"] == (
+            "pr_description_recall_evidence_required"
+        )
+        assert missing_publication_evidence["selected_reviewers"] == []
+        assert missing_publication_evidence["external_writes_performed"] is False
+        assert missing_publication_evidence["pr_description_publication_gate"][
+            "required_evidence_inputs"
+        ] == ["pr_description_build_json"]
+        assert missing_publication_evidence["secondary_notification_status"] == (
+            "skipped_reviewer_unavailable"
+        )
+        assert gated_combined.github.edits == 0
+        assert gated_combined.github.comments == 0
+        assert gated_combined.lark_calls == []
+        assert_public_safe(missing_publication_evidence)
+
+        publication_build = {
+            "schema_version": "issue_fix_pr_description_build_v0",
+            "semantic_preference": {
+                "surface": "issue_fix.pr_description",
+                "recall_executed": True,
+                "recall_status": "completed",
+            },
+        }
+        verified_runner = FakeGitHubRunner(
+            before=metadata(),
+            after=metadata(requested=["service-owner"]),
+        )
+        verified_publication = build_issue_fix_reviewer_request_packet(
+            repo_path=path,
+            url="https://github.com/owner/repo/pull/42",
+            base_ref="main",
+            pr_description_build=publication_build,
+            execute=True,
+            runner=verified_runner,
+        )
+        assert verified_publication["ok"] is True, verified_publication
+        assert verified_publication["pr_description_publication_gate"]["status"] == (
+            "verified"
+        )
+        assert verified_publication["review_request_verified"] is True
+        assert verified_runner.edits == 1
+        assert_public_safe(verified_publication)
+
         subprocess.run(
             [
                 sys.executable,

@@ -85,6 +85,7 @@ json.dump({
     assert counter.read_text() == "1", "enabled build must call provider once"
     assert applied["description"].startswith("## 动机"), applied
     preference = applied["semantic_preference"]
+    assert preference["recall_executed"] is True, preference
     assert preference["application_status"] == "applied", preference
     assert preference["receipt"]["outcome"] == "applied", preference
     assert preference["corpus_inventory"][0]["corpus_id"] == (
@@ -185,6 +186,7 @@ json.dump({
     )
     assert counter.read_text() == "1", "disabled build must not call provider"
     assert disabled_result["description"] == BASE, disabled_result
+    assert disabled_result["semantic_preference"]["recall_executed"] is True
     assert disabled_result["semantic_preference"]["recall_status"] == "disabled"
 
     def unexpected_recall(*_args, **_kwargs):
@@ -196,6 +198,7 @@ json.dump({
         recall_fn=unexpected_recall,
     )
     assert unconfigured["description"] == BASE, unconfigured
+    assert unconfigured["semantic_preference"]["recall_executed"] is False
 
     failing = temp / "failing.json"
     failing.write_text(
@@ -225,6 +228,7 @@ json.dump({
         ),
     )
     assert unavailable["description"].endswith("Fixes #22\n"), unavailable
+    assert unavailable["semantic_preference"]["recall_executed"] is True
     assert unavailable["fail_open_preserved_base"] is True, unavailable
 
     unattributed = build_issue_fix_pr_description(

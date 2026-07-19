@@ -216,6 +216,13 @@ def register_issue_fix_reviewer_commands(
         ),
     )
     reviewer_request_parser.add_argument(
+        "--pr-description-build-json",
+        help=(
+            "Compact issue_fix_pr_description_build_v0 JSON proving the PR "
+            "description recall path executed before notification writes."
+        ),
+    )
+    reviewer_request_parser.add_argument(
         "--notification-sinks-json",
         help=(
             "Optional local-private issue_fix_reviewer_notification_sinks_input_v0 "
@@ -801,6 +808,11 @@ def handle_issue_fix_reviewer_command(
         reviewer_artifact_reward_memory=reviewer_artifact_reward_memory,
         reviewer_notification_reward_memory=reviewer_notification_reward_memory,
         reviewer_artifact_required=reviewer_artifact_required,
+        pr_description_build=(
+            load_json_object(args.pr_description_build_json)
+            if getattr(args, "pr_description_build_json", None)
+            else None
+        ),
         provider_payload=(
             load_json_object(args.metadata_json) if args.metadata_json else None
         ),

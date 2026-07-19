@@ -9,6 +9,7 @@ from typing import Any
 
 from ...control_plane.runtime.public_safety import public_safe_compact_text
 from .metadata_preview import normalise_github_issue_reference
+from .pr_description import validate_issue_fix_pr_description_publication
 from .reviewer_notification import (
     NotificationSinkAdapter,
     build_issue_fix_reviewer_notification_sinks_result,
@@ -525,6 +526,7 @@ def build_issue_fix_reviewer_request_packet(
     reviewer_artifact_reward_memory: Mapping[str, Any] | None = None,
     reviewer_notification_reward_memory: Mapping[str, Any] | None = None,
     reviewer_artifact_required: bool = False,
+    pr_description_build: Mapping[str, Any] | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
@@ -562,6 +564,10 @@ def build_issue_fix_reviewer_request_packet(
         )
         external_reads = True
         metadata = fetched or {}
+    publication_gate = validate_issue_fix_pr_description_publication(
+        project=repo_path,
+        build_packet=pr_description_build,
+    )
     identities = _metadata_identities(metadata, repo=repo, number=number)
     excluded = list(exclude_reviewers)
     if identities["author_handle"]:
@@ -604,7 +610,11 @@ def build_issue_fix_reviewer_request_packet(
     ][:remaining_slots]
     author_exclusion_verified = bool(identities["author_handle"])
     pr_state_verified = identities["state"] in {"OPEN", "CLOSED", "MERGED"}
-    if not author_exclusion_verified or not pr_state_verified:
+    if (
+        not author_exclusion_verified
+        or not pr_state_verified
+        or publication_gate["ok"] is not True
+    ):
         selected = []
 
     existing_notified_reviewers = list(
@@ -633,7 +643,7 @@ def build_issue_fix_reviewer_request_packet(
     )
 
     packet: dict[str, Any] = {
-        "ok": metadata_error is None,
+        "ok": metadata_error is None and publication_gate["ok"] is True,
         "schema_version": ISSUE_FIX_REVIEWER_REQUEST_SCHEMA_VERSION,
         "mode": "issue-fix-reviewer-request",
         "generated_at": generated_at,
@@ -681,6 +691,7 @@ def build_issue_fix_reviewer_request_packet(
             execute and identities["semantic_comment_notified_reviewers"]
         ),
         "reviewer_comment_url": existing_comment_url,
+        "pr_description_publication_gate": publication_gate,
         "private_repo_state_read": True,
         "local_paths_captured": False,
         "raw_provider_payload_captured": False,
@@ -709,6 +720,17 @@ def build_issue_fix_reviewer_request_packet(
                 "without excluding the PR author."
             ),
             material_change=True,
+        )
+    elif publication_gate["ok"] is not True:
+        packet["blocker"] = publication_gate["blocker"]
+        packet["transition"] = _transition(
+            decision="blocker",
+            action_kind="issue_fix_pr_description_recall_evidence",
+            reason=(
+                "Run the PR-description recall path and pass its compact build "
+                "packet before requesting review or sending a notification."
+            ),
+            material_change=False,
         )
     elif not author_exclusion_verified:
         packet["ok"] = False
