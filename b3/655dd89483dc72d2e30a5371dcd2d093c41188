@@ -1,0 +1,45 @@
+loopx/capabilities/auto_research/cli.py
+  s_32e2a9a204a8e4::t_fdae44b33c7073 40
+loopx/capabilities/auto_research/defaults.py
+  s_32e2a9a204a8e4::t_6465dca0f5af3f 3
+loopx/capabilities/auto_research/demo_e2e.py
+  s_32e2a9a204a8e4::t_a6a1e2b9764127 27
+loopx/capabilities/auto_research/preset.py
+  s_32e2a9a204a8e4::t_e5332012c933ab 21
+loopx/capabilities/auto_research/worker_runtime.py
+  s_32e2a9a204a8e4::t_5d4a05b784b516 25
+loopx/cli.py
+  s_32e2a9a204a8e4::t_d934e4735597db 58,92
+loopx/cli_commands/__init__.py
+  s_32e2a9a204a8e4::t_c1691a67192708 107,182,240,295
+loopx/cli_commands/review_batch.py
+  s_32e2a9a204a8e4::t_36165d8982aba6 10-13
+loopx/cli_commands/starter.py
+  s_32e2a9a204a8e4::t_400eebb5b938c1 7
+loopx/control_plane/agents/multi_agent/role_successor.py
+  s_32e2a9a204a8e4::t_9efc8bb68440e7 7-8
+loopx/control_plane/agents/multi_agent/visible_launch_policy.py
+  s_32e2a9a204a8e4::t_45a89e2b077c06 9
+loopx/visible_multi_agent_launcher.py
+  s_32e2a9a204a8e4::t_3e06c1b1d319ed 12,24,28,32,729
+loopx/visible_multi_agent_tmux.py
+  s_32e2a9a204a8e4::t_5458ba11f0a18e 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b3655dd89483dc72d2e30a5371dcd2d093c41188",
+  "prompts": {},
+  "sessions": {
+    "s_32e2a9a204a8e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edfef-3f29-7ed2-9863-54f553ac4387",
+        "model": "unknown"
+      },
+      "human_author": "huangrt01 <huangrt01@163.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
