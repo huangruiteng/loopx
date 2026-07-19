@@ -105,7 +105,7 @@ path, and canary route rather than as a user-facing release baseline.
 - `v0.1.8` on 2026-07-04 16:53 +08:00: deterministic host-loop activation
   release at the matching `v0.1.8` tag. This release gives new agent hosts an explicit
   `agent-onboard` contract for choosing `codex-app`, `codex-cli`,
-  `claude-code`, `manual`, or `other-agent`, rejects ambiguous inputs such as
+  `claude-code`, `opencode`, `manual`, or `other-agent`, rejects ambiguous inputs such as
   `codex`, and makes `/loopx <task>` activate or gate the correct host loop
   after todo writeback.
 - `v0.1.9` on 2026-07-05 21:45 +08:00: real auto-research and agent-scoped

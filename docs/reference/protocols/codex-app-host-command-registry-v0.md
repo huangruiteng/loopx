@@ -80,7 +80,7 @@ Example registry entry:
 
 Hosts that do not know their exact runtime type should first call
 `loopx agent-onboard --list-agent-types`, then pass a canonical value such as
-`codex-app`, `codex-cli`, or `claude-code`. Ambiguous values such as `codex`
+`codex-app`, `codex-cli`, `opencode`, or `claude-code`. Ambiguous values such as `codex`
 are invalid because Codex App heartbeat automation and Codex CLI `/goal` have
 different activation procedures.
 
@@ -165,9 +165,9 @@ fields can rerun the advertised command or pass
 `--include-command-pack-detail`. Both modes must produce the same host-action
 projection before a compact default is promoted.
 
-`start-goal` does not guess among Codex App, the Codex IDE plugin, and Codex CLI
-TUI. Callers should pass `--host-surface codex-app`,
-`codex-ide-plugin`, or `codex-cli-tui` for the exact current host.
+`start-goal` does not guess among Codex App, the Codex IDE plugin, Codex CLI
+TUI, or OpenCode. Callers should pass `--host-surface codex-app`,
+`codex-ide-plugin`, `codex-cli-tui`, or `opencode` for the exact current host.
 `codex-ide-plugin` means the installed IDE plugin host, not any Codex session
 used alongside an editor. The legacy `codex-ide` value remains accepted as a
 compatibility alias but is not offered by the selection gate. If the option is

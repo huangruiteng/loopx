@@ -123,8 +123,8 @@ integrations that need the lower-level handoff packet can use
 manager or PR review commands, use `loopx slash-commands` to print the current
 canonical command list and fallback CLI shapes.
 
-Use `codex-app`, `codex-ide-plugin`, or `codex-cli-tui` for the corresponding
-Codex host. Select `codex-ide-plugin` only when LoopX is running through the
+Use `codex-app`, `codex-ide-plugin`, `codex-cli-tui`, or `opencode` for the
+corresponding host. Select `codex-ide-plugin` only when LoopX is running through the
 installed IDE plugin; using Codex beside an editor does not make the host an IDE
 plugin. If the exact host is not known, omit `--host-surface` once: LoopX
 returns a read-only selection gate with exact rerun commands and does not write
