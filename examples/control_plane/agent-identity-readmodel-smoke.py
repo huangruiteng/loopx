@@ -13,6 +13,7 @@ from loopx.control_plane.agents.identity import (  # noqa: E402
     build_quota_agent_identity,
     quota_registered_agents,
 )
+from loopx.control_plane.agents.profile import normalize_agent_profile  # noqa: E402
 from loopx.control_plane.agents.runtime_model import (  # noqa: E402
     AgentRuntimeModel,
     agent_runtime_model_for_goal,
@@ -87,6 +88,40 @@ def assert_peer_identity_projects_only_valid_advisory_profile() -> None:
     assert "agent_profile" not in invalid_identity, invalid_identity
 
 
+def assert_long_lived_profile_requires_vision_by_default() -> None:
+    profile = normalize_agent_profile(
+        {
+            "agent_id": AGENTS[1],
+            "default_task_classes": ["advancement_task", "continuous_monitor"],
+        },
+        registered_agents=AGENTS,
+    )
+    assert profile["vision_requirement"] == "required", profile
+
+    optional = normalize_agent_profile(
+        {
+            "agent_id": AGENTS[1],
+            "default_task_classes": ["advancement_task", "continuous_monitor"],
+            "vision_requirement": "optional",
+        },
+        registered_agents=AGENTS,
+    )
+    assert optional["vision_requirement"] == "optional", optional
+
+    try:
+        normalize_agent_profile(
+            {
+                "agent_id": AGENTS[1],
+                "vision_requirement": "sometimes",
+            },
+            registered_agents=AGENTS,
+        )
+    except ValueError as exc:
+        assert "vision_requirement" in str(exc), exc
+    else:
+        raise AssertionError("invalid vision requirement should fail closed")
+
+
 def assert_legacy_state_only_projects_migration() -> None:
     goal = legacy_goal()
     identity = build_quota_agent_identity(goal, agent_id=AGENTS[1])
@@ -136,6 +171,7 @@ def assert_errors_are_actionable() -> None:
 def main() -> None:
     assert_peer_identity_has_no_rank()
     assert_peer_identity_projects_only_valid_advisory_profile()
+    assert_long_lived_profile_requires_vision_by_default()
     assert_legacy_state_only_projects_migration()
     assert_assignment_is_deterministic()
     assert_errors_are_actionable()

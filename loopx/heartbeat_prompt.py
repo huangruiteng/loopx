@@ -136,6 +136,7 @@ def agent_profile_prompt_projection(profile: dict[str, Any] | None) -> dict[str,
         "default_scopes",
         "scopes",
         "default_task_classes",
+        "vision_requirement",
         "preferred_action_kinds",
         "avoid_action_kinds",
     }

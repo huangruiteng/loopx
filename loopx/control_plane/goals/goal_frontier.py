@@ -8,6 +8,7 @@ from ..agents.agent_scope import (
     agent_scope_item_claimed_by,
     agent_scope_item_claimed_by_agent_or_unclaimed,
 )
+from ..agents.profile import agent_profile_requires_vision
 from ..agents.runtime_model import peer_work_key, select_peer_for_work
 from ..work_items.autonomous_replan_ack import (
     autonomous_replan_ack_matches_frontier,
@@ -45,6 +46,7 @@ LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
 VISION_SUCCESSOR_GAP_TRIGGER = "vision_successor_required"
 VISION_CHECKPOINT_MISSING_TRIGGER = "vision_checkpoint_missing"
+VISION_PROFILE_MISSING_TRIGGER = "required_agent_vision_missing"
 TODO_SUCCESSION_GAP_TRIGGER = "completed_advancement_without_successor"
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
@@ -634,6 +636,41 @@ def acceptance_gaps_from_agent_vision(
     return [gap]
 
 
+def acceptance_gaps_from_agent_profile_requirement(
+    agent_profile: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+    agent_vision: dict[str, Any] | None,
+    missing_checkpoint: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Require a vision baseline for registered long-lived peer lanes."""
+
+    if (
+        not agent_id
+        or not agent_profile_requires_vision(agent_profile)
+        or isinstance(agent_vision, dict)
+        or isinstance(missing_checkpoint, dict)
+    ):
+        return []
+    return [
+        {
+            "kind": VISION_PROFILE_MISSING_TRIGGER,
+            "source": "agent_profile",
+            "agent_id": agent_id,
+            "replan_trigger_summary": (
+                "the registered long-lived agent lane requires a persisted vision "
+                "baseline before ordinary delivery or monitor-only quiet wait"
+            ),
+            "acceptance_summary": (
+                "Write a bounded agent vision with objective, acceptance evidence, "
+                "advancement policy, and replan trigger; or explicitly mark the "
+                "profile vision requirement optional."
+            ),
+            "advancement_policy": "repeat_until_closed",
+        }
+    ]
+
+
 def acceptance_gaps_from_vision_checkpoint(
     checkpoint: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
@@ -1187,7 +1224,8 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         item for item in (acceptance_gaps or []) if isinstance(item, dict)
     ]
     successor_vision_required = any(
-        item.get("kind") == VISION_SUCCESSOR_GAP_TRIGGER
+        item.get("kind")
+        in {VISION_SUCCESSOR_GAP_TRIGGER, VISION_PROFILE_MISSING_TRIGGER}
         for item in compact_acceptance_gaps
     )
     acceptance_allows_watch_lane_continuation = bool(
@@ -1514,6 +1552,7 @@ def build_goal_frontier_projection_context_from_status(
     neutral_replan_ack_classifications: set[str],
     registered_agent_ids: list[str] | None = None,
     goal_status: str | None = None,
+    agent_profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the quota-facing goal-frontier read model.
 
@@ -1548,7 +1587,13 @@ def build_goal_frontier_projection_context_from_status(
         agent_id=agent_id,
     )
     source_acceptance_gaps = (
-        acceptance_gaps_from_agent_vision(
+        acceptance_gaps_from_agent_profile_requirement(
+            agent_profile,
+            agent_id=agent_id,
+            agent_vision=latest_agent_vision,
+            missing_checkpoint=latest_missing_vision_checkpoint,
+        )
+        + acceptance_gaps_from_agent_vision(
             latest_agent_vision,
             goal_status=goal_status,
         )

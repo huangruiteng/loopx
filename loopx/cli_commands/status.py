@@ -567,6 +567,12 @@ def _build_agent_member_projection(
     scope_summary = _profile_scope_summary(profile)
     if scope_summary:
         member["scope_summary"] = scope_summary
+    vision_requirement = _compact_member_text(
+        profile.get("vision_requirement"),
+        limit=16,
+    )
+    if vision_requirement:
+        member["vision_requirement"] = vision_requirement
     member["handoff_assignment_status"] = "task_policy_selected"
     return member
 

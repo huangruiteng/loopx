@@ -18,6 +18,7 @@ AGENT_PROFILE_FIELDS = {
     "profile_role",
     "scope_summary",
     "default_task_classes",
+    "vision_requirement",
     "preferred_action_kinds",
     "avoid_action_kinds",
 }
@@ -32,6 +33,7 @@ AGENT_PROFILE_HIERARCHY_ROLES = {
 AGENT_PROFILE_HIERARCHY_AGENT_ROLE = re.compile(
     r"(?:^|-)(?:main|primary|side)-agent(?:-|$)"
 )
+AGENT_PROFILE_VISION_REQUIREMENTS = {"optional", "required"}
 
 
 def _bounded_text(value: Any, *, field: str, limit: int) -> str | None:
@@ -103,6 +105,29 @@ def _action_patterns(value: Any, *, field: str) -> list[str]:
     return patterns
 
 
+def _vision_requirement(value: Any, *, task_classes: list[str]) -> str | None:
+    requirement = str(value or "").strip().lower()
+    if requirement and requirement not in AGENT_PROFILE_VISION_REQUIREMENTS:
+        raise ValueError(
+            "agent profile vision_requirement must be optional or required"
+        )
+    if requirement:
+        return requirement
+    if {"advancement_task", "continuous_monitor"}.issubset(task_classes):
+        return "required"
+    return None
+
+
+def agent_profile_requires_vision(profile: Mapping[str, Any] | None) -> bool:
+    if not isinstance(profile, Mapping):
+        return False
+    requirement = str(profile.get("vision_requirement") or "").strip().lower()
+    if requirement:
+        return requirement == "required"
+    task_classes = _task_classes(profile.get("default_task_classes"))
+    return {"advancement_task", "continuous_monitor"}.issubset(task_classes)
+
+
 def normalize_agent_profile(
     raw_profile: Mapping[str, Any],
     *,
@@ -140,6 +165,7 @@ def normalize_agent_profile(
             "agent profile action kind globs cannot be both preferred and avoided: "
             + ", ".join(overlap)
         )
+    task_classes = _task_classes(raw_profile.get("default_task_classes"))
     profile = {
         "schema_version": PEER_AGENT_PROFILE_SCHEMA_VERSION,
         "agent_id": agent_id,
@@ -149,8 +175,10 @@ def normalize_agent_profile(
             field="scope_summary",
             limit=320,
         ),
-        "default_task_classes": _task_classes(
-            raw_profile.get("default_task_classes")
+        "default_task_classes": task_classes,
+        "vision_requirement": _vision_requirement(
+            raw_profile.get("vision_requirement"),
+            task_classes=task_classes,
         ),
         "preferred_action_kinds": preferred,
         "avoid_action_kinds": avoided,

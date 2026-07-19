@@ -349,7 +349,8 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         default=None,
         help=(
             "Validated agent_profile_v1 JSON object for a registered peer. "
-            "Repeatable; writes advisory task routing hints only."
+            "Repeatable; writes advisory task routing hints plus the peer lane's "
+            "vision requirement."
         ),
     )
     configure_goal_parser.add_argument(

@@ -1198,6 +1198,13 @@ def _effective_action(
     return "quota_skip"
 
 
+def _quota_agent_profile(agent_identity: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(agent_identity, dict):
+        return None
+    profile = agent_identity.get("agent_profile")
+    return profile if isinstance(profile, dict) else None
+
+
 def build_quota_should_run(
     status_payload: dict[str, Any],
     *,
@@ -1414,6 +1421,7 @@ def build_quota_should_run(
             neutral_replan_ack_classifications=AUTONOMOUS_REPLAN_ACK_NEUTRAL_CLASSIFICATIONS,
             registered_agent_ids=registered_agent_ids,
             goal_status=str(registry_goal.get("status") or ""),
+            agent_profile=_quota_agent_profile(agent_identity),
         )
         replan_obligation = goal_frontier_context.get("replan_obligation")
         replan_scope = goal_frontier_context.get("replan_scope") or {}

@@ -1065,6 +1065,58 @@ def assert_repeat_advancement_vision_replans_past_peer_only_work() -> None:
     assert "next runnable" in action["text"], guard
 
 
+def assert_required_profile_without_vision_replans_past_peer_only_work() -> None:
+    payload = status_payload(
+        [monitor_item(), primary_claimed_advancement()],
+        replan_obligation=None,
+    )
+    profile = {
+        "schema_version": "agent_profile_v1",
+        "agent_id": SIDE_AGENT,
+        "profile_role": "quality-qualification",
+        "scope_summary": "Continuous qualification and maintainability work.",
+        "default_task_classes": ["advancement_task", "continuous_monitor"],
+    }
+    for coordination in (
+        payload["attention_queue"]["items"][0]["coordination"],
+        payload["run_history"]["goals"][0]["coordination"],
+    ):
+        coordination["agent_profiles"] = {SIDE_AGENT: profile}
+
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["effective_action"] == "autonomous_replan_required", guard
+    assert guard["agent_identity"]["agent_profile"]["vision_requirement"] == (
+        "required"
+    ), guard
+    gaps = guard["goal_frontier_projection"]["acceptance_gaps"]
+    assert gaps[0]["kind"] == "required_agent_vision_missing", guard
+    assert gaps[0]["source"] == "agent_profile", guard
+    frontier = guard["goal_frontier_projection"]["remaining_advancement_frontier"]
+    assert frontier == {
+        "current_agent_claimed_advancement_count": 0,
+        "unclaimed_advancement_count": 0,
+        "other_agent_claimed_advancement_count": 1,
+    }, guard
+    assert "agent_scope_frontier" not in guard, guard
+
+    profile["vision_requirement"] = "optional"
+    optional_guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    assert optional_guard["decision"] != "autonomous_replan_required", optional_guard
+    assert optional_guard["goal_frontier_projection"]["acceptance_gaps"] == [], (
+        optional_guard
+    )
+
+
 def assert_repeat_advancement_vision_accepts_runnable_successor() -> None:
     guard = build_quota_should_run(
         status_payload(
@@ -1584,6 +1636,7 @@ def main() -> None:
     assert_due_monitor_runs_under_watched_open_agent_vision()
     assert_repeat_advancement_vision_beats_watch_lane_continuation_ack()
     assert_repeat_advancement_vision_replans_past_peer_only_work()
+    assert_required_profile_without_vision_replans_past_peer_only_work()
     assert_repeat_advancement_vision_accepts_runnable_successor()
     assert_non_watch_replan_ack_does_not_suppress_open_agent_vision()
     assert_open_agent_vision_with_runnable_frontier_uses_neutral_gap_trigger()

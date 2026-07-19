@@ -1363,6 +1363,10 @@ def append_attention_queue_project_asset_markdown(
             member_fields.append(f"profile_role={markdown_scalar(agent_member['profile_role'])}")
         if agent_member.get("scope_summary"):
             member_fields.append(f"scope={markdown_scalar(agent_member['scope_summary'])}")
+        if agent_member.get("vision_requirement"):
+            member_fields.append(
+                f"vision_requirement={markdown_scalar(agent_member['vision_requirement'])}"
+            )
         member_fields.extend(
             [
                 f"claims={markdown_scalar(current_claims)}",
