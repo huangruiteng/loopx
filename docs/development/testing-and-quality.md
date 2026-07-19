@@ -296,11 +296,12 @@ projection repair. Three composition scenarios check vision/monitor/peer replan
 precedence, non-blocking user notice plus ready-successor execution, and
 capability fallback into monitor-schedule repair. Each scenario has an
 independent deterministic source oracle; every repeat must pass and hard actor
-errors are not retried. The live turn actor consumes the actual `TurnEnvelope`
-and returns runtime-facing decisions rather than echoing the testing-only
-nine-field semantic contract. Exact scheduler, vision, writeback, and warning
-fields stay in deterministic action-signature coverage; pair mode keeps
-semantic extraction for explicit packet differentials or outcome claims.
+errors are not retried. The live turn actor consumes the default full
+`quota should-run` packet used by Codex App automation and returns runtime-facing
+decisions rather than echoing the testing-only nine-field semantic contract.
+Exact scheduler, vision, writeback, and warning fields stay in deterministic
+action-signature coverage; pair mode keeps TurnEnvelope semantic extraction for
+explicit packet differentials or outcome claims.
 
 常规 live suite 是 `actual_default_model_behavior_portfolio_v0`：12 个 one-arm
 场景，每个重复 2 次，最多 24 次模型调用。9 个核心场景覆盖正常接入、agent 身份与
@@ -308,9 +309,10 @@ goal 选择、selected todo、peer 身份路由、same-agent 续接、最终 hum
 和 projection repair；3 个组合场景覆盖 vision/monitor/peer replan 优先级、非阻塞
 user notice 与 ready successor 并存，以及 capability fallback 转入 monitor schedule
 修复。每个场景都有独立的确定性 source oracle，所有重复都必须通过；actor 硬错误不
-自动重试。live turn actor 直接读取实际 `TurnEnvelope` 并返回运行时决策，不再回显测试
-专用的九字段 semantic contract。scheduler、vision、writeback 与 warning 的精确字段
-继续由 action-signature 确定性覆盖；pair 只用于明确的 packet 差分或结果提升声明。
+自动重试。live turn actor 直接读取 Codex App automation 使用的默认完整
+`quota should-run` packet 并返回运行时决策，不再回显测试专用的九字段 semantic
+contract。scheduler、vision、writeback 与 warning 的精确字段继续由 action-signature
+确定性覆盖；pair 中的 TurnEnvelope 只用于明确的 packet 差分或结果提升声明。
 
 For onboarding packets, the suite uses the shipped guided packet builder and
 redacts only local absolute path surfaces before provider transport. The

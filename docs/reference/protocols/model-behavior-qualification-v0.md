@@ -246,14 +246,16 @@ stochastic output.
 ## Actual-Default Scenario Portfolio
 
 `actual_default_model_behavior_portfolio_v0` is the regular low-frequency live
-suite. It composes the existing TurnEnvelope and onboarding one-arm actors; it
-does not introduce a third model protocol or retain a retired product arm. Its
-fixed catalog covers nine core decisions:
+suite. Its turn scenarios feed the live actor the same default full
+`quota should-run` packet consumed by Codex App automation. Onboarding scenarios
+use the shipped guided-onboarding packet. The suite does not introduce a third
+model protocol or retain a retired product arm. Its fixed catalog covers nine
+core decisions:
 
 1. the normal guided onboarding packet selects `connect_if_needed`;
 2. an unresolved agent identity selects `select_agent_identity`;
 3. multiple goals select `select_goal` before any mutation;
-4. the current TurnEnvelope preserves the exact selected todo;
+4. the default quota packet preserves the exact selected todo;
 5. the selected peer identity matches the todo claim in the model-facing route;
 6. `same_agent_non_delivery` keeps the successor with the completing peer;
 7. a final human gate selects `ask_user` and forbids normal delivery;
@@ -263,7 +265,7 @@ fixed catalog covers nine core decisions:
 
 It also carries three control-plane composition decisions. These are not wider
 snapshots; each packet is generated through the production quota, interaction,
-and TurnEnvelope path and deliberately contains competing signals:
+and scheduler paths and deliberately contains competing signals:
 
 10. a monitor lane and peer-owned advancement both look non-runnable, but a
     missing required per-agent vision still selects autonomous replan;
@@ -276,18 +278,18 @@ and TurnEnvelope path and deliberately contains competing signals:
 
 Every scenario declares its own deterministic source oracle and runs exactly
 twice. The oracle validates exact packet fields before provider spend. The live
-turn actor then reads the shipped `TurnEnvelope` directly and must preserve the
-runtime-facing decision, selected todo, user gate, execution obligation,
-delivery boundary, quiet-wait rule, and ordered action kinds. It is not asked to
-echo the testing-only nine-field semantic contract. Exact scheduler, vision,
-writeback, and warning projections remain deterministic action-signature tests;
-explicit pair/corpus mode retains semantic-contract extraction when a packet
-differential is the thing under test. All attempts must align. Actor or
-transport errors are not retried automatically; the portfolio fails closed and
-stops further calls. The maximum regular run is therefore 24 provider calls.
-Pair mode remains available only for temporary sensitive differentials or
-explicit stable-versus-candidate outcome claims, not as a permanent
-regular-behavior baseline.
+turn actor then reads the default full `quota should-run` packet directly and
+must preserve the runtime-facing decision, selected todo, user gate, execution
+obligation, delivery boundary, quiet-wait rule, and ordered action kinds. It is
+not asked to echo the testing-only nine-field semantic contract. Exact
+scheduler, vision, writeback, and warning projections remain deterministic
+action-signature tests; explicit pair/corpus mode retains TurnEnvelope and
+semantic-contract extraction when a packet differential is the thing under
+test. All attempts must align. Actor or transport errors are not retried
+automatically; the portfolio fails closed and stops further calls. The maximum
+regular run is therefore 24 provider calls. Pair mode remains available only
+for temporary sensitive differentials or explicit stable-versus-candidate
+outcome claims, not as a permanent regular-behavior baseline.
 
 The complete catalog is preflighted before the first provider call. Schema,
 public-safety, action-signature, actual-default, and scenario-oracle failures
@@ -298,8 +300,10 @@ Entry scenarios consume packets produced by the shipped
 the stable command, identity, goal, no-write, no-spend, and host-activation
 invariants. It then replaces local absolute path surfaces with the literal
 `<LOCAL_PATH>` while preserving packet structure; credential-shaped fields and
-credential-like values still fail closed. Turn scenarios require a current
-`loopx_turn_envelope_v0` with verified action-signature parity.
+credential-like values still fail closed. Turn scenarios require the default
+full quota decision shape: `mode=should-run`, a goal id, and the shipped
+`interaction_contract`. TurnEnvelope parity remains a separate deterministic
+and paired-qualification contract.
 The blocking human-gate packet is generated through the shipped
 `build_interaction_contract` path; qualification does not hand-author the
 expected response plan into a separate test-only packet.

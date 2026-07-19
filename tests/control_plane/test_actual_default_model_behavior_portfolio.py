@@ -8,16 +8,14 @@ from typing import Any
 import pytest
 
 from loopx.bootstrap_command_pack import build_start_goal_guided_packet
-from loopx.control_plane.quota.turn_envelope import (
-    build_turn_envelope,
-    turn_envelope_action_signature_document,
-)
+from loopx.control_plane.quota.turn_envelope import quota_action_signature_document
 from loopx.control_plane.testing.actual_default_model_behavior_portfolio import (
     actual_default_model_behavior_scenario_catalog,
     build_actual_default_model_behavior_scenario_packets,
     run_actual_default_model_behavior_portfolio,
 )
 from loopx.control_plane.testing.model_behavior_qualification import (
+    FULL_QUOTA_DECISION_PACKET_SCHEMA_VERSION,
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
     MODEL_BEHAVIOR_DECISION_SCHEMA_VERSION,
     model_behavior_semantic_contract_from_packet,
@@ -213,20 +211,16 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
     )
     packets.update(
         {
-            "turn_selected_todo": build_turn_envelope(_turn_source(human_gate=False)),
-            "turn_peer_agent_identity": build_turn_envelope(
-                _turn_source(
-                    human_gate=False,
-                    agent_id="codex-portfolio-reviewer",
-                )
+            "turn_selected_todo": _turn_source(human_gate=False),
+            "turn_peer_agent_identity": _turn_source(
+                human_gate=False,
+                agent_id="codex-portfolio-reviewer",
             ),
-            "turn_same_agent_continuation": build_turn_envelope(
-                _turn_source(
-                    human_gate=False,
-                    continuation_policy="same_agent_non_delivery",
-                )
+            "turn_same_agent_continuation": _turn_source(
+                human_gate=False,
+                continuation_policy="same_agent_non_delivery",
             ),
-            "turn_human_gate": build_turn_envelope(_turn_source(human_gate=True)),
+            "turn_human_gate": _turn_source(human_gate=True),
             "turn_required_vision_replan": production_packets[
                 "turn_required_vision_replan"
             ],
@@ -259,7 +253,7 @@ def _scenario_packets(tmp_path: Path) -> dict[str, dict[str, Any]]:
 
 def _turn_decision(request: Mapping[str, Any]) -> dict[str, Any]:
     packet = request["packet"]
-    signature = turn_envelope_action_signature_document(packet)
+    signature = quota_action_signature_document(packet)
     action = dict(signature["action"])
     user = dict(signature["user"])
     selected = dict(action.get("selected_todo") or {})
@@ -296,7 +290,7 @@ def _turn_decision(request: Mapping[str, Any]) -> dict[str, Any]:
         "reason_codes": ["source_aligned"],
         "semantic_contract": model_behavior_semantic_contract_from_packet(
             packet,
-            arm="candidate_packet",
+            arm="full_packet",
         ),
     }
 
@@ -335,21 +329,24 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
     packets = build_actual_default_model_behavior_scenario_packets(tmp_path)
 
     gate = packets["turn_human_gate"]
-    assert gate["response_plan"] == {
+    assert gate["mode"] == "should-run"
+    gate_signature = quota_action_signature_document(gate)
+    assert gate_signature["response_plan"] == {
         "schema_version": "interaction_response_plan_v0",
         "kind": "surface_user_gate",
         "decision": "ask_user",
         "action_sequence": ["notify", "wait"],
         "silent_wait_allowed": False,
     }
-    assert gate["action_signature"]["matches"] is True
     replan = packets["turn_required_vision_replan"]
-    assert replan["action"]["selected_todo"] is None
-    assert replan["action"]["must_attempt"] is True
-    assert replan["action"]["quiet_noop_allowed"] is False
+    assert replan["mode"] == "should-run"
+    replan_signature = quota_action_signature_document(replan)
+    assert replan_signature["action"]["selected_todo"] is None
+    assert replan_signature["action"]["must_attempt"] is True
+    assert replan_signature["action"]["quiet_noop_allowed"] is False
     semantics = model_behavior_semantic_contract_from_packet(
         replan,
-        arm="candidate_packet",
+        arm="full_packet",
     )
     vision = semantics["vision_continuation"]
     assert vision["required"] is True
@@ -357,22 +354,26 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
     assert semantics["required_reads"]
     assert semantics["scheduler_action"]["action"] == "run_now"
     scoped = packets["turn_scoped_gate_successor_replan"]
-    assert scoped["user"]["action_required"] is True
-    assert scoped["action"]["must_attempt"] is True
-    assert scoped.get("response_plan") is None
-    assert scoped["action"]["selected_todo"]["todo_id"] == (
+    scoped_signature = quota_action_signature_document(scoped)
+    assert scoped_signature["user"]["action_required"] is True
+    assert scoped_signature["action"]["must_attempt"] is True
+    assert scoped_signature.get("response_plan") is None
+    assert scoped_signature["action"]["selected_todo"]["todo_id"] == (
         "todo_portfolio_deferred"
     )
     capability = packets["turn_capability_monitor_repair"]
-    assert capability["action"]["selected_todo"]["todo_id"] == (
+    capability_signature = quota_action_signature_document(capability)
+    assert capability_signature["action"]["selected_todo"]["todo_id"] == (
         "todo_portfolio_monitor_schedule"
     )
-    assert "todo_portfolio_monitor_schedule" in capability["action"][
-        "primary_action"
-    ]
-    assert capability["contract_capsule"]["capability_monitor_fallback"][
-        "mode"
-    ] == "monitor_schedule_metadata_repair"
+    assert (
+        "todo_portfolio_monitor_schedule"
+        in capability_signature["action"]["primary_action"]
+    )
+    assert (
+        capability_signature["contract_capsule"]["capability_monitor_fallback"]["mode"]
+        == "monitor_schedule_metadata_repair"
+    )
     assert set(packets) == {
         item["scenario_id"]
         for item in actual_default_model_behavior_scenario_catalog()["scenarios"]
@@ -382,7 +383,8 @@ def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) 
 def test_portfolio_oracle_catches_wrong_selected_todo(tmp_path: Path) -> None:
     def wrong_actor(request: Mapping[str, Any]) -> dict[str, Any]:
         result = _turn_actor(request)
-        if request["packet"]["user"]["action_required"] is False:
+        signature = quota_action_signature_document(request["packet"])
+        if signature["user"]["action_required"] is False:
             result["decision"] = {
                 **result["decision"],
                 "selected_todo_id": "todo_wrong001",
@@ -411,7 +413,7 @@ def test_portfolio_rejects_mutated_blocking_gate_response_plan(tmp_path: Path) -
     packets = _scenario_packets(tmp_path)
     source = _turn_source(human_gate=True)
     source["interaction_contract"]["response_plan"]["action_sequence"] = ["wait"]
-    packets["turn_human_gate"] = build_turn_envelope(source)
+    packets["turn_human_gate"] = source
 
     with pytest.raises(
         ValueError,
@@ -428,7 +430,8 @@ def test_portfolio_rejects_mutated_blocking_gate_response_plan(tmp_path: Path) -
 def test_portfolio_oracle_rejects_silent_wait_for_user_gate(tmp_path: Path) -> None:
     def silent_wait_actor(request: Mapping[str, Any]) -> dict[str, Any]:
         result = _turn_actor(request)
-        if request["packet"]["user"]["action_required"] is True:
+        signature = quota_action_signature_document(request["packet"])
+        if signature["user"]["action_required"] is True:
             result["decision"] = {
                 **result["decision"],
                 "decision": "wait",
@@ -444,9 +447,7 @@ def test_portfolio_oracle_rejects_silent_wait_for_user_gate(tmp_path: Path) -> N
     )
 
     gate = next(
-        item
-        for item in result["scenarios"]
-        if item["scenario_id"] == "turn_human_gate"
+        item for item in result["scenarios"] if item["scenario_id"] == "turn_human_gate"
     )
     assert result["qualification_passed"] is False
     assert gate["failure_codes"] == [
@@ -463,6 +464,15 @@ def test_catalog_declares_independent_bounded_repeat_policy() -> None:
 
     assert catalog["topology"] == "actual_default_one_arm"
     assert len(catalog["scenarios"]) == 12
+    assert all(
+        scenario["packet_view"]
+        == (
+            "quota_should_run_default"
+            if scenario["actor_kind"] == "turn"
+            else "guided_onboarding_default"
+        )
+        for scenario in catalog["scenarios"]
+    )
     composed = [
         scenario
         for scenario in catalog["scenarios"]
@@ -520,7 +530,7 @@ def test_portfolio_preflight_rejects_wrong_same_agent_route(tmp_path: Path) -> N
         continuation_policy="same_agent_non_delivery",
     )
     source["selected_todo"]["claimed_by"] = "codex-wrong-peer"
-    packets["turn_same_agent_continuation"] = build_turn_envelope(source)
+    packets["turn_same_agent_continuation"] = source
     calls = 0
 
     def turn_actor(request: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -542,7 +552,7 @@ def test_portfolio_preflight_rejects_wrong_same_agent_route(tmp_path: Path) -> N
     assert calls == 0
 
 
-def test_portfolio_turn_actor_reads_actual_packet_without_semantic_echo(
+def test_portfolio_turn_actor_reads_actual_default_packet_without_semantic_echo(
     tmp_path: Path,
 ) -> None:
     requests: list[Mapping[str, Any]] = []
@@ -562,7 +572,12 @@ def test_portfolio_turn_actor_reads_actual_packet_without_semantic_echo(
 
     assert result["qualification_passed"] is True
     assert requests
-    assert all(request["arm"] == "candidate_packet" for request in requests)
+    assert all(request["arm"] == "full_packet" for request in requests)
+    assert all(request["packet"]["mode"] == "should-run" for request in requests)
+    assert all(
+        request["packet_schema_version"] == FULL_QUOTA_DECISION_PACKET_SCHEMA_VERSION
+        for request in requests
+    )
     assert all(request["semantic_contract_required"] is False for request in requests)
 
 
@@ -604,10 +619,10 @@ def test_portfolio_oracle_rejects_treating_non_blocking_notice_as_gate(
 ) -> None:
     def blocking_actor(request: Mapping[str, Any]) -> dict[str, Any]:
         result = _turn_actor(request)
-        packet = request["packet"]
+        signature = quota_action_signature_document(request["packet"])
         if (
-            packet["user"]["action_required"] is True
-            and packet.get("response_plan") is None
+            signature["user"]["action_required"] is True
+            and signature.get("response_plan") is None
         ):
             result["decision"] = {
                 **result["decision"],
@@ -639,9 +654,8 @@ def test_portfolio_oracle_rejects_waiting_on_capability_monitor_repair(
 ) -> None:
     def waiting_actor(request: Mapping[str, Any]) -> dict[str, Any]:
         result = _turn_actor(request)
-        fallback = request["packet"]["contract_capsule"].get(
-            "capability_monitor_fallback"
-        )
+        signature = quota_action_signature_document(request["packet"])
+        fallback = signature["contract_capsule"].get("capability_monitor_fallback")
         if isinstance(fallback, Mapping):
             result["decision"] = {
                 **result["decision"],

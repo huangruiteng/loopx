@@ -8,14 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from ...bootstrap_command_pack import build_start_goal_guided_packet
-from ..quota.turn_envelope import (
-    TURN_ENVELOPE_SCHEMA_VERSION,
-    build_turn_envelope,
-    turn_envelope_action_signature_document,
-)
+from ..quota.turn_envelope import quota_action_signature_document
 from ..work_items.interaction_contract import build_interaction_contract
 from .control_plane_composition_scenarios import (
-    build_control_plane_composition_scenario_packets,
+    build_control_plane_composition_scenario_sources,
 )
 from .model_behavior_qualification import (
     ModelBehaviorActor,
@@ -160,6 +156,11 @@ def actual_default_model_behavior_scenario_catalog() -> dict[str, Any]:
                 "expected_route": spec.expected_route,
                 "scenario_family": spec.scenario_family,
                 "composition_dimensions": list(spec.composition_dimensions),
+                "packet_view": (
+                    "quota_should_run_default"
+                    if spec.actor_kind == "turn"
+                    else "guided_onboarding_default"
+                ),
                 "repeat_policy": {
                     "attempts": ACTUAL_DEFAULT_MODEL_BEHAVIOR_REPEAT_ATTEMPTS,
                     "pass_condition": "all_attempts_source_aligned",
@@ -332,29 +333,21 @@ def _turn_scenario_source(
 def build_actual_default_model_behavior_scenario_packets(
     root: Path,
 ) -> dict[str, dict[str, Any]]:
-    """Build the real candidate packet set used by manual live qualification."""
+    """Build the default packets used by Codex App automation qualification."""
 
     packets = _entry_scenario_packets(root)
     packets.update(
         {
-            "turn_selected_todo": build_turn_envelope(
-                _turn_scenario_source(human_gate=False)
+            "turn_selected_todo": _turn_scenario_source(human_gate=False),
+            "turn_peer_agent_identity": _turn_scenario_source(
+                human_gate=False,
+                agent_id="codex-portfolio-reviewer",
             ),
-            "turn_peer_agent_identity": build_turn_envelope(
-                _turn_scenario_source(
-                    human_gate=False,
-                    agent_id="codex-portfolio-reviewer",
-                )
+            "turn_same_agent_continuation": _turn_scenario_source(
+                human_gate=False,
+                continuation_policy="same_agent_non_delivery",
             ),
-            "turn_same_agent_continuation": build_turn_envelope(
-                _turn_scenario_source(
-                    human_gate=False,
-                    continuation_policy="same_agent_non_delivery",
-                )
-            ),
-            "turn_human_gate": build_turn_envelope(
-                _turn_scenario_source(human_gate=True)
-            ),
+            "turn_human_gate": _turn_scenario_source(human_gate=True),
             "onboarding_healthy_continue": build_onboarding_postcondition_observation(
                 check_warning_codes=[],
                 executable_todo_count=1,
@@ -374,7 +367,7 @@ def build_actual_default_model_behavior_scenario_packets(
         }
     )
     packets.update(
-        build_control_plane_composition_scenario_packets(
+        build_control_plane_composition_scenario_sources(
             goal_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_GOAL_ID,
             agent_id=ACTUAL_DEFAULT_MODEL_BEHAVIOR_FIXTURE_AGENT_ID,
         )
@@ -383,9 +376,9 @@ def build_actual_default_model_behavior_scenario_packets(
 
 
 def _turn_expected_contract(packet: Mapping[str, Any]) -> dict[str, Any]:
-    if packet.get("schema_version") != TURN_ENVELOPE_SCHEMA_VERSION:
-        raise ValueError("turn scenarios require the current TurnEnvelope schema")
-    signature = turn_envelope_action_signature_document(packet)
+    if packet.get("mode") != "should-run":
+        raise ValueError("turn scenarios require the default quota should-run packet")
+    signature = quota_action_signature_document(packet)
     action = dict(signature.get("action") or {})
     user = dict(signature.get("user") or {})
     selected_todo = dict(action.get("selected_todo") or {})
@@ -425,20 +418,10 @@ def _scenario_contract(
     packet: Mapping[str, Any],
 ) -> dict[str, Any]:
     if spec.actor_kind == "turn":
-        action_signature = dict(packet.get("action_signature") or {})
-        if action_signature.get("matches") is not True:
-            raise ValueError("turn scenario action signature parity is not verified")
-        signature_digest = _digest(turn_envelope_action_signature_document(packet))
-        if not (
-            action_signature.get("source_hash")
-            == action_signature.get("envelope_hash")
-            == signature_digest
-        ):
-            raise ValueError("turn scenario action signature does not match its packet")
         build_model_behavior_actor_request(
             packet,
             qualification_id=f"portfolio-preflight-{spec.scenario_id}",
-            arm="candidate_packet",
+            arm="full_packet",
             semantic_contract_required=False,
         )
         contract = _turn_expected_contract(packet)
@@ -481,7 +464,7 @@ def _scenario_contract(
     }:
         peer_route = model_behavior_semantic_contract_from_packet(
             packet,
-            arm="candidate_packet",
+            arm="full_packet",
         )["peer_route"]
         if not peer_route.get("agent_id"):
             raise ValueError("peer-agent scenario requires a selected agent identity")
@@ -489,11 +472,11 @@ def _scenario_contract(
             raise ValueError("peer-agent scenario must route work to the selected peer")
         if spec.scenario_id == "turn_same_agent_continuation":
             if peer_route.get("continuation_policy") != "same_agent_non_delivery":
-                raise ValueError(
-                    "same-agent scenario requires same_agent_non_delivery"
-                )
+                raise ValueError("same-agent scenario requires same_agent_non_delivery")
             if peer_route.get("same_agent_continuation") is not True:
-                raise ValueError("same-agent scenario must preserve the completing peer")
+                raise ValueError(
+                    "same-agent scenario must preserve the completing peer"
+                )
     if spec.scenario_id == "turn_human_gate":
         required = {
             "selected_todo_id": None,
@@ -507,7 +490,7 @@ def _scenario_contract(
     if spec.scenario_id == "turn_required_vision_replan":
         semantics = model_behavior_semantic_contract_from_packet(
             packet,
-            arm="candidate_packet",
+            arm="full_packet",
         )
         vision = semantics["vision_continuation"]
         trigger_kinds = set(vision.get("trigger_kinds", []))
@@ -526,9 +509,11 @@ def _scenario_contract(
         if not semantics["required_reads"]:
             raise ValueError("required-vision scenario must preserve required reads")
         if semantics["scheduler_action"].get("action") != "run_now":
-            raise ValueError("required-vision scenario must remain immediately runnable")
+            raise ValueError(
+                "required-vision scenario must remain immediately runnable"
+            )
     if spec.scenario_id == "turn_scoped_gate_successor_replan":
-        signature = turn_envelope_action_signature_document(packet)
+        signature = quota_action_signature_document(packet)
         action = dict(signature.get("action") or {})
         user = dict(signature.get("user") or {})
         selected = dict(action.get("selected_todo") or {})
@@ -544,7 +529,7 @@ def _scenario_contract(
             )
         semantics = model_behavior_semantic_contract_from_packet(
             packet,
-            arm="candidate_packet",
+            arm="full_packet",
         )
         if semantics["gate_or_stop"].get("interaction_mode") != (
             "scoped_user_gate_fallback"
@@ -553,10 +538,11 @@ def _scenario_contract(
         if semantics["scheduler_action"].get("action") != "run_now":
             raise ValueError("scoped-gate fallback must remain immediately runnable")
     if spec.scenario_id == "turn_capability_monitor_repair":
-        capsule = dict(packet.get("contract_capsule") or {})
+        signature = quota_action_signature_document(packet)
+        capsule = dict(signature.get("contract_capsule") or {})
         lane = dict(capsule.get("work_lane_contract") or {})
         fallback = dict(capsule.get("capability_monitor_fallback") or {})
-        action = dict(packet.get("action") or {})
+        action = dict(signature.get("action") or {})
         selected = dict(action.get("selected_todo") or {})
         if not (
             selected.get("todo_id") == "todo_portfolio_monitor_schedule"
@@ -616,7 +602,7 @@ def _scenario_result(
                 receipt = run_model_behavior_qualification_arm(
                     packet,
                     qualification_id=run_id,
-                    arm="candidate_packet",
+                    arm="full_packet",
                     actor=turn_actor,
                     semantic_contract_required=False,
                 )
