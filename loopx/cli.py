@@ -18,10 +18,6 @@ from .capabilities.reward_memory.cli import (
     handle_reward_memory_command,
     register_reward_memory_commands,
 )
-from .capabilities.review_batch.cli import (
-    handle_review_batch_command,
-    register_review_batch_commands,
-)
 from .capabilities.semantic_preference.cli import (
     handle_semantic_preference_command,
     register_semantic_preference_commands,
@@ -59,6 +55,7 @@ from .cli_commands import (
     handle_pr_review_command,
     handle_quota_command,
     handle_ready_score_command,
+    handle_review_batch_command,
     handle_registry_admin_command,
     handle_review_packet_command,
     handle_slash_commands_command,
@@ -92,6 +89,7 @@ from .cli_commands import (
     register_pr_review_command,
     register_quota_command,
     register_ready_score_command,
+    register_review_batch_commands,
     register_registry_admin_commands,
     register_slash_commands_command,
     register_starter_commands,

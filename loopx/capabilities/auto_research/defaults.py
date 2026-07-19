@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..multi_agent.contract import build_three_layer_minimality_contract
+from ...control_plane.agents.multi_agent.contract import build_three_layer_minimality_contract
 from .knn_demo_workspace import (
     KNN_DEMO_CONTRACT_FILE,
     KNN_DEMO_DEV_EVAL_COMMAND,
