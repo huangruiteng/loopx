@@ -1524,6 +1524,8 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "task_setup_preflight_status",
         "fingerprint_confidence",
         "runner_error_len_bucket",
+        "primary_setup_failure_category",
+        "retryability",
         "next_diagnostic_action",
     ):
         text = public_safe_compact_text(value.get(field), limit=180)
@@ -1533,6 +1535,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "compose_setup_failure",
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
+        "apt_repository_failure",
         "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
@@ -1576,6 +1579,17 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     )
     if patterns:
         compact["fingerprint_matched_patterns"] = patterns
+    for field in (
+        "terminal_failure_dependency_classes",
+        "terminal_failure_reason_codes",
+        "terminal_failure_dependency_endpoints",
+    ):
+        values = public_safe_compact_list(
+            value.get(field),
+            limit=MAX_BENCHMARK_RUN_LIST_ITEMS * 2,
+        )
+        if values:
+            compact[field] = values
     return compact
 
 
@@ -2986,6 +3000,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "schema_version",
             "error_len_bucket",
             "fingerprint_confidence",
+            "retryability",
         ):
             value = public_safe_compact_text(fingerprint.get(field), limit=100)
             if value:
@@ -2996,6 +3011,17 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         for field, limit in (
             ("matched_patterns", MAX_BENCHMARK_RUN_LIST_ITEMS * 4),
             ("failure_line_dependency_classes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2),
+            ("failure_reason_codes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2),
+            (
+                "terminal_failure_dependency_classes",
+                MAX_BENCHMARK_RUN_LIST_ITEMS * 2,
+            ),
+            ("terminal_failure_reason_codes", MAX_BENCHMARK_RUN_LIST_ITEMS * 2),
+            ("failure_dependency_endpoints", MAX_BENCHMARK_RUN_LIST_ITEMS * 2),
+            (
+                "terminal_failure_dependency_endpoints",
+                MAX_BENCHMARK_RUN_LIST_ITEMS * 2,
+            ),
         ):
             values = public_safe_compact_list(fingerprint.get(field), limit=limit)
             if values:

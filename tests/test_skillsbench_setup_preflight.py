@@ -8,10 +8,18 @@ from typing import Any
 import pytest
 
 from loopx.benchmark_adapters.skillsbench_codex_runtime import preflight_required
+from loopx.benchmark_adapters.skillsbench_failure_signals import (
+    skillsbench_runner_error_fingerprint,
+)
 from loopx.benchmark_adapters.skillsbench_setup_preflight import (
     run_setup_only_public_preflight,
 )
-from scripts.skillsbench_automation_loop import build_plan, parse_args
+from loopx.status import compact_benchmark_run
+from scripts.skillsbench_automation_loop import (
+    build_compose_setup_diagnostic,
+    build_plan,
+    parse_args,
+)
 
 
 class FakeRollout:
@@ -269,6 +277,68 @@ def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
     ]
     assert result["terminal_dependency_endpoints"] == ["apache_archive"]
     assert result["raw_error_recorded"] is False
+
+
+def test_compose_diagnostic_ignores_incidental_volume_for_terminal_apt() -> None:
+    message = (
+        "Docker compose command failed while preparing a named volume. "
+        "failed to solve: Dockerfile RUN apt-get update; "
+        "failed to fetch package index"
+    )
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark": "skillsbench",
+        "task_id": "synthetic-setup",
+        "route": "loopx-turn-agent-cli",
+        "score_failure_attribution": (
+            "skillsbench_docker_compose_apt_repository_failure"
+        ),
+        "failure_attribution_labels": [
+            "skillsbench_docker_compose_apt_repository_failure",
+            "skillsbench_docker_compose_setup_failure",
+            "skillsbench_environment_setup_error",
+        ],
+        "official_score_status": "missing",
+        "runner_failure_fingerprint": skillsbench_runner_error_fingerprint(message),
+    }
+
+    compact = compact_benchmark_run(source)
+
+    assert compact is not None
+    fingerprint = compact["runner_failure_fingerprint"]
+    assert "volume_mount_failure" not in fingerprint["matched_patterns"]
+    assert "apt_failure" in fingerprint["matched_patterns"]
+    assert fingerprint["terminal_failure_dependency_classes"] == [
+        "system_package"
+    ]
+    assert fingerprint["terminal_failure_reason_codes"] == ["apt_fetch_failed"]
+    assert fingerprint["retryability"] == "unknown"
+
+    diagnostic = build_compose_setup_diagnostic(
+        compact,
+        {"route": "loopx-turn-agent-cli"},
+    )
+    assert diagnostic["volume_mount_failure"] is False
+    assert diagnostic["apt_repository_failure"] is True
+    assert diagnostic["primary_setup_failure_category"] == (
+        "system_package_repository"
+    )
+    assert diagnostic["next_diagnostic_action"] == (
+        "repair_system_package_repository_setup_before_product_treatment"
+    )
+
+    reduced = compact_benchmark_run(
+        {**compact, "compose_setup_diagnostic": diagnostic}
+    )
+    assert reduced is not None
+    reduced_diagnostic = reduced["compose_setup_diagnostic"]
+    assert reduced_diagnostic["primary_setup_failure_category"] == (
+        "system_package_repository"
+    )
+    assert reduced_diagnostic["terminal_failure_dependency_classes"] == [
+        "system_package"
+    ]
+    assert message not in json.dumps(reduced, sort_keys=True)
 
 
 def test_setup_only_preflight_classifies_ubuntu_mirror_without_raw_url() -> None:

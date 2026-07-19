@@ -5148,6 +5148,10 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         ], compact
         fingerprint = compact["runner_failure_fingerprint"]
         assert "volume_mount_failure" in fingerprint["matched_patterns"], fingerprint
+        assert fingerprint["terminal_failure_reason_codes"] == [
+            "missing_file"
+        ], fingerprint
+        assert fingerprint["retryability"] == "non_retryable", fingerprint
         plan = {
             "route": "loopx-product-mode",
             "task_id": "suricata-custom-exfil",
@@ -5185,6 +5189,10 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         assert reduced is not None
         diagnostic = reduced["compose_setup_diagnostic"]
         assert diagnostic["volume_mount_failure"] is True, diagnostic
+        assert diagnostic["apt_repository_failure"] is False, diagnostic
+        assert diagnostic["primary_setup_failure_category"] == (
+            "volume_mount"
+        ), diagnostic
         assert diagnostic["unclassified_compose_failure"] is False, diagnostic
         assert diagnostic["next_diagnostic_action"] == (
             "repair_task_volume_mount_setup_before_product_treatment"
@@ -5198,6 +5206,12 @@ def test_skillsbench_volume_mount_failure_attribution() -> None:
         )
         ledger_diagnostic = update["entry"]["compose_setup_diagnostic"]
         assert ledger_diagnostic["volume_mount_failure"] is True, ledger_diagnostic
+        assert ledger_diagnostic["primary_setup_failure_category"] == (
+            "volume_mount"
+        ), ledger_diagnostic
+        assert ledger_diagnostic["retryability"] == (
+            "non_retryable"
+        ), ledger_diagnostic
         assert ledger_diagnostic["unclassified_compose_failure"] is False, (
             ledger_diagnostic
         )

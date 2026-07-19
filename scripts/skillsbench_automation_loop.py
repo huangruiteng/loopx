@@ -6183,6 +6183,28 @@ def build_compose_setup_diagnostic(
         if isinstance(compact.get("runner_failure_fingerprint"), dict)
         else {}
     )
+    fingerprint_matched_patterns = [
+        str(item)[:120]
+        for item in fingerprint.get("matched_patterns", [])
+        if isinstance(item, str)
+    ][:10]
+    matched_patterns = set(fingerprint_matched_patterns)
+    terminal_dependency_classes = [
+        str(item)[:120]
+        for item in fingerprint.get("terminal_failure_dependency_classes", [])
+        if isinstance(item, str)
+    ][:10]
+    terminal_failure_reason_codes = [
+        str(item)[:120]
+        for item in fingerprint.get("terminal_failure_reason_codes", [])
+        if isinstance(item, str)
+    ][:10]
+    terminal_failure_dependency_endpoints = [
+        str(item)[:120]
+        for item in fingerprint.get("terminal_failure_dependency_endpoints", [])
+        if isinstance(item, str)
+    ][:10]
+    retryability = str(fingerprint.get("retryability") or "unknown")[:80]
     discovery = (
         compact.get("result_discovery")
         if isinstance(compact.get("result_discovery"), dict)
@@ -6238,24 +6260,36 @@ def build_compose_setup_diagnostic(
     docker_daemon_unavailable = (
         score_failure == "skillsbench_docker_daemon_unavailable"
         or "skillsbench_docker_daemon_unavailable" in labels
-        or "docker_daemon_unavailable" in {
-            str(item)
-            for item in fingerprint.get("matched_patterns", [])
-            if isinstance(item, str)
-        }
+        or "docker_daemon_unavailable" in matched_patterns
+    )
+    apt_repository_failure = (
+        score_failure == "skillsbench_docker_compose_apt_repository_failure"
+        or "skillsbench_docker_compose_apt_repository_failure" in labels
+        or "system_package" in terminal_dependency_classes
+        or any(code.startswith("apt_") for code in terminal_failure_reason_codes)
     )
     volume_mount_failure = (
         score_failure == "skillsbench_docker_compose_volume_mount_failure"
         or "skillsbench_docker_compose_volume_mount_failure" in labels
-        or "volume_mount_failure" in {
-            str(item)
-            for item in fingerprint.get("matched_patterns", [])
-            if isinstance(item, str)
-        }
+        or "volume_mount_failure" in matched_patterns
     )
+    if apt_repository_failure:
+        primary_setup_failure_category = "system_package_repository"
+    elif volume_mount_failure:
+        primary_setup_failure_category = "volume_mount"
+    elif docker_daemon_unavailable:
+        primary_setup_failure_category = "docker_runtime"
+    elif unclassified:
+        primary_setup_failure_category = "unclassified"
+    else:
+        primary_setup_failure_category = "runner_setup"
     if compose_setup_failure and not agent_rounds_started:
         status = "compose_setup_blocked_before_agent_rounds"
-        if volume_mount_failure:
+        if apt_repository_failure:
+            next_action = (
+                "repair_system_package_repository_setup_before_product_treatment"
+            )
+        elif volume_mount_failure:
             next_action = "repair_task_volume_mount_setup_before_product_treatment"
         elif unclassified:
             next_action = "classify_sanitized_compose_setup_category_before_product_treatment"
@@ -6280,7 +6314,15 @@ def build_compose_setup_diagnostic(
         "compose_setup_failure": compose_setup_failure,
         "unclassified_compose_failure": unclassified,
         "docker_daemon_unavailable": docker_daemon_unavailable,
+        "apt_repository_failure": apt_repository_failure,
         "volume_mount_failure": volume_mount_failure,
+        "primary_setup_failure_category": primary_setup_failure_category,
+        "terminal_failure_dependency_classes": terminal_dependency_classes,
+        "terminal_failure_reason_codes": terminal_failure_reason_codes,
+        "terminal_failure_dependency_endpoints": (
+            terminal_failure_dependency_endpoints
+        ),
+        "retryability": retryability,
         "environment_setup_failure": environment_setup_failure,
         "agent_rounds_started": agent_rounds_started,
         "heartbeat_count": heartbeat_count,
@@ -6347,11 +6389,7 @@ def build_compose_setup_diagnostic(
         "resource_cap_applied": (
             isinstance(resource_cap, dict) and resource_cap.get("applied") is True
         ),
-        "fingerprint_matched_patterns": [
-            str(item)[:120]
-            for item in fingerprint.get("matched_patterns", [])
-            if isinstance(item, str)
-        ][:10],
+        "fingerprint_matched_patterns": fingerprint_matched_patterns,
         "fingerprint_confidence": str(
             fingerprint.get("fingerprint_confidence") or ""
         )[:120],

@@ -327,6 +327,8 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_prerequisite_status",
         "task_setup_preflight_status",
         "runner_error_len_bucket",
+        "primary_setup_failure_category",
+        "retryability",
         "next_diagnostic_action",
     ):
         text = _compact_text(value.get(field), limit=140)
@@ -336,6 +338,7 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "compose_setup_failure",
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
+        "apt_repository_failure",
         "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
@@ -376,6 +379,14 @@ def _compact_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
     patterns = _compact_list(value.get("fingerprint_matched_patterns"), limit=8)
     if patterns:
         compact["fingerprint_matched_patterns"] = patterns
+    for field in (
+        "terminal_failure_dependency_classes",
+        "terminal_failure_reason_codes",
+        "terminal_failure_dependency_endpoints",
+    ):
+        values = _compact_list(value.get(field), limit=8)
+        if values:
+            compact[field] = values
     return compact
 
 

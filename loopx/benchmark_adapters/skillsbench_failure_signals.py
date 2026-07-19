@@ -432,7 +432,10 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
             r"network|connection refused|could not connect|read timed out|"
             r"connection timed out|connection reset|max retries exceeded"
         ),
-        "volume_mount_failure": r"mount|volume|bind source path",
+        "volume_mount_failure": (
+            r"invalid mount config|bind source path|mount denied|failed to mount|"
+            r"error while mounting|volume [^\n]*(?:not found|does not exist|invalid)"
+        ),
         "permission_denied": r"permission denied|operation not permitted",
         "missing_file": r"no such file|not found|does not exist",
         "codex_api_egress_failure": (
