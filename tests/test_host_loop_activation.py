@@ -106,7 +106,9 @@ def test_opencode_activation_uses_bridge_tool_and_generic_cli_quota() -> None:
     assert packet["host_surface"] == "opencode_visible_goal_mode"
     assert packet["activation_method"] == "activate_loopx_opencode_goal_bridge"
     assert packet["host_mutation"]["host_tool"] == "loopx_goal_activate"
-    assert packet["setup_command"].endswith("--surface opencode")
+    assert packet["setup_command"].endswith(
+        "--surface opencode --with-goal-bridge"
+    )
     assert "--runtime-profile generic_cli" in packet["commands"]["heartbeat_prompt"]
 
 

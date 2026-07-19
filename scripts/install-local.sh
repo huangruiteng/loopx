@@ -632,19 +632,19 @@ if [[ "$install_claude" != "0" && -f "$claude_installer" ]]; then
   fi
 fi
 
-# loopx OpenCode goal bridge: OPT-IN, OFF by default — the normal loopx install
-# does not install OpenCode commands, bridge plugin, runtime, or pinned
-# dependencies. Enable with LOOPX_INSTALL_OPENCODE=1. The bridge wraps
+# loopx OpenCode goal bridge: OPT-IN, OFF by default. Static OpenCode commands
+# remain part of the ordinary slash-command install; this flag additionally
+# provisions the plugin, runtime, and pinned dependencies. The bridge wraps
 # opencode-goal-plugin@0.6.5 and gates idle continuation plus timer wakes
 # through LoopX quota should-run. Install manually with:
-#   loopx slash-commands --install --surface opencode
+#   loopx slash-commands --install --surface opencode --with-goal-bridge
 install_opencode="${LOOPX_INSTALL_OPENCODE:-0}"
-opencode_line="- loopx OpenCode bridge: skipped (opt-in; LOOPX_INSTALL_OPENCODE=1, or run: loopx slash-commands --install --surface opencode)"
+opencode_line="- loopx OpenCode bridge: skipped (opt-in; LOOPX_INSTALL_OPENCODE=1, or run: loopx slash-commands --install --surface opencode --with-goal-bridge)"
 if [[ "$install_opencode" != "0" ]]; then
-  if "$bin_dir/loopx" slash-commands --install --surface opencode >/dev/null 2>&1; then
+  if "$bin_dir/loopx" slash-commands --install --surface opencode --with-goal-bridge >/dev/null 2>&1; then
     opencode_line="- loopx OpenCode bridge: ~/.config/opencode (commands, plugin, runtime, pinned deps; restart OpenCode after install)"
   else
-    opencode_line="- loopx OpenCode bridge: install attempted; run manually: loopx slash-commands --install --surface opencode"
+    opencode_line="- loopx OpenCode bridge: install attempted; run manually: loopx slash-commands --install --surface opencode --with-goal-bridge"
   fi
 fi
 

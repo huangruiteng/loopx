@@ -111,6 +111,7 @@ def test_opencode_install_writes_commands_bridge_and_pinned_dependencies(
 
     payload = install_slash_commands(
         execute=True,
+        with_goal_bridge=True,
         surfaces=["opencode"],
         codex_home=str(tmp_path / "codex"),
         claude_home=str(tmp_path / "claude"),
@@ -133,7 +134,9 @@ def test_opencode_install_writes_commands_bridge_and_pinned_dependencies(
     assert _row(payload, "opencode_goal_bridge")["status"] == "created"
 
 
-def test_default_and_all_surfaces_keep_opencode_opt_in(tmp_path: Path) -> None:
+def test_default_and_all_surfaces_install_only_static_opencode_commands(
+    tmp_path: Path,
+) -> None:
     for surfaces in (None, ["all"]):
         opencode_home = tmp_path / ("default" if surfaces is None else "all")
         payload = install_slash_commands(
@@ -144,8 +147,64 @@ def test_default_and_all_surfaces_keep_opencode_opt_in(tmp_path: Path) -> None:
             opencode_home=str(opencode_home),
         )
 
-        assert payload["effective_surfaces"] == ["codex", "claude-code"]
-        assert not opencode_home.exists()
+        assert payload["effective_surfaces"] == ["codex", "claude-code", "opencode"]
+        assert payload["with_goal_bridge"] is False
+        assert (opencode_home / "commands" / "loopx.md").exists()
+        assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+        assert not (opencode_home / "loopx" / "goal-bridge-runtime.mjs").exists()
+        assert not (opencode_home / "package.json").exists()
+
+
+def test_opencode_static_uninstall_preserves_installed_bridge(tmp_path: Path) -> None:
+    opencode_home = tmp_path / "opencode"
+    install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    payload = install_slash_commands(
+        execute=True,
+        uninstall=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is True
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert (opencode_home / "loopx" / "goal-bridge-runtime.mjs").exists()
+    assert (opencode_home / "package.json").exists()
+
+
+def test_opencode_bridge_uninstall_retires_managed_files_and_keeps_package(
+    tmp_path: Path,
+) -> None:
+    opencode_home = tmp_path / "opencode"
+    install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    payload = install_slash_commands(
+        execute=True,
+        uninstall=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is True
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert not (opencode_home / "loopx" / "goal-bridge-runtime.mjs").exists()
+    assert (opencode_home / "package.json").exists()
+    assert _row(payload, "opencode_goal_dependencies")["status"] == (
+        "preserved_shared_dependencies"
+    )
 
 
 def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
@@ -160,6 +219,7 @@ def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
 
     payload = install_slash_commands(
         execute=True,
+        with_goal_bridge=True,
         surfaces=["opencode"],
         codex_home=str(tmp_path / "codex"),
         claude_home=str(tmp_path / "claude"),
@@ -170,7 +230,71 @@ def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
     assert _row(payload, "opencode_goal_bridge")["status"] == (
         "blocked_conflicting_direct_plugin"
     )
+    assert not (opencode_home / "commands" / "loopx.md").exists()
     assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+
+
+def test_opencode_bridge_preflight_blocks_all_writes_for_invalid_config(
+    tmp_path: Path,
+) -> None:
+    opencode_home = tmp_path / "opencode"
+    opencode_home.mkdir()
+    (opencode_home / "opencode.jsonc").write_text("{ invalid\n", encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is False
+    assert _row(payload, "opencode_goal_bridge")["status"] == (
+        "blocked_invalid_opencode_config"
+    )
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert not (opencode_home / "package.json").exists()
+
+
+def test_goal_bridge_requires_an_effective_opencode_surface(tmp_path: Path) -> None:
+    payload = install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["codex"],
+        codex_home=str(tmp_path / "codex"),
+        opencode_home=str(tmp_path / "opencode"),
+    )
+
+    assert payload["ok"] is False
+    assert _row(payload, "opencode_goal_bridge")["status"] == (
+        "blocked_goal_bridge_requires_opencode_surface"
+    )
+    assert not (tmp_path / "opencode").exists()
+
+
+def test_opencode_bridge_preflight_blocks_all_writes_for_invalid_package(
+    tmp_path: Path,
+) -> None:
+    opencode_home = tmp_path / "opencode"
+    opencode_home.mkdir()
+    package = opencode_home / "package.json"
+    package.write_text("[]\n", encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is False
+    assert _row(payload, "opencode_goal_dependencies")["status"] == (
+        "blocked_invalid_user_package_json"
+    )
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert package.read_text(encoding="utf-8") == "[]\n"
 
 
 def test_opencode_install_ignores_commented_jsonc_goal_plugin(
@@ -189,6 +313,7 @@ def test_opencode_install_ignores_commented_jsonc_goal_plugin(
 
     payload = install_slash_commands(
         execute=True,
+        with_goal_bridge=True,
         surfaces=["opencode"],
         opencode_home=str(opencode_home),
     )

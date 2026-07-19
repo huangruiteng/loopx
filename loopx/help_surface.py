@@ -96,7 +96,7 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {
                 "command": "OpenCode goal bridge",
-                "purpose": "Install the LoopX OpenCode surface, then use `loopx_goal_activate` to bind the quota-gated bridge.",
+                "purpose": "Opt into `--with-goal-bridge`, then use `loopx_goal_activate` to bind the quota-gated bridge.",
             },
             {
                 "command": "Other agent or shell",
@@ -254,7 +254,7 @@ def render_concise_help(program: str = "loopx") -> str:
             "  Codex App      use /loopx <goal>; let the app set the heartbeat automation.",
             "  Codex CLI      keep visible TUI; run loopx codex-cli-bootstrap-message.",
             "  Claude Code    use installed /loopx skills; adapter only for gated native /loop.",
-            "  OpenCode       install the LoopX surface, then use loopx_goal_activate.",
+            "  OpenCode       opt into the goal bridge, then use loopx_goal_activate.",
             "  Other agents   need a CLI/task/automation/loop hook, or run LoopX manually.",
             "",
             "Global options: --registry PATH   --runtime-root PATH   --format markdown|json",

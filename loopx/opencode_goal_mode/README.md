@@ -1,69 +1,71 @@
 # LoopX OpenCode adapter
 
-LoopX uses OpenCode's visible session as the executor and keeps scheduling truth
-in `loopx quota should-run`. The adapter wraps `opencode-goal-plugin@0.6.5`
-instead of loading that package directly, so every idle continuation and timer
-wake passes through the LoopX quota contract first.
+LoopX exposes two separate OpenCode layers: a static command facade and an
+optional executable goal bridge. Ordinary command installation never activates
+the runtime bridge.
 
 ## Install
 
+The default `all` surface installs only static files under
+`~/.config/opencode/commands/`:
+
 ```bash
-loopx slash-commands --install --surface opencode
+loopx slash-commands --install
 ```
 
-The installer writes:
+Enable the goal bridge explicitly:
 
-- `~/.config/opencode/commands/loopx*.md` for the LoopX command family;
-- `~/.config/opencode/plugins/loopx-goal.js` for the local bridge;
-- `~/.config/opencode/loopx/goal-bridge-runtime.mjs` for the tested runtime;
+```bash
+loopx slash-commands --install --surface opencode --with-goal-bridge
+```
+
+Before writing any OpenCode file, bridge installation validates
+`opencode.json`, `opencode.jsonc`, and `package.json`. It fails closed if a
+config is invalid or directly registers `opencode-goal-plugin`, because loading
+that plugin beside the LoopX wrapper would start two independent goal runtimes.
+
+After preflight succeeds, the installer writes the command facade plus:
+
+- `~/.config/opencode/plugins/loopx-goal.js`;
+- `~/.config/opencode/loopx/goal-bridge-runtime.mjs`;
 - pinned bridge dependencies in `~/.config/opencode/package.json`.
 
-OpenCode runs `bun install` for config-directory dependencies at startup, so
-the LoopX installer does not invoke a package manager. Restart OpenCode after
-installation so it installs the pinned dependencies and loads the bridge.
+OpenCode runs `bun install` for config-directory dependencies at startup.
+Restart OpenCode after bridge installation so it installs those dependencies
+and loads the local plugin.
 
-Remove any direct `opencode-goal-plugin` entry from `opencode.json` or
-`opencode.jsonc` before installation. Loading the npm plugin and the LoopX local
-bridge together would create two independent goal runtimes, so installation
-fails closed while that conflict exists.
+## Runtime
 
-## Goal start
+Run `/loopx <task>`, then activate the returned host packet through
+`loopx_goal_activate`. The runtime flow is:
 
-Run `/loopx <task>` in OpenCode. After LoopX has planned and written todos, the
-agent uses the returned host activation packet to call `loopx_goal_activate`
-with `goalId` from the packet's goal id and `objective` from its heartbeat task
-body. Pass `agentId`, `registryPath`, and `availableCapabilities` when those
-optional values are present.
-
-The bridge then applies this lifecycle:
-
-1. `scheduler_hint.action=run_now` or `should_run=true`: allow one OpenCode goal
-   continuation.
-2. Quiet wait or user gate: make no model call and schedule a bounded local
-   recheck using LoopX's unchanged-poll cadence.
-3. Repeated unchanged decisions: apply the advertised progression and final
-   replan limit without spending quota.
-4. Validated `terminal_no_followup`: submit completion through the goal plugin;
-   the custom auditor reruns LoopX quota and rejects any earlier completion.
-5. User message, denied permission, or session error: pause automatic resume
-   until the user explicitly resumes the goal.
-
-The bridge also suppresses OpenCode 1.18's reflected `$ARGUMENTS` chat event for
-the just-executed `/goal` command. Without that compatibility guard, the
-underlying plugin interprets its own command payload as a new user intervention
-and pauses a newly created goal before the first continuation.
+```text
+OpenCode idle event -> loopx quota should-run
+  -> run_now: continue once
+  -> wait: schedule a bounded local recheck without a model call
+  -> pause: remain stopped for user, permission, or session intervention
+  -> terminal_no_followup: submit completion and revalidate it in the auditor
+```
 
 Bindings are private per-session JSON files under
-`$LOOPX_OPENCODE_STATE_DIR`, or under
-`$XDG_STATE_HOME/loopx/opencode` by default, and are written with mode `0600`.
-OpenCode's one-shot `opencode run` process cannot own timers after it exits; use
-the visible TUI or a persistent OpenCode server for recurring goal operation.
+`$LOOPX_OPENCODE_STATE_DIR`, or `$XDG_STATE_HOME/loopx/opencode` by default,
+and use mode `0600`. OpenCode's one-shot `opencode run` process cannot own
+timers after exit; recurring operation requires the visible TUI or a persistent
+OpenCode server.
 
 ## Uninstall
+
+Remove only the static command facade:
 
 ```bash
 loopx slash-commands --uninstall --surface opencode
 ```
 
-Uninstall removes only LoopX-managed command and bridge files. It preserves
-`package.json` dependencies because user-owned local plugins may share them.
+Remove the static facade and LoopX-managed bridge files:
+
+```bash
+loopx slash-commands --uninstall --surface opencode --with-goal-bridge
+```
+
+Bridge uninstall preserves `package.json` dependencies because user-owned
+local plugins may share them.

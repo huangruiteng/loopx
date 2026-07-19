@@ -286,7 +286,7 @@ def main() -> int:
         )
         assert "--host-surface opencode" in opencode_onboarding["commands"]["bootstrap_command_pack"]
         assert opencode_onboarding["commands"]["install_command_facade"].endswith(
-            "--surface opencode"
+            "--surface opencode --with-goal-bridge"
         )
         assert opencode_onboarding["host_loop_activation"]["host_mutation"]["host_tool"] == (
             "loopx_goal_activate"

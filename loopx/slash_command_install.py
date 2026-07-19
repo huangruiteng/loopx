@@ -425,7 +425,7 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
     normalized: list[str] = []
     for surface in requested:
         if surface == "all":
-            candidates = ["codex", "claude-code"]
+            candidates = ["codex", "claude-code", "opencode"]
         elif surface == "codex":
             candidates = ["codex"]
         elif surface in {"codex-app", "codex-ide-plugin", "codex-ide", "codex-cli"}:
@@ -442,6 +442,7 @@ def install_slash_commands(
     *,
     execute: bool,
     uninstall: bool = False,
+    with_goal_bridge: bool = False,
     surfaces: list[str] | None = None,
     cli_bin: str = "loopx",
     include_legacy_aliases: bool = True,
@@ -455,6 +456,20 @@ def install_slash_commands(
     claude_root = _claude_home(claude_home)
     opencode_root = _opencode_home(opencode_home)
     installed: list[dict[str, Any]] = []
+
+    if with_goal_bridge and "opencode" not in effective_surfaces:
+        installed.append(
+            {
+                "surface": "opencode",
+                "host_surfaces": ["opencode"],
+                "mechanism": "opencode_goal_bridge",
+                "command": "/goal",
+                "path": None,
+                "status": "blocked_goal_bridge_requires_opencode_surface",
+                "invoke_as": [],
+                "reason": "Select --surface opencode when using --with-goal-bridge.",
+            }
+        )
 
     if "codex" in effective_surfaces:
         prompt_dir = codex_root / "prompts"
@@ -639,60 +654,12 @@ def install_slash_commands(
 
     if "opencode" in effective_surfaces:
         commands_dir = opencode_root / "commands"
-        for spec in specs:
-            path = commands_dir / f"{spec['name']}.md"
-            status = (
-                _retire_status(path, execute=execute)
-                if uninstall
-                else _target_status(
-                    path,
-                    _opencode_command_body(spec),
-                    execute=execute,
-                )
-            )
-            installed.append(
-                {
-                    "surface": "opencode",
-                    "host_surfaces": ["opencode"],
-                    "mechanism": "opencode_commands",
-                    "command": spec["command"],
-                    "path": str(path),
-                    "status": status,
-                    "invoke_as": [str(spec["command"])],
-                }
-            )
-
         plugin_path = opencode_root / "plugins" / "loopx-goal.js"
         runtime_path = opencode_root / "loopx" / "goal-bridge-runtime.mjs"
         package_path = opencode_root / "package.json"
-        if uninstall:
-            for mechanism, path in (
-                ("opencode_goal_bridge", plugin_path),
-                ("opencode_goal_bridge_runtime", runtime_path),
-            ):
-                installed.append(
-                    {
-                        "surface": "opencode",
-                        "host_surfaces": ["opencode"],
-                        "mechanism": mechanism,
-                        "command": "/goal",
-                        "path": str(path),
-                        "status": _retire_status(path, execute=execute),
-                        "invoke_as": ["/goal", "loopx_goal_activate"],
-                    }
-                )
-            installed.append(
-                {
-                    "surface": "opencode",
-                    "host_surfaces": ["opencode"],
-                    "mechanism": "opencode_goal_dependencies",
-                    "command": "/goal",
-                    "path": str(package_path),
-                    "status": "preserved_shared_dependencies",
-                    "invoke_as": [],
-                }
-            )
-        else:
+
+        bridge_preflight_blocked = False
+        if with_goal_bridge and not uninstall:
             conflicts, invalid_configs = _opencode_direct_goal_plugin_conflicts(opencode_root)
             if invalid_configs:
                 installed.append(
@@ -711,6 +678,7 @@ def install_slash_commands(
                         "invalid_configs": invalid_configs,
                     }
                 )
+                bridge_preflight_blocked = True
             elif conflicts:
                 installed.append(
                     {
@@ -727,6 +695,55 @@ def install_slash_commands(
                             "the pinned plugin and both must not be loaded independently."
                         ),
                         "conflicts": conflicts,
+                    }
+                )
+                bridge_preflight_blocked = True
+            else:
+                package_status = _target_package_dependencies(
+                    package_path,
+                    OPENCODE_GOAL_DEPENDENCIES,
+                    execute=False,
+                )
+                if package_status == "blocked_invalid_user_package_json":
+                    installed.append(
+                        {
+                            "surface": "opencode",
+                            "host_surfaces": ["opencode"],
+                            "mechanism": "opencode_goal_dependencies",
+                            "command": "/goal",
+                            "path": str(package_path),
+                            "status": package_status,
+                            "invoke_as": [],
+                        }
+                    )
+                    bridge_preflight_blocked = True
+
+        if with_goal_bridge and not bridge_preflight_blocked:
+            if uninstall:
+                for mechanism, path in (
+                    ("opencode_goal_bridge", plugin_path),
+                    ("opencode_goal_bridge_runtime", runtime_path),
+                ):
+                    installed.append(
+                        {
+                            "surface": "opencode",
+                            "host_surfaces": ["opencode"],
+                            "mechanism": mechanism,
+                            "command": "/goal",
+                            "path": str(path),
+                            "status": _retire_status(path, execute=execute),
+                            "invoke_as": ["/goal", "loopx_goal_activate"],
+                        }
+                    )
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": "opencode_goal_dependencies",
+                        "command": "/goal",
+                        "path": str(package_path),
+                        "status": "preserved_shared_dependencies",
+                        "invoke_as": [],
                     }
                 )
             else:
@@ -747,17 +764,7 @@ def install_slash_commands(
                     }
                 )
                 if package_status == "blocked_invalid_user_package_json":
-                    installed.append(
-                        {
-                            "surface": "opencode",
-                            "host_surfaces": ["opencode"],
-                            "mechanism": "opencode_goal_bridge",
-                            "command": "/goal",
-                            "path": str(plugin_path),
-                            "status": package_status,
-                            "invoke_as": [],
-                        }
-                    )
+                    bridge_preflight_blocked = True
                 else:
                     for mechanism, path, content in (
                         ("opencode_goal_bridge_runtime", runtime_path, runtime_source()),
@@ -775,6 +782,30 @@ def install_slash_commands(
                             }
                         )
 
+        if not bridge_preflight_blocked:
+            for spec in specs:
+                path = commands_dir / f"{spec['name']}.md"
+                status = (
+                    _retire_status(path, execute=execute)
+                    if uninstall
+                    else _target_status(
+                        path,
+                        _opencode_command_body(spec),
+                        execute=execute,
+                    )
+                )
+                installed.append(
+                    {
+                        "surface": "opencode",
+                        "host_surfaces": ["opencode"],
+                        "mechanism": "opencode_commands",
+                        "command": spec["command"],
+                        "path": str(path),
+                        "status": status,
+                        "invoke_as": [str(spec["command"])],
+                    }
+                )
+
     status_counts: dict[str, int] = {}
     for item in installed:
         status = str(item["status"])
@@ -785,6 +816,7 @@ def install_slash_commands(
         "schema_version": SCHEMA_VERSION,
         "operation": "uninstall" if uninstall else "install",
         "execute": execute,
+        "with_goal_bridge": with_goal_bridge,
         "requested_surfaces": surfaces or ["all"],
         "effective_surfaces": effective_surfaces,
         "catalog_schema_version": build_slash_command_catalog(
@@ -796,8 +828,8 @@ def install_slash_commands(
             "codex_skill_dir": str(codex_root / "skills") if "codex" in effective_surfaces else None,
             "claude_skill_dir": str(claude_root / "skills") if "claude-code" in effective_surfaces else None,
             "opencode_command_dir": str(opencode_root / "commands") if "opencode" in effective_surfaces else None,
-            "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces else None,
-            "opencode_package_path": str(opencode_root / "package.json") if "opencode" in effective_surfaces else None,
+            "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces and with_goal_bridge else None,
+            "opencode_package_path": str(opencode_root / "package.json") if "opencode" in effective_surfaces and with_goal_bridge else None,
             "status_counts": status_counts,
             "skip_policy": (
                 "Uninstall removes only LoopX-managed files; user files without a LoopX managed marker are preserved"
@@ -810,8 +842,9 @@ def install_slash_commands(
             "Codex does not currently support user-defined native top-level slash commands; use explicit skill invocation through `$loopx` or `/skills`.",
             "Explicit LoopX command-facade skills use agents/openai.yaml policy allow_implicit_invocation=false and remain distinct from richer workflow skills such as loopx-project.",
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
-            "OpenCode is opt-in through --surface opencode; it discovers commands and local plugins from its config directory, installs package.json dependencies with Bun at startup, and requires the LoopX bridge to replace any direct goal-plugin registration.",
-            "OpenCode uninstall preserves package.json dependencies because they may be shared by user-owned local plugins.",
+            "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
+            "The OpenCode goal bridge uses Bun-managed config-directory dependencies and must replace any direct goal-plugin registration.",
+            "OpenCode bridge uninstall preserves package.json dependencies because they may be shared by user-owned local plugins.",
             "Uninstall is fail-closed: it retires only files carrying the LoopX managed marker and leaves user-owned files in place.",
         ],
     }

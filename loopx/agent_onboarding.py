@@ -28,7 +28,10 @@ def _surface_install_command(agent_type: str, cli_bin: str) -> str | None:
     if agent_type == "claude-code":
         return f"{shell_arg(cli_bin)} slash-commands --install --surface claude-code"
     if agent_type == "opencode":
-        return f"{shell_arg(cli_bin)} slash-commands --install --surface opencode"
+        return (
+            f"{shell_arg(cli_bin)} slash-commands --install --surface opencode "
+            "--with-goal-bridge"
+        )
     return None
 
 
@@ -167,10 +170,6 @@ def build_agent_onboarding_packet(
                 if selected_agent_id
                 else ""
             )
-        )
-    if canonical_agent_type == "opencode":
-        commands["opencode_bridge_preflight"] = (
-            f"{shell_arg(cli_bin)} slash-commands --install --surface opencode"
         )
     return {
         "ok": True,

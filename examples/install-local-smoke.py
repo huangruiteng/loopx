@@ -217,7 +217,11 @@ def main() -> int:
         assert f"codex skills: {codex_home / 'skills'}" in install.stdout, install.stdout
         assert f"claude skills: {home / '.claude' / 'skills'}" in install.stdout, install.stdout
         assert "loopx OpenCode bridge: skipped (opt-in" in install.stdout, install.stdout
-        assert not (home / ".config" / "opencode").exists()
+        opencode_root = home / ".config" / "opencode"
+        assert (opencode_root / "commands" / "loopx.md").is_file()
+        assert not (opencode_root / "plugins" / "loopx-goal.js").exists()
+        assert not (opencode_root / "loopx" / "goal-bridge-runtime.mjs").exists()
+        assert not (opencode_root / "package.json").exists()
 
         wrapper = bin_dir / "loopx"
         assert wrapper.is_symlink(), wrapper
@@ -732,7 +736,6 @@ def main() -> int:
             {**env, "LOOPX_INSTALL_OPENCODE": "1"},
             "install-smoke-opencode",
         )
-        opencode_root = home / ".config" / "opencode"
         assert "loopx OpenCode bridge:" in opencode_install.stdout, opencode_install.stdout
         assert (opencode_root / "commands" / "loopx.md").is_file()
         assert (opencode_root / "plugins" / "loopx-goal.js").is_file()

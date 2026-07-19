@@ -185,6 +185,10 @@ Choose your surface:
   pasteable gate.
 - **Claude Code**: best when Claude Code's native `/loop` should drive each tick.
   Install the opt-in adapter, run `/loopx <task>`, then `/loop`.
+- **OpenCode**: install the static command facade with the normal command
+  installer. For recurring quota-gated goals, explicitly run `loopx
+  slash-commands --install --surface opencode --with-goal-bridge`, restart
+  OpenCode, then run `/loopx <task>`.
 - **Manual shell / other agents**: best when you want LoopX state without a
   supported runtime bridge. Install from the no-clone installer, then run
   `loopx doctor` and `loopx bootstrap`.
@@ -192,8 +196,10 @@ Choose your surface:
 Command registration is host-specific, but the state path is not. Codex
 surfaces may expose LoopX through `$loopx` or `/skills` command facades before
 native `/loopx` exists; Claude Code can expose `/loopx <task>` after its opt-in
-adapter is installed. If a host command is missing, run `loopx slash-commands`
-for the current catalog or start the same agent-safe path from a shell with
+adapter is installed; OpenCode can expose `/loopx <task>` through its static
+command facade, while its executable goal bridge remains explicit opt-in. If a
+host command is missing, run `loopx slash-commands` for the current catalog or
+start the same agent-safe path from a shell with
 `loopx start-goal --guided --project . --goal-text "<task>"`. Host and plugin
 integrations that need the lower-level handoff packet can still use
 `loopx bootstrap-command-pack --project . --goal-text "<task>"`. Full routing and

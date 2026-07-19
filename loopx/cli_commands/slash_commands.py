@@ -52,9 +52,16 @@ def register_slash_commands_command(
         action="append",
         choices=["all", "codex", "codex-cli", "codex-app", "codex-ide-plugin", "codex-ide", "claude-code", "opencode"],
         help=(
-            "Host surface to install. Repeatable. Defaults to all standard surfaces "
-            "(Codex explicit skills and Claude Code skills); OpenCode requires "
-            "--surface opencode."
+            "Host surface to install. Repeatable. Defaults to static command facades "
+            "for Codex, Claude Code, and OpenCode."
+        ),
+    )
+    parser.add_argument(
+        "--with-goal-bridge",
+        action="store_true",
+        help=(
+            "Also install or uninstall the executable OpenCode goal bridge. Requires "
+            "an effective OpenCode surface and explicit opt-in."
         ),
     )
     parser.add_argument(
@@ -88,6 +95,7 @@ def handle_slash_commands_command(
         payload = install_slash_commands(
             execute=bool((args.install or args.uninstall) and not args.dry_run),
             uninstall=bool(args.uninstall),
+            with_goal_bridge=bool(args.with_goal_bridge),
             surfaces=args.surface,
             cli_bin=args.cli_bin,
             include_legacy_aliases=not bool(args.no_legacy_aliases),

@@ -479,7 +479,9 @@ def _opencode_activation(commands: dict[str, str], cli_bin: str) -> dict[str, An
         "entry_command_hint": "/loopx <task>",
         "activation_method": "activate_loopx_opencode_goal_bridge",
         "activation_input_command": commands["heartbeat_prompt_json"],
-        "setup_command": f"{cli_bin} slash-commands --install --surface opencode",
+        "setup_command": (
+            f"{cli_bin} slash-commands --install --surface opencode --with-goal-bridge"
+        ),
         "host_mutation": {
             "owner": "OpenCode LoopX goal bridge",
             "host_tool": "loopx_goal_activate",

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -37,6 +38,8 @@ def main() -> int:
         root = Path(tmp)
         codex_home = root / ".codex"
         claude_home = root / ".claude"
+        opencode_home = root / ".opencode"
+        os.environ["OPENCODE_CONFIG_DIR"] = str(opencode_home)
 
         dry = json.loads(
             run_cli(
@@ -57,6 +60,7 @@ def main() -> int:
         assert dry["summary"]["status_counts"]["unsupported_host_surface"] >= 1, dry
         assert not (codex_home / "prompts").exists(), dry
         assert not (claude_home / "skills").exists(), dry
+        assert not opencode_home.exists(), dry
         assert dry["summary"]["codex_prompt_dir"] is None, dry
 
         payload = json.loads(
@@ -76,6 +80,8 @@ def main() -> int:
         assert payload["summary"]["codex_prompt_dir"] is None, payload
         assert payload["summary"]["codex_skill_dir"] == str(codex_home / "skills"), payload
         assert payload["summary"]["claude_skill_dir"] == str(claude_home / "skills"), payload
+        assert payload["summary"]["opencode_command_dir"] == str(opencode_home / "commands"), payload
+        assert payload["summary"]["opencode_plugin_path"] is None, payload
         assert payload["summary"]["status_counts"]["created"] >= 20, payload
         assert payload["summary"]["status_counts"]["unsupported_host_surface"] >= 1, payload
         assert "skipped_user_file" not in payload["summary"]["status_counts"], payload
@@ -336,6 +342,26 @@ def main() -> int:
             ).stdout
         )
         assert uninstall_again["summary"]["status_counts"]["absent"] >= 20, uninstall_again
+
+        bridge_home = root / "opencode-bridge"
+        bridge = json.loads(
+            run_cli(
+                "--format",
+                "json",
+                "slash-commands",
+                "--install",
+                "--surface",
+                "opencode",
+                "--with-goal-bridge",
+                "--opencode-home",
+                str(bridge_home),
+            ).stdout
+        )
+        assert bridge["with_goal_bridge"] is True, bridge
+        assert (bridge_home / "commands" / "loopx.md").is_file(), bridge
+        assert (bridge_home / "plugins" / "loopx-goal.js").is_file(), bridge
+        assert (bridge_home / "loopx" / "goal-bridge-runtime.mjs").is_file(), bridge
+        assert (bridge_home / "package.json").is_file(), bridge
 
     print("slash-command-install-smoke ok")
     return 0
