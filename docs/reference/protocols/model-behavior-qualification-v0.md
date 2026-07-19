@@ -248,7 +248,7 @@ stochastic output.
 `actual_default_model_behavior_portfolio_v0` is the regular low-frequency live
 suite. It composes the existing TurnEnvelope and onboarding one-arm actors; it
 does not introduce a third model protocol or retain a retired product arm. Its
-fixed catalog covers nine high-risk decisions:
+fixed catalog covers nine core decisions:
 
 1. the normal guided onboarding packet selects `connect_if_needed`;
 2. an unresolved agent identity selects `select_agent_identity`;
@@ -261,10 +261,23 @@ fixed catalog covers nine high-risk decisions:
 9. a missing executable todo with an actionable projection selects
    `repair_projection`.
 
+It also carries three control-plane composition decisions. These are not wider
+snapshots; each packet is generated through the production quota, interaction,
+and TurnEnvelope path and deliberately contains competing signals:
+
+10. a monitor lane and peer-owned advancement both look non-runnable, but a
+    missing required per-agent vision still selects autonomous replan;
+11. an open user notice coexists with a ready deferred successor, so the model
+    must surface the notice and execute the successor replan rather than treat
+    every `user_action_required` value as a blocking gate;
+12. unavailable capability blocks the visible advancement, while an incomplete
+    monitor schedule remains repairable, so the selected and primary action is
+    monitor-schedule repair rather than wait or the blocked task.
+
 Every scenario declares its own semantic oracle and runs exactly twice. All
 attempts must align. Actor or transport errors are not retried automatically;
 the portfolio fails closed and stops further calls. The maximum regular run is
-therefore 18 provider calls. Pair mode remains available only for temporary
+therefore 24 provider calls. Pair mode remains available only for temporary
 sensitive differentials or explicit stable-versus-candidate outcome claims,
 not as a permanent regular-behavior baseline.
 

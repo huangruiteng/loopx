@@ -60,6 +60,11 @@ def protocol_first_candidate_action(payload: dict[str, Any]) -> str | None:
             if text:
                 todo_id = str(item.get("todo_id") or "").strip()
                 return f"{todo_id}: {text}" if todo_id else text
+    if work_lane.get("obligation") == "repair_monitor_schedule_metadata":
+        text = protocol_action_label(work_lane.get("action"), limit=160)
+        if text:
+            todo_id = str(work_lane.get("selected_todo_id") or "").strip()
+            return f"{todo_id}: {text}" if todo_id else text
     capability_gate = (
         payload.get("capability_gate")
         if isinstance(payload.get("capability_gate"), dict)
