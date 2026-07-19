@@ -55,7 +55,7 @@ of adding another source of truth.
 | --- | --- | --- |
 | Management frontstage | Goals, todos, gates, claims, evidence, quota, run history, `goal_channel_projection_v0`, `task_graph_projection_v0`, `issue_fix_outcome_projection_v0`, and same-source Explore views are already compact read models. | Translate these into stable operator concepts such as work item, owner, decision, evidence, budget, risk, and next action; preserve lineage, keep raw machine fields in drill-downs, and do not create a second task or case store. |
 | Conversational commands | `global_manager_command_v0` defines read-only commands such as `/loopx-global-summary`, `/loopx-global-gates`, `/loopx-global-todos`, and `/loopx-global-risks`; legacy `/loop-global-*` forms are only migration aliases. | Implement one canonical command at a time with a public-safe smoke and no alias sprawl. Unknown commands should fail closed with help. |
-| Runtime connector modes | The connector catalog names Codex App heartbeat, Codex CLI TUI, Claude Code loop, shell worker, HTTP webhook, and worker bridge as first-class modes; LoopX Turn now adds an isolated headless request/effect/receipt path for bounded host execution. | Make mode selection and handoff visible. Extend the shipped Turn and connector contracts with provider-neutral fixtures that preserve identity, capabilities, independent validation, quota, and durable writeback. |
+| Runtime connector modes | The connector catalog names Codex App heartbeat, Codex CLI TUI, Claude Code loop, shell worker, HTTP webhook, and worker bridge as first-class modes. LoopX Turn provides one isolated headless request/effect/receipt transaction; it projects scheduler and replan outcomes but does not own recurring wakeups or a multi-Turn loop. | Make mode selection and handoff visible, then add a separate provider-neutral Turn Loop Controller. Keep `run-once` atomic while the controller owns recurring wakeup, typed replan continuation, operator routing, and scheduler-hint execution. |
 | Visible governance | Quota, scheduler hints, authoritative interaction contracts, decision scopes, user gates, peer claims, optional task leases, repository policy, and interface budgets already exist in machine contracts. | Show who can act, who must approve, which decision scope applies, what budget was spent, and how pause/override/terminate decisions map back to LoopX state without treating claims or leases as a new runtime hierarchy. |
 | Domain packs | Domain capability packs default off; ML experiment and scenario/productization work should stay advisory until enabled by registry or owner authority. | Add suggest-only previews or public-safe fixtures before any domain-specific autonomy, launch, or production action. |
 
@@ -75,6 +75,28 @@ points:
 | Validation | `3f6c0c88` and `48051420` established agent-facing CLI output budgets and base/head differential checks; `6e029640` and `65fe3f63` strengthened semantic oracles and documented semantic-first test design. | Derive expected transitions independently, move stable pure rules into pytest, retain thin public behavior seams, and avoid snapshotting implementation output as the oracle. |
 | Release and install | v0.2.4-v0.2.6 are documented in `docs/product/release-readiness.md`; `a709eff4` added release-outcome baselines and `16c4a4bc` requires explicit optional-capability activation guidance. | Build on the stable/update/canary and staged-activation model. Improve contributor-safe recovery, comparison identity, or failure attribution without adding a parallel release checklist. |
 | Public project docs | `b25d1c4c` refreshed README capability/evidence paths, `65b0cbe3` documented the isolated LoopX Turn route, and `65fe3f63` consolidated developer testing guidance. | Keep contributor, release, protocol, and showcase surfaces concise and linked to public evidence; replace stale truth instead of appending another status narrative. |
+
+## Turn Loop Controller Plan
+
+`loopx turn run-once` remains the atomic governed executor: decide, execute one
+bounded host segment, validate independently, write back, spend once, and
+project the latest scheduler contract. It must not become a resident scheduler
+or an unbounded agent loop. Codex App heartbeat currently supplies recurring
+wakeup and prompt-driven replan behavior; headless parity belongs in a separate
+provider-neutral outer controller.
+
+| Priority | Planned slice | Required boundary and proof |
+| --- | --- | --- |
+| P0 | Add a pure Turn Loop Controller transition contract over one Turn receipt plus a fresh quota/scheduler decision. | Return exactly one typed disposition such as `run_now`, `wait`, `user_action_required`, `repair`, `replan`, or `terminal`. The pure transition must not invoke a model, sleep, mutate a host scheduler, write state, or spend quota. |
+| P0 | Make `replan_required` a real continuation boundary. | Before another Turn, write a bounded todo or vision delta, obtain a fresh TurnEnvelope, and preserve the causal agent/todo frontier. Never rerun the same stale todo merely because a host session is resumable. Reuse the existing autonomous-replan and two-stall contracts. |
+| P1 | Add a scheduler-owner adapter around the transition contract. | Apply `scheduler_hint` wake, backoff, reset, ACK/failure, and terminal-stop actions through the declared runtime owner. Cadence-only transitions spend no quota, and `run-once` remains the only delivery transaction. |
+| P1 | Add operator and monitor routing. | Project concrete user actions without inventing gates; keep unchanged monitor waits quiet and no-spend; resume only from a fresh LoopX decision after material state changes. |
+| P2 | Qualify parity with Codex App heartbeat. | Use deterministic fixtures across active work, wait, user gate, repair, replan, monitor, and terminal states, followed by one explicit opt-in real-host qualification. Preserve independent validation and exclude raw prompts, transcripts, credentials, and host-local paths. |
+
+The first implementation PR should deliver only the pure transition contract
+and its decision table. Scheduler process management, host-specific wake APIs,
+and operator presentation should remain later adapters so each slice is
+reviewable and reversible.
 
 ### Starter / Good First
 
@@ -128,6 +150,7 @@ and keep the first PR as a narrow slice.
 | GH-C15 | benchmark | Implement benchmark ledger drift warning: when compact run history has a benchmark result but `benchmark-run-ledger.json/md` lacks the row, status should warn or closeout should auto-upsert. Keep raw task/log/trajectory material out. | `python3 examples/benchmark-run-ledger-smoke.py` |
 | GH-C16 | benchmark | Add a public-safe trajectory-summary contract for non-SkillsBench adapters so Terminal-Bench/SWE/ALE can expose comparable counters without raw task text, logs, verifier output, or trajectory bodies. | New unit/fake fixture smoke |
 | GH-C47 | state | Adopt the shipped optional `task_lease_v0` in one real host integration: advertise the capability explicitly, preserve soft-claim routing, expose acquire/renew/transfer/release outcomes, and prove overlapping write scopes fail without making `quota should-run` enforce undeclared lease authority. | `python3 examples/control_plane/task-lease-runtime-smoke.py`, `python3 -m pytest -q tests/control_plane/test_task_lease.py`, and a host-focused fake fixture |
+| GH-C72 | workflow runtime | Implement the P0 pure Turn Loop Controller transition contract above. Consume one Turn receipt plus a fresh quota/scheduler decision and return one typed next disposition without launching a host, sleeping, writing state, or spending quota. Cover replan with a required todo/vision delta before any successor Turn. | Focused decision-table pytest plus `python -m pytest -q tests/test_loopx_turn_driver.py tests/test_loopx_turn_executor.py tests/test_loopx_turn_transaction.py`, `python examples/autonomous-replan-obligation-smoke.py`, and `loopx check --scan-path CONTRIBUTOR_TASKS.md --scan-path CONTRIBUTING.md` |
 
 ### Design / RFC
 
