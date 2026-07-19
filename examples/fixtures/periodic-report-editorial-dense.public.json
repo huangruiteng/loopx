@@ -1,0 +1,80 @@
+{
+  "schema_version": "periodic_report_document_v0",
+  "title": "Product delivery weekly report",
+  "generated_at": "2026-01-12T09:00:00Z",
+  "period_window": {
+    "start_at": "2026-01-05T00:00:00Z",
+    "end_at": "2026-01-12T00:00:00Z"
+  },
+  "profile": {
+    "profile_id": "product_delivery",
+    "profile_version": "v1"
+  },
+  "source_snapshots": [
+    {
+      "source_id": "delivery",
+      "source_kind": "delivery_activity",
+      "status": "complete",
+      "observed_at": "2026-01-12T08:45:00Z",
+      "snapshot_digest": "snapshot_example_delivery",
+      "item_count": 3,
+      "retryable": false
+    }
+  ],
+  "sections": [
+    {
+      "schema_version": "periodic_report_section_v0",
+      "section_id": "outcomes",
+      "title": "Outcomes",
+      "order": 10,
+      "items": [
+        {
+          "item_id": "stable_release",
+          "title": "Stable release reached all production regions",
+          "summary": "The release completed staged rollout with no rollback and reduced median processing latency by 18%.",
+          "value_rank": 10,
+          "status": "shipped",
+          "source_ref": "https://example.org/releases/stable",
+          "tags": ["delivery", "reliability"],
+          "source_id": "delivery"
+        },
+        {
+          "item_id": "migration_complete",
+          "title": "Customer migration completed",
+          "summary": "All active workspaces now use the durable storage path; the compatibility path remains available for rollback only.",
+          "value_rank": 20,
+          "status": "complete",
+          "source_ref": "https://example.org/migrations/durable-storage",
+          "tags": ["migration"],
+          "source_id": "delivery"
+        }
+      ]
+    },
+    {
+      "schema_version": "periodic_report_section_v0",
+      "section_id": "risks",
+      "title": "Risks and next actions",
+      "order": 20,
+      "items": [
+        {
+          "item_id": "adoption_gap",
+          "title": "Two integrations still use the legacy endpoint",
+          "summary": "The legacy traffic is low but prevents retirement of the compatibility path and its operational burden.",
+          "value_rank": 10,
+          "status": "attention",
+          "source_ref": "https://example.org/operations/legacy-traffic",
+          "next_action": "Confirm owners and complete both migrations before the next release window.",
+          "tags": ["risk", "adoption"],
+          "source_id": "delivery"
+        }
+      ]
+    }
+  ],
+  "boundary": {
+    "schedule_policy_owned_by_profile": true,
+    "business_semantics_owned_by_sources": true,
+    "renderer_owns_business_semantics": false,
+    "sink_owns_business_semantics": false,
+    "external_writes_performed": false
+  }
+}
