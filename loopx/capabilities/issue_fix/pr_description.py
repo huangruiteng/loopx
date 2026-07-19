@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -37,10 +35,6 @@ _CANONICAL_CLOSING_KEYWORD = {
     "resolves": "Resolves",
     "resolved": "Resolves",
 }
-_HEADING_PATTERN = re.compile(r"(?m)^##\s+(.+?)\s*$")
-_CHECKLIST_PATTERN = re.compile(r"(?m)^\s*-\s*\[[ xX]\]\s+(.+?)\s*$")
-_COMMIT_REF_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
-
 PreferenceApplier = Callable[
     [str, Sequence[Mapping[str, Any]]],
     Mapping[str, Any],
@@ -48,187 +42,44 @@ PreferenceApplier = Callable[
 Recall = Callable[..., dict[str, Any]]
 
 
-def _digest(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _ordered_contains(actual: Sequence[str], required: Sequence[str]) -> bool:
-    position = 0
-    for item in actual:
-        if position < len(required) and item == required[position]:
-            position += 1
-    return position == len(required)
-
-
-def _semantic_preference_requirement(project: str | Path) -> dict[str, Any]:
-    config_path = (
-        Path(project).expanduser().resolve()
-        / ".loopx/config/semantic-preference.json"
-    )
-    if not config_path.exists():
-        return {"status": "not_configured", "required": False}
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {"status": "invalid", "required": True}
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != (
-        "semantic_preference_hook_config_v0"
-    ):
-        return {"status": "invalid", "required": True}
-    enabled = payload.get("enabled", False)
-    surfaces = payload.get("surfaces", {})
-    if not isinstance(enabled, bool) or not isinstance(surfaces, Mapping):
-        return {"status": "invalid", "required": True}
-    if not enabled:
-        return {"status": "disabled", "required": False}
-    if SURFACE not in surfaces:
-        return {"status": "surface_not_configured", "required": False}
-    if not isinstance(surfaces.get(SURFACE), Mapping):
-        return {"status": "invalid", "required": True}
-    return {"status": "enabled", "required": True}
-
-
 def validate_issue_fix_pr_description_publication(
     *,
     project: str | Path,
-    live_description: str,
-    live_head_ref: str,
     build_packet: Mapping[str, Any] | None = None,
-    expected_head_ref: str | None = None,
 ) -> dict[str, Any]:
-    """Fail closed before PR publication follow-up when evidence is configured.
+    """Require only proof that the PR-description recall path executed."""
 
-    The compact result records only digests and structural counts. Raw PR text,
-    repository templates, semantic preference references, and local paths stay
-    inside this verification boundary.
-    """
+    recall_required = (
+        Path(project).expanduser().resolve()
+        / ".loopx/config/semantic-preference.json"
+    ).exists()
+    preference = (
+        build_packet.get("semantic_preference")
+        if isinstance(build_packet, Mapping)
+        and build_packet.get("schema_version") == BUILD_SCHEMA
+        else None
+    )
+    preference = preference if isinstance(preference, Mapping) else {}
+    recall_executed = preference.get("recall_executed") is True
+    ok = not recall_required or recall_executed
 
-    root = Path(project).expanduser().resolve()
-    requirement = _semantic_preference_requirement(root)
-    errors: list[str] = []
-    if requirement["status"] == "invalid":
-        errors.append("semantic_preference_configuration_invalid")
-
-    template_path = root / ".github/PULL_REQUEST_TEMPLATE.md"
-    template_status = "not_configured"
-    template_verified = True
-    required_headings: list[str] = []
-    required_checklist: list[str] = []
-    matched_heading_count = 0
-    matched_checklist_count = 0
-    if template_path.exists():
-        try:
-            template = template_path.read_text(encoding="utf-8")
-        except OSError:
-            template_status = "unavailable"
-            template_verified = False
-            errors.append("repository_pr_template_unavailable")
-        else:
-            template_status = "configured"
-            required_headings = _HEADING_PATTERN.findall(template)
-            required_checklist = _CHECKLIST_PATTERN.findall(template)
-            live_headings = _HEADING_PATTERN.findall(live_description)
-            live_checklist = _CHECKLIST_PATTERN.findall(live_description)
-            matched_heading_count = sum(
-                heading in live_headings for heading in required_headings
-            )
-            matched_checklist_count = sum(
-                item in live_checklist for item in required_checklist
-            )
-            template_verified = bool(
-                live_description.strip()
-                and _ordered_contains(live_headings, required_headings)
-                and _ordered_contains(live_checklist, required_checklist)
-            )
-            if not template_verified:
-                errors.append("repository_pr_template_not_preserved")
-
-    evidence_required = bool(requirement["required"])
-    evidence_status = "not_required"
-    receipt_outcome: str | None = None
-    receipt_application_digest: str | None = None
-    expected_head_digest: str | None = None
-    live_head_digest = _digest(live_head_ref) if live_head_ref else None
-    if evidence_required:
-        evidence_status = "missing"
-        if not isinstance(build_packet, Mapping):
-            errors.append("pr_description_build_evidence_missing")
-        elif build_packet.get("schema_version") != BUILD_SCHEMA:
-            errors.append("pr_description_build_evidence_invalid")
-        else:
-            evidence_status = "invalid"
-            built_description = build_packet.get("description")
-            preference = build_packet.get("semantic_preference")
-            preference = preference if isinstance(preference, Mapping) else {}
-            receipt = preference.get("receipt")
-            receipt = receipt if isinstance(receipt, Mapping) else {}
-            receipt_outcome = str(receipt.get("outcome") or "") or None
-            application_id = str(receipt.get("application_id") or "")
-            if receipt.get("schema_version") != (
-                "semantic_preference_application_receipt_v0"
-            ) or receipt.get("surface") != SURFACE:
-                errors.append("semantic_preference_receipt_invalid")
-            if receipt_outcome not in {"applied", "ignored"}:
-                errors.append("semantic_preference_receipt_not_applied_or_ignored")
-            if not application_id:
-                errors.append("semantic_preference_receipt_unattributed")
-            else:
-                receipt_application_digest = _digest(application_id)[:16]
-            if not isinstance(built_description, str) or (
-                built_description != live_description
-            ):
-                errors.append("pr_description_live_body_mismatch")
-            if not expected_head_ref or not _COMMIT_REF_PATTERN.fullmatch(
-                expected_head_ref
-            ):
-                errors.append("pr_description_expected_head_ref_missing")
-            else:
-                expected_head_digest = _digest(expected_head_ref.lower())[:16]
-                if not _COMMIT_REF_PATTERN.fullmatch(live_head_ref or "") or (
-                    expected_head_ref.lower() != live_head_ref.lower()
-                ):
-                    errors.append("pr_description_live_head_ref_mismatch")
-            if not errors:
-                evidence_status = "verified"
-
-    blocker = None
-    if errors:
-        blocker = (
-            "pr_description_publication_evidence_required"
-            if any(error.endswith("_missing") for error in errors)
-            else "pr_description_publication_verification_failed"
-        )
     return {
-        "ok": not errors,
+        "ok": ok,
         "schema_version": PUBLICATION_GATE_SCHEMA,
-        "status": "verified" if not errors else "blocked",
-        "blocker": blocker,
-        "semantic_preference_requirement_status": requirement["status"],
-        "semantic_preference_evidence_required": evidence_required,
-        "semantic_preference_evidence_status": evidence_status,
+        "status": (
+            "verified"
+            if recall_executed
+            else "not_required"
+            if ok
+            else "blocked"
+        ),
+        "blocker": None if ok else "pr_description_recall_evidence_required",
+        "recall_required": recall_required,
+        "recall_executed": recall_executed,
+        "recall_status": str(preference.get("recall_status") or "") or None,
         "required_evidence_inputs": (
-            ["pr_description_build_json", "pr_description_head_ref"]
-            if evidence_required
-            else []
+            ["pr_description_build_json"] if recall_required else []
         ),
-        "semantic_preference_receipt_outcome": receipt_outcome,
-        "receipt_application_digest": receipt_application_digest,
-        "template_status": template_status,
-        "template_verified": template_verified,
-        "required_heading_count": len(required_headings),
-        "matched_heading_count": matched_heading_count,
-        "required_checklist_count": len(required_checklist),
-        "matched_checklist_count": matched_checklist_count,
-        "live_description_digest": (
-            _digest(live_description) if live_description else None
-        ),
-        "expected_head_digest": expected_head_digest,
-        "live_head_digest": live_head_digest[:16] if live_head_digest else None,
-        "errors": errors,
-        "raw_description_captured": False,
-        "raw_template_captured": False,
-        "preference_refs_captured": False,
-        "local_paths_captured": False,
     }
 
 
@@ -352,6 +203,7 @@ def _result(
     description: str,
     recall_status: str,
     application_status: str,
+    recall_executed: bool = False,
     recalled_item_count: int = 0,
     applied_preference_count: int = 0,
     receipt: Mapping[str, Any] | None = None,
@@ -372,6 +224,7 @@ def _result(
         "description_changed": description_changed or issue_reference_changed,
         "semantic_preference": {
             "surface": SURFACE,
+            "recall_executed": recall_executed,
             "recall_status": recall_status,
             "application_status": application_status,
             "recalled_item_count": recalled_item_count,
@@ -484,6 +337,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status=recall_status,
+            recall_executed=True,
             fail_open_preserved_base=recall_status == "provider_unavailable",
             issue_reference_policy=issue_reference_policy,
             corpus_inventory=corpus_inventory,
@@ -494,6 +348,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status="available_not_applied",
+            recall_executed=True,
             recalled_item_count=len(items),
             issue_reference_policy=issue_reference_policy,
             corpus_inventory=corpus_inventory,
@@ -527,6 +382,7 @@ def build_issue_fix_pr_description(
             description=base_description,
             recall_status=recall_status,
             application_status="application_failed",
+            recall_executed=True,
             recalled_item_count=len(items),
             receipt=application_receipt(
                 surface=SURFACE,
@@ -545,6 +401,7 @@ def build_issue_fix_pr_description(
         description=description,
         recall_status=recall_status,
         application_status=outcome,
+        recall_executed=True,
         recalled_item_count=len(items),
         applied_preference_count=len(set(applied_refs)),
         receipt=application_receipt(

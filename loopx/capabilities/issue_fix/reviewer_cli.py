@@ -218,15 +218,8 @@ def register_issue_fix_reviewer_commands(
     reviewer_request_parser.add_argument(
         "--pr-description-build-json",
         help=(
-            "Compact issue_fix_pr_description_build_v0 JSON used to verify the "
-            "live PR body before reviewer or group notification writes."
-        ),
-    )
-    reviewer_request_parser.add_argument(
-        "--pr-description-head-ref",
-        help=(
-            "Full 40-character head commit used when the PR description was "
-            "built; compared with live GitHub readback."
+            "Compact issue_fix_pr_description_build_v0 JSON proving the PR "
+            "description recall path executed before notification writes."
         ),
     )
     reviewer_request_parser.add_argument(
@@ -820,7 +813,6 @@ def handle_issue_fix_reviewer_command(
             if getattr(args, "pr_description_build_json", None)
             else None
         ),
-        pr_description_head_ref=getattr(args, "pr_description_head_ref", None),
         provider_payload=(
             load_json_object(args.metadata_json) if args.metadata_json else None
         ),

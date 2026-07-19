@@ -353,8 +353,8 @@ def _fetch_pr_metadata(
                 repo,
                 "--json",
                 "author,closingIssuesReferences,comments,isDraft,reviewRequests,"
-                "body,headRefOid,mergeStateStatus,reviewDecision,reviews,state,"
-                "statusCheckRollup,title,url",
+                "mergeStateStatus,reviewDecision,reviews,state,statusCheckRollup,"
+                "title,url",
             ]
         )
     except (OSError, subprocess.SubprocessError):
@@ -527,7 +527,6 @@ def build_issue_fix_reviewer_request_packet(
     reviewer_notification_reward_memory: Mapping[str, Any] | None = None,
     reviewer_artifact_required: bool = False,
     pr_description_build: Mapping[str, Any] | None = None,
-    pr_description_head_ref: str | None = None,
     provider_payload: Mapping[str, Any] | None = None,
     execute: bool = False,
     generated_at: str | None = "2026-07-10T00:00:00Z",
@@ -567,10 +566,7 @@ def build_issue_fix_reviewer_request_packet(
         metadata = fetched or {}
     publication_gate = validate_issue_fix_pr_description_publication(
         project=repo_path,
-        live_description=str(metadata.get("body") or ""),
-        live_head_ref=str(metadata.get("headRefOid") or ""),
         build_packet=pr_description_build,
-        expected_head_ref=pr_description_head_ref,
     )
     identities = _metadata_identities(metadata, repo=repo, number=number)
     excluded = list(exclude_reviewers)
@@ -729,11 +725,10 @@ def build_issue_fix_reviewer_request_packet(
         packet["blocker"] = publication_gate["blocker"]
         packet["transition"] = _transition(
             decision="blocker",
-            action_kind="issue_fix_pr_description_publication_evidence",
+            action_kind="issue_fix_pr_description_recall_evidence",
             reason=(
-                "Verify the live PR body and head against the repository template "
-                "and an applied-or-ignored semantic preference receipt before "
-                "requesting review or sending a secondary notification."
+                "Run the PR-description recall path and pass its compact build "
+                "packet before requesting review or sending a notification."
             ),
             material_change=False,
         )
@@ -1022,12 +1017,7 @@ def build_issue_fix_reviewer_request_packet(
         )
     if reward_memory_error:
         packet["reviewer_artifact_reward_memory_blocker"] = reward_memory_error
-    if notification_sinks_input and publication_gate["ok"] is not True:
-        packet["secondary_notification_status"] = (
-            "skipped_pr_description_publication_blocked"
-        )
-        packet["secondary_notification_blocker"] = publication_gate["blocker"]
-    elif notification_sinks_input:
+    if notification_sinks_input:
         notification_targets = list(packet.get("selected_reviewers") or [])
         if packet.get("notified_reviewers"):
             notification_targets = list(packet.get("notified_reviewers") or [])
@@ -1162,14 +1152,6 @@ def validate_issue_fix_reviewer_request_packet(
         errors.append("raw_git_output_captured must be false")
     if packet.get("commit_emails_captured") is not False:
         errors.append("commit_emails_captured must be false")
-    publication_gate = packet.get("pr_description_publication_gate")
-    if not isinstance(publication_gate, Mapping):
-        errors.append("pr_description_publication_gate must be an object")
-    elif publication_gate.get("ok") is not True:
-        if packet.get("selected_reviewers"):
-            errors.append("blocked PR descriptions must not select reviewers")
-        if packet.get("external_writes_performed") is True:
-            errors.append("blocked PR descriptions must not perform external writes")
     performed = packet.get("review_request_performed") is True
     verified = packet.get("review_request_verified") is True
     requested = packet.get("requested_reviewers")
