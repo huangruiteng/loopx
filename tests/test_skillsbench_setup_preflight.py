@@ -12,6 +12,8 @@ from loopx.benchmark_adapters.skillsbench_failure_signals import (
     skillsbench_runner_error_fingerprint,
 )
 from loopx.benchmark_adapters.skillsbench_setup_preflight import (
+    SkillsBenchComposeCommandFailure,
+    install_skillsbench_compose_typed_cause_boundary,
     run_setup_only_public_preflight,
 )
 from loopx.status import compact_benchmark_run
@@ -203,6 +205,126 @@ def test_setup_only_preflight_classifies_public_setup_failures(
     assert message not in serialized
     assert result["raw_error_recorded"] is False
     assert result["raw_logs_read"] is False
+
+
+def test_compose_producer_emits_only_bounded_typed_cause() -> None:
+    raw_failure = (
+        "Docker compose command failed for environment private-case. "
+        "Command: docker compose --project-directory /private/job build. "
+        "Stdout: apt-get update failed to fetch package index: Temporary "
+        "failure resolving 'archive.example.invalid'."
+    )
+
+    class FakeComposeEnvironment:
+        def __init__(self) -> None:
+            self.command_attempts = 0
+            self.build_received_raw_failure = False
+
+        async def _run_docker_compose_command(self) -> None:
+            self.command_attempts += 1
+            raise RuntimeError(raw_failure)
+
+        async def _run_docker_compose_build(self) -> None:
+            for attempt in range(2):
+                try:
+                    await self._run_docker_compose_command()
+                except RuntimeError as exc:
+                    self.build_received_raw_failure = raw_failure in str(exc)
+                    if attempt == 0:
+                        continue
+                    raise
+
+    environment = FakeComposeEnvironment()
+    restore = install_skillsbench_compose_typed_cause_boundary(environment)
+    assert restore is not None
+
+    async def invoke() -> None:
+        await environment._run_docker_compose_build()
+
+    with pytest.raises(SkillsBenchComposeCommandFailure) as error:
+        asyncio.run(invoke())
+
+    typed = error.value
+    serialized = json.dumps(typed.fingerprint, sort_keys=True)
+    assert typed.schema_version == "skillsbench_compose_typed_cause_v0"
+    assert typed.fingerprint["apt_failure_subtype"] == "dns_resolution"
+    assert typed.fingerprint["retryability"] == "retryable"
+    assert typed.fingerprint["has_host_paths"] is True
+    assert typed.fingerprint["has_secret_like_tokens"] is False
+    assert environment.command_attempts == 2
+    assert environment.build_received_raw_failure is True
+    assert raw_failure not in str(typed)
+    assert "/private/job" not in serialized
+    assert "archive.example.invalid" not in serialized
+    assert typed.__cause__ is None
+
+    restore()
+    with pytest.raises(RuntimeError, match="Docker compose command failed"):
+        asyncio.run(invoke())
+    assert environment.command_attempts == 4
+
+
+def test_setup_only_preflight_consumes_compose_producer_typed_cause() -> None:
+    raw_failure = (
+        "Docker compose command failed. apt-get update failed to fetch index: "
+        "GPG error: repository is not signed at /private/job"
+    )
+
+    class FakeComposeEnvironment:
+        async def _run_docker_compose_build(self) -> None:
+            raise RuntimeError(raw_failure)
+
+    class FakeComposeRollout:
+        last_created: "FakeComposeRollout | None" = None
+
+        def __init__(self) -> None:
+            self._rollout_dir: object | None = None
+            self.env: FakeComposeEnvironment | None = None
+
+        @classmethod
+        async def create(cls, _config: Any) -> "FakeComposeRollout":
+            instance = cls()
+            cls.last_created = instance
+            return instance
+
+        async def setup(self) -> None:
+            self._rollout_dir = object()
+            self.env = FakeComposeEnvironment()
+
+        async def start(self) -> None:
+            assert self.env is not None
+            await self.env._run_docker_compose_build()
+
+        async def cleanup(self) -> None:
+            return None
+
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeComposeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert result["failure_stage"] == "environment_start"
+    assert result["failure_cause_source"] == "compose_producer_typed_cause"
+    assert result["failure_category"] == (
+        "skillsbench_docker_compose_apt_repository_failure"
+    )
+    assert result["apt_failure_subtype"] == "signature_or_gpg"
+    assert result["terminal_failure_reason_codes"] == [
+        "apt_fetch_failed",
+        "apt_signature_or_gpg",
+    ]
+    assert result["compose_typed_cause_boundary_installed"] is True
+    assert result["compose_typed_cause_boundary_restored"] is True
+    assert result["raw_logs_read"] is False
+    assert result["raw_logs_recorded"] is False
+    assert result["raw_command_output_recorded"] is False
+    serialized = json.dumps(result, sort_keys=True)
+    assert raw_failure not in serialized
+    assert "/private/job" not in serialized
 
 
 @pytest.mark.parametrize(
