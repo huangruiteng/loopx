@@ -88,7 +88,7 @@ def loopx_turn_execution_committed(execution: Mapping[str, Any]) -> bool:
     return bool(
         execution.get("status") == "committed"
         and receipt.get("status") == "committed"
-        and validation.get("status") == "passed"
+        and validation.get("status") in {"passed", "progress"}
         and effects.get("state_written") is True
         and effects.get("quota_spent") is True
     )

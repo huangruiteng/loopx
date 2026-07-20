@@ -63,6 +63,10 @@ Optional env:
   SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND
                                        Independent scored-workspace validator
                                        required by loopx-turn-agent-cli
+  SKILLSBENCH_LOOPX_TURN_MAX_TURNS      Maximum validated Turns, default 1
+  SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE
+                                       Validator code for intermediate progress,
+                                       default 10; 0 remains terminal completion
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -204,6 +208,8 @@ remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRI
 remote_command_file_bridge_agent_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND:-}"
 remote_command_file_bridge_agent_command_instrumented="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED:-0}"
 loopx_turn_validation_command="${SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND:-}"
+loopx_turn_max_turns="${SKILLSBENCH_LOOPX_TURN_MAX_TURNS:-1}"
+loopx_turn_progress_exit_code="${SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE:-10}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -269,6 +275,17 @@ if [[ "$route" == "loopx-turn-agent-cli" ]] &&
   [[ -z "$loopx_turn_validation_command" ]]; then
   echo "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND is required for loopx-turn-agent-cli" >&2
   exit 2
+fi
+if [[ "$route" == "loopx-turn-agent-cli" ]]; then
+  if [[ ! "$loopx_turn_max_turns" =~ ^[1-9][0-9]*$ ]]; then
+    echo "SKILLSBENCH_LOOPX_TURN_MAX_TURNS must be a positive integer" >&2
+    exit 2
+  fi
+  if [[ ! "$loopx_turn_progress_exit_code" =~ ^[1-9][0-9]*$ ]] ||
+    ((10#$loopx_turn_progress_exit_code > 255)); then
+    echo "SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE must be between 1 and 255" >&2
+    exit 2
+  fi
 fi
 model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
@@ -410,6 +427,14 @@ if [[ -n "$loopx_turn_validation_command" ]]; then
   extra_runner_args+=(
     --loopx-turn-validation-command
     "$loopx_turn_validation_command"
+  )
+fi
+if [[ "$route" == "loopx-turn-agent-cli" ]]; then
+  extra_runner_args+=(
+    --loopx-turn-max-turns
+    "$loopx_turn_max_turns"
+    --loopx-turn-progress-exit-code
+    "$loopx_turn_progress_exit_code"
   )
 fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
@@ -567,6 +592,8 @@ if [[ "$dry_run" == "true" ]]; then
     "$remote_command_file_bridge_agent_command_instrumented"
   printf 'loopx_turn_validation_command_configured=%s\n' \
     "$([[ -n "$loopx_turn_validation_command" ]] && echo 1 || echo 0)"
+  printf 'loopx_turn_max_turns=%s\n' "$loopx_turn_max_turns"
+  printf 'loopx_turn_progress_exit_code=%s\n' "$loopx_turn_progress_exit_code"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
@@ -590,6 +617,8 @@ if [[ "$dry_run" == "true" ]]; then
       printf '%s ' --remote-command-file-bridge-agent-command-instrumented
     [[ -n "$loopx_turn_validation_command" ]] &&
       printf '%s ' --loopx-turn-validation-command
+    [[ "$route" == "loopx-turn-agent-cli" ]] &&
+      printf '%s ' --loopx-turn-max-turns --loopx-turn-progress-exit-code
     printf '\n'
     printf 'remote_command=<redacted-private-runner-command-values>\n'
     printf 'supervisor_command=<redacted-private-runner-command-values>\n'

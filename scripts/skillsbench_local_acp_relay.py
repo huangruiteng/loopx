@@ -245,6 +245,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Its output is never copied into public traces."
         ),
     )
+    parser.add_argument("--loopx-turn-max-turns", type=int, default=1)
+    parser.add_argument("--loopx-turn-progress-exit-code", type=int, default=10)
     parser.add_argument("--loopx-case-goal-id", default="skillsbench-case")
     parser.add_argument("--loopx-case-agent-id", default="codex-benchmark-agent")
     parser.add_argument("--loopx-case-todo-id", default=BENCHMARK_CASE_LOOPX_TODO_ID)
@@ -299,6 +301,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             loopx_turn_agent_cli=args.loopx_turn_agent_cli,
             loopx_turn_validation_command=args.loopx_turn_validation_command,
+            loopx_turn_max_turns=args.loopx_turn_max_turns,
+            loopx_turn_progress_exit_code=args.loopx_turn_progress_exit_code,
             loopx_case_goal_id=args.loopx_case_goal_id,
             loopx_case_agent_id=args.loopx_case_agent_id,
             loopx_case_todo_id=args.loopx_case_todo_id,

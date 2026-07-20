@@ -13,6 +13,8 @@ from loopx.control_plane.turn_driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
     build_loopx_turn_plan,
+    loopx_turn_execution_committed,
+    run_loopx_turn_once,
 )
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
 
@@ -859,6 +861,61 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7
         "fixture_progress",
         "quota_slot_spent",
     ]
+
+
+def test_turn_run_once_commits_independently_validated_progress(
+    tmp_path: Path,
+) -> None:
+    plan = build_loopx_turn_plan(
+        _envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+    )
+
+    def host_runner(request: dict[str, object]) -> dict[str, object]:
+        return {
+            "schema_version": "loopx_turn_result_v0",
+            "turn_key": request["turn_key"],
+            "result_kind": "validated_progress",
+            "completed_phases": ["host_execute", "typed_result"],
+            "classification": "fixture_intermediate_progress",
+            "recommended_action": "Continue the fixture",
+            "next_action": "Run the next bounded fixture Turn",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "outcome_progress",
+            "vision_unchanged_reason": "The fixture objective remains open.",
+            "summary": "One intermediate fixture step passed validation.",
+        }
+
+    execution = run_loopx_turn_once(
+        plan,
+        host_runner=host_runner,
+        project=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        timeout_seconds=10,
+        execute=True,
+        task_validator=lambda _plan, _result: {
+            "status": "progress",
+            "validator_kind": "fixture",
+            "summary": "intermediate fixture progress is independently valid",
+            "exit_code": 10,
+        },
+        writeback=lambda _result: {"ok": True, "appended": True},
+        spend=lambda: {"ok": True, "appended": True, "slots": 1},
+        scheduler=lambda _spend: {
+            "disposition": "outer_controller_owned",
+            "completed": True,
+            "acknowledged": False,
+            "apply_needed": False,
+        },
+    )
+
+    assert execution["status"] == "committed"
+    assert execution["validation"]["status"] == "progress"
+    assert execution["validation"]["exit_code"] == 10
+    assert execution["quota_slot_spend_count"] == 1
+    assert loopx_turn_execution_committed(execution) is True
 
 
 def test_turn_run_once_cli_rejects_unproven_host_claim_before_writeback(

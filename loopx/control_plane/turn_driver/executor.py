@@ -227,7 +227,14 @@ def _task_validation_receipt(
     exit_code: int | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
-    if status not in {"passed", "failed", "inconclusive", "unavailable", "not_required"}:
+    if status not in {
+        "passed",
+        "progress",
+        "failed",
+        "inconclusive",
+        "unavailable",
+        "not_required",
+    }:
         errors.append("unsupported task validation status")
     if not validator_kind or len(validator_kind) > 80:
         errors.append("task validator kind must contain at most 80 characters")
@@ -246,18 +253,20 @@ def _task_validation_receipt(
         errors.append("task validation recovery_kind must be repair_required or replan_required")
     if status in {"failed", "inconclusive", "unavailable"} and recovery_kind is None:
         errors.append("failed task validation requires a typed recovery_kind")
-    if status in {"passed", "not_required"} and recovery_kind is not None:
+    if status in {"passed", "progress", "not_required"} and recovery_kind is not None:
         errors.append("successful task validation cannot declare recovery_kind")
     if exit_code is not None and (not isinstance(exit_code, int) or exit_code < 0):
         errors.append("task validation exit_code must be a non-negative integer")
     if status == "passed" and exit_code not in {None, 0}:
         errors.append("passed task validation cannot declare a non-zero exit_code")
+    if status == "progress" and exit_code in {None, 0}:
+        errors.append("progress task validation requires a non-zero exit_code")
     effective_status = status if not errors else "inconclusive"
     effective_recovery_kind = recovery_kind
     if errors and effective_recovery_kind is None:
         effective_recovery_kind = LoopXTurnResultKind.REPAIR_REQUIRED.value
     return {
-        "ok": not errors and status in {"passed", "not_required"},
+        "ok": not errors and status in {"passed", "progress", "not_required"},
         "schema_version": LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION,
         "status": effective_status,
         "validator_kind": validator_kind or "invalid",
