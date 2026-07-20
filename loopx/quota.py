@@ -1205,6 +1205,212 @@ def _quota_agent_profile(agent_identity: dict[str, Any] | None) -> dict[str, Any
     return profile if isinstance(profile, dict) else None
 
 
+def _agent_monitor_only(agent_identity: Mapping[str, Any] | None) -> bool:
+    return bool(
+        isinstance(agent_identity, Mapping)
+        and agent_identity.get("work_mode") == "monitor_only"
+    )
+
+
+def _build_agent_work_lane(
+    item: Mapping[str, Any],
+    *,
+    status_payload: Mapping[str, Any],
+    project_asset: Mapping[str, Any],
+    goal_id: str,
+    agent_id: str | None,
+    goal_boundary: Mapping[str, Any],
+    agent_identity: Mapping[str, Any] | None,
+    agent_todo_summary: Mapping[str, Any],
+    monitor_debt_arbitration: Mapping[str, Any] | None,
+) -> tuple[bool, dict[str, Any], dict[str, Any] | None]:
+    monitor_only = _agent_monitor_only(agent_identity)
+    work_lane = build_quota_work_lane_contract(
+        item,
+        status_payload=status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        agent_todo_summary=agent_todo_summary,
+        monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+        monitor_debt_arbitration=monitor_debt_arbitration,
+        advancement_allowed=not monitor_only,
+    )
+    if monitor_only:
+        return monitor_only, work_lane, None
+    task_orchestration, work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract=work_lane,
+        goal_boundary=goal_boundary,
+        agent_identity=agent_identity,
+        agent_todo_summary=agent_todo_summary,
+        raw_agent_todo_summary=(
+            item.get("agent_todos")
+            if isinstance(item.get("agent_todos"), dict)
+            else project_asset.get("agent_todos")
+            if isinstance(project_asset.get("agent_todos"), dict)
+            else None
+        ),
+    )
+    return monitor_only, work_lane, task_orchestration
+
+
+def _apply_agent_monitor_only_precedence(
+    payload: dict[str, Any],
+    *,
+    monitor_only: bool,
+    inbox_reply_due: bool,
+) -> None:
+    """Keep monitor/reply lanes alive while suppressing advancement work.
+
+    This final precedence pass prevents autonomous replan, repair, or fallback
+    from turning a configured monitor-only peer back into an advancement lane.
+    """
+
+    if not monitor_only or inbox_reply_due:
+        return
+    work_lane = (
+        payload.get("work_lane_contract")
+        if isinstance(payload.get("work_lane_contract"), dict)
+        else {}
+    )
+    monitor_lane = work_lane.get("lane") == "continuous_monitor"
+    monitor_due = monitor_lane and work_lane.get("must_attempt_work") is True
+    if monitor_lane:
+        reason = (
+            "agent work mode is monitor_only; run the due monitor without "
+            "opening an advancement or autonomous replan lane"
+            if monitor_due
+            else "agent work mode is monitor_only; wait quietly for the next "
+            "material monitor transition or direct operator reply"
+        )
+        payload.update(
+            {
+                "decision": "run" if monitor_due else "skip",
+                "should_run": monitor_due,
+                "normal_delivery_allowed": monitor_due,
+                "recovery_delivery_allowed": False,
+                "self_repair_allowed": False,
+                "capability_repair_allowed": False,
+                "workspace_repair_allowed": False,
+                "effective_action": "monitor_due" if monitor_due else "monitor_quiet_skip",
+                "actionable_by_codex": monitor_due,
+                "reason": reason,
+                "blocked_action_scope": "advancement_work",
+                "safe_bypass_allowed": False,
+                "safe_bypass_kind": None,
+                "safe_bypass_policy": None,
+                "requires_user_action": False,
+                "agent_work_mode": "monitor_only",
+                "recommended_action": work_lane.get("action"),
+                "heartbeat_recommendation": {
+                    "recommended_mode": (
+                        "monitor_due"
+                        if monitor_due
+                        else "monitor_quiet_until_material_transition"
+                    ),
+                    "notify": "DONT_NOTIFY",
+                    "reason": reason,
+                    "spend_policy": (
+                        "spend only after a validated material monitor transition; "
+                        "unchanged monitor polls are no-spend"
+                    ),
+                },
+                "execution_obligation": {
+                    "must_attempt_work": monitor_due,
+                    "kind": "work_lane_contract" if monitor_due else "monitor_quiet_skip",
+                    "contract": "work_lane_contract",
+                    "contract_obligation": work_lane.get("obligation"),
+                    "delivery_allowed": monitor_due,
+                    "notify_is_execution_gate": False,
+                    "reason": reason,
+                },
+            }
+        )
+    else:
+        reason = (
+            "agent work mode is monitor_only; advancement, autonomous replan, "
+            "repair, and fallback remain paused until an explicit mode change"
+        )
+        payload.update(
+            {
+                "decision": "skip",
+                "should_run": False,
+                "normal_delivery_allowed": False,
+                "recovery_delivery_allowed": False,
+                "self_repair_allowed": False,
+                "capability_repair_allowed": False,
+                "workspace_repair_allowed": False,
+                "effective_action": "agent_monitor_only",
+                "actionable_by_codex": False,
+                "reason": reason,
+                "blocked_action_scope": "advancement_work",
+                "safe_bypass_allowed": False,
+                "safe_bypass_kind": None,
+                "safe_bypass_policy": None,
+                "requires_user_action": False,
+                "agent_work_mode": "monitor_only",
+                "recommended_action": (
+                    "Wait for a due monitor, verified direct operator reply, or "
+                    "explicit work-mode change."
+                ),
+                "heartbeat_recommendation": {
+                    "recommended_mode": "agent_monitor_only",
+                    "notify": "DONT_NOTIFY",
+                    "reason": reason,
+                    "spend_policy": "do not append quota spend while advancement is paused",
+                },
+                "execution_obligation": {
+                    "must_attempt_work": False,
+                    "kind": "agent_monitor_only",
+                    "delivery_allowed": False,
+                    "notify_is_execution_gate": False,
+                    "reason": reason,
+                    "spend_policy": "do not append quota spend while advancement is paused",
+                },
+            }
+        )
+    monitor_selected_todo = (
+        _selected_todo_projection(
+            agent_lane_next_action=None,
+            work_lane_contract=work_lane,
+        )
+        if monitor_due
+        else None
+    )
+    if monitor_selected_todo:
+        payload["selected_todo"] = monitor_selected_todo
+    else:
+        payload.pop("selected_todo", None)
+    frontier = payload.get("goal_frontier_projection")
+    if isinstance(frontier, dict):
+        frontier.pop("vision_continuation_audit", None)
+    for key in (
+        "agent_command",
+        "agent_lane_frontier_hint",
+        "agent_lane_next_action",
+        "agent_scope_frontier",
+        "autonomous_replan_decision",
+        "autonomous_replan_obligation",
+        "autonomous_replan_scope",
+        "blocked_priority_fallback",
+        "capability_gate",
+        "capability_monitor_fallback",
+        "external_evidence_observation",
+        "goal_route_hint",
+        "notify_user_on_capability_gate",
+        "notify_user_on_gate",
+        "notify_user_on_open_todo",
+        "open_todo_notification_policy",
+        "open_todo_notify_reason",
+        "required_reads",
+        "scoped_user_gate_fallback",
+        "stall_self_repair",
+        "vision_continuation_audit",
+        "vision_wait_state",
+        "workspace_guard",
+    ):
+        payload.pop(key, None)
+
+
 def build_quota_should_run(
     status_payload: dict[str, Any],
     *,
@@ -1355,27 +1561,18 @@ def build_quota_should_run(
         monitor_debt_arbitration = _build_monitor_debt_arbitration(
             status_payload, goal_id=safe_goal_id, agent_id=boundary_agent_id
         )
-        work_lane_contract = build_quota_work_lane_contract(
-            item,
-            status_payload=status_payload,
-            goal_id=safe_goal_id,
-            agent_id=boundary_agent_id,
-            agent_todo_summary=agent_todo_summary,
-            monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
-            monitor_debt_arbitration=monitor_debt_arbitration,
-        )
-        task_orchestration_contract, work_lane_contract = apply_task_orchestration_contract(
-            fallback_work_lane_contract=work_lane_contract,
-            goal_boundary=goal_boundary,
-            agent_identity=agent_identity,
-            agent_todo_summary=agent_todo_summary,
-            raw_agent_todo_summary=(
-                item.get("agent_todos")
-                if isinstance(item.get("agent_todos"), dict)
-                else project_asset.get("agent_todos")
-                if isinstance(project_asset.get("agent_todos"), dict)
-                else None
-            ),
+        agent_monitor_only, work_lane_contract, task_orchestration_contract = (
+            _build_agent_work_lane(
+                item,
+                status_payload=status_payload,
+                project_asset=project_asset,
+                goal_id=safe_goal_id,
+                agent_id=boundary_agent_id,
+                goal_boundary=goal_boundary,
+                agent_identity=agent_identity,
+                agent_todo_summary=agent_todo_summary,
+                monitor_debt_arbitration=monitor_debt_arbitration,
+            )
         )
         capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=effective_available_capabilities, agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
         if task_orchestration_contract:
@@ -2150,6 +2347,11 @@ def build_quota_should_run(
             payload["next_handoff_condition"] = item.get("next_handoff_condition")
         if should_run and item.get("agent_command"):
             payload["agent_command"] = item.get("agent_command")
+        _apply_agent_monitor_only_precedence(
+            payload,
+            monitor_only=agent_monitor_only,
+            inbox_reply_due=inbox_reply_due,
+        )
         required_reads = _quota_required_reads(payload)
         if required_reads:
             payload["required_reads"] = required_reads

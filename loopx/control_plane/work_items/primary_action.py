@@ -203,6 +203,17 @@ def resolve_canonical_primary_action(payload: dict[str, Any], *, mode: str) -> s
         return "run one bounded self-repair or replan segment before another quiet no-op"
     if mode == "monitor_quiet_skip":
         return "record at most one no-spend monitor-poll event, rerun the guard, then stay quiet if unchanged"
+    if mode == "agent_monitor_only":
+        return "stay quiet until a monitor is due, a verified direct reply arrives, or the work mode changes"
+    if mode == "monitor_due":
+        work_lane = (
+            payload.get("work_lane_contract")
+            if isinstance(payload.get("work_lane_contract"), dict)
+            else {}
+        )
+        return protocol_action_text(work_lane.get("action"), limit=260) or (
+            "attempt the due monitor and write back only a material transition"
+        )
     if _agent_scope_frontier_action(mode) is not None:
         agent_scope_frontier = (
             payload.get("agent_scope_frontier")

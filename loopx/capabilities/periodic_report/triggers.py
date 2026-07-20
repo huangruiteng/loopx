@@ -101,6 +101,12 @@ def _normalize_policy(raw: object) -> dict[str, Any]:
     }
 
 
+def normalize_periodic_report_trigger_policy(raw: object) -> dict[str, Any]:
+    """Normalize the trigger portion of a project-owned report profile."""
+
+    return _normalize_policy(raw)
+
+
 def _normalize_last_report(raw: object) -> dict[str, Any] | None:
     if raw is None:
         return None

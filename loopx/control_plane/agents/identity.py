@@ -11,6 +11,7 @@ from .legacy_migration import (
 )
 from .profile import normalize_agent_profile
 from .runtime_model import PEER_AGENT_IDENTITY_SCHEMA_VERSION, agent_runtime_model_for_goal
+from .work_mode import agent_work_mode_for_goal
 
 
 def quota_registered_agents(goal: dict[str, Any]) -> list[str]:
@@ -46,6 +47,9 @@ def build_quota_agent_identity(
         "registered": True,
         "registered_agents": registered_agents,
     }
+    work_mode = agent_work_mode_for_goal(goal, normalized_agent_id)
+    if work_mode:
+        identity["work_mode"] = work_mode
     raw_profile = agent_profile_for_goal(goal, normalized_agent_id)
     if raw_profile:
         try:

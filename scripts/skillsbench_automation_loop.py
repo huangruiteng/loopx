@@ -6199,6 +6199,9 @@ def build_compose_setup_diagnostic(
         for item in fingerprint.get("terminal_failure_reason_codes", [])
         if isinstance(item, str)
     ][:10]
+    apt_failure_subtype = str(
+        fingerprint.get("apt_failure_subtype") or ""
+    )[:120]
     terminal_failure_dependency_endpoints = [
         str(item)[:120]
         for item in fingerprint.get("terminal_failure_dependency_endpoints", [])
@@ -6317,6 +6320,7 @@ def build_compose_setup_diagnostic(
         "apt_repository_failure": apt_repository_failure,
         "volume_mount_failure": volume_mount_failure,
         "primary_setup_failure_category": primary_setup_failure_category,
+        "apt_failure_subtype": apt_failure_subtype,
         "terminal_failure_dependency_classes": terminal_dependency_classes,
         "terminal_failure_reason_codes": terminal_failure_reason_codes,
         "terminal_failure_dependency_endpoints": (

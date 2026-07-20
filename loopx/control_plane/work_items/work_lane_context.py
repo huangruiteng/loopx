@@ -95,6 +95,7 @@ def build_work_lane_context_contract(
     monitor_due_item_limit: int = DEFAULT_MONITOR_DUE_ITEM_LIMIT,
     monitor_attempt_already_recorded: bool = False,
     monitor_debt_backoff_active: bool = False,
+    advancement_allowed: bool = True,
 ) -> dict[str, Any] | None:
     progress_scope = item_progress_scope(item)
     external_poll_signal = build_external_evidence_poll_signal(
@@ -102,22 +103,36 @@ def build_work_lane_context_contract(
         agent_todo_summary=agent_todo_summary,
     )
     todo_counts = todo_summary_open_task_counts(agent_todo_summary)
+    if not advancement_allowed:
+        todo_counts = {**todo_counts, "advancement": 0}
     due_monitor_items = todo_summary_monitor_due_items(agent_todo_summary)
     due_monitor_count = todo_summary_monitor_due_count(
         agent_todo_summary,
         due_items=due_monitor_items,
     )
+    if not advancement_allowed and due_monitor_count <= 0:
+        # In monitor-only mode, an action phrase such as "observe result" must
+        # not bypass the monitor todo's explicit cadence window.
+        external_poll_signal = None
     monitor_schedule_gap_items = todo_summary_monitor_schedule_gap_items(agent_todo_summary)
     monitor_schedule_gap_count = todo_summary_monitor_schedule_gap_count(
         agent_todo_summary,
         gap_items=monitor_schedule_gap_items,
     )
     first_due_monitor = due_monitor_items[0] if due_monitor_items else None
-    first_advancement = todo_summary_first_executable_item(agent_todo_summary)
+    first_advancement = (
+        todo_summary_first_executable_item(agent_todo_summary)
+        if advancement_allowed
+        else None
+    )
     agent_id = todo_summary_claim_scope_agent_id(agent_todo_summary or {})
-    monitor_blocked_resume_candidates = _agent_scope_monitor_blocked_resume_candidates(
-        agent_todo_summary,
-        agent_id=agent_id,
+    monitor_blocked_resume_candidates = (
+        _agent_scope_monitor_blocked_resume_candidates(
+            agent_todo_summary,
+            agent_id=agent_id,
+        )
+        if advancement_allowed
+        else []
     )
     return build_work_lane_contract(
         progress_scope=progress_scope,
@@ -132,8 +147,12 @@ def build_work_lane_context_contract(
             first_due_monitor,
             first_advancement=first_advancement,
         ),
-        outcome_followthrough=outcome_followthrough_hint(item),
-        next_action_requires_advancement=next_action_requires_advancement(item),
+        outcome_followthrough=(
+            outcome_followthrough_hint(item) if advancement_allowed else None
+        ),
+        next_action_requires_advancement=(
+            next_action_requires_advancement(item) if advancement_allowed else False
+        ),
         monitor_due_item_limit=monitor_due_item_limit,
         resume_blocked_by_monitor_count=len(monitor_blocked_resume_candidates),
         resume_blocked_by_monitor_items=monitor_blocked_resume_candidates,

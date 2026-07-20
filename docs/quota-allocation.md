@@ -491,6 +491,20 @@ gap, autonomy blocker, or replan obligation fail closed. This keeps recurring
 controllers alive during ordinary waits while honoring an explicit completed
 goal shutdown without another quota-spending turn.
 
+An individual registered peer can instead be put in `monitor_only` work mode:
+
+```bash
+loopx configure-goal --goal-id <goal-id> \
+  --agent-work-mode <agent-id>=monitor_only --execute
+```
+
+This suppresses that peer's advancement, autonomous replan, repair, fallback,
+and new-topic lanes while preserving due `continuous_monitor` todos and verified
+direct operator replies. A future or unchanged monitor stays quiet and no-spend;
+a due monitor may spend only after a validated material transition. Other peers
+remain active. Use `--clear-agent-work-mode <agent-id>` (or set `=active`) to
+resume ordinary advancement.
+
 The read model exposes that derivation as
 `goal_frontier_projection.terminal_state={kind:no_followup, derived:true,
 source:validated_goal_closure}` plus

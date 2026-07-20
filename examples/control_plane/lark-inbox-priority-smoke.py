@@ -30,9 +30,10 @@ from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 
 
 GOAL_ID = "lark-inbox-priority-fixture"
+AGENT_ID = "codex-fix"
 
 
-def status_payload(project: Path) -> dict:
+def status_payload(project: Path, *, monitor_only: bool = False) -> dict:
     next_action = "Advance the ordinary implementation todo."
     payload = quota_status_payload(
         goal_id=GOAL_ID,
@@ -64,6 +65,15 @@ def status_payload(project: Path) -> dict:
                 },
             },
         ],
+        coordination=(
+            {
+                "agent_model": "peer_v1",
+                "registered_agents": [AGENT_ID],
+                "agent_work_modes": {AGENT_ID: "monitor_only"},
+            }
+            if monitor_only
+            else None
+        ),
         goal_extra={
             "repo": str(project),
             "control_plane": {
@@ -82,6 +92,17 @@ def status_payload(project: Path) -> dict:
                     {
                         "id": GOAL_ID,
                         "repo": str(project),
+                        **(
+                            {
+                                "coordination": {
+                                    "agent_model": "peer_v1",
+                                    "registered_agents": [AGENT_ID],
+                                    "agent_work_modes": {AGENT_ID: "monitor_only"},
+                                }
+                            }
+                            if monitor_only
+                            else {}
+                        ),
                         "control_plane": {
                             "lark_event_inbox": {
                                 "enabled": True,
@@ -149,8 +170,9 @@ def main() -> None:
         )
 
         decision = build_quota_should_run(
-            status_payload(project),
+            status_payload(project, monitor_only=True),
             goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
             operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
         )
         assert decision["should_run"] is True, decision
@@ -222,8 +244,9 @@ def main() -> None:
             encoding="utf-8",
         )
         reply_decision = build_quota_should_run(
-            status_payload(project),
+            status_payload(project, monitor_only=True),
             goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
             operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
         )
         reply_lane = reply_decision["work_lane_contract"]
@@ -245,6 +268,16 @@ def main() -> None:
         )
         assert after_ack["work_lane_contract"]["lane"] == "advancement_task", after_ack
         assert after_ack["effective_action"] == "normal_run", after_ack
+        monitor_only_after_ack = build_quota_should_run(
+            status_payload(project, monitor_only=True),
+            goal_id=GOAL_ID,
+            agent_id=AGENT_ID,
+            operator_inbox_urgency_projector=project_lark_event_inbox_urgency,
+        )
+        assert monitor_only_after_ack["should_run"] is False, monitor_only_after_ack
+        assert (
+            monitor_only_after_ack["effective_action"] == "agent_monitor_only"
+        ), monitor_only_after_ack
 
     print("lark-inbox-priority-smoke: ok")
 

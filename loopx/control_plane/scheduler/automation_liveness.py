@@ -36,6 +36,23 @@ def build_automation_liveness(payload: dict[str, Any]) -> dict[str, Any]:
             "stuck for two more eligible turns"
         ),
     }
+    if effective_action == "agent_monitor_only":
+        return {
+            **base,
+            "keep_active": True,
+            "pause_allowed": False,
+            "pause_policy": (
+                "keep a quiet monitor/reply poll; do not start advancement, "
+                "autonomous replan, repair, or fallback work until mode changes"
+            ),
+            "automation_action": "keep_active_monitor_only",
+            "reason": "agent monitor-only mode suppresses advancement work",
+            "next_trigger": (
+                "due monitor, material monitor transition, verified direct operator "
+                "reply, or explicit work-mode change"
+            ),
+            "spend_policy": "no quota spend without a validated material transition",
+        }
     if effective_action == "terminal_no_followup":
         return {
             **base,

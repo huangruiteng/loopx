@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from .skillsbench_failure_signals import (
@@ -11,7 +11,62 @@ from .skillsbench_failure_signals import (
 
 
 SCHEMA_VERSION = "skillsbench_setup_only_public_preflight_v0"
+COMPOSE_TYPED_CAUSE_SCHEMA_VERSION = "skillsbench_compose_typed_cause_v0"
 _PATCH_SUFFIX = "_patch_applied"
+
+
+class SkillsBenchComposeCommandFailure(RuntimeError):
+    """Carry only a bounded public fingerprint beyond the compose producer."""
+
+    def __init__(self, fingerprint: Mapping[str, object]) -> None:
+        super().__init__(
+            "SkillsBench compose command failed with a bounded typed cause"
+        )
+        self.schema_version = COMPOSE_TYPED_CAUSE_SCHEMA_VERSION
+        self.fingerprint = dict(fingerprint)
+
+
+def skillsbench_compose_typed_fingerprint(
+    exc: Exception,
+) -> dict[str, object] | None:
+    if not isinstance(exc, SkillsBenchComposeCommandFailure):
+        return None
+    if exc.schema_version != COMPOSE_TYPED_CAUSE_SCHEMA_VERSION:
+        return None
+    return dict(exc.fingerprint)
+
+
+def install_skillsbench_compose_typed_cause_boundary(
+    environment: Any,
+) -> Callable[[], None] | None:
+    """Type final build failures without changing BenchFlow's retry loop."""
+
+    original_build = getattr(environment, "_run_docker_compose_build", None)
+    if not callable(original_build):
+        return None
+
+    async def build_with_typed_cause(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await original_build(*args, **kwargs)
+        except SkillsBenchComposeCommandFailure:
+            raise
+        except Exception as exc:
+            fingerprint = skillsbench_runner_error_fingerprint(str(exc))
+            raise SkillsBenchComposeCommandFailure(fingerprint) from None
+
+    try:
+        setattr(environment, "_run_docker_compose_build", build_with_typed_cause)
+    except (AttributeError, TypeError):
+        return None
+
+    def restore() -> None:
+        if (
+            getattr(environment, "_run_docker_compose_build", None)
+            is build_with_typed_cause
+        ):
+            setattr(environment, "_run_docker_compose_build", original_build)
+
+    return restore
 
 
 def _patch_hits(task_staging: Mapping[str, Any] | None) -> list[str]:
@@ -70,11 +125,15 @@ def _base_result(
         "terminal_dependency_classes": [],
         "failure_reason_codes": [],
         "terminal_failure_reason_codes": [],
+        "apt_failure_subtype": "none",
         "dependency_endpoints": [],
         "terminal_dependency_endpoints": [],
         "retryability": "unknown",
         "failure_category": "none",
         "exit_category": "pending",
+        "failure_cause_source": "none",
+        "compose_typed_cause_boundary_installed": False,
+        "compose_typed_cause_boundary_restored": False,
         "patch_hits": _patch_hits(task_staging),
         "apt_setup_risk_detected": setup.get("apt_setup_risk_detected") is True,
         "dockerfile_pip_install_risk_detected": (
@@ -87,6 +146,7 @@ def _base_result(
         "raw_error_recorded": False,
         "raw_logs_read": False,
         "raw_logs_recorded": False,
+        "raw_command_output_recorded": False,
         "raw_task_text_read": False,
         "raw_trajectory_read": False,
         "raw_verifier_output_read": False,
@@ -113,6 +173,7 @@ async def run_setup_only_public_preflight(
     stage_timeout_sec = max(1.0, stage_timeout_sec)
     cleanup_timeout_sec = max(1.0, cleanup_timeout_sec)
     rollout: Any | None = None
+    restore_compose_boundary: Callable[[], None] | None = None
     failed = False
     try:
         rollout = await asyncio.wait_for(
@@ -126,6 +187,13 @@ async def run_setup_only_public_preflight(
         )
         result["environment_object_materialized"] = (
             getattr(rollout, "env", None) is not None
+        )
+
+        restore_compose_boundary = install_skillsbench_compose_typed_cause_boundary(
+            getattr(rollout, "env", None)
+        )
+        result["compose_typed_cause_boundary_installed"] = (
+            restore_compose_boundary is not None
         )
 
         result["stage"] = "environment_start"
@@ -143,7 +211,13 @@ async def run_setup_only_public_preflight(
             result["environment_object_materialized"] = (
                 getattr(rollout, "env", None) is not None
             )
-        fingerprint = skillsbench_runner_error_fingerprint(str(exc))
+        typed_fingerprint = skillsbench_compose_typed_fingerprint(exc)
+        if typed_fingerprint is None:
+            fingerprint = skillsbench_runner_error_fingerprint(str(exc))
+            result["failure_cause_source"] = "exception_text_fingerprint"
+        else:
+            fingerprint = typed_fingerprint
+            result["failure_cause_source"] = "compose_producer_typed_cause"
         matched_patterns = {
             str(item)
             for item in fingerprint.get("matched_patterns", [])
@@ -173,6 +247,9 @@ async def run_setup_only_public_preflight(
             for item in fingerprint.get("terminal_failure_reason_codes", [])
             if isinstance(item, str)
         ]
+        result["apt_failure_subtype"] = str(
+            fingerprint.get("apt_failure_subtype") or "none"
+        )
         result["dependency_endpoints"] = [
             str(item)
             for item in fingerprint.get("failure_dependency_endpoints", [])
@@ -190,6 +267,9 @@ async def run_setup_only_public_preflight(
             or "coarse_public_safe_pattern_match"
         )
     finally:
+        if restore_compose_boundary is not None:
+            restore_compose_boundary()
+            result["compose_typed_cause_boundary_restored"] = True
         if rollout is not None:
             try:
                 await asyncio.wait_for(

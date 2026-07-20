@@ -28,6 +28,10 @@ from loopx.self_update import (  # noqa: E402
 )
 
 
+INSTALLED_COMMIT = "1" * 40
+TARGET_COMMIT = "2" * 40
+
+
 def fake_doctor_payload() -> dict[str, object]:
     return {
         "path": {
@@ -47,6 +51,12 @@ def fake_doctor_payload() -> dict[str, object]:
             "manifest_package_version": __version__,
             "manifest_package_version_tag": release_version_tag(),
             "manifest_package_version_matches_runtime": True,
+            "manifest_source_repo": "example/loopx",
+            "manifest_source_ref": "stable",
+            "manifest_source_git_commit": INSTALLED_COMMIT,
+            "freshness_source_label": "example/loopx@main",
+            "freshness_source_git_commit": TARGET_COMMIT,
+            "manifest_source_freshness_relation": "installed_behind",
         },
         "release_manifest": {
             "available": True,
@@ -59,6 +69,7 @@ def fake_doctor_payload() -> dict[str, object]:
                     "ref": "stable",
                     "archive_url": "https://codeload.github.com/example/loopx/tar.gz/stable",
                     "archive_sha256": "abc123",
+                    "git_commit": INSTALLED_COMMIT,
                 },
                 "package": {
                     "name": "loopx",
@@ -87,6 +98,12 @@ def fake_fresh_doctor_payload() -> dict[str, object]:
         "manifest_package_version": __version__,
         "manifest_package_version_tag": release_version_tag(),
         "manifest_package_version_matches_runtime": True,
+        "manifest_source_repo": "example/loopx",
+        "manifest_source_ref": "stable",
+        "manifest_source_git_commit": INSTALLED_COMMIT,
+        "freshness_source_label": "example/loopx@main",
+        "freshness_source_git_commit": INSTALLED_COMMIT,
+        "manifest_source_freshness_relation": "same",
     }
     return payload
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+import json
 from pathlib import Path
 
 from ..agent_registry import (
@@ -281,6 +282,13 @@ def register_support_control_commands(
     update_parser.add_argument(
         "--archive-url",
         help="Explicit tarball URL passed to the installer as LOOPX_ARCHIVE_URL.",
+    )
+    update_parser.add_argument(
+        "--installed-doctor-json",
+        help=(
+            "Local JSON output from the installed `loopx --format json doctor`; "
+            "valid only with --check for source-versus-installed qualification."
+        ),
     )
     update_parser.add_argument(
         "--timeout-seconds",
@@ -563,16 +571,29 @@ def handle_support_control_command(
 
     if args.command == "update":
         try:
+            if args.installed_doctor_json and not args.check:
+                raise ValueError("--installed-doctor-json requires update --check")
             if args.rollback:
                 payload = build_rollback_plan(release_id=args.rollback)
                 payload = execute_rollback_plan(payload, timeout_seconds=args.timeout_seconds)
             else:
+                doctor_payload = None
+                if args.installed_doctor_json:
+                    doctor_path = Path(args.installed_doctor_json).expanduser()
+                    loaded_doctor = json.loads(doctor_path.read_text(encoding="utf-8"))
+                    if not isinstance(loaded_doctor, dict):
+                        raise ValueError("--installed-doctor-json must contain a JSON object")
+                    doctor_payload = loaded_doctor
                 payload = build_update_plan(
                     repo=args.repo,
                     ref=args.ref,
                     archive_url=args.archive_url,
                     check_only=args.check,
                     execute=args.execute,
+                    doctor_payload=doctor_payload,
+                )
+                payload["installed_doctor_source"] = (
+                    "explicit_json" if doctor_payload is not None else "current_runtime"
                 )
                 if args.execute:
                     payload = execute_update_plan(payload, timeout_seconds=args.timeout_seconds)

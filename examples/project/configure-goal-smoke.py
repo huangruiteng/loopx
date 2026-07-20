@@ -138,6 +138,8 @@ def main() -> int:
             "peer_v1",
             "--agent-profile-json",
             agent_profile_json,
+            "--agent-work-mode",
+            "codex-side-bypass=monitor_only",
             "--write-scope",
             "docs/**",
             "--write-scope",
@@ -166,6 +168,7 @@ def main() -> int:
         assert "checkpointed_boundary_authority" in dry["changed_fields"], dry
         assert "registered_agents" in dry["changed_fields"], dry
         assert "configured_agent_model" in dry["changed_fields"], dry
+        assert "agent_work_modes" in dry["changed_fields"], dry
         assert "write_scope" in dry["changed_fields"], dry
         assert "issue_fix_reviewer_notification" in dry["changed_fields"], dry
         assert "lark_event_inbox" in dry["changed_fields"], dry
@@ -175,6 +178,9 @@ def main() -> int:
         assert dry["after"]["checkpointed_boundary_authority"]["active_write_scope"] == ["docs/**"], dry
         assert dry["after"]["registered_agents"] == ["codex-main-control", "codex-side-bypass"], dry
         assert dry["after"]["agent_model"] == "peer_v1", dry
+        assert dry["after"]["agent_work_modes"] == {
+            "codex-side-bypass": "monitor_only"
+        }, dry
         assert dry["after"]["issue_fix_reviewer_notification"] == {
             "enabled": True,
             "config_pointer_registered": True,
@@ -253,6 +259,8 @@ def main() -> int:
             "peer_v1",
             "--agent-profile-json",
             agent_profile_json,
+            "--agent-work-mode",
+            "codex-side-bypass=monitor_only",
             "--write-scope",
             "docs/**,tests/**",
             "--waiting-on",
@@ -291,6 +299,9 @@ def main() -> int:
         assert goal["coordination"]["agent_model"] == "peer_v1", goal
         assert goal["coordination"]["agent_profiles"] == {
             "codex-side-bypass": agent_profile,
+        }, goal
+        assert goal["coordination"]["agent_work_modes"] == {
+            "codex-side-bypass": "monitor_only"
         }, goal
         assert goal["coordination"]["write_scope"] == ["docs/**", "tests/**"], goal
         assert goal["waiting_on"] == "user_or_controller", goal
@@ -473,6 +484,19 @@ def main() -> int:
         assert profile_cleared["ok"] is True, profile_cleared
         assert "agent_profiles" in profile_cleared["changed_fields"], profile_cleared
         assert "agent_profiles" not in goal_from_registry(registry_path)["coordination"]
+
+        work_mode_cleared = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--clear-agent-work-mode",
+            "codex-side-bypass",
+            "--execute",
+        ))
+        assert work_mode_cleared["ok"] is True, work_mode_cleared
+        assert "agent_work_modes" in work_mode_cleared["changed_fields"], work_mode_cleared
+        assert "agent_work_modes" not in goal_from_registry(registry_path)["coordination"]
 
         invalid_reward_agent = payload(run_cli(
             registry_path,

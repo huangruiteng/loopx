@@ -361,6 +361,24 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         help="Registered agent id whose advisory profile should be removed. Repeatable.",
     )
     configure_goal_parser.add_argument(
+        "--agent-work-mode",
+        dest="agent_work_modes",
+        action="append",
+        default=None,
+        metavar="AGENT_ID=MODE",
+        help=(
+            "Set one registered peer's runtime work mode to active or monitor_only. "
+            "Repeatable."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-agent-work-mode",
+        dest="clear_agent_work_modes",
+        action="append",
+        default=None,
+        help="Registered agent id whose explicit runtime work mode should be removed.",
+    )
+    configure_goal_parser.add_argument(
         "--todo-lifecycle-authority-json",
         dest="todo_lifecycle_authority_jsons",
         action="append",
@@ -664,6 +682,18 @@ def handle_registry_admin_command(
 
     if args.command == "configure-goal":
         try:
+            agent_work_modes: dict[str, str] = {}
+            for raw_work_mode in args.agent_work_modes or []:
+                agent_id, separator, mode = str(raw_work_mode).partition("=")
+                if not separator or not agent_id.strip() or not mode.strip():
+                    raise ValueError(
+                        "--agent-work-mode must use AGENT_ID=active|monitor_only"
+                    )
+                if agent_id.strip() in agent_work_modes:
+                    raise ValueError(
+                        f"duplicate --agent-work-mode for {agent_id.strip()}"
+                    )
+                agent_work_modes[agent_id.strip()] = mode.strip()
             agent_profiles = [
                 json.loads(raw_profile)
                 for raw_profile in (args.agent_profile_jsons or [])
@@ -695,6 +725,8 @@ def handle_registry_admin_command(
                 clear_registered_agents=bool(args.clear_registered_agents),
                 agent_profiles=agent_profiles,
                 clear_agent_profiles=args.clear_agent_profiles,
+                agent_work_modes=agent_work_modes or None,
+                clear_agent_work_modes=args.clear_agent_work_modes,
                 todo_lifecycle_authority=todo_lifecycle_authority,
                 clear_todo_lifecycle_authority=(
                     args.clear_todo_lifecycle_authority

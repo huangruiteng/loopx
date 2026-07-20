@@ -17,6 +17,9 @@ DEFAULT_UPDATE_REPO = "huangruiteng/loopx"
 DEFAULT_UPDATE_REF = "stable"
 ROLLBACK_PREVIOUS_ALIAS = "previous"
 SOURCE_VERSION_CHECK_SCHEMA_VERSION = "loopx_source_version_check_v0"
+RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION = (
+    "loopx_runtime_activation_qualification_v0"
+)
 SOURCE_VERSION_CHECK_TIMEOUT_SECONDS = 3
 SOURCE_VERSION_READ_LIMIT_BYTES = 64 * 1024
 PERSISTED_PYTHON_FILENAME = ".loopx-python"
@@ -167,6 +170,93 @@ def _source_version_check(source: dict[str, Any]) -> dict[str, Any]:
         "version": version,
         "version_tag": f"v{version}",
         "source_url": source_url,
+    }
+
+
+def _runtime_activation_qualification(
+    *,
+    install_freshness: dict[str, Any],
+    source: dict[str, Any],
+) -> dict[str, Any]:
+    installed_commit = install_freshness.get("manifest_source_git_commit")
+    target_commit = install_freshness.get("freshness_source_git_commit")
+    revision_relation = install_freshness.get("manifest_source_freshness_relation")
+    qualified_repo = install_freshness.get("manifest_source_repo")
+    qualified_ref = install_freshness.get("manifest_source_ref")
+    selected_repo = source.get("repo")
+    selected_ref = source.get("ref")
+    package_matches_runtime = install_freshness.get(
+        "manifest_package_version_matches_runtime"
+    )
+    requires_upgrade = install_freshness.get("requires_upgrade")
+    has_commit_pair = all(
+        isinstance(commit, str) and bool(commit)
+        for commit in (installed_commit, target_commit)
+    )
+    source_identity_matches = all(
+        isinstance(value, str) and bool(value)
+        for value in (qualified_repo, qualified_ref, selected_repo, selected_ref)
+    ) and (
+        str(qualified_repo).removesuffix(".git").lower()
+        == str(selected_repo).removesuffix(".git").lower()
+        and str(qualified_ref).removeprefix("refs/heads/")
+        == str(selected_ref).removeprefix("refs/heads/")
+    )
+
+    if package_matches_runtime is False:
+        decision = "release_or_install_successor_required"
+        runtime_active: bool | None = False
+        successor_kind = "release_or_install"
+        reason = "release manifest package version does not match the active runtime"
+    elif not source_identity_matches:
+        decision = "activation_qualification_required"
+        runtime_active = None
+        successor_kind = "activation_qualification"
+        reason = "trusted source lineage does not identify the selected update source"
+    elif has_commit_pair and (
+        installed_commit == target_commit or revision_relation == "installed_ahead"
+    ):
+        decision = "runtime_active"
+        runtime_active = True
+        successor_kind = None
+        reason = "installed source contains the trusted target source commit"
+    elif has_commit_pair and revision_relation in {"installed_behind", "diverged"}:
+        decision = "release_or_install_successor_required"
+        runtime_active = False
+        successor_kind = "release_or_install"
+        reason = "installed source does not contain the trusted target source commit"
+    else:
+        decision = "activation_qualification_required"
+        runtime_active = None
+        successor_kind = "activation_qualification"
+        reason = "trusted installed-versus-target source lineage is unavailable"
+
+    return {
+        "schema_version": RUNTIME_ACTIVATION_QUALIFICATION_SCHEMA_VERSION,
+        "decision": decision,
+        "runtime_active": runtime_active,
+        "installed_release_id": install_freshness.get("release_id"),
+        "installed_version": install_freshness.get("current_version"),
+        "installed_source_commit": installed_commit,
+        "target_source_label": install_freshness.get("freshness_source_label"),
+        "target_source_commit": target_commit,
+        "revision_relation": revision_relation,
+        "qualified_source": {
+            "repo": qualified_repo,
+            "ref": qualified_ref,
+        },
+        "source_identity_matches": source_identity_matches,
+        "package_version_matches_runtime": package_matches_runtime,
+        "requires_upgrade": requires_upgrade,
+        "selected_source": {
+            "repo": selected_repo,
+            "ref": selected_ref,
+        },
+        "successor": {
+            "required": runtime_active is not True,
+            "kind": successor_kind,
+        },
+        "reason": reason,
     }
 
 
@@ -350,17 +440,26 @@ def build_update_plan(
             if isinstance(current_version, str) and current_version
             else None
         )
+    runtime_activation = _runtime_activation_qualification(
+        install_freshness=install_freshness,
+        source=source,
+    )
     if execute:
         recommended_action = "review execution result and post-update doctor output"
+    elif (
+        check_only
+        and runtime_activation.get("decision")
+        == "release_or_install_successor_required"
+    ):
+        recommended_action = (
+            "installed runtime does not contain the trusted target source; "
+            "project a release/install successor, then run `loopx update --dry-run`"
+        )
     elif check_only and source_version_check.get("matches_current") is False:
         recommended_action = (
             f"source version v{source_version} differs from installed version "
             f"v{current_version}; run `loopx update --dry-run`, then `loopx update --execute`"
         )
-    elif check_only and source_version_check.get("matches_current") is True and requires_upgrade is False:
-        recommended_action = "installed version matches the selected source; no update needed"
-    elif check_only and requires_upgrade is True:
-        recommended_action = "run `loopx update --dry-run` to review the source and rollback plan"
     elif check_only and source_version_check.get("status") == "unavailable":
         recommended_action = (
             "local install health is known, but the selected source version could not be checked; "
@@ -371,6 +470,18 @@ def build_update_plan(
             "local install health is known, but source version comparison was skipped; "
             "run `loopx update --dry-run` to review the source"
         )
+    elif (
+        check_only
+        and runtime_activation.get("decision") == "activation_qualification_required"
+    ):
+        recommended_action = (
+            "installed runtime activation is not proven; refresh trusted source lineage "
+            "before claiming the merged behavior is active"
+        )
+    elif check_only and source_version_check.get("matches_current") is True and requires_upgrade is False:
+        recommended_action = "installed version and trusted source lineage match; no update needed"
+    elif check_only and requires_upgrade is True:
+        recommended_action = "run `loopx update --dry-run` to review the source and rollback plan"
     elif requires_upgrade is False:
         recommended_action = (
             "no update needed; use `loopx update --dry-run` or "
@@ -389,6 +500,7 @@ def build_update_plan(
         "execute_requested": execute,
         "source": source,
         "source_version_check": source_version_check,
+        "runtime_activation_qualification": runtime_activation,
         "current": {
             "loopx_command": path.get("loopx"),
             "loopx_realpath": path.get("loopx_realpath"),
@@ -575,6 +687,11 @@ def render_update_plan_markdown(payload: dict[str, Any]) -> str:
         if isinstance(payload.get("source_version_check"), dict)
         else {}
     )
+    runtime_activation = (
+        payload.get("runtime_activation_qualification")
+        if isinstance(payload.get("runtime_activation_qualification"), dict)
+        else {}
+    )
     current = payload.get("current") if isinstance(payload.get("current"), dict) else {}
     plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
     backup = plan.get("backup") if isinstance(plan.get("backup"), dict) else {}
@@ -590,6 +707,12 @@ def render_update_plan_markdown(payload: dict[str, Any]) -> str:
         f"- Source version tag: `{source_version_check.get('version_tag')}`",
         f"- Source version matches current: `{source_version_check.get('matches_current')}`",
         f"- Source version check reason: `{source_version_check.get('reason')}`",
+        f"- Runtime activation decision: `{runtime_activation.get('decision')}`",
+        f"- Runtime active: `{runtime_activation.get('runtime_active')}`",
+        f"- Installed source commit: `{runtime_activation.get('installed_source_commit')}`",
+        f"- Target source commit: `{runtime_activation.get('target_source_commit')}`",
+        f"- Source revision relation: `{runtime_activation.get('revision_relation')}`",
+        f"- Runtime activation reason: `{runtime_activation.get('reason')}`",
         f"- Current version: `{current.get('current_version')}`",
         f"- Current version tag: `{current.get('current_version_tag')}`",
         f"- Manifest package version: `{current.get('manifest_package_version')}`",

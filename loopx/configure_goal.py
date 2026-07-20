@@ -44,6 +44,7 @@ from .control_plane.agents.legacy_migration import (
     peer_agent_runtime_migration_id,
 )
 from .control_plane.agents.profile import normalize_agent_profile
+from .control_plane.agents.work_mode import normalize_agent_work_modes
 from .control_plane.agents.runtime_model import (
     AgentRuntimeModel,
     agent_runtime_model_for_goal,
@@ -219,6 +220,10 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
             coordination.get("agent_profiles")
             if isinstance(coordination.get("agent_profiles"), dict)
             else {}
+        ),
+        "agent_work_modes": normalize_agent_work_modes(
+            coordination.get("agent_work_modes"),
+            registered_agents=registered_agents,
         ),
         "agent_model": agent_model.value,
         "configured_agent_model": coordination.get("agent_model"),
@@ -402,6 +407,8 @@ def configure_goal(
     clear_registered_agents: bool = False,
     agent_profiles: list[dict[str, Any]] | None = None,
     clear_agent_profiles: list[str] | None = None,
+    agent_work_modes: dict[str, str] | None = None,
+    clear_agent_work_modes: list[str] | None = None,
     todo_lifecycle_authority: list[dict[str, Any]] | None = None,
     clear_todo_lifecycle_authority: list[str] | None = None,
     agent_model: str | None = None,
@@ -530,6 +537,7 @@ def configure_goal(
     registered_agents = _clean_registered_agents(registered_agents)
     reward_memory_agents = _clean_registered_agents(reward_memory_agents)
     clear_agent_profiles = _clean_registered_agents(clear_agent_profiles)
+    clear_agent_work_modes = _clean_registered_agents(clear_agent_work_modes)
     clear_todo_lifecycle_authority = _clean_registered_agents(
         clear_todo_lifecycle_authority
     )
@@ -621,6 +629,18 @@ def configure_goal(
         raise ValueError(
             "cannot write and clear the same agent profile: "
             + ", ".join(profile_conflicts)
+        )
+    normalized_agent_work_modes = normalize_agent_work_modes(
+        agent_work_modes,
+        registered_agents=effective_registered_agents,
+    )
+    work_mode_conflicts = sorted(
+        set(normalized_agent_work_modes) & set(clear_agent_work_modes or [])
+    )
+    if work_mode_conflicts:
+        raise ValueError(
+            "cannot write and clear the same agent work mode: "
+            + ", ".join(work_mode_conflicts)
         )
     normalized_todo_lifecycle_authority = normalize_todo_lifecycle_authority(
         todo_lifecycle_authority,
@@ -835,6 +855,8 @@ def configure_goal(
         or registered_agents is not None
         or normalized_agent_profiles
         or clear_agent_profiles
+        or normalized_agent_work_modes
+        or clear_agent_work_modes
         or normalized_todo_lifecycle_authority
         or clear_todo_lifecycle_authority
         or agent_model is not None
@@ -853,6 +875,7 @@ def configure_goal(
             coordination.pop("registered_agents", None)
             coordination.pop("agent_model", None)
             coordination.pop("agent_profiles", None)
+            coordination.pop("agent_work_modes", None)
             coordination.pop("supervisor", None)
             coordination.pop("todo_lifecycle_authority", None)
         elif registered_agents is not None:
@@ -871,6 +894,23 @@ def configure_goal(
                 coordination["agent_profiles"] = retained_profiles
             else:
                 coordination.pop("agent_profiles", None)
+            raw_work_modes = (
+                coordination.get("agent_work_modes")
+                if isinstance(coordination.get("agent_work_modes"), Mapping)
+                else {}
+            )
+            retained_work_modes = normalize_agent_work_modes(
+                {
+                    agent: mode
+                    for agent, mode in raw_work_modes.items()
+                    if agent in registered_agents
+                },
+                registered_agents=registered_agents,
+            )
+            if retained_work_modes:
+                coordination["agent_work_modes"] = retained_work_modes
+            else:
+                coordination.pop("agent_work_modes", None)
             retained_authority = [
                 entry
                 for entry in coordination.get("todo_lifecycle_authority") or []
@@ -904,6 +944,22 @@ def configure_goal(
                 coordination["agent_profiles"] = profiles
             else:
                 coordination.pop("agent_profiles", None)
+        if not clear_registered_agents and (
+            normalized_agent_work_modes or clear_agent_work_modes
+        ):
+            work_modes = normalize_agent_work_modes(
+                coordination.get("agent_work_modes"),
+                registered_agents=normalize_registered_agents(
+                    coordination.get("registered_agents")
+                ),
+            )
+            for work_mode_agent_id in clear_agent_work_modes or []:
+                work_modes.pop(work_mode_agent_id, None)
+            work_modes.update(normalized_agent_work_modes)
+            if work_modes:
+                coordination["agent_work_modes"] = dict(sorted(work_modes.items()))
+            else:
+                coordination.pop("agent_work_modes", None)
         if not clear_registered_agents and (
             normalized_todo_lifecycle_authority
             or clear_todo_lifecycle_authority

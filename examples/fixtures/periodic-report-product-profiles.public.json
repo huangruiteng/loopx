@@ -1,0 +1,91 @@
+{
+  "schema_version": "periodic_report_product_profiles_fixture_v0",
+  "profiles": [
+    {
+      "schema_version": "periodic_report_profile_v0",
+      "profile_id": "disabled_project",
+      "profile_version": "v1"
+    },
+    {
+      "schema_version": "periodic_report_profile_v0",
+      "enabled": true,
+      "profile_id": "release_summary",
+      "profile_version": "v1",
+      "trigger_policy": {
+        "enabled_kinds": ["cadence_due", "primary_goal_outcome"],
+        "minimum_interval_seconds": 3600
+      },
+      "schedule": {
+        "schema_version": "periodic_report_schedule_v0",
+        "schedule_id": "weekly_window",
+        "rrule": "FREQ=WEEKLY;BYDAY=MO;BYHOUR=9",
+        "timezone": "Asia/Shanghai"
+      },
+      "source_bindings": [
+        {
+          "source_id": "release_state",
+          "source_kind": "validated_outcomes",
+          "adapter_id": "release_state_v0",
+          "provider": {"kind": "builtin"}
+        }
+      ],
+      "renderer_bindings": [
+        {
+          "renderer_id": "markdown",
+          "renderer_kind": "markdown",
+          "adapter_id": "markdown_v0",
+          "provider": {"kind": "builtin"}
+        }
+      ],
+      "sink_bindings": [
+        {
+          "schema_version": "periodic_report_sink_binding_v0",
+          "sink_id": "project_archive",
+          "sink_kind": "project_resource",
+          "sink_role": "archive",
+          "dependency_policy": "optional",
+          "capability": {
+            "capability_id": "report.archive.write",
+            "capability_version": "v0"
+          },
+          "extension": {
+            "extension_id": "project_resource_report_archive",
+            "extension_version": "1.0.0",
+            "protocol": "periodic_report_sink_v0"
+          }
+        }
+      ]
+    },
+    {
+      "schema_version": "periodic_report_profile_v0",
+      "enabled": true,
+      "profile_id": "research_milestones",
+      "profile_version": "v1",
+      "trigger_policy": {
+        "enabled_kinds": ["material_decision", "vision_closed"],
+        "minimum_interval_seconds": 0
+      },
+      "source_bindings": [
+        {
+          "source_id": "research_evidence",
+          "source_kind": "validated_findings",
+          "adapter_id": "research_evidence_v0",
+          "provider": {
+            "kind": "extension",
+            "provider_id": "research_evidence",
+            "provider_version": "1.0.0"
+          }
+        }
+      ],
+      "renderer_bindings": [
+        {
+          "renderer_id": "html",
+          "renderer_kind": "html",
+          "adapter_id": "html_artifact_v0",
+          "provider": {"kind": "builtin"}
+        }
+      ],
+      "sink_bindings": []
+    }
+  ]
+}

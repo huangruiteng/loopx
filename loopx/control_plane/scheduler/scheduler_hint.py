@@ -1037,6 +1037,20 @@ def build_scheduler_hint(
                 scheduler_hint["cold_path_detail"]["cadence_context"] = cadence_context_detail
         return contextualize(scheduler_hint)
 
+    if arbitration.disposition == SchedulerDisposition.AGENT_MONITOR_ONLY_WAIT:
+        return hint(
+            action="backoff_agent_monitor_only",
+            cadence_class="agent_monitor_only",
+            reason=(
+                "agent monitor-only mode blocks advancement while a quiet poll keeps "
+                "due monitors and verified direct replies responsive"
+            ),
+            codex_interval=15,
+            codex_max=60,
+            cli_limit=3,
+            claude_limit=3,
+        )
+
     if arbitration.disposition == SchedulerDisposition.CONSISTENCY_REPAIR:
         result = hint(
             action="repair_interaction_contract_projection",

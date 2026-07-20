@@ -1,0 +1,73 @@
+{
+  "schema_version": "periodic_report_extension_modes_fixture_v0",
+  "profiles": [
+    {
+      "profile_id": "portable_changelog",
+      "description": "Generate normalized Markdown and HTML without any external provider.",
+      "expected_delivery_mode": "portable",
+      "sink_bindings": []
+    },
+    {
+      "profile_id": "enhanced_research",
+      "description": "Keep local artifacts usable when the optional team-chat provider is absent.",
+      "expected_delivery_mode": "enhanced",
+      "sink_bindings": [
+        {
+          "schema_version": "periodic_report_sink_binding_v0",
+          "sink_id": "team_chat_delivery",
+          "sink_kind": "team_chat_message",
+          "sink_role": "delivery",
+          "dependency_policy": "optional",
+          "capability": {
+            "capability_id": "report.message.write",
+            "capability_version": "v0"
+          },
+          "extension": {
+            "extension_id": "team_chat_report_sink",
+            "extension_version": "1.0.0",
+            "protocol": "periodic_report_sink_v0"
+          }
+        }
+      ]
+    },
+    {
+      "profile_id": "durable_maintenance",
+      "description": "Require exact readback from both formal delivery and durable archive providers.",
+      "expected_delivery_mode": "durable",
+      "sink_bindings": [
+        {
+          "schema_version": "periodic_report_sink_binding_v0",
+          "sink_id": "project_resource_archive",
+          "sink_kind": "project_resource",
+          "sink_role": "archive",
+          "dependency_policy": "required",
+          "capability": {
+            "capability_id": "report.archive.write",
+            "capability_version": "v0"
+          },
+          "extension": {
+            "extension_id": "project_resource_report_archive",
+            "extension_version": "1.0.0",
+            "protocol": "periodic_report_sink_v0"
+          }
+        },
+        {
+          "schema_version": "periodic_report_sink_binding_v0",
+          "sink_id": "team_chat_delivery",
+          "sink_kind": "team_chat_message",
+          "sink_role": "delivery",
+          "dependency_policy": "required",
+          "capability": {
+            "capability_id": "report.message.write",
+            "capability_version": "v0"
+          },
+          "extension": {
+            "extension_id": "team_chat_report_sink",
+            "extension_version": "1.0.0",
+            "protocol": "periodic_report_sink_v0"
+          }
+        }
+      ]
+    }
+  ]
+}

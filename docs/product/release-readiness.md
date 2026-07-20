@@ -52,6 +52,31 @@ Before promoting a stable install/update recommendation, maintainers must move
 the public `stable` ref to the release commit that passed this gate. Do not
 claim stable-channel readiness while `stable` is missing or stale.
 
+## Merged Is Not Runtime-Active
+
+A post-merge check proves behavior on the tested source commit. It does not
+prove that an installed LoopX runtime contains that commit. This distinction
+matters when a fix reaches `main` after the latest named release: package
+versions may still match while the installed source commit is behind.
+
+Use `loopx update --check --ref main` for maintainer qualification. Its
+`runtime_activation_qualification` result compares the release-manifest source
+commit with the trusted source lineage reported by `loopx doctor`:
+
+- `runtime_active` means the installed commit is the target commit or contains it;
+- `release_or_install_successor_required` means the installed commit is behind
+  or diverged, so a release/install successor must remain explicit;
+- `activation_qualification_required` means commit lineage is unavailable or
+  belongs to a different `repo/ref`; the runtime-active claim must fail closed
+  until identity is refreshed.
+
+Closing a PR monitor after latest-`main` validation is valid, but the closeout
+must not say the fix is active in the installed runtime unless this receipt is
+`runtime_active`. Publishing a release remains a separate maintainer action.
+When the qualification command itself runs from newer source code, pass a local
+snapshot from the older installed CLI with `--installed-doctor-json`; this
+option is read-only and accepted only by `update --check`.
+
 ## Named Version Contract
 
 LoopX v0.x is distributed from GitHub, but each stable promotion still needs a
@@ -561,6 +586,34 @@ Every public release note or update note should also answer:
   mirrors the English group structure and material claims in neutral product
   language. Keep each group shorter than its English counterpart while
   preserving direct PR attribution and compatibility boundaries.
+
+### Capability Narrative Gate
+
+For every new or materially changed capability, write the release claim in
+three explicit layers:
+
+1. **User outcome**: say what a user can now accomplish in product language,
+   before naming protocols, providers, renderers, or other implementation
+   mechanisms.
+2. **Shipped layer**: identify whether the release provides a control-plane or
+   protocol kernel, a built-in adapter or presentation layer, or a complete
+   end-to-end workflow. Name the commands, docs, or smokes that prove that
+   layer.
+3. **Last-mile boundary**: name any default profile, collector, scheduler,
+   destination, credential setup, or publication step that is still absent or
+   explicitly opt-in. Do not overclaim a complete workflow, but do not hide a
+   shipped core behind mechanism-only wording either.
+
+A built-in capability is not an optional extension merely because some of its
+collectors, renderers, sinks, or providers are optional. Describe the built-in
+outcome and its lifecycle separately from provider activation. When a release
+ships successive layers of one outcome, such as a report kernel followed by an
+HTML presentation layer, attribute and explain each layer instead of folding
+both into a generic integrations bullet.
+
+The Chinese summary must preserve the same user outcome, shipped layer, and
+last-mile boundary. Translation may be shorter, but it must not replace the
+user-facing outcome with architecture-only terminology.
 
 The release PR and final GitHub release body must use the same grouping and
 validation receipt. Re-run the gates after rebasing or merging any additional

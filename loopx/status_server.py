@@ -60,6 +60,8 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "clear_registered_agents",
     "agent_profiles",
     "clear_agent_profiles",
+    "agent_work_modes",
+    "clear_agent_work_modes",
     "todo_lifecycle_authority",
     "clear_todo_lifecycle_authority",
     "agent_model",
@@ -356,6 +358,14 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
         clear_agent_profiles = body.get("clear_agent_profiles")
         if clear_agent_profiles is not None and not isinstance(clear_agent_profiles, list):
             raise ValueError("clear_agent_profiles must be a list of strings")
+        agent_work_modes = body.get("agent_work_modes")
+        if agent_work_modes is not None and not isinstance(agent_work_modes, dict):
+            raise ValueError("agent_work_modes must be an object")
+        clear_agent_work_modes = body.get("clear_agent_work_modes")
+        if clear_agent_work_modes is not None and not isinstance(
+            clear_agent_work_modes, list
+        ):
+            raise ValueError("clear_agent_work_modes must be a list of strings")
         todo_lifecycle_authority = body.get("todo_lifecycle_authority")
         if (
             todo_lifecycle_authority is not None
@@ -400,6 +410,12 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "clear_agent_profiles": (
                 [str(item) for item in clear_agent_profiles]
                 if clear_agent_profiles is not None
+                else None
+            ),
+            "agent_work_modes": agent_work_modes,
+            "clear_agent_work_modes": (
+                [str(item) for item in clear_agent_work_modes]
+                if clear_agent_work_modes is not None
                 else None
             ),
             "todo_lifecycle_authority": todo_lifecycle_authority,
@@ -452,6 +468,8 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             clear_registered_agents=values["clear_registered_agents"],
             agent_profiles=values["agent_profiles"],
             clear_agent_profiles=values["clear_agent_profiles"],
+            agent_work_modes=values["agent_work_modes"],
+            clear_agent_work_modes=values["clear_agent_work_modes"],
             todo_lifecycle_authority=values["todo_lifecycle_authority"],
             clear_todo_lifecycle_authority=values[
                 "clear_todo_lifecycle_authority"
