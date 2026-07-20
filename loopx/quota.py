@@ -1212,6 +1212,47 @@ def _agent_monitor_only(agent_identity: Mapping[str, Any] | None) -> bool:
     )
 
 
+def _build_agent_work_lane(
+    item: Mapping[str, Any],
+    *,
+    status_payload: Mapping[str, Any],
+    project_asset: Mapping[str, Any],
+    goal_id: str,
+    agent_id: str | None,
+    goal_boundary: Mapping[str, Any],
+    agent_identity: Mapping[str, Any] | None,
+    agent_todo_summary: Mapping[str, Any],
+    monitor_debt_arbitration: Mapping[str, Any] | None,
+) -> tuple[bool, dict[str, Any], dict[str, Any] | None]:
+    monitor_only = _agent_monitor_only(agent_identity)
+    work_lane = build_quota_work_lane_contract(
+        item,
+        status_payload=status_payload,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        agent_todo_summary=agent_todo_summary,
+        monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
+        monitor_debt_arbitration=monitor_debt_arbitration,
+        advancement_allowed=not monitor_only,
+    )
+    if monitor_only:
+        return monitor_only, work_lane, None
+    task_orchestration, work_lane = apply_task_orchestration_contract(
+        fallback_work_lane_contract=work_lane,
+        goal_boundary=goal_boundary,
+        agent_identity=agent_identity,
+        agent_todo_summary=agent_todo_summary,
+        raw_agent_todo_summary=(
+            item.get("agent_todos")
+            if isinstance(item.get("agent_todos"), dict)
+            else project_asset.get("agent_todos")
+            if isinstance(project_asset.get("agent_todos"), dict)
+            else None
+        ),
+    )
+    return monitor_only, work_lane, task_orchestration
+
+
 def _apply_agent_monitor_only_precedence(
     payload: dict[str, Any],
     *,
@@ -1520,33 +1561,19 @@ def build_quota_should_run(
         monitor_debt_arbitration = _build_monitor_debt_arbitration(
             status_payload, goal_id=safe_goal_id, agent_id=boundary_agent_id
         )
-        agent_monitor_only = _agent_monitor_only(agent_identity)
-        work_lane_contract = build_quota_work_lane_contract(
-            item,
-            status_payload=status_payload,
-            goal_id=safe_goal_id,
-            agent_id=boundary_agent_id,
-            agent_todo_summary=agent_todo_summary,
-            monitor_due_item_limit=MONITOR_DUE_ITEM_LIMIT,
-            monitor_debt_arbitration=monitor_debt_arbitration,
-            advancement_allowed=not agent_monitor_only,
-        )
-        if agent_monitor_only:
-            task_orchestration_contract = None
-        else:
-            task_orchestration_contract, work_lane_contract = apply_task_orchestration_contract(
-                fallback_work_lane_contract=work_lane_contract,
+        agent_monitor_only, work_lane_contract, task_orchestration_contract = (
+            _build_agent_work_lane(
+                item,
+                status_payload=status_payload,
+                project_asset=project_asset,
+                goal_id=safe_goal_id,
+                agent_id=boundary_agent_id,
                 goal_boundary=goal_boundary,
                 agent_identity=agent_identity,
                 agent_todo_summary=agent_todo_summary,
-                raw_agent_todo_summary=(
-                    item.get("agent_todos")
-                    if isinstance(item.get("agent_todos"), dict)
-                    else project_asset.get("agent_todos")
-                    if isinstance(project_asset.get("agent_todos"), dict)
-                    else None
-                ),
+                monitor_debt_arbitration=monitor_debt_arbitration,
             )
+        )
         capability_gate, capability_monitor_contract, capability_monitor_fallback = build_capability_gate_with_monitor_fallback(agent_todo_summary, available_capabilities=effective_available_capabilities, agent_identity=agent_identity, monitor_item_limit=MONITOR_DUE_ITEM_LIMIT)
         if task_orchestration_contract:
             capability_monitor_contract = capability_monitor_fallback = None
