@@ -209,6 +209,10 @@ def _normalized_model_usage(value: Any, *, errors: list[str]) -> dict[str, Any] 
             errors.append(
                 f"model_usage {phase} requires input_tokens, output_tokens, and total_tokens"
             )
+        elif compact["total_tokens"] != compact["input_tokens"] + compact["output_tokens"]:
+            errors.append(
+                f"model_usage {phase}.total_tokens must equal input_tokens plus output_tokens"
+            )
         normalized_phases[phase] = compact
 
     raw_total = value.get("total")

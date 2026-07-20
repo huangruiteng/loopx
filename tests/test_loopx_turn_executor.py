@@ -157,6 +157,26 @@ def test_host_result_rejects_inconsistent_model_usage_totals() -> None:
     ]
 
 
+def test_host_result_rejects_internally_inconsistent_phase_usage() -> None:
+    plan = _plan()
+    result = _host_result(plan)
+    result["model_usage"] = {
+        "schema_version": "loopx_turn_model_usage_v0",
+        "mode": "direct",
+        "advisor_applied": False,
+        "executor": {"input_tokens": 40, "output_tokens": 8, "total_tokens": 999},
+        "total": {"input_tokens": 40, "output_tokens": 8, "total_tokens": 999},
+    }
+
+    validation = validate_loopx_turn_host_result(plan, result)
+
+    assert validation["ok"] is False
+    assert (
+        "model_usage executor.total_tokens must equal input_tokens plus output_tokens"
+        in validation["errors"]
+    )
+
+
 def test_run_once_preview_has_no_host_or_journal_effects(tmp_path: Path) -> None:
     plan = _plan()
 

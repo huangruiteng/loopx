@@ -15,6 +15,16 @@ from loopx.control_plane.turn_driver.codex_cli import (
     load_codex_cli_session,
     run_codex_cli_host,
 )
+from loopx.control_plane.turn_driver.model_usage import normalize_provider_usage
+
+
+def test_provider_usage_rejects_internally_inconsistent_total() -> None:
+    assert (
+        normalize_provider_usage(
+            {"input_tokens": 40, "output_tokens": 8, "total_tokens": 999}
+        )
+        is None
+    )
 
 
 def _request(
@@ -599,8 +609,36 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     assert payload["real_codex_cli_invoked"] is False
     assert payload["quality_ok"] is True
     assert payload["baseline"]["total_tokens"] == 150
+    assert payload["baseline"]["model"] == "advisor-fixture"
+    assert payload["advisor"]["model"] == "advisor-fixture"
+    assert payload["advisor"]["executor_model"] == "executor-fixture"
     assert payload["advisor"]["total_tokens"] == 138
     assert payload["token_delta"] == -12
     assert payload["token_reduction_ratio"] == 0.08
     assert payload["token_reduced"] is True
     assert payload["raw_model_output_recorded"] is False
+
+
+def test_advisor_qualification_requires_same_strong_model_for_both_arms() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts" / "qualify-loopx-turn-advisor-live.py"),
+            "--fixture",
+            "--baseline-model",
+            "different-strong-model",
+            "--advisor-model",
+            "advisor-fixture",
+            "--executor-model",
+            "executor-fixture",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "baseline and advisor models must be identical" in result.stderr

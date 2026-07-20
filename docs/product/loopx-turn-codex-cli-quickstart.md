@@ -139,7 +139,9 @@ session id remains private and is never printed or synced.
 
 Use the paired live qualification to compare the same isolated task under a
 strong-model baseline and Advisor mode. It exits zero only when both independent
-validators pass and Advisor plus executor total tokens are lower:
+validators pass and Advisor plus executor total tokens are lower. The baseline
+and Advisor model identifiers must be identical so the only changed role is the
+cheaper executor:
 
 ```bash
 python3 scripts/qualify-loopx-turn-advisor-live.py \
@@ -148,8 +150,9 @@ python3 scripts/qualify-loopx-turn-advisor-live.py \
   --executor-model <lower-cost-model>
 ```
 
-The command prints one compact `loopx_turn_advisor_qualification_v0` receipt.
-It never records raw model output and never authorizes automatic promotion.
+The command prints one compact `loopx_turn_advisor_qualification_v0` receipt,
+including the bounded model identifiers assigned to each role. It never records
+raw model output and never authorizes automatic promotion.
 
 That is the complete partner-facing path. For implementation details, read the
 [adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../reference/protocols/loopx-turn-v0.md).

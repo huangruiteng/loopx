@@ -104,6 +104,8 @@ def main() -> int:
         help="Use the deterministic no-provider fixture instead of real Codex CLI calls.",
     )
     args = parser.parse_args()
+    if args.baseline_model != args.advisor_model:
+        raise SystemExit("baseline and advisor models must be identical")
     if args.advisor_model == args.executor_model:
         raise SystemExit("advisor and executor models must be distinct")
 
@@ -149,10 +151,13 @@ def main() -> int:
         "quality_ok": quality_ok,
         "usage_available": usage_available,
         "baseline": {
+            "model": args.baseline_model,
             "quality_ok": _quality_ok(baseline, turn_count=args.turn_count),
             "total_tokens": baseline_tokens,
         },
         "advisor": {
+            "model": args.advisor_model,
+            "executor_model": args.executor_model,
             "quality_ok": _quality_ok(advisor, turn_count=args.turn_count),
             "advisor_tokens": _tokens(advisor_usage, "advisor"),
             "executor_tokens": _tokens(advisor_usage, "executor"),

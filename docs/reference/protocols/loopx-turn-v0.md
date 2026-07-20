@@ -174,6 +174,12 @@ according to local Codex policy so a later adapter turn can resume it. A compact
 the transaction must show zero state writes and zero quota spend; select a
 compatible model or update Codex before retrying.
 
+Advisor qualification uses the exact same strong model identifier for the
+baseline and Advisor roles, records all three bounded model identifiers in its
+receipt, and accepts provider usage only when each phase's total equals input
+plus output tokens. Quality must pass in both arms before a lower combined
+Advisor-plus-executor total can count as a reduction.
+
 For a coding collaboration, the validator may run focused tests and inspect the
 expected git diff. For operations, it may read back the declared resource
 state. For data work, it may check a schema and bounded quality assertions. For

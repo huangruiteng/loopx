@@ -21,11 +21,11 @@ from .executor import (
     BuiltInHostError,
     LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION,
 )
+from .model_usage import advisor_model_usage, direct_model_usage, event_usage
 from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 
 CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v1"
-LOOPX_TURN_MODEL_USAGE_SCHEMA_VERSION = "loopx_turn_model_usage_v0"
 LOOPX_TURN_ADVISOR_SCHEMA_VERSION = "loopx_turn_advisor_v0"
 CODEX_CLI_RESULT_KINDS = (
     "validated_progress",
@@ -372,106 +372,6 @@ def _event_session_id(event: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _non_negative_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed >= 0 else None
-
-
-def _normalized_usage(value: Any) -> dict[str, int] | None:
-    if not isinstance(value, Mapping):
-        return None
-    aliases = {
-        "input_tokens": ("input_tokens", "inputTokens"),
-        "cache_tokens": (
-            "cached_input_tokens",
-            "cachedInputTokens",
-            "cache_tokens",
-        ),
-        "output_tokens": ("output_tokens", "outputTokens"),
-        "reasoning_output_tokens": (
-            "reasoning_output_tokens",
-            "reasoningOutputTokens",
-        ),
-        "total_tokens": ("total_tokens", "totalTokens"),
-    }
-    usage: dict[str, int] = {}
-    for target, candidates in aliases.items():
-        for candidate in candidates:
-            parsed = _non_negative_int(value.get(candidate))
-            if parsed is not None:
-                usage[target] = parsed
-                break
-    if "input_tokens" not in usage or "output_tokens" not in usage:
-        return None
-    usage.setdefault("total_tokens", usage["input_tokens"] + usage["output_tokens"])
-    return usage
-
-
-def _event_usage(event: Mapping[str, Any]) -> dict[str, int] | None:
-    for candidate in (event.get("usage"), event.get("tokenUsage")):
-        usage = _normalized_usage(candidate)
-        if usage is not None:
-            return usage
-    payload = _mapping(event.get("payload"))
-    info = _mapping(payload.get("info"))
-    for candidate in (
-        info.get("last_token_usage"),
-        info.get("lastTokenUsage"),
-        info.get("total_token_usage"),
-        info.get("totalTokenUsage"),
-    ):
-        usage = _normalized_usage(candidate)
-        if usage is not None:
-            return usage
-    return None
-
-
-def _model_usage(executor: Mapping[str, int]) -> dict[str, Any]:
-    compact = dict(executor)
-    return {
-        "schema_version": LOOPX_TURN_MODEL_USAGE_SCHEMA_VERSION,
-        "mode": "direct",
-        "advisor_applied": False,
-        "executor": compact,
-        "total": dict(compact),
-    }
-
-
-def _advisor_model_usage(
-    *,
-    advisor: Mapping[str, int],
-    executor: Mapping[str, int],
-    advice: Mapping[str, Any],
-) -> dict[str, Any]:
-    keys = set(advisor) | set(executor)
-    total = {
-        key: int(advisor.get(key, 0)) + int(executor.get(key, 0))
-        for key in sorted(keys)
-    }
-    digest = hashlib.sha256(
-        json.dumps(
-            dict(advice),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    return {
-        "schema_version": LOOPX_TURN_MODEL_USAGE_SCHEMA_VERSION,
-        "mode": "advisor",
-        "advisor_applied": True,
-        "advisor": dict(advisor),
-        "executor": dict(executor),
-        "total": total,
-        "advice_digest": f"sha256:{digest}",
-    }
-
-
 def _stderr_failure_category(line: str) -> str | None:
     text = line.lower()
     if "requires a newer version of codex" in text:
@@ -589,7 +489,7 @@ def _run_codex_process(
                 candidate = _event_session_id(event)
                 if candidate and not observed_session:
                     observed_session.append(candidate)
-                usage = _event_usage(event)
+                usage = event_usage(event)
                 if usage is not None:
                     observed_usage.append(usage)
 
@@ -780,11 +680,11 @@ def run_codex_cli_host(
         if advisor is not None:
             if executor_usage is None or advisor_usage is None:
                 raise BuiltInHostError("codex_cli_executor_usage_missing")
-            result["model_usage"] = _advisor_model_usage(
+            result["model_usage"] = advisor_model_usage(
                 advisor=advisor_usage,
                 executor=executor_usage,
                 advice=advisor,
             )
         elif executor_usage is not None:
-            result["model_usage"] = _model_usage(executor_usage)
+            result["model_usage"] = direct_model_usage(executor_usage)
         return result
