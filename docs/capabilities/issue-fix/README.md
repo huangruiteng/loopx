@@ -1,6 +1,7 @@
 # Issue-Fix Capability
 
 [中文](README.zh-CN.md) · [Capability index](../README.md) ·
+[State Kernel/domain-state case study (中文)](state-kernel-domain-state-case-study.zh-CN.md) ·
 [Workflow contract](protocols/issue-fix-workflow-contract-v0.md) ·
 [Discovered issue promotion](protocols/issue-fix-discovered-issue-promotion-v0.md) ·
 [Acceptance loop](protocols/issue-fix-acceptance-loop-v0.md) ·
