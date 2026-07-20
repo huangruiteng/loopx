@@ -107,26 +107,6 @@ def test_instrumented_agent_bridge_requires_an_explicit_agent_command(
     ) in proc.stderr
 
 
-def test_launcher_wires_explicit_force_apt_repair(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    env["SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN"] = "1"
-    env["SKILLSBENCH_FORCE_APT_BOOTSTRAP_REPAIR"] = "1"
-
-    proc = subprocess.run(
-        [str(LAUNCHER), "--dry-run", "public-smoke-case", "apt-repair"],
-        cwd=REPO_ROOT,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        check=True,
-    )
-
-    assert "allow_staged_bootstrap_repair_run=1" in proc.stdout
-    assert "force_apt_bootstrap_repair=1" in proc.stdout
-    assert "--force-apt-bootstrap-repair" in proc.stdout
-
-
 def test_turn_launcher_requires_an_independent_validator(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_ROUTE"] = "loopx-turn-agent-cli"

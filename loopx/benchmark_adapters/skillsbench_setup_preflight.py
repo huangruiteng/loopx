@@ -76,9 +76,6 @@ def _base_result(
         "failure_category": "none",
         "exit_category": "pending",
         "patch_hits": _patch_hits(task_staging),
-        "apt_repair_forced": (
-            (task_staging or {}).get("apt_repair_forced") is True
-        ),
         "apt_setup_risk_detected": setup.get("apt_setup_risk_detected") is True,
         "dockerfile_pip_install_risk_detected": (
             setup.get("dockerfile_pip_install_risk_detected") is True

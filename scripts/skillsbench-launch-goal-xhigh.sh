@@ -41,9 +41,6 @@ Optional env:
                                        Set to 1 to let the runner stage an
                                        isolated task copy and apply its
                                        public-safe setup bootstrap repairs
-  SKILLSBENCH_FORCE_APT_BOOTSTRAP_REPAIR
-                                       Set to 1 only after a public setup-only
-                                       receipt reports an apt repository failure
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT
                                        Set to 1 to stop after real job-root and
                                        environment materialization, before any
@@ -200,7 +197,6 @@ fi
 skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
-force_apt_bootstrap_repair="${SKILLSBENCH_FORCE_APT_BOOTSTRAP_REPAIR:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
@@ -221,8 +217,6 @@ validate_bool_toggle \
   SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE "$skip_current_aggregate_update"
 validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
-validate_bool_toggle \
-  SKILLSBENCH_FORCE_APT_BOOTSTRAP_REPAIR "$force_apt_bootstrap_repair"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
 validate_bool_toggle \
@@ -382,13 +376,6 @@ if [[ "$codex_cli_goal_thread_prewarm" == "1" ]]; then
 fi
 if [[ "$allow_staged_bootstrap_repair_run" == "1" ]]; then
   extra_runner_args+=(--allow-staged-bootstrap-repair-run)
-fi
-if [[ "$force_apt_bootstrap_repair" == "1" ]]; then
-  if [[ "$allow_staged_bootstrap_repair_run" != "1" ]]; then
-    echo "SKILLSBENCH_FORCE_APT_BOOTSTRAP_REPAIR requires SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN=1" >&2
-    exit 2
-  fi
-  extra_runner_args+=(--force-apt-bootstrap-repair)
 fi
 if [[ "$setup_only_public_preflight" == "1" ]]; then
   extra_runner_args+=(--setup-only-public-preflight)
@@ -567,7 +554,6 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
-  printf 'force_apt_bootstrap_repair=%s\n' "$force_apt_bootstrap_repair"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
@@ -655,6 +641,5 @@ remote_codex_bin_mode=${remote_codex_bin_mode}
 local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
-force_apt_bootstrap_repair=${force_apt_bootstrap_repair}
 setup_only_public_preflight=${setup_only_public_preflight}
 EOF

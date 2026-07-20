@@ -5771,7 +5771,6 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "staged",
         "include_task_skills",
         "apt_setup_risk_detected",
-        "apt_repair_forced",
         "apt_retry_patch_required",
         "dockerfile_ubuntu_apt_mirror_patch_required",
         "dockerfile_ubuntu_apt_mirror_patch_applied",
@@ -6589,12 +6588,7 @@ def patch_dockerfile_app_skills_mount(dockerfile: Path) -> bool:
 
 
 def dockerfile_needs_apt_retry_patch(dockerfile: Path) -> bool:
-    if not dockerfile.exists():
-        return False
-    text = dockerfile.read_text(encoding="utf-8")
-    if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, flags=re.IGNORECASE | re.MULTILINE):
-        return False
-    return bool(re.search(r"\bapt(?:-get)?\s+update\b", text, flags=re.IGNORECASE))
+    return dockerfile_runtime.needs_apt_retry_patch(dockerfile)
 
 
 def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
@@ -7610,12 +7604,10 @@ def patch_dockerfile_benchmark_egress_proxy_env(
     return metadata
 
 
-def patch_dockerfile_apt_retry(dockerfile: Path, *, force: bool = False) -> bool:
+def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
     """Add public-safe apt retry/no-cache defaults to staged Dockerfiles."""
 
-    if not force and not dockerfile_needs_apt_retry_patch(dockerfile):
-        return False
-    if not dockerfile.exists():
+    if not dockerfile_needs_apt_retry_patch(dockerfile):
         return False
     text = _strip_marker_block(
         dockerfile.read_text(encoding="utf-8"),
@@ -7644,15 +7636,11 @@ def patch_dockerfile_apt_retry(dockerfile: Path, *, force: bool = False) -> bool
     for line in text.splitlines():
         patched_lines.append(line)
         stripped = line.strip()
-        if (
-            _is_dockerfile_from_instruction(stripped)
-            and " scratch" not in stripped.lower()
-            and not inserted
-        ):
+        if stripped.startswith("FROM ") and not inserted:
             patched_lines.extend(["", *block.splitlines(), ""])
             inserted = True
     if not inserted:
-        return False
+        patched_lines = [*block.splitlines(), "", *text.splitlines()]
     patched = "\n".join(patched_lines).rstrip() + "\n"
     if patched == dockerfile.read_text(encoding="utf-8"):
         return False
@@ -7909,7 +7897,6 @@ def stage_task_for_sandbox(
     docker_gcr_mirror_prefix: str = "",
     verifier_dependency_cache_enabled: bool = False,
     loopx_case_runtime_required: bool = False,
-    force_apt_bootstrap_repair: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
@@ -7922,7 +7909,6 @@ def stage_task_for_sandbox(
         "staged": False,
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
-        "apt_repair_forced": force_apt_bootstrap_repair,
         "dockerfile_ubuntu_apt_mirror_patch_required": False,
         "dockerfile_ubuntu_apt_mirror_patch_applied": False,
         "dockerfile_ubuntu_apt_mirror_host": "",
@@ -8000,13 +7986,11 @@ def stage_task_for_sandbox(
         and requested_cpus > host_cpus
     )
     has_task_skills = (task_path / "environment" / "skills").is_dir()
-    apt_setup_risk_detected = dockerfile_needs_apt_retry_patch(
+    needs_apt_retry_patch = dockerfile_needs_apt_retry_patch(
         task_path / "environment" / "Dockerfile"
     )
-    needs_apt_retry_patch = force_apt_bootstrap_repair or apt_setup_risk_detected
     needs_ubuntu_apt_mirror_patch = (
-        force_apt_bootstrap_repair
-        or dockerfile_runtime.needs_ubuntu_apt_mirror_patch(
+        dockerfile_runtime.needs_ubuntu_apt_mirror_patch(
             task_path / "environment" / "Dockerfile"
         )
     )
@@ -8068,7 +8052,7 @@ def stage_task_for_sandbox(
         loopx_case_runtime_required
         and (task_path / "environment" / "Dockerfile").exists()
     )
-    metadata["apt_setup_risk_detected"] = apt_setup_risk_detected
+    metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
     metadata["dockerfile_ubuntu_apt_mirror_patch_required"] = (
@@ -8232,12 +8216,10 @@ def stage_task_for_sandbox(
         proxy_env=benchmark_egress_proxy_env,
     )
     apt_retry_patched = patch_dockerfile_apt_retry(
-        staged_path / "environment" / "Dockerfile",
-        force=force_apt_bootstrap_repair,
+        staged_path / "environment" / "Dockerfile"
     )
     ubuntu_apt_mirror_patched = dockerfile_runtime.patch_ubuntu_apt_mirror(
-        staged_path / "environment" / "Dockerfile",
-        force=force_apt_bootstrap_repair,
+        staged_path / "environment" / "Dockerfile"
     )
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile"
@@ -8687,9 +8669,6 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "allow_staged_bootstrap_repair_run": bool(
             getattr(args, "allow_staged_bootstrap_repair_run", False)
-        ),
-        "force_apt_bootstrap_repair": bool(
-            getattr(args, "force_apt_bootstrap_repair", False)
         ),
         "fail_fast_on_apt_risk": bool(args.fail_fast_on_apt_risk),
         "apt_risk_fail_fast_defaulted": bool(
@@ -9253,7 +9232,6 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "bootstrap_light_candidate_required",
         "bootstrap_light_fail_fast_required",
         "allow_staged_bootstrap_repair_run",
-        "force_apt_bootstrap_repair",
         "fail_fast_on_apt_risk",
         "apt_risk_fail_fast_defaulted",
         "fail_fast_on_verifier_bootstrap_risk",
@@ -13616,7 +13594,6 @@ async def run_benchflow_case(
             verifier_dependency_cache_policy_enabled
         ),
         loopx_case_runtime_required=_is_case_loopx_route(args.route),
-        force_apt_bootstrap_repair=bool(args.force_apt_bootstrap_repair),
     )
     plan["task_staging"] = staging_metadata
     plan["effective_task_path"] = str(effective_task_path)
@@ -16597,24 +16574,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "--fail-fast-on-* flags still block."
         ),
     )
-    parser.add_argument(
-        "--force-apt-bootstrap-repair",
-        action="store_true",
-        help=(
-            "Explicitly stage apt retry and adaptive Ubuntu mirror repairs after "
-            "a prior public setup-only receipt reports an apt repository failure. "
-            "Requires --allow-staged-bootstrap-repair-run and records only a "
-            "public boolean; default task setup behavior is unchanged."
-        ),
-    )
     apt_fail_fast_explicit = "--fail-fast-on-apt-risk" in raw_argv
     verifier_fail_fast_explicit = "--fail-fast-on-verifier-bootstrap-risk" in raw_argv
     args = parser.parse_args(raw_argv)
-    if args.force_apt_bootstrap_repair and not args.allow_staged_bootstrap_repair_run:
-        parser.error(
-            "--force-apt-bootstrap-repair requires "
-            "--allow-staged-bootstrap-repair-run"
-        )
     if args.route in HISTORICAL_REDUCER_ROUTES:
         if not args.reduce_only:
             parser.error(
