@@ -1,5 +1,26 @@
 # Provider-neutral periodic report v0
 
+## Product activation
+
+`periodic_report_profile_v0` is the project opt-in contract. The built-in
+capability is installed but inactive until the profile explicitly sets
+`enabled: true`. Enabled profiles declare:
+
+- provider-neutral trigger policy and an optional host-owned RRULE/timezone;
+- one or more domain source adapter bindings;
+- one or more renderer bindings;
+- zero or more required, optional, or disabled extension sink bindings.
+
+`periodic_report_activation_v0` is the effect-free inspection receipt. It
+records whether generation is allowed, the normalized profile digest, and the
+portable/enhanced/durable extension mode. It performs no source read, schedule
+mutation, provider lookup, rendering, archive write, or message delivery.
+
+Issue-fix has no special standing in either schema. It may register a source
+adapter under the same contract as release, research, operations, or another
+domain. OpenViking is likewise an optional archive/query provider behind a
+sink extension; it does not own trigger, selection, rendering, or delivery.
+
 `periodic_report_v0` is the LoopX control contract for one bounded report run.
 It binds a period window and a profile to typed source snapshots, one rendered
 artifact receipt, archive and delivery receipts, deterministic idempotency,
@@ -24,6 +45,35 @@ loopx periodic-report compose-run \
 The command is local and effect-free. Source collection, rendering, archive
 writes, message delivery, and receipt readback all execute in adapters or
 connectors outside this core.
+
+## Split phase contract
+
+`periodic_report_v0` also exposes a split contract for profiles that must keep
+local report generation independent from provider availability:
+
+- `periodic_report_generation_bundle_v0` contains the normalized document,
+  one to eight artifacts, and a deterministic
+  `periodic_report_generation_receipt_v0`. The receipt declares that no
+  provider or external write was required.
+- `periodic_report_sink_binding_v0` pins a sink id, role, dependency policy,
+  capability id/version, extension id/version, and provider-neutral
+  `periodic_report_sink_v0` protocol.
+- `periodic_report_extension_readiness_v0` verifies those bindings against
+  observed provider receipts. It reports `portable`, `enhanced`, or `durable`
+  delivery mode and never performs a provider call.
+- `periodic_report_delivery_receipt_v0` binds provider sink results back to the
+  generation and readiness receipts. A sent sink is accepted only with an
+  idempotency key, compact receipt reference, and verified exact readback.
+
+The dependency policy is `required`, `optional`, or `disabled`. Required sinks
+block formal delivery when unavailable. Optional sinks degrade without
+invalidating the generation receipt. Disabled sinks are skipped. Provider
+versions, protocols, or capabilities that do not match the profile binding are
+`incompatible`; providers without verified readiness are `unverified`.
+
+The older run request below remains a compatibility full-delivery envelope. It
+still requires archive and delivery receipts, while the split contract makes
+the provider-free generation truth available before those receipts exist.
 
 ## Trigger decision
 

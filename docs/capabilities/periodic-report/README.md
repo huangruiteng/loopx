@@ -6,9 +6,16 @@ presentation, and destinations to profiles and adapters.
 
 | Surface | Value |
 | --- | --- |
-| CLI | `loopx periodic-report evaluate-trigger --request-json <path>` and `compose-run` |
+| CLI | `loopx periodic-report inspect-profile --profile-json <path>`, `evaluate-trigger`, and `compose-run` |
 | Protocol | [`periodic_report_v0`](../../reference/protocols/periodic-report-v0.md) |
-| Smokes | `python3 examples/periodic-report-smoke.py` and `python3 examples/periodic-report-html-smoke.py` |
+| Smokes | `python3 examples/periodic-report-smoke.py`, `periodic-report-profile-smoke.py`, `periodic-report-html-smoke.py`, and `periodic-report-bindings-smoke.py` |
+
+The capability ships with LoopX but is **disabled by default for every
+project**. A project opts in with `periodic_report_profile_v0` and
+`enabled: true`; the profile then names generic trigger policy, source adapter
+bindings, renderer bindings, and required/optional/disabled sink bindings.
+There is no issue-fix-specific report capability: issue-fix, release notes,
+research, operations, and other domains are peers that supply source adapters.
 
 The capability is intentionally effect-free. It first evaluates scheduled or
 material progress facts into a deterministic trigger receipt, then composes a
@@ -37,6 +44,49 @@ idempotency, retry, and receipt contract even when no provider is installed.
 Optional or independently versioned collectors, renderers, archive stores, and
 message transports remain extension providers (or built-in adapters) that
 implement the capability's ports without owning its lifecycle.
+
+Use `inspect-profile` before scheduling a run. It returns a deterministic
+`periodic_report_activation_v0` receipt and never starts a scheduler or invokes
+a provider. An omitted `enabled` field is treated as `false`. When enabled, at
+least one source and one renderer binding are required. An optional archive
+extension can therefore add durable history without making report generation
+or another configured delivery sink depend on that provider.
+
+The public profiles fixture covers a default-disabled project, a cadence-based
+release report with an optional archive extension, and a milestone-only
+research report with an extension-provided source. These are peer product uses;
+none changes the capability identity or core schema.
+
+## Generation and formal delivery
+
+The reusable lifecycle has two independently truthful phases:
+
+1. `build_periodic_report_generation_bundle` freezes one normalized document,
+   one or more rendered artifacts, and a provider-free generation receipt. A
+   missing chat or archive provider cannot invalidate these local artifacts.
+2. A project profile declares sink bindings. LoopX checks the pinned extension
+   version, protocol, capability version, and provider readback before a caller
+   attempts formal delivery. Provider results are then normalized into one
+   delivery receipt with retryable sink ids and exact-readback evidence.
+
+Each sink dependency is profile-owned and explicit:
+
+- `required` fails closed when its provider is missing, incompatible, or not
+  verified;
+- `optional` preserves the generated report and records a degraded or partial
+  formal-delivery outcome;
+- `disabled` performs no provider lookup or write.
+
+This yields three portable operating modes. `portable` generates artifacts
+without providers, `enhanced` adds optional sinks, and `durable` requires one
+or more formal delivery or archive sinks. The public fixture at
+`examples/fixtures/periodic-report-extension-modes.public.json` exercises all
+three without naming a project or relying on a live provider.
+
+`compose-run` remains the compatibility envelope for callers that already have
+both archive and delivery receipts. New profile integrations can use the split
+generation/readiness/delivery receipts so provider-specific policy does not
+leak into the capability core.
 
 ## Built-in renderers
 
