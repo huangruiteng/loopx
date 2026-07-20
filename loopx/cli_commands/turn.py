@@ -203,6 +203,14 @@ def _add_turn_decision_arguments(
         ),
     )
     parser.add_argument(
+        "--turn-instance-id",
+        help=(
+            "Caller-stable public-safe identity for one logical Turn. Reusing the "
+            "same id replays idempotently; use a new id for a new Turn with the "
+            "same semantic action."
+        ),
+    )
+    parser.add_argument(
         "--resume-goal-id",
         help="Goal identity bound to an available opaque host session.",
     )
@@ -342,6 +350,7 @@ def handle_turn_command(
             execution_mode=args.execution_mode,
             scheduler_owner=args.scheduler_owner,
             session_binding=session_binding,
+            turn_instance_id=args.turn_instance_id,
         )
         if args.turn_command == "plan":
             if not args.include_transaction_detail:
@@ -352,6 +361,10 @@ def handle_turn_command(
                     boundary.pop("opaque_session_handle_omitted", None)
         elif args.turn_command == "run-once":
             if args.resume_turn_key:
+                if args.turn_instance_id:
+                    raise ValueError(
+                        "--resume-turn-key cannot be combined with --turn-instance-id"
+                    )
                 if supplied_resume_fields:
                     raise ValueError(
                         "--resume-turn-key cannot be combined with host session identity flags"

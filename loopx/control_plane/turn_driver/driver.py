@@ -152,6 +152,7 @@ def build_loopx_turn_plan(
     execution_mode: str,
     scheduler_owner: str | None = None,
     session_binding: Mapping[str, Any] | None = None,
+    turn_instance_id: str | None = None,
 ) -> dict[str, Any]:
     """Project a TurnEnvelope into a typed, side-effect-free host decision."""
 
@@ -215,6 +216,7 @@ def build_loopx_turn_plan(
             execution_mode=execution_mode,
             scheduler_owner=str(context_projection.get("scheduler_owner") or ""),
             session_action=str(session.get("action") or "none"),
+            turn_instance_id=turn_instance_id,
         ),
         "effects": {
             "host_invoked": False,

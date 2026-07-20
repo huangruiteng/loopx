@@ -171,6 +171,45 @@ def test_turn_plan_transaction_key_is_stable_and_todo_scoped() -> None:
     assert first["transaction"]["turn_key"] != changed["transaction"]["turn_key"]
 
 
+def test_turn_plan_instance_id_distinguishes_new_turns_from_retries() -> None:
+    first = build_loopx_turn_plan(
+        _envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+        turn_instance_id="batch-42:turn-1",
+    )
+    retry = build_loopx_turn_plan(
+        _envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+        turn_instance_id="batch-42:turn-1",
+    )
+    second = build_loopx_turn_plan(
+        _envelope(),
+        host="generic-cli",
+        execution_mode="isolated-headless",
+        turn_instance_id="batch-42:turn-2",
+    )
+
+    assert first["transaction"]["turn_instance_id"] == "batch-42:turn-1"
+    assert first["transaction"]["turn_key"] == retry["transaction"]["turn_key"]
+    assert first["transaction"]["turn_key"] != second["transaction"]["turn_key"]
+
+
+@pytest.mark.parametrize(
+    "instance_id",
+    ["", "contains space", "private/path", "x" * 129],
+)
+def test_turn_plan_rejects_unsafe_instance_id(instance_id: str) -> None:
+    with pytest.raises(ValueError, match="turn_instance_id"):
+        build_loopx_turn_plan(
+            _envelope(),
+            host="generic-cli",
+            execution_mode="isolated-headless",
+            turn_instance_id=instance_id,
+        )
+
+
 @pytest.mark.parametrize(
     ("effective_action", "expected"),
     [

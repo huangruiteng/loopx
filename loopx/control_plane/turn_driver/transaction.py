@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from enum import Enum
 from hashlib import sha256
@@ -22,6 +23,7 @@ TRANSACTION_PHASES = (
     "scheduler_apply",
     "scheduler_ack",
 )
+TURN_INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 
 
 class LoopXTurnResultKind(str, Enum):
@@ -128,17 +130,28 @@ def build_loopx_turn_transaction_plan(
     execution_mode: str,
     session_action: str,
     scheduler_owner: str = "none",
+    turn_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    turn_key = _canonical_hash(
-        {
-            "lineage": dict(lineage),
-            "host": host,
-            "execution_mode": execution_mode,
-            "scheduler_owner": scheduler_owner,
-            "session_action": session_action,
-        }
+    normalized_instance_id = (
+        str(turn_instance_id).strip() if turn_instance_id is not None else None
     )
-    return {
+    if normalized_instance_id is not None and not TURN_INSTANCE_ID_RE.fullmatch(
+        normalized_instance_id
+    ):
+        raise ValueError(
+            "turn_instance_id must be 1-128 public-safe letters, numbers, or ._:-"
+        )
+    identity = {
+        "lineage": dict(lineage),
+        "host": host,
+        "execution_mode": execution_mode,
+        "scheduler_owner": scheduler_owner,
+        "session_action": session_action,
+    }
+    if normalized_instance_id is not None:
+        identity["turn_instance_id"] = normalized_instance_id
+    turn_key = _canonical_hash(identity)
+    plan = {
         "schema_version": LOOPX_TURN_TRANSACTION_PLAN_SCHEMA_VERSION,
         "status": "planned" if planned else "not_applicable",
         "turn_key": turn_key,
@@ -150,6 +163,9 @@ def build_loopx_turn_transaction_plan(
             "next_phase": TRANSACTION_PHASES[0] if planned else None,
         },
     }
+    if normalized_instance_id is not None:
+        plan["turn_instance_id"] = normalized_instance_id
+    return plan
 
 
 def _result_kind(value: Any, errors: list[str]) -> LoopXTurnResultKind | None:
