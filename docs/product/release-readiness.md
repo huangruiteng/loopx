@@ -587,6 +587,34 @@ Every public release note or update note should also answer:
   language. Keep each group shorter than its English counterpart while
   preserving direct PR attribution and compatibility boundaries.
 
+### Capability Narrative Gate
+
+For every new or materially changed capability, write the release claim in
+three explicit layers:
+
+1. **User outcome**: say what a user can now accomplish in product language,
+   before naming protocols, providers, renderers, or other implementation
+   mechanisms.
+2. **Shipped layer**: identify whether the release provides a control-plane or
+   protocol kernel, a built-in adapter or presentation layer, or a complete
+   end-to-end workflow. Name the commands, docs, or smokes that prove that
+   layer.
+3. **Last-mile boundary**: name any default profile, collector, scheduler,
+   destination, credential setup, or publication step that is still absent or
+   explicitly opt-in. Do not overclaim a complete workflow, but do not hide a
+   shipped core behind mechanism-only wording either.
+
+A built-in capability is not an optional extension merely because some of its
+collectors, renderers, sinks, or providers are optional. Describe the built-in
+outcome and its lifecycle separately from provider activation. When a release
+ships successive layers of one outcome, such as a report kernel followed by an
+HTML presentation layer, attribute and explain each layer instead of folding
+both into a generic integrations bullet.
+
+The Chinese summary must preserve the same user outcome, shipped layer, and
+last-mile boundary. Translation may be shorter, but it must not replace the
+user-facing outcome with architecture-only terminology.
+
 The release PR and final GitHub release body must use the same grouping and
 validation receipt. Re-run the gates after rebasing or merging any additional
 runtime change; results from an earlier commit do not qualify a later tag.
