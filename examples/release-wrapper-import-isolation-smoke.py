@@ -29,6 +29,7 @@ def main() -> int:
         wrapper.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / "scripts" / "loopx", wrapper)
         wrapper.chmod(0o755)
+        _write(release / ".loopx-python", f"{sys.executable}\n")
 
         _write(release / "loopx" / "__init__.py", "")
         _write(

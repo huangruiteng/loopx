@@ -174,6 +174,39 @@ def test_direct_actor_uses_canonical_endpoint_without_tools_or_raw_retention() -
     assert "fixture-key" not in json.dumps(result, sort_keys=True)
 
 
+def test_optional_semantic_contract_does_not_grade_auxiliary_model_output() -> None:
+    decision = _decision()
+    decision["semantic_contract"] = {"partial": "ungraded"}
+
+    result = normalize_model_behavior_actor_result(
+        {
+            "schema_version": "model_behavior_actor_result_v0",
+            "actor_ref": f"ark:{DOUBAO_2_1_PRO_MODEL}",
+            "decision": decision,
+            "tool_calls": [],
+        },
+        semantic_contract_required=False,
+    )
+
+    assert "semantic_contract" not in result["decision"]
+
+
+def test_required_semantic_contract_remains_strict() -> None:
+    decision = _decision()
+    decision["semantic_contract"] = {"partial": "invalid"}
+
+    with pytest.raises(ValueError, match="unknown semantic contract field"):
+        normalize_model_behavior_actor_result(
+            {
+                "schema_version": "model_behavior_actor_result_v0",
+                "actor_ref": f"ark:{DOUBAO_2_1_PRO_MODEL}",
+                "decision": decision,
+                "tool_calls": [],
+            },
+            semantic_contract_required=True,
+        )
+
+
 def test_environment_factory_fails_closed_without_injected_key() -> None:
     with pytest.raises(RuntimeError, match="ARK_API_KEY is not injected"):
         DoubaoModelBehaviorActor.from_environment(environ={})

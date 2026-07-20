@@ -1058,10 +1058,6 @@ def _build_multi_goal_start_selection_packet(
             "doctor": f"{shell_arg(cli_bin)} doctor",
             "status": _project_command(resolved_project, f"{shell_arg(cli_bin)} status"),
             "goal_selection_choices": choices,
-            "goal_start_connect_if_needed": None,
-            "goal_start_refresh_state": None,
-            "goal_start_host_loop_activation": None,
-            "goal_start_quota_should_run": None,
         },
         "safety_contract": {
             "runs_bootstrap": False,

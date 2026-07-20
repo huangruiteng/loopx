@@ -416,6 +416,8 @@ def test_start_goal_guided_requires_explicit_goal_for_multi_goal_project() -> No
             assert "--goal-text 'Add a new meta agent without reusing an old lane'" in choice[
                 "rerun_command"
             ], choice
+        commands = payload["command_pack"]["commands"]
+        assert set(commands) == {"doctor", "status", "goal_selection_choices"}, commands
         assert payload["safety_contract"]["writes_registry"] is False, payload
         assert payload["safety_contract"]["creates_heartbeat"] is False, payload
         assert_packet_summary_refs(

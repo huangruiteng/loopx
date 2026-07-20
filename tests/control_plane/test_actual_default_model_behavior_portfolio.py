@@ -328,6 +328,14 @@ def _onboarding_actor(request: Mapping[str, Any]) -> dict[str, Any]:
 def test_live_packet_builder_uses_production_blocking_gate_plan(tmp_path: Path) -> None:
     packets = build_actual_default_model_behavior_scenario_packets(tmp_path)
 
+    selection_commands = packets["onboarding_goal_selection_gate"]["command_pack"][
+        "commands"
+    ]
+    assert set(selection_commands) == {
+        "doctor",
+        "status",
+        "goal_selection_choices",
+    }
     gate = packets["turn_human_gate"]
     assert gate["mode"] == "should-run"
     gate_signature = quota_action_signature_document(gate)

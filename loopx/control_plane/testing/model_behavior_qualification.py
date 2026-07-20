@@ -500,9 +500,10 @@ def normalize_model_behavior_actor_result(
         ),
         "reason_codes": _reason_codes(decision.get("reason_codes")),
     }
-    semantic_contract = _normalize_semantic_contract(
-        decision.get("semantic_contract"),
-        required=semantic_contract_required,
+    semantic_contract = (
+        _normalize_semantic_contract(decision.get("semantic_contract"), required=True)
+        if semantic_contract_required
+        else None
     )
     if semantic_contract is not None:
         normalized_decision["semantic_contract"] = semantic_contract
