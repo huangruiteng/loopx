@@ -54,45 +54,19 @@ def test_ubuntu_apt_mirror_patch_ignores_from_inside_heredoc(tmp_path: Path) -> 
     assert patched.index(runtime.UBUNTU_APT_MIRROR_BEGIN) < patched.index("RUN python3")
 
 
-def test_apt_patch_detects_copied_bootstrap_script(tmp_path: Path) -> None:
+def test_ubuntu_apt_mirror_patch_can_be_forced_from_public_failure(
+    tmp_path: Path,
+) -> None:
     dockerfile = _dockerfile(
         tmp_path,
         "FROM ubuntu:24.04\n"
         "COPY bootstrap.sh /usr/local/bin/bootstrap\n"
         "RUN /usr/local/bin/bootstrap\n",
     )
-    (tmp_path / "bootstrap.sh").write_text(
-        "#!/bin/sh\napt-get update && apt-get install -y curl\n",
-        encoding="utf-8",
-    )
 
-    assert runtime.copied_context_needs_apt_retry_patch(dockerfile) is True
-    assert runtime.needs_apt_retry_patch(dockerfile) is True
-    assert runtime.needs_ubuntu_apt_mirror_patch(dockerfile) is True
-    assert runtime.patch_ubuntu_apt_mirror(dockerfile) is True
+    assert runtime.needs_ubuntu_apt_mirror_patch(dockerfile) is False
+    assert runtime.patch_ubuntu_apt_mirror(dockerfile, force=True) is True
 
     patched = dockerfile.read_text(encoding="utf-8")
     assert runtime.UBUNTU_APT_MIRROR_BEGIN in patched
     assert "bootstrap.sh" in patched
-
-
-def test_apt_patch_does_not_scan_uncopied_context_file(tmp_path: Path) -> None:
-    dockerfile = _dockerfile(tmp_path, "FROM ubuntu:24.04\nRUN echo ready\n")
-    (tmp_path / "unused.sh").write_text("apt-get update\n", encoding="utf-8")
-
-    assert runtime.copied_context_needs_apt_retry_patch(dockerfile) is False
-    assert runtime.needs_apt_retry_patch(dockerfile) is False
-
-
-def test_apt_patch_ignores_cross_stage_copy(tmp_path: Path) -> None:
-    dockerfile = _dockerfile(
-        tmp_path,
-        "FROM ubuntu:24.04 AS builder\n"
-        "RUN echo ready > /bootstrap.sh\n"
-        "FROM ubuntu:24.04\n"
-        "COPY --from=builder /bootstrap.sh /usr/local/bin/bootstrap\n",
-    )
-    (tmp_path / "bootstrap.sh").write_text("apt-get update\n", encoding="utf-8")
-
-    assert runtime.copied_context_needs_apt_retry_patch(dockerfile) is False
-    assert runtime.needs_apt_retry_patch(dockerfile) is False

@@ -19,6 +19,7 @@ from scripts.skillsbench_automation_loop import (
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
+    patch_dockerfile_apt_retry,
     skillsbench_task_setup_preflight,
     stage_task_for_sandbox,
 )
@@ -72,6 +73,7 @@ def run_preflight() -> dict[str, Any]:
             config=object(),
             task_staging={
                 "apt_retry_patch_applied": True,
+                "apt_repair_forced": True,
                 "dockerfile_pip_bootstrap_patch_applied": True,
                 "unrelated": "/private/should-not-project",
             },
@@ -96,6 +98,7 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     assert result["agent_install_invoked"] is False
     assert result["agent_execution_invoked"] is False
     assert result["verifier_invoked"] is False
+    assert result["apt_repair_forced"] is True
     assert result["patch_hits"] == [
         "apt_retry",
         "dockerfile_pip_bootstrap",
@@ -131,12 +134,15 @@ def test_copied_apt_bootstrap_is_patched_during_task_staging(tmp_path: Path) -> 
         job_name="synthetic-apt-bootstrap-job",
         sandbox="docker",
         include_task_skills=False,
+        force_apt_bootstrap_repair=True,
     )
 
-    assert preflight["apt_setup_risk_detected"] is True
-    assert preflight["apt_retry_patch_required"] is True
+    assert preflight["apt_setup_risk_detected"] is False
+    assert preflight["apt_retry_patch_required"] is False
     assert preflight["raw_task_text_read"] is False
-    assert metadata["apt_setup_risk_detected"] is True
+    assert metadata["apt_setup_risk_detected"] is False
+    assert metadata["apt_repair_forced"] is True
+    assert metadata["apt_retry_patch_required"] is True
     assert metadata["apt_retry_patch_applied"] is True
     assert metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is True
     patched = (staged_path / "environment" / "Dockerfile").read_text(
@@ -165,6 +171,37 @@ def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     assert plan["setup_only_public_preflight_json"].endswith(
         "setup_only_preflight.public.json"
     )
+
+
+def test_force_apt_repair_requires_explicit_staging_authority() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(
+            [
+                "--task-id",
+                "flink-query",
+                "--force-apt-bootstrap-repair",
+            ]
+        )
+
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--allow-staged-bootstrap-repair-run",
+            "--force-apt-bootstrap-repair",
+        ]
+    )
+    plan = build_plan(args)
+    assert args.force_apt_bootstrap_repair is True
+    assert plan["force_apt_bootstrap_repair"] is True
+
+
+def test_force_apt_repair_does_not_patch_scratch_image(tmp_path: Path) -> None:
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("FROM scratch\nCOPY payload /payload\n", encoding="utf-8")
+
+    assert patch_dockerfile_apt_retry(dockerfile, force=True) is False
+    assert "APT_RETRY" not in dockerfile.read_text(encoding="utf-8")
 
 
 def test_launcher_syncs_setup_only_public_artifact() -> None:
