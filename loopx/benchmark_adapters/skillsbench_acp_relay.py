@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -90,9 +91,24 @@ from loopx.codex_cli_goal_tui import (
     tmux_submit_enter,
     tmux_type_text_and_submit,
 )
+from loopx.control_plane.turn_driver import codex_cli_session_id_from_jsonl
 
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
+
+
+def _loopx_turn_local_session_root(
+    worker_public_trace_dir: str | None,
+    session_id: str,
+) -> Path | None:
+    if not worker_public_trace_dir:
+        return None
+    session_digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:24]
+    return (
+        Path(worker_public_trace_dir).parent
+        / ".loopx-turn-codex-sessions"
+        / session_digest
+    )
 
 
 def _safe_loopx_todo_id(value: object) -> str:
@@ -425,6 +441,8 @@ class CodexExecConfig:
     loopx_workflow_lifecycle_checkpoint: bool = False
     loopx_turn_agent_cli: bool = False
     loopx_turn_validation_command: str | None = None
+    loopx_turn_max_turns: int = 1
+    loopx_turn_progress_exit_code: int = 10
     loopx_case_goal_id: str = "skillsbench-case"
     loopx_case_agent_id: str = BENCHMARK_CASE_LOOPX_AGENT_ID
     loopx_case_todo_id: str = BENCHMARK_CASE_LOOPX_TODO_ID
@@ -573,23 +591,39 @@ class SkillsBenchLocalAcpRelay:
         session_id: str,
         stdout: TextIO,
         _bypass_loopx_turn: bool = False,
+        _turn_deadline: float | None = None,
     ) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
         if self._config.loopx_turn_agent_cli and not _bypass_loopx_turn:
-            return run_skillsbench_loopx_turn_relay(
-                prompt=prompt_text,
-                session_id=session_id,
-                relay_config=self._config,
-                agent_runner=lambda turn_prompt: self._run_codex(
-                    turn_prompt,
-                    session=session,
-                    session_id=session_id,
-                    stdout=stdout,
-                    _bypass_loopx_turn=True,
-                ),
-                trace_writer=self._write_worker_public_trace,
+            sequence_deadline = time.monotonic() + max(
+                1.0, float(self._config.timeout_sec)
             )
+            try:
+                return run_skillsbench_loopx_turn_relay(
+                    prompt=prompt_text,
+                    session_id=session_id,
+                    relay_config=self._config,
+                    agent_runner=lambda turn_prompt: self._run_codex(
+                        turn_prompt,
+                        session=session,
+                        session_id=session_id,
+                        stdout=stdout,
+                        _bypass_loopx_turn=True,
+                        _turn_deadline=sequence_deadline,
+                    ),
+                    trace_writer=self._write_worker_public_trace,
+                )
+            finally:
+                session.pop("_loopx_turn_codex_thread_id", None)
+                session_root = _loopx_turn_local_session_root(
+                    self._config.worker_public_trace_dir,
+                    session_id,
+                )
+                if session_root is not None:
+                    shutil.rmtree(session_root, ignore_errors=True)
+                    with contextlib.suppress(OSError):
+                        session_root.parent.rmdir()
         if self._config.app_server_goal_worker:
             return self._run_app_server_goal_worker(
                 prompt_text,
@@ -611,6 +645,16 @@ class SkillsBenchLocalAcpRelay:
             stderr_path = tmp_path / "codex-stderr.txt"
             prompt_for_codex = prompt_text
             cwd = _safe_cwd(session.get("cwd"), default=os.getcwd())
+            resumable_loopx_turn = bool(
+                _bypass_loopx_turn
+                and self._config.loopx_turn_agent_cli
+                and self._config.loopx_turn_max_turns > 1
+            )
+            resume_session_id = (
+                str(session.get("_loopx_turn_codex_thread_id") or "")
+                if resumable_loopx_turn
+                else ""
+            )
             bridge_server_proc: subprocess.Popen[str] | None = None
             if self._config.remote_command_file_bridge_command:
                 if _is_bridge_action_preflight_prompt(prompt_text):
@@ -620,7 +664,18 @@ class SkillsBenchLocalAcpRelay:
                 self._publish_remote_bridge_consumption_trace(bridge_probe)
                 if bridge_probe.get("ready") is not True:
                     raise RuntimeError("remote command/file bridge probe failed")
-                local_cwd = tmp_path / "local-codex-cwd"
+                if resumable_loopx_turn:
+                    session_root = _loopx_turn_local_session_root(
+                        self._config.worker_public_trace_dir,
+                        session_id,
+                    )
+                    if session_root is None:
+                        raise RuntimeError(
+                            "resumable LoopX Turn requires a public trace directory"
+                        )
+                    local_cwd = session_root / "cwd"
+                else:
+                    local_cwd = tmp_path / "local-codex-cwd"
                 local_cwd.mkdir(parents=True, exist_ok=True)
                 cwd = str(local_cwd)
                 bridge_summary_path = tmp_path / "remote-bridge-agent-ops.jsonl"
@@ -654,19 +709,32 @@ class SkillsBenchLocalAcpRelay:
                 )
             else:
                 bridge_summary_path = None
-            cmd = [
-                self._config.codex_bin,
-                "exec",
-                "--ephemeral",
-                "--skip-git-repo-check",
-                "--sandbox",
-                self._config.sandbox,
-                "-C",
-                cwd,
-                "--output-last-message",
-                str(output_path),
-                "--json",
-            ]
+            if resume_session_id:
+                cmd = [
+                    self._config.codex_bin,
+                    "exec",
+                    "resume",
+                    "--skip-git-repo-check",
+                    "--output-last-message",
+                    str(output_path),
+                    "--json",
+                ]
+            else:
+                cmd = [self._config.codex_bin, "exec"]
+                if not resumable_loopx_turn:
+                    cmd.append("--ephemeral")
+                cmd.extend(
+                    [
+                        "--skip-git-repo-check",
+                        "--sandbox",
+                        self._config.sandbox,
+                        "-C",
+                        cwd,
+                        "--output-last-message",
+                        str(output_path),
+                        "--json",
+                    ]
+                )
             if self._config.reasoning_effort:
                 cmd.extend(
                     [
@@ -678,6 +746,10 @@ class SkillsBenchLocalAcpRelay:
             model = self._config.model or session.get("model")
             if model:
                 cmd.extend(["--model", str(model)])
+            if resume_session_id:
+                cmd.extend([resume_session_id, "-"])
+            elif resumable_loopx_turn:
+                cmd.append("-")
             codex_stdin_prompt = prompt_for_codex
             stdout_text = ""
             stderr_text = ""
@@ -700,7 +772,18 @@ class SkillsBenchLocalAcpRelay:
                         start_new_session=True,
                     )
                     _write_process_stdin_async(proc, codex_stdin_prompt)
-                    deadline = time.monotonic() + self._config.timeout_sec
+                    remaining_turn_seconds = (
+                        _turn_deadline - time.monotonic()
+                        if _turn_deadline is not None
+                        else float(self._config.timeout_sec)
+                    )
+                    if remaining_turn_seconds <= 0:
+                        self._terminate_codex_process(proc)
+                        return _recoverable_codex_turn_failure_message(
+                            "codex_exec_turn_time_budget_exhausted"
+                        )
+                    effective_timeout_sec = remaining_turn_seconds
+                    deadline = time.monotonic() + effective_timeout_sec
                     first_action_deadline = 0.0
                     if (
                         bridge_summary_path is not None
@@ -855,7 +938,7 @@ class SkillsBenchLocalAcpRelay:
                             self._terminate_codex_process(proc)
                             raise subprocess.TimeoutExpired(
                                 cmd,
-                                self._config.timeout_sec,
+                                effective_timeout_sec,
                             )
                         if now >= next_heartbeat:
                             self._write_worker_heartbeat(
@@ -939,6 +1022,25 @@ class SkillsBenchLocalAcpRelay:
                 if recoverable_turn_failure:
                     return _recoverable_codex_turn_failure_message(category)
                 raise RuntimeError(f"local codex execution failed: {category}")
+            if resumable_loopx_turn and not resume_session_id:
+                observed_session_id = codex_cli_session_id_from_jsonl(stdout_text)
+                if not observed_session_id:
+                    self._publish_codex_exec_failure_trace(
+                        stage="session_start_missing",
+                        returncode=0,
+                        stdout_text=stdout_text,
+                        stderr_text=stderr_text,
+                        final_message_present=output_path.exists(),
+                        final_message_bytes=(
+                            output_path.stat().st_size if output_path.exists() else 0
+                        ),
+                        failure_category="codex_exec_session_missing",
+                        recoverable_turn_failure=True,
+                    )
+                    return _recoverable_codex_turn_failure_message(
+                        "codex_exec_session_missing"
+                    )
+                session["_loopx_turn_codex_thread_id"] = observed_session_id
             try:
                 response = output_path.read_text(encoding="utf-8").strip()
             except OSError as exc:

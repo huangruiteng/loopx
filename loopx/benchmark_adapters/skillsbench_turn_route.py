@@ -54,9 +54,9 @@ def skillsbench_loopx_turn_route_contract() -> dict[str, Any]:
         "official_score_comparable_to_loopx_treatment": True,
         "first_blocker": "none",
         "next_action": (
-            "run each host Agent CLI prompt through one real case-local LoopX "
-            "Turn transaction, validate a private scored-workspace postcondition "
-            "independently, and emit only compact public-safe receipt evidence"
+            "run each host Agent CLI prompt through a bounded sequence of real "
+            "case-local LoopX Turn transactions, continue only after independent "
+            "progress validation, and emit compact public-safe receipt evidence"
         ),
     }
 
@@ -68,6 +68,7 @@ def skillsbench_loopx_turn_validation_signals() -> list[str]:
         "isolated_headless",
         "independent_scored_workspace_validation",
         "official_feedback_withheld",
+        "bounded_n_turn",
         "fixture_only",
         "no_upload",
         "single_task_planned",
@@ -87,11 +88,32 @@ def add_skillsbench_loopx_turn_arguments(parser: Any) -> None:
             "sandbox bridge and is never written to public compact traces."
         ),
     )
+    parser.add_argument(
+        "--loopx-turn-max-turns",
+        type=int,
+        default=1,
+        help=(
+            "Maximum independently validated Turns for the experimental LoopX "
+            "Turn route. 1 preserves the single-Turn baseline."
+        ),
+    )
+    parser.add_argument(
+        "--loopx-turn-progress-exit-code",
+        type=int,
+        default=10,
+        help=(
+            "Private validator exit code meaning validated intermediate progress. "
+            "Exit 0 means terminal completion; every other code fails closed."
+        ),
+    )
 
 
 def skillsbench_loopx_turn_runner_prerequisites(
     route: str,
     validation_command: Any,
+    *,
+    max_turns: Any = 1,
+    progress_exit_code: Any = 10,
 ) -> dict[str, Any]:
     enabled = route == "loopx-turn-agent-cli"
     return {
@@ -104,6 +126,20 @@ def skillsbench_loopx_turn_runner_prerequisites(
             enabled and str(validation_command or "").strip()
         ),
         "loopx_turn_validation_command_recorded": False,
+        "loopx_turn_max_turns": (
+            max_turns
+            if enabled
+            and isinstance(max_turns, int)
+            and not isinstance(max_turns, bool)
+            and max_turns >= 1
+            else 0
+        ),
+        "loopx_turn_progress_exit_code_configured": bool(
+            enabled
+            and isinstance(progress_exit_code, int)
+            and not isinstance(progress_exit_code, bool)
+            and 1 <= progress_exit_code <= 255
+        ),
     }
 
 
@@ -225,6 +261,7 @@ def _public_validation(value: Any) -> dict[str, Any]:
             "pre_agent_postcondition_status",
             "post_agent_postcondition_status",
             "baseline_contract",
+            "sequence_stop_reason",
         )
         if (label := _public_label(value.get(key), limit=120))
     }
@@ -235,12 +272,17 @@ def _public_validation(value: Any) -> dict[str, Any]:
         "raw_validator_output_recorded",
         "raw_task_text_recorded",
         "raw_verifier_output_recorded",
+        "validated_progress",
+        "terminal_complete",
     ):
         if isinstance(value.get(key), bool):
             validation[key] = value[key]
     operation_count = value.get("meaningful_operation_count")
     if isinstance(operation_count, int) and not isinstance(operation_count, bool):
         validation["meaningful_operation_count"] = max(0, operation_count)
+    turn_index = value.get("turn_index")
+    if isinstance(turn_index, int) and not isinstance(turn_index, bool):
+        validation["turn_index"] = max(1, turn_index)
     return validation
 
 
@@ -321,7 +363,7 @@ def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any
 
 
 def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+    aggregate = {
         "schema_version": "skillsbench_scored_workspace_validation_v0",
         "status": (
             "passed"
@@ -350,7 +392,18 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
         "raw_verifier_output_recorded": any(
             item.get("raw_verifier_output_recorded") is True for item in validations
         ),
+        "validated_progress": bool(
+            validations
+            and all(item.get("validated_progress") is True for item in validations)
+        ),
+        "terminal_complete": any(
+            item.get("terminal_complete") is True for item in validations
+        ),
+        "turn_count": len(validations),
     }
+    if validations and validations[-1].get("sequence_stop_reason"):
+        aggregate["sequence_stop_reason"] = validations[-1]["sequence_stop_reason"]
+    return aggregate
 
 
 @dataclass
@@ -472,5 +525,25 @@ def skillsbench_loopx_turn_launch_error(args: Any) -> dict[str, Any] | None:
             ),
             "next_action": "configure --loopx-turn-validation-command",
             "validation_command_recorded": False,
+        }
+    max_turns = getattr(args, "loopx_turn_max_turns", 1)
+    if not isinstance(max_turns, int) or isinstance(max_turns, bool) or max_turns < 1:
+        return {
+            **common,
+            "error_type": "SkillsBenchLoopXTurnMaxTurnsInvalid",
+            "reason": "LoopX Turn treatment requires max Turns of at least one",
+            "next_action": "configure --loopx-turn-max-turns with a positive integer",
+        }
+    progress_exit_code = getattr(args, "loopx_turn_progress_exit_code", 10)
+    if (
+        not isinstance(progress_exit_code, int)
+        or isinstance(progress_exit_code, bool)
+        or not 1 <= progress_exit_code <= 255
+    ):
+        return {
+            **common,
+            "error_type": "SkillsBenchLoopXTurnProgressExitCodeInvalid",
+            "reason": "validated progress requires a private exit code from 1 to 255",
+            "next_action": "configure --loopx-turn-progress-exit-code from 1 to 255",
         }
     return None

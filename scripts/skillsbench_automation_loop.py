@@ -1064,6 +1064,14 @@ def _host_local_acp_launch_command(
             command.extend(
                 ["--loopx-turn-validation-command", validation_command]
             )
+        command.extend(
+            [
+                "--loopx-turn-max-turns",
+                str(getattr(args, "loopx_turn_max_turns", 1)),
+                "--loopx-turn-progress-exit-code",
+                str(getattr(args, "loopx_turn_progress_exit_code", 10)),
+            ]
+        )
     if (
         _is_loopx_product_mode_route(args.route)
         and not _is_goal_start_product_mode_route(args.route)
@@ -8931,6 +8939,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             **skillsbench_loopx_turn_runner_prerequisites(
                 args.route,
                 getattr(args, "loopx_turn_validation_command", None),
+                max_turns=getattr(args, "loopx_turn_max_turns", 1),
+                progress_exit_code=getattr(
+                    args, "loopx_turn_progress_exit_code", 10
+                ),
             ),
             "loopx_product_mode_lifecycle_driver_kind": (
                 BENCHMARK_CASE_LOOPX_ORCHESTRATED_EXECUTION_STYLE

@@ -250,7 +250,7 @@ def _prompt(request: Mapping[str, Any]) -> str:
     )
 
 
-def _event_session_id(event: Mapping[str, Any]) -> str | None:
+def codex_cli_event_session_id(event: Mapping[str, Any]) -> str | None:
     if event.get("type") not in {"thread.started", "thread_started"}:
         return None
     for candidate in (
@@ -262,6 +262,20 @@ def _event_session_id(event: Mapping[str, Any]) -> str | None:
         session_id = _valid_session_id(candidate)
         if session_id:
             return session_id
+    return None
+
+
+def codex_cli_session_id_from_jsonl(value: str) -> str | None:
+    """Return the first opaque Codex thread id from an exec JSONL stream."""
+
+    for line in value.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, Mapping):
+            if session_id := codex_cli_event_session_id(event):
+                return session_id
     return None
 
 
@@ -415,7 +429,7 @@ def run_codex_cli_host(
                 except json.JSONDecodeError:
                     continue
                 if isinstance(event, dict):
-                    candidate = _event_session_id(event)
+                    candidate = codex_cli_event_session_id(event)
                     if candidate and not observed_session:
                         observed_session.append(candidate)
 

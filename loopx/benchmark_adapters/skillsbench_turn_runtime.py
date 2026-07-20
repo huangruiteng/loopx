@@ -15,8 +15,9 @@ import re
 import shlex
 import subprocess
 import time
+import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,13 @@ SKILLSBENCH_TURN_BASELINE_ENV = "LOOPX_TURN_BASELINE_FILE"
 
 AgentPromptRunner = Callable[[str], str]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
+TurnObserver = Callable[[dict[str, Any], dict[str, Any]], None]
+
+SKILLSBENCH_LOOPX_TURN_CONTINUATION_PROMPT = """\
+Continue the same task in this same Codex session. Inspect the current workspace
+state, perform the next bounded task-facing step, and stop. Do not use or request
+official verifier, reward, pass/fail, hidden-test, or gold-answer feedback.
+"""
 
 
 @dataclass(frozen=True)
@@ -49,6 +57,8 @@ class SkillsBenchTurnRuntimeConfig:
     runtime_root: Path
     bridge_timeout_seconds: float = 30.0
     agent_timeout_seconds: float = 7200.0
+    max_turns: int = 1
+    progress_exit_code: int = 10
     case_cli_path: str = "/app/.local/bin/loopx"
     case_registry_path: str = "/app/.loopx/registry.json"
     case_runtime_root: str = "/app/.loopx/runtime"
@@ -156,6 +166,8 @@ class SkillsBenchTurnBridge:
                 and not isinstance(exit_code, bool)
                 and exit_code != 0
             ):
+                if meaningful:
+                    self.meaningful_operation_count += 1
                 return {
                     "ok": False,
                     "exit_code": exit_code,
@@ -205,6 +217,8 @@ def _case_cli_prefix(config: SkillsBenchTurnRuntimeConfig) -> str:
 def _turn_plan(
     bridge: SkillsBenchTurnBridge,
     config: SkillsBenchTurnRuntimeConfig,
+    *,
+    turn_instance_id: str | None = None,
 ) -> dict[str, Any]:
     prefix = _case_cli_prefix(config)
     command = (
@@ -214,6 +228,8 @@ def _turn_plan(
         "--host generic-cli --execution-mode isolated-headless "
         "--include-transaction-detail --scan-root /app --limit 5"
     )
+    if turn_instance_id:
+        command += f" --turn-instance-id {shlex.quote(turn_instance_id)}"
     try:
         payload = bridge.loopx_json(command)
     except SkillsBenchTurnBridgeError as exc:
@@ -284,11 +300,18 @@ def _validation_baseline(
             category=exc.category,
             exit_code=exc.exit_code,
         ) from exc
+    exit_code = result.get("exit_code")
+    if result.get("ok") is True:
+        status = "already_satisfied"
+    elif exit_code == config.progress_exit_code:
+        status = "progress_validated"
+    else:
+        status = "unsatisfied"
     return {
         "schema_version": "skillsbench_validation_baseline_v0",
-        "status": "already_satisfied" if result.get("ok") is True else "unsatisfied",
+        "status": status,
         "postcondition_kind": "task_declared_independent_command",
-        "exit_code": result.get("exit_code"),
+        "exit_code": exit_code,
         "raw_command_recorded": False,
         "raw_output_recorded": False,
     }
@@ -299,6 +322,7 @@ def run_skillsbench_loopx_turn(
     prompt: str,
     agent_runner: AgentPromptRunner,
     config: SkillsBenchTurnRuntimeConfig,
+    turn_instance_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Execute one real Turn and return its receipt plus compact validation."""
 
@@ -308,8 +332,14 @@ def run_skillsbench_loopx_turn(
         raise ValueError(
             "SkillsBench LoopX Turn requires an independent validation command"
         )
+    if not 1 <= config.progress_exit_code <= 255:
+        raise ValueError("SkillsBench progress exit code must be between 1 and 255")
     bridge = SkillsBenchTurnBridge(config)
-    plan = _turn_plan(bridge, config)
+    plan = (
+        _turn_plan(bridge, config, turn_instance_id=turn_instance_id)
+        if turn_instance_id is not None
+        else _turn_plan(bridge, config)
+    )
     validation_baseline = _validation_baseline(bridge, config)
     prefix = _case_cli_prefix(config)
     baseline_path = ""
@@ -338,7 +368,11 @@ def run_skillsbench_loopx_turn(
             f"{shlex.quote(config.validation_command)}"
         )
         try:
-            bridge.exec(validation_command, meaningful=True)
+            validation_result = bridge.exec(
+                validation_command,
+                meaningful=True,
+                allow_nonzero=True,
+            )
         except SkillsBenchTurnBridgeError:
             return {
                 "status": "failed",
@@ -346,6 +380,22 @@ def run_skillsbench_loopx_turn(
                 "summary": "independent scored-workspace validation returned non-zero",
                 "recovery_kind": "repair_required",
                 "exit_code": 1,
+            }
+        exit_code = validation_result.get("exit_code")
+        if exit_code == config.progress_exit_code:
+            return {
+                "status": "progress",
+                "validator_kind": "skillsbench_scored_workspace_command",
+                "summary": "independent scored-workspace progress validation passed",
+                "exit_code": exit_code,
+            }
+        if exit_code != 0:
+            return {
+                "status": "failed",
+                "validator_kind": "skillsbench_scored_workspace_command",
+                "summary": "independent scored-workspace validation returned non-zero",
+                "recovery_kind": "repair_required",
+                "exit_code": exit_code,
             }
         return {
             "status": "passed",
@@ -420,24 +470,30 @@ def run_skillsbench_loopx_turn(
                 bridge.exec(f"rm -f {shlex.quote(baseline_path)}")
             except SkillsBenchTurnBridgeError:
                 pass
+    transaction_validation = execution.get("validation")
+    transaction_validation = (
+        transaction_validation if isinstance(transaction_validation, dict) else {}
+    )
+    validation_status = transaction_validation.get("status")
+    validation_passed = validation_status in {"passed", "progress"}
+    terminal_complete = validation_status == "passed"
+    validated_progress = validation_status in {"passed", "progress"}
     scored_validation = {
         "schema_version": "skillsbench_scored_workspace_validation_v0",
-        "status": (
-            "passed"
-            if isinstance(execution.get("validation"), dict)
-            and execution["validation"].get("status") == "passed"
-            else "failed"
-        ),
+        "status": ("passed" if validation_passed else "failed"),
         "independent": True,
         "validator_kind": "skillsbench_scored_workspace_command",
         "pre_agent_postcondition_checked": True,
         "pre_agent_postcondition_status": validation_baseline["status"],
         "post_agent_postcondition_status": (
             "satisfied"
-            if isinstance(execution.get("validation"), dict)
-            and execution["validation"].get("status") == "passed"
+            if terminal_complete
+            else "progress_validated"
+            if validated_progress
             else "unsatisfied"
         ),
+        "validated_progress": validated_progress,
+        "terminal_complete": terminal_complete,
         "baseline_contract": "task_declared_independent_postcondition",
         "oracle_feedback_used": False,
         "meaningful_operation_count": bridge.meaningful_operation_count,
@@ -446,6 +502,63 @@ def run_skillsbench_loopx_turn(
         "raw_verifier_output_recorded": False,
     }
     return execution, scored_validation
+
+
+def run_skillsbench_loopx_turn_sequence(
+    *,
+    prompt: str,
+    agent_runner: AgentPromptRunner,
+    config: SkillsBenchTurnRuntimeConfig,
+    turn_observer: TurnObserver | None = None,
+) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], dict[str, Any]]:
+    """Run up to N independently validated Turns within one total time budget."""
+
+    if config.max_turns < 1:
+        raise ValueError("SkillsBench LoopX Turn max_turns must be at least 1")
+    sequence_id = uuid.uuid4().hex[:16]
+    deadline = time.monotonic() + max(1.0, config.agent_timeout_seconds)
+    records: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    stop_reason = "max_turns_reached"
+    for turn_index in range(1, config.max_turns + 1):
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            stop_reason = "time_budget_exhausted"
+            break
+        turn_prompt = (
+            prompt if turn_index == 1 else SKILLSBENCH_LOOPX_TURN_CONTINUATION_PROMPT
+        )
+        execution, validation = run_skillsbench_loopx_turn(
+            prompt=turn_prompt,
+            agent_runner=agent_runner,
+            config=replace(config, agent_timeout_seconds=remaining_seconds),
+            turn_instance_id=f"{sequence_id}-turn-{turn_index:03d}",
+        )
+        validation["turn_index"] = turn_index
+        records.append((execution, validation))
+        if execution.get("status") != "committed":
+            stop_reason = "turn_not_committed"
+        elif validation.get("terminal_complete") is True:
+            stop_reason = "terminal_complete"
+        elif validation.get("validated_progress") is not True:
+            stop_reason = "no_validated_progress"
+        elif turn_index < config.max_turns:
+            stop_reason = "continue"
+        else:
+            stop_reason = "max_turns_reached"
+        validation["sequence_stop_reason"] = stop_reason
+        if turn_observer is not None:
+            turn_observer(execution, validation)
+        if stop_reason != "continue":
+            break
+    return records, {
+        "schema_version": "skillsbench_loopx_turn_sequence_v0",
+        "status": stop_reason,
+        "turn_count": len(records),
+        "max_turns": config.max_turns,
+        "terminal_complete": stop_reason == "terminal_complete",
+        "official_feedback_blinded": True,
+        "reward_feedback_forwarded": False,
+    }
 
 
 def build_skillsbench_benchmark_runner_readiness(
@@ -462,7 +575,7 @@ def build_skillsbench_benchmark_runner_readiness(
         ),
         "pre_agent_postcondition_unsatisfied": (
             scored_workspace_validation.get("pre_agent_postcondition_status")
-            == "unsatisfied"
+            in {"unsatisfied", "progress_validated"}
         ),
         "post_agent_postcondition_satisfied": (
             scored_workspace_validation.get("post_agent_postcondition_status")
@@ -613,6 +726,12 @@ def run_skillsbench_loopx_turn_relay(
         raise RuntimeError("LoopX Turn requires an independent validation command")
     if not trace_root:
         raise RuntimeError("LoopX Turn requires a compact public trace directory")
+    max_turns = int(getattr(relay_config, "loopx_turn_max_turns", 1))
+    progress_exit_code = int(getattr(relay_config, "loopx_turn_progress_exit_code", 10))
+    if max_turns < 1:
+        raise RuntimeError("LoopX Turn max Turns must be at least one")
+    if not 1 <= progress_exit_code <= 255:
+        raise RuntimeError("LoopX Turn progress exit code must be between 1 and 255")
     runtime_session = (
         "".join(
             char if char.isalnum() or char in "_.:-" else "_" for char in session_id
@@ -620,7 +739,7 @@ def run_skillsbench_loopx_turn_relay(
         or "session"
     )
     try:
-        execution, scored_validation = run_skillsbench_loopx_turn(
+        turn_records, sequence = run_skillsbench_loopx_turn_sequence(
             prompt=prompt,
             agent_runner=agent_runner,
             config=SkillsBenchTurnRuntimeConfig(
@@ -635,9 +754,20 @@ def run_skillsbench_loopx_turn_relay(
                     1.0, relay_config.remote_command_file_bridge_timeout_sec
                 ),
                 agent_timeout_seconds=max(1.0, float(relay_config.timeout_sec)),
+                max_turns=max_turns,
+                progress_exit_code=progress_exit_code,
                 case_cli_path=relay_config.loopx_case_cli_path,
                 case_registry_path=relay_config.loopx_case_registry_path,
                 case_runtime_root=relay_config.loopx_case_runtime_root,
+            ),
+            turn_observer=lambda execution, scored_validation: trace_writer(
+                build_skillsbench_loopx_turn_trace(
+                    route=relay_config.route,
+                    benchmark_id=relay_config.dataset,
+                    task_id=relay_config.task_id,
+                    execution=execution,
+                    scored_workspace_validation=scored_validation,
+                )
             ),
         )
     except SkillsBenchTurnBridgeError as exc:
@@ -652,17 +782,16 @@ def run_skillsbench_loopx_turn_relay(
         return recoverable_codex_turn_failure_message(
             f"loopx_turn_{exc.stage}_{exc.category}"
         )
-    trace_writer(
-        build_skillsbench_loopx_turn_trace(
-            route=relay_config.route,
-            benchmark_id=relay_config.dataset,
-            task_id=relay_config.task_id,
-            execution=execution,
-            scored_workspace_validation=scored_validation,
+    if not turn_records:
+        return recoverable_codex_turn_failure_message(
+            "loopx_turn_" + str(sequence.get("status") or "failed")
         )
-    )
+    execution, _scored_validation = turn_records[-1]
     if execution.get("status") != "committed":
         return recoverable_codex_turn_failure_message(
             "loopx_turn_" + str(execution.get("status") or "failed")
         )
-    return "loopx turn committed after independent scored-workspace validation"
+    return (
+        "loopx turn sequence stopped after "
+        f"{len(turn_records)} committed turn(s): {sequence['status']}"
+    )
