@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import os
 import re
-import shlex
 import tempfile
 from pathlib import Path
 
@@ -16,12 +14,6 @@ _BARE_PIP_INSTALL_RE = re.compile(
     r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)pip3?\s+install\b",
     re.IGNORECASE,
 )
-_APT_REPOSITORY_COMMAND_RE = re.compile(
-    r"\bapt(?:-get)?\s+(?:update|install|download)\b",
-    re.IGNORECASE,
-)
-_MAX_CONTEXT_FILES = 512
-_MAX_CONTEXT_FILE_BYTES = 1024 * 1024
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -43,129 +35,12 @@ def _strip_marker_blocks(text: str, begin: str, end: str) -> str:
 
 
 def _stage_has_apt_update(lines: list[str]) -> bool:
-    return bool(_APT_REPOSITORY_COMMAND_RE.search("\n".join(lines)))
-
-
-def _dockerfile_logical_instructions(text: str) -> list[str]:
-    instructions: list[str] = []
-    pending: list[str] = []
-    heredoc_delimiter: str | None = None
-    for line in text.splitlines():
-        if heredoc_delimiter is not None:
-            if line.strip() == heredoc_delimiter:
-                heredoc_delimiter = None
-            continue
-        heredoc_delimiter = dockerfile_heredoc_delimiter(line)
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        pending.append(stripped.rstrip("\\").rstrip())
-        if stripped.endswith("\\"):
-            continue
-        instructions.append(" ".join(pending))
-        pending = []
-    if pending:
-        instructions.append(" ".join(pending))
-    return instructions
-
-
-def _dockerfile_local_copy_sources(text: str) -> list[str]:
-    sources: list[str] = []
-    for instruction in _dockerfile_logical_instructions(text):
-        match = re.match(r"^(?:COPY|ADD)\s+(.+)$", instruction, re.IGNORECASE)
-        if match is None:
-            continue
-        body = match.group(1).strip()
-        if re.match(r"^--from(?:=|\s)", body, re.IGNORECASE):
-            continue
-        while body.startswith("--"):
-            flag, separator, remainder = body.partition(" ")
-            if not separator or "=" not in flag:
-                body = ""
-                break
-            body = remainder.lstrip()
-        try:
-            if body.startswith("["):
-                values = json.loads(body)
-                tokens = values if isinstance(values, list) else []
-            else:
-                tokens = shlex.split(body)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        tokens = [
-            str(token)
-            for token in tokens
-            if isinstance(token, str) and not str(token).startswith("--")
-        ]
-        for source in tokens[:-1]:
-            if "://" not in source and not source.startswith("--from="):
-                sources.append(source)
-    return sources
-
-
-def _referenced_context_files(dockerfile: Path) -> list[Path]:
-    context = dockerfile.parent.resolve()
-    text = dockerfile.read_text(encoding="utf-8", errors="replace")
-    files: list[Path] = []
-    seen: set[Path] = set()
-    for source in _dockerfile_local_copy_sources(text):
-        if any(character in source for character in "*?["):
-            matches = sorted(context.glob(source))
-        else:
-            matches = [context / source]
-        for match in matches:
-            try:
-                if match.is_symlink():
-                    continue
-                resolved = match.resolve()
-                if not resolved.is_relative_to(context):
-                    continue
-            except OSError:
-                continue
-            candidates = resolved.rglob("*") if resolved.is_dir() else (resolved,)
-            for candidate in candidates:
-                if len(files) >= _MAX_CONTEXT_FILES:
-                    return files
-                try:
-                    if (
-                        candidate in seen
-                        or not candidate.is_file()
-                        or candidate.is_symlink()
-                        or candidate.stat().st_size > _MAX_CONTEXT_FILE_BYTES
-                    ):
-                        continue
-                except OSError:
-                    continue
-                seen.add(candidate)
-                files.append(candidate)
-    return files
-
-
-def copied_context_needs_apt_retry_patch(dockerfile: Path) -> bool:
-    """Detect apt repository commands in local files copied into an image."""
-
-    if not dockerfile.exists():
-        return False
-    for path in _referenced_context_files(dockerfile):
-        try:
-            data = path.read_bytes()
-        except OSError:
-            continue
-        if b"\x00" in data:
-            continue
-        if _APT_REPOSITORY_COMMAND_RE.search(data.decode("utf-8", errors="replace")):
-            return True
-    return False
-
-
-def needs_apt_retry_patch(dockerfile: Path) -> bool:
-    if not dockerfile.exists():
-        return False
-    text = dockerfile.read_text(encoding="utf-8", errors="replace")
-    if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, re.IGNORECASE | re.MULTILINE):
-        return False
-    return bool(_APT_REPOSITORY_COMMAND_RE.search(text)) or (
-        copied_context_needs_apt_retry_patch(dockerfile)
+    return bool(
+        re.search(
+            r"\bapt(?:-get)?\s+update\b",
+            "\n".join(lines),
+            re.IGNORECASE,
+        )
     )
 
 
@@ -184,7 +59,7 @@ def _dockerfile_stage_starts(lines: list[str]) -> list[int]:
 
 
 def needs_ubuntu_apt_mirror_patch(dockerfile: Path) -> bool:
-    """Return whether a Dockerfile or copied setup file accesses apt.
+    """Return whether a Dockerfile stage runs apt update.
 
     The staged patch is adaptive: it rewrites only Ubuntu source files found
     in the image, so Debian and other apt-based images are left unchanged.
@@ -197,9 +72,7 @@ def needs_ubuntu_apt_mirror_patch(dockerfile: Path) -> bool:
         UBUNTU_APT_MIRROR_BEGIN,
         UBUNTU_APT_MIRROR_END,
     )
-    return _stage_has_apt_update(text.splitlines()) or (
-        copied_context_needs_apt_retry_patch(dockerfile)
-    )
+    return _stage_has_apt_update(text.splitlines())
 
 
 def _ubuntu_apt_mirror_block() -> list[str]:
@@ -239,7 +112,6 @@ def patch_ubuntu_apt_mirror(dockerfile: Path) -> bool:
     stage_starts = _dockerfile_stage_starts(lines)
     if not stage_starts:
         return False
-    copied_context_apt = copied_context_needs_apt_retry_patch(dockerfile)
 
     patched_lines = lines[: stage_starts[0]]
     applied = False
@@ -251,7 +123,7 @@ def patch_ubuntu_apt_mirror(dockerfile: Path) -> bool:
         )
         stage_lines = lines[start:end]
         from_line = stage_lines[0].strip().lower()
-        if (_stage_has_apt_update(stage_lines) or copied_context_apt) and not re.match(
+        if _stage_has_apt_update(stage_lines) and not re.match(
             r"from(?:\s+--platform=\S+)?\s+scratch(?:\s|$)",
             from_line,
         ):

@@ -19,8 +19,6 @@ from scripts.skillsbench_automation_loop import (
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
-    skillsbench_task_setup_preflight,
-    stage_task_for_sandbox,
 )
 
 
@@ -104,46 +102,6 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     serialized = json.dumps(result, sort_keys=True)
     assert "/private/" not in serialized
     assert "should-not-project" not in serialized
-
-
-def test_copied_apt_bootstrap_is_patched_during_task_staging(tmp_path: Path) -> None:
-    task_path = tmp_path / "tasks" / "synthetic-apt-bootstrap"
-    environment = task_path / "environment"
-    environment.mkdir(parents=True)
-    (environment / "Dockerfile").write_text(
-        "FROM ubuntu:24.04\n"
-        "COPY bootstrap.sh /usr/local/bin/bootstrap\n"
-        "RUN /usr/local/bin/bootstrap\n",
-        encoding="utf-8",
-    )
-    (environment / "bootstrap.sh").write_text(
-        "#!/bin/sh\napt-get update && apt-get install -y curl\n",
-        encoding="utf-8",
-    )
-
-    preflight = skillsbench_task_setup_preflight(
-        task_path=task_path,
-        sandbox="docker",
-    )
-    staged_path, metadata = stage_task_for_sandbox(
-        task_path=task_path,
-        jobs_dir=tmp_path / "jobs",
-        job_name="synthetic-apt-bootstrap-job",
-        sandbox="docker",
-        include_task_skills=False,
-    )
-
-    assert preflight["apt_setup_risk_detected"] is True
-    assert preflight["apt_retry_patch_required"] is True
-    assert preflight["raw_task_text_read"] is False
-    assert metadata["apt_setup_risk_detected"] is True
-    assert metadata["apt_retry_patch_applied"] is True
-    assert metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is True
-    patched = (staged_path / "environment" / "Dockerfile").read_text(
-        encoding="utf-8"
-    )
-    assert "BEGIN LOOPX_SKILLSBENCH_APT_RETRY" in patched
-    assert "BEGIN LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" in patched
 
 
 def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:

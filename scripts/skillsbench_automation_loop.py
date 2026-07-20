@@ -6588,7 +6588,12 @@ def patch_dockerfile_app_skills_mount(dockerfile: Path) -> bool:
 
 
 def dockerfile_needs_apt_retry_patch(dockerfile: Path) -> bool:
-    return dockerfile_runtime.needs_apt_retry_patch(dockerfile)
+    if not dockerfile.exists():
+        return False
+    text = dockerfile.read_text(encoding="utf-8")
+    if re.search(r"^\s*FROM\s+scratch(?:\s|$)", text, flags=re.IGNORECASE | re.MULTILINE):
+        return False
+    return bool(re.search(r"\bapt(?:-get)?\s+update\b", text, flags=re.IGNORECASE))
 
 
 def dockerfile_needs_pip_bootstrap_patch(dockerfile: Path) -> bool:
