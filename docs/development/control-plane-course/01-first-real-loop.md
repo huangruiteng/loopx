@@ -4,10 +4,13 @@
 
 ## 本讲在课程中的位置
 
-这套课一共 9 讲，每讲只增加一个主要抽象：
+[第 0 讲](00-goal-control-plane-architecture.md)已经用 authority map 区分了 LoopX、host、runtime、memory、workspace 和
+projection。本讲不再讨论“应该画哪一种架构图”，而是沿总览图跑通第一次真实 Loop。
+全课由第 0 讲架构导论和 9 讲专题组成，每讲只增加一个主要抽象：
 
 | 讲次 | 新增的主要抽象 | 学完后能回答的问题 |
 | --- | --- | --- |
+| 0 | Goal control plane authority | 谁拥有长期事实、谁执行、谁提供回执？ |
 | 1 | 一次真实 Loop | 用户说一句话之后，到底发生了什么？ |
 | 2 | 状态底座 | 长期目标和事实保存在哪里？ |
 | 3 | 工作图 | 多个 peer 如何领取、交接和关闭工作？ |

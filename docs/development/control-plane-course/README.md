@@ -1,13 +1,13 @@
 # LoopX Control-Plane Developer Course / LoopX 控制面开发者课程
 
-这套 9 讲课程面向准备修改 LoopX kernel、CLI、状态投影、调度或扩展能力的开发者。主目标是建立一条可执行的控制面心智模型：用户的一句目标如何变成可领取工作，状态如何写回，quota 为什么允许或拒绝下一轮，host 又如何安全地把决策变成周期执行。
+这套课程由第 0 讲架构导论和 9 讲专题组成，面向准备修改 LoopX kernel、CLI、状态投影、调度或扩展能力的开发者。主目标是建立一条可执行的控制面心智模型：先判断谁拥有长期事实、决策与执行权，再理解用户的一句目标如何变成可领取工作，状态如何写回，quota 为什么允许或拒绝下一轮，host 又如何安全地把决策变成周期执行。
 
 课程采用一条贯穿始终的架构边界：LoopX 定义长程 agent 的 **goal-level control
 plane**。执行 runtime、memory provider 和 workspace storage 可以替换或协作，但 goal
 lifecycle、canonical state contract、验证与恢复闭环由 LoopX 组织；任何 adapter 都不能
 静默成为第二个长期事实源。
 
-这条边界可以展开成一条贯穿 9 讲的闭环：
+这条边界可以展开成一条贯穿全课的闭环：
 
 ```text
 vision / goal boundary
@@ -40,6 +40,7 @@ vision / goal boundary
 
 | 讲次 | 主题 | 读完应能回答 |
 | --- | --- | --- |
+| [第 0 讲](00-goal-control-plane-architecture.md) | LoopX Goal Control Plane Architecture | LoopX、host、runtime、memory、workspace 和 projection 分别拥有什么？ |
 | [第 1 讲](01-first-real-loop.md) | 从 Showcase 到第一次真实 Loop | 用户只说一句目标后，guided start、todo、heartbeat、quota、refresh 和 spend 如何串起来？ |
 | [第 2 讲](02-state-substrate.md) | 状态底座与可重放事实 | registry、event、active state、run history 和 projection 分别拥有什么事实？ |
 | [第 3 讲](03-work-graph-and-peers.md) | Todo 工作图与 Peer 协作 | equal peer 如何 claim、显式委托 lifecycle authority、handoff 材料前沿，而不恢复 primary/side 层级？ |
@@ -52,7 +53,7 @@ vision / goal boundary
 
 ## 建议学习方式
 
-第一次阅读按 1 到 9 的顺序进行。第 1 讲建立端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再看扩展层。
+第一次阅读按 0 到 9 的顺序进行。第 0 讲先建立 authority map 与四视图架构图谱，第 1 讲运行端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再看扩展层。
 
 不要从模块文件头一路向下读。每讲的“核心代码领读”会给出函数级入口，先搜索目标函数，再沿 bounded-context helper 向下读。运行实验时使用临时 goal 和测试仓库，不要把课程占位 id 当作真实配置。
 

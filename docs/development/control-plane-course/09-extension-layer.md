@@ -787,7 +787,7 @@ configure preview
 
 ## 课程结束后的能力标准
 
-完成 9 讲后，一个新开发者不需要记住所有 CLI 参数，但应该能够独立完成三件事：
+完成第 0 到第 9 讲后，一个新开发者不需要记住所有 CLI 参数，但应该能够独立完成三件事：
 
 1. 从 `$loopx <task>` 追到 registry、todo、quota、interaction contract、scheduler、refresh 和 spend；
 2. 遇到卡住或矛盾状态时，判断是执行失败、projection gap、host drift 还是缺少用户 authority；
