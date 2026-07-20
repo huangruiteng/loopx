@@ -56,6 +56,49 @@ registers an already-installed subprocess entrypoint only after the manifest,
 API, permission, and doctor checks pass. It does not download packages or grant
 new permissions.
 
+## Starter And Scaffold
+
+Create the next standalone extension through the same management surface. The
+command previews by default and writes only with `--execute`:
+
+```bash
+loopx extension init loopx-example --format json
+loopx extension init loopx-example --execute --format json
+```
+
+The default destination is `extensions/<extension-id>`. Use `--destination`
+when the provider is developed in another package or repository. The scaffold
+creates an independently installable Python package, declarative manifest,
+JSON stdin/stdout provider, side-effect-free doctor, example request, and a
+short README. It does not register a capability because a standalone extension
+does not need one.
+
+The command refuses every existing destination, including an empty directory;
+there is no force or merge mode. It also does not build, install, register, or
+enable the generated provider. Those remain explicit lifecycle steps so the
+package manager and LoopX activation state cannot drift behind one command:
+
+Run all three commands from the same activated Python environment. LoopX
+verifies the provider through its installed console entrypoint, so installing
+the package into a different environment correctly fails with
+`entrypoint_missing`.
+
+```bash
+python3 -m pip install extensions/loopx-example
+loopx extension install \
+  --manifest extensions/loopx-example/extension.toml \
+  --execute \
+  --format json
+loopx extension run loopx-example \
+  --input-json extensions/loopx-example/examples/request.json \
+  --execute \
+  --format json
+```
+
+Treat the generated response as executable documentation, not a permanent
+domain contract. Before productizing the provider, replace the starter request,
+response, permission, and doctor semantics with bounded domain-specific ones.
+
 ## Runtime Lifecycle
 
 The lifecycle is local, explicit, and dry-run by default:

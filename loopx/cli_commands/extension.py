@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from ..extensions.bundled import BUNDLED_EXTENSION_IDS, bundled_extension_manifest
+from ..extensions.scaffold import scaffold_extension
 from ..extensions.runtime import (
     default_extension_state_file,
     disable_extension,
@@ -36,6 +37,9 @@ def _render(payload: dict[str, object]) -> str:
         "revision",
         "status",
         "protocol",
+        "destination",
+        "module_name",
+        "dry_run",
         "executed",
         "enabled",
         "changed",
@@ -56,8 +60,9 @@ def _render(payload: dict[str, object]) -> str:
 
 
 def _state_file(args: argparse.Namespace, runtime_root_arg: str | None) -> Path:
-    if args.extension_state_file:
-        return Path(args.extension_state_file).expanduser()
+    override = getattr(args, "extension_state_file", None)
+    if override:
+        return Path(override).expanduser()
     return default_extension_state_file(runtime_root_arg)
 
 
@@ -88,6 +93,19 @@ def register_extension_commands(
         help="Manage explicitly enabled subprocess extension providers.",
     )
     commands = parser.add_subparsers(dest="extension_command", required=True)
+
+    init = commands.add_parser(
+        "init",
+        help="Preview or create a minimal independently packaged extension starter.",
+    )
+    add_subcommand_format(init)
+    init.add_argument("extension_id")
+    init.add_argument(
+        "--destination",
+        help="Target directory. Defaults to extensions/<extension-id>.",
+    )
+    init.add_argument("--version", default="0.1.0")
+    init.add_argument("--execute", action="store_true")
 
     list_parser = commands.add_parser("list", help="List installed extensions.")
     _add_common(list_parser, add_subcommand_format)
@@ -158,7 +176,14 @@ def handle_extension_command(
         return None
     state_file = _state_file(args, runtime_root_arg)
     try:
-        if args.extension_command == "list":
+        if args.extension_command == "init":
+            payload = scaffold_extension(
+                args.extension_id,
+                destination=args.destination,
+                version=args.version,
+                execute=args.execute,
+            )
+        elif args.extension_command == "list":
             payload = extension_status(state_file=state_file)
         elif args.extension_command in {"install", "upgrade"}:
             manifest_path = (
