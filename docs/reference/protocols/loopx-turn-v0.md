@@ -230,6 +230,16 @@ at `validation_failed`, records a typed `repair_required` or `replan_required`
 recovery disposition, and cannot write state or spend quota. Typed stop results
 do not require task validation because they produce no material writeback.
 
+An independent callback validator may distinguish terminal completion from
+validated intermediate progress. `status=passed` means the declared terminal
+postcondition holds and uses exit code `0`. `status=progress` means a bounded,
+task-facing postcondition is independently proven but the terminal
+postcondition is still open; it uses an explicit non-zero marker. Both statuses
+may commit exactly one Turn and one quota spend. Only `progress` permits a host
+adapter to start another Turn, and only under a predeclared maximum, shared
+total time budget, and no-feedback continuation policy. Every other validator
+status fails closed before writeback.
+
 ## Turn Input
 
 The driver input is a small composition of existing contracts:
