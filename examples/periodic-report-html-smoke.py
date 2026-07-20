@@ -44,6 +44,10 @@ def main() -> None:
     assert html_artifact["content_policy"]["supporting_item_count"] == 1
     assert markdown_artifact["content_policy"]["supporting_context"] == "appendix"
     assert html_artifact["content_policy"]["process_narration_default_visible"] is False
+    assert html_artifact["content_policy"]["editorial_summary_source"] == (
+        "typed_primary_items"
+    )
+    assert html_artifact["content_policy"]["readability_policy"] == "audience_v1"
     for expected in (
         "Stable release reached all production regions",
         "reduced median processing latency by 18%",
@@ -55,7 +59,10 @@ def main() -> None:
         assert expected in markdown_artifact["content"]
     assert "snapshot_example_delivery" not in primary_body
     assert "snapshot_example_delivery" in supporting
-    assert "Two delivery outcomes landed without rollback" in primary_body
+    assert "Outcome: Stable release reached all production regions" in primary_body
+    assert document["editorial"]["orchestration"]["summary_source"] == (
+        "typed_primary_items"
+    )
     assert (
         "Shareable formats were generated from one report document" not in primary_body
     )

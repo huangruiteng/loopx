@@ -14,7 +14,32 @@
     "language": "en",
     "kicker": "Product delivery · Weekly report",
     "period_label": "January 5–12, 2026",
-    "summary": "Two delivery outcomes landed without rollback. The only material risk is the remaining legacy-endpoint adoption gap, which has a concrete owner-confirmation action.",
+    "summary": "Outcome: Stable release reached all production regions. Risk: Two integrations still use the legacy endpoint. Next: Confirm owners and complete both migrations before the next release window.",
+    "orchestration": {
+      "schema_version": "periodic_report_editorial_orchestration_v0",
+      "summary_source": "typed_primary_items",
+      "readability_policy": "audience_v1",
+      "summary_item_refs": [
+        {
+          "role": "outcome",
+          "source_id": "delivery",
+          "item_id": "stable_release",
+          "field": "title"
+        },
+        {
+          "role": "risk",
+          "source_id": "delivery",
+          "item_id": "adoption_gap",
+          "field": "title"
+        },
+        {
+          "role": "next_action",
+          "source_id": "delivery",
+          "item_id": "adoption_gap",
+          "field": "next_action"
+        }
+      ]
+    },
     "highlights": [
       {
         "highlight_id": "rollout",
