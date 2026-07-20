@@ -1,0 +1,184 @@
+{
+  "schema_version": "finance_value_discovery_input_v0",
+  "as_of": "2026-07-06",
+  "routes": [
+    "de_beta_mispricing"
+  ],
+  "screen_groups": [
+    "legacy-payments",
+    "packaging",
+    "ag-cycle",
+    "staffing",
+    "freight-logistics"
+  ],
+  "universe_frozen": true,
+  "controls_frozen": true,
+  "candidate_selected_after_screen": true,
+  "pit_required": true,
+  "full_terminal_outcomes_required": true,
+  "dilution_required": true,
+  "permanent_loss_required": true,
+  "max_successor_count": 1,
+  "cards": [
+    {
+      "schema_version": "finance_value_discovery_evidence_card_v0",
+      "entity_id": "PYPL",
+      "role": "candidate",
+      "classification": "B",
+      "peer_group": "legacy-payments",
+      "relative_signal": "idiosyncratic_support",
+      "source_refs": [
+        {
+          "source_id": "pypl-filing-facts",
+          "source_tier": "primary",
+          "provider_label": "public filing facts",
+          "observed_at": "2026-07-06"
+        },
+        {
+          "source_id": "pypl-adjusted-history",
+          "source_tier": "market_data",
+          "provider_label": "public adjusted price history",
+          "observed_at": "2026-07-06"
+        }
+      ],
+      "cross_validation_status": "primary_corroborated",
+      "axes": {
+        "structural_growth": "mixed",
+        "profit_pool_capture": "supported",
+        "incremental_capital_efficiency": "supported",
+        "reinvestment_runway": "mixed",
+        "survival_and_dilution": "supported",
+        "price_implied_expectations": "supported"
+      },
+      "incremental_efficiency_signals": [
+        "cash generation remained positive through the de-rating",
+        "operating quality compared favorably with the frozen peer controls"
+      ],
+      "supporting_facts": [
+        "The broad screen surfaced a quality-versus-price-history mismatch after the candidate set was frozen.",
+        "Residual comparison with the legacy-payments controls supported company-specific follow-up rather than a sector-only story."
+      ],
+      "counter_evidence": [
+        "Branded checkout share and transaction-margin durability still require filing-level falsification.",
+        "Competition, credit exposure, dilution, and buyback quality can invalidate the apparent discount."
+      ],
+      "missing_fields": [
+        "normalized checkout share trend",
+        "fully diluted valuation history"
+      ],
+      "fully_diluted_valuation_status": "partial",
+      "terminal_risk_status": "unresolved"
+    },
+    {
+      "schema_version": "finance_value_discovery_evidence_card_v0",
+      "entity_id": "FIS",
+      "role": "control",
+      "classification": "CONTROL",
+      "peer_group": "legacy-payments",
+      "relative_signal": "not_applicable",
+      "source_refs": [
+        {
+          "source_id": "fis-public-comparison",
+          "source_tier": "secondary",
+          "provider_label": "public frozen peer comparison",
+          "observed_at": "2026-07-06"
+        }
+      ],
+      "cross_validation_status": "single_source",
+      "axes": {
+        "structural_growth": "mixed",
+        "profit_pool_capture": "mixed",
+        "incremental_capital_efficiency": "mixed",
+        "reinvestment_runway": "mixed",
+        "survival_and_dilution": "mixed",
+        "price_implied_expectations": "supported"
+      },
+      "incremental_efficiency_signals": [],
+      "supporting_facts": [
+        "The control preserves the shared legacy-payments de-rating in the comparison."
+      ],
+      "counter_evidence": [
+        "Funding, acquisition, and leverage complexity can make headline valuation incomparable."
+      ],
+      "missing_fields": [
+        "normalized post-transaction leverage"
+      ],
+      "fully_diluted_valuation_status": "partial",
+      "terminal_risk_status": "unresolved"
+    },
+    {
+      "schema_version": "finance_value_discovery_evidence_card_v0",
+      "entity_id": "GPN",
+      "role": "control",
+      "classification": "CONTROL",
+      "peer_group": "legacy-payments",
+      "relative_signal": "not_applicable",
+      "source_refs": [
+        {
+          "source_id": "gpn-public-comparison",
+          "source_tier": "secondary",
+          "provider_label": "public frozen peer comparison",
+          "observed_at": "2026-07-06"
+        }
+      ],
+      "cross_validation_status": "single_source",
+      "axes": {
+        "structural_growth": "mixed",
+        "profit_pool_capture": "mixed",
+        "incremental_capital_efficiency": "refuted",
+        "reinvestment_runway": "mixed",
+        "survival_and_dilution": "mixed",
+        "price_implied_expectations": "supported"
+      },
+      "incremental_efficiency_signals": [],
+      "supporting_facts": [
+        "The control prevents a cheap-looking group from being treated as uniform evidence."
+      ],
+      "counter_evidence": [
+        "Acquisition accounting and weak incremental economics can indicate a value trap."
+      ],
+      "missing_fields": [
+        "organic incremental return decomposition"
+      ],
+      "fully_diluted_valuation_status": "partial",
+      "terminal_risk_status": "material"
+    },
+    {
+      "schema_version": "finance_value_discovery_evidence_card_v0",
+      "entity_id": "WEX",
+      "role": "control",
+      "classification": "CONTROL",
+      "peer_group": "legacy-payments",
+      "relative_signal": "not_applicable",
+      "source_refs": [
+        {
+          "source_id": "wex-public-comparison",
+          "source_tier": "secondary",
+          "provider_label": "public frozen peer comparison",
+          "observed_at": "2026-07-06"
+        }
+      ],
+      "cross_validation_status": "single_source",
+      "axes": {
+        "structural_growth": "mixed",
+        "profit_pool_capture": "mixed",
+        "incremental_capital_efficiency": "mixed",
+        "reinvestment_runway": "mixed",
+        "survival_and_dilution": "mixed",
+        "price_implied_expectations": "supported"
+      },
+      "incremental_efficiency_signals": [],
+      "supporting_facts": [
+        "The control anchors how funding and credit exposure alter the apparent discount."
+      ],
+      "counter_evidence": [
+        "Credit and funding sensitivity can dominate operating comparisons."
+      ],
+      "missing_fields": [
+        "through-cycle credit loss normalization"
+      ],
+      "fully_diluted_valuation_status": "partial",
+      "terminal_risk_status": "unresolved"
+    }
+  ]
+}

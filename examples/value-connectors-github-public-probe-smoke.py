@@ -135,6 +135,11 @@ def main() -> int:
         profiles["finance_market_snapshot"]["outcome_capability_id"]
         == "finance-value-discovery"
     )
+    assert profiles["finance_market_snapshot"]["provider_binding_state"] == "migrated"
+    assert (
+        profiles["finance_market_snapshot"]["provider_id"]
+        == "loopx-finance-value-discovery"
+    )
     action_ids = {item["connector_id"] for item in source_map["action_gated_profiles"]}
     assert "botmail_identity" in action_ids, action_ids
     assert "community_channel" in action_ids, action_ids
@@ -146,7 +151,7 @@ def main() -> int:
     assert source_map["projection"]["compatibility_facade"] is True
     assert source_map["projection"]["new_profile_ownership_allowed"] is False
     assert source_map["projection"]["mapped_profile_count"] == 8
-    assert source_map["projection"]["migrated_profile_count"] == 4
+    assert source_map["projection"]["migrated_profile_count"] == 5
     assert source_map["generic_evidence_card_schema"]["operation"] == "read", source_map
     assert "loopx value-connectors plan" in source_map["agent_prompt"], source_map
     assert_public_safe(source_map)
