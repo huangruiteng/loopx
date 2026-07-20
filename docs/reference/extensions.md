@@ -251,6 +251,30 @@ Its capability-specific activation wrapper additionally requires an enabled
 observed `openviking_context_write` runtime capability. Those project and turn
 facts do not belong in the generic extension manifest or lifecycle state.
 
+### Finance value-discovery sample
+
+`extensions/finance-value-discovery/` is a co-located, independently packaged
+outcome provider. Its manifest provides the `finance-value-discovery`
+capability and implements `finance_value_discovery_provider_v0`. After an
+explicit install and successful doctor probe, the legacy command remains a
+lifecycle-checked delegate:
+
+```bash
+loopx extension install \
+  --manifest extensions/finance-value-discovery/extension.toml \
+  --execute
+loopx value-connectors finance-discovery \
+  --input-json extensions/finance-value-discovery/examples/paypal-debeta-discovery.json \
+  --format json
+```
+
+The included PayPal packet preserves a reusable de-beta research method, not
+an investment conclusion: start from a frozen cross-sectional screen, retain
+same-group controls, separate structural growth from profit-pool capture,
+require dilution and terminal-risk evidence, then falsify the candidate before
+selecting at most one successor. The reducer performs no live reads, gives no
+price target or advice, and cannot trade or start a continuous watch.
+
 Runtime-required permissions must be a subset of the provider's declared
 permissions. Declaring either does not grant authority: existing LoopX goal
 boundaries, user gates, and external-write authorization still decide whether
