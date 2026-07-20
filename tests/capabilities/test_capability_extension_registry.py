@@ -44,7 +44,7 @@ def _write_manifest(
     runtime = (
         ""
         if entrypoint is None
-        else f'''\
+        else f"""\
 
 [runtime]
 protocol = "sample_report_provider_v0"
@@ -52,7 +52,7 @@ entrypoint = {json.dumps(str(entrypoint))}
 doctor_args = ["--doctor"]
 required_permissions = []
 timeout_seconds = 5
-'''
+"""
     )
     path.write_text(
         f'''\
@@ -109,6 +109,28 @@ def test_builtin_catalog_preserves_order_and_marks_provider() -> None:
             "ready": True,
         }
     ]
+
+
+def test_periodic_report_catalog_exposes_extension_boundary_contracts() -> None:
+    detail = build_capability_detail_packet("periodic-report")
+    capability = detail["capability"]
+
+    assert capability["default_enabled"] is False
+    assert capability["entry_command"].startswith(
+        "loopx periodic-report inspect-profile"
+    )
+    assert {
+        protocol["schema_version"] for protocol in capability["implemented_protocols"]
+    } >= {
+        "periodic_report_profile_v0",
+        "periodic_report_activation_v0",
+        "periodic_report_generation_bundle_v0",
+        "periodic_report_generation_receipt_v0",
+        "periodic_report_sink_binding_v0",
+        "periodic_report_extension_readiness_v0",
+        "periodic_report_delivery_receipt_v0",
+    }
+    assert "python3 examples/periodic-report-bindings-smoke.py" in capability["smokes"]
 
 
 def test_declared_manifest_composes_public_capability_without_claiming_readiness(

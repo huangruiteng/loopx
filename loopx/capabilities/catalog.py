@@ -537,14 +537,20 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "provider_id": "loopx-core",
         "title": "Provider-neutral periodic and progress report runs",
         "status": "active-preview",
+        "default_enabled": False,
         "real_world_anchor": "scheduled and milestone project reports with verified archive and delivery",
         "user_value": (
             "Give projects one deterministic trigger, report run, receipt, "
             "partial-state, and retry contract without hard-coding a domain, "
             "provider, cadence, or destination."
         ),
-        "entry_command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
+        "entry_command": "loopx periodic-report inspect-profile --profile-json <profile.json> --format json",
         "commands": [
+            {
+                "command": "loopx periodic-report inspect-profile --profile-json <profile.json> --format json",
+                "purpose": "Validate explicit project activation plus trigger, source, renderer, and extension sink bindings.",
+                "write_boundary": "local profile inspection only; disabled by default and performs no provider lookup, schedule mutation, or write",
+            },
             {
                 "command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
                 "purpose": "Select, coalesce, cool down, and deduplicate cadence or material progress triggers without provider effects.",
@@ -558,6 +564,16 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         ],
         "implemented_protocols": [
             {
+                "schema_version": "periodic_report_profile_v0",
+                "module": "loopx.capabilities.periodic_report.profile",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_activation_v0",
+                "module": "loopx.capabilities.periodic_report.profile",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
                 "schema_version": "periodic_report_trigger_decision_v0",
                 "module": "loopx.capabilities.periodic_report.triggers",
                 "doc": "docs/reference/protocols/periodic-report-v0.md",
@@ -567,17 +583,45 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.periodic_report.core",
                 "doc": "docs/reference/protocols/periodic-report-v0.md",
             },
+            {
+                "schema_version": "periodic_report_generation_bundle_v0",
+                "module": "loopx.capabilities.periodic_report.bindings",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_generation_receipt_v0",
+                "module": "loopx.capabilities.periodic_report.bindings",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_sink_binding_v0",
+                "module": "loopx.capabilities.periodic_report.bindings",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_extension_readiness_v0",
+                "module": "loopx.capabilities.periodic_report.bindings",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_delivery_receipt_v0",
+                "module": "loopx.capabilities.periodic_report.bindings",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
         ],
         "smokes": [
             "python3 examples/periodic-report-smoke.py",
             "python3 examples/periodic-report-adapters-smoke.py",
             "python3 examples/periodic-report-html-smoke.py",
+            "python3 examples/periodic-report-bindings-smoke.py",
+            "python3 examples/periodic-report-profile-smoke.py",
         ],
         "docs": [
             "docs/capabilities/periodic-report/README.md",
             "docs/reference/protocols/periodic-report-v0.md",
         ],
         "boundaries": [
+            "The built-in capability is installed with LoopX but disabled for every project until a periodic_report_profile_v0 explicitly sets enabled=true.",
             "The core owns material trigger classification, coalescing, cooldown/deduplication, period/profile binding, deterministic identity, receipts, run state, and retry projection.",
             "Profiles own schedule calculation, enabled trigger kinds, minimum interval, timezone, sections, audience, and project policy.",
             "Adapters own domain source collection; renderers and sinks own all provider effects and verified readback.",

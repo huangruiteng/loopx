@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import build_periodic_report_run
+from .profile import build_periodic_report_activation
 from .triggers import build_periodic_report_trigger_decision
 
 
@@ -58,11 +59,34 @@ def register_periodic_report_commands(
         required=True,
         help="Path to periodic_report_trigger_request_v0 JSON; use '-' for stdin.",
     )
+    inspect_profile = commands.add_parser(
+        "inspect-profile",
+        help="Validate one default-off project profile without provider effects.",
+    )
+    add_subcommand_format(inspect_profile)
+    inspect_profile.add_argument(
+        "--profile-json",
+        required=True,
+        help="Path to periodic_report_profile_v0 JSON; use '-' for stdin.",
+    )
 
 
 def render_periodic_report_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
         return f"# Periodic Report Error\n\n- error: {payload.get('error')}\n"
+    if payload.get("schema_version") == "periodic_report_activation_v0":
+        profile = payload.get("profile")
+        normalized_profile = profile if isinstance(profile, dict) else {}
+        return "\n".join(
+            [
+                f"# Periodic Report Profile `{normalized_profile.get('profile_id')}`",
+                "",
+                f"- status: `{payload.get('status')}`",
+                f"- active: `{payload.get('active')}`",
+                f"- extension_mode: `{payload.get('extension_mode')}`",
+                "",
+            ]
+        )
     if payload.get("schema_version") == "periodic_report_trigger_decision_v0":
         return "\n".join(
             [
@@ -101,10 +125,15 @@ def handle_periodic_report_command(
     if args.command != "periodic-report":
         return None
     try:
-        request = _load_json_object(args.request_json)
-        if args.periodic_report_command == "evaluate-trigger":
+        if args.periodic_report_command == "inspect-profile":
+            payload = build_periodic_report_activation(
+                _load_json_object(args.profile_json)
+            )
+        elif args.periodic_report_command == "evaluate-trigger":
+            request = _load_json_object(args.request_json)
             payload = build_periodic_report_trigger_decision(request)
         else:
+            request = _load_json_object(args.request_json)
             payload = build_periodic_report_run(request)
     except Exception as exc:
         payload = {
