@@ -15,6 +15,9 @@ from loopx.control_plane.turn_driver import (
     build_loopx_turn_plan,
 )
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
+from loopx.control_plane.testing.cli_output_budget import (
+    assert_turn_run_once_model_usage_budget,
+)
 
 
 def _envelope(
@@ -445,7 +448,8 @@ def test_quota_cli_projects_outer_controller_without_codex_app_action(
             ]
         )
 
-    payload = json.loads(output.getvalue())
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
     hint = payload["scheduler_hint"]
     assert exit_code == 0, payload
     assert hint["execution_context"]["codex_app_applicability"] == "not_applicable"
@@ -1022,12 +1026,14 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
             ]
         )
 
-    payload = json.loads(output.getvalue())
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
     assert exit_code == 0, payload
     assert payload["host"] == {"executable": "built-in", "kind": "codex-cli"}
     assert payload["effects"]["state_written"] is True
     assert payload["effects"]["quota_spent"] is True
     assert payload["model_usage"]["total"]["total_tokens"] == 150
+    assert_turn_run_once_model_usage_budget(emitted, expected_mode="direct")
     state = (
         project
         / ".codex"
@@ -1122,13 +1128,15 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
             ]
         )
 
-    payload = json.loads(output.getvalue())
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
     assert exit_code == 0, payload
     assert observed["model"] == "executor-fixture"
     assert observed["advisor_model"] == "advisor-fixture"
     assert observed["advisor_timeout_seconds"] == 7.0
     assert payload["model_usage"]["mode"] == "advisor"
     assert payload["model_usage"]["total"]["total_tokens"] == 198
+    assert_turn_run_once_model_usage_budget(emitted, expected_mode="advisor")
 
 
 @pytest.mark.parametrize(

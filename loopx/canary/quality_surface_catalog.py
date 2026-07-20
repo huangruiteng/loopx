@@ -217,6 +217,47 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "surface_id": "loopx-turn-advisor",
+        "title": "LoopX Turn Advisor and provider usage",
+        "risk": "high",
+        "canary_profile_id": "loopx-turn-advisor",
+        "owner_paths": [
+            "loopx/control_plane/turn_driver/codex_cli.py",
+            "loopx/control_plane/turn_driver/model_usage.py",
+            "loopx/control_plane/turn_driver/executor.py",
+            "loopx/cli_commands/turn.py",
+        ],
+        "semantic_oracle": {
+            "source_kind": "specification",
+            "refs": ["docs/reference/protocols/loopx-turn-v0.md"],
+            "independence_rationale": (
+                "The protocol independently requires bounded non-authoritative advice, "
+                "distinct roles, exact phase usage, and validation before token comparison."
+            ),
+        },
+        "layers": {
+            "unit_contract": _covered(
+                "tests/test_loopx_turn_codex_cli.py",
+                "tests/test_loopx_turn_driver.py",
+                "tests/test_loopx_turn_executor.py",
+            ),
+            "durable_smoke": _covered(
+                "examples/loopx-turn-codex-cli-e2e-smoke.py",
+                "examples/loopx-turn-advisor-qualification-smoke.py",
+            ),
+            "catalog_canary": _covered("loopx-turn-advisor"),
+            "host_upgrade": _not_applicable(
+                "Advisor is an explicit Turn host mode and does not alter host installation or upgrade continuity."
+            ),
+            "model_behavior": _covered(
+                "scripts/qualify-loopx-turn-advisor-live.py"
+            ),
+            "release_gate": _covered(
+                "loopx canary premerge --profile loopx-turn-advisor"
+            ),
+        },
+    },
+    {
         "surface_id": "release-promotion",
         "title": "Exact-source release promotion",
         "risk": "high",

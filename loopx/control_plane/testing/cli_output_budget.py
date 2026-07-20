@@ -13,6 +13,8 @@ from loopx.control_plane.testing.cli_output_semantics import (
 
 CLI_OUTPUT_BUDGET_SCHEMA_VERSION = "loopx_cli_output_budget_v0"
 CLI_OUTPUT_MEASUREMENT_SCHEMA_VERSION = "loopx_cli_output_measurement_v0"
+TURN_RUN_ONCE_USAGE_MAX_JSON_CHARS = 5_000
+TURN_RUN_ONCE_USAGE_MAX_JSON_LINES = 150
 
 OutputFormat = Literal["json", "markdown"]
 QualificationPolicy = Literal[
@@ -736,3 +738,28 @@ def public_manifest() -> dict[str, Any]:
             for spec in CLI_OUTPUT_COMMAND_CLASSIFICATIONS
         ],
     }
+
+
+def assert_turn_run_once_model_usage_budget(
+    text: str,
+    *,
+    expected_mode: Literal["direct", "advisor"],
+) -> None:
+    """Qualify the executed Turn projection that carries provider token usage."""
+    if len(text) > TURN_RUN_ONCE_USAGE_MAX_JSON_CHARS:
+        raise AssertionError("turn run-once model usage output exceeds character budget")
+    if len(text.splitlines()) > TURN_RUN_ONCE_USAGE_MAX_JSON_LINES:
+        raise AssertionError("turn run-once model usage output exceeds line budget")
+    payload = json.loads(text)
+    usage = payload.get("model_usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        raise AssertionError("executed turn run-once output lost model_usage")
+    if usage.get("mode") != expected_mode:
+        raise AssertionError("turn run-once model_usage mode changed")
+    phases = {"executor", "total"}
+    if expected_mode == "advisor":
+        phases.add("advisor")
+    for phase in phases:
+        row = usage.get(phase)
+        if not isinstance(row, dict) or "total_tokens" not in row:
+            raise AssertionError(f"turn run-once model_usage lost {phase} totals")
