@@ -535,6 +535,7 @@ the connected project `.gitignore` before committing:
 ```gitignore
 .loopx/
 .codex/goals/
+.opencode/goals/
 goals/**/ACTIVE_GOAL_STATE.md
 ```
 

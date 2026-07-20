@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from loopx.slash_command_install import install_slash_commands
 
 
@@ -232,6 +234,7 @@ def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
     )
     assert not (opencode_home / "commands" / "loopx.md").exists()
     assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert not (opencode_home / "package.json").exists()
 
 
 def test_opencode_install_fails_closed_for_tuple_goal_plugin_registration(
@@ -260,13 +263,18 @@ def test_opencode_install_fails_closed_for_tuple_goal_plugin_registration(
     assert not (opencode_home / "package.json").exists()
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    ["plugins/loopx-goal.js", "loopx/goal-bridge-runtime.mjs"],
+)
 def test_opencode_bridge_preflight_blocks_user_owned_bridge_without_partial_writes(
     tmp_path: Path,
+    relative_path: str,
 ) -> None:
     opencode_home = tmp_path / "opencode"
-    plugin = opencode_home / "plugins" / "loopx-goal.js"
-    plugin.parent.mkdir(parents=True)
-    plugin.write_text("// user-owned plugin\n", encoding="utf-8")
+    user_file = opencode_home / relative_path
+    user_file.parent.mkdir(parents=True)
+    user_file.write_text("// user-owned bridge file\n", encoding="utf-8")
 
     payload = install_slash_commands(
         execute=True,
@@ -278,10 +286,15 @@ def test_opencode_bridge_preflight_blocks_user_owned_bridge_without_partial_writ
     assert payload["ok"] is False
     bridge = _row(payload, "opencode_goal_bridge")
     assert bridge["status"] == "blocked_user_owned_bridge_file"
-    assert bridge["conflicts"] == [str(plugin)]
-    assert plugin.read_text(encoding="utf-8") == "// user-owned plugin\n"
+    assert bridge["conflicts"] == [str(user_file)]
+    assert user_file.read_text(encoding="utf-8") == "// user-owned bridge file\n"
     assert not (opencode_home / "commands" / "loopx.md").exists()
-    assert not (opencode_home / "loopx" / "goal-bridge-runtime.mjs").exists()
+    other_bridge = (
+        opencode_home / "loopx" / "goal-bridge-runtime.mjs"
+        if relative_path == "plugins/loopx-goal.js"
+        else opencode_home / "plugins" / "loopx-goal.js"
+    )
+    assert not other_bridge.exists()
     assert not (opencode_home / "package.json").exists()
 
 

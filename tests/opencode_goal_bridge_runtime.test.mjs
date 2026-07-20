@@ -112,6 +112,7 @@ function harness(initialDecision) {
       update_goal: fakeTool({
         args: {},
         execute: async (args) => {
+          if (args.status === "blocked") return "Goal marked blocked."
           if (args.status === "paused") return "Goal paused."
           if (args.status === "resumed") return "Goal resumed with fresh limits."
           if (args.status === "complete") return "Goal marked complete and archived."
@@ -390,6 +391,13 @@ test("legacy status updates preserve pause resume and completion semantics", asy
   )
 
   await hooks.tool.update_goal.execute({ status: "paused" }, { sessionID })
+  assert.equal((await fixture.store.read(sessionID)).autoResume, false)
+  await hooks.tool.update_goal.execute({ status: "resumed" }, { sessionID })
+  assert.equal((await fixture.store.read(sessionID)).autoResume, true)
+  await hooks.tool.update_goal.execute(
+    { status: "blocked", blocker: "waiting for external approval" },
+    { sessionID },
+  )
   assert.equal((await fixture.store.read(sessionID)).autoResume, false)
   await hooks.tool.update_goal.execute({ status: "resumed" }, { sessionID })
   assert.equal((await fixture.store.read(sessionID)).autoResume, true)
