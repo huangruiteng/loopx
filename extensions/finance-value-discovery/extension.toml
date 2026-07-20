@@ -1,0 +1,27 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "loopx-finance-value-discovery"
+version = "0.2.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["finance.discovery.reduce"]
+
+[runtime]
+protocol = "finance_value_discovery_provider_v0"
+entrypoint = "loopx-finance-value-discovery"
+doctor_args = ["--doctor"]
+required_permissions = ["finance.discovery.reduce"]
+timeout_seconds = 30
+
+[[provides]]
+id = "finance-value-discovery"
+kind = "research_workflow"
+title = "Finance value discovery"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "point-in-time public-company evidence review"
+user_value = "Reduce a frozen public evidence set into falsifiable candidate, control, and successor decisions without advice or trading."
+entry_command = "loopx-finance-value-discovery reduce --input-json <evidence.json> --format json"
+next_real_step = "Validate one finite public-data packet, then falsify, select at most one successor, or close."
+
+[[implements]]
+capability_id = "finance-value-discovery"
+protocol = "finance_value_discovery_provider_v0"

@@ -9,9 +9,13 @@ from ..content_ops.social_browser_x import (
 )
 
 
-VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION = "value_connector_source_map_packet_v0"
+VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION = (
+    "value_connector_source_map_packet_v0"
+)
 VALUE_CONNECTOR_SOURCE_PROFILE_SCHEMA_VERSION = "value_connector_source_profile_v0"
-VALUE_CONNECTOR_SOURCE_MAP_PROJECTION_SCHEMA_VERSION = "value_connector_source_map_projection_v0"
+VALUE_CONNECTOR_SOURCE_MAP_PROJECTION_SCHEMA_VERSION = (
+    "value_connector_source_map_projection_v0"
+)
 
 
 SOURCE_PROFILE_IDS = {
@@ -52,8 +56,9 @@ OUTCOME_PROVIDER_BINDINGS: dict[str, dict[str, str | None]] = {
     },
     "finance_market_snapshot": {
         "outcome_capability_id": "finance-value-discovery",
-        "provider_binding_state": "mapped",
+        "provider_binding_state": "migrated",
         "provider_module": None,
+        "provider_id": "loopx-finance-value-discovery",
     },
     "botmail_identity": {
         "outcome_capability_id": "content-ops",
@@ -98,7 +103,8 @@ def _source_profile(
         "commands": commands,
         "evidence_schema": evidence_schema,
         "maturity_hint": maturity_hint,
-        "external_reads_allowed": boundary in {
+        "external_reads_allowed": boundary
+        in {
             "public_metadata_only",
             "public_no_login",
             "logged_in_read",
@@ -106,7 +112,8 @@ def _source_profile(
         },
         "external_writes_allowed": False,
         "write_gate": write_gate,
-        "stop_conditions": stop_conditions or [
+        "stop_conditions": stop_conditions
+        or [
             "source boundary is unclear",
             "requested action would capture raw private content",
             "requested action would perform an external write without an audit gate",
@@ -280,11 +287,16 @@ def _maturity_scale() -> list[dict[str, Any]]:
         {"score": 0, "meaning": "noise or unavailable route"},
         {"score": 1, "meaning": "weak exploratory signal"},
         {"score": 2, "meaning": "emerging repeated signal"},
-        {"score": 3, "meaning": "mature signal with strong adoption or multiple independent sources"},
+        {
+            "score": 3,
+            "meaning": "mature signal with strong adoption or multiple independent sources",
+        },
     ]
 
 
-def build_value_connector_source_map_packet(*, connector: str = "all") -> dict[str, Any]:
+def build_value_connector_source_map_packet(
+    *, connector: str = "all"
+) -> dict[str, Any]:
     if connector not in SOURCE_PROFILE_IDS:
         raise ValueError(f"unknown connector source map {connector!r}")
     profiles = [
@@ -346,7 +358,11 @@ def build_value_connector_source_map_packet(*, connector: str = "all") -> dict[s
 
 
 def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
-    projection = payload.get("projection") if isinstance(payload.get("projection"), Mapping) else {}
+    projection = (
+        payload.get("projection")
+        if isinstance(payload.get("projection"), Mapping)
+        else {}
+    )
     lines = [
         "# LoopX Value Connector Source Map",
         "",
