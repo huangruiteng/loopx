@@ -140,6 +140,19 @@ def register_turn_commands(
     )
     run_once.add_argument("--codex-model")
     run_once.add_argument(
+        "--advisor-model",
+        help=(
+            "Optional stronger Codex model that produces bounded read-only guidance "
+            "before the distinct --codex-model executor runs."
+        ),
+    )
+    run_once.add_argument(
+        "--advisor-timeout-seconds",
+        type=float,
+        default=60.0,
+        help="Timeout for the read-only Advisor call.",
+    )
+    run_once.add_argument(
         "--codex-sandbox",
         choices=["read-only", "workspace-write"],
         default="read-only",
@@ -360,6 +373,14 @@ def handle_turn_command(
                 if isinstance(boundary, dict):
                     boundary.pop("opaque_session_handle_omitted", None)
         elif args.turn_command == "run-once":
+            if args.advisor_model and args.host != "codex-cli":
+                raise ValueError("Advisor mode requires --host codex-cli")
+            if args.advisor_model and (
+                not args.codex_model or args.advisor_model == args.codex_model
+            ):
+                raise ValueError(
+                    "Advisor mode requires distinct explicit advisor and executor models"
+                )
             if args.resume_turn_key:
                 if args.turn_instance_id:
                     raise ValueError(
@@ -520,6 +541,10 @@ def handle_turn_command(
                         codex_bin=args.codex_bin,
                         sandbox=args.codex_sandbox,
                         model=args.codex_model,
+                        advisor_model=args.advisor_model,
+                        advisor_timeout_seconds=max(
+                            1.0, args.advisor_timeout_seconds
+                        ),
                         timeout_seconds=max(1.0, args.timeout_seconds - 5.0),
                     )
 

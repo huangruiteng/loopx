@@ -65,6 +65,10 @@ prompt = sys.stdin.read()
 log = pathlib.Path(os.environ["FAKE_CODEX_LOG"])
 with log.open("a", encoding="utf-8") as handle:
     handle.write(json.dumps(args) + "\\n")
+prompt_log = os.environ.get("FAKE_CODEX_PROMPT_LOG")
+if prompt_log:
+    with pathlib.Path(prompt_log).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(prompt) + "\\n")
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
 print(json.dumps({
     "type": "thread.started",
@@ -72,6 +76,19 @@ print(json.dumps({
     "raw_trajectory": "must-not-persist",
     "private_material": "must-not-persist"
 }), flush=True)
+if os.environ.get("FAKE_CODEX_USAGE") == "1":
+    model = args[args.index("--model") + 1] if "--model" in args else ""
+    advisor = model == "advisor-fixture"
+    print(json.dumps({
+        "type": "turn.completed",
+        "usage": {
+            "input_tokens": 40 if advisor else 120,
+            "cached_input_tokens": 5 if advisor else 20,
+            "output_tokens": 8 if advisor else 30,
+            "reasoning_output_tokens": 3 if advisor else 10,
+            "total_tokens": 48 if advisor else 150
+        }
+    }), flush=True)
 if os.environ.get("FAKE_CODEX_FAIL") == "1":
     if os.environ.get("FAKE_CODEX_FAILURE_CATEGORY") == "model":
         print("This model requires a newer version of Codex.", file=sys.stderr)
@@ -81,6 +98,18 @@ if os.environ.get("FAKE_CODEX_FAIL") == "1":
 if os.environ.get("FAKE_CODEX_SLEEP"):
     time.sleep(float(os.environ["FAKE_CODEX_SLEEP"]))
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
+schema_path = pathlib.Path(args[args.index("--output-schema") + 1])
+schema = schema_path.read_text(encoding="utf-8")
+if "loopx_turn_advisor_v0" in schema:
+    output_path.write_text(json.dumps({
+        "schema_version": "loopx_turn_advisor_v0",
+        "turn_key": turn_key,
+        "summary": "Inspect the boundary before changing the fixture.",
+        "recommendations": ["Keep the edit bounded to the selected todo."],
+        "risks": ["Do not overwrite unrelated files."],
+        "validation_focus": ["Verify the exact marker value."]
+    }), encoding="utf-8")
+    raise SystemExit(0)
 output_path.write_text(json.dumps({
     "schema_version": "loopx_turn_result_v0",
     "turn_key": turn_key,
@@ -124,6 +153,118 @@ def test_codex_cli_result_schema_requires_only_bounded_contract_fields() -> None
         "vision_unchanged_reason": 240,
         "summary": 400,
     }
+
+
+def test_codex_cli_host_reports_compact_provider_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = run_codex_cli_host(
+        _request(),
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        model="executor-fixture",
+        timeout_seconds=5,
+    )
+
+    assert result["model_usage"] == {
+        "schema_version": "loopx_turn_model_usage_v0",
+        "mode": "direct",
+        "advisor_applied": False,
+        "executor": {
+            "input_tokens": 120,
+            "cache_tokens": 20,
+            "output_tokens": 30,
+            "reasoning_output_tokens": 10,
+            "total_tokens": 150,
+        },
+        "total": {
+            "input_tokens": 120,
+            "cache_tokens": 20,
+            "output_tokens": 30,
+            "reasoning_output_tokens": 10,
+            "total_tokens": 150,
+        },
+    }
+
+
+def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = run_codex_cli_host(
+        _request(),
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(argv_rows) == 2
+    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
+    assert argv_rows[0][argv_rows[0].index("--sandbox") + 1] == "read-only"
+    assert "--ephemeral" in argv_rows[0]
+    assert argv_rows[1][argv_rows[1].index("--model") + 1] == "executor-fixture"
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "Inspect the boundary before changing the fixture." in prompts[1]
+    assert result["model_usage"]["mode"] == "advisor"
+    assert result["model_usage"]["advisor_applied"] is True
+    assert result["model_usage"]["advisor"]["total_tokens"] == 48
+    assert result["model_usage"]["executor"]["total_tokens"] == 150
+    assert result["model_usage"]["total"]["total_tokens"] == 198
+    assert result["model_usage"]["advice_digest"].startswith("sha256:")
+    assert "summary" not in result["model_usage"]
+
+
+def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with pytest.raises(RuntimeError, match="codex_cli_advisor_usage_missing"):
+        run_codex_cli_host(
+            _request(),
+            runtime_root=tmp_path / "runtime",
+            project=project,
+            codex_bin=str(executable),
+            model="executor-fixture",
+            advisor_model="advisor-fixture",
+            timeout_seconds=5,
+        )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(argv_rows) == 1
+    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
 
 
 def test_codex_cli_host_starts_then_resumes_opaque_session(
@@ -399,3 +540,67 @@ def test_public_e2e_smoke_runs_n_transactions_on_one_session() -> None:
         "scheduler_acknowledged": False,
         "state_written": False,
     }
+
+
+def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"),
+            "--codex-model",
+            "executor-fixture",
+            "--advisor-model",
+            "advisor-fixture",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["advisor_mode"] is True
+    assert payload["model_usage"]["mode"] == "advisor"
+    assert payload["model_usage"]["advisor_applied"] is True
+    assert payload["model_usage"]["advisor"]["total_tokens"] == 48
+    assert payload["model_usage"]["executor"]["total_tokens"] == 90
+    assert payload["model_usage"]["total"]["total_tokens"] == 138
+    assert payload["marker_valid"] is True
+    assert payload["validation_status"] == "passed"
+
+
+def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "scripts" / "qualify-loopx-turn-advisor-live.py"),
+            "--fixture",
+            "--baseline-model",
+            "advisor-fixture",
+            "--advisor-model",
+            "advisor-fixture",
+            "--executor-model",
+            "executor-fixture",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["schema_version"] == "loopx_turn_advisor_qualification_v0"
+    assert payload["real_codex_cli_invoked"] is False
+    assert payload["quality_ok"] is True
+    assert payload["baseline"]["total_tokens"] == 150
+    assert payload["advisor"]["total_tokens"] == 138
+    assert payload["token_delta"] == -12
+    assert payload["token_reduction_ratio"] == 0.08
+    assert payload["token_reduced"] is True
+    assert payload["raw_model_output_recorded"] is False

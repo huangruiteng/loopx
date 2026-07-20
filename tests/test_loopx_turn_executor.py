@@ -124,6 +124,39 @@ def test_host_result_requires_bounded_public_material_fields() -> None:
     assert "unsupported host result fields" in " ".join(validation["errors"])
 
 
+def test_host_result_rejects_inconsistent_model_usage_totals() -> None:
+    plan = _plan()
+    result = _host_result(plan)
+    result["model_usage"] = {
+        "schema_version": "loopx_turn_model_usage_v0",
+        "mode": "advisor",
+        "advisor_applied": True,
+        "advisor": {
+            "input_tokens": 40,
+            "output_tokens": 8,
+            "total_tokens": 48,
+        },
+        "executor": {
+            "input_tokens": 70,
+            "output_tokens": 20,
+            "total_tokens": 90,
+        },
+        "total": {
+            "input_tokens": 110,
+            "output_tokens": 28,
+            "total_tokens": 999,
+        },
+        "advice_digest": "sha256:" + "b" * 64,
+    }
+
+    validation = validate_loopx_turn_host_result(plan, result)
+
+    assert validation["ok"] is False
+    assert "model_usage total.total_tokens must equal phase usage sum" in validation[
+        "errors"
+    ]
+
+
 def test_run_once_preview_has_no_host_or_journal_effects(tmp_path: Path) -> None:
     plan = _plan()
 

@@ -135,6 +135,36 @@ import sys
 args = sys.argv[1:]
 prompt = sys.stdin.read()
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
+output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
+schema_path = pathlib.Path(args[args.index("--output-schema") + 1])
+schema = schema_path.read_text(encoding="utf-8")
+model = args[args.index("--model") + 1] if "--model" in args else ""
+advisor = "loopx_turn_advisor_v0" in schema
+guided_executor = not advisor and "A read-only advisor produced" in prompt
+print(json.dumps({{
+    "type": "thread.started",
+    "thread_id": "advisor-session-fixture" if advisor else "session-fixture-0001",
+}}), flush=True)
+print(json.dumps({{
+    "type": "turn.completed",
+    "usage": {{
+        "input_tokens": 40 if advisor else 70 if guided_executor else 120,
+        "cached_input_tokens": 5 if advisor else 10 if guided_executor else 20,
+        "output_tokens": 8 if advisor else 20 if guided_executor else 30,
+        "reasoning_output_tokens": 3 if advisor else 5 if guided_executor else 10,
+        "total_tokens": 48 if advisor else 90 if guided_executor else 150,
+    }},
+}}), flush=True)
+if advisor:
+    output_path.write_text(json.dumps({{
+        "schema_version": "loopx_turn_advisor_v0",
+        "turn_key": turn_key,
+        "summary": "Keep the marker update bounded to one step.",
+        "recommendations": ["Inspect the current marker before writing."],
+        "risks": ["Do not advance more than one step."],
+        "validation_focus": ["Verify the exact next marker value."],
+    }}), encoding="utf-8")
+    raise SystemExit(0)
 marker = pathlib.Path({MARKER_NAME!r})
 turn_number = 1
 if marker.is_file():
@@ -144,11 +174,6 @@ if marker.is_file():
         raise SystemExit("unexpected marker value")
     turn_number = int(match.group(1)) + 1
 marker.write_text({MARKER_PREFIX!r} + str(turn_number), encoding="utf-8")
-print(json.dumps({{
-    "type": "thread.started",
-    "thread_id": "session-fixture-0001",
-}}), flush=True)
-output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
 output_path.write_text(json.dumps({{
     "schema_version": "loopx_turn_result_v0",
     "turn_key": turn_key,
@@ -196,6 +221,7 @@ def _base_argv(
     workspace: Path,
     codex_bin: Path,
     model: str | None,
+    advisor_model: str | None,
     timeout_seconds: float,
     expected_marker: str,
     turn_instance_id: str,
@@ -235,6 +261,8 @@ def _base_argv(
     ]
     if model:
         argv.extend(["--codex-model", model])
+    if advisor_model:
+        argv.extend(["--advisor-model", advisor_model])
     return argv
 
 
@@ -289,8 +317,37 @@ def _turn_summary(
             validation.get("status") if isinstance(validation, dict) else None
         ),
         "effects": effects if isinstance(effects, dict) else {},
+        "model_usage": payload.get("model_usage"),
         "marker_valid": marker_valid,
     }
+
+
+def _aggregate_model_usage(turns: list[dict[str, Any]]) -> dict[str, Any] | None:
+    usages = [turn.get("model_usage") for turn in turns]
+    if not usages or not all(isinstance(usage, dict) for usage in usages):
+        return None
+    typed_usages = [usage for usage in usages if isinstance(usage, dict)]
+    mode = str(typed_usages[0].get("mode") or "")
+    if mode not in {"direct", "advisor"} or any(
+        usage.get("mode") != mode for usage in typed_usages
+    ):
+        return None
+    phases = ["executor"] if mode == "direct" else ["advisor", "executor"]
+    aggregated: dict[str, Any] = {
+        "schema_version": "loopx_turn_model_usage_v0",
+        "mode": mode,
+        "advisor_applied": mode == "advisor",
+    }
+    for phase in [*phases, "total"]:
+        phase_rows = [usage.get(phase) for usage in typed_usages]
+        if not all(isinstance(row, dict) for row in phase_rows):
+            return None
+        keys = {key for row in phase_rows if isinstance(row, dict) for key in row}
+        aggregated[phase] = {
+            key: sum(int(row.get(key, 0)) for row in phase_rows if isinstance(row, dict))
+            for key in sorted(keys)
+        }
+    return aggregated
 
 
 def _summary(
@@ -303,6 +360,7 @@ def _summary(
     runtime: Path,
     workspace: Path,
     model_explicit: bool,
+    advisor_mode: bool,
 ) -> dict[str, Any]:
     final_turn = turns[-1] if turns else {}
     session_actions = [turn.get("session_action") for turn in turns]
@@ -310,6 +368,8 @@ def _summary(
         "schema_version": "loopx_turn_real_cli_e2e_v1",
         "real_codex_cli_invoked": real_codex_cli,
         "model_explicit": model_explicit,
+        "advisor_mode": advisor_mode,
+        "model_usage": _aggregate_model_usage(turns),
         "requested_turn_count": turn_count,
         "observed_turn_count": len(turns),
         "committed_turn_count": sum(
@@ -345,6 +405,7 @@ def main() -> int:
     )
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
+    parser.add_argument("--advisor-model")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument(
         "--turn-count",
@@ -384,6 +445,7 @@ def main() -> int:
                 workspace=workspace,
                 codex_bin=codex_bin,
                 model=args.codex_model,
+                advisor_model=args.advisor_model,
                 timeout_seconds=args.timeout_seconds,
                 expected_marker=_marker_value(turn_number),
                 turn_instance_id=f"qualification-turn-{turn_number}",
@@ -425,6 +487,7 @@ def main() -> int:
             runtime=runtime,
             workspace=workspace,
             model_explicit=bool(args.codex_model),
+            advisor_mode=bool(args.advisor_model),
         )
 
     print(json.dumps(summary, indent=2, sort_keys=True))
