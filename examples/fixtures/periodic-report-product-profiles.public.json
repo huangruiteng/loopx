@@ -49,7 +49,7 @@
             "capability_version": "v0"
           },
           "extension": {
-            "extension_id": "project_resource_report_archive",
+            "extension_id": "openviking-periodic-report",
             "extension_version": "1.0.0",
             "protocol": "periodic_report_sink_v0"
           }

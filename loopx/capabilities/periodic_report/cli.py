@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -69,6 +71,97 @@ def register_periodic_report_commands(
         required=True,
         help="Path to periodic_report_profile_v0 JSON; use '-' for stdin.",
     )
+    archive = commands.add_parser(
+        "archive-openviking",
+        help=(
+            "Invoke the optional doctor-ready OpenViking archive extension after "
+            "checking capability activation and runtime write authority."
+        ),
+    )
+    add_subcommand_format(archive)
+    archive.add_argument(
+        "--request-json",
+        required=True,
+        help="Path to openviking_periodic_report_archive_request_v0 JSON.",
+    )
+    archive.add_argument("--runtime-root")
+    archive.add_argument(
+        "--available-capability",
+        action="append",
+        default=[],
+        help="Observed runtime capability; repeat for multiple values.",
+    )
+    archive.add_argument("--openviking-url")
+    archive.add_argument("--openviking-path")
+    archive.add_argument("--openviking-config")
+    archive.add_argument("--openviking-actor-peer-id")
+    archive.add_argument(
+        "--openviking-api-key-env",
+        default="OPENVIKING_API_KEY",
+        help="Environment variable containing the API key; never pass the key itself.",
+    )
+    archive.add_argument("--execute", action="store_true")
+
+
+def _archive_openviking(
+    request: dict[str, Any],
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    from ...extensions.openviking_periodic_report.activation import (
+        resolve_openviking_periodic_report_activation,
+    )
+    from ...extensions.openviking_periodic_report.provider import REQUEST_SCHEMA
+
+    if request.get("schema_version") != REQUEST_SCHEMA:
+        raise ValueError(f"request must use {REQUEST_SCHEMA}")
+    context = request.get("context")
+    if not isinstance(context, dict):
+        raise ValueError("request.context must be an object")
+    activation_receipt = request.get("activation_receipt")
+    if not isinstance(activation_receipt, dict):
+        raise ValueError("request.activation_receipt must be an object")
+    resolved = resolve_openviking_periodic_report_activation(
+        activation_receipt,
+        available_capabilities=args.available_capability,
+        sink_id=str(context.get("sink_id") or ""),
+        runtime_root=args.runtime_root,
+    )
+    binding = resolved["runtime_binding"]
+    argv = [str(item) for item in binding["argv"]]
+    if args.openviking_url:
+        argv.extend(["--url", args.openviking_url])
+    if args.openviking_path:
+        argv.extend(["--path", args.openviking_path])
+    if args.openviking_config:
+        argv.extend(["--config", args.openviking_config])
+    if args.openviking_actor_peer_id:
+        argv.extend(["--actor-peer-id", args.openviking_actor_peer_id])
+    if args.openviking_api_key_env:
+        argv.extend(["--api-key-env", args.openviking_api_key_env])
+    provider_request = {
+        **request,
+        "available_capabilities": list(args.available_capability),
+        "execute": args.execute,
+    }
+    completed = subprocess.run(
+        argv,
+        input=json.dumps(provider_request, ensure_ascii=False),
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=int(binding["timeout_seconds"]),
+        env=dict(os.environ),
+    )
+    if completed.returncode != 0:
+        error = completed.stderr.strip() or "provider returned a non-zero exit"
+        raise RuntimeError(error[:1000])
+    response = json.loads(completed.stdout)
+    if not isinstance(response, dict):
+        raise RuntimeError("OpenViking archive provider returned a non-object")
+    return {
+        **response,
+        "extension_receipt": resolved["extension_receipt"],
+    }
 
 
 def render_periodic_report_markdown(payload: dict[str, object]) -> str:
@@ -99,6 +192,18 @@ def render_periodic_report_markdown(payload: dict[str, object]) -> str:
                 "",
             ]
         )
+    if payload.get("schema_version") == "periodic_report_sink_result_v0":
+        return "\n".join(
+            [
+                f"# Periodic Report Archive `{payload.get('archive_id')}`",
+                "",
+                f"- status: `{payload.get('status')}`",
+                f"- receipt_ref: `{payload.get('receipt_ref')}`",
+                f"- result_id: `{payload.get('result_id')}`",
+                f"- readback_verified: `{payload.get('readback_verified')}`",
+                "",
+            ]
+        )
     run_state = payload.get("run_state")
     retry = payload.get("retry")
     state = run_state if isinstance(run_state, dict) else {}
@@ -125,7 +230,12 @@ def handle_periodic_report_command(
     if args.command != "periodic-report":
         return None
     try:
-        if args.periodic_report_command == "inspect-profile":
+        if args.periodic_report_command == "archive-openviking":
+            payload = _archive_openviking(
+                _load_json_object(args.request_json),
+                args,
+            )
+        elif args.periodic_report_command == "inspect-profile":
             payload = build_periodic_report_activation(
                 _load_json_object(args.profile_json)
             )

@@ -1,0 +1,17 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "openviking-periodic-report"
+version = "1.0.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["openviking_context_write"]
+
+[runtime]
+protocol = "periodic_report_sink_v0"
+python_module = "loopx.extensions.openviking_periodic_report.provider"
+args = []
+doctor_args = ["--doctor"]
+required_permissions = ["openviking_context_write"]
+timeout_seconds = 30
+
+[[implements]]
+capability_id = "periodic-report"
+protocol = "periodic_report_sink_v0"

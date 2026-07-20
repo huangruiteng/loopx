@@ -6,9 +6,9 @@ presentation, and destinations to profiles and adapters.
 
 | Surface | Value |
 | --- | --- |
-| CLI | `loopx periodic-report inspect-profile --profile-json <path>`, `evaluate-trigger`, and `compose-run` |
+| CLI | `loopx periodic-report inspect-profile --profile-json <path>`, `evaluate-trigger`, `compose-run`, and optional `archive-openviking` |
 | Protocol | [`periodic_report_v0`](../../reference/protocols/periodic-report-v0.md) |
-| Smokes | `python3 examples/periodic-report-smoke.py`, `periodic-report-profile-smoke.py`, `periodic-report-html-smoke.py`, and `periodic-report-bindings-smoke.py` |
+| Smokes | `python3 examples/periodic-report-smoke.py`, `periodic-report-profile-smoke.py`, `periodic-report-html-smoke.py`, `periodic-report-bindings-smoke.py`, and `openviking-periodic-report-extension-smoke.py` |
 
 The capability ships with LoopX but is **disabled by default for every
 project**. A project opts in with `periodic_report_profile_v0` and
@@ -87,6 +87,68 @@ three without naming a project or relying on a live provider.
 both archive and delivery receipts. New profile integrations can use the split
 generation/readiness/delivery receipts so provider-specific policy does not
 leak into the capability core.
+
+## Optional OpenViking archive extension
+
+`openviking-periodic-report` is a bundled **LoopX extension** that implements
+the capability's `periodic_report_sink_v0` archive port. It is not an
+OpenViking extension and it adds no OpenViking runtime ABI. The dependency
+direction is:
+
+```text
+periodic-report capability
+  -> openviking-periodic-report LoopX extension
+     -> OpenViking public SDK read/write
+```
+
+Install it through the normal LoopX lifecycle:
+
+```bash
+loopx extension install --bundled openviking-periodic-report --execute --format json
+```
+
+Activation fails closed unless all three facts hold:
+
+1. a normalized `periodic_report_activation_v0` says the project profile is
+   enabled;
+2. that profile binds `report.archive.write/v0` to
+   `openviking-periodic-report@1.0.0` with `periodic_report_sink_v0` and a
+   non-disabled dependency policy;
+3. the current run has observed and declared
+   `--available-capability openviking_context_write`.
+
+The extension manifest permission does not grant write authority. It only
+lets the runtime prove that the selected, enabled, doctor-verified revision is
+compatible with authority already observed by the caller. A profile may keep
+the sink `optional` for an enhanced experience or mark it `required` for a
+durable report contract.
+
+The v0 provider accepts only the Markdown artifact. It writes `report.md`
+first and `manifest.json` last; the exact-read-back manifest is the commit
+marker and contains the stable bundle digest and result id. A byte-identical
+retry performs no write. A stable URI containing different bytes fails closed.
+It does not archive HTML, copy the full report into Agent Memory, scan report
+history, or implement `/reports`.
+
+```bash
+loopx periodic-report archive-openviking \
+  --request-json periodic-report-openviking-request.json \
+  --available-capability openviking_context_write \
+  --openviking-url http://localhost:1933 \
+  --execute \
+  --format json
+```
+
+Use `--openviking-api-key-env` to name an environment variable; never put a
+credential in the report profile or request. Without `--openviking-url`, the
+provider uses the public embedded `OpenViking` client and optional
+`--openviking-path`; `--openviking-config` selects its `ov.conf` explicitly so
+an isolated run need not inherit the user's default configuration. The
+OpenViking SDK is an optional environment dependency and the extension doctor
+stays unavailable until it can import that public client surface. Project
+profiles own whether the archive is enabled and
+the Resource root/tags supplied in the request context. The generic capability
+continues to own trigger, generation, delivery truth, and retry semantics.
 
 ## Built-in renderers
 

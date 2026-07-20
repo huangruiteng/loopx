@@ -6,6 +6,9 @@ from pathlib import Path
 
 BUNDLED_EXTENSION_PACKAGES = {
     "loopx-lark": "loopx.extensions.lark",
+    "openviking-periodic-report": (
+        "loopx.extensions.openviking_periodic_report"
+    ),
     "openviking-semantic-preference": (
         "loopx.extensions.openviking_semantic_preference"
     ),

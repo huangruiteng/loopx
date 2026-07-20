@@ -71,6 +71,25 @@ invalidating the generation receipt. Disabled sinks are skipped. Provider
 versions, protocols, or capabilities that do not match the profile binding are
 `incompatible`; providers without verified readiness are `unverified`.
 
+The bundled `openviking-periodic-report` LoopX extension is one concrete
+implementation of this port. Its runtime protocol is
+`periodic_report_sink_v0`, its manifest permission and observed runtime
+capability are both `openviking_context_write`, and its sink capability is
+`report.archive.write/v0`. Runtime activation recomputes the normalized
+`periodic_report_activation_v0`; a disabled or altered receipt, a missing or
+disabled sink binding, a stale extension doctor proof, or a missing observed
+runtime capability rejects the invocation before any provider write.
+
+`openviking_periodic_report_archive_request_v0` carries the activation receipt,
+normalized document, Markdown artifact, archive context, and an execution bit.
+The provider writes two OpenViking Resources in commit order: `report.md`, then
+`manifest.json`. The latter records
+`openviking_periodic_report_archive_commit_v0`, the bundle digest, stable
+result id, and `manifest_written_last=true`. A `sent` sink result requires an
+exact content-digest readback of both URIs. HTML hosting, historical queries,
+and memory distillation are separate consumers of the committed Resource and
+are not part of this provider protocol.
+
 The older run request below remains a compatibility full-delivery envelope. It
 still requires archive and delivery receipts, while the split contract makes
 the provider-free generation truth available before those receipts exist.

@@ -231,6 +231,26 @@ capability_id = "semantic-preference"
 protocol = "semantic_preference_provider_v0"
 ```
 
+The bundled periodic-report archive uses the same ownership direction. It
+implements one existing capability port rather than registering a second
+"OpenViking report" product capability:
+
+```toml
+[runtime]
+protocol = "periodic_report_sink_v0"
+python_module = "loopx.extensions.openviking_periodic_report.provider"
+required_permissions = ["openviking_context_write"]
+
+[[implements]]
+capability_id = "periodic-report"
+protocol = "periodic_report_sink_v0"
+```
+
+Its capability-specific activation wrapper additionally requires an enabled
+`periodic_report_activation_v0`, a matching non-disabled sink binding, and the
+observed `openviking_context_write` runtime capability. Those project and turn
+facts do not belong in the generic extension manifest or lifecycle state.
+
 Runtime-required permissions must be a subset of the provider's declared
 permissions. Declaring either does not grant authority: existing LoopX goal
 boundaries, user gates, and external-write authorization still decide whether

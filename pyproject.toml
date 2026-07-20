@@ -32,6 +32,7 @@ include = ["loopx*"]
 [tool.setuptools.package-data]
 "loopx.capabilities.auto_research" = ["worker_skill/SKILL.md"]
 "loopx.extensions.lark" = ["extension.toml"]
+"loopx.extensions.openviking_periodic_report" = ["extension.toml"]
 "loopx.extensions.openviking_semantic_preference" = ["extension.toml"]
 "loopx.opencode_goal_mode" = ["*.js", "*.mjs", "README.md"]
 

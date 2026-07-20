@@ -561,6 +561,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "purpose": "Normalize one typed report attempt and derive stable run/sink idempotency, state, and retry evidence.",
                 "write_boundary": "local contract output only; no source read, rendering, archive write, message delivery, or provider write",
             },
+            {
+                "command": "loopx periodic-report archive-openviking --request-json <request.json> --available-capability openviking_context_write --execute --format json",
+                "purpose": "Invoke the optional OpenViking archive extension after profile, runtime-capability, manifest permission, revision, and doctor checks.",
+                "write_boundary": "writes report.md and then manifest.json only when --execute is explicit; exact Resource readback is required for sent",
+            },
         ],
         "implemented_protocols": [
             {
@@ -619,6 +624,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "python3 examples/periodic-report-adapters-smoke.py",
             "python3 examples/periodic-report-html-smoke.py",
             "python3 examples/periodic-report-bindings-smoke.py",
+            "python3 examples/openviking-periodic-report-extension-smoke.py",
             "python3 examples/periodic-report-profile-smoke.py",
         ],
         "docs": [
@@ -633,6 +639,7 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The document builder compiles hero summaries only from typed primary outcomes, risks, and next actions; renderers reject authored or stale summaries.",
             "Markdown and HTML render from one normalized document; runtime and delivery-receipt items must be supporting, HTML collapses them, and Markdown preserves them in a labeled appendix.",
             "Raw content, messages, logs, transcripts, credentials, secrets, and private paths are rejected.",
+            "The optional openviking-periodic-report extension implements only the archive sink; it rejects activation unless the periodic-report profile is enabled, its sink binding matches, and openviking_context_write is observed.",
         ],
         "next_real_step": (
             "Prove one project-owned profile and exact delivery/archive retry readback "
