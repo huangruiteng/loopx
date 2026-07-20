@@ -457,7 +457,14 @@ def handle_turn_command(
                     agent_id=args.agent_id,
                     progress_scope="goal",
                     autonomous_replan_recorded=result_kind == "replan_required",
-                    vision_unchanged_reason=str(result["vision_unchanged_reason"]),
+                    agent_vision_packet=(
+                        dict(result["agent_vision"])
+                        if isinstance(result.get("agent_vision"), dict)
+                        else None
+                    ),
+                    vision_unchanged_reason=(
+                        str(result.get("vision_unchanged_reason") or "") or None
+                    ),
                     dry_run=False,
                     sync_global=not bool(args.no_global_sync),
                 )
