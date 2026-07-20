@@ -2,24 +2,50 @@
 
 ## Product activation
 
-`periodic_report_profile_v0` is the project opt-in contract. The built-in
-capability is installed but inactive until the profile explicitly sets
-`enabled: true`. Enabled profiles declare:
+An explicit request in an active project session, such as "generate this
+week's project report", is sufficient authority for one provider-free local
+generation. LoopX resolves the built-in `weekly-progress` profile (aliases
+`weekly` and `weekly-report`), whose normalized `periodic_report_profile_v0`
+sets `enabled: true`, binds `project_progress_v0`, Markdown, and HTML, and
+declares neither a schedule nor a sink. The profile can be inspected without
+effects:
+
+```bash
+loopx periodic-report inspect-profile --preset weekly --format json
+```
+
+This does not persist project activation, create a scheduler, or grant an
+external write. The current session owns the requested calendar window. When
+the built-in preset is selected, the activation packet includes an
+`interaction_contract` that makes those session-generation defaults explicit;
+the generic heartbeat prompt does not need a report-specific expansion.
+
+A project-owned `periodic_report_profile_v0` is the advanced opt-in contract
+for custom or unattended operation. Enabled custom profiles declare:
 
 - provider-neutral trigger policy and an optional host-owned RRULE/timezone;
 - one or more domain source adapter bindings;
 - one or more renderer bindings;
 - zero or more required, optional, or disabled extension sink bindings.
 
+Use a host Automation only when the report must run unattended on an RRULE.
+The Automation schedule and project profile must agree; ordinary in-session
+generation does not need an Automation. External delivery still requires an
+explicit sink binding and its independent runtime authority/readback checks.
+
 `periodic_report_activation_v0` is the effect-free inspection receipt. It
 records whether generation is allowed, the normalized profile digest, and the
 portable/enhanced/durable extension mode. It performs no source read, schedule
 mutation, provider lookup, rendering, archive write, or message delivery.
 
-Issue-fix has no special standing in either schema. It may register a source
-adapter under the same contract as release, research, operations, or another
-domain. OpenViking is likewise an optional archive/query provider behind a
-sink extension; it does not own trigger, selection, rendering, or delivery.
+`periodic_report_project_progress_projection_v0` is the built-in,
+domain-neutral source input. It groups typed project facts into progress,
+capability evolution, risks, next actions, and supporting evidence, with no
+more than eight primary audience items. Issue Fix has no special standing in
+either schema. It may register a peer source adapter under the same contract as
+release, research, operations, or another domain. OpenViking is likewise an
+optional archive/query provider behind a sink extension; it does not own
+trigger, selection, rendering, or delivery.
 
 `periodic_report_v0` is the LoopX control contract for one bounded report run.
 It binds a period window and a profile to typed source snapshots, one rendered

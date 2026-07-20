@@ -6,16 +6,63 @@ presentation, and destinations to profiles and adapters.
 
 | Surface | Value |
 | --- | --- |
-| CLI | `loopx periodic-report inspect-profile --profile-json <path>`, `evaluate-trigger`, `compose-run`, and optional `archive-openviking` |
+| CLI | `loopx periodic-report inspect-profile --preset weekly`, custom `--profile-json <path>`, `evaluate-trigger`, `compose-run`, and optional `archive-openviking` |
 | Protocol | [`periodic_report_v0`](../../reference/protocols/periodic-report-v0.md) |
 | Smokes | `python3 examples/periodic-report-smoke.py`, `periodic-report-profile-smoke.py`, `periodic-report-html-smoke.py`, `periodic-report-bindings-smoke.py`, and `openviking-periodic-report-extension-smoke.py` |
 
-The capability ships with LoopX but is **disabled by default for every
-project**. A project opts in with `periodic_report_profile_v0` and
-`enabled: true`; the profile then names generic trigger policy, source adapter
-bindings, renderer bindings, and required/optional/disabled sink bindings.
-There is no issue-fix-specific report capability: issue-fix, release notes,
-research, operations, and other domains are peers that supply source adapters.
+## Generate this week's report
+
+In an active LoopX or Codex project session, ask the agent to **generate this
+week's project report**. That explicit request opts the current session into
+one provider-free generation. The agent resolves the built-in
+`weekly-progress` profile (short aliases: `weekly` and `weekly-report`),
+collects the current project's public-safe LoopX progress, and renders matching
+Markdown and self-contained HTML artifacts. No project profile file,
+Automation, provider, or external sink is required.
+
+The agent can inspect the exact built-in profile with the effect-free command:
+
+```bash
+loopx periodic-report inspect-profile --preset weekly --format json
+```
+
+The receipt must report both `active: true` and `generation_allowed: true`.
+Its `interaction_contract` also says that the explicit user request is
+sufficient, no project profile file or Automation is required, and external
+writes are not allowed for this mode. Agents should follow that packet instead
+of expanding a generic heartbeat prompt.
+The preset binds the built-in `project_progress_v0` source plus `markdown_v0`
+and `html_artifact_v0`, declares no schedule, and contains no sink bindings.
+The explicit request owns the report window using the active session's local
+calendar context; it does not create a recurring job.
+
+`project_progress_v0` organizes typed facts into a reusable hierarchy:
+progress and outcomes, capability evolution, risks and blockers, next actions,
+and collapsed supporting evidence. It permits at most eight primary items, so
+delivery receipts and runtime validation stay supporting instead of crowding
+the audience narrative. This hierarchy is inspired by the validated project
+weekly-report presentation, but it contains no issue, pull-request, or
+Issue Fix policy.
+
+There is no issue-fix-specific report capability. Issue Fix, release notes,
+research, operations, and other domains may supply peer source adapters when
+their richer semantics are useful; none is required by the built-in weekly
+profile.
+
+## Customize or schedule
+
+The capability remains **inactive for background work and external writes by
+default**. Create a project-owned `periodic_report_profile_v0` only when the
+project needs custom sources, renderers, audience policy, timezone/RRULE, or
+explicit sink bindings. Use Codex App Automation only for an unattended
+recurring report: the host schedule should match that custom profile's RRULE.
+Pausing the Automation or setting the profile to `enabled: false` stops that
+scheduled path.
+
+External delivery and archival are separate opt-ins. Adding a sink binding
+does not grant authority by itself; the selected extension, runtime capability,
+execution decision, and exact readback must still pass their own gates. A
+normal in-session weekly report has no sink and performs no external write.
 
 The capability is intentionally effect-free. It first evaluates scheduled or
 material progress facts into a deterministic trigger receipt, then composes a
@@ -33,11 +80,11 @@ closure, blocker, and manual triggers may bypass that interval. Concurrent
 material facts are coalesced into one report and previously covered trigger
 ids are deduplicated.
 
-Project-specific weekly reports should be layered as profiles and adapters.
+Project-specific scheduled reports should be layered as profiles and adapters.
 For example, a maintenance profile may choose a local timezone and weekly
 cadence, collect repository and discussion signals, render a team card, archive
 the artifact, and deliver it to a configured channel. None of those choices
-becomes an invariant of the shared core.
+becomes an invariant of the shared core or the in-session preset.
 
 This is a built-in capability, not an extension: callers need the trigger,
 idempotency, retry, and receipt contract even when no provider is installed.
@@ -45,17 +92,19 @@ Optional or independently versioned collectors, renderers, archive stores, and
 message transports remain extension providers (or built-in adapters) that
 implement the capability's ports without owning its lifecycle.
 
-Use `inspect-profile` before scheduling a run. It returns a deterministic
-`periodic_report_activation_v0` receipt and never starts a scheduler or invokes
-a provider. An omitted `enabled` field is treated as `false`. When enabled, at
-least one source and one renderer binding are required. An optional archive
-extension can therefore add durable history without making report generation
-or another configured delivery sink depend on that provider.
+`inspect-profile` returns a deterministic `periodic_report_activation_v0`
+receipt and never starts a scheduler or invokes a provider. `--preset weekly`
+resolves the built-in session profile; `--profile-json` validates a custom
+project profile. In a custom profile, an omitted `enabled` field is treated as
+`false`, and enabled profiles require at least one source and one renderer.
+An optional archive extension can therefore add durable history without making
+local report generation or another configured delivery sink depend on it.
 
-The public profiles fixture covers a default-disabled project, a cadence-based
-release report with an optional archive extension, and a milestone-only
-research report with an extension-provided source. These are peer product uses;
-none changes the capability identity or core schema.
+The public profiles fixture covers the built-in portable weekly profile, a
+default-disabled project, a cadence-based release report with an optional
+archive extension, and a milestone-only research report with an
+extension-provided source. These are peer product uses; none changes the
+capability identity or core schema.
 
 ## Generation and formal delivery
 
