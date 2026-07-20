@@ -53,6 +53,11 @@ and use mode `0600`. OpenCode's one-shot `opencode run` process cannot own
 timers after exit; recurring operation requires the visible TUI or a persistent
 OpenCode server.
 
+The wrapped goal plugin also persists private restart state under the active
+project's `.opencode/goals/` directory. Add `.opencode/goals/` to the project
+ignore rules so goal text, checkpoints, and lifecycle state cannot enter a
+public commit.
+
 ## Uninstall
 
 Remove only the static command facade:

@@ -82,7 +82,9 @@ can discover user-installed skills:
 - OpenCode: static command files under `~/.config/opencode/commands/` expose
   native `/loopx` slash commands after restart. The executable goal bridge
   (timer-based idle continuation gated by LoopX quota) requires an explicit
-  `--with-goal-bridge` install.
+  `--with-goal-bridge` install. The wrapped goal runtime keeps private restart
+  state under each project's `.opencode/goals/`; add that directory to project
+  ignore rules before using the persistent bridge.
 
 The command family is the same across surfaces, even when the host-specific
 entry point is different:
