@@ -72,6 +72,8 @@ def assert_monitor_only_wait(decision: dict, *, action: str) -> None:
         "autonomous_replan_scope",
         "required_reads",
         "scoped_user_gate_fallback",
+        "vision_continuation_audit",
+        "vision_wait_state",
     ):
         assert field not in decision, (field, decision)
     interaction = decision["interaction_contract"]

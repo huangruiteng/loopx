@@ -1360,6 +1360,8 @@ def _apply_agent_monitor_only_precedence(
         "required_reads",
         "scoped_user_gate_fallback",
         "stall_self_repair",
+        "vision_continuation_audit",
+        "vision_wait_state",
         "workspace_guard",
     ):
         payload.pop(key, None)
