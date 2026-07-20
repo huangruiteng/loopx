@@ -31,6 +31,13 @@ LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
 | Validate | Independent task-specific command or callback | Check the real artifact, test, remote state, or declared read-only postcondition. |
 | Commit | LoopX CLI | Write durable state and spend one quota slot only after validation passes. |
 
+The built-in Codex host may add an explicit Advisor stage between Decide and
+Execute. The Advisor is an ephemeral read-only model call over the same bounded
+Turn request. It returns compact guidance under a strict schema; the executor
+still owns tools and implementation, while the TurnEnvelope and validator keep
+their existing authority. Advisor mode must fail closed before executor launch
+when the advice, provider call, or usage observation is invalid.
+
 This separation lets the same Turn contract govern coding, operations, data,
 document, knowledge-maintenance, and other long-running workflows. The agent
 CLI remains responsible for model and tool execution; it does not become the
@@ -352,6 +359,13 @@ The driver may discard raw stdout and stderr, but it must not mistake their
 absence for a typed result. Raw prompts, transcripts, benchmark task text,
 verifier tails, credentials, and local session paths stay outside committed
 fixtures and LoopX state.
+
+For a provider that emits usage events, a built-in adapter may attach
+`loopx_turn_model_usage_v0` to the normalized host result. Direct mode records
+executor usage. Advisor mode records Advisor usage, executor usage, their
+field-wise total, and a digest of the applied advice. The adapter must reject
+inconsistent totals and must not persist the advice, prompt, raw response, or
+event stream as usage evidence.
 
 ## Promotion Gates
 

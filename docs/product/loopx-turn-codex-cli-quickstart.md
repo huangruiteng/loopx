@@ -46,6 +46,37 @@ path. A different Agent CLI uses the same Turn contract through a thin
 `generic-cli` adapter that reads one JSON request from stdin and writes one JSON
 result to stdout.
 
+## Use A Read-Only Advisor
+
+Advisor mode lets a stronger model produce bounded guidance before a distinct,
+lower-cost model executes the Turn:
+
+```bash
+loopx turn run-once \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --host codex-cli \
+  --project "$PWD" \
+  --codex-sandbox workspace-write \
+  --advisor-model <strong-model> \
+  --codex-model <lower-cost-executor-model> \
+  --validation-command-json '["./verify-postcondition"]' \
+  --execute
+```
+
+The Advisor runs first in an ephemeral `read-only` Codex session. Its compact
+summary, recommendations, risks, and validation focus are passed to the
+executor as non-authoritative guidance. It cannot change the selected todo,
+gate, writeback, quota, scheduler, or executor sandbox. Advisor failure is
+fail-closed; LoopX does not silently run the cheaper executor without guidance.
+
+When Codex emits provider usage events, the Turn result includes
+`model_usage.advisor`, `model_usage.executor`, and their exact `total`. Only
+token counters and an advice digest are retained; advice text, prompts, raw
+events, and model responses are excluded from LoopX state. Advisor mode requires
+distinct explicit models so an accidental same-model pairing cannot masquerade
+as an optimization.
+
 ## Read The Result
 
 The compact JSON result tells the caller what happens next:
@@ -105,6 +136,20 @@ starts one opaque session, resumes it for Turns 2 through N, and independently
 validates every marker. With `--turn-count 3`, success reports
 `committed_turn_count=3`, `session_resumed=true`, and three quota spends. The
 session id remains private and is never printed or synced.
+
+Use the paired live qualification to compare the same isolated task under a
+strong-model baseline and Advisor mode. It exits zero only when both independent
+validators pass and Advisor plus executor total tokens are lower:
+
+```bash
+python3 scripts/qualify-loopx-turn-advisor-live.py \
+  --baseline-model <strong-model> \
+  --advisor-model <strong-model> \
+  --executor-model <lower-cost-model>
+```
+
+The command prints one compact `loopx_turn_advisor_qualification_v0` receipt.
+It never records raw model output and never authorizes automatic promotion.
 
 That is the complete partner-facing path. For implementation details, read the
 [adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../reference/protocols/loopx-turn-v0.md).
