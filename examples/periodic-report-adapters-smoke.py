@@ -26,6 +26,7 @@ from loopx.presentation.renderers.periodic_report_html import (  # noqa: E402
 )
 from loopx.extensions.lark.presentation.periodic_report import (  # noqa: E402
     periodic_report_lark_sink_adapter,
+    periodic_report_miaoda_html_sink_adapter,
 )
 from loopx.presentation.sinks.openviking_periodic_report import (  # noqa: E402
     periodic_report_openviking_sink_adapter,
@@ -75,6 +76,12 @@ def main() -> None:
     registry.register_sink(
         periodic_report_lark_sink_adapter(
             send=forbidden_effect,
+            readback=forbidden_effect,
+        )
+    )
+    registry.register_sink(
+        periodic_report_miaoda_html_sink_adapter(
+            publish=forbidden_effect,
             readback=forbidden_effect,
         )
     )
@@ -137,7 +144,16 @@ def main() -> None:
             "memory_conclusions": [],
         },
     )
-    previews = [lark_preview, archive_preview]
+    miaoda_preview = registry.deliver(
+        "miaoda_html_delivery",
+        html_artifact,
+        {
+            "execute": False,
+            "idempotency_key": "preview-miaoda_html_delivery",
+            "app_id": "app_example123",
+        },
+    )
+    previews = [lark_preview, miaoda_preview, archive_preview]
     assert {item["source_id"] for item in document["source_snapshots"]} == {
         "issue_fix",
         "release_notes",
@@ -148,6 +164,7 @@ def main() -> None:
     assert html_artifact["renderer_kind"] == "html"
     assert html_artifact["single_file"] is True
     assert "Fix retrieval regression" in html_artifact["content"]
+    assert miaoda_preview["preflight"]["status"] == "passed"
     print("periodic-report-adapters-smoke: ok")
 
 

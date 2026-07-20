@@ -23,6 +23,10 @@ REQUIRED_EXPORTS = {
     "loopx.extensions.lark.reviewer_notification": (
         "lark_reviewer_notification_sink",
     ),
+    "loopx.extensions.lark.presentation.periodic_report": (
+        "periodic_report_lark_sink_adapter",
+        "periodic_report_miaoda_html_sink_adapter",
+    ),
     "loopx.extensions.lark.presentation.kanban": (
         "lark_kanban_doctor",
         "sync_loopx_projection_to_lark_kanban",

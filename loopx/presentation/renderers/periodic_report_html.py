@@ -211,7 +211,6 @@ def _render_item(
     title = _safe_text(item.get("title"), maximum=240)
     summary = _safe_text(item.get("summary"), maximum=1000)
     status = _safe_text(item.get("status"), maximum=80)
-    source_id = _safe_text(item.get("source_id"), maximum=128)
     next_action = _safe_text(item.get("next_action"), maximum=500)
     source_ref = item.get("source_ref")
     source_url = _safe_http_url(source_ref)

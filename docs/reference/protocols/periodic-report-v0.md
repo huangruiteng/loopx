@@ -186,6 +186,13 @@ rows for readable fact grouping and optional `tag_labels` for localized display;
 the canonical token tags remain unchanged.
 Hosting or generating a shareable URL remains a separate sink action with its
 own idempotency and readback receipt; it is not renderer authority.
+The bundled Lark extension includes an opt-in `miaoda_html` delivery sink for
+`html_artifact_v0`. It validates the single HTML, compressed archive, and
+uncompressed payload limits before any external effect. A successful receipt
+requires exact readback of the profile-owned app id, published URL, and
+published state, and also records the observed access scope and login
+requirement. The project or host still owns app selection, authentication,
+audience policy, and the execute decision.
 
 The normalized document's optional `editorial` input is split by ownership.
 The project profile owns bounded `kicker`, `period_label`, `language`, and zero

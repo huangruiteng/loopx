@@ -1,6 +1,6 @@
 schema_version = "loopx_extension_manifest_v0"
 id = "loopx-lark"
-version = "1.3.1"
+version = "1.4.0"
 requires_loopx_api = ">=1,<2"
 permissions = [
   "lark.inbox.read",
@@ -9,6 +9,7 @@ permissions = [
   "lark.collector.manage",
   "lark.reviewer_notification.send",
   "lark.projection_sink.use",
+  "lark.miaoda_html.publish",
 ]
 
 [runtime]
@@ -62,3 +63,14 @@ real_world_anchor = "LoopX Explore rows, cards, and whiteboards projected into c
 user_value = "Publish canonical and executive Explore views from one bounded result log with readback and source-lineage checks."
 entry_command = "loopx explore feishu-sync --goal-id <goal-id>"
 next_real_step = "Install or upgrade and explicitly enable the bundled provider before configuring a Lark Explore sink."
+
+[[provides]]
+id = "lark-miaoda-html-report"
+kind = "delivery_sink"
+title = "Miaoda HTML report publication"
+status = "active-preview"
+visibility = "public"
+real_world_anchor = "a self-contained LoopX report published to a profile-owned Miaoda HTML app"
+user_value = "Publish the generated HTML artifact without re-rendering it, with bounded size preflight and exact app, URL, and access-scope readback."
+entry_command = "loopx periodic-report inspect-profile --profile-json <path>"
+next_real_step = "Enable the bundled Lark provider and bind a profile-owned Miaoda app before executing the delivery sink."

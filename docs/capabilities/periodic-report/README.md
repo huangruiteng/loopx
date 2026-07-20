@@ -116,6 +116,44 @@ content. The public fixture at
 `examples/fixtures/periodic-report-editorial-dense.public.json` demonstrates a
 reusable, project-neutral report.
 
+## Bundled Miaoda HTML delivery
+
+The bundled `loopx-lark` extension provides an opt-in `miaoda_html` delivery
+sink for the self-contained `html_artifact_v0` output. The sink publishes the
+already-rendered artifact to a profile-owned Miaoda HTML app; it does not
+rebuild the document or choose an audience. Before any external effect it
+checks the single HTML, compressed archive, and uncompressed payload limits.
+After publication it requires exact readback of the same app id, published
+URL, and published state, and records the observed access scope and login
+requirement in the sink receipt.
+
+Projects bind the sink explicitly so report generation remains portable and
+external writes remain disabled by default:
+
+```json
+{
+  "sink_id": "miaoda_html_delivery",
+  "sink_kind": "miaoda_html",
+  "sink_role": "delivery",
+  "dependency_policy": "optional",
+  "capability": {
+    "capability_id": "report.miaoda_html.publish",
+    "capability_version": "v0"
+  },
+  "extension": {
+    "extension_id": "loopx-lark",
+    "extension_version": "1.4.0",
+    "protocol": "periodic_report_sink_v0"
+  }
+}
+```
+
+The project or host still owns the app id, authentication, execution decision,
+and access policy. A preview delivery performs validation only and never calls
+the injected publish or readback effects. Repeated publication should reuse the
+same app id and delivery idempotency key instead of creating a new app for each
+report.
+
 ## Default editorial contract
 
 The reusable renderer deliberately separates audience content from operational
