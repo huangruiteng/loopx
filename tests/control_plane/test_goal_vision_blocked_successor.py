@@ -36,6 +36,8 @@ AGENT_ID = "codex-side-agent"
 PRIMARY_AGENT = "codex-primary-agent"
 BLOCKER_ID = "todo_exact_blocker"
 WAITING_ID = "todo_waiting_successor"
+CROSS_DOMAIN_WAITING_ID = "todo_cross_domain_waiting"
+CLAIMED_WAITING_ID = "todo_claimed_waiting"
 
 
 def _vision_run(
@@ -115,6 +117,56 @@ def _status_payload(
                 missing_checkpoint=missing_checkpoint,
             )
         ],
+    )
+
+
+def _cross_domain_wait_status_payload() -> dict:
+    unclaimed = quota_todo_item(
+        todo_id=CROSS_DOMAIN_WAITING_ID,
+        index=1,
+        text="[P1] Resume a benchmark-runner task owned by another lane.",
+        status="deferred",
+        priority="P1",
+        action_kind="benchmark_runner_external_lane",
+        required_capabilities=["benchmark_runner"],
+        resume_when="capacity_available:benchmark_runner",
+    )
+    claimed = quota_todo_item(
+        todo_id=CLAIMED_WAITING_ID,
+        index=2,
+        text="[P2] Resume this agent's release qualification successor.",
+        status="deferred",
+        priority="P2",
+        action_kind="release_outcome_baseline_qualification",
+        claimed_by=AGENT_ID,
+        required_capabilities=["benchmark_runner"],
+        resume_when="capacity_available:benchmark_runner",
+    )
+    agent_todos = quota_todo_summary([unclaimed, claimed], role="agent")
+    return quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action="Wait for the current agent's exact successor.",
+        agent_todos=agent_todos,
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": [PRIMARY_AGENT, AGENT_ID],
+            "agent_profiles": {
+                AGENT_ID: {
+                    "schema_version": "agent_profile_v1",
+                    "agent_id": AGENT_ID,
+                    "profile_role": "quality-qualification",
+                    "default_task_classes": [
+                        "advancement_task",
+                        "continuous_monitor",
+                    ],
+                    "vision_requirement": "required",
+                    "preferred_action_kinds": ["release_outcome_baseline_*"],
+                    "avoid_action_kinds": ["benchmark_runner_*"],
+                }
+            },
+        },
+        latest_runs=[_vision_run()],
     )
 
 
@@ -207,6 +259,26 @@ def test_exact_blocked_successor_defers_only_open_vision_gap(
         f"todo_id={WAITING_ID} resume_when=todo_done:{BLOCKER_ID} "
         "automatic_resume=True"
     ) in markdown
+
+
+def test_agent_claimed_wait_outranks_unclaimed_cross_domain_wait() -> None:
+    guard = _quota(_cross_domain_wait_status_payload())
+
+    assert guard["decision"] == "agent_scope_wait"
+    wait = guard["goal_frontier_projection"]["vision_wait_state"]
+    assert wait["selected_todo_id"] == CLAIMED_WAITING_ID
+    assert wait["selected_todo_claimed_by"] == AGENT_ID
+    assert wait["waiting_todo_ids"] == [
+        CLAIMED_WAITING_ID,
+        CROSS_DOMAIN_WAITING_ID,
+    ]
+
+    status_payload = _cross_domain_wait_status_payload()
+    attach_agent_lane_next_actions(status_payload, agent_id=AGENT_ID)
+    item = status_payload["attention_queue"]["items"][0]
+    status_wait = item["goal_frontier_projection"]["vision_wait_state"]
+    assert status_wait["selected_todo_id"] == CLAIMED_WAITING_ID
+    assert status_wait["waiting_todo_ids"] == wait["waiting_todo_ids"]
 
 
 def test_two_identical_blocked_successor_waits_trigger_bounded_replan() -> None:

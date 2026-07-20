@@ -309,7 +309,9 @@ def todo_summary_blocked_successor_items(
     Open resume-gated todos and deferred todos share the same wait contract.
     A standing continuous monitor is deliberately excluded because it has a
     dedicated gate-repair route: an endless monitor must not become a hidden
-    ``todo_done`` prerequisite for ordinary advancement.
+    ``todo_done`` prerequisite for ordinary advancement. Current-agent claims
+    outrank unclaimed waits before ordinary priority ordering, matching the
+    agent-scoped open-todo selection contract.
     """
 
     if not isinstance(value, dict) or not agent_id:
@@ -349,7 +351,15 @@ def todo_summary_blocked_successor_items(
         compact["resume_when"] = resume_when
         compact["resume_ready"] = False
         selected.append(compact)
-    return sorted(_dedupe_todo_items(selected), key=todo_projection_sort_key)
+    return sorted(
+        _dedupe_todo_items(selected),
+        key=lambda item: (
+            0
+            if normalize_todo_claimed_by(item.get("claimed_by")) == agent_id
+            else 1,
+            *todo_projection_sort_key(item),
+        ),
+    )
 
 
 def _agent_claim_filtered_deferred_items(
