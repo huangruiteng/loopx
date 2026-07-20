@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from loopx.capabilities.periodic_report import build_periodic_report_activation
+from loopx.capabilities.periodic_report import (
+    build_periodic_report_activation,
+    resolve_periodic_report_profile_preset,
+)
 from loopx.cli import main
 
 
@@ -90,6 +93,33 @@ def test_enabled_profile_is_domain_neutral_and_archive_is_optional() -> None:
     assert activation["boundary"]["extension_effects_performed"] is False
 
 
+def test_weekly_preset_is_portable_domain_neutral_and_aliasable() -> None:
+    canonical = resolve_periodic_report_profile_preset("weekly-progress")
+    alias = resolve_periodic_report_profile_preset("weekly")
+    activation = build_periodic_report_activation(alias)
+
+    assert alias == canonical
+    assert activation["active"] is True
+    assert activation["generation_allowed"] is True
+    assert activation["extension_mode"] == "portable"
+    assert "schedule" not in activation["profile"]
+    assert activation["profile"]["sink_bindings"] == []
+    assert activation["profile"]["source_bindings"] == [
+        {
+            "schema_version": "periodic_report_source_binding_v0",
+            "source_id": "project_progress",
+            "source_kind": "validated_project_progress",
+            "adapter_id": "project_progress_v0",
+            "provider": {"kind": "builtin"},
+        }
+    ]
+    assert {
+        item["adapter_id"] for item in activation["profile"]["renderer_bindings"]
+    } == {"markdown_v0", "html_artifact_v0"}
+    serialized = json.dumps(activation, ensure_ascii=False).lower()
+    assert "issue_fix" not in serialized and "pull_request" not in serialized
+
+
 def test_enabled_profile_requires_sources_and_renderers() -> None:
     profile = _profile()
     profile["source_bindings"] = []
@@ -135,3 +165,36 @@ def test_profile_cli_returns_activation_receipt(
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == "periodic_report_activation_v0"
     assert payload["active"] is True
+
+
+def test_profile_cli_accepts_short_weekly_alias(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "periodic-report",
+                "inspect-profile",
+                "--preset",
+                "weekly",
+            ]
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["profile"]["profile_id"] == "weekly_progress"
+    assert payload["active"] is True
+    assert payload["profile_preset"]["resolved_id"] == "weekly-progress"
+    assert payload["interaction_contract"] == {
+        "mode": "in_session_local_preview",
+        "explicit_user_request_sufficient": True,
+        "project_profile_file_required": False,
+        "automation_required": False,
+        "schedule_created": False,
+        "source_scope": "current_project_public_safe_loopx_state",
+        "renderer_adapter_ids": ["markdown_v0", "html_artifact_v0"],
+        "external_write_allowed": False,
+    }
+    assert payload["boundary"]["external_writes_performed"] is False

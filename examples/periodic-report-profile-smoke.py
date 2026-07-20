@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.capabilities.periodic_report import (  # noqa: E402
     build_periodic_report_activation,
+    resolve_periodic_report_profile_preset,
 )
 
 
@@ -28,6 +29,11 @@ def main() -> None:
     }
 
     assert activations["disabled_project"]["status"] == "disabled"
+    assert activations["weekly_progress"]["extension_mode"] == "portable"
+    assert activations["weekly_progress"]["profile"] == (
+        resolve_periodic_report_profile_preset("weekly")
+    )
+    assert len(activations["weekly_progress"]["profile"]["renderer_bindings"]) == 2
     assert activations["release_summary"]["extension_mode"] == "enhanced"
     assert activations["release_summary"]["optional_extension_count"] == 1
     assert activations["research_milestones"]["extension_mode"] == "portable"

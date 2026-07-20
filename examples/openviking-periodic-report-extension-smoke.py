@@ -60,7 +60,11 @@ def main() -> None:
             / "periodic-report-product-profiles.public.json"
         ).read_text(encoding="utf-8")
     )
-    profile = profiles["profiles"][1]
+    profile = next(
+        item
+        for item in profiles["profiles"]
+        if item.get("profile_id") == "release_summary"
+    )
     source = build_periodic_report_source_result(
         source_id="release_state",
         source_kind="validated_outcomes",

@@ -9,6 +9,47 @@
     {
       "schema_version": "periodic_report_profile_v0",
       "enabled": true,
+      "profile_id": "weekly_progress",
+      "profile_version": "v1",
+      "trigger_policy": {
+        "enabled_kinds": [
+          "manual",
+          "cadence_due",
+          "primary_goal_outcome",
+          "vision_closed",
+          "material_decision",
+          "material_blocker",
+          "material_recovery"
+        ],
+        "minimum_interval_seconds": 0
+      },
+      "source_bindings": [
+        {
+          "source_id": "project_progress",
+          "source_kind": "validated_project_progress",
+          "adapter_id": "project_progress_v0",
+          "provider": {"kind": "builtin"}
+        }
+      ],
+      "renderer_bindings": [
+        {
+          "renderer_id": "markdown",
+          "renderer_kind": "markdown",
+          "adapter_id": "markdown_v0",
+          "provider": {"kind": "builtin"}
+        },
+        {
+          "renderer_id": "html",
+          "renderer_kind": "html",
+          "adapter_id": "html_artifact_v0",
+          "provider": {"kind": "builtin"}
+        }
+      ],
+      "sink_bindings": []
+    },
+    {
+      "schema_version": "periodic_report_profile_v0",
+      "enabled": true,
       "profile_id": "release_summary",
       "profile_version": "v1",
       "trigger_policy": {
