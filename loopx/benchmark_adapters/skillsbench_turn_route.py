@@ -106,6 +106,16 @@ def add_skillsbench_loopx_turn_arguments(parser: Any) -> None:
             "Exit 0 means terminal completion; every other code fails closed."
         ),
     )
+    parser.add_argument(
+        "--loopx-turn-terminal-policy",
+        choices=("validator", "fixed-n"),
+        default="validator",
+        help=(
+            "How a successful per-Turn validator closes a bounded sequence. "
+            "validator trusts exit 0 as terminal; fixed-n treats successful "
+            "steps as progress until the configured final Turn."
+        ),
+    )
 
 
 def skillsbench_loopx_turn_runner_prerequisites(
@@ -114,6 +124,7 @@ def skillsbench_loopx_turn_runner_prerequisites(
     *,
     max_turns: Any = 1,
     progress_exit_code: Any = 10,
+    terminal_policy: Any = "validator",
 ) -> dict[str, Any]:
     enabled = route == "loopx-turn-agent-cli"
     return {
@@ -139,6 +150,11 @@ def skillsbench_loopx_turn_runner_prerequisites(
             and isinstance(progress_exit_code, int)
             and not isinstance(progress_exit_code, bool)
             and 1 <= progress_exit_code <= 255
+        ),
+        "loopx_turn_terminal_policy": (
+            terminal_policy
+            if enabled and terminal_policy in {"validator", "fixed-n"}
+            else "not_applicable"
         ),
     }
 
@@ -262,6 +278,7 @@ def _public_validation(value: Any) -> dict[str, Any]:
             "post_agent_postcondition_status",
             "baseline_contract",
             "sequence_stop_reason",
+            "terminal_policy",
         )
         if (label := _public_label(value.get(key), limit=120))
     }
@@ -363,6 +380,11 @@ def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any
 
 
 def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
+    terminal_policies = {
+        item["terminal_policy"]
+        for item in validations
+        if item.get("terminal_policy") in {"validator", "fixed-n"}
+    }
     aggregate = {
         "schema_version": "skillsbench_scored_workspace_validation_v0",
         "status": (
@@ -401,6 +423,8 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
         ),
         "turn_count": len(validations),
     }
+    if len(terminal_policies) == 1:
+        aggregate["terminal_policy"] = terminal_policies.pop()
     if validations and validations[-1].get("sequence_stop_reason"):
         aggregate["sequence_stop_reason"] = validations[-1]["sequence_stop_reason"]
     return aggregate
@@ -545,5 +569,13 @@ def skillsbench_loopx_turn_launch_error(args: Any) -> dict[str, Any] | None:
             "error_type": "SkillsBenchLoopXTurnProgressExitCodeInvalid",
             "reason": "validated progress requires a private exit code from 1 to 255",
             "next_action": "configure --loopx-turn-progress-exit-code from 1 to 255",
+        }
+    terminal_policy = getattr(args, "loopx_turn_terminal_policy", "validator")
+    if terminal_policy not in {"validator", "fixed-n"}:
+        return {
+            **common,
+            "error_type": "SkillsBenchLoopXTurnTerminalPolicyInvalid",
+            "reason": "LoopX Turn terminal policy must be validator or fixed-n",
+            "next_action": "configure --loopx-turn-terminal-policy explicitly",
         }
     return None
