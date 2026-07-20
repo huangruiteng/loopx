@@ -50,6 +50,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
             "SKILLSBENCH_ROUTE": "loopx-turn-agent-cli",
             "SKILLSBENCH_LOOPX_TURN_MAX_TURNS": "4",
             "SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE": "10",
+            "SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY": "fixed-n",
             "SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED": (
                 "1"
             ),
@@ -74,6 +75,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "loopx_turn_validation_command_configured=1" in output
     assert "loopx_turn_max_turns=4" in output
     assert "loopx_turn_progress_exit_code=10" in output
+    assert "loopx_turn_terminal_policy=fixed-n" in output
     assert "private_runner_command_values_redacted=true" in output
     for arg_name in (
         "--remote-command-file-bridge-probe-command",
@@ -83,6 +85,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
         "--loopx-turn-validation-command",
         "--loopx-turn-max-turns",
         "--loopx-turn-progress-exit-code",
+        "--loopx-turn-terminal-policy",
     ):
         assert arg_name in output
     for private_value in private_values.values():

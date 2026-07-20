@@ -67,6 +67,8 @@ Optional env:
   SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE
                                        Validator code for intermediate progress,
                                        default 10; 0 remains terminal completion
+  SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY
+                                       validator (default) or fixed-n
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
@@ -210,6 +212,7 @@ remote_command_file_bridge_agent_command_instrumented="${SKILLSBENCH_REMOTE_COMM
 loopx_turn_validation_command="${SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND:-}"
 loopx_turn_max_turns="${SKILLSBENCH_LOOPX_TURN_MAX_TURNS:-1}"
 loopx_turn_progress_exit_code="${SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE:-10}"
+loopx_turn_terminal_policy="${SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY:-validator}"
 validate_bool_toggle() {
   local env_name="$1"
   local value="$2"
@@ -284,6 +287,11 @@ if [[ "$route" == "loopx-turn-agent-cli" ]]; then
   if [[ ! "$loopx_turn_progress_exit_code" =~ ^[1-9][0-9]*$ ]] ||
     ((10#$loopx_turn_progress_exit_code > 255)); then
     echo "SKILLSBENCH_LOOPX_TURN_PROGRESS_EXIT_CODE must be between 1 and 255" >&2
+    exit 2
+  fi
+  if [[ "$loopx_turn_terminal_policy" != "validator" ]] &&
+    [[ "$loopx_turn_terminal_policy" != "fixed-n" ]]; then
+    echo "SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY must be validator or fixed-n" >&2
     exit 2
   fi
 fi
@@ -435,6 +443,8 @@ if [[ "$route" == "loopx-turn-agent-cli" ]]; then
     "$loopx_turn_max_turns"
     --loopx-turn-progress-exit-code
     "$loopx_turn_progress_exit_code"
+    --loopx-turn-terminal-policy
+    "$loopx_turn_terminal_policy"
   )
 fi
 if [[ -n "${SKILLSBENCH_REGISTRY:-}" ]]; then
@@ -594,6 +604,7 @@ if [[ "$dry_run" == "true" ]]; then
     "$([[ -n "$loopx_turn_validation_command" ]] && echo 1 || echo 0)"
   printf 'loopx_turn_max_turns=%s\n' "$loopx_turn_max_turns"
   printf 'loopx_turn_progress_exit_code=%s\n' "$loopx_turn_progress_exit_code"
+  printf 'loopx_turn_terminal_policy=%s\n' "$loopx_turn_terminal_policy"
   printf 'skip_global_ledger_sync=%s\n' "$skip_global_ledger_sync"
   printf 'skip_current_aggregate_update=%s\n' "$skip_current_aggregate_update"
   printf 'local_run_ledger=%s\n' "$local_run_ledger"
@@ -619,6 +630,8 @@ if [[ "$dry_run" == "true" ]]; then
       printf '%s ' --loopx-turn-validation-command
     [[ "$route" == "loopx-turn-agent-cli" ]] &&
       printf '%s ' --loopx-turn-max-turns --loopx-turn-progress-exit-code
+    [[ "$route" == "loopx-turn-agent-cli" ]] &&
+      printf '%s ' --loopx-turn-terminal-policy
     printf '\n'
     printf 'remote_command=<redacted-private-runner-command-values>\n'
     printf 'supervisor_command=<redacted-private-runner-command-values>\n'

@@ -443,6 +443,7 @@ class CodexExecConfig:
     loopx_turn_validation_command: str | None = None
     loopx_turn_max_turns: int = 1
     loopx_turn_progress_exit_code: int = 10
+    loopx_turn_terminal_policy: str = "validator"
     loopx_case_goal_id: str = "skillsbench-case"
     loopx_case_agent_id: str = BENCHMARK_CASE_LOOPX_AGENT_ID
     loopx_case_todo_id: str = BENCHMARK_CASE_LOOPX_TODO_ID

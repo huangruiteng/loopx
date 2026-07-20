@@ -36,6 +36,7 @@ SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION = (
     "skillsbench_remote_command_file_bridge_operation_response_v0"
 )
 SKILLSBENCH_TURN_BASELINE_ENV = "LOOPX_TURN_BASELINE_FILE"
+SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICIES = frozenset({"validator", "fixed-n"})
 
 AgentPromptRunner = Callable[[str], str]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
@@ -59,6 +60,7 @@ class SkillsBenchTurnRuntimeConfig:
     agent_timeout_seconds: float = 7200.0
     max_turns: int = 1
     progress_exit_code: int = 10
+    terminal_policy: str = "validator"
     case_cli_path: str = "/app/.local/bin/loopx"
     case_registry_path: str = "/app/.loopx/registry.json"
     case_runtime_root: str = "/app/.loopx/runtime"
@@ -323,6 +325,7 @@ def run_skillsbench_loopx_turn(
     agent_runner: AgentPromptRunner,
     config: SkillsBenchTurnRuntimeConfig,
     turn_instance_id: str | None = None,
+    sequence_step_kind: str = "validator",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Execute one real Turn and return its receipt plus compact validation."""
 
@@ -334,6 +337,10 @@ def run_skillsbench_loopx_turn(
         )
     if not 1 <= config.progress_exit_code <= 255:
         raise ValueError("SkillsBench progress exit code must be between 1 and 255")
+    if config.terminal_policy not in SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICIES:
+        raise ValueError("SkillsBench terminal policy must be validator or fixed-n")
+    if sequence_step_kind not in {"validator", "progress", "terminal"}:
+        raise ValueError("SkillsBench sequence step kind was unsupported")
     bridge = SkillsBenchTurnBridge(config)
     plan = (
         _turn_plan(bridge, config, turn_instance_id=turn_instance_id)
@@ -382,20 +389,26 @@ def run_skillsbench_loopx_turn(
                 "exit_code": 1,
             }
         exit_code = validation_result.get("exit_code")
-        if exit_code == config.progress_exit_code:
-            return {
-                "status": "progress",
-                "validator_kind": "skillsbench_scored_workspace_command",
-                "summary": "independent scored-workspace progress validation passed",
-                "exit_code": exit_code,
-            }
-        if exit_code != 0:
+        validation_succeeded = exit_code in {0, config.progress_exit_code}
+        if not validation_succeeded:
             return {
                 "status": "failed",
                 "validator_kind": "skillsbench_scored_workspace_command",
                 "summary": "independent scored-workspace validation returned non-zero",
                 "recovery_kind": "repair_required",
                 "exit_code": exit_code,
+            }
+        effective_step_kind = sequence_step_kind
+        if effective_step_kind == "validator":
+            effective_step_kind = (
+                "progress" if exit_code == config.progress_exit_code else "terminal"
+            )
+        if effective_step_kind == "progress":
+            return {
+                "status": "progress",
+                "validator_kind": "skillsbench_scored_workspace_command",
+                "summary": "independent scored-workspace progress validation passed",
+                "exit_code": config.progress_exit_code,
             }
         return {
             "status": "passed",
@@ -494,6 +507,7 @@ def run_skillsbench_loopx_turn(
         ),
         "validated_progress": validated_progress,
         "terminal_complete": terminal_complete,
+        "terminal_policy": config.terminal_policy,
         "baseline_contract": "task_declared_independent_postcondition",
         "oracle_feedback_used": False,
         "meaningful_operation_count": bridge.meaningful_operation_count,
@@ -515,6 +529,8 @@ def run_skillsbench_loopx_turn_sequence(
 
     if config.max_turns < 1:
         raise ValueError("SkillsBench LoopX Turn max_turns must be at least 1")
+    if config.terminal_policy not in SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICIES:
+        raise ValueError("SkillsBench terminal policy must be validator or fixed-n")
     sequence_id = uuid.uuid4().hex[:16]
     deadline = time.monotonic() + max(1.0, config.agent_timeout_seconds)
     records: list[tuple[dict[str, Any], dict[str, Any]]] = []
@@ -527,11 +543,17 @@ def run_skillsbench_loopx_turn_sequence(
         turn_prompt = (
             prompt if turn_index == 1 else SKILLSBENCH_LOOPX_TURN_CONTINUATION_PROMPT
         )
+        sequence_step_kind = "validator"
+        if config.terminal_policy == "fixed-n":
+            sequence_step_kind = (
+                "terminal" if turn_index == config.max_turns else "progress"
+            )
         execution, validation = run_skillsbench_loopx_turn(
             prompt=turn_prompt,
             agent_runner=agent_runner,
             config=replace(config, agent_timeout_seconds=remaining_seconds),
             turn_instance_id=f"{sequence_id}-turn-{turn_index:03d}",
+            sequence_step_kind=sequence_step_kind,
         )
         validation["turn_index"] = turn_index
         records.append((execution, validation))
@@ -555,6 +577,7 @@ def run_skillsbench_loopx_turn_sequence(
         "status": stop_reason,
         "turn_count": len(records),
         "max_turns": config.max_turns,
+        "terminal_policy": config.terminal_policy,
         "terminal_complete": stop_reason == "terminal_complete",
         "official_feedback_blinded": True,
         "reward_feedback_forwarded": False,
@@ -728,10 +751,15 @@ def run_skillsbench_loopx_turn_relay(
         raise RuntimeError("LoopX Turn requires a compact public trace directory")
     max_turns = int(getattr(relay_config, "loopx_turn_max_turns", 1))
     progress_exit_code = int(getattr(relay_config, "loopx_turn_progress_exit_code", 10))
+    terminal_policy = str(
+        getattr(relay_config, "loopx_turn_terminal_policy", "validator")
+    )
     if max_turns < 1:
         raise RuntimeError("LoopX Turn max Turns must be at least one")
     if not 1 <= progress_exit_code <= 255:
         raise RuntimeError("LoopX Turn progress exit code must be between 1 and 255")
+    if terminal_policy not in SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICIES:
+        raise RuntimeError("LoopX Turn terminal policy must be validator or fixed-n")
     runtime_session = (
         "".join(
             char if char.isalnum() or char in "_.:-" else "_" for char in session_id
@@ -756,6 +784,7 @@ def run_skillsbench_loopx_turn_relay(
                 agent_timeout_seconds=max(1.0, float(relay_config.timeout_sec)),
                 max_turns=max_turns,
                 progress_exit_code=progress_exit_code,
+                terminal_policy=terminal_policy,
                 case_cli_path=relay_config.loopx_case_cli_path,
                 case_registry_path=relay_config.loopx_case_registry_path,
                 case_runtime_root=relay_config.loopx_case_runtime_root,

@@ -240,6 +240,13 @@ adapter to start another Turn, and only under a predeclared maximum, shared
 total time budget, and no-feedback continuation policy. Every other validator
 status fails closed before writeback.
 
+Adapters that lack a separate terminal signal may declare a bounded `fixed-n`
+terminal policy. Under that policy, each successful independent validator call
+proves progress, while only a successful final configured Turn satisfies the
+sequence terminal postcondition. The default `validator` policy continues to
+interpret exit code `0` as terminal completion. The policy is explicit in
+public-safe runner prerequisites and never changes benchmark scoring.
+
 ## Turn Input
 
 The driver input is a small composition of existing contracts:
