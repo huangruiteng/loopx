@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from .adapters import (
     DOCUMENT_SCHEMA,
@@ -79,8 +79,16 @@ def _boolean(value: object, label: str) -> bool:
 
 
 def _canonical_copy(value: Mapping[str, Any]) -> dict[str, Any]:
-    return json.loads(
-        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return cast(
+        dict[str, Any],
+        json.loads(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        ),
     )
 
 
@@ -541,12 +549,12 @@ def _readiness_receipt(
     for key, value in expected.items():
         if receipt.get(key) is not value and receipt.get(key) != value:
             raise ValueError(f"readiness_receipt.{key} does not match sink readiness")
-    identity = {
+    readiness_identity = {
         "generation_id": generation["generation_id"],
         "mode": mode,
         "bindings": items,
     }
-    if readiness_id != _identity(identity, prefix="report_readiness"):
+    if readiness_id != _identity(readiness_identity, prefix="report_readiness"):
         raise ValueError("readiness_receipt.readiness_id does not match contents")
     return {
         **receipt,
@@ -574,12 +582,14 @@ def build_periodic_report_delivery_receipt(
         _reject_raw_keys(result, label)
         if result.get("schema_version") != SINK_RESULT_SCHEMA:
             raise ValueError(f"{label} must use {SINK_RESULT_SCHEMA}")
-        identity = (
+        sink_identity = (
             _token(result.get("sink_role"), f"{label}.sink_role"),
             _token(result.get("sink_id"), f"{label}.sink_id"),
         )
-        if identity in results_by_identity:
-            raise ValueError(f"duplicate sink result {identity[0]}:{identity[1]}")
+        if sink_identity in results_by_identity:
+            raise ValueError(
+                f"duplicate sink result {sink_identity[0]}:{sink_identity[1]}"
+            )
         status = _token(result.get("status"), f"{label}.status")
         if status not in _SINK_STATUSES:
             raise ValueError(f"{label}.status is invalid")
@@ -589,17 +599,17 @@ def build_periodic_report_delivery_receipt(
             and result.get("idempotency_key")
         ):
             raise ValueError(f"{label} sent result requires exact readback")
-        results_by_identity[identity] = result
+        results_by_identity[sink_identity] = result
 
     sink_receipts: list[dict[str, Any]] = []
     expected_identities: set[tuple[str, str]] = set()
     for index, raw_item in enumerate(readiness_items):
         item = _mapping(raw_item, f"sink_readiness[{index}]")
-        identity = (str(item.get("sink_role")), str(item.get("sink_id")))
-        expected_identities.add(identity)
+        sink_identity = (str(item.get("sink_role")), str(item.get("sink_id")))
+        expected_identities.add(sink_identity)
         policy = str(item.get("dependency_policy"))
         readiness_status = str(item.get("status"))
-        result = results_by_identity.get(identity)
+        sink_result = results_by_identity.get(sink_identity)
         if policy == "disabled":
             status = "skipped"
             retryable = False
@@ -608,20 +618,20 @@ def build_periodic_report_delivery_receipt(
             status = "failed" if policy == "required" else "skipped"
             retryable = True
             reason = f"extension_{readiness_status}"
-        elif result is None:
+        elif sink_result is None:
             status = "pending"
             retryable = True
             reason = "sink_result_pending"
         else:
-            if result.get("sink_kind") != item.get("sink_kind"):
+            if sink_result.get("sink_kind") != item.get("sink_kind"):
                 raise ValueError("sink result kind does not match readiness binding")
-            status = str(result["status"])
-            retryable = bool(result.get("retryable", status != "sent"))
+            status = str(sink_result["status"])
+            retryable = bool(sink_result.get("retryable", status != "sent"))
             reason = "provider_result"
         receipt = {
-            "sink_id": identity[1],
+            "sink_id": sink_identity[1],
             "sink_kind": item.get("sink_kind"),
-            "sink_role": identity[0],
+            "sink_role": sink_identity[0],
             "dependency_policy": policy,
             "status": status,
             "retryable": retryable,
@@ -629,15 +639,15 @@ def build_periodic_report_delivery_receipt(
             "extension": item.get("extension"),
             "capability": item.get("capability"),
             "readback_verified": bool(
-                result is not None
-                and result.get("status") == "sent"
-                and result.get("readback_verified") is True
+                sink_result is not None
+                and sink_result.get("status") == "sent"
+                and sink_result.get("readback_verified") is True
             ),
         }
-        if result is not None:
+        if sink_result is not None:
             for key in ("idempotency_key", "receipt_ref", "result_id"):
-                if result.get(key):
-                    receipt[key] = result[key]
+                if sink_result.get(key):
+                    receipt[key] = sink_result[key]
         sink_receipts.append(receipt)
     unknown = sorted(set(results_by_identity) - expected_identities)
     if unknown:
@@ -670,7 +680,7 @@ def build_periodic_report_delivery_receipt(
         status = "partial"
     else:
         status = "succeeded"
-    identity = {
+    delivery_identity = {
         "generation_id": generation["generation_id"],
         "readiness_id": readiness.get("readiness_id"),
         "sinks": sink_receipts,
@@ -678,7 +688,7 @@ def build_periodic_report_delivery_receipt(
     return {
         "ok": status in {"not_required", "succeeded", "partial"},
         "schema_version": DELIVERY_RECEIPT_SCHEMA,
-        "delivery_id": _identity(identity, prefix="report_delivery"),
+        "delivery_id": _identity(delivery_identity, prefix="report_delivery"),
         "generation_id": generation["generation_id"],
         "readiness_id": readiness.get("readiness_id"),
         "delivery_mode": readiness.get("delivery_mode"),
