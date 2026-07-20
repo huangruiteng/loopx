@@ -84,6 +84,14 @@ function harness(initialDecision) {
           return JSON.stringify({ version: 1, operation: "resume", ok: true })
         },
       }),
+      goal_pause: fakeTool({
+        args: {},
+        execute: async () => JSON.stringify({ version: 1, operation: "pause", ok: true }),
+      }),
+      goal_block: fakeTool({
+        args: {},
+        execute: async () => JSON.stringify({ version: 1, operation: "block", ok: true }),
+      }),
       goal_complete: fakeTool({
         args: {},
         execute: async (_args, context) => {
@@ -96,6 +104,23 @@ function harness(initialDecision) {
             ...(verdict.approved ? {} : { error: "completion_rejected" }),
           })
         },
+      }),
+      set_goal: fakeTool({
+        args: {},
+        execute: async () => "New active goal: replacement task",
+      }),
+      update_goal: fakeTool({
+        args: {},
+        execute: async (args) => {
+          if (args.status === "paused") return "Goal paused."
+          if (args.status === "resumed") return "Goal resumed with fresh limits."
+          if (args.status === "complete") return "Goal marked complete and archived."
+          return `Objective updated: ${args.objective}`
+        },
+      }),
+      clear_goal: fakeTool({
+        args: {},
+        execute: async () => "Goal cleared.",
       }),
     },
     dispose: async () => {
@@ -256,6 +281,140 @@ test("keeps scheduled quota timers isolated between sessions", async () => {
   assert.equal(fixture.scheduled[0].cleared, true)
   assert.equal(fixture.scheduled[1].cleared, false)
   assert.equal(fixture.calls.event, 1)
+})
+
+
+test("replacing the host goal cancels the old LoopX timer and binding", async () => {
+  const fixture = harness({
+    should_run: false,
+    scheduler_hint: {
+      action: "backoff_waiting_for_user",
+      unchanged_poll: {
+        local_scheduler: { recommended_interval_minutes: 3, unchanged_poll_limit: 3 },
+      },
+    },
+  })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-replaced", objective: "LoopX task body" },
+    { sessionID: "session-replaced" },
+  )
+  await hooks.event({
+    event: { type: "session.idle", properties: { sessionID: "session-replaced" } },
+  })
+  assert.equal(fixture.scheduled.length, 1)
+
+  await hooks.tool.goal_set.execute(
+    { objective: "ordinary host goal" },
+    { sessionID: "session-replaced" },
+  )
+
+  assert.equal(fixture.scheduled[0].cleared, true)
+  assert.equal(await fixture.store.read("session-replaced"), null)
+})
+
+
+test("legacy goal replacement and objective edits detach the LoopX binding", async () => {
+  for (const [toolName, args] of [
+    ["set_goal", { objective: "legacy replacement" }],
+    ["update_goal", { objective: "legacy objective edit" }],
+  ]) {
+    const fixture = harness({ should_run: true, scheduler_hint: { action: "run_now" } })
+    const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+    const sessionID = `session-${toolName}`
+    await hooks.tool.loopx_goal_activate.execute(
+      { goalId: `goal-${toolName}`, objective: "LoopX task body" },
+      { sessionID },
+    )
+
+    await hooks.tool[toolName].execute(args, { sessionID })
+
+    assert.equal(await fixture.store.read(sessionID), null)
+  }
+})
+
+
+test("canonical pause and block tools stop scheduled LoopX continuation", async () => {
+  for (const toolName of ["goal_pause", "goal_block"]) {
+    const fixture = harness({
+      should_run: false,
+      scheduler_hint: {
+        action: "backoff_waiting_for_user",
+        unchanged_poll: {
+          local_scheduler: { recommended_interval_minutes: 3, unchanged_poll_limit: 3 },
+        },
+      },
+    })
+    const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+    const sessionID = `session-${toolName}`
+    await hooks.tool.loopx_goal_activate.execute(
+      { goalId: `goal-${toolName}`, objective: "LoopX task body" },
+      { sessionID },
+    )
+    await hooks.event({ event: { type: "session.idle", properties: { sessionID } } })
+
+    await hooks.tool[toolName].execute({}, { sessionID })
+
+    assert.equal(fixture.scheduled[0].cleared, true)
+    assert.equal((await fixture.store.read(sessionID)).autoResume, false)
+  }
+})
+
+
+test("canonical resume re-enables quota without a duplicate resume probe", async () => {
+  const fixture = harness({ should_run: true, scheduler_hint: { action: "run_now" } })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  const sessionID = "session-canonical-resume"
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-canonical-resume", objective: "LoopX task body" },
+    { sessionID },
+  )
+  await hooks.tool.goal_pause.execute({}, { sessionID })
+
+  await hooks.tool.goal_resume.execute({}, { sessionID })
+  await hooks.event({ event: { type: "session.idle", properties: { sessionID } } })
+
+  assert.equal((await fixture.store.read(sessionID)).autoResume, true)
+  assert.equal(fixture.calls.resume, 1)
+  assert.equal(fixture.calls.event, 1)
+})
+
+
+test("legacy status updates preserve pause resume and completion semantics", async () => {
+  const fixture = harness({ should_run: true, scheduler_hint: { action: "run_now" } })
+  const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+  const sessionID = "session-legacy-status"
+  await hooks.tool.loopx_goal_activate.execute(
+    { goalId: "goal-legacy-status", objective: "LoopX task body" },
+    { sessionID },
+  )
+
+  await hooks.tool.update_goal.execute({ status: "paused" }, { sessionID })
+  assert.equal((await fixture.store.read(sessionID)).autoResume, false)
+  await hooks.tool.update_goal.execute({ status: "resumed" }, { sessionID })
+  assert.equal((await fixture.store.read(sessionID)).autoResume, true)
+  await hooks.tool.update_goal.execute({ status: "complete" }, { sessionID })
+  assert.equal(await fixture.store.read(sessionID), null)
+})
+
+
+test("legacy objective edits detach even when combined with a status update", async () => {
+  for (const status of ["paused", "blocked", "resumed"]) {
+    const fixture = harness({ should_run: true, scheduler_hint: { action: "run_now" } })
+    const hooks = await fixture.plugin({ directory: "/workspace", client: {} })
+    const sessionID = `session-objective-${status}`
+    await hooks.tool.loopx_goal_activate.execute(
+      { goalId: `goal-objective-${status}`, objective: "LoopX task body" },
+      { sessionID },
+    )
+
+    await hooks.tool.update_goal.execute(
+      { objective: "new host objective", status },
+      { sessionID },
+    )
+
+    assert.equal(await fixture.store.read(sessionID), null)
+  }
 })
 
 

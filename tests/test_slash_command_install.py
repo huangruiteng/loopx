@@ -234,6 +234,57 @@ def test_opencode_install_fails_closed_for_direct_goal_plugin_registration(
     assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
 
 
+def test_opencode_install_fails_closed_for_tuple_goal_plugin_registration(
+    tmp_path: Path,
+) -> None:
+    opencode_home = tmp_path / "opencode"
+    opencode_home.mkdir()
+    (opencode_home / "opencode.json").write_text(
+        '{"plugin": [["opencode-goal-plugin", {"maxTurns": 20}]]}\n',
+        encoding="utf-8",
+    )
+
+    payload = install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is False
+    assert _row(payload, "opencode_goal_bridge")["status"] == (
+        "blocked_conflicting_direct_plugin"
+    )
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert not (opencode_home / "plugins" / "loopx-goal.js").exists()
+    assert not (opencode_home / "package.json").exists()
+
+
+def test_opencode_bridge_preflight_blocks_user_owned_bridge_without_partial_writes(
+    tmp_path: Path,
+) -> None:
+    opencode_home = tmp_path / "opencode"
+    plugin = opencode_home / "plugins" / "loopx-goal.js"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text("// user-owned plugin\n", encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True,
+        with_goal_bridge=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+
+    assert payload["ok"] is False
+    bridge = _row(payload, "opencode_goal_bridge")
+    assert bridge["status"] == "blocked_user_owned_bridge_file"
+    assert bridge["conflicts"] == [str(plugin)]
+    assert plugin.read_text(encoding="utf-8") == "// user-owned plugin\n"
+    assert not (opencode_home / "commands" / "loopx.md").exists()
+    assert not (opencode_home / "loopx" / "goal-bridge-runtime.mjs").exists()
+    assert not (opencode_home / "package.json").exists()
+
+
 def test_opencode_bridge_preflight_blocks_all_writes_for_invalid_config(
     tmp_path: Path,
 ) -> None:

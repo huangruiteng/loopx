@@ -70,9 +70,12 @@ function parseToolResult(value) {
 }
 
 
-function toolResultSucceeded(value) {
+function toolResultSucceeded(value, legacyPrefixes = []) {
   const parsed = parseToolResult(value)
-  return parsed?.ok === true || (typeof value === "string" && /^Goal (?:cleared|completed)/i.test(value))
+  if (parsed?.ok === true) return true
+  if (typeof value !== "string") return false
+  const normalized = value.toLowerCase()
+  return legacyPrefixes.some((prefix) => normalized.startsWith(prefix.toLowerCase()))
 }
 
 
@@ -265,6 +268,7 @@ export function createLoopxGoalPlugin({
     const timers = new Map()
     const evaluations = new Map()
     const pendingGoalCommands = new Map()
+    // Tracks sessions whose persisted base goal is already active in this process.
     const initializedSessions = new Set()
     let disposed = false
 
@@ -282,6 +286,12 @@ export function createLoopxGoalPlugin({
       const timer = timers.get(sessionID)
       if (timer !== undefined) clearTimer(timer)
       timers.delete(sessionID)
+    }
+
+    const detachBinding = async (sessionID) => {
+      await bindingStore.remove(sessionID)
+      cancelScheduled(sessionID)
+      initializedSessions.delete(sessionID)
     }
 
     const readBinding = async (sessionID) => bindingStore.read(sessionID)
@@ -336,8 +346,7 @@ export function createLoopxGoalPlugin({
           toolContext(context, sessionID),
         )
         if (toolResultSucceeded(result) || toolResultHasError(result, "no_active_goal")) {
-          await bindingStore.remove(sessionID)
-          cancelScheduled(sessionID)
+          await detachBinding(sessionID)
           await log("info", "LoopX terminal frontier completed the OpenCode goal", {
             goalId: binding.goalId,
             sessionID,
@@ -558,15 +567,14 @@ export function createLoopxGoalPlugin({
 
     for (const name of ["goal_set", "set_goal"]) {
       wrapTool(name, async (sessionID, _args, result) => {
-        if (toolResultSucceeded(result)) await bindingStore.remove(sessionID)
+        const legacyPrefixes = name === "set_goal" ? ["New active goal:"] : []
+        if (toolResultSucceeded(result, legacyPrefixes)) await detachBinding(sessionID)
       })
     }
     for (const name of ["goal_complete", "clear_goal"]) {
       wrapTool(name, async (sessionID, _args, result) => {
-        if (toolResultSucceeded(result)) {
-          await bindingStore.remove(sessionID)
-          cancelScheduled(sessionID)
-        }
+        const legacyPrefixes = name === "clear_goal" ? ["Goal cleared."] : []
+        if (toolResultSucceeded(result, legacyPrefixes)) await detachBinding(sessionID)
       })
     }
     wrapTool("goal_resume", async (sessionID, _args, result) => {
@@ -583,6 +591,31 @@ export function createLoopxGoalPlugin({
         }
       })
     }
+    wrapTool("update_goal", async (sessionID, args, result) => {
+      if (
+        !toolResultSucceeded(result, [
+          "Objective updated:",
+          "Goal marked blocked.",
+          "Goal paused.",
+          "Goal resumed with fresh limits.",
+          "Goal marked complete and archived.",
+        ])
+      ) return
+      if (typeof args.objective === "string" && args.objective.trim()) {
+        await detachBinding(sessionID)
+        return
+      }
+      const status = String(args.status || "").trim().toLowerCase()
+      if (status === "complete") {
+        await detachBinding(sessionID)
+      } else if (status === "paused" || status === "blocked") {
+        await updateBinding(sessionID, { autoResume: false })
+        cancelScheduled(sessionID)
+      } else if (status === "resumed") {
+        await updateBinding(sessionID, { autoResume: true })
+        initializedSessions.add(sessionID)
+      }
+    })
 
     return {
       ...base,
@@ -606,8 +639,7 @@ export function createLoopxGoalPlugin({
         pendingGoalCommands.set(sessionID, { args, recordedAt: Date.now() })
         const kind = commandKind(args)
         if (kind === "clear" || kind === "replace") {
-          await bindingStore.remove(sessionID)
-          cancelScheduled(sessionID)
+          await detachBinding(sessionID)
         } else if (kind === "resume") {
           await updateBinding(sessionID, { autoResume: true })
           initializedSessions.add(sessionID)
@@ -647,8 +679,8 @@ export function createLoopxGoalPlugin({
         const sessionID = sessionIDFromEvent(event)
         if (!isIdleEvent(event)) {
           if (sessionID && event?.type === "session.deleted") {
-            await bindingStore.remove(sessionID)
-            cancelScheduled(sessionID)
+            await detachBinding(sessionID)
+            pendingGoalCommands.delete(sessionID)
           } else if (sessionID && shouldPauseForHostEvent(event)) {
             await updateBinding(sessionID, { autoResume: false })
             cancelScheduled(sessionID)
@@ -663,6 +695,8 @@ export function createLoopxGoalPlugin({
         for (const timer of timers.values()) clearTimer(timer)
         timers.clear()
         evaluations.clear()
+        initializedSessions.clear()
+        pendingGoalCommands.clear()
         await base.dispose?.()
       },
     }

@@ -347,6 +347,18 @@ def _strip_jsonc_trailing_commas(content: str) -> str:
     return "".join(output)
 
 
+def _opencode_plugin_name(plugin: Any) -> str | None:
+    if isinstance(plugin, str):
+        return plugin
+    if (
+        isinstance(plugin, list)
+        and plugin
+        and isinstance(plugin[0], str)
+    ):
+        return plugin[0]
+    return None
+
+
 def _opencode_direct_goal_plugin_conflicts(root: Path) -> tuple[list[str], list[str]]:
     conflicts: list[str] = []
     invalid: list[str] = []
@@ -376,9 +388,14 @@ def _opencode_direct_goal_plugin_conflicts(root: Path) -> tuple[list[str], list[
         if not isinstance(plugins, list):
             invalid.append(str(path))
             continue
-        if any(
-            str(plugin) == package or str(plugin).startswith(f"{package}@")
+        plugin_names = [
+            name
             for plugin in plugins
+            if (name := _opencode_plugin_name(plugin)) is not None
+        ]
+        if any(
+            plugin == package or plugin.startswith(f"{package}@")
+            for plugin in plugin_names
             for package in goal_plugins
         ):
             conflicts.append(str(path))
@@ -657,6 +674,8 @@ def install_slash_commands(
         plugin_path = opencode_root / "plugins" / "loopx-goal.js"
         runtime_path = opencode_root / "loopx" / "goal-bridge-runtime.mjs"
         package_path = opencode_root / "package.json"
+        plugin_content = plugin_source()
+        runtime_content = runtime_source()
 
         bridge_preflight_blocked = False
         if with_goal_bridge and not uninstall:
@@ -699,6 +718,36 @@ def install_slash_commands(
                 )
                 bridge_preflight_blocked = True
             else:
+                user_owned_bridge_paths = [
+                    str(path)
+                    for path, content in (
+                        (plugin_path, plugin_content),
+                        (runtime_path, runtime_content),
+                    )
+                    if _target_status(path, content, execute=False)
+                    == "skipped_user_file"
+                ]
+                if user_owned_bridge_paths:
+                    installed.append(
+                        {
+                            "surface": "opencode",
+                            "host_surfaces": ["opencode"],
+                            "mechanism": "opencode_goal_bridge",
+                            "command": "/goal",
+                            "path": str(plugin_path),
+                            "status": "blocked_user_owned_bridge_file",
+                            "invoke_as": [],
+                            "reason": (
+                                "Move or rename the listed user-owned OpenCode bridge "
+                                "files before installing LoopX so no partial bridge or "
+                                "dependency update is applied."
+                            ),
+                            "conflicts": user_owned_bridge_paths,
+                        }
+                    )
+                    bridge_preflight_blocked = True
+
+            if not bridge_preflight_blocked:
                 package_status = _target_package_dependencies(
                     package_path,
                     OPENCODE_GOAL_DEPENDENCIES,
@@ -767,8 +816,8 @@ def install_slash_commands(
                     bridge_preflight_blocked = True
                 else:
                     for mechanism, path, content in (
-                        ("opencode_goal_bridge_runtime", runtime_path, runtime_source()),
-                        ("opencode_goal_bridge", plugin_path, plugin_source()),
+                        ("opencode_goal_bridge_runtime", runtime_path, runtime_content),
+                        ("opencode_goal_bridge", plugin_path, plugin_content),
                     ):
                         installed.append(
                             {
