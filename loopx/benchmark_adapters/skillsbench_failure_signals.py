@@ -112,12 +112,12 @@ _FAILURE_REASON_PATTERNS = (
         "apt_invalid_signature",
         r"invalid signature|at least one invalid signature was encountered",
     ),
-    ("apt_unsigned_repository", r"repository .* is not signed"),
+    ("apt_unsigned_repository", r"repository(?:\s+\S+)?\s+is not signed"),
     ("apt_clearsigned_invalid", r"clearsigned file isn.t valid"),
     (
         "apt_signature_or_gpg",
         r"gpg error|no_pubkey|signatures? couldn.t be verified|"
-        r"repository .* is not signed|clearsigned file isn.t valid",
+        r"repository(?:\s+\S+)?\s+is not signed|clearsigned file isn.t valid",
     ),
     (
         "apt_hash_mismatch",
