@@ -409,6 +409,8 @@ def main() -> int:
             "4",
             "--loopx-turn-progress-exit-code",
             "10",
+            "--loopx-turn-terminal-policy",
+            "fixed-n",
         ]
     )
     runner_plan = build_plan(runner_args)
@@ -417,6 +419,7 @@ def main() -> int:
     assert "--loopx-turn-validation-command" in launch_command, launch_command
     assert "--loopx-turn-max-turns" in launch_command, launch_command
     assert "--loopx-turn-progress-exit-code" in launch_command, launch_command
+    assert "--loopx-turn-terminal-policy" in launch_command, launch_command
     assert "--loopx-workflow-lifecycle-checkpoint" not in launch_command, launch_command
     prerequisites = runner_plan.get("runner_prerequisites", {})
     assert prerequisites.get("loopx_turn_validation_configured") is True, prerequisites
@@ -427,6 +430,7 @@ def main() -> int:
     assert prerequisites.get("loopx_turn_progress_exit_code_configured") is True, (
         prerequisites
     )
+    assert prerequisites.get("loopx_turn_terminal_policy") == "fixed-n", prerequisites
 
     with tempfile.TemporaryDirectory(prefix="skillsbench-loopx-turn-success-") as value:
         success = _run_success(Path(value))
