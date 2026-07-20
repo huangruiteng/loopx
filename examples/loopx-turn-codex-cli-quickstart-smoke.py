@@ -56,14 +56,14 @@ def main() -> int:
     assert link in product_index, "product index link"
     assert f"product/{link}" in docs_index, "docs index link"
     for required in [
-        "Try One Governed Turn Locally",
+        "Try Governed Turns Locally",
         "--real-codex-cli",
-        "--two-turn-resume",
+        "--turn-count 3",
         "status=committed",
-        "second_status=committed",
         "validation_status=passed",
         "session_resumed=true",
-        "quota_slot_spend_count=2",
+        "committed_turn_count=3",
+        "quota_slot_spend_count=3",
     ]:
         assert required in readme, f"README local Turn quickstart: {required}"
 

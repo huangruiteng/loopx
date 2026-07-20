@@ -366,13 +366,14 @@ def test_codex_cli_host_discards_missing_resume_session(
     assert codex_cli_session_binding(runtime_root, envelope) is None
 
 
-def test_public_e2e_smoke_runs_two_transactions_on_one_session() -> None:
+def test_public_e2e_smoke_runs_n_transactions_on_one_session() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [
             sys.executable,
             str(root / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"),
-            "--two-turn-resume",
+            "--turn-count",
+            "3",
         ],
         cwd=root,
         check=False,
@@ -383,12 +384,15 @@ def test_public_e2e_smoke_runs_two_transactions_on_one_session() -> None:
 
     assert result.returncode == 0, result.stderr or result.stdout
     payload = json.loads(result.stdout)
-    assert payload["first_session_action"] == "start_new"
-    assert payload["second_session_action"] == "resume"
+    assert payload["requested_turn_count"] == 3
+    assert payload["observed_turn_count"] == 3
+    assert payload["committed_turn_count"] == 3
+    assert [turn["turn_number"] for turn in payload["turns"]] == [1, 2, 3]
+    assert payload["session_actions"] == ["start_new", "resume", "resume"]
     assert payload["session_resumed"] is True
-    assert payload["first_marker_valid"] is True
-    assert payload["second_marker_valid"] is True
-    assert payload["quota_slot_spend_count"] == 2
+    assert all(turn["marker_valid"] for turn in payload["turns"])
+    assert payload["marker_valid"] is True
+    assert payload["quota_slot_spend_count"] == 3
     assert payload["replay_effects"] == {
         "host_invoked": False,
         "quota_spent": False,

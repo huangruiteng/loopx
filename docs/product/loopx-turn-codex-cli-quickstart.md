@@ -58,8 +58,8 @@ The compact JSON result tells the caller what happens next:
 | `result_kind=wait` | No host work should run yet. |
 | `result_kind=user_action_required` | Show the concrete user action and do not invent a substitute. |
 
-A failed or unavailable validator cannot commit or spend. Replaying a committed
-Turn is idempotent: it does not invoke the host, write state, or spend again.
+A failed validator cannot commit or spend; replay invokes nothing. A new logical
+Turn uses a new stable `--turn-instance-id`, while retries reuse that id.
 
 ## Fit Another Runtime
 
@@ -90,7 +90,8 @@ python3 examples/loopx-turn-codex-cli-e2e-smoke.py
 python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
   --real-codex-cli \
   --codex-model <qualified-model>
-python3 examples/loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli --two-turn-resume --codex-model <qualified-model>
+python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
+  --real-codex-cli --turn-count 3 --codex-model <qualified-model>
 ```
 
 The first command is deterministic and model-free. The second makes one real
@@ -99,12 +100,11 @@ one quota spend, and a replay with no side effects. A compact
 `codex_cli_model_requires_newer_codex` result is a host compatibility failure,
 not task progress; it must show zero state writes and zero quota spend.
 
-The third command makes two real calls against one temporary goal and todo. It
-starts an opaque session, then uses `codex exec resume`, validates the next
-marker, and commits separately. Success reports `session_resumed=true` and two
-quota spends. The session id remains private and is never printed or synced.
+The third command makes N real calls against one temporary goal and todo. It
+starts one opaque session, resumes it for Turns 2 through N, and independently
+validates every marker. With `--turn-count 3`, success reports
+`committed_turn_count=3`, `session_resumed=true`, and three quota spends. The
+session id remains private and is never printed or synced.
 
-That is the complete partner-facing path. Read the
-[Codex CLI adapter notes](codex-cli-automation-driver.md) for operational gaps
-or the [LoopX Turn protocol](../reference/protocols/loopx-turn-v0.md) only when
-implementing another host adapter or maintaining the runtime.
+That is the complete partner-facing path. For implementation details, read the
+[adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../reference/protocols/loopx-turn-v0.md).

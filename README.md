@@ -481,7 +481,7 @@ the run can claim progress. See
 [Auto-research command path](docs/guides/auto-research-command-path.md) for the
 full stop, attach, retry, and evidence boundary.
 
-### Experimental: Try One Governed Turn Locally
+### Experimental: Try Governed Turns Locally
 
 From a repository checkout with Codex CLI logged in, run this disposable,
 non-benchmark example:
@@ -489,17 +489,17 @@ non-benchmark example:
 ```bash
 python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
   --real-codex-cli \
-  --two-turn-resume
+  --turn-count 3
 ```
 
-It creates a temporary goal and workspace, advances one marker through two
-separately validated Turns, and resumes the same opaque Codex CLI session for
-the second interaction. Each Turn commits once and spends once; the example
-then replays the second transaction to prove it has no duplicate effects. The
-temporary state is deleted and is never synced to your global LoopX registry.
-Success reports `status=committed`, `validation_status=passed`,
-`second_status=committed`, `second_validation_status=passed`,
-`session_resumed=true`, and `quota_slot_spend_count=2`.
+It creates a temporary goal and workspace, advances one marker through N
+separately validated Turns, and keeps one opaque Codex CLI session: the first
+Turn starts it and Turns 2 through N resume it. Each Turn commits once and
+spends once; the example then replays the final transaction to prove it has no
+duplicate effects. The temporary state is deleted and is never synced to your
+global LoopX registry. With `--turn-count 3`, success reports
+`status=committed`, `validation_status=passed`, `committed_turn_count=3`,
+`session_resumed=true`, and `quota_slot_spend_count=3`.
 
 Run `codex --version` first. If the configured default model requires a newer
 Codex CLI, update Codex or add `--codex-model <qualified-model>`. The
