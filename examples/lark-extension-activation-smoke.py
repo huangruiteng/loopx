@@ -173,7 +173,7 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert active["extension_activation"] == {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.3.1",
+        "provider_version": "1.4.0",
         "revision": installed["revision"],
         "enabled": True,
         "doctor_verified": True,
@@ -264,11 +264,11 @@ with tempfile.TemporaryDirectory(prefix="loopx-lark-extension-") as raw_temp:
     assert enabled["doctor"]["verified"] is True, enabled
 
     bundled_manifest = ROOT / "loopx" / "extensions" / "lark" / "extension.toml"
-    upgraded_manifest = temp / "loopx-lark-v1.4.toml"
+    upgraded_manifest = temp / "loopx-lark-v1.5.toml"
     upgraded_manifest.write_text(
         bundled_manifest.read_text(encoding="utf-8").replace(
-            'version = "1.3.1"',
             'version = "1.4.0"',
+            'version = "1.5.0"',
             1,
         ),
         encoding="utf-8",
