@@ -210,6 +210,7 @@ def test_setup_only_preflight_classifies_public_setup_failures(
         "message",
         "terminal_dependency_classes",
         "failure_reason_codes",
+        "apt_failure_subtype",
         "retryability",
     ),
     [
@@ -219,6 +220,7 @@ def test_setup_only_preflight_classifies_public_setup_failures(
             "successfully: unable to locate package missing-package",
             ["system_package"],
             ["apt_package_unavailable"],
+            "package_unavailable",
             "non_retryable",
         ),
         (
@@ -227,6 +229,7 @@ def test_setup_only_preflight_classifies_public_setup_failures(
             "read timed out for pypi.org; max retries exceeded",
             ["python_package"],
             ["connection_timeout", "retry_exhausted"],
+            "none",
             "retryable",
         ),
         (
@@ -234,6 +237,7 @@ def test_setup_only_preflight_classifies_public_setup_failures(
             "bind: bind source path does not exist",
             [],
             ["missing_file"],
+            "none",
             "non_retryable",
         ),
     ],
@@ -242,6 +246,7 @@ def test_setup_only_preflight_projects_terminal_failure_signals(
     message: str,
     terminal_dependency_classes: list[str],
     failure_reason_codes: list[str],
+    apt_failure_subtype: str,
     retryability: str,
 ) -> None:
     FakeRollout.failure_stage = "environment_start"
@@ -252,6 +257,7 @@ def test_setup_only_preflight_projects_terminal_failure_signals(
     assert result["terminal_dependency_classes"] == terminal_dependency_classes
     assert result["failure_reason_codes"] == failure_reason_codes
     assert result["terminal_failure_reason_codes"] == failure_reason_codes
+    assert result["apt_failure_subtype"] == apt_failure_subtype
     assert result["retryability"] == retryability
     assert message not in json.dumps(result, sort_keys=True)
 
@@ -277,6 +283,55 @@ def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
     ]
     assert result["terminal_dependency_endpoints"] == ["apache_archive"]
     assert result["raw_error_recorded"] is False
+
+
+@pytest.mark.parametrize(
+    ("message", "subtype", "retryability"),
+    [
+        (
+            "apt-get update: failed to fetch package index: Temporary failure "
+            "resolving 'archive.example.invalid'",
+            "dns_resolution",
+            "retryable",
+        ),
+        (
+            "apt update failed to fetch index: Certificate verification failed",
+            "tls_or_certificate",
+            "non_retryable",
+        ),
+        (
+            "apt-get update: GPG error: repository is not signed",
+            "signature_or_gpg",
+            "unknown",
+        ),
+        (
+            "apt-get update: failed to fetch index: File has unexpected size",
+            "hash_or_size_mismatch",
+            "unknown",
+        ),
+        (
+            "apt-get update: failed to fetch index: Network is unreachable",
+            "network_unreachable",
+            "retryable",
+        ),
+        (
+            "apt-get update: failed to fetch package index",
+            "fetch_failed_unclassified",
+            "unknown",
+        ),
+    ],
+)
+def test_apt_failure_subtype_is_public_safe_and_specific(
+    message: str,
+    subtype: str,
+    retryability: str,
+) -> None:
+    fingerprint = skillsbench_runner_error_fingerprint(message)
+
+    assert fingerprint["apt_failure_subtype"] == subtype
+    assert fingerprint["retryability"] == retryability
+    assert message not in json.dumps(fingerprint, sort_keys=True)
+    assert fingerprint["raw_error_recorded"] is False
 
 
 def test_compose_diagnostic_ignores_incidental_volume_for_terminal_apt() -> None:
@@ -312,6 +367,7 @@ def test_compose_diagnostic_ignores_incidental_volume_for_terminal_apt() -> None
         "system_package"
     ]
     assert fingerprint["terminal_failure_reason_codes"] == ["apt_fetch_failed"]
+    assert fingerprint["apt_failure_subtype"] == "fetch_failed_unclassified"
     assert fingerprint["retryability"] == "unknown"
 
     diagnostic = build_compose_setup_diagnostic(
@@ -338,6 +394,9 @@ def test_compose_diagnostic_ignores_incidental_volume_for_terminal_apt() -> None
     assert reduced_diagnostic["terminal_failure_dependency_classes"] == [
         "system_package"
     ]
+    assert reduced_diagnostic["apt_failure_subtype"] == (
+        "fetch_failed_unclassified"
+    )
     assert message not in json.dumps(reduced, sort_keys=True)
 
 

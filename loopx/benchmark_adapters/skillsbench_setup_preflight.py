@@ -70,6 +70,7 @@ def _base_result(
         "terminal_dependency_classes": [],
         "failure_reason_codes": [],
         "terminal_failure_reason_codes": [],
+        "apt_failure_subtype": "none",
         "dependency_endpoints": [],
         "terminal_dependency_endpoints": [],
         "retryability": "unknown",
@@ -173,6 +174,9 @@ async def run_setup_only_public_preflight(
             for item in fingerprint.get("terminal_failure_reason_codes", [])
             if isinstance(item, str)
         ]
+        result["apt_failure_subtype"] = str(
+            fingerprint.get("apt_failure_subtype") or "none"
+        )
         result["dependency_endpoints"] = [
             str(item)
             for item in fingerprint.get("failure_dependency_endpoints", [])

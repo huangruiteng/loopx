@@ -1525,6 +1525,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "fingerprint_confidence",
         "runner_error_len_bucket",
         "primary_setup_failure_category",
+        "apt_failure_subtype",
         "retryability",
         "next_diagnostic_action",
     ):
@@ -3000,6 +3001,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "schema_version",
             "error_len_bucket",
             "fingerprint_confidence",
+            "apt_failure_subtype",
             "retryability",
         ):
             value = public_safe_compact_text(fingerprint.get(field), limit=100)

@@ -83,7 +83,7 @@ _FAILURE_REASON_PATTERNS = (
     (
         "dns_resolution",
         r"temporary failure in name resolution|name or service not known|"
-        r"could not resolve host",
+        r"temporary failure resolving|could not resolve host",
     ),
     (
         "connection_timeout",
@@ -91,6 +91,7 @@ _FAILURE_REASON_PATTERNS = (
     ),
     ("connection_refused", r"connection refused|could not connect"),
     ("connection_reset", r"connection reset|remote end closed connection"),
+    ("network_unreachable", r"network is unreachable|no route to host"),
     ("retry_exhausted", r"max retries exceeded"),
     (
         "proxy_connect",
@@ -99,14 +100,22 @@ _FAILURE_REASON_PATTERNS = (
     ),
     (
         "tls_or_certificate",
-        r"certificate verify failed|ssl certificate problem|tls handshake|"
+        r"certificate verif(?:y|ication) failed|ssl certificate problem|"
+        r"tls handshake|could not handshake|"
         r"unable to get local issuer certificate",
     ),
     ("http_not_found", r"(?:http[^\n]*\s404\b|404 not found)"),
     ("http_server_error", r"(?:http[^\n]*\s5\d\d\b|5\d\d server error)"),
     ("apt_fetch_failed", r"failed to fetch"),
-    ("apt_signature_or_gpg", r"gpg error|no_pubkey|signatures? couldn.t be verified"),
-    ("apt_hash_mismatch", r"hash sum mismatch|hashes of expected file"),
+    (
+        "apt_signature_or_gpg",
+        r"gpg error|no_pubkey|signatures? couldn.t be verified|"
+        r"repository .* is not signed|clearsigned file isn.t valid",
+    ),
+    (
+        "apt_hash_mismatch",
+        r"hash sum mismatch|hashes of expected file|file has unexpected size",
+    ),
     (
         "apt_release_expired",
         r"release file .* is not valid yet|release file .* expired|"
@@ -152,6 +161,7 @@ _TRANSIENT_FAILURE_REASONS = {
     "connection_timeout",
     "dns_resolution",
     "http_server_error",
+    "network_unreachable",
     "proxy_connect",
     "retry_exhausted",
 }
@@ -166,6 +176,23 @@ _DETERMINISTIC_FAILURE_REASONS = {
     "pip_os_error",
     "tls_or_certificate",
 }
+
+_APT_FAILURE_SUBTYPE_REASON_PRIORITY = (
+    ("apt_signature_or_gpg", "signature_or_gpg"),
+    ("apt_hash_mismatch", "hash_or_size_mismatch"),
+    ("apt_release_expired", "release_metadata"),
+    ("apt_package_unavailable", "package_unavailable"),
+    ("dns_resolution", "dns_resolution"),
+    ("proxy_connect", "proxy_connect"),
+    ("tls_or_certificate", "tls_or_certificate"),
+    ("http_not_found", "http_not_found"),
+    ("http_server_error", "http_server_error"),
+    ("network_unreachable", "network_unreachable"),
+    ("connection_timeout", "connection_timeout"),
+    ("connection_refused", "connection_refused"),
+    ("connection_reset", "connection_reset"),
+    ("retry_exhausted", "retry_exhausted"),
+)
 
 
 def _dependency_classes_for_lines(lines: list[str]) -> list[str]:
@@ -190,6 +217,27 @@ def _dependency_endpoints_for_lines(lines: list[str]) -> list[str]:
         for label, pattern in _FAILURE_DEPENDENCY_ENDPOINT_PATTERNS
         if any(re.search(pattern, line) for line in lines)
     ]
+
+
+def _apt_failure_subtype(
+    *,
+    dependency_classes: list[str],
+    reasons: list[str],
+) -> str:
+    reason_set = set(reasons)
+    apt_failure_present = (
+        "system_package" in dependency_classes
+        or "apt_fetch_failed" in reason_set
+        or any(reason.startswith("apt_") for reason in reason_set)
+    )
+    if not apt_failure_present:
+        return ""
+    for reason, subtype in _APT_FAILURE_SUBTYPE_REASON_PRIORITY:
+        if reason in reason_set:
+            return subtype
+    if "apt_fetch_failed" in reason_set:
+        return "fetch_failed_unclassified"
+    return "unclassified"
 
 
 def _failure_signal_lines(error_text: str) -> list[str]:
@@ -226,22 +274,32 @@ def skillsbench_terminal_failure_signals(error_text: str) -> dict[str, object]:
         if terminal_classes and terminal_reasons and terminal_endpoints:
             break
 
+    dependency_classes = _dependency_classes_for_lines(failure_lines)
     reasons = _failure_reasons_for_lines(failure_lines)
     endpoints = _dependency_endpoints_for_lines(failure_lines)
     reason_set = set(reasons)
-    if reason_set and reason_set <= _TRANSIENT_FAILURE_REASONS:
+    retry_reason_set = reason_set - {"apt_fetch_failed"}
+    if not retry_reason_set:
+        retry_reason_set = reason_set
+    if retry_reason_set and retry_reason_set <= _TRANSIENT_FAILURE_REASONS:
         retryability = "retryable"
-    elif reason_set & _DETERMINISTIC_FAILURE_REASONS:
+    elif retry_reason_set & _DETERMINISTIC_FAILURE_REASONS:
         retryability = (
-            "mixed" if reason_set & _TRANSIENT_FAILURE_REASONS else "non_retryable"
+            "mixed"
+            if retry_reason_set & _TRANSIENT_FAILURE_REASONS
+            else "non_retryable"
         )
-    elif reason_set:
+    elif retry_reason_set:
         retryability = "unknown"
     else:
         retryability = "unknown"
 
     return {
         "failure_reason_codes": reasons,
+        "apt_failure_subtype": _apt_failure_subtype(
+            dependency_classes=dependency_classes,
+            reasons=reasons,
+        ),
         "terminal_failure_dependency_classes": terminal_classes,
         "terminal_failure_reason_codes": terminal_reasons,
         "failure_dependency_endpoints": endpoints,
