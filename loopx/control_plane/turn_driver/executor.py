@@ -13,6 +13,7 @@ from typing import Any
 
 from ...authority import validate_public_safe_text
 from ...file_lock import exclusive_file_lock
+from ..goals.goal_vision import normalize_goal_vision_packet
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
 from .transaction import (
@@ -30,6 +31,8 @@ LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION = "loopx_turn_task_validation_v0"
 HOST_RESULT_MAX_BYTES = 12_000
 HOST_ARG_MAX_COUNT = 32
 HOST_ARG_MAX_CHARS = 1_024
+HOST_AGENT_VISION_JSON_MAX_CHARS = 3_200
+HOST_PATH_DELTA_MODES = {"", "unchanged", "material_replan"}
 HOST_RESULT_TEXT_LIMITS = (
     ("classification", 120),
     ("recommended_action", 1_200),
@@ -59,6 +62,8 @@ HOST_RESULT_FIELDS = {
     "delivery_batch_scale",
     "delivery_outcome",
     "vision_unchanged_reason",
+    "path_delta_mode",
+    "agent_vision_json",
     "summary",
 }
 
@@ -149,6 +154,81 @@ def _bounded_public_text(
     return text
 
 
+def _normalize_host_path_delta(
+    plan: Mapping[str, Any],
+    result: Mapping[str, Any],
+    *,
+    unchanged_reason: str,
+    errors: list[str],
+) -> tuple[str, dict[str, Any] | None]:
+    path_delta_mode = str(result.get("path_delta_mode") or "").strip()
+    raw_agent_vision = result.get("agent_vision_json")
+    if raw_agent_vision is None:
+        agent_vision_json = ""
+    elif isinstance(raw_agent_vision, str):
+        agent_vision_json = raw_agent_vision.strip()
+    else:
+        agent_vision_json = ""
+        errors.append("agent_vision_json must be a JSON string")
+
+    # Older generic hosts only supplied an unchanged reason. Keep that
+    # contract valid while making new hosts classify material path changes.
+    if not path_delta_mode:
+        path_delta_mode = "material_replan" if agent_vision_json else "unchanged"
+    if path_delta_mode not in HOST_PATH_DELTA_MODES - {""}:
+        errors.append("path_delta_mode must be unchanged or material_replan")
+
+    agent_vision: dict[str, Any] | None = None
+    if agent_vision_json:
+        if len(agent_vision_json) > HOST_AGENT_VISION_JSON_MAX_CHARS:
+            errors.append(
+                "agent_vision_json exceeds "
+                f"{HOST_AGENT_VISION_JSON_MAX_CHARS} characters"
+            )
+        else:
+            try:
+                packet = json.loads(agent_vision_json)
+                if not isinstance(packet, dict):
+                    raise ValueError("agent_vision_json must decode to a JSON object")
+                envelope = (
+                    plan.get("turn_envelope")
+                    if isinstance(plan.get("turn_envelope"), dict)
+                    else {}
+                )
+                agent_vision = normalize_goal_vision_packet(
+                    packet,
+                    goal_id=str(envelope.get("goal_id") or ""),
+                    agent_id=str(envelope.get("agent_id") or "") or None,
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"invalid agent_vision_json: {exc}")
+
+    if path_delta_mode == "material_replan":
+        if agent_vision is None:
+            errors.append(
+                "material_replan requires agent_vision_json with goal_path_delta_v0"
+            )
+        elif not isinstance(agent_vision.get("path_delta"), dict):
+            errors.append(
+                "material_replan agent_vision_json requires goal_path_delta_v0"
+            )
+        elif agent_vision["path_delta"].get("outcome") != "replan":
+            errors.append(
+                "material_replan goal_path_delta_v0 outcome must be replan"
+            )
+        if unchanged_reason:
+            errors.append(
+                "material_replan cannot also declare vision_unchanged_reason"
+            )
+    elif path_delta_mode == "unchanged":
+        if agent_vision is not None:
+            errors.append("unchanged path_delta_mode cannot include agent_vision_json")
+        if not unchanged_reason:
+            errors.append("unchanged path_delta_mode requires vision_unchanged_reason")
+
+    return path_delta_mode, agent_vision
+
+
 def validate_loopx_turn_host_result(
     plan: Mapping[str, Any],
     value: Mapping[str, Any],
@@ -193,7 +273,7 @@ def validate_loopx_turn_host_result(
             result,
             field,
             limit=limit,
-            required=material and field != "summary",
+            required=material and field not in {"summary", "vision_unchanged_reason"},
             errors=errors,
         )
         if text:
@@ -211,6 +291,31 @@ def validate_loopx_turn_host_result(
             ).value
         except ValueError as exc:
             errors.append(str(exc))
+
+        unchanged_reason = str(normalized.get("vision_unchanged_reason") or "")
+        path_delta_mode, agent_vision = _normalize_host_path_delta(
+            plan,
+            result,
+            unchanged_reason=unchanged_reason,
+            errors=errors,
+        )
+        if (
+            path_delta_mode == "material_replan"
+            and kind is not LoopXTurnResultKind.REPLAN_REQUIRED
+        ):
+            errors.append(
+                "material_replan path_delta_mode requires result_kind replan_required"
+            )
+
+        normalized["path_delta_mode"] = path_delta_mode
+        if agent_vision is not None:
+            normalized["agent_vision"] = agent_vision
+    elif str(result.get("path_delta_mode") or "").strip() or str(
+        result.get("agent_vision_json") or ""
+    ).strip():
+        errors.append(
+            "wait and user_action_required results cannot declare a path delta"
+        )
     return {
         "ok": not errors,
         "result": normalized,
