@@ -72,6 +72,10 @@ def run_preflight() -> dict[str, Any]:
             config=object(),
             task_staging={
                 "apt_retry_patch_applied": True,
+                "dockerfile_debian_apt_mirror_patch_required": True,
+                "dockerfile_debian_apt_mirror_patch_applied": True,
+                "dockerfile_debian_apt_mirror_host": "mirror.example",
+                "dockerfile_debian_apt_mirror_raw_url_recorded": False,
                 "dockerfile_pip_bootstrap_patch_applied": True,
                 "unrelated": "/private/should-not-project",
             },
@@ -98,8 +102,17 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     assert result["verifier_invoked"] is False
     assert result["patch_hits"] == [
         "apt_retry",
+        "dockerfile_debian_apt_mirror",
         "dockerfile_pip_bootstrap",
     ]
+    assert result["task_staging"] == {
+        "apt_retry_patch_applied": True,
+        "dockerfile_debian_apt_mirror_patch_required": True,
+        "dockerfile_debian_apt_mirror_patch_applied": True,
+        "dockerfile_debian_apt_mirror_host": "mirror.example",
+        "dockerfile_debian_apt_mirror_raw_url_recorded": False,
+        "dockerfile_pip_bootstrap_patch_applied": True,
+    }
     assert FakeRollout.events == ["create", "setup", "start", "cleanup"]
     serialized = json.dumps(result, sort_keys=True)
     assert "/private/" not in serialized
@@ -312,9 +325,10 @@ def test_setup_only_preflight_consumes_compose_producer_typed_cause() -> None:
     assert result["failure_category"] == (
         "skillsbench_docker_compose_apt_repository_failure"
     )
-    assert result["apt_failure_subtype"] == "signature_or_gpg"
+    assert result["apt_failure_subtype"] == "unsigned_repository"
     assert result["terminal_failure_reason_codes"] == [
         "apt_fetch_failed",
+        "apt_unsigned_repository",
         "apt_signature_or_gpg",
     ]
     assert result["compose_typed_cause_boundary_installed"] is True
@@ -423,7 +437,17 @@ def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
         ),
         (
             "apt-get update: GPG error: repository is not signed",
-            "signature_or_gpg",
+            "unsigned_repository",
+            "unknown",
+        ),
+        (
+            "apt-get update: NO_PUBKEY ABC123",
+            "missing_public_key",
+            "unknown",
+        ),
+        (
+            "apt-get update: At least one invalid signature was encountered",
+            "invalid_signature",
             "unknown",
         ),
         (

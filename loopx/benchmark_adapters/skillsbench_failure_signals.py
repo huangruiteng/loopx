@@ -107,6 +107,13 @@ _FAILURE_REASON_PATTERNS = (
     ("http_not_found", r"(?:http[^\n]*\s404\b|404 not found)"),
     ("http_server_error", r"(?:http[^\n]*\s5\d\d\b|5\d\d server error)"),
     ("apt_fetch_failed", r"failed to fetch"),
+    ("apt_no_pubkey", r"\bno_pubkey\b"),
+    (
+        "apt_invalid_signature",
+        r"invalid signature|at least one invalid signature was encountered",
+    ),
+    ("apt_unsigned_repository", r"repository .* is not signed"),
+    ("apt_clearsigned_invalid", r"clearsigned file isn.t valid"),
     (
         "apt_signature_or_gpg",
         r"gpg error|no_pubkey|signatures? couldn.t be verified|"
@@ -178,6 +185,10 @@ _DETERMINISTIC_FAILURE_REASONS = {
 }
 
 _APT_FAILURE_SUBTYPE_REASON_PRIORITY = (
+    ("apt_no_pubkey", "missing_public_key"),
+    ("apt_invalid_signature", "invalid_signature"),
+    ("apt_unsigned_repository", "unsigned_repository"),
+    ("apt_clearsigned_invalid", "clearsigned_invalid"),
     ("apt_signature_or_gpg", "signature_or_gpg"),
     ("apt_hash_mismatch", "hash_or_size_mismatch"),
     ("apt_release_expired", "release_metadata"),

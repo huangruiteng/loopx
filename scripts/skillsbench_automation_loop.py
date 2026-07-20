@@ -5785,6 +5785,9 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_ubuntu_apt_mirror_patch_required",
         "dockerfile_ubuntu_apt_mirror_patch_applied",
         "dockerfile_ubuntu_apt_mirror_raw_url_recorded",
+        "dockerfile_debian_apt_mirror_patch_required",
+        "dockerfile_debian_apt_mirror_patch_applied",
+        "dockerfile_debian_apt_mirror_raw_url_recorded",
         "dockerfile_pip_install_risk_detected",
         "dockerfile_pip_bootstrap_patch_required",
         "dockerfile_pip_bootstrap_patch_applied",
@@ -5855,6 +5858,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         "dockerfile_apache_archive_mirror_host",
         "dockerfile_maven_mirror_host",
         "dockerfile_ubuntu_apt_mirror_host",
+        "dockerfile_debian_apt_mirror_host",
     ):
         raw = value.get(field)
         if isinstance(raw, str) and raw:
@@ -5943,6 +5947,15 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             else ""
         ),
         "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
+        "dockerfile_debian_apt_mirror_patch_applied": (
+            dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN in dockerfile_text
+        ),
+        "dockerfile_debian_apt_mirror_host": (
+            dockerfile_runtime.DEFAULT_DEBIAN_APT_MIRROR_HOST
+            if dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN in dockerfile_text
+            else ""
+        ),
+        "dockerfile_debian_apt_mirror_raw_url_recorded": False,
         "dockerfile_pip_bootstrap_patch_applied": (
             DOCKER_PIP_BOOTSTRAP_BEGIN in dockerfile_text
         ),
@@ -7932,6 +7945,10 @@ def stage_task_for_sandbox(
         "dockerfile_ubuntu_apt_mirror_patch_applied": False,
         "dockerfile_ubuntu_apt_mirror_host": "",
         "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
+        "dockerfile_debian_apt_mirror_patch_required": False,
+        "dockerfile_debian_apt_mirror_patch_applied": False,
+        "dockerfile_debian_apt_mirror_host": "",
+        "dockerfile_debian_apt_mirror_raw_url_recorded": False,
         "dockerfile_pip_install_risk_detected": False,
         "dockerfile_pip_bootstrap_patch_required": False,
         "dockerfile_pip_bootstrap_patch_applied": False,
@@ -8013,6 +8030,11 @@ def stage_task_for_sandbox(
             task_path / "environment" / "Dockerfile"
         )
     )
+    needs_debian_apt_mirror_patch = (
+        dockerfile_runtime.needs_debian_apt_mirror_patch(
+            task_path / "environment" / "Dockerfile"
+        )
+    )
     needs_pip_bootstrap_patch = dockerfile_needs_pip_bootstrap_patch(
         task_path / "environment" / "Dockerfile"
     )
@@ -8080,6 +8102,13 @@ def stage_task_for_sandbox(
     if needs_ubuntu_apt_mirror_patch:
         metadata["dockerfile_ubuntu_apt_mirror_host"] = (
             dockerfile_runtime.DEFAULT_UBUNTU_APT_MIRROR_HOST
+        )
+    metadata["dockerfile_debian_apt_mirror_patch_required"] = (
+        needs_debian_apt_mirror_patch
+    )
+    if needs_debian_apt_mirror_patch:
+        metadata["dockerfile_debian_apt_mirror_host"] = (
+            dockerfile_runtime.DEFAULT_DEBIAN_APT_MIRROR_HOST
         )
     metadata["dockerfile_pip_install_risk_detected"] = needs_pip_bootstrap_patch
     metadata["dockerfile_pip_bootstrap_patch_required"] = needs_pip_bootstrap_patch
@@ -8173,6 +8202,7 @@ def stage_task_for_sandbox(
         and not needs_resource_cap
         and not needs_apt_retry_patch
         and not needs_ubuntu_apt_mirror_patch
+        and not needs_debian_apt_mirror_patch
         and not needs_pip_bootstrap_patch
         and not needs_venv_pip_invocation_patch
         and not needs_gcr_mirror_patch
@@ -8240,6 +8270,9 @@ def stage_task_for_sandbox(
     ubuntu_apt_mirror_patched = dockerfile_runtime.patch_ubuntu_apt_mirror(
         staged_path / "environment" / "Dockerfile"
     )
+    debian_apt_mirror_patched = dockerfile_runtime.patch_debian_apt_mirror(
+        staged_path / "environment" / "Dockerfile"
+    )
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile"
     )
@@ -8305,6 +8338,15 @@ def stage_task_for_sandbox(
                 else ""
             ),
             "dockerfile_ubuntu_apt_mirror_raw_url_recorded": False,
+            "dockerfile_debian_apt_mirror_patch_applied": (
+                debian_apt_mirror_patched
+            ),
+            "dockerfile_debian_apt_mirror_host": (
+                dockerfile_runtime.DEFAULT_DEBIAN_APT_MIRROR_HOST
+                if debian_apt_mirror_patched
+                else ""
+            ),
+            "dockerfile_debian_apt_mirror_raw_url_recorded": False,
             "dockerfile_pip_bootstrap_patch_applied": pip_bootstrap_patched,
             "dockerfile_venv_pip_invocation_patch_applied": (
                 venv_pip_invocation_patched

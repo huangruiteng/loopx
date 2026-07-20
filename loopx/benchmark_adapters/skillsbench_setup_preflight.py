@@ -13,6 +13,55 @@ from .skillsbench_failure_signals import (
 SCHEMA_VERSION = "skillsbench_setup_only_public_preflight_v0"
 COMPOSE_TYPED_CAUSE_SCHEMA_VERSION = "skillsbench_compose_typed_cause_v0"
 _PATCH_SUFFIX = "_patch_applied"
+_PUBLIC_TASK_STAGING_BOOL_FIELDS = (
+    "staged",
+    "apt_retry_patch_applied",
+    "dockerfile_ubuntu_apt_mirror_patch_required",
+    "dockerfile_ubuntu_apt_mirror_patch_applied",
+    "dockerfile_ubuntu_apt_mirror_raw_url_recorded",
+    "dockerfile_debian_apt_mirror_patch_required",
+    "dockerfile_debian_apt_mirror_patch_applied",
+    "dockerfile_debian_apt_mirror_raw_url_recorded",
+    "dockerfile_pip_bootstrap_patch_required",
+    "dockerfile_pip_bootstrap_patch_applied",
+    "dockerfile_venv_pip_invocation_patch_required",
+    "dockerfile_venv_pip_invocation_patch_applied",
+    "dockerfile_gcr_mirror_patch_required",
+    "dockerfile_gcr_mirror_patch_applied",
+    "dockerfile_gcr_mirror_raw_prefix_recorded",
+    "dockerfile_wget_gpg_key_retry_patch_required",
+    "dockerfile_wget_gpg_key_retry_patch_applied",
+    "dockerfile_network_download_retry_patch_required",
+    "dockerfile_network_download_retry_patch_applied",
+    "dockerfile_uv_bootstrap_mirror_patch_required",
+    "dockerfile_uv_bootstrap_mirror_patch_applied",
+    "dockerfile_apache_archive_mirror_patch_required",
+    "dockerfile_apache_archive_mirror_patch_applied",
+    "dockerfile_apache_archive_raw_url_recorded",
+    "dockerfile_maven_mirror_patch_required",
+    "dockerfile_maven_mirror_patch_applied",
+    "dockerfile_maven_mirror_raw_url_recorded",
+    "benchmark_egress_proxy_dockerfile_env_patch_required",
+    "benchmark_egress_proxy_dockerfile_env_patch_applied",
+    "benchmark_egress_proxy_dockerfile_env_raw_proxy_recorded",
+    "verifier_uv_bootstrap_mirror_patch_required",
+    "verifier_uv_bootstrap_mirror_patch_applied",
+    "verifier_dependency_cache_required",
+    "verifier_dependency_cache_env_patch_applied",
+    "verifier_dependency_cache_raw_path_recorded",
+)
+_PUBLIC_TASK_STAGING_STRING_FIELDS = (
+    "schema_version",
+    "dockerfile_ubuntu_apt_mirror_host",
+    "dockerfile_debian_apt_mirror_host",
+    "dockerfile_pip_index_host",
+    "dockerfile_uv_bootstrap_version",
+    "dockerfile_uv_bootstrap_mirror_host",
+    "dockerfile_apache_archive_mirror_host",
+    "dockerfile_maven_mirror_host",
+    "verifier_uv_bootstrap_version",
+    "verifier_uv_bootstrap_mirror_host",
+)
 
 
 class SkillsBenchComposeCommandFailure(RuntimeError):
@@ -78,6 +127,20 @@ def _patch_hits(task_staging: Mapping[str, Any] | None) -> list[str]:
     )
 
 
+def _public_task_staging(task_staging: Mapping[str, Any] | None) -> dict[str, Any]:
+    staging = task_staging or {}
+    public: dict[str, Any] = {}
+    for field in _PUBLIC_TASK_STAGING_STRING_FIELDS:
+        value = staging.get(field)
+        if isinstance(value, str) and value:
+            public[field] = value[:180]
+    for field in _PUBLIC_TASK_STAGING_BOOL_FIELDS:
+        value = staging.get(field)
+        if isinstance(value, bool):
+            public[field] = value
+    return public
+
+
 def _exit_category(exc: Exception, matched_patterns: set[str]) -> str:
     if (
         isinstance(exc, (asyncio.TimeoutError, TimeoutError))
@@ -135,6 +198,7 @@ def _base_result(
         "compose_typed_cause_boundary_installed": False,
         "compose_typed_cause_boundary_restored": False,
         "patch_hits": _patch_hits(task_staging),
+        "task_staging": _public_task_staging(task_staging),
         "apt_setup_risk_detected": setup.get("apt_setup_risk_detected") is True,
         "dockerfile_pip_install_risk_detected": (
             setup.get("dockerfile_pip_install_risk_detected") is True
