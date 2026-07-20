@@ -8,6 +8,7 @@ from ..runtime.public_safety import (
     compact_text as _compact_text,
     public_safe_compact_text as _runtime_public_safe_compact_text,
 )
+from .autonomous_replan_obligation import run_history_agent_id
 
 
 DEFAULT_MONITOR_SIGNAL_WAITING_ON = "monitor_signal"
@@ -302,6 +303,31 @@ def attach_active_state_project_asset_fields(
         else None
     )
     if replan_obligation is None and autonomous_replan_obligation_from_runs is not None:
+        agent_ids = sorted(
+            {
+                agent_id
+                for run in latest_runs or []
+                if isinstance(run, dict)
+                if (agent_id := run_history_agent_id(run)) is not None
+            }
+        )
+        obligations_by_agent = {
+            agent_id: obligation
+            for agent_id in agent_ids
+            if (
+                obligation := autonomous_replan_obligation_from_runs(
+                    latest_runs or [],
+                    # The shared todo summary is goal-scoped here. Quota derives
+                    # todo-based replans later from its agent-filtered summary.
+                    agent_todos=None,
+                    agent_id=agent_id,
+                )
+            )
+        }
+        if obligations_by_agent:
+            item["autonomous_replan_obligations_by_agent"] = obligations_by_agent
+            project_asset["autonomous_replan_obligations_by_agent"] = obligations_by_agent
+            attached["autonomous_replan_obligations_by_agent"] = obligations_by_agent
         replan_obligation = autonomous_replan_obligation_from_runs(
             latest_runs or [],
             agent_todos=item.get("agent_todos") if isinstance(item.get("agent_todos"), dict) else None,

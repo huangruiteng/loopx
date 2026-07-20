@@ -3799,10 +3799,12 @@ def autonomous_replan_obligation_from_runs(
     latest_runs: list[dict[str, Any]] | None,
     *,
     agent_todos: dict[str, Any] | None,
+    agent_id: str | None = None,
 ) -> dict[str, Any] | None:
     return _autonomous_replan_obligation_from_runs_read_model(
         latest_runs,
         agent_todos=agent_todos,
+        agent_id=agent_id,
         autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
         neutral_classifications=AUTONOMOUS_RUN_HISTORY_NEUTRAL_CLASSIFICATIONS,
         progress_outcomes=AUTONOMOUS_RUN_HISTORY_PROGRESS_OUTCOMES,
