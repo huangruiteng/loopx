@@ -58,7 +58,7 @@ def _single_public_agent_id(items: list[dict[str, Any]]) -> str | None:
     return next(iter(agent_ids)) if len(agent_ids) == 1 else None
 
 
-def _run_history_agent_id(run: dict[str, Any]) -> str | None:
+def run_history_agent_id(run: dict[str, Any]) -> str | None:
     agent_id = str(run.get("agent_id") or "").strip()
     if agent_id:
         return agent_id
@@ -72,27 +72,30 @@ def _latest_agent_run_history(
     latest_runs: list[dict[str, Any]] | None,
     *,
     neutral_classifications: set[str],
+    agent_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Keep the newest attributable agent lane while preserving goal-level runs."""
 
-    accountable_agent_id = next(
-        (
-            _run_history_agent_id(run)
-            for run in latest_runs or []
-            if isinstance(run, dict)
-            and str(run.get("classification") or "").strip()
-            not in neutral_classifications
-            and _run_history_agent_id(run)
-        ),
-        None,
-    )
+    accountable_agent_id = str(agent_id or "").strip() or None
+    if accountable_agent_id is None:
+        accountable_agent_id = next(
+            (
+                run_history_agent_id(run)
+                for run in latest_runs or []
+                if isinstance(run, dict)
+                and str(run.get("classification") or "").strip()
+                not in neutral_classifications
+                and run_history_agent_id(run)
+            ),
+            None,
+        )
     if not accountable_agent_id:
         return [run for run in latest_runs or [] if isinstance(run, dict)]
     return [
         run
         for run in latest_runs or []
         if isinstance(run, dict)
-        and _run_history_agent_id(run) in {None, accountable_agent_id}
+        and run_history_agent_id(run) in {None, accountable_agent_id}
     ]
 
 
@@ -552,6 +555,7 @@ def autonomous_replan_obligation_from_runs(
     latest_runs: list[dict[str, Any]] | None,
     *,
     agent_todos: dict[str, Any] | None,
+    agent_id: str | None = None,
     autonomous_replan_ack_recorded: AckRecorded,
     neutral_classifications: set[str],
     progress_outcomes: set[Any],
@@ -567,6 +571,7 @@ def autonomous_replan_obligation_from_runs(
     scoped_latest_runs = _latest_agent_run_history(
         latest_runs,
         neutral_classifications=neutral_classifications,
+        agent_id=agent_id,
     )
 
     def periodic_review() -> dict[str, Any] | None:
