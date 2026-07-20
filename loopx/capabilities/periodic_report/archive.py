@@ -1,3 +1,10 @@
+"""Compatibility archive packet for existing OpenViking-style resource sinks.
+
+New integrations should declare a provider-neutral archive sink binding and
+keep provider-specific transport in an extension. These helpers remain public
+so existing profiles can migrate without changing their receipt truth.
+"""
+
 from __future__ import annotations
 
 import hashlib
