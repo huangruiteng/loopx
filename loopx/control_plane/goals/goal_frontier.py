@@ -892,6 +892,20 @@ def _open_todo_count(summary: dict[str, Any] | None) -> int:
     return safe_non_negative_int(summary.get("open_count"))
 
 
+def _blocking_user_open_count(summary: dict[str, Any] | None) -> int:
+    if not isinstance(summary, dict):
+        return 0
+    gate_items = summary.get("gate_open_items")
+    if isinstance(gate_items, list):
+        return sum(
+            1
+            for item in gate_items
+            if isinstance(item, dict) and _todo_item_is_actionable_open(item)
+        )
+    # Legacy or partial summaries without typed gate projection fail closed.
+    return _open_todo_count(summary)
+
+
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
     if item.get("done") is True:
         return False
@@ -1274,7 +1288,6 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     monitor/vision semantics in its scheduler path.
     """
 
-    user_counts = _summary_task_counts(user_todo_summary)
     agent_counts = _summary_task_counts(agent_todo_summary)
     frontier_counts = _frontier_advancement_counts(
         agent_todo_summary=agent_todo_summary,
@@ -1340,7 +1353,7 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 agent_id=agent_id,
             ),
             successor_vision_required=successor_vision_required,
-            user_open_count=user_counts.get("open", 0),
+            blocking_user_open_count=_blocking_user_open_count(user_todo_summary),
             succession_gap_count=len(succession_gap_items),
             agent_advancement_count=agent_counts.get("advancement", 0),
             total_frontier_advancement=total_frontier_advancement,

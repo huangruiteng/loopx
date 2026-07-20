@@ -34,7 +34,7 @@ from loopx.control_plane.goals.goal_frontier_replan_rules import (
             False,
         ),
         (
-            {"user_open_count": 1, "acceptance_gap_count": 1},
+            {"blocking_user_open_count": 1, "acceptance_gap_count": 1},
             GoalFrontierReplanRule.OPEN_USER_TODO,
             False,
         ),

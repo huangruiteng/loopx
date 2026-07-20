@@ -35,7 +35,7 @@ class GoalFrontierReplanFacts:
     blocking_handoff_gate_count: int = 0
     ready_deferred_successor_count: int = 0
     successor_vision_required: bool = False
-    user_open_count: int = 0
+    blocking_user_open_count: int = 0
     succession_gap_count: int = 0
     agent_advancement_count: int = 0
     total_frontier_advancement: int = 0
@@ -93,9 +93,9 @@ def select_goal_frontier_replan_rule(
         ),
         (
             GoalFrontierReplanRule.OPEN_USER_TODO,
-            facts.user_open_count > 0,
+            facts.blocking_user_open_count > 0,
             False,
-            "open user work owns the frontier",
+            "open blocking user work owns the frontier",
         ),
         (
             GoalFrontierReplanRule.TODO_SUCCESSION_GAP,
