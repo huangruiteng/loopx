@@ -11,6 +11,10 @@ from typing import Any
 
 from .core import build_periodic_report_run
 from .profile import build_periodic_report_activation
+from .presets import (
+    PERIODIC_REPORT_PROFILE_PRESET_ALIASES,
+    build_periodic_report_preset_activation,
+)
 from .triggers import build_periodic_report_trigger_decision
 
 
@@ -63,13 +67,18 @@ def register_periodic_report_commands(
     )
     inspect_profile = commands.add_parser(
         "inspect-profile",
-        help="Validate one default-off project profile without provider effects.",
+        help="Inspect a built-in preset or project profile without provider effects.",
     )
     add_subcommand_format(inspect_profile)
-    inspect_profile.add_argument(
+    profile_source = inspect_profile.add_mutually_exclusive_group(required=True)
+    profile_source.add_argument(
         "--profile-json",
-        required=True,
         help="Path to periodic_report_profile_v0 JSON; use '-' for stdin.",
+    )
+    profile_source.add_argument(
+        "--preset",
+        choices=sorted(PERIODIC_REPORT_PROFILE_PRESET_ALIASES),
+        help="Built-in profile preset or short alias, such as 'weekly'.",
     )
     archive = commands.add_parser(
         "archive-openviking",
@@ -236,8 +245,12 @@ def handle_periodic_report_command(
                 args,
             )
         elif args.periodic_report_command == "inspect-profile":
-            payload = build_periodic_report_activation(
-                _load_json_object(args.profile_json)
+            payload = (
+                build_periodic_report_preset_activation(args.preset)
+                if args.preset
+                else build_periodic_report_activation(
+                    _load_json_object(args.profile_json)
+                )
             )
         elif args.periodic_report_command == "evaluate-trigger":
             request = _load_json_object(args.request_json)

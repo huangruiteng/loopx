@@ -540,16 +540,21 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
         "default_enabled": False,
         "real_world_anchor": "scheduled and milestone project reports with verified archive and delivery",
         "user_value": (
-            "Give projects one deterministic trigger, report run, receipt, "
-            "partial-state, and retry contract without hard-coding a domain, "
-            "provider, cadence, or destination."
+            "Generate a concise weekly project report from the active session "
+            "with one built-in portable profile, while retaining deterministic "
+            "trigger, receipt, partial-state, and retry contracts for custom runs."
         ),
-        "entry_command": "loopx periodic-report inspect-profile --profile-json <profile.json> --format json",
+        "entry_command": "loopx periodic-report inspect-profile --preset weekly --format json",
         "commands": [
             {
+                "command": "loopx periodic-report inspect-profile --preset weekly --format json",
+                "purpose": "Resolve the built-in domain-neutral weekly profile for an explicitly requested in-session report.",
+                "write_boundary": "local preset inspection only; creates no schedule, persists no activation, declares no sink, and performs no provider lookup or write",
+            },
+            {
                 "command": "loopx periodic-report inspect-profile --profile-json <profile.json> --format json",
-                "purpose": "Validate explicit project activation plus trigger, source, renderer, and extension sink bindings.",
-                "write_boundary": "local profile inspection only; disabled by default and performs no provider lookup, schedule mutation, or write",
+                "purpose": "Validate custom project trigger, source, renderer, schedule, and extension sink bindings.",
+                "write_boundary": "local profile inspection only; performs no provider lookup, schedule mutation, or write",
             },
             {
                 "command": "loopx periodic-report evaluate-trigger --request-json <request.json> --format json",
@@ -576,6 +581,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             {
                 "schema_version": "periodic_report_activation_v0",
                 "module": "loopx.capabilities.periodic_report.profile",
+                "doc": "docs/reference/protocols/periodic-report-v0.md",
+            },
+            {
+                "schema_version": "periodic_report_project_progress_projection_v0",
+                "module": "loopx.capabilities.periodic_report.project_progress",
                 "doc": "docs/reference/protocols/periodic-report-v0.md",
             },
             {
@@ -632,7 +642,8 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "docs/reference/protocols/periodic-report-v0.md",
         ],
         "boundaries": [
-            "The built-in capability is installed with LoopX but disabled for every project until a periodic_report_profile_v0 explicitly sets enabled=true.",
+            "An explicit request in an active project session may select the built-in weekly-progress profile for one provider-free local generation; it persists no project activation and creates no schedule or sink.",
+            "Custom, unattended, or externally delivered reports remain disabled until a project profile and host/runtime authority explicitly enable those separate paths.",
             "The core owns material trigger classification, coalescing, cooldown/deduplication, period/profile binding, deterministic identity, receipts, run state, and retry projection.",
             "Profiles own schedule calculation, enabled trigger kinds, minimum interval, timezone, sections, audience, and project policy.",
             "Adapters own domain source collection; renderers and sinks own all provider effects and verified readback.",
@@ -642,8 +653,9 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
             "The optional openviking-periodic-report extension implements only the archive sink; it rejects activation unless the periodic-report profile is enabled, its sink binding matches, and openviking_context_write is observed.",
         ],
         "next_real_step": (
-            "Prove one project-owned profile and exact delivery/archive retry readback "
-            "without adding project semantics or schedule policy to the core."
+            "Exercise the built-in weekly profile in a normal project session, then "
+            "prove one separately configured scheduled delivery without widening its "
+            "authority into the portable path."
         ),
     },
     {
