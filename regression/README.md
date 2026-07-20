@@ -11,8 +11,10 @@ run deliberately during release or major control-plane changes.
 
 Run all default contract-only regressions:
 
+Use the same Python 3.11+ runtime selected for LoopX:
+
 ```bash
-python3 regression/run-regressions.py
+"${LOOPX_PYTHON:-python3}" regression/run-regressions.py
 ```
 
 The default suite must stay public-safe and dependency-light: no real Codex CLI,
@@ -35,8 +37,8 @@ python3 regression/blocked-priority-fallback-contract.py
 
 Runs a contract-only projection regression for the human-in-the-loop pattern
 where a higher-priority todo is blocked but a lower-priority fallback is safe.
-It checks that `quota should-run` keeps the blocked item user-visible with
-`notify=NOTIFY`, does not require a new user answer, and still selects the safe
+It checks that `quota should-run` keeps the blocked item structurally visible
+without inventing a user action or notification, and still selects the safe
 fallback as the agent action in the interaction contract and protocol packet.
 
 ```bash
@@ -101,9 +103,10 @@ and a P1 advancement todo is executable, `quota should-run` selects the P1
 backlog item as `recommended_action`, interaction primary action, and protocol
 packet action while keeping the monitor as context. It also checks that the
 payload exposes a state-action projection warning when the visible
-`Next Action` still points at the stale monitor action, and that
-`refresh-state` derives its default recommended action from the first open
-Agent Todo rather than the stale `Next Action`.
+`Next Action` still points at the stale monitor action. The regression keeps
+`refresh-state` ownership separate: without an explicit replacement it
+preserves the authored `Next Action`, while quota remains authoritative for
+the executable action selected in the current turn.
 
 ```bash
 python3 regression/automation-loop-heartbeat-poll-contract.py
@@ -115,6 +118,15 @@ delivery only spends after validated state writeback, repeated monitor polls
 stay quiet and do not spend, compact external-evidence observation remains
 bounded, and projection warnings route stale `Next Action` text behind the
 selected executable todo.
+
+```bash
+python3 regression/interaction-contract-state-machine.py
+```
+
+Runs the canonical interaction-contract state-machine smoke through the
+default regression suite. It keeps user notification, agent delivery, quiet
+monitor, autonomous replan, and quota-spend channels aligned without copying
+the fixture into a second test.
 
 ```bash
 python3 regression/external-evidence-observation-real-codex.py --real-codex

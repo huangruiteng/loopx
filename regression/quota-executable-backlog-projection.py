@@ -168,7 +168,7 @@ def assert_executable_backlog_projection(guard: dict[str, Any]) -> None:
     assert first_open[1]["task_class"] == "advancement_task", guard
 
 
-def assert_refresh_state_prefers_open_agent_todo(
+def assert_refresh_state_preserves_explicit_next_action(
     *,
     registry: Path,
     runtime: Path,
@@ -183,8 +183,8 @@ def assert_refresh_state_prefers_open_agent_todo(
         registry=registry,
         runtime=runtime,
     )
-    assert refresh["recommended_action"] == EXECUTABLE_TODO, refresh
-    assert refresh["recommended_action"] != POLL_ACTION, refresh
+    assert refresh["recommended_action"] == POLL_ACTION, refresh
+    assert refresh["recommended_action_source"] == "active_state_next_action", refresh
 
 
 def assert_latest_run_action_does_not_create_false_projection_gap() -> None:
@@ -221,7 +221,7 @@ def main() -> int:
             runtime=runtime,
         )
         assert_executable_backlog_projection(guard)
-        assert_refresh_state_prefers_open_agent_todo(
+        assert_refresh_state_preserves_explicit_next_action(
             registry=registry,
             runtime=runtime,
         )

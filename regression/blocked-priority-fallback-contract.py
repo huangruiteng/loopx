@@ -105,10 +105,10 @@ def main() -> int:
     guard = build_quota_should_run(build_status_payload(), goal_id=GOAL_ID)
     assert guard["should_run"] is True, guard
     assert guard["recommended_action"] == FALLBACK_TODO, guard
-    assert guard["heartbeat_recommendation"]["notify"] == "NOTIFY", guard
+    assert guard["heartbeat_recommendation"]["notify"] == "DONT_NOTIFY", guard
 
     fallback = guard["blocked_priority_fallback"]
-    assert fallback["notify_user"] is True, fallback
+    assert fallback["notify_user"] is False, fallback
     assert fallback["requires_user_action"] is False, fallback
     assert fallback["blocked_items"][0]["text"] == BLOCKED_CORE_TODO, fallback
     assert fallback["selected_executable"]["text"] == FALLBACK_TODO, fallback
@@ -116,7 +116,7 @@ def main() -> int:
     interaction = guard["interaction_contract"]
     assert interaction["mode"] == "bounded_delivery", interaction
     assert interaction["user_channel"]["action_required"] is False, interaction
-    assert interaction["user_channel"]["notify"] == "NOTIFY", interaction
+    assert interaction["user_channel"]["notify"] == "DONT_NOTIFY", interaction
     assert interaction["agent_channel"]["must_attempt"] is True, interaction
     assert interaction["agent_channel"]["delivery_allowed"] is True, interaction
     primary_action = interaction["agent_channel"]["primary_action"]
@@ -130,7 +130,7 @@ def main() -> int:
     assert "agent_action=[P1] Continue one safe benchmark attribution cleanup" in packet_summary, packet_summary
 
     markdown = render_quota_should_run_markdown(guard)
-    assert "blocked_priority_fallback: notify_user=True" in markdown, markdown
+    assert "blocked_priority_fallback: notify_user=False" in markdown, markdown
     assert f"blocked_priority_item[1]: {BLOCKED_CORE_TODO}" in markdown, markdown
     assert f"blocked_priority_selected: {FALLBACK_TODO}" in markdown, markdown
     print("blocked-priority-fallback-contract-regression ok")

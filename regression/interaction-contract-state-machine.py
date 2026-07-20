@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Regression wrapper for automation-loop heartbeat poll contracts.
-
-The durable behavior lives in `examples/control_plane/heartbeat-quota-flow-smoke.py`.
-This wrapper makes the default regression suite cover it without duplicating
-fixtures or pulling in real Codex/Docker/model execution.
-"""
+"""Regression wrapper for the interaction contract state machine."""
 
 from __future__ import annotations
 
@@ -14,13 +9,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE_PATH = (
-    REPO_ROOT / "examples" / "control_plane" / "heartbeat-quota-flow-smoke.py"
+    REPO_ROOT
+    / "examples"
+    / "control_plane"
+    / "interaction-contract-state-machine-smoke.py"
 )
 
 
 def main() -> int:
     spec = importlib.util.spec_from_file_location(
-        "heartbeat_quota_flow_smoke",
+        "interaction_contract_state_machine_smoke",
         SMOKE_PATH,
     )
     if spec is None or spec.loader is None:

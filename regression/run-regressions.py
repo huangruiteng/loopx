@@ -48,6 +48,10 @@ CONTRACT_ONLY_REGRESSIONS = (
         description="automation heartbeat polls stay bounded, compact, and spend only after writeback",
     ),
     Regression(
+        path="regression/interaction-contract-state-machine.py",
+        description="interaction modes keep user, agent, and spend channels consistent",
+    ),
+    Regression(
         path="regression/external-evidence-observation-real-codex.py",
         description="external evidence waits require observation; launched advancement work stays bounded delivery",
     ),
@@ -63,6 +67,15 @@ CONTRACT_ONLY_REGRESSIONS = (
 
 
 def main() -> int:
+    if sys.version_info < (3, 11):
+        print(
+            "regression suite requires Python 3.11+; "
+            f"selected Python is {sys.version_info.major}.{sys.version_info.minor}. "
+            "Run with the same LOOPX_PYTHON used to install LoopX.",
+            file=sys.stderr,
+        )
+        return 2
+
     failures: list[str] = []
     for regression in CONTRACT_ONLY_REGRESSIONS:
         script = REPO_ROOT / regression.path
