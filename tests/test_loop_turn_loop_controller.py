@@ -163,6 +163,18 @@ def test_user_action_from_decision_wins_even_with_receipt() -> None:
     _assert_markers(payload, "user_action_required")
 
 
+def test_validated_completion_wins_over_decision_user_action() -> None:
+    # Precedence: a met terminal postcondition is stronger than a decision-only
+    # user action; a completed loop must not stay non-terminal behind a stale
+    # gate projection.
+    payload = decide_loop_disposition(
+        turn_receipt=_receipt("validated_completion"),
+        quota_decision=_envelope(should_run=True, user_action_required=True),
+    )
+    _assert_markers(payload, "terminal")
+    assert "validated completion" in str(payload["reason"])
+
+
 def test_wait_receipt_waits() -> None:
     payload = decide_loop_disposition(
         turn_receipt=_receipt("wait"),
