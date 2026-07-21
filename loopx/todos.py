@@ -20,6 +20,7 @@ from .control_plane.todos.contract import (
     TODO_STATUS_DEFERRED,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_USER_GATE,
     build_todo_id,
     format_todo_metadata_line,
@@ -96,6 +97,20 @@ from .control_plane.todos.write_policy import (
 
 
 ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE = max(0, MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE - 2)
+
+
+def resolve_next_user_task_class(
+    next_user_todo: str | None,
+    next_user_task_class: str | None,
+) -> str:
+    if next_user_task_class and not next_user_todo:
+        raise ValueError("--next-user-task-class requires --next-user-todo")
+    effective = next_user_task_class or TODO_TASK_CLASS_USER_GATE
+    if effective not in {TODO_TASK_CLASS_USER_GATE, TODO_TASK_CLASS_USER_ACTION}:
+        raise ValueError(
+            "next_user_task_class must be one of: user_action, user_gate"
+        )
+    return effective
 
 
 def require_registered_todo_excluded_agents(
@@ -1381,6 +1396,7 @@ def complete_goal_todo(
     clear_claim: bool = False,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
+    next_user_task_class: str | None = None,
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
@@ -1398,6 +1414,10 @@ def complete_goal_todo(
         raise ValueError("--next-task-repository requires --next-agent-todo")
     if next_required_capabilities and not next_agent_todo:
         raise ValueError("--next-required-capability requires --next-agent-todo")
+    effective_next_user_task_class = resolve_next_user_task_class(
+        next_user_todo,
+        next_user_task_class,
+    )
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1529,6 +1549,7 @@ def complete_goal_todo(
                     clear_claim=clear_claim,
                     next_agent_todo=next_agent_todo,
                     next_user_todo=next_user_todo,
+                    next_user_task_class=effective_next_user_task_class,
                     next_claimed_by=effective_next_claimed_by,
                     next_task_class=next_task_class,
                     next_action_kind=next_action_kind,
@@ -1574,13 +1595,13 @@ def complete_goal_todo(
             if next_agent_todo
             else None
         )
-        next_user_blocks_agent = None
+        next_user_bound_agent = None
         if next_user_todo and len(registered_agents) > 1:
-            next_user_blocks_agent = effective_claimed_by
-            if not next_user_blocks_agent:
+            next_user_bound_agent = effective_claimed_by
+            if not next_user_bound_agent:
                 raise ValueError(
                     "multi-agent --next-user-todo requires a completing --claimed-by "
-                    "agent so the user_gate can be scoped"
+                    "agent so the user todo can be bound"
                 )
         next_results: list[dict[str, Any]] = []
         if next_agent_todo:
@@ -1612,9 +1633,18 @@ def complete_goal_todo(
                         next_user_todo,
                         str(update_result.get("todo") or ""),
                     ),
-                    task_class="user_gate",
-                    bound_agent=next_user_blocks_agent,
-                    blocks_agent=next_user_blocks_agent,
+                    task_class=effective_next_user_task_class,
+                    action_kind=(
+                        "gate"
+                        if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                        else None
+                    ),
+                    bound_agent=next_user_bound_agent,
+                    blocks_agent=(
+                        next_user_bound_agent
+                        if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                        else None
+                    ),
                     updated_at=updated_at,
                 )
             )
@@ -1673,6 +1703,7 @@ def supersede_goal_todo(
     reason: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
+    next_user_task_class: str | None = None,
     next_claimed_by: str | None = None,
     next_task_class: str | None = None,
     next_action_kind: str | None = None,
@@ -1689,6 +1720,10 @@ def supersede_goal_todo(
         raise ValueError("--next-task-repository requires --next-agent-todo")
     if next_required_capabilities and not next_agent_todo:
         raise ValueError("--next-required-capability requires --next-agent-todo")
+    effective_next_user_task_class = resolve_next_user_task_class(
+        next_user_todo,
+        next_user_task_class,
+    )
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1762,19 +1797,20 @@ def supersede_goal_todo(
             )
         next_unblocks_todo_id = normalize_todo_id(update_result.get("unblocks_todo_id"))
         registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-        next_user_blocks_agent = normalize_todo_blocks_agent(
-            update_result.get("blocks_agent")
+        next_user_bound_agent = (
+            normalize_todo_bound_agent(update_result.get("bound_agent"))
+            or normalize_todo_blocks_agent(update_result.get("blocks_agent"))
         )
-        if next_user_todo and len(registered_agents) > 1 and not next_user_blocks_agent:
-            next_user_blocks_agent = (
+        if next_user_todo and len(registered_agents) > 1 and not next_user_bound_agent:
+            next_user_bound_agent = (
                 normalize_todo_claimed_by(update_result.get("claimed_by"))
                 or effective_next_claimed_by
             )
-            if not next_user_blocks_agent:
+            if not next_user_bound_agent:
                 raise ValueError(
                     "multi-agent supersede --next-user-todo requires inherited "
                     "blocks_agent, current claimed_by, or next_claimed_by "
-                    "so the user_gate can be scoped"
+                    "so the user todo can be bound"
                 )
         next_results: list[dict[str, Any]] = []
         if next_agent_todo:
@@ -1806,9 +1842,18 @@ def supersede_goal_todo(
                         next_user_todo,
                         str(update_result.get("todo") or ""),
                     ),
-                    task_class="user_gate",
-                    bound_agent=next_user_blocks_agent,
-                    blocks_agent=next_user_blocks_agent,
+                    task_class=effective_next_user_task_class,
+                    action_kind=(
+                        "gate"
+                        if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                        else None
+                    ),
+                    bound_agent=next_user_bound_agent,
+                    blocks_agent=(
+                        next_user_bound_agent
+                        if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                        else None
+                    ),
                     updated_at=updated_at,
                 )
             )

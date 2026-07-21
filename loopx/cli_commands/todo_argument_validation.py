@@ -46,6 +46,7 @@ TODO_OPTION_FIELDS = (
     ("--no-follow-up", "no_follow_up"),
     ("--next-agent-todo", "next_agent_todo"),
     ("--next-user-todo", "next_user_todo"),
+    ("--next-user-task-class", "next_user_task_class"),
     ("--next-claimed-by", "next_claimed_by"),
     ("--next-task-class", "next_task_class"),
     ("--next-action-kind", "next_action_kind"),
@@ -162,6 +163,8 @@ def validate_capability_gap_options(args: argparse.Namespace) -> None:
 
 
 def validate_successor_routing_options(args: argparse.Namespace) -> None:
+    if args.next_user_task_class and not args.next_user_todo:
+        raise ValueError("--next-user-task-class requires --next-user-todo")
     if args.next_continuation_policy and not args.next_agent_todo:
         raise ValueError("--next-continuation-policy requires --next-agent-todo")
     if args.next_task_repository and not args.next_agent_todo:

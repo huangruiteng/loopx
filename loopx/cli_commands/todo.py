@@ -339,6 +339,15 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
     todo_parser.add_argument("--next-agent-todo", help="For complete/supersede, atomically add or update the next agent todo.")
     todo_parser.add_argument("--next-user-todo", help="For complete/supersede, atomically add or update the next user todo.")
     todo_parser.add_argument(
+        "--next-user-task-class",
+        choices=["user_gate", "user_action"],
+        help=(
+            "Task class for --next-user-todo. Defaults to user_gate for backward "
+            "compatibility; use user_action for a visible reminder that must not "
+            "block the bound agent lane."
+        ),
+    )
+    todo_parser.add_argument(
         "--next-claimed-by",
         help=(
             "For complete/supersede with --next-agent-todo, soft-claim the successor "
@@ -595,6 +604,7 @@ def handle_todo_command(
                     ("--no-follow-up", args.no_follow_up),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
+                    ("--next-user-task-class", args.next_user_task_class),
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
@@ -786,6 +796,7 @@ def handle_todo_command(
                 clear_claim=bool(args.clear_claim),
                 next_agent_todo=args.next_agent_todo,
                 next_user_todo=args.next_user_todo,
+                next_user_task_class=args.next_user_task_class,
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
@@ -844,6 +855,7 @@ def handle_todo_command(
                 reason=args.reason,
                 next_agent_todo=args.next_agent_todo,
                 next_user_todo=args.next_user_todo,
+                next_user_task_class=args.next_user_task_class,
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
