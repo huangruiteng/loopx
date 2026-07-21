@@ -247,6 +247,109 @@ def assert_open_parent_successor_advisory() -> None:
         assert "parent_successor_advisory" not in explicitly_deferred, explicitly_deferred
 
 
+def assert_nonblocking_review_continuation() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-nonblocking-review-continuation-") as tmp:
+        registry_path, state_file = write_fixture(Path(tmp))
+        source = run_cli(
+            registry_path,
+            "todo",
+            "add",
+            "--goal-id",
+            GOAL_ID,
+            "--role",
+            "agent",
+            "--text",
+            "Publish one validated feature PR to the experiment branch.",
+            "--claimed-by",
+            "codex-main-control",
+            "--task-class",
+            "advancement_task",
+            "--action-kind",
+            "experiment_feature_delivery",
+        )
+        completed = run_cli(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            source["todo_id"],
+            "--claimed-by",
+            "codex-main-control",
+            "--agent-id",
+            "codex-main-control",
+            "--evidence",
+            "feature PR is validated and ready for review",
+            "--next-user-todo",
+            "Review the validated experiment feature PR.",
+            "--next-user-task-class",
+            "user_action",
+            "--next-agent-todo",
+            "Continue the next independent experiment feature.",
+            "--next-claimed-by",
+            "codex-main-control",
+            "--next-action-kind",
+            "experiment_feature_delivery",
+        )
+        assert completed["changed"] is True, completed
+        fields = parse_active_state_todos(state_file.read_text(encoding="utf-8"))
+        review = next(
+            item
+            for item in fields["user_todos"]["items"]
+            if item["text"] == "Review the validated experiment feature PR."
+        )
+        assert review["task_class"] == "user_action", review
+        assert review["bound_agent"] == "codex-main-control", review
+        assert not review.get("blocks_agent"), review
+        assert not review.get("global_gate"), review
+
+        continuation = next(
+            item
+            for item in fields["agent_todos"]["items"]
+            if item["text"] == "Continue the next independent experiment feature."
+        )
+        assert continuation["status"] == "open", continuation
+        assert continuation["claimed_by"] == "codex-main-control", continuation
+
+        guard = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+            "--available-capability",
+            "shell",
+            "--available-capability",
+            "filesystem_write",
+        )
+        assert guard["state"] == "eligible", guard
+        assert guard["should_run"] is True, guard
+        assert guard["interaction_contract"]["mode"] == "bounded_delivery", guard
+        assert guard["requires_user_action"] is False, guard
+
+        invalid = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            continuation["todo_id"],
+            "--claimed-by",
+            "codex-main-control",
+            "--agent-id",
+            "codex-main-control",
+            "--evidence",
+            "invalid successor classification probe",
+            "--next-user-task-class",
+            "user_action",
+        )
+        assert "--next-user-task-class requires --next-user-todo" in invalid["error"], invalid
+
+
 def main() -> int:
     assert_configured_peer_handoff()
     assert_no_followup_cli_metadata()
@@ -254,6 +357,7 @@ def main() -> int:
     assert_same_title_completion_creates_fresh_successor()
     assert_peer_monitor_no_followup()
     assert_open_parent_successor_advisory()
+    assert_nonblocking_review_continuation()
 
     with tempfile.TemporaryDirectory(prefix="loopx-todo-lifecycle-smoke-") as tmp:
         root = Path(tmp)
