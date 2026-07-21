@@ -71,7 +71,7 @@ Optional env:
                                        Validator code for intermediate progress,
                                        default 10; 0 remains terminal completion
   SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY
-                                       validator (default) or fixed-n
+                                       validator (default), fixed-n, or stability
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800

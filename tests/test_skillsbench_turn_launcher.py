@@ -97,6 +97,33 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "sentinel-" not in output
 
 
+def test_turn_launcher_accepts_stability_policy(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    validator = "private-validator-command sentinel-validator"
+    env.update(
+        {
+            "SKILLSBENCH_ROUTE": "loopx-turn-agent-cli",
+            "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND": validator,
+            "SKILLSBENCH_LOOPX_TURN_MAX_TURNS": "4",
+            "SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICY": "stability",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "stability-wiring"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "loopx_turn_max_turns=4" in proc.stdout
+    assert "loopx_turn_terminal_policy=stability" in proc.stdout
+    assert validator not in proc.stdout
+
+
 def test_instrumented_agent_bridge_requires_an_explicit_agent_command(
     tmp_path: Path,
 ) -> None:
