@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
+import re
 import sys
 
 
@@ -35,10 +36,13 @@ elif case_id == "multi-file-docs":
     index = read("docs/index.md")
     valid = (
         "# Guide" in guide
-        and "Status: stable" in guide
+        and re.search(r"^Status:\s*stable\s*$", guide, re.IGNORECASE | re.MULTILINE)
+        is not None
         and "draft" not in guide.lower()
-        and "[Guide](guide.md)" in index
-        and "stable" in index.lower()
+        and re.search(
+            r"\[Guide\]\((?:\./)?guide\.md\)", index, re.IGNORECASE
+        )
+        is not None
         and "draft" not in index.lower()
     )
 elif case_id == "bounded-refactor":

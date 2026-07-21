@@ -618,10 +618,10 @@ def test_multi_file_docs_validator_accepts_semantically_equivalent_copy(
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "guide.md").write_text(
-        "# Guide\n\nStatus: stable\n", encoding="utf-8"
+        "# Guide\n\nStatus: Stable\n", encoding="utf-8"
     )
     (docs / "index.md").write_text(
-        "# Index\n\n- [Guide](guide.md) (stable)\n", encoding="utf-8"
+        "# Index\n\n- [Guide](./guide.md)\n", encoding="utf-8"
     )
 
     result = subprocess.run(
