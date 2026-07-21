@@ -1,0 +1,40 @@
+{
+  "schema_version": "finance_market_regime_input_v0",
+  "as_of": "2026-07-21",
+  "market": "a_share",
+  "rule_version": "a_share_precrash_repair_rules_v0",
+  "point_in_time_data": true,
+  "lookahead_free": true,
+  "metrics": {
+    "bounce_from_20d_low_pct": 4.3147,
+    "broad_below_sma50_count": 3,
+    "broad_relative_return_20d_pct": -9.6471,
+    "drawdown_from_252d_high_pct": -5.9713,
+    "primary_return_10d_pct": -0.8081,
+    "primary_return_20d_pct": -3.1364,
+    "primary_return_60d_pct": -0.4989,
+    "primary_sma20_slope_10d_pct": -1.2634,
+    "primary_sma50_slope_20d_pct": 0.6295,
+    "primary_vs_sma20_pct": -1.3681,
+    "primary_vs_sma50_pct": -1.9399,
+    "primary_vs_sma200_pct": 1.7908,
+    "recovery_anchor_drawdown_pct": -5.9713,
+    "turnover_20d_vs_120d_ratio": 1.2659,
+    "turnover_ratio_peak_60d": 1.2659
+  },
+  "recovery_failure_flags": [],
+  "source_refs": [
+    {
+      "source_id": "yahoo-a-share-etf-daily",
+      "source_tier": "market_data",
+      "provider_label": "Yahoo Finance public chart data for CSI 300, CSI 500, CSI 1000, and ChiNext ETFs",
+      "observed_at": "2026-07-21"
+    },
+    {
+      "source_id": "sse-margin-summary",
+      "source_tier": "primary",
+      "url": "https://www.sse.com.cn/market/othersdata/margin/sum/",
+      "observed_at": "2026-07-21"
+    }
+  ]
+}

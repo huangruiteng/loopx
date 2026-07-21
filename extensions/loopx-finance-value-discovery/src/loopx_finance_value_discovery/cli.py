@@ -7,6 +7,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .market_regime import (
+    FINANCE_MARKET_REGIME_INPUT_SCHEMA_VERSION,
+    build_finance_market_regime_packet,
+    render_finance_market_regime_markdown,
+)
 from .reducer import (
     FINANCE_VALUE_DISCOVERY_ERROR_SCHEMA_VERSION,
     build_finance_value_discovery_packet,
@@ -63,7 +68,25 @@ def _direct_parser() -> argparse.ArgumentParser:
     reduce_parser.add_argument(
         "--format", choices=("json", "markdown"), default="markdown"
     )
+    regime_parser = sub.add_parser(
+        "market-signals",
+        help="Classify market-specific pre-crash and post-drawdown repair signals.",
+    )
+    regime_parser.add_argument(
+        "--input-json",
+        required=True,
+        help="Path to a finance_market_regime_input_v0 object, or '-' for stdin.",
+    )
+    regime_parser.add_argument(
+        "--format", choices=("json", "markdown"), default="markdown"
+    )
     return parser
+
+
+def _build_packet(payload: Mapping[str, Any]) -> dict[str, Any]:
+    if payload.get("schema_version") == FINANCE_MARKET_REGIME_INPUT_SCHEMA_VERSION:
+        return build_finance_market_regime_packet(payload)
+    return build_finance_value_discovery_packet(payload)
 
 
 def run(argv: Sequence[str] | None = None) -> int:
@@ -73,7 +96,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             payload = json.load(sys.stdin)
             if not isinstance(payload, Mapping):
                 raise ValueError("provider input must be a JSON object")
-            packet = build_finance_value_discovery_packet(payload)
+            packet = _build_packet(payload)
         except Exception as exc:
             print(json.dumps(_error_packet(exc), sort_keys=True))
             return 1
@@ -83,15 +106,22 @@ def run(argv: Sequence[str] | None = None) -> int:
     args = _direct_parser().parse_args(arguments)
     if args.doctor:
         return 0
-    if args.command != "reduce":
-        raise ValueError("use --doctor or the reduce command")
+    if args.command not in {"reduce", "market-signals"}:
+        raise ValueError("use --doctor, reduce, or market-signals")
     try:
-        packet = build_finance_value_discovery_packet(_load_json(args.input_json))
+        payload = _load_json(args.input_json)
+        packet = (
+            build_finance_market_regime_packet(payload)
+            if args.command == "market-signals"
+            else build_finance_value_discovery_packet(payload)
+        )
     except Exception as exc:
         print(json.dumps(_error_packet(exc), indent=2, sort_keys=True))
         return 1
     if args.format == "json":
         print(json.dumps(packet, indent=2, sort_keys=True))
+    elif args.command == "market-signals":
+        print(render_finance_market_regime_markdown(packet), end="")
     else:
         print(render_finance_value_discovery_markdown(packet), end="")
     return 0

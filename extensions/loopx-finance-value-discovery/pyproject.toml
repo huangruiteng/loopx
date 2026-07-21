@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loopx-finance-value-discovery"
-version = "0.2.0"
-description = "Public-safe finance value-discovery extension for LoopX."
+version = "0.3.0"
+description = "Public-safe value-discovery and market-regime extension for LoopX."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["loopx>=0.2.9"]

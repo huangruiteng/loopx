@@ -22,9 +22,16 @@ EXTENSION_ROOT = ROOT / "extensions" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
 MANIFEST = EXTENSION_ROOT / "extension.toml"
 EXAMPLE = EXTENSION_ROOT / "examples" / "paypal-debeta-discovery.json"
+US_REGIME_EXAMPLE = EXTENSION_ROOT / "examples" / "us-market-regime-2026-07-20.json"
+A_SHARE_REGIME_EXAMPLE = (
+    EXTENSION_ROOT / "examples" / "a-share-market-regime-2026-07-21.json"
+)
 sys.path.insert(0, str(EXTENSION_SRC))
 
 from loopx_finance_value_discovery.cli import run  # noqa: E402
+from loopx_finance_value_discovery.market_regime import (  # noqa: E402
+    build_finance_market_regime_packet,
+)
 from loopx_finance_value_discovery.reducer import (  # noqa: E402
     EVIDENCE_AXES,
     build_finance_value_discovery_packet,
@@ -33,6 +40,10 @@ from loopx_finance_value_discovery.reducer import (  # noqa: E402
 
 def _example() -> dict[str, object]:
     return json.loads(EXAMPLE.read_text(encoding="utf-8"))
+
+
+def _regime_example(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _installed_manifest(
@@ -221,6 +232,145 @@ def test_provider_doctor_is_side_effect_free() -> None:
     assert run(["--doctor"]) == 0
 
 
+@pytest.mark.parametrize(
+    ("path", "market", "triggered"),
+    [
+        (
+            US_REGIME_EXAMPLE,
+            "us",
+            {"vulnerability", "leadership_or_breadth_break"},
+        ),
+        (
+            A_SHARE_REGIME_EXAMPLE,
+            "a_share",
+            {"crowding_or_complacency", "leadership_or_breadth_break"},
+        ),
+    ],
+)
+def test_recent_market_examples_are_observations_not_crash_predictions(
+    path: Path,
+    market: str,
+    triggered: set[str],
+) -> None:
+    packet = build_finance_market_regime_packet(_regime_example(path))
+
+    assert packet["market"] == market
+    assert packet["precrash"]["state"] == "risk_observation"
+    assert set(packet["precrash"]["triggered_layers"]) == triggered
+    assert packet["recovery"]["state"] == "not_in_drawdown"
+    assert packet["boundary"]["investment_advice"] is False
+    assert packet["boundary"]["automatic_risk_action_allowed"] is False
+    assert packet["truth_contract"]["market_rules_are_not_interchangeable"] is True
+
+
+def test_repair_requires_prior_drawdown_and_multiple_confirmations() -> None:
+    payload = _regime_example(US_REGIME_EXAMPLE)
+    payload["metrics"].update(
+        {
+            "recovery_anchor_drawdown_pct": -20,
+            "primary_vs_sma20_pct": 3,
+            "primary_return_10d_pct": 4,
+            "bounce_from_20d_low_pct": 7,
+            "primary_vs_sma50_pct": 2,
+            "primary_sma20_slope_10d_pct": 1,
+            "equal_weight_relative_return_20d_pct": 1,
+            "credit_vs_sma50_pct": 1,
+            "vix_level": 20,
+        }
+    )
+
+    confirmed = build_finance_market_regime_packet(payload)
+    assert confirmed["recovery"]["state"] == "repair_confirmation"
+    assert confirmed["recovery"]["score"] == 4
+
+    payload["metrics"]["recovery_anchor_drawdown_pct"] = -10
+    ineligible = build_finance_market_regime_packet(payload)
+    assert ineligible["recovery"]["state"] == "not_in_drawdown"
+
+
+def test_repair_failure_overrides_positive_layers() -> None:
+    payload = _regime_example(US_REGIME_EXAMPLE)
+    payload["metrics"].update(
+        {
+            "recovery_anchor_drawdown_pct": -20,
+            "primary_vs_sma20_pct": 3,
+            "primary_return_10d_pct": 4,
+            "bounce_from_20d_low_pct": 7,
+            "primary_vs_sma50_pct": 2,
+            "primary_sma20_slope_10d_pct": 1,
+            "equal_weight_relative_return_20d_pct": 1,
+            "credit_vs_sma50_pct": 1,
+            "vix_level": 20,
+        }
+    )
+    payload["recovery_failure_flags"] = ["new_low_after_first_repair"]
+
+    packet = build_finance_market_regime_packet(payload)
+    assert packet["recovery"]["state"] == "repair_failed"
+    assert packet["recovery"]["confirmed"] is True
+
+
+def test_repair_confirmation_cannot_precede_persistent_rebound() -> None:
+    payload = _regime_example(A_SHARE_REGIME_EXAMPLE)
+    payload["metrics"].update(
+        {
+            "recovery_anchor_drawdown_pct": -20,
+            "primary_vs_sma20_pct": -1,
+            "primary_return_10d_pct": 1,
+            "bounce_from_20d_low_pct": 3,
+            "primary_vs_sma50_pct": 2,
+            "primary_sma20_slope_10d_pct": 1,
+            "broad_relative_return_20d_pct": 1,
+            "broad_below_sma50_count": 1,
+            "turnover_20d_vs_120d_ratio": 1,
+        }
+    )
+
+    packet = build_finance_market_regime_packet(payload)
+    assert packet["recovery"]["score"] == 3
+    assert packet["recovery"]["observed"] is False
+    assert packet["recovery"]["confirmed"] is False
+    assert packet["recovery"]["state"] == "unrepaired"
+
+
+def test_market_profiles_fail_closed_on_missing_or_cross_market_metrics() -> None:
+    payload = _regime_example(A_SHARE_REGIME_EXAMPLE)
+    payload["metrics"].pop("turnover_ratio_peak_60d")
+    with pytest.raises(ValueError, match="metrics must match a_share rule profile"):
+        build_finance_market_regime_packet(payload)
+
+    payload = _regime_example(A_SHARE_REGIME_EXAMPLE)
+    payload["market"] = "us"
+    payload["rule_version"] = "us_precrash_repair_rules_v0"
+    with pytest.raises(ValueError, match="metrics must match us rule profile"):
+        build_finance_market_regime_packet(payload)
+
+    payload = _regime_example(US_REGIME_EXAMPLE)
+    payload["metrics"]["recovery_anchor_drawdown_pct"] = 1
+    with pytest.raises(ValueError, match="recovery_anchor_drawdown_pct"):
+        build_finance_market_regime_packet(payload)
+
+
+def test_market_signal_direct_command_renders_packet(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        run(
+            [
+                "market-signals",
+                "--input-json",
+                str(US_REGIME_EXAMPLE),
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert packet["schema_version"] == "finance_market_regime_packet_v0"
+    assert packet["precrash"]["state"] == "risk_observation"
+
+
 def test_standalone_extension_runs_through_verified_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -249,3 +399,33 @@ def test_standalone_extension_runs_through_verified_runtime(
     packet = receipt["provider_result"]
     assert packet["schema_version"] == "finance_value_discovery_packet_v0"
     assert packet["projection"]["next_targets"] == ["PYPL"]
+
+
+def test_market_regime_runs_through_verified_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _, runtime_root = _installed_manifest(tmp_path, monkeypatch)
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "loopx-finance-value-discovery",
+                "--input-json",
+                str(A_SHARE_REGIME_EXAMPLE),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == "succeeded"
+    packet = receipt["provider_result"]
+    assert packet["schema_version"] == "finance_market_regime_packet_v0"
+    assert packet["market"] == "a_share"

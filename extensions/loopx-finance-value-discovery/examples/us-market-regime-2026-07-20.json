@@ -1,0 +1,42 @@
+{
+  "schema_version": "finance_market_regime_input_v0",
+  "as_of": "2026-07-20",
+  "market": "us",
+  "rule_version": "us_precrash_repair_rules_v0",
+  "point_in_time_data": true,
+  "lookahead_free": true,
+  "metrics": {
+    "bounce_from_20d_low_pct": 1.797,
+    "credit_return_20d_pct": 0.0492,
+    "credit_vs_sma50_pct": 0.3298,
+    "credit_vs_sma200_pct": 1.5161,
+    "drawdown_from_252d_high_pct": -2.0496,
+    "equal_weight_relative_return_20d_pct": 2.1862,
+    "equal_weight_vs_sma50_pct": 1.699,
+    "primary_return_10d_pct": -1.2232,
+    "primary_sma20_slope_10d_pct": 0.6567,
+    "primary_sma50_slope_20d_pct": 2.1453,
+    "primary_vs_sma20_pct": -0.3623,
+    "primary_vs_sma50_pct": -0.1811,
+    "primary_vs_sma200_pct": 6.953,
+    "recovery_anchor_drawdown_pct": -2.0496,
+    "qqq_relative_return_20d_pct": -5.2906,
+    "qqq_vs_sma50_pct": -3.128,
+    "vix_level": 18.65
+  },
+  "recovery_failure_flags": [],
+  "source_refs": [
+    {
+      "source_id": "yahoo-us-etf-daily",
+      "source_tier": "market_data",
+      "provider_label": "Yahoo Finance public chart data for SPY, QQQ, RSP, and HYG",
+      "observed_at": "2026-07-20"
+    },
+    {
+      "source_id": "cboe-vix",
+      "source_tier": "primary",
+      "url": "https://www.cboe.com/tradable-products/vix/",
+      "observed_at": "2026-07-20"
+    }
+  ]
+}
