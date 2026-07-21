@@ -22,6 +22,10 @@ from loopx.cli import main as cli_main  # noqa: E402
 from loopx.control_plane.turn_driver import (  # noqa: E402
     load_loopx_turn_plan_from_journal,
 )
+from loopx.control_plane.testing.turn_advisor_cases import (  # noqa: E402
+    TURN_ADVISOR_CASE_IDS,
+    TURN_ADVISOR_CASE_SPECS,
+)
 
 
 GOAL_ID = "loopx-turn-real-cli-e2e"
@@ -29,65 +33,6 @@ AGENT_ID = "codex-turn-e2e"
 TODO_ID = "todo_turnreale2e01"
 MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_PREFIX = "loopx-turn-real-e2e-step-"
-CASE_IDS = (
-    "marker-step",
-    "arithmetic-fix",
-    "json-normalization",
-    "multi-file-docs",
-    "bounded-refactor",
-)
-CASE_SPECS = {
-    "marker-step": {
-        "todo": (
-            "Advance `docs/turn-e2e-marker.txt` by exactly one numbered step per "
-            "Turn, starting at `loopx-turn-real-e2e-step-1`."
-        ),
-        "write_scope": ["docs/turn-e2e-marker.txt"],
-        "files": {},
-    },
-    "arithmetic-fix": {
-        "todo": (
-            "Fix `calculator.py` so `add(a, b)` returns the mathematical sum for "
-            "positive and negative integers. Keep the change limited to that file."
-        ),
-        "write_scope": ["calculator.py"],
-        "files": {"calculator.py": "def add(a, b):\n    return a - b\n"},
-    },
-    "json-normalization": {
-        "todo": (
-            "Normalize `config/settings.json`: `enabled` must be JSON boolean true "
-            "and `retries` must be JSON integer 3. Preserve valid JSON."
-        ),
-        "write_scope": ["config/settings.json"],
-        "files": {"config/settings.json": '{"enabled":"yes","retries":"3"}\n'},
-    },
-    "multi-file-docs": {
-        "todo": (
-            "Promote the guide to stable: set `docs/guide.md` status to stable and "
-            "replace the draft index entry with a relative Markdown link labelled Guide."
-        ),
-        "write_scope": ["docs/guide.md", "docs/index.md"],
-        "files": {
-            "docs/guide.md": "# Guide\n\nStatus: draft\n",
-            "docs/index.md": "# Index\n\n- Guide (draft)\n",
-        },
-    },
-    "bounded-refactor": {
-        "todo": (
-            "Refactor `names.py` to extract one private `_slug` helper and make both "
-            "public functions delegate to it without changing their behavior."
-        ),
-        "write_scope": ["names.py"],
-        "files": {
-            "names.py": (
-                "def user_slug(value):\n"
-                "    return value.strip().lower().replace(\" \", \"-\")\n\n"
-                "def project_slug(value):\n"
-                "    return value.strip().lower().replace(\" \", \"-\")\n"
-            )
-        },
-    },
-}
 
 
 def _positive_int(value: str) -> int:
@@ -109,7 +54,7 @@ def _write_fixture(
     workspace = root / "workspace"
     runtime.mkdir(parents=True)
     workspace.mkdir(parents=True)
-    spec = CASE_SPECS[case_id]
+    spec = TURN_ADVISOR_CASE_SPECS[case_id]
     for relative, content in spec["files"].items():
         path = workspace / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -424,7 +369,9 @@ def main() -> int:
         type=float,
         help="Advisor timeout; defaults to --timeout-seconds for paired qualification.",
     )
-    parser.add_argument("--case-id", choices=CASE_IDS, default="marker-step")
+    parser.add_argument(
+        "--case-id", choices=TURN_ADVISOR_CASE_IDS, default="marker-step"
+    )
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument(
         "--turn-count",

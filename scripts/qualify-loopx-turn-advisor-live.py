@@ -10,8 +10,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.testing.turn_advisor_cases import (  # noqa: E402
+    TURN_ADVISOR_CASE_IDS,
+)
+
+
 E2E_SCRIPT = REPO_ROOT / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"
 
 
@@ -117,13 +123,7 @@ def main() -> int:
     parser.add_argument("--executor-model", required=True)
     parser.add_argument(
         "--case-id",
-        choices=(
-            "marker-step",
-            "arithmetic-fix",
-            "json-normalization",
-            "multi-file-docs",
-            "bounded-refactor",
-        ),
+        choices=TURN_ADVISOR_CASE_IDS,
         default="marker-step",
     )
     parser.add_argument("--codex-bin", type=Path)
