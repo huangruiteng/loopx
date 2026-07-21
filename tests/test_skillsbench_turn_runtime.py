@@ -5,7 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Union, get_args, get_origin
 
 import pytest
 
@@ -23,6 +23,12 @@ from loopx.benchmark_adapters.skillsbench_turn_route import (
     sync_skillsbench_loopx_turn_trace_into_compact,
 )
 from loopx.control_plane.turn_driver import executor as turn_executor
+
+
+def test_agent_prompt_runner_alias_is_bootstrap_python_39_safe() -> None:
+    return_type = get_args(runtime.AgentPromptRunner)[1]
+
+    assert get_origin(return_type) is Union
 
 
 def _config(tmp_path: Path) -> runtime.SkillsBenchTurnRuntimeConfig:
@@ -448,6 +454,7 @@ def test_satisfied_pre_agent_postcondition_runs_but_does_not_claim_readiness(
     assert validation["pre_agent_postcondition_status"] == "already_satisfied"
     assert validation["meaningful_operation_count"] == 1
     assert receipt["ready"] is False
+    assert receipt["turn_proven"] is True
     assert "pre_agent_postcondition_eligible" in receipt["blocker_codes"]
 
 
@@ -1425,6 +1432,34 @@ def test_runner_readiness_fails_closed_on_partial_evidence(
     assert blocker in receipt["blocker_codes"]
 
 
+@pytest.mark.parametrize(
+    ("post_status", "independent", "expected_proven"),
+    [
+        ("progress_validated", True, True),
+        ("satisfied", False, False),
+    ],
+)
+def test_runner_readiness_turn_proof_is_independent_from_causal_readiness(
+    post_status: str,
+    independent: bool,
+    expected_proven: bool,
+) -> None:
+    receipt = runtime.build_skillsbench_benchmark_runner_readiness(
+        execution={"status": "committed"},
+        scored_workspace_validation={
+            "status": "passed",
+            "independent": independent,
+            "pre_agent_postcondition_checked": True,
+            "pre_agent_postcondition_status": "unsatisfied",
+            "post_agent_postcondition_status": post_status,
+            "oracle_feedback_used": False,
+        },
+    )
+
+    assert receipt["turn_proven"] is expected_proven
+    assert receipt["ready"] is (expected_proven and post_status == "satisfied")
+
+
 def test_runner_readiness_survives_public_trace_aggregation() -> None:
     ready_trace = runtime.build_skillsbench_loopx_turn_trace(
         route="loopx-turn-agent-cli",
@@ -1476,7 +1511,9 @@ def test_runner_readiness_survives_public_trace_aggregation() -> None:
 
     receipt = compact["benchmark_runner_readiness"]
     assert receipt["ready"] is True
-    assert receipt["proven_turn_count"] == 1
+    assert receipt["runner_ready_turn_count"] == 1
+    assert receipt["proven_turn_count"] == 2
+    assert receipt["committed_turn_count"] == 2
     assert receipt["observed_turn_count"] == 2
     assert receipt["blocker_codes"] == []
     assert receipt["raw_task_text_recorded"] is False

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+
+from . import __version__
 
 
 GLOBAL_OPTIONS_WITH_VALUE = {"--registry", "--runtime-root", "--format"}
@@ -191,6 +194,71 @@ COMMAND_GROUPS: list[dict[str, object]] = [
 ]
 
 
+# Every top-level parser command must either be represented in COMMAND_GROUPS
+# or be explicitly kept on its command-specific help surface. This makes a new
+# command an intentional manual-visibility decision instead of a silent omission.
+MANPAGE_COMMAND_HELP_ONLY = frozenset(
+    {
+        "archive-runtime",
+        "backup-state",
+        "capability",
+        "codex-cli-bounded-visible-pilot-adapter",
+        "codex-cli-exec-handoff",
+        "codex-cli-local-driver-plan",
+        "codex-cli-local-scheduler-exec",
+        "codex-cli-local-scheduler-tick",
+        "codex-cli-one-message-loop-pilot",
+        "codex-cli-runtime-idle-detector",
+        "codex-cli-session-probe",
+        "codex-cli-visible-driver-plan",
+        "codex-cli-visible-driver-run",
+        "codex-cli-visible-first-response-capture-plan",
+        "codex-cli-visible-local-driver-pilot",
+        "codex-cli-visible-session-proof",
+        "configure-goal",
+        "content-ops",
+        "demo",
+        "dreaming",
+        "global-summary",
+        "import-doc-registry-authority",
+        "lark-inbox",
+        "migrate-state",
+        "ml-experiment",
+        "operator-gate",
+        "pr-review",
+        "promotion-gate",
+        "read-only-map",
+        "refresh-state",
+        "register-authority-source",
+        "registry-boundary",
+        "reward",
+        "reward-memory",
+        "semantic-preference",
+        "serve-status",
+        "uninstall-project",
+        "value-connectors",
+        "version",
+        "worker-bridge",
+    }
+)
+
+
+def manpage_top_level_commands() -> frozenset[str]:
+    commands = {"commands"}
+    for group in COMMAND_GROUPS:
+        entries = group.get("commands")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            command = str(entry.get("command") or "")
+            commands.update(
+                re.findall(r"(?:^| / )loopx ([a-z0-9][a-z0-9-]*)", command)
+            )
+    return frozenset(commands)
+
+
 def _program_name(program: str) -> str:
     name = program.rsplit("/", 1)[-1]
     if name in {"loopx", "cli.py", "__main__.py"}:
@@ -307,6 +375,90 @@ def render_command_reference_markdown(payload: dict[str, Any]) -> str:
         [
             "For command-specific flags, run `loopx <command> --help`.",
             "For the manual page, run `man loopx` after installing LoopX.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _roff_text(value: object) -> str:
+    text = str(value).replace("\\", r"\e").replace("-", r"\-")
+    if text.startswith((".", "'")):
+        return rf"\&{text}"
+    return text
+
+
+def render_manpage(*, version: str = __version__) -> str:
+    """Render the CLI manual from the canonical command catalog."""
+
+    lines = [
+        f'.TH LOOPX 1 "" "LoopX {_roff_text(version)}" "User Commands"',
+        ".SH NAME",
+        r"loopx \- control-plane helper for long-running agent work",
+        ".SH SYNOPSIS",
+        ".B loopx",
+        r"[\fB\-\-registry\fR \fIPATH\fR]",
+        r"[\fB\-\-runtime\-root\fR \fIPATH\fR]",
+        r"[\fB\-\-format\fR \fImarkdown|json\fR]",
+        r"\fICOMMAND\fR",
+        r"[\fIARGS\fR]",
+        ".br",
+        ".B loopx",
+        r"\fICOMMAND\fR",
+        r"\fB\-\-help\fR",
+        ".br",
+        ".B loopx commands",
+        ".SH DESCRIPTION",
+        "LoopX keeps long-running agent work moving by preserving goals, todos, gates,",
+        "quota, and evidence between agent turns.",
+        ".PP",
+        "The command sections below are generated from the same canonical catalog used by",
+        r"\fBloopx commands\fR. Command-specific flags remain available through",
+        r"\fBloopx COMMAND \-\-help\fR.",
+    ]
+
+    for group in COMMAND_GROUPS:
+        title = _roff_text(str(group.get("title") or "Commands").upper())
+        lines.append(f".SH {title}")
+        commands = group.get("commands")
+        if not isinstance(commands, list):
+            continue
+        for entry in commands:
+            if not isinstance(entry, dict):
+                continue
+            command = str(entry.get("command") or "").strip()
+            purpose = str(entry.get("purpose") or "").strip()
+            if not command or not purpose:
+                continue
+            lines.extend(
+                [
+                    ".TP",
+                    rf"\fB{_roff_text(command)}\fR",
+                    _roff_text(purpose),
+                ]
+            )
+
+    lines.extend(
+        [
+            ".SH MORE",
+            ".TP",
+            r"\fBloopx COMMAND \-\-help\fR",
+            "Show flags for one command.",
+            ".TP",
+            r"\fBman loopx\fR",
+            "Open this installed manual page.",
+            ".TP",
+            r"\fBdocs/guides/getting\-started.md#command\-reference\fR",
+            "Read the longer operator and contributor guide.",
+            ".SH INSTALL NOTES",
+            "The LoopX local installer writes this manual to",
+            r"\fI$HOME/.local/share/man/man1/loopx.1.gz\fR by default and adds",
+            r"\fI$HOME/.local/share/man\fR to MANPATH in the selected shell profile.",
+            "If the current shell has not reloaded that profile, run:",
+            ".PP",
+            r"\fBMANPATH=\"$HOME/.local/share/man:${MANPATH:\-}\" man loopx\fR",
+            ".SH SEE ALSO",
+            ".BR man (1)",
             "",
         ]
     )

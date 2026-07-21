@@ -6067,6 +6067,11 @@ def test_skillsbench_docker_task_staging_patches_dockerfile_uv_bootstrap() -> No
         assert "python3 -m pip install ${loopx_pip_break_system_packages}" in (
             staged_text
         ), staged_text
+        assert (
+            f"--index-url {skillsbench_loop.DEFAULT_DOCKER_PIP_INDEX_URL}"
+            in staged_text
+        ), staged_text
+        assert "--extra-index-url" not in staged_text, staged_text
         assert "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in staged_text, staged_text
         assert "INSTALLER_DOWNLOAD_URL" in staged_text, staged_text
         assert skillsbench_loop._dockerfile_curl_retry_all_errors_arg() in staged_text, staged_text
@@ -6115,9 +6120,8 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert "PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL}" in staged_text, (
             staged_text
         )
-        assert "PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL}" in (
-            staged_text
-        ), staged_text
+        assert "PIP_EXTRA_INDEX_URL" not in staged_text, staged_text
+        assert "--extra-index-url" not in staged_text, staged_text
         assert f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL=https://{DEFAULT_DOCKER_PIP_INDEX_HOST}/simple" in (
             staged_text
         ), staged_text
@@ -6263,6 +6267,10 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert "INSTALLER_DOWNLOAD_URL" in staged_verifier, staged_verifier
         assert "python3 -m pip install" in staged_verifier, staged_verifier
         assert "--break-system-packages" in staged_verifier, staged_verifier
+        assert f"--index-url {skillsbench_loop.DEFAULT_DOCKER_PIP_INDEX_URL}" in (
+            staged_verifier
+        ), staged_verifier
+        assert "--extra-index-url" not in staged_verifier, staged_verifier
         assert "uv==${loopx_uv_version}" in staged_verifier, staged_verifier
         assert "loopx_uv_installer_timeout_sec" in staged_verifier, staged_verifier
         assert "timeout \"${loopx_uv_installer_timeout_sec}\" sh -c" in (

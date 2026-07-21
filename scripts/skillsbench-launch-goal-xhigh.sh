@@ -26,6 +26,9 @@ Optional env:
   SKILLSBENCH_LOCAL_CODEX_PROXY_PORT   Local proxy port, default 18180
   SKILLSBENCH_DOCKER_PROXY_HOST        Remote Docker bridge host for benchmark
                                        setup/verifier egress; default auto
+  SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE
+                                       Benchmark setup/verifier egress mode:
+                                       require (default), auto, or off
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
@@ -72,6 +75,9 @@ Optional env:
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
+  SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC
+                                       Incremental public artifact sync interval;
+                                       defaults to 30 for setup-only and 0 otherwise
   SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC Reverse-tunnel CONNECT probe timeout,
                                        default 20
   SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
@@ -204,6 +210,7 @@ skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
+benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
 remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND:-}"
@@ -228,6 +235,12 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+if [[ "$benchmark_egress_proxy_mode" != "require" ]] &&
+  [[ "$benchmark_egress_proxy_mode" != "auto" ]] &&
+  [[ "$benchmark_egress_proxy_mode" != "off" ]]; then
+  echo "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off" >&2
+  exit 2
+fi
 validate_bool_toggle \
   SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED \
   "$remote_command_file_bridge_agent_command_instrumented"
@@ -300,6 +313,13 @@ model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
 build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
+if [[ -n "${SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC:-}" ]]; then
+  public_artifact_sync_interval="$SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"
+elif [[ "$setup_only_public_preflight" == "1" ]]; then
+  public_artifact_sync_interval=30
+else
+  public_artifact_sync_interval=0
+fi
 tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
 tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
 tunnel_health_interval="${SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC:-30}"
@@ -509,7 +529,7 @@ remote_command=$(
     --build-stall-timeout-sec "$build_stall_timeout" \
     --codex-api-egress-mode reverse-tunnel \
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
-    --benchmark-egress-proxy-mode require \
+    --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
     --host-local-acp-launch \
     --local-codex-bin "$remote_codex_bin" \
     --local-codex-sandbox "$local_codex_sandbox" \
@@ -535,6 +555,7 @@ supervisor_cmd=(
   --tunnel-reconnect-attempts "$tunnel_reconnect_attempts"
   --tunnel-reconnect-ready-timeout-sec "$tunnel_ready_timeout"
   --run-timeout-sec "$run_timeout"
+  --public-artifact-sync-interval-sec "$public_artifact_sync_interval"
   --remote-failure-cleanup-pattern "$job_name"
   --remote-failure-cleanup-include-docker
   --remote-command "$remote_command"
@@ -580,7 +601,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'public_output=%s/supervisor.public.json\n' "$public_dir"
   printf 'private_dir=%s\n' "$private_dir"
   printf 'remote_proxy_port=%s\n' "$remote_proxy_port"
-  printf 'docker_proxy_host=%s\n' "$docker_proxy_host"
+  printf 'docker_proxy_host_recorded=false\n'
   printf 'docker_proxy_endpoint_mode=%s\n' "$docker_proxy_endpoint_mode"
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
@@ -591,6 +612,9 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
+  printf 'public_artifact_sync_interval_sec=%s\n' \
+    "$public_artifact_sync_interval"
+  printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
   printf 'remote_command_file_bridge_probe_command_configured=%s\n' \
@@ -685,4 +709,5 @@ local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 setup_only_public_preflight=${setup_only_public_preflight}
+public_artifact_sync_interval_sec=${public_artifact_sync_interval}
 EOF

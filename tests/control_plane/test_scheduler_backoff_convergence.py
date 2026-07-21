@@ -14,6 +14,9 @@ GOAL_ID = "scheduler-backoff-convergence"
 AGENT_ID = "codex-fixture"
 HOST_15 = "FREQ=MINUTELY;INTERVAL=15"
 HOST_30 = "FREQ=MINUTELY;INTERVAL=30"
+HOST_3 = "FREQ=MINUTELY;INTERVAL=3"
+HOST_6 = "FREQ=MINUTELY;INTERVAL=6"
+HOST_10 = "FREQ=MINUTELY;INTERVAL=10"
 APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
     "codex_app_heartbeat"
 )
@@ -56,6 +59,37 @@ def _monitor_decision(*, now: datetime, minutes_until_due: int) -> dict:
                 }
             ],
             "monitor_open_items": [],
+        },
+    }
+
+
+def _capability_bridge_decision() -> dict:
+    return {
+        "goal_id": GOAL_ID,
+        "agent_identity": {"agent_id": AGENT_ID},
+        "should_run": True,
+        "effective_action": "capability_bridge_repair",
+        "recommended_action": "restore the missing network bridge capability",
+        "heartbeat_recommendation": {
+            "recommended_mode": "repair_capability_bridge",
+            "notify": "NOTIFY",
+        },
+        "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
+            "mode": "capability_bridge_repair",
+            "user_channel": {
+                "action_required": False,
+                "notify": "NOTIFY",
+                "non_blocking": True,
+                "actions": [
+                    "Refresh protected network authentication, then confirm access."
+                ],
+            },
+            "agent_channel": {
+                "must_attempt": True,
+                "delivery_allowed": False,
+                "quiet_noop_allowed": False,
+            },
         },
     }
 
@@ -174,3 +208,93 @@ def test_monitor_progression_advances_after_elapsed_interval_and_then_converges(
         "matches_recommended"
     )
     assert "recommended_rrule" not in converged_app
+
+
+def test_capability_bridge_wait_backs_off_and_material_work_resets(
+    monkeypatch,
+) -> None:
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    bridge = _capability_bridge_decision()
+
+    first = _hint(monkeypatch, bridge, now=now)
+    first_app = first["codex_app"]
+    assert first["action"] == "run_now"
+    assert first["cadence_class"] == "active_work"
+    assert first_app["recommended_rrule"] == HOST_3
+
+    settled_3 = _ack_state(first, applied_rrule=HOST_3, generated_at=now)
+    early = _hint(
+        monkeypatch,
+        bridge,
+        now=now + timedelta(minutes=2),
+        scheduler_state=settled_3,
+        host_rrule=HOST_3,
+    )
+    assert early["codex_app"]["stateful_backoff"]["progression_index"] == 0
+    assert "recommended_rrule" not in early["codex_app"]
+
+    elapsed_3 = now + timedelta(minutes=3)
+    advance_6 = _hint(
+        monkeypatch,
+        bridge,
+        now=elapsed_3,
+        scheduler_state=settled_3,
+        host_rrule=HOST_3,
+    )
+    advance_6_app = advance_6["codex_app"]
+    assert advance_6_app["stateful_backoff"]["progression_index"] == 1
+    assert advance_6_app["recommended_rrule"] == HOST_6
+
+    settled_6 = _ack_state(
+        advance_6,
+        applied_rrule=HOST_6,
+        generated_at=elapsed_3,
+    )
+    elapsed_6 = elapsed_3 + timedelta(minutes=6)
+    advance_10 = _hint(
+        monkeypatch,
+        bridge,
+        now=elapsed_6,
+        scheduler_state=settled_6,
+        host_rrule=HOST_6,
+    )
+    assert advance_10["codex_app"]["recommended_rrule"] == HOST_10
+
+    material_work = dict(bridge)
+    material_work["effective_action"] = "normal_run"
+    material_work["recommended_action"] = "run the matched benchmark arms"
+    material_work["interaction_contract"] = {
+        **bridge["interaction_contract"],
+        "mode": "bounded_delivery",
+        "agent_channel": {
+            "must_attempt": True,
+            "delivery_allowed": True,
+            "quiet_noop_allowed": False,
+        },
+    }
+    reset = _hint(
+        monkeypatch,
+        material_work,
+        now=elapsed_6,
+        scheduler_state=settled_6,
+        host_rrule=HOST_6,
+    )
+    reset_app = reset["codex_app"]
+    assert reset_app["stateful_backoff"]["state_status"] == "reset_required"
+    assert reset_app["stateful_backoff"]["progression_index"] == 0
+    assert reset_app["recommended_rrule"] == HOST_3
+
+    settled_material = _ack_state(
+        reset,
+        applied_rrule=HOST_3,
+        generated_at=elapsed_6,
+    )
+    still_active = _hint(
+        monkeypatch,
+        material_work,
+        now=elapsed_6 + timedelta(minutes=3),
+        scheduler_state=settled_material,
+        host_rrule=HOST_3,
+    )
+    assert still_active["codex_app"]["stateful_backoff"]["progression_index"] == 0
+    assert "recommended_rrule" not in still_active["codex_app"]

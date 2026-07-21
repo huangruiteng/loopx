@@ -220,6 +220,14 @@ def _base_result(
     }
 
 
+def _emit_progress(
+    callback: Callable[[Mapping[str, Any]], None] | None,
+    result: Mapping[str, Any],
+) -> None:
+    if callback is not None:
+        callback(dict(result))
+
+
 async def run_setup_only_public_preflight(
     *,
     rollout_type: Any,
@@ -228,6 +236,7 @@ async def run_setup_only_public_preflight(
     setup_preflight: Mapping[str, Any] | None = None,
     stage_timeout_sec: float,
     cleanup_timeout_sec: float = 30.0,
+    progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Materialize a BenchFlow environment without installing or running an agent."""
 
@@ -240,12 +249,14 @@ async def run_setup_only_public_preflight(
     rollout: Any | None = None
     restore_compose_boundary: Callable[[], None] | None = None
     failed = False
+    _emit_progress(progress_callback, result)
     try:
         rollout = await asyncio.wait_for(
             rollout_type.create(config),
             timeout=stage_timeout_sec,
         )
         result["stage"] = "rollout_setup"
+        _emit_progress(progress_callback, result)
         await asyncio.wait_for(rollout.setup(), timeout=stage_timeout_sec)
         result["job_root_materialized"] = (
             getattr(rollout, "_rollout_dir", None) is not None
@@ -262,6 +273,7 @@ async def run_setup_only_public_preflight(
         )
 
         result["stage"] = "environment_start"
+        _emit_progress(progress_callback, result)
         await asyncio.wait_for(rollout.start(), timeout=stage_timeout_sec)
         result["environment_started"] = True
         result["status"] = "passed"
@@ -354,4 +366,5 @@ async def run_setup_only_public_preflight(
                     result["exit_category"] = "cleanup_failed"
         else:
             result["cleanup_status"] = "not_required"
+        _emit_progress(progress_callback, result)
     return result

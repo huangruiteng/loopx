@@ -1526,6 +1526,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_error_len_bucket",
         "primary_setup_failure_category",
         "apt_failure_subtype",
+        "pip_failure_subtype",
         "retryability",
         "next_diagnostic_action",
     ):
@@ -1537,6 +1538,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
         "apt_repository_failure",
+        "pip_bootstrap_failure",
         "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
@@ -1615,6 +1617,38 @@ def _skillsbench_compact_official_score_missing(compact: dict[str, Any]) -> bool
         return False
     value = compact.get("official_score")
     return not (isinstance(value, (int, float)) and not isinstance(value, bool))
+
+
+def _sync_skillsbench_runner_failure_root_blockers(
+    compact: dict[str, Any],
+) -> None:
+    runner_failure = compact.get("runner_failure")
+    if not isinstance(runner_failure, dict):
+        return
+    if not _skillsbench_compact_official_score_missing(compact):
+        return
+
+    blocker = public_safe_compact_text(
+        compact.get("score_failure_attribution"),
+        limit=140,
+    )
+    if blocker in {None, "none", "score_missing"}:
+        blocker = public_safe_compact_text(
+            runner_failure.get("failure_class"),
+            limit=140,
+        )
+    if not blocker:
+        return
+
+    replaceable = {
+        None,
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }
+    for field in ("first_blocker", "repeat_blocked_by"):
+        if compact.get(field) in replaceable:
+            compact[field] = blocker
 
 
 def _skillsbench_compact_pre_agent_setup_label(compact: dict[str, Any]) -> str:
@@ -3002,6 +3036,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "error_len_bucket",
             "fingerprint_confidence",
             "apt_failure_subtype",
+            "pip_failure_subtype",
             "retryability",
         ):
             value = public_safe_compact_text(fingerprint.get(field), limit=100)
@@ -3347,8 +3382,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         setup_preflight=compact.get("task_setup_preflight"),
     )
 
-    solution_quality = build_benchmark_solution_quality_signals(compact)
-    if solution_quality:
+    _sync_skillsbench_runner_failure_root_blockers(compact)
+
+    if solution_quality := build_benchmark_solution_quality_signals(compact):
         compact["solution_quality_signals"] = solution_quality
 
     post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)

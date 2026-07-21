@@ -17,9 +17,18 @@ LOOPX_TURN_PUBLIC_BOUNDARY_FIELDS = (
 )
 LOOPX_TURN_RUNNER_READINESS_CHECKS = (
     "turn_transaction_committed",
+    "independent_scored_workspace_validation_passed",
     "pre_agent_postcondition_checked",
     "pre_agent_postcondition_eligible",
+    "post_agent_postcondition_validated",
     "post_agent_postcondition_satisfied",
+    "official_feedback_blinded",
+)
+LOOPX_TURN_PROOF_CHECKS = (
+    "turn_transaction_committed",
+    "independent_scored_workspace_validation_passed",
+    "pre_agent_postcondition_checked",
+    "post_agent_postcondition_validated",
     "official_feedback_blinded",
 )
 
@@ -326,6 +335,8 @@ def _public_runner_readiness(value: Any) -> dict[str, Any]:
     }
     if isinstance(value.get("ready"), bool):
         receipt["ready"] = value["ready"]
+    if isinstance(value.get("turn_proven"), bool):
+        receipt["turn_proven"] = value["turn_proven"]
     checks = value.get("checks")
     if isinstance(checks, dict):
         receipt["checks"] = {
@@ -355,6 +366,21 @@ def _public_runner_readiness(value: Any) -> dict[str, Any]:
 
 def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any]:
     ready_count = sum(item.get("ready") is True for item in receipts)
+    committed_count = sum(
+        isinstance(item.get("checks"), dict)
+        and item["checks"].get("turn_transaction_committed") is True
+        for item in receipts
+    )
+    proven_count = sum(
+        item.get("turn_proven") is True
+        or (
+            not isinstance(item.get("turn_proven"), bool)
+            and item.get("ready") is True
+            and isinstance(item.get("checks"), dict)
+            and item["checks"].get("turn_transaction_committed") is True
+        )
+        for item in receipts
+    )
     blockers = sorted(
         {
             blocker
@@ -368,7 +394,9 @@ def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any
         "capability": "benchmark_runner",
         "status": "ready" if ready_count else "blocked",
         "ready": ready_count > 0,
-        "proven_turn_count": ready_count,
+        "runner_ready_turn_count": ready_count,
+        "proven_turn_count": proven_count,
+        "committed_turn_count": committed_count,
         "observed_turn_count": len(receipts),
         "blocker_codes": [] if ready_count else blockers,
         "raw_task_text_recorded": any(

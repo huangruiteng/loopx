@@ -11,6 +11,7 @@ LAUNCHER = REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"
 
 def _base_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
+    env.pop("SKILLSBENCH_RUNNER_PROFILE", None)
     env.update(
         {
             "XDG_STATE_HOME": str(tmp_path / "state"),
@@ -76,6 +77,9 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "loopx_turn_max_turns=4" in output
     assert "loopx_turn_progress_exit_code=10" in output
     assert "loopx_turn_terminal_policy=fixed-n" in output
+    assert "docker_proxy_host_recorded=false" in output
+    assert "docker_proxy_host=" not in output
+    assert env["SKILLSBENCH_DOCKER_PROXY_HOST"] not in output
     assert "private_runner_command_values_redacted=true" in output
     for arg_name in (
         "--remote-command-file-bridge-probe-command",
@@ -135,3 +139,62 @@ def test_turn_launcher_requires_an_independent_validator(tmp_path: Path) -> None
         "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND is required for "
         "loopx-turn-agent-cli"
     ) in proc.stderr
+
+
+def test_launcher_allows_explicit_direct_benchmark_egress(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE"] = "off"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "direct-egress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "benchmark_egress_proxy_mode=off" in proc.stdout
+    assert "--benchmark-egress-proxy-mode off" in proc.stdout
+
+
+def test_launcher_rejects_invalid_benchmark_egress_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE"] = "sometimes"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "direct-egress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off"
+        in proc.stderr
+    )
+
+
+def test_setup_only_launcher_enables_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT"] = "1"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "setup-progress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "public_artifact_sync_interval_sec=30" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 30" in proc.stdout

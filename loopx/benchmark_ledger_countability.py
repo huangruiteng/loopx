@@ -126,6 +126,17 @@ def official_score_bool_fallback_allowed(run: dict[str, Any]) -> bool:
     if not _fallback_candidate_present(run):
         return False
 
+    accounting = (
+        run.get("attempt_accounting")
+        if isinstance(run.get("attempt_accounting"), dict)
+        else {}
+    )
+    attempt_countable = run.get("official_score_attempt_countable")
+    if attempt_countable is None:
+        attempt_countable = accounting.get("official_score_attempt_countable")
+    if attempt_countable is False:
+        return False
+
     labels = _fallback_label_values(run)
     if "skillsbench_codex_acp_post_success_finalization" in labels:
         return False

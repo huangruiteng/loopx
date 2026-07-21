@@ -2158,7 +2158,7 @@ def build_benchmark_run_ledger_entry(
             if isinstance(marker.get("attempt_accounting"), dict)
             else {}
         )
-    has_official_bool_score = official_score_bool_fallback_used(benchmark_run)
+    has_official_bool_score = bool_fallback_used
     if attempt_accounting:
         for source_field, entry_field in (
             ("lifecycle_phase", "attempt_lifecycle_phase"),

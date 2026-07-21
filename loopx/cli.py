@@ -158,13 +158,7 @@ def user_supplied_registry(argv: list[str] | None) -> bool:
     return any(value == "--registry" or value.startswith("--registry=") for value in values)
 
 
-def main(argv: list[str] | None = None) -> int:
-    raw_argv = sys.argv[1:] if argv is None else list(argv)
-    if top_level_help_requested(raw_argv):
-        print(render_concise_help(sys.argv[0] if argv is None else "loopx"), end="")
-        return 0
-    raw_argv = rewrite_auto_research_question_argv(raw_argv)
-
+def build_parser() -> LoopXArgumentParser:
     parser = LoopXArgumentParser(description="LoopX control-plane helper.")
     parser.add_argument("--version", action="version", version=f"loopx {__version__}")
     parser.add_argument("--registry", default=str(default_registry_path()), help="Path to a project-local registry.")
@@ -242,6 +236,17 @@ def main(argv: list[str] | None = None) -> int:
     register_task_lease_command(sub, add_subcommand_format)
     register_quota_command(sub)
 
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else list(argv)
+    if top_level_help_requested(raw_argv):
+        print(render_concise_help(sys.argv[0] if argv is None else "loopx"), end="")
+        return 0
+    raw_argv = rewrite_auto_research_question_argv(raw_argv)
+
+    parser = build_parser()
     args = parser.parse_args(raw_argv)
     registry_path = Path(args.registry).expanduser()
     if (

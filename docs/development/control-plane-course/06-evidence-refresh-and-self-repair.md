@@ -1,6 +1,7 @@
 # 第 6 讲：证据、Refresh 与 Self-Repair
 
-> 核心问题：为什么“代码改了”“todo 勾了”“agent 说完成了”都不足以证明长期目标真的推进？
+> **本讲结论：** Artifact 只有经过 validation、writeback、refresh 和一次性 spend，才成为
+> material progress；replan 或 repair 必须留下 bounded state delta，不能只写 ACK。
 
 建议时长：100 分钟。讲解 55 分钟、失败回放 25 分钟、实验 20 分钟。
 
@@ -13,6 +14,33 @@
 3. 解释 projection gap、outcome floor、vision checkpoint 和 repair delta。
 4. 在连续 no-progress 时执行 self-repair，而不是降低 gate。
 5. 为 public/private evidence 设计安全边界和 compact lineage。
+
+## 本讲技术契约
+
+| 边界 | LoopX 中的答案 |
+| --- | --- |
+| Artifact owner | Workspace、外部系统或 host 保存产物；LoopX 保存 public-safe ref 与 lineage |
+| Acceptance owner | Independent validator、readback 或明确的 user/reviewer decision |
+| Transaction owner | Turn journal 保存 phase progress，不能替代 goal state |
+| Commit boundary | Validation 先于 writeback，writeback 先于 spend，scheduler apply 先于 ACK |
+| Recovery | 按失败 phase 恢复；repair/replan 必须写出可 read back 的 state delta |
+
+## 两个 Showcase 中什么才算推进
+
+产物存在只是第一步。对两个 Showcase，可以直接比较“看起来完成”和“控制面已接受”：
+
+| 观察 | 是否已构成 material progress | 还缺什么 |
+| --- | --- | --- |
+| Issue-Fix 修改了文件 | 否 | 聚焦验证、正确 worktree、todo lineage |
+| PR 已创建 | 视情况 | PR/commit readback、monitor successor、durable writeback |
+| PR checks 轮询仍无变化 | 否 | 只更新 lane-local no-change evidence 和 next due，不 spend |
+| 研究 dev metric 提升 | 是局部证据，不是目标完成 | holdout 或独立 evaluator evidence |
+| holdout 通过且 boundary clean | 是候选推进 | promotion review/receipt 与 acceptance checkpoint |
+| worker 声称“没有更多想法” | 否 | 从 durable frontier、retry 和 vision gap 推导 completion |
+
+这张表也是 self-repair 的入口：当外部结果已经存在但 writeback、successor、vision 或
+projection 缺失时，应修补丢失的 state delta；当根本没有新证据时，不应靠改写总结制造
+“推进”。
 
 ## “做了”与“控制面推进了”之间的差距
 
@@ -546,6 +574,38 @@ loopx refresh-state \
   --agent-id <lab-agent> \
   --vision-unchanged-reason "lab acceptance remains unchanged"
 ```
+
+## Turn Journal 只拥有事务恢复
+
+`run_loopx_turn_once` 会把 plan、host result、task validation、writeback、spend 和 scheduler
+状态写入 `runtime_root/goals/<goal-id>/turns/<turn-key>.json`。这份 journal 的 owner 是
+**单个 Turn 的阶段进度**，不是 goal truth：只有 `writeback` callback 成功，长期状态才发生
+变化；只有 source state readback 才能证明 todo、vision 或 evidence 已提交。
+
+这一区分让恢复可以按失败阶段精确继续：
+
+| 停止位置 | Journal 已拥有的事实 | 重试时允许做什么 |
+| --- | --- | --- |
+| `host_execute` 失败 | plan、失败 receipt | 重新调用 host |
+| task validation 失败 | typed host result、validator failure | 保留合法 result，重新跑 postcondition |
+| `durable_writeback` 失败 | validated result | 只重试 writeback，不重复 host |
+| `quota_spend` 失败 | durable state 已写 | 只重试 spend，不重复 delivery |
+| scheduler 尚未 apply / ACK | writeback 与 spend 已完成 | 只结算 scheduler effect 与 ACK |
+
+`completed_phases` 必须是事务阶段的有序前缀；`validate_loopx_turn_receipt` 会拒绝跳过
+validation、提前 spend 或把错误 phase 写成完成。已 `committed` / `stopped` 的 journal
+再次执行时直接 replay，不重新调用 host。
+
+因此这里至少有三种不同 ledger：
+
+```text
+Turn journal       owns one execution transaction and resume cursor
+Goal/event state   owns durable lifecycle facts
+Run history/status owns evidence indexes and read projections
+```
+
+把 journal 当 goal state，会让一个“阶段已记录”的本地文件冒充业务 transition；把 run
+history 当 journal，又无法可靠判断该从 writeback、spend 还是 scheduler ACK 恢复。
 
 ## 核心代码领读：从“我做了”到可归因的 refresh 与 spend
 

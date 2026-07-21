@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 from ..benchmark_case_state import benchmark_case_loopx_command_prefix
 from ..control_plane.turn_driver import run_loopx_turn_once
@@ -27,6 +27,7 @@ from .skillsbench_acp_failure_policy import (
     RECOVERABLE_CODEX_TURN_FAILURE_PREFIX,
     recoverable_codex_turn_failure_message,
 )
+from .skillsbench_turn_route import LOOPX_TURN_PROOF_CHECKS
 
 
 SKILLSBENCH_LOOPX_TURN_TRACE_SCHEMA_VERSION = (
@@ -48,7 +49,7 @@ class SkillsBenchTurnAgentResult:
     progress_evidence: Mapping[str, Any]
 
 
-AgentPromptRunner = Callable[[str], str | SkillsBenchTurnAgentResult]
+AgentPromptRunner = Callable[[str], Union[str, SkillsBenchTurnAgentResult]]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
 TurnObserver = Callable[[dict[str, Any], dict[str, Any]], None]
 
@@ -779,6 +780,10 @@ def build_skillsbench_benchmark_runner_readiness(
     )
     checks = {
         "turn_transaction_committed": execution.get("status") == "committed",
+        "independent_scored_workspace_validation_passed": bool(
+            scored_workspace_validation.get("status") == "passed"
+            and scored_workspace_validation.get("independent") is True
+        ),
         "pre_agent_postcondition_checked": (
             scored_workspace_validation.get("pre_agent_postcondition_checked") is True
         ),
@@ -789,16 +794,22 @@ def build_skillsbench_benchmark_runner_readiness(
             scored_workspace_validation.get("post_agent_postcondition_status")
             == "satisfied"
         ),
+        "post_agent_postcondition_validated": (
+            scored_workspace_validation.get("post_agent_postcondition_status")
+            in {"progress_validated", "satisfied"}
+        ),
         "official_feedback_blinded": (
             scored_workspace_validation.get("oracle_feedback_used") is False
         ),
     }
     blockers = [name for name, passed in checks.items() if not passed]
+    turn_proven = all(checks[name] for name in LOOPX_TURN_PROOF_CHECKS)
     return {
         "schema_version": "skillsbench_benchmark_runner_readiness_v0",
         "capability": "benchmark_runner",
         "status": "ready" if not blockers else "blocked",
         "ready": not blockers,
+        "turn_proven": turn_proven,
         "checks": checks,
         "blocker_codes": blockers,
         "evidence_kind": "committed_turn_with_independent_postcondition",

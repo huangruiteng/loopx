@@ -428,9 +428,6 @@ VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
 )
 VERIFIER_UV_BOOTSTRAP_MIRROR_END = verifier_bootstrap.VERIFIER_UV_BOOTSTRAP_MIRROR_END
 DEFAULT_DOCKER_PIP_INDEX_URL = verifier_bootstrap.DEFAULT_DOCKER_PIP_INDEX_URL
-DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = (
-    verifier_bootstrap.DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL
-)
 DEFAULT_DOCKER_PIP_INDEX_HOST = "pypi.tuna.tsinghua.edu.cn"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
@@ -4930,6 +4927,37 @@ def _apply_host_local_acp_prereq_failure_attribution(
     return True
 
 
+def _sync_specific_runner_failure_root_blockers(
+    compact: dict[str, Any],
+) -> bool:
+    if compact.get("official_score_status") != "missing":
+        return False
+    if not isinstance(compact.get("runner_failure"), dict):
+        return False
+    attribution = compact.get("score_failure_attribution")
+    if not isinstance(attribution, str) or attribution in {
+        "",
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }:
+        return False
+
+    changed = False
+    replaceable = {
+        None,
+        "",
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }
+    for field in ("first_blocker", "repeat_blocked_by"):
+        if compact.get(field) in replaceable:
+            compact[field] = attribution
+            changed = True
+    return changed
+
+
 def _apply_native_goal_worker_finish_guard_attribution(
     compact: dict[str, Any],
 ) -> bool:
@@ -6181,6 +6209,17 @@ def _effective_build_stall_timeout_sec(args: argparse.Namespace) -> int:
     return _requested_build_stall_timeout_sec(args)
 
 
+def _effective_setup_only_stage_timeout_sec(args: argparse.Namespace) -> int:
+    sandbox_timeout_sec = max(
+        1,
+        int(getattr(args, "sandbox_setup_timeout", 0) or 0),
+    )
+    build_stall_timeout_sec = _effective_build_stall_timeout_sec(args)
+    if build_stall_timeout_sec <= 0:
+        return sandbox_timeout_sec
+    return min(sandbox_timeout_sec, build_stall_timeout_sec)
+
+
 def build_compose_setup_diagnostic(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -6224,6 +6263,9 @@ def build_compose_setup_diagnostic(
     ][:10]
     apt_failure_subtype = str(
         fingerprint.get("apt_failure_subtype") or ""
+    )[:120]
+    pip_failure_subtype = str(
+        fingerprint.get("pip_failure_subtype") or ""
     )[:120]
     terminal_failure_dependency_endpoints = [
         str(item)[:120]
@@ -6294,12 +6336,19 @@ def build_compose_setup_diagnostic(
         or "system_package" in terminal_dependency_classes
         or any(code.startswith("apt_") for code in terminal_failure_reason_codes)
     )
+    pip_bootstrap_failure = (
+        score_failure == "skillsbench_docker_compose_pip_bootstrap_failure"
+        or "skillsbench_docker_compose_pip_bootstrap_failure" in labels
+        or "pip_bootstrap_failure" in matched_patterns
+    )
     volume_mount_failure = (
         score_failure == "skillsbench_docker_compose_volume_mount_failure"
         or "skillsbench_docker_compose_volume_mount_failure" in labels
         or "volume_mount_failure" in matched_patterns
     )
-    if apt_repository_failure:
+    if pip_bootstrap_failure:
+        primary_setup_failure_category = "python_package_bootstrap"
+    elif apt_repository_failure:
         primary_setup_failure_category = "system_package_repository"
     elif volume_mount_failure:
         primary_setup_failure_category = "volume_mount"
@@ -6311,7 +6360,11 @@ def build_compose_setup_diagnostic(
         primary_setup_failure_category = "runner_setup"
     if compose_setup_failure and not agent_rounds_started:
         status = "compose_setup_blocked_before_agent_rounds"
-        if apt_repository_failure:
+        if pip_bootstrap_failure:
+            next_action = (
+                "repair_python_package_bootstrap_before_product_treatment"
+            )
+        elif apt_repository_failure:
             next_action = (
                 "repair_system_package_repository_setup_before_product_treatment"
             )
@@ -6341,9 +6394,11 @@ def build_compose_setup_diagnostic(
         "unclassified_compose_failure": unclassified,
         "docker_daemon_unavailable": docker_daemon_unavailable,
         "apt_repository_failure": apt_repository_failure,
+        "pip_bootstrap_failure": pip_bootstrap_failure,
         "volume_mount_failure": volume_mount_failure,
         "primary_setup_failure_category": primary_setup_failure_category,
         "apt_failure_subtype": apt_failure_subtype,
+        "pip_failure_subtype": pip_failure_subtype,
         "terminal_failure_dependency_classes": terminal_dependency_classes,
         "terminal_failure_reason_codes": terminal_failure_reason_codes,
         "terminal_failure_dependency_endpoints": (
@@ -6797,7 +6852,6 @@ def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
         "      python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
         "        --no-cache-dir --timeout 120 --retries 5 \\\n"
         f"        --index-url {DEFAULT_DOCKER_PIP_INDEX_URL} \\\n"
-        f"        --extra-index-url {DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL} \\\n"
         "        \"uv==${LOOPX_SKILLSBENCH_UV_VERSION}\" || true; \\\n"
         "    fi; \\\n"
         "    if ! command -v uvx >/dev/null 2>&1; then \\\n"
@@ -7694,9 +7748,7 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
         f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={DEFAULT_DOCKER_PIP_INDEX_URL}\n"
-        f"ARG LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL={DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL}\n"
         "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
-        "    PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL} \\\n"
         "    PIP_DEFAULT_TIMEOUT=120 \\\n"
         "    PIP_RETRIES=10 \\\n"
         "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
@@ -8759,6 +8811,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "setup_only_public_preflight": bool(
             getattr(args, "setup_only_public_preflight", False)
         ),
+        "setup_only_stage_timeout_sec": (
+            _effective_setup_only_stage_timeout_sec(args)
+        ),
         "setup_only_public_preflight_json": str(setup_only_preflight_path),
         "controller_trace_json": str(controller_trace_path),
         "build_stall_timeout_requested_sec": _requested_build_stall_timeout_sec(args),
@@ -9287,6 +9342,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "agent_idle_timeout_sec",
         "build_stall_timeout_requested_sec",
         "build_stall_timeout_sec",
+        "setup_only_stage_timeout_sec",
         "local_codex_task_output_quiet_timeout_sec",
     )
     for field in int_fields:
@@ -9305,6 +9361,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "fail_fast_on_verifier_bootstrap_risk",
         "verifier_bootstrap_fail_fast_defaulted",
         "bootstrap_light_fail_fast_defaulted",
+        "setup_only_public_preflight",
         "global_ledger_sync_enabled",
         "ledger_inherit_enabled",
     ):
@@ -9654,6 +9711,25 @@ def _write_public_runner_config(plan: dict[str, Any]) -> Path | None:
             + "\n",
             encoding="utf-8",
         )
+    return path
+
+
+def _write_setup_only_public_preflight(
+    plan: Mapping[str, Any],
+    result: Mapping[str, Any],
+) -> Path:
+    path = Path(str(plan["setup_only_public_preflight_json"]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_text_atomic(
+        path,
+        json.dumps(
+            dict(result),
+            indent=2,
+            sort_keys=True,
+            default=_json_default,
+        )
+        + "\n",
+    )
     return path
 
 
@@ -14611,7 +14687,13 @@ async def run_benchflow_case(
                 config=config,
                 task_staging=plan.get("task_staging"),
                 setup_preflight=plan.get("task_setup_preflight"),
-                stage_timeout_sec=float(args.sandbox_setup_timeout),
+                stage_timeout_sec=float(
+                    _effective_setup_only_stage_timeout_sec(args)
+                ),
+                progress_callback=lambda progress: _write_setup_only_public_preflight(
+                    plan,
+                    progress,
+                ),
             )
             plan["setup_only_public_preflight_result"] = setup_only_result
             prerequisites["benchflow_run_stage"] = str(
@@ -14738,7 +14820,7 @@ def reduce_result(
         ):
             _exception_type, score_failure_attribution, labels = prereq_failure
             compact["score_failure_attribution"] = score_failure_attribution
-            compact.setdefault("first_blocker", score_failure_attribution)
+            _sync_specific_runner_failure_root_blockers(compact)
             existing_labels = [
                 label
                 for label in compact.get("failure_attribution_labels", [])
@@ -14766,7 +14848,7 @@ def reduce_result(
                 ):
                     label = "skillsbench_host_local_acp_empty_trajectory_after_install"
                     compact["score_failure_attribution"] = label
-                    compact.setdefault("first_blocker", label)
+                    _sync_specific_runner_failure_root_blockers(compact)
                     existing_labels = [
                         item
                         for item in compact.get("failure_attribution_labels", [])
@@ -14810,6 +14892,7 @@ def reduce_result(
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
         apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
+    _sync_specific_runner_failure_root_blockers(compact)
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
@@ -16957,18 +17040,7 @@ async def _async_main_with_observable_handle(
         if args.setup_only_public_preflight:
             if not isinstance(case_result, dict):
                 raise TypeError("setup-only preflight returned a non-object result")
-            preflight_path = Path(plan["setup_only_public_preflight_json"])
-            preflight_path.parent.mkdir(parents=True, exist_ok=True)
-            preflight_path.write_text(
-                json.dumps(
-                    case_result,
-                    indent=2,
-                    sort_keys=True,
-                    default=_json_default,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            preflight_path = _write_setup_only_public_preflight(plan, case_result)
             _write_public_runner_config(plan)
             _write_public_runner_prerequisites(plan)
             passed = case_result.get("status") == "passed"
