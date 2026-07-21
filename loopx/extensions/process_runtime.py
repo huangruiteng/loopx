@@ -36,13 +36,16 @@ def _terminate_posix_process_group(process: subprocess.Popen[bytes]) -> None:
     except ProcessLookupError:
         process.wait()
         return
-    _wait_for_process(process, _PROCESS_TERMINATE_GRACE_SECONDS)
+    # Give every group member the full grace window before escalation. On
+    # macOS, signaling a group whose leader is an unreaped zombie can fail with
+    # EPERM, so reap an exited leader only after that window has elapsed.
+    time.sleep(_PROCESS_TERMINATE_GRACE_SECONDS)
+    process.poll()
     try:
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    if process.poll() is None:
-        process.kill()
+    if process.returncode is None:
         process.wait()
 
 
