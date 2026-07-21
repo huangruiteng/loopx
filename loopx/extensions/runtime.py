@@ -685,7 +685,7 @@ def resolve_extension_runtime_binding(
     protocol: str,
     permission: str,
 ) -> dict[str, Any]:
-    """Resolve a standalone extension runtime without a capability contract."""
+    """Resolve an extension runtime without coupling dispatch to capability metadata."""
 
     active_revision, verified_entrypoint, manifest = _resolved_active_extension(
         extension_id,
@@ -724,14 +724,14 @@ def resolve_extension_runtime_binding(
     }
 
 
-def run_standalone_extension(
+def run_extension(
     extension_id: str,
     *,
     state_file: str | Path,
     request: Mapping[str, Any],
     execute: bool = False,
 ) -> dict[str, Any]:
-    """Run one lifecycle-gated standalone extension over JSON stdin/stdout."""
+    """Run one lifecycle-gated extension over bounded JSON stdin/stdout."""
 
     active_revision, verified_entrypoint, manifest = _resolved_active_extension(
         extension_id,
@@ -741,11 +741,6 @@ def run_standalone_extension(
     runtime = _runtime(manifest)
     if not isinstance(provider, Mapping):
         raise ValueError("extension active manifest is incomplete")
-    if manifest.get("capabilities") or manifest.get("implementations"):
-        raise ValueError(
-            "extension run only accepts standalone extensions; invoke capability "
-            "providers through their capability command"
-        )
     if not isinstance(request, Mapping):
         raise ValueError("extension run request must be a JSON object")
 

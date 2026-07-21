@@ -35,7 +35,7 @@ from loopx.extensions.runtime import (
     resolve_extension_binding,
     resolve_extension_runtime_binding,
     rollback_extension,
-    run_standalone_extension,
+    run_extension,
 )
 from loopx.extensions.openviking_semantic_preference.provider import (
     register_openviking_provider_arguments,
@@ -256,7 +256,7 @@ def test_standalone_runtime_does_not_require_a_capability_contract(
         )
 
 
-def test_standalone_run_is_lifecycle_gated_and_returns_provider_packet(
+def test_extension_run_is_lifecycle_gated_and_returns_provider_packet(
     tmp_path: Path,
 ) -> None:
     provider = _provider(tmp_path / "provider")
@@ -268,7 +268,7 @@ def test_standalone_run_is_lifecycle_gated_and_returns_provider_packet(
     install_extension(manifest, state_file=state_file, execute=True)
     request = {"schema_version": "test_extension_request_v0"}
 
-    preview = run_standalone_extension(
+    preview = run_extension(
         "test-standalone-extension",
         state_file=state_file,
         request=request,
@@ -276,7 +276,7 @@ def test_standalone_run_is_lifecycle_gated_and_returns_provider_packet(
     assert preview["status"] == "ready"
     assert preview["executed"] is False
 
-    executed = run_standalone_extension(
+    executed = run_extension(
         "test-standalone-extension",
         state_file=state_file,
         request=request,
@@ -293,7 +293,7 @@ def test_standalone_run_is_lifecycle_gated_and_returns_provider_packet(
         execute=True,
     )
     with pytest.raises(ValueError, match="is disabled"):
-        run_standalone_extension(
+        run_extension(
             "test-standalone-extension",
             state_file=state_file,
             request=request,
@@ -301,7 +301,7 @@ def test_standalone_run_is_lifecycle_gated_and_returns_provider_packet(
         )
 
 
-def test_standalone_run_rejects_capability_provider_bypass(tmp_path: Path) -> None:
+def test_extension_run_accepts_capability_provider(tmp_path: Path) -> None:
     provider = _provider(tmp_path / "provider")
     manifest = _manifest(
         tmp_path / "extension.toml",
@@ -311,16 +311,22 @@ def test_standalone_run_rejects_capability_provider_bypass(tmp_path: Path) -> No
     state_file = tmp_path / "extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
 
-    with pytest.raises(ValueError, match="through their capability command"):
-        run_standalone_extension(
-            "test-semantic-extension",
-            state_file=state_file,
-            request={"schema_version": "test_extension_request_v0"},
-            execute=True,
-        )
+    receipt = run_extension(
+        "test-semantic-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+
+    assert receipt["ok"] is True
+    assert receipt["status"] == "succeeded"
+    assert receipt["protocol"] == "semantic_preference_provider_v0"
+    assert receipt["provider_result"]["schema_version"] == (
+        "semantic_preference_provider_response_v0"
+    )
 
 
-def test_standalone_run_rejects_authority_bound_permission_before_invocation(
+def test_extension_run_rejects_authority_bound_permission_before_invocation(
     tmp_path: Path,
 ) -> None:
     marker = tmp_path / "invoked"
@@ -353,7 +359,7 @@ Path({json.dumps(str(marker))}).write_text("invoked", encoding="utf-8")
     install_extension(manifest, state_file=state_file, execute=True)
 
     with pytest.raises(ValueError, match="cannot grant operation authority"):
-        run_standalone_extension(
+        run_extension(
             "test-standalone-extension",
             state_file=state_file,
             request={"schema_version": "test_extension_request_v0"},
@@ -370,7 +376,7 @@ Path({json.dumps(str(marker))}).write_text("invoked", encoding="utf-8")
         ("stderr", "provider_failed", "stderr_too_large"),
     ],
 )
-def test_standalone_run_terminates_provider_when_output_limit_is_crossed(
+def test_extension_run_terminates_provider_when_output_limit_is_crossed(
     tmp_path: Path,
     stream: str,
     expected_status: str,
@@ -389,7 +395,7 @@ def test_standalone_run_terminates_provider_when_output_limit_is_crossed(
     state_file = tmp_path / f"{stream}-extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
 
-    receipt = run_standalone_extension(
+    receipt = run_extension(
         "test-standalone-extension",
         state_file=state_file,
         request={"schema_version": "test_extension_request_v0"},
@@ -402,7 +408,7 @@ def test_standalone_run_terminates_provider_when_output_limit_is_crossed(
     assert not marker.exists()
 
 
-def test_standalone_run_terminates_provider_on_timeout(tmp_path: Path) -> None:
+def test_extension_run_terminates_provider_on_timeout(tmp_path: Path) -> None:
     marker = tmp_path / "timeout-completed"
     provider = tmp_path / "timeout-provider"
     provider.write_text(
@@ -433,7 +439,7 @@ Path({json.dumps(str(marker))}).write_text("completed", encoding="utf-8")
     state_file = tmp_path / "timeout-extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
 
-    receipt = run_standalone_extension(
+    receipt = run_extension(
         "test-standalone-extension",
         state_file=state_file,
         request={"schema_version": "test_extension_request_v0"},
@@ -508,7 +514,7 @@ def test_extension_run_cli_rejects_oversized_stdin_before_runtime_resolution(
     assert "exceeds the 1000000-byte limit" in payload["error"]
 
 
-def test_standalone_run_fails_closed_on_invalid_provider_output(
+def test_extension_run_fails_closed_on_invalid_provider_output(
     tmp_path: Path,
 ) -> None:
     provider = tmp_path / "provider"
@@ -526,7 +532,7 @@ def test_standalone_run_fails_closed_on_invalid_provider_output(
     state_file = tmp_path / "extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
 
-    receipt = run_standalone_extension(
+    receipt = run_extension(
         "test-standalone-extension",
         state_file=state_file,
         request={"schema_version": "test_extension_request_v0"},
@@ -1083,14 +1089,15 @@ def test_extension_cli_installs_preinstalled_runtime(
     assert enabled["doctor"]["verified"] is True
 
 
-def test_extension_cli_runs_standalone_provider_through_loopx(
+def test_extension_cli_runs_capability_provider_through_loopx(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     provider = _provider(tmp_path / "provider")
-    manifest = _standalone_manifest(
+    manifest = _manifest(
         tmp_path / "extension.toml",
         entrypoint=provider,
+        version="1.0.0",
     )
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -1125,7 +1132,7 @@ def test_extension_cli_runs_standalone_provider_through_loopx(
                 "json",
                 "extension",
                 "run",
-                "test-standalone-extension",
+                "test-semantic-extension",
                 "--input-json",
                 str(request_path),
                 "--execute",
@@ -1139,6 +1146,104 @@ def test_extension_cli_runs_standalone_provider_through_loopx(
     assert receipt["provider_result"]["schema_version"] == (
         "semantic_preference_provider_response_v0"
     )
+
+
+def test_extension_cli_runs_bundled_openviking_provider_through_loopx(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    provider = bin_dir / "loopx-openviking-semantic-preference"
+    provider.write_text(
+        f"#!{sys.executable}\n"
+        "from loopx.extensions.openviking_semantic_preference.provider import main\n"
+        "raise SystemExit(main())\n",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    ov = bin_dir / "ov"
+    ov.write_text(
+        f"""#!{sys.executable}
+import json
+import sys
+
+if "status" in sys.argv:
+    json.dump({{"ok": True, "result": {{"status": "ready"}}}}, sys.stdout)
+    raise SystemExit(0)
+target = sys.argv[sys.argv.index("-u") + 1]
+json.dump({{
+    "ok": True,
+    "result": {{
+        "memories": [{{
+            "uri": target + "/preferences/compact-validation",
+            "abstract": "Prefer compact validation notes.",
+        }}],
+    }},
+}}, sys.stdout)
+""",
+        encoding="utf-8",
+    )
+    ov.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "semantic_preference_provider_request_v0",
+                "query": "How should validation evidence be reported?",
+                "limit": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_root = tmp_path / "runtime"
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "install",
+                "--bundled",
+                "openviking-semantic-preference",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "openviking-semantic-preference",
+                "--input-json",
+                str(request_path),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["status"] == "succeeded"
+    assert receipt["protocol"] == "semantic_preference_provider_v0"
+    items = receipt["provider_result"]["items"]
+    assert len(items) == 1
+    assert items[0]["preference_ref"].endswith(
+        "/memories/preferences/compact-validation"
+    )
+    assert items[0]["summary"] == "Prefer compact validation notes."
 
 
 def test_core_does_not_import_openviking_provider_implementation() -> None:

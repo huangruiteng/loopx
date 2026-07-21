@@ -22,7 +22,7 @@ from loopx.capabilities.catalog import build_capability_catalog_packet  # noqa: 
 from loopx.extensions.runtime import (  # noqa: E402
     default_extension_state_file,
     install_extension,
-    run_standalone_extension,
+    run_extension,
 )
 from loopx.extensions.manifest import load_extension_manifest  # noqa: E402
 from loopx_finance_value_discovery.reducer import (  # noqa: E402
@@ -81,7 +81,7 @@ def main() -> int:
                 execute=True,
             )
             assert installed["doctor"]["verified"] is True
-            receipt = run_standalone_extension(
+            receipt = run_extension(
                 "loopx-finance-value-discovery",
                 state_file=state_file,
                 request=evidence,

@@ -126,10 +126,10 @@ failed probe leaves the current revision untouched. Activation state contains
 validated manifest snapshots and revision ids in the private LoopX runtime
 root; it does not contain provider output or credentials.
 
-Standalone extensions use the same managed command shape as built-in
-capabilities: LoopX accepts a bounded request, previews by default, executes
-only with `--execute`, and returns a structured receipt. The v0 invocation
-contract is:
+All executable extensions use the same managed command shape, whether they are
+standalone, provide a capability, or implement an existing capability. LoopX
+accepts a bounded request, previews by default, executes only with `--execute`,
+and returns a structured receipt. The v0 invocation contract is:
 
 ```bash
 loopx extension run <extension-id> --input-json <path-or-> [--execute]
@@ -139,9 +139,12 @@ The active manifest fixes the executable, arguments, protocol, permissions,
 timeout, and revision. The caller supplies one JSON object over stdin and the
 provider must return one JSON object over stdout. LoopX does not accept an
 arbitrary executable path or argument passthrough. `run` never installs a
-missing extension, and it rejects extensions that implement a capability;
-those providers remain reachable only through their capability-facing LoopX
-command. Direct provider binaries are implementation and debugging surfaces,
+missing extension. Capability and domain commands remain the caller-facing
+product surface when they own additional policy or authority, but they should
+reuse this managed runtime rather than invoke provider binaries directly.
+`[[provides]]` and `[[implements]]` describe catalog ownership and routing; they
+do not create a second execution mechanism.
+Direct provider binaries are implementation and debugging surfaces; they are
 not the supported management API.
 
 The generic runner is deliberately non-effectful. It rejects the reserved

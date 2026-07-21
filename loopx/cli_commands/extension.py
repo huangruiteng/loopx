@@ -17,7 +17,7 @@ from ..extensions.runtime import (
     extension_status,
     install_extension,
     rollback_extension,
-    run_standalone_extension,
+    run_extension,
 )
 
 
@@ -139,7 +139,7 @@ def register_extension_commands(
 
     run = commands.add_parser(
         "run",
-        help="Invoke one enabled standalone extension through its managed runtime.",
+        help="Invoke one enabled extension through its managed runtime.",
     )
     _add_common(run, add_subcommand_format)
     run.add_argument("extension_id")
@@ -223,7 +223,7 @@ def handle_extension_command(
                 execute=args.execute,
             )
         elif args.extension_command == "run":
-            payload = run_standalone_extension(
+            payload = run_extension(
                 args.extension_id,
                 state_file=state_file,
                 request=_load_json_object(args.input_json),
