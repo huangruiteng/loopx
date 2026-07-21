@@ -18,6 +18,8 @@ from loopx.benchmark_adapters.skillsbench_setup_preflight import (
 )
 from loopx.status import compact_benchmark_run
 from scripts.skillsbench_automation_loop import (
+    _effective_setup_only_stage_timeout_sec,
+    _public_runner_config,
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
@@ -163,6 +165,41 @@ def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     assert plan["setup_only_public_preflight_json"].endswith(
         "setup_only_preflight.public.json"
     )
+
+
+@pytest.mark.parametrize(
+    ("sandbox_timeout", "build_stall_timeout", "expected"),
+    [
+        (7200, 3600, 3600),
+        (1800, 3600, 1800),
+        (7200, 0, 7200),
+    ],
+)
+def test_setup_only_stage_timeout_matches_scoring_setup_watchdog(
+    sandbox_timeout: int,
+    build_stall_timeout: int,
+    expected: int,
+) -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--route",
+            "loopx-goal-start-product-mode",
+            "--setup-only-public-preflight",
+            "--sandbox-setup-timeout",
+            str(sandbox_timeout),
+            "--build-stall-timeout-sec",
+            str(build_stall_timeout),
+        ]
+    )
+
+    assert _effective_setup_only_stage_timeout_sec(args) == expected
+    plan = build_plan(args)
+    assert plan["setup_only_stage_timeout_sec"] == expected
+    public_config = _public_runner_config(plan)
+    assert public_config["setup_only_public_preflight"] is True
+    assert public_config["setup_only_stage_timeout_sec"] == expected
 
 
 def test_launcher_syncs_setup_only_public_artifact() -> None:

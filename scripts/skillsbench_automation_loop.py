@@ -6209,6 +6209,17 @@ def _effective_build_stall_timeout_sec(args: argparse.Namespace) -> int:
     return _requested_build_stall_timeout_sec(args)
 
 
+def _effective_setup_only_stage_timeout_sec(args: argparse.Namespace) -> int:
+    sandbox_timeout_sec = max(
+        1,
+        int(getattr(args, "sandbox_setup_timeout", 0) or 0),
+    )
+    build_stall_timeout_sec = _effective_build_stall_timeout_sec(args)
+    if build_stall_timeout_sec <= 0:
+        return sandbox_timeout_sec
+    return min(sandbox_timeout_sec, build_stall_timeout_sec)
+
+
 def build_compose_setup_diagnostic(
     compact: dict[str, Any],
     plan: dict[str, Any],
@@ -8800,6 +8811,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "setup_only_public_preflight": bool(
             getattr(args, "setup_only_public_preflight", False)
         ),
+        "setup_only_stage_timeout_sec": (
+            _effective_setup_only_stage_timeout_sec(args)
+        ),
         "setup_only_public_preflight_json": str(setup_only_preflight_path),
         "controller_trace_json": str(controller_trace_path),
         "build_stall_timeout_requested_sec": _requested_build_stall_timeout_sec(args),
@@ -9328,6 +9342,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "agent_idle_timeout_sec",
         "build_stall_timeout_requested_sec",
         "build_stall_timeout_sec",
+        "setup_only_stage_timeout_sec",
         "local_codex_task_output_quiet_timeout_sec",
     )
     for field in int_fields:
@@ -9346,6 +9361,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "fail_fast_on_verifier_bootstrap_risk",
         "verifier_bootstrap_fail_fast_defaulted",
         "bootstrap_light_fail_fast_defaulted",
+        "setup_only_public_preflight",
         "global_ledger_sync_enabled",
         "ledger_inherit_enabled",
     ):
@@ -14671,7 +14687,9 @@ async def run_benchflow_case(
                 config=config,
                 task_staging=plan.get("task_staging"),
                 setup_preflight=plan.get("task_setup_preflight"),
-                stage_timeout_sec=float(args.sandbox_setup_timeout),
+                stage_timeout_sec=float(
+                    _effective_setup_only_stage_timeout_sec(args)
+                ),
                 progress_callback=lambda progress: _write_setup_only_public_preflight(
                     plan,
                     progress,
