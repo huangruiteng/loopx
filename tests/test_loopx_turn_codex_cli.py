@@ -582,6 +582,33 @@ def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
     assert payload["validation_status"] == "passed"
 
 
+def test_public_e2e_smoke_supports_an_independent_arithmetic_fix_case() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"),
+            "--case-id",
+            "arithmetic-fix",
+            "--codex-model",
+            "executor-fixture",
+            "--advisor-model",
+            "advisor-fixture",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["case_id"] == "arithmetic-fix"
+    assert payload["case_valid"] is True
+    assert payload["committed_turn_count"] == 1
+
+
 def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(

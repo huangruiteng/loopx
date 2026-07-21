@@ -8,6 +8,7 @@ import contextlib
 import io
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -28,6 +29,65 @@ AGENT_ID = "codex-turn-e2e"
 TODO_ID = "todo_turnreale2e01"
 MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_PREFIX = "loopx-turn-real-e2e-step-"
+CASE_IDS = (
+    "marker-step",
+    "arithmetic-fix",
+    "json-normalization",
+    "multi-file-docs",
+    "bounded-refactor",
+)
+CASE_SPECS = {
+    "marker-step": {
+        "todo": (
+            "Advance `docs/turn-e2e-marker.txt` by exactly one numbered step per "
+            "Turn, starting at `loopx-turn-real-e2e-step-1`."
+        ),
+        "write_scope": ["docs/turn-e2e-marker.txt"],
+        "files": {},
+    },
+    "arithmetic-fix": {
+        "todo": (
+            "Fix `calculator.py` so `add(a, b)` returns the mathematical sum for "
+            "positive and negative integers. Keep the change limited to that file."
+        ),
+        "write_scope": ["calculator.py"],
+        "files": {"calculator.py": "def add(a, b):\n    return a - b\n"},
+    },
+    "json-normalization": {
+        "todo": (
+            "Normalize `config/settings.json`: `enabled` must be JSON boolean true "
+            "and `retries` must be JSON integer 3. Preserve valid JSON."
+        ),
+        "write_scope": ["config/settings.json"],
+        "files": {"config/settings.json": '{"enabled":"yes","retries":"3"}\n'},
+    },
+    "multi-file-docs": {
+        "todo": (
+            "Promote the guide to stable: set `docs/guide.md` status to stable and "
+            "replace the draft index entry with a relative Markdown link labelled Guide."
+        ),
+        "write_scope": ["docs/guide.md", "docs/index.md"],
+        "files": {
+            "docs/guide.md": "# Guide\n\nStatus: draft\n",
+            "docs/index.md": "# Index\n\n- Guide (draft)\n",
+        },
+    },
+    "bounded-refactor": {
+        "todo": (
+            "Refactor `names.py` to extract one private `_slug` helper and make both "
+            "public functions delegate to it without changing their behavior."
+        ),
+        "write_scope": ["names.py"],
+        "files": {
+            "names.py": (
+                "def user_slug(value):\n"
+                "    return value.strip().lower().replace(\" \", \"-\")\n\n"
+                "def project_slug(value):\n"
+                "    return value.strip().lower().replace(\" \", \"-\")\n"
+            )
+        },
+    },
+}
 
 
 def _positive_int(value: str) -> int:
@@ -41,13 +101,19 @@ def _marker_value(turn_number: int) -> str:
     return f"{MARKER_PREFIX}{turn_number}"
 
 
-def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Path]:
+def _write_fixture(
+    root: Path, *, case_id: str, turn_count: int
+) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     workspace = root / "workspace"
     runtime.mkdir(parents=True)
     workspace.mkdir(parents=True)
-    (workspace / "docs").mkdir()
+    spec = CASE_SPECS[case_id]
+    for relative, content in spec["files"].items():
+        path = workspace / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
     state = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     state.parent.mkdir(parents=True)
     state.write_text(
@@ -62,13 +128,7 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
                 "",
                 "## Agent Todo",
                 "",
-                (
-                    f"- [ ] [P0] Advance `{MARKER_NAME}` by exactly one numbered "
-                    f"step per Turn: missing -> `{_marker_value(1)}`; step-k -> "
-                    f"step-(k+1). Stop after `{_marker_value(turn_count)}` and report "
-                    "validated progress after each step. Name the completed and next "
-                    "numbered step in the typed result so LoopX can plan the next action."
-                ),
+                f"- [ ] [P0] {spec['todo']}",
                 (
                     f"  <!-- loopx:todo todo_id={TODO_ID} status=open "
                     "task_class=advancement_task action_kind=real_cli_e2e "
@@ -108,7 +168,7 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
                                     "scope": "public qualification",
                                 }
                             },
-                            "write_scope": ["docs/**"],
+                            "write_scope": spec["write_scope"],
                         },
                     }
                 ],
@@ -122,22 +182,21 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
     return project, runtime, workspace, registry
 
 
-def _write_fake_codex(root: Path) -> Path:
+def _write_fake_codex(root: Path, *, case_id: str) -> Path:
     executable = root / "fake-codex"
     shutil.copyfile(REPO_ROOT / "examples" / "fixtures" / "loopx-turn-fake-codex.py", executable)
+    (root / "case-id.txt").write_text(case_id, encoding="utf-8")
     executable.chmod(0o755)
     return executable
 
 
-def _validator_command(expected_marker: str) -> list[str]:
-    program = (
-        "import json,pathlib,sys; "
-        "json.load(sys.stdin); "
-        f"p=pathlib.Path({MARKER_NAME!r}); "
-        "raise SystemExit(0 if p.is_file() and "
-        f"p.read_text(encoding='utf-8').strip() == {expected_marker!r} else 9)"
-    )
-    return [sys.executable, "-c", program]
+def _validator_command(case_id: str, expected_marker: str) -> list[str]:
+    return [
+        sys.executable,
+        str(REPO_ROOT / "examples" / "fixtures" / "validate-loopx-turn-case.py"),
+        case_id,
+        expected_marker,
+    ]
 
 
 def _run_cli(argv: list[str]) -> tuple[int, dict[str, Any]]:
@@ -158,6 +217,7 @@ def _base_argv(
     model: str | None,
     advisor_model: str | None,
     timeout_seconds: float,
+    case_id: str,
     expected_marker: str,
     turn_instance_id: str,
 ) -> list[str]:
@@ -187,7 +247,7 @@ def _base_argv(
         "--codex-sandbox",
         "workspace-write",
         "--validation-command-json",
-        json.dumps(_validator_command(expected_marker)),
+        json.dumps(_validator_command(case_id, expected_marker)),
         "--scan-root",
         str(registry.parent.parent),
         "--no-global-sync",
@@ -212,9 +272,16 @@ def _quota_spend_count(runtime: Path) -> int:
     )
 
 
-def _marker_matches(workspace: Path, expected: str) -> bool:
-    marker = workspace / MARKER_NAME
-    return marker.is_file() and marker.read_text(encoding="utf-8").strip() == expected
+def _case_matches(workspace: Path, case_id: str, expected: str) -> bool:
+    completed = subprocess.run(
+        _validator_command(case_id, expected),
+        cwd=workspace,
+        input="{}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0
 
 
 def _session_action(runtime: Path, turn_key: object) -> str | None:
@@ -296,6 +363,7 @@ def _summary(
     workspace: Path,
     model_explicit: bool,
     advisor_mode: bool,
+    case_id: str,
 ) -> dict[str, Any]:
     final_turn = turns[-1] if turns else {}
     session_actions = [turn.get("session_action") for turn in turns]
@@ -304,6 +372,7 @@ def _summary(
         "real_codex_cli_invoked": real_codex_cli,
         "model_explicit": model_explicit,
         "advisor_mode": advisor_mode,
+        "case_id": case_id,
         "model_usage": _aggregate_model_usage(turns),
         "requested_turn_count": turn_count,
         "observed_turn_count": len(turns),
@@ -322,7 +391,8 @@ def _summary(
         "receipt_status": final_turn.get("receipt_status"),
         "validation_status": final_turn.get("validation_status"),
         "effects": final_turn.get("effects", {}),
-        "marker_valid": _marker_matches(workspace, _marker_value(turn_count)),
+        "case_valid": _case_matches(workspace, case_id, _marker_value(turn_count)),
+        "marker_valid": _case_matches(workspace, case_id, _marker_value(turn_count)),
         "quota_slot_spend_count": _quota_spend_count(runtime),
         "replay_exit_code": replay_exit_code,
         "replay_effects": replay.get("effects") if isinstance(replay, dict) else None,
@@ -341,6 +411,7 @@ def main() -> int:
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
     parser.add_argument("--advisor-model")
+    parser.add_argument("--case-id", choices=CASE_IDS, default="marker-step")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument(
         "--turn-count",
@@ -353,11 +424,13 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    if args.case_id != "marker-step" and args.turn_count != 1:
+        raise SystemExit("non-marker cases support exactly one Turn")
 
     with tempfile.TemporaryDirectory(prefix="loopx-turn-real-cli-e2e-") as directory:
         root = Path(directory)
         project, runtime, workspace, registry = _write_fixture(
-            root,
+            root, case_id=args.case_id,
             turn_count=args.turn_count,
         )
         if args.real_codex_cli:
@@ -368,7 +441,7 @@ def main() -> int:
                 raise SystemExit("codex CLI is required for --real-codex-cli")
             codex_bin = candidate
         else:
-            codex_bin = _write_fake_codex(root)
+            codex_bin = _write_fake_codex(root, case_id=args.case_id)
 
         turns: list[dict[str, Any]] = []
         turn_payloads: list[dict[str, Any]] = []
@@ -382,6 +455,7 @@ def main() -> int:
                 model=args.codex_model,
                 advisor_model=args.advisor_model,
                 timeout_seconds=args.timeout_seconds,
+                case_id=args.case_id,
                 expected_marker=_marker_value(turn_number),
                 turn_instance_id=f"qualification-turn-{turn_number}",
             )
@@ -391,9 +465,8 @@ def main() -> int:
                     turn_number=turn_number,
                     exit_code=exit_code,
                     payload=payload,
-                    marker_valid=_marker_matches(
-                        workspace,
-                        _marker_value(turn_number),
+                    marker_valid=_case_matches(
+                        workspace, args.case_id, _marker_value(turn_number)
                     ),
                     runtime=runtime,
                 )
@@ -423,6 +496,7 @@ def main() -> int:
             workspace=workspace,
             model_explicit=bool(args.codex_model),
             advisor_mode=bool(args.advisor_model),
+            case_id=args.case_id,
         )
 
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -464,6 +538,7 @@ def main() -> int:
         and summary["validation_status"] == "passed"
         and summary["effects"] == expected_effects
         and summary["marker_valid"] is True
+        and summary["case_valid"] is True
         and summary["quota_slot_spend_count"] == args.turn_count
         and summary["replay_exit_code"] == 0
         and summary["replay_effects"] == replay_effects

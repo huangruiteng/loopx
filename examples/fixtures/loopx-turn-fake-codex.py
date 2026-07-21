@@ -9,6 +9,7 @@ import sys
 
 MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_PREFIX = "loopx-turn-real-e2e-step-"
+CASE_ID = pathlib.Path(__file__).with_name("case-id.txt").read_text(encoding="utf-8").strip()
 
 args = sys.argv[1:]
 prompt = sys.stdin.read()
@@ -57,15 +58,42 @@ if advisor:
     )
     raise SystemExit(0)
 
-marker = pathlib.Path(MARKER_NAME)
 turn_number = 1
-if marker.is_file():
-    current = marker.read_text(encoding="utf-8").strip()
-    match = re.fullmatch(re.escape(MARKER_PREFIX) + r"([1-9][0-9]*)", current)
-    if match is None:
-        raise SystemExit("unexpected marker value")
-    turn_number = int(match.group(1)) + 1
-marker.write_text(MARKER_PREFIX + str(turn_number), encoding="utf-8")
+if CASE_ID == "marker-step":
+    marker = pathlib.Path(MARKER_NAME)
+    if marker.is_file():
+        current = marker.read_text(encoding="utf-8").strip()
+        match = re.fullmatch(re.escape(MARKER_PREFIX) + r"([1-9][0-9]*)", current)
+        if match is None:
+            raise SystemExit("unexpected marker value")
+        turn_number = int(match.group(1)) + 1
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(MARKER_PREFIX + str(turn_number), encoding="utf-8")
+elif CASE_ID == "arithmetic-fix":
+    pathlib.Path("calculator.py").write_text(
+        "def add(a, b):\n    return a + b\n", encoding="utf-8"
+    )
+elif CASE_ID == "json-normalization":
+    pathlib.Path("config/settings.json").write_text(
+        '{"enabled":true,"retries":3}\n', encoding="utf-8"
+    )
+elif CASE_ID == "multi-file-docs":
+    pathlib.Path("docs/guide.md").write_text(
+        "# Guide\n\nStatus: stable\n", encoding="utf-8"
+    )
+    pathlib.Path("docs/index.md").write_text(
+        "# Index\n\n- [Guide](guide.md) — stable\n", encoding="utf-8"
+    )
+elif CASE_ID == "bounded-refactor":
+    pathlib.Path("names.py").write_text(
+        "def _slug(value):\n"
+        "    return value.strip().lower().replace(\" \", \"-\")\n\n"
+        "def user_slug(value):\n"
+        "    return _slug(value)\n\n"
+        "def project_slug(value):\n"
+        "    return _slug(value)\n",
+        encoding="utf-8",
+    )
 output_path.write_text(
     json.dumps(
         {

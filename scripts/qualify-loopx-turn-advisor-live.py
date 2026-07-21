@@ -30,6 +30,7 @@ def _run_arm(
     advisor_model: str | None,
     turn_count: int,
     timeout_seconds: float,
+    case_id: str,
 ) -> dict[str, Any]:
     command = [
         sys.executable,
@@ -40,6 +41,8 @@ def _run_arm(
         str(turn_count),
         "--timeout-seconds",
         str(timeout_seconds),
+        "--case-id",
+        case_id,
     ]
     if real:
         command.append("--real-codex-cli")
@@ -95,6 +98,17 @@ def main() -> int:
     parser.add_argument("--baseline-model", required=True)
     parser.add_argument("--advisor-model", required=True)
     parser.add_argument("--executor-model", required=True)
+    parser.add_argument(
+        "--case-id",
+        choices=(
+            "marker-step",
+            "arithmetic-fix",
+            "json-normalization",
+            "multi-file-docs",
+            "bounded-refactor",
+        ),
+        default="marker-step",
+    )
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--turn-count", type=_positive_int, default=1)
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
@@ -116,6 +130,7 @@ def main() -> int:
         advisor_model=None,
         turn_count=args.turn_count,
         timeout_seconds=args.timeout_seconds,
+        case_id=args.case_id,
     )
     advisor = _run_arm(
         real=not args.fixture,
@@ -124,6 +139,7 @@ def main() -> int:
         advisor_model=args.advisor_model,
         turn_count=args.turn_count,
         timeout_seconds=args.timeout_seconds,
+        case_id=args.case_id,
     )
     baseline_usage = _usage(baseline["payload"])
     advisor_usage = _usage(advisor["payload"])
@@ -148,6 +164,7 @@ def main() -> int:
         "schema_version": "loopx_turn_advisor_qualification_v0",
         "real_codex_cli_invoked": not args.fixture,
         "turn_count": args.turn_count,
+        "case_id": args.case_id,
         "quality_ok": quality_ok,
         "usage_available": usage_available,
         "baseline": {
