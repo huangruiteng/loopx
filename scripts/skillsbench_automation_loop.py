@@ -428,9 +428,6 @@ VERIFIER_UV_BOOTSTRAP_MIRROR_BEGIN = (
 )
 VERIFIER_UV_BOOTSTRAP_MIRROR_END = verifier_bootstrap.VERIFIER_UV_BOOTSTRAP_MIRROR_END
 DEFAULT_DOCKER_PIP_INDEX_URL = verifier_bootstrap.DEFAULT_DOCKER_PIP_INDEX_URL
-DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = (
-    verifier_bootstrap.DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL
-)
 DEFAULT_DOCKER_PIP_INDEX_HOST = "pypi.tuna.tsinghua.edu.cn"
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
@@ -6844,7 +6841,6 @@ def patch_dockerfile_uv_bootstrap_mirror(dockerfile: Path) -> dict[str, Any]:
         "      python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
         "        --no-cache-dir --timeout 120 --retries 5 \\\n"
         f"        --index-url {DEFAULT_DOCKER_PIP_INDEX_URL} \\\n"
-        f"        --extra-index-url {DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL} \\\n"
         "        \"uv==${LOOPX_SKILLSBENCH_UV_VERSION}\" || true; \\\n"
         "    fi; \\\n"
         "    if ! command -v uvx >/dev/null 2>&1; then \\\n"
@@ -7741,9 +7737,7 @@ def patch_dockerfile_pip_bootstrap(dockerfile: Path) -> bool:
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
         f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={DEFAULT_DOCKER_PIP_INDEX_URL}\n"
-        f"ARG LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL={DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL}\n"
         "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
-        "    PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL} \\\n"
         "    PIP_DEFAULT_TIMEOUT=120 \\\n"
         "    PIP_RETRIES=10 \\\n"
         "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"

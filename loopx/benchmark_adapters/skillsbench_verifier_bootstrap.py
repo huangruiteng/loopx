@@ -23,7 +23,6 @@ DEFAULT_VERIFIER_UV_RELEASE_MIRROR_BASE = (
 )
 DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST = "releases.astral.sh"
 DEFAULT_DOCKER_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
-DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL = "https://pypi.org/simple"
 
 
 def _strip_marker_block(text: str, begin: str, end: str) -> str:
@@ -152,7 +151,6 @@ def patch_verifier_uv_bootstrap_mirror(verifier: Path) -> dict[str, Any]:
         "  python3 -m pip install ${loopx_pip_break_system_packages} \\\n"
         "    --timeout 120 --retries 5 \\\n"
         f"    --index-url {shlex.quote(DEFAULT_DOCKER_PIP_INDEX_URL)} \\\n"
-        f"    --extra-index-url {shlex.quote(DEFAULT_DOCKER_PIP_EXTRA_INDEX_URL)} \\\n"
         "    \"uv==${loopx_uv_version}\" || true\n"
         "  unset loopx_pip_break_system_packages\n"
         "fi\n"
