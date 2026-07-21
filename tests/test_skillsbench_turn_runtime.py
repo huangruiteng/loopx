@@ -786,6 +786,264 @@ def test_codex_exec_transport_retry_requires_no_task_facing_operation(
     )
 
 
+def test_codex_exec_session_rollover_requires_exhausted_side_effect_free_resume(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "bridge-summary.jsonl"
+    assert acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=acp_relay.CODEX_EXEC_TRANSPORT_RETRY_LIMIT,
+        rollover_count=0,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=0,
+        rollover_count=0,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+
+    summary_path.write_text(
+        json.dumps(
+            {
+                "record_phase": "complete",
+                "operation": "run_command",
+                "loopx_state_write": True,
+                "loopx_subcommands": ["refresh-state"],
+                "success": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert not acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=acp_relay.CODEX_EXEC_TRANSPORT_RETRY_LIMIT,
+        rollover_count=0,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    summary_path.unlink()
+    assert not acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=acp_relay.CODEX_EXEC_TRANSPORT_RETRY_LIMIT,
+        rollover_count=acp_relay.CODEX_EXEC_SESSION_ROLLOVER_LIMIT,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+    assert not acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=acp_relay.CODEX_EXEC_TRANSPORT_RETRY_LIMIT,
+        rollover_count=0,
+        final_message_present=False,
+        turn_deadline=time.monotonic() - 1,
+    )
+
+    summary_path.write_text(
+        json.dumps(
+            {
+                "record_phase": "complete",
+                "operation": "write_file",
+                "task_facing_operation": True,
+                "success": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert not acp_relay._codex_exec_session_rollover_allowed(
+        category="codex_responses_stream_unavailable",
+        bridge_summary_path=summary_path,
+        retry_count=acp_relay.CODEX_EXEC_TRANSPORT_RETRY_LIMIT,
+        rollover_count=0,
+        final_message_present=False,
+        turn_deadline=time.monotonic() + 30,
+    )
+
+
+def test_skillsbench_n_turn_codex_exec_rolls_over_once_after_repeated_resume_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    invocation_log = tmp_path / "invocations.jsonl"
+    fake_codex = tmp_path / "fake-codex"
+    fake_codex.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import sys
+
+log_path = pathlib.Path(os.environ["FAKE_CODEX_INVOCATION_LOG"])
+attempt = len(log_path.read_text().splitlines()) + 1 if log_path.exists() else 1
+prompt = sys.stdin.read()
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps({"argv": sys.argv[1:], "prompt": prompt}) + "\\n")
+if attempt in {2, 3}:
+    print(json.dumps({
+        "type": "turn.failed",
+        "error": {"message": "stream disconnected before completion: codex/responses"},
+    }))
+    raise SystemExit(1)
+output_index = sys.argv.index("--output-last-message") + 1
+pathlib.Path(sys.argv[output_index]).write_text("bounded turn complete", encoding="utf-8")
+thread_id = "thread-before-rollover" if attempt == 1 else "thread-after-rollover"
+print(json.dumps({"type": "thread.started", "thread_id": thread_id}))
+""",
+        encoding="utf-8",
+    )
+    fake_codex.chmod(0o755)
+    monkeypatch.setenv("FAKE_CODEX_INVOCATION_LOG", str(invocation_log))
+    trace_dir = tmp_path / "public-traces"
+    trace_dir.mkdir()
+    relay = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(
+            codex_bin=str(fake_codex),
+            loopx_turn_agent_cli=True,
+            loopx_turn_max_turns=4,
+            remote_command_file_bridge_command="synthetic-bridge",
+            worker_public_trace_dir=str(trace_dir),
+            timeout_sec=30,
+        )
+    )
+    monkeypatch.setattr(
+        relay,
+        "_consume_remote_bridge_for_solver",
+        lambda: {"ready": True},
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_consumption_trace",
+        lambda _probe: None,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_start_json_file_bridge_server",
+        lambda **_kwargs: ("synthetic-agent-bridge", None),
+    )
+    monkeypatch.setattr(
+        relay,
+        "_write_instrumented_bridge_wrapper",
+        lambda **kwargs: kwargs["tmp_path"] / "synthetic-wrapper",
+    )
+    monkeypatch.setattr(
+        relay,
+        "_prompt_with_remote_bridge_packet",
+        lambda prompt, **_kwargs: prompt,
+    )
+    monkeypatch.setattr(
+        relay,
+        "_publish_remote_bridge_agent_operations_trace",
+        lambda **_kwargs: None,
+    )
+    session: dict[str, Any] = {"cwd": str(tmp_path), "model": None}
+    observed_thread_ids: list[str] = []
+
+    def fake_turn_relay(**kwargs: Any) -> str:
+        first = kwargs["agent_runner"](kwargs["prompt"])
+        second = kwargs["agent_runner"]("Continue the same task in this session.")
+        third = kwargs["agent_runner"]("Continue after the session rollover.")
+        assert (
+            first.response_text
+            == second.response_text
+            == third.response_text
+            == "bounded turn complete"
+        )
+        observed_thread_ids.append(session["_loopx_turn_codex_thread_id"])
+        return "sequence complete"
+
+    monkeypatch.setattr(acp_relay, "run_skillsbench_loopx_turn_relay", fake_turn_relay)
+    private_original_prompt = "private original task prompt fixture"
+    assert (
+        relay._run_codex(
+            private_original_prompt,
+            session=session,
+            session_id="fixture-session",
+            stdout=SimpleNamespace(write=lambda _value: None, flush=lambda: None),
+        )
+        == "sequence complete"
+    )
+
+    invocations = [json.loads(line) for line in invocation_log.read_text().splitlines()]
+    assert len(invocations) == 5
+    assert invocations[0]["argv"][:2] == ["exec", "--skip-git-repo-check"]
+    assert invocations[1]["argv"][:3] == [
+        "exec",
+        "resume",
+        "--skip-git-repo-check",
+    ]
+    assert invocations[2]["argv"][:3] == [
+        "exec",
+        "resume",
+        "--skip-git-repo-check",
+    ]
+    assert invocations[3]["argv"][:2] == ["exec", "--skip-git-repo-check"]
+    assert "resume" not in invocations[3]["argv"]
+    assert "--ephemeral" not in invocations[3]["argv"]
+    assert "thread-before-rollover" in invocations[1]["argv"]
+    assert "thread-before-rollover" in invocations[2]["argv"]
+    assert invocations[4]["argv"][:3] == [
+        "exec",
+        "resume",
+        "--skip-git-repo-check",
+    ]
+    assert "thread-after-rollover" in invocations[4]["argv"]
+    assert private_original_prompt in invocations[3]["prompt"]
+    assert "Continue the same task in this session." in invocations[3]["prompt"]
+    assert "current durable workspace" in invocations[3]["prompt"]
+    assert observed_thread_ids == ["thread-after-rollover"]
+    assert "_loopx_turn_codex_thread_id" not in session
+    assert "_loopx_turn_codex_rollover_count" not in session
+    assert "_loopx_turn_original_prompt" not in session
+
+    traces = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in trace_dir.glob("*.compact.json")
+    ]
+    failures = sorted(
+        (
+            trace
+            for trace in traces
+            if trace.get("trace_kind") == "codex_exec_process_failure"
+        ),
+        key=lambda trace: trace["codex_exec_process"]["transport_retry_index"],
+    )
+    assert len(failures) == 2
+    assert failures[0]["codex_exec_process"]["retry_scheduled"] is True
+    assert (
+        failures[0]["codex_exec_process"]["session_rollover_scheduled"] is False
+    )
+    assert failures[1]["codex_exec_process"]["retry_scheduled"] is False
+    assert failures[1]["codex_exec_process"]["session_rollover_scheduled"] is True
+    rollover = next(
+        trace for trace in traces if trace.get("trace_kind") == "codex_exec_session_rollover"
+    )
+    assert rollover["codex_exec_session_rollover"] == {
+        "schema_version": "skillsbench_codex_exec_session_rollover_v0",
+        "stage": "completed",
+        "rollover_index": 1,
+        "resume_failure_count": 2,
+        "previous_thread_present": True,
+        "fresh_thread_present": True,
+        "shared_sequence_deadline_preserved": True,
+        "original_prompt_available_in_private_memory": True,
+        "original_prompt_recorded": False,
+        "thread_ids_recorded": False,
+        "raw_task_text_recorded": False,
+    }
+    public_trace_text = json.dumps(traces, sort_keys=True)
+    assert private_original_prompt not in public_trace_text
+    assert "thread-before-rollover" not in public_trace_text
+    assert "thread-after-rollover" not in public_trace_text
+
+
 def test_codex_exec_failure_category_reads_only_typed_jsonl_errors() -> None:
     private_message = json.dumps(
         {

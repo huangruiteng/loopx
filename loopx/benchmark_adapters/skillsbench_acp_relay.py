@@ -49,6 +49,7 @@ from loopx.benchmark_adapters.skillsbench_bridge_guard import (
 )
 from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (
     RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES,
+    RECOVERABLE_CODEX_TURN_FAILURE_PREFIX,
     recoverable_codex_turn_failure_message as _recoverable_codex_turn_failure_message,
 )
 from loopx.benchmark_adapters.skillsbench_acp_process import (
@@ -97,6 +98,7 @@ from loopx.control_plane.turn_driver import codex_cli_session_id_from_jsonl
 SAFE_LOOPX_TODO_ID_RE = re.compile(r"^todo_[A-Za-z0-9_-]{6,80}$")
 SAFE_LOOPX_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,120}$")
 CODEX_EXEC_TRANSPORT_RETRY_LIMIT = 1
+CODEX_EXEC_SESSION_ROLLOVER_LIMIT = 1
 
 
 def _loopx_turn_local_session_root(
@@ -417,17 +419,15 @@ def _codex_exec_jsonl_error_text(stdout_text: str) -> str:
     return "\n".join(messages)[:16_000]
 
 
-def _codex_exec_transport_retry_allowed(
+def _codex_exec_side_effect_free_recovery_allowed(
     *,
     category: str,
     bridge_summary_path: Path | None,
-    retry_count: int,
     final_message_present: bool,
     turn_deadline: float | None,
 ) -> bool:
     if (
         category not in RECOVERABLE_CODEX_TURN_FAILURE_CATEGORIES
-        or retry_count >= CODEX_EXEC_TRANSPORT_RETRY_LIMIT
         or final_message_present
         or bridge_summary_path is None
         or turn_deadline is not None
@@ -444,6 +444,63 @@ def _codex_exec_transport_retry_allowed(
         receipt.get("task_facing_operation_count") == 0
         and receipt.get("task_facing_success_count") == 0
         and receipt.get("raw_material_recorded") is False
+    )
+
+
+def _codex_exec_transport_retry_allowed(
+    *,
+    category: str,
+    bridge_summary_path: Path | None,
+    retry_count: int,
+    final_message_present: bool,
+    turn_deadline: float | None,
+) -> bool:
+    return bool(
+        retry_count < CODEX_EXEC_TRANSPORT_RETRY_LIMIT
+        and _codex_exec_side_effect_free_recovery_allowed(
+            category=category,
+            bridge_summary_path=bridge_summary_path,
+            final_message_present=final_message_present,
+            turn_deadline=turn_deadline,
+        )
+    )
+
+
+def _codex_exec_session_rollover_allowed(
+    *,
+    category: str,
+    bridge_summary_path: Path | None,
+    retry_count: int,
+    rollover_count: int,
+    final_message_present: bool,
+    turn_deadline: float | None,
+) -> bool:
+    return bool(
+        retry_count == CODEX_EXEC_TRANSPORT_RETRY_LIMIT
+        and rollover_count < CODEX_EXEC_SESSION_ROLLOVER_LIMIT
+        and _codex_exec_side_effect_free_recovery_allowed(
+            category=category,
+            bridge_summary_path=bridge_summary_path,
+            final_message_present=final_message_present,
+            turn_deadline=turn_deadline,
+        )
+    )
+
+
+def _codex_exec_session_rollover_prompt(
+    *, original_prompt: str, continuation_prompt: str
+) -> str:
+    return (
+        original_prompt.rstrip()
+        + "\n\n"
+        + "LoopX Turn fresh-session recovery contract:\n"
+        + "- Continue the same task after a native resume transport failure.\n"
+        + "- Rebuild context from the current durable workspace and case-local "
+        + "LoopX state; prior task-facing progress is already present there.\n"
+        + "- Perform only the next bounded task-facing step, then stop.\n"
+        + "- Do not use or request official verifier, reward, pass/fail, hidden-test, "
+        + "or gold-answer feedback.\n\n"
+        + continuation_prompt.strip()
     )
 
 
@@ -670,6 +727,7 @@ class SkillsBenchLocalAcpRelay:
         _bypass_loopx_turn: bool = False,
         _turn_deadline: float | None = None,
         _transport_retry_count: int = 0,
+        _session_rollover_index: int = 0,
     ) -> str:
         if self._config.dry_run_response is not None:
             return self._config.dry_run_response
@@ -677,6 +735,8 @@ class SkillsBenchLocalAcpRelay:
             sequence_deadline = time.monotonic() + max(
                 1.0, float(self._config.timeout_sec)
             )
+            session["_loopx_turn_original_prompt"] = prompt_text
+            session["_loopx_turn_codex_rollover_count"] = 0
             try:
                 return run_skillsbench_loopx_turn_relay(
                     prompt=prompt_text,
@@ -693,6 +753,8 @@ class SkillsBenchLocalAcpRelay:
                 )
             finally:
                 session.pop("_loopx_turn_codex_thread_id", None)
+                session.pop("_loopx_turn_codex_rollover_count", None)
+                session.pop("_loopx_turn_original_prompt", None)
                 session_root = _loopx_turn_local_session_root(
                     self._config.worker_public_trace_dir,
                     session_id,
@@ -1092,6 +1154,22 @@ class SkillsBenchLocalAcpRelay:
                         turn_deadline=_turn_deadline,
                     )
                 )
+                rollover_count = int(
+                    session.get("_loopx_turn_codex_rollover_count") or 0
+                )
+                session_rollover_scheduled = bool(
+                    recoverable_turn_failure
+                    and resumable_loopx_turn
+                    and bool(resume_session_id)
+                    and _codex_exec_session_rollover_allowed(
+                        category=category,
+                        bridge_summary_path=bridge_summary_path,
+                        retry_count=_transport_retry_count,
+                        rollover_count=rollover_count,
+                        final_message_present=output_path.exists(),
+                        turn_deadline=_turn_deadline,
+                    )
+                )
                 self._publish_codex_exec_failure_trace(
                     stage="exit_nonzero",
                     returncode=proc.returncode,
@@ -1105,6 +1183,8 @@ class SkillsBenchLocalAcpRelay:
                     recoverable_turn_failure=recoverable_turn_failure,
                     transport_retry_index=_transport_retry_count,
                     retry_scheduled=retry_scheduled,
+                    session_rollover_index=_session_rollover_index,
+                    session_rollover_scheduled=session_rollover_scheduled,
                 )
                 if bridge_summary_path is not None:
                     self._publish_remote_bridge_agent_operations_trace(
@@ -1119,7 +1199,60 @@ class SkillsBenchLocalAcpRelay:
                         _bypass_loopx_turn=_bypass_loopx_turn,
                         _turn_deadline=_turn_deadline,
                         _transport_retry_count=_transport_retry_count + 1,
+                        _session_rollover_index=_session_rollover_index,
                     )
+                if session_rollover_scheduled:
+                    original_prompt = str(
+                        session.get("_loopx_turn_original_prompt") or ""
+                    ).strip()
+                    if not original_prompt:
+                        return _recoverable_codex_turn_failure_message(category)
+                    next_rollover_index = rollover_count + 1
+                    session["_loopx_turn_codex_rollover_count"] = next_rollover_index
+                    previous_thread_present = bool(
+                        session.pop("_loopx_turn_codex_thread_id", None)
+                    )
+                    rollover_prompt = _codex_exec_session_rollover_prompt(
+                        original_prompt=original_prompt,
+                        continuation_prompt=prompt_text,
+                    )
+                    try:
+                        response = self._run_codex(
+                            rollover_prompt,
+                            session=session,
+                            session_id=session_id,
+                            stdout=stdout,
+                            _bypass_loopx_turn=_bypass_loopx_turn,
+                            _turn_deadline=_turn_deadline,
+                            _transport_retry_count=(
+                                CODEX_EXEC_TRANSPORT_RETRY_LIMIT
+                            ),
+                            _session_rollover_index=next_rollover_index,
+                        )
+                    except (RuntimeError, TimeoutError):
+                        self._publish_codex_exec_session_rollover_trace(
+                            stage="failed",
+                            rollover_index=next_rollover_index,
+                            resume_failure_count=_transport_retry_count + 1,
+                            previous_thread_present=previous_thread_present,
+                            fresh_thread_present=bool(
+                                session.get("_loopx_turn_codex_thread_id")
+                            ),
+                        )
+                        raise
+                    rollover_succeeded = not response.startswith(
+                        RECOVERABLE_CODEX_TURN_FAILURE_PREFIX
+                    )
+                    self._publish_codex_exec_session_rollover_trace(
+                        stage="completed" if rollover_succeeded else "failed",
+                        rollover_index=next_rollover_index,
+                        resume_failure_count=_transport_retry_count + 1,
+                        previous_thread_present=previous_thread_present,
+                        fresh_thread_present=bool(
+                            session.get("_loopx_turn_codex_thread_id")
+                        ),
+                    )
+                    return response
                 if recoverable_turn_failure:
                     return _recoverable_codex_turn_failure_message(category)
                 raise RuntimeError(f"local codex execution failed: {category}")
@@ -3065,6 +3198,8 @@ raise SystemExit(proc.returncode)
         recoverable_turn_failure: bool | None = None,
         transport_retry_index: int = 0,
         retry_scheduled: bool = False,
+        session_rollover_index: int = 0,
+        session_rollover_scheduled: bool = False,
     ) -> None:
         if not self._config.worker_public_trace_dir:
             return
@@ -3097,6 +3232,10 @@ raise SystemExit(proc.returncode)
                 "recoverable_turn_failure": recoverable_turn_failure,
                 "transport_retry_index": max(0, int(transport_retry_index or 0)),
                 "retry_scheduled": bool(retry_scheduled),
+                "session_rollover_index": max(
+                    0, int(session_rollover_index or 0)
+                ),
+                "session_rollover_scheduled": bool(session_rollover_scheduled),
                 "returncode": (
                     returncode
                     if isinstance(returncode, int)
@@ -3113,6 +3252,56 @@ raise SystemExit(proc.returncode)
                 "raw_trajectory_recorded": False,
                 "credential_values_recorded": False,
                 "host_paths_recorded": False,
+            },
+            "boundary": {
+                "raw_command_recorded": False,
+                "raw_stdout_recorded": False,
+                "raw_stderr_recorded": False,
+                "raw_task_text_recorded": False,
+                "raw_logs_recorded": False,
+                "raw_trajectory_recorded": False,
+                "credential_values_recorded": False,
+                "host_paths_recorded": False,
+                "remote_paths_recorded": False,
+                "upload_performed": False,
+                "submit_performed": False,
+            },
+        }
+        self._write_worker_public_trace(trace)
+
+    def _publish_codex_exec_session_rollover_trace(
+        self,
+        *,
+        stage: str,
+        rollover_index: int,
+        resume_failure_count: int,
+        previous_thread_present: bool,
+        fresh_thread_present: bool,
+    ) -> None:
+        if not self._config.worker_public_trace_dir:
+            return
+        safe_stage = str(stage or "failed").strip().lower()
+        if safe_stage not in {"completed", "failed"}:
+            safe_stage = "failed"
+        trace = {
+            "schema_version": "skillsbench_host_local_acp_relay_public_trace_v0",
+            "ok": safe_stage == "completed",
+            "route": self._config.route,
+            "trace_kind": "codex_exec_session_rollover",
+            "benchmark_id": self._config.dataset,
+            "task_id": self._config.task_id,
+            "codex_exec_session_rollover": {
+                "schema_version": "skillsbench_codex_exec_session_rollover_v0",
+                "stage": safe_stage,
+                "rollover_index": max(1, int(rollover_index or 1)),
+                "resume_failure_count": max(2, int(resume_failure_count or 2)),
+                "previous_thread_present": bool(previous_thread_present),
+                "fresh_thread_present": bool(fresh_thread_present),
+                "shared_sequence_deadline_preserved": True,
+                "original_prompt_available_in_private_memory": True,
+                "original_prompt_recorded": False,
+                "thread_ids_recorded": False,
+                "raw_task_text_recorded": False,
             },
             "boundary": {
                 "raw_command_recorded": False,
