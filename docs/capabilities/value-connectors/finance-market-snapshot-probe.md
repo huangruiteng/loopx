@@ -17,9 +17,13 @@ loopx value-connectors source-map \
 loopx value-connectors install-check \
   --connector finance_market_snapshot \
   --format json
+
+loopx value-connectors plan \
+  --connector-id finance_market_snapshot \
+  --format json
 ```
 
-Both commands return `value_connector_extension_migration_v0`. They perform no
+All three commands return `value_connector_extension_migration_v0`. They perform no
 external read, install, registration, or Finance execution. The packet gives an
 agent this bounded sequence:
 

@@ -75,6 +75,8 @@ def test_manifest_and_paypal_example_preserve_extension_boundary() -> None:
     manifest = load_extension_manifest(MANIFEST)
     assert manifest["capabilities"] == []
     assert manifest["implementations"] == []
+    assert manifest["provider"]["permissions"] == []
+    assert manifest["runtime"]["required_permissions"] == []
     assert manifest["runtime"]["protocol"] == "finance_value_discovery_extension_v0"
 
     catalog = build_capability_catalog_packet([MANIFEST])
@@ -125,6 +127,30 @@ def test_legacy_connector_returns_extension_migration_packet(
     assert migration["automatic_provider_install_supported"] is False
     assert migration["packaged_loopx_only_start_supported"] is False
     assert migration["agent_start_mode"] == ("guided_when_provider_source_is_available")
+    assert migration["truth_contract"]["legacy_connector_executes_finance"] is False
+
+
+def test_legacy_plan_selector_returns_extension_migration_packet(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "value-connectors",
+                "plan",
+                "--connector-id",
+                "finance_market_snapshot",
+            ]
+        )
+        == 0
+    )
+    migration = json.loads(capsys.readouterr().out)
+    assert migration["schema_version"] == "value_connector_extension_migration_v0"
+    assert migration["status"] == "migrated_to_extension"
+    assert migration["replacement_extension_id"] == ("loopx-finance-value-discovery")
+    assert migration["replacement_capability_id"] is None
     assert migration["truth_contract"]["legacy_connector_executes_finance"] is False
 
 

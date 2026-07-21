@@ -74,6 +74,8 @@ def test_scaffold_execute_creates_valid_manifest_and_refuses_overwrite(
     assert manifest["provider"]["id"] == "loopx-example"
     assert manifest["capabilities"] == []
     assert manifest["implementations"] == []
+    assert manifest["provider"]["permissions"] == []
+    assert manifest["runtime"]["required_permissions"] == []
     assert manifest["runtime"]["entrypoint"] == "loopx-example"
     with pytest.raises(ValueError, match="destination already exists"):
         scaffold_extension(

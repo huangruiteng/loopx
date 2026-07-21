@@ -139,20 +139,22 @@ The active manifest fixes the executable, arguments, protocol, permissions,
 timeout, and revision. The caller supplies one JSON object over stdin and the
 provider must return one JSON object over stdout. LoopX does not accept an
 arbitrary executable path or argument passthrough. `run` never installs a
-missing extension, and it rejects extensions with `[[provides]]` or
-`[[implements]]`; those providers are invoked through their capability or
-domain command. Extension lifecycle management is shared, but direct execution
-is reserved for runtime-only standalone extensions.
+missing extension, and it rejects extensions with `[[provides]]`,
+`[[implements]]`, or any declared permission; those providers are invoked
+through their capability or domain command. Extension lifecycle management is
+shared, but direct execution is reserved for zero-permission, runtime-only
+standalone extensions.
 Direct provider binaries are implementation and debugging surfaces; they are
 not the supported management API.
 
-The generic runner is deliberately non-effectful. It rejects the reserved
-authority-bound `external_write` permission before invoking the provider;
-operations needing that authority must enter through a domain command that can
-verify the goal, user gate, and external-write decision. Request files and stdin
-are capped while being read. Provider stdout and stderr are drained concurrently
-and the provider is terminated as soon as either stream crosses its byte limit,
-so the documented bounds do not depend on a cooperative provider exiting first.
+The generic runner is deliberately non-effectful and grants no operation
+authority. Both manifest `permissions` and runtime `required_permissions` must
+be empty. Any operation needing read, write, send, publish, manage, or another
+declared authority must enter through a capability or domain command that can
+verify a typed authority decision. Request files and stdin are capped while
+being read. Provider stdout and stderr are drained concurrently and the provider
+is terminated as soon as either stream crosses its byte limit, so the documented
+bounds do not depend on a cooperative provider exiting first.
 
 `disable` is reversible, but `enable` never trusts an earlier readiness result:
 it reruns the configured doctor and changes the enabled bit only after that
@@ -354,13 +356,14 @@ selecting at most one successor. The reducer performs no live reads, gives no
 price target or advice, and cannot trade or start a continuous watch.
 
 For upgrade compatibility, the retired
-`value-connectors ... --connector finance_market_snapshot` selectors remain as
-migration tombstones. They return `value_connector_extension_migration_v0`
-with ordered extension startup prerequisites; they do not execute Finance or
-restore a Finance capability. Source checkouts can install the co-located
-provider package before registration. Packaged LoopX users still need a
-separately distributed provider artifact, so agents must stop rather than
-claiming automatic installation when that artifact is unavailable.
+`value-connectors` Finance selectors, including the legacy
+`plan --connector-id finance_market_snapshot` form, remain as migration
+tombstones. They return `value_connector_extension_migration_v0` with ordered
+extension startup prerequisites; they do not execute Finance or restore a
+Finance capability. Source checkouts can install the co-located provider package
+before registration. Packaged LoopX users still need a separately distributed
+provider artifact, so agents must stop rather than claiming automatic
+installation when that artifact is unavailable.
 
 Runtime-required permissions must be a subset of the provider's declared
 permissions. Declaring either does not grant authority: existing LoopX goal

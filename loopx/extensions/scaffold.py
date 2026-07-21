@@ -36,7 +36,6 @@ def _validated_version(value: str) -> str:
 def _starter_files(extension_id: str, version: str) -> Mapping[str, str]:
     module_name = extension_id.replace("-", "_")
     protocol = f"{module_name}_extension_v0"
-    permission = f"{module_name}.run"
     response_schema = f"{module_name}_response_v0"
     request_schema = f"{module_name}_request_v0"
 
@@ -45,13 +44,13 @@ schema_version = "loopx_extension_manifest_v0"
 id = "{extension_id}"
 version = "{version}"
 requires_loopx_api = ">=1,<2"
-permissions = ["{permission}"]
+permissions = []
 
 [runtime]
 protocol = "{protocol}"
 entrypoint = "{extension_id}"
 doctor_args = ["--doctor"]
-required_permissions = ["{permission}"]
+required_permissions = []
 timeout_seconds = 30
 '''
     pyproject = f'''\
@@ -153,6 +152,9 @@ __version__ = "{version}"
 
         This is a minimal standalone LoopX extension. It owns its package and
         provider protocol; LoopX owns lifecycle registration and managed invocation.
+        The starter declares no permissions because public standalone invocation
+        grants no operation authority. Move permissioned work behind a capability
+        or domain command with an explicit typed authority decision.
 
         Run the following commands from the same activated Python environment so
         the provider entrypoint is available on `PATH` when LoopX verifies it:
@@ -244,7 +246,7 @@ def scaffold_extension(
         "destination": str(destination_path),
         "module_name": module_name,
         "protocol": f"{module_name}_extension_v0",
-        "permission": f"{module_name}.run",
+        "permissions": [],
         "files": [
             {
                 "path": relative,

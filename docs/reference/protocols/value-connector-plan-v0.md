@@ -103,9 +103,10 @@ The contract is valid only when:
 ## Retired Connector Migration
 
 `finance_market_snapshot` no longer owns Finance execution and does not map to
-a LoopX capability. To keep upgrades diagnosable, the legacy `source-map` and
-`install-check` selectors return a `value_connector_extension_migration_v0`
-record pointing to `loopx-finance-value-discovery`.
+a LoopX capability. To keep upgrades diagnosable, the legacy `source-map`,
+`install-check`, and `plan --connector-id finance_market_snapshot` selectors
+return a `value_connector_extension_migration_v0` record pointing to
+`loopx-finance-value-discovery`.
 
 The migration record is guidance, not implicit installation. It states whether
 the provider is separately distributed, names the source-checkout package and

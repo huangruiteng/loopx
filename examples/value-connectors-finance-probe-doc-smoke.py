@@ -29,11 +29,16 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def main() -> int:
-    for command in ("source-map", "install-check"):
+    cases = (
+        ("source-map", "--connector"),
+        ("install-check", "--connector"),
+        ("plan", "--connector-id"),
+    )
+    for command, selector in cases:
         completed = _run(
             "value-connectors",
             command,
-            "--connector",
+            selector,
             "finance_market_snapshot",
         )
         assert completed.returncode == 0, completed.stderr

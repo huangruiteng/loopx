@@ -103,10 +103,11 @@ commands delegate to those providers.
 owner without pretending that the implementation has moved.
 
 `finance_market_snapshot` is retained only as an upgrade migration id. Its
-`source-map` and `install-check` packets point agents to the independently
-packaged `loopx-finance-value-discovery` extension and never perform Finance
-work. See the [migration packet](finance-market-snapshot-probe.md). The old id
-must not be used for new integrations.
+`source-map`, `install-check`, and legacy `plan --connector-id` packets point
+agents to the independently packaged `loopx-finance-value-discovery` extension
+and never perform Finance work. See the
+[migration packet](finance-market-snapshot-probe.md). The old id must not be
+used for new integrations.
 
 ## Why This Is Not Just A Plan
 

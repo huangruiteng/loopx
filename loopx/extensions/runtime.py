@@ -29,7 +29,6 @@ EXTENSION_RUN_SCHEMA_VERSION = "loopx_extension_run_receipt_v0"
 MAX_REVISIONS = 5
 MAX_EXTENSION_REQUEST_BYTES = 1_000_000
 MAX_EXTENSION_RESPONSE_BYTES = 1_000_000
-AUTHORITY_BOUND_EXTENSION_PERMISSIONS = frozenset({"external_write"})
 
 
 def default_extension_state_file(runtime_root: str | Path | None = None) -> Path:
@@ -759,15 +758,12 @@ def run_standalone_extension(
             f"extension `{extension_id}` does not declare permissions "
             f"{missing_permissions}"
         )
-    authority_bound_permissions = sorted(
-        declared_permissions & AUTHORITY_BOUND_EXTENSION_PERMISSIONS
-    )
-    if authority_bound_permissions:
+    if declared_permissions:
         raise ValueError(
-            f"extension `{extension_id}` declares authority-bound permissions "
-            f"{authority_bound_permissions}; generic extension run cannot grant "
-            "operation authority, so use a domain command with explicit goal and "
-            "external-write gates"
+            f"extension `{extension_id}` declares permissions "
+            f"{sorted(declared_permissions)}; standalone extension run grants no "
+            "operation authority, so use a capability or domain command with an "
+            "explicit typed authority decision"
         )
 
     try:

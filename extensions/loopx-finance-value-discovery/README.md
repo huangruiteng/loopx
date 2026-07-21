@@ -94,6 +94,11 @@ loopx extension run loopx-finance-value-discovery \
   --format json
 ```
 
+The manifest declares no permissions: this workflow is a deterministic reducer
+over caller-supplied frozen public evidence. It performs no collection or other
+effectful operation. Permissioned Finance work must use a capability or domain
+command with an explicit typed authority decision rather than standalone run.
+
 There is no `value-connectors` Finance execution route. The package binary is
 a provider implementation and developer-debugging surface, not the supported
 management entrypoint. Callers install and invoke this independently versioned

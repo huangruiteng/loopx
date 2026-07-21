@@ -16,6 +16,11 @@ from .install_check import (
     build_value_connector_install_check_packet,
     render_value_connector_install_check_markdown,
 )
+from .finance_extension_migration import (
+    LEGACY_FINANCE_CONNECTOR_ID,
+    build_finance_extension_migration_contract,
+    render_finance_extension_migration_markdown,
+)
 from .planner import (
     ALLOWED_CONNECTOR_KINDS,
     ALLOWED_STAGES,
@@ -304,6 +309,14 @@ def handle_value_connector_command(
                 "value-connectors requires `install-check`, `plan`, "
                 "`source-map`, `github-public-probe`, or `github-reply-monitor`"
             )
+        if args.connector_id == LEGACY_FINANCE_CONNECTOR_ID:
+            payload = build_finance_extension_migration_contract()
+            print_payload(
+                payload,
+                output_format(args),
+                render_finance_extension_migration_markdown,
+            )
+            return 0
         if args.connector_id:
             missing = [
                 name

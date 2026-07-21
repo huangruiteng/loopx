@@ -103,6 +103,7 @@ def _standalone_manifest(
     entrypoint: Path,
     version: str = "1.0.0",
     extension_id: str = "test-standalone-extension",
+    permission: str | None = None,
 ) -> Path:
     manifest = _manifest(
         path,
@@ -110,15 +111,21 @@ def _standalone_manifest(
         version=version,
         extension_id=extension_id,
     )
-    manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "\n[[implements]]\n"
-            'capability_id = "semantic-preference"\n'
-            'protocol = "semantic_preference_provider_v0"\n',
-            "\n",
-        ),
-        encoding="utf-8",
+    contents = manifest.read_text(encoding="utf-8").replace(
+        "\n[[implements]]\n"
+        'capability_id = "semantic-preference"\n'
+        'protocol = "semantic_preference_provider_v0"\n',
+        "\n",
     )
+    if permission is None:
+        contents = contents.replace(
+            'permissions = ["semantic_preference.read"]',
+            "permissions = []",
+        ).replace(
+            'required_permissions = ["semantic_preference.read"]',
+            "required_permissions = []",
+        )
+    manifest.write_text(contents, encoding="utf-8")
     return manifest
 
 
@@ -234,6 +241,7 @@ def test_standalone_runtime_does_not_require_a_capability_contract(
     manifest = _standalone_manifest(
         tmp_path / "extension.toml",
         entrypoint=provider,
+        permission="semantic_preference.read",
     )
     state_file = tmp_path / "extensions.json"
 
@@ -320,8 +328,10 @@ def test_extension_run_rejects_capability_provider_bypass(tmp_path: Path) -> Non
         )
 
 
-def test_extension_run_rejects_authority_bound_permission_before_invocation(
+@pytest.mark.parametrize("permission", ["external_write", "openviking_context_write"])
+def test_extension_run_rejects_any_declared_permission_before_invocation(
     tmp_path: Path,
+    permission: str,
 ) -> None:
     marker = tmp_path / "invoked"
     provider = tmp_path / "provider"
@@ -342,17 +352,18 @@ Path({json.dumps(str(marker))}).write_text("invoked", encoding="utf-8")
         entrypoint=provider,
     )
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            'permissions = ["semantic_preference.read"]',
-            'permissions = ["semantic_preference.read", "external_write"]',
-            1,
+        manifest.read_text(encoding="utf-8")
+        .replace("permissions = []", f"permissions = [{json.dumps(permission)}]")
+        .replace(
+            "required_permissions = []",
+            f"required_permissions = [{json.dumps(permission)}]",
         ),
         encoding="utf-8",
     )
     state_file = tmp_path / "extensions.json"
     install_extension(manifest, state_file=state_file, execute=True)
 
-    with pytest.raises(ValueError, match="cannot grant operation authority"):
+    with pytest.raises(ValueError, match="standalone extension run grants no"):
         run_standalone_extension(
             "test-standalone-extension",
             state_file=state_file,
