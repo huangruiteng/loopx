@@ -601,7 +601,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'public_output=%s/supervisor.public.json\n' "$public_dir"
   printf 'private_dir=%s\n' "$private_dir"
   printf 'remote_proxy_port=%s\n' "$remote_proxy_port"
-  printf 'docker_proxy_host=%s\n' "$docker_proxy_host"
+  printf 'docker_proxy_host_recorded=false\n'
   printf 'docker_proxy_endpoint_mode=%s\n' "$docker_proxy_endpoint_mode"
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"

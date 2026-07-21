@@ -11,6 +11,7 @@ LAUNCHER = REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"
 
 def _base_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
+    env.pop("SKILLSBENCH_RUNNER_PROFILE", None)
     env.update(
         {
             "XDG_STATE_HOME": str(tmp_path / "state"),
@@ -76,6 +77,9 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "loopx_turn_max_turns=4" in output
     assert "loopx_turn_progress_exit_code=10" in output
     assert "loopx_turn_terminal_policy=fixed-n" in output
+    assert "docker_proxy_host_recorded=false" in output
+    assert "docker_proxy_host=" not in output
+    assert env["SKILLSBENCH_DOCKER_PROXY_HOST"] not in output
     assert "private_runner_command_values_redacted=true" in output
     for arg_name in (
         "--remote-command-file-bridge-probe-command",
