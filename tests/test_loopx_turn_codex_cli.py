@@ -668,6 +668,39 @@ def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
     assert payload["validation_status"] == "passed"
 
 
+def test_public_e2e_smoke_auto_selects_qualified_models() -> None:
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"),
+            "--advisor-mode",
+            "auto",
+            "--case-id",
+            "arithmetic-fix",
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr or result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["model_selection"] == {
+        "schema_version": "loopx_turn_model_selection_v0",
+        "requested_mode": "auto",
+        "profile_id": "codex-sol-luna-v1",
+        "advisor_model": "gpt-5.6-sol",
+        "executor_model": "gpt-5.6-luna",
+        "selection_reason": "highest_priority_available_qualified_pair",
+    }
+    assert payload["model_usage"]["mode"] == "advisor"
+    assert payload["model_usage"]["total"]["total_tokens"] == 138
+    assert payload["validation_status"] == "passed"
+
+
 def test_public_e2e_smoke_supports_an_independent_arithmetic_fix_case() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(

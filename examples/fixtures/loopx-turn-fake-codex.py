@@ -9,9 +9,21 @@ import sys
 
 MARKER_NAME = "docs/turn-e2e-marker.txt"
 MARKER_PREFIX = "loopx-turn-real-e2e-step-"
-CASE_ID = pathlib.Path(__file__).with_name("case-id.txt").read_text(encoding="utf-8").strip()
-
 args = sys.argv[1:]
+if args == ["debug", "models"]:
+    print(
+        json.dumps(
+            {
+                "models": [
+                    {"slug": "gpt-5.6-sol"},
+                    {"slug": "gpt-5.6-luna"},
+                ]
+            }
+        )
+    )
+    raise SystemExit(0)
+
+CASE_ID = pathlib.Path(__file__).with_name("case-id.txt").read_text(encoding="utf-8").strip()
 prompt = sys.stdin.read()
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])

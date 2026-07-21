@@ -1046,9 +1046,36 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
         assert f"LoopX%20Turn%20{result_kind}" in state
 
 
+@pytest.mark.parametrize(
+    ("model_args", "auto_selection"),
+    [
+        (
+            [
+                "--codex-model",
+                "executor-fixture",
+                "--advisor-model",
+                "advisor-fixture",
+            ],
+            None,
+        ),
+        (
+            ["--advisor-mode", "auto"],
+            {
+                "schema_version": "loopx_turn_model_selection_v0",
+                "requested_mode": "auto",
+                "profile_id": "fixture-pair-v1",
+                "advisor_model": "advisor-fixture",
+                "executor_model": "executor-fixture",
+                "selection_reason": "highest_priority_available_qualified_pair",
+            },
+        ),
+    ],
+)
 def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    model_args: list[str],
+    auto_selection: dict[str, str] | None,
 ) -> None:
     project, runtime, registry = _write_live_fixture(tmp_path)
     observed: dict[str, object] = {}
@@ -1093,6 +1120,11 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
         }
 
     monkeypatch.setattr("loopx.cli_commands.turn.run_codex_cli_host", fake_codex_host)
+    if auto_selection is not None:
+        monkeypatch.setattr(
+            "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+            lambda _codex_bin: dict(auto_selection),
+        )
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
         exit_code = cli_main(
@@ -1113,10 +1145,7 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
                 "codex-cli",
                 "--project",
                 str(project),
-                "--codex-model",
-                "executor-fixture",
-                "--advisor-model",
-                "advisor-fixture",
+                *model_args,
                 "--advisor-timeout-seconds",
                 "7",
                 "--validation-command-json",
@@ -1136,7 +1165,93 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
     assert observed["advisor_timeout_seconds"] == 7.0
     assert payload["model_usage"]["mode"] == "advisor"
     assert payload["model_usage"]["total"]["total_tokens"] == 198
+    if auto_selection is not None:
+        assert payload["model_selection"] == auto_selection
+        monkeypatch.setattr(
+            "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+            lambda _codex_bin: (_ for _ in ()).throw(
+                AssertionError("committed replay must not resolve the model catalog")
+            ),
+        )
+        replay_output = io.StringIO()
+        with contextlib.redirect_stdout(replay_output):
+            replay_exit_code = cli_main(
+                [
+                    "--registry",
+                    str(registry),
+                    "--runtime-root",
+                    str(runtime),
+                    "--format",
+                    "json",
+                    "turn",
+                    "run-once",
+                    "--goal-id",
+                    "loopx-turn-fixture",
+                    "--agent-id",
+                    "codex-fixture",
+                    "--host",
+                    "codex-cli",
+                    "--project",
+                    str(project),
+                    "--advisor-mode",
+                    "auto",
+                    "--resume-turn-key",
+                    payload["resume_turn_key"],
+                    "--no-global-sync",
+                    "--execute",
+                ]
+            )
+        replay = json.loads(replay_output.getvalue())
+        assert replay_exit_code == 0, replay
+        assert replay["replayed"] is True
+        assert replay["effects"]["host_invoked"] is False
+        assert replay["model_selection"] == auto_selection
     assert_turn_run_once_model_usage_budget(emitted, expected_mode="advisor")
+
+
+def test_turn_run_once_cli_defers_auto_model_selection_until_host_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+
+    def fail_if_resolved(_codex_bin: str) -> dict[str, str]:
+        raise AssertionError("dry-run must not resolve the Codex model catalog")
+
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+        fail_if_resolved,
+    )
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host",
+                "codex-cli",
+                "--project",
+                str(project),
+                "--advisor-mode",
+                "auto",
+                "--no-global-sync",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["status"] == "preview"
+    assert "model_selection" not in payload
 
 
 @pytest.mark.parametrize(
@@ -1148,6 +1263,11 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
             "Advisor mode requires --host codex-cli",
         ),
         (
+            "generic-cli",
+            ["--advisor-mode", "auto"],
+            "Advisor mode requires --host codex-cli",
+        ),
+        (
             "codex-cli",
             [
                 "--codex-model",
@@ -1156,6 +1276,23 @@ def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
                 "same-fixture",
             ],
             "distinct explicit advisor and executor models",
+        ),
+        (
+            "codex-cli",
+            ["--advisor-mode", "auto", "--codex-model", "executor-fixture"],
+            "auto mode selects both models",
+        ),
+        (
+            "codex-cli",
+            [
+                "--advisor-mode",
+                "off",
+                "--codex-model",
+                "executor-fixture",
+                "--advisor-model",
+                "advisor-fixture",
+            ],
+            "off mode cannot be combined with --advisor-model",
         ),
     ],
 )

@@ -161,6 +161,7 @@ def _base_argv(
     codex_bin: Path,
     model: str | None,
     advisor_model: str | None,
+    advisor_mode: str | None,
     advisor_timeout_seconds: float,
     timeout_seconds: float,
     case_id: str,
@@ -211,6 +212,8 @@ def _base_argv(
                 str(advisor_timeout_seconds),
             ]
         )
+    if advisor_mode:
+        argv.extend(["--advisor-mode", advisor_mode])
     return argv
 
 
@@ -273,6 +276,7 @@ def _turn_summary(
         ),
         "effects": effects if isinstance(effects, dict) else {},
         "model_usage": payload.get("model_usage"),
+        "model_selection": payload.get("model_selection"),
         "marker_valid": marker_valid,
     }
 
@@ -327,6 +331,7 @@ def _summary(
         "advisor_mode": advisor_mode,
         "case_id": case_id,
         "model_usage": _aggregate_model_usage(turns),
+        "model_selection": final_turn.get("model_selection"),
         "requested_turn_count": turn_count,
         "observed_turn_count": len(turns),
         "committed_turn_count": sum(
@@ -364,6 +369,7 @@ def main() -> int:
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
     parser.add_argument("--advisor-model")
+    parser.add_argument("--advisor-mode", choices=["off", "auto", "manual"])
     parser.add_argument(
         "--advisor-timeout-seconds",
         type=float,
@@ -415,6 +421,7 @@ def main() -> int:
                 codex_bin=codex_bin,
                 model=args.codex_model,
                 advisor_model=args.advisor_model,
+                advisor_mode=args.advisor_mode,
                 advisor_timeout_seconds=advisor_timeout_seconds,
                 timeout_seconds=args.timeout_seconds,
                 case_id=args.case_id,
@@ -457,7 +464,10 @@ def main() -> int:
             runtime=runtime,
             workspace=workspace,
             model_explicit=bool(args.codex_model),
-            advisor_mode=bool(args.advisor_model),
+            advisor_mode=bool(
+                args.advisor_model
+                or args.advisor_mode in {"auto", "manual"}
+            ),
             case_id=args.case_id,
         )
 
