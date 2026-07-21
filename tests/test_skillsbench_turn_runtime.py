@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 
 from loopx.benchmark_adapters import skillsbench_acp_relay as acp_relay
+from loopx.benchmark_adapters import skillsbench_bridge_summary as bridge_summary
 from loopx.benchmark_adapters import skillsbench_turn_runtime as runtime
 from loopx.benchmark_adapters.skillsbench_acp_relay import (
     CodexExecConfig,
@@ -60,6 +62,220 @@ def test_nonzero_validation_probe_does_not_return_private_output(
     assert result["exit_code"] == 17
     assert set(result) == {"ok", "exit_code", "elapsed_ms"}
     assert "private" not in json.dumps(result)
+
+
+def test_bridge_progress_receipt_requires_successful_task_file_write(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "bridge-summary.jsonl"
+    records = [
+        {
+            "record_phase": "complete",
+            "operation": "read_file",
+            "task_facing_operation": True,
+            "success": True,
+        },
+        {
+            "record_phase": "complete",
+            "operation": "write_file",
+            "task_facing_operation": True,
+            "durable_task_write": True,
+            "success": False,
+            "returncode": 1,
+        },
+        {
+            "record_phase": "start",
+            "operation": "write_file",
+            "task_facing_operation": True,
+        },
+        {
+            "record_phase": "complete",
+            "operation": "write_file",
+            "task_facing_operation": True,
+            "durable_task_write": False,
+            "success": True,
+            "returncode": 0,
+        },
+        {
+            "record_phase": "complete",
+            "operation": "write_file",
+            "task_facing_operation": True,
+            "durable_task_write": True,
+            "success": True,
+            "returncode": 0,
+        },
+    ]
+    summary_path.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    receipt = bridge_summary.bridge_summary_task_progress_receipt(summary_path)
+
+    assert receipt == {
+        "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
+        "status": "verified_task_file_write",
+        "task_facing_operation_count": 4,
+        "task_facing_success_count": 3,
+        "successful_task_file_write_count": 1,
+        "raw_material_recorded": False,
+    }
+
+
+def test_instrumented_bridge_emits_durable_root_without_raw_path(
+    tmp_path: Path,
+) -> None:
+    fake_bridge = tmp_path / "fake-bridge"
+    fake_bridge.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "request = json.loads(sys.stdin.read())\n"
+        "ok = not str(request.get('path', '')).endswith('failed.txt')\n"
+        "print(json.dumps({'ok': ok, 'exit_code': 0}))\n",
+        encoding="utf-8",
+    )
+    fake_bridge.chmod(0o755)
+    relay = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(remote_command_file_bridge_command=str(fake_bridge))
+    )
+    summary_path = tmp_path / "bridge-summary.jsonl"
+    wrapper = relay._write_instrumented_bridge_wrapper(
+        tmp_path=tmp_path,
+        summary_path=summary_path,
+    )
+    requests = [
+        {
+            "operation": "write_file",
+            "path": "/root/task-output.txt",
+            "content": "private task output",
+        },
+        {
+            "operation": "write_file",
+            "path": "/tmp/temporary-note.txt",
+            "content": "temporary private note",
+        },
+        {
+            "operation": "write_file",
+            "path": "/root/failed.txt",
+            "content": "failed private output",
+        },
+    ]
+    for request in requests:
+        subprocess.run(
+            [str(wrapper)],
+            input=json.dumps(request),
+            text=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    receipt = bridge_summary.bridge_summary_task_progress_receipt(summary_path)
+    summary_text = summary_path.read_text(encoding="utf-8")
+
+    assert receipt["successful_task_file_write_count"] == 1
+    assert receipt["status"] == "verified_task_file_write"
+    assert '"durable_task_write_root": "root"' in summary_text
+    assert "/root/task-output.txt" not in summary_text
+    assert "/tmp/temporary-note.txt" not in summary_text
+    assert "/root/failed.txt" not in summary_text
+    assert "private task output" not in summary_text
+    assert "temporary private note" not in summary_text
+    assert "failed private output" not in summary_text
+    assert '"failure_category": "bridge_operation_failed"' in summary_text
+
+
+@pytest.mark.parametrize(
+    ("write_count", "raw_material_recorded", "expected_status"),
+    [
+        (1, False, "committed"),
+        (0, False, "failed"),
+        (1, True, "failed"),
+    ],
+)
+def test_bridge_write_progress_can_commit_when_workspace_command_cannot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    write_count: int,
+    raw_material_recorded: bool,
+    expected_status: str,
+) -> None:
+    class NonFileProgressBridge:
+        def __init__(self, _config: Any) -> None:
+            self.meaningful_operation_count = 0
+
+        def exec(
+            self,
+            _command: str,
+            *,
+            meaningful: bool = False,
+            allow_nonzero: bool = False,
+        ) -> dict[str, Any]:
+            if allow_nonzero:
+                if meaningful:
+                    self.meaningful_operation_count += 1
+                return {"ok": False, "exit_code": 3, "elapsed_ms": 1}
+            return {"ok": True, "exit_code": 0, "stdout": "", "elapsed_ms": 1}
+
+    def fake_turn_once(
+        plan: dict[str, Any],
+        *,
+        host_runner: Any,
+        task_validator: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        result = host_runner({"turn_key": "synthetic-turn"})
+        validation = dict(task_validator(plan, result))
+        return {
+            "status": (
+                "committed"
+                if validation.get("status") in {"progress", "passed"}
+                else "failed"
+            ),
+            "validation": validation,
+        }
+
+    monkeypatch.setattr(runtime, "SkillsBenchTurnBridge", NonFileProgressBridge)
+    monkeypatch.setattr(runtime, "_turn_plan", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(runtime, "run_loopx_turn_once", fake_turn_once)
+    evidence = {
+        "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
+        "status": (
+            "verified_task_file_write"
+            if write_count and not raw_material_recorded
+            else "no_verified_task_mutation"
+        ),
+        "task_facing_operation_count": 4,
+        "task_facing_success_count": 4,
+        "successful_task_file_write_count": write_count,
+        "raw_material_recorded": raw_material_recorded,
+    }
+
+    execution, validation = runtime.run_skillsbench_loopx_turn(
+        prompt="synthetic prompt",
+        agent_runner=lambda _prompt: runtime.SkillsBenchTurnAgentResult(
+            response_text="done",
+            progress_evidence=evidence,
+        ),
+        config=runtime.SkillsBenchTurnRuntimeConfig(
+            **{
+                **_config(tmp_path).__dict__,
+                "terminal_policy": "fixed-n",
+            }
+        ),
+        sequence_step_kind="progress",
+    )
+
+    assert execution["status"] == expected_status
+    if expected_status == "committed":
+        assert validation["status"] == "passed"
+        assert validation["post_agent_postcondition_status"] == "progress_validated"
+        assert validation["validator_kind"] == "skillsbench_bridge_write_progress"
+        assert validation["progress_evidence_kind"] == "verified_task_file_write"
+        assert validation["successful_task_file_write_count"] == 1
+    else:
+        assert validation["status"] == "failed"
+        assert validation["post_agent_postcondition_status"] == "unsatisfied"
 
 
 def test_satisfied_pre_agent_postcondition_runs_but_does_not_claim_readiness(

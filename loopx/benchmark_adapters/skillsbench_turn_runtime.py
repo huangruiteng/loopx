@@ -38,7 +38,13 @@ SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION = (
 SKILLSBENCH_TURN_BASELINE_ENV = "LOOPX_TURN_BASELINE_FILE"
 SKILLSBENCH_LOOPX_TURN_TERMINAL_POLICIES = frozenset({"validator", "fixed-n"})
 
-AgentPromptRunner = Callable[[str], str]
+@dataclass(frozen=True)
+class SkillsBenchTurnAgentResult:
+    response_text: str
+    progress_evidence: Mapping[str, Any]
+
+
+AgentPromptRunner = Callable[[str], str | SkillsBenchTurnAgentResult]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
 TurnObserver = Callable[[dict[str, Any], dict[str, Any]], None]
 
@@ -270,6 +276,25 @@ def _host_result(request: Mapping[str, Any], response: str) -> dict[str, Any]:
     }
 
 
+def _agent_result(value: str | SkillsBenchTurnAgentResult) -> tuple[str, dict[str, Any]]:
+    if isinstance(value, SkillsBenchTurnAgentResult):
+        return value.response_text, dict(value.progress_evidence)
+    return str(value), {}
+
+
+def _verified_bridge_write_progress(value: Mapping[str, Any]) -> bool:
+    count = value.get("successful_task_file_write_count")
+    return bool(
+        value.get("schema_version")
+        == "skillsbench_bridge_task_progress_receipt_v0"
+        and value.get("status") == "verified_task_file_write"
+        and isinstance(count, int)
+        and not isinstance(count, bool)
+        and count > 0
+        and value.get("raw_material_recorded") is False
+    )
+
+
 def _turn_baseline_path(request: Mapping[str, Any]) -> str:
     turn_key = str(request.get("turn_key") or "")
     digest = hashlib.sha256(turn_key.encode("utf-8")).hexdigest()[:24]
@@ -350,12 +375,14 @@ def run_skillsbench_loopx_turn(
     validation_baseline = _validation_baseline(bridge, config)
     prefix = _case_cli_prefix(config)
     baseline_path = ""
+    agent_progress_evidence: dict[str, Any] = {}
 
     def host_runner(request: Mapping[str, Any]) -> dict[str, Any]:
-        nonlocal baseline_path
+        nonlocal agent_progress_evidence, baseline_path
         baseline_path = _turn_baseline_path(request)
         bridge.exec(f"umask 077; : > {shlex.quote(baseline_path)}")
-        return _host_result(request, agent_runner(prompt))
+        response, agent_progress_evidence = _agent_result(agent_runner(prompt))
+        return _host_result(request, response)
 
     def validator(
         _plan: Mapping[str, Any],
@@ -391,6 +418,23 @@ def run_skillsbench_loopx_turn(
         exit_code = validation_result.get("exit_code")
         validation_succeeded = exit_code in {0, config.progress_exit_code}
         if not validation_succeeded:
+            if _verified_bridge_write_progress(agent_progress_evidence):
+                effective_step_kind = sequence_step_kind
+                if effective_step_kind == "validator":
+                    effective_step_kind = "progress"
+                if effective_step_kind == "terminal":
+                    return {
+                        "status": "passed",
+                        "validator_kind": "skillsbench_bridge_write_progress",
+                        "summary": "independent task-facing bridge write validated progress",
+                        "exit_code": 0,
+                    }
+                return {
+                    "status": "progress",
+                    "validator_kind": "skillsbench_bridge_write_progress",
+                    "summary": "independent task-facing bridge write validated progress",
+                    "exit_code": config.progress_exit_code,
+                }
             return {
                 "status": "failed",
                 "validator_kind": "skillsbench_scored_workspace_command",
@@ -491,11 +535,22 @@ def run_skillsbench_loopx_turn(
     validation_passed = validation_status in {"passed", "progress"}
     terminal_complete = validation_status == "passed"
     validated_progress = validation_status in {"passed", "progress"}
+    bridge_write_progress = bool(
+        transaction_validation.get("validator_kind")
+        == "skillsbench_bridge_write_progress"
+        and _verified_bridge_write_progress(agent_progress_evidence)
+    )
+    write_count = agent_progress_evidence.get("successful_task_file_write_count")
+    if not isinstance(write_count, int) or isinstance(write_count, bool):
+        write_count = 0
     scored_validation = {
         "schema_version": "skillsbench_scored_workspace_validation_v0",
         "status": ("passed" if validation_passed else "failed"),
         "independent": True,
-        "validator_kind": "skillsbench_scored_workspace_command",
+        "validator_kind": str(
+            transaction_validation.get("validator_kind")
+            or "skillsbench_scored_workspace_command"
+        ),
         "pre_agent_postcondition_checked": True,
         "pre_agent_postcondition_status": validation_baseline["status"],
         "post_agent_postcondition_status": (
@@ -508,7 +563,15 @@ def run_skillsbench_loopx_turn(
         "validated_progress": validated_progress,
         "terminal_complete": terminal_complete,
         "terminal_policy": config.terminal_policy,
-        "baseline_contract": "task_declared_independent_postcondition",
+        "baseline_contract": (
+            "task_declared_independent_postcondition_or_verified_bridge_write"
+        ),
+        "progress_evidence_kind": (
+            "verified_task_file_write"
+            if bridge_write_progress
+            else "scored_workspace_command"
+        ),
+        "successful_task_file_write_count": max(0, write_count),
         "oracle_feedback_used": False,
         "meaningful_operation_count": bridge.meaningful_operation_count,
         "raw_validator_output_recorded": False,

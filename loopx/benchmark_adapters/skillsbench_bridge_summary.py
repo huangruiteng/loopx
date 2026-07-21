@@ -107,6 +107,68 @@ def bridge_summary_has_successful_task_operation(
     return False
 
 
+def bridge_summary_task_progress_receipt(path: Path | None) -> dict[str, Any]:
+    """Reduce one agent invocation to bounded task-facing progress counts."""
+
+    receipt: dict[str, Any] = {
+        "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
+        "status": "no_verified_task_mutation",
+        "task_facing_operation_count": 0,
+        "task_facing_success_count": 0,
+        "successful_task_file_write_count": 0,
+        "raw_material_recorded": False,
+    }
+    if path is None or not path.exists():
+        return receipt
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return receipt
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        receipt["raw_material_recorded"] = receipt["raw_material_recorded"] or any(
+            record.get(field) is True
+            for field in (
+                "raw_request_recorded",
+                "raw_stdout_recorded",
+                "raw_stderr_recorded",
+                "raw_task_text_recorded",
+                "credential_values_recorded",
+                "host_paths_recorded",
+                "remote_paths_recorded",
+            )
+        )
+        phase = str(record.get("record_phase") or "").strip().lower()
+        if phase != "complete" or bridge_operation_record_interrupted(record):
+            continue
+        if record.get("task_facing_operation") is not True:
+            continue
+        receipt["task_facing_operation_count"] += 1
+        success = record.get("success")
+        successful = (
+            success if isinstance(success, bool) else record.get("returncode") == 0
+        )
+        if not successful:
+            continue
+        receipt["task_facing_success_count"] += 1
+        if (
+            record.get("operation") == "write_file"
+            and record.get("durable_task_write") is True
+        ):
+            receipt["successful_task_file_write_count"] += 1
+    if (
+        receipt["successful_task_file_write_count"] > 0
+        and receipt["raw_material_recorded"] is False
+    ):
+        receipt["status"] = "verified_task_file_write"
+    return receipt
+
+
 def bridge_operation_record_interrupted(record: dict[str, Any]) -> bool:
     rc = record.get("returncode")
     if isinstance(rc, int) and not isinstance(rc, bool) and rc < 0:

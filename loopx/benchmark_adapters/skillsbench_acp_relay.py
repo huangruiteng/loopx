@@ -32,6 +32,7 @@ from loopx.benchmark_adapters.skillsbench_remote_bridge import (
     run_skillsbench_remote_command_file_bridge_probe,
 )
 from loopx.benchmark_adapters.skillsbench_turn_runtime import (
+    SkillsBenchTurnAgentResult,
     run_skillsbench_loopx_turn_relay,
 )
 from loopx.benchmark_adapters.skillsbench_bridge_summary import (
@@ -39,6 +40,7 @@ from loopx.benchmark_adapters.skillsbench_bridge_summary import (
     bridge_summary_has_meaningful_agent_progress as _bridge_summary_has_meaningful_agent_progress,
     bridge_summary_has_successful_task_file_write as _bridge_summary_has_successful_task_file_write,
     bridge_summary_has_successful_task_operation as _bridge_summary_has_successful_task_operation,
+    bridge_summary_task_progress_receipt as _bridge_summary_task_progress_receipt,
     bridge_operation_record_interrupted as _bridge_operation_record_interrupted,
     prompt_requires_meaningful_bridge_progress as _prompt_requires_meaningful_bridge_progress,
 )
@@ -468,6 +470,7 @@ class SkillsBenchLocalAcpRelay:
         self._workflow_checkpoint_count = 0
         self._bridge_summary_snapshot_ids: dict[str, str] = {}
         self._bridge_summary_snapshot_indexes: dict[str, int] = {}
+        self._latest_loopx_turn_agent_progress_receipt: dict[str, Any] = {}
 
     def serve(self, stdin: TextIO = sys.stdin, stdout: TextIO = sys.stdout) -> int:
         for line in stdin:
@@ -605,13 +608,12 @@ class SkillsBenchLocalAcpRelay:
                     prompt=prompt_text,
                     session_id=session_id,
                     relay_config=self._config,
-                    agent_runner=lambda turn_prompt: self._run_codex(
+                    agent_runner=lambda turn_prompt: self._run_loopx_turn_agent_prompt(
                         turn_prompt,
                         session=session,
                         session_id=session_id,
                         stdout=stdout,
-                        _bypass_loopx_turn=True,
-                        _turn_deadline=sequence_deadline,
+                        turn_deadline=sequence_deadline,
                     ),
                     trace_writer=self._write_worker_public_trace,
                 )
@@ -1059,7 +1061,34 @@ class SkillsBenchLocalAcpRelay:
                 self._publish_remote_bridge_agent_operations_trace(
                     bridge_summary_path=bridge_summary_path,
                 )
+                if _bypass_loopx_turn and self._config.loopx_turn_agent_cli:
+                    self._latest_loopx_turn_agent_progress_receipt = (
+                        _bridge_summary_task_progress_receipt(bridge_summary_path)
+                    )
             return response or "local codex returned an empty final message"
+
+    def _run_loopx_turn_agent_prompt(
+        self,
+        prompt_text: str,
+        *,
+        session: dict[str, Any],
+        session_id: str,
+        stdout: TextIO,
+        turn_deadline: float,
+    ) -> SkillsBenchTurnAgentResult:
+        self._latest_loopx_turn_agent_progress_receipt = {}
+        response = self._run_codex(
+            prompt_text,
+            session=session,
+            session_id=session_id,
+            stdout=stdout,
+            _bypass_loopx_turn=True,
+            _turn_deadline=turn_deadline,
+        )
+        return SkillsBenchTurnAgentResult(
+            response_text=response,
+            progress_evidence=dict(self._latest_loopx_turn_agent_progress_receipt),
+        )
 
     def _run_codex_cli_goal_worker(
         self,
@@ -2517,6 +2546,30 @@ record["task_facing_operation"] = bool(
         or (operation == "exec" and loopx_invocations == 0)
     )
 )
+request_path = payload.get("path") if isinstance(payload, dict) else ""
+durable_task_write = bool(
+    operation == "write_file"
+    and isinstance(request_path, str)
+    and request_path.startswith(("/app/", "/root/"))
+    and not request_path.startswith(
+        (
+            "/app/.loopx/",
+            "/app/.codex/",
+            "/app/.git/",
+            "/app/.cache/",
+            "/app/node_modules/",
+            "/root/.loopx/",
+            "/root/.codex/",
+            "/root/.cache/",
+            "/root/.local/",
+        )
+    )
+)
+record["durable_task_write"] = durable_task_write
+if durable_task_write:
+    record["durable_task_write_root"] = (
+        "app" if request_path.startswith("/app/") else "root"
+    )
 record["bridge_probe_operation"] = bridge_probe_operation
 record["operation_observed"] = True
 
@@ -2541,8 +2594,26 @@ proc = subprocess.run(
 )
 complete_record = dict(record)
 complete_record["record_phase"] = "complete"
-complete_record["returncode"] = int(proc.returncode)
-complete_record["success"] = proc.returncode == 0
+try:
+    bridge_response = json.loads(proc.stdout or "")
+except Exception:
+    bridge_response = {{}}
+response_ok = bridge_response.get("ok") if isinstance(bridge_response, dict) else None
+response_exit_code = (
+    bridge_response.get("exit_code") if isinstance(bridge_response, dict) else None
+)
+if isinstance(response_ok, bool):
+    operation_returncode = (
+        response_exit_code
+        if isinstance(response_exit_code, int) and not isinstance(response_exit_code, bool)
+        else 0 if response_ok else 1
+    )
+    operation_success = bool(response_ok and operation_returncode == 0)
+else:
+    operation_returncode = int(proc.returncode)
+    operation_success = proc.returncode == 0
+complete_record["returncode"] = operation_returncode
+complete_record["success"] = operation_success
 complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
 complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
 attach_successful_todo_add_id(complete_record, subcommands, proc.stdout or "")
@@ -2560,6 +2631,8 @@ if proc.returncode != 0:
         complete_record["failure_category"] = "bridge_ssh_unavailable"
     else:
         complete_record["failure_category"] = "bridge_command_failed"
+elif not operation_success:
+    complete_record["failure_category"] = "bridge_operation_failed"
 append_record(complete_record)
 sys.stdout.write(proc.stdout)
 sys.stderr.write(proc.stderr)

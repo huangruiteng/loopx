@@ -279,6 +279,7 @@ def _public_validation(value: Any) -> dict[str, Any]:
             "baseline_contract",
             "sequence_stop_reason",
             "terminal_policy",
+            "progress_evidence_kind",
         )
         if (label := _public_label(value.get(key), limit=120))
     }
@@ -300,6 +301,9 @@ def _public_validation(value: Any) -> dict[str, Any]:
     turn_index = value.get("turn_index")
     if isinstance(turn_index, int) and not isinstance(turn_index, bool):
         validation["turn_index"] = max(1, turn_index)
+    write_count = value.get("successful_task_file_write_count")
+    if isinstance(write_count, int) and not isinstance(write_count, bool):
+        validation["successful_task_file_write_count"] = max(0, write_count)
     return validation
 
 
@@ -422,7 +426,21 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
             item.get("terminal_complete") is True for item in validations
         ),
         "turn_count": len(validations),
+        "successful_task_file_write_count": sum(
+            max(0, int(item.get("successful_task_file_write_count") or 0))
+            for item in validations
+            if not isinstance(item.get("successful_task_file_write_count"), bool)
+        ),
     }
+    progress_evidence_kinds = {
+        str(item.get("progress_evidence_kind") or "")
+        for item in validations
+        if item.get("progress_evidence_kind")
+    }
+    if len(progress_evidence_kinds) == 1:
+        aggregate["progress_evidence_kind"] = progress_evidence_kinds.pop()
+    elif progress_evidence_kinds:
+        aggregate["progress_evidence_kind"] = "mixed"
     if len(terminal_policies) == 1:
         aggregate["terminal_policy"] = terminal_policies.pop()
     if validations and validations[-1].get("sequence_stop_reason"):
