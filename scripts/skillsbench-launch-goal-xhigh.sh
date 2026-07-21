@@ -26,6 +26,9 @@ Optional env:
   SKILLSBENCH_LOCAL_CODEX_PROXY_PORT   Local proxy port, default 18180
   SKILLSBENCH_DOCKER_PROXY_HOST        Remote Docker bridge host for benchmark
                                        setup/verifier egress; default auto
+  SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE
+                                       Benchmark setup/verifier egress mode:
+                                       require (default), auto, or off
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
@@ -204,6 +207,7 @@ skip_global_ledger_sync="${SKILLSBENCH_SKIP_GLOBAL_LEDGER_SYNC:-0}"
 skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
+benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
 remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND:-}"
@@ -228,6 +232,12 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+if [[ "$benchmark_egress_proxy_mode" != "require" ]] &&
+  [[ "$benchmark_egress_proxy_mode" != "auto" ]] &&
+  [[ "$benchmark_egress_proxy_mode" != "off" ]]; then
+  echo "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off" >&2
+  exit 2
+fi
 validate_bool_toggle \
   SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_AGENT_COMMAND_INSTRUMENTED \
   "$remote_command_file_bridge_agent_command_instrumented"
@@ -509,7 +519,7 @@ remote_command=$(
     --build-stall-timeout-sec "$build_stall_timeout" \
     --codex-api-egress-mode reverse-tunnel \
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
-    --benchmark-egress-proxy-mode require \
+    --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
     --host-local-acp-launch \
     --local-codex-bin "$remote_codex_bin" \
     --local-codex-sandbox "$local_codex_sandbox" \
@@ -591,6 +601,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
+  printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
   printf 'remote_command_file_bridge_probe_command_configured=%s\n' \
