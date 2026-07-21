@@ -48,6 +48,7 @@ Every payload carries `spends_quota=false`, `launches_host=false`, and
 | `repair_required` | any | `repair` |
 | `replan_required` | any | `replan` |
 | `user_action_required` | any | `user_action_required` |
+| `validated_completion` + decision user action | — | `terminal` (completion wins) |
 | `wait` | any | `wait` |
 | `host_failure` / `validation_failed` / `writeback_failed` / `quota_spend_failed` | any | `repair` (route before any successor Turn) |
 | replan-class decision action (`autonomous_replan*`) | — | `replan` |
@@ -55,6 +56,14 @@ Every payload carries `spends_quota=false`, `launches_host=false`, and
 | user action projected by decision | — | `user_action_required` |
 | receipt lineage mismatches decision `(goal_id, agent_id)` | — | `wait` with `stale_receipt` reason |
 | malformed decision, broken signature, or unknown receipt kind | — | `wait` with `contract_error` reason |
+
+## Precedence
+
+A `validated_completion` receipt wins over a decision-only user action: once
+the terminal postcondition is independently proven, the loop is `terminal`
+even if the fresh decision still projects a user gate. Every other
+user-action signal (from receipt or decision) routes to
+`user_action_required` before delivery dispositions.
 
 ## Replan Continuation Boundary
 

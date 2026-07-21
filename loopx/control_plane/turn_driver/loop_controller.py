@@ -141,6 +141,18 @@ def decide_loop_disposition(
         )
     decision_lineage = _decision_lineage(quota_decision)
 
+    # A validated completion settles the terminal postcondition; it wins over
+    # a decision-only user action because a finished loop must not stay
+    # non-terminal behind a stale gate projection.
+    if turn_receipt is not None:
+        completion_kind = str(_mapping(turn_receipt).get("result_kind") or "")
+        if completion_kind == LoopXTurnResultKind.VALIDATED_COMPLETION.value:
+            return _disposition(
+                LoopDisposition.TERMINAL,
+                reason="terminal postcondition met by validated completion",
+                lineage=decision_lineage,
+            )
+
     if route == LoopDisposition.USER_ACTION_REQUIRED.value:
         return _disposition(
             LoopDisposition.USER_ACTION_REQUIRED,
@@ -194,13 +206,6 @@ def decide_loop_disposition(
                 lineage=decision_lineage,
                 extra={"stale_receipt_lineage": receipt_lineage},
             )
-
-    if result_kind is LoopXTurnResultKind.VALIDATED_COMPLETION:
-        return _disposition(
-            LoopDisposition.TERMINAL,
-            reason="terminal postcondition met by validated completion",
-            lineage=decision_lineage,
-        )
 
     if result_kind is LoopXTurnResultKind.VALIDATED_PROGRESS:
         budget = _mapping(bounded_turn_budget)
