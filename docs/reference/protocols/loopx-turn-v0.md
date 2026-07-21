@@ -32,11 +32,15 @@ LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
 | Commit | LoopX CLI | Write durable state and spend one quota slot only after validation passes. |
 
 The built-in Codex host may add an explicit Advisor stage between Decide and
-Execute. The Advisor is an ephemeral read-only model call over the same bounded
-Turn request. It returns compact guidance under a strict schema; the executor
-still owns tools and implementation, while the TurnEnvelope and validator keep
-their existing authority. Advisor mode must fail closed before executor launch
-when the advice, provider call, or usage observation is invalid.
+Execute. The Advisor is an ephemeral read-only model call over the bounded Turn
+request and a size-capped context packet of literal, non-symlink files from the
+declared write scope. The repository itself is not mounted. It returns compact
+guidance under a strict schema; the executor still owns tools and
+implementation, while the TurnEnvelope and validator keep their existing
+authority. An invoked Advisor must fail closed before executor launch when the
+advice, provider call, or usage observation is invalid. When no eligible
+bounded file exists, the adapter skips the Advisor call and records direct mode
+with `advisor_applied=false`.
 
 This separation lets the same Turn contract govern coding, operations, data,
 document, knowledge-maintenance, and other long-running workflows. The agent
@@ -371,7 +375,10 @@ For a provider that emits usage events, a built-in adapter may attach
 executor usage. Advisor mode records Advisor usage, executor usage, their
 field-wise total, and a digest of the applied advice. The adapter must reject
 inconsistent totals and must not persist the advice, prompt, raw response, or
-event stream as usage evidence.
+event stream as usage evidence. A requested Advisor that is skipped because no
+eligible bounded context exists remains direct mode; consumers must use
+`advisor_applied`, not the presence of an Advisor CLI option, as the applied
+stage signal.
 
 ## Promotion Gates
 

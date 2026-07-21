@@ -64,11 +64,18 @@ loopx turn run-once \
   --execute
 ```
 
-The Advisor runs first in an ephemeral `read-only` Codex session. Its compact
-summary, recommendations, risks, and validation focus are passed to the
-executor as non-authoritative guidance. It cannot change the selected todo,
-gate, writeback, quota, scheduler, or executor sandbox. Advisor failure is
-fail-closed; LoopX does not silently run the cheaper executor without guidance.
+When bounded source context is available, the Advisor runs first in an
+ephemeral `read-only` Codex session. It receives the TurnEnvelope plus at most
+eight literal, non-symlink files named by `write_scope`, capped at 24 KB total;
+the repository itself is not mounted. Its compact summary, recommendations,
+risks, and validation focus are passed to the executor as non-authoritative
+guidance. It cannot change the selected todo, gate, writeback, quota, scheduler,
+or executor sandbox. An invoked Advisor failure is fail-closed.
+
+If that bounded context contains no eligible file, LoopX skips the strong-model
+call and runs the configured executor directly. The receipt reports
+`model_usage.mode=direct` and `advisor_applied=false`, so this cost guard cannot
+masquerade as applied advice.
 
 When Codex emits provider usage events, the Turn result includes
 `model_usage.advisor`, `model_usage.executor`, and their exact `total`. Only
