@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -633,7 +634,42 @@ def _public_artifact_sync_contract(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
-def _sync_remote_public_artifacts(args: argparse.Namespace) -> dict[str, Any]:
+def _incremental_public_artifact_sync_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    interval_sec = max(0.0, float(args.public_artifact_sync_interval_sec))
+    return {
+        "enabled": interval_sec > 0.0,
+        "interval_sec": interval_sec,
+        "attempt_count": 0,
+        "success_count": 0,
+        "failure_count": 0,
+        "last_status": "not_run",
+        "raw_paths_recorded": False,
+        "raw_artifacts_recorded": False,
+    }
+
+
+def _record_incremental_public_artifact_sync(
+    contract: dict[str, Any],
+    result: Mapping[str, Any],
+) -> None:
+    contract["attempt_count"] = int(contract["attempt_count"]) + 1
+    if result.get("ok") is True:
+        contract["success_count"] = int(contract["success_count"]) + 1
+        contract["last_status"] = "passed"
+    else:
+        contract["failure_count"] = int(contract["failure_count"]) + 1
+        contract["last_status"] = str(result.get("first_blocker") or "sync_failed")[
+            :120
+        ]
+
+
+def _sync_remote_public_artifacts(
+    args: argparse.Namespace,
+    *,
+    include_local_closeout: bool = True,
+) -> dict[str, Any]:
     return closeout_remote_benchmark_batch(
         run_remote_command=lambda command, timeout: _run_remote_shell_command(
             args,
@@ -646,9 +682,11 @@ def _sync_remote_public_artifacts(args: argparse.Namespace) -> dict[str, Any]:
         adapter_kind=args.public_artifact_adapter_kind,
         max_bytes=args.public_artifact_max_bytes,
         sync_timeout_sec=args.public_artifact_sync_timeout_sec,
-        ledger_path=args.local_run_ledger_path,
+        ledger_path=args.local_run_ledger_path if include_local_closeout else "",
         run_group_id=args.local_run_group_id,
-        aggregate_path=args.local_current_aggregate_path,
+        aggregate_path=(
+            args.local_current_aggregate_path if include_local_closeout else ""
+        ),
         canonical_case_ids_file=args.local_canonical_case_ids_file,
         benchmark_id=args.local_benchmark_id,
         target_lane_id=args.local_target_lane_id,
@@ -656,7 +694,9 @@ def _sync_remote_public_artifacts(args: argparse.Namespace) -> dict[str, Any]:
         target_backfill_run_group_contains=list(
             args.local_target_backfill_run_group_contains or []
         ),
-        ledger_catchup_root=args.local_ledger_catchup_root,
+        ledger_catchup_root=(
+            args.local_ledger_catchup_root if include_local_closeout else ""
+        ),
         ledger_catchup_run_group_contains=list(
             args.local_ledger_catchup_run_group_contains or []
         ),
@@ -892,6 +932,9 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "json_bridge": _json_bridge_public_contract(args),
         "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
         "public_artifact_sync": _public_artifact_sync_contract(args),
+        "incremental_public_artifact_sync": (
+            _incremental_public_artifact_sync_contract(args)
+        ),
         "tunnel_liveness": _tunnel_liveness_public_contract(args),
     }
 
@@ -1035,6 +1078,13 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             run_deadline = time.monotonic() + max(1.0, float(args.run_timeout_sec))
             health_interval = max(0.0, float(args.tunnel_health_interval_sec))
             next_health_probe = time.monotonic() + health_interval
+            incremental_sync = payload["incremental_public_artifact_sync"]
+            incremental_sync_interval = float(incremental_sync["interval_sec"])
+            next_incremental_sync = (
+                time.monotonic() + incremental_sync_interval
+                if incremental_sync["enabled"]
+                else float("inf")
+            )
             consecutive_failures = 0
             consecutive_inconclusive = 0
             if liveness["enabled"]:
@@ -1046,6 +1096,18 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                     remote_command_timed_out = True
                     _stop_process_group(remote_proc, grace_sec=1.0)
                     break
+                if now >= next_incremental_sync:
+                    _record_incremental_public_artifact_sync(
+                        incremental_sync,
+                        _sync_remote_public_artifacts(
+                            args,
+                            include_local_closeout=False,
+                        ),
+                    )
+                    next_incremental_sync = time.monotonic() + incremental_sync_interval
+                    if remote_proc.poll() is not None:
+                        break
+                    now = time.monotonic()
                 if not liveness["enabled"] or now < next_health_probe:
                     time.sleep(0.1)
                     continue
@@ -1421,6 +1483,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=60.0,
     )
     parser.add_argument(
+        "--public-artifact-sync-interval-sec",
+        type=float,
+        default=0.0,
+        help=(
+            "Optional interval for syncing bounded public artifacts while the "
+            "remote command is still running. Zero disables incremental sync."
+        ),
+    )
+    parser.add_argument(
         "--local-run-ledger-path",
         default="",
         help=(
@@ -1504,6 +1575,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 parser.error(
                     "--remote-public-artifact-glob must be relative and bounded"
                 )
+    if (
+        args.public_artifact_sync_interval_sec > 0
+        and not _public_artifact_sync_requested(args)
+    ):
+        parser.error("--public-artifact-sync-interval-sec requires artifact sync")
     if args.local_run_ledger_path and not _public_artifact_sync_requested(args):
         parser.error("--local-run-ledger-path requires artifact sync")
     if args.local_ledger_catchup_root and not args.local_run_ledger_path:

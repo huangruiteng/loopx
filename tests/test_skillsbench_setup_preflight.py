@@ -119,6 +119,31 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     assert "should-not-project" not in serialized
 
 
+def test_setup_only_preflight_projects_incremental_public_stages() -> None:
+    snapshots: list[dict[str, Any]] = []
+
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+            progress_callback=lambda snapshot: snapshots.append(dict(snapshot)),
+        )
+    )
+
+    assert result["status"] == "passed"
+    assert [snapshot["stage"] for snapshot in snapshots] == [
+        "rollout_create",
+        "rollout_setup",
+        "environment_start",
+        "environment_ready_before_agent",
+    ]
+    assert snapshots[0]["status"] == "running"
+    assert snapshots[-1]["status"] == "passed"
+    assert snapshots[-1]["cleanup_status"] == "completed"
+    assert all(snapshot["raw_logs_recorded"] is False for snapshot in snapshots)
+
+
 def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     args = parse_args(
         [

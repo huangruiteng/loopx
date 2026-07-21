@@ -9698,6 +9698,25 @@ def _write_public_runner_config(plan: dict[str, Any]) -> Path | None:
     return path
 
 
+def _write_setup_only_public_preflight(
+    plan: Mapping[str, Any],
+    result: Mapping[str, Any],
+) -> Path:
+    path = Path(str(plan["setup_only_public_preflight_json"]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_text_atomic(
+        path,
+        json.dumps(
+            dict(result),
+            indent=2,
+            sort_keys=True,
+            default=_json_default,
+        )
+        + "\n",
+    )
+    return path
+
+
 async def run_benchflow_case_with_private_output(
     args: argparse.Namespace,
     plan: dict[str, Any],
@@ -14653,6 +14672,10 @@ async def run_benchflow_case(
                 task_staging=plan.get("task_staging"),
                 setup_preflight=plan.get("task_setup_preflight"),
                 stage_timeout_sec=float(args.sandbox_setup_timeout),
+                progress_callback=lambda progress: _write_setup_only_public_preflight(
+                    plan,
+                    progress,
+                ),
             )
             plan["setup_only_public_preflight_result"] = setup_only_result
             prerequisites["benchflow_run_stage"] = str(
@@ -16999,18 +17022,7 @@ async def _async_main_with_observable_handle(
         if args.setup_only_public_preflight:
             if not isinstance(case_result, dict):
                 raise TypeError("setup-only preflight returned a non-object result")
-            preflight_path = Path(plan["setup_only_public_preflight_json"])
-            preflight_path.parent.mkdir(parents=True, exist_ok=True)
-            preflight_path.write_text(
-                json.dumps(
-                    case_result,
-                    indent=2,
-                    sort_keys=True,
-                    default=_json_default,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            preflight_path = _write_setup_only_public_preflight(plan, case_result)
             _write_public_runner_config(plan)
             _write_public_runner_prerequisites(plan)
             passed = case_result.get("status") == "passed"
