@@ -8,11 +8,19 @@ import subprocess
 import sys
 import venv
 
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 import pytest
 
 from loopx.cli import main
 from loopx.extensions.manifest import load_extension_manifest
 from loopx.extensions.scaffold import scaffold_extension
+
+
+def _schema_validator(path: Path) -> Draft202012Validator:
+    schema = json.loads(path.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
 
 
 def test_scaffold_preview_is_read_only(tmp_path: Path) -> None:
@@ -82,22 +90,44 @@ def test_scaffold_execute_creates_valid_manifest_and_refuses_overwrite(
     assert manifest["provider"]["permissions"] == []
     assert manifest["runtime"]["required_permissions"] == []
     assert manifest["runtime"]["entrypoint"] == "loopx-example"
-    request_schema = json.loads(
-        (destination / "schemas" / "request.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    response_schema = json.loads(
-        (destination / "schemas" / "response.schema.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    request_schema_path = destination / "schemas" / "request.schema.json"
+    response_schema_path = destination / "schemas" / "response.schema.json"
+    request_schema = json.loads(request_schema_path.read_text(encoding="utf-8"))
+    response_schema = json.loads(response_schema_path.read_text(encoding="utf-8"))
+    request_validator = _schema_validator(request_schema_path)
+    response_validator = _schema_validator(response_schema_path)
     assert request_schema["properties"]["schema_version"] == {
         "const": "loopx_example_request_v0"
     }
     assert response_schema["properties"]["schema_version"] == {
         "const": "loopx_example_response_v0"
     }
+    request_validator.validate(
+        json.loads((destination / "examples" / "request.json").read_text())
+    )
+    with pytest.raises(ValidationError):
+        request_validator.validate(
+            {
+                "schema_version": "loopx_example_request_v0",
+                "message": "   ",
+            }
+        )
+    with pytest.raises(ValidationError):
+        response_validator.validate(
+            {
+                "ok": True,
+                "schema_version": "loopx_example_response_v0",
+                "extension_id": "loopx-example",
+            }
+        )
+    with pytest.raises(ValidationError):
+        response_validator.validate(
+            {
+                "ok": False,
+                "schema_version": "loopx_example_response_v0",
+                "extension_id": "loopx-example",
+            }
+        )
     with pytest.raises(ValueError, match="destination already exists"):
         scaffold_extension(
             "loopx-example",
@@ -205,6 +235,9 @@ def test_generated_starter_installs_and_runs_through_managed_lifecycle(
     runtime_root = tmp_path / "runtime"
     manifest = destination / "extension.toml"
     request = destination / "examples" / "request.json"
+    response_validator = _schema_validator(
+        destination / "schemas" / "response.schema.json"
+    )
 
     assert (
         main(
@@ -325,6 +358,7 @@ def test_generated_starter_installs_and_runs_through_managed_lifecycle(
     )
     receipt = json.loads(capsys.readouterr().out)
     assert receipt["status"] == "succeeded"
+    response_validator.validate(receipt["provider_result"])
     assert receipt["provider_result"] == {
         "extension_id": "loopx-example",
         "ok": True,
@@ -352,7 +386,11 @@ def test_generated_provider_rejects_non_object_input(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 1
-    assert json.loads(result.stdout)["ok"] is False
+    response = json.loads(result.stdout)
+    _schema_validator(
+        destination / "schemas" / "response.schema.json"
+    ).validate(response)
+    assert response["ok"] is False
 
 
 def test_generated_provider_rejects_wrong_request_contract(tmp_path: Path) -> None:
@@ -379,5 +417,8 @@ def test_generated_provider_rejects_wrong_request_contract(tmp_path: Path) -> No
 
     assert result.returncode == 1
     response = json.loads(result.stdout)
+    _schema_validator(
+        destination / "schemas" / "response.schema.json"
+    ).validate(response)
     assert response["ok"] is False
     assert "loopx_example_request_v0" in response["error"]

@@ -157,7 +157,11 @@ __version__ = "{version}"
             "required": ["schema_version", "message"],
             "properties": {
                 "schema_version": {"const": request_schema},
-                "message": {"type": "string", "minLength": 1},
+                "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": r"\S",
+                },
             },
         },
         indent=2,
@@ -178,10 +182,33 @@ __version__ = "{version}"
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["message"],
-                    "properties": {"message": {"type": "string"}},
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": r"\S",
+                        }
+                    },
                 },
-                "error": {"type": "string"},
+                "error": {"type": "string", "minLength": 1},
             },
+            "oneOf": [
+                {
+                    "required": ["request_schema_version", "result"],
+                    "properties": {
+                        "ok": {"const": True},
+                        "error": False,
+                    },
+                },
+                {
+                    "required": ["error"],
+                    "properties": {
+                        "ok": {"const": False},
+                        "request_schema_version": False,
+                        "result": False,
+                    },
+                },
+            ],
         },
         indent=2,
         sort_keys=True,
