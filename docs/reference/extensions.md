@@ -144,6 +144,14 @@ those providers remain reachable only through their capability-facing LoopX
 command. Direct provider binaries are implementation and debugging surfaces,
 not the supported management API.
 
+The generic runner is deliberately non-effectful. It rejects the reserved
+authority-bound `external_write` permission before invoking the provider;
+operations needing that authority must enter through a domain command that can
+verify the goal, user gate, and external-write decision. Request files and stdin
+are capped while being read. Provider stdout and stderr are drained concurrently
+and the provider is terminated as soon as either stream crosses its byte limit,
+so the documented bounds do not depend on a cooperative provider exiting first.
+
 `disable` is reversible, but `enable` never trusts an earlier readiness result:
 it reruns the configured doctor and changes the enabled bit only after that
 probe succeeds. A successful doctor binds readiness to both the active manifest
@@ -355,7 +363,9 @@ claiming automatic installation when that artifact is unavailable.
 Runtime-required permissions must be a subset of the provider's declared
 permissions. Declaring either does not grant authority: existing LoopX goal
 boundaries, user gates, and external-write authorization still decide whether
-an operation may execute.
+an operation may execute. Extension packages are trusted executable code rather
+than an operating-system sandbox; the manifest records and constrains managed
+routing, but cannot make an untrusted provider safe.
 
 Every executable runtime declares exactly one launch target. Use `entrypoint`
 for a separately installed executable such as the OpenViking provider. Use

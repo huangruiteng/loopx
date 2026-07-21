@@ -9,6 +9,7 @@ import sys
 from ..extensions.bundled import BUNDLED_EXTENSION_IDS, bundled_extension_manifest
 from ..extensions.scaffold import scaffold_extension
 from ..extensions.runtime import (
+    MAX_EXTENSION_REQUEST_BYTES,
     default_extension_state_file,
     disable_extension,
     doctor_installed_extension,
@@ -152,13 +153,19 @@ def register_extension_commands(
 
 def _load_json_object(path_text: str) -> dict[str, object]:
     try:
-        raw = (
-            sys.stdin.read()
-            if path_text == "-"
-            else Path(path_text).read_text(encoding="utf-8")
-        )
+        if path_text == "-":
+            binary_stdin = getattr(sys.stdin, "buffer", None)
+            if binary_stdin is not None:
+                raw = binary_stdin.read(MAX_EXTENSION_REQUEST_BYTES + 1)
+            else:
+                raw = sys.stdin.read(MAX_EXTENSION_REQUEST_BYTES + 1).encode("utf-8")
+        else:
+            with Path(path_text).open("rb") as input_file:
+                raw = input_file.read(MAX_EXTENSION_REQUEST_BYTES + 1)
+        if len(raw) > MAX_EXTENSION_REQUEST_BYTES:
+            raise ValueError("extension run input exceeds the 1000000-byte limit")
         payload = json.loads(raw)
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("extension run input must be a readable JSON object") from exc
     if not isinstance(payload, dict):
         raise ValueError("extension run input must be a JSON object")

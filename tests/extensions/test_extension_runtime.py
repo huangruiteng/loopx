@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ast
 from collections.abc import Callable
+import io
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,8 @@ from loopx.capabilities.semantic_preference.cli import (
 from loopx.capabilities.semantic_preference.contract import provider_doctor, recall
 from loopx.cli import main
 from loopx.extensions.runtime import (
+    MAX_EXTENSION_REQUEST_BYTES,
+    MAX_EXTENSION_RESPONSE_BYTES,
     disable_extension,
     doctor_installed_extension,
     enable_extension,
@@ -117,6 +120,35 @@ def _standalone_manifest(
         encoding="utf-8",
     )
     return manifest
+
+
+def _overflow_provider(
+    path: Path,
+    *,
+    stream: str,
+    completion_marker: Path,
+) -> Path:
+    path.write_text(
+        f"""#!{sys.executable}
+import json
+from pathlib import Path
+import sys
+import time
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+
+json.load(sys.stdin)
+target = sys.{stream}.buffer
+target.write(b"x" * {MAX_EXTENSION_RESPONSE_BYTES + 1})
+target.flush()
+time.sleep(5)
+Path({json.dumps(str(completion_marker))}).write_text("completed", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
 
 
 def _python_module_manifest(path: Path, *, module_name: str) -> Path:
@@ -286,6 +318,194 @@ def test_standalone_run_rejects_capability_provider_bypass(tmp_path: Path) -> No
             request={"schema_version": "test_extension_request_v0"},
             execute=True,
         )
+
+
+def test_standalone_run_rejects_authority_bound_permission_before_invocation(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "invoked"
+    provider = tmp_path / "provider"
+    provider.write_text(
+        f"""#!{sys.executable}
+from pathlib import Path
+import sys
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+Path({json.dumps(str(marker))}).write_text("invoked", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = _standalone_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'permissions = ["semantic_preference.read"]',
+            'permissions = ["semantic_preference.read", "external_write"]',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    with pytest.raises(ValueError, match="cannot grant operation authority"):
+        run_standalone_extension(
+            "test-standalone-extension",
+            state_file=state_file,
+            request={"schema_version": "test_extension_request_v0"},
+            execute=True,
+        )
+
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    ("stream", "expected_status", "expected_failure"),
+    [
+        ("stdout", "invalid_provider_output", "response_too_large"),
+        ("stderr", "provider_failed", "stderr_too_large"),
+    ],
+)
+def test_standalone_run_terminates_provider_when_output_limit_is_crossed(
+    tmp_path: Path,
+    stream: str,
+    expected_status: str,
+    expected_failure: str,
+) -> None:
+    marker = tmp_path / f"{stream}-completed"
+    provider = _overflow_provider(
+        tmp_path / f"{stream}-provider",
+        stream=stream,
+        completion_marker=marker,
+    )
+    manifest = _standalone_manifest(
+        tmp_path / f"{stream}-extension.toml",
+        entrypoint=provider,
+    )
+    state_file = tmp_path / f"{stream}-extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    receipt = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+
+    assert receipt["ok"] is False
+    assert receipt["status"] == expected_status
+    assert receipt["failure_kind"] == expected_failure
+    assert not marker.exists()
+
+
+def test_standalone_run_terminates_provider_on_timeout(tmp_path: Path) -> None:
+    marker = tmp_path / "timeout-completed"
+    provider = tmp_path / "timeout-provider"
+    provider.write_text(
+        f"""#!{sys.executable}
+from pathlib import Path
+import sys
+import time
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+time.sleep(5)
+Path({json.dumps(str(marker))}).write_text("completed", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = _standalone_manifest(
+        tmp_path / "timeout-extension.toml",
+        entrypoint=provider,
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "timeout_seconds = 5",
+            "timeout_seconds = 1",
+        ),
+        encoding="utf-8",
+    )
+    state_file = tmp_path / "timeout-extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    receipt = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+
+    assert receipt["ok"] is False
+    assert receipt["status"] == "provider_failed"
+    assert receipt["failure_kind"] == "timeout"
+    assert receipt["exit_code"] is None
+    assert not marker.exists()
+
+
+def test_extension_run_cli_rejects_oversized_file_before_runtime_resolution(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    request = tmp_path / "oversized.json"
+    request.write_bytes(b"{" + b" " * MAX_EXTENSION_REQUEST_BYTES)
+
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "not-installed",
+                "--state-file",
+                str(tmp_path / "extensions.json"),
+                "--input-json",
+                str(request),
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "invalid_request"
+    assert "exceeds the 1000000-byte limit" in payload["error"]
+
+
+def test_extension_run_cli_rejects_oversized_stdin_before_runtime_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class BinaryStdin:
+        buffer = io.BytesIO(b"{" + b" " * MAX_EXTENSION_REQUEST_BYTES)
+
+    monkeypatch.setattr(sys, "stdin", BinaryStdin())
+
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "not-installed",
+                "--state-file",
+                str(tmp_path / "extensions.json"),
+                "--input-json",
+                "-",
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "invalid_request"
+    assert "exceeds the 1000000-byte limit" in payload["error"]
 
 
 def test_standalone_run_fails_closed_on_invalid_provider_output(
@@ -608,9 +828,10 @@ def test_binding_rejects_missing_or_replaced_entrypoint(
             encoding="utf-8",
         )
 
-    assert extension_status(state_file=state_file)["extensions"][0][
-        "doctor_verified"
-    ] is False
+    assert (
+        extension_status(state_file=state_file)["extensions"][0]["doctor_verified"]
+        is False
+    )
     with pytest.raises(ValueError, match="doctor readiness is stale"):
         resolve_extension_activation(
             "test-semantic-extension",
@@ -672,9 +893,7 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     assert capability_binding["argv"] == [str(provider)]
     catalog = build_capability_catalog_packet(extension_state_file=state_file)
     catalog_provider = next(
-        item
-        for item in catalog["providers"]
-        if item["id"] == "test-semantic-extension"
+        item for item in catalog["providers"] if item["id"] == "test-semantic-extension"
     )
     assert catalog_provider["active_revision"] == capability_binding["revision"]
     assert catalog_provider["ready"] is True

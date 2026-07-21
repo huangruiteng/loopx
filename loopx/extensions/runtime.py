@@ -7,11 +7,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
-import tempfile
 from typing import Any
 
 from ..file_lock import exclusive_file_lock
+from .process_runtime import run_capped_process
 from .manifest import load_extension_manifest
 from .readiness import (
     EXTENSION_DOCTOR_SCHEMA_VERSION,
@@ -30,6 +29,7 @@ EXTENSION_RUN_SCHEMA_VERSION = "loopx_extension_run_receipt_v0"
 MAX_REVISIONS = 5
 MAX_EXTENSION_REQUEST_BYTES = 1_000_000
 MAX_EXTENSION_RESPONSE_BYTES = 1_000_000
+AUTHORITY_BOUND_EXTENSION_PERMISSIONS = frozenset({"external_write"})
 
 
 def default_extension_state_file(runtime_root: str | Path | None = None) -> Path:
@@ -160,17 +160,10 @@ def install_extension(
             raise ValueError(f"extension `{extension_id}` is already installed")
         if operation == "upgrade" and not isinstance(existing, dict):
             raise ValueError(f"extension `{extension_id}` is not installed")
-        if (
-            isinstance(existing, dict)
-            and existing.get("active_revision") == revision
-        ):
-            raise ValueError(
-                f"extension `{extension_id}` revision is already active"
-            )
+        if isinstance(existing, dict) and existing.get("active_revision") == revision:
+            raise ValueError(f"extension `{extension_id}` revision is already active")
         previous_revision = (
-            str(existing.get("active_revision"))
-            if isinstance(existing, dict)
-            else None
+            str(existing.get("active_revision")) if isinstance(existing, dict) else None
         )
         if execute:
             revisions = (
@@ -193,9 +186,7 @@ def install_extension(
                 "active_revision": revision,
                 "rollback_revision": previous_revision,
                 "doctor_verified_revision": revision,
-                "doctor_verified_entrypoint_identity": doctor[
-                    "entrypoint_identity"
-                ],
+                "doctor_verified_entrypoint_identity": doctor["entrypoint_identity"],
                 "revisions": revisions,
             }
             _write_state(path, state)
@@ -248,8 +239,7 @@ def enable_extension(
             current_entry.pop("doctor_verified_entrypoint_identity", None)
             _write_state(path, current_state)
         raise ValueError(
-            f"extension `{extension_id}` enable doctor is not ready: "
-            f"{doctor['status']}"
+            f"extension `{extension_id}` enable doctor is not ready: {doctor['status']}"
         )
     changed = False
     if execute:
@@ -515,7 +505,9 @@ def extension_catalog_entries(
             manifest = _active_manifest(entry)
             provider = manifest.get("provider")
             if not isinstance(provider, Mapping) or provider.get("id") != extension_id:
-                raise ValueError(f"extension `{extension_id}` active manifest is invalid")
+                raise ValueError(
+                    f"extension `{extension_id}` active manifest is invalid"
+                )
             manifests[extension_id] = manifest
             enabled = bool(entry.get("enabled"))
             lifecycle[extension_id] = {
@@ -529,9 +521,9 @@ def extension_catalog_entries(
     entries: list[dict[str, Any]] = []
     for extension_id, manifest in manifests.items():
         normalized = deepcopy(dict(manifest))
-        normalized["provider"] = deepcopy(dict(manifest["provider"])) | lifecycle[
-            extension_id
-        ]
+        normalized["provider"] = (
+            deepcopy(dict(manifest["provider"])) | lifecycle[extension_id]
+        )
         entries.append(normalized)
     return entries
 
@@ -767,6 +759,16 @@ def run_standalone_extension(
             f"extension `{extension_id}` does not declare permissions "
             f"{missing_permissions}"
         )
+    authority_bound_permissions = sorted(
+        declared_permissions & AUTHORITY_BOUND_EXTENSION_PERMISSIONS
+    )
+    if authority_bound_permissions:
+        raise ValueError(
+            f"extension `{extension_id}` declares authority-bound permissions "
+            f"{authority_bound_permissions}; generic extension run cannot grant "
+            "operation authority, so use a domain command with explicit goal and "
+            "external-write gates"
+        )
 
     try:
         request_bytes = json.dumps(
@@ -798,49 +800,12 @@ def run_standalone_extension(
 
     argv = [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])]
     try:
-        with (
-            tempfile.TemporaryFile() as stdout_file,
-            tempfile.TemporaryFile() as stderr_file,
-        ):
-            completed = subprocess.run(
-                argv,
-                input=request_bytes,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                timeout=int(runtime["timeout_seconds"]),
-                check=False,
-            )
-            stdout_size = stdout_file.tell()
-            stderr_size = stderr_file.tell()
-            if stdout_size > MAX_EXTENSION_RESPONSE_BYTES:
-                return {
-                    **receipt,
-                    "ok": False,
-                    "executed": True,
-                    "status": "invalid_provider_output",
-                    "failure_kind": "response_too_large",
-                    "exit_code": completed.returncode,
-                }
-            stdout_file.seek(0)
-            stdout = stdout_file.read()
-            if stderr_size > MAX_EXTENSION_RESPONSE_BYTES:
-                return {
-                    **receipt,
-                    "ok": False,
-                    "executed": True,
-                    "status": "provider_failed",
-                    "failure_kind": "stderr_too_large",
-                    "exit_code": completed.returncode,
-                }
-    except subprocess.TimeoutExpired:
-        return {
-            **receipt,
-            "ok": False,
-            "executed": True,
-            "status": "provider_failed",
-            "failure_kind": "timeout",
-            "exit_code": None,
-        }
+        completed = run_capped_process(
+            argv,
+            stdin=request_bytes,
+            timeout_seconds=int(runtime["timeout_seconds"]),
+            output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
+        )
     except OSError:
         return {
             **receipt,
@@ -850,9 +815,23 @@ def run_standalone_extension(
             "failure_kind": "execution_failed",
             "exit_code": None,
         }
+    if completed.failure_kind is not None:
+        response_too_large = completed.failure_kind == "response_too_large"
+        return {
+            **receipt,
+            "ok": False,
+            "executed": True,
+            "status": (
+                "invalid_provider_output" if response_too_large else "provider_failed"
+            ),
+            "failure_kind": completed.failure_kind,
+            "exit_code": (
+                None if completed.failure_kind == "timeout" else completed.returncode
+            ),
+        }
 
     try:
-        provider_result = json.loads(stdout.decode("utf-8"))
+        provider_result = json.loads(completed.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         provider_result = None
     if not isinstance(provider_result, dict):
