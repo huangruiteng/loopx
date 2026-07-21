@@ -103,6 +103,20 @@ def _lark_event_inbox_config_summary(goal: dict[str, Any]) -> dict[str, bool]:
     }
 
 
+def _lark_kanban_heartbeat_config_summary(goal: dict[str, Any]) -> dict[str, bool]:
+    control_plane = (
+        goal.get("control_plane")
+        if isinstance(goal.get("control_plane"), dict)
+        else {}
+    )
+    lark_kanban = (
+        control_plane.get("lark_kanban")
+        if isinstance(control_plane.get("lark_kanban"), dict)
+        else {}
+    )
+    return {"enabled": lark_kanban.get("heartbeat_sync_enabled") is True}
+
+
 def _local_private_config_path(
     value: str | None, *, label: str = "local-private config"
 ) -> str | None:
@@ -205,6 +219,7 @@ def _settings_summary(goal: dict[str, Any]) -> dict[str, Any]:
             goal
         ),
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
+        "lark_kanban_heartbeat_sync": _lark_kanban_heartbeat_config_summary(goal),
         "reward_memory": reward_memory_goal_policy_summary(goal),
         "explore_graph": compact_explore_graph_policy(goal.get("explore_graph")),
         "orchestration": orchestration,
@@ -431,6 +446,7 @@ def configure_goal(
     clear_issue_fix_reviewer_notification_config: bool = False,
     lark_event_inbox_config: str | None = None,
     clear_lark_event_inbox_config: bool = False,
+    lark_kanban_heartbeat_sync: bool | None = None,
     reward_memory_config: str | None = None,
     reward_memory_agents: list[str] | None = None,
     clear_reward_memory_config: bool = False,
@@ -758,6 +774,21 @@ def configure_goal(
             }
         goal["control_plane"] = control_plane
 
+    if lark_kanban_heartbeat_sync is not None:
+        control_plane = (
+            goal.get("control_plane")
+            if isinstance(goal.get("control_plane"), dict)
+            else {}
+        )
+        lark_kanban = (
+            control_plane.get("lark_kanban")
+            if isinstance(control_plane.get("lark_kanban"), dict)
+            else {}
+        )
+        lark_kanban["heartbeat_sync_enabled"] = lark_kanban_heartbeat_sync
+        control_plane["lark_kanban"] = lark_kanban
+        goal["control_plane"] = control_plane
+
     if (
         reward_memory_config is not None
         or reward_memory_agents is not None
@@ -1063,6 +1094,7 @@ def configure_goal(
         ),
         "peer_supervisor": deepcopy(after.get("supervisor") or {"enabled": False}),
         "lark_event_inbox": _lark_event_inbox_config_summary(goal),
+        "lark_kanban_heartbeat_sync": _lark_kanban_heartbeat_config_summary(goal),
         "reward_memory": reward_memory_goal_policy_summary(goal),
         "default": "off",
         "configuration_entry": "multi_subagent_feature",

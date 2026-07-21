@@ -156,6 +156,7 @@ def main() -> int:
             ".loopx/config/issue-fix/reviewer-notification-sinks.json",
             "--lark-event-inbox-config",
             ".loopx/config/lark/event-inbox.json",
+            "--lark-kanban-heartbeat-sync",
             "--reward-memory-config",
             ".loopx/config/reward-memory/experiment.json",
             "--reward-memory-agent",
@@ -172,6 +173,7 @@ def main() -> int:
         assert "write_scope" in dry["changed_fields"], dry
         assert "issue_fix_reviewer_notification" in dry["changed_fields"], dry
         assert "lark_event_inbox" in dry["changed_fields"], dry
+        assert "lark_kanban_heartbeat_sync" in dry["changed_fields"], dry
         assert "reward_memory" in dry["changed_fields"], dry
         assert dry["after"]["waiting_on"] == "user_or_controller", dry
         assert dry["after"]["write_scope"] == ["docs/**", "tests/**"], dry
@@ -188,6 +190,9 @@ def main() -> int:
         assert dry["after"]["lark_event_inbox"] == {
             "enabled": True,
             "config_pointer_registered": True,
+        }, dry
+        assert dry["after"]["lark_kanban_heartbeat_sync"] == {
+            "enabled": True,
         }, dry
         assert dry["after"]["reward_memory"] == {
             "enabled": True,
@@ -207,6 +212,7 @@ def main() -> int:
             "explore_harness",
             "reward_memory",
             "lark_event_inbox",
+            "lark_kanban_heartbeat_sync",
         }
         assert features["multi_subagent"]["current"]["enabled"] is True
         assert features["explore_graph"]["current"]["enabled"] is False
@@ -217,6 +223,10 @@ def main() -> int:
         assert features["lark_event_inbox"]["current"]["enabled"] is True
         assert "--execute" not in features["lark_event_inbox"]["commands"]["preview_enable"]
         assert "--execute" in features["lark_event_inbox"]["commands"]["apply_enable"]
+        assert features["lark_kanban_heartbeat_sync"]["current"]["enabled"] is True
+        assert "--execute" not in features["lark_kanban_heartbeat_sync"]["commands"]["preview_enable"]
+        assert "--execute" in features["lark_kanban_heartbeat_sync"]["commands"]["apply_enable"]
+        assert "--no-lark-kanban-heartbeat-sync" in features["lark_kanban_heartbeat_sync"]["commands"]["preview_disable"]
         assert features["reward_memory"]["availability"] == "experimental_opt_in"
         assert features["reward_memory"]["current"]["enabled_agents"] == [
             "codex-side-bypass"
@@ -275,6 +285,7 @@ def main() -> int:
             ".loopx/config/issue-fix/reviewer-notification-sinks.json",
             "--lark-event-inbox-config",
             ".loopx/config/lark/event-inbox.json",
+            "--lark-kanban-heartbeat-sync",
             "--reward-memory-config",
             ".loopx/config/reward-memory/experiment.json",
             "--reward-memory-agent",
@@ -316,6 +327,9 @@ def main() -> int:
             "enabled": True,
             "config_path": ".loopx/config/lark/event-inbox.json",
         }, goal
+        assert goal["control_plane"]["lark_kanban"] == {
+            "heartbeat_sync_enabled": True,
+        }, goal
         assert goal["control_plane"]["reward_memory"] == {
             "enabled": True,
             "experimental": True,
@@ -341,6 +355,33 @@ def main() -> int:
                 "local_private_content_returned": False,
             },
         }, boundary
+        expected_kanban_action = {
+            "action_id": "lark_kanban_sync",
+            "trigger": "material_state_change",
+            "command": (
+                f"loopx --registry {registry_path} lark-kanban sync-loopx-todos "
+                f"--goal-id {GOAL_ID} --project {root / 'project'} --execute"
+            ),
+            "failure_policy": "nonblocking_no_p0_preemption",
+        }
+        assert boundary["post_writeback_actions"] == [expected_kanban_action], boundary
+        quota_projection = payload(
+            run_cli(
+                registry_path,
+                "quota",
+                "should-run",
+                "--goal-id",
+                GOAL_ID,
+                "--agent-id",
+                "codex-main-control",
+            )
+        )
+        assert quota_projection["goal_boundary"]["post_writeback_actions"] == [
+            expected_kanban_action
+        ], quota_projection
+        assert quota_projection["interaction_contract"]["cli_channel"][
+            "post_writeback_actions"
+        ] == [expected_kanban_action], quota_projection
         allowed_boundary = goal_boundary(goal, agent_id="codex-side-bypass")
         assert allowed_boundary["capabilities"]["reward_memory"]["enabled"] is True
         assert allowed_boundary["capabilities"]["reward_memory"][
@@ -613,6 +654,43 @@ def main() -> int:
         assert reviewer_config_cleared["ok"] is True, reviewer_config_cleared
         cleared_goal = goal_from_registry(registry_path)
         assert "issue_fix" not in cleared_goal["control_plane"], cleared_goal
+
+        kanban_heartbeat_disabled = payload(run_cli(
+            registry_path,
+            "configure-goal",
+            "--goal-id",
+            GOAL_ID,
+            "--no-lark-kanban-heartbeat-sync",
+            "--execute",
+        ))
+        assert kanban_heartbeat_disabled["ok"] is True, kanban_heartbeat_disabled
+        assert kanban_heartbeat_disabled["after"]["lark_kanban_heartbeat_sync"] == {
+            "enabled": False,
+        }, kanban_heartbeat_disabled
+        assert "heartbeat_prompt_migration" not in kanban_heartbeat_disabled
+        disabled_goal = goal_from_registry(registry_path)
+        assert disabled_goal["control_plane"]["lark_kanban"] == {
+            "heartbeat_sync_enabled": False,
+        }, disabled_goal
+        disabled_boundary = goal_boundary(disabled_goal)
+        assert "post_writeback_actions" not in disabled_boundary
+        disabled_quota_projection = payload(
+            run_cli(
+                registry_path,
+                "quota",
+                "should-run",
+                "--goal-id",
+                GOAL_ID,
+                "--agent-id",
+                "codex-main-control",
+            )
+        )
+        assert "post_writeback_actions" not in disabled_quota_projection[
+            "goal_boundary"
+        ]
+        assert "post_writeback_actions" not in disabled_quota_projection[
+            "interaction_contract"
+        ]["cli_channel"]
 
     print("configure-goal-smoke ok")
     return 0

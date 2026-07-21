@@ -190,6 +190,35 @@ def goal_boundary(
                 "local_private_content_returned": False,
             }
         boundary.setdefault("capabilities", {})["lark_event_inbox"] = inbox_capability
+    lark_kanban = (
+        control_plane.get("lark_kanban")
+        if isinstance(control_plane.get("lark_kanban"), dict)
+        else {}
+    )
+    if lark_kanban.get("heartbeat_sync_enabled") is True:
+        command = ["loopx"]
+        if registry_path is not None:
+            command.extend(["--registry", str(registry_path.expanduser())])
+        command.extend(
+            [
+                "lark-kanban",
+                "sync-loopx-todos",
+                "--goal-id",
+                str(goal.get("id") or goal.get("goal_id") or ""),
+            ]
+        )
+        project = str(goal.get("repo") or "").strip()
+        if project:
+            command.extend(["--project", project])
+        command.append("--execute")
+        boundary["post_writeback_actions"] = [
+            {
+                "action_id": "lark_kanban_sync",
+                "trigger": "material_state_change",
+                "command": shlex.join(command),
+                "failure_policy": "nonblocking_no_p0_preemption",
+            }
+        ]
     reward_memory = reward_memory_goal_policy(goal)
     if reward_memory["enabled"] and (
         agent_id is None or agent_id in reward_memory["enabled_agents"]

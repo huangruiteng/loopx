@@ -159,6 +159,26 @@ and delivered outputs.
 
 ## Setup And Reuse
 
+A saved `.loopx/lark-kanban.json` file is a reusable destination binding, not
+an automation switch. Normal sync stays user-driven through
+`lark-kanban sync-loopx-todos`. A goal may explicitly opt into best-effort
+heartbeat refresh with:
+
+```bash
+loopx configure-goal \
+  --goal-id <goal-id> \
+  --lark-kanban-heartbeat-sync \
+  --execute
+```
+
+That opt-in does not create a board, authenticate Lark, or turn sink delivery
+into a gate. It projects one `post_writeback_actions` entry through
+`quota should-run.goal_boundary` and `interaction_contract.cli_channel` only
+after material state changes; failures remain nonblocking and cannot preempt
+runnable P0 work. The host automation prompt contains no Kanban-specific
+switch or command. Disable the behavior with
+`--no-lark-kanban-heartbeat-sync`.
+
 The recommended path is `setup`, using user identity by default. It preflights
 `lark-cli`, auth, and the required Base shortcuts, then either reuses the local
 `.loopx/lark-kanban.json` board config or creates a new Base/table:

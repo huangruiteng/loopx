@@ -309,6 +309,15 @@ def register_registry_admin_commands(subparsers: argparse._SubParsersAction) -> 
         ),
     )
     configure_goal_parser.add_argument(
+        "--lark-kanban-heartbeat-sync",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Enable or disable best-effort generic Lark Kanban sync from goal "
+            "heartbeats. Default is off; a local board binding alone never enables it."
+        ),
+    )
+    configure_goal_parser.add_argument(
         "--explore-harness-enabled",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -721,6 +730,7 @@ def handle_registry_admin_command(
                 explore_harness_profile=args.explore_harness_profile,
                 clear_explore_harness_profile=bool(args.clear_explore_harness_profile),
                 explore_graph_enabled=args.explore_graph_enabled,
+                lark_kanban_heartbeat_sync=args.lark_kanban_heartbeat_sync,
                 registered_agents=args.registered_agents,
                 clear_registered_agents=bool(args.clear_registered_agents),
                 agent_profiles=agent_profiles,
