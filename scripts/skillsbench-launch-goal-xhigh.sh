@@ -75,6 +75,9 @@ Optional env:
   SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC  Setup stall timeout, default 3600;
                                        0 disables cap
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
+  SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC
+                                       Incremental public artifact sync interval;
+                                       defaults to 30 for setup-only and 0 otherwise
   SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC Reverse-tunnel CONNECT probe timeout,
                                        default 20
   SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
@@ -310,6 +313,13 @@ model="${SKILLSBENCH_MODEL:-gpt-5.5}"
 reasoning_effort="${SKILLSBENCH_REASONING_EFFORT:-xhigh}"
 build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
+if [[ -n "${SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC:-}" ]]; then
+  public_artifact_sync_interval="$SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"
+elif [[ "$setup_only_public_preflight" == "1" ]]; then
+  public_artifact_sync_interval=30
+else
+  public_artifact_sync_interval=0
+fi
 tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
 tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
 tunnel_health_interval="${SKILLSBENCH_TUNNEL_HEALTH_INTERVAL_SEC:-30}"
@@ -545,6 +555,7 @@ supervisor_cmd=(
   --tunnel-reconnect-attempts "$tunnel_reconnect_attempts"
   --tunnel-reconnect-ready-timeout-sec "$tunnel_ready_timeout"
   --run-timeout-sec "$run_timeout"
+  --public-artifact-sync-interval-sec "$public_artifact_sync_interval"
   --remote-failure-cleanup-pattern "$job_name"
   --remote-failure-cleanup-include-docker
   --remote-command "$remote_command"
@@ -601,6 +612,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
+  printf 'public_artifact_sync_interval_sec=%s\n' \
+    "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
@@ -696,4 +709,5 @@ local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 setup_only_public_preflight=${setup_only_public_preflight}
+public_artifact_sync_interval_sec=${public_artifact_sync_interval}
 EOF

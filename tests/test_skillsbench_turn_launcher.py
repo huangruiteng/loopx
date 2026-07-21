@@ -174,3 +174,23 @@ def test_launcher_rejects_invalid_benchmark_egress_mode(tmp_path: Path) -> None:
         "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off"
         in proc.stderr
     )
+
+
+def test_setup_only_launcher_enables_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT"] = "1"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "setup-progress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "public_artifact_sync_interval_sec=30" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 30" in proc.stdout
