@@ -216,6 +216,7 @@ def _base_argv(
     codex_bin: Path,
     model: str | None,
     advisor_model: str | None,
+    advisor_timeout_seconds: float,
     timeout_seconds: float,
     case_id: str,
     expected_marker: str,
@@ -257,7 +258,14 @@ def _base_argv(
     if model:
         argv.extend(["--codex-model", model])
     if advisor_model:
-        argv.extend(["--advisor-model", advisor_model])
+        argv.extend(
+            [
+                "--advisor-model",
+                advisor_model,
+                "--advisor-timeout-seconds",
+                str(advisor_timeout_seconds),
+            ]
+        )
     return argv
 
 
@@ -411,6 +419,11 @@ def main() -> int:
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
     parser.add_argument("--advisor-model")
+    parser.add_argument(
+        "--advisor-timeout-seconds",
+        type=float,
+        help="Advisor timeout; defaults to --timeout-seconds for paired qualification.",
+    )
     parser.add_argument("--case-id", choices=CASE_IDS, default="marker-step")
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument(
@@ -424,6 +437,7 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    advisor_timeout_seconds = args.advisor_timeout_seconds or args.timeout_seconds
     if args.case_id != "marker-step" and args.turn_count != 1:
         raise SystemExit("non-marker cases support exactly one Turn")
 
@@ -454,6 +468,7 @@ def main() -> int:
                 codex_bin=codex_bin,
                 model=args.codex_model,
                 advisor_model=args.advisor_model,
+                advisor_timeout_seconds=advisor_timeout_seconds,
                 timeout_seconds=args.timeout_seconds,
                 case_id=args.case_id,
                 expected_marker=_marker_value(turn_number),

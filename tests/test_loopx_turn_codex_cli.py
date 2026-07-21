@@ -594,6 +594,8 @@ def test_public_e2e_smoke_supports_an_independent_arithmetic_fix_case() -> None:
             "executor-fixture",
             "--advisor-model",
             "advisor-fixture",
+            "--advisor-timeout-seconds",
+            "7",
         ],
         cwd=root,
         check=False,
@@ -607,6 +609,36 @@ def test_public_e2e_smoke_supports_an_independent_arithmetic_fix_case() -> None:
     assert payload["case_id"] == "arithmetic-fix"
     assert payload["case_valid"] is True
     assert payload["committed_turn_count"] == 1
+
+
+def test_multi_file_docs_validator_accepts_semantically_equivalent_copy(
+    tmp_path: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "guide.md").write_text(
+        "# Guide\n\nStatus: stable\n", encoding="utf-8"
+    )
+    (docs / "index.md").write_text(
+        "# Index\n\n- [Guide](guide.md) (stable)\n", encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "fixtures" / "validate-loopx-turn-case.py"),
+            "multi-file-docs",
+            "",
+        ],
+        cwd=tmp_path,
+        input="{}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
@@ -637,8 +669,14 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     assert payload["quality_ok"] is True
     assert payload["baseline"]["total_tokens"] == 150
     assert payload["baseline"]["model"] == "advisor-fixture"
+    assert payload["baseline"]["exit_code"] == 0
+    assert payload["baseline"]["status"] == "committed"
+    assert payload["baseline"]["validation_status"] == "passed"
     assert payload["advisor"]["model"] == "advisor-fixture"
     assert payload["advisor"]["executor_model"] == "executor-fixture"
+    assert payload["advisor"]["exit_code"] == 0
+    assert payload["advisor"]["status"] == "committed"
+    assert payload["advisor"]["validation_status"] == "passed"
     assert payload["advisor"]["total_tokens"] == 138
     assert payload["token_delta"] == -12
     assert payload["token_reduction_ratio"] == 0.08

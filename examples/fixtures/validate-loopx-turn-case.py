@@ -31,9 +31,16 @@ elif case_id == "json-normalization":
     value = json.loads(read("config/settings.json"))
     valid = value == {"enabled": True, "retries": 3}
 elif case_id == "multi-file-docs":
-    valid = read("docs/guide.md") == "# Guide\n\nStatus: stable\n" and read(
-        "docs/index.md"
-    ) == "# Index\n\n- [Guide](guide.md) — stable\n"
+    guide = read("docs/guide.md")
+    index = read("docs/index.md")
+    valid = (
+        "# Guide" in guide
+        and "Status: stable" in guide
+        and "draft" not in guide.lower()
+        and "[Guide](guide.md)" in index
+        and "stable" in index.lower()
+        and "draft" not in index.lower()
+    )
 elif case_id == "bounded-refactor":
     source = read("names.py")
     namespace = {}

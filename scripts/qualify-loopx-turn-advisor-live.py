@@ -93,6 +93,23 @@ def _tokens(usage: dict[str, Any], phase: str = "total") -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _bounded_status(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text[:160] if text else None
+
+
+def _arm_status(arm: dict[str, Any]) -> dict[str, Any]:
+    payload = arm["payload"]
+    return {
+        "exit_code": arm["exit_code"],
+        "status": _bounded_status(payload.get("status")),
+        "reason": _bounded_status(payload.get("reason")),
+        "result_kind": _bounded_status(payload.get("result_kind")),
+        "validation_status": _bounded_status(payload.get("validation_status")),
+        "replay_exit_code": payload.get("replay_exit_code"),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-model", required=True)
@@ -171,6 +188,7 @@ def main() -> int:
             "model": args.baseline_model,
             "quality_ok": _quality_ok(baseline, turn_count=args.turn_count),
             "total_tokens": baseline_tokens,
+            **_arm_status(baseline),
         },
         "advisor": {
             "model": args.advisor_model,
@@ -179,6 +197,7 @@ def main() -> int:
             "advisor_tokens": _tokens(advisor_usage, "advisor"),
             "executor_tokens": _tokens(advisor_usage, "executor"),
             "total_tokens": advisor_tokens,
+            **_arm_status(advisor),
         },
         "token_delta": token_delta,
         "token_reduction_ratio": token_reduction_ratio,
