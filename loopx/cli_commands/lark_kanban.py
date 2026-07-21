@@ -475,6 +475,8 @@ def handle_lark_kanban_command(
                 execute=bool(args.execute),
             )
             try:
+                if not payload.get("ok"):
+                    raise RuntimeError("primary Lark Kanban todo sync did not complete")
                 explore_sync = sync_issue_fix_explore_on_material_change(
                     registry_path=registry_path,
                     goal_id=args.goal_id,
@@ -556,6 +558,7 @@ def handle_lark_kanban_command(
                 payload["ok"] = False
                 payload["issue_fix_explore_projection"] = {
                     "ok": False,
+                    "status": "skipped" if payload.get("error") else "failed",
                     "error": str(exc),
                 }
             payload = compact_lark_kanban_sync_receipt(

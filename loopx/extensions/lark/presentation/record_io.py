@@ -54,6 +54,26 @@ def record_list_is_complete(parsed: Any) -> bool:
     )
 
 
+def todo_record_list_is_authoritative(parsed: Any) -> bool:
+    if not record_list_is_complete(parsed) or not isinstance(parsed, dict):
+        return False
+    data = parsed.get("data") if isinstance(parsed.get("data"), dict) else parsed
+    if not isinstance(data, dict):
+        return False
+    fields = data.get("fields")
+    rows = data.get("data")
+    record_ids = data.get("record_id_list")
+    return (
+        isinstance(fields, list)
+        and {"LoopX Goal ID", "LoopX Todo ID"}.issubset(
+            {str(field) for field in fields}
+        )
+        and isinstance(rows, list)
+        and isinstance(record_ids, list)
+        and len(record_ids) == len(rows)
+    )
+
+
 def build_record_delete_command(
     config: RecordTarget,
     *,
