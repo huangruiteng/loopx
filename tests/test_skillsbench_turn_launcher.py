@@ -135,3 +135,42 @@ def test_turn_launcher_requires_an_independent_validator(tmp_path: Path) -> None
         "SKILLSBENCH_LOOPX_TURN_VALIDATION_COMMAND is required for "
         "loopx-turn-agent-cli"
     ) in proc.stderr
+
+
+def test_launcher_allows_explicit_direct_benchmark_egress(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE"] = "off"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "direct-egress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "benchmark_egress_proxy_mode=off" in proc.stdout
+    assert "--benchmark-egress-proxy-mode off" in proc.stdout
+
+
+def test_launcher_rejects_invalid_benchmark_egress_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE"] = "sometimes"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "direct-egress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off"
+        in proc.stderr
+    )
