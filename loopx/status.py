@@ -1619,6 +1619,38 @@ def _skillsbench_compact_official_score_missing(compact: dict[str, Any]) -> bool
     return not (isinstance(value, (int, float)) and not isinstance(value, bool))
 
 
+def _sync_skillsbench_runner_failure_root_blockers(
+    compact: dict[str, Any],
+) -> None:
+    runner_failure = compact.get("runner_failure")
+    if not isinstance(runner_failure, dict):
+        return
+    if not _skillsbench_compact_official_score_missing(compact):
+        return
+
+    blocker = public_safe_compact_text(
+        compact.get("score_failure_attribution"),
+        limit=140,
+    )
+    if blocker in {None, "none", "score_missing"}:
+        blocker = public_safe_compact_text(
+            runner_failure.get("failure_class"),
+            limit=140,
+        )
+    if not blocker:
+        return
+
+    replaceable = {
+        None,
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }
+    for field in ("first_blocker", "repeat_blocked_by"):
+        if compact.get(field) in replaceable:
+            compact[field] = blocker
+
+
 def _skillsbench_compact_pre_agent_setup_label(compact: dict[str, Any]) -> str:
     diagnostic = compact.get("compose_setup_diagnostic")
     if not isinstance(diagnostic, dict):
@@ -3350,34 +3382,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         setup_preflight=compact.get("task_setup_preflight"),
     )
 
-    runner_failure = compact.get("runner_failure")
-    if (
-        isinstance(runner_failure, dict)
-        and _skillsbench_compact_official_score_missing(compact)
-    ):
-        blocker = public_safe_compact_text(
-            compact.get("score_failure_attribution"),
-            limit=140,
-        )
-        if blocker in {None, "none", "score_missing"}:
-            blocker = public_safe_compact_text(
-                runner_failure.get("failure_class"),
-                limit=140,
-            )
-        if blocker:
-            replaceable_blockers = {
-                None,
-                "none",
-                "score_missing",
-                "skillsbench_runner_error",
-            }
-            if compact.get("first_blocker") in replaceable_blockers:
-                compact["first_blocker"] = blocker
-            if compact.get("repeat_blocked_by") in replaceable_blockers:
-                compact["repeat_blocked_by"] = blocker
+    _sync_skillsbench_runner_failure_root_blockers(compact)
 
-    solution_quality = build_benchmark_solution_quality_signals(compact)
-    if solution_quality:
+    if solution_quality := build_benchmark_solution_quality_signals(compact):
         compact["solution_quality_signals"] = solution_quality
 
     post_run_debug_gate = build_skillsbench_post_run_debug_gate(compact)
