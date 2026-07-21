@@ -293,6 +293,14 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     todo_parser.add_argument(
+        "--clear-resume-when",
+        action="store_true",
+        help=(
+            "For todo update, remove the existing resume condition after its "
+            "successor replan has made the todo runnable."
+        ),
+    )
+    todo_parser.add_argument(
         "--monitor-target-key",
         dest="monitor_target_key",
         help=(
@@ -676,6 +684,7 @@ def handle_todo_command(
                 args.unblocks_todo_id,
                 args.successor_todo_ids,
                 args.resume_when,
+                args.clear_resume_when,
                 args.no_follow_up,
                 args.monitor_target_key,
                 args.cadence,
@@ -742,6 +751,7 @@ def handle_todo_command(
                 unblocks_todo_id=args.unblocks_todo_id,
                 successor_todo_ids=args.successor_todo_ids,
                 resume_when=args.resume_when,
+                clear_resume_when=bool(args.clear_resume_when),
                 no_followup=True if args.no_follow_up else None,
                 monitor_metadata={
                     "target_key": args.monitor_target_key,

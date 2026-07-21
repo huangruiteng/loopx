@@ -620,7 +620,11 @@ def interaction_next_cli_actions(
         first_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
-            f"loopx todo update --goal-id {goal_id} --todo-id {todo_id}{lifecycle_actor_args} --status open --note '<public-safe successor replan reason>'",
+            (
+                f"loopx todo update --goal-id {goal_id} --todo-id {todo_id}"
+                f"{lifecycle_actor_args} --status open --clear-resume-when "
+                "--note '<public-safe successor replan reason>'"
+            ),
             f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]

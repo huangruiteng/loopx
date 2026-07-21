@@ -1078,6 +1078,7 @@ def update_goal_todo(
     unblocks_todo_id: str | None = None,
     successor_todo_ids: list[str] | None = None,
     resume_when: str | None = None,
+    clear_resume_when: bool = False,
     no_followup: bool | None = None,
     monitor_metadata: dict[str, Any] | None = None,
     clear_claim: bool = False,
@@ -1094,6 +1095,10 @@ def update_goal_todo(
         raise ValueError("todo update accepts either blocks_agent or clear_blocks_agent, not both")
     if bound_agent and goal_bound:
         raise ValueError("todo update accepts either bound_agent or goal_bound, not both")
+    if resume_when and clear_resume_when:
+        raise ValueError(
+            "todo update accepts either resume_when or clear_resume_when, not both"
+        )
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1165,7 +1170,7 @@ def update_goal_todo(
                 bound_agent, goal_bound,
                 excluded_agents, clear_excluded_agents, global_gate,
                 clear_global_gate, unblocks_todo_id, successor_todo_ids,
-                resume_when, no_followup,
+                resume_when, clear_resume_when, no_followup,
             ),
             monitor_metadata=monitor_metadata,
         )
@@ -1292,10 +1297,13 @@ def update_goal_todo(
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
         normalized_resume_when = require_supported_todo_resume_when(resume_when)
-        effective_resume_when = normalized_resume_when or normalize_supported_todo_resume_when(
-            existing_block.get("resume_when")
+        effective_resume_when = (
+            None
+            if clear_resume_when
+            else normalized_resume_when
+            or normalize_supported_todo_resume_when(existing_block.get("resume_when"))
         )
-        if status and target_status == TODO_STATUS_DEFERRED and not effective_resume_when:
+        if target_status == TODO_STATUS_DEFERRED and not effective_resume_when:
             raise ValueError("transition to deferred requires --resume-when with a supported condition")
         normalized_monitor_metadata = require_monitor_metadata_scope(
             monitor_metadata=monitor_metadata,
@@ -1340,6 +1348,7 @@ def update_goal_todo(
             unblocks_todo_id=normalized_unblocks_todo_id,
             successor_todo_ids=normalized_successor_todo_ids if successor_todo_ids is not None else None,
             resume_when=normalized_resume_when,
+            clear_resume_when=clear_resume_when,
             no_followup=no_followup,
             monitor_metadata=normalized_monitor_metadata,
             clear_claim=clear_claim,

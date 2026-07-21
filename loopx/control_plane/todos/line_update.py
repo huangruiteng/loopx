@@ -94,6 +94,7 @@ def apply_todo_update_to_lines(
     unblocks_todo_id: str | None = None,
     successor_todo_ids: list[str] | None = None,
     resume_when: str | None = None,
+    clear_resume_when: bool = False,
     no_followup: bool | None = None,
     monitor_metadata: dict[str, Any] | None = None,
     clear_claim: bool = False,
@@ -101,6 +102,10 @@ def apply_todo_update_to_lines(
     updated_at: str,
 ) -> dict[str, Any]:
     normalized_resume_when = require_supported_todo_resume_when(resume_when)
+    if normalized_resume_when and clear_resume_when:
+        raise ValueError(
+            "todo update accepts either resume_when or clear_resume_when, not both"
+        )
     normalized_todo_id = normalize_todo_id(todo_id)
     if not normalized_todo_id:
         raise ValueError(
@@ -139,6 +144,8 @@ def apply_todo_update_to_lines(
     if status and not normalized_status:
         raise ValueError("todo status must be one of: open, done, blocked, deferred")
     target_status = normalized_status or str(block.get("status") or TODO_STATUS_OPEN)
+    if target_status == "deferred" and clear_resume_when:
+        raise ValueError("cannot clear resume_when while todo status remains deferred")
     if claim_only and target_status != TODO_STATUS_OPEN:
         raise ValueError(
             f"todo claim requires status=open; todo_id {normalized_todo_id!r} "
@@ -218,7 +225,9 @@ def apply_todo_update_to_lines(
         updates["unblocks_todo_id"] = unblocks_todo_id
     if successor_todo_ids is not None:
         updates["successor_todo_ids"] = successor_todo_ids
-    if normalized_resume_when:
+    if clear_resume_when:
+        updates["resume_when"] = None
+    elif normalized_resume_when:
         updates["resume_when"] = normalized_resume_when
     if no_followup is not None:
         updates["no_followup"] = no_followup

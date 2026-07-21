@@ -143,7 +143,79 @@ def assert_deferred_add_and_capacity_resume() -> None:
                 todo_id
             ], ready
             assert ready["execution_obligation"]["contract"] == "deferred_resume_projection", ready
+            next_action = ready["interaction_contract"]["cli_channel"]["next_cli_actions"][0]
+            assert "--clear-resume-when" in next_action, ready
         assert state_file.read_text(encoding="utf-8") == state_before_polls
+
+        conflicting = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
+            "--resume-when",
+            CAPACITY_RESUME,
+            "--clear-resume-when",
+        )
+        assert (
+            "either --resume-when or --clear-resume-when" in conflicting["error"]
+        ), conflicting
+
+        still_deferred = run_cli_error(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
+            "--clear-resume-when",
+        )
+        assert (
+            "transition to deferred requires --resume-when" in still_deferred["error"]
+        ), still_deferred
+
+        reopened = run_cli(
+            registry_path,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            todo_id,
+            "--agent-id",
+            ACTOR_AGENT_ID,
+            "--status",
+            "open",
+            "--clear-resume-when",
+            "--note",
+            "capacity condition was satisfied",
+        )
+        assert (
+            reopened["status"] == "open" and reopened["resume_when"] is None
+        ), reopened
+        item = next(item for item in parsed_items(state_file) if item["todo_id"] == todo_id)
+        assert item["status"] == "open" and item.get("resume_when") is None, item
+
+        runnable = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            ACTOR_AGENT_ID,
+            "--available-capability",
+            "short_pool",
+        )
+        assert runnable["effective_action"] == "normal_run", runnable
+        assert runnable["selected_todo"]["todo_id"] == todo_id, runnable
 
 
 def assert_open_to_deferred_update() -> None:
