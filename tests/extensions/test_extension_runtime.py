@@ -27,6 +27,7 @@ from loopx.extensions.runtime import (
     disable_extension,
     doctor_installed_extension,
     enable_extension,
+    execute_extension_runtime_binding,
     extension_status,
     install_extension,
     resolve_capability_binding,
@@ -306,6 +307,27 @@ def test_extension_run_is_lifecycle_gated_and_returns_provider_packet(
             state_file=state_file,
             request=request,
             execute=True,
+        )
+
+
+def test_capability_executor_reuses_bounded_json_runtime(tmp_path: Path) -> None:
+    provider = _provider(tmp_path / "provider")
+    binding = {
+        "schema_version": "loopx_extension_runtime_binding_v0",
+        "argv": [str(provider)],
+        "timeout_seconds": 30,
+    }
+
+    result = execute_extension_runtime_binding(
+        binding,
+        request={"schema_version": "test_extension_request_v0"},
+    )
+
+    assert result["schema_version"] == "semantic_preference_provider_response_v0"
+    with pytest.raises(ValueError, match="request exceeds"):
+        execute_extension_runtime_binding(
+            binding,
+            request={"payload": "x" * (MAX_EXTENSION_REQUEST_BYTES + 1)},
         )
 
 

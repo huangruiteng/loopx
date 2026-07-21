@@ -3,19 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from .core import build_periodic_report_run
+from .extension_authority import build_openviking_archive_authority_decision
 from .profile import build_periodic_report_activation
 from .presets import (
     PERIODIC_REPORT_PROFILE_PRESET_ALIASES,
     build_periodic_report_preset_activation,
 )
 from .triggers import build_periodic_report_trigger_decision
+from ...extensions.runtime import execute_extension_runtime_binding
 
 
 PrintPayload = Callable[
@@ -123,6 +124,8 @@ def _archive_openviking(
 
     if request.get("schema_version") != REQUEST_SCHEMA:
         raise ValueError(f"request must use {REQUEST_SCHEMA}")
+    if "authority_decision" in request:
+        raise ValueError("authority_decision is issued by the capability command")
     context = request.get("context")
     if not isinstance(context, dict):
         raise ValueError("request.context must be an object")
@@ -149,24 +152,29 @@ def _archive_openviking(
         argv.extend(["--api-key-env", args.openviking_api_key_env])
     provider_request = {
         **request,
-        "available_capabilities": list(args.available_capability),
         "execute": args.execute,
     }
-    completed = subprocess.run(
-        argv,
-        input=json.dumps(provider_request, ensure_ascii=False),
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=int(binding["timeout_seconds"]),
-        env=dict(os.environ),
+    provider_request.pop("available_capabilities", None)
+    if args.execute:
+        provider_request["authority_decision"] = (
+            build_openviking_archive_authority_decision(
+                provider_request,
+                extension_revision=str(binding["revision"]),
+            )
+        )
+    provider_env = dict(os.environ)
+    provider_env.update(
+        {
+            "LOOPX_EXTENSION_ID": str(binding["extension_id"]),
+            "LOOPX_EXTENSION_REVISION": str(binding["revision"]),
+            "LOOPX_EXTENSION_PROTOCOL": str(binding["protocol"]),
+        }
     )
-    if completed.returncode != 0:
-        error = completed.stderr.strip() or "provider returned a non-zero exit"
-        raise RuntimeError(error[:1000])
-    response = json.loads(completed.stdout)
-    if not isinstance(response, dict):
-        raise RuntimeError("OpenViking archive provider returned a non-object")
+    response = execute_extension_runtime_binding(
+        {**binding, "argv": argv},
+        request=provider_request,
+        environment=provider_env,
+    )
     return {
         **response,
         "extension_receipt": resolved["extension_receipt"],

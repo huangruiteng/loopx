@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import subprocess
 import threading
@@ -43,6 +43,7 @@ def run_capped_process(
     stdin: bytes,
     timeout_seconds: int,
     output_limit_bytes: int,
+    env: Mapping[str, str] | None = None,
 ) -> CappedProcessResult:
     """Run a provider while bounding both output streams during execution."""
 
@@ -52,6 +53,7 @@ def run_capped_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         bufsize=0,
+        env=dict(env) if env is not None else None,
     )
     assert process.stdin is not None
     assert process.stdout is not None

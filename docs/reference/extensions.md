@@ -156,6 +156,27 @@ being read. Provider stdout and stderr are drained concurrently and the provider
 is terminated as soon as either stream crosses its byte limit, so the documented
 bounds do not depend on a cooperative provider exiting first.
 
+Effectful capability dispatch uses
+`loopx_extension_authority_decision_v0`. The capability command, not the caller
+or provider, issues the decision after resolving one enabled, doctor-ready
+implementation and checking the domain activation policy. The decision is
+short-lived and binds all of the following:
+
+- capability id, versioned protocol, declared permission, and exact action;
+- structured effect scope;
+- extension id and active manifest revision;
+- a digest of the exact provider request, excluding the attached decision;
+- issue and expiry timestamps plus a content-derived decision id.
+
+The capability validates the decision before dispatch and the provider repeats
+the same validation before any effect. A caller-supplied decision, expired
+decision, different request, wider scope, changed action, or mismatched active
+revision fails closed. Provider credentials remain outside the decision and are
+still authenticated by the external service. This receipt is a deterministic
+LoopX control-plane boundary inside the same host trust domain; it does not
+claim to sandbox a malicious local process or replace operating-system and
+service-side authorization.
+
 `disable` is reversible, but `enable` never trusts an earlier readiness result:
 it reruns the configured doctor and changes the enabled bit only after that
 probe succeeds. A successful doctor binds readiness to both the active manifest

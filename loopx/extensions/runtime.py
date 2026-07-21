@@ -869,3 +869,63 @@ def resolve_capability_binding(
         protocol=protocol,
         permission=permission,
     )
+
+
+def execute_extension_runtime_binding(
+    binding: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Execute a resolved binding after its capability authorizes the request."""
+
+    if binding.get("schema_version") != EXTENSION_BINDING_SCHEMA_VERSION:
+        raise ValueError(
+            f"extension runtime binding must use {EXTENSION_BINDING_SCHEMA_VERSION}"
+        )
+    argv = binding.get("argv")
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or not all(isinstance(value, str) and value for value in argv)
+    ):
+        raise ValueError("extension runtime binding argv is invalid")
+    try:
+        timeout_seconds = int(binding.get("timeout_seconds"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extension runtime binding timeout is invalid") from exc
+    if not 1 <= timeout_seconds <= 120:
+        raise ValueError("extension runtime binding timeout is invalid")
+    try:
+        request_bytes = json.dumps(
+            dict(request),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extension runtime request must be JSON serializable") from exc
+    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
+        raise ValueError("extension runtime request exceeds the 1000000-byte limit")
+    try:
+        completed = run_capped_process(
+            argv,
+            stdin=request_bytes,
+            timeout_seconds=timeout_seconds,
+            output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
+            env=environment,
+        )
+    except OSError as exc:
+        raise RuntimeError("extension provider execution failed") from exc
+    if completed.failure_kind is not None:
+        raise RuntimeError(
+            f"extension provider execution failed: {completed.failure_kind}"
+        )
+    try:
+        provider_result = json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("extension provider returned invalid JSON") from exc
+    if not isinstance(provider_result, dict):
+        raise RuntimeError("extension provider returned a non-object")
+    if completed.returncode != 0 or provider_result.get("ok") is False:
+        raise RuntimeError("extension provider reported failure")
+    return provider_result

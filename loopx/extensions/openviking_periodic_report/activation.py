@@ -8,16 +8,19 @@ from ...capabilities.periodic_report.profile import (
     ACTIVATION_SCHEMA,
     build_periodic_report_activation,
 )
+from ...capabilities.periodic_report.extension_authority import (
+    OPENVIKING_PERIODIC_REPORT_EXTENSION_ID,
+    OPENVIKING_PERIODIC_REPORT_PERMISSION,
+    PERIODIC_REPORT_CAPABILITY_ID,
+    PERIODIC_REPORT_SINK_PROTOCOL,
+)
 from ..runtime import (
     default_extension_state_file,
     resolve_extension_binding,
 )
 
 
-OPENVIKING_PERIODIC_REPORT_EXTENSION_ID = "openviking-periodic-report"
 OPENVIKING_PERIODIC_REPORT_EXTENSION_VERSION = "1.0.0"
-OPENVIKING_PERIODIC_REPORT_PERMISSION = "openviking_context_write"
-PERIODIC_REPORT_SINK_PROTOCOL = "periodic_report_sink_v0"
 REPORT_ARCHIVE_CAPABILITY_ID = "report.archive.write"
 REPORT_ARCHIVE_CAPABILITY_VERSION = "v0"
 
@@ -41,6 +44,28 @@ def validate_openviking_periodic_report_activation(
 ) -> dict[str, Any]:
     """Fail closed unless the core capability and OV archive sink are active."""
 
+    validated = validate_openviking_periodic_report_profile_activation(
+        activation_receipt,
+        sink_id=sink_id,
+        sink_kind=sink_kind,
+    )
+    available = _available_capabilities(available_capabilities)
+    if OPENVIKING_PERIODIC_REPORT_PERMISSION not in available:
+        raise ValueError(
+            "openviking-periodic-report requires observed runtime capability "
+            f"`{OPENVIKING_PERIODIC_REPORT_PERMISSION}`"
+        )
+    return {**validated, "available_capabilities": sorted(available)}
+
+
+def validate_openviking_periodic_report_profile_activation(
+    activation_receipt: Mapping[str, Any],
+    *,
+    sink_id: str,
+    sink_kind: str = "project_resource",
+) -> dict[str, Any]:
+    """Validate profile and sink binding without granting operation authority."""
+
     activation = _mapping(activation_receipt, "activation_receipt")
     if activation.get("schema_version") != ACTIVATION_SCHEMA:
         raise ValueError(f"activation_receipt must use {ACTIVATION_SCHEMA}")
@@ -54,13 +79,6 @@ def validate_openviking_periodic_report_activation(
         and activation.get("generation_allowed") is True
     ):
         raise ValueError("periodic-report capability profile must be enabled")
-    available = _available_capabilities(available_capabilities)
-    if OPENVIKING_PERIODIC_REPORT_PERMISSION not in available:
-        raise ValueError(
-            "openviking-periodic-report requires observed runtime capability "
-            f"`{OPENVIKING_PERIODIC_REPORT_PERMISSION}`"
-        )
-
     matching: list[dict[str, Any]] = []
     for raw_binding in profile.get("sink_bindings", []):
         binding = _mapping(raw_binding, "activation_receipt.profile.sink_bindings[]")
@@ -75,8 +93,7 @@ def validate_openviking_periodic_report_activation(
             and capability.get("capability_id") == REPORT_ARCHIVE_CAPABILITY_ID
             and capability.get("capability_version")
             == REPORT_ARCHIVE_CAPABILITY_VERSION
-            and extension.get("extension_id")
-            == OPENVIKING_PERIODIC_REPORT_EXTENSION_ID
+            and extension.get("extension_id") == OPENVIKING_PERIODIC_REPORT_EXTENSION_ID
             and extension.get("extension_version")
             == OPENVIKING_PERIODIC_REPORT_EXTENSION_VERSION
             and extension.get("protocol") == PERIODIC_REPORT_SINK_PROTOCOL
@@ -94,7 +111,6 @@ def validate_openviking_periodic_report_activation(
     return {
         "activation": activation,
         "binding": matching[0],
-        "available_capabilities": sorted(available),
     }
 
 
@@ -121,14 +137,16 @@ def resolve_openviking_periodic_report_activation(
     runtime_binding = resolve_extension_binding(
         OPENVIKING_PERIODIC_REPORT_EXTENSION_ID,
         state_file=resolved_state,
-        capability_id="periodic-report",
+        capability_id=PERIODIC_REPORT_CAPABILITY_ID,
         protocol=PERIODIC_REPORT_SINK_PROTOCOL,
         permission=OPENVIKING_PERIODIC_REPORT_PERMISSION,
     )
     if runtime_binding.get("provider_version") != (
         OPENVIKING_PERIODIC_REPORT_EXTENSION_VERSION
     ):
-        raise ValueError("periodic-report profile and installed extension versions differ")
+        raise ValueError(
+            "periodic-report profile and installed extension versions differ"
+        )
     extension_receipt = {
         "extension_id": OPENVIKING_PERIODIC_REPORT_EXTENSION_ID,
         "extension_version": OPENVIKING_PERIODIC_REPORT_EXTENSION_VERSION,

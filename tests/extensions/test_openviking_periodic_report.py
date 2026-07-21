@@ -3,12 +3,18 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from loopx.capabilities.periodic_report import build_periodic_report_activation
+from loopx.capabilities.periodic_report import cli as periodic_report_cli
+from loopx.capabilities.periodic_report.extension_authority import (
+    build_openviking_archive_authority_decision,
+)
 from loopx.extensions.bundled import bundled_extension_manifest
 from loopx.extensions.manifest import load_extension_manifest
 from loopx.extensions.openviking_periodic_report import activation as activation_module
@@ -122,12 +128,18 @@ def _artifact(document: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _request(*, execute: bool = True) -> dict[str, Any]:
+EXTENSION_REVISION = "revision-1"
+
+
+def _request(
+    *,
+    execute: bool = True,
+    authority_now: datetime | None = None,
+) -> dict[str, Any]:
     document = _document()
-    return {
+    request = {
         "schema_version": REQUEST_SCHEMA,
         "activation_receipt": build_periodic_report_activation(_profile()),
-        "available_capabilities": ["openviking_context_write"],
         "artifact": _artifact(document),
         "document": document,
         "context": {
@@ -138,6 +150,26 @@ def _request(*, execute: bool = True) -> dict[str, Any]:
         },
         "execute": execute,
     }
+    if execute:
+        request["authority_decision"] = build_openviking_archive_authority_decision(
+            request,
+            extension_revision=EXTENSION_REVISION,
+            now=authority_now,
+        )
+    return request
+
+
+def _archive(
+    request: Mapping[str, Any],
+    *,
+    client: "FakeOpenViking",
+    extension_revision: str = EXTENSION_REVISION,
+) -> dict[str, Any]:
+    return archive_request(
+        request,
+        client=client,
+        extension_revision=extension_revision,
+    )
 
 
 class FakeOpenViking:
@@ -181,9 +213,7 @@ def test_bundled_manifest_implements_core_capability_without_new_capability() ->
             "provider_version": "1.0.0",
         }
     ]
-    assert manifest["runtime"]["required_permissions"] == [
-        "openviking_context_write"
-    ]
+    assert manifest["runtime"]["required_permissions"] == ["openviking_context_write"]
 
 
 def test_activation_requires_enabled_profile_and_observed_runtime_capability() -> None:
@@ -204,7 +234,9 @@ def test_activation_requires_enabled_profile_and_observed_runtime_capability() -
         )
 
 
-def test_activation_binds_revision_ready_extension(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_activation_binds_revision_ready_extension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         activation_module,
         "resolve_extension_binding",
@@ -230,13 +262,89 @@ def test_activation_binds_revision_ready_extension(monkeypatch: pytest.MonkeyPat
     assert resolved["external_writes_performed"] is False
 
 
+def test_capability_dispatch_issues_revision_bound_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        activation_module,
+        "resolve_openviking_periodic_report_activation",
+        lambda *args, **kwargs: {
+            "runtime_binding": {
+                "schema_version": "loopx_extension_runtime_binding_v0",
+                "extension_id": "openviking-periodic-report",
+                "revision": EXTENSION_REVISION,
+                "protocol": "periodic_report_sink_v0",
+                "argv": ["provider"],
+                "timeout_seconds": 30,
+            },
+            "extension_receipt": {"status": "ready"},
+        },
+    )
+
+    def fake_execute(
+        binding: Mapping[str, Any],
+        *,
+        request: Mapping[str, Any],
+        environment: Mapping[str, str],
+    ) -> dict[str, Any]:
+        captured.update(
+            {
+                "binding": dict(binding),
+                "request": dict(request),
+                "environment": dict(environment),
+            }
+        )
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        periodic_report_cli,
+        "execute_extension_runtime_binding",
+        fake_execute,
+    )
+    request = _request(execute=False)
+    request.pop("execute")
+    args = SimpleNamespace(
+        available_capability=["openviking_context_write"],
+        runtime_root=None,
+        openviking_url=None,
+        openviking_path=None,
+        openviking_config=None,
+        openviking_actor_peer_id=None,
+        openviking_api_key_env="OPENVIKING_API_KEY",
+        execute=True,
+    )
+
+    result = periodic_report_cli._archive_openviking(request, args)
+
+    provider_request = captured["request"]
+    decision = provider_request["authority_decision"]
+    assert decision["action"] == "report.archive.write"
+    assert decision["extension"] == {
+        "id": "openviking-periodic-report",
+        "revision": EXTENSION_REVISION,
+    }
+    assert "available_capabilities" not in provider_request
+    assert captured["environment"]["LOOPX_EXTENSION_REVISION"] == EXTENSION_REVISION
+    assert result["extension_receipt"] == {"status": "ready"}
+
+
+def test_capability_dispatch_rejects_caller_supplied_authority() -> None:
+    request = _request(execute=False)
+    request["authority_decision"] = {"decision": "allow"}
+
+    with pytest.raises(ValueError, match="issued by the capability command"):
+        periodic_report_cli._archive_openviking(request, SimpleNamespace())
+
+
 def test_archive_writes_markdown_then_manifest_and_exactly_replays() -> None:
     client = FakeOpenViking()
     request = _request()
 
-    created = archive_request(request, client=client)
+    created = _archive(request, client=client)
     first_writes = list(client.writes)
-    replayed = archive_request(request, client=client)
+    replayed = _archive(request, client=client)
 
     assert [uri.rsplit("/", 1)[-1] for uri in first_writes] == [
         "report.md",
@@ -257,13 +365,13 @@ def test_archive_writes_markdown_then_manifest_and_exactly_replays() -> None:
 
 def test_archive_dry_run_and_conflict_fail_closed() -> None:
     client = FakeOpenViking()
-    preview = archive_request(_request(execute=False), client=client)
+    preview = _archive(_request(execute=False), client=client)
     assert preview["status"] == "pending"
     assert preview["external_writes_performed"] is False
     assert client.files == {}
 
     request = _request()
-    result = archive_request(request, client=client)
+    result = _archive(request, client=client)
     report_uri = next(
         item["resource_uri"]
         for item in result["resource_receipts"]
@@ -271,21 +379,54 @@ def test_archive_dry_run_and_conflict_fail_closed() -> None:
     )
     client.files[report_uri] = "tampered"
     with pytest.raises(ValueError, match="already differs"):
-        archive_request(request, client=client)
+        _archive(request, client=client)
 
     client.files[report_uri] = _artifact(_document())["content"]
     different_key = _request()
     different_key["context"]["idempotency_key"] = "different-logical-delivery"
+    different_key["authority_decision"] = build_openviking_archive_authority_decision(
+        different_key,
+        extension_revision=EXTENSION_REVISION,
+    )
     with pytest.raises(ValueError, match="already differs"):
-        archive_request(different_key, client=client)
+        _archive(different_key, client=client)
 
 
-def test_provider_rechecks_runtime_capability_before_any_write() -> None:
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ("missing", "authority_decision must be an object"),
+        ("action", "authority action does not match"),
+        ("scope", "authority scope does not match"),
+        ("request", "authority request_digest does not match"),
+        ("revision", "authority extension does not match"),
+        ("expired", "authority decision has expired"),
+    ],
+)
+def test_provider_rechecks_typed_authority_before_any_write(
+    mutation: str,
+    error: str,
+) -> None:
     client = FakeOpenViking()
-    request = _request()
-    request["available_capabilities"] = []
+    authority_now = (
+        datetime.now(timezone.utc) - timedelta(minutes=10)
+        if mutation == "expired"
+        else None
+    )
+    request = _request(authority_now=authority_now)
+    revision = EXTENSION_REVISION
+    if mutation == "missing":
+        request.pop("authority_decision")
+    elif mutation == "action":
+        request["authority_decision"]["action"] = "report.archive.delete"
+    elif mutation == "scope":
+        request["authority_decision"]["scope"]["sink_id"] = "other_sink"
+    elif mutation == "request":
+        request["document"]["title"] = "Different report"
+    elif mutation == "revision":
+        revision = "different-revision"
 
-    with pytest.raises(ValueError, match="observed runtime capability"):
-        archive_request(request, client=client)
+    with pytest.raises(ValueError, match=error):
+        _archive(request, client=client, extension_revision=revision)
 
     assert client.files == {}
