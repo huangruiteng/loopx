@@ -16,6 +16,7 @@ from ...file_lock import exclusive_file_lock
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
 from .codex_model_selection import normalize_codex_model_selection
+from .model_usage import normalize_model_usage_receipt
 from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     TRANSACTION_PHASES,
@@ -63,14 +64,6 @@ HOST_RESULT_FIELDS = {
     "summary",
     "model_usage",
     "model_selection",
-}
-MODEL_USAGE_SCHEMA_VERSION = "loopx_turn_model_usage_v0"
-MODEL_USAGE_KEYS = {
-    "input_tokens",
-    "cache_tokens",
-    "output_tokens",
-    "reasoning_output_tokens",
-    "total_tokens",
 }
 
 Writeback = Callable[[dict[str, Any]], dict[str, Any]]
@@ -160,101 +153,6 @@ def _bounded_public_text(
     return text
 
 
-def _normalized_model_usage(value: Any, *, errors: list[str]) -> dict[str, Any] | None:
-    if value is None:
-        return None
-    if not isinstance(value, Mapping):
-        errors.append("model_usage must be an object")
-        return None
-    allowed = {
-        "schema_version",
-        "mode",
-        "advisor_applied",
-        "advisor",
-        "executor",
-        "total",
-        "advice_digest",
-    }
-    unknown = sorted(set(value) - allowed)
-    if unknown:
-        errors.append("unsupported model_usage fields: " + ", ".join(unknown))
-    if value.get("schema_version") != MODEL_USAGE_SCHEMA_VERSION:
-        errors.append("unsupported model_usage schema_version")
-    mode = str(value.get("mode") or "")
-    if mode not in {"direct", "advisor"}:
-        errors.append("model_usage mode must be direct or advisor")
-    advisor_applied = value.get("advisor_applied")
-    if not isinstance(advisor_applied, bool) or advisor_applied != (mode == "advisor"):
-        errors.append("model_usage advisor_applied must match mode")
-
-    phases = ["executor"] if mode == "direct" else ["advisor", "executor"]
-    normalized_phases: dict[str, dict[str, int]] = {}
-    for phase in phases:
-        raw = value.get(phase)
-        if not isinstance(raw, Mapping):
-            errors.append(f"model_usage {phase} must be an object")
-            continue
-        phase_unknown = sorted(set(raw) - MODEL_USAGE_KEYS)
-        if phase_unknown:
-            errors.append(
-                f"unsupported model_usage {phase} fields: " + ", ".join(phase_unknown)
-            )
-        compact: dict[str, int] = {}
-        for key, item in raw.items():
-            if key not in MODEL_USAGE_KEYS:
-                continue
-            if isinstance(item, bool) or not isinstance(item, int) or item < 0:
-                errors.append(f"model_usage {phase}.{key} must be a non-negative integer")
-                continue
-            compact[key] = item
-        if not {"input_tokens", "output_tokens", "total_tokens"}.issubset(compact):
-            errors.append(
-                f"model_usage {phase} requires input_tokens, output_tokens, and total_tokens"
-            )
-        elif compact["total_tokens"] != compact["input_tokens"] + compact["output_tokens"]:
-            errors.append(
-                f"model_usage {phase}.total_tokens must equal input_tokens plus output_tokens"
-            )
-        normalized_phases[phase] = compact
-
-    raw_total = value.get("total")
-    if not isinstance(raw_total, Mapping):
-        errors.append("model_usage total must be an object")
-        normalized_total: dict[str, int] = {}
-    else:
-        normalized_total = {}
-        total_unknown = sorted(set(raw_total) - MODEL_USAGE_KEYS)
-        if total_unknown:
-            errors.append("unsupported model_usage total fields: " + ", ".join(total_unknown))
-        for key, item in raw_total.items():
-            if key not in MODEL_USAGE_KEYS:
-                continue
-            if isinstance(item, bool) or not isinstance(item, int) or item < 0:
-                errors.append(f"model_usage total.{key} must be a non-negative integer")
-                continue
-            normalized_total[key] = item
-    for key in MODEL_USAGE_KEYS:
-        expected = sum(phase.get(key, 0) for phase in normalized_phases.values())
-        if expected or key in normalized_total:
-            if normalized_total.get(key) != expected:
-                errors.append(f"model_usage total.{key} must equal phase usage sum")
-
-    normalized: dict[str, Any] = {
-        "schema_version": MODEL_USAGE_SCHEMA_VERSION,
-        "mode": mode,
-        "advisor_applied": advisor_applied,
-        **normalized_phases,
-        "total": normalized_total,
-    }
-    advice_digest = str(value.get("advice_digest") or "")
-    if advice_digest:
-        if not re.fullmatch(r"sha256:[0-9a-f]{64}", advice_digest):
-            errors.append("model_usage advice_digest must be a sha256 digest")
-        else:
-            normalized["advice_digest"] = advice_digest
-    return normalized
-
-
 def validate_loopx_turn_host_result(
     plan: Mapping[str, Any],
     value: Mapping[str, Any],
@@ -304,7 +202,10 @@ def validate_loopx_turn_host_result(
         )
         if text:
             normalized[field] = text
-    model_usage = _normalized_model_usage(result.get("model_usage"), errors=errors)
+    model_usage, model_usage_errors = normalize_model_usage_receipt(
+        result.get("model_usage")
+    )
+    errors.extend(model_usage_errors)
     if model_usage is not None:
         normalized["model_usage"] = model_usage
     if result.get("model_selection") is not None:
