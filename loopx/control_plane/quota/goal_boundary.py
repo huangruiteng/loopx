@@ -72,6 +72,47 @@ def quota_execution_profile_boundary_summary(value: Any) -> dict[str, Any] | Non
     return compact or None
 
 
+def _lark_kanban_post_writeback_projection(
+    goal: Mapping[str, Any],
+    control_plane: Mapping[str, Any],
+    *,
+    registry_path: Path | None,
+) -> dict[str, Any]:
+    lark_kanban = (
+        control_plane.get("lark_kanban")
+        if isinstance(control_plane.get("lark_kanban"), dict)
+        else {}
+    )
+    if lark_kanban.get("heartbeat_sync_enabled") is not True:
+        return {}
+
+    command = ["loopx"]
+    if registry_path is not None:
+        command.extend(["--registry", str(registry_path.expanduser())])
+    command.extend(
+        [
+            "lark-kanban",
+            "sync-loopx-todos",
+            "--goal-id",
+            str(goal.get("id") or goal.get("goal_id") or ""),
+        ]
+    )
+    project = str(goal.get("repo") or "").strip()
+    if project:
+        command.extend(["--project", project])
+    command.append("--execute")
+    return {
+        "post_writeback_actions": [
+            {
+                "action_id": "lark_kanban_sync",
+                "trigger": "material_state_change",
+                "command": shlex.join(command),
+                "failure_policy": "nonblocking_no_p0_preemption",
+            }
+        ]
+    }
+
+
 def goal_boundary(
     goal: dict[str, Any],
     item: dict[str, Any] | None = None,
@@ -82,8 +123,10 @@ def goal_boundary(
     reward_memory_experiment_status: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     boundary: dict[str, Any] = {}
-    adapter_kind = goal.get("adapter_kind")
-    adapter_status = goal.get("adapter_status")
+    adapter_kind, adapter_status = (
+        goal.get("adapter_kind"),
+        goal.get("adapter_status"),
+    )
     if adapter_kind or adapter_status:
         boundary["adapter"] = {
             "kind": adapter_kind,
@@ -190,35 +233,13 @@ def goal_boundary(
                 "local_private_content_returned": False,
             }
         boundary.setdefault("capabilities", {})["lark_event_inbox"] = inbox_capability
-    lark_kanban = (
-        control_plane.get("lark_kanban")
-        if isinstance(control_plane.get("lark_kanban"), dict)
-        else {}
-    )
-    if lark_kanban.get("heartbeat_sync_enabled") is True:
-        command = ["loopx"]
-        if registry_path is not None:
-            command.extend(["--registry", str(registry_path.expanduser())])
-        command.extend(
-            [
-                "lark-kanban",
-                "sync-loopx-todos",
-                "--goal-id",
-                str(goal.get("id") or goal.get("goal_id") or ""),
-            ]
+    boundary.update(
+        _lark_kanban_post_writeback_projection(
+            goal,
+            control_plane,
+            registry_path=registry_path,
         )
-        project = str(goal.get("repo") or "").strip()
-        if project:
-            command.extend(["--project", project])
-        command.append("--execute")
-        boundary["post_writeback_actions"] = [
-            {
-                "action_id": "lark_kanban_sync",
-                "trigger": "material_state_change",
-                "command": shlex.join(command),
-                "failure_policy": "nonblocking_no_p0_preemption",
-            }
-        ]
+    )
     reward_memory = reward_memory_goal_policy(goal)
     if reward_memory["enabled"] and (
         agent_id is None or agent_id in reward_memory["enabled_agents"]

@@ -667,7 +667,7 @@ def main() -> int:
         assert kanban_heartbeat_disabled["after"]["lark_kanban_heartbeat_sync"] == {
             "enabled": False,
         }, kanban_heartbeat_disabled
-        assert "heartbeat_prompt_migration" not in kanban_heartbeat_disabled
+        assert kanban_heartbeat_disabled["heartbeat_prompt_migration"] is None
         disabled_goal = goal_from_registry(registry_path)
         assert disabled_goal["control_plane"]["lark_kanban"] == {
             "heartbeat_sync_enabled": False,
@@ -681,8 +681,6 @@ def main() -> int:
                 "should-run",
                 "--goal-id",
                 GOAL_ID,
-                "--agent-id",
-                "codex-main-control",
             )
         )
         assert "post_writeback_actions" not in disabled_quota_projection[
