@@ -15,6 +15,9 @@ from ..control_plane.turn_driver import (
     run_codex_cli_host,
     run_loopx_turn_once,
 )
+from ..control_plane.turn_driver.codex_model_selection import (
+    resolve_auto_codex_model_selection,
+)
 from ..control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_turn,
 )
@@ -139,6 +142,14 @@ def register_turn_commands(
         help="Codex CLI executable used by the built-in codex-cli host.",
     )
     run_once.add_argument("--codex-model")
+    run_once.add_argument(
+        "--advisor-mode",
+        choices=["off", "auto", "manual"],
+        help=(
+            "Advisor model selection mode. Omit to infer manual when "
+            "--advisor-model is present, otherwise off."
+        ),
+    )
     run_once.add_argument(
         "--advisor-model",
         help=(
@@ -373,13 +384,31 @@ def handle_turn_command(
                 if isinstance(boundary, dict):
                     boundary.pop("opaque_session_handle_omitted", None)
         elif args.turn_command == "run-once":
-            if args.advisor_model and args.host != "codex-cli":
+            advisor_mode = args.advisor_mode or (
+                "manual" if args.advisor_model else "off"
+            )
+            resolved_codex_model = args.codex_model
+            resolved_advisor_model = args.advisor_model
+            model_selection: dict[str, str] | None = None
+            if advisor_mode != "off" and args.host != "codex-cli":
                 raise ValueError("Advisor mode requires --host codex-cli")
-            if args.advisor_model and (
-                not args.codex_model or args.advisor_model == args.codex_model
+            if advisor_mode == "auto":
+                if args.advisor_model or args.codex_model:
+                    raise ValueError(
+                        "Advisor auto mode selects both models and cannot be combined "
+                        "with --advisor-model or --codex-model"
+                    )
+            elif advisor_mode == "manual" and (
+                not args.advisor_model
+                or not args.codex_model
+                or args.advisor_model == args.codex_model
             ):
                 raise ValueError(
                     "Advisor mode requires distinct explicit advisor and executor models"
+                )
+            elif advisor_mode == "off" and args.advisor_model:
+                raise ValueError(
+                    "Advisor off mode cannot be combined with --advisor-model"
                 )
             if args.resume_turn_key:
                 if args.turn_instance_id:
@@ -534,19 +563,35 @@ def handle_turn_command(
             host_runner = None
             if args.host == "codex-cli":
                 def run_built_in_host(request: dict[str, object]) -> dict[str, object]:
-                    return run_codex_cli_host(
+                    nonlocal model_selection
+                    if advisor_mode == "auto" and model_selection is None:
+                        model_selection = resolve_auto_codex_model_selection(
+                            args.codex_bin
+                        )
+                    result = run_codex_cli_host(
                         request,
                         runtime_root=runtime_root,
                         project=project,
                         codex_bin=args.codex_bin,
                         sandbox=args.codex_sandbox,
-                        model=args.codex_model,
-                        advisor_model=args.advisor_model,
+                        model=(
+                            model_selection["executor_model"]
+                            if model_selection is not None
+                            else resolved_codex_model
+                        ),
+                        advisor_model=(
+                            model_selection["advisor_model"]
+                            if model_selection is not None
+                            else resolved_advisor_model
+                        ),
                         advisor_timeout_seconds=max(
                             1.0, args.advisor_timeout_seconds
                         ),
                         timeout_seconds=max(1.0, args.timeout_seconds - 5.0),
                     )
+                    if model_selection is not None:
+                        result["model_selection"] = dict(model_selection)
+                    return result
 
                 host_runner = run_built_in_host
 

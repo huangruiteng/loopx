@@ -15,6 +15,7 @@ from ...authority import validate_public_safe_text
 from ...file_lock import exclusive_file_lock
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
+from .codex_model_selection import normalize_codex_model_selection
 from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     TRANSACTION_PHASES,
@@ -61,6 +62,7 @@ HOST_RESULT_FIELDS = {
     "vision_unchanged_reason",
     "summary",
     "model_usage",
+    "model_selection",
 }
 MODEL_USAGE_SCHEMA_VERSION = "loopx_turn_model_usage_v0"
 MODEL_USAGE_KEYS = {
@@ -305,6 +307,13 @@ def validate_loopx_turn_host_result(
     model_usage = _normalized_model_usage(result.get("model_usage"), errors=errors)
     if model_usage is not None:
         normalized["model_usage"] = model_usage
+    if result.get("model_selection") is not None:
+        try:
+            normalized["model_selection"] = normalize_codex_model_selection(
+                result.get("model_selection")
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
     if material:
         try:
             normalized["delivery_batch_scale"] = require_delivery_batch_scale(
@@ -718,6 +727,11 @@ def _execution_payload(
         **(
             {"model_usage": host_result["model_usage"]}
             if isinstance(host_result.get("model_usage"), dict)
+            else {}
+        ),
+        **(
+            {"model_selection": host_result["model_selection"]}
+            if isinstance(host_result.get("model_selection"), dict)
             else {}
         ),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
