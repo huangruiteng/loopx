@@ -42,6 +42,27 @@ advice, provider call, or usage observation is invalid. When no eligible
 bounded file exists, the adapter skips the Advisor call and records direct mode
 with `advisor_applied=false`.
 
+The Codex host supports `advisor-mode=off|auto|manual`. Auto mode resolves the
+current Codex model catalog when a Turn invokes the host and chooses the
+highest-priority available qualified profile. The profile assigns Advisor and
+executor roles explicitly; catalog descriptions and model-name patterns are
+not selection authority. Catalog failure or absence of a complete qualified
+pair fails closed. Manual mode requires distinct explicit model ids, while an
+omitted mode preserves the earlier interface by inferring manual when an
+Advisor model is supplied and off otherwise.
+
+Preview and committed-transaction replay do not invoke the host, so they also
+do not require a model-catalog lookup. This keeps inspection and idempotent
+recovery available when the provider catalog is temporarily unavailable.
+
+An auto-mode execution projects `loopx_turn_model_selection_v0` with
+`requested_mode`, `profile_id`, exact Advisor and executor model ids, and a
+bounded selection reason. This receipt reports resolution; actual invocation
+remains visible through `model_usage.advisor_applied` because the bounded-context
+cost guard may skip the selected Advisor for a particular Turn. The validated
+selection receipt is stored with the host result and projected unchanged by a
+committed replay; replay never reselects a different pair.
+
 This separation lets the same Turn contract govern coding, operations, data,
 document, knowledge-maintenance, and other long-running workflows. The agent
 CLI remains responsible for model and tool execution; it does not become the

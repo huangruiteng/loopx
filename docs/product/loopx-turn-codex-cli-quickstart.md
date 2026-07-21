@@ -58,6 +58,26 @@ loopx turn run-once \
   --host codex-cli \
   --project "$PWD" \
   --codex-sandbox workspace-write \
+  --advisor-mode auto \
+  --validation-command-json '["./verify-postcondition"]' \
+  --execute
+```
+
+Auto mode reads the current Codex model catalog and selects the
+highest-priority available pair from LoopX's qualified profiles. The initial
+built-in profile selects `gpt-5.6-sol` for advice and `gpt-5.6-luna` for
+execution. It never infers roles from model names or descriptions. A missing
+catalog or missing qualified pair fails closed with a public-safe reason.
+
+For an explicit manual pairing:
+
+```bash
+loopx turn run-once \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --host codex-cli \
+  --project "$PWD" \
+  --codex-sandbox workspace-write \
   --advisor-model <strong-model> \
   --codex-model <lower-cost-executor-model> \
   --validation-command-json '["./verify-postcondition"]' \
@@ -83,6 +103,14 @@ token counters and an advice digest are retained; advice text, prompts, raw
 events, and model responses are excluded from LoopX state. Advisor mode requires
 distinct explicit models so an accidental same-model pairing cannot masquerade
 as an optimization.
+
+Auto results include a compact `model_selection` receipt with the requested
+mode, profile id, exact Advisor and executor model ids, and selection reason.
+The catalog is resolved for each Turn that actually invokes the host, so a
+removed model cannot be silently reused; preview and committed replay need no
+catalog access. The qualified pair remains stable while catalog availability
+and the shipped profile revision are unchanged. A committed replay returns the
+validated selection receipt stored by the original host execution.
 
 ## Read The Result
 
