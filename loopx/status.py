@@ -1526,6 +1526,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "runner_error_len_bucket",
         "primary_setup_failure_category",
         "apt_failure_subtype",
+        "pip_failure_subtype",
         "retryability",
         "next_diagnostic_action",
     ):
@@ -1537,6 +1538,7 @@ def _compact_benchmark_compose_setup_diagnostic(value: Any) -> dict[str, Any]:
         "unclassified_compose_failure",
         "docker_daemon_unavailable",
         "apt_repository_failure",
+        "pip_bootstrap_failure",
         "volume_mount_failure",
         "environment_setup_failure",
         "agent_rounds_started",
@@ -3002,6 +3004,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
             "error_len_bucket",
             "fingerprint_confidence",
             "apt_failure_subtype",
+            "pip_failure_subtype",
             "retryability",
         ):
             value = public_safe_compact_text(fingerprint.get(field), limit=100)
@@ -3346,6 +3349,32 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
         task_staging=compact.get("task_staging"),
         setup_preflight=compact.get("task_setup_preflight"),
     )
+
+    runner_failure = compact.get("runner_failure")
+    if (
+        isinstance(runner_failure, dict)
+        and _skillsbench_compact_official_score_missing(compact)
+    ):
+        blocker = public_safe_compact_text(
+            compact.get("score_failure_attribution"),
+            limit=140,
+        )
+        if blocker in {None, "none", "score_missing"}:
+            blocker = public_safe_compact_text(
+                runner_failure.get("failure_class"),
+                limit=140,
+            )
+        if blocker:
+            replaceable_blockers = {
+                None,
+                "none",
+                "score_missing",
+                "skillsbench_runner_error",
+            }
+            if compact.get("first_blocker") in replaceable_blockers:
+                compact["first_blocker"] = blocker
+            if compact.get("repeat_blocked_by") in replaceable_blockers:
+                compact["repeat_blocked_by"] = blocker
 
     solution_quality = build_benchmark_solution_quality_signals(compact)
     if solution_quality:

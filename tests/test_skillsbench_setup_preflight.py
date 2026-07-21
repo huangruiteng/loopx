@@ -584,6 +584,69 @@ def test_compose_diagnostic_ignores_incidental_volume_for_terminal_apt() -> None
     assert message not in json.dumps(reduced, sort_keys=True)
 
 
+def test_compose_diagnostic_projects_mixed_pip_failure_for_replan() -> None:
+    message = (
+        "Docker compose command failed. ERROR: failed to solve: process "
+        "apt-get update && pip3 install numpy did not complete successfully: "
+        "max retries exceeded for pypi.org"
+    )
+    failure_class = "skillsbench_docker_compose_pip_bootstrap_failure"
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark": "skillsbench",
+        "task_id": "synthetic-mixed-pip-setup",
+        "route": "loopx-turn-agent-cli",
+        "score_failure_attribution": failure_class,
+        "failure_attribution_labels": [
+            failure_class,
+            "skillsbench_docker_compose_setup_failure",
+            "skillsbench_python_package_bootstrap_failure",
+            "skillsbench_environment_setup_error",
+        ],
+        "official_score_status": "missing",
+        "runner_failure": {
+            "schema_version": "skillsbench_runner_failure_v0",
+            "failure_class": failure_class,
+            "raw_error_recorded": False,
+        },
+        "runner_failure_fingerprint": skillsbench_runner_error_fingerprint(message),
+    }
+
+    compact = compact_benchmark_run(source)
+
+    assert compact is not None
+    assert compact["first_blocker"] == failure_class
+    assert compact["repeat_blocked_by"] == failure_class
+    fingerprint = compact["runner_failure_fingerprint"]
+    assert fingerprint["pip_failure_subtype"] == "package_index_network_failure"
+    assert fingerprint["apt_failure_subtype"] == "retry_exhausted"
+
+    diagnostic = build_compose_setup_diagnostic(
+        compact,
+        {"route": "loopx-turn-agent-cli"},
+    )
+    assert diagnostic["pip_bootstrap_failure"] is True
+    assert diagnostic["apt_repository_failure"] is True
+    assert diagnostic["primary_setup_failure_category"] == (
+        "python_package_bootstrap"
+    )
+    assert diagnostic["pip_failure_subtype"] == "package_index_network_failure"
+    assert diagnostic["next_diagnostic_action"] == (
+        "repair_python_package_bootstrap_before_product_treatment"
+    )
+
+    reduced = compact_benchmark_run(
+        {**compact, "compose_setup_diagnostic": diagnostic}
+    )
+    assert reduced is not None
+    reduced_diagnostic = reduced["compose_setup_diagnostic"]
+    assert reduced_diagnostic["pip_bootstrap_failure"] is True
+    assert reduced_diagnostic["pip_failure_subtype"] == (
+        "package_index_network_failure"
+    )
+    assert message not in json.dumps(reduced, sort_keys=True)
+
+
 def test_setup_only_preflight_classifies_ubuntu_mirror_without_raw_url() -> None:
     FakeRollout.failure_stage = "environment_start"
     FakeRollout.failure = RuntimeError(

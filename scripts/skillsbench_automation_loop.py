@@ -4930,6 +4930,37 @@ def _apply_host_local_acp_prereq_failure_attribution(
     return True
 
 
+def _sync_specific_runner_failure_root_blockers(
+    compact: dict[str, Any],
+) -> bool:
+    if compact.get("official_score_status") != "missing":
+        return False
+    if not isinstance(compact.get("runner_failure"), dict):
+        return False
+    attribution = compact.get("score_failure_attribution")
+    if not isinstance(attribution, str) or attribution in {
+        "",
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }:
+        return False
+
+    changed = False
+    replaceable = {
+        None,
+        "",
+        "none",
+        "score_missing",
+        "skillsbench_runner_error",
+    }
+    for field in ("first_blocker", "repeat_blocked_by"):
+        if compact.get(field) in replaceable:
+            compact[field] = attribution
+            changed = True
+    return changed
+
+
 def _apply_native_goal_worker_finish_guard_attribution(
     compact: dict[str, Any],
 ) -> bool:
@@ -6225,6 +6256,9 @@ def build_compose_setup_diagnostic(
     apt_failure_subtype = str(
         fingerprint.get("apt_failure_subtype") or ""
     )[:120]
+    pip_failure_subtype = str(
+        fingerprint.get("pip_failure_subtype") or ""
+    )[:120]
     terminal_failure_dependency_endpoints = [
         str(item)[:120]
         for item in fingerprint.get("terminal_failure_dependency_endpoints", [])
@@ -6294,12 +6328,19 @@ def build_compose_setup_diagnostic(
         or "system_package" in terminal_dependency_classes
         or any(code.startswith("apt_") for code in terminal_failure_reason_codes)
     )
+    pip_bootstrap_failure = (
+        score_failure == "skillsbench_docker_compose_pip_bootstrap_failure"
+        or "skillsbench_docker_compose_pip_bootstrap_failure" in labels
+        or "pip_bootstrap_failure" in matched_patterns
+    )
     volume_mount_failure = (
         score_failure == "skillsbench_docker_compose_volume_mount_failure"
         or "skillsbench_docker_compose_volume_mount_failure" in labels
         or "volume_mount_failure" in matched_patterns
     )
-    if apt_repository_failure:
+    if pip_bootstrap_failure:
+        primary_setup_failure_category = "python_package_bootstrap"
+    elif apt_repository_failure:
         primary_setup_failure_category = "system_package_repository"
     elif volume_mount_failure:
         primary_setup_failure_category = "volume_mount"
@@ -6311,7 +6352,11 @@ def build_compose_setup_diagnostic(
         primary_setup_failure_category = "runner_setup"
     if compose_setup_failure and not agent_rounds_started:
         status = "compose_setup_blocked_before_agent_rounds"
-        if apt_repository_failure:
+        if pip_bootstrap_failure:
+            next_action = (
+                "repair_python_package_bootstrap_before_product_treatment"
+            )
+        elif apt_repository_failure:
             next_action = (
                 "repair_system_package_repository_setup_before_product_treatment"
             )
@@ -6341,9 +6386,11 @@ def build_compose_setup_diagnostic(
         "unclassified_compose_failure": unclassified,
         "docker_daemon_unavailable": docker_daemon_unavailable,
         "apt_repository_failure": apt_repository_failure,
+        "pip_bootstrap_failure": pip_bootstrap_failure,
         "volume_mount_failure": volume_mount_failure,
         "primary_setup_failure_category": primary_setup_failure_category,
         "apt_failure_subtype": apt_failure_subtype,
+        "pip_failure_subtype": pip_failure_subtype,
         "terminal_failure_dependency_classes": terminal_dependency_classes,
         "terminal_failure_reason_codes": terminal_failure_reason_codes,
         "terminal_failure_dependency_endpoints": (
@@ -14738,7 +14785,7 @@ def reduce_result(
         ):
             _exception_type, score_failure_attribution, labels = prereq_failure
             compact["score_failure_attribution"] = score_failure_attribution
-            compact.setdefault("first_blocker", score_failure_attribution)
+            _sync_specific_runner_failure_root_blockers(compact)
             existing_labels = [
                 label
                 for label in compact.get("failure_attribution_labels", [])
@@ -14766,7 +14813,7 @@ def reduce_result(
                 ):
                     label = "skillsbench_host_local_acp_empty_trajectory_after_install"
                     compact["score_failure_attribution"] = label
-                    compact.setdefault("first_blocker", label)
+                    _sync_specific_runner_failure_root_blockers(compact)
                     existing_labels = [
                         item
                         for item in compact.get("failure_attribution_labels", [])
@@ -14810,6 +14857,7 @@ def reduce_result(
     if diagnostic.get("status") != "not_applicable":
         compact["compose_setup_diagnostic"] = diagnostic
         apply_skillsbench_pre_agent_setup_diagnostic_attribution(compact)
+    _sync_specific_runner_failure_root_blockers(compact)
     runner_output_capture = _public_runner_output_capture(plan)
     if runner_output_capture:
         compact["runner_output_capture"] = runner_output_capture
