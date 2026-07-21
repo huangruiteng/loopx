@@ -476,6 +476,9 @@ if [[ -d "$release_tmp/apps" ]]; then
     \( -name node_modules -o -name .next -o -name dist -o -name build -o -name coverage \) \
     -type d -prune -exec rm -rf {} +
 fi
+PYTHONPATH="$release_tmp" "${LOOPX_PYTHON:-python3}" \
+  "$release_tmp/scripts/render-manpage.py" \
+  --output "$release_tmp/man/loopx.1"
 (
   cd "$release_tmp"
   PYTHONPATH="$release_tmp" "${LOOPX_PYTHON:-python3}" -m loopx.release_manifest \
