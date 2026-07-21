@@ -690,6 +690,9 @@ def run_skillsbench_loopx_turn_sequence(
             "SkillsBench terminal policy must be validator, fixed-n, or stability"
         )
     sequence_id = uuid.uuid4().hex[:16]
+    turn_sequence_ref = (
+        "sequence:" + hashlib.sha256(sequence_id.encode("utf-8")).hexdigest()[:16]
+    )
     sequence_baseline_path = (
         f"{config.case_runtime_root.rstrip('/')}"
         f"/benchmark-turn-sequences/{sequence_id}.baseline"
@@ -734,6 +737,7 @@ def run_skillsbench_loopx_turn_sequence(
             sequence_step_kind=sequence_step_kind,
         )
         validation["turn_index"] = turn_index
+        validation["turn_sequence_ref"] = turn_sequence_ref
         records.append((execution, validation))
         if execution.get("status") != "committed":
             stop_reason = "turn_not_committed"
@@ -755,6 +759,7 @@ def run_skillsbench_loopx_turn_sequence(
         "status": stop_reason,
         "turn_count": len(records),
         "max_turns": config.max_turns,
+        "turn_sequence_ref": turn_sequence_ref,
         "terminal_policy": config.terminal_policy,
         "terminal_complete": stop_reason == "terminal_complete",
         "official_feedback_blinded": True,
@@ -804,7 +809,7 @@ def build_skillsbench_benchmark_runner_readiness(
     }
     blockers = [name for name, passed in checks.items() if not passed]
     turn_proven = all(checks[name] for name in LOOPX_TURN_PROOF_CHECKS)
-    return {
+    receipt = {
         "schema_version": "skillsbench_benchmark_runner_readiness_v0",
         "capability": "benchmark_runner",
         "status": "ready" if not blockers else "blocked",
@@ -820,6 +825,15 @@ def build_skillsbench_benchmark_runner_readiness(
         "credential_values_recorded": False,
         "local_paths_recorded": False,
     }
+    turn_sequence_ref = scored_workspace_validation.get("turn_sequence_ref")
+    if isinstance(turn_sequence_ref, str) and re.fullmatch(
+        r"sequence:[0-9a-f]{16}", turn_sequence_ref
+    ):
+        receipt["turn_sequence_ref"] = turn_sequence_ref
+    turn_index = scored_workspace_validation.get("turn_index")
+    if isinstance(turn_index, int) and not isinstance(turn_index, bool):
+        receipt["turn_index"] = max(1, turn_index)
+    return receipt
 
 
 def build_skillsbench_loopx_turn_trace(

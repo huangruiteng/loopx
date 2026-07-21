@@ -185,6 +185,13 @@ def _public_label_list(value: Any, *, limit: int) -> list[str]:
     return [label for item in value[:12] if (label := _public_label(item, limit=limit))]
 
 
+def _public_turn_sequence_ref(value: Any) -> str:
+    label = _public_label(value, limit=80)
+    if re.fullmatch(r"sequence:[0-9a-f]{16}", label):
+        return label
+    return ""
+
+
 def _public_execution(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -319,6 +326,8 @@ def _public_validation(value: Any) -> dict[str, Any]:
     turn_index = value.get("turn_index")
     if isinstance(turn_index, int) and not isinstance(turn_index, bool):
         validation["turn_index"] = max(1, turn_index)
+    if sequence_ref := _public_turn_sequence_ref(value.get("turn_sequence_ref")):
+        validation["turn_sequence_ref"] = sequence_ref
     write_count = value.get("successful_task_file_write_count")
     if isinstance(write_count, int) and not isinstance(write_count, bool):
         validation["successful_task_file_write_count"] = max(0, write_count)
@@ -337,6 +346,11 @@ def _public_runner_readiness(value: Any) -> dict[str, Any]:
         receipt["ready"] = value["ready"]
     if isinstance(value.get("turn_proven"), bool):
         receipt["turn_proven"] = value["turn_proven"]
+    if sequence_ref := _public_turn_sequence_ref(value.get("turn_sequence_ref")):
+        receipt["turn_sequence_ref"] = sequence_ref
+    turn_index = value.get("turn_index")
+    if isinstance(turn_index, int) and not isinstance(turn_index, bool):
+        receipt["turn_index"] = max(1, turn_index)
     checks = value.get("checks")
     if isinstance(checks, dict):
         receipt["checks"] = {
@@ -389,7 +403,7 @@ def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any
             if isinstance(blocker, str) and blocker
         }
     )
-    return {
+    aggregate = {
         "schema_version": "skillsbench_benchmark_runner_readiness_v0",
         "capability": "benchmark_runner",
         "status": "ready" if ready_count else "blocked",
@@ -418,6 +432,48 @@ def _aggregate_runner_readiness(receipts: list[dict[str, Any]]) -> dict[str, Any
             item.get("local_paths_recorded") is True for item in receipts
         ),
     }
+    receipts_by_sequence: dict[str, dict[int, list[dict[str, Any]]]] = {}
+    unattributed_turn_count = 0
+    unindexed_sequence_turn_count = 0
+    for item in receipts:
+        sequence_ref = _public_turn_sequence_ref(item.get("turn_sequence_ref"))
+        if not sequence_ref:
+            unattributed_turn_count += 1
+            continue
+        turn_index = item.get("turn_index")
+        if not isinstance(turn_index, int) or isinstance(turn_index, bool):
+            unindexed_sequence_turn_count += 1
+            continue
+        receipts_by_sequence.setdefault(sequence_ref, {}).setdefault(
+            max(1, turn_index), []
+        ).append(item)
+    if receipts_by_sequence:
+        committed_by_sequence = [
+            sum(
+                all(
+                    isinstance(item.get("checks"), dict)
+                    and item["checks"].get("turn_transaction_committed") is True
+                    for item in turn_receipts
+                )
+                for turn_receipts in sequence_receipts.values()
+            )
+            for sequence_receipts in receipts_by_sequence.values()
+        ]
+        aggregate.update(
+            {
+                "turn_sequence_count": len(receipts_by_sequence),
+                "turn_sequence_refs": sorted(receipts_by_sequence)[:12],
+                "max_observed_turn_count_per_sequence": max(
+                    len(sequence_receipts)
+                    for sequence_receipts in receipts_by_sequence.values()
+                ),
+                "max_committed_turn_count_per_sequence": max(committed_by_sequence),
+                "multi_turn_sequence_committed": max(committed_by_sequence) >= 2,
+                "unattributed_turn_count": unattributed_turn_count,
+                "unindexed_sequence_turn_count": unindexed_sequence_turn_count,
+            }
+        )
+    return aggregate
 
 
 def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:

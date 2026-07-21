@@ -698,6 +698,8 @@ def test_stability_sequence_repeats_repairs_then_stops_after_no_change(
         record[1]["stability_completion_satisfied"] is True for record in records
     )
     assert all(record[1]["sequence_baseline_configured"] is True for record in records)
+    sequence_refs = {record[1]["turn_sequence_ref"] for record in records}
+    assert sequence_refs == {sequence["turn_sequence_ref"]}
     assert sequence_baseline_paths[0] not in json.dumps(records, sort_keys=True)
     assert all(
         not any(key.startswith("stability_") for key in execution["validation"])
@@ -1475,6 +1477,8 @@ def test_runner_readiness_survives_public_trace_aggregation() -> None:
             "post_agent_postcondition_status": "satisfied",
             "baseline_contract": "task_declared_independent_postcondition",
             "terminal_policy": "fixed-n",
+            "turn_sequence_ref": "sequence:aaaaaaaaaaaaaaaa",
+            "turn_index": 1,
             "oracle_feedback_used": False,
         },
     )
@@ -1492,6 +1496,8 @@ def test_runner_readiness_survives_public_trace_aggregation() -> None:
             "post_agent_postcondition_status": "satisfied",
             "baseline_contract": "task_declared_independent_postcondition",
             "terminal_policy": "fixed-n",
+            "turn_sequence_ref": "sequence:aaaaaaaaaaaaaaaa",
+            "turn_index": 2,
             "oracle_feedback_used": False,
         },
     )
@@ -1515,9 +1521,60 @@ def test_runner_readiness_survives_public_trace_aggregation() -> None:
     assert receipt["proven_turn_count"] == 2
     assert receipt["committed_turn_count"] == 2
     assert receipt["observed_turn_count"] == 2
+    assert receipt["turn_sequence_count"] == 1
+    assert receipt["max_observed_turn_count_per_sequence"] == 2
+    assert receipt["max_committed_turn_count_per_sequence"] == 2
+    assert receipt["multi_turn_sequence_committed"] is True
+    assert receipt["unattributed_turn_count"] == 0
+    assert receipt["unindexed_sequence_turn_count"] == 0
     assert receipt["blocker_codes"] == []
     assert receipt["raw_task_text_recorded"] is False
     assert (
         compact["scored_workspace_validation"]["raw_validator_output_recorded"] is False
     )
     assert compact["scored_workspace_validation"]["terminal_policy"] == "fixed-n"
+
+
+def test_runner_readiness_does_not_flatten_commits_across_turn_sequences() -> None:
+    summary = SkillsBenchTurnTraceSummary()
+    for sequence_ref in (
+        "sequence:aaaaaaaaaaaaaaaa",
+        "sequence:bbbbbbbbbbbbbbbb",
+    ):
+        for turn_index, committed in ((1, True), (2, False)):
+            trace = runtime.build_skillsbench_loopx_turn_trace(
+                route="loopx-turn-agent-cli",
+                benchmark_id="synthetic-benchmark",
+                task_id="synthetic-task",
+                execution={"status": "committed" if committed else "failed"},
+                scored_workspace_validation={
+                    "status": "passed" if committed else "failed",
+                    "validator_kind": "skillsbench_stability_postcondition",
+                    "independent": True,
+                    "pre_agent_postcondition_checked": True,
+                    "pre_agent_postcondition_status": "unsatisfied",
+                    "post_agent_postcondition_status": (
+                        "progress_validated" if committed else "unsatisfied"
+                    ),
+                    "baseline_contract": "task_declared_independent_postcondition",
+                    "terminal_policy": "stability",
+                    "turn_sequence_ref": sequence_ref,
+                    "turn_index": turn_index,
+                    "oracle_feedback_used": False,
+                },
+            )
+            summary.merge(trace, trace["boundary"])
+            summary.merge(trace, trace["boundary"])
+
+    controller_trace: dict[str, Any] = {}
+    summary.apply(controller_trace)
+    receipt = controller_trace["benchmark_runner_readiness"]
+
+    assert receipt["observed_turn_count"] == 8
+    assert receipt["committed_turn_count"] == 4
+    assert receipt["turn_sequence_count"] == 2
+    assert receipt["max_observed_turn_count_per_sequence"] == 2
+    assert receipt["max_committed_turn_count_per_sequence"] == 1
+    assert receipt["multi_turn_sequence_committed"] is False
+    assert receipt["unattributed_turn_count"] == 0
+    assert receipt["unindexed_sequence_turn_count"] == 0
