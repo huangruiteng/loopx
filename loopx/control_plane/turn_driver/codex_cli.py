@@ -27,6 +27,9 @@ from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v1"
 LOOPX_TURN_ADVISOR_SCHEMA_VERSION = "loopx_turn_advisor_v0"
+LOOPX_TURN_ADVISOR_CONTEXT_SCHEMA_VERSION = "loopx_turn_advisor_context_v0"
+_ADVISOR_CONTEXT_MAX_FILES = 8
+_ADVISOR_CONTEXT_MAX_BYTES = 24_000
 CODEX_CLI_RESULT_KINDS = (
     "validated_progress",
     "repair_required",
@@ -297,15 +300,66 @@ def codex_cli_advisor_schema() -> dict[str, Any]:
     }
 
 
-def _advisor_prompt(request: Mapping[str, Any]) -> str:
+def _advisor_workspace_context(
+    request: Mapping[str, Any], *, project: Path
+) -> dict[str, Any]:
+    envelope = _mapping(request.get("turn_envelope"))
+    boundary = _mapping(envelope.get("boundary"))
+    raw_scope = boundary.get("write_scope")
+    scopes = raw_scope if isinstance(raw_scope, list) else []
+    root = project.resolve()
+    files: list[dict[str, str]] = []
+    used_bytes = 0
+    for raw_path in scopes:
+        relative = str(raw_path or "").strip()
+        if (
+            not relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+            or any(marker in relative for marker in ("*", "?", "[", "]"))
+        ):
+            continue
+        candidate = project / relative
+        if candidate.is_symlink() or not candidate.is_file():
+            continue
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+            content = resolved.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        size = len(content.encode("utf-8"))
+        if size > _ADVISOR_CONTEXT_MAX_BYTES - used_bytes:
+            continue
+        files.append({"path": relative, "content": content})
+        used_bytes += size
+        if len(files) >= _ADVISOR_CONTEXT_MAX_FILES:
+            break
+    return {
+        "schema_version": LOOPX_TURN_ADVISOR_CONTEXT_SCHEMA_VERSION,
+        "files": files,
+    }
+
+
+def _advisor_prompt(
+    request: Mapping[str, Any], *, workspace_context: Mapping[str, Any]
+) -> str:
     return "\n".join(
         [
             "Advise on exactly one bounded LoopX Turn.",
-            "Inspect the workspace only when useful, but do not edit files, execute the todo, write LoopX state, spend quota, or change scheduler state.",
+            "No repository is mounted. Do not invoke workspace tools. Use only the bounded context packet below.",
+            "Do not execute the todo, write LoopX state, spend quota, or change scheduler state.",
             "The TurnEnvelope remains authoritative. Return only compact implementation guidance, risks, and independent validation focus in the required schema; do not include hidden reasoning.",
             "Turn request:",
             json.dumps(
                 dict(request),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            "Bounded workspace context:",
+            json.dumps(
+                dict(workspace_context),
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -574,7 +628,14 @@ def run_codex_cli_host(
         temporary = Path(directory)
         advisor: dict[str, Any] | None = None
         advisor_usage: dict[str, int] | None = None
-        if advisor_model:
+        advisor_context = (
+            _advisor_workspace_context(request, project=project)
+            if advisor_model
+            else None
+        )
+        if advisor_model and advisor_context and advisor_context["files"]:
+            advisor_project = temporary / "advisor-workspace"
+            advisor_project.mkdir()
             advisor_schema_path = temporary / "advisor-schema.json"
             advisor_output_path = temporary / "advisor-message.json"
             advisor_schema_path.write_text(
@@ -587,7 +648,7 @@ def run_codex_cli_host(
             )
             advisor_command = _codex_command(
                 codex_bin=str(resolved),
-                project=project,
+                project=advisor_project,
                 schema_path=advisor_schema_path,
                 output_path=advisor_output_path,
                 sandbox="read-only",
@@ -597,8 +658,11 @@ def run_codex_cli_host(
             )
             advisor_invocation = _run_codex_process(
                 advisor_command,
-                project=project,
-                prompt=_advisor_prompt(request),
+                project=advisor_project,
+                prompt=_advisor_prompt(
+                    request,
+                    workspace_context=advisor_context,
+                ),
                 output_path=advisor_output_path,
                 timeout_seconds=advisor_timeout_seconds,
             )

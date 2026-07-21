@@ -257,12 +257,12 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
         ),
         "checks": [
             {
-                "command": "python3 examples/loopx-turn-codex-cli-e2e-smoke.py --codex-model executor-fixture --advisor-model advisor-fixture",
+                "command": "python3 examples/loopx-turn-codex-cli-e2e-smoke.py --codex-model executor-fixture --advisor-model advisor-fixture --case-id arithmetic-fix",
                 "tier": "default",
                 "reason": "guards ordered read-only advice, cheaper execution, validation, replay, and exact phase usage",
             },
             {
-                "command": "python3 examples/loopx-turn-advisor-qualification-smoke.py --fixture --baseline-model advisor-fixture --advisor-model advisor-fixture --executor-model executor-fixture",
+                "command": "python3 examples/loopx-turn-advisor-qualification-smoke.py --fixture --baseline-model advisor-fixture --advisor-model advisor-fixture --executor-model executor-fixture --case-id arithmetic-fix",
                 "tier": "default",
                 "reason": "guards matched quality arms and the total-token reduction gate without provider access",
             },

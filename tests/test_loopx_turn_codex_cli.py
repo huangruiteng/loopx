@@ -216,9 +216,14 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
     project = tmp_path / "project"
     project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
 
     result = run_codex_cli_host(
-        _request(),
+        request,
         runtime_root=tmp_path / "runtime",
         project=project,
         codex_bin=str(executable),
@@ -236,10 +241,16 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
     assert argv_rows[0][argv_rows[0].index("--sandbox") + 1] == "read-only"
     assert "--ephemeral" in argv_rows[0]
+    advisor_project = Path(argv_rows[0][argv_rows[0].index("-C") + 1])
+    assert advisor_project != project
     assert argv_rows[1][argv_rows[1].index("--model") + 1] == "executor-fixture"
+    assert Path(argv_rows[1][argv_rows[1].index("-C") + 1]) == project
     prompts = [
         json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
     ]
+    assert '"path":"calculator.py"' in prompts[0]
+    assert "return a - b" in prompts[0]
+    assert "Do not invoke workspace tools" in prompts[0]
     assert "Inspect the boundary before changing the fixture." in prompts[1]
     assert result["model_usage"]["mode"] == "advisor"
     assert result["model_usage"]["advisor_applied"] is True
@@ -258,10 +269,13 @@ def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
     monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
     project = tmp_path / "project"
     project.mkdir()
+    (project / "fixture.txt").write_text("fixture", encoding="utf-8")
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["fixture.txt"]}
 
     with pytest.raises(RuntimeError, match="codex_cli_advisor_usage_missing"):
         run_codex_cli_host(
-            _request(),
+            request,
             runtime_root=tmp_path / "runtime",
             project=project,
             codex_bin=str(executable),
@@ -275,6 +289,76 @@ def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
     ]
     assert len(argv_rows) == 1
     assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
+
+
+def test_codex_cli_skips_advisor_when_bounded_context_is_empty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = run_codex_cli_host(
+        _request(),
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(argv_rows) == 1
+    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "executor-fixture"
+    assert result["model_usage"]["mode"] == "direct"
+    assert result["model_usage"]["advisor_applied"] is False
+
+
+def test_codex_cli_advisor_context_rejects_unbounded_or_linked_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must-not-enter-advisor-context", encoding="utf-8")
+    (project / "linked.txt").symlink_to(outside)
+    (project / "visible.txt").write_text("bounded-context", encoding="utf-8")
+    request = _request()
+    request["turn_envelope"]["boundary"] = {
+        "write_scope": ["*.txt", "../outside.txt", "linked.txt", "visible.txt"]
+    }
+
+    run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    advisor_prompt = json.loads(
+        prompt_log.read_text(encoding="utf-8").splitlines()[0]
+    )
+    assert "bounded-context" in advisor_prompt
+    assert "must-not-enter-advisor-context" not in advisor_prompt
 
 
 def test_codex_cli_host_starts_then_resumes_opaque_session(
@@ -562,6 +646,8 @@ def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
             "executor-fixture",
             "--advisor-model",
             "advisor-fixture",
+            "--case-id",
+            "arithmetic-fix",
         ],
         cwd=root,
         check=False,
@@ -654,6 +740,8 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
             "advisor-fixture",
             "--executor-model",
             "executor-fixture",
+            "--case-id",
+            "arithmetic-fix",
         ],
         cwd=root,
         check=False,
