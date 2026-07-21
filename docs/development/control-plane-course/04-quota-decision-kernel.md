@@ -1,6 +1,7 @@
 # 第 4 讲：Quota 决策内核与 Interaction Contract
 
-> 核心问题：`quota should-run` 看起来像一个布尔查询，为什么它实际上是 LoopX control plane 的决策编译器？
+> **本讲结论：** `quota should-run` 是只读决策编译器：它把 source facts 编译成 typed
+> interaction contract 与 scheduler hint；host 消费决定，不重新实现决定。
 
 建议时长：100 分钟。讲解 60 分钟、决策表推演 25 分钟、代码导航 15 分钟。
 
@@ -13,6 +14,31 @@
 3. 解释 decision pipeline 中 boundary、gate、capability、workspace、frontier、repair 的顺序。
 4. 判断何时应该 bounded delivery、quiet no-op、monitor poll、wait 或 self-repair。
 5. 新增规则时避免在多个 host 或输出字段中重复实现同一语义。
+
+## 本讲技术契约
+
+| 边界 | LoopX 中的答案 |
+| --- | --- |
+| Input snapshot | Goal、todo、gate、capability、workspace、monitor、vision 与 health projection |
+| Decision owner | `build_quota_should_run` 按有序规则编译本轮义务 |
+| Output contract | `interaction_contract`、`TurnEnvelope` 与 `scheduler_hint` |
+| Effect owner | 无；quota path 必须保持只读，host/agent 只消费 typed decision |
+| Re-evaluation | 状态或环境变化后重新编译，不复用旧布尔值推断新一轮 |
+
+## 先判四个具体 Turn
+
+在读 quota payload 之前，先对四组 source facts 做产品判断：
+
+| Source facts | 正确的本轮模式 | 为什么 | 禁止的捷径 |
+| --- | --- | --- | --- |
+| PR checks pending，monitor 未到期，没有其他 work | wait / monitor quiet | 没有新 observation，也没有 runnable successor | 因 goal active 就调用模型 |
+| PR checks 失败，已形成同 agent 的 fix successor | bounded delivery | 外部变化已经翻译成合法 advancement todo | 在 host prompt 里直接决定怎么修 |
+| 研究实验只有 dev lift，holdout successor 可运行 | bounded delivery | promotion 条件未满足，但下一验证步骤明确 | 把 dev score 当 terminal success |
+| 所有普通 todo 已关闭，但 vision acceptance 仍有 gap | replan / repair | checklist 关闭不等于目标完成 | 用 `open_count=0` 推断 stop |
+
+`build_quota_should_run` 的工作就是把这些 source facts 按稳定 precedence 编译成
+interaction contract。后面的字段、mode 和 scheduler hint 都应能回到这张表中的某个
+判断，而不是各自发明一套“是否继续”。
 
 ## 为什么叫 Quota，却不只是配额
 

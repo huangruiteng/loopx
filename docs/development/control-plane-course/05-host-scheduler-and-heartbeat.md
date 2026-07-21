@@ -1,6 +1,7 @@
 # 第 5 讲：Host、Heartbeat 与 Stateful Backoff
 
-> 核心问题：LoopX 不执行模型 turn，那么长期循环到底由谁拉起？如何避免空转、刷盘、过快轮询和错误停机？
+> **本讲结论：** Host 拥有唤醒和外部 effect，LoopX 拥有 cadence proposal 与验证规则；
+> 只有绑定 proposal identity 的 host readback 才能形成 durable scheduler ACK。
 
 建议时长：90 分钟。讲解 55 分钟、时序推演 20 分钟、实验 15 分钟。
 
@@ -14,6 +15,31 @@
 4. 区分 quiet skip、monitor poll、wait、run-now 和 terminal stop。
 5. 解释为什么 monitor-poll 的 before/after decision 必须共享同一 execution context。
 6. 设计一个不会重复 spend、不会无限刷盘的 host adapter。
+
+## 本讲技术契约
+
+| 边界 | LoopX 中的答案 |
+| --- | --- |
+| Decision owner | LoopX 从 quota decision 投影 cadence、backoff 与 apply/ACK obligation |
+| Execution context | `host_surface + scheduler_owner + execution_mode` 共同限定 effect authority |
+| Effect owner | Host 创建 session、触发 turn、修改 RRULE 或调用外部 runtime |
+| Commit receipt | ACK 必须绑定 state key、reset token、identity signature 与实际 host readback |
+| Recovery | Quiet 保持 automation；未结算 proposal 继续 apply/ACK，不伪装成 delivery |
+
+## 两个 Showcase 的 Cadence 不同，ACK 合同相同
+
+Scheduler 不懂 GitHub 或研究指标，但它能根据 Kernel 已分类的 action 调整唤醒节奏：
+
+| 场景 | Kernel 已知事实 | Cadence 倾向 | 何时重置 backoff |
+| --- | --- | --- | --- |
+| PR 有 failing checks successor | runnable advancement | 较快继续 | successor 被领取或 material transition |
+| PR checks pending 且连续无变化 | monitor wait | 逐步放慢 | checks/review fingerprint 改变 |
+| 研究 lane 有 holdout todo | runnable frontier | 较快继续 | evidence packet 写回 |
+| 研究暂无可执行 frontier，等待外部证据 | fresh-evidence wait | 较慢轮询 | 新 evidence event 或 user decision |
+
+无论哪种场景，LoopX 只产生 cadence proposal；host 应用 RRULE 或下一次触发时间后，必须
+回写绑定 `goal + agent + action class + proposal revision` 的 readback。只看到宿主当前值
+“碰巧相同”不能结算一条新 proposal，因为那无法证明 host 应用了本次决定。
 
 ## Host 是触发器，不是第二控制面
 

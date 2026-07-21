@@ -1,6 +1,7 @@
 # 第 2 讲：状态底座与可重放事实
 
-> 核心问题：当 session、模型和 host 都可能变化时，LoopX 靠什么知道“现在进行到哪里”？
+> **本讲结论：** Canonical event/state contract 拥有长期事实；active state、status 和
+> dashboard 是可重建 read model；session context 不能替代 project memory。
 
 建议时长：90 分钟。讲解 55 分钟、状态追踪 20 分钟、实验 15 分钟。
 
@@ -14,6 +15,33 @@
 4. 沿一次 todo transition 找到它的事实源和 read model。
 5. 判断一个新字段应该属于配置、事件、工作台还是展示层。
 6. 区分 session context、project memory、Domain State 和私有 runtime artifact。
+
+## 本讲技术契约
+
+| 边界 | LoopX 中的答案 |
+| --- | --- |
+| State owner | Registry 拥有长期配置；canonical todo/event/state contract 拥有已提交事实 |
+| Turn snapshot | Status、todo projection 和 fresh environment observation 组成本轮只读输入 |
+| Write boundary | 只有经过 authority 与 transition validation 的 CLI/API 可以提交状态 |
+| Replay boundary | 从 durable state 重建 read model，再重新探测当前环境；不重放旧推理文本 |
+| Forbidden | Session、dashboard、sink 和 host 不能直接成为 goal truth |
+
+## 从两个 Showcase 找事实归属
+
+先不背状态文件。遇到一条信息时，先问“谁能证明它是真的”：
+
+| 信息 | Issue-Fix 中的 owner | Auto Research 中的 owner | LoopX 怎样保存 |
+| --- | --- | --- | --- |
+| 外部对象当前状态 | Repository / GitHub | evaluator / artifact store / public source | fresh observation，不复制成第二权威源 |
+| 可跨 turn 复用的领域事实 | feasibility、PR lifecycle Domain State | hypothesis、evidence event、metric result Domain State | stable key + compact fingerprint + lineage |
+| 当前必须做的工作 | Kernel todo/gate/monitor | Kernel role todo/promotion gate | canonical lifecycle transition |
+| 本轮临时推理和工具输出 | coding session / workspace | worker session / experiment workspace | 不作为长期事实；只提取 validated ref |
+| 给人和 host 看的当前视图 | status / PR report | frontier / evidence graph | 从 canonical state 重建 projection |
+
+同一句“PR checks 仍 pending”可能同时出现在 session、Domain State 和 status 中，但它们的
+权威不同：GitHub 证明当前事实，Domain State 证明某轮已观察到什么，status 只是把已提交
+状态展示出来。判断 owner 后，再决定它应进入 registry、event、Domain State 还是只留在
+runtime artifact。
 
 ## Goal 不是聊天线程
 
@@ -276,10 +304,10 @@ loopx todo claim \
 ```text
 CLI validation
   -> resolve registry goal and registered agent
-  -> lock active state / state transaction boundary
-  -> validate todo transition
-  -> append or update durable transition state
-  -> refresh compatibility workbench/projection
+  -> enter the canonical state transaction boundary
+  -> authorize and validate the todo transition
+  -> write the durable transition through its supported API
+  -> rebuild the compatible read projection
   -> status later folds current claim
   -> quota sees claimed runnable frontier
 ```

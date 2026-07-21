@@ -1,6 +1,7 @@
 # 第 9 讲：扩展层、Explore 与 Multi-Agent 产品
 
-> 核心问题：如何在不 fork control plane 的前提下，为 LoopX 增加探索、多 agent、supervisor、研究产品和外部连接能力？
+> **本讲结论：** Extension 增加 domain facts、capability 或 presentation；它复用同一份
+> goal、todo、quota、scheduler、evidence 与 handoff contract，不创建第二个 kernel。
 
 建议时长：110 分钟。扩展地图 35 分钟、Explore 30 分钟、Multi-agent/Auto Research 30 分钟、实验 15 分钟。
 
@@ -13,6 +14,26 @@
 3. 解释 Harness 为什么只是 analysis-only planner，而不是执行授权。
 4. 解释 user、preset、kernel 三层 multi-agent minimality。
 5. 判断 supervisor、multi-subagent、reward memory、connector 各自扩展哪个边界。
+
+本讲采用分层阅读：所有开发者先读 Extension Contract、分层原则和 Feature Catalog；
+做探索产品再读 Graph/Harness；做 multi-agent 产品再读 Generic Kernel 与 Auto Research；
+只有接入对应 surface 时，才需要继续读 Supervisor、Reward Memory 或 Lark Event Inbox。
+
+## 从 Auto Research 反推 Extension Contract
+
+第 0 讲把 Auto Research 当作产品 Showcase；本讲把它拆成一个可复用 extension：
+
+| Surface | Auto Research 提供 | 继续由通用层拥有 |
+| --- | --- | --- |
+| User entry | open question、少量 preset 选项 | goal identity、preview/execute boundary |
+| Capability Pack | role defaults、evidence adapter、decision candidates | todo/gate/quota/handoff/terminal semantics |
+| Domain State | hypothesis、experiment、dev/holdout evidence | claim、permission、scheduler、spend |
+| Host integration | visible worker panes、isolated executor turn | session lifecycle、workspace guard、effect receipt |
+| Projection | evidence graph、research frontier、showcase | canonical state 与 transition authority |
+
+如果一个新 extension 能按这五行回答，通常不需要复制 runner。若它必须自己维护 agent
+身份、runnable queue、retry、gate、completion 和 cadence，它已经不是薄 capability，而是
+第二个 control plane。
 
 ## 扩展层的总原则
 
