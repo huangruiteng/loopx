@@ -1083,6 +1083,17 @@ def build_scheduler_hint(
         )
 
     if arbitration.disposition == SchedulerDisposition.ACTIVE_WORK:
+        interaction_contract = payload.get("interaction_contract")
+        agent_channel = (
+            interaction_contract.get("agent_channel")
+            if isinstance(interaction_contract, Mapping)
+            else None
+        )
+        capability_bridge_wait = (
+            arbitration.mode == "capability_bridge_repair"
+            and isinstance(agent_channel, Mapping)
+            and agent_channel.get("delivery_allowed") is False
+        )
         return hint(
             action="run_now",
             cadence_class="active_work",
@@ -1094,7 +1105,7 @@ def build_scheduler_hint(
             codex_max=10,
             cli_limit=None,
             claude_limit=None,
-            advance_same_identity=False,
+            advance_same_identity=capability_bridge_wait,
         )
 
     if arbitration.disposition == SchedulerDisposition.UNCHANGED_WAIT:
