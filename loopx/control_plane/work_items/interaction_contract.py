@@ -1023,6 +1023,19 @@ def _attach_interaction_required_reads(
     contract["cli_channel"]["required_reads"] = required_reads
 
 
+def _attach_interaction_post_writeback_actions(
+    contract: dict[str, Any], payload: dict[str, Any]
+) -> None:
+    goal_boundary = (
+        payload.get("goal_boundary")
+        if isinstance(payload.get("goal_boundary"), Mapping)
+        else {}
+    )
+    actions = goal_boundary.get("post_writeback_actions")
+    if isinstance(actions, list) and actions:
+        contract["cli_channel"]["post_writeback_actions"] = actions
+
+
 def _attach_interaction_vision_continuation_audit(
     contract: dict[str, Any],
     payload: dict[str, Any],
@@ -1185,6 +1198,7 @@ def build_interaction_contract(
     if response_plan is not None:
         contract["response_plan"] = response_plan
     _attach_interaction_required_reads(contract, required_reads)
+    _attach_interaction_post_writeback_actions(contract, payload)
     _attach_interaction_vision_continuation_audit(contract, payload)
     _attach_interaction_vision_wait_state(contract, payload)
     if _interaction_fallback_policy_required(payload, mode=mode):

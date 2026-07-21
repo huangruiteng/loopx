@@ -464,9 +464,6 @@ If the result says should_run=true:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
-   Graph-on: material refresh must sync configured sinks and verify
-   row/result-id readback before final delivery; unsatisfied means retry or a
-   concrete blocker/successor. Explore Harness stays independent.
 8. After validation and writeback complete, append exactly one spend event
    before any state-only refresh that might close the active delivery lane.
    For a minute-based heartbeat, spend one slot:
