@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 from ..benchmark_case_state import benchmark_case_loopx_command_prefix
 from ..control_plane.turn_driver import run_loopx_turn_once
@@ -49,7 +49,7 @@ class SkillsBenchTurnAgentResult:
     progress_evidence: Mapping[str, Any]
 
 
-AgentPromptRunner = Callable[[str], str | SkillsBenchTurnAgentResult]
+AgentPromptRunner = Callable[[str], Union[str, SkillsBenchTurnAgentResult]]
 PublicTraceWriter = Callable[[dict[str, Any]], None]
 TurnObserver = Callable[[dict[str, Any], dict[str, Any]], None]
 

@@ -5,7 +5,7 @@ import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Union, get_args, get_origin
 
 import pytest
 
@@ -23,6 +23,12 @@ from loopx.benchmark_adapters.skillsbench_turn_route import (
     sync_skillsbench_loopx_turn_trace_into_compact,
 )
 from loopx.control_plane.turn_driver import executor as turn_executor
+
+
+def test_agent_prompt_runner_alias_is_bootstrap_python_39_safe() -> None:
+    return_type = get_args(runtime.AgentPromptRunner)[1]
+
+    assert get_origin(return_type) is Union
 
 
 def _config(tmp_path: Path) -> runtime.SkillsBenchTurnRuntimeConfig:
