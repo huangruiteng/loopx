@@ -7,11 +7,18 @@ from ..content_ops.social_browser_x import (
     SOCIAL_BROWSER_X_PROVIDER_MODULE,
     build_social_browser_x_provider_packet,
 )
+from .finance_extension_migration import (
+    build_finance_extension_migration_contract,
+)
 
 
-VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION = "value_connector_source_map_packet_v0"
+VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION = (
+    "value_connector_source_map_packet_v0"
+)
 VALUE_CONNECTOR_SOURCE_PROFILE_SCHEMA_VERSION = "value_connector_source_profile_v0"
-VALUE_CONNECTOR_SOURCE_MAP_PROJECTION_SCHEMA_VERSION = "value_connector_source_map_projection_v0"
+VALUE_CONNECTOR_SOURCE_MAP_PROJECTION_SCHEMA_VERSION = (
+    "value_connector_source_map_projection_v0"
+)
 
 
 SOURCE_PROFILE_IDS = {
@@ -51,8 +58,8 @@ OUTCOME_PROVIDER_BINDINGS: dict[str, dict[str, str | None]] = {
         "provider_module": None,
     },
     "finance_market_snapshot": {
-        "outcome_capability_id": "finance-value-discovery",
-        "provider_binding_state": "mapped",
+        "outcome_capability_id": None,
+        "provider_binding_state": "migrated_to_extension",
         "provider_module": None,
     },
     "botmail_identity": {
@@ -98,7 +105,8 @@ def _source_profile(
         "commands": commands,
         "evidence_schema": evidence_schema,
         "maturity_hint": maturity_hint,
-        "external_reads_allowed": boundary in {
+        "external_reads_allowed": boundary
+        in {
             "public_metadata_only",
             "public_no_login",
             "logged_in_read",
@@ -106,7 +114,8 @@ def _source_profile(
         },
         "external_writes_allowed": False,
         "write_gate": write_gate,
-        "stop_conditions": stop_conditions or [
+        "stop_conditions": stop_conditions
+        or [
             "source boundary is unclear",
             "requested action would capture raw private content",
             "requested action would perform an external write without an audit gate",
@@ -117,6 +126,28 @@ def _source_profile(
 
 def _source_profiles() -> list[dict[str, Any]]:
     social_browser_x = build_social_browser_x_provider_packet()
+    finance_migration = build_finance_extension_migration_contract()
+    finance_profile = _source_profile(
+        connector_id="finance_market_snapshot",
+        status="migrated_to_extension",
+        route_type="legacy extension migration",
+        boundary="local_extension_migration",
+        safe_uses=[
+            "discover that the legacy connector moved to a standalone extension",
+            "inspect exact provider installation, registration, and run preconditions",
+            "stop when the separately distributed provider is unavailable",
+        ],
+        commands=[
+            step["command"] for step in finance_migration["agent_start_sequence"]
+        ],
+        evidence_schema="finance_market_snapshot_probe_packet_v0",
+        maturity_hint=(
+            "Migration metadata only; this compatibility profile performs no "
+            "finance reads and owns no Finance capability."
+        ),
+        stop_conditions=list(finance_migration["blocked_when"]),
+    )
+    finance_profile["migration"] = finance_migration
     return [
         _source_profile(
             connector_id="github_public_channel",
@@ -206,27 +237,7 @@ def _source_profiles() -> list[dict[str, Any]]:
                 "draft would quote raw provider bodies beyond public-safe excerpts",
             ],
         ),
-        _source_profile(
-            connector_id="finance_market_snapshot",
-            status="probed_candidate_profile",
-            route_type="public market snapshot probe",
-            boundary="public_no_login",
-            safe_uses=[
-                "plan finance information pulls as public/reference snapshots",
-                "compare public source availability such as official docs, public APIs, or OSS wrappers",
-                "surface a user gate before credentials, paid feeds, trading, or portfolio reads",
-            ],
-            commands=[
-                "loopx value-connectors plan --connector-id finance_market_snapshot --connector-kind custom_connector --channel 'public finance snapshot' --stage observe --target-ref '<market or symbol scope>' --external-read --money-metric '<research or decision-support value>' --success-metric '<fresh public snapshot with source warnings>' --kill-condition '<stale source, paid gate, credential need, or trading intent>' --format json",
-            ],
-            evidence_schema="finance_market_snapshot_probe_v0",
-            maturity_hint="Treat market data as reference evidence, not financial advice; source freshness and license matter.",
-            stop_conditions=[
-                "request needs account credentials, AK/SK, portfolio data, paid provider data, or trading action",
-                "source freshness or license cannot be stated",
-                "user asks for investment advice instead of source-backed information retrieval",
-            ],
-        ),
+        finance_profile,
     ]
 
 
@@ -280,11 +291,16 @@ def _maturity_scale() -> list[dict[str, Any]]:
         {"score": 0, "meaning": "noise or unavailable route"},
         {"score": 1, "meaning": "weak exploratory signal"},
         {"score": 2, "meaning": "emerging repeated signal"},
-        {"score": 3, "meaning": "mature signal with strong adoption or multiple independent sources"},
+        {
+            "score": 3,
+            "meaning": "mature signal with strong adoption or multiple independent sources",
+        },
     ]
 
 
-def build_value_connector_source_map_packet(*, connector: str = "all") -> dict[str, Any]:
+def build_value_connector_source_map_packet(
+    *, connector: str = "all"
+) -> dict[str, Any]:
     if connector not in SOURCE_PROFILE_IDS:
         raise ValueError(f"unknown connector source map {connector!r}")
     profiles = [
@@ -346,7 +362,11 @@ def build_value_connector_source_map_packet(*, connector: str = "all") -> dict[s
 
 
 def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
-    projection = payload.get("projection") if isinstance(payload.get("projection"), Mapping) else {}
+    projection = (
+        payload.get("projection")
+        if isinstance(payload.get("projection"), Mapping)
+        else {}
+    )
     lines = [
         "# LoopX Value Connector Source Map",
         "",
@@ -375,8 +395,18 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
                 "",
                 f"- status: `{profile.get('status')}`",
                 f"- boundary: `{profile.get('boundary')}`",
-                f"- outcome_capability_id: `{profile.get('outcome_capability_id')}`",
-                f"- provider_binding_state: `{profile.get('provider_binding_state')}`",
+            ]
+        )
+        if profile.get("outcome_capability_id"):
+            lines.append(
+                f"- outcome_capability_id: `{profile.get('outcome_capability_id')}`"
+            )
+        if profile.get("provider_binding_state"):
+            lines.append(
+                f"- provider_binding_state: `{profile.get('provider_binding_state')}`"
+            )
+        lines.extend(
+            [
                 f"- evidence_schema: `{profile.get('evidence_schema')}`",
                 f"- maturity_hint: {profile.get('maturity_hint')}",
                 "- commands:",
@@ -384,6 +414,16 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
         )
         for command in profile.get("commands") or []:
             lines.append(f"  - `{command}`")
+        migration = profile.get("migration")
+        if isinstance(migration, Mapping):
+            lines.extend(
+                [
+                    f"- replacement_extension_id: `{migration.get('replacement_extension_id')}`",
+                    "- replacement_capability_id: `none`",
+                    "- automatic_provider_install_supported: "
+                    f"`{migration.get('automatic_provider_install_supported')}`",
+                ]
+            )
         if profile.get("write_gate"):
             lines.append(f"- write_gate: {profile.get('write_gate')}")
         lines.append("")

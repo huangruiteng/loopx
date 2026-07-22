@@ -160,9 +160,10 @@ def load_extension_manifest(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"{context} requires `provides` to contain TOML tables")
     if not isinstance(implemented, list):
         raise ValueError(f"{context} requires `implements` to contain TOML tables")
-    if not provided and not implemented:
+    if runtime is None and not provided and not implemented:
         raise ValueError(
-            f"{context} requires at least one `[[provides]]` or `[[implements]]` table"
+            f"{context} requires an executable `runtime`, `[[provides]]`, "
+            "or `[[implements]]`"
         )
 
     capabilities: list[dict[str, Any]] = []

@@ -44,6 +44,13 @@ the audience narrative. This hierarchy is inspired by the validated project
 weekly-report presentation, but it contains no issue, pull-request, or
 Issue Fix policy.
 
+The source request may carry the profile-owned `language` as a BCP-47-like
+tag. The built-in hierarchy currently provides English and Chinese section
+vocabulary (other languages fall back to English), while item facts remain
+owned by the caller. The orchestrator must pass the same language into the
+document editorial input; renderers do not infer or rewrite business section
+semantics. Omitting the field preserves the English default.
+
 There is no issue-fix-specific report capability. Issue Fix, release notes,
 research, operations, and other domains may supply peer source adapters when
 their richer semantics are useful; none is required by the built-in weekly

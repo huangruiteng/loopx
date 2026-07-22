@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -17,15 +18,32 @@ PROJECT_PROGRESS_SOURCE_KIND = "validated_project_progress"
 PROJECT_PROGRESS_ADAPTER_ID = "project_progress_v0"
 
 _SECTION_BY_CONTENT_KIND = {
-    "outcome": ("progress", "Progress and outcomes", 10),
-    "decision": ("progress", "Progress and outcomes", 10),
-    "progress": ("progress", "Progress and outcomes", 10),
-    "capability_change": ("capability_evolution", "Capability evolution", 20),
-    "risk": ("risks", "Risks and blockers", 30),
-    "next_action": ("next_actions", "Next actions", 40),
-    "runtime": ("supporting_evidence", "Supporting evidence", 50),
-    "delivery_receipt": ("supporting_evidence", "Supporting evidence", 50),
+    "outcome": ("progress", 10),
+    "decision": ("progress", 10),
+    "progress": ("progress", 10),
+    "capability_change": ("capability_evolution", 20),
+    "risk": ("risks", 30),
+    "next_action": ("next_actions", 40),
+    "runtime": ("supporting_evidence", 50),
+    "delivery_receipt": ("supporting_evidence", 50),
 }
+_SECTION_TITLES = {
+    "en": {
+        "progress": "Progress and outcomes",
+        "capability_evolution": "Capability evolution",
+        "risks": "Risks and blockers",
+        "next_actions": "Next actions",
+        "supporting_evidence": "Supporting evidence",
+    },
+    "zh": {
+        "progress": "进展与成果",
+        "capability_evolution": "能力演进",
+        "risks": "风险与阻塞",
+        "next_actions": "下一步",
+        "supporting_evidence": "支撑证据",
+    },
+}
+_LANGUAGE_RE = re.compile(r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$")
 _SUPPORTING_CONTENT_KINDS = {"runtime", "delivery_receipt"}
 _MAX_PRIMARY_ITEMS = 8
 _MAX_SUPPORTING_ITEMS = 16
@@ -43,10 +61,11 @@ def _sequence(value: object, label: str) -> list[Any]:
     return list(value)
 
 
-def _snapshot_ref(projection: Mapping[str, Any]) -> str:
+def _snapshot_ref(projection: Mapping[str, Any], *, language: str) -> str:
     identity = {
         "goal_id": str(projection.get("goal_id") or "project"),
         "observed_at": str(projection.get("observed_at") or ""),
+        "language": language,
         "items": projection.get("items"),
     }
     encoded = json.dumps(
@@ -56,6 +75,20 @@ def _snapshot_ref(projection: Mapping[str, Any]) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return f"loopx-progress:{hashlib.sha256(encoded).hexdigest()[:24]}"
+
+
+def _language(value: object) -> str:
+    language = str(value or "en").strip()
+    if not _LANGUAGE_RE.fullmatch(language):
+        raise ValueError(
+            "project_progress.language must be a BCP-47-like language tag"
+        )
+    return language.lower()
+
+
+def _section_title(section_id: str, *, language: str) -> str:
+    vocabulary = "zh" if language.lower().startswith("zh") else "en"
+    return _SECTION_TITLES[vocabulary][section_id]
 
 
 def build_project_progress_periodic_report_source(
@@ -68,6 +101,7 @@ def build_project_progress_periodic_report_source(
         raise ValueError(
             f"project_progress must use {PROJECT_PROGRESS_PROJECTION_SCHEMA}"
         )
+    language = _language(packet.get("language"))
     raw_items = _sequence(packet.get("items"), "project_progress.items")
     if not raw_items:
         raise ValueError("project_progress.items must not be empty")
@@ -98,12 +132,12 @@ def build_project_progress_periodic_report_source(
         else:
             primary_count += 1
 
-        section_id, title, order = section_spec
+        section_id, order = section_spec
         section = sections.setdefault(
             section_id,
             {
                 "section_id": section_id,
-                "title": title,
+                "title": _section_title(section_id, language=language),
                 "order": order,
                 "items": [],
             },
@@ -132,7 +166,7 @@ def build_project_progress_periodic_report_source(
         status=status,
         observed_at=str(packet.get("observed_at") or ""),
         sections=list(sections.values()),
-        snapshot_ref=_snapshot_ref(packet),
+        snapshot_ref=_snapshot_ref(packet, language=language),
         retryable=retryable,
     )
 

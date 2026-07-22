@@ -184,7 +184,7 @@ def active_state_todo_attention_item(
             and projection_todo_item_task_class(item) == TODO_TASK_CLASS_USER_ACTION
             for item in user_items
         )
-        if not (agent_has_open and explicit_user_actions_only):
+        if not explicit_user_actions_only:
             return attention_item(
                 goal_id=goal_id,
                 status="active_state_user_todo",

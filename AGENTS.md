@@ -153,9 +153,13 @@ do not choose a directory from the feature name alone:
 - put an independently versioned or optional provider in
   `extensions/<extension-id>/` when it is co-located, or in its own package or
   repository when it is distributed separately;
+- do not create a capability merely to make an extension installable. An
+  extension-owned command or workflow may declare only its runtime and
+  lifecycle when LoopX callers do not need a provider-neutral capability
+  contract;
 - when a provider introduces a new product contract, register the capability
-  contract and implement it through the extension rather than choosing only
-  one side;
+  contract and implement it through the extension only when that contract is
+  intentionally provider-neutral and belongs in LoopX's capability catalog;
 - keep private helpers in the nearest owning module. A helper is not a new
   capability or extension merely because several files are involved.
 

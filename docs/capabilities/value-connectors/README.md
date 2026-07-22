@@ -93,14 +93,21 @@ commands delegate to those providers.
 | `github_public_reply_monitor` | `issue-fix` | migrated | yes | none |
 | `content_ops_public_handle` | `content-ops` | native | public-handle observation | none |
 | `social_browser_x` | `content-ops` | migrated | install-check, public-handle packet, and gated plan | exact profile/post/reply gate required |
-| `finance_market_snapshot` | `finance-value-discovery` | mapped | plan, user prompt surface, and [no-credential probe packet](finance-market-snapshot-probe.md) | account, private portfolio, trading, and paid-data gates required |
 | `agent_reach_ops_source_map` | `content-ops` | mapped | `loopx value-connectors source-map --connector agent_reach_ops_source_map --format json`; [profile note](agent-reach-ops-source-map.md) | publish/audit record required for every external write |
+| `finance_market_snapshot` | none | migrated to standalone extension | migration packet only; no Finance execution | none |
 | `botmail_identity` | `content-ops` | mapped | install-check only | exact send gate required |
 | `community_channel` | `content-ops` | mapped | install-check and plan | exact account/message gate required |
 
 `migrated` means the implementation module is owned by the outcome capability.
 `native` means the command already lived there. `mapped` records the intended
 owner without pretending that the implementation has moved.
+
+`finance_market_snapshot` is retained only as an upgrade migration id. Its
+`source-map`, `install-check`, and legacy `plan --connector-id` packets point
+agents to the independently packaged `loopx-finance-value-discovery` extension
+and never perform Finance work. See the
+[migration packet](finance-market-snapshot-probe.md). The old id must not be
+used for new integrations.
 
 ## Why This Is Not Just A Plan
 
@@ -163,8 +170,8 @@ actions.
 the current read-first connector catalog without requiring it to read internal
 docs. It includes implemented or field-proven source profiles such as public
 GitHub metadata probes, GitHub reply monitors, content-ops public handles,
-browser-backed X research, Agent-Reach source routing, and the finance market
-snapshot probe profile. It also names action-gated profiles such as botmail and
+browser-backed X research, and Agent-Reach source routing. It also names
+action-gated profiles such as botmail and
 community replies so agents do not treat "can send" as "can freely read/write".
 
 `agent_reach_ops_source_map` is one profile in that packet. Agent-Reach is used
@@ -177,74 +184,6 @@ This profile is intentionally source-first and action-gated. Broad posting
 discretion does not remove the need to record exact body, channel/account,
 time, source refs, and stop conditions. See the
 [Agent-Reach ops source-map profile](agent-reach-ops-source-map.md).
-
-## Finance Market Snapshot Profile
-
-`finance_market_snapshot` is a planned value connector profile for users who
-want an agent to pull market facts before analysis. It is useful when the user
-asks for a bounded snapshot such as:
-
-- 股票或 ETF 行情: 最新价、涨跌幅、成交额、市值、估值区间、更新时间;
-- 基金信息: 净值、费率、持仓摘要、同类排名、公告更新时间;
-- 新闻和公告: 公司公告、业绩预告、监管披露、重要新闻摘要;
-- 组合观察: 用户给出的公开标的清单的异动、风险提示、待复核项。
-
-Suggested source order:
-
-1. Futu OpenD or another user-owned market terminal when the user already has a
-   local daemon, account permission, and data entitlement.
-2. Eastmoney or other public finance pages/APIs for public quote, fund,
-   announcement, and news metadata.
-3. GitHub-hosted open-source finance API wrappers or public datasets only as a
-   fallback after freshness, terms, and data-origin checks.
-
-The profile should label every answer with freshness and confidence: `live`,
-`delayed`, `cached`, `source_unverified`, or `manual_review_required`. It should
-also say when a field is missing instead of filling it from a stale fallback.
-
-Safe user prompts:
-
-```text
-/loopx 拉取 AAPL、MSFT、NVDA 今日行情和近 7 天关键新闻，标出更新时间和数据源；不要给投资建议。
-/loopx 对 5 只沪深 ETF 做一个公开信息快照：净值、规模、费率、公告、异动；缺失字段列出来。
-/loopx 监控我给出的股票清单是否出现公告或大幅波动，只写 compact todo，不自动交易。
-```
-
-Boundaries:
-
-- no trading, order placement, portfolio mutation, paid-data signup, account
-  login, captcha handling, or private portfolio read without an exact user gate;
-- no investment advice, suitability claim, price target, or guaranteed-return
-  wording;
-- no hidden source mixing: every metric must carry source, timestamp, and
-  uncertainty label;
-- no raw credential, account id, private holding, or paid provider payload in
-  LoopX state.
-
-Example plan-only packet:
-
-```bash
-loopx value-connectors plan \
-  --connector-id finance_market_snapshot \
-  --connector-kind custom_connector \
-  --channel "public finance metadata snapshot" \
-  --stage observe \
-  --target-ref "AAPL/MSFT/NVDA quote and news snapshot" \
-  --target-url https://www.eastmoney.com \
-  --external-read \
-  --value-axis capability \
-  --money-metric "reduce analyst time spent collecting public market facts" \
-  --success-metric "fresh quote/news table with source, timestamp, and uncertainty labels" \
-  --kill-condition "source terms, freshness, or symbol mapping cannot be verified" \
-  --format json
-```
-
-See the [no-credential probe packet](finance-market-snapshot-probe.md) for the
-current source findings. The short version: Eastmoney public quote metadata is
-reachable as a `source_unverified` canary, GitHub OSS wrappers are fallback
-candidates that still need source-origin checks, and Futu/OpenD is gated until
-the user provides a local daemon, account permission, API agreements, and quote
-rights.
 
 ## Protocol
 

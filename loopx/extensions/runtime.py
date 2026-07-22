@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..file_lock import exclusive_file_lock
+from .process_runtime import run_capped_process
 from .manifest import load_extension_manifest
 from .readiness import (
     EXTENSION_DOCTOR_SCHEMA_VERSION,
@@ -24,7 +25,10 @@ EXTENSION_STATE_SCHEMA_VERSION = "loopx_extension_state_v0"
 EXTENSION_OPERATION_SCHEMA_VERSION = "loopx_extension_operation_v0"
 EXTENSION_BINDING_SCHEMA_VERSION = "loopx_extension_runtime_binding_v0"
 EXTENSION_ACTIVATION_SCHEMA_VERSION = "loopx_extension_activation_v0"
+EXTENSION_RUN_SCHEMA_VERSION = "loopx_extension_run_receipt_v0"
 MAX_REVISIONS = 5
+MAX_EXTENSION_REQUEST_BYTES = 1_000_000
+MAX_EXTENSION_RESPONSE_BYTES = 1_000_000
 
 
 def default_extension_state_file(runtime_root: str | Path | None = None) -> Path:
@@ -155,17 +159,10 @@ def install_extension(
             raise ValueError(f"extension `{extension_id}` is already installed")
         if operation == "upgrade" and not isinstance(existing, dict):
             raise ValueError(f"extension `{extension_id}` is not installed")
-        if (
-            isinstance(existing, dict)
-            and existing.get("active_revision") == revision
-        ):
-            raise ValueError(
-                f"extension `{extension_id}` revision is already active"
-            )
+        if isinstance(existing, dict) and existing.get("active_revision") == revision:
+            raise ValueError(f"extension `{extension_id}` revision is already active")
         previous_revision = (
-            str(existing.get("active_revision"))
-            if isinstance(existing, dict)
-            else None
+            str(existing.get("active_revision")) if isinstance(existing, dict) else None
         )
         if execute:
             revisions = (
@@ -188,9 +185,7 @@ def install_extension(
                 "active_revision": revision,
                 "rollback_revision": previous_revision,
                 "doctor_verified_revision": revision,
-                "doctor_verified_entrypoint_identity": doctor[
-                    "entrypoint_identity"
-                ],
+                "doctor_verified_entrypoint_identity": doctor["entrypoint_identity"],
                 "revisions": revisions,
             }
             _write_state(path, state)
@@ -243,8 +238,7 @@ def enable_extension(
             current_entry.pop("doctor_verified_entrypoint_identity", None)
             _write_state(path, current_state)
         raise ValueError(
-            f"extension `{extension_id}` enable doctor is not ready: "
-            f"{doctor['status']}"
+            f"extension `{extension_id}` enable doctor is not ready: {doctor['status']}"
         )
     changed = False
     if execute:
@@ -510,7 +504,9 @@ def extension_catalog_entries(
             manifest = _active_manifest(entry)
             provider = manifest.get("provider")
             if not isinstance(provider, Mapping) or provider.get("id") != extension_id:
-                raise ValueError(f"extension `{extension_id}` active manifest is invalid")
+                raise ValueError(
+                    f"extension `{extension_id}` active manifest is invalid"
+                )
             manifests[extension_id] = manifest
             enabled = bool(entry.get("enabled"))
             lifecycle[extension_id] = {
@@ -524,9 +520,9 @@ def extension_catalog_entries(
     entries: list[dict[str, Any]] = []
     for extension_id, manifest in manifests.items():
         normalized = deepcopy(dict(manifest))
-        normalized["provider"] = deepcopy(dict(manifest["provider"])) | lifecycle[
-            extension_id
-        ]
+        normalized["provider"] = (
+            deepcopy(dict(manifest["provider"])) | lifecycle[extension_id]
+        )
         entries.append(normalized)
     return entries
 
@@ -681,6 +677,179 @@ def resolve_extension_binding(
     }
 
 
+def resolve_extension_runtime_binding(
+    extension_id: str,
+    *,
+    state_file: str | Path,
+    protocol: str,
+    permission: str,
+) -> dict[str, Any]:
+    """Resolve an extension runtime without coupling dispatch to capability metadata."""
+
+    active_revision, verified_entrypoint, manifest = _resolved_active_extension(
+        extension_id,
+        state_file=state_file,
+    )
+    provider = manifest.get("provider")
+    runtime = _runtime(manifest)
+    if not isinstance(provider, Mapping):
+        raise ValueError("extension active manifest is incomplete")
+    if permission not in (provider.get("permissions") or []):
+        raise ValueError(
+            f"extension `{extension_id}` does not declare permission `{permission}`"
+        )
+    if permission not in (runtime.get("required_permissions") or []):
+        raise ValueError(
+            f"extension `{extension_id}` runtime does not require permission "
+            f"`{permission}`"
+        )
+    if runtime.get("protocol") != protocol:
+        raise ValueError(
+            f"extension `{extension_id}` does not expose runtime protocol `{protocol}`"
+        )
+    return {
+        "schema_version": EXTENSION_BINDING_SCHEMA_VERSION,
+        "extension_id": extension_id,
+        "provider_version": provider.get("version"),
+        "revision": active_revision,
+        "protocol": protocol,
+        "argv": [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])],
+        "doctor_argv": [
+            *verified_entrypoint.argv_prefix,
+            *(runtime.get("args") or []),
+            *(runtime.get("doctor_args") or []),
+        ],
+        "timeout_seconds": runtime["timeout_seconds"],
+    }
+
+
+def run_standalone_extension(
+    extension_id: str,
+    *,
+    state_file: str | Path,
+    request: Mapping[str, Any],
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Run one lifecycle-gated standalone extension over bounded JSON stdin/stdout."""
+
+    active_revision, verified_entrypoint, manifest = _resolved_active_extension(
+        extension_id,
+        state_file=state_file,
+    )
+    provider = manifest.get("provider")
+    runtime = _runtime(manifest)
+    if not isinstance(provider, Mapping):
+        raise ValueError("extension active manifest is incomplete")
+    if manifest.get("capabilities") or manifest.get("implementations"):
+        raise ValueError(
+            "extension run only accepts standalone extensions; invoke capability "
+            "providers through their capability or domain command"
+        )
+    if not isinstance(request, Mapping):
+        raise ValueError("extension run request must be a JSON object")
+
+    required_permissions = [
+        str(value) for value in runtime.get("required_permissions") or []
+    ]
+    declared_permissions = {str(value) for value in provider.get("permissions") or []}
+    missing_permissions = sorted(set(required_permissions) - declared_permissions)
+    if missing_permissions:
+        raise ValueError(
+            f"extension `{extension_id}` does not declare permissions "
+            f"{missing_permissions}"
+        )
+    if declared_permissions:
+        raise ValueError(
+            f"extension `{extension_id}` declares permissions "
+            f"{sorted(declared_permissions)}; standalone extension run grants no "
+            "effect dispatch, so use a capability or domain command that owns "
+            "policy checks and a request-bound execution envelope"
+        )
+
+    try:
+        request_bytes = json.dumps(
+            dict(request),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extension run request must be JSON serializable") from exc
+    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
+        raise ValueError("extension run request exceeds the 1000000-byte limit")
+
+    receipt: dict[str, Any] = {
+        "ok": True,
+        "schema_version": EXTENSION_RUN_SCHEMA_VERSION,
+        "operation": "run",
+        "extension_id": extension_id,
+        "provider_version": provider.get("version"),
+        "revision": active_revision,
+        "protocol": runtime["protocol"],
+        "required_permissions": required_permissions,
+        "dry_run": not execute,
+        "executed": False,
+        "status": "ready" if not execute else "running",
+        "input_schema_version": request.get("schema_version"),
+    }
+    if not execute:
+        return receipt
+
+    argv = [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])]
+    try:
+        completed = run_capped_process(
+            argv,
+            stdin=request_bytes,
+            timeout_seconds=int(runtime["timeout_seconds"]),
+            output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
+        )
+    except OSError:
+        return {
+            **receipt,
+            "ok": False,
+            "executed": True,
+            "status": "provider_failed",
+            "failure_kind": "execution_failed",
+            "exit_code": None,
+        }
+    if completed.failure_kind is not None:
+        response_too_large = completed.failure_kind == "response_too_large"
+        return {
+            **receipt,
+            "ok": False,
+            "executed": True,
+            "status": (
+                "invalid_provider_output" if response_too_large else "provider_failed"
+            ),
+            "failure_kind": completed.failure_kind,
+            "exit_code": (
+                None if completed.failure_kind == "timeout" else completed.returncode
+            ),
+        }
+
+    try:
+        provider_result = json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        provider_result = None
+    if not isinstance(provider_result, dict):
+        return {
+            **receipt,
+            "ok": False,
+            "executed": True,
+            "status": "invalid_provider_output",
+            "failure_kind": "response_not_json_object",
+            "exit_code": completed.returncode,
+        }
+    succeeded = completed.returncode == 0 and provider_result.get("ok") is not False
+    return {
+        **receipt,
+        "ok": succeeded,
+        "executed": True,
+        "status": "succeeded" if succeeded else "provider_failed",
+        "exit_code": completed.returncode,
+        "provider_result": provider_result,
+    }
+
+
 def resolve_capability_binding(
     *,
     state_file: str | Path,
@@ -700,3 +869,63 @@ def resolve_capability_binding(
         protocol=protocol,
         permission=permission,
     )
+
+
+def execute_extension_runtime_binding(
+    binding: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Execute a resolved binding after its capability authorizes the request."""
+
+    if binding.get("schema_version") != EXTENSION_BINDING_SCHEMA_VERSION:
+        raise ValueError(
+            f"extension runtime binding must use {EXTENSION_BINDING_SCHEMA_VERSION}"
+        )
+    argv = binding.get("argv")
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or not all(isinstance(value, str) and value for value in argv)
+    ):
+        raise ValueError("extension runtime binding argv is invalid")
+    try:
+        timeout_seconds = int(binding.get("timeout_seconds"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extension runtime binding timeout is invalid") from exc
+    if not 1 <= timeout_seconds <= 120:
+        raise ValueError("extension runtime binding timeout is invalid")
+    try:
+        request_bytes = json.dumps(
+            dict(request),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("extension runtime request must be JSON serializable") from exc
+    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
+        raise ValueError("extension runtime request exceeds the 1000000-byte limit")
+    try:
+        completed = run_capped_process(
+            argv,
+            stdin=request_bytes,
+            timeout_seconds=timeout_seconds,
+            output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
+            env=environment,
+        )
+    except OSError as exc:
+        raise RuntimeError("extension provider execution failed") from exc
+    if completed.failure_kind is not None:
+        raise RuntimeError(
+            f"extension provider execution failed: {completed.failure_kind}"
+        )
+    try:
+        provider_result = json.loads(completed.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("extension provider returned invalid JSON") from exc
+    if not isinstance(provider_result, dict):
+        raise RuntimeError("extension provider returned a non-object")
+    if completed.returncode != 0 or provider_result.get("ok") is False:
+        raise RuntimeError("extension provider reported failure")
+    return provider_result

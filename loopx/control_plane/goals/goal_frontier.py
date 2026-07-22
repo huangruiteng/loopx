@@ -209,8 +209,19 @@ def goal_frontier_is_terminal_no_followup(*, projection: dict[str, Any] | None) 
 def select_autonomous_replan_obligation(
     item: dict[str, Any],
     project_asset: dict[str, Any] | None = None,
+    *,
+    agent_id: str | None = None,
 ) -> dict[str, Any] | None:
     project_asset = project_asset if isinstance(project_asset, dict) else {}
+    safe_agent_id = str(agent_id or "").strip()
+    if safe_agent_id:
+        for source in (item, project_asset):
+            obligations = source.get("autonomous_replan_obligations_by_agent")
+            if not isinstance(obligations, dict):
+                continue
+            value = obligations.get(safe_agent_id)
+            if isinstance(value, dict):
+                return value
     value = item.get("autonomous_replan_obligation")
     if isinstance(value, dict):
         return value
@@ -1694,7 +1705,11 @@ def build_goal_frontier_projection_context_from_status(
     per-agent vision gaps, derived replan obligation, and final projection.
     """
 
-    replan_obligation = select_autonomous_replan_obligation(item, project_asset)
+    replan_obligation = select_autonomous_replan_obligation(
+        item,
+        project_asset,
+        agent_id=agent_id,
+    )
     replan_scope = autonomous_replan_scope_decision(
         replan_obligation,
         agent_id=agent_id,
@@ -1814,6 +1829,8 @@ def compact_replan_obligation(replan_obligation: dict[str, Any]) -> dict[str, An
         "triggers": replan_obligation.get("triggers") or [],
         "stop_condition": replan_obligation.get("stop_condition"),
     }
+    if replan_obligation.get("agent_todo_writeback_required") is True:
+        compact["agent_todo_writeback_required"] = True
     if replan_obligation.get("frontier_identity"):
         compact["frontier_identity"] = replan_obligation.get("frontier_identity")
     return compact

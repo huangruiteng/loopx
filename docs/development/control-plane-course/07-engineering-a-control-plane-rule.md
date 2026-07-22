@@ -1,8 +1,9 @@
 # 第 7 讲：如何给 Control Plane 增加一条规则
 
-> 核心问题：一条新行为如何从“设计想法”变成可配置、可决策、可执行、可审计、可回滚的 LoopX 能力，而不在内核里堆未来脚手架？
+> **本讲结论：** 一条 control-plane 规则必须闭合 source、decision、effect、receipt 与
+> validation；没有真实 call site 和兼容合同的未来能力，应停留在文档或 todo。
 
-建议时长：110 分钟。方法讲解 50 分钟、Supervisor case study 40 分钟、练习 20 分钟。
+建议时长：110 分钟。方法讲解 35 分钟、ordered-rule case 35 分钟、进阶 extension case 25 分钟、练习 15 分钟。
 
 ## 学习目标
 
@@ -14,6 +15,21 @@
 4. 使用 characterization smoke 保护共享行为，再提取代码。
 5. 判断一个未来扩展应该进入 production schema，还是只保留 design gate。
 6. 把高风险隐式分支重构为有序、可审计、可反例验证的规则表。
+
+## 本讲怎样使用两个 Showcase
+
+新增规则前，先判断变化属于领域翻译还是通用 Kernel：
+
+| 需求 | 应落在哪里 | 为什么 |
+| --- | --- | --- |
+| PR 出现 branch/merge blocker 时形成 `issue_fix_branch_or_merge_blocker_replan` successor | Issue-Fix Capability + Domain State | 这是 GitHub lifecycle observation 的领域含义 |
+| 所有普通工作关闭但 acceptance gap 仍开时触发 replan | Kernel ordered rules | 任何 capability 都需要相同 completion 语义 |
+| Auto Research 增加一种 evaluator evidence | Auto Research Capability / Domain State | 新增领域事实和 validator，不改变通用 authority |
+| promotion 必须经过 scoped user/reviewer decision | Kernel gate contract + preset declaration | gate、scope 与 authority 不能由 preset 私有实现 |
+
+本讲先用 goal-frontier replan 展示怎样重构一条已经在线的 Kernel 规则，再用 Peer
+Supervisor 展示怎样把新的 extension 停在最小边界。前者是主案例；不准备开发
+supervisor 的读者也可以跳过第二个 case study，不影响规则工程方法。
 
 ## 先写行为链，不先写类
 
@@ -239,7 +255,7 @@ def select_goal_frontier_replan_rule(facts):
 projection、rule order 是否完整、每条负向规则是否有反例、runtime payload builder 是否
 仍复用原实现。只有这四点成立，代码移动才是行为保持的重构。
 
-## Case Study：Peer Supervisor v0
+## 进阶 Case Study：Peer Supervisor v0
 
 ### 研究来源
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import subprocess
 import sys
 import tempfile
@@ -76,6 +75,11 @@ if "benchmark_remote_public_artifact_collection_v0" in remote_command:
             "content_base64": base64.b64encode(compact).decode("ascii"),
         }}],
     }}, sort_keys=True))
+    sys.exit(0)
+
+if "slow-skillsbench" in remote_command:
+    time.sleep(0.5)
+    print('{{"ok": true, "source": "fake_remote_command"}}')
     sys.exit(0)
 
 if "cat >" in remote_command:
@@ -613,6 +617,78 @@ def test_supervisor_syncs_only_compact_public_artifacts() -> None:
         assert sync["raw_trajectory_read"] is False
 
 
+def test_supervisor_incrementally_syncs_public_artifacts() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-tunnel-live-sync-") as tmp:
+        root = Path(tmp)
+        fake_ssh = root / "ssh"
+        ssh_log = root / "ssh.log"
+        synced_dir = root / "synced"
+        ledger_path = root / "live-ledger.json"
+        aggregate_path = root / "standard-aggregate.json"
+        canonical_ids = root / "canonical-case-ids.txt"
+        canonical_ids.write_text("case-a\n", encoding="utf-8")
+        _fake_ssh(fake_ssh, ssh_log)
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--ssh-bin",
+                str(fake_ssh),
+                "--ssh-destination",
+                "opaque-benchmark-host.example",
+                "--remote-forward",
+                "127.0.0.1:18180:127.0.0.1:18180",
+                "--remote-command",
+                "slow-skillsbench",
+                "--remote-public-artifact-root",
+                "/opaque/private/jobs",
+                "--remote-public-artifact-glob",
+                "job/*/benchmark_run.compact.json",
+                "--local-public-artifact-dir",
+                str(synced_dir),
+                "--public-artifact-sync-interval-sec",
+                "0.1",
+                "--local-run-ledger-path",
+                str(ledger_path),
+                "--local-run-group-id",
+                "skillsbench-incremental-sync-smoke",
+                "--local-current-aggregate-path",
+                str(aggregate_path),
+                "--local-canonical-case-ids-file",
+                str(canonical_ids),
+                "--local-target-lane-id",
+                "codex-cli-goal-xhigh",
+                "--tunnel-ready-timeout-sec",
+                "5",
+                "--probe-interval-sec",
+                "0.1",
+                "--run-timeout-sec",
+                "5",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        payload = json.loads(proc.stdout)
+        incremental = payload["incremental_public_artifact_sync"]
+        assert incremental["enabled"] is True
+        assert incremental["attempt_count"] >= 1
+        assert incremental["success_count"] >= 1
+        assert incremental["failure_count"] == 0
+        assert incremental["raw_paths_recorded"] is False
+        assert incremental["raw_artifacts_recorded"] is False
+        assert payload["public_artifact_sync"]["local_ledger_update"][
+            "upserted_count"
+        ] == 1
+        assert ledger_path.exists()
+        assert aggregate_path.exists()
+
+
 def test_public_artifact_materializer_rejects_private_children() -> None:
     with tempfile.TemporaryDirectory(prefix="benchmark-artifact-boundary-") as tmp:
         content = base64.b64encode(b"{}\n").decode("ascii")
@@ -845,6 +921,7 @@ if __name__ == "__main__":
     test_supervisor_timeout_does_not_sync_live_artifacts()
     test_liveness_probe_cannot_cross_deadline_and_sync_artifacts()
     test_supervisor_syncs_only_compact_public_artifacts()
+    test_supervisor_incrementally_syncs_public_artifacts()
     test_public_artifact_materializer_rejects_private_children()
     test_closeout_requires_compact_when_ledger_is_requested()
     test_supervisor_cleans_remote_failure_without_public_pattern()

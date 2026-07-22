@@ -46,11 +46,11 @@ PRIVATE_PATTERNS = [
 
 FORBIDDEN_VALUES = [
     "raw provider payload",
-        "comment body text",
-        "comment body that must stay gated",
-        "issue body text",
-        "restricted-value",
-        "sensitive-value",
+    "comment body text",
+    "comment body that must stay gated",
+    "issue body text",
+    "restricted-value",
+    "sensitive-value",
 ]
 
 
@@ -85,12 +85,17 @@ def run_cli(
 
 
 def main() -> int:
-    assert importlib.util.find_spec("loopx.capabilities.value_connectors.github_public") is None
+    assert (
+        importlib.util.find_spec("loopx.capabilities.value_connectors.github_public")
+        is None
+    )
     install = json.loads(
         run_cli(["--format", "json", "value-connectors", "install-check"]).stdout
     )
     assert install["ok"] is True, install
-    assert install["schema_version"] == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
+    assert (
+        install["schema_version"] == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
+    )
     connector_ids = {item["connector_id"] for item in install["checks"]}
     assert "github_public_channel" in connector_ids, connector_ids
     assert "agent_reach_ops_source_map" in connector_ids, connector_ids
@@ -103,7 +108,9 @@ def main() -> int:
         run_cli(["--format", "json", "value-connectors", "source-map"]).stdout
     )
     assert source_map["ok"] is True, source_map
-    assert source_map["schema_version"] == VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION
+    assert (
+        source_map["schema_version"] == VALUE_CONNECTOR_SOURCE_MAP_PACKET_SCHEMA_VERSION
+    )
     assert source_map["external_reads_performed"] is False, source_map
     assert source_map["external_writes_performed"] is False, source_map
     assert source_map["projection"]["agent_can_start_without_docs"] is True, source_map
@@ -114,11 +121,11 @@ def main() -> int:
     assert "social_browser_x" in profile_ids, profile_ids
     assert "agent_reach_ops_source_map" in profile_ids, profile_ids
     assert "finance_market_snapshot" in profile_ids, profile_ids
-    profiles = {
-        item["connector_id"]: item for item in source_map["source_profiles"]
-    }
+    profiles = {item["connector_id"]: item for item in source_map["source_profiles"]}
     assert profiles["github_public_channel"]["outcome_capability_id"] == "issue-fix"
-    assert profiles["github_public_reply_monitor"]["provider_binding_state"] == "migrated"
+    assert (
+        profiles["github_public_reply_monitor"]["provider_binding_state"] == "migrated"
+    )
     assert (
         profiles["github_public_reply_monitor"]["provider_module"]
         == "loopx.capabilities.issue_fix.github_public"
@@ -130,11 +137,16 @@ def main() -> int:
         profiles["social_browser_x"]["provider_module"]
         == "loopx.capabilities.content_ops.social_browser_x"
     )
-    assert profiles["agent_reach_ops_source_map"]["outcome_capability_id"] == "content-ops"
     assert (
-        profiles["finance_market_snapshot"]["outcome_capability_id"]
-        == "finance-value-discovery"
+        profiles["agent_reach_ops_source_map"]["outcome_capability_id"] == "content-ops"
     )
+    finance_migration = profiles["finance_market_snapshot"]
+    assert finance_migration["outcome_capability_id"] is None
+    assert finance_migration["provider_binding_state"] == "migrated_to_extension"
+    assert finance_migration["migration"]["replacement_extension_id"] == (
+        "loopx-finance-value-discovery"
+    )
+    assert finance_migration["migration"]["replacement_capability_id"] is None
     action_ids = {item["connector_id"] for item in source_map["action_gated_profiles"]}
     assert "botmail_identity" in action_ids, action_ids
     assert "community_channel" in action_ids, action_ids
@@ -166,7 +178,9 @@ def main() -> int:
     assert agent_reach_map["ok"] is True, agent_reach_map
     assert len(agent_reach_map["source_profiles"]) == 1, agent_reach_map
     agent_reach_profile = agent_reach_map["source_profiles"][0]
-    assert agent_reach_profile["connector_id"] == "agent_reach_ops_source_map", agent_reach_profile
+    assert agent_reach_profile["connector_id"] == "agent_reach_ops_source_map", (
+        agent_reach_profile
+    )
     assert agent_reach_profile["external_reads_allowed"] is True, agent_reach_profile
     assert agent_reach_profile["external_writes_allowed"] is False, agent_reach_profile
     assert not agent_reach_map["action_gated_profiles"], agent_reach_map
@@ -185,7 +199,10 @@ def main() -> int:
         ).stdout
     )
     assert x_install["ok"] is True, x_install
-    assert x_install["schema_version"] == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
+    assert (
+        x_install["schema_version"]
+        == VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION
+    )
     assert x_install["truth_contract"]["external_reads_performed"] is False, x_install
     assert x_install["truth_contract"]["external_writes_performed"] is False, x_install
     x_check = x_install["checks"][0]
@@ -258,14 +275,19 @@ def main() -> int:
             ).stdout
         )
     assert reply_monitor["ok"] is True, reply_monitor
-    assert reply_monitor["schema_version"] == GITHUB_PUBLIC_REPLY_MONITOR_PACKET_SCHEMA_VERSION
+    assert (
+        reply_monitor["schema_version"]
+        == GITHUB_PUBLIC_REPLY_MONITOR_PACKET_SCHEMA_VERSION
+    )
     assert reply_monitor["external_reads_performed"] is False, reply_monitor
     assert reply_monitor["external_writes_performed"] is False, reply_monitor
     assert reply_monitor["comment_bodies_captured"] is False, reply_monitor
     assert reply_monitor["raw_provider_payload_captured"] is False, reply_monitor
     assert reply_monitor["maintainer_reply_count"] == 1, reply_monitor
     assert reply_monitor["money_signal"] == "public_maintainer_interest", reply_monitor
-    assert reply_monitor["recommended_action"] == "prepare_public_triage_note", reply_monitor
+    assert reply_monitor["recommended_action"] == "prepare_public_triage_note", (
+        reply_monitor
+    )
     assert reply_monitor["validation"]["gated_provider_field_count"] == 3, reply_monitor
     assert_public_safe(reply_monitor)
 
@@ -318,14 +340,14 @@ def main() -> int:
     assert live_reply_monitor["external_reads_performed"] is True, live_reply_monitor
     assert live_reply_monitor["external_writes_performed"] is False, live_reply_monitor
     assert live_reply_monitor["maintainer_reply_count"] == 0, live_reply_monitor
-    assert live_reply_monitor["recommended_action"] == "wait_no_bump", live_reply_monitor
+    assert live_reply_monitor["recommended_action"] == "wait_no_bump", (
+        live_reply_monitor
+    )
     assert live_reply_monitor["comment_bodies_captured"] is False, live_reply_monitor
     assert live_reply_monitor["validation"]["anchor_found"] is True, live_reply_monitor
     assert_public_safe(live_reply_monitor)
 
-    plan = json.loads(
-        run_cli(["--format", "json", "value-connectors", "plan"]).stdout
-    )
+    plan = json.loads(run_cli(["--format", "json", "value-connectors", "plan"]).stdout)
     assert plan["ok"] is True, plan
     assert plan["schema_version"] == VALUE_CONNECTOR_PLAN_PACKET_SCHEMA_VERSION
     assert plan["external_writes_performed"] is False, plan
@@ -417,7 +439,9 @@ def main() -> int:
     assert x_setup_call["stage"] == "account_setup", x_setup_call
     assert x_setup_call["access_mode"] == "agent_owned_identity", x_setup_call
     assert x_setup_call["requires_user_approval"] is True, x_setup_call
-    assert x_account_setup["projection"]["first_screen"]["waiting_on"] == "user", x_account_setup
+    assert x_account_setup["projection"]["first_screen"]["waiting_on"] == "user", (
+        x_account_setup
+    )
     assert_public_safe(x_account_setup)
 
     invalid_account_setup = build_single_value_connector_plan(
@@ -490,7 +514,9 @@ def main() -> int:
     assert rejected.returncode == 1, rejected
     rejected_payload = json.loads(rejected.stdout)
     assert rejected_payload["ok"] is False, rejected_payload
-    assert rejected_payload["schema_version"] == "github_public_channel_probe_error_v0", rejected_payload
+    assert (
+        rejected_payload["schema_version"] == "github_public_channel_probe_error_v0"
+    ), rejected_payload
     assert "query or fragment" in rejected_payload["error"], rejected_payload
 
     rejected_reply = run_cli(
@@ -509,7 +535,10 @@ def main() -> int:
     assert rejected_reply.returncode == 1, rejected_reply
     rejected_reply_payload = json.loads(rejected_reply.stdout)
     assert rejected_reply_payload["ok"] is False, rejected_reply_payload
-    assert rejected_reply_payload["schema_version"] == "github_public_reply_monitor_error_v0"
+    assert (
+        rejected_reply_payload["schema_version"]
+        == "github_public_reply_monitor_error_v0"
+    )
 
     rejected_markdown = run_cli(
         [
@@ -521,8 +550,12 @@ def main() -> int:
         check=False,
     )
     assert rejected_markdown.returncode == 1, rejected_markdown
-    assert "LoopX GitHub Public Channel Probe" in rejected_markdown.stdout, rejected_markdown.stdout
-    assert "LoopX Value Connector Plan" not in rejected_markdown.stdout, rejected_markdown.stdout
+    assert "LoopX GitHub Public Channel Probe" in rejected_markdown.stdout, (
+        rejected_markdown.stdout
+    )
+    assert "LoopX Value Connector Plan" not in rejected_markdown.stdout, (
+        rejected_markdown.stdout
+    )
 
     markdown = run_cli(
         [
@@ -537,10 +570,13 @@ def main() -> int:
     assert_public_safe(markdown)
 
     source_map_markdown = run_cli(["value-connectors", "source-map"]).stdout
-    assert "LoopX Value Connector Source Map" in source_map_markdown, source_map_markdown
-    assert "agent_can_start_without_docs: `True`" in source_map_markdown, source_map_markdown
+    assert "LoopX Value Connector Source Map" in source_map_markdown, (
+        source_map_markdown
+    )
+    assert "agent_can_start_without_docs: `True`" in source_map_markdown, (
+        source_map_markdown
+    )
     assert "`github_public_channel`" in source_map_markdown, source_map_markdown
-    assert "`finance_market_snapshot`" in source_map_markdown, source_map_markdown
     assert_public_safe(source_map_markdown)
 
     reply_markdown = run_cli(

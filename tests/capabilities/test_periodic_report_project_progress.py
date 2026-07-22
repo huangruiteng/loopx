@@ -16,8 +16,12 @@ from loopx.presentation.renderers.periodic_report_markdown import (
 )
 
 
-def _projection(*, extra_items: list[dict[str, object]] | None = None) -> dict[str, object]:
-    return {
+def _projection(
+    *,
+    extra_items: list[dict[str, object]] | None = None,
+    language: str | None = None,
+) -> dict[str, object]:
+    projection: dict[str, object] = {
         "schema_version": "periodic_report_project_progress_projection_v0",
         "goal_id": "example-project",
         "observed_at": "2026-07-20T08:00:00Z",
@@ -50,6 +54,9 @@ def _projection(*, extra_items: list[dict[str, object]] | None = None) -> dict[s
             *(extra_items or []),
         ],
     }
+    if language is not None:
+        projection["language"] = language
+    return projection
 
 
 def test_project_progress_source_builds_domain_neutral_report_hierarchy() -> None:
@@ -101,6 +108,58 @@ def test_project_progress_source_keeps_runtime_supporting_and_caps_primary_items
     with pytest.raises(ValueError, match="summarize to at most 8"):
         build_project_progress_periodic_report_source(
             _projection(extra_items=extras)
+        )
+
+
+def test_project_progress_source_localizes_its_semantic_sections() -> None:
+    runtime = {
+        "item_id": "runtime",
+        "title": "验证回执",
+        "summary": "聚焦检查已通过。",
+        "content_kind": "runtime",
+        "visibility": "supporting",
+    }
+    english = build_project_progress_periodic_report_source(_projection())
+    chinese = build_project_progress_periodic_report_source(
+        _projection(language="zh-CN", extra_items=[runtime])
+    )
+
+    assert [section["title"] for section in chinese["sections"]] == [
+        "进展与成果",
+        "能力演进",
+        "下一步",
+        "支撑证据",
+    ]
+    assert chinese["snapshot_ref"] != english["snapshot_ref"]
+
+    document = build_periodic_report_document(
+        title="项目周报",
+        generated_at="2026-07-20T08:05:00Z",
+        period_window={
+            "start_at": "2026-07-13T00:00:00Z",
+            "end_at": "2026-07-20T00:00:00Z",
+        },
+        profile={"profile_id": "weekly_progress", "profile_version": "v1"},
+        sources=[chinese],
+        editorial={"language": "zh-CN"},
+    )
+    artifacts = [
+        render_periodic_report_markdown(document),
+        render_periodic_report_html(document),
+    ]
+    for artifact in artifacts:
+        assert "进展与成果" in artifact["content"]
+        assert "能力演进" in artifact["content"]
+        assert "支撑证据" in artifact["content"]
+        assert "Progress and outcomes" not in artifact["content"]
+        assert "Capability evolution" not in artifact["content"]
+        assert "Supporting evidence" not in artifact["content"]
+
+
+def test_project_progress_source_rejects_invalid_language() -> None:
+    with pytest.raises(ValueError, match="BCP-47-like"):
+        build_project_progress_periodic_report_source(
+            _projection(language="zh_CN")
         )
 
 

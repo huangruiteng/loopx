@@ -22,10 +22,13 @@ for anchor in (
     "## Placement Decision For Agents",
     "What user outcome and caller-visible contract is being added or changed?",
     "Does the implementation need independent installation",
-    "Some work belongs on both axes.",
+    "An extension-owned command and packet contract may remain a",
     "`value-connectors` is an existing compatibility CLI",
-    "Migrate each profile to",
+    "a standalone extension such as `loopx-finance-value-discovery`",
+    "loopx extension run <extension-id>",
+    "Direct provider binaries are implementation and debugging surfaces",
     "capability_id: <existing-or-new-contract>",
+    "Use `capability_id: none` for a standalone extension.",
     "reason: <why the nearest existing owner is or is not sufficient>",
 ):
     assert anchor in GUIDE, anchor

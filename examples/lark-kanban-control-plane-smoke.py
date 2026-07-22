@@ -299,6 +299,17 @@ def run_cli(*extra_args: str) -> dict[str, object]:
     return json.loads(result.stdout)
 
 
+def ready_field_list_result() -> dict[str, object]:
+    return {
+        "returncode": 0,
+        "stdout": json.dumps(
+            {"ok": True, "data": {"fields": lark_kanban_schema_payload()["fields"]}}
+        ),
+        "stderr": "",
+        "timed_out": False,
+    }
+
+
 def main() -> int:
     credential_boundary_smoke()
     global existing_setup_view_list_count
@@ -642,6 +653,8 @@ def main() -> int:
 
         def todo_upsert_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
             todo_sync_calls.append(args)
+            if "+field-list" in args:
+                return ready_field_list_result()
             if "+record-list" in args:
                 return {
                     "returncode": 0,
@@ -938,6 +951,8 @@ def main() -> int:
 
         def projection_upsert_runner(args: list[str], cwd: Path | None, timeout: float | None) -> dict[str, object]:
             projection_calls.append(args)
+            if "+field-list" in args:
+                return ready_field_list_result()
             if "+record-list" in args:
                 return {
                     "returncode": 0,

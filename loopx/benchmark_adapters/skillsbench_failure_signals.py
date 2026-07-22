@@ -107,10 +107,17 @@ _FAILURE_REASON_PATTERNS = (
     ("http_not_found", r"(?:http[^\n]*\s404\b|404 not found)"),
     ("http_server_error", r"(?:http[^\n]*\s5\d\d\b|5\d\d server error)"),
     ("apt_fetch_failed", r"failed to fetch"),
+    ("apt_no_pubkey", r"\bno_pubkey\b"),
+    (
+        "apt_invalid_signature",
+        r"invalid signature|at least one invalid signature was encountered",
+    ),
+    ("apt_unsigned_repository", r"repository(?:\s+\S+)?\s+is not signed"),
+    ("apt_clearsigned_invalid", r"clearsigned file isn.t valid"),
     (
         "apt_signature_or_gpg",
         r"gpg error|no_pubkey|signatures? couldn.t be verified|"
-        r"repository .* is not signed|clearsigned file isn.t valid",
+        r"repository(?:\s+\S+)?\s+is not signed|clearsigned file isn.t valid",
     ),
     (
         "apt_hash_mismatch",
@@ -178,6 +185,10 @@ _DETERMINISTIC_FAILURE_REASONS = {
 }
 
 _APT_FAILURE_SUBTYPE_REASON_PRIORITY = (
+    ("apt_no_pubkey", "missing_public_key"),
+    ("apt_invalid_signature", "invalid_signature"),
+    ("apt_unsigned_repository", "unsigned_repository"),
+    ("apt_clearsigned_invalid", "clearsigned_invalid"),
     ("apt_signature_or_gpg", "signature_or_gpg"),
     ("apt_hash_mismatch", "hash_or_size_mismatch"),
     ("apt_release_expired", "release_metadata"),
@@ -450,6 +461,52 @@ def skillsbench_pip_bootstrap_failure_evidence(error_text: str) -> bool:
     )
 
 
+def skillsbench_pip_bootstrap_failure_subtype(error_text: str) -> str:
+    """Reduce a pip bootstrap failure to a bounded public-safe subtype."""
+
+    text = error_text.lower()
+    if not skillsbench_pip_bootstrap_failure_evidence(text):
+        return "none"
+    if (
+        "no matching distribution found" in text
+        or "could not find a version that satisfies the requirement" in text
+    ):
+        return "no_matching_distribution"
+    if (
+        "failed building wheel" in text
+        or "failed to build installable wheels" in text
+    ):
+        return "wheel_build_failed"
+    if "pip subprocess to install build dependencies did not run successfully" in text:
+        return "build_dependency_subprocess_failed"
+    if "could not install packages due to an oserror" in text:
+        return "package_install_os_error"
+
+    package_hosts = (
+        "files.pythonhosted.org",
+        "pypi.org",
+        "pypi.tuna.tsinghua.edu.cn",
+    )
+    network_failures = (
+        "read timed out",
+        "connection timed out",
+        "connection reset",
+        "temporary failure in name resolution",
+        "max retries exceeded",
+    )
+    if any(
+        any(host in line for host in package_hosts)
+        and any(marker in line for marker in network_failures)
+        for line in text.splitlines()
+    ):
+        return "package_index_network_failure"
+    if "subprocess-exited-with-error" in text:
+        return "package_build_subprocess_failed"
+    if "pip._vendor." in text:
+        return "pip_internal_error"
+    return "command_failed_unclassified"
+
+
 def skillsbench_error_len_bucket(text: str) -> str:
     size = len(text)
     if size <= 0:
@@ -531,6 +588,7 @@ def skillsbench_runner_error_fingerprint(error_text: str) -> dict[str, object]:
         "error_len_bucket": skillsbench_error_len_bucket(text),
         "line_count": len(text.splitlines()) if text else 0,
         "matched_patterns": matched,
+        "pip_failure_subtype": skillsbench_pip_bootstrap_failure_subtype(text),
         "failure_line_dependency_classes": skillsbench_failure_dependency_classes(text),
         **terminal_signals,
         "has_host_paths": bool(re.search(r"/Users/|/private/|/var/folders/", text)),

@@ -87,6 +87,51 @@ def main() -> None:
     assert user_item["recommended_action"] == "[P1] Ask the owner for review.", user_item
     assert user_item["lifecycle_phase"] == "fixture_phase", user_item
 
+    nonblocking_action = {
+        "open_count": 1,
+        "first_open_items": [
+            {
+                "text": "[P1] Review the experiment integration PR.",
+                "task_class": "user_action",
+                "bound_agent": "codex-main-control",
+            }
+        ],
+    }
+    nonblocking_with_agent = project(
+        {
+            "user_todos": nonblocking_action,
+            "agent_todos": {
+                "open_count": 1,
+                "first_open_items": [
+                    {
+                        "text": "[P1] Continue the next experiment feature.",
+                        "task_class": "advancement_task",
+                    }
+                ],
+            },
+        }
+    )
+    assert nonblocking_with_agent is not None, nonblocking_with_agent
+    assert nonblocking_with_agent["status"] == "active_state_agent_todo", (
+        nonblocking_with_agent
+    )
+
+    nonblocking_empty_frontier = project(
+        {
+            "user_todos": nonblocking_action,
+            "state_projection_gap": {
+                "recommended_action": "derive the next concrete agent todo",
+            },
+        }
+    )
+    assert nonblocking_empty_frontier is not None, nonblocking_empty_frontier
+    assert nonblocking_empty_frontier["status"] == "state_projection_gap", (
+        nonblocking_empty_frontier
+    )
+    assert nonblocking_empty_frontier["waiting_on"] == "codex", (
+        nonblocking_empty_frontier
+    )
+
     agent_item = project(
         {
             "active_state_next_action": "fallback agent next action",

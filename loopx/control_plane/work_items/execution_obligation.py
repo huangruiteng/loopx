@@ -78,18 +78,34 @@ def build_execution_obligation(
             if isinstance(heartbeat_recommendation.get("replan_obligation"), dict)
             else {}
         )
-        return {
+        agent_todo_writeback_required = (
+            replan_obligation.get("agent_todo_writeback_required") is True
+        )
+        obligation = {
             "must_attempt_work": True,
             "kind": "autonomous_replan_required",
-            "minimum": "one_bounded_replan_segment",
+            "minimum": (
+                "one_bounded_replan_with_agent_todo_writeback"
+                if agent_todo_writeback_required
+                else "one_bounded_replan_segment"
+            ),
             "notify_is_execution_gate": False,
             "stall_threshold": replan_obligation.get("stall_threshold"),
-            "contract_obligation": "apply autonomous_replan_obligation before monitor-only work",
+            "contract_obligation": (
+                "apply autonomous_replan_obligation and create a concrete runnable "
+                "agent todo; explicit terminal no-follow-up is allowed only with "
+                "closure evidence"
+                if agent_todo_writeback_required
+                else "apply autonomous_replan_obligation before monitor-only work"
+            ),
             "reason": (
                 "autonomous_replan_obligation is a machine execution contract; "
                 "quiet no-op is not allowed until the replan slice is validated or blocked"
             ),
         }
+        if agent_todo_writeback_required:
+            obligation["contract"] = "autonomous_replan_agent_todo_writeback"
+        return obligation
     if should_run and recommended_mode == successor_replan_mode:
         return {
             "must_attempt_work": True,

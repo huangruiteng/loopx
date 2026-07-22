@@ -374,6 +374,37 @@ loopx todo complete \
   --next-action-kind run_eval
 ```
 
+Human review is not automatically an execution gate. When a validated feature
+PR can wait for review while independent work continues, atomically derive a
+bound reminder and a runnable successor:
+
+```bash
+loopx todo complete \
+  --goal-id <goal-id> \
+  --todo-id <todo_id> \
+  --claimed-by <registered-agent> \
+  --agent-id <registered-agent> \
+  --evidence "<validated PR URL and checks>" \
+  --next-user-todo "Review the validated feature PR." \
+  --next-user-task-class user_action \
+  --next-agent-todo "Continue the next independent feature slice." \
+  --next-claimed-by <registered-agent>
+```
+
+`--next-user-todo` defaults to `user_gate` for backward compatibility. Select
+`user_action` explicitly for a reminder that stays visible without setting
+`blocks_agent`. Add a separate `continuous_monitor` todo when the PR lifecycle
+needs periodic readback. Reserve `user_gate` for an exact owner/controller
+authority boundary such as merging an aggregate branch into `main`, release,
+benchmark launch, credentials, or protected production action.
+
+For an experimental feature stack, a stable integration branch may collect
+small feature PRs while review reminders remain open. Each feature still uses a
+dedicated worktree and branch; its PR targets the integration branch. The
+aggregate integration-branch PR to `main` is the review/merge boundary. This
+keeps review latency from suspending unrelated work without weakening the final
+delivery gate.
+
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
 

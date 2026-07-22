@@ -47,16 +47,6 @@ SCHEDULER_HINT_THIN_RULE = (
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."
 )
-EXPLORE_GRAPH_DELIVERY_RULE = (
-    "Graph-on: material refresh must sync configured sinks and verify "
-    "row/result-id readback before final delivery; unsatisfied -> retry or "
-    "blocker/successor. Explore Harness stays independent."
-)
-EXPLORE_GRAPH_DELIVERY_THIN_RULE = (
-    "Graph-on: sync sinks; verify row/result-id readback before delivery; "
-    "else retry/blocker/successor. "
-    "Explore Harness independent."
-)
 INTERFACE_BUDGET_CHARS = {
     "full": 12_000,
     "compact": 6_200,
@@ -215,10 +205,10 @@ def render_peer_agent_scope_instruction(
         "--claimed-by <agent_id> --agent-id <agent_id>"
     )
     peer_rule = (
-        "You are an equal peer agent. Claim or lease in-scope work before delivery; "
-        "use an independent worktree for repository writes; follow todo continuation "
-        "policy for direct completion, same-agent continuation, or independent review. "
-        "Task-scoped coordination does not grant durable authority over other agents."
+        "You are an equal peer agent: claim or lease in-scope work; use an independent worktree "
+        "for repository writes; follow todo continuation policy. PR review is "
+        "user_action with a runnable successor; gate only exact merge/release/launch "
+        "authority. Task-scoped coordination grants no authority over other agents."
     )
     if thin:
         return (
@@ -718,7 +708,6 @@ If the result says `should_run=true`:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
-   {EXPLORE_GRAPH_DELIVERY_RULE}
 8. After validation and writeback complete, append exactly one spend event
    before any state-only refresh that might close the active delivery lane:
 
@@ -810,8 +799,6 @@ validate/writeback/todos; successor todo or no-follow-up rationale for
 non-trivial feature slices; spend once; refresh with explicit delivery
 scale/outcome for progress artifacts. Stop on private, credentials, destructive
 git, prod, or review rules.
-{EXPLORE_GRAPH_DELIVERY_RULE}
-
 Spend exactly once only after completed delivery or safe-bypass work:
 `{quota_spend_command}`
 
@@ -913,7 +900,6 @@ If `should_run=true`:
    use `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate|user_action`
    for owner todos and `--role agent` for agent todos, not prose. Nontrivial done ->
    successor todo or no-follow-up rationale.
-   {EXPLORE_GRAPH_DELIVERY_RULE}
 9. After delivery/safe-bypass, spend once before refresh:
 
 ```bash
@@ -987,7 +973,6 @@ Quiet only if DONT_NOTIFY+false/0.
 Batch/no-op; spend post-writeback.
 Plans/done->todo/rationale; 2 stalls->self-repair.
 `lark_event_inbox`: reply_due; drain_command/reply-readback/ACK.
-{EXPLORE_GRAPH_DELIVERY_THIN_RULE}
 
 P0 blocked: safe P1/P2; monitor-only quiet/no-spend.
 

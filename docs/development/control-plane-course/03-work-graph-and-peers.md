@@ -1,6 +1,7 @@
 # 第 3 讲：Todo 工作图与 Peer 协作
 
-> 核心问题：LoopX 没有永久 leader，多个 peer 如何知道“谁做什么、什么时候能做、做完交给谁”？
+> **本讲结论：** Todo 定义工作生命周期；claim、lease、capability、workspace 和 gate 是五种
+> 不同约束；handoff 传递可恢复 frontier，不创造永久 leader。
 
 建议时长：100 分钟。讲解 60 分钟、状态机推演 20 分钟、实验 20 分钟。
 
@@ -14,6 +15,49 @@
 4. 使用 successor、supersede、continuation policy 和 no-followup 关闭工作图。
 5. 解释为什么当前运行时只有 equal peer，没有 primary/side 概念。
 6. 区分普通 claim、显式 lifecycle authority 和 bounded material handoff。
+
+## 本讲技术契约
+
+| 边界 | LoopX 中的答案 |
+| --- | --- |
+| State owner | Todo lifecycle contract 拥有 work item、gate、successor 与 closure |
+| Turn snapshot | 每个 peer 读取按 agent、capability、workspace 和 gate 过滤后的 frontier |
+| Effect owner | 获得合法 route 的 peer 在允许的 workspace 执行 bounded work |
+| Commit receipt | Completion 必须绑定 evidence，并产生 successor、handoff 或 `no_followup` |
+| Recovery | Handoff 保存 material frontier 和 lineage，不复制完整 transcript |
+
+## 从两个 Showcase 看同一类工作图
+
+Issue-Fix 和 Auto Research 的 todo 文本不同，但都不是线性 checklist：
+
+```text
+Issue-Fix
+  feasibility
+    -> fix_pr
+    -> pr_monitor
+         -> ci_failure_replan | review_changes_replan
+         -> branch_or_merge_blocker_replan | no_followup
+
+Auto Research
+  research_contract
+    -> hypothesis
+    -> dev_experiment
+         -> holdout | retry | retirement | promotion_gate
+```
+
+图中的箭头不是模型随口建议的“下一步”，而是带 lineage 的 successor transition。两条图
+都需要回答相同问题：
+
+| 问题 | Issue-Fix 示例 | Auto Research 示例 |
+| --- | --- | --- |
+| 谁可领取？ | 具备 repo/write scope 的 peer | 具备对应 role/capability 的 peer |
+| 什么只是等待？ | checks pending 的 PR monitor | 等待新证据或未到期 evaluator poll |
+| 什么会派生 successor？ | CI failure、changes requested、branch/merge blocker | dev lift、negative evidence、retryable attempt |
+| 什么需要 gate？ | 发布、权限或风险决定 | promotion、protected evaluator 或边界改变 |
+| 什么才算终局？ | merged/closed 且 no-followup 成立 | acceptance 满足且没有 runnable/retry frontier |
+
+有了这张图，后面的 claim、lease、gate 和 handoff 就不再是五组独立名词，而是筛选和推进
+同一个 frontier 的不同约束。
 
 ## 从 Todo 列表升级为工作图
 

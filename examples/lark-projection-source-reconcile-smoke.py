@@ -15,6 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from loopx.extensions.lark.presentation.kanban import (  # noqa: E402
     LarkKanbanConfig,
+    lark_kanban_schema_payload,
     read_lark_kanban_local_config,
     sync_loopx_projection_to_lark_kanban,
     write_lark_kanban_local_config,
@@ -58,6 +59,20 @@ class FixtureRunner:
         self, args: list[str], cwd: Path | None, timeout: float | None
     ) -> dict[str, object]:
         self.calls.append(args)
+        if "+field-list" in args:
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "ok": True,
+                        "data": {
+                            "fields": lark_kanban_schema_payload()["fields"],
+                        },
+                    }
+                ),
+                "stderr": "",
+                "timed_out": False,
+            }
         if "+record-list" in args:
             rows = [[GOAL_ID, todo_id] for todo_id, _ in self.remote]
             return {
@@ -155,7 +170,18 @@ def main() -> int:
         assert normal["ok"] is True, normal
         assert normal["source_reconcile"]["requested"] is False, normal
         assert not any("+record-delete" in call for call in runner.calls), runner.calls
-        assert read_lark_kanban_local_config(config_path)["todo_records"] == local_map
+        repaired_local_map = {
+            key: record_id
+            for key, record_id in local_map.items()
+            if key != f"{GOAL_ID}:{STALE_ID}"
+        }
+        assert read_lark_kanban_local_config(config_path)["todo_records"] == (
+            repaired_local_map
+        )
+
+        local = read_lark_kanban_local_config(config_path)
+        local["todo_records"] = local_map
+        write_lark_kanban_local_config(config_path, local)
 
         base_args = {
             "config": config,
@@ -206,12 +232,11 @@ def main() -> int:
             "recOrphan",
         ], receipt
         assert receipt["remote_duplicate_key_count"] == 1, receipt
-        assert set(receipt["local_mapping_keys_to_remove"]) == {
-            f"{GOAL_ID}:{ORPHAN_ID}",
-            f"{GOAL_ID}:{STALE_ID}",
-        }, receipt
+        assert receipt["local_mapping_keys_to_remove"] == [
+            f"{GOAL_ID}:{ORPHAN_ID}"
+        ], receipt
         assert receipt["remote_delete_count"] == 2, receipt
-        assert receipt["local_mapping_delete_count"] == 2, receipt
+        assert receipt["local_mapping_delete_count"] == 1, receipt
         assert not any("+record-delete" in call for call in runner.calls), runner.calls
         assert read_lark_kanban_local_config(config_path)["todo_records"] == local_map
 

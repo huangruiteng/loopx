@@ -39,6 +39,7 @@ from .record_io import (
     build_record_delete_command,
     lark_record_rows,
     record_list_is_complete,
+    todo_record_list_is_authoritative,
     todo_record_entries,
 )
 from .sync_receipt import (
@@ -1695,6 +1696,83 @@ def _view_configuration_commands(
     return issue_fix_surface.view_configuration_commands(cli_bin=cli_bin, identity=identity, base_token=base_token, table_id=table_id, view_ids=view_ids, worker_view_name=DEFAULT_STATUS_QUEUE_VIEW, todo_statuses=[STATUS_TODO, STATUS_CLAIMED], user_gate_status=STATUS_USER_GATE, operator_card_fields=OPERATOR_CARD_FIELDS)
 
 
+def _lark_kanban_schema_check(parsed: Any) -> dict[str, Any]:
+    definitions = lark_kanban_field_definitions()
+    missing = issue_fix_surface.missing_field_definitions(parsed, definitions)
+    migrations = issue_fix_surface.field_definition_migrations(parsed, definitions)
+    missing_names = [str(item.get("name") or "") for item in missing]
+    incompatible_names = [str(item.get("name") or "") for item in migrations]
+    migration_required = bool(missing_names or incompatible_names)
+    return {
+        "ok": not migration_required,
+        "status": "stale" if migration_required else "ready",
+        "expected_field_count": len(definitions),
+        "observed_field_count": len(issue_fix_surface.extract_field_names(parsed)),
+        "missing_fields": missing_names,
+        "incompatible_fields": incompatible_names,
+        "migration_required": migration_required,
+        "remediation_command": (
+            "loopx lark-kanban setup --execute" if migration_required else None
+        ),
+    }
+
+
+def _inspect_lark_kanban_schema(
+    config: LarkKanbanConfig,
+    *,
+    commands: list[dict[str, Any]],
+    runner: CommandRunner,
+) -> dict[str, Any]:
+    field_list = _run_command(
+        [
+            config.cli_bin,
+            "base",
+            "+field-list",
+            "--as",
+            config.identity,
+            "--base-token",
+            config.base_token,
+            "--table-id",
+            config.table_id,
+            "--format",
+            "json",
+            "--limit",
+            "200",
+        ],
+        execute=True,
+        runner=runner,
+    )
+    commands.append(field_list)
+    if not field_list.get("ok"):
+        return {
+            "ok": False,
+            "status": "unavailable",
+            "migration_required": None,
+            "missing_fields": [],
+            "incompatible_fields": [],
+            "remediation_command": "loopx lark-kanban doctor --require-board",
+            "error": _command_error(field_list),
+        }
+    return _lark_kanban_schema_check(field_list.get("json"))
+
+
+def _schema_check_error(schema_check: dict[str, Any]) -> str:
+    if schema_check.get("status") == "stale":
+        missing = ", ".join(schema_check.get("missing_fields") or []) or "none"
+        incompatible = (
+            ", ".join(schema_check.get("incompatible_fields") or []) or "none"
+        )
+        return (
+            "Lark Kanban schema is stale "
+            f"(missing: {missing}; incompatible: {incompatible}); run "
+            f"`{schema_check['remediation_command']}` before sync"
+        )
+    return (
+        "Lark Kanban schema could not be inspected before sync: "
+        f"{schema_check.get('error') or 'unknown error'}"
+    )
+
+
 def lark_kanban_doctor(
     *,
     config_path: Path,
@@ -1706,6 +1784,7 @@ def lark_kanban_doctor(
 ) -> dict[str, Any]:
     commands: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
+    schema_check: dict[str, Any] | None = None
     preflight = _lark_kanban_preflight(cli_bin=cli_bin, identity=identity, runner=runner)
     commands.extend(preflight["commands"])
     for warning in preflight["warnings"]:
@@ -1754,6 +1833,19 @@ def lark_kanban_doctor(
             commands.append(result)
             if not result.get("ok"):
                 issues.append({"severity": "error", "message": _command_error(result)})
+        if not any(issue["severity"] == "error" for issue in issues):
+            schema_check = _inspect_lark_kanban_schema(
+                board_config,
+                commands=commands,
+                runner=runner,
+            )
+            if not schema_check.get("ok"):
+                issues.append(
+                    {
+                        "severity": "error",
+                        "message": _schema_check_error(schema_check),
+                    }
+                )
 
     return {
         "ok": not any(issue["severity"] == "error" for issue in issues),
@@ -1761,6 +1853,7 @@ def lark_kanban_doctor(
         "config_path": str(config_path),
         "identity": identity,
         "issues": issues,
+        "schema_check": schema_check,
         "config": config_payload,
         "commands": commands,
     }
@@ -1933,6 +2026,32 @@ def sync_loopx_projection_to_lark_kanban(
     )
 
     commands: list[dict[str, Any]] = []
+    schema_check: dict[str, Any] | None = None
+    if execute:
+        schema_check = _inspect_lark_kanban_schema(
+            config,
+            commands=commands,
+            runner=runner,
+        )
+        if not schema_check.get("ok"):
+            return {
+                "ok": False,
+                "schema_version": LARK_KANBAN_SYNC_PROJECTION_VERSION,
+                "execute": execute,
+                "goal_id": resolved_goal_id,
+                "agent_id": agent_id,
+                "source_id": resolved_source_id,
+                "sink_visibility": sink_visibility,
+                "public_safe_redaction": public_safe,
+                "projection_schema_version": projection.get("schema_version"),
+                "row_count": len(rows),
+                "records": [],
+                "commands": commands,
+                "warnings": warnings,
+                "config_path": str(config_path) if config_path else None,
+                "schema_check": schema_check,
+                "error": _schema_check_error(schema_check),
+            }
     local, record_map, remote_records, remote_list_complete = _load_lark_todo_record_map(
         config,
         config_path=config_path,
@@ -2040,6 +2159,7 @@ def sync_loopx_projection_to_lark_kanban(
         "sink_visibility": sink_visibility,
         "public_safe_redaction": public_safe,
         "projection_schema_version": projection.get("schema_version"),
+        "schema_check": schema_check,
         "row_count": len(rows),
         "source_reconcile": {
             **reconcile_plan,
@@ -2126,6 +2246,39 @@ def sync_loopx_todos_to_lark_kanban(
     ]
 
     commands: list[dict[str, Any]] = []
+    schema_check: dict[str, Any] | None = None
+    if execute:
+        schema_check = _inspect_lark_kanban_schema(
+            config,
+            commands=commands,
+            runner=runner,
+        )
+        if not schema_check.get("ok"):
+            return {
+                "ok": False,
+                "schema_version": "loopx_lark_kanban_sync_todos_v0",
+                "execute": execute,
+                "goal_id": goal_id,
+                "agent_id": agent_id,
+                "base_token": config.base_token,
+                "table_id": config.table_id,
+                "view_id": config.view_id,
+                "project": str(resolved_project) if resolved_project else None,
+                "state_file": str(resolved_state_file),
+                "todo_count": len(todos),
+                "issue_fix_outcome_count": len(outcome_rows),
+                "limit_policy": {
+                    "todo_rows": limit,
+                    "issue_fix_outcomes": "complete_source_projection",
+                },
+                "issue_fix_source_counts": outcome_projection.get("source_counts"),
+                "warnings": outcome_warnings,
+                "records": [],
+                "commands": commands,
+                "config_path": str(config_path) if config_path else None,
+                "schema_check": schema_check,
+                "error": _schema_check_error(schema_check),
+            }
     local, record_map, _, _ = _load_lark_todo_record_map(
         config,
         config_path=config_path,
@@ -2224,6 +2377,7 @@ def sync_loopx_todos_to_lark_kanban(
             "todo_rows": limit, "issue_fix_outcomes": "complete_source_projection",
         },
         "issue_fix_source_counts": outcome_projection.get("source_counts"),
+        "schema_check": schema_check,
         "warnings": outcome_warnings,
         "records": results,
         "commands": commands,
@@ -2253,10 +2407,17 @@ def _load_lark_todo_record_map(
     remote_records: list[dict[str, str]] = []
     remote_complete = False
     if list_result.get("ok"):
-        remote_records = todo_record_entries(list_result.get("json"))
+        parsed_records = list_result.get("json")
+        remote_records = todo_record_entries(parsed_records)
         remote_by_key: dict[str, list[str]] = {}
         for item in remote_records:
             remote_by_key.setdefault(item["key"], []).append(item["record_id"])
+        if todo_record_list_is_authoritative(parsed_records):
+            record_map = {
+                key: record_id
+                for key, record_id in record_map.items()
+                if record_id in remote_by_key.get(key, [])
+            }
         for key, record_ids in remote_by_key.items():
             preferred_record_id = record_map.get(key)
             record_map[key] = (
@@ -2264,7 +2425,7 @@ def _load_lark_todo_record_map(
                 if preferred_record_id in record_ids
                 else sorted(record_ids)[0]
             )
-        remote_complete = record_list_is_complete(list_result.get("json"))
+        remote_complete = record_list_is_complete(parsed_records)
     return local, record_map, remote_records, remote_complete
 
 

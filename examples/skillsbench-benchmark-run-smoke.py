@@ -5638,6 +5638,42 @@ def test_skillsbench_docker_task_staging_adds_app_skills_mount() -> None:
         assert f"!{DOCKER_APP_SKILLS_MOUNT_KEEP_FILE}" in staged_dockerignore
 
 
+def test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-debian-apt-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "debian-apt-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM debian:bookworm\n\n"
+            "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="debian-apt-probe",
+            sandbox="docker",
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["dockerfile_debian_apt_mirror_patch_required"] is True
+        assert metadata["dockerfile_debian_apt_mirror_patch_applied"] is True
+        assert metadata["dockerfile_debian_apt_mirror_host"] == (
+            dockerfile_runtime.DEFAULT_DEBIAN_APT_MIRROR_HOST
+        )
+        assert metadata["dockerfile_debian_apt_mirror_raw_url_recorded"] is False
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN in staged_text
+        assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" in staged_text
+
+
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-skill-stage-") as tmp:
         root = Path(tmp)
@@ -6031,6 +6067,11 @@ def test_skillsbench_docker_task_staging_patches_dockerfile_uv_bootstrap() -> No
         assert "python3 -m pip install ${loopx_pip_break_system_packages}" in (
             staged_text
         ), staged_text
+        assert (
+            f"--index-url {skillsbench_loop.DEFAULT_DOCKER_PIP_INDEX_URL}"
+            in staged_text
+        ), staged_text
+        assert "--extra-index-url" not in staged_text, staged_text
         assert "uv==${LOOPX_SKILLSBENCH_UV_VERSION}" in staged_text, staged_text
         assert "INSTALLER_DOWNLOAD_URL" in staged_text, staged_text
         assert skillsbench_loop._dockerfile_curl_retry_all_errors_arg() in staged_text, staged_text
@@ -6079,9 +6120,8 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert "PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL}" in staged_text, (
             staged_text
         )
-        assert "PIP_EXTRA_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_EXTRA_INDEX_URL}" in (
-            staged_text
-        ), staged_text
+        assert "PIP_EXTRA_INDEX_URL" not in staged_text, staged_text
+        assert "--extra-index-url" not in staged_text, staged_text
         assert f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL=https://{DEFAULT_DOCKER_PIP_INDEX_HOST}/simple" in (
             staged_text
         ), staged_text
@@ -6227,6 +6267,10 @@ def test_skillsbench_docker_task_staging_patches_verifier_uv_bootstrap_mirror() 
         assert "INSTALLER_DOWNLOAD_URL" in staged_verifier, staged_verifier
         assert "python3 -m pip install" in staged_verifier, staged_verifier
         assert "--break-system-packages" in staged_verifier, staged_verifier
+        assert f"--index-url {skillsbench_loop.DEFAULT_DOCKER_PIP_INDEX_URL}" in (
+            staged_verifier
+        ), staged_verifier
+        assert "--extra-index-url" not in staged_verifier, staged_verifier
         assert "uv==${loopx_uv_version}" in staged_verifier, staged_verifier
         assert "loopx_uv_installer_timeout_sec" in staged_verifier, staged_verifier
         assert "timeout \"${loopx_uv_installer_timeout_sec}\" sh -c" in (
@@ -14739,6 +14783,7 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_post_success_trace_recovers_score()
     test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
+    test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()

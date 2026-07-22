@@ -178,6 +178,15 @@ whose capabilities are known when the automation is installed.
 - when independent review is required, use `--next-action-kind review` with an
   ordinary `independent_handoff`; add `--next-excluded-agent <author>` only when
   the author must not reclaim the unclaimed successor;
+- when a validated pull request merely needs human review, keep the reminder
+  non-blocking with `--next-user-todo "<review action>"` and
+  `--next-user-task-class user_action`, then create the next runnable agent todo
+  in the same completion. Add a separate `continuous_monitor` for the PR
+  lifecycle when merge/readback must be observed. Do not turn review latency
+  into a gate;
+- use `user_gate` only for an exact authority boundary such as approval to merge
+  an aggregate branch into `main`, release, launch a benchmark, or perform a
+  protected action;
 - when work is blocked without a valid successor, keep the todo with the current
   peer and write a concrete blocker rather than inventing a hierarchy route.
 
@@ -455,9 +464,6 @@ If the result says should_run=true:
    a successor todo, or include a compact no-follow-up rationale.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
-   Graph-on: material refresh must sync configured sinks and verify
-   row/result-id readback before final delivery; unsatisfied means retry or a
-   concrete blocker/successor. Explore Harness stays independent.
 8. After validation and writeback complete, append exactly one spend event
    before any state-only refresh that might close the active delivery lane.
    For a minute-based heartbeat, spend one slot:

@@ -813,6 +813,21 @@ states. When a slice merges or validates, complete the current todo only after
 creating the next concrete agent/user todo for rollout, product-path audit,
 docs, telemetry, benchmark proof, or operator decision; if there is truly no
 follow-up, write a compact no-follow-up rationale in the completion note.
+An open feature PR that is waiting for ordinary human review does not by itself
+block further project work. Complete the feature slice with its validated PR
+evidence, derive the review reminder with `--next-user-todo ...` and
+`--next-user-task-class user_action`, and keep a runnable agent successor. Add
+a separate `continuous_monitor` for PR lifecycle readback. Use `user_gate` only
+for an exact authority boundary such as merging an aggregate experiment branch
+into `main`, release, benchmark launch, credentials, or protected production
+action. A stable experiment integration branch may collect feature PRs from
+isolated worktrees; keep the aggregate PR to `main` as the final review gate.
+When the next agent slice is not yet known, keep the bound `user_action`
+visible without converting it into a gate. If bounded no-progress evidence
+accumulates while the agent frontier is empty, follow
+`autonomous_replan_required`: create and claim a concrete runnable agent todo,
+then record `runnable_todo_set`. Only authoritative terminal-closure evidence
+may replace that todo writeback with explicit no-follow-up.
 `successor_todo_ids` records lineage only: linking successors does not suspend
 an open parent. When splitting a parent into explicit successors, decide whether
 the parent still has an independent immediate action. If it does not, explicitly

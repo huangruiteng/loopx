@@ -101,6 +101,18 @@ For each selected PR, read the PR evidence before writing the review. Prefer the
 packet's `evidence_commands`; equivalent targeted `gh pr view`, `gh pr diff
 --name-only`, and `gh pr diff --patch` commands are acceptable when needed.
 
+Treat `agent_response_contract.explanation_depth_contract` and each
+`review_template.sections[].agent_instruction` as the canonical detail policy.
+The skill owns routing and evidence discipline; it must not maintain a second,
+competing explanation checklist. For older packets without the depth contract,
+still explain context, architecture, implementation, validation, necessity, and
+risk for a reader who may not know the subsystem.
+
+Record the remote `headRefOid` before deep review and query it again before the
+verdict. If it changed, review the new head instead of carrying forward stale
+findings. Use a clean read-only worktree at the exact head when local execution
+or line-level evidence is useful, and name the reviewed short SHA in the answer.
+
 Do not fill the five-block review from title, labels, changed-file counts, or
 metadata risk hints alone. `metadata_risk_hint` is only for queue ordering.
 
@@ -109,7 +121,8 @@ first and say which PRs remain. Do not silently replace review with a summary.
 
 ## Output Contract
 
-For each reviewed PR, use exactly these five headings:
+Lead with a one-line evidence-based verdict and highest-severity reason. Then use
+exactly these five headings for each reviewed PR:
 
 1. `动机`
 2. `改动思路`
@@ -119,12 +132,10 @@ For each reviewed PR, use exactly these five headings:
 
 Use the packet's blank `review_template` as the required structure and minimum
 detail signal, not as fake/example content. Fill each section only after reading
-PR body, files, checks, and diff. Each of the five sections should usually be
-100-200 Chinese characters, with concrete evidence and judgment; go shorter
-only for genuinely tiny PRs and longer when risk or diff complexity requires it.
-Avoid title-only summaries such as "improves docs" or "low risk"; explain the
-background, implementation route, reviewer-relevant changes, main-branch risk,
-and final recommendation.
+PR body, files, checks, and diff. Follow the packet's per-section ranges and
+instructions as depth signals rather than padding. Avoid title-only summaries
+such as "improves docs" or "low risk", and distinguish intended behavior from
+what the implementation and validation actually prove.
 
 ## Failure And Fallback
 

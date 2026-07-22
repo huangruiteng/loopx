@@ -16,6 +16,12 @@ from loopx.control_plane.work_items.autonomous_replan_obligation import (  # noq
     build_autonomous_replan_obligation as direct_build_autonomous_replan_obligation,
     build_autonomous_replan_obligation_payload,
 )
+from loopx.control_plane.work_items.project_asset import (  # noqa: E402
+    attach_active_state_project_asset_fields,
+)
+from loopx.control_plane.goals.goal_frontier import (  # noqa: E402
+    select_autonomous_replan_obligation,
+)
 from loopx.status import (  # noqa: E402
     AUTONOMOUS_REPLAN_SECTION_HEADINGS,
     AUTONOMOUS_REPLAN_SCHEMA_VERSION,
@@ -25,6 +31,7 @@ from loopx.status import (  # noqa: E402
     active_state_section_entries,
     active_state_sections,
     autonomous_replan_obligation,
+    autonomous_replan_obligation_from_runs,
     build_autonomous_replan_obligation,
     public_safe_compact_text,
 )
@@ -136,8 +143,74 @@ def direct_state_obligation() -> dict[str, object] | None:
     )
 
 
+def assert_peer_latest_run_does_not_hide_agent_stall() -> None:
+    agent_id = "codex-quality-qualification"
+    peer_id = "codex-main-control"
+    target = {
+        "schema_version": "quota_monitor_target_v0",
+        "target_id": "blocked-successor",
+        "monitor_mode": "blocked_successor_wait_without_material_transition",
+        "effective_action": "monitor_quiet_skip",
+        "agent_id": agent_id,
+        "frontier_identity": "stable-frontier",
+    }
+    latest_runs = [
+        {
+            "classification": "peer_delivery",
+            "generated_at": "2026-07-21T00:03:00+00:00",
+            "agent_id": peer_id,
+            "delivery_outcome": "outcome_progress",
+        },
+        {
+            "classification": "quota_monitor_poll",
+            "generated_at": "2026-07-21T00:02:00+00:00",
+            "agent_id": agent_id,
+            "health_check": "blocked successor wait unchanged; bounded replan after two polls",
+            "monitor_target": target,
+        },
+        {
+            "classification": "quota_monitor_poll",
+            "generated_at": "2026-07-21T00:01:00+00:00",
+            "agent_id": agent_id,
+            "health_check": "blocked successor wait unchanged; bounded replan after two polls",
+            "monitor_target": target,
+        },
+    ]
+
+    obligation = autonomous_replan_obligation_from_runs(
+        latest_runs,
+        agent_todos=None,
+        agent_id=agent_id,
+    )
+    assert obligation is not None, obligation
+    assert obligation["agent_id"] == agent_id, obligation
+    assert obligation["frontier_identity"] == "stable-frontier", obligation
+
+    item = {
+        "agent_todos": AGENT_TODOS,
+        "project_asset": {},
+    }
+    attach_active_state_project_asset_fields(
+        item,
+        latest_runs=latest_runs,
+        autonomous_replan_obligation_from_runs=autonomous_replan_obligation_from_runs,
+    )
+    selected = select_autonomous_replan_obligation(
+        item,
+        item["project_asset"],
+        agent_id=agent_id,
+    )
+    assert selected == obligation, (selected, obligation)
+    assert select_autonomous_replan_obligation(
+        item,
+        item["project_asset"],
+        agent_id=peer_id,
+    ) is None
+
+
 def main() -> int:
     assert_payload_builder_contract()
+    assert_peer_latest_run_does_not_hide_agent_stall()
 
     regular = assert_parity(
         [
@@ -153,6 +226,34 @@ def main() -> int:
     assert regular["todo_actions"][0]["action"] == "split", regular
     assert regular["todo_actions"][1]["action"] == "add", regular
     assert regular["agent_id"] == "codex-control-plane", regular
+    assert "agent_todo_writeback_required" not in regular, regular
+
+    empty_frontier = direct_build_autonomous_replan_obligation(
+        [
+            {
+                "kind": "run_history_no_progress_repeat",
+                "section": "run_history",
+                "text": "two stalled turns left no runnable agent todo",
+            }
+        ],
+        agent_todos=None,
+        public_safe_compact_text=public_safe_compact_text,
+        autonomous_replan_schema_version=AUTONOMOUS_REPLAN_SCHEMA_VERSION,
+        autonomous_replan_stall_threshold=AUTONOMOUS_REPLAN_STALL_THRESHOLD,
+        dead_monitor_repeat_threshold=DEAD_MONITOR_REPEAT_THRESHOLD,
+        dead_monitor_repeat_schema_version=DEAD_MONITOR_REPEAT_SCHEMA_VERSION,
+    )
+    assert empty_frontier is not None, empty_frontier
+    assert empty_frontier["agent_todo_writeback_required"] is True, empty_frontier
+    assert empty_frontier["todo_actions"][0] == {
+        "action": "add",
+        "role": "agent",
+        "priority": "P1",
+        "text": (
+            "write a compact replan record naming trigger, selected next slice, "
+            "validation command, and stop condition"
+        ),
+    }, empty_frontier
 
     conflicting_agents = assert_parity(
         [

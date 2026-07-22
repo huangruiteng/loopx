@@ -160,9 +160,8 @@ def main() -> int:
         assert "automation_update" in task_body and "stop" in task_body, task_body
         assert "lark_event_inbox" in task_body, task_body
         assert "drain" in task_body and "ACK" in task_body, task_body
-        assert "Graph-on" in task_body and "sync" in task_body and "sinks" in task_body, task_body
-        assert "row/result-id readback before" in task_body and "delivery" in task_body, task_body
-        assert "Explore Harness" in task_body and "independent" in task_body, task_body
+        assert "Graph-on" not in task_body, task_body
+        assert "Generic Kanban" not in task_body, task_body
         if prompt_payload is not payload:
             assert "drain_command" in task_body, task_body
             assert "writeback" in task_body, task_body
@@ -320,10 +319,6 @@ def main() -> int:
         "Plans/done->todo/rationale; 2 stalls->self-repair",
         "`lark_event_inbox`: reply_due",
         "drain_command/reply-readback/ACK",
-        "Graph-on: sync sinks",
-        "row/result-id readback before delivery",
-        "retry/blocker/successor",
-        "Explore Harness independent",
         "P0 blocked: safe P1/P2; monitor-only quiet/no-spend",
         "No project branches",
         "Do not consume learning queue unless asked",
@@ -544,9 +539,6 @@ def main() -> int:
         "loopx todo add --goal-id <GOAL_ID> --role user --task-class user_action",
         "Use `--role agent` for project-agent follow-up work",
         "docs/project-agent-todo-contract.md",
-        "Graph-on: material refresh must sync configured sinks",
-        "row/result-id readback before final delivery",
-        "Explore Harness stays independent",
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id <GOAL_ID> --slots 1 --source heartbeat --execute',
         "loopx refresh-state --goal-id <GOAL_ID>",
         "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
@@ -981,6 +973,10 @@ def main() -> int:
                             "repo": str(project),
                             "state_file": f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md",
                             "adapter": {"kind": "generic_project_goal_v0", "status": "connected"},
+                            "explore_graph": {"enabled": True},
+                            "control_plane": {
+                                "lark_kanban": {"heartbeat_sync_enabled": True}
+                            },
                             "coordination": {
                                 "registered_agents": ["codex-main-control", "codex-side-bypass"],
                                 "agent_model": "peer_v1",
@@ -1057,6 +1053,9 @@ def main() -> int:
         )
         assert cli_registry_default_payload["active_state_source"].startswith("registry:"), cli_registry_default_payload
         assert cli_registry_default_payload["resolved_active_state"] == str(state_file), cli_registry_default_payload
+        assert "sink_activation" not in cli_registry_default_payload
+        assert "Explore Graph" not in cli_registry_default_payload["task_body"]
+        assert "Generic Kanban" not in cli_registry_default_payload["task_body"]
         assert cli_registry_default_payload["expanded_prompt_command"] == (
             "loopx heartbeat-prompt --full --goal-id public-heartbeat-goal "
             "--agent-id codex-main-control --agent-scope 'primary review and coordination'"

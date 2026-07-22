@@ -1,53 +1,62 @@
 #!/usr/bin/env python3
-"""Smoke-test the public finance connector probe packet."""
+"""Prove the retired Finance connector returns extension migration guidance."""
 
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKET = ROOT / "docs" / "capabilities" / "value-connectors" / "finance-market-snapshot-probe.md"
-README = ROOT / "docs" / "capabilities" / "value-connectors" / "README.md"
-PROTOCOL = ROOT / "docs" / "reference" / "protocols" / "value-connector-plan-v0.md"
+DOC = (
+    ROOT
+    / "docs"
+    / "capabilities"
+    / "value-connectors"
+    / "finance-market-snapshot-probe.md"
+)
+
+
+def _run(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-m", "loopx.cli", "--format", "json", *args],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+    )
 
 
 def main() -> int:
-    packet = PACKET.read_text(encoding="utf-8")
-    readme = README.read_text(encoding="utf-8")
-    protocol = PROTOCOL.read_text(encoding="utf-8")
+    cases = (
+        ("source-map", "--connector"),
+        ("install-check", "--connector"),
+        ("plan", "--connector-id"),
+    )
+    for command, selector in cases:
+        completed = _run(
+            "value-connectors",
+            command,
+            selector,
+            "finance_market_snapshot",
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert '"status": "migrated_to_extension"' in completed.stdout
+        assert (
+            '"replacement_extension_id": "loopx-finance-value-discovery"'
+            in completed.stdout
+        )
+        assert '"replacement_capability_id": null' in completed.stdout
+        assert '"legacy_connector_executes_finance": false' in completed.stdout
 
-    required = [
-        "finance_market_snapshot_probe_packet_v0",
-        "Eastmoney public quote endpoint",
-        "Futu OpenAPI / OpenD",
-        "AKShare",
-        "efinance",
-        "yfinance",
-        "py-futu-api",
-        "source_unverified",
-        "manual_review_required",
-        "non_investment_advice",
-        "raw_provider_payload_recorded",
-    ]
-    for text in required:
-        assert text in packet, text
-
-    forbidden_claims = [
-        "is an investment advice engine",
-        "emits price targets",
-        "guarantees returns",
-        '"trading_enabled": true',
-    ]
-    lower_packet = packet.lower()
-    for text in forbidden_claims:
-        assert text not in lower_packet, text
-
-    assert "raw provider payloads or raw paid-provider responses" in packet
-    assert "account login" in packet and "credentials" in packet
-    assert "trading, order placement" in packet
-    assert "no-credential probe packet" in readme
-    assert "finance_market_snapshot_probe_packet_v0" in protocol
+    doc = " ".join(DOC.read_text(encoding="utf-8").lower().split())
+    for marker in (
+        "value_connector_extension_migration_v0",
+        "provider source required",
+        "must not recreate the old connector",
+    ):
+        assert marker in doc, marker
 
     print("value-connectors-finance-probe-doc-smoke: ok")
     return 0

@@ -8,8 +8,15 @@ from pathlib import Path
 VENV_PIP_INVOCATION_MARKER = "# LOOPX_SKILLSBENCH_VENV_PIP_INVOCATION"
 UBUNTU_APT_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
 UBUNTU_APT_MIRROR_END = "# END LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
+DEBIAN_APT_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR"
+DEBIAN_APT_MIRROR_END = "# END LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR"
 DEFAULT_UBUNTU_APT_MIRROR_BASE = "https://repo.huaweicloud.com/ubuntu"
 DEFAULT_UBUNTU_APT_MIRROR_HOST = "repo.huaweicloud.com"
+DEFAULT_DEBIAN_APT_MIRROR_BASE = "https://mirrors.tuna.tsinghua.edu.cn/debian"
+DEFAULT_DEBIAN_SECURITY_MIRROR_BASE = (
+    "https://mirrors.tuna.tsinghua.edu.cn/debian-security"
+)
+DEFAULT_DEBIAN_APT_MIRROR_HOST = "mirrors.tuna.tsinghua.edu.cn"
 _BARE_PIP_INSTALL_RE = re.compile(
     r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)pip3?\s+install\b",
     re.IGNORECASE,
@@ -75,6 +82,23 @@ def needs_ubuntu_apt_mirror_patch(dockerfile: Path) -> bool:
     return _stage_has_apt_update(text.splitlines())
 
 
+def needs_debian_apt_mirror_patch(dockerfile: Path) -> bool:
+    """Return whether a Dockerfile stage runs apt update.
+
+    The staged patch rewrites only Debian source files present in the image, so
+    Ubuntu and other apt-based images are left unchanged by the injected block.
+    """
+
+    if not dockerfile.exists():
+        return False
+    text = _strip_marker_blocks(
+        dockerfile.read_text(encoding="utf-8", errors="replace"),
+        DEBIAN_APT_MIRROR_BEGIN,
+        DEBIAN_APT_MIRROR_END,
+    )
+    return _stage_has_apt_update(text.splitlines())
+
+
 def _ubuntu_apt_mirror_block() -> list[str]:
     return [
         UBUNTU_APT_MIRROR_BEGIN,
@@ -92,6 +116,31 @@ def _ubuntu_apt_mirror_block() -> list[str]:
         "      echo 'loopx Ubuntu apt mirror skipped: apt directory is not writable'; \\",
         "    fi",
         UBUNTU_APT_MIRROR_END,
+    ]
+
+
+def _debian_apt_mirror_block() -> list[str]:
+    return [
+        DEBIAN_APT_MIRROR_BEGIN,
+        f"ARG LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR={DEFAULT_DEBIAN_APT_MIRROR_BASE}",
+        (
+            "ARG LOOPX_SKILLSBENCH_DEBIAN_SECURITY_MIRROR="
+            f"{DEFAULT_DEBIAN_SECURITY_MIRROR_BASE}"
+        ),
+        "RUN set -eux; \\",
+        "    if [ -d /etc/apt ] && [ -w /etc/apt ]; then \\",
+        "      find /etc/apt -type f \\",
+        "        \\( -name '*.list' -o -name '*.sources' \\) \\",
+        "        -exec sed -i \\",
+        '          -e "s#https\\?://deb.debian.org/debian-security#${LOOPX_SKILLSBENCH_DEBIAN_SECURITY_MIRROR}#g" \\',
+        '          -e "s#https\\?://security.debian.org/debian-security#${LOOPX_SKILLSBENCH_DEBIAN_SECURITY_MIRROR}#g" \\',
+        '          -e "s#https\\?://deb.debian.org/debian#${LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR}#g" \\',
+        "          {} +; \\",
+        "      if [ -w /var/lib/apt/lists ]; then rm -rf /var/lib/apt/lists/*; fi; \\",
+        "    else \\",
+        "      echo 'loopx Debian apt mirror skipped: apt directory is not writable'; \\",
+        "    fi",
+        DEBIAN_APT_MIRROR_END,
     ]
 
 
@@ -129,6 +178,53 @@ def patch_ubuntu_apt_mirror(dockerfile: Path) -> bool:
         ):
             patched_lines.extend(
                 [stage_lines[0], "", *_ubuntu_apt_mirror_block(), "", *stage_lines[1:]]
+            )
+            applied = True
+        else:
+            patched_lines.extend(stage_lines)
+    if not applied:
+        return False
+    patched = "\n".join(patched_lines).rstrip() + "\n"
+    if patched == original:
+        return False
+    _write_text_atomic(dockerfile, patched)
+    return True
+
+
+def patch_debian_apt_mirror(dockerfile: Path) -> bool:
+    """Add a staged-only Debian apt mirror fallback to apt-using stages."""
+
+    if not dockerfile.exists():
+        return False
+    original = dockerfile.read_text(encoding="utf-8", errors="replace")
+    if DEBIAN_APT_MIRROR_BEGIN in original and DEBIAN_APT_MIRROR_END in original:
+        return False
+    text = _strip_marker_blocks(
+        original,
+        DEBIAN_APT_MIRROR_BEGIN,
+        DEBIAN_APT_MIRROR_END,
+    )
+    lines = text.splitlines()
+    stage_starts = _dockerfile_stage_starts(lines)
+    if not stage_starts:
+        return False
+
+    patched_lines = lines[: stage_starts[0]]
+    applied = False
+    for position, start in enumerate(stage_starts):
+        end = (
+            stage_starts[position + 1]
+            if position + 1 < len(stage_starts)
+            else len(lines)
+        )
+        stage_lines = lines[start:end]
+        from_line = stage_lines[0].strip().lower()
+        if _stage_has_apt_update(stage_lines) and not re.match(
+            r"from(?:\s+--platform=\S+)?\s+scratch(?:\s|$)",
+            from_line,
+        ):
+            patched_lines.extend(
+                [stage_lines[0], "", *_debian_apt_mirror_block(), "", *stage_lines[1:]]
             )
             applied = True
         else:

@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import ast
 from collections.abc import Callable
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -21,16 +23,21 @@ from loopx.capabilities.semantic_preference.cli import (
 from loopx.capabilities.semantic_preference.contract import provider_doctor, recall
 from loopx.cli import main
 from loopx.extensions.runtime import (
+    MAX_EXTENSION_REQUEST_BYTES,
+    MAX_EXTENSION_RESPONSE_BYTES,
     disable_extension,
     doctor_installed_extension,
     enable_extension,
+    execute_extension_runtime_binding,
     extension_status,
     install_extension,
     resolve_capability_binding,
     resolve_capability_extension_id,
     resolve_extension_activation,
     resolve_extension_binding,
+    resolve_extension_runtime_binding,
     rollback_extension,
+    run_standalone_extension,
 )
 from loopx.extensions.openviking_semantic_preference.provider import (
     register_openviking_provider_arguments,
@@ -89,6 +96,72 @@ protocol = "semantic_preference_provider_v0"
 """,
         encoding="utf-8",
     )
+    return path
+
+
+def _standalone_manifest(
+    path: Path,
+    *,
+    entrypoint: Path,
+    version: str = "1.0.0",
+    extension_id: str = "test-standalone-extension",
+    permission: str | None = None,
+) -> Path:
+    manifest = _manifest(
+        path,
+        entrypoint=entrypoint,
+        version=version,
+        extension_id=extension_id,
+    )
+    contents = manifest.read_text(encoding="utf-8").replace(
+        "\n[[implements]]\n"
+        'capability_id = "semantic-preference"\n'
+        'protocol = "semantic_preference_provider_v0"\n',
+        "\n",
+    )
+    if permission is None:
+        contents = contents.replace(
+            'permissions = ["semantic_preference.read"]',
+            "permissions = []",
+        ).replace(
+            'required_permissions = ["semantic_preference.read"]',
+            "required_permissions = []",
+        )
+    manifest.write_text(contents, encoding="utf-8")
+    return manifest
+
+
+def _overflow_provider(
+    path: Path,
+    *,
+    stream: str,
+    completion_marker: Path,
+) -> Path:
+    child_code = (
+        "from pathlib import Path; import time; "
+        "time.sleep(0.6); "
+        f"Path({str(completion_marker)!r}).write_text('completed', encoding='utf-8')"
+    )
+    path.write_text(
+        f"""#!{sys.executable}
+import json
+import subprocess
+import sys
+import time
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+
+json.load(sys.stdin)
+subprocess.Popen([sys.executable, "-c", {json.dumps(child_code)}])
+target = sys.{stream}.buffer
+target.write(b"x" * {MAX_EXTENSION_RESPONSE_BYTES + 1})
+target.flush()
+time.sleep(5)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
     return path
 
 
@@ -166,6 +239,348 @@ def test_python_module_runtime_uses_current_interpreter_without_console_script(
             "test-lark-module-extension",
             state_file=state_file,
         )
+
+
+def test_standalone_runtime_does_not_require_a_capability_contract(
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _standalone_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        permission="semantic_preference.read",
+    )
+    state_file = tmp_path / "extensions.json"
+
+    install_extension(manifest, state_file=state_file, execute=True)
+    binding = resolve_extension_runtime_binding(
+        "test-standalone-extension",
+        state_file=state_file,
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )
+
+    assert binding["extension_id"] == "test-standalone-extension"
+    assert binding["argv"] == [str(provider)]
+    with pytest.raises(ValueError, match="does not expose runtime protocol"):
+        resolve_extension_runtime_binding(
+            "test-standalone-extension",
+            state_file=state_file,
+            protocol="different_protocol_v0",
+            permission="semantic_preference.read",
+        )
+
+
+def test_extension_run_is_lifecycle_gated_and_returns_provider_packet(
+    tmp_path: Path,
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _standalone_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    request = {"schema_version": "test_extension_request_v0"}
+
+    preview = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request=request,
+    )
+    assert preview["status"] == "ready"
+    assert preview["executed"] is False
+
+    executed = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request=request,
+        execute=True,
+    )
+    assert executed["status"] == "succeeded"
+    assert executed["provider_result"]["schema_version"] == (
+        "semantic_preference_provider_response_v0"
+    )
+
+    disable_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        execute=True,
+    )
+    with pytest.raises(ValueError, match="is disabled"):
+        run_standalone_extension(
+            "test-standalone-extension",
+            state_file=state_file,
+            request=request,
+            execute=True,
+        )
+
+
+def test_capability_executor_reuses_bounded_json_runtime(tmp_path: Path) -> None:
+    provider = _provider(tmp_path / "provider")
+    binding = {
+        "schema_version": "loopx_extension_runtime_binding_v0",
+        "argv": [str(provider)],
+        "timeout_seconds": 30,
+    }
+
+    result = execute_extension_runtime_binding(
+        binding,
+        request={"schema_version": "test_extension_request_v0"},
+    )
+
+    assert result["schema_version"] == "semantic_preference_provider_response_v0"
+    with pytest.raises(ValueError, match="request exceeds"):
+        execute_extension_runtime_binding(
+            binding,
+            request={"payload": "x" * (MAX_EXTENSION_REQUEST_BYTES + 1)},
+        )
+
+
+def test_extension_run_rejects_capability_provider_bypass(tmp_path: Path) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    with pytest.raises(ValueError, match="through their capability or domain command"):
+        run_standalone_extension(
+            "test-semantic-extension",
+            state_file=state_file,
+            request={"schema_version": "test_extension_request_v0"},
+            execute=True,
+        )
+
+
+@pytest.mark.parametrize("permission", ["external_write", "openviking_context_write"])
+def test_extension_run_rejects_any_declared_permission_before_invocation(
+    tmp_path: Path,
+    permission: str,
+) -> None:
+    marker = tmp_path / "invoked"
+    provider = tmp_path / "provider"
+    provider.write_text(
+        f"""#!{sys.executable}
+from pathlib import Path
+import sys
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+Path({json.dumps(str(marker))}).write_text("invoked", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = _standalone_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        .replace("permissions = []", f"permissions = [{json.dumps(permission)}]")
+        .replace(
+            "required_permissions = []",
+            f"required_permissions = [{json.dumps(permission)}]",
+        ),
+        encoding="utf-8",
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    with pytest.raises(ValueError, match="standalone extension run grants no"):
+        run_standalone_extension(
+            "test-standalone-extension",
+            state_file=state_file,
+            request={"schema_version": "test_extension_request_v0"},
+            execute=True,
+        )
+
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    ("stream", "expected_status", "expected_failure"),
+    [
+        ("stdout", "invalid_provider_output", "response_too_large"),
+        ("stderr", "provider_failed", "stderr_too_large"),
+    ],
+)
+def test_extension_run_terminates_provider_when_output_limit_is_crossed(
+    tmp_path: Path,
+    stream: str,
+    expected_status: str,
+    expected_failure: str,
+) -> None:
+    marker = tmp_path / f"{stream}-completed"
+    provider = _overflow_provider(
+        tmp_path / f"{stream}-provider",
+        stream=stream,
+        completion_marker=marker,
+    )
+    manifest = _standalone_manifest(
+        tmp_path / f"{stream}-extension.toml",
+        entrypoint=provider,
+    )
+    state_file = tmp_path / f"{stream}-extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    receipt = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+
+    assert receipt["ok"] is False
+    assert receipt["status"] == expected_status
+    assert receipt["failure_kind"] == expected_failure
+    time.sleep(0.8)
+    assert not marker.exists()
+
+
+def test_extension_run_terminates_provider_on_timeout(tmp_path: Path) -> None:
+    marker = tmp_path / "timeout-completed"
+    provider = tmp_path / "timeout-provider"
+    child_code = (
+        "from pathlib import Path; import time; "
+        "time.sleep(1.2); "
+        f"Path({str(marker)!r}).write_text('completed', encoding='utf-8')"
+    )
+    provider.write_text(
+        f"""#!{sys.executable}
+import subprocess
+import sys
+import time
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+subprocess.Popen([sys.executable, "-c", {json.dumps(child_code)}])
+time.sleep(5)
+""",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = _standalone_manifest(
+        tmp_path / "timeout-extension.toml",
+        entrypoint=provider,
+    )
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "timeout_seconds = 5",
+            "timeout_seconds = 1",
+        ),
+        encoding="utf-8",
+    )
+    state_file = tmp_path / "timeout-extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    receipt = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+
+    assert receipt["ok"] is False
+    assert receipt["status"] == "provider_failed"
+    assert receipt["failure_kind"] == "timeout"
+    assert receipt["exit_code"] is None
+    time.sleep(0.5)
+    assert not marker.exists()
+
+
+def test_extension_run_cli_rejects_oversized_file_before_runtime_resolution(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    request = tmp_path / "oversized.json"
+    request.write_bytes(b"{" + b" " * MAX_EXTENSION_REQUEST_BYTES)
+
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "not-installed",
+                "--state-file",
+                str(tmp_path / "extensions.json"),
+                "--input-json",
+                str(request),
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "invalid_request"
+    assert "exceeds the 1000000-byte limit" in payload["error"]
+
+
+def test_extension_run_cli_rejects_oversized_stdin_before_runtime_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class BinaryStdin:
+        buffer = io.BytesIO(b"{" + b" " * MAX_EXTENSION_REQUEST_BYTES)
+
+    monkeypatch.setattr(sys, "stdin", BinaryStdin())
+
+    assert (
+        main(
+            [
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "not-installed",
+                "--state-file",
+                str(tmp_path / "extensions.json"),
+                "--input-json",
+                "-",
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "invalid_request"
+    assert "exceeds the 1000000-byte limit" in payload["error"]
+
+
+def test_extension_run_fails_closed_on_invalid_provider_output(
+    tmp_path: Path,
+) -> None:
+    provider = tmp_path / "provider"
+    provider.write_bytes(
+        f"#!{sys.executable}\n".encode()
+        + b"import sys\n"
+        + b"if '--doctor' in sys.argv:\n    raise SystemExit(0)\n"
+        + b"sys.stdout.buffer.write(b'\\xff')\n"
+    )
+    provider.chmod(0o755)
+    manifest = _standalone_manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+    )
+    state_file = tmp_path / "extensions.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+
+    receipt = run_standalone_extension(
+        "test-standalone-extension",
+        state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"},
+        execute=True,
+    )
+    assert receipt["ok"] is False
+    assert receipt["status"] == "invalid_provider_output"
+    assert receipt["failure_kind"] == "response_not_json_object"
 
 
 @pytest.mark.parametrize(
@@ -459,9 +874,10 @@ def test_binding_rejects_missing_or_replaced_entrypoint(
             encoding="utf-8",
         )
 
-    assert extension_status(state_file=state_file)["extensions"][0][
-        "doctor_verified"
-    ] is False
+    assert (
+        extension_status(state_file=state_file)["extensions"][0]["doctor_verified"]
+        is False
+    )
     with pytest.raises(ValueError, match="doctor readiness is stale"):
         resolve_extension_activation(
             "test-semantic-extension",
@@ -523,9 +939,7 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     assert capability_binding["argv"] == [str(provider)]
     catalog = build_capability_catalog_packet(extension_state_file=state_file)
     catalog_provider = next(
-        item
-        for item in catalog["providers"]
-        if item["id"] == "test-semantic-extension"
+        item for item in catalog["providers"] if item["id"] == "test-semantic-extension"
     )
     assert catalog_provider["active_revision"] == capability_binding["revision"]
     assert catalog_provider["ready"] is True
@@ -713,6 +1127,114 @@ def test_extension_cli_installs_preinstalled_runtime(
     enabled = json.loads(capsys.readouterr().out)
     assert enabled["enabled"] is True
     assert enabled["doctor"]["verified"] is True
+
+
+def test_extension_cli_rejects_implements_provider_direct_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    provider = _provider(tmp_path / "provider")
+    manifest = _manifest(
+        tmp_path / "extension.toml",
+        entrypoint=provider,
+        version="1.0.0",
+    )
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema_version": "test_extension_request_v0"}),
+        encoding="utf-8",
+    )
+    runtime_root = tmp_path / "runtime"
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "install",
+                "--manifest",
+                str(manifest),
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "test-semantic-extension",
+                "--input-json",
+                str(request_path),
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    error = json.loads(capsys.readouterr().out)
+    assert error["schema_version"] == "loopx_extension_error_v0"
+    assert error["status"] == "invalid_request"
+    assert "capability or domain command" in error["error"]
+
+
+def test_extension_cli_rejects_bundled_lark_provider_direct_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    request_path = tmp_path / "request.json"
+    request_path.write_text(
+        json.dumps({"schema_version": "lark_extension_request_v0"}),
+        encoding="utf-8",
+    )
+    runtime_root = tmp_path / "runtime"
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "install",
+                "--bundled",
+                "loopx-lark",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "--runtime-root",
+                str(runtime_root),
+                "--format",
+                "json",
+                "extension",
+                "run",
+                "loopx-lark",
+                "--input-json",
+                str(request_path),
+                "--execute",
+            ]
+        )
+        == 2
+    )
+    error = json.loads(capsys.readouterr().out)
+    assert error["schema_version"] == "loopx_extension_error_v0"
+    assert error["status"] == "invalid_request"
+    assert "capability or domain command" in error["error"]
 
 
 def test_core_does_not_import_openviking_provider_implementation() -> None:

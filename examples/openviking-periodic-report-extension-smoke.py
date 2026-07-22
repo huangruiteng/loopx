@@ -15,6 +15,9 @@ from loopx.capabilities.periodic_report import (  # noqa: E402
     build_periodic_report_document,
     build_periodic_report_source_result,
 )
+from loopx.capabilities.periodic_report.extension_envelope import (  # noqa: E402
+    build_openviking_archive_execution_envelope,
+)
 from loopx.extensions.openviking_periodic_report.provider import (  # noqa: E402
     REQUEST_SCHEMA,
     archive_request,
@@ -22,6 +25,9 @@ from loopx.extensions.openviking_periodic_report.provider import (  # noqa: E402
 from loopx.presentation.renderers.periodic_report_markdown import (  # noqa: E402
     render_periodic_report_markdown,
 )
+
+
+EXTENSION_REVISION = "smoke-revision-1"
 
 
 class FakeOpenViking:
@@ -99,7 +105,6 @@ def main() -> None:
     request = {
         "schema_version": REQUEST_SCHEMA,
         "activation_receipt": build_periodic_report_activation(profile),
-        "available_capabilities": ["openviking_context_write"],
         "artifact": artifact,
         "document": document,
         "context": {
@@ -110,9 +115,13 @@ def main() -> None:
         },
         "execute": True,
     }
+    request["execution_envelope"] = build_openviking_archive_execution_envelope(
+        request,
+        extension_revision=EXTENSION_REVISION,
+    )
     client = FakeOpenViking()
-    first = archive_request(request, client=client)
-    replay = archive_request(request, client=client)
+    first = archive_request(request, client=client, extension_revision=EXTENSION_REVISION)
+    replay = archive_request(request, client=client, extension_revision=EXTENSION_REVISION)
     assert first["status"] == replay["status"] == "sent"
     assert first["result_id"] == replay["result_id"]
     assert replay["write_status"] == "already_present"

@@ -17,6 +17,7 @@ from typing import Any
 from ...authority import validate_public_safe_text
 from ...runtime import validate_goal_id_path_segment
 from .executor import (
+    HOST_AGENT_VISION_JSON_MAX_CHARS,
     HOST_RESULT_TEXT_LIMITS,
     BuiltInHostError,
     LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION,
@@ -228,6 +229,14 @@ def codex_cli_result_schema() -> dict[str, Any]:
             "type": "string",
             "maxLength": text_limits["vision_unchanged_reason"],
         },
+        "path_delta_mode": {
+            "type": "string",
+            "enum": ["", "unchanged", "material_replan"],
+        },
+        "agent_vision_json": {
+            "type": "string",
+            "maxLength": HOST_AGENT_VISION_JSON_MAX_CHARS,
+        },
         "summary": {"type": "string", "maxLength": text_limits["summary"]},
     }
     return {
@@ -251,6 +260,8 @@ def _prompt(
             "Use the TurnEnvelope as the source of truth. Perform work only when its contract allows it.",
             "Do not write LoopX state, spend quota, or apply scheduler changes; the adapter owns those effects.",
             "Return only the schema-constrained result. For validated_progress, repair_required, or replan_required, fill every material field with public-safe evidence.",
+            "For those material results, set path_delta_mode=material_replan only when this Turn changes a prior assumption, route, scope, acceptance rule, or stops prior work; then provide a complete bounded agent vision packet with goal_path_delta_v0 in agent_vision_json and leave vision_unchanged_reason empty.",
+            "For routine continuation, retry, successor creation, or no-change replanning, set path_delta_mode=unchanged, leave agent_vision_json empty, and provide vision_unchanged_reason.",
             "For user_action_required or wait, leave material-only fields empty and explain the stop in summary.",
             'completed_phases must be exactly ["host_execute","typed_result"], and turn_key must match the request.',
             "Turn request:",
@@ -411,7 +422,7 @@ def _normalize_advisor_result(
     return normalized
 
 
-def _event_session_id(event: Mapping[str, Any]) -> str | None:
+def codex_cli_event_session_id(event: Mapping[str, Any]) -> str | None:
     if event.get("type") not in {"thread.started", "thread_started"}:
         return None
     for candidate in (
@@ -423,6 +434,20 @@ def _event_session_id(event: Mapping[str, Any]) -> str | None:
         session_id = _valid_session_id(candidate)
         if session_id:
             return session_id
+    return None
+
+
+def codex_cli_session_id_from_jsonl(value: str) -> str | None:
+    """Return the first opaque Codex thread id from an exec JSONL stream."""
+
+    for line in value.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, Mapping):
+            if session_id := codex_cli_event_session_id(event):
+                return session_id
     return None
 
 
@@ -540,7 +565,7 @@ def _run_codex_process(
             except json.JSONDecodeError:
                 continue
             if isinstance(event, dict):
-                candidate = _event_session_id(event)
+                candidate = codex_cli_event_session_id(event)
                 if candidate and not observed_session:
                     observed_session.append(candidate)
                 usage = event_usage(event)

@@ -155,43 +155,44 @@ absolute paths, private source bodies, or hidden CI artifacts.
   "pull_requests": [
     {
       "number": 773,
+      "head_oid": "0123456789abcdef0123456789abcdef01234567",
       "review_template": {
         "schema_version": "pr_review_five_block_template_v0",
         "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
         "sections": [
           {
             "label": "动机",
-            "word_hint": "100-200字",
+            "word_hint": "200-350字",
             "content": "",
-            "agent_instruction": "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题；说明触发背景和价值，不要只复述标题。"
+            "agent_instruction": "解释旧行为、具体痛点、受影响的用户或调用方、目标结果与必要性；说明不合并会继续付出什么代价，以及需求来自活跃调用方还是未来设想。"
           },
           {
             "label": "改动思路",
-            "word_hint": "100-200字",
+            "word_hint": "250-450字",
             "content": "",
-            "agent_instruction": "读关键 diff 后填写：作者采用什么路线解决问题，关键设计取舍是什么，不要只复述文件名。"
+            "agent_instruction": "解释所选架构、改动前后的控制流或数据流、所有权边界、关键不变量和替代方案取舍；为不熟悉子系统的读者给出一条正向运行链路。"
           },
           {
             "label": "具体改动",
-            "word_hint": "100-200字",
+            "word_hint": "300-600字",
             "content": "",
-            "agent_instruction": "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试；保留能支撑 review 决策的细节。"
+            "agent_instruction": "把关键文件和符号映射到行为，覆盖接口、配置或状态、兼容路径、测试与文档；说明各部分如何协作，并给出一个具体输入到输出的例子。"
           },
           {
             "label": "对主干的风险",
-            "word_hint": "100-200字",
+            "word_hint": "250-500字",
             "content": "",
-            "agent_instruction": "读 diff、checks 和 main_regression_analysis 后填写：合入 main 可能破坏什么，哪些验证已覆盖，哪些残余风险还需要关注。"
+            "agent_instruction": "按严重度列出有文件或符号证据的发现，评估爆炸半径、兼容性、权限、默认副作用、失败与回滚、可观测性和缺失覆盖；策略或生命周期改动必须解释一条负向链路。"
           },
           {
             "label": "我的整体评价",
-            "word_hint": "100-200字",
+            "word_hint": "150-300字",
             "content": "",
-            "agent_instruction": "读完整 PR 后填写：approve / request changes / defer / merge after checks；给出结论、理由和必要的后续条件。"
+            "agent_instruction": "权衡价值与复杂度，列出实际检查或运行的验证，注明审阅的 head SHA，并给出精确结论；若阻塞，说明最小修复和复审所需证据。"
           }
         ],
         "review_order": ["docs/guides/newcomer-command-path.md", "docs/README.md"],
-        "output_hint": "Write each of the five sections with concrete evidence and judgment; each section is usually 100-200 Chinese characters, shorter only for genuinely tiny PRs and longer when risk demands it."
+        "output_hint": "Write for a reader unfamiliar with the PR: explain context, architecture, implementation, validation, necessity, and risk with concrete evidence. Follow each section's range as a depth signal, not filler."
       },
       "motivation": "Adds a newcomer command path...",
       "scale": {"changed_files": 3, "additions": 90, "deletions": 4},
@@ -220,9 +221,10 @@ absolute paths, private source bodies, or hidden CI artifacts.
       },
       "risk_notes": [],
       "evidence_commands": [
-        "gh pr view 773 --json title,body,files,commits,statusCheckRollup",
+        "gh pr view 773 --json title,body,files,commits,statusCheckRollup,headRefOid,updatedAt",
         "gh pr diff 773 --name-only",
-        "gh pr diff 773 --patch"
+        "gh pr diff 773 --patch",
+        "gh pr view 773 --json headRefOid,updatedAt"
       ]
     }
   ],
@@ -244,7 +246,13 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "具体改动",
       "对主干的风险",
       "我的整体评价"
-    ]
+    ],
+    "explanation_depth_contract": {
+      "schema_version": "pr_review_explanation_depth_v0",
+      "reader_profile": "A technically curious reader who may not know this PR or subsystem.",
+      "evidence_layers": ["problem", "architecture", "implementation", "validation"],
+      "freshness": "Record and recheck the remote head SHA before the verdict."
+    }
   },
   "boundary": {
     "raw_logs_recorded": false,
@@ -266,10 +274,11 @@ The packet should let a reviewer move through PRs in order:
 4. Read `main_regression_analysis` before filling risk prose. It is the CLI's
    concrete, generated view of potential main regressions, bug risks, and
    focused validation.
-5. Let agentloop fill the blank five-block template:
+5. Follow `agent_response_contract.explanation_depth_contract`, then let
+   agentloop fill the blank five-block template:
    `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.
-   Each section should usually be 100-200 Chinese characters and include
-   concrete evidence and judgment after reading the selected PR.
+   Use each section's range as a depth signal for a reader unfamiliar with the
+   subsystem, not as filler.
 6. Treat `metadata_risk_hint` only as queue-ordering metadata. It must not be
    copied as the final risk judgement.
 7. Decide `approve`, `request changes`, `defer`, or `merge after checks`.
@@ -313,9 +322,12 @@ A first implementation is acceptable when:
   per-PR deep-read commands after the CLI packet selects a PR;
 - each PR includes `review_template.sections` for `动机`, `改动思路`,
   `具体改动`, `对主干的风险`, and `我的整体评价`;
-- each review template section carries a `100-200字` hint so the final chat
-  review explains evidence and judgment instead of collapsing the whole PR into
-  a single short paragraph;
+- each review template section carries a section-specific depth range, and the
+  packet's explanation-depth contract requires problem, architecture,
+  implementation, validation, necessity, and risk evidence instead of a generic
+  long answer;
+- live packets expose and recheck `headRefOid` so a review verdict is bound to
+  the remote revision actually inspected;
 - template sections must leave `content` empty so agentloop reads the real PR
   before writing the review;
 - `metadata_risk_hint` must be repository-generic and must not special-case

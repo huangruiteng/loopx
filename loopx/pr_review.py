@@ -202,6 +202,7 @@ def scan_github_pull_requests(
         "reviewDecision",
         "mergeStateStatus",
         "headRefName",
+        "headRefOid",
         "baseRefName",
         "author",
         "updatedAt",
@@ -601,28 +602,28 @@ def _review_template(item: dict[str, Any]) -> dict[str, Any]:
     sections = [
         _section(
             "动机",
-            "100-200字",
-            "读 PR title/body/diff 后填写：这个 PR 为什么存在，想解决哪个用户或维护者问题；说明触发背景和价值，不要只复述标题。",
+            "200-350字",
+            "解释旧行为、具体痛点、受影响的用户或调用方、目标结果与必要性；说明不合并会继续付出什么代价，以及需求来自活跃调用方还是未来设想。",
         ),
         _section(
             "改动思路",
-            "100-200字",
-            "读关键 diff 后填写：作者采用什么路线解决问题，关键设计取舍是什么，不要只复述文件名。",
+            "250-450字",
+            "解释所选架构、改动前后的控制流或数据流、所有权边界、关键不变量和替代方案取舍；为不熟悉子系统的读者给出一条正向运行链路。",
         ),
         _section(
             "具体改动",
-            "100-200字",
-            "读 diff 后填写：具体改了哪些模块、协议、命令、文档或测试；保留能支撑 review 决策的细节。",
+            "300-600字",
+            "把关键文件和符号映射到行为，覆盖接口、配置或状态、兼容路径、测试与文档；说明各部分如何协作，并给出一个具体输入到输出的例子。",
         ),
         _section(
             "对主干的风险",
-            "100-200字",
-            "读 diff、checks 和 main_regression_analysis 后填写：合入 main 可能破坏什么，哪些验证已覆盖，哪些残余风险还需要关注。",
+            "250-500字",
+            "按严重度列出有文件或符号证据的发现，评估爆炸半径、兼容性、权限、默认副作用、失败与回滚、可观测性和缺失覆盖；策略或生命周期改动必须解释一条负向链路。",
         ),
         _section(
             "我的整体评价",
-            "100-200字",
-            "读完整 PR 后填写：approve / request changes / defer / merge after checks；给出结论、理由和必要的后续条件。",
+            "150-300字",
+            "权衡价值与复杂度，列出实际检查或运行的验证，注明审阅的 head SHA，并给出精确结论；若阻塞，说明最小修复和复审所需证据。",
         ),
     ]
     return {
@@ -630,7 +631,7 @@ def _review_template(item: dict[str, Any]) -> dict[str, Any]:
         "purpose": "Empty scaffold only; agentloop fills it after reading PR body and diff.",
         "sections": sections,
         "review_order": _review_order(key_files),
-        "output_hint": "Write each of the five sections with concrete evidence and judgment; each section is usually 100-200 Chinese characters, shorter only for genuinely tiny PRs and longer when risk demands it.",
+        "output_hint": "Write for a reader unfamiliar with the PR: explain context, architecture, implementation, validation, necessity, and risk with concrete evidence. Follow each section's range as a depth signal, not filler.",
     }
 
 
@@ -664,6 +665,37 @@ def _agent_response_contract() -> dict[str, Any]:
             "对主干的风险",
             "我的整体评价",
         ],
+        "explanation_depth_contract": {
+            "schema_version": "pr_review_explanation_depth_v0",
+            "reader_profile": "A technically curious reader who may not know this PR or subsystem.",
+            "verdict_preface": "Lead with one evidence-based merge verdict and the highest-severity reason before the five sections.",
+            "evidence_layers": [
+                "problem: old behavior, concrete pain, affected caller, and before/after scenario",
+                "architecture: entry point, control/data flow, ownership, state, authority, and failure boundary",
+                "implementation: important files and symbols, behavior changes, compatibility plumbing, tests, and docs",
+                "validation: checks and focused reproductions tied to invariants, including untested or environment-blocked cases",
+            ],
+            "necessity_questions": [
+                "What remains broken or expensive without this PR?",
+                "Why is a smaller call-site fix insufficient, or why would it be sufficient?",
+                "Which plausible alternative was rejected and what trade-off was chosen?",
+            ],
+            "runtime_walkthroughs": {
+                "positive": "Trace one user or host action through calls/state to the observable result.",
+                "negative_when": "For selectors, policy, authority, lifecycle, or bridge changes, trace one rejection or failure case.",
+            },
+            "risk_scan": [
+                "false-ready or false-success state",
+                "authority, permission, or scope bypass",
+                "unexpected default-on installation or side effect",
+                "compatibility or persisted-state migration gap",
+                "host-specific assumption presented as host-neutral",
+                "duplicated truth, stale projection, or lifecycle leak",
+                "missing negative test, rollback behavior, or error observability",
+                "scope inflation or speculative abstraction without an active caller",
+            ],
+            "freshness": "Record the remote head SHA before review and query it again before the verdict; restart if it changed.",
+        },
         "instructions": [
             "Run loopx pr-review first and use review_groups as the queue.",
             "Before treating the queue as exhaustive, require result_completeness.complete=true. If it is false and the user asked for all/every PR, rerun with result_completeness.recommended_limit and preserve the new full packet.",
@@ -671,6 +703,8 @@ def _agent_response_contract() -> dict[str, Any]:
             "Do not stop at the queue/table summary when the user invokes /loopx-pr-review.",
             "Do not pipe the JSON packet through jq or another projection that drops agent_response_contract, result_completeness, review_groups, pull_requests[].review_template, or pull_requests[].evidence_commands before planning the final answer.",
             "For each selected PR, run the evidence_commands or equivalent PR body/diff reads before filling the five sections.",
+            "Follow explanation_depth_contract and the per-section instructions; the packet, rather than host-specific skill prose, is the canonical explanation-depth contract.",
+            "Lead with actionable findings, explain repository-specific terms on first use, and distinguish intended behavior from implementation and validation evidence.",
             "Do not fill the five sections from metadata_risk_hint alone; metadata_risk_hint is only queue-ordering context.",
             "Use the installed loopx command or the intended checked-out LoopX worktree; if using python -m loopx.cli from a checkout, first confirm that checkout includes this response contract.",
             "Only treat the request as stats/list-only when the user explicitly opts out of review with wording such as 只统计, 只列出, stats only, list only, 不要 review, or 不用分析; then say that no detailed PR review was performed.",
@@ -835,6 +869,7 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "merge_commit": _redact_text(merge_commit_oid, limit=80) if merge_commit_oid else None,
         "base_ref": _redact_text(pr.get("baseRefName"), limit=80),
         "head_ref": _redact_text(pr.get("headRefName"), limit=120),
+        "head_oid": _redact_text(pr.get("headRefOid"), limit=80),
         "is_draft": bool(pr.get("isDraft")),
         "review_decision": str(pr.get("reviewDecision") or "UNKNOWN"),
         "merge_state": str(pr.get("mergeStateStatus") or pr.get("mergeable") or "UNKNOWN"),
@@ -854,9 +889,10 @@ def _normalize_pr(pr: dict[str, Any]) -> dict[str, Any]:
         "main_regression_analysis": _main_regression_analysis(pr, files),
         "review_goal": "Fill the five-block review template after reading the PR body and diff.",
         "evidence_commands": [
-            f"gh pr view {number} --json title,body,files,commits,statusCheckRollup",
+            f"gh pr view {number} --json title,body,files,commits,statusCheckRollup,headRefOid,updatedAt",
             f"gh pr diff {number} --name-only",
             f"gh pr diff {number} --patch",
+            f"gh pr view {number} --json headRefOid,updatedAt",
         ]
         if number
         else [],
@@ -1124,6 +1160,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         "- Do not stop at the queue/table summary.",
         "- Do not collapse this packet to `.summary` and `.review_sequence` only; preserve `agent_response_contract`, `review_groups`, `pull_requests[].review_template`, and `pull_requests[].evidence_commands`.",
         "- For each selected PR, read PR body/files/diff/checks first, then return one review card.",
+        "- Follow `agent_response_contract.explanation_depth_contract`; explain the PR for a technically curious reader who may not know the subsystem.",
+        "- Bind the verdict to the remote head SHA and recheck it before answering.",
         "- Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.",
         "- `metadata_risk_hint` is only queue-ordering metadata; do not copy it as the final risk judgment.",
         "",

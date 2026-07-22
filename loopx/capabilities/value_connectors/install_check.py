@@ -5,6 +5,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..content_ops.social_browser_x import build_social_browser_x_provider_packet
+from .finance_extension_migration import (
+    build_finance_extension_migration_contract,
+)
 
 
 VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION = (
@@ -15,6 +18,7 @@ VALUE_CONNECTOR_INSTALL_CHECK_PACKET_SCHEMA_VERSION = (
 def build_value_connector_install_check_packet(
     *, connector: str = "all"
 ) -> dict[str, Any]:
+    finance_migration = build_finance_extension_migration_contract()
     checks = [
         {
             "connector_id": "github_public_channel",
@@ -61,14 +65,13 @@ def build_value_connector_install_check_packet(
         },
         {
             "connector_id": "finance_market_snapshot",
-            "status": "probed_candidate",
+            "status": "migrated_to_extension",
             "install": [
-                "Use `loopx value-connectors source-map --connector finance_market_snapshot --format json` for the boundary packet.",
-                "Plan finance information pulls as public/reference snapshots, not advice or trading actions.",
-                "Stop for credentials, AK/SK, paid feeds, private portfolio data, or trading intent.",
+                step["command"] for step in finance_migration["agent_start_sequence"]
             ],
             "optional_tools": [],
             "external_write_capability": False,
+            "migration": finance_migration,
         },
         {
             "connector_id": "botmail_identity",

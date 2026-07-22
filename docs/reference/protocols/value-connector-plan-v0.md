@@ -83,8 +83,9 @@ loopx value-connectors plan \
 | `github_public_channel_probe_packet_v0` | Starter connector output for public GitHub issue/PR/discussion metadata. |
 | `github_public_reply_monitor_packet_v0` | Starter connector output for public maintainer reply detection after a LoopX comment. |
 | `content_ops_social_browser_x_provider_v0` | Content-ops-owned source, install, and metadata-only trial contract behind the compatibility facade. |
-| `finance_market_snapshot_profile_v0` | Candidate profile for quote/fund/news/announcement pulls with source, freshness, uncertainty, and no-investment-advice gates. |
-| `finance_market_snapshot_probe_packet_v0` | No-credential public-source probe packet for Eastmoney/Futu/GitHub OSS source readiness, gates, and fallback decisions. |
+| `value_connector_extension_migration_v0` | Compatibility tombstone mapping a retired connector id to an independently managed extension without executing the retired connector. |
+| `finance_market_snapshot_profile_v0` | Retired Finance planning profile; explicit legacy requests now return extension migration metadata. |
+| `finance_market_snapshot_probe_packet_v0` | Historical Finance probe evidence id retained only for migration lineage. |
 | `value_connector_install_check_packet_v0` | Local install/use checklist for connector starters. |
 
 ## Boundaries
@@ -98,6 +99,22 @@ The contract is valid only when:
   local paths, and raw provider payloads are absent;
 - `truth_contract.plan_only=true` for plans;
 - starter probes report whether a bounded external read happened.
+
+## Retired Connector Migration
+
+`finance_market_snapshot` no longer owns Finance execution and does not map to
+a LoopX capability. To keep upgrades diagnosable, the legacy `source-map`,
+`install-check`, and `plan --connector-id finance_market_snapshot` selectors
+return a `value_connector_extension_migration_v0` record pointing to
+`loopx-finance-value-discovery`.
+
+The migration record is guidance, not implicit installation. It states whether
+the provider is separately distributed, names the source-checkout package and
+manifest paths, and gives an ordered inspect, install, register, and run
+sequence. An agent may execute local environment writes only when its active
+authority permits them. If the extension source or package is unavailable, it
+must stop with `provider source required` instead of recreating the old
+connector or inventing a `finance-value-discovery` capability.
 
 ## Starter Connector
 
@@ -119,48 +136,6 @@ issue-comment URL. Its live mode uses GitHub CLI REST metadata and captures only
 comment author, author association, timestamps, and URL. It detects whether a
 public maintainer/member/collaborator replied after the LoopX comment and
 returns `prepare_public_triage_note`; otherwise it returns `wait_no_bump`.
-
-## Finance Market Snapshot Profile
-
-`finance_market_snapshot` is a planned finance profile for bounded market-fact
-pulls. The v0 surface is a plan and gate contract, not a live trading adapter
-and not an investment-advice engine.
-
-Supported pull intents:
-
-- quote snapshots for stocks, ETFs, and indexes;
-- fund snapshots such as NAV, fee, size, holding summary, and announcement
-  timestamp;
-- public news, company announcement, earnings, and regulatory-disclosure
-  snapshots;
-- compact watch todos for a user-provided public symbol list.
-
-Preferred source order:
-
-1. a user-owned terminal or daemon such as Futu OpenD when account permission,
-   local daemon state, and data entitlement are already available;
-2. public finance metadata pages/APIs such as Eastmoney for quote, fund, news,
-   and announcement facts;
-3. GitHub-hosted open-source wrappers or public datasets as fallback only after
-   terms, freshness, and source-origin checks.
-
-Every finance packet should project:
-
-- source id and source URL or provider label;
-- `observed_at` or provider timestamp;
-- freshness label: `live`, `delayed`, `cached`, `source_unverified`, or
-  `manual_review_required`;
-- missing-field list instead of silent fallback filling;
-- non-investment-advice disclaimer.
-
-Forbidden before an exact approval gate:
-
-- login, private portfolio reads, account identifiers, paid-data signup,
-  captcha handling, or credential collection;
-- trading, order placement, portfolio mutation, or production actions;
-- price targets, suitability claims, guaranteed-return language, or personal
-  investment advice;
-- raw paid-provider payloads or private account material in LoopX state.
 
 ## Browser Social Connector Profile
 

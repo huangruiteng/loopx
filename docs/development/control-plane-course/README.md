@@ -1,11 +1,50 @@
 # LoopX Control-Plane Developer Course / LoopX 控制面开发者课程
 
-这套课程由第 0 讲架构导论和 9 讲专题组成，面向准备修改 LoopX kernel、CLI、状态投影、调度或扩展能力的开发者。主目标是建立一条可执行的控制面心智模型：先判断谁拥有长期事实、决策与执行权，再理解用户的一句目标如何变成可领取工作，状态如何写回，quota 为什么允许或拒绝下一轮，host 又如何安全地把决策变成周期执行。
+> **课程结论：** LoopX 让 Issue-Fix、Auto Research 等不同领域的长程 Agent 复用同一套
+> goal、todo、authority、quota、evidence 与 recovery contract；领域能力增加专属判断，
+> 但不创建第二套控制面。
 
-课程采用一条贯穿始终的架构边界：LoopX 定义长程 agent 的 **goal-level control
-plane**。执行 runtime、memory provider 和 workspace storage 可以替换或协作，但 goal
-lifecycle、canonical state contract、验证与恢复闭环由 LoopX 组织；任何 adapter 都不能
-静默成为第二个长期事实源。
+这套课程由第 0 讲架构导论和 9 讲专题组成，面向准备修改 LoopX kernel、CLI、状态投影、
+调度或扩展能力的开发者。它先用两个端到端 Showcase 解释控制面为什么存在，再建立
+ownership，最后沿真实 transition 进入状态机、CLI、核心函数和测试。
+
+## 两个 Showcase 是课程主线
+
+第一次阅读不需要先记住所有状态。先比较两条产品闭环：
+
+| Showcase | 领域事实 | 领域 transition | 复用的 Kernel 能力 |
+| --- | --- | --- | --- |
+| PR Issue Fix | issue feasibility、repository context、checks、review、merge state | fix、monitor、review correction、user gate、terminal | todo、claim、authority、quota、monitor、successor、closeout |
+| Multi-Agent Auto Research | research contract、hypothesis、dev/holdout evidence、evidence graph | holdout、promotion、retirement、retry、quiet completion | per-agent frontier、claim、quota、evidence、handoff、gate |
+
+两条链路共同说明 LoopX 的核心分层：State Kernel 拥有通用生命周期，Capability Pack
+翻译领域 observation，Domain State 保存紧凑领域连续性，host/runtime 执行一次有界动作，
+外部系统继续拥有领域权威事实。
+
+[第 0 讲](00-goal-control-plane-architecture.md)先完整走过这两个案例。后续每讲再放大其中
+一个共同机制；读者可以始终回到“PR 下一步为什么是 monitor”“研究假设为什么需要
+holdout successor”这类具体问题，而不是在抽象名词之间跳转。
+
+## 先边界，再逻辑，再代码
+
+控制面文档容易写成模块清单：registry、quota、scheduler、todo、event 都画进图里，却没有
+说明谁拥有事实、谁能写、一次变化何时提交。课程统一用一份技术讲解骨架：
+
+| 顺序 | 必须回答的技术问题 | 课程中的表达 |
+| --- | --- | --- |
+| Requirement / non-goal | 这层必须解决什么，明确不解决什么？ | 章首结论、目标与非目标 |
+| State ownership | 哪个对象拥有 mutable truth，谁只能读取？ | ownership table、authority map |
+| Turn boundary | 本轮拿到哪份只读 snapshot，怎样绑定 lineage？ | envelope、context、decision table |
+| Effect boundary | 谁执行外部动作，proposal 怎样变成 receipt？ | host contract、typed result、ACK |
+| Write / replay | transition 在哪里提交，崩溃后从哪个 phase 恢复？ | sequence、journal、state machine |
+| Code / acceptance | 哪个函数实现规则，什么反例证明它没有被绕过？ | 代码领读、smoke、常见错误 |
+
+这套顺序不是排版约定，而是评审方法。架构层没有明确 owner，技术层通常会复制状态机；
+逻辑层没有 receipt，测试往往只能证明函数跑过，不能证明 transition 已提交。
+
+课程采用一条贯穿始终的架构边界：执行 runtime、memory provider 和 workspace storage
+可以替换或协作，但 goal lifecycle、canonical state contract、验证与恢复闭环由 LoopX
+组织；任何 adapter 都不能静默成为第二个长期事实源。
 
 这条边界可以展开成一条贯穿全课的闭环：
 
@@ -17,6 +56,8 @@ vision / goal boundary
   -> evidence、effect receipt、vision checkpoint 写回 canonical state
   -> acceptance audit 决定 continue、wait、replan、repair 或 terminal
 ```
+
+## 五个贯穿问题
 
 每次读代码或评审 PR，都先回答五个问题：
 
@@ -40,7 +81,7 @@ vision / goal boundary
 
 | 讲次 | 主题 | 读完应能回答 |
 | --- | --- | --- |
-| [第 0 讲](00-goal-control-plane-architecture.md) | LoopX Goal Control Plane Architecture | LoopX、host、runtime、memory、workspace 和 projection 分别拥有什么？ |
+| [第 0 讲](00-goal-control-plane-architecture.md) | 从两个 Showcase 理解 LoopX 架构 | Issue-Fix 与 Auto Research 如何通过 Capability / Domain State 复用同一 Kernel？ |
 | [第 1 讲](01-first-real-loop.md) | 从 Showcase 到第一次真实 Loop | 用户只说一句目标后，guided start、todo、heartbeat、quota、refresh 和 spend 如何串起来？ |
 | [第 2 讲](02-state-substrate.md) | 状态底座与可重放事实 | registry、event、active state、run history 和 projection 分别拥有什么事实？ |
 | [第 3 讲](03-work-graph-and-peers.md) | Todo 工作图与 Peer 协作 | equal peer 如何 claim、显式委托 lifecycle authority、handoff 材料前沿，而不恢复 primary/side 层级？ |
@@ -53,7 +94,13 @@ vision / goal boundary
 
 ## 建议学习方式
 
-第一次阅读按 0 到 9 的顺序进行。第 0 讲先建立 authority map 与四视图架构图谱，第 1 讲运行端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再看扩展层。
+第一次阅读按 0 到 9 的顺序进行。第 0 讲先从 Issue-Fix 与 Auto Research 推导共同架构，
+第 1 讲运行端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些
+知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再系统讨论扩展层。
+
+只准备开发 Capability Pack 的读者，可以先读 0、2、4、6、9，再按改动涉及的 Kernel
+边界补读 3、5、7、8。准备修改 Kernel 的读者应按完整顺序阅读，因为 quota、scheduler、
+todo 和 evidence 的局部规则会在同一轮组合生效。
 
 不要从模块文件头一路向下读。每讲的“核心代码领读”会给出函数级入口，先搜索目标函数，再沿 bounded-context helper 向下读。运行实验时使用临时 goal 和测试仓库，不要把课程占位 id 当作真实配置。
 

@@ -20,6 +20,15 @@ from loopx.benchmark_adapters import skillsbench_dockerfile_runtime as dockerfil
 from loopx.benchmark_adapters import skillsbench_proxy_runtime as proxy_runtime
 
 
+def _launcher_env_without_profile() -> dict[str, str]:
+    env = os.environ.copy()
+    env.pop("SKILLSBENCH_RUNNER_PROFILE", None)
+    env["XDG_STATE_HOME"] = str(
+        Path(tempfile.gettempdir()) / f"loopx-skillsbench-smoke-{os.getpid()}"
+    )
+    return env
+
+
 def _make_skillsbench_root(root: Path) -> Path:
     skillsbench_root = root / "skillsbench"
     task_dir = skillsbench_root / "tasks" / "citation-check"
@@ -128,7 +137,7 @@ def test_formal_cli_goal_proxy_env_is_forwarded_without_public_url() -> None:
 
 
 def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
-    env = os.environ.copy()
+    env = _launcher_env_without_profile()
     env.update(
         {
             "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
@@ -169,7 +178,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
         check=True,
     )
     output = proc.stdout
-    assert "docker_proxy_host=host.docker.internal" in output, output
+    assert "docker_proxy_host_recorded=false" in output, output
     assert (
         "LOOPX_SKILLSBENCH_EGRESS_PROXY=http://host.docker.internal:18186"
         in output
@@ -206,7 +215,7 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
 
 
 def test_public_launcher_rejects_invalid_product_mode_soft_verify_policy() -> None:
-    env = os.environ.copy()
+    env = _launcher_env_without_profile()
     env.update(
         {
             "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
@@ -237,7 +246,7 @@ def test_public_launcher_rejects_invalid_product_mode_soft_verify_policy() -> No
 
 
 def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
-    env = os.environ.copy()
+    env = _launcher_env_without_profile()
     env.update(
         {
             "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
@@ -303,7 +312,7 @@ def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
 
 
 def test_public_launcher_rejects_aggregate_without_explicit_ledger() -> None:
-    env = os.environ.copy()
+    env = _launcher_env_without_profile()
     env.update(
         {
             "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
@@ -356,7 +365,7 @@ def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
             encoding="utf-8",
         )
         fake_ssh.chmod(0o755)
-        env = os.environ.copy()
+        env = _launcher_env_without_profile()
         env.update(
             {
                 "PATH": f"{fake_bin}:{env['PATH']}",
@@ -390,7 +399,7 @@ def test_public_launcher_applies_ssh_options_to_remote_discovery() -> None:
         discovery_calls = ssh_log.read_text(encoding="utf-8").splitlines()
         assert len(discovery_calls) == 3, discovery_calls
         assert all("-o Port=2222" in call for call in discovery_calls), discovery_calls
-        assert "docker_proxy_host=runner-host.example.invalid" in proc.stdout, proc.stdout
+        assert "docker_proxy_host_recorded=false" in proc.stdout, proc.stdout
         assert "docker_proxy_endpoint_mode=rootless_host_interface" in proc.stdout
         assert "docker_api_version=1.43" in proc.stdout, proc.stdout
         assert "DOCKER_API_VERSION=1.43" in proc.stdout, proc.stdout

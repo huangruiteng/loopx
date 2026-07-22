@@ -23,6 +23,8 @@ from ..todos import (
     update_goal_todo,
 )
 from .todo_argument_validation import (
+    register_todo_linkage_arguments,
+    register_todo_successor_creation_arguments,
     unsupported_todo_options,
     validate_capability_gap_options,
     validate_shared_todo_options,
@@ -266,32 +268,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "an explicit lane scope."
         ),
     )
-    todo_parser.add_argument(
-        "--unblocks-todo-id",
-        help=(
-            "For todo add/update, link this todo to the blocked todo it unblocks, "
-            "for example todo_ab12cd34ef56. Completing an exactly linked user_gate "
-            "also consumes the target required decision scopes covered by that gate."
-        ),
-    )
-    todo_parser.add_argument(
-        "--successor-todo-id",
-        dest="successor_todo_ids",
-        action="append",
-        help=(
-            "For todo update/complete, link an existing successor todo to the "
-            "current todo. Repeat for multiple successors."
-        ),
-    )
-    todo_parser.add_argument(
-        "--resume-when",
-        help=(
-            "For deferred todo add/update, declare a machine-readable resume condition "
-            "such as todo_done:todo_ab12cd34ef56, pr_merged:#532, or "
-            "capacity_available:short_pool. Capacity keys are resolved from quota "
-            "--available-capability declarations."
-        ),
-    )
+    register_todo_linkage_arguments(todo_parser)
     todo_parser.add_argument(
         "--monitor-target-key",
         dest="monitor_target_key",
@@ -336,62 +313,7 @@ def register_todo_command(subparsers: argparse._SubParsersAction) -> None:
             "when a completed todo intentionally has no successor."
         ),
     )
-    todo_parser.add_argument("--next-agent-todo", help="For complete/supersede, atomically add or update the next agent todo.")
-    todo_parser.add_argument("--next-user-todo", help="For complete/supersede, atomically add or update the next user todo.")
-    todo_parser.add_argument(
-        "--next-claimed-by",
-        help=(
-            "For complete/supersede with --next-agent-todo, soft-claim the successor "
-            "todo for a registered agent. Independent handoffs remain unclaimed unless "
-            "explicitly assigned, while same-agent non-delivery "
-            "continuations keep the current owner. Use --self-merged with --evidence "
-            "for an eligible same-agent delivery."
-        ),
-    )
-    todo_parser.add_argument(
-        "--self-merged",
-        action="store_true",
-        help=(
-            "For todo complete, record that a small validated change was self-merged; "
-            "requires --evidence."
-        ),
-    )
-    todo_parser.add_argument(
-        "--next-task-class",
-        choices=["advancement_task", "continuous_monitor", "blocker"],
-        help="Task class for --next-agent-todo. Defaults to advancement_task.",
-    )
-    todo_parser.add_argument("--next-action-kind", help="Action kind for --next-agent-todo.")
-    todo_parser.add_argument(
-        "--next-task-repository",
-        help=(
-            "Credential-free Git repository identity for --next-agent-todo, such as "
-            "git:github.com/owner/repo."
-        ),
-    )
-    todo_parser.add_argument(
-        "--next-required-capability",
-        dest="next_required_capabilities",
-        action="append",
-        help=(
-            "Execution capability required by --next-agent-todo. Repeat for multiple "
-            "capabilities."
-        ),
-    )
-    todo_parser.add_argument(
-        "--next-continuation-policy",
-        choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
-        help="Continuation policy for --next-agent-todo.",
-    )
-    todo_parser.add_argument(
-        "--next-excluded-agent",
-        dest="next_excluded_agents",
-        action="append",
-        help=(
-            "For complete/supersede with --next-agent-todo, exclude one registered "
-            "peer from claiming or executing the successor. Repeat for multiple peers."
-        ),
-    )
+    register_todo_successor_creation_arguments(todo_parser)
     todo_parser.add_argument(
         "--max-active-done",
         type=int,
@@ -595,6 +517,7 @@ def handle_todo_command(
                     ("--no-follow-up", args.no_follow_up),
                     ("--next-agent-todo", args.next_agent_todo),
                     ("--next-user-todo", args.next_user_todo),
+                    ("--next-user-task-class", args.next_user_task_class),
                     ("--next-claimed-by", args.next_claimed_by),
                     ("--next-task-class", args.next_task_class),
                     ("--next-action-kind", args.next_action_kind),
@@ -666,6 +589,7 @@ def handle_todo_command(
                 args.unblocks_todo_id,
                 args.successor_todo_ids,
                 args.resume_when,
+                args.clear_resume_when,
                 args.no_follow_up,
                 args.monitor_target_key,
                 args.cadence,
@@ -732,6 +656,7 @@ def handle_todo_command(
                 unblocks_todo_id=args.unblocks_todo_id,
                 successor_todo_ids=args.successor_todo_ids,
                 resume_when=args.resume_when,
+                clear_resume_when=bool(args.clear_resume_when),
                 no_followup=True if args.no_follow_up else None,
                 monitor_metadata={
                     "target_key": args.monitor_target_key,
@@ -786,6 +711,7 @@ def handle_todo_command(
                 clear_claim=bool(args.clear_claim),
                 next_agent_todo=args.next_agent_todo,
                 next_user_todo=args.next_user_todo,
+                next_user_task_class=args.next_user_task_class,
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,
@@ -844,6 +770,7 @@ def handle_todo_command(
                 reason=args.reason,
                 next_agent_todo=args.next_agent_todo,
                 next_user_todo=args.next_user_todo,
+                next_user_task_class=args.next_user_task_class,
                 next_claimed_by=args.next_claimed_by,
                 next_task_class=args.next_task_class,
                 next_action_kind=args.next_action_kind,

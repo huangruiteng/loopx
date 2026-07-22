@@ -16,11 +16,14 @@ from ...capabilities.periodic_report.adapters import (
 from ...capabilities.periodic_report.archive import (
     build_periodic_report_archive_bundle,
 )
+from ...capabilities.periodic_report.extension_envelope import (
+    validate_openviking_archive_execution_envelope,
+)
 from .activation import (
     OPENVIKING_PERIODIC_REPORT_EXTENSION_ID,
     OPENVIKING_PERIODIC_REPORT_EXTENSION_VERSION,
     PERIODIC_REPORT_SINK_PROTOCOL,
-    validate_openviking_periodic_report_activation,
+    validate_openviking_periodic_report_profile_activation,
 )
 
 
@@ -158,6 +161,7 @@ def archive_request(
     request: Mapping[str, Any],
     *,
     client: OpenVikingResourceClient,
+    extension_revision: str | None = None,
 ) -> dict[str, Any]:
     payload = _mapping(request, "request")
     if payload.get("schema_version") != REQUEST_SCHEMA:
@@ -175,21 +179,31 @@ def archive_request(
         "request.context.idempotency_key",
         maximum=128,
     )
-    available = payload.get("available_capabilities", [])
-    if not isinstance(available, Sequence) or isinstance(available, (str, bytes)):
-        raise ValueError("request.available_capabilities must be a list")
-    activation = validate_openviking_periodic_report_activation(
+    activation = validate_openviking_periodic_report_profile_activation(
         _mapping(payload.get("activation_receipt"), "request.activation_receipt"),
-        available_capabilities=[str(item) for item in available],
         sink_id=sink_id,
     )
+    if payload.get("execute") is True:
+        revision = str(extension_revision or "").strip()
+        if not revision:
+            raise ValueError("effectful extension execution requires a bound revision")
+        validate_openviking_archive_execution_envelope(
+            _mapping(
+                payload.get("execution_envelope"),
+                "request.execution_envelope",
+            ),
+            request=payload,
+            extension_revision=revision,
+        )
     document_profile = _mapping(document.get("profile"), "request.document.profile")
     active_profile = activation["activation"]["profile"]
     if any(
         document_profile.get(key) != active_profile.get(key)
         for key in ("profile_id", "profile_version")
     ):
-        raise ValueError("report document and activation receipt use different profiles")
+        raise ValueError(
+            "report document and activation receipt use different profiles"
+        )
 
     bundle = build_periodic_report_archive_bundle(
         artifact=artifact,
@@ -242,9 +256,7 @@ def archive_request(
                 "resource_kind": resource["resource_kind"],
                 "resource_uri": resource["resource_uri"],
                 "content_digest": content_digest,
-                "result_id": _result_id(
-                    str(resource["resource_uri"]), content_digest
-                ),
+                "result_id": _result_id(str(resource["resource_uri"]), content_digest),
                 "readback_verified": verified,
             }
         )
@@ -299,6 +311,19 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _bound_extension_revision(request: Mapping[str, Any]) -> str | None:
+    if request.get("execute") is not True:
+        return None
+    if os.environ.get("LOOPX_EXTENSION_ID") != OPENVIKING_PERIODIC_REPORT_EXTENSION_ID:
+        raise ValueError("effectful extension execution requires its bound id")
+    if os.environ.get("LOOPX_EXTENSION_PROTOCOL") != PERIODIC_REPORT_SINK_PROTOCOL:
+        raise ValueError("effectful extension execution requires its bound protocol")
+    revision = str(os.environ.get("LOOPX_EXTENSION_REVISION") or "").strip()
+    if not revision:
+        raise ValueError("effectful extension execution requires its bound revision")
+    return revision
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.doctor:
@@ -309,10 +334,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if client_type is None:
             raise RuntimeError("OpenViking public SDK client is unavailable")
         return 0
+    request = json.load(sys.stdin)
+    extension_revision = _bound_extension_revision(request)
     client = _client(args)
     try:
-        request = json.load(sys.stdin)
-        result = archive_request(request, client=client)
+        result = archive_request(
+            request,
+            client=client,
+            extension_revision=extension_revision,
+        )
         json.dump(result, sys.stdout, ensure_ascii=False)
         return 0
     finally:

@@ -1,0 +1,12 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "loopx-finance-value-discovery"
+version = "0.2.0"
+requires_loopx_api = ">=1,<2"
+permissions = []
+
+[runtime]
+protocol = "finance_value_discovery_extension_v0"
+entrypoint = "loopx-finance-value-discovery"
+doctor_args = ["--doctor"]
+required_permissions = []
+timeout_seconds = 30

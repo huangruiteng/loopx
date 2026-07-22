@@ -1309,6 +1309,14 @@ replan detector. For eligible goals,
 `autonomous_replan_required` with `must_attempt_work=true`, even when open user
 todos remain visible, as long as the selected slice stays outside private,
 destructive, production, or owner-only authority and honors `stop_condition`.
+An open typed `user_action` remains a non-blocking notice even when no agent
+todo is currently runnable; it must not force `waiting_on=controller`. When two
+bounded stalls leave that agent frontier empty, the obligation sets
+`agent_todo_writeback_required=true`. The interaction contract then projects a
+concrete claimed `todo add` action and requires a `runnable_todo_set` repair
+delta. Explicit terminal no-follow-up may replace the new todo only when
+closure evidence is authoritative. The user reminder stays visible throughout
+this replan path.
 This is intended to keep monitor-only work from consuming the primary
 executable backlog, not to bypass real gates.
 `quota should-run` and `status --agent-id` may also expose

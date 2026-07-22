@@ -280,6 +280,100 @@ def test_nonblocking_user_action_does_not_suppress_stalled_monitor_replan() -> N
     assert guard["interaction_contract"]["agent_channel"]["must_attempt"] is True
 
 
+def test_nonblocking_user_action_does_not_suppress_empty_frontier_replan() -> None:
+    user_action = quota_todo_item(
+        todo_id="todo_review_reminder",
+        role="user",
+        status="open",
+        title="Review the experiment integration PR.",
+        task_class="user_action",
+        bound_agent=AGENT_ID,
+    )
+    replan_obligation = {
+        "schema_version": "autonomous_replan_obligation_v0",
+        "required": True,
+        "stall_threshold": 2,
+        "trigger_count": 1,
+        "triggers": [
+            {
+                "kind": "run_history_no_progress_repeat",
+                "section": "run_history",
+                "text": "two stalled turns left no runnable agent todo",
+                "agent_id": AGENT_ID,
+            }
+        ],
+        "todo_actions": [
+            {
+                "action": "add",
+                "role": "agent",
+                "priority": "P1",
+                "text": "create the next runnable experiment slice",
+            }
+        ],
+        "agent_todo_writeback_required": True,
+        "stop_condition": "stop on owner-only authority",
+    }
+    payload = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        waiting_on="codex",
+        recommended_action="Replan the empty agent frontier.",
+        agent_todos=quota_todo_summary([], role="agent"),
+        user_todos=quota_todo_summary([user_action], role="user"),
+        project_asset_extra={
+            "autonomous_replan_obligation": replan_obligation,
+        },
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": [AGENT_ID, PEER_AGENT_ID],
+        },
+    )
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
+
+    assert guard["decision"] == "autonomous_replan_required", guard
+    assert guard["state"] == "eligible", guard
+    assert guard["requires_user_action"] is False, guard
+    assert guard["execution_obligation"] == {
+        "must_attempt_work": True,
+        "kind": "autonomous_replan_required",
+        "minimum": "one_bounded_replan_with_agent_todo_writeback",
+        "notify_is_execution_gate": False,
+        "stall_threshold": 2,
+        "contract_obligation": (
+            "apply autonomous_replan_obligation and create a concrete runnable "
+            "agent todo; explicit terminal no-follow-up is allowed only with "
+            "closure evidence"
+        ),
+        "reason": (
+            "autonomous_replan_obligation is a machine execution contract; "
+            "quiet no-op is not allowed until the replan slice is validated or blocked"
+        ),
+        "contract": "autonomous_replan_agent_todo_writeback",
+    }, guard
+    contract = guard["interaction_contract"]
+    assert contract["mode"] == "autonomous_replan", contract
+    assert contract["user_channel"]["non_blocking"] is True, contract
+    assert contract["agent_channel"]["must_attempt"] is True, contract
+    cli_actions = contract["cli_channel"]["next_cli_actions"]
+    assert any(
+        "todo add" in action
+        and "--task-class advancement_task" in action
+        and f"--claimed-by {AGENT_ID}" in action
+        for action in cli_actions
+    ), cli_actions
+    assert any(
+        "--repair-delta-kind runnable_todo_set" in action
+        for action in cli_actions
+    ), cli_actions
+
+
 def test_blocking_user_gate_still_precedes_stalled_monitor_replan() -> None:
     guard = _combined_user_frontier_guard(user_task_class="user_gate")
 

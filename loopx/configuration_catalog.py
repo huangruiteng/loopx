@@ -46,6 +46,11 @@ def build_goal_configuration_catalog(
         if isinstance(feature_summary.get("lark_event_inbox"), Mapping)
         else {}
     )
+    lark_kanban_heartbeat_sync = (
+        feature_summary.get("lark_kanban_heartbeat_sync")
+        if isinstance(feature_summary.get("lark_kanban_heartbeat_sync"), Mapping)
+        else {}
+    )
     reward_memory = (
         feature_summary.get("reward_memory")
         if isinstance(feature_summary.get("reward_memory"), Mapping)
@@ -387,6 +392,63 @@ def build_goal_configuration_catalog(
                     "url": (
                         "https://github.com/huangruiteng/loopx/blob/main/"
                         "docs/capabilities/lark-event-inbox.md"
+                    ),
+                },
+            },
+            {
+                "feature_id": "lark_kanban_heartbeat_sync",
+                "display_name": "Generic Lark Kanban heartbeat sync",
+                "availability": "supported_opt_in",
+                "default": {"enabled": False},
+                "current": {
+                    "enabled": lark_kanban_heartbeat_sync.get("enabled") is True,
+                },
+                "consider_when": (
+                    "A goal already has a reviewed generic Kanban binding and should "
+                    "best-effort refresh it after material heartbeat progress."
+                ),
+                "effect": (
+                    "Projects one nonblocking generic Kanban action through quota/status "
+                    "after material state changes."
+                ),
+                "does_not": [
+                    "create or bind a board",
+                    "authenticate Lark or make an existing local binding active",
+                    "make sink success a delivery gate or let it preempt runnable P0 work",
+                ],
+                "commands": {
+                    "preview_enable": _configure_command(
+                        goal_id, "--lark-kanban-heartbeat-sync"
+                    ),
+                    "apply_enable": _configure_command(
+                        goal_id, "--lark-kanban-heartbeat-sync", execute=True
+                    ),
+                    "preview_disable": _configure_command(
+                        goal_id, "--no-lark-kanban-heartbeat-sync"
+                    ),
+                    "apply_disable": _configure_command(
+                        goal_id, "--no-lark-kanban-heartbeat-sync", execute=True
+                    ),
+                    "verify": [
+                        inspect_command,
+                        shlex.join(
+                            [
+                                "loopx",
+                                "--format",
+                                "json",
+                                "quota",
+                                "should-run",
+                                "--goal-id",
+                                goal_id,
+                            ]
+                        ),
+                    ],
+                },
+                "documentation": {
+                    "path": "docs/lark-kanban-control-plane-adapter.md",
+                    "url": (
+                        "https://github.com/huangruiteng/loopx/blob/main/"
+                        "docs/lark-kanban-control-plane-adapter.md"
                     ),
                 },
             },

@@ -620,7 +620,11 @@ def interaction_next_cli_actions(
         first_candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
         todo_id = str(first_candidate.get("todo_id") or "<todo_id>")
         return [
-            f"loopx todo update --goal-id {goal_id} --todo-id {todo_id}{lifecycle_actor_args} --status open --note '<public-safe successor replan reason>'",
+            (
+                f"loopx todo update --goal-id {goal_id} --todo-id {todo_id}"
+                f"{lifecycle_actor_args} --status open --clear-resume-when "
+                "--note '<public-safe successor replan reason>'"
+            ),
             f"loopx refresh-state --goal-id {goal_id} --classification successor_replan_recorded --delivery-batch-scale single_surface --delivery-outcome outcome_progress{scoped_cli_args}",
             f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}",
         ]
@@ -649,6 +653,14 @@ def interaction_next_cli_actions(
             typed_quota_guard,
         ]
     if mode == "autonomous_replan":
+        replan_obligation = (
+            payload.get("autonomous_replan_obligation")
+            if isinstance(payload.get("autonomous_replan_obligation"), dict)
+            else {}
+        )
+        agent_todo_writeback_required = (
+            replan_obligation.get("agent_todo_writeback_required") is True
+        )
         lane_action = _protocol_first_candidate_action(payload)
         first_action = (
             "run one bounded autonomous replan slice around "
@@ -656,16 +668,34 @@ def interaction_next_cli_actions(
             if lane_action
             else "run one bounded autonomous replan slice and write back the selected next action/todo changes"
         )
-        return [
+        actions = [
             first_action,
-            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind <delta_kind> --delivery-batch-scale <scale> --delivery-outcome <outcome>{scoped_cli_args}",
+        ]
+        if agent_todo_writeback_required:
+            actor_id = str(agent_identity.get("agent_id") or "").strip()
+            actor_args = (
+                f" --agent-id {shlex.quote(actor_id)} --claimed-by {shlex.quote(actor_id)}"
+                if actor_id
+                else " --agent-id <agent-id> --claimed-by <agent-id>"
+            )
+            actions.append(
+                f"loopx todo add --goal-id {goal_id} --role agent "
+                "--task-class advancement_task --text '<selected runnable next slice>'"
+                f"{actor_args}"
+            )
+        delta_kind = (
+            "runnable_todo_set" if agent_todo_writeback_required else "<delta_kind>"
+        )
+        actions.extend([
+            f"loopx refresh-state --goal-id {goal_id} --classification autonomous_replan_recorded --autonomous-replan-recorded --repair-delta-kind {delta_kind} --delivery-batch-scale <scale> --delivery-outcome <outcome>{scoped_cli_args}",
             (
                 "if the replan writeback records an accountable delta such as "
                 "outcome_progress or primary_goal_outcome, run "
                 f"loopx quota spend-slot --goal-id {goal_id} --slots 1 --source heartbeat --execute{scoped_cli_args}; "
                 "otherwise do not spend for surface_only watch-lane continuation/no-followup"
             ),
-        ]
+        ])
+        return actions
     if mode in {
         "bounded_delivery",
         "outcome_floor_recovery",
@@ -997,6 +1027,19 @@ def _attach_interaction_required_reads(
     contract["cli_channel"]["required_reads"] = required_reads
 
 
+def _attach_interaction_post_writeback_actions(
+    contract: dict[str, Any], payload: dict[str, Any]
+) -> None:
+    goal_boundary = (
+        payload.get("goal_boundary")
+        if isinstance(payload.get("goal_boundary"), Mapping)
+        else {}
+    )
+    actions = goal_boundary.get("post_writeback_actions")
+    if isinstance(actions, list) and actions:
+        contract["cli_channel"]["post_writeback_actions"] = actions
+
+
 def _attach_interaction_vision_continuation_audit(
     contract: dict[str, Any],
     payload: dict[str, Any],
@@ -1159,6 +1202,7 @@ def build_interaction_contract(
     if response_plan is not None:
         contract["response_plan"] = response_plan
     _attach_interaction_required_reads(contract, required_reads)
+    _attach_interaction_post_writeback_actions(contract, payload)
     _attach_interaction_vision_continuation_audit(contract, payload)
     _attach_interaction_vision_wait_state(contract, payload)
     if _interaction_fallback_policy_required(payload, mode=mode):

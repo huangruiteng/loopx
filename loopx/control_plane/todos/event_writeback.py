@@ -23,6 +23,7 @@ from .contract import (
     TODO_CONTINUATION_POLICY_VALUES,
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
+    TODO_TASK_CLASS_USER_GATE,
     build_todo_id,
     merge_todo_id_lists,
     normalize_required_capabilities,
@@ -294,6 +295,7 @@ def complete_event_projected_goal_todo(
     clear_claim: bool,
     next_agent_todo: str | None,
     next_user_todo: str | None,
+    next_user_task_class: str,
     next_claimed_by: str | None,
     next_task_class: str | None,
     next_action_kind: str | None,
@@ -317,12 +319,12 @@ def complete_event_projected_goal_todo(
     store = AppendOnlyStateEventStore(Path(context["event_log_path"]))
     already_done = todo_done_for_status(str(item.get("status") or TODO_STATUS_OPEN))
     next_unblocks_todo_id = todo_id if next_agent_todo else None
-    next_user_blocks_agent = effective_claimed_by
+    next_user_bound_agent = effective_claimed_by
     if next_user_todo and len(registered_agents) > 1:
-        if not next_user_blocks_agent:
+        if not next_user_bound_agent:
             raise ValueError(
                 "multi-agent --next-user-todo requires a completing --claimed-by "
-                "agent so the user_gate can be scoped"
+                "agent so the user todo can be bound"
             )
 
     next_results: list[dict[str, Any]] = []
@@ -355,14 +357,20 @@ def complete_event_projected_goal_todo(
                 text=inherit_todo_priority(next_user_todo, str(item.get("text") or "")),
                 updated_at=updated_at,
                 fields=context["fields"],
-                task_class="user_gate",
-                action_kind="gate",
+                task_class=next_user_task_class,
+                action_kind=(
+                    "gate" if next_user_task_class == TODO_TASK_CLASS_USER_GATE else None
+                ),
                 task_repository=None,
                 required_capabilities=None,
                 continuation_policy=None,
                 claimed_by=None,
-                bound_agent=next_user_blocks_agent,
-                blocks_agent=next_user_blocks_agent,
+                bound_agent=next_user_bound_agent,
+                blocks_agent=(
+                    next_user_bound_agent
+                    if next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                    else None
+                ),
                 unblocks_todo_id=None,
                 dry_run=dry_run,
             )

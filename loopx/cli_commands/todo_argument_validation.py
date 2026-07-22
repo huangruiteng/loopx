@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable
 
+from ..control_plane.todos.contract import TODO_CONTINUATION_POLICY_VALUES
+
 
 TODO_OPTION_FIELDS = (
     ("--role", "role"),
@@ -38,6 +40,7 @@ TODO_OPTION_FIELDS = (
     ("--unblocks-todo-id", "unblocks_todo_id"),
     ("--successor-todo-id", "successor_todo_ids"),
     ("--resume-when", "resume_when"),
+    ("--clear-resume-when", "clear_resume_when"),
     ("--monitor-target-key", "monitor_target_key"),
     ("--cadence", "cadence"),
     ("--next-due-at", "next_due_at"),
@@ -46,6 +49,7 @@ TODO_OPTION_FIELDS = (
     ("--no-follow-up", "no_follow_up"),
     ("--next-agent-todo", "next_agent_todo"),
     ("--next-user-todo", "next_user_todo"),
+    ("--next-user-task-class", "next_user_task_class"),
     ("--next-claimed-by", "next_claimed_by"),
     ("--next-task-class", "next_task_class"),
     ("--next-action-kind", "next_action_kind"),
@@ -61,6 +65,124 @@ TODO_OPTION_FIELDS = (
     ("--state-file", "state_file"),
     ("--execute", "execute"),
 )
+
+
+def register_todo_linkage_arguments(
+    todo_parser: argparse.ArgumentParser,
+) -> None:
+    todo_parser.add_argument(
+        "--unblocks-todo-id",
+        help=(
+            "For todo add/update, link this todo to the blocked todo it unblocks, "
+            "for example todo_ab12cd34ef56. Completing an exactly linked user_gate "
+            "also consumes the target required decision scopes covered by that gate."
+        ),
+    )
+    todo_parser.add_argument(
+        "--successor-todo-id",
+        dest="successor_todo_ids",
+        action="append",
+        help=(
+            "For todo update/complete, link an existing successor todo to the "
+            "current todo. Repeat for multiple successors."
+        ),
+    )
+    todo_parser.add_argument(
+        "--resume-when",
+        help=(
+            "For deferred todo add/update, declare a machine-readable resume condition "
+            "such as todo_done:todo_ab12cd34ef56, pr_merged:#532, or "
+            "capacity_available:short_pool. Capacity keys are resolved from quota "
+            "--available-capability declarations."
+        ),
+    )
+    todo_parser.add_argument(
+        "--clear-resume-when",
+        action="store_true",
+        help=(
+            "For todo update, remove the existing resume condition after its "
+            "successor replan has made the todo runnable."
+        ),
+    )
+
+
+def register_todo_successor_creation_arguments(
+    todo_parser: argparse.ArgumentParser,
+) -> None:
+    todo_parser.add_argument(
+        "--next-agent-todo",
+        help="For complete/supersede, atomically add or update the next agent todo.",
+    )
+    todo_parser.add_argument(
+        "--next-user-todo",
+        help="For complete/supersede, atomically add or update the next user todo.",
+    )
+    todo_parser.add_argument(
+        "--next-user-task-class",
+        choices=["user_gate", "user_action"],
+        help=(
+            "Task class for --next-user-todo. Defaults to user_gate for backward "
+            "compatibility; use user_action for a visible reminder that must not "
+            "block the bound agent lane."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-claimed-by",
+        help=(
+            "For complete/supersede with --next-agent-todo, soft-claim the successor "
+            "todo for a registered agent. Independent handoffs remain unclaimed unless "
+            "explicitly assigned, while same-agent non-delivery continuations keep the "
+            "current owner. Use --self-merged with --evidence for an eligible same-agent "
+            "delivery."
+        ),
+    )
+    todo_parser.add_argument(
+        "--self-merged",
+        action="store_true",
+        help=(
+            "For todo complete, record that a small validated change was self-merged; "
+            "requires --evidence."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-task-class",
+        choices=["advancement_task", "continuous_monitor", "blocker"],
+        help="Task class for --next-agent-todo. Defaults to advancement_task.",
+    )
+    todo_parser.add_argument(
+        "--next-action-kind",
+        help="Action kind for --next-agent-todo.",
+    )
+    todo_parser.add_argument(
+        "--next-task-repository",
+        help=(
+            "Credential-free Git repository identity for --next-agent-todo, such as "
+            "git:github.com/owner/repo."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-required-capability",
+        dest="next_required_capabilities",
+        action="append",
+        help=(
+            "Execution capability required by --next-agent-todo. Repeat for multiple "
+            "capabilities."
+        ),
+    )
+    todo_parser.add_argument(
+        "--next-continuation-policy",
+        choices=sorted(TODO_CONTINUATION_POLICY_VALUES),
+        help="Continuation policy for --next-agent-todo.",
+    )
+    todo_parser.add_argument(
+        "--next-excluded-agent",
+        dest="next_excluded_agents",
+        action="append",
+        help=(
+            "For complete/supersede with --next-agent-todo, exclude one registered "
+            "peer from claiming or executing the successor. Repeat for multiple peers."
+        ),
+    )
 
 
 def unsupported_todo_options(
@@ -127,6 +249,12 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
         raise ValueError(
             "--clear-global-gate is supported only by todo update for user_gate items"
         )
+    if args.clear_resume_when and args.todo_command != "update":
+        raise ValueError("--clear-resume-when is supported only by todo update")
+    if args.clear_resume_when and args.resume_when:
+        raise ValueError(
+            "todo update accepts either --resume-when or --clear-resume-when, not both"
+        )
     if (
         args.todo_command not in {"suggest", "capture-followups"}
         and (
@@ -162,6 +290,8 @@ def validate_capability_gap_options(args: argparse.Namespace) -> None:
 
 
 def validate_successor_routing_options(args: argparse.Namespace) -> None:
+    if args.next_user_task_class and not args.next_user_todo:
+        raise ValueError("--next-user-task-class requires --next-user-todo")
     if args.next_continuation_policy and not args.next_agent_todo:
         raise ValueError("--next-continuation-policy requires --next-agent-todo")
     if args.next_task_repository and not args.next_agent_todo:

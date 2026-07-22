@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+import json
 from pathlib import Path
+import sys
 
 from ..extensions.bundled import BUNDLED_EXTENSION_IDS, bundled_extension_manifest
+from ..extensions.scaffold import scaffold_extension
 from ..extensions.runtime import (
+    MAX_EXTENSION_REQUEST_BYTES,
     default_extension_state_file,
     disable_extension,
     doctor_installed_extension,
@@ -13,6 +17,7 @@ from ..extensions.runtime import (
     extension_status,
     install_extension,
     rollback_extension,
+    run_standalone_extension,
 )
 
 
@@ -32,6 +37,11 @@ def _render(payload: dict[str, object]) -> str:
         "version",
         "revision",
         "status",
+        "protocol",
+        "destination",
+        "module_name",
+        "dry_run",
+        "executed",
         "enabled",
         "changed",
         "error",
@@ -51,8 +61,9 @@ def _render(payload: dict[str, object]) -> str:
 
 
 def _state_file(args: argparse.Namespace, runtime_root_arg: str | None) -> Path:
-    if args.extension_state_file:
-        return Path(args.extension_state_file).expanduser()
+    override = getattr(args, "extension_state_file", None)
+    if override:
+        return Path(override).expanduser()
     return default_extension_state_file(runtime_root_arg)
 
 
@@ -84,6 +95,19 @@ def register_extension_commands(
     )
     commands = parser.add_subparsers(dest="extension_command", required=True)
 
+    init = commands.add_parser(
+        "init",
+        help="Preview or create a minimal independently packaged extension starter.",
+    )
+    add_subcommand_format(init)
+    init.add_argument("extension_id")
+    init.add_argument(
+        "--destination",
+        help="Target directory. Defaults to extensions/<extension-id>.",
+    )
+    init.add_argument("--version", default="0.1.0")
+    init.add_argument("--execute", action="store_true")
+
     list_parser = commands.add_parser("list", help="List installed extensions.")
     _add_common(list_parser, add_subcommand_format)
 
@@ -113,6 +137,40 @@ def register_extension_commands(
                 help="Run the configured read-only provider probe.",
             )
 
+    run = commands.add_parser(
+        "run",
+        help="Invoke one enabled standalone extension through its managed runtime.",
+    )
+    _add_common(run, add_subcommand_format)
+    run.add_argument("extension_id")
+    run.add_argument(
+        "--input-json",
+        required=True,
+        help="Path to one provider request JSON object, or '-' for stdin.",
+    )
+    run.add_argument("--execute", action="store_true")
+
+
+def _load_json_object(path_text: str) -> dict[str, object]:
+    try:
+        if path_text == "-":
+            binary_stdin = getattr(sys.stdin, "buffer", None)
+            if binary_stdin is not None:
+                raw = binary_stdin.read(MAX_EXTENSION_REQUEST_BYTES + 1)
+            else:
+                raw = sys.stdin.read(MAX_EXTENSION_REQUEST_BYTES + 1).encode("utf-8")
+        else:
+            with Path(path_text).open("rb") as input_file:
+                raw = input_file.read(MAX_EXTENSION_REQUEST_BYTES + 1)
+        if len(raw) > MAX_EXTENSION_REQUEST_BYTES:
+            raise ValueError("extension run input exceeds the 1000000-byte limit")
+        payload = json.loads(raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("extension run input must be a readable JSON object") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("extension run input must be a JSON object")
+    return payload
+
 
 def handle_extension_command(
     args: argparse.Namespace,
@@ -125,7 +183,14 @@ def handle_extension_command(
         return None
     state_file = _state_file(args, runtime_root_arg)
     try:
-        if args.extension_command == "list":
+        if args.extension_command == "init":
+            payload = scaffold_extension(
+                args.extension_id,
+                destination=args.destination,
+                version=args.version,
+                execute=args.execute,
+            )
+        elif args.extension_command == "list":
             payload = extension_status(state_file=state_file)
         elif args.extension_command in {"install", "upgrade"}:
             manifest_path = (
@@ -157,6 +222,13 @@ def handle_extension_command(
                 state_file=state_file,
                 execute=args.execute,
             )
+        elif args.extension_command == "run":
+            payload = run_standalone_extension(
+                args.extension_id,
+                state_file=state_file,
+                request=_load_json_object(args.input_json),
+                execute=args.execute,
+            )
         else:
             payload = doctor_installed_extension(
                 args.extension_id,
@@ -173,4 +245,4 @@ def handle_extension_command(
         print_payload(payload, output_format(args), _render)
         return 2
     print_payload(payload, output_format(args), _render)
-    return 0
+    return 0 if payload.get("ok", True) else 1

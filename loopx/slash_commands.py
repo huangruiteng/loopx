@@ -134,6 +134,7 @@ def build_slash_command_catalog(
                 "stats_only_requires_explicit_opt_out": True,
                 "authoritative_fields": [
                     "agent_response_contract",
+                    "agent_response_contract.explanation_depth_contract",
                     "review_groups.unmerged",
                     "review_groups.merged",
                     "pull_requests[].review_template",
@@ -164,7 +165,9 @@ def build_slash_command_catalog(
                         "我的整体评价",
                     ],
                     "evidence_before_filling": "Read each selected PR body/files/diff/checks before filling the sections.",
-                    "section_length_hint": "Each section should usually be 100-200 Chinese characters with concrete evidence and judgment.",
+                    "section_length_hint": "Use the per-section ranges in pull_requests[].review_template as depth signals; explain context, architecture, implementation, validation, necessity, and risk without filler.",
+                    "reader_profile": "A technically curious reader who may not know the PR or subsystem.",
+                    "freshness_policy": "Record the remote head before review, recheck it before the verdict, and restart if it changed.",
                 },
                 "manual_gh_policy": (
                     "Use gh only after the CLI packet selects a PR; do not reconstruct "

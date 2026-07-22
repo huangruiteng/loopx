@@ -7,6 +7,7 @@ from .driver import (
 )
 from .codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
+    codex_cli_session_id_from_jsonl,
     codex_cli_result_schema,
     codex_cli_session_binding,
     load_codex_cli_session,
@@ -51,6 +52,7 @@ __all__ = [
     "loopx_turn_execution_recovery_required",
     "load_loopx_turn_plan_from_journal",
     "load_codex_cli_session",
+    "codex_cli_session_id_from_jsonl",
     "normalize_host_argv",
     "run_loopx_turn_once",
     "run_codex_cli_host",

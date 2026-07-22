@@ -173,7 +173,7 @@ def main() -> int:
     template = first["review_template"]
     assert template["schema_version"] == "pr_review_five_block_template_v0", template
     assert "Empty scaffold only" in template["purpose"], template
-    assert "each section is usually 100-200 Chinese characters" in template["output_hint"], template
+    assert "reader unfamiliar with the PR" in template["output_hint"], template
     labels = [section["label"] for section in template["sections"]]
     assert labels == ["动机", "改动思路", "具体改动", "对主干的风险", "我的整体评价"], template
     for section in template["sections"]:
@@ -181,6 +181,15 @@ def main() -> int:
         assert section["word_hint"], section
         assert section["agent_instruction"], section
         assert "quota.py" not in section["agent_instruction"], section
+    assert [section["word_hint"] for section in template["sections"]] == [
+        "200-350字",
+        "250-450字",
+        "300-600字",
+        "250-500字",
+        "150-300字",
+    ], template
+    assert "headRefOid" in first["evidence_commands"][0], first["evidence_commands"]
+    assert "headRefOid" in first["evidence_commands"][-1], first["evidence_commands"]
     assert template["review_order"][0] == "docs/guides/newcomer-command-path.md", template
     assert first["checks"]["counts"]["success"] == 2, first["checks"]
     assert "public_docs" in first["areas"], first["areas"]
@@ -277,6 +286,14 @@ def main() -> int:
         "对主干的风险",
         "我的整体评价",
     ], response_contract
+    depth = response_contract["explanation_depth_contract"]
+    assert depth["schema_version"] == "pr_review_explanation_depth_v0", depth
+    assert "may not know" in depth["reader_profile"], depth
+    assert len(depth["evidence_layers"]) == 4, depth
+    assert len(depth["necessity_questions"]) == 3, depth
+    assert depth["runtime_walkthroughs"]["positive"], depth
+    assert "authority, permission, or scope bypass" in depth["risk_scan"], depth
+    assert "head SHA" in depth["freshness"], depth
     assert any("Do not stop at the queue/table summary" in item for item in response_contract["instructions"])
     assert any("open, closed, merged, today" in item for item in response_contract["instructions"])
     assert any("drops agent_response_contract" in item or "Do not pipe the JSON packet" in item for item in response_contract["instructions"])
@@ -352,6 +369,8 @@ def main() -> int:
     assert "final answer contract: queue/table is only a preface" in markdown, markdown
     assert "## Agent Output Contract" in markdown, markdown
     assert "Do not stop at the queue/table summary" in markdown, markdown
+    assert "explanation_depth_contract" in markdown, markdown
+    assert "remote head SHA" in markdown, markdown
     assert "Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`" in markdown, markdown
     assert "## Unmerged PRs" in markdown, markdown
     assert "## Merged PRs" in markdown, markdown
@@ -362,11 +381,11 @@ def main() -> int:
     assert "template below is intentionally blank" in markdown, markdown
     assert "- 推荐阅读顺序:" in markdown, markdown
     assert "- 五块模板（留空给 agentloop 填写）:" in markdown, markdown
-    assert "动机（100-200字）" in markdown, markdown
-    assert "改动思路（100-200字）" in markdown, markdown
-    assert "具体改动（100-200字）" in markdown, markdown
-    assert "对主干的风险（100-200字）" in markdown, markdown
-    assert "我的整体评价（100-200字）" in markdown, markdown
+    assert "动机（200-350字）" in markdown, markdown
+    assert "改动思路（250-450字）" in markdown, markdown
+    assert "具体改动（300-600字）" in markdown, markdown
+    assert "对主干的风险（250-500字）" in markdown, markdown
+    assert "我的整体评价（150-300字）" in markdown, markdown
     assert "main regression risk:" not in markdown, markdown
     assert "## Combined Review Sequence" in markdown, markdown
     assert "PR #773" in markdown, markdown

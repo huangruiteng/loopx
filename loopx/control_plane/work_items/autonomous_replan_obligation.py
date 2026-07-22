@@ -58,7 +58,7 @@ def _single_public_agent_id(items: list[dict[str, Any]]) -> str | None:
     return next(iter(agent_ids)) if len(agent_ids) == 1 else None
 
 
-def _run_history_agent_id(run: dict[str, Any]) -> str | None:
+def run_history_agent_id(run: dict[str, Any]) -> str | None:
     agent_id = str(run.get("agent_id") or "").strip()
     if agent_id:
         return agent_id
@@ -72,27 +72,30 @@ def _latest_agent_run_history(
     latest_runs: list[dict[str, Any]] | None,
     *,
     neutral_classifications: set[str],
+    agent_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Keep the newest attributable agent lane while preserving goal-level runs."""
 
-    accountable_agent_id = next(
-        (
-            _run_history_agent_id(run)
-            for run in latest_runs or []
-            if isinstance(run, dict)
-            and str(run.get("classification") or "").strip()
-            not in neutral_classifications
-            and _run_history_agent_id(run)
-        ),
-        None,
-    )
+    accountable_agent_id = str(agent_id or "").strip() or None
+    if accountable_agent_id is None:
+        accountable_agent_id = next(
+            (
+                run_history_agent_id(run)
+                for run in latest_runs or []
+                if isinstance(run, dict)
+                and str(run.get("classification") or "").strip()
+                not in neutral_classifications
+                and run_history_agent_id(run)
+            ),
+            None,
+        )
     if not accountable_agent_id:
         return [run for run in latest_runs or [] if isinstance(run, dict)]
     return [
         run
         for run in latest_runs or []
         if isinstance(run, dict)
-        and _run_history_agent_id(run) in {None, accountable_agent_id}
+        and run_history_agent_id(run) in {None, accountable_agent_id}
     ]
 
 
@@ -326,6 +329,34 @@ def _monitor_no_change_evidence(
     }
 
 
+def _has_runnable_agent_advancement(agent_todos: dict[str, Any] | None) -> bool:
+    if not isinstance(agent_todos, dict):
+        return False
+    for key in (
+        "first_executable_items",
+        "executable_backlog_items",
+        "first_open_items",
+    ):
+        items = agent_todos.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("status") or "open").strip().lower() not in {
+                "",
+                "open",
+                "todo",
+                "active",
+                "pending",
+            }:
+                continue
+            task_class = str(item.get("task_class") or "").strip()
+            if task_class in {"", "advancement_task"}:
+                return True
+    return False
+
+
 def build_autonomous_replan_obligation(
     evidence: list[dict[str, Any]],
     *,
@@ -466,6 +497,21 @@ def build_autonomous_replan_obligation(
             "monitor-only or repeated action consumes the eligible turn"
         )
 
+    extra_fields: dict[str, Any] = {}
+    if (
+        not _has_runnable_agent_advancement(agent_todos)
+        and not dead_monitor_evidence
+        and not blocked_successor_evidence
+    ):
+        extra_fields["agent_todo_writeback_required"] = True
+    if (
+        blocked_successor_evidence
+        and blocked_successor_evidence.get("frontier_identity")
+    ):
+        extra_fields["frontier_identity"] = blocked_successor_evidence.get(
+            "frontier_identity"
+        )
+
     result = build_autonomous_replan_obligation_payload(
         schema_version=autonomous_replan_schema_version,
         stall_threshold=(
@@ -489,16 +535,7 @@ def build_autonomous_replan_obligation(
         ),
         recommended_action=recommended_action,
         agent_id=replan_agent_id,
-        extra_fields=(
-            {
-                "frontier_identity": blocked_successor_evidence.get(
-                    "frontier_identity"
-                )
-            }
-            if blocked_successor_evidence
-            and blocked_successor_evidence.get("frontier_identity")
-            else None
-        ),
+        extra_fields=extra_fields,
     )
     if dead_monitor_evidence:
         result["dead_monitor_detector"] = {
@@ -552,6 +589,7 @@ def autonomous_replan_obligation_from_runs(
     latest_runs: list[dict[str, Any]] | None,
     *,
     agent_todos: dict[str, Any] | None,
+    agent_id: str | None = None,
     autonomous_replan_ack_recorded: AckRecorded,
     neutral_classifications: set[str],
     progress_outcomes: set[Any],
@@ -567,6 +605,7 @@ def autonomous_replan_obligation_from_runs(
     scoped_latest_runs = _latest_agent_run_history(
         latest_runs,
         neutral_classifications=neutral_classifications,
+        agent_id=agent_id,
     )
 
     def periodic_review() -> dict[str, Any] | None:

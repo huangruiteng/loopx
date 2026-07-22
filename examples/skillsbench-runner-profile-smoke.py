@@ -188,6 +188,12 @@ def main() -> None:
         assert "runner_profile_loaded=true" in output
         assert "runner_profile_path_recorded=false" in output
         assert "runner_profile_values_recorded=false" in output
+        assert "docker_proxy_host_recorded=false" in output
+        assert launch_environment["SKILLSBENCH_DOCKER_PROXY_HOST"] not in output
+        assert (
+            launch_environment["SKILLSBENCH_DOCKER_PROXY_HOST"]
+            not in completed.stderr
+        )
         assert "private_runner_command_values_redacted=true" in output
         assert "loopx_turn_validation_command_configured=1" in output
         for key, private_value in source_environment.items():
