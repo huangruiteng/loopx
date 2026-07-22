@@ -5710,6 +5710,10 @@ def test_skillsbench_docker_task_staging_can_keep_primary_apt_sources() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            not in staged_text
+        ), staged_text
         assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
         assert dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN not in staged_text
 
@@ -5722,6 +5726,7 @@ def test_skillsbench_docker_task_staging_supports_proxy_compatible_apt() -> None
         dockerfile.parent.mkdir(parents=True)
         original_text = (
             "FROM ubuntu:24.04\n\n"
+            "# custom source: http://packages.example.test/repository\n"
             "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
         )
         dockerfile.write_text(original_text, encoding="utf-8")
@@ -5749,6 +5754,19 @@ def test_skillsbench_docker_task_staging_supports_proxy_compatible_apt() -> None
         assert 'Acquire::http::Pipeline-Depth "0";' in staged_text, staged_text
         assert 'Acquire::https::Pipeline-Depth "0";' in staged_text, staged_text
         assert 'Acquire::ForceIPv4 "true";' in staged_text, staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            in staged_text
+        ), staged_text
+        assert (
+            "http://security.ubuntu.com/ubuntu#https://security.ubuntu.com/ubuntu"
+            in staged_text
+        ), staged_text
+        assert (
+            "http://deb.debian.org/debian#https://deb.debian.org/debian"
+            in staged_text
+        ), staged_text
+        assert "http://packages.example.test/repository" in staged_text
         assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
 
 
