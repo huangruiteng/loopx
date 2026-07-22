@@ -438,6 +438,8 @@ DOCKER_PIP_INDEX_MODES = {
 }
 DEFAULT_DOCKER_APT_SOURCE_MODE = "mirror"
 DOCKER_APT_SOURCE_MODES = ("mirror", "primary")
+DEFAULT_DOCKER_APT_TRANSPORT_MODE = "default"
+DOCKER_APT_TRANSPORT_MODES = ("default", "proxy-compatible")
 DEFAULT_DOCKER_PIP_BUILD_MODE = "isolated"
 DOCKER_PIP_BUILD_MODES = ("isolated", "no-isolation")
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
@@ -5889,6 +5891,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
             compact[field] = value[field]
     for field in (
         "dockerfile_apt_source_mode",
+        "dockerfile_apt_transport_mode",
         "dockerfile_pip_index_host",
         "bootstrap_light_blocker_kind",
         "dockerfile_uv_bootstrap_version",
@@ -5948,6 +5951,12 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             or DEFAULT_DOCKER_APT_SOURCE_MODE
         )
     )
+    docker_apt_transport_mode = _docker_apt_transport_mode(
+        str(
+            plan.get("docker_apt_transport_mode")
+            or DEFAULT_DOCKER_APT_TRANSPORT_MODE
+        )
+    )
     _, docker_pip_index_host = _docker_pip_index(
         str(plan.get("docker_pip_index_mode") or DEFAULT_DOCKER_PIP_INDEX_MODE)
     )
@@ -5989,6 +5998,11 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
         "dockerfile_apt_source_mode": (
             docker_apt_source_mode if DOCKER_APT_RETRY_BEGIN in dockerfile_text else ""
+        ),
+        "dockerfile_apt_transport_mode": (
+            docker_apt_transport_mode
+            if DOCKER_APT_RETRY_BEGIN in dockerfile_text
+            else ""
         ),
         "dockerfile_ubuntu_apt_mirror_patch_applied": (
             dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN in dockerfile_text
@@ -7714,15 +7728,27 @@ def patch_dockerfile_benchmark_egress_proxy_env(
     return metadata
 
 
-def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
+def patch_dockerfile_apt_retry(
+    dockerfile: Path,
+    *,
+    transport_mode: str = DEFAULT_DOCKER_APT_TRANSPORT_MODE,
+) -> bool:
     """Add public-safe apt retry/no-cache defaults to staged Dockerfiles."""
 
     if not dockerfile_needs_apt_retry_patch(dockerfile):
         return False
+    transport_mode = _docker_apt_transport_mode(transport_mode)
     text = _strip_marker_block(
         dockerfile.read_text(encoding="utf-8"),
         DOCKER_APT_RETRY_BEGIN,
         DOCKER_APT_RETRY_END,
+    )
+    proxy_compatible_config = (
+        "        'Acquire::http::Pipeline-Depth \"0\";' \\\n"
+        "        'Acquire::https::Pipeline-Depth \"0\";' \\\n"
+        "        'Acquire::ForceIPv4 \"true\";' \\\n"
+        if transport_mode == "proxy-compatible"
+        else ""
     )
     block = (
         f"{DOCKER_APT_RETRY_BEGIN}\n"
@@ -7733,6 +7759,7 @@ def patch_dockerfile_apt_retry(dockerfile: Path) -> bool:
         "        'Acquire::Retries \"5\";' \\\n"
         "        'Acquire::http::No-Cache \"true\";' \\\n"
         "        'Acquire::https::No-Cache \"true\";' \\\n"
+        f"{proxy_compatible_config}"
         "        'Acquire::Check-Valid-Until \"false\";' \\\n"
         "        > /etc/apt/apt.conf.d/80-loopx-retry; \\\n"
         "      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*.deb; \\\n"
@@ -7774,6 +7801,12 @@ def _docker_pip_build_mode(mode: str) -> str:
 def _docker_apt_source_mode(mode: str) -> str:
     if mode not in DOCKER_APT_SOURCE_MODES:
         raise ValueError(f"unsupported Docker apt source mode: {mode}")
+    return mode
+
+
+def _docker_apt_transport_mode(mode: str) -> str:
+    if mode not in DOCKER_APT_TRANSPORT_MODES:
+        raise ValueError(f"unsupported Docker apt transport mode: {mode}")
     return mode
 
 
@@ -8034,6 +8067,7 @@ def stage_task_for_sandbox(
     include_task_skills: bool = True,
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
     docker_apt_source_mode: str = DEFAULT_DOCKER_APT_SOURCE_MODE,
+    docker_apt_transport_mode: str = DEFAULT_DOCKER_APT_TRANSPORT_MODE,
     docker_pip_index_mode: str = DEFAULT_DOCKER_PIP_INDEX_MODE,
     docker_pip_build_mode: str = DEFAULT_DOCKER_PIP_BUILD_MODE,
     docker_gcr_mirror_prefix: str = "",
@@ -8044,6 +8078,9 @@ def stage_task_for_sandbox(
 
     task_path = task_path.expanduser().resolve()
     docker_apt_source_mode = _docker_apt_source_mode(docker_apt_source_mode)
+    docker_apt_transport_mode = _docker_apt_transport_mode(
+        docker_apt_transport_mode
+    )
     docker_pip_index_url, docker_pip_index_host = _docker_pip_index(
         docker_pip_index_mode
     )
@@ -8057,6 +8094,7 @@ def stage_task_for_sandbox(
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
         "dockerfile_apt_source_mode": "",
+        "dockerfile_apt_transport_mode": "",
         "dockerfile_ubuntu_apt_mirror_patch_required": False,
         "dockerfile_ubuntu_apt_mirror_patch_applied": False,
         "dockerfile_ubuntu_apt_mirror_host": "",
@@ -8216,6 +8254,7 @@ def stage_task_for_sandbox(
     metadata["apt_risk_preflight_blocked"] = False
     if needs_apt_retry_patch:
         metadata["dockerfile_apt_source_mode"] = docker_apt_source_mode
+        metadata["dockerfile_apt_transport_mode"] = docker_apt_transport_mode
     metadata["dockerfile_ubuntu_apt_mirror_patch_required"] = (
         needs_ubuntu_apt_mirror_patch
     )
@@ -8386,7 +8425,8 @@ def stage_task_for_sandbox(
         proxy_env=benchmark_egress_proxy_env,
     )
     apt_retry_patched = patch_dockerfile_apt_retry(
-        staged_path / "environment" / "Dockerfile"
+        staged_path / "environment" / "Dockerfile",
+        transport_mode=docker_apt_transport_mode,
     )
     ubuntu_apt_mirror_patched = bool(
         needs_ubuntu_apt_mirror_patch
@@ -8601,6 +8641,13 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     route = args.route
     docker_apt_source_mode = _docker_apt_source_mode(
         getattr(args, "docker_apt_source_mode", DEFAULT_DOCKER_APT_SOURCE_MODE)
+    )
+    docker_apt_transport_mode = _docker_apt_transport_mode(
+        getattr(
+            args,
+            "docker_apt_transport_mode",
+            DEFAULT_DOCKER_APT_TRANSPORT_MODE,
+        )
     )
     _, docker_pip_index_host = _docker_pip_index(args.docker_pip_index_mode)
     docker_pip_build_mode = _docker_pip_build_mode(
@@ -8836,6 +8883,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "docker_apt_source_mode": docker_apt_source_mode,
+        "docker_apt_transport_mode": docker_apt_transport_mode,
         "docker_pip_index_mode": args.docker_pip_index_mode,
         "docker_pip_build_mode": docker_pip_build_mode,
         "max_rounds": args.max_rounds,
@@ -9417,6 +9465,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "app_server_goal_prompt_style",
         "sandbox",
         "docker_apt_source_mode",
+        "docker_apt_transport_mode",
         "docker_pip_index_mode",
         "docker_pip_build_mode",
         "run_group_id",
@@ -13829,6 +13878,11 @@ async def run_benchflow_case(
         docker_apt_source_mode=getattr(
             args, "docker_apt_source_mode", DEFAULT_DOCKER_APT_SOURCE_MODE
         ),
+        docker_apt_transport_mode=getattr(
+            args,
+            "docker_apt_transport_mode",
+            DEFAULT_DOCKER_APT_TRANSPORT_MODE,
+        ),
         docker_pip_index_mode=args.docker_pip_index_mode,
         docker_pip_build_mode=args.docker_pip_build_mode,
         docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
@@ -16686,6 +16740,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "preserves the default fixed mirrors; primary keeps the task's "
             "original sources as a bounded fallback after a typed mirror "
             "network failure."
+        ),
+    )
+    parser.add_argument(
+        "--docker-apt-transport-mode",
+        choices=DOCKER_APT_TRANSPORT_MODES,
+        default=DEFAULT_DOCKER_APT_TRANSPORT_MODE,
+        help=(
+            "Apt transport policy used by staged Dockerfile repair. default "
+            "preserves current retry behavior; proxy-compatible additionally "
+            "disables HTTP(S) pipelining and forces IPv4 without recording "
+            "or changing proxy endpoints."
         ),
     )
     parser.add_argument(

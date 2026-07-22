@@ -33,6 +33,9 @@ Optional env:
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_DOCKER_APT_SOURCE_MODE   Staged Dockerfile apt sources: mirror
                                        (default) or primary
+  SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE
+                                       Staged apt transport: default or
+                                       proxy-compatible
   SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror
                                        (default) or primary
   SKILLSBENCH_DOCKER_PIP_BUILD_MODE    Staged Dockerfile pip build mode:
@@ -218,6 +221,7 @@ allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_R
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-mirror}"
+docker_apt_transport_mode="${SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE:-default}"
 docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
 docker_pip_build_mode="${SKILLSBENCH_DOCKER_PIP_BUILD_MODE:-isolated}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
@@ -258,6 +262,11 @@ fi
 if [[ "$docker_apt_source_mode" != "mirror" ]] &&
   [[ "$docker_apt_source_mode" != "primary" ]]; then
   echo "SKILLSBENCH_DOCKER_APT_SOURCE_MODE must be mirror or primary" >&2
+  exit 2
+fi
+if [[ "$docker_apt_transport_mode" != "default" ]] &&
+  [[ "$docker_apt_transport_mode" != "proxy-compatible" ]]; then
+  echo "SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE must be default or proxy-compatible" >&2
   exit 2
 fi
 if [[ "$docker_pip_build_mode" != "isolated" ]] &&
@@ -555,6 +564,7 @@ remote_command=$(
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
     --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
     --docker-apt-source-mode "$docker_apt_source_mode" \
+    --docker-apt-transport-mode "$docker_apt_transport_mode" \
     --docker-pip-index-mode "$docker_pip_index_mode" \
     --docker-pip-build-mode "$docker_pip_build_mode" \
     --host-local-acp-launch \
@@ -643,6 +653,7 @@ if [[ "$dry_run" == "true" ]]; then
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
   printf 'docker_apt_source_mode=%s\n' "$docker_apt_source_mode"
+  printf 'docker_apt_transport_mode=%s\n' "$docker_apt_transport_mode"
   printf 'docker_pip_index_mode=%s\n' "$docker_pip_index_mode"
   printf 'docker_pip_build_mode=%s\n' "$docker_pip_build_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \

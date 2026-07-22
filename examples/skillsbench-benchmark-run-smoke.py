@@ -5714,6 +5714,44 @@ def test_skillsbench_docker_task_staging_can_keep_primary_apt_sources() -> None:
         assert dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN not in staged_text
 
 
+def test_skillsbench_docker_task_staging_supports_proxy_compatible_apt() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-transport-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "apt-transport-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n\n"
+            "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="apt-transport-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+            docker_apt_transport_mode="proxy-compatible",
+        )
+
+        assert metadata["dockerfile_apt_source_mode"] == "primary", metadata
+        assert metadata["dockerfile_apt_transport_mode"] == (
+            "proxy-compatible"
+        ), metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert 'Acquire::http::Pipeline-Depth "0";' in staged_text, staged_text
+        assert 'Acquire::https::Pipeline-Depth "0";' in staged_text, staged_text
+        assert 'Acquire::ForceIPv4 "true";' in staged_text, staged_text
+        assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
+
+
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-skill-stage-") as tmp:
         root = Path(tmp)
@@ -14863,6 +14901,7 @@ if __name__ == "__main__":
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch()
     test_skillsbench_docker_task_staging_can_keep_primary_apt_sources()
+    test_skillsbench_docker_task_staging_supports_proxy_compatible_apt()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()

@@ -78,6 +78,7 @@ def run_preflight() -> dict[str, Any]:
             task_staging={
                 "apt_retry_patch_applied": True,
                 "dockerfile_apt_source_mode": "mirror",
+                "dockerfile_apt_transport_mode": "default",
                 "dockerfile_debian_apt_mirror_patch_required": True,
                 "dockerfile_debian_apt_mirror_patch_applied": True,
                 "dockerfile_debian_apt_mirror_host": "mirror.example",
@@ -115,6 +116,7 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     assert result["task_staging"] == {
         "apt_retry_patch_applied": True,
         "dockerfile_apt_source_mode": "mirror",
+        "dockerfile_apt_transport_mode": "default",
         "dockerfile_debian_apt_mirror_patch_required": True,
         "dockerfile_debian_apt_mirror_patch_applied": True,
         "dockerfile_debian_apt_mirror_host": "mirror.example",
@@ -238,6 +240,54 @@ def test_primary_apt_source_mode_skips_mirror_patches() -> None:
         assert DOCKER_APT_RETRY_BEGIN in staged_text
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
         assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" not in staged_text
+
+
+def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--docker-apt-source-mode",
+            "primary",
+            "--docker-apt-transport-mode",
+            "proxy-compatible",
+        ]
+    )
+    plan = build_plan(args)
+    public_config = _public_runner_config(plan)
+
+    assert plan["docker_apt_transport_mode"] == "proxy-compatible"
+    assert public_config["docker_apt_transport_mode"] == "proxy-compatible"
+
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-transport-pytest-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "apt-transport-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y curl\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="apt-transport-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+            docker_apt_transport_mode="proxy-compatible",
+        )
+
+        assert metadata["dockerfile_apt_source_mode"] == "primary"
+        assert metadata["dockerfile_apt_transport_mode"] == "proxy-compatible"
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert 'Acquire::http::Pipeline-Depth "0";' in staged_text
+        assert 'Acquire::https::Pipeline-Depth "0";' in staged_text
+        assert 'Acquire::ForceIPv4 "true";' in staged_text
+        assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
 
 
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:

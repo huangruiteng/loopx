@@ -243,6 +243,47 @@ def test_launcher_wires_bounded_primary_apt_source_mode(tmp_path: Path) -> None:
     assert "--docker-apt-source-mode primary" in proc.stdout
 
 
+def test_launcher_wires_bounded_proxy_compatible_apt_transport(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "proxy-compatible"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "proxy-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "docker_apt_transport_mode=proxy-compatible" in proc.stdout
+    assert "--docker-apt-transport-mode proxy-compatible" in proc.stdout
+
+
+def test_launcher_rejects_unbounded_apt_transport_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "private-mode"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-transport"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE must be default or "
+        "proxy-compatible"
+    ) in proc.stderr
+
+
 def test_launcher_rejects_unbounded_apt_source_mode(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_DOCKER_APT_SOURCE_MODE"] = "private-url"

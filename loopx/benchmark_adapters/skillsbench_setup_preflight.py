@@ -53,6 +53,7 @@ _PUBLIC_TASK_STAGING_BOOL_FIELDS = (
 _PUBLIC_TASK_STAGING_STRING_FIELDS = (
     "schema_version",
     "dockerfile_apt_source_mode",
+    "dockerfile_apt_transport_mode",
     "dockerfile_ubuntu_apt_mirror_host",
     "dockerfile_debian_apt_mirror_host",
     "dockerfile_pip_index_host",
