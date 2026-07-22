@@ -207,6 +207,44 @@ def test_launcher_rejects_invalid_benchmark_egress_mode(tmp_path: Path) -> None:
     )
 
 
+def test_launcher_wires_bounded_primary_pip_index_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_PIP_INDEX_MODE"] = "primary"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "primary-pip"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "docker_pip_index_mode=primary" in proc.stdout
+    assert "--docker-pip-index-mode primary" in proc.stdout
+
+
+def test_launcher_rejects_unbounded_pip_index_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_PIP_INDEX_MODE"] = "private-url"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-pip"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert "SKILLSBENCH_DOCKER_PIP_INDEX_MODE must be mirror or primary" in (
+        proc.stderr
+    )
+
+
 def test_setup_only_launcher_enables_incremental_public_artifact_sync(
     tmp_path: Path,
 ) -> None:
