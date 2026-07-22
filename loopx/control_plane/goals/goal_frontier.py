@@ -792,19 +792,21 @@ def build_vision_continuation_audit(
             "todo_completion_alone",
             "autonomous_replan_ack_alone",
             "vision_checkpoint_alone",
+            "registry_registration_alone",
             "no_followup_without_acceptance_evidence",
         ],
         "required_before_closeout": [
             "derive_requirements_from_active_vision_and_current_todo",
             "name_authoritative_evidence_for_each_requirement",
+            "inspect_registry_declared_materials_before_external_research",
             "run_bounded_public_research_when_local_evidence_is_missing",
             "create_successor_or_write_vision_replan_trigger_when_unproven",
         ],
         "recommended_action": (
             "audit active per-agent vision acceptance before todo closeout; "
-            "if evidence is weak or missing, use bounded public research when "
-            "the claim depends on public facts, then keep the vision active with "
-            "a successor todo or --vision-replan-trigger"
+            "if evidence is weak or missing, inspect registry-declared material "
+            "references before bounded public research, then keep the vision "
+            "active with a successor todo or --vision-replan-trigger"
         ),
     }
     if acceptance_requirements:
@@ -850,11 +852,19 @@ def build_vision_gap_judge(
         evidence_read_instruction = (
             f"{evidence_read_instruction} when goal_id and agent_id are available."
         )
+    registry_read_instruction = (
+        "Before external research, inspect the selected goal's registry-declared "
+        "topic_authority and project_materials metadata, preferring any projected "
+        "agent_material_frontier or required_reads. Use role, freshness, revision, "
+        "boundary, gate_status, and conflict_rule to choose permitted references. "
+        "Registration guides discovery; it neither grants access nor proves acceptance."
+    )
     public_research_instruction = (
-        "If the evidence log is missing, stale, or too weak and the acceptance "
-        "question depends on public facts, run bounded public web research using "
-        "primary or authoritative sources; record confirmed/refuted findings as "
-        "public-safe evidence or a compact vision replan trigger before judging."
+        "If projected evidence, the evidence log, and permitted registry-declared "
+        "references remain missing, stale, or too weak and the acceptance question "
+        "depends on public facts, run bounded public web research using primary or "
+        "authoritative sources; record confirmed/refuted findings as public-safe "
+        "evidence or a compact vision replan trigger before judging."
     )
     return {
         "schema_version": VISION_GAP_JUDGE_SCHEMA_VERSION,
@@ -869,12 +879,13 @@ def build_vision_gap_judge(
         "agent_judge_instruction": (
             "Judge vision closure: compare active vision acceptance_summary "
             "with projected evidence and agent-scoped evidence-log reads. "
-            "Use bounded public web research when local evidence is insufficient "
-            "and the gap depends on public facts. "
+            "Inspect permitted registry-declared material references before bounded "
+            "public web research. "
             "Mark done only when evidence proves completion, a blocker/user "
             "gate, or superseding/no-follow-up closure; otherwise continue."
         ),
         "evidence_read_instruction": evidence_read_instruction,
+        "registry_read_instruction": registry_read_instruction,
         "external_research_instruction": public_research_instruction,
         "research_writeback_required_when_used": [
             "source_url_or_public_reference",

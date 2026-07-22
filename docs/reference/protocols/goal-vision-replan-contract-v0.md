@@ -217,10 +217,16 @@ ACK, it must audit the current evidence against the active
    public-safe evidence records, public web research findings, evaluation
    outputs, successor state, blocker state, or a superseding vision packet.
 3. Treat weak, indirect, stale, or protocol-only evidence as incomplete.
-4. If local evidence remains weak and the acceptance question depends on public
-   facts, run bounded public research from primary or authoritative sources and
-   write back the confirmed/refuted finding.
-5. If any requirement remains unproven, keep the vision active by creating a
+4. Before external research, inspect the selected goal's registry-declared
+   `topic_authority` and `project_materials`, preferring projected
+   `agent_material_frontier` or `required_reads`. Use role, freshness, revision,
+   boundary, gate status, and conflict rule to select permitted references.
+   Registration guides discovery; it neither grants access nor proves acceptance.
+5. If projected evidence and permitted registry references remain weak, and the
+   acceptance question depends on public facts, run bounded public web research
+   from primary or authoritative sources and write back the confirmed/refuted
+   finding.
+6. If any requirement remains unproven, keep the vision active by creating a
    successor todo or writing a compact `--vision-replan-trigger`.
 
 Quota/status expose this as `vision_continuation_audit_v0` in the CLI payload
@@ -234,9 +240,10 @@ instruction packet for the agent. It borrows the strict done-judge stance used
 by autonomous goal loops without calling an LLM: the agent is told to compare
 the active vision `acceptance_summary` with projected evidence, using
 projected required reads, an explicit agent-scoped `loopx evidence-log
---goal-id <goal> --agent-id <agent> --thin` read when available, and bounded
-public web research when local evidence is missing or stale and the gap depends
-on public facts. `done=true` is only valid
+--goal-id <goal> --agent-id <agent> --thin` read when available, then permitted
+registry-declared material references. Bounded public web research is the next
+fallback when those sources are missing or stale and the gap depends on public
+facts. `done=true` is only valid
 when the response or state clearly provides one of these outcomes:
 
 - explicit completion with authoritative evidence;

@@ -1074,6 +1074,9 @@ def _attach_interaction_vision_continuation_audit(
             "evidence_read_instruction": vision_gap_judge.get(
                 "evidence_read_instruction"
             ),
+            "registry_read_instruction": vision_gap_judge.get(
+                "registry_read_instruction"
+            ),
             "done_only_when": vision_gap_judge.get("done_only_when") or [],
             "continue_when": vision_gap_judge.get("continue_when") or [],
             "otherwise": vision_gap_judge.get("otherwise"),
