@@ -10,6 +10,8 @@ import pytest
 
 from loopx.control_plane.turn_driver.codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
+    _cli_dialect,
+    _codex_command,
     codex_cli_result_schema,
     codex_cli_session_binding,
     load_codex_cli_session,
@@ -118,19 +120,6 @@ schema = schema_path.read_text(encoding="utf-8")
 if "loopx_turn_complexity_checkpoint_v0" in schema:
     complexity = os.environ.get("FAKE_CODEX_COMPLEXITY", "simple")
     complex_case = complexity == "complex"
-    simple_result = None if complex_case else {
-        "schema_version": "loopx_turn_result_v0",
-        "turn_key": turn_key,
-        "result_kind": "validated_progress",
-        "completed_phases": ["host_execute", "typed_result"],
-        "classification": "fixture_progress",
-        "recommended_action": "Continue the public fixture",
-        "next_action": "Run the next public fixture check",
-        "delivery_batch_scale": "implementation",
-        "delivery_outcome": "outcome_progress",
-        "vision_unchanged_reason": "The fixture objective remains unchanged.",
-        "summary": "One public fixture advanced."
-    }
     output_path.write_text(json.dumps({
         "schema_version": "loopx_turn_complexity_checkpoint_v0",
         "turn_key": turn_key,
@@ -142,8 +131,7 @@ if "loopx_turn_complexity_checkpoint_v0" in schema:
             "The fixture has one obvious bounded change."
         ),
         "relevant_paths": ["calculator.py"],
-        "open_questions": ["Which path preserves the invariant?"] if complex_case else [],
-        "simple_result_json": "" if complex_case else json.dumps(simple_result)
+        "open_questions": ["Which path preserves the invariant?"] if complex_case else []
     }), encoding="utf-8")
     raise SystemExit(0)
 if "loopx_turn_advisor_v0" in schema:
@@ -154,6 +142,23 @@ if "loopx_turn_advisor_v0" in schema:
         "recommendations": ["Keep the edit bounded to the selected todo."],
         "risks": ["Do not overwrite unrelated files."],
         "validation_focus": ["Verify the exact marker value."]
+    }), encoding="utf-8")
+    raise SystemExit(0)
+if os.environ.get("FAKE_CODEX_INVALID_FINAL_RESULT") == "1" and "resume" not in args:
+    output_path.write_text(json.dumps({
+        "schema_version": "loopx_turn_result_v0",
+        "turn_key": turn_key,
+        "result_kind": "user_action_required",
+        "completed_phases": ["host_execute", "typed_result"],
+        "classification": "",
+        "recommended_action": "",
+        "next_action": "",
+        "delivery_batch_scale": "",
+        "delivery_outcome": "",
+        "path_delta_mode": "unchanged",
+        "agent_vision_json": "",
+        "vision_unchanged_reason": "The fixture objective remains unchanged.",
+        "summary": "A user action is required."
     }), encoding="utf-8")
     raise SystemExit(0)
 output_path.write_text(json.dumps({
@@ -174,6 +179,127 @@ output_path.write_text(json.dumps({
     )
     executable.chmod(0o755)
     return executable, log_path
+
+
+def _fake_traex(tmp_path: Path) -> tuple[Path, Path]:
+    executable = tmp_path / "traex"
+    log_path = tmp_path / "traex-argv.jsonl"
+    executable.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import pathlib
+import re
+import sys
+
+args = sys.argv[1:]
+prompt = sys.stdin.read()
+log = pathlib.Path(os.environ["FAKE_TRAEX_LOG"])
+with log.open("a", encoding="utf-8") as handle:
+    handle.write(json.dumps({"args": args, "prompt": prompt}) + "\\n")
+match = re.search(r'"turn_key":"([^"]+)"', prompt)
+turn_key = match.group(1) if match else "sha256:" + "a" * 64
+print(json.dumps({"type": "thread.started", "thread_id": "traex-session-fixture-0001"}), flush=True)
+print(json.dumps({
+    "type": "turn.completed",
+    "usage": {
+        "input_tokens": 120,
+        "cached_input_tokens": 20,
+        "output_tokens": 30,
+        "reasoning_output_tokens": 10,
+        "total_tokens": 150
+    }
+}), flush=True)
+output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
+if "resume" not in args:
+    output_path.write_text("The requested fixture work is complete.", encoding="utf-8")
+    raise SystemExit(0)
+result = {
+    "schema_version": "loopx_turn_result_v0",
+    "turn_key": turn_key,
+    "result_kind": "validated_progress",
+    "completed_phases": ["host_execute", "typed_result"],
+    "classification": "fixture_progress",
+    "recommended_action": "Continue the public fixture",
+    "next_action": "Run the next public fixture check",
+    "delivery_batch_scale": "implementation",
+    "delivery_outcome": "outcome_progress",
+    "vision_unchanged_reason": "The fixture objective remains unchanged.",
+    "summary": "One public fixture advanced."
+}
+output_path.write_text("Receipt follows.\\n```json\\n" + json.dumps(result) + "\\n```", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    return executable, log_path
+
+
+def test_traex_cli_dialect_uses_prompt_schema_instead_of_provider_schema(
+    tmp_path: Path,
+) -> None:
+    schema = tmp_path / "schema.json"
+    output = tmp_path / "output.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    assert _cli_dialect("/usr/local/bin/traex") == "traex"
+    command = _codex_command(
+        codex_bin="/usr/local/bin/traex",
+        project=tmp_path,
+        schema_path=schema,
+        output_path=output,
+        sandbox="workspace-write",
+        model="DeepSeek-V4-Flash",
+        session_id=None,
+    )
+
+    assert "--output-schema" not in command
+    assert "--ignore-user-config" in command
+    assert "--ignore-rules" in command
+
+    resumed = _codex_command(
+        codex_bin="/usr/local/bin/traex",
+        project=tmp_path,
+        schema_path=schema,
+        output_path=output,
+        sandbox="workspace-write",
+        model="DeepSeek-V4-Flash",
+        session_id="session-fixture",
+    )
+    assert resumed[resumed.index("--permission-mode") + 1] == "custom"
+    assert 'approval_policy="never"' in resumed
+    assert 'sandbox_mode="workspace-write"' in resumed
+
+
+def test_traex_cli_repairs_invalid_final_receipt_in_same_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_traex(tmp_path)
+    monkeypatch.setenv("FAKE_TRAEX_LOG", str(log_path))
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = run_codex_cli_host(
+        _request(),
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        model="DeepSeek-V4-Flash",
+        timeout_seconds=5,
+    )
+
+    rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 2
+    assert "resume" not in rows[0]["args"]
+    assert "resume" in rows[1]["args"]
+    assert "--output-schema" not in rows[0]["args"]
+    assert "loopx_turn_result_v0" in rows[0]["prompt"]
+    assert "Do not perform more workspace work" in rows[1]["prompt"]
+    assert result["result_kind"] == "validated_progress"
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
 
 
 def test_codex_cli_result_schema_requires_only_bounded_contract_fields() -> None:
@@ -239,6 +365,36 @@ def test_codex_cli_host_reports_compact_provider_usage(
             "total_tokens": 150,
         },
     }
+
+
+def test_codex_cli_repairs_semantically_invalid_final_receipt_in_same_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_INVALID_FINAL_RESULT", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    result = run_codex_cli_host(
+        _request(),
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        timeout_seconds=5,
+    )
+
+    rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 2
+    assert "resume" in rows[1]
+    assert result["result_kind"] == "validated_progress"
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
 
 
 def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
@@ -333,16 +489,19 @@ def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
     ]
     assert [row[row.index("--model") + 1] for row in argv_rows] == [
         "executor-fixture",
+        "executor-fixture",
     ]
     assert "resume" not in argv_rows[0]
+    assert "resume" in argv_rows[1]
     prompts = [
         json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
     ]
     assert "complexity checkpoint" in prompts[0]
-    assert len(prompts) == 1
+    assert len(prompts) == 2
+    assert "Now execute and validate the bounded Turn normally" in prompts[1]
     assert result["model_usage"]["mode"] == "direct"
     assert result["model_usage"]["advisor_applied"] is False
-    assert result["model_usage"]["executor"]["total_tokens"] == 150
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
     assert result["model_usage"]["advisor_decision"] == {
         "schema_version": "loopx_turn_advisor_decision_v0",
         "decision": "skipped_simple",
@@ -354,8 +513,6 @@ def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
     assert result["model_usage"]["advisor_decision"]["checkpoint_digest"].startswith(
         "sha256:"
     )
-
-
 def test_codex_cli_advisor_reviews_complex_checkpoint_before_executor_resumes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -556,12 +713,13 @@ def test_codex_cli_skips_advisor_when_bounded_context_is_empty(
     argv_rows = [
         json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
     ]
-    assert len(argv_rows) == 1
+    assert len(argv_rows) == 2
     assert all(
         row[row.index("--model") + 1] == "executor-fixture" for row in argv_rows
     )
     assert result["model_usage"]["mode"] == "direct"
     assert result["model_usage"]["advisor_applied"] is False
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
 
 
 def test_codex_cli_advisor_context_rejects_unbounded_or_linked_files(

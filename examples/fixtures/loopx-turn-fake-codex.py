@@ -67,7 +67,6 @@ if checkpoint:
                 "evidence_summary": "The fixture has an independently validated postcondition that must be preserved.",
                 "relevant_paths": [MARKER_NAME],
                 "open_questions": ["Which exact next value preserves the one-step invariant?"],
-                "simple_result_json": "",
             }
         ),
         encoding="utf-8",

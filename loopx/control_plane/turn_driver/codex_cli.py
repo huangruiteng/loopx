@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,7 @@ from .executor import (
     HOST_RESULT_TEXT_LIMITS,
     BuiltInHostError,
     LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION,
+    validate_loopx_turn_host_result,
 )
 from .model_usage import (
     advisor_decision_receipt,
@@ -264,28 +266,6 @@ def codex_cli_result_schema() -> dict[str, Any]:
     }
 
 
-def _simple_result_contract_summary() -> str:
-    schema = codex_cli_result_schema()
-    properties = _mapping(schema.get("properties"))
-    enum_fields = (
-        "schema_version",
-        "result_kind",
-        "delivery_batch_scale",
-        "delivery_outcome",
-        "path_delta_mode",
-    )
-    enums = {
-        field: _mapping(properties.get(field)).get("enum") for field in enum_fields
-    }
-    return (
-        "Use exactly these keys: "
-        + json.dumps(schema["required"], separators=(",", ":"))
-        + ". Allowed enum values: "
-        + json.dumps(enums, separators=(",", ":"))
-        + ". No extra keys."
-    )
-
-
 _FINAL_RESULT_INSTRUCTIONS = (
     "For validated_progress, repair_required, or replan_required, fill every material field with public-safe evidence.",
     "For those material results, set path_delta_mode=material_replan only when this Turn changes a prior assumption, route, scope, acceptance rule, or stops prior work; then provide a complete bounded agent vision packet with goal_path_delta_v0 in agent_vision_json and leave vision_unchanged_reason empty.",
@@ -326,6 +306,13 @@ def _prompt(
                 ),
             ]
         )
+        if complexity_checkpoint.get("complexity") == "simple":
+            lines.extend(
+                [
+                    "The checkpoint found no reason to request Advisor guidance.",
+                    "Now execute and validate the bounded Turn normally, then return its final typed result.",
+                ]
+            )
     if advisor is not None:
         lines.extend(
             [
@@ -394,7 +381,6 @@ def codex_cli_complexity_checkpoint_schema() -> dict[str, Any]:
         "evidence_summary": item,
         "relevant_paths": {"type": "array", "items": item, "maxItems": 8},
         "open_questions": {"type": "array", "items": item, "maxItems": 4},
-        "simple_result_json": {"type": "string", "maxLength": 4000},
     }
     return {
         "type": "object",
@@ -408,13 +394,11 @@ def _complexity_checkpoint_prompt(request: Mapping[str, Any]) -> str:
     return "\n".join(
         [
             "Begin exactly one bounded LoopX Turn in the current workspace.",
-            "Use the TurnEnvelope as the source of truth. Inspect the repository and make only safe, reversible progress allowed by the Turn contract.",
+            "Use the TurnEnvelope as the source of truth. Inspect only enough repository evidence to classify the work; do not modify files or run the requested implementation yet.",
             "Return exactly one schema-constrained complexity checkpoint.",
-            "Classify simple only when the root cause, patch boundary, preserved invariant, and focused validation are all clear. Complete and validate that bounded work now, then JSON-encode its typed final result in simple_result_json with no complexity signals or open questions.",
-            "Classify complex when strong-model review could change the implementation plan. Pause before risky implementation, set simple_result_json to an empty string, and name only supported signals, repository-relative relevant paths, verified evidence, and unresolved questions.",
+            "Classify simple only when the root cause, patch boundary, preserved invariant, and focused validation are all clear; use no complexity signals or open questions.",
+            "Classify complex when strong-model review could change the implementation plan, and name only supported signals, repository-relative relevant paths, verified evidence, and unresolved questions.",
             "Do not write LoopX state, spend quota, or apply scheduler changes; the adapter owns those effects.",
-            "When producing simple_result_json, follow these final-result semantics:",
-            *_FINAL_RESULT_INSTRUCTIONS,
             "Turn request:",
             json.dumps(
                 dict(request),
@@ -422,8 +406,6 @@ def _complexity_checkpoint_prompt(request: Mapping[str, Any]) -> str:
                 sort_keys=True,
                 separators=(",", ":"),
             ),
-            "For a simple task, simple_result_json must decode to the final-result contract and must copy the Turn request's turn_key:",
-            _simple_result_contract_summary(),
         ]
     )
 
@@ -443,7 +425,6 @@ def _normalize_complexity_checkpoint(
         "evidence_summary",
         "relevant_paths",
         "open_questions",
-        "simple_result_json",
     }
     if set(value) != expected_fields:
         raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
@@ -499,24 +480,6 @@ def _normalize_complexity_checkpoint(
         raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
     if complexity == "complex" and not normalized["signals"]:
         raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
-    simple_result_json = value.get("simple_result_json")
-    if not isinstance(simple_result_json, str) or len(simple_result_json) > 4000:
-        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
-    if complexity == "complex" and simple_result_json:
-        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
-    simple_result: Any = None
-    if complexity == "simple":
-        try:
-            simple_result = json.loads(simple_result_json)
-        except json.JSONDecodeError as exc:
-            raise BuiltInHostError(
-                "codex_cli_complexity_checkpoint_contract_invalid"
-            ) from exc
-        if not isinstance(simple_result, Mapping):
-            raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
-    normalized["simple_result"] = (
-        dict(simple_result) if isinstance(simple_result, Mapping) else None
-    )
     return normalized
 
 
@@ -726,33 +689,54 @@ def _codex_command(
     session_id: str | None,
     ephemeral: bool = False,
 ) -> list[str]:
+    dialect = _cli_dialect(codex_bin)
     if session_id:
         command = [
             codex_bin,
             "exec",
             "resume",
+        ]
+        if dialect == "traex":
+            command.extend(
+                [
+                    "--ignore-user-config",
+                    "--ignore-rules",
+                    "--permission-mode",
+                    "custom",
+                    "-c",
+                    'approval_policy="never"',
+                    "-c",
+                    f'sandbox_mode="{sandbox}"',
+                ]
+            )
+        command.extend([
             "--skip-git-repo-check",
-            "--output-schema",
-            str(schema_path),
             "--output-last-message",
             str(output_path),
             "--json",
-        ]
+        ])
+        if dialect == "codex":
+            command[4:4] = ["--output-schema", str(schema_path)]
     else:
         command = [
             codex_bin,
             "exec",
+        ]
+        if dialect == "traex":
+            command.extend(["--ignore-user-config", "--ignore-rules"])
+        command.extend([
             "--skip-git-repo-check",
             "--sandbox",
             sandbox,
             "-C",
             str(project),
-            "--output-schema",
-            str(schema_path),
             "--output-last-message",
             str(output_path),
             "--json",
-        ]
+        ])
+        if dialect == "codex":
+            output_index = command.index("--output-last-message")
+            command[output_index:output_index] = ["--output-schema", str(schema_path)]
         if ephemeral:
             command.insert(2, "--ephemeral")
     if model:
@@ -763,81 +747,185 @@ def _codex_command(
     return command
 
 
+def _cli_dialect(executable: str) -> str:
+    name = Path(executable).name.lower()
+    return "traex" if name in {"traex", "trae-cli", "traecli"} else "codex"
+
+
+def _structured_prompt(prompt: str, *, schema_path: Path, dialect: str) -> str:
+    if dialect != "traex":
+        return prompt
+    schema = schema_path.read_text(encoding="utf-8")
+    return "\n".join(
+        [
+            prompt,
+            "TraeX provider structured output is unavailable for this model.",
+            "Return only one JSON object matching the exact schema below. Do not add Markdown fences or explanatory prose.",
+            schema,
+        ]
+    )
+
+
+def _read_structured_result(output_path: Path, *, dialect: str) -> Any:
+    try:
+        raw = output_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    if dialect != "traex":
+        return None
+    fenced = re.findall(r"```(?:json)?\s*(.*?)\s*```", raw, flags=re.DOTALL)
+    if len(fenced) != 1:
+        return None
+    try:
+        return json.loads(fenced[0])
+    except json.JSONDecodeError:
+        return None
+
+
+def _traex_receipt_repair_command(
+    command: list[str], *, session_id: str, output_path: Path
+) -> list[str]:
+    repaired = [
+        command[0],
+        "exec",
+        "resume",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--skip-git-repo-check",
+        "--output-last-message",
+        str(output_path),
+        "--json",
+    ]
+    if "--model" in command:
+        model_index = command.index("--model")
+        repaired.extend(["--model", command[model_index + 1]])
+    repaired.extend([session_id, "-"])
+    return repaired
+
+
 def _run_codex_process(
     command: list[str],
     *,
     project: Path,
     prompt: str,
+    schema_path: Path,
     output_path: Path,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    proc = subprocess.Popen(
-        command,
-        cwd=project,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    observed_session: list[str] = []
-    failure_categories: list[str] = []
-    observed_usage: list[dict[str, int]] = []
+    dialect = _cli_dialect(command[0])
 
-    def consume_events() -> None:
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(event, dict):
-                candidate = codex_cli_event_session_id(event)
-                if candidate and not observed_session:
-                    observed_session.append(candidate)
-                usage = event_usage(event)
-                if usage is not None:
-                    observed_usage.append(usage)
+    def invoke(
+        active_command: list[str], active_prompt: str, active_timeout: float
+    ) -> dict[str, Any]:
+        proc = subprocess.Popen(
+            active_command,
+            cwd=project,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        observed_session: list[str] = []
+        failure_categories: list[str] = []
+        observed_usage: list[dict[str, int]] = []
 
-    def consume_stderr() -> None:
-        assert proc.stderr is not None
-        for line in proc.stderr:
-            category = _stderr_failure_category(line)
-            if category and not failure_categories:
-                failure_categories.append(category)
+        def consume_events() -> None:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict):
+                    candidate = codex_cli_event_session_id(event)
+                    if candidate and not observed_session:
+                        observed_session.append(candidate)
+                    usage = event_usage(event)
+                    if usage is not None:
+                        observed_usage.append(usage)
 
-    reader = threading.Thread(target=consume_events, daemon=True)
-    stderr_reader = threading.Thread(target=consume_stderr, daemon=True)
-    reader.start()
-    stderr_reader.start()
-    assert proc.stdin is not None
-    timed_out = False
-    try:
-        proc.stdin.write(prompt)
-        proc.stdin.close()
-        returncode = proc.wait(timeout=max(1.0, timeout_seconds))
-    except subprocess.TimeoutExpired:
-        _terminate_process(proc)
-        timed_out = True
-        returncode = proc.returncode
-    finally:
-        reader.join(timeout=2)
-        stderr_reader.join(timeout=2)
-    result: Any = None
-    if not timed_out and returncode == 0:
+        def consume_stderr() -> None:
+            assert proc.stderr is not None
+            for line in proc.stderr:
+                category = _stderr_failure_category(line)
+                if category and not failure_categories:
+                    failure_categories.append(category)
+
+        reader = threading.Thread(target=consume_events, daemon=True)
+        stderr_reader = threading.Thread(target=consume_stderr, daemon=True)
+        reader.start()
+        stderr_reader.start()
+        assert proc.stdin is not None
+        timed_out = False
         try:
-            result = json.loads(output_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            result = None
+            try:
+                proc.stdin.write(active_prompt)
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            returncode = proc.wait(timeout=max(1.0, active_timeout))
+        except subprocess.TimeoutExpired:
+            _terminate_process(proc)
+            timed_out = True
+            returncode = proc.returncode
+        finally:
+            reader.join(timeout=2)
+            stderr_reader.join(timeout=2)
+        result = None
+        if not timed_out and returncode == 0:
+            result = _read_structured_result(output_path, dialect=dialect)
+        return {
+            "returncode": returncode,
+            "timed_out": timed_out,
+            "session_id": observed_session[0] if observed_session else None,
+            "failure_category": (
+                failure_categories[0] if failure_categories else "exit_nonzero"
+            ),
+            "usage": observed_usage[-1] if observed_usage else None,
+            "result": result,
+        }
+
+    invocation = invoke(
+        command,
+        _structured_prompt(prompt, schema_path=schema_path, dialect=dialect),
+        timeout_seconds,
+    )
+    if (
+        dialect == "traex"
+        and invocation["returncode"] == 0
+        and invocation["result"] is None
+        and invocation["session_id"]
+        and "--ephemeral" not in command
+    ):
+        repair_prompt = _structured_prompt(
+            "Do not perform more workspace work. Your previous response was not a valid typed receipt. Re-emit only the final receipt for the work already completed.",
+            schema_path=schema_path,
+            dialect=dialect,
+        )
+        repair = invoke(
+            _traex_receipt_repair_command(
+                command,
+                session_id=str(invocation["session_id"]),
+                output_path=output_path,
+            ),
+            repair_prompt,
+            min(timeout_seconds, 60.0),
+        )
+        first_usage = invocation.get("usage")
+        repair_usage = repair.get("usage")
+        if isinstance(first_usage, Mapping) and isinstance(repair_usage, Mapping):
+            repair["usage"] = aggregate_provider_usage(first_usage, repair_usage)
+        elif repair_usage is None:
+            repair["usage"] = first_usage
+        repair["session_id"] = invocation["session_id"]
+        invocation = repair
     return {
-        "returncode": returncode,
-        "timed_out": timed_out,
-        "session_id": observed_session[0] if observed_session else None,
-        "failure_category": (
-            failure_categories[0] if failure_categories else "exit_nonzero"
-        ),
-        "usage": observed_usage[-1] if observed_usage else None,
-        "result": result,
+        **invocation,
     }
 
 
@@ -893,6 +981,7 @@ def _run_complexity_checkpoint(
         ),
         project=project,
         prompt=_complexity_checkpoint_prompt(request),
+        schema_path=schema_path,
         output_path=output_path,
         timeout_seconds=timeout_seconds,
     )
@@ -976,6 +1065,7 @@ def _run_advisor_review(
             ),
             complexity_checkpoint=checkpoint,
         ),
+        schema_path=schema_path,
         output_path=output_path,
         timeout_seconds=timeout_seconds,
     )
@@ -1090,6 +1180,7 @@ def _run_final_executor(
                 review.failure_category if review is not None else None
             ),
         ),
+        schema_path=schema_path,
         output_path=output_path,
         timeout_seconds=timeout_seconds,
     )
@@ -1115,6 +1206,66 @@ def _run_final_executor(
     if not isinstance(result, dict):
         raise BuiltInHostError("codex_cli_final_result_not_object")
     raw_usage = invocation.get("usage")
+    validation_plan = {
+        "transaction": {"turn_key": request.get("turn_key")},
+        "turn_envelope": request.get("turn_envelope"),
+    }
+    validation = validate_loopx_turn_host_result(validation_plan, result)
+    if not validation["ok"]:
+        if not observed_session_id:
+            raise BuiltInHostError("codex_cli_final_result_contract_invalid")
+        output_path.unlink(missing_ok=True)
+        repair = _run_codex_process(
+            _codex_command(
+                codex_bin=codex_bin,
+                project=project,
+                schema_path=schema_path,
+                output_path=output_path,
+                sandbox="read-only",
+                model=model,
+                session_id=observed_session_id,
+            ),
+            project=project,
+            prompt="\n".join(
+                [
+                    "Do not perform more workspace work. The prior final receipt violated the LoopX result contract.",
+                    "Re-emit only a corrected final typed receipt for work already attempted.",
+                    "Correct these validation errors: "
+                    + "; ".join(str(item) for item in validation["errors"][:4]),
+                    "Turn request:",
+                    json.dumps(
+                        dict(request),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    *_FINAL_RESULT_INSTRUCTIONS,
+                ]
+            ),
+            schema_path=schema_path,
+            output_path=output_path,
+            timeout_seconds=min(timeout_seconds, 60.0),
+        )
+        if repair["timed_out"]:
+            raise BuiltInHostError("codex_cli_final_result_repair_timeout")
+        if repair["returncode"] != 0:
+            raise BuiltInHostError(
+                f"codex_cli_final_result_repair_{repair['failure_category']}"
+            )
+        repaired_result = repair.get("result")
+        if not isinstance(repaired_result, dict):
+            raise BuiltInHostError("codex_cli_final_result_contract_invalid")
+        repaired_validation = validate_loopx_turn_host_result(
+            validation_plan, repaired_result
+        )
+        if not repaired_validation["ok"]:
+            raise BuiltInHostError("codex_cli_final_result_contract_invalid")
+        repair_usage = repair.get("usage")
+        if isinstance(raw_usage, Mapping) and isinstance(repair_usage, Mapping):
+            raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
+        elif repair_usage is not None:
+            raw_usage = repair_usage
+        result = repaired_result
     _attach_model_usage(
         result,
         adaptive_mode=checkpoint_run is not None,
@@ -1182,13 +1333,6 @@ def run_codex_cli_host(
                 lineage=lineage,
                 timeout_seconds=advisor_timeout_seconds,
             )
-            if checkpoint_run.checkpoint["complexity"] == "simple":
-                simple_result = dict(checkpoint_run.checkpoint["simple_result"])
-                simple_result["model_usage"] = direct_model_usage(
-                    checkpoint_run.usage,
-                    advisor_decision=checkpoint_run.decision,
-                )
-                return simple_result
             if checkpoint_run.checkpoint["complexity"] == "complex":
                 review = _run_advisor_review(
                     request,
