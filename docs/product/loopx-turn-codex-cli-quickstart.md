@@ -48,8 +48,8 @@ result to stdout.
 
 ## Use A Read-Only Advisor
 
-Advisor mode lets a stronger model produce bounded guidance before a distinct,
-lower-cost model executes the Turn:
+Advisor mode lets a lower-cost model inspect the task first and call a stronger
+model only when a strict complexity checkpoint justifies the extra cost:
 
 ```bash
 loopx turn run-once \
@@ -84,25 +84,32 @@ loopx turn run-once \
   --execute
 ```
 
-When bounded source context is available, the Advisor runs first in an
-ephemeral `read-only` Codex session. It receives the TurnEnvelope plus at most
-eight literal, non-symlink files named by `write_scope`, capped at 24 KB total;
-the repository itself is not mounted. Its compact summary, recommendations,
-risks, and validation focus are passed to the executor as non-authoritative
-guidance. It cannot change the selected todo, gate, writeback, quota, scheduler,
-or executor sandbox. An invoked Advisor failure is fail-closed.
+The executor starts in its eventual sandbox and emits a bounded checkpoint. A
+simple task is completed and validated in that first call; its typed result is
+embedded in the checkpoint, so LoopX skips both the strong model and a second
+executor call. A complex checkpoint must identify at least one supported
+signal: cross-file reasoning, ambiguous root cause, invariant risk, validation
+uncertainty, or an external contract. LoopX then runs the Advisor in an ephemeral
+`read-only` session over the TurnEnvelope, executor evidence, and at most eight
+literal, non-symlink files named by `write_scope` or the checkpoint, capped at
+24 KB total. The repository itself is not mounted in the Advisor session.
 
-If that bounded context contains no eligible file, LoopX skips the strong-model
-call and runs the configured executor directly. The receipt reports
-`model_usage.mode=direct` and `advisor_applied=false`, so this cost guard cannot
-masquerade as applied advice.
+The Advisor's compact summary, recommendations, risks, and validation focus are
+passed back to the same executor session as non-authoritative guidance. Only
+this complex path resumes the executor. The Advisor cannot change the selected
+todo, gate, writeback, quota, scheduler, or executor
+sandbox. An Advisor timeout or invalid response fails open to the executor with
+a bounded failure category, while any observed failed-attempt tokens remain in
+the total.
 
 When Codex emits provider usage events, the Turn result includes
-`model_usage.advisor`, `model_usage.executor`, and their exact `total`. Only
-token counters and an advice digest are retained; advice text, prompts, raw
-events, and model responses are excluded from LoopX state. Advisor mode requires
-distinct explicit models so an accidental same-model pairing cannot masquerade
-as an optimization.
+`model_usage.advisor`, combined checkpoint-plus-executor usage, and their exact
+`total`. The decision receipt records `skipped_simple`, `applied_complexity`, or
+`fallback_failure`, the bounded signals, and a checkpoint digest. Only token
+counters, decision metadata, and digests are retained; checkpoint text, advice
+text, prompts, raw events, and model responses are excluded from LoopX state.
+Advisor mode requires distinct explicit models so an accidental same-model
+pairing cannot masquerade as an optimization.
 
 Auto results include a compact `model_selection` receipt with the requested
 mode, profile id, exact Advisor and executor model ids, and selection reason.

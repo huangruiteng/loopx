@@ -31,16 +31,27 @@ LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
 | Validate | Independent task-specific command or callback | Check the real artifact, test, remote state, or declared read-only postcondition. |
 | Commit | LoopX CLI | Write durable state and spend one quota slot only after validation passes. |
 
-The built-in Codex host may add an explicit Advisor stage between Decide and
-Execute. The Advisor is an ephemeral read-only model call over the bounded Turn
-request and a size-capped context packet of literal, non-symlink files from the
-declared write scope. The repository itself is not mounted. It returns compact
-guidance under a strict schema; the executor still owns tools and
-implementation, while the TurnEnvelope and validator keep their existing
-authority. An invoked Advisor must fail closed before executor launch when the
-advice, provider call, or usage observation is invalid. When no eligible
-bounded file exists, the adapter skips the Advisor call and records direct mode
-with `advisor_applied=false`.
+The built-in Codex host may add an adaptive Advisor stage inside Execute. The
+lower-cost executor first inspects the task and emits a strict complexity
+checkpoint from the same opaque session that performs the work. A simple task
+is completed and validated in that first call, with its typed result embedded
+in the checkpoint, so neither the strong model nor a second executor call runs.
+A complex checkpoint triggers an ephemeral read-only Advisor over the bounded
+Turn request, executor evidence, and a size-capped packet of literal, non-symlink
+files from the declared write scope or checkpoint paths. The repository itself
+is not mounted in the Advisor session.
+
+The deterministic trigger accepts only these bounded complexity signals:
+`cross_file_reasoning`, `ambiguous_root_cause`, `invariant_risk`,
+`validation_uncertainty`, and `external_contract`. A complex checkpoint must
+name at least one signal and carries no final result; a simple checkpoint may
+not include signals or open questions and must carry the typed final result.
+The Advisor returns compact guidance under a strict schema, then the same
+executor session resumes with that non-authoritative review. The executor still
+owns tools and implementation, while the TurnEnvelope and validator keep
+their existing authority. An Advisor timeout, provider failure, invalid result,
+or missing usage fails open to the executor with a bounded failure category;
+observed failed-attempt usage remains part of the total receipt.
 
 The Codex host supports `advisor-mode=off|auto|manual`. Auto mode resolves the
 current Codex model catalog when a Turn invokes the host and chooses the
@@ -58,8 +69,8 @@ recovery available when the provider catalog is temporarily unavailable.
 An auto-mode execution projects `loopx_turn_model_selection_v0` with
 `requested_mode`, `profile_id`, exact Advisor and executor model ids, and a
 bounded selection reason. This receipt reports resolution; actual invocation
-remains visible through `model_usage.advisor_applied` because the bounded-context
-cost guard may skip the selected Advisor for a particular Turn. The validated
+remains visible through `model_usage.advisor_applied` because the complexity
+trigger may skip the selected Advisor for a particular Turn. The validated
 selection receipt is stored with the host result and projected unchanged by a
 committed replay; replay never reselects a different pair.
 
@@ -413,13 +424,15 @@ fixtures and LoopX state.
 
 For a provider that emits usage events, a built-in adapter may attach
 `loopx_turn_model_usage_v0` to the normalized host result. Direct mode records
-executor usage. Advisor mode records Advisor usage, executor usage, their
-field-wise total, and a digest of the applied advice. The adapter must reject
-inconsistent totals and must not persist the advice, prompt, raw response, or
-event stream as usage evidence. A requested Advisor that is skipped because no
-eligible bounded context exists remains direct mode; consumers must use
-`advisor_applied`, not the presence of an Advisor CLI option, as the applied
-stage signal.
+executor usage. Advisor mode records Advisor usage, combined checkpoint and
+executor usage, their field-wise total, and a digest of the applied advice. An
+adaptive receipt also carries the checkpoint digest, selected complexity
+signals, and one decision: `skipped_simple`, `applied_complexity`, or
+`fallback_failure`. A failed Advisor attempt includes its observed usage and an
+explicit completeness flag. The adapter must reject inconsistent totals and
+must not persist the checkpoint text, advice, prompt, raw response, or event
+stream as usage evidence. Consumers must use `advisor_applied` and the decision
+receipt, not the presence of an Advisor CLI option, as the applied-stage signal.
 
 ## Promotion Gates
 
