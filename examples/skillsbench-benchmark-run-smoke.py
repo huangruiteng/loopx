@@ -14862,6 +14862,7 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch()
+    test_skillsbench_docker_task_staging_can_keep_primary_apt_sources()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()

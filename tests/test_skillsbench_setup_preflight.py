@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +19,13 @@ from loopx.benchmark_adapters.skillsbench_setup_preflight import (
 )
 from loopx.status import compact_benchmark_run
 from scripts.skillsbench_automation_loop import (
+    DOCKER_APT_RETRY_BEGIN,
     _effective_setup_only_stage_timeout_sec,
     _public_runner_config,
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
+    stage_task_for_sandbox,
 )
 
 
@@ -203,6 +206,38 @@ def test_primary_apt_source_mode_is_publicly_attributable() -> None:
 
     assert plan["docker_apt_source_mode"] == "primary"
     assert public_config["docker_apt_source_mode"] == "primary"
+
+
+def test_primary_apt_source_mode_skips_mirror_patches() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-primary-apt-pytest-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "primary-apt-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y curl\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="primary-apt-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+        )
+
+        assert metadata["dockerfile_apt_source_mode"] == "primary"
+        assert metadata["apt_retry_patch_applied"] is True
+        assert metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is False
+        assert metadata["dockerfile_debian_apt_mirror_patch_applied"] is False
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
+        assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" not in staged_text
 
 
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:

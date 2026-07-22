@@ -8388,11 +8388,17 @@ def stage_task_for_sandbox(
     apt_retry_patched = patch_dockerfile_apt_retry(
         staged_path / "environment" / "Dockerfile"
     )
-    ubuntu_apt_mirror_patched = dockerfile_runtime.patch_ubuntu_apt_mirror(
-        staged_path / "environment" / "Dockerfile"
+    ubuntu_apt_mirror_patched = bool(
+        needs_ubuntu_apt_mirror_patch
+        and dockerfile_runtime.patch_ubuntu_apt_mirror(
+            staged_path / "environment" / "Dockerfile"
+        )
     )
-    debian_apt_mirror_patched = dockerfile_runtime.patch_debian_apt_mirror(
-        staged_path / "environment" / "Dockerfile"
+    debian_apt_mirror_patched = bool(
+        needs_debian_apt_mirror_patch
+        and dockerfile_runtime.patch_debian_apt_mirror(
+            staged_path / "environment" / "Dockerfile"
+        )
     )
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile",
