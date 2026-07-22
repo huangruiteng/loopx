@@ -104,6 +104,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_DOCKER_MAVEN_MIRROR_URL,
     DEFAULT_DOCKER_MAVEN_SETTINGS_PATH,
     DEFAULT_DOCKER_PIP_INDEX_HOST,
+    PRIMARY_DOCKER_PIP_INDEX_HOST,
+    PRIMARY_DOCKER_PIP_INDEX_URL,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
@@ -6111,6 +6113,7 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert metadata["dockerfile_pip_index_host"] == DEFAULT_DOCKER_PIP_INDEX_HOST, (
             metadata
         )
+        assert metadata["dockerfile_pip_build_mode"] == "isolated", metadata
         assert metadata["original_task_mutated"] is False, metadata
         assert dockerfile.read_text(encoding="utf-8") == original_text
         staged_text = (staged_path / "environment" / "Dockerfile").read_text(
@@ -6126,9 +6129,45 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
             staged_text
         ), staged_text
         assert "PIP_RETRIES=10" in staged_text, staged_text
+        assert "PIP_NO_BUILD_ISOLATION" not in staged_text, staged_text
         assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
             "pip3 install"
         ), staged_text
+
+        primary_path, primary_metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="adaptive-cruise-control-primary-index",
+            sandbox="docker",
+            include_task_skills=False,
+            docker_pip_index_mode="primary",
+        )
+        primary_text = (primary_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert primary_metadata["dockerfile_pip_index_host"] == (
+            PRIMARY_DOCKER_PIP_INDEX_HOST
+        ), primary_metadata
+        assert (
+            f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={PRIMARY_DOCKER_PIP_INDEX_URL}"
+            in primary_text
+        ), primary_text
+
+        no_isolation_path, no_isolation_metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="adaptive-cruise-control-no-isolation",
+            sandbox="docker",
+            include_task_skills=False,
+            docker_pip_build_mode="no-isolation",
+        )
+        no_isolation_text = (
+            no_isolation_path / "environment" / "Dockerfile"
+        ).read_text(encoding="utf-8")
+        assert no_isolation_metadata["dockerfile_pip_build_mode"] == (
+            "no-isolation"
+        ), no_isolation_metadata
+        assert "PIP_NO_BUILD_ISOLATION=1" in no_isolation_text, no_isolation_text
 
 
 def test_skillsbench_docker_pip_bootstrap_skips_python_heredoc_imports() -> None:

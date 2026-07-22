@@ -58,7 +58,7 @@ _FAILURE_DEPENDENCY_CLASS_PATTERNS = (
     (
         "python_package",
         r"python\S*\s+-m\s+pip\s+install|pip3?\s+install|pypi\.|"
-        r"pythonhosted\.org",
+        r"pythonhosted\.org|pip\._vendor\.",
     ),
     ("python_uv", r"\buvx?\b|astral\.sh"),
     ("conda_package", r"\bconda\b|\bmamba\b|anaconda\.(?:com|org)"),
@@ -145,6 +145,11 @@ _FAILURE_REASON_PATTERNS = (
         r"subprocess-exited-with-error",
     ),
     ("pip_os_error", r"could not install packages due to an oserror"),
+    (
+        "pip_vendor_network",
+        r"pip\._vendor\.[^\n]*(?:network|connection|retry|timed?\s*out|"
+        r"incompleteread|protocolerror|proxyerror)",
+    ),
     ("permission_denied", r"permission denied|operation not permitted"),
     ("missing_file", r"no such file|does not exist"),
     ("no_space_left", r"no space left on device"),
@@ -170,6 +175,7 @@ _TRANSIENT_FAILURE_REASONS = {
     "http_server_error",
     "network_unreachable",
     "proxy_connect",
+    "pip_vendor_network",
     "retry_exhausted",
 }
 _DETERMINISTIC_FAILURE_REASONS = {
@@ -498,6 +504,20 @@ def skillsbench_pip_bootstrap_failure_subtype(error_text: str) -> str:
         any(host in line for host in package_hosts)
         and any(marker in line for marker in network_failures)
         for line in text.splitlines()
+    ):
+        return "package_index_network_failure"
+    pip_vendor_network_markers = (
+        "network",
+        "connection",
+        "retry",
+        "timed out",
+        "timeout",
+        "incompleteread",
+        "protocolerror",
+        "proxyerror",
+    )
+    if "pip._vendor." in text and any(
+        marker in text for marker in pip_vendor_network_markers
     ):
         return "package_index_network_failure"
     if "subprocess-exited-with-error" in text:

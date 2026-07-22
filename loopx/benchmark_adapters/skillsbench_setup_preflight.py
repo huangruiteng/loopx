@@ -55,6 +55,7 @@ _PUBLIC_TASK_STAGING_STRING_FIELDS = (
     "dockerfile_ubuntu_apt_mirror_host",
     "dockerfile_debian_apt_mirror_host",
     "dockerfile_pip_index_host",
+    "dockerfile_pip_build_mode",
     "dockerfile_uv_bootstrap_version",
     "dockerfile_uv_bootstrap_mirror_host",
     "dockerfile_apache_archive_mirror_host",
@@ -62,6 +63,7 @@ _PUBLIC_TASK_STAGING_STRING_FIELDS = (
     "verifier_uv_bootstrap_version",
     "verifier_uv_bootstrap_mirror_host",
 )
+_COMPOSE_EXCEPTION_FINGERPRINT_TEXT_LIMIT = 64 * 1024
 
 
 class SkillsBenchComposeCommandFailure(RuntimeError):
@@ -85,6 +87,27 @@ def skillsbench_compose_typed_fingerprint(
     return dict(exc.fingerprint)
 
 
+def _compose_exception_fingerprint_text(exc: Exception) -> str:
+    """Collect producer-owned output only long enough to derive a fingerprint."""
+
+    parts: list[str] = []
+    remaining = _COMPOSE_EXCEPTION_FINGERPRINT_TEXT_LIMIT
+    for value in (
+        str(exc),
+        getattr(exc, "stderr", None),
+        getattr(exc, "stdout", None),
+        getattr(exc, "output", None),
+    ):
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        if not isinstance(value, str) or not value or remaining <= 0:
+            continue
+        part = value[:remaining]
+        parts.append(part)
+        remaining -= len(part) + 1
+    return "\n".join(parts)
+
+
 def install_skillsbench_compose_typed_cause_boundary(
     environment: Any,
 ) -> Callable[[], None] | None:
@@ -100,7 +123,9 @@ def install_skillsbench_compose_typed_cause_boundary(
         except SkillsBenchComposeCommandFailure:
             raise
         except Exception as exc:
-            fingerprint = skillsbench_runner_error_fingerprint(str(exc))
+            fingerprint = skillsbench_runner_error_fingerprint(
+                _compose_exception_fingerprint_text(exc)
+            )
             raise SkillsBenchComposeCommandFailure(fingerprint) from None
 
     try:

@@ -79,6 +79,7 @@ def run_preflight() -> dict[str, Any]:
                 "dockerfile_debian_apt_mirror_host": "mirror.example",
                 "dockerfile_debian_apt_mirror_raw_url_recorded": False,
                 "dockerfile_pip_bootstrap_patch_applied": True,
+                "dockerfile_pip_build_mode": "no-isolation",
                 "unrelated": "/private/should-not-project",
             },
             setup_preflight={
@@ -114,6 +115,7 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
         "dockerfile_debian_apt_mirror_host": "mirror.example",
         "dockerfile_debian_apt_mirror_raw_url_recorded": False,
         "dockerfile_pip_bootstrap_patch_applied": True,
+        "dockerfile_pip_build_mode": "no-isolation",
     }
     assert FakeRollout.events == ["create", "setup", "start", "cleanup"]
     serialized = json.dumps(result, sort_keys=True)
@@ -165,6 +167,40 @@ def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
     assert plan["setup_only_public_preflight_json"].endswith(
         "setup_only_preflight.public.json"
     )
+
+
+def test_primary_pip_index_mode_is_publicly_attributable() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--docker-pip-index-mode",
+            "primary",
+        ]
+    )
+
+    plan = build_plan(args)
+    public_config = _public_runner_config(plan)
+
+    assert plan["docker_pip_index_mode"] == "primary"
+    assert public_config["docker_pip_index_mode"] == "primary"
+
+
+def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--docker-pip-build-mode",
+            "no-isolation",
+        ]
+    )
+
+    plan = build_plan(args)
+    public_config = _public_runner_config(plan)
+
+    assert plan["docker_pip_build_mode"] == "no-isolation"
+    assert public_config["docker_pip_build_mode"] == "no-isolation"
 
 
 @pytest.mark.parametrize(
@@ -344,6 +380,43 @@ def test_compose_producer_emits_only_bounded_typed_cause() -> None:
     assert environment.command_attempts == 4
 
 
+def test_compose_producer_fingerprints_exception_output_without_recording_it() -> None:
+    raw_stderr = (
+        "private build output: pip subprocess to install build dependencies "
+        "did not run successfully at /private/job"
+    )
+
+    class ComposeFailure(RuntimeError):
+        def __init__(self) -> None:
+            super().__init__("docker compose build returned exit status 1")
+            self.stderr = raw_stderr
+
+    class FakeComposeEnvironment:
+        async def _run_docker_compose_build(self) -> None:
+            raise ComposeFailure()
+
+    environment = FakeComposeEnvironment()
+    restore = install_skillsbench_compose_typed_cause_boundary(environment)
+    assert restore is not None
+
+    async def invoke() -> None:
+        await environment._run_docker_compose_build()
+
+    with pytest.raises(SkillsBenchComposeCommandFailure) as error:
+        asyncio.run(invoke())
+
+    typed = error.value
+    serialized = json.dumps(typed.fingerprint, sort_keys=True)
+    assert typed.fingerprint["pip_failure_subtype"] == (
+        "build_dependency_subprocess_failed"
+    )
+    assert "pip_bootstrap_failure" in typed.fingerprint["matched_patterns"]
+    assert "pip_build_failure" in typed.fingerprint["failure_reason_codes"]
+    assert raw_stderr not in serialized
+    assert "/private/job" not in serialized
+    assert raw_stderr not in str(typed)
+
+
 @pytest.mark.parametrize(
     ("message", "subtype"),
     [
@@ -361,6 +434,11 @@ def test_compose_producer_emits_only_bounded_typed_cause() -> None:
             "Docker compose command failed: pip install demo returned a non-zero code",
             "command_failed_unclassified",
         ),
+        (
+            "Docker compose command failed: pip._vendor.urllib3.ProtocolError: "
+            "connection retry exhausted",
+            "package_index_network_failure",
+        ),
     ],
 )
 def test_setup_only_preflight_projects_bounded_pip_failure_subtype(
@@ -375,6 +453,21 @@ def test_setup_only_preflight_projects_bounded_pip_failure_subtype(
     assert result["pip_failure_subtype"] == subtype
     serialized = json.dumps(result, sort_keys=True)
     assert message not in serialized
+
+
+def test_pip_vendor_network_failure_is_publicly_retryable() -> None:
+    message = (
+        "Docker compose command failed: pip._vendor.urllib3.ProtocolError: "
+        "connection retry exhausted"
+    )
+
+    fingerprint = skillsbench_runner_error_fingerprint(message)
+
+    assert fingerprint["pip_failure_subtype"] == "package_index_network_failure"
+    assert fingerprint["failure_line_dependency_classes"] == ["python_package"]
+    assert fingerprint["terminal_failure_reason_codes"] == ["pip_vendor_network"]
+    assert fingerprint["retryability"] == "retryable"
+    assert message not in json.dumps(fingerprint, sort_keys=True)
 
 
 def test_setup_only_preflight_consumes_compose_producer_typed_cause() -> None:
