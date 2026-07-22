@@ -108,7 +108,7 @@ def bridge_summary_has_successful_task_operation(
 
 
 def bridge_summary_task_progress_receipt(path: Path | None) -> dict[str, Any]:
-    """Reduce one agent invocation to bounded task-facing progress counts."""
+    """Reduce one agent invocation to bounded task-facing content changes."""
 
     receipt: dict[str, Any] = {
         "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
@@ -116,6 +116,7 @@ def bridge_summary_task_progress_receipt(path: Path | None) -> dict[str, Any]:
         "task_facing_operation_count": 0,
         "task_facing_success_count": 0,
         "successful_task_file_write_count": 0,
+        "successful_task_file_change_count": 0,
         "raw_material_recorded": False,
     }
     if path is None or not path.exists():
@@ -161,11 +162,13 @@ def bridge_summary_task_progress_receipt(path: Path | None) -> dict[str, Any]:
             and record.get("durable_task_write") is True
         ):
             receipt["successful_task_file_write_count"] += 1
+            if record.get("durable_task_content_changed") is True:
+                receipt["successful_task_file_change_count"] += 1
     if (
-        receipt["successful_task_file_write_count"] > 0
+        receipt["successful_task_file_change_count"] > 0
         and receipt["raw_material_recorded"] is False
     ):
-        receipt["status"] = "verified_task_file_write"
+        receipt["status"] = "verified_task_content_change"
     return receipt
 
 

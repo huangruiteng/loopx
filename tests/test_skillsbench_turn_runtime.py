@@ -184,7 +184,7 @@ def test_nonzero_validation_probe_does_not_return_private_output(
     assert "private" not in json.dumps(result)
 
 
-def test_bridge_progress_receipt_requires_successful_task_file_write(
+def test_bridge_progress_receipt_requires_successful_task_content_change(
     tmp_path: Path,
 ) -> None:
     summary_path = tmp_path / "bridge-summary.jsonl"
@@ -221,6 +221,7 @@ def test_bridge_progress_receipt_requires_successful_task_file_write(
             "operation": "write_file",
             "task_facing_operation": True,
             "durable_task_write": True,
+            "durable_task_content_changed": True,
             "success": True,
             "returncode": 0,
         },
@@ -234,10 +235,11 @@ def test_bridge_progress_receipt_requires_successful_task_file_write(
 
     assert receipt == {
         "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
-        "status": "verified_task_file_write",
+        "status": "verified_task_content_change",
         "task_facing_operation_count": 4,
         "task_facing_success_count": 3,
         "successful_task_file_write_count": 1,
+        "successful_task_file_change_count": 1,
         "raw_material_recorded": False,
     }
 
@@ -246,12 +248,34 @@ def test_instrumented_bridge_emits_durable_root_without_raw_path(
     tmp_path: Path,
 ) -> None:
     fake_bridge = tmp_path / "fake-bridge"
+    bridge_state = tmp_path / "bridge-state.json"
     fake_bridge.write_text(
         "#!/usr/bin/env python3\n"
-        "import json, sys\n"
+        "import json, shlex, sys\n"
+        "from pathlib import Path\n"
+        f"state_path = Path({str(bridge_state)!r})\n"
+        "state = json.loads(state_path.read_text()) if state_path.exists() else {}\n"
         "request = json.loads(sys.stdin.read())\n"
-        "ok = not str(request.get('path', '')).endswith('failed.txt')\n"
-        "print(json.dumps({'ok': ok, 'exit_code': 0}))\n",
+        "operation = request.get('operation')\n"
+        "path = str(request.get('path', ''))\n"
+        "if operation == 'exec':\n"
+        "    tokens = shlex.split(str(request.get('command', '')))\n"
+        "    path = tokens[-1] if len(tokens) >= 3 else ''\n"
+        "    ok = path in state\n"
+        "    response = {'ok': ok, 'exit_code': 0 if ok else 1}\n"
+        "elif operation == 'read_file':\n"
+        "    ok = path in state\n"
+        "    response = {'ok': ok, 'exit_code': 0 if ok else 1, "
+        "'content': state.get(path, ''), 'content_truncated': False}\n"
+        "elif operation == 'write_file':\n"
+        "    ok = not path.endswith('failed.txt')\n"
+        "    if ok:\n"
+        "        state[path] = str(request.get('content', ''))\n"
+        "        state_path.write_text(json.dumps(state))\n"
+        "    response = {'ok': ok, 'exit_code': 0 if ok else 1}\n"
+        "else:\n"
+        "    response = {'ok': True, 'exit_code': 0}\n"
+        "print(json.dumps(response))\n",
         encoding="utf-8",
     )
     fake_bridge.chmod(0o755)
@@ -268,6 +292,16 @@ def test_instrumented_bridge_emits_durable_root_without_raw_path(
             "operation": "write_file",
             "path": "/root/task-output.txt",
             "content": "private task output",
+        },
+        {
+            "operation": "write_file",
+            "path": "/root/task-output.txt",
+            "content": "private task output",
+        },
+        {
+            "operation": "write_file",
+            "path": "/root/task-output.txt",
+            "content": "updated private task output",
         },
         {
             "operation": "write_file",
@@ -293,30 +327,34 @@ def test_instrumented_bridge_emits_durable_root_without_raw_path(
     receipt = bridge_summary.bridge_summary_task_progress_receipt(summary_path)
     summary_text = summary_path.read_text(encoding="utf-8")
 
-    assert receipt["successful_task_file_write_count"] == 1
-    assert receipt["status"] == "verified_task_file_write"
+    assert receipt["successful_task_file_write_count"] == 3
+    assert receipt["successful_task_file_change_count"] == 2
+    assert receipt["status"] == "verified_task_content_change"
     assert '"durable_task_write_root": "root"' in summary_text
     assert "/root/task-output.txt" not in summary_text
     assert "/tmp/temporary-note.txt" not in summary_text
     assert "/root/failed.txt" not in summary_text
     assert "private task output" not in summary_text
+    assert "updated private task output" not in summary_text
     assert "temporary private note" not in summary_text
     assert "failed private output" not in summary_text
     assert '"failure_category": "bridge_operation_failed"' in summary_text
 
 
 @pytest.mark.parametrize(
-    ("write_count", "raw_material_recorded", "expected_status"),
+    ("write_count", "change_count", "raw_material_recorded", "expected_status"),
     [
-        (1, False, "committed"),
-        (0, False, "failed"),
-        (1, True, "failed"),
+        (1, 1, False, "committed"),
+        (1, 0, False, "failed"),
+        (0, 0, False, "failed"),
+        (1, 1, True, "failed"),
     ],
 )
-def test_bridge_write_progress_can_commit_when_workspace_command_cannot(
+def test_bridge_content_progress_can_commit_when_workspace_command_cannot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     write_count: int,
+    change_count: int,
     raw_material_recorded: bool,
     expected_status: str,
 ) -> None:
@@ -361,13 +399,14 @@ def test_bridge_write_progress_can_commit_when_workspace_command_cannot(
     evidence = {
         "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
         "status": (
-            "verified_task_file_write"
-            if write_count and not raw_material_recorded
+            "verified_task_content_change"
+            if change_count and not raw_material_recorded
             else "no_verified_task_mutation"
         ),
         "task_facing_operation_count": 4,
         "task_facing_success_count": 4,
         "successful_task_file_write_count": write_count,
+        "successful_task_file_change_count": change_count,
         "raw_material_recorded": raw_material_recorded,
     }
 
@@ -390,9 +429,10 @@ def test_bridge_write_progress_can_commit_when_workspace_command_cannot(
     if expected_status == "committed":
         assert validation["status"] == "passed"
         assert validation["post_agent_postcondition_status"] == "progress_validated"
-        assert validation["validator_kind"] == "skillsbench_bridge_write_progress"
-        assert validation["progress_evidence_kind"] == "verified_task_file_write"
+        assert validation["validator_kind"] == "skillsbench_bridge_content_progress"
+        assert validation["progress_evidence_kind"] == "verified_task_content_change"
         assert validation["successful_task_file_write_count"] == 1
+        assert validation["successful_task_file_change_count"] == 1
     else:
         assert validation["status"] == "failed"
         assert validation["post_agent_postcondition_status"] == "unsatisfied"
