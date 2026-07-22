@@ -79,8 +79,13 @@ vision / goal boundary
 
 ## 课程地图
 
+如果你第一次接触控制面，先读[概念导读](concept-primer.md)。它用一张总图和公开的 Auto PR
+Issue Fix 案例，区分 goal、todo、capability、provider、Turn、scheduler、gate、evidence、
+receipt、projection、replan 与 self-repair；随后再进入下面的代码课程。
+
 | 讲次 | 主题 | 读完应能回答 |
 | --- | --- | --- |
+| 导读 | [先把 LoopX 放进一张图](concept-primer.md) | 数据面与控制面怎样分工，LoopX 的核心概念如何组成一条生命周期？ |
 | [第 0 讲](00-goal-control-plane-architecture.md) | 从两个 Showcase 理解 LoopX 架构 | Issue-Fix 与 Auto Research 如何通过 Capability / Domain State 复用同一 Kernel？ |
 | [第 1 讲](01-first-real-loop.md) | 从 Showcase 到第一次真实 Loop | 用户只说一句目标后，guided start、todo、heartbeat、quota、refresh 和 spend 如何串起来？ |
 | [第 2 讲](02-state-substrate.md) | 状态底座与可重放事实 | registry、event、active state、run history 和 projection 分别拥有什么事实？ |
@@ -94,7 +99,7 @@ vision / goal boundary
 
 ## 建议学习方式
 
-第一次阅读按 0 到 9 的顺序进行。第 0 讲先从 Issue-Fix 与 Auto Research 推导共同架构，
+概念陌生的读者先读导读，再按 0 到 9 的顺序进行。第 0 讲从 Issue-Fix 与 Auto Research 推导共同架构，
 第 1 讲运行端到端路径，第 2 到 6 讲拆开状态、工作图、决策、host 和证据，第 7 讲把这些
 知识收束成工程变更方法，第 8 讲建立自主交付的质量门禁，第 9 讲再系统讨论扩展层。
 
