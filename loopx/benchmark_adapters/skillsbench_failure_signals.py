@@ -99,12 +99,33 @@ _FAILURE_REASON_PATTERNS = (
         r"cannot connect to proxy|could not connect to proxy",
     ),
     (
+        "proxy_authentication_required",
+        r"proxy authentication required|(?:http[^\n]*\s407\b)|"
+        r"(?:status code|status:)\s*407\b|\b407\s+status code\b",
+    ),
+    (
         "tls_or_certificate",
         r"certificate verif(?:y|ication) failed|ssl certificate problem|"
         r"tls handshake|could not handshake|"
         r"unable to get local issuer certificate",
     ),
+    (
+        "http_unauthorized",
+        r"(?:http[^\n]*\s401\b)|401 unauthorized|"
+        r"(?:status code|status:)\s*401\b|\b401\s+status code\b",
+    ),
+    (
+        "http_forbidden",
+        r"(?:http[^\n]*\s403\b)|403 forbidden|"
+        r"(?:status code|status:)\s*403\b|\b403\s+status code\b",
+    ),
     ("http_not_found", r"(?:http[^\n]*\s404\b|404 not found)"),
+    (
+        "http_client_error",
+        r"(?:http[^\n]*\s(?!(?:401|403|404|407)\b)4\d\d\b)|"
+        r"(?:status code|status:)\s*(?!(?:401|403|404|407)\b)4\d\d\b|"
+        r"\b(?!(?:401|403|404|407)\b)4\d\d\s+(?:client error|status code)\b",
+    ),
     ("http_server_error", r"(?:http[^\n]*\s5\d\d\b|5\d\d server error)"),
     ("apt_fetch_failed", r"failed to fetch"),
     ("apt_no_pubkey", r"\bno_pubkey\b"),
@@ -180,13 +201,17 @@ _TRANSIENT_FAILURE_REASONS = {
 }
 _DETERMINISTIC_FAILURE_REASONS = {
     "apt_package_unavailable",
+    "http_client_error",
+    "http_forbidden",
     "http_not_found",
+    "http_unauthorized",
     "missing_file",
     "no_space_left",
     "permission_denied",
     "pip_build_failure",
     "pip_no_matching_distribution",
     "pip_os_error",
+    "proxy_authentication_required",
     "tls_or_certificate",
 }
 
@@ -200,9 +225,13 @@ _APT_FAILURE_SUBTYPE_REASON_PRIORITY = (
     ("apt_release_expired", "release_metadata"),
     ("apt_package_unavailable", "package_unavailable"),
     ("dns_resolution", "dns_resolution"),
+    ("proxy_authentication_required", "proxy_authentication_required"),
     ("proxy_connect", "proxy_connect"),
     ("tls_or_certificate", "tls_or_certificate"),
+    ("http_unauthorized", "http_unauthorized"),
+    ("http_forbidden", "http_forbidden"),
     ("http_not_found", "http_not_found"),
+    ("http_client_error", "http_client_error"),
     ("http_server_error", "http_server_error"),
     ("network_unreachable", "network_unreachable"),
     ("connection_timeout", "connection_timeout"),
