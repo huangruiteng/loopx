@@ -514,7 +514,8 @@ if ((task_count > 1)); then
 else
   extra_runner_args+=(--task-id "$task_id")
 fi
-if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]]; then
+if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]] &&
+  [[ "$setup_only_public_preflight" != "1" ]]; then
   extra_runner_args+=(--append-history)
 fi
 if [[ "$skip_global_ledger_sync" == "1" ]]; then
