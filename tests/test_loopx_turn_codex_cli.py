@@ -12,11 +12,14 @@ from loopx.control_plane.turn_driver.codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
     _cli_dialect,
     _codex_command,
+    _advisor_workspace_context,
+    _normalize_advisor_result,
     codex_cli_result_schema,
     codex_cli_session_binding,
     load_codex_cli_session,
     run_codex_cli_host,
 )
+from loopx.control_plane.turn_driver.executor import BuiltInHostError
 from loopx.control_plane.turn_driver.model_usage import event_usage, normalize_provider_usage
 
 
@@ -150,6 +153,11 @@ schema = schema_path.read_text(encoding="utf-8")
 if "loopx_turn_complexity_checkpoint_v0" in schema:
     complexity = os.environ.get("FAKE_CODEX_COMPLEXITY", "simple")
     complex_case = complexity == "complex"
+    if os.environ.get("FAKE_CODEX_SKIP_CHECKPOINT_INSPECTION") != "1":
+        print(json.dumps({
+            "type": "item.completed",
+            "item": {"type": "command_execution", "command": "inspect fixture"}
+        }), flush=True)
     output_path.write_text(json.dumps({
         "schema_version": "loopx_turn_complexity_checkpoint_v0",
         "turn_key": turn_key,
@@ -191,6 +199,13 @@ if os.environ.get("FAKE_CODEX_INVALID_FINAL_RESULT") == "1" and "resume" not in 
         "summary": "A user action is required."
     }), encoding="utf-8")
     raise SystemExit(0)
+if os.environ.get("FAKE_CODEX_SKIP_FINAL_EXECUTION") != "1" or (
+    "EXECUTION RETRY" in prompt
+):
+    print(json.dumps({
+        "type": "item.completed",
+        "item": {"type": "command_execution", "command": "update fixture"}
+    }), flush=True)
 output_path.write_text(json.dumps({
     "schema_version": "loopx_turn_result_v0",
     "turn_key": turn_key,
@@ -241,9 +256,41 @@ print(json.dumps({
     }
 }), flush=True)
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
+if prompt.rfind("loopx_turn_complexity_checkpoint_v0") > prompt.rfind("loopx_turn_result_v0"):
+    print(json.dumps({
+        "type": "item.completed",
+        "item": {"type": "command_execution", "command": "inspect fixture"}
+    }), flush=True)
+    output_path.write_text(json.dumps({
+        "schema_version": "loopx_turn_complexity_checkpoint_v0",
+        "turn_key": turn_key,
+        "complexity": "complex",
+        "signals": ["ambiguous_root_cause"],
+        "evidence_summary": "Two plausible fixture paths require review.",
+        "relevant_paths": ["calculator.py"],
+        "open_questions": ["Which path preserves the invariant?"]
+    }), encoding="utf-8")
+    raise SystemExit(0)
+if prompt.rfind("loopx_turn_advisor_v0") > prompt.rfind("loopx_turn_result_v0"):
+    result = {
+        "schema_version": "loopx_turn_advisor_v0",
+        "turn_key": turn_key,
+        "summary": "Inspect the boundary before changing the fixture.",
+        "recommendations": ["Keep the edit bounded to the selected todo."],
+        "risks": ["Do not overwrite unrelated files."],
+        "validation_focus": ["Verify the exact marker value."]
+    }
+    if "resume" not in args:
+        del result["validation_focus"]
+    output_path.write_text(json.dumps(result), encoding="utf-8")
+    raise SystemExit(0)
 if "resume" not in args:
     output_path.write_text("The requested fixture work is complete.", encoding="utf-8")
     raise SystemExit(0)
+print(json.dumps({
+    "type": "item.completed",
+    "item": {"type": "command_execution", "command": "update fixture"}
+}), flush=True)
 result = {
     "schema_version": "loopx_turn_result_v0",
     "turn_key": turn_key,
@@ -332,6 +379,43 @@ def test_traex_cli_repairs_invalid_final_receipt_in_same_session(
     assert result["model_usage"]["executor"]["total_tokens"] == 300
 
 
+def test_traex_cli_repairs_invalid_advisor_receipt_in_same_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_traex(tmp_path)
+    monkeypatch.setenv("FAKE_TRAEX_LOG", str(log_path))
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="DeepSeek-V4-Flash",
+        advisor_model="DeepSeek-V4-Pro",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 4
+    assert "loopx_turn_advisor_v0" in rows[1]["prompt"]
+    assert "resume" in rows[2]["args"]
+    assert "Re-emit only the Advisor receipt" in rows[2]["prompt"]
+    assert result["model_usage"]["advisor_applied"] is True
+    assert result["model_usage"]["advisor"]["total_tokens"] == 300
+
+
 def test_codex_cli_result_schema_requires_only_bounded_contract_fields() -> None:
     schema = codex_cli_result_schema()
 
@@ -355,6 +439,86 @@ def test_codex_cli_result_schema_requires_only_bounded_contract_fields() -> None
         "vision_unchanged_reason": 240,
         "summary": 400,
     }
+
+
+def test_codex_cli_advisor_compacts_overlong_public_safe_guidance() -> None:
+    turn_key = "sha256:" + "a" * 64
+    advice = _normalize_advisor_result(
+        {
+            "schema_version": "loopx_turn_advisor_v0",
+            "turn_key": turn_key,
+            "summary": "Inspect the repository boundary. " * 20,
+            "recommendations": ["Keep the patch focused."],
+            "risks": ["Preserve existing behavior."],
+            "validation_focus": ["Run the targeted regression test."],
+        },
+        turn_key=turn_key,
+    )
+
+    assert len(advice["summary"]) == 400
+    assert advice["summary"].endswith("...")
+    assert advice["recommendations"] == ["Keep the patch focused."]
+
+
+def test_codex_cli_advisor_rejects_conditional_recommendations() -> None:
+    turn_key = "sha256:" + "a" * 64
+
+    with pytest.raises(BuiltInHostError):
+        _normalize_advisor_result(
+            {
+                "schema_version": "loopx_turn_advisor_v0",
+                "turn_key": turn_key,
+                "summary": "The dependency boundary needs a decision.",
+                "recommendations": [
+                    "Optionally patch the dependency if its public contract matters."
+                ],
+                "risks": ["The caller-only patch leaves direct callers broken."],
+                "validation_focus": ["Exercise the dependency directly."],
+            },
+            turn_key=turn_key,
+        )
+
+
+def test_codex_cli_advisor_context_extracts_large_source_and_direct_dependency(
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "header.py").write_text(
+        "from .card import Card\n"
+        + "padding = 0\n" * 2_000
+        + "def fromstring(data):\n    return Card.fromstring(data)\n"
+        + "tail = 0\n" * 2_000,
+        encoding="utf-8",
+    )
+    (package / "card.py").write_text(
+        "prefix = 0\n" * 2_000
+        + "def fromstring(image):\n    return image.strip()\n"
+        + "suffix = 0\n" * 2_000,
+        encoding="utf-8",
+    )
+    request = _request()
+    request["turn_envelope"]["action"]["recommended_action"] = (
+        "Repair Header.fromstring bytes handling"
+    )
+    request["turn_envelope"]["boundary"] = {"write_scope": []}
+
+    context = _advisor_workspace_context(
+        request,
+        project=tmp_path,
+        complexity_checkpoint={"relevant_paths": ["pkg/header.py"]},
+    )
+
+    assert [item["path"] for item in context["files"]] == [
+        "pkg/header.py",
+        "pkg/card.py",
+    ]
+    assert "def fromstring(data)" in context["files"][0]["content"]
+    assert "Card.fromstring(data)" in context["files"][0]["content"]
+    assert "def fromstring(image)" in context["files"][1]["content"]
+    assert sum(
+        len(item["content"].encode("utf-8")) for item in context["files"]
+    ) <= 24_000
 
 
 def test_codex_cli_host_reports_compact_provider_usage(
@@ -475,6 +639,8 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     assert '"path":"calculator.py"' in prompts[1]
     assert "return a - b" in prompts[1]
     assert "Do not invoke workspace tools" in prompts[1]
+    assert "directly called public dependency" in prompts[1]
+    assert "counterpart explicitly named by the task" in prompts[1]
     assert "Inspect the boundary before changing the fixture." in prompts[2]
     assert result["model_usage"]["mode"] == "advisor"
     assert result["model_usage"]["advisor_applied"] is True
@@ -483,6 +649,47 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     assert result["model_usage"]["total"]["total_tokens"] == 348
     assert result["model_usage"]["advice_digest"].startswith("sha256:")
     assert "summary" not in result["model_usage"]
+
+
+def test_codex_cli_advisor_retries_executor_that_did_not_use_workspace_tools(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
+    monkeypatch.setenv("FAKE_CODEX_SKIP_FINAL_EXECUTION", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(prompts) == 4
+    assert "EXECUTION RETRY" in prompts[3]
+    assert "Turn request:" not in prompts[3]
+    assert result["model_usage"]["advisor_applied"] is True
+    assert result["model_usage"]["executor"]["total_tokens"] == 450
 
 
 def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
@@ -543,6 +750,51 @@ def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
     assert result["model_usage"]["advisor_decision"]["checkpoint_digest"].startswith(
         "sha256:"
     )
+
+
+def test_codex_cli_advisor_escalates_simple_checkpoint_without_workspace_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_SKIP_CHECKPOINT_INSPECTION", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row[row.index("--model") + 1] for row in argv_rows] == [
+        "executor-fixture",
+        "advisor-fixture",
+        "executor-fixture",
+    ]
+    assert result["model_usage"]["advisor_applied"] is True
+    assert result["model_usage"]["advisor_decision"]["decision"] == (
+        "applied_complexity"
+    )
+    assert result["model_usage"]["advisor_decision"]["signals"] == [
+        "validation_uncertainty"
+    ]
 def test_codex_cli_advisor_reviews_complex_checkpoint_before_executor_resumes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

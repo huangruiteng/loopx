@@ -88,6 +88,18 @@ if advisor:
     )
     raise SystemExit(0)
 
+print(
+    json.dumps(
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "apply deterministic fixture update",
+            },
+        }
+    ),
+    flush=True,
+)
 turn_number = 1
 if CASE_ID == "marker-step":
     marker = pathlib.Path(MARKER_NAME)

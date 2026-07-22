@@ -323,6 +323,7 @@ def _prompt(
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
+                "This is the execution phase, not another planning checkpoint. When the Turn has a write scope, invoke workspace tools to inspect, edit, and validate before returning the typed result; never claim an edit that tools did not perform.",
             ]
         )
     elif advisor_failure_category:
@@ -500,15 +501,32 @@ def _advisor_workspace_context(
     root = project.resolve()
     files: list[dict[str, str]] = []
     used_bytes = 0
-    for raw_path in dict.fromkeys(str(item) for item in scopes):
+    request_text = json.dumps(dict(request), ensure_ascii=False)
+    request_anchors = list(
+        dict.fromkeys(
+            match.group(1)
+            for match in re.finditer(
+                r"\b[A-Za-z_][A-Za-z0-9_]*\.([A-Za-z_][A-Za-z0-9_]*)\b",
+                request_text,
+            )
+        )
+    )
+    pending: list[tuple[str, list[str]]] = [
+        (str(item), request_anchors) for item in scopes
+    ]
+    seen: set[str] = set()
+    while pending and len(files) < _ADVISOR_CONTEXT_MAX_FILES:
+        raw_path, anchors = pending.pop(0)
         relative = str(raw_path or "").strip()
         if (
             not relative
+            or relative in seen
             or Path(relative).is_absolute()
             or ".." in Path(relative).parts
             or any(marker in relative for marker in ("*", "?", "[", "]"))
         ):
             continue
+        seen.add(relative)
         candidate = project / relative
         if candidate.is_symlink() or not candidate.is_file():
             continue
@@ -518,17 +536,89 @@ def _advisor_workspace_context(
             content = resolved.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError, ValueError):
             continue
-        size = len(content.encode("utf-8"))
-        if size > _ADVISOR_CONTEXT_MAX_BYTES - used_bytes:
+        remaining = _ADVISOR_CONTEXT_MAX_BYTES - used_bytes
+        if remaining <= 0:
             continue
-        files.append({"path": relative, "content": content})
-        used_bytes += size
-        if len(files) >= _ADVISOR_CONTEXT_MAX_FILES:
-            break
+        per_file_budget = min(12_000, remaining)
+        excerpt = _advisor_source_excerpt(
+            content, anchors=anchors, max_bytes=per_file_budget
+        )
+        if not excerpt:
+            continue
+        files.append({"path": relative, "content": excerpt})
+        used_bytes += len(excerpt.encode("utf-8"))
+        if candidate.suffix == ".py":
+            pending.extend(
+                _advisor_python_dependencies(
+                    relative, content=content, excerpt=excerpt, project=project
+                )
+            )
     return {
         "schema_version": LOOPX_TURN_ADVISOR_CONTEXT_SCHEMA_VERSION,
         "files": files,
     }
+
+
+def _advisor_source_excerpt(
+    content: str, *, anchors: list[str], max_bytes: int
+) -> str:
+    encoded = content.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return content
+    center = 0
+    for anchor in anchors:
+        match = re.search(rf"\bdef\s+{re.escape(anchor)}\b", content)
+        if match:
+            center = len(content[: match.start()].encode("utf-8"))
+            break
+    start = max(0, center - max_bytes // 4)
+    end = min(len(encoded), start + max_bytes)
+    start = max(0, end - max_bytes)
+    excerpt = encoded[start:end].decode("utf-8", errors="ignore")
+    if start:
+        excerpt = "# ... preceding source omitted ...\n" + excerpt
+    if end < len(encoded):
+        excerpt += "\n# ... following source omitted ..."
+    while len(excerpt.encode("utf-8")) > max_bytes:
+        excerpt = excerpt[:-1]
+    return excerpt
+
+
+def _advisor_python_dependencies(
+    relative: str, *, content: str, excerpt: str, project: Path
+) -> list[tuple[str, list[str]]]:
+    dependencies: list[tuple[str, list[str]]] = []
+    for match in re.finditer(
+        r"^from\s+(\.+[A-Za-z0-9_.]*)\s+import\s+([^\n]+)$",
+        content,
+        flags=re.MULTILINE,
+    ):
+        module, imported = match.groups()
+        dots = len(module) - len(module.lstrip("."))
+        module_parts = [part for part in module[dots:].split(".") if part]
+        base = Path(relative).parent
+        for _ in range(max(0, dots - 1)):
+            base = base.parent
+        dependency = base.joinpath(*module_parts).with_suffix(".py")
+        if not (project / dependency).is_file():
+            continue
+        for raw_name in imported.split(","):
+            imported_name = raw_name.strip().split(" as ")[-1].strip()
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", imported_name):
+                continue
+            anchors = list(
+                dict.fromkeys(
+                    found.group(1)
+                    for found in re.finditer(
+                        rf"\b{re.escape(imported_name)}\.([A-Za-z_][A-Za-z0-9_]*)\b",
+                        excerpt,
+                    )
+                )
+            )
+            if anchors:
+                dependencies.append((str(dependency), anchors))
+                break
+    return dependencies
 
 
 def _advisor_prompt(
@@ -543,7 +633,11 @@ def _advisor_prompt(
             "No repository is mounted. Do not invoke workspace tools. Use only the bounded context packet below.",
             "Do not execute the todo, write LoopX state, spend quota, or change scheduler state.",
             "Challenge the executor's current plan: resolve its open questions, identify a missed invariant or counterexample, and narrow the smallest correct patch and focused validation.",
+            "For every directly called public dependency included in the bounded context, explicitly test whether the same input contract applies at that boundary. Name every required file in the recommendations; do not recommend a caller-only patch until the dependency contract is ruled out with source evidence.",
+            "Treat every counterpart explicitly named by the task as an acceptance candidate. When its source has the same input-type assumption, include it as a required change even if its current docstring does not advertise the contract; missing documentation is not evidence that the task excludes it.",
+            "The TurnEnvelope boundary.write_scope is the only code scope. Do not narrow it from the todo title or primary path. Resolve conditional advice into a definite required-change or no-change conclusion using the supplied source excerpts.",
             "The TurnEnvelope remains authoritative. Return only compact corrective implementation guidance, risks, and independent validation focus in the required schema; do not include hidden reasoning.",
+            "Keep the summary and every list item at or below 400 Unicode characters; prefer one concrete sentence per item.",
             "Turn request:",
             json.dumps(
                 dict(request),
@@ -601,12 +695,18 @@ def _normalize_advisor_result(
         items: list[str] = []
         for item in raw_items:
             text = str(item or "").strip()
-            if not text or len(text) > 400:
+            if not text:
+                raise BuiltInHostError("codex_cli_advisor_result_contract_invalid")
+            if field == "recommendations" and re.match(
+                r"(?i)^(optionally|if\b|consider\b)", text
+            ):
                 raise BuiltInHostError("codex_cli_advisor_result_contract_invalid")
             try:
                 validate_public_safe_text(f"advisor.{field}", text)
             except ValueError as exc:
                 raise BuiltInHostError("codex_cli_advisor_result_not_public_safe") from exc
+            if len(text) > 400:
+                text = text[:397].rstrip() + "..."
             items.append(text)
         normalized[field] = items[0] if field == "summary" else items
     return normalized
@@ -625,6 +725,29 @@ def codex_cli_event_session_id(event: Mapping[str, Any]) -> str | None:
         if session_id:
             return session_id
     return None
+
+
+def _codex_cli_event_has_workspace_inspection(event: Mapping[str, Any]) -> bool:
+    if event.get("type") not in {
+        "item.started",
+        "item.completed",
+        "item_started",
+        "item_completed",
+        "response_item",
+    }:
+        return False
+    item = event.get("item")
+    if not isinstance(item, Mapping):
+        payload = event.get("payload")
+        item = payload if isinstance(payload, Mapping) else {}
+    return item.get("type") in {
+        "command_execution",
+        "custom_tool_call",
+        "function_call",
+        "mcp_tool_call",
+        "shell_command",
+        "web_search_call",
+    }
 
 
 def codex_cli_session_id_from_jsonl(value: str) -> str | None:
@@ -833,8 +956,10 @@ def _run_codex_process(
         observed_session: list[str] = []
         failure_categories: list[str] = []
         observed_usage: list[dict[str, int]] = []
+        workspace_inspection_observed = False
 
         def consume_events() -> None:
+            nonlocal workspace_inspection_observed
             assert proc.stdout is not None
             for line in proc.stdout:
                 try:
@@ -848,6 +973,8 @@ def _run_codex_process(
                     usage = event_usage(event)
                     if usage is not None:
                         observed_usage.append(usage)
+                    if _codex_cli_event_has_workspace_inspection(event):
+                        workspace_inspection_observed = True
 
         def consume_stderr() -> None:
             assert proc.stderr is not None
@@ -887,6 +1014,7 @@ def _run_codex_process(
                 failure_categories[0] if failure_categories else "exit_nonzero"
             ),
             "usage": observed_usage[-1] if observed_usage else None,
+            "workspace_inspection_observed": workspace_inspection_observed,
             "result": result,
         }
 
@@ -1010,6 +1138,22 @@ def _run_complexity_checkpoint(
     checkpoint = _normalize_complexity_checkpoint(
         invocation["result"], turn_key=str(request.get("turn_key") or "")
     )
+    if (
+        checkpoint["complexity"] == "simple"
+        and invocation.get("workspace_inspection_observed") is not True
+    ):
+        checkpoint = {
+            **checkpoint,
+            "complexity": "complex",
+            "signals": ["validation_uncertainty"],
+            "evidence_summary": (
+                "Executor reported a simple route without observable workspace "
+                "inspection; strong review must verify the patch and validation boundary."
+            ),
+            "open_questions": [
+                "Which repository evidence proves the proposed patch and validation boundary?"
+            ],
+        }
     raw_usage = invocation.get("usage")
     if not isinstance(raw_usage, Mapping):
         raise BuiltInHostError("codex_cli_complexity_checkpoint_usage_missing")
@@ -1046,17 +1190,19 @@ def _run_advisor_review(
         ),
         encoding="utf-8",
     )
+    dialect = _cli_dialect(codex_bin)
+    advisor_command = _codex_command(
+        codex_bin=codex_bin,
+        project=advisor_project,
+        schema_path=schema_path,
+        output_path=output_path,
+        sandbox="read-only",
+        model=advisor_model,
+        session_id=None,
+        ephemeral=dialect != "traex",
+    )
     invocation = _run_codex_process(
-        _codex_command(
-            codex_bin=codex_bin,
-            project=advisor_project,
-            schema_path=schema_path,
-            output_path=output_path,
-            sandbox="read-only",
-            model=advisor_model,
-            session_id=None,
-            ephemeral=True,
-        ),
+        advisor_command,
         project=advisor_project,
         prompt=_advisor_prompt(
             request,
@@ -1084,6 +1230,51 @@ def _run_advisor_review(
             )
         except BuiltInHostError:
             failure_category = "invalid_result"
+        if (
+            advice is None
+            and dialect == "traex"
+            and invocation.get("session_id")
+        ):
+            repair = _run_codex_process(
+                _codex_command(
+                    codex_bin=codex_bin,
+                    project=advisor_project,
+                    schema_path=schema_path,
+                    output_path=output_path,
+                    sandbox="read-only",
+                    model=advisor_model,
+                    session_id=str(invocation["session_id"]),
+                ),
+                project=advisor_project,
+                prompt=(
+                    "Do not perform more analysis or workspace work. Re-emit only "
+                    "the Advisor receipt for your completed review. Preserve the "
+                    "same turn_key, include every required field, use at most four "
+                    "items per list, and keep every string at or below 400 Unicode "
+                    "characters. Recommendations must be definite actions backed "
+                    "by the supplied source; do not use optional or conditional "
+                    "recommendations."
+                ),
+                schema_path=schema_path,
+                output_path=output_path,
+                timeout_seconds=min(timeout_seconds, 60.0),
+            )
+            repair_usage = repair.get("usage")
+            if isinstance(raw_usage, Mapping) and isinstance(repair_usage, Mapping):
+                raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
+            elif isinstance(repair_usage, Mapping):
+                raw_usage = repair_usage
+            attempt_usage = dict(raw_usage) if isinstance(raw_usage, Mapping) else None
+            if not repair["timed_out"] and repair["returncode"] == 0:
+                try:
+                    advice = _normalize_advisor_result(
+                        repair["result"],
+                        turn_key=str(request.get("turn_key") or ""),
+                    )
+                except BuiltInHostError:
+                    pass
+            if advice is not None:
+                failure_category = None
         if advice is not None and attempt_usage is None:
             advice = None
             failure_category = "usage_missing"
@@ -1200,12 +1391,65 @@ def _run_final_executor(
         )
     if invocation["returncode"] != 0:
         raise BuiltInHostError(f"codex_cli_{category}")
+    raw_usage = invocation.get("usage")
+    boundary = _mapping(_mapping(request.get("turn_envelope")).get("boundary"))
+    write_scope = boundary.get("write_scope")
+    if (
+        review is not None
+        and review.advice is not None
+        and sandbox == "workspace-write"
+        and isinstance(write_scope, list)
+        and bool(write_scope)
+        and invocation.get("workspace_inspection_observed") is not True
+    ):
+        if not observed_session_id:
+            raise BuiltInHostError("codex_cli_executor_session_missing")
+        output_path.unlink(missing_ok=True)
+        execution_retry = _run_codex_process(
+            _codex_command(
+                codex_bin=codex_bin,
+                project=project,
+                schema_path=schema_path,
+                output_path=output_path,
+                sandbox=sandbox,
+                model=model,
+                session_id=observed_session_id,
+            ),
+            project=project,
+            prompt="\n".join(
+                [
+                    "EXECUTION RETRY: your prior response used no workspace tools.",
+                    "Use the shell/read/edit tools now. Inspect the relevant file, apply the smallest in-scope patch, and run focused validation.",
+                    "Do not return a typed result until tool execution finishes. If tools cannot run, return repair_required and state the concrete blocker; never describe an edit that did not occur.",
+                    "Turn identity: "
+                    + json.dumps(
+                        {"turn_key": request.get("turn_key")},
+                        separators=(",", ":"),
+                    ),
+                    *_FINAL_RESULT_INSTRUCTIONS,
+                ]
+            ),
+            schema_path=schema_path,
+            output_path=output_path,
+            timeout_seconds=timeout_seconds,
+        )
+        if execution_retry["timed_out"]:
+            raise BuiltInHostError("codex_cli_executor_retry_timeout")
+        if execution_retry["returncode"] != 0:
+            raise BuiltInHostError(
+                f"codex_cli_executor_retry_{execution_retry['failure_category']}"
+            )
+        retry_usage = execution_retry.get("usage")
+        if isinstance(raw_usage, Mapping) and isinstance(retry_usage, Mapping):
+            raw_usage = aggregate_provider_usage(raw_usage, retry_usage)
+        elif retry_usage is not None:
+            raw_usage = retry_usage
+        invocation = execution_retry
     result = invocation.get("result")
     if result is None:
         raise BuiltInHostError("codex_cli_final_result_missing")
     if not isinstance(result, dict):
         raise BuiltInHostError("codex_cli_final_result_not_object")
-    raw_usage = invocation.get("usage")
     validation_plan = {
         "transaction": {"turn_key": request.get("turn_key")},
         "turn_envelope": request.get("turn_envelope"),
