@@ -34,12 +34,13 @@ LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
 The built-in Codex host may add an adaptive Advisor stage inside Execute. The
 lower-cost executor first inspects the task and emits a strict complexity
 checkpoint from the same opaque session that performs the work. A simple task
-is completed and validated in that first call, with its typed result embedded
-in the checkpoint, so neither the strong model nor a second executor call runs.
-A complex checkpoint triggers an ephemeral read-only Advisor over the bounded
-Turn request, executor evidence, and a size-capped packet of literal, non-symlink
-files from the declared write scope or checkpoint paths. The repository itself
-is not mounted in the Advisor session.
+skips the strong model and resumes that executor to perform and validate the
+work. A complex checkpoint first triggers an ephemeral read-only Advisor over
+the bounded Turn request, executor evidence, and a size-capped packet of
+literal, non-symlink files from the declared write scope or checkpoint paths.
+The repository itself is not mounted in the Advisor session. Keeping
+classification separate from execution avoids asking a lower-cost model to
+mix repository work with a nested final-result receipt.
 
 The deterministic trigger accepts only these bounded complexity signals:
 `cross_file_reasoning`, `ambiguous_root_cause`, `invariant_risk`,
@@ -180,6 +181,16 @@ command only returns conversational text, the wrapper must first establish a
 dedicated typed result channel; passing `trae chat` directly as the adapter is
 not sufficient. Check the installed CLI's help and pin the qualified command
 shape because flags and headless behavior may vary by version.
+
+The built-in qualification seam recognizes executables named `traex`,
+`trae-cli`, or `traecli`. It injects the result schema into the prompt, accepts
+only one JSON object (optionally in one JSON fence), and permits one
+same-session receipt-only repair. TraeX resume calls explicitly restore the
+requested sandbox with headless `custom` permission mode and
+`approval_policy=never`; otherwise current TraeX versions resume in read-only
+mode even when the initial call used `workspace-write`. This seam is for
+qualification with explicit model ids and does not extend Codex-only automatic
+model catalog selection to TraeX.
 
 ### Repeatable Codex CLI Qualification
 
