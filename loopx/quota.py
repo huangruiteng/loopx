@@ -1411,6 +1411,80 @@ def _apply_agent_monitor_only_precedence(
         payload.pop(key, None)
 
 
+def _apply_paused_quota_precedence(payload: dict[str, Any]) -> None:
+    if str(payload.get("state") or "") != "paused":
+        return
+
+    quota = payload.get("quota") if isinstance(payload.get("quota"), dict) else {}
+    reason = str(
+        quota.get("reason")
+        or "compute quota is 0; automatic agent turns are paused"
+    )
+    payload.update(
+        {
+            "decision": "skip",
+            "should_run": False,
+            "normal_delivery_allowed": False,
+            "recovery_delivery_allowed": False,
+            "self_repair_allowed": False,
+            "capability_repair_allowed": False,
+            "workspace_repair_allowed": False,
+            "effective_action": "quota_skip",
+            "actionable_by_codex": False,
+            "reason": reason,
+            "blocked_action_scope": "all_automatic_agent_turns",
+            "safe_bypass_allowed": False,
+            "safe_bypass_kind": None,
+            "safe_bypass_policy": None,
+            "requires_user_action": False,
+            "recommended_action": (
+                "Resume the goal explicitly before attempting delivery, repair, "
+                "monitoring, or autonomous replan work."
+            ),
+            "heartbeat_recommendation": {
+                "recommended_mode": "quota_paused",
+                "notify": "DONT_NOTIFY",
+                "reason": reason,
+                "spend_policy": "do not append quota spend while the goal is paused",
+            },
+            "execution_obligation": {
+                "must_attempt_work": False,
+                "kind": "quota_paused",
+                "delivery_allowed": False,
+                "notify_is_execution_gate": False,
+                "reason": reason,
+                "spend_policy": "do not append quota spend while the goal is paused",
+            },
+        }
+    )
+    for key in (
+        "agent_command",
+        "agent_lane_frontier_hint",
+        "agent_lane_next_action",
+        "agent_scope_frontier",
+        "autonomous_replan_decision",
+        "autonomous_replan_obligation",
+        "autonomous_replan_scope",
+        "blocked_priority_fallback",
+        "capability_gate",
+        "capability_monitor_fallback",
+        "external_evidence_observation",
+        "goal_route_hint",
+        "notify_user_on_capability_gate",
+        "notify_user_on_gate",
+        "notify_user_on_open_todo",
+        "open_todo_notification_policy",
+        "open_todo_notify_reason",
+        "required_reads",
+        "scoped_user_gate_fallback",
+        "stall_self_repair",
+        "vision_continuation_audit",
+        "vision_wait_state",
+        "workspace_guard",
+    ):
+        payload.pop(key, None)
+
+
 def build_quota_should_run(
     status_payload: dict[str, Any],
     *,
@@ -2352,6 +2426,7 @@ def build_quota_should_run(
             monitor_only=agent_monitor_only,
             inbox_reply_due=inbox_reply_due,
         )
+        _apply_paused_quota_precedence(payload)
         required_reads = _quota_required_reads(payload)
         if required_reads:
             payload["required_reads"] = required_reads
