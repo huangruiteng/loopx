@@ -27,10 +27,10 @@ def build_finance_extension_migration_contract() -> dict[str, Any]:
         "recommended_action": "inspect_then_install_register_run",
         "source_checkout_required": True,
         "source_checkout_paths": {
-            "package": "extensions/loopx-finance-value-discovery",
-            "manifest": "extensions/loopx-finance-value-discovery/extension.toml",
+            "package": "packages/loopx-finance-value-discovery",
+            "manifest": "packages/loopx-finance-value-discovery/extension.toml",
             "example_input": (
-                "extensions/loopx-finance-value-discovery/examples/"
+                "packages/loopx-finance-value-discovery/examples/"
                 "paypal-debeta-discovery.json"
             ),
         },
@@ -43,7 +43,7 @@ def build_finance_extension_migration_contract() -> dict[str, Any]:
             {
                 "step": "install_provider_from_source_checkout",
                 "command": (
-                    "python3 -m pip install ./extensions/loopx-finance-value-discovery"
+                    "python3 -m pip install ./packages/loopx-finance-value-discovery"
                 ),
                 "local_environment_write": True,
                 "condition": "provider entrypoint is absent and source checkout exists",
@@ -52,7 +52,7 @@ def build_finance_extension_migration_contract() -> dict[str, Any]:
                 "step": "register_extension",
                 "command": (
                     "loopx extension install --manifest "
-                    "extensions/loopx-finance-value-discovery/extension.toml "
+                    "packages/loopx-finance-value-discovery/extension.toml "
                     "--execute --format json"
                 ),
                 "local_environment_write": True,
@@ -63,7 +63,7 @@ def build_finance_extension_migration_contract() -> dict[str, Any]:
                 "command": (
                     "loopx extension run loopx-finance-value-discovery "
                     "--input-json "
-                    "extensions/loopx-finance-value-discovery/examples/"
+                    "packages/loopx-finance-value-discovery/examples/"
                     "paypal-debeta-discovery.json --execute --format json"
                 ),
                 "local_environment_write": False,

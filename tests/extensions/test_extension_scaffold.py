@@ -136,7 +136,7 @@ def test_scaffold_execute_creates_valid_manifest_and_refuses_overwrite(
         )
 
 
-def test_scaffold_defaults_to_extensions_directory(
+def test_scaffold_defaults_to_packages_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -144,8 +144,8 @@ def test_scaffold_defaults_to_extensions_directory(
 
     packet = scaffold_extension("loopx-example", execute=True)
 
-    assert packet["destination"] == "extensions/loopx-example"
-    assert (tmp_path / "extensions" / "loopx-example" / "extension.toml").is_file()
+    assert packet["destination"] == "packages/loopx-example"
+    assert (tmp_path / "packages" / "loopx-example" / "extension.toml").is_file()
 
 
 def test_extension_init_cli_previews_then_creates(

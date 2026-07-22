@@ -103,7 +103,7 @@ def register_extension_commands(
     init.add_argument("extension_id")
     init.add_argument(
         "--destination",
-        help="Target directory. Defaults to extensions/<extension-id>.",
+        help="Target directory. Defaults to packages/<extension-id>.",
     )
     init.add_argument("--version", default="0.1.0")
     init.add_argument("--execute", action="store_true")

@@ -6,7 +6,7 @@ Status: co-located optional LoopX extension sample.
 
 - extension id: `loopx-finance-value-discovery`
 - capability registration: none
-- placement: `extensions/loopx-finance-value-discovery/`
+- placement: `packages/loopx-finance-value-discovery/`
 
 This optional workflow owns its command and packet contract. LoopX does not
 need a provider-neutral finance capability, so installing the extension must
@@ -78,9 +78,9 @@ Install the extension package, then register its manifest with the LoopX
 extension runtime:
 
 ```bash
-python3 -m pip install ./extensions/loopx-finance-value-discovery
+python3 -m pip install ./packages/loopx-finance-value-discovery
 loopx extension install \
-  --manifest extensions/loopx-finance-value-discovery/extension.toml \
+  --manifest packages/loopx-finance-value-discovery/extension.toml \
   --execute \
   --format json
 ```
@@ -89,7 +89,7 @@ Invoke the enabled extension through LoopX's managed runtime:
 
 ```bash
 loopx extension run loopx-finance-value-discovery \
-  --input-json extensions/loopx-finance-value-discovery/examples/paypal-debeta-discovery.json \
+  --input-json packages/loopx-finance-value-discovery/examples/paypal-debeta-discovery.json \
   --execute \
   --format json
 ```

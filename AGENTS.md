@@ -150,9 +150,10 @@ do not choose a directory from the feature name alone:
   validation;
 - put generic manifest, registration, compatibility, and lifecycle mechanics
   in `loopx/extensions/`;
-- put an independently versioned or optional provider in
-  `extensions/<extension-id>/` when it is co-located, or in its own package or
-  repository when it is distributed separately;
+- put an independently versioned or optional provider distribution in
+  `packages/<package-id>/` when it is co-located, or in its own package or
+  repository when it is distributed separately. Reserve `loopx/extensions/`
+  for extension lifecycle code and providers bundled in the LoopX wheel;
 - do not create a capability merely to make an extension installable. An
   extension-owned command or workflow may declare only its runtime and
   lifecycle when LoopX callers do not need a provider-neutral capability
