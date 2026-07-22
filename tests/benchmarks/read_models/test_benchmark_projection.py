@@ -3,7 +3,7 @@ from __future__ import annotations
 from loopx.benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )
-from loopx.control_plane.runtime.benchmark_projection import (
+from loopx.benchmarks.read_models.benchmark_projection import (
     build_benchmark_solution_quality_signals,
 )
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopx import status
-from loopx.control_plane.runtime.benchmark_result import compact_benchmark_result
+from loopx.benchmarks.read_models.benchmark_result import compact_benchmark_result
 
 
 def test_status_preserves_benchmark_result_import() -> None:

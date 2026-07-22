@@ -5,8 +5,8 @@ from collections import Counter
 from statistics import fmean
 from typing import Any, Iterable, Mapping
 
-from ..runtime.benchmark_result import compact_benchmark_result
-from ..runtime.public_safety import public_safe_compact_text
+from ..read_models.benchmark_result import compact_benchmark_result
+from ...control_plane.runtime.public_safety import public_safe_compact_text
 
 
 RELEASE_OUTCOME_PAIR_MANIFEST_SCHEMA_VERSION = "release_outcome_pair_manifest_v0"

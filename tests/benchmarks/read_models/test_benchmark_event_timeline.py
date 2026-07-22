@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopx.control_plane.runtime.benchmark_event_timeline import (
+from loopx.benchmarks.read_models.benchmark_event_timeline import (
     compact_benchmark_case_event_timeline,
 )
 

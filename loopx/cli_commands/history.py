@@ -9,16 +9,16 @@ from pathlib import Path
 from ..benchmark_adapters.agents_last_exam import (
     build_agents_last_exam_result_benchmark_report,
 )
-from ..control_plane.runtime.benchmark_comparison import (
+from ..benchmarks.read_models.benchmark_comparison import (
     compact_benchmark_comparison,
 )
-from ..control_plane.runtime.benchmark_experiment_report import (
+from ..benchmarks.read_models.benchmark_experiment_report import (
     compact_benchmark_experiment_report,
 )
-from ..control_plane.runtime.benchmark_learning_ledger import (
+from ..benchmarks.read_models.benchmark_learning_ledger import (
     compact_benchmark_learning_ledger,
 )
-from ..control_plane.runtime.benchmark_result import compact_benchmark_result
+from ..benchmarks.read_models.benchmark_result import compact_benchmark_result
 from ..control_plane.work_items.delivery_batch_scale import DELIVERY_BATCH_SCALE_CHOICES
 from ..control_plane.work_items.delivery_outcome import DELIVERY_OUTCOME_CHOICES
 from ..control_plane.runtime.trajectory_hygiene import build_trajectory_hygiene_summary

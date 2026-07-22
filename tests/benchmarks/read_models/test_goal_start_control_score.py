@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from loopx.control_plane.runtime.goal_start_control_score import (
+from loopx.benchmarks.read_models.goal_start_control_score import (
     compact_goal_start_product_mode_control_score,
 )
 

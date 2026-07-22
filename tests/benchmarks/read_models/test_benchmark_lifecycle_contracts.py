@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopx.control_plane.runtime.benchmark_lifecycle_contracts import (
+from loopx.benchmarks.read_models.benchmark_lifecycle_contracts import (
     compact_app_server_goal_round_semantics,
     compact_native_goal_worker_contract,
     compact_product_mode_lifecycle_contract,

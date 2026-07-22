@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .benchmark_attempt_accounting import compact_benchmark_attempt_accounting
-from .public_safety import (
+from ...control_plane.runtime.public_safety import (
     compact_numeric_map,
     public_safe_compact_list,
     public_safe_compact_text,

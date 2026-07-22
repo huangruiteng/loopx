@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from loopx.control_plane.testing.release_outcome_baseline import (
+from loopx.benchmarks.qualification.release_outcome_baseline import (
     build_release_outcome_baseline,
 )
 
