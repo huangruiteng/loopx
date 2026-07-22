@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from .public_safety import compact_numeric_map, public_safe_compact_text
+from ...control_plane.runtime.public_safety import (
+    compact_numeric_map,
+    public_safe_compact_text,
+)
 
 
 def compact_benchmark_round_reward_trace(value: Any) -> dict[str, Any]:

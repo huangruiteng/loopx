@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopx.control_plane.runtime.benchmark_run_metrics import (
+from loopx.benchmarks.read_models.benchmark_run_metrics import (
     compact_benchmark_overhead_attribution_counters,
     compact_benchmark_round_reward_trace,
 )

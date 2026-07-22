@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from loopx.control_plane.runtime.benchmark_comparison import (
+from loopx.benchmarks.read_models.benchmark_comparison import (
     benchmark_comparison_decision_note,
     compact_benchmark_comparison,
 )

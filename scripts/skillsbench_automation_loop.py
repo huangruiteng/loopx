@@ -175,7 +175,7 @@ from loopx.benchmark_trajectory import (
     normalized_loopx_cli_call,
     summarize_public_acp_trajectory,
 )
-from loopx.control_plane.runtime.goal_start_control_score import (
+from loopx.benchmarks.read_models.goal_start_control_score import (
     build_goal_start_product_mode_control_score,
     goal_start_public_command_records as _goal_start_public_command_records,
     goal_start_public_text_list as _goal_start_public_text_list,
@@ -14761,7 +14761,7 @@ def reduce_result(
     from loopx.benchmark import (
         build_skillsbench_benchflow_result_benchmark_run,
     )
-    from loopx.control_plane.runtime.skillsbench_post_run_debug import (
+    from loopx.benchmarks.read_models.skillsbench_post_run_debug import (
         build_skillsbench_post_run_debug_gate,
     )
     from loopx.status import compact_benchmark_run
@@ -15630,7 +15630,7 @@ def build_runner_failure_compact(
         skillsbench_runner_error_attribution,
         skillsbench_runner_error_fingerprint,
     )
-    from loopx.control_plane.runtime.skillsbench_post_run_debug import (
+    from loopx.benchmarks.read_models.skillsbench_post_run_debug import (
         build_skillsbench_post_run_debug_gate,
     )
     from loopx.status import compact_benchmark_run

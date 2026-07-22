@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .public_safety import public_safe_compact_text
+from ...control_plane.runtime.public_safety import public_safe_compact_text
 
 
 def compact_benchmark_attempt_accounting(value: Any) -> dict[str, Any]:

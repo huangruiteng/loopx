@@ -22,7 +22,7 @@ from loopx.benchmark_adapters.skillsbench_typed_repair import (
     skillsbench_turn_recovery_checkpoint,
 )
 from loopx.benchmark import build_skillsbench_benchflow_result_benchmark_run
-from loopx.control_plane.runtime.goal_start_control_score import (
+from loopx.benchmarks.read_models.goal_start_control_score import (
     build_goal_start_product_mode_control_score,
     compact_goal_start_product_mode_control_score,
 )

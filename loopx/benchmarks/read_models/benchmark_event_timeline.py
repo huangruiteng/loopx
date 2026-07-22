@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from .public_safety import public_safe_compact_list, public_safe_compact_text
+from ...control_plane.runtime.public_safety import (
+    public_safe_compact_list,
+    public_safe_compact_text,
+)
 
 
 MAX_BENCHMARK_EVENT_LABELS = 5

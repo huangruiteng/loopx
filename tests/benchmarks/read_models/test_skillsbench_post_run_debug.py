@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopx import status
-from loopx.control_plane.runtime.skillsbench_post_run_debug import (
+from loopx.benchmarks.read_models.skillsbench_post_run_debug import (
     build_skillsbench_post_run_debug_gate,
 )
 

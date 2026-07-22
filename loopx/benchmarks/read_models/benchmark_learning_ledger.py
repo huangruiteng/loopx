@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from .benchmark_comparison import compact_comparison_delta
-from .public_safety import public_safe_compact_list, public_safe_compact_text
+from ...control_plane.runtime.public_safety import (
+    public_safe_compact_list,
+    public_safe_compact_text,
+)
 
 BENCHMARK_LEARNING_LEDGER_SCHEMA_VERSION = "benchmark_learning_ledger_v0"
 MAX_BENCHMARK_LEARNING_LEDGER_LIST_ITEMS = 5

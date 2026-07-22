@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..control_plane.runtime.benchmark_projection import (
+from ..benchmarks.read_models.benchmark_projection import (
     build_benchmark_solution_quality_signals,
 )
 

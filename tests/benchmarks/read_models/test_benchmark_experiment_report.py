@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from loopx import status
-from loopx.control_plane.runtime.benchmark_attempt_accounting import (
+from loopx.benchmarks.read_models.benchmark_attempt_accounting import (
     compact_benchmark_attempt_accounting,
 )
-from loopx.control_plane.runtime.benchmark_experiment_report import (
+from loopx.benchmarks.read_models.benchmark_experiment_report import (
     benchmark_experiment_report_readiness_note,
     benchmark_experiment_report_replay_decision,
     compact_benchmark_experiment_report,

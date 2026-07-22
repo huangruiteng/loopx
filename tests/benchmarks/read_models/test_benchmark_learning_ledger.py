@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from loopx import status
-from loopx.control_plane.runtime.benchmark_learning_ledger import (
+from loopx.benchmarks.read_models.benchmark_learning_ledger import (
     compact_benchmark_learning_ledger,
 )
 

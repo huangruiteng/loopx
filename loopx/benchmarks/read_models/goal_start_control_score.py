@@ -7,7 +7,7 @@ from loopx.benchmark_case_state import (
     BENCHMARK_CASE_LOOPX_GOAL_START_TODO_TEXTS,
 )
 
-from .public_safety import (
+from ...control_plane.runtime.public_safety import (
     LOOPX_COMMAND_RECORD_TODO_ID_PATTERN,
     compact_loopx_command_records,
     public_safe_compact_list,
