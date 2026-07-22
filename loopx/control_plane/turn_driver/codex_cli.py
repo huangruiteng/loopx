@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import threading
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,15 +23,31 @@ from .executor import (
     BuiltInHostError,
     LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION,
 )
-from .model_usage import advisor_model_usage, direct_model_usage, event_usage
+from .model_usage import (
+    advisor_decision_receipt,
+    advisor_model_usage,
+    aggregate_provider_usage,
+    direct_model_usage,
+    event_usage,
+)
 from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 
 CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v1"
 LOOPX_TURN_ADVISOR_SCHEMA_VERSION = "loopx_turn_advisor_v0"
 LOOPX_TURN_ADVISOR_CONTEXT_SCHEMA_VERSION = "loopx_turn_advisor_context_v0"
+LOOPX_TURN_COMPLEXITY_CHECKPOINT_SCHEMA_VERSION = (
+    "loopx_turn_complexity_checkpoint_v0"
+)
 _ADVISOR_CONTEXT_MAX_FILES = 8
 _ADVISOR_CONTEXT_MAX_BYTES = 24_000
+_COMPLEXITY_SIGNALS = (
+    "cross_file_reasoning",
+    "ambiguous_root_cause",
+    "invariant_risk",
+    "validation_uncertainty",
+    "external_contract",
+)
 CODEX_CLI_RESULT_KINDS = (
     "validated_progress",
     "repair_required",
@@ -247,26 +264,68 @@ def codex_cli_result_schema() -> dict[str, Any]:
     }
 
 
+def _simple_result_contract_summary() -> str:
+    schema = codex_cli_result_schema()
+    properties = _mapping(schema.get("properties"))
+    enum_fields = (
+        "schema_version",
+        "result_kind",
+        "delivery_batch_scale",
+        "delivery_outcome",
+        "path_delta_mode",
+    )
+    enums = {
+        field: _mapping(properties.get(field)).get("enum") for field in enum_fields
+    }
+    return (
+        "Use exactly these keys: "
+        + json.dumps(schema["required"], separators=(",", ":"))
+        + ". Allowed enum values: "
+        + json.dumps(enums, separators=(",", ":"))
+        + ". No extra keys."
+    )
+
+
+_FINAL_RESULT_INSTRUCTIONS = (
+    "For validated_progress, repair_required, or replan_required, fill every material field with public-safe evidence.",
+    "For those material results, set path_delta_mode=material_replan only when this Turn changes a prior assumption, route, scope, acceptance rule, or stops prior work; then provide a complete bounded agent vision packet with goal_path_delta_v0 in agent_vision_json and leave vision_unchanged_reason empty.",
+    "For routine continuation, retry, successor creation, or no-change replanning, set path_delta_mode=unchanged, leave agent_vision_json empty, and provide vision_unchanged_reason.",
+    "For user_action_required or wait, leave material-only fields empty and explain the stop in summary.",
+    'completed_phases must be exactly ["host_execute","typed_result"], and turn_key must match the request.',
+)
+
+
 def _prompt(
     request: Mapping[str, Any],
     *,
     advisor: Mapping[str, Any] | None = None,
+    complexity_checkpoint: Mapping[str, Any] | None = None,
+    advisor_failure_category: str | None = None,
 ) -> str:
     request_json = json.dumps(
         request, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     lines = [
-            "Execute exactly one bounded LoopX Turn in the current workspace.",
-            "Use the TurnEnvelope as the source of truth. Perform work only when its contract allows it.",
-            "Do not write LoopX state, spend quota, or apply scheduler changes; the adapter owns those effects.",
-            "Return only the schema-constrained result. For validated_progress, repair_required, or replan_required, fill every material field with public-safe evidence.",
-            "For those material results, set path_delta_mode=material_replan only when this Turn changes a prior assumption, route, scope, acceptance rule, or stops prior work; then provide a complete bounded agent vision packet with goal_path_delta_v0 in agent_vision_json and leave vision_unchanged_reason empty.",
-            "For routine continuation, retry, successor creation, or no-change replanning, set path_delta_mode=unchanged, leave agent_vision_json empty, and provide vision_unchanged_reason.",
-            "For user_action_required or wait, leave material-only fields empty and explain the stop in summary.",
-            'completed_phases must be exactly ["host_execute","typed_result"], and turn_key must match the request.',
-            "Turn request:",
-            request_json,
-        ]
+        "Execute exactly one bounded LoopX Turn in the current workspace.",
+        "Use the TurnEnvelope as the source of truth. Perform work only when its contract allows it.",
+        "Do not write LoopX state, spend quota, or apply scheduler changes; the adapter owns those effects.",
+        "Return only the schema-constrained result.",
+        *_FINAL_RESULT_INSTRUCTIONS,
+        "Turn request:",
+        request_json,
+    ]
+    if complexity_checkpoint is not None:
+        lines.extend(
+            [
+                "Continue from the complexity checkpoint produced earlier in this same executor session.",
+                json.dumps(
+                    dict(complexity_checkpoint),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            ]
+        )
     if advisor is not None:
         lines.extend(
             [
@@ -277,6 +336,13 @@ def _prompt(
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
+            ]
+        )
+    elif advisor_failure_category:
+        lines.extend(
+            [
+                "Advisor review was triggered but unavailable. Continue independently from verified repository evidence; do not wait or invent guidance.",
+                f"Bounded advisor failure category: {advisor_failure_category}",
             ]
         )
     return "\n".join(lines)
@@ -311,17 +377,167 @@ def codex_cli_advisor_schema() -> dict[str, Any]:
     }
 
 
+def codex_cli_complexity_checkpoint_schema() -> dict[str, Any]:
+    item = {"type": "string", "minLength": 1, "maxLength": 400}
+    properties: dict[str, Any] = {
+        "schema_version": {
+            "type": "string",
+            "enum": [LOOPX_TURN_COMPLEXITY_CHECKPOINT_SCHEMA_VERSION],
+        },
+        "turn_key": {"type": "string"},
+        "complexity": {"type": "string", "enum": ["simple", "complex"]},
+        "signals": {
+            "type": "array",
+            "items": {"type": "string", "enum": list(_COMPLEXITY_SIGNALS)},
+            "maxItems": 4,
+        },
+        "evidence_summary": item,
+        "relevant_paths": {"type": "array", "items": item, "maxItems": 8},
+        "open_questions": {"type": "array", "items": item, "maxItems": 4},
+        "simple_result_json": {"type": "string", "maxLength": 4000},
+    }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+def _complexity_checkpoint_prompt(request: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            "Begin exactly one bounded LoopX Turn in the current workspace.",
+            "Use the TurnEnvelope as the source of truth. Inspect the repository and make only safe, reversible progress allowed by the Turn contract.",
+            "Return exactly one schema-constrained complexity checkpoint.",
+            "Classify simple only when the root cause, patch boundary, preserved invariant, and focused validation are all clear. Complete and validate that bounded work now, then JSON-encode its typed final result in simple_result_json with no complexity signals or open questions.",
+            "Classify complex when strong-model review could change the implementation plan. Pause before risky implementation, set simple_result_json to an empty string, and name only supported signals, repository-relative relevant paths, verified evidence, and unresolved questions.",
+            "Do not write LoopX state, spend quota, or apply scheduler changes; the adapter owns those effects.",
+            "When producing simple_result_json, follow these final-result semantics:",
+            *_FINAL_RESULT_INSTRUCTIONS,
+            "Turn request:",
+            json.dumps(
+                dict(request),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            "For a simple task, simple_result_json must decode to the final-result contract and must copy the Turn request's turn_key:",
+            _simple_result_contract_summary(),
+        ]
+    )
+
+
+def _normalize_complexity_checkpoint(
+    value: Any,
+    *,
+    turn_key: str,
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_not_object")
+    expected_fields = {
+        "schema_version",
+        "turn_key",
+        "complexity",
+        "signals",
+        "evidence_summary",
+        "relevant_paths",
+        "open_questions",
+        "simple_result_json",
+    }
+    if set(value) != expected_fields:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    if value.get("schema_version") != LOOPX_TURN_COMPLEXITY_CHECKPOINT_SCHEMA_VERSION:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    if value.get("turn_key") != turn_key:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_turn_key_mismatch")
+    complexity = str(value.get("complexity") or "")
+    if complexity not in {"simple", "complex"}:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+
+    normalized: dict[str, Any] = {
+        "schema_version": LOOPX_TURN_COMPLEXITY_CHECKPOINT_SCHEMA_VERSION,
+        "turn_key": turn_key,
+        "complexity": complexity,
+    }
+    for field, maximum in (("signals", 4), ("relevant_paths", 8), ("open_questions", 4)):
+        raw_items = value.get(field)
+        if not isinstance(raw_items, list) or len(raw_items) > maximum:
+            raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+        items: list[str] = []
+        for item in raw_items:
+            text = str(item or "").strip()
+            if not text or len(text) > 400:
+                raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+            if field == "signals" and text not in _COMPLEXITY_SIGNALS:
+                raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+            if field == "relevant_paths":
+                path = Path(text)
+                if path.is_absolute() or ".." in path.parts:
+                    raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+            try:
+                validate_public_safe_text(f"complexity_checkpoint.{field}", text)
+            except ValueError as exc:
+                raise BuiltInHostError(
+                    "codex_cli_complexity_checkpoint_not_public_safe"
+                ) from exc
+            items.append(text)
+        normalized[field] = items
+    evidence_summary = str(value.get("evidence_summary") or "").strip()
+    if not evidence_summary or len(evidence_summary) > 400:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    try:
+        validate_public_safe_text(
+            "complexity_checkpoint.evidence_summary", evidence_summary
+        )
+    except ValueError as exc:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_not_public_safe") from exc
+    normalized["evidence_summary"] = evidence_summary
+    if complexity == "simple" and (
+        normalized["signals"] or normalized["open_questions"]
+    ):
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    if complexity == "complex" and not normalized["signals"]:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    simple_result_json = value.get("simple_result_json")
+    if not isinstance(simple_result_json, str) or len(simple_result_json) > 4000:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    if complexity == "complex" and simple_result_json:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    simple_result: Any = None
+    if complexity == "simple":
+        try:
+            simple_result = json.loads(simple_result_json)
+        except json.JSONDecodeError as exc:
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_contract_invalid"
+            ) from exc
+        if not isinstance(simple_result, Mapping):
+            raise BuiltInHostError("codex_cli_complexity_checkpoint_contract_invalid")
+    normalized["simple_result"] = (
+        dict(simple_result) if isinstance(simple_result, Mapping) else None
+    )
+    return normalized
+
+
 def _advisor_workspace_context(
-    request: Mapping[str, Any], *, project: Path
+    request: Mapping[str, Any],
+    *,
+    project: Path,
+    complexity_checkpoint: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     envelope = _mapping(request.get("turn_envelope"))
     boundary = _mapping(envelope.get("boundary"))
     raw_scope = boundary.get("write_scope")
-    scopes = raw_scope if isinstance(raw_scope, list) else []
+    scopes = list(raw_scope) if isinstance(raw_scope, list) else []
+    if complexity_checkpoint is not None:
+        relevant_paths = complexity_checkpoint.get("relevant_paths")
+        if isinstance(relevant_paths, list):
+            scopes.extend(relevant_paths)
     root = project.resolve()
     files: list[dict[str, str]] = []
     used_bytes = 0
-    for raw_path in scopes:
+    for raw_path in dict.fromkeys(str(item) for item in scopes):
         relative = str(raw_path or "").strip()
         if (
             not relative
@@ -353,17 +569,28 @@ def _advisor_workspace_context(
 
 
 def _advisor_prompt(
-    request: Mapping[str, Any], *, workspace_context: Mapping[str, Any]
+    request: Mapping[str, Any],
+    *,
+    workspace_context: Mapping[str, Any],
+    complexity_checkpoint: Mapping[str, Any],
 ) -> str:
     return "\n".join(
         [
-            "Advise on exactly one bounded LoopX Turn.",
+            "Review one complex checkpoint from a cheaper executor working on a bounded LoopX Turn.",
             "No repository is mounted. Do not invoke workspace tools. Use only the bounded context packet below.",
             "Do not execute the todo, write LoopX state, spend quota, or change scheduler state.",
-            "The TurnEnvelope remains authoritative. Return only compact implementation guidance, risks, and independent validation focus in the required schema; do not include hidden reasoning.",
+            "Challenge the executor's current plan: resolve its open questions, identify a missed invariant or counterexample, and narrow the smallest correct patch and focused validation.",
+            "The TurnEnvelope remains authoritative. Return only compact corrective implementation guidance, risks, and independent validation focus in the required schema; do not include hidden reasoning.",
             "Turn request:",
             json.dumps(
                 dict(request),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            "Executor complexity checkpoint:",
+            json.dumps(
+                dict(complexity_checkpoint),
                 ensure_ascii=False,
                 sort_keys=True,
                 separators=(",", ":"),
@@ -614,6 +841,295 @@ def _run_codex_process(
     }
 
 
+@dataclass(frozen=True)
+class _ComplexityCheckpointRun:
+    checkpoint: dict[str, Any]
+    usage: dict[str, int]
+    session_id: str
+    decision: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class _AdvisorReviewRun:
+    advice: dict[str, Any] | None
+    usage: dict[str, int] | None
+    attempt_usage: dict[str, int] | None
+    failure_category: str | None
+    decision: dict[str, Any]
+
+
+def _run_complexity_checkpoint(
+    request: Mapping[str, Any],
+    *,
+    temporary: Path,
+    codex_bin: str,
+    project: Path,
+    sandbox: str,
+    model: str | None,
+    session_id: str | None,
+    runtime_root: Path,
+    lineage: str,
+    timeout_seconds: float,
+) -> _ComplexityCheckpointRun:
+    schema_path = temporary / "complexity-checkpoint-schema.json"
+    output_path = temporary / "complexity-checkpoint.json"
+    schema_path.write_text(
+        json.dumps(
+            codex_cli_complexity_checkpoint_schema(),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    invocation = _run_codex_process(
+        _codex_command(
+            codex_bin=codex_bin,
+            project=project,
+            schema_path=schema_path,
+            output_path=output_path,
+            sandbox=sandbox,
+            model=model,
+            session_id=session_id,
+        ),
+        project=project,
+        prompt=_complexity_checkpoint_prompt(request),
+        output_path=output_path,
+        timeout_seconds=timeout_seconds,
+    )
+    observed_session_id = str(invocation.get("session_id") or session_id or "")
+    category = str(invocation["failure_category"])
+    if invocation["timed_out"]:
+        if observed_session_id:
+            _store_codex_cli_session(
+                runtime_root, lineage=lineage, session_id=observed_session_id
+            )
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_timeout")
+    if observed_session_id:
+        if (
+            invocation["returncode"] == 0
+            or category not in SESSION_INVALIDATING_FAILURE_CATEGORIES
+        ):
+            _store_codex_cli_session(
+                runtime_root, lineage=lineage, session_id=observed_session_id
+            )
+        else:
+            _discard_codex_cli_session(runtime_root, lineage=lineage)
+    if invocation["returncode"] != 0:
+        raise BuiltInHostError(f"codex_cli_complexity_checkpoint_{category}")
+    if not observed_session_id:
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_session_missing")
+    checkpoint = _normalize_complexity_checkpoint(
+        invocation["result"], turn_key=str(request.get("turn_key") or "")
+    )
+    raw_usage = invocation.get("usage")
+    if not isinstance(raw_usage, Mapping):
+        raise BuiltInHostError("codex_cli_complexity_checkpoint_usage_missing")
+    decision = (
+        advisor_decision_receipt(checkpoint, decision="skipped_simple")
+        if checkpoint["complexity"] == "simple"
+        else None
+    )
+    return _ComplexityCheckpointRun(
+        checkpoint=checkpoint,
+        usage=dict(raw_usage),
+        session_id=observed_session_id,
+        decision=decision,
+    )
+
+
+def _run_advisor_review(
+    request: Mapping[str, Any],
+    *,
+    temporary: Path,
+    project: Path,
+    codex_bin: str,
+    advisor_model: str,
+    checkpoint: Mapping[str, Any],
+    timeout_seconds: float,
+) -> _AdvisorReviewRun:
+    advisor_project = temporary / "advisor-workspace"
+    advisor_project.mkdir()
+    schema_path = temporary / "advisor-schema.json"
+    output_path = temporary / "advisor-message.json"
+    schema_path.write_text(
+        json.dumps(
+            codex_cli_advisor_schema(), ensure_ascii=False, separators=(",", ":")
+        ),
+        encoding="utf-8",
+    )
+    invocation = _run_codex_process(
+        _codex_command(
+            codex_bin=codex_bin,
+            project=advisor_project,
+            schema_path=schema_path,
+            output_path=output_path,
+            sandbox="read-only",
+            model=advisor_model,
+            session_id=None,
+            ephemeral=True,
+        ),
+        project=advisor_project,
+        prompt=_advisor_prompt(
+            request,
+            workspace_context=_advisor_workspace_context(
+                request, project=project, complexity_checkpoint=checkpoint
+            ),
+            complexity_checkpoint=checkpoint,
+        ),
+        output_path=output_path,
+        timeout_seconds=timeout_seconds,
+    )
+    raw_usage = invocation.get("usage")
+    attempt_usage = dict(raw_usage) if isinstance(raw_usage, Mapping) else None
+    failure_category: str | None = None
+    advice: dict[str, Any] | None = None
+    if invocation["timed_out"]:
+        failure_category = "timeout"
+    elif invocation["returncode"] != 0:
+        failure_category = str(invocation["failure_category"])
+    else:
+        try:
+            advice = _normalize_advisor_result(
+                invocation["result"], turn_key=str(request.get("turn_key") or "")
+            )
+        except BuiltInHostError:
+            failure_category = "invalid_result"
+        if advice is not None and attempt_usage is None:
+            advice = None
+            failure_category = "usage_missing"
+    decision = advisor_decision_receipt(
+        checkpoint,
+        decision="applied_complexity" if advice is not None else "fallback_failure",
+        failure_category=None if advice is not None else failure_category or "unknown",
+    )
+    return _AdvisorReviewRun(
+        advice=advice,
+        usage=attempt_usage if advice is not None else None,
+        attempt_usage=attempt_usage,
+        failure_category=failure_category,
+        decision=decision,
+    )
+
+
+def _attach_model_usage(
+    result: dict[str, Any],
+    *,
+    adaptive_mode: bool,
+    executor_usage: dict[str, int] | None,
+    checkpoint_usage: Mapping[str, int] | None,
+    checkpoint_decision: Mapping[str, Any] | None,
+    review: _AdvisorReviewRun | None,
+) -> None:
+    if adaptive_mode and executor_usage is None:
+        raise BuiltInHostError("codex_cli_executor_usage_missing")
+    if executor_usage is None:
+        return
+    if checkpoint_usage is not None:
+        executor_usage = aggregate_provider_usage(checkpoint_usage, executor_usage)
+    if review is not None and review.advice is not None:
+        if review.usage is None:
+            raise BuiltInHostError("codex_cli_executor_usage_missing")
+        result["model_usage"] = advisor_model_usage(
+            advisor=review.usage,
+            executor=executor_usage,
+            advice=review.advice,
+        )
+        result["model_usage"]["advisor_decision"] = review.decision
+        result["model_usage"]["usage_complete"] = True
+        return
+    decision = review.decision if review is not None else checkpoint_decision
+    attempt_usage = review.attempt_usage if review is not None else None
+    failure_category = review.failure_category if review is not None else None
+    result["model_usage"] = direct_model_usage(
+        executor_usage,
+        advisor_decision=decision,
+        advisor_attempt=attempt_usage,
+        usage_complete=failure_category is None or attempt_usage is not None,
+    )
+
+
+def _run_final_executor(
+    request: Mapping[str, Any],
+    *,
+    temporary: Path,
+    codex_bin: str,
+    project: Path,
+    sandbox: str,
+    model: str | None,
+    session_id: str | None,
+    runtime_root: Path,
+    lineage: str,
+    timeout_seconds: float,
+    checkpoint_run: _ComplexityCheckpointRun | None,
+    review: _AdvisorReviewRun | None,
+) -> dict[str, Any]:
+    schema_path = temporary / "result-schema.json"
+    output_path = temporary / "last-message.json"
+    schema_path.write_text(
+        json.dumps(codex_cli_result_schema(), ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    invocation = _run_codex_process(
+        _codex_command(
+            codex_bin=codex_bin,
+            project=project,
+            schema_path=schema_path,
+            output_path=output_path,
+            sandbox=sandbox,
+            model=model,
+            session_id=session_id,
+        ),
+        project=project,
+        prompt=_prompt(
+            request,
+            advisor=review.advice if review is not None else None,
+            complexity_checkpoint=(
+                checkpoint_run.checkpoint if checkpoint_run is not None else None
+            ),
+            advisor_failure_category=(
+                review.failure_category if review is not None else None
+            ),
+        ),
+        output_path=output_path,
+        timeout_seconds=timeout_seconds,
+    )
+    observed_session_id = str(invocation.get("session_id") or session_id or "")
+    category = str(invocation["failure_category"])
+    if invocation["timed_out"]:
+        if observed_session_id:
+            _store_codex_cli_session(
+                runtime_root, lineage=lineage, session_id=observed_session_id
+            )
+        raise BuiltInHostError("codex_cli_timeout")
+    if invocation["returncode"] != 0 and category in SESSION_INVALIDATING_FAILURE_CATEGORIES:
+        _discard_codex_cli_session(runtime_root, lineage=lineage)
+    elif observed_session_id:
+        _store_codex_cli_session(
+            runtime_root, lineage=lineage, session_id=observed_session_id
+        )
+    if invocation["returncode"] != 0:
+        raise BuiltInHostError(f"codex_cli_{category}")
+    result = invocation.get("result")
+    if result is None:
+        raise BuiltInHostError("codex_cli_final_result_missing")
+    if not isinstance(result, dict):
+        raise BuiltInHostError("codex_cli_final_result_not_object")
+    raw_usage = invocation.get("usage")
+    _attach_model_usage(
+        result,
+        adaptive_mode=checkpoint_run is not None,
+        executor_usage=dict(raw_usage) if isinstance(raw_usage, Mapping) else None,
+        checkpoint_usage=(
+            checkpoint_run.usage if checkpoint_run is not None else None
+        ),
+        checkpoint_decision=(
+            checkpoint_run.decision if checkpoint_run is not None else None
+        ),
+        review=review,
+    )
+    return result
+
+
 def run_codex_cli_host(
     request: Mapping[str, Any],
     *,
@@ -651,129 +1167,49 @@ def run_codex_cli_host(
 
     with tempfile.TemporaryDirectory(prefix="loopx-turn-codex-") as directory:
         temporary = Path(directory)
-        advisor: dict[str, Any] | None = None
-        advisor_usage: dict[str, int] | None = None
-        advisor_context = (
-            _advisor_workspace_context(request, project=project)
-            if advisor_model
-            else None
-        )
-        if advisor_model and advisor_context and advisor_context["files"]:
-            advisor_project = temporary / "advisor-workspace"
-            advisor_project.mkdir()
-            advisor_schema_path = temporary / "advisor-schema.json"
-            advisor_output_path = temporary / "advisor-message.json"
-            advisor_schema_path.write_text(
-                json.dumps(
-                    codex_cli_advisor_schema(),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-                encoding="utf-8",
-            )
-            advisor_command = _codex_command(
+        checkpoint_run: _ComplexityCheckpointRun | None = None
+        review: _AdvisorReviewRun | None = None
+        if advisor_model:
+            checkpoint_run = _run_complexity_checkpoint(
+                request,
+                temporary=temporary,
                 codex_bin=str(resolved),
-                project=advisor_project,
-                schema_path=advisor_schema_path,
-                output_path=advisor_output_path,
-                sandbox="read-only",
-                model=advisor_model,
-                session_id=None,
-                ephemeral=True,
-            )
-            advisor_invocation = _run_codex_process(
-                advisor_command,
-                project=advisor_project,
-                prompt=_advisor_prompt(
-                    request,
-                    workspace_context=advisor_context,
-                ),
-                output_path=advisor_output_path,
+                project=project,
+                sandbox=sandbox,
+                model=model,
+                session_id=session_id,
+                runtime_root=runtime_root,
+                lineage=lineage,
                 timeout_seconds=advisor_timeout_seconds,
             )
-            if advisor_invocation["timed_out"]:
-                raise BuiltInHostError("codex_cli_advisor_timeout")
-            if advisor_invocation["returncode"] != 0:
-                raise BuiltInHostError(
-                    "codex_cli_advisor_"
-                    + str(advisor_invocation["failure_category"])
+            if checkpoint_run.checkpoint["complexity"] == "simple":
+                simple_result = dict(checkpoint_run.checkpoint["simple_result"])
+                simple_result["model_usage"] = direct_model_usage(
+                    checkpoint_run.usage,
+                    advisor_decision=checkpoint_run.decision,
                 )
-            advisor = _normalize_advisor_result(
-                advisor_invocation["result"],
-                turn_key=str(request.get("turn_key") or ""),
-            )
-            usage_value = advisor_invocation.get("usage")
-            advisor_usage = dict(usage_value) if isinstance(usage_value, Mapping) else None
-            if advisor_usage is None:
-                raise BuiltInHostError("codex_cli_advisor_usage_missing")
-        schema_path = temporary / "result-schema.json"
-        output_path = temporary / "last-message.json"
-        schema_path.write_text(
-            json.dumps(
-                codex_cli_result_schema(), ensure_ascii=False, separators=(",", ":")
-            ),
-            encoding="utf-8",
-        )
-        command = _codex_command(
+                return simple_result
+            if checkpoint_run.checkpoint["complexity"] == "complex":
+                review = _run_advisor_review(
+                    request,
+                    temporary=temporary,
+                    project=project,
+                    codex_bin=str(resolved),
+                    advisor_model=advisor_model,
+                    checkpoint=checkpoint_run.checkpoint,
+                    timeout_seconds=advisor_timeout_seconds,
+                )
+        return _run_final_executor(
+            request,
+            temporary=temporary,
             codex_bin=str(resolved),
             project=project,
-            schema_path=schema_path,
-            output_path=output_path,
             sandbox=sandbox,
             model=model,
-            session_id=session_id,
-        )
-        invocation = _run_codex_process(
-            command,
-            project=project,
-            prompt=_prompt(request, advisor=advisor),
-            output_path=output_path,
+            session_id=(checkpoint_run.session_id if checkpoint_run else session_id),
+            runtime_root=runtime_root,
+            lineage=lineage,
             timeout_seconds=timeout_seconds,
+            checkpoint_run=checkpoint_run,
+            review=review,
         )
-        observed_session = (
-            [str(invocation["session_id"])] if invocation.get("session_id") else []
-        )
-        timed_out = invocation["timed_out"]
-        returncode = invocation["returncode"]
-        if timed_out:
-            if observed_session:
-                _store_codex_cli_session(
-                    runtime_root,
-                    lineage=lineage,
-                    session_id=observed_session[0],
-                )
-            raise BuiltInHostError("codex_cli_timeout")
-        category = str(invocation["failure_category"])
-        if returncode != 0 and category in SESSION_INVALIDATING_FAILURE_CATEGORIES:
-            _discard_codex_cli_session(runtime_root, lineage=lineage)
-        if observed_session:
-            if returncode == 0 or category not in SESSION_INVALIDATING_FAILURE_CATEGORIES:
-                _store_codex_cli_session(
-                    runtime_root,
-                    lineage=lineage,
-                    session_id=observed_session[0],
-                )
-        if returncode != 0:
-            raise BuiltInHostError(f"codex_cli_{category}")
-        result = invocation.get("result")
-        if result is None:
-            raise BuiltInHostError("codex_cli_final_result_missing")
-        if not isinstance(result, dict):
-            raise BuiltInHostError("codex_cli_final_result_not_object")
-        executor_usage_value = invocation.get("usage")
-        executor_usage = (
-            dict(executor_usage_value)
-            if isinstance(executor_usage_value, Mapping)
-            else None
-        )
-        if advisor is not None:
-            if executor_usage is None or advisor_usage is None:
-                raise BuiltInHostError("codex_cli_executor_usage_missing")
-            result["model_usage"] = advisor_model_usage(
-                advisor=advisor_usage,
-                executor=executor_usage,
-                advice=advisor,
-            )
-        elif executor_usage is not None:
-            result["model_usage"] = direct_model_usage(executor_usage)
-        return result
