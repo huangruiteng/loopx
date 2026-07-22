@@ -322,6 +322,9 @@ def _public_validation(value: Any) -> dict[str, Any]:
     write_count = value.get("successful_task_file_write_count")
     if isinstance(write_count, int) and not isinstance(write_count, bool):
         validation["successful_task_file_write_count"] = max(0, write_count)
+    change_count = value.get("successful_task_file_change_count")
+    if isinstance(change_count, int) and not isinstance(change_count, bool):
+        validation["successful_task_file_change_count"] = max(0, change_count)
     return validation
 
 
@@ -467,6 +470,11 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
             max(0, int(item.get("successful_task_file_write_count") or 0))
             for item in validations
             if not isinstance(item.get("successful_task_file_write_count"), bool)
+        ),
+        "successful_task_file_change_count": sum(
+            max(0, int(item.get("successful_task_file_change_count") or 0))
+            for item in validations
+            if not isinstance(item.get("successful_task_file_change_count"), bool)
         ),
     }
     progress_evidence_kinds = {

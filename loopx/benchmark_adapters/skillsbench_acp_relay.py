@@ -2689,6 +2689,7 @@ PROBE_OPERATION_LABELS = {{
     "probe_marker_cleanup",
 }}
 PROBE_PATH_LABELS = {{"bridge_probe_marker"}}
+CONTENT_COMPARE_MAX_BYTES = 200_000
 
 {LOOPX_COMMAND_INSTRUMENTATION_SOURCE}
 {LOOPX_TODO_OUTPUT_INSTRUMENTATION_SOURCE}
@@ -2716,6 +2717,55 @@ def loopx_public_fields(command: str) -> dict[str, str]:
             fields["loopx_goal_id"] = value
         i += 1
     return fields
+
+def private_bridge_probe(request):
+    try:
+        proc = subprocess.run(
+            BRIDGE_COMMAND,
+            input=json.dumps(request, separators=(",", ":")),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True,
+        )
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        response = json.loads(proc.stdout or "")
+    except Exception:
+        return None
+    return response if isinstance(response, dict) else None
+
+def durable_write_changes_content(payload, request_path):
+    content = payload.get("content")
+    if not isinstance(content, str):
+        return False
+    existence = private_bridge_probe({{
+        "operation": "exec",
+        "cwd": "/app",
+        "command": "test -e " + shlex.quote(request_path),
+        "timeout_sec": 10,
+    }})
+    if existence is None:
+        return False
+    if existence.get("ok") is not True:
+        return existence.get("exit_code") == 1
+    current = private_bridge_probe({{
+        "operation": "read_file",
+        "path": request_path,
+        "max_bytes": CONTENT_COMPARE_MAX_BYTES,
+        "timeout_sec": 30,
+    }})
+    if current is None or current.get("ok") is not True:
+        return False
+    current_content = current.get("content")
+    if not isinstance(current_content, str):
+        return False
+    if current.get("content_truncated") is True:
+        return not content.startswith(current_content)
+    return current_content != content
 
 raw = sys.stdin.read()
 record: dict[str, object] = {{
@@ -2797,6 +2847,11 @@ durable_task_write = bool(
     )
 )
 record["durable_task_write"] = durable_task_write
+record["durable_task_content_changed"] = bool(
+    durable_task_write
+    and isinstance(payload, dict)
+    and durable_write_changes_content(payload, request_path)
+)
 if durable_task_write:
     record["durable_task_write_root"] = (
         "app" if request_path.startswith("/app/") else "root"
