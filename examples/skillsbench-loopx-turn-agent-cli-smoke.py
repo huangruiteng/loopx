@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -19,7 +20,15 @@ from loopx.benchmark_adapters.skillsbench import skillsbench_route_contract  # n
 from loopx.benchmark_adapters.skillsbench_acp_failure_policy import (  # noqa: E402
     recoverable_codex_turn_failure_message,
 )
+from loopx.benchmark_adapters.skillsbench_acp_relay import (  # noqa: E402
+    CodexExecConfig,
+    SkillsBenchLocalAcpRelay,
+)
+from loopx.benchmark_adapters.skillsbench_bridge_summary import (  # noqa: E402
+    bridge_summary_task_progress_receipt,
+)
 from loopx.benchmark_adapters.skillsbench_turn_runtime import (  # noqa: E402
+    SkillsBenchTurnAgentResult,
     SkillsBenchTurnRuntimeConfig,
     build_skillsbench_loopx_turn_trace,
     run_skillsbench_loopx_turn,
@@ -126,30 +135,51 @@ def _write_bridge(root: Path, workspace: Path) -> str:
     bridge.write_text(
         f"""#!/usr/bin/env python3
 import json
+import pathlib
 import subprocess
 import sys
 
 request = json.load(sys.stdin)
-command = str(request.get("command") or "").replace("/app", {str(workspace)!r})
-completed = subprocess.run(
-    command,
-    cwd={str(workspace)!r},
-    shell=True,
-    executable="/bin/bash",
-    text=True,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    check=False,
-)
-print(json.dumps({{
-    "schema_version": "skillsbench_remote_command_file_bridge_operation_response_v0",
-    "ok": completed.returncode == 0,
-    "exit_code": completed.returncode,
-    "stdout": completed.stdout,
-    "stderr": completed.stderr,
-    "stdout_truncated": False,
-    "stderr_truncated": False,
-}}))
+operation = str(request.get("operation") or "")
+raw_path = str(request.get("path") or "")
+mapped_path = pathlib.Path(raw_path.replace("/app", {str(workspace)!r}, 1))
+if operation == "exec":
+    command = str(request.get("command") or "").replace("/app", {str(workspace)!r})
+    completed = subprocess.run(
+        command,
+        cwd={str(workspace)!r},
+        shell=True,
+        executable="/bin/bash",
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    response = {{
+        "ok": completed.returncode == 0,
+        "exit_code": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "stdout_truncated": False,
+        "stderr_truncated": False,
+    }}
+elif operation == "read_file" and raw_path.startswith("/app/"):
+    max_bytes = max(1, int(request.get("max_bytes") or 20000))
+    content = mapped_path.read_text(encoding="utf-8")
+    response = {{
+        "ok": True,
+        "exit_code": 0,
+        "content": content[:max_bytes],
+        "content_truncated": len(content) > max_bytes,
+    }}
+elif operation == "write_file" and raw_path.startswith("/app/"):
+    mapped_path.parent.mkdir(parents=True, exist_ok=True)
+    mapped_path.write_text(str(request.get("content") or ""), encoding="utf-8")
+    response = {{"ok": True, "exit_code": 0}}
+else:
+    response = {{"ok": False, "exit_code": 2}}
+response["schema_version"] = "skillsbench_remote_command_file_bridge_operation_response_v0"
+print(json.dumps(response))
 """,
         encoding="utf-8",
     )
@@ -252,6 +282,75 @@ def _run_success(root: Path) -> dict[str, Any]:
         "validation_status": validation.get("status"),
         "fidelity_allowed": fidelity.get("turn_treatment_fidelity_allowed"),
         "compact_turn_count": len(compact.get("loopx_turn_executions", [])),
+    }
+
+
+def _run_content_change_progress(root: Path) -> dict[str, Any]:
+    paths = _write_fixture(root)
+    config = _config(paths, validation_command="false")
+    relay = SkillsBenchLocalAcpRelay(
+        CodexExecConfig(remote_command_file_bridge_command=config.bridge_command)
+    )
+    summary_path = root / "content-change-summary.jsonl"
+    wrapper = relay._write_instrumented_bridge_wrapper(
+        tmp_path=root,
+        summary_path=summary_path,
+    )
+
+    def agent_runner(_prompt: str) -> SkillsBenchTurnAgentResult:
+        subprocess.run(
+            [str(wrapper)],
+            input=json.dumps(
+                {
+                    "operation": "write_file",
+                    "path": "/app/content-change.ok",
+                    "content": "changed\n",
+                }
+            ),
+            text=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        return SkillsBenchTurnAgentResult(
+            response_text="agent changed one durable task file",
+            progress_evidence=bridge_summary_task_progress_receipt(summary_path),
+        )
+
+    execution, validation = run_skillsbench_loopx_turn(
+        prompt="Create the requested public content-change marker.",
+        agent_runner=agent_runner,
+        config=config,
+    )
+    effects = execution.get("effects")
+    assert execution.get("status") == "committed", execution
+    assert execution.get("validation", {}).get("status") == "progress", execution
+    assert isinstance(effects, dict) and effects.get("state_written") is True, execution
+    assert isinstance(effects, dict) and effects.get("quota_spent") is True, execution
+    assert validation.get("status") == "passed", validation
+    assert validation.get("terminal_complete") is False, validation
+    assert validation.get("post_agent_postcondition_status") == "progress_validated", (
+        validation
+    )
+    assert validation.get("progress_evidence_kind") == "verified_task_content_change", (
+        validation
+    )
+    assert validation.get("successful_task_file_write_count") == 1, validation
+    assert validation.get("successful_task_file_change_count") == 1, validation
+    assert validation.get("oracle_feedback_used") is False, validation
+    assert validation.get("raw_task_text_recorded") is False, validation
+    assert validation.get("raw_verifier_output_recorded") is False, validation
+    return {
+        "execution_status": execution.get("status"),
+        "receipt_status": execution.get("receipt", {}).get("status"),
+        "transaction_validation_status": execution.get("validation", {}).get(
+            "status"
+        ),
+        "progress_evidence_kind": validation.get("progress_evidence_kind"),
+        "successful_task_file_change_count": validation.get(
+            "successful_task_file_change_count"
+        ),
+        "official_feedback_used": validation.get("oracle_feedback_used"),
     }
 
 
@@ -434,6 +533,10 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="skillsbench-loopx-turn-success-") as value:
         success = _run_success(Path(value))
+    with tempfile.TemporaryDirectory(
+        prefix="skillsbench-loopx-turn-content-change-"
+    ) as value:
+        content_change_progress = _run_content_change_progress(Path(value))
     with tempfile.TemporaryDirectory(prefix="skillsbench-loopx-turn-failure-") as value:
         failure = _run_failure(Path(value))
     with tempfile.TemporaryDirectory(
@@ -469,6 +572,7 @@ def main() -> int:
                     "legacy_lifecycle_checkpoint": False,
                 },
                 "success": success,
+                "content_change_progress": content_change_progress,
                 "failure": failure,
                 "recoverable_host_failure": recoverable_host_failure,
                 "turn_plan_failure": turn_plan_failure,
