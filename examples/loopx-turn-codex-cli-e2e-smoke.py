@@ -296,6 +296,9 @@ def _aggregate_model_usage(turns: list[dict[str, Any]]) -> dict[str, Any] | None
         "schema_version": "loopx_turn_model_usage_v0",
         "mode": mode,
         "advisor_applied": mode == "advisor",
+        "usage_complete": all(
+            usage.get("usage_complete", True) is True for usage in typed_usages
+        ),
     }
     for phase in [*phases, "total"]:
         phase_rows = [usage.get(phase) for usage in typed_usages]

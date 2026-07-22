@@ -99,6 +99,19 @@ def _tokens(usage: dict[str, Any], phase: str = "total") -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _advisor_tokens(usage: dict[str, Any]) -> int | None:
+    observed = _tokens(usage, "advisor")
+    if observed is not None:
+        return observed
+    if (
+        usage.get("mode") == "direct"
+        and usage.get("advisor_applied") is False
+        and usage.get("usage_complete", True) is True
+    ):
+        return 0
+    return None
+
+
 def _bounded_status(value: Any) -> str | None:
     text = str(value or "").strip()
     return text[:160] if text else None
@@ -165,15 +178,22 @@ def main() -> int:
     quality_ok = _quality_ok(baseline, turn_count=args.turn_count) and _quality_ok(
         advisor, turn_count=args.turn_count
     )
-    usage_available = baseline_tokens is not None and advisor_tokens is not None
+    usage_available = bool(
+        baseline_tokens is not None
+        and advisor_tokens is not None
+        and baseline_usage.get("usage_complete", True) is True
+        and advisor_usage.get("usage_complete", True) is True
+    )
     token_delta = (
         advisor_tokens - baseline_tokens
-        if baseline_tokens is not None and advisor_tokens is not None
+        if usage_available
+        and baseline_tokens is not None
+        and advisor_tokens is not None
         else None
     )
     token_reduction_ratio = (
         round((baseline_tokens - advisor_tokens) / baseline_tokens, 4)
-        if baseline_tokens and advisor_tokens is not None
+        if usage_available and baseline_tokens and advisor_tokens is not None
         else None
     )
     token_reduced = bool(usage_available and token_delta is not None and token_delta < 0)
@@ -193,8 +213,9 @@ def main() -> int:
         "advisor": {
             "model": args.advisor_model,
             "executor_model": args.executor_model,
+            "advisor_applied": advisor_usage.get("advisor_applied"),
             "quality_ok": _quality_ok(advisor, turn_count=args.turn_count),
-            "advisor_tokens": _tokens(advisor_usage, "advisor"),
+            "advisor_tokens": _advisor_tokens(advisor_usage),
             "executor_tokens": _tokens(advisor_usage, "executor"),
             "total_tokens": advisor_tokens,
             **_arm_status(advisor),

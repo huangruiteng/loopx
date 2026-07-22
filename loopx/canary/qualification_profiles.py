@@ -240,8 +240,8 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "LoopX Turn Advisor and provider-usage qualification",
         "quality_risk": "high",
         "purpose": (
-            "Guard the two-model Advisor boundary, fail-closed provider usage, "
-            "and matched-arm token qualification contract."
+            "Guard the adaptive complexity trigger, two-model Advisor boundary, "
+            "auditable provider usage, and matched-arm token qualification contract."
         ),
         "catalog_families": ["Work Routing", "State And Boundary"],
         "trigger_hints": (
@@ -259,7 +259,10 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
             {
                 "command": "python3 examples/loopx-turn-codex-cli-e2e-smoke.py --codex-model executor-fixture --advisor-model advisor-fixture --case-id arithmetic-fix",
                 "tier": "default",
-                "reason": "guards ordered read-only advice, cheaper execution, validation, replay, and exact phase usage",
+                "reason": (
+                    "guards executor checkpoint, conditional read-only advice, "
+                    "same-session resume, validation, replay, and exact phase usage"
+                ),
             },
             {
                 "command": "python3 examples/loopx-turn-advisor-qualification-smoke.py --fixture --baseline-model advisor-fixture --advisor-model advisor-fixture --executor-model executor-fixture --case-id arithmetic-fix",

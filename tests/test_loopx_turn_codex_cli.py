@@ -86,9 +86,11 @@ print(json.dumps({
     "raw_trajectory": "must-not-persist",
     "private_material": "must-not-persist"
 }), flush=True)
-if os.environ.get("FAKE_CODEX_USAGE") == "1":
-    model = args[args.index("--model") + 1] if "--model" in args else ""
-    advisor = model == "advisor-fixture"
+model = args[args.index("--model") + 1] if "--model" in args else ""
+advisor = model == "advisor-fixture"
+if os.environ.get("FAKE_CODEX_USAGE") == "1" and not (
+    os.environ.get("FAKE_CODEX_SKIP_RESUME_USAGE") == "1" and "resume" in args
+):
     print(json.dumps({
         "type": "turn.completed",
         "usage": {
@@ -99,6 +101,9 @@ if os.environ.get("FAKE_CODEX_USAGE") == "1":
             "total_tokens": 48 if advisor else 150
         }
     }), flush=True)
+if os.environ.get("FAKE_CODEX_FAIL_ADVISOR") == "1" and advisor:
+    print("Rate limit exceeded.", file=sys.stderr)
+    raise SystemExit(9)
 if os.environ.get("FAKE_CODEX_FAIL") == "1":
     if os.environ.get("FAKE_CODEX_FAILURE_CATEGORY") == "model":
         print("This model requires a newer version of Codex.", file=sys.stderr)
@@ -110,6 +115,37 @@ if os.environ.get("FAKE_CODEX_SLEEP"):
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
 schema_path = pathlib.Path(args[args.index("--output-schema") + 1])
 schema = schema_path.read_text(encoding="utf-8")
+if "loopx_turn_complexity_checkpoint_v0" in schema:
+    complexity = os.environ.get("FAKE_CODEX_COMPLEXITY", "simple")
+    complex_case = complexity == "complex"
+    simple_result = None if complex_case else {
+        "schema_version": "loopx_turn_result_v0",
+        "turn_key": turn_key,
+        "result_kind": "validated_progress",
+        "completed_phases": ["host_execute", "typed_result"],
+        "classification": "fixture_progress",
+        "recommended_action": "Continue the public fixture",
+        "next_action": "Run the next public fixture check",
+        "delivery_batch_scale": "implementation",
+        "delivery_outcome": "outcome_progress",
+        "vision_unchanged_reason": "The fixture objective remains unchanged.",
+        "summary": "One public fixture advanced."
+    }
+    output_path.write_text(json.dumps({
+        "schema_version": "loopx_turn_complexity_checkpoint_v0",
+        "turn_key": turn_key,
+        "complexity": complexity,
+        "signals": ["ambiguous_root_cause"] if complex_case else [],
+        "evidence_summary": (
+            "Two plausible production paths remain after inspecting the fixture."
+            if complex_case else
+            "The fixture has one obvious bounded change."
+        ),
+        "relevant_paths": ["calculator.py"],
+        "open_questions": ["Which path preserves the invariant?"] if complex_case else [],
+        "simple_result_json": "" if complex_case else json.dumps(simple_result)
+    }), encoding="utf-8")
+    raise SystemExit(0)
 if "loopx_turn_advisor_v0" in schema:
     output_path.write_text(json.dumps({
         "schema_version": "loopx_turn_advisor_v0",
@@ -214,6 +250,7 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
     monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
     monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
     project = tmp_path / "project"
     project.mkdir()
     (project / "calculator.py").write_text(
@@ -237,31 +274,206 @@ def test_codex_cli_advisor_guides_cheaper_executor_and_aggregates_usage(
     argv_rows = [
         json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
     ]
-    assert len(argv_rows) == 2
-    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
-    assert argv_rows[0][argv_rows[0].index("--sandbox") + 1] == "read-only"
-    assert "--ephemeral" in argv_rows[0]
-    advisor_project = Path(argv_rows[0][argv_rows[0].index("-C") + 1])
+    assert len(argv_rows) == 3
+    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "executor-fixture"
+    assert argv_rows[1][argv_rows[1].index("--model") + 1] == "advisor-fixture"
+    assert argv_rows[1][argv_rows[1].index("--sandbox") + 1] == "read-only"
+    assert "--ephemeral" in argv_rows[1]
+    advisor_project = Path(argv_rows[1][argv_rows[1].index("-C") + 1])
     assert advisor_project != project
-    assert argv_rows[1][argv_rows[1].index("--model") + 1] == "executor-fixture"
-    assert Path(argv_rows[1][argv_rows[1].index("-C") + 1]) == project
+    assert argv_rows[2][argv_rows[2].index("--model") + 1] == "executor-fixture"
+    assert "resume" in argv_rows[2]
     prompts = [
         json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
     ]
-    assert '"path":"calculator.py"' in prompts[0]
-    assert "return a - b" in prompts[0]
-    assert "Do not invoke workspace tools" in prompts[0]
-    assert "Inspect the boundary before changing the fixture." in prompts[1]
+    assert '"path":"calculator.py"' in prompts[1]
+    assert "return a - b" in prompts[1]
+    assert "Do not invoke workspace tools" in prompts[1]
+    assert "Inspect the boundary before changing the fixture." in prompts[2]
     assert result["model_usage"]["mode"] == "advisor"
     assert result["model_usage"]["advisor_applied"] is True
     assert result["model_usage"]["advisor"]["total_tokens"] == 48
-    assert result["model_usage"]["executor"]["total_tokens"] == 150
-    assert result["model_usage"]["total"]["total_tokens"] == 198
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
+    assert result["model_usage"]["total"]["total_tokens"] == 348
     assert result["model_usage"]["advice_digest"].startswith("sha256:")
     assert "summary" not in result["model_usage"]
 
 
-def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
+def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row[row.index("--model") + 1] for row in argv_rows] == [
+        "executor-fixture",
+    ]
+    assert "resume" not in argv_rows[0]
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "complexity checkpoint" in prompts[0]
+    assert len(prompts) == 1
+    assert result["model_usage"]["mode"] == "direct"
+    assert result["model_usage"]["advisor_applied"] is False
+    assert result["model_usage"]["executor"]["total_tokens"] == 150
+    assert result["model_usage"]["advisor_decision"] == {
+        "schema_version": "loopx_turn_advisor_decision_v0",
+        "decision": "skipped_simple",
+        "signals": [],
+        "checkpoint_digest": result["model_usage"]["advisor_decision"][
+            "checkpoint_digest"
+        ],
+    }
+    assert result["model_usage"]["advisor_decision"]["checkpoint_digest"].startswith(
+        "sha256:"
+    )
+
+
+def test_codex_cli_advisor_reviews_complex_checkpoint_before_executor_resumes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row[row.index("--model") + 1] for row in argv_rows] == [
+        "executor-fixture",
+        "advisor-fixture",
+        "executor-fixture",
+    ]
+    assert "resume" in argv_rows[2]
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "complexity checkpoint" in prompts[0]
+    assert "Two plausible production paths remain" in prompts[1]
+    assert "Which path preserves the invariant?" in prompts[1]
+    assert "Inspect the boundary before changing the fixture." in prompts[2]
+    assert result["model_usage"]["mode"] == "advisor"
+    assert result["model_usage"]["advisor_applied"] is True
+    assert result["model_usage"]["advisor"]["total_tokens"] == 48
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
+    assert result["model_usage"]["total"]["total_tokens"] == 348
+    assert result["model_usage"]["advisor_decision"]["decision"] == (
+        "applied_complexity"
+    )
+    assert result["model_usage"]["advisor_decision"]["signals"] == [
+        "ambiguous_root_cause"
+    ]
+
+
+def test_codex_cli_complex_advisor_failure_falls_back_to_executor_and_counts_cost(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
+    monkeypatch.setenv("FAKE_CODEX_FAIL_ADVISOR", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row[row.index("--model") + 1] for row in argv_rows] == [
+        "executor-fixture",
+        "advisor-fixture",
+        "executor-fixture",
+    ]
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "Advisor review was triggered but unavailable" in prompts[2]
+    assert "rate_limited" in prompts[2]
+    assert result["model_usage"]["mode"] == "direct"
+    assert result["model_usage"]["advisor_applied"] is False
+    assert result["model_usage"]["executor"]["total_tokens"] == 300
+    assert result["model_usage"]["advisor_attempt"]["total_tokens"] == 48
+    assert result["model_usage"]["total"]["total_tokens"] == 348
+    assert result["model_usage"]["usage_complete"] is True
+    assert result["model_usage"]["advisor_decision"]["decision"] == (
+        "fallback_failure"
+    )
+    assert result["model_usage"]["advisor_decision"]["failure_category"] == (
+        "rate_limited"
+    )
+
+
+def test_codex_cli_complexity_checkpoint_fails_before_advisor_when_usage_is_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -273,7 +485,9 @@ def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
     request = _request()
     request["turn_envelope"]["boundary"] = {"write_scope": ["fixture.txt"]}
 
-    with pytest.raises(RuntimeError, match="codex_cli_advisor_usage_missing"):
+    with pytest.raises(
+        RuntimeError, match="codex_cli_complexity_checkpoint_usage_missing"
+    ):
         run_codex_cli_host(
             request,
             runtime_root=tmp_path / "runtime",
@@ -288,7 +502,33 @@ def test_codex_cli_advisor_fails_before_executor_when_usage_is_missing(
         json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
     ]
     assert len(argv_rows) == 1
-    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "advisor-fixture"
+    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "executor-fixture"
+
+
+def test_codex_cli_adaptive_mode_rejects_missing_final_executor_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_SKIP_RESUME_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with pytest.raises(RuntimeError, match="codex_cli_executor_usage_missing"):
+        run_codex_cli_host(
+            _request(),
+            runtime_root=tmp_path / "runtime",
+            project=project,
+            codex_bin=str(executable),
+            model="executor-fixture",
+            advisor_model="advisor-fixture",
+            timeout_seconds=5,
+        )
+
+    assert len(log_path.read_text(encoding="utf-8").splitlines()) == 3
 
 
 def test_codex_cli_skips_advisor_when_bounded_context_is_empty(
@@ -317,7 +557,9 @@ def test_codex_cli_skips_advisor_when_bounded_context_is_empty(
         json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
     ]
     assert len(argv_rows) == 1
-    assert argv_rows[0][argv_rows[0].index("--model") + 1] == "executor-fixture"
+    assert all(
+        row[row.index("--model") + 1] == "executor-fixture" for row in argv_rows
+    )
     assert result["model_usage"]["mode"] == "direct"
     assert result["model_usage"]["advisor_applied"] is False
 
@@ -331,6 +573,7 @@ def test_codex_cli_advisor_context_rejects_unbounded_or_linked_files(
     monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
     monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
     monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_COMPLEXITY", "complex")
     project = tmp_path / "project"
     project.mkdir()
     outside = tmp_path / "outside.txt"
@@ -355,7 +598,7 @@ def test_codex_cli_advisor_context_rejects_unbounded_or_linked_files(
     )
 
     advisor_prompt = json.loads(
-        prompt_log.read_text(encoding="utf-8").splitlines()[0]
+        prompt_log.read_text(encoding="utf-8").splitlines()[1]
     )
     assert "bounded-context" in advisor_prompt
     assert "must-not-enter-advisor-context" not in advisor_prompt
@@ -636,7 +879,7 @@ def test_public_e2e_smoke_runs_n_transactions_on_one_session() -> None:
     }
 
 
-def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
+def test_public_e2e_smoke_triggers_advisor_between_checkpoint_and_executor() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
         [
@@ -661,9 +904,13 @@ def test_public_e2e_smoke_runs_advisor_before_cheaper_executor() -> None:
     assert payload["advisor_mode"] is True
     assert payload["model_usage"]["mode"] == "advisor"
     assert payload["model_usage"]["advisor_applied"] is True
-    assert payload["model_usage"]["advisor"]["total_tokens"] == 48
-    assert payload["model_usage"]["executor"]["total_tokens"] == 90
-    assert payload["model_usage"]["total"]["total_tokens"] == 138
+    assert payload["model_usage"]["advisor"]["total_tokens"] == 22
+    assert payload["model_usage"]["executor"]["total_tokens"] == 70
+    assert payload["model_usage"]["total"]["total_tokens"] == 92
+    assert payload["model_usage"]["usage_complete"] is True
+    assert payload["turns"][0]["model_usage"]["advisor_decision"]["decision"] == (
+        "applied_complexity"
+    )
     assert payload["marker_valid"] is True
     assert payload["validation_status"] == "passed"
 
@@ -697,7 +944,7 @@ def test_public_e2e_smoke_auto_selects_qualified_models() -> None:
         "selection_reason": "highest_priority_available_qualified_pair",
     }
     assert payload["model_usage"]["mode"] == "advisor"
-    assert payload["model_usage"]["total"]["total_tokens"] == 138
+    assert payload["model_usage"]["total"]["total_tokens"] == 92
     assert payload["validation_status"] == "passed"
 
 
@@ -798,9 +1045,12 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     assert payload["advisor"]["exit_code"] == 0
     assert payload["advisor"]["status"] == "committed"
     assert payload["advisor"]["validation_status"] == "passed"
-    assert payload["advisor"]["total_tokens"] == 138
-    assert payload["token_delta"] == -12
-    assert payload["token_reduction_ratio"] == 0.08
+    assert payload["advisor"]["advisor_applied"] is True
+    assert payload["advisor"]["advisor_tokens"] == 22
+    assert payload["advisor"]["executor_tokens"] == 70
+    assert payload["advisor"]["total_tokens"] == 92
+    assert payload["token_delta"] == -58
+    assert payload["token_reduction_ratio"] == 0.3867
     assert payload["token_reduced"] is True
     assert payload["raw_model_output_recorded"] is False
 

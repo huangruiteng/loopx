@@ -28,7 +28,9 @@ prompt = sys.stdin.read()
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
 schema_path = pathlib.Path(args[args.index("--output-schema") + 1])
-advisor = "loopx_turn_advisor_v0" in schema_path.read_text(encoding="utf-8")
+schema = schema_path.read_text(encoding="utf-8")
+checkpoint = "loopx_turn_complexity_checkpoint_v0" in schema
+advisor = "loopx_turn_advisor_v0" in schema
 guided_executor = not advisor and "A read-only advisor produced" in prompt
 print(
     json.dumps(
@@ -44,16 +46,33 @@ print(
         {
             "type": "turn.completed",
             "usage": {
-                "input_tokens": 40 if advisor else 70 if guided_executor else 120,
-                "cached_input_tokens": 5 if advisor else 10 if guided_executor else 20,
-                "output_tokens": 8 if advisor else 20 if guided_executor else 30,
-                "reasoning_output_tokens": 3 if advisor else 5 if guided_executor else 10,
-                "total_tokens": 48 if advisor else 90 if guided_executor else 150,
+                "input_tokens": 18 if advisor else 20 if checkpoint else 35 if guided_executor else 120,
+                "cached_input_tokens": 3 if advisor else 4 if checkpoint else 5 if guided_executor else 20,
+                "output_tokens": 4 if advisor else 5 if checkpoint else 10 if guided_executor else 30,
+                "reasoning_output_tokens": 2 if advisor else 2 if checkpoint else 3 if guided_executor else 10,
+                "total_tokens": 22 if advisor else 25 if checkpoint else 45 if guided_executor else 150,
             },
         }
     ),
     flush=True,
 )
+if checkpoint:
+    output_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_turn_complexity_checkpoint_v0",
+                "turn_key": turn_key,
+                "complexity": "complex",
+                "signals": ["invariant_risk"],
+                "evidence_summary": "The fixture has an independently validated postcondition that must be preserved.",
+                "relevant_paths": [MARKER_NAME],
+                "open_questions": ["Which exact next value preserves the one-step invariant?"],
+                "simple_result_json": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    raise SystemExit(0)
 if advisor:
     output_path.write_text(
         json.dumps(
