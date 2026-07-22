@@ -4,7 +4,11 @@ import re
 from typing import Any, Callable, Optional, Pattern
 
 from ..runtime.time import parse_timestamp
-from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from ..todos.contract import (
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+    normalize_todo_id_list,
+)
 from ..todos.deferred_resume import (
     todo_summary_deferred_items,
     todo_summary_monitor_blocked_resume_items,
@@ -385,6 +389,11 @@ def _future_due_blocking_monitor(
         )
         if monitor_todo_id in monitors_by_id:
             blocking_monitor_ids.add(monitor_todo_id)
+        for successor_todo_id in normalize_todo_id_list(
+            item.get("successor_todo_ids")
+        ):
+            if successor_todo_id in monitors_by_id:
+                blocking_monitor_ids.add(successor_todo_id)
     if not blocking_monitor_ids:
         return None
 
