@@ -556,6 +556,44 @@ def test_compose_producer_fingerprints_exception_output_without_recording_it() -
     assert raw_stderr not in str(typed)
 
 
+def test_compose_producer_preserves_terminal_cause_from_long_build_output() -> None:
+    raw_failure = (
+        "Docker compose command failed. Stdout:\n"
+        + ("# build output without failure detail\n" * 3000)
+        + "apt-get update failed to fetch http://archive.ubuntu.com/index: "
+        "407 Proxy Authentication Required at /private/job\n"
+    )
+
+    class FakeComposeEnvironment:
+        async def _run_docker_compose_build(self) -> None:
+            raise RuntimeError(raw_failure)
+
+    environment = FakeComposeEnvironment()
+    restore = install_skillsbench_compose_typed_cause_boundary(environment)
+    assert restore is not None
+
+    async def invoke() -> None:
+        await environment._run_docker_compose_build()
+
+    with pytest.raises(SkillsBenchComposeCommandFailure) as error:
+        asyncio.run(invoke())
+
+    typed = error.value
+    serialized = json.dumps(typed.fingerprint, sort_keys=True)
+    assert typed.fingerprint["apt_failure_subtype"] == (
+        "proxy_authentication_required"
+    )
+    assert typed.fingerprint["terminal_failure_reason_codes"] == [
+        "proxy_authentication_required",
+        "apt_fetch_failed",
+    ]
+    assert typed.fingerprint["retryability"] == "non_retryable"
+    assert typed.fingerprint["error_len_bucket"] == "2000_plus"
+    assert raw_failure not in serialized
+    assert "/private/job" not in serialized
+    assert "archive.ubuntu.com" not in serialized
+
+
 @pytest.mark.parametrize(
     ("message", "subtype"),
     [
@@ -765,6 +803,21 @@ def test_setup_only_preflight_separates_terminal_reason_and_endpoint() -> None:
         (
             "apt update failed to fetch index: Certificate verification failed",
             "tls_or_certificate",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: 407 Proxy Authentication Required",
+            "proxy_authentication_required",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: HTTP/1.1 403 Forbidden",
+            "http_forbidden",
+            "non_retryable",
+        ),
+        (
+            "apt update failed to fetch index: 470 status code 470",
+            "http_client_error",
             "non_retryable",
         ),
         (
