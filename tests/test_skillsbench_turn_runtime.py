@@ -652,6 +652,7 @@ def test_adaptive_sequence_commits_progress_then_terminal_turns(
 
     assert len(records) == 2
     assert sequence["status"] == "terminal_complete"
+    assert sequence["official_feedback_blinded"] is True
     assert sequence["turn_count"] == 2
     assert len(set(plan_instance_ids)) == 2
     assert plan_instance_ids[0].endswith("turn-001")
@@ -667,6 +668,61 @@ def test_adaptive_sequence_commits_progress_then_terminal_turns(
     assert records[1][1]["terminal_complete"] is True
     assert records[1][1]["sequence_stop_reason"] == "terminal_complete"
     assert len(observed) == 2
+
+
+def test_adaptive_sequence_reviews_verified_content_after_validator_success(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    progress_kinds = iter(
+        ["verified_task_content_change", "scored_workspace_command"]
+    )
+    prompts: list[str] = []
+
+    def fake_turn(**kwargs: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+        prompts.append(kwargs["prompt"])
+        return (
+            {"status": "committed"},
+            {
+                "status": "passed",
+                "validated_progress": True,
+                "terminal_complete": True,
+                "progress_evidence_kind": next(progress_kinds),
+            },
+        )
+
+    monkeypatch.setattr(runtime, "run_skillsbench_loopx_turn", fake_turn)
+
+    records, sequence = runtime.run_skillsbench_loopx_turn_sequence(
+        prompt="original task prompt",
+        agent_runner=lambda _prompt: "done",
+        config=runtime.SkillsBenchTurnRuntimeConfig(
+            **{**_config(tmp_path).__dict__, "max_turns": 4}
+        ),
+    )
+
+    assert len(records) == 2
+    assert sequence["status"] == "terminal_complete"
+    assert sequence["official_feedback_blinded"] is True
+    assert prompts[0] == "original task prompt"
+    assert "Continue the same task" in prompts[1]
+    assert records[0][1]["terminal_complete"] is True
+    assert records[0][1]["sequence_terminal_complete"] is False
+    assert records[0][1]["sequence_stop_reason"] == "continue"
+    assert records[1][1]["sequence_terminal_complete"] is True
+    assert records[1][1]["sequence_stop_reason"] == "terminal_complete"
+    first_trace = runtime.build_skillsbench_loopx_turn_trace(
+        route="loopx-turn-agent-cli",
+        benchmark_id="synthetic-benchmark",
+        task_id="synthetic-task",
+        execution=records[0][0],
+        scored_workspace_validation=records[0][1],
+    )
+    summary = SkillsBenchTurnTraceSummary()
+    summary.merge(first_trace, first_trace["boundary"])
+    controller_trace: dict[str, Any] = {}
+    summary.apply(controller_trace)
+    assert controller_trace["scored_workspace_validation"]["terminal_complete"] is False
 
 
 def test_stability_sequence_repeats_repairs_then_stops_after_no_change(
