@@ -38,6 +38,8 @@ BLOCKER_ID = "todo_exact_blocker"
 WAITING_ID = "todo_waiting_successor"
 CROSS_DOMAIN_WAITING_ID = "todo_cross_domain_waiting"
 CLAIMED_WAITING_ID = "todo_claimed_waiting"
+MONITOR_ID = "todo_future_monitor"
+MONITOR_BLOCKED_ID = "todo_monitor_blocked_advancement"
 
 
 def _vision_run(
@@ -81,6 +83,7 @@ def _status_payload(
     vision_state: str = "vision_drift_detected",
     missing_checkpoint: bool = False,
     latest_runs: list[dict] | None = None,
+    extra_agent_items: list[dict] | None = None,
 ) -> dict:
     blocker = quota_todo_item(
         todo_id=BLOCKER_ID,
@@ -99,7 +102,10 @@ def _status_payload(
         claimed_by=AGENT_ID,
         resume_when=f"todo_done:{BLOCKER_ID}",
     )
-    agent_todos = quota_todo_summary([blocker, waiting], role="agent")
+    agent_todos = quota_todo_summary(
+        [blocker, waiting, *(extra_agent_items or [])],
+        role="agent",
+    )
     return quota_status_payload(
         goal_id=GOAL_ID,
         status="active",
@@ -195,8 +201,15 @@ def _blocked_wait_polls() -> list[dict]:
     ]
 
 
-def _quota_with_replan_runs(runs: list[dict]) -> dict:
-    payload = _status_payload(latest_runs=runs)
+def _quota_with_replan_runs(
+    runs: list[dict],
+    *,
+    extra_agent_items: list[dict] | None = None,
+) -> dict:
+    payload = _status_payload(
+        latest_runs=runs,
+        extra_agent_items=extra_agent_items,
+    )
     item = payload["attention_queue"]["items"][0]
     obligation = autonomous_replan_obligation_from_runs(
         runs,
@@ -206,6 +219,37 @@ def _quota_with_replan_runs(runs: list[dict]) -> dict:
         item["autonomous_replan_obligation"] = obligation
         item["project_asset"]["autonomous_replan_obligation"] = obligation
     return _quota(payload)
+
+
+def _monitor_blocked_advancement_items(
+    *,
+    next_due_at: str | None,
+    claimed_by: str = AGENT_ID,
+) -> list[dict]:
+    monitor_metadata = {
+        "target_key": "future-monitor-target",
+        "cadence": "10m",
+    }
+    if next_due_at is not None:
+        monitor_metadata["next_due_at"] = next_due_at
+    return [
+        quota_todo_item(
+            todo_id=MONITOR_ID,
+            index=3,
+            text="[P0] Monitor the pending external result.",
+            task_class="continuous_monitor",
+            claimed_by=claimed_by,
+            **monitor_metadata,
+        ),
+        quota_todo_item(
+            todo_id=MONITOR_BLOCKED_ID,
+            index=4,
+            text="[P0] Resume delivery after the monitor completes.",
+            status="deferred",
+            claimed_by=claimed_by,
+            resume_when=f"todo_done:{MONITOR_ID}",
+        ),
+    ]
 
 
 @pytest.mark.parametrize("waiting_status", ["open", "deferred"])
@@ -308,6 +352,59 @@ def test_two_identical_blocked_successor_waits_trigger_bounded_replan() -> None:
         "create_successor",
         "record_wait_continuation",
     ]
+
+
+def test_future_due_blocking_monitor_suppresses_predue_wait_replan() -> None:
+    compacted_polls = [compact_run(poll) for poll in _blocked_wait_polls()]
+    assert "next_due_at" not in compacted_polls[0]["monitor_target"]
+
+    guard = _quota_with_replan_runs(
+        [*compacted_polls, _vision_run()],
+        extra_agent_items=_monitor_blocked_advancement_items(
+            next_due_at="2099-01-01T00:00:00+00:00",
+        ),
+    )
+
+    assert guard["decision"] == "skip"
+    assert guard["effective_action"] == "monitor_quiet_skip"
+    assert guard.get("autonomous_replan_obligation") is None
+    assert guard["vision_wait_state"]["selected_todo_id"] == WAITING_ID
+
+
+@pytest.mark.parametrize(
+    "next_due_at",
+    [None, "2026-07-16T00:00:00+00:00"],
+    ids=["schedule-gap", "overdue"],
+)
+def test_unscheduled_or_overdue_monitor_preserves_wait_replan(
+    next_due_at: str | None,
+) -> None:
+    compacted_polls = [compact_run(poll) for poll in _blocked_wait_polls()]
+
+    guard = _quota_with_replan_runs(
+        [*compacted_polls, _vision_run()],
+        extra_agent_items=_monitor_blocked_advancement_items(
+            next_due_at=next_due_at,
+        ),
+    )
+
+    assert guard["decision"] == "autonomous_replan_required"
+    trigger = guard["autonomous_replan_obligation"]["triggers"][0]
+    assert trigger["kind"] == "blocked_successor_no_progress_repeat"
+
+
+def test_peer_future_due_monitor_does_not_suppress_wait_replan() -> None:
+    guard = _quota_with_replan_runs(
+        [*[compact_run(poll) for poll in _blocked_wait_polls()], _vision_run()],
+        extra_agent_items=_monitor_blocked_advancement_items(
+            next_due_at="2099-01-01T00:00:00+00:00",
+            claimed_by="peer-agent",
+        ),
+    )
+
+    assert guard["decision"] == "autonomous_replan_required"
+    trigger = guard["autonomous_replan_obligation"]["triggers"][0]
+    assert trigger["kind"] == "blocked_successor_no_progress_repeat"
 
 
 def test_interleaved_peer_monitor_does_not_reset_blocked_successor_replan() -> None:

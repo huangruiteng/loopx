@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Optional, Pattern
 
+from ..runtime.time import parse_timestamp
+from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from ..todos.deferred_resume import (
+    todo_summary_deferred_items,
+    todo_summary_monitor_blocked_resume_items,
+)
+
 
 PublicSafeText = Callable[..., Optional[str]]
 AckRecorded = Callable[[dict[str, Any]], bool]
@@ -327,6 +334,75 @@ def _monitor_no_change_evidence(
         "monitor_target_id": monitor_target_id,
         "agent_id": agent_id,
     }
+
+
+def _future_due_blocking_monitor(
+    agent_todos: dict[str, Any] | None,
+    *,
+    latest_generated_at: str,
+    agent_id: str | None,
+) -> dict[str, str] | None:
+    if not isinstance(agent_todos, dict):
+        return None
+    observed_at = parse_timestamp(latest_generated_at)
+    if observed_at is None:
+        return None
+
+    accountable_agent_id = normalize_todo_claimed_by(agent_id)
+    if not accountable_agent_id:
+        return None
+    raw_monitors = agent_todos.get("monitor_open_items")
+    monitors_by_id: dict[str, dict[str, Any]] = {}
+    for monitor in raw_monitors or []:
+        if not isinstance(monitor, dict):
+            continue
+        monitor_todo_id = normalize_todo_id(monitor.get("todo_id"))
+        claimed_by = normalize_todo_claimed_by(monitor.get("claimed_by"))
+        if not monitor_todo_id:
+            continue
+        if accountable_agent_id and claimed_by and claimed_by != accountable_agent_id:
+            continue
+        monitors_by_id[monitor_todo_id] = monitor
+
+    blocking_monitor_ids: set[str] = set()
+    blocked_items = [
+        *todo_summary_monitor_blocked_resume_items(agent_todos),
+        *todo_summary_deferred_items(agent_todos, "deferred_items"),
+    ]
+    for item in blocked_items:
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if accountable_agent_id and claimed_by and claimed_by != accountable_agent_id:
+            continue
+        condition = (
+            item.get("resume_condition")
+            if isinstance(item.get("resume_condition"), dict)
+            else {}
+        )
+        monitor_todo_id = normalize_todo_id(
+            item.get("blocking_monitor_todo_id")
+            or condition.get("target_todo_id")
+            or condition.get("target")
+        )
+        if monitor_todo_id in monitors_by_id:
+            blocking_monitor_ids.add(monitor_todo_id)
+    if not blocking_monitor_ids:
+        return None
+
+    for monitor_todo_id in blocking_monitor_ids:
+        monitor = monitors_by_id[monitor_todo_id]
+        next_due_at = parse_timestamp(monitor.get("next_due_at"))
+        if next_due_at is None or next_due_at <= observed_at:
+            continue
+        expires_at = parse_timestamp(monitor.get("expires_at"))
+        if expires_at is not None and (
+            expires_at <= observed_at or expires_at <= next_due_at
+        ):
+            continue
+        return {
+            "todo_id": monitor_todo_id,
+            "next_due_at": str(monitor.get("next_due_at") or ""),
+        }
+    return None
 
 
 def _has_runnable_agent_advancement(agent_todos: dict[str, Any] | None) -> bool:
@@ -662,6 +738,13 @@ def autonomous_replan_obligation_from_runs(
         if blocked_successor_modes == {
             "blocked_successor_wait_without_material_transition"
         }:
+            signal_agent_id = _single_public_agent_id(blocked_successor_signals)
+            if _future_due_blocking_monitor(
+                agent_todos,
+                latest_generated_at=str(signals[0].get("generated_at") or ""),
+                agent_id=signal_agent_id or agent_id,
+            ):
+                return periodic_review()
             monitor_target_ids = {
                 str(signal.get("monitor_target_id") or "")
                 for signal in blocked_successor_signals
