@@ -541,6 +541,8 @@ def _wait_for_tunnel_ready(
             return False, "run_deadline_exceeded", attempts
         if remote_proc is not None and remote_proc.poll() is not None:
             return False, "remote_command_completed", attempts
+        if tunnel_proc.poll() is not None:
+            return False, "tunnel_process_exited", attempts
         if time.monotonic() >= deadline:
             return False, status, attempts
         if ready:
@@ -1023,9 +1025,51 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     payload["probe_status"] = status
     payload["tunnel_ready"] = ready
     if status == "tunnel_process_exited":
-        payload["first_blocker"] = "reverse_tunnel_process_exited_before_ready"
-        payload["tunnel_exit_code"] = tunnel_proc.returncode
-        return finish(2)
+        liveness = payload["tunnel_liveness"]
+        for _attempt in range(int(liveness["reconnect_attempt_limit"])):
+            liveness["reconnect_attempt_count"] = (
+                int(liveness["reconnect_attempt_count"]) + 1
+            )
+            try:
+                tunnel_proc = _start_tunnel_process(
+                    args,
+                    json_local_socket=json_local_socket,
+                )
+            except OSError as exc:
+                liveness["last_probe_status"] = (
+                    f"reconnect_launch_failed_{type(exc).__name__[:40]}"
+                )
+                liveness["reconnect_failure_count"] = (
+                    int(liveness["reconnect_failure_count"]) + 1
+                )
+                continue
+            ready, status, reconnect_probes = _wait_for_tunnel_ready(
+                args,
+                tunnel_proc,
+                timeout_sec=args.tunnel_reconnect_ready_timeout_sec,
+            )
+            payload["probe_attempt_count"] = (
+                int(payload["probe_attempt_count"]) + reconnect_probes
+            )
+            payload["probe_status"] = status
+            payload["tunnel_ready"] = ready
+            liveness["last_probe_status"] = status
+            if ready:
+                liveness["reconnect_success_count"] = (
+                    int(liveness["reconnect_success_count"]) + 1
+                )
+                liveness["state"] = "reconnected"
+                break
+            liveness["reconnect_failure_count"] = (
+                int(liveness["reconnect_failure_count"]) + 1
+            )
+        if not ready:
+            liveness["state"] = "failed"
+            payload["first_blocker"] = (
+                "reverse_tunnel_process_exited_before_ready"
+            )
+            payload["tunnel_exit_code"] = tunnel_proc.returncode
+            return finish(2)
 
     if payload["tunnel_ready"] is not True:
         payload["first_blocker"] = "reverse_tunnel_probe_not_ready"
@@ -1087,7 +1131,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             )
             consecutive_failures = 0
             consecutive_inconclusive = 0
-            if liveness["enabled"]:
+            if liveness["enabled"] and liveness["state"] != "reconnected":
                 liveness["state"] = "healthy"
 
             while remote_proc.poll() is None:
