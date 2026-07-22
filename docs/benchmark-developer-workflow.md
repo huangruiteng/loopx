@@ -10,6 +10,9 @@ packets and dated route notes still live under
 `docs/research/long-horizon-agent-benchmarks/`, but reusable runner behavior
 belongs in `loopx/`, `examples/`, and this guide.
 
+For package ownership and dependency direction, see
+[`reference/benchmark-architecture.md`](reference/benchmark-architecture.md).
+
 ## Product Shape
 
 The benchmark workflow has four layers:
@@ -36,7 +39,7 @@ without seeing credentials, raw logs, raw trajectories, or local machine paths.
 From a fresh checkout:
 
 ```bash
-python3 -m py_compile loopx/*.py loopx/benchmark_core/*.py
+python3 -m py_compile loopx/*.py loopx/benchmark_core/*.py loopx/benchmarks/read_models/*.py
 python3 examples/benchmark-split-control-remote-executor-smoke.py
 loopx benchmark --help
 ```
