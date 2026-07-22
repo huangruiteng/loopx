@@ -33,6 +33,10 @@ elif "# LOOPX_REVERSE_TUNNEL_PROBE" in sys.argv[-1]:
     print("HTTP/1.1 200 OK")
 elif sys.argv[-1] == "run-benchmark":
     time.sleep(0.2)
+elif sys.argv[-1] == "fail-arguments":
+    print("usage: runner [--known]", file=sys.stderr)
+    print("runner: error: unrecognized arguments: --private-value", file=sys.stderr)
+    raise SystemExit(2)
 raise SystemExit(0)
 """,
         encoding="utf-8",
@@ -130,3 +134,73 @@ def test_supervisor_finalizes_public_liveness_on_early_launch_failure(
     assert persisted["public_liveness"]["terminal"] is True
     assert persisted["public_liveness"]["process_alive"] is False
     assert persisted["public_liveness"]["heartbeat_count"] == 2
+
+
+def test_remote_command_failure_subtype_uses_public_allowlist() -> None:
+    supervisor = _load_supervisor_module()
+
+    assert supervisor._remote_command_failure_subtype(
+        "RuntimeError: loopx_runner_source_git_head_mismatch"
+    ) == "runner_source_git_head_mismatch"
+    assert supervisor._remote_command_failure_subtype(
+        "runner: error: unrecognized arguments: --private-value"
+    ) == "cli_argument_incompatible"
+    assert supervisor._remote_command_failure_subtype(
+        "usage: runner [--mode MODE]\nrunner: error: "
+        "argument --mode: invalid choice"
+    ) == "cli_argument_error"
+    assert supervisor._remote_command_failure_subtype(
+        "python3: can't open file 'opaque-runner.py': "
+        "[Errno 2] No such file or directory"
+    ) == "remote_entrypoint_missing"
+    assert supervisor._remote_command_failure_subtype(
+        "SkillsBenchSetupPreflightBlocked: private setup detail"
+    ) == "setup_preflight_blocked"
+    assert supervisor._remote_command_failure_subtype(
+        "secret-host.example failed with private-token"
+    ) == "unclassified"
+
+
+def test_supervisor_projects_only_allowlisted_remote_failure_subtype(
+    tmp_path: Path,
+) -> None:
+    supervisor = _load_supervisor_module()
+    fake_ssh = tmp_path / "fake-ssh"
+    public_output = tmp_path / "public" / "supervisor.public.json"
+    _write_fake_ssh(fake_ssh)
+    args = supervisor.parse_args(
+        [
+            "--ssh-bin",
+            str(fake_ssh),
+            "--ssh-destination",
+            "runner.example",
+            "--remote-command",
+            "fail-arguments",
+            "--public-output-path",
+            str(public_output),
+            "--probe-interval-sec",
+            "0.01",
+            "--probe-timeout-sec",
+            "1",
+            "--tunnel-ready-timeout-sec",
+            "1",
+            "--tunnel-health-interval-sec",
+            "0",
+            "--run-timeout-sec",
+            "2",
+        ]
+    )
+
+    returncode, payload = supervisor.run_supervisor(args)
+    persisted = json.loads(public_output.read_text(encoding="utf-8"))
+    public_text = json.dumps(persisted, sort_keys=True)
+
+    assert returncode == 2
+    assert payload["first_blocker"] == "remote_command_exit_nonzero"
+    assert payload["remote_command_failure_subtype"] == (
+        "cli_argument_incompatible"
+    )
+    assert persisted == payload
+    assert "--private-value" not in public_text
+    assert "usage: runner" not in public_text
+    assert persisted["raw_remote_output_recorded"] is False

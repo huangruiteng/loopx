@@ -774,6 +774,27 @@ def _size_bucket(value: str) -> str:
     return "5000_plus"
 
 
+def _remote_command_failure_subtype(stderr_text: str) -> str:
+    """Classify stable entry failures without projecting remote stderr."""
+    normalized = stderr_text.lower()
+    if "loopx_runner_source_git_head_mismatch" in normalized:
+        return "runner_source_git_head_mismatch"
+    if "loopx_runner_source_git_head_unknown" in normalized:
+        return "runner_source_git_head_unknown"
+    if "unrecognized arguments:" in normalized:
+        return "cli_argument_incompatible"
+    if "usage:" in normalized and ": error:" in normalized:
+        return "cli_argument_error"
+    if (
+        "can't open file" in normalized
+        and "no such file or directory" in normalized
+    ):
+        return "remote_entrypoint_missing"
+    if "skillsbenchsetuppreflightblocked" in normalized:
+        return "setup_preflight_blocked"
+    return "unclassified"
+
+
 def _remote_failure_cleanup_public_contract(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "requested": bool(args.remote_failure_cleanup_pattern),
@@ -1410,6 +1431,9 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         payload["ok"] = remote_proc.returncode == 0 and sync_ok
         if remote_proc.returncode != 0:
             payload["first_blocker"] = "remote_command_exit_nonzero"
+            payload["remote_command_failure_subtype"] = (
+                _remote_command_failure_subtype(stderr_text)
+            )
             payload["remote_failure_cleanup"] = _run_remote_failure_cleanup(
                 args,
                 trigger="remote_command_exit_nonzero",
