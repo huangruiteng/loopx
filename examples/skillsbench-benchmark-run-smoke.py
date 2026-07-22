@@ -5676,6 +5676,44 @@ def test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch() -> None:
         assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" in staged_text
 
 
+def test_skillsbench_docker_task_staging_can_keep_primary_apt_sources() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-primary-apt-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "primary-apt-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n\n"
+            "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="primary-apt-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["dockerfile_apt_source_mode"] == "primary", metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["dockerfile_ubuntu_apt_mirror_patch_required"] is False
+        assert metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is False
+        assert metadata["dockerfile_debian_apt_mirror_patch_required"] is False
+        assert metadata["dockerfile_debian_apt_mirror_patch_applied"] is False
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
+        assert dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN not in staged_text
+
+
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-skill-stage-") as tmp:
         root = Path(tmp)
@@ -5743,6 +5781,7 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert metadata["apt_retry_patch_required"] is True, metadata
         assert metadata["apt_risk_preflight_blocked"] is False, metadata
         assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["dockerfile_apt_source_mode"] == "mirror", metadata
         assert (
             metadata["dockerfile_ubuntu_apt_mirror_patch_required"] is True
         ), metadata

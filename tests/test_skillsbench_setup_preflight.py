@@ -74,6 +74,7 @@ def run_preflight() -> dict[str, Any]:
             config=object(),
             task_staging={
                 "apt_retry_patch_applied": True,
+                "dockerfile_apt_source_mode": "mirror",
                 "dockerfile_debian_apt_mirror_patch_required": True,
                 "dockerfile_debian_apt_mirror_patch_applied": True,
                 "dockerfile_debian_apt_mirror_host": "mirror.example",
@@ -110,6 +111,7 @@ def test_setup_only_preflight_stops_before_agent_and_verifier() -> None:
     ]
     assert result["task_staging"] == {
         "apt_retry_patch_applied": True,
+        "dockerfile_apt_source_mode": "mirror",
         "dockerfile_debian_apt_mirror_patch_required": True,
         "dockerfile_debian_apt_mirror_patch_applied": True,
         "dockerfile_debian_apt_mirror_host": "mirror.example",
@@ -184,6 +186,23 @@ def test_primary_pip_index_mode_is_publicly_attributable() -> None:
 
     assert plan["docker_pip_index_mode"] == "primary"
     assert public_config["docker_pip_index_mode"] == "primary"
+
+
+def test_primary_apt_source_mode_is_publicly_attributable() -> None:
+    args = parse_args(
+        [
+            "--task-id",
+            "flink-query",
+            "--docker-apt-source-mode",
+            "primary",
+        ]
+    )
+
+    plan = build_plan(args)
+    public_config = _public_runner_config(plan)
+
+    assert plan["docker_apt_source_mode"] == "primary"
+    assert public_config["docker_apt_source_mode"] == "primary"
 
 
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:
