@@ -7750,11 +7750,26 @@ def patch_dockerfile_apt_retry(
         if transport_mode == "proxy-compatible"
         else ""
     )
+    proxy_compatible_source_upgrade = (
+        "      find /etc/apt -type f \\\n"
+        "        \\( -name '*.list' -o -name '*.sources' \\) \\\n"
+        "        -exec sed -i \\\n"
+        '          -e "s#http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu#g" \\\n'
+        '          -e "s#http://security.ubuntu.com/ubuntu#https://security.ubuntu.com/ubuntu#g" \\\n'
+        '          -e "s#http://ports.ubuntu.com/ubuntu-ports#https://ports.ubuntu.com/ubuntu-ports#g" \\\n'
+        '          -e "s#http://deb.debian.org/debian-security#https://deb.debian.org/debian-security#g" \\\n'
+        '          -e "s#http://security.debian.org/debian-security#https://security.debian.org/debian-security#g" \\\n'
+        '          -e "s#http://deb.debian.org/debian#https://deb.debian.org/debian#g" \\\n'
+        "          {} +; \\\n"
+        if transport_mode == "proxy-compatible"
+        else ""
+    )
     block = (
         f"{DOCKER_APT_RETRY_BEGIN}\n"
         "RUN set -eux; \\\n"
         "    if mkdir -p /etc/apt/apt.conf.d 2>/dev/null && "
         "[ -w /etc/apt/apt.conf.d ]; then \\\n"
+        f"{proxy_compatible_source_upgrade}"
         "      printf '%s\\n' \\\n"
         "        'Acquire::Retries \"5\";' \\\n"
         "        'Acquire::http::No-Cache \"true\";' \\\n"

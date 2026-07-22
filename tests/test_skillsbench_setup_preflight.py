@@ -238,6 +238,10 @@ def test_primary_apt_source_mode_skips_mirror_patches() -> None:
             encoding="utf-8"
         )
         assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            not in staged_text
+        )
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
         assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" not in staged_text
 
@@ -265,7 +269,9 @@ def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
         dockerfile = task / "environment" / "Dockerfile"
         dockerfile.parent.mkdir(parents=True)
         dockerfile.write_text(
-            "FROM ubuntu:24.04\n\nRUN apt-get update && apt-get install -y curl\n",
+            "FROM ubuntu:24.04\n\n"
+            "# custom source: http://packages.example.test/repository\n"
+            "RUN apt-get update && apt-get install -y curl\n",
             encoding="utf-8",
         )
         (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
@@ -287,6 +293,19 @@ def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
         assert 'Acquire::http::Pipeline-Depth "0";' in staged_text
         assert 'Acquire::https::Pipeline-Depth "0";' in staged_text
         assert 'Acquire::ForceIPv4 "true";' in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            in staged_text
+        )
+        assert (
+            "http://security.ubuntu.com/ubuntu#https://security.ubuntu.com/ubuntu"
+            in staged_text
+        )
+        assert (
+            "http://deb.debian.org/debian#https://deb.debian.org/debian"
+            in staged_text
+        )
+        assert "http://packages.example.test/repository" in staged_text
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
 
 
@@ -321,8 +340,11 @@ def test_proxy_compatible_apt_transport_covers_each_apt_stage() -> None:
         assert staged_text.count(DOCKER_APT_RETRY_BEGIN) == 1
         runtime_stage = staged_text.index("FROM ubuntu:24.04 AS runtime")
         transport_config = staged_text.rindex('Acquire::ForceIPv4 "true";')
+        source_upgrade = staged_text.rindex(
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+        )
         apt_update = staged_text.index("RUN apt-get update")
-        assert runtime_stage < transport_config < apt_update
+        assert runtime_stage < source_upgrade < transport_config < apt_update
 
 
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:
