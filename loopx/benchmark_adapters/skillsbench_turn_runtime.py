@@ -743,9 +743,22 @@ def run_skillsbench_loopx_turn_sequence(
         validation["turn_index"] = turn_index
         validation["turn_sequence_ref"] = turn_sequence_ref
         records.append((execution, validation))
+        verified_content_progress = bool(
+            validation.get("progress_evidence_kind")
+            == "verified_task_content_change"
+        )
+        sequence_terminal_complete = bool(
+            validation.get("terminal_complete") is True
+            and not (
+                config.terminal_policy == "validator"
+                and turn_index < config.max_turns
+                and verified_content_progress
+            )
+        )
+        validation["sequence_terminal_complete"] = sequence_terminal_complete
         if execution.get("status") != "committed":
             stop_reason = "turn_not_committed"
-        elif validation.get("terminal_complete") is True:
+        elif sequence_terminal_complete:
             stop_reason = "terminal_complete"
         elif validation.get("validated_progress") is not True:
             stop_reason = "no_validated_progress"

@@ -124,8 +124,9 @@ def add_skillsbench_loopx_turn_arguments(parser: Any) -> None:
         default="validator",
         help=(
             "How a successful per-Turn validator closes a bounded sequence. "
-            "validator trusts exit 0 as terminal; fixed-n treats successful "
-            "steps as progress until the configured final Turn; stability "
+            "validator trusts exit 0 as terminal unless the Turn also proves "
+            "a durable content change that requires one bounded review; fixed-n "
+            "treats successful steps as progress until the configured final Turn; stability "
             "continues after exit-code progress or a verified write and stops "
             "after a no-change review whose completion postcondition passes."
         ),
@@ -313,6 +314,7 @@ def _public_validation(value: Any) -> dict[str, Any]:
         "raw_verifier_output_recorded",
         "validated_progress",
         "terminal_complete",
+        "sequence_terminal_complete",
         "sequence_baseline_configured",
         "stability_progress_detected",
         "stability_completion_checked",
@@ -519,7 +521,13 @@ def _aggregate_validations(validations: list[dict[str, Any]]) -> dict[str, Any]:
             and all(item.get("validated_progress") is True for item in validations)
         ),
         "terminal_complete": any(
-            item.get("terminal_complete") is True for item in validations
+            (
+                item.get("sequence_terminal_complete")
+                if isinstance(item.get("sequence_terminal_complete"), bool)
+                else item.get("terminal_complete")
+            )
+            is True
+            for item in validations
         ),
         "turn_count": len(validations),
         "successful_task_file_write_count": sum(
