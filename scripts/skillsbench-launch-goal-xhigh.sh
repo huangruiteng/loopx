@@ -33,6 +33,8 @@ Optional env:
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror
                                        (default) or primary
+  SKILLSBENCH_DOCKER_PIP_BUILD_MODE    Staged Dockerfile pip build mode:
+                                       isolated (default) or no-isolation
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
   SKILLSBENCH_MODEL                    Model, default gpt-5.5
   SKILLSBENCH_REASONING_EFFORT         Reasoning effort, default xhigh
@@ -214,6 +216,7 @@ allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_R
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
 docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
+docker_pip_build_mode="${SKILLSBENCH_DOCKER_PIP_BUILD_MODE:-isolated}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
 remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND:-}"
@@ -247,6 +250,11 @@ fi
 if [[ "$docker_pip_index_mode" != "mirror" ]] &&
   [[ "$docker_pip_index_mode" != "primary" ]]; then
   echo "SKILLSBENCH_DOCKER_PIP_INDEX_MODE must be mirror or primary" >&2
+  exit 2
+fi
+if [[ "$docker_pip_build_mode" != "isolated" ]] &&
+  [[ "$docker_pip_build_mode" != "no-isolation" ]]; then
+  echo "SKILLSBENCH_DOCKER_PIP_BUILD_MODE must be isolated or no-isolation" >&2
   exit 2
 fi
 validate_bool_toggle \
@@ -539,6 +547,7 @@ remote_command=$(
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
     --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
     --docker-pip-index-mode "$docker_pip_index_mode" \
+    --docker-pip-build-mode "$docker_pip_build_mode" \
     --host-local-acp-launch \
     --local-codex-bin "$remote_codex_bin" \
     --local-codex-sandbox "$local_codex_sandbox" \
@@ -625,6 +634,7 @@ if [[ "$dry_run" == "true" ]]; then
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
   printf 'docker_pip_index_mode=%s\n' "$docker_pip_index_mode"
+  printf 'docker_pip_build_mode=%s\n' "$docker_pip_build_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
   printf 'remote_command_file_bridge_probe_command_configured=%s\n' \

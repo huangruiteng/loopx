@@ -436,6 +436,8 @@ DOCKER_PIP_INDEX_MODES = {
     "mirror": (DEFAULT_DOCKER_PIP_INDEX_URL, DEFAULT_DOCKER_PIP_INDEX_HOST),
     "primary": (PRIMARY_DOCKER_PIP_INDEX_URL, PRIMARY_DOCKER_PIP_INDEX_HOST),
 }
+DEFAULT_DOCKER_PIP_BUILD_MODE = "isolated"
+DOCKER_PIP_BUILD_MODES = ("isolated", "no-isolation")
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
 SANDBOX_PATH_RE = re.compile(r"/(?:app|root|workspace|tmp)/[A-Za-z0-9_./-]+")
 LOOPX_CLI_RE = re.compile(r"(?:^|\s|/)loopx(?:\s|$)")
@@ -7751,20 +7753,33 @@ def _docker_pip_index(mode: str) -> tuple[str, str]:
         raise ValueError(f"unsupported Docker pip index mode: {mode}") from exc
 
 
+def _docker_pip_build_mode(mode: str) -> str:
+    if mode not in DOCKER_PIP_BUILD_MODES:
+        raise ValueError(f"unsupported Docker pip build mode: {mode}")
+    return mode
+
+
 def patch_dockerfile_pip_bootstrap(
     dockerfile: Path,
     *,
     index_url: str = DEFAULT_DOCKER_PIP_INDEX_URL,
+    build_mode: str = DEFAULT_DOCKER_PIP_BUILD_MODE,
 ) -> bool:
     """Add public-safe pip retry/index defaults to staged Dockerfiles."""
 
     if not dockerfile_needs_pip_bootstrap_patch(dockerfile):
         return False
+    build_mode = _docker_pip_build_mode(build_mode)
     original = dockerfile.read_text(encoding="utf-8")
     text = _strip_marker_block(
         original,
         DOCKER_PIP_BOOTSTRAP_BEGIN,
         DOCKER_PIP_BOOTSTRAP_END,
+    )
+    build_mode_env = (
+        "    PIP_NO_BUILD_ISOLATION=1 \\\n"
+        if build_mode == "no-isolation"
+        else ""
     )
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
@@ -7772,6 +7787,7 @@ def patch_dockerfile_pip_bootstrap(
         "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
         "    PIP_DEFAULT_TIMEOUT=120 \\\n"
         "    PIP_RETRIES=10 \\\n"
+        f"{build_mode_env}"
         "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
         f"{DOCKER_PIP_BOOTSTRAP_END}"
     )
@@ -8000,6 +8016,7 @@ def stage_task_for_sandbox(
     include_task_skills: bool = True,
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
     docker_pip_index_mode: str = DEFAULT_DOCKER_PIP_INDEX_MODE,
+    docker_pip_build_mode: str = DEFAULT_DOCKER_PIP_BUILD_MODE,
     docker_gcr_mirror_prefix: str = "",
     verifier_dependency_cache_enabled: bool = False,
     loopx_case_runtime_required: bool = False,
@@ -8010,6 +8027,7 @@ def stage_task_for_sandbox(
     docker_pip_index_url, docker_pip_index_host = _docker_pip_index(
         docker_pip_index_mode
     )
+    docker_pip_build_mode = _docker_pip_build_mode(docker_pip_build_mode)
     metadata: dict[str, Any] = {
         "schema_version": "skillsbench_task_staging_v0",
         "original_task_name": task_path.name,
@@ -8194,6 +8212,7 @@ def stage_task_for_sandbox(
     )
     if needs_pip_bootstrap_patch:
         metadata["dockerfile_pip_index_host"] = docker_pip_index_host
+        metadata["dockerfile_pip_build_mode"] = docker_pip_build_mode
     metadata["dockerfile_gcr_mirror_patch_required"] = needs_gcr_mirror_patch
     metadata["dockerfile_elan_toolchain_retry_patch_required"] = (
         needs_elan_toolchain_retry_patch
@@ -8353,6 +8372,7 @@ def stage_task_for_sandbox(
     pip_bootstrap_patched = patch_dockerfile_pip_bootstrap(
         staged_path / "environment" / "Dockerfile",
         index_url=docker_pip_index_url,
+        build_mode=docker_pip_build_mode,
     )
     venv_pip_invocation_patched = dockerfile_runtime.patch_venv_pip_invocations(
         staged_path / "environment" / "Dockerfile"
@@ -8431,6 +8451,9 @@ def stage_task_for_sandbox(
             ),
             "dockerfile_pip_index_host": (
                 docker_pip_index_host if pip_bootstrap_patched else ""
+            ),
+            "dockerfile_pip_build_mode": (
+                docker_pip_build_mode if pip_bootstrap_patched else ""
             ),
             "dockerfile_gcr_mirror_patch_applied": gcr_mirror_patched,
             "dockerfile_gcr_mirror_raw_prefix_recorded": False,
@@ -8546,6 +8569,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     task_id = args.task_id
     route = args.route
     _, docker_pip_index_host = _docker_pip_index(args.docker_pip_index_mode)
+    docker_pip_build_mode = _docker_pip_build_mode(
+        getattr(args, "docker_pip_build_mode", DEFAULT_DOCKER_PIP_BUILD_MODE)
+    )
     route_slug = route.replace("-", "_")
     intermediate_soft_verify_policy = product_mode_soft_verify_policy_for_route(
         route,
@@ -8776,6 +8802,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
         "docker_pip_index_mode": args.docker_pip_index_mode,
+        "docker_pip_build_mode": docker_pip_build_mode,
         "max_rounds": args.max_rounds,
         "independent_goal_retry": {
             "schema_version": "skillsbench_independent_goal_retry_config_v0",
@@ -9355,6 +9382,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "app_server_goal_prompt_style",
         "sandbox",
         "docker_pip_index_mode",
+        "docker_pip_build_mode",
         "run_group_id",
         "job_name",
         "rollout_name",
@@ -13763,6 +13791,7 @@ async def run_benchflow_case(
         include_task_skills=bool(args.include_task_skills),
         benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
         docker_pip_index_mode=args.docker_pip_index_mode,
+        docker_pip_build_mode=args.docker_pip_build_mode,
         docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
         verifier_dependency_cache_enabled=(
             verifier_dependency_cache_policy_enabled
@@ -16617,6 +16646,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Public package index used by the staged Dockerfile pip bootstrap "
             "repair. mirror preserves the default; primary provides a bounded "
             "fallback after a typed mirror-network setup failure."
+        ),
+    )
+    parser.add_argument(
+        "--docker-pip-build-mode",
+        choices=DOCKER_PIP_BUILD_MODES,
+        default=DEFAULT_DOCKER_PIP_BUILD_MODE,
+        help=(
+            "Build-isolation policy used by the staged Dockerfile pip bootstrap. "
+            "isolated preserves the default; no-isolation is a bounded fallback "
+            "after a typed build-dependency subprocess failure."
         ),
     )
     parser.add_argument(
