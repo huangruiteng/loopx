@@ -46,7 +46,7 @@ The deterministic trigger accepts only these bounded complexity signals:
 `cross_file_reasoning`, `ambiguous_root_cause`, `invariant_risk`,
 `validation_uncertainty`, and `external_contract`. A complex checkpoint must
 name at least one signal and carries no final result; a simple checkpoint may
-not include signals or open questions and must carry the typed final result.
+not include signals or open questions and resumes the executor without advice.
 The Advisor returns compact guidance under a strict schema, then the same
 executor session resumes with that non-authoritative review. The executor still
 owns tools and implementation, while the TurnEnvelope and validator keep
