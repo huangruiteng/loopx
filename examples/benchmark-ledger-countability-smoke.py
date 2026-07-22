@@ -93,7 +93,7 @@ def test_missing_verifier_reward_bool_does_not_override_uncountable_attempt() ->
     ), aggregate
 
 
-def test_real_bool_official_result_remains_countable_zero() -> None:
+def test_uncountable_bool_official_result_does_not_synthesize_zero() -> None:
     run = _setup_preflight_run()
     run["failure_class"] = "official_verifier_solution_failure"
     run["failure_scope"] = "case_or_solution"
@@ -102,9 +102,9 @@ def test_real_bool_official_result_remains_countable_zero() -> None:
     run["score_status"] = "missing"
 
     assert benchmark_run_official_score_countability(run) == {
-        "countable": True,
-        "reason": "countable_official_score",
-        "score": 0.0,
+        "countable": False,
+        "reason": "score_missing",
+        "score": None,
     }
 
 
@@ -243,7 +243,7 @@ def test_explicit_scored_attempt_precedes_coarse_verifier_attribution() -> None:
 
 def main() -> None:
     test_missing_verifier_reward_bool_does_not_override_uncountable_attempt()
-    test_real_bool_official_result_remains_countable_zero()
+    test_uncountable_bool_official_result_does_not_synthesize_zero()
     test_verifier_infrastructure_failure_zero_is_uncountable()
     test_verifier_dependency_failure_zero_is_uncountable()
     test_explicit_scored_attempt_precedes_coarse_verifier_attribution()
