@@ -63,13 +63,13 @@ loopx turn run-once \
   --execute
 ```
 
-Auto selects a qualified pair from the live Codex catalog and fails closed when
+Auto selects an experimental candidate pair from the live Codex catalog and fails closed when
 none is available. Manual mode uses distinct `--advisor-model <strong-model>`
 and `--codex-model <lower-cost-model>` values. The executor first emits an
 inspection-only checkpoint. Simple work skips the strong model and resumes the
 executor; complex work names a supported risk signal, receives compact advice
 from an ephemeral read-only session, then resumes the same executor. Advisor
-guidance cannot change the TurnEnvelope, sandbox, validator, writeback, or quota.
+guidance cannot change the TurnEnvelope, sandbox, validator, writeback, or quota. This minimizes context; it is not a confidentiality or security sandbox.
 
 `model_usage` records exact observed counters and a `skipped_simple`,
 `applied_complexity`, or `fallback_failure` decision. Prompts, raw event stream,

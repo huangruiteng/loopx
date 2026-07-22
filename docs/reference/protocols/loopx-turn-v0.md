@@ -40,7 +40,8 @@ the bounded Turn request, executor evidence, and a size-capped packet of
 literal, non-symlink files from the declared write scope or checkpoint paths.
 The repository itself is not mounted in the Advisor session. Keeping
 classification separate from execution avoids asking a lower-cost model to
-mix repository work with a nested final-result receipt.
+mix repository work with a nested final-result receipt. These controls minimize
+context; they do not establish a confidentiality or security sandbox.
 
 The deterministic trigger accepts only these bounded complexity signals:
 `cross_file_reasoning`, `ambiguous_root_cause`, `invariant_risk`,
@@ -56,7 +57,7 @@ observed failed-attempt usage remains part of the total receipt.
 
 The Codex host supports `advisor-mode=off|auto|manual`. Auto mode resolves the
 current Codex model catalog when a Turn invokes the host and chooses the
-highest-priority available qualified profile. The profile assigns Advisor and
+highest-priority available experimental profile. The profile assigns Advisor and
 executor roles explicitly; catalog descriptions and model-name patterns are
 not selection authority. Catalog failure or absence of a complete qualified
 pair fails closed. Manual mode requires distinct explicit model ids, while an
