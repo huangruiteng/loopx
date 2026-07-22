@@ -292,6 +292,7 @@ remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
 fi
+exact_host_codex_sandbox_preflight="not_required"
 if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
   if [[ "$remote_codex_bin" == */* ]]; then
     printf -v remote_codex_probe \
@@ -307,6 +308,59 @@ if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
     echo "remote Codex CLI unavailable; set SKILLSBENCH_REMOTE_CODEX_BIN" >&2
     exit 2
   fi
+  remote_codex_sandbox_probe_py='import shutil, subprocess, sys, tempfile
+codex_bin, sandbox_mode = sys.argv[1:]
+with tempfile.TemporaryDirectory(prefix="gh-skillsbench-codex-sandbox-") as tmp:
+    try:
+        proc = subprocess.run(
+            [
+                codex_bin,
+                "sandbox",
+                "-c",
+                f"sandbox_mode=\"{sandbox_mode}\"",
+                "--",
+                shutil.which("true") or "true",
+            ],
+            cwd=tmp,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise SystemExit(1) from None
+raise SystemExit(proc.returncode)'
+  printf -v remote_codex_sandbox_probe \
+    '%q -c %q %q %q' \
+    python3 "$remote_codex_sandbox_probe_py" \
+    "$remote_codex_bin" "$local_codex_sandbox"
+  if ! ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+    "$remote_codex_sandbox_probe" >/dev/null 2>&1; then
+    python3 - "$local_codex_sandbox" "$remote_codex_bin_mode" <<'PY' >&2
+import json
+import sys
+
+print(
+    json.dumps(
+        {
+            "ok": False,
+            "schema_version": "skillsbench_exact_host_codex_sandbox_preflight_v0",
+            "error": "skillsbench_exact_host_codex_sandbox_preflight_failed",
+            "sandbox_mode": sys.argv[1],
+            "remote_codex_bin_mode": sys.argv[2],
+            "raw_output_recorded": False,
+            "remote_path_recorded": False,
+            "ssh_destination_recorded": False,
+        },
+        sort_keys=True,
+    )
+)
+PY
+    exit 3
+  fi
+  exact_host_codex_sandbox_preflight="passed"
+elif [[ "$setup_only_public_preflight" != "1" ]]; then
+  exact_host_codex_sandbox_preflight="required"
 fi
 
 stamp="${SKILLSBENCH_RUN_STAMP:-$(date +%Y%m%dT%H%M%SCST)}"
@@ -647,6 +701,8 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'runner_profile_path_recorded=false\n'
   printf 'runner_profile_values_recorded=false\n'
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
+  printf 'exact_host_codex_sandbox_preflight=%s\n' \
+    "$exact_host_codex_sandbox_preflight"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
@@ -751,5 +807,6 @@ local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 setup_only_public_preflight=${setup_only_public_preflight}
+exact_host_codex_sandbox_preflight=${exact_host_codex_sandbox_preflight}
 public_artifact_sync_interval_sec=${public_artifact_sync_interval}
 EOF
