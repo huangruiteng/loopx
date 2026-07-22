@@ -290,6 +290,41 @@ def test_proxy_compatible_apt_transport_is_public_and_bounded() -> None:
         assert "LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR" not in staged_text
 
 
+def test_proxy_compatible_apt_transport_covers_each_apt_stage() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-stages-pytest-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "apt-stage-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        dockerfile.write_text(
+            "FROM ubuntu:24.04 AS build\n\n"
+            "RUN echo build-only\n\n"
+            "FROM ubuntu:24.04 AS runtime\n\n"
+            "RUN apt-get update && apt-get install -y curl\n",
+            encoding="utf-8",
+        )
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="apt-stage-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+            docker_apt_transport_mode="proxy-compatible",
+        )
+
+        assert metadata["apt_retry_patch_applied"] is True
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_text.count(DOCKER_APT_RETRY_BEGIN) == 1
+        runtime_stage = staged_text.index("FROM ubuntu:24.04 AS runtime")
+        transport_config = staged_text.rindex('Acquire::ForceIPv4 "true";')
+        apt_update = staged_text.index("RUN apt-get update")
+        assert runtime_stage < transport_config < apt_update
+
+
 def test_no_isolation_pip_build_mode_is_publicly_attributable() -> None:
     args = parse_args(
         [

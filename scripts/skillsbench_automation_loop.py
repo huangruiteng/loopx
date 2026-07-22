@@ -7733,7 +7733,7 @@ def patch_dockerfile_apt_retry(
     *,
     transport_mode: str = DEFAULT_DOCKER_APT_TRANSPORT_MODE,
 ) -> bool:
-    """Add public-safe apt retry/no-cache defaults to staged Dockerfiles."""
+    """Add public-safe apt retry/no-cache defaults to apt-using stages."""
 
     if not dockerfile_needs_apt_retry_patch(dockerfile):
         return False
@@ -7768,16 +7768,43 @@ def patch_dockerfile_apt_retry(
         "    fi\n"
         f"{DOCKER_APT_RETRY_END}"
     )
-    patched_lines: list[str] = []
-    inserted = False
-    for line in text.splitlines():
-        patched_lines.append(line)
-        stripped = line.strip()
-        if stripped.startswith("FROM ") and not inserted:
-            patched_lines.extend(["", *block.splitlines(), ""])
-            inserted = True
-    if not inserted:
-        patched_lines = [*block.splitlines(), "", *text.splitlines()]
+    lines = text.splitlines()
+    stage_starts: list[int] = []
+    heredoc_delimiter: str | None = None
+    for index, line in enumerate(lines):
+        if heredoc_delimiter is not None:
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = dockerfile_runtime.dockerfile_heredoc_delimiter(line)
+        if _is_dockerfile_from_instruction(line.strip()):
+            stage_starts.append(index)
+
+    if not stage_starts:
+        patched_lines = [*block.splitlines(), "", *lines]
+    else:
+        patched_lines = lines[: stage_starts[0]]
+        for position, start in enumerate(stage_starts):
+            end = (
+                stage_starts[position + 1]
+                if position + 1 < len(stage_starts)
+                else len(lines)
+            )
+            stage_lines = lines[start:end]
+            from_line = stage_lines[0].strip().lower()
+            stage_uses_apt = bool(
+                re.search(
+                    r"\bapt(?:-get)?\s+update\b",
+                    "\n".join(stage_lines),
+                    flags=re.IGNORECASE,
+                )
+            )
+            if stage_uses_apt and " scratch" not in from_line:
+                patched_lines.extend(
+                    [stage_lines[0], "", *block.splitlines(), "", *stage_lines[1:]]
+                )
+            else:
+                patched_lines.extend(stage_lines)
     patched = "\n".join(patched_lines).rstrip() + "\n"
     if patched == dockerfile.read_text(encoding="utf-8"):
         return False
