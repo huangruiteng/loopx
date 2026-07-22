@@ -104,6 +104,8 @@ from scripts.skillsbench_automation_loop import (  # noqa: E402
     DEFAULT_DOCKER_MAVEN_MIRROR_URL,
     DEFAULT_DOCKER_MAVEN_SETTINGS_PATH,
     DEFAULT_DOCKER_PIP_INDEX_HOST,
+    PRIMARY_DOCKER_PIP_INDEX_HOST,
+    PRIMARY_DOCKER_PIP_INDEX_URL,
     DEFAULT_VERIFIER_UV_RELEASE_MIRROR_HOST,
     DECLARED_DONE_MARKER,
     DOCKER_CODEX_ACP_RUNTIME_TOOLS_BEGIN,
@@ -6129,6 +6131,25 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
             "pip3 install"
         ), staged_text
+
+        primary_path, primary_metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="adaptive-cruise-control-primary-index",
+            sandbox="docker",
+            include_task_skills=False,
+            docker_pip_index_mode="primary",
+        )
+        primary_text = (primary_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert primary_metadata["dockerfile_pip_index_host"] == (
+            PRIMARY_DOCKER_PIP_INDEX_HOST
+        ), primary_metadata
+        assert (
+            f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={PRIMARY_DOCKER_PIP_INDEX_URL}"
+            in primary_text
+        ), primary_text
 
 
 def test_skillsbench_docker_pip_bootstrap_skips_python_heredoc_imports() -> None:

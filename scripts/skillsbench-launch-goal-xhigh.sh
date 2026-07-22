@@ -31,6 +31,8 @@ Optional env:
                                        require (default), auto, or off
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
+  SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror
+                                       (default) or primary
   SKILLSBENCH_ROUTE                    Route, default codex-cli-goal-baseline
   SKILLSBENCH_MODEL                    Model, default gpt-5.5
   SKILLSBENCH_REASONING_EFFORT         Reasoning effort, default xhigh
@@ -211,6 +213,7 @@ skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
+docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
 remote_command_file_bridge_probe_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_PROBE_COMMAND:-}"
 remote_command_file_bridge_solver_command="${SKILLSBENCH_REMOTE_COMMAND_FILE_BRIDGE_SOLVER_COMMAND:-}"
@@ -239,6 +242,11 @@ if [[ "$benchmark_egress_proxy_mode" != "require" ]] &&
   [[ "$benchmark_egress_proxy_mode" != "auto" ]] &&
   [[ "$benchmark_egress_proxy_mode" != "off" ]]; then
   echo "SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE must be require, auto, or off" >&2
+  exit 2
+fi
+if [[ "$docker_pip_index_mode" != "mirror" ]] &&
+  [[ "$docker_pip_index_mode" != "primary" ]]; then
+  echo "SKILLSBENCH_DOCKER_PIP_INDEX_MODE must be mirror or primary" >&2
   exit 2
 fi
 validate_bool_toggle \
@@ -530,6 +538,7 @@ remote_command=$(
     --codex-api-egress-mode reverse-tunnel \
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
     --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
+    --docker-pip-index-mode "$docker_pip_index_mode" \
     --host-local-acp-launch \
     --local-codex-bin "$remote_codex_bin" \
     --local-codex-sandbox "$local_codex_sandbox" \
@@ -615,6 +624,7 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'public_artifact_sync_interval_sec=%s\n' \
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
+  printf 'docker_pip_index_mode=%s\n' "$docker_pip_index_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
     "${product_mode_soft_verify_policy:-runner-default}"
   printf 'remote_command_file_bridge_probe_command_configured=%s\n' \
