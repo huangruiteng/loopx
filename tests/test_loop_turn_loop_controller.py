@@ -28,13 +28,18 @@ def _envelope(
     agent_id: str = "agent-1",
     signature_matches: bool = True,
 ) -> dict[str, object]:
+    signature: dict[str, object] = {"matches": signature_matches}
+    if signature_matches:
+        signature["source_hash"] = "sha256:test"
+        signature["envelope_hash"] = "sha256:test"
     return {
         "schema_version": "loopx_turn_envelope_v0",
         "goal_id": goal_id,
         "agent_id": agent_id,
         "should_run": should_run,
         "effective_action": effective_action,
-        "action_signature": {"matches": signature_matches},
+        "action_signature": signature,
+        "compaction": {"within_budget": True},
         "action": {
             "delivery_allowed": delivery_allowed,
             "must_attempt": must_attempt,
@@ -113,8 +118,18 @@ def test_validated_progress_without_delivery_decision_waits() -> None:
     payload = decide_loop_disposition(
         turn_receipt=_receipt("validated_progress"),
         quota_decision=_envelope(should_run=False, quiet_noop_allowed=True),
+        bounded_turn_budget={"max_turns": 3, "completed_turns": 1},
     )
     _assert_markers(payload, "wait")
+
+
+def test_validated_progress_without_bounded_budget_fails_closed() -> None:
+    payload = decide_loop_disposition(
+        turn_receipt=_receipt("validated_progress"),
+        quota_decision=_envelope(should_run=True),
+    )
+    _assert_markers(payload, "contract_error")
+    assert "bounded turn budget" in str(payload["reason"])
 
 
 def test_repair_receipt_routes_to_repair() -> None:
@@ -159,14 +174,14 @@ def test_user_action_from_decision_wins_even_with_receipt() -> None:
     payload = decide_loop_disposition(
         turn_receipt=_receipt("validated_progress"),
         quota_decision=_envelope(should_run=True, user_action_required=True),
+        bounded_turn_budget={"max_turns": 3, "completed_turns": 1},
     )
     _assert_markers(payload, "user_action_required")
 
 
 def test_validated_completion_wins_over_decision_user_action() -> None:
     # Precedence: a met terminal postcondition is stronger than a decision-only
-    # user action; a completed loop must not stay non-terminal behind a stale
-    # gate projection.
+    # user action, but only after the receipt is proven valid and fresh.
     payload = decide_loop_disposition(
         turn_receipt=_receipt("validated_completion"),
         quota_decision=_envelope(should_run=True, user_action_required=True),
@@ -196,14 +211,32 @@ def test_failure_receipts_route_to_repair(failure_kind: str) -> None:
     assert failure_kind in str(payload["reason"])
 
 
-def test_stale_receipt_lineage_fails_closed_to_wait() -> None:
+def test_stale_receipt_lineage_fails_closed_to_contract_error() -> None:
     payload = decide_loop_disposition(
         turn_receipt=_receipt("validated_progress", agent_id="agent-2"),
         quota_decision=_envelope(should_run=True, agent_id="agent-1"),
     )
-    _assert_markers(payload, "wait")
+    _assert_markers(payload, "contract_error")
     assert "stale_receipt" in str(payload["reason"])
     assert payload["stale_receipt_lineage"]["agent_id"] == "agent-2"
+
+
+def test_stale_completion_receipt_fails_closed_not_terminal() -> None:
+    payload = decide_loop_disposition(
+        turn_receipt=_receipt("validated_completion", agent_id="agent-2"),
+        quota_decision=_envelope(should_run=True, agent_id="agent-1"),
+    )
+    _assert_markers(payload, "contract_error")
+    assert "stale_receipt" in str(payload["reason"])
+
+
+def test_bare_completion_mapping_fails_closed_not_terminal() -> None:
+    payload = decide_loop_disposition(
+        turn_receipt={"result_kind": "validated_completion"},
+        quota_decision=_envelope(should_run=True),
+    )
+    _assert_markers(payload, "contract_error")
+    assert "lineage" in str(payload["reason"])
 
 
 def test_malformed_decision_fails_closed_as_contract_error() -> None:
@@ -211,8 +244,41 @@ def test_malformed_decision_fails_closed_as_contract_error() -> None:
         turn_receipt=None,
         quota_decision={"schema_version": "not_an_envelope"},
     )
-    _assert_markers(payload, "wait")
-    assert "contract_error" in str(payload["reason"])
+    _assert_markers(payload, "contract_error")
+
+
+def test_marker_only_signature_fails_closed() -> None:
+    envelope = _envelope(should_run=True)
+    envelope["action_signature"] = {"matches": True}
+    payload = decide_loop_disposition(
+        turn_receipt=None,
+        quota_decision=envelope,
+    )
+    _assert_markers(payload, "contract_error")
+
+
+def test_mismatched_signature_hashes_fail_closed() -> None:
+    envelope = _envelope(should_run=True)
+    envelope["action_signature"] = {
+        "matches": True,
+        "source_hash": "sha256:a",
+        "envelope_hash": "sha256:b",
+    }
+    payload = decide_loop_disposition(
+        turn_receipt=None,
+        quota_decision=envelope,
+    )
+    _assert_markers(payload, "contract_error")
+
+
+def test_over_budget_compaction_fails_closed() -> None:
+    envelope = _envelope(should_run=True)
+    envelope["compaction"] = {"within_budget": False}
+    payload = decide_loop_disposition(
+        turn_receipt=None,
+        quota_decision=envelope,
+    )
+    _assert_markers(payload, "contract_error")
 
 
 def test_mismatched_signature_fails_closed() -> None:
@@ -220,8 +286,7 @@ def test_mismatched_signature_fails_closed() -> None:
         turn_receipt=None,
         quota_decision=_envelope(should_run=True, signature_matches=False),
     )
-    _assert_markers(payload, "wait")
-    assert "contract_error" in str(payload["reason"])
+    _assert_markers(payload, "contract_error")
 
 
 def test_unknown_receipt_kind_fails_closed() -> None:
@@ -229,8 +294,7 @@ def test_unknown_receipt_kind_fails_closed() -> None:
         turn_receipt={"result_kind": "made_up_kind"},
         quota_decision=_envelope(should_run=True),
     )
-    _assert_markers(payload, "wait")
-    assert "contract_error" in str(payload["reason"])
+    _assert_markers(payload, "contract_error")
 
 
 def test_repair_decision_routes_to_repair() -> None:
