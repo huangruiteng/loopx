@@ -436,6 +436,8 @@ DOCKER_PIP_INDEX_MODES = {
     "mirror": (DEFAULT_DOCKER_PIP_INDEX_URL, DEFAULT_DOCKER_PIP_INDEX_HOST),
     "primary": (PRIMARY_DOCKER_PIP_INDEX_URL, PRIMARY_DOCKER_PIP_INDEX_HOST),
 }
+DEFAULT_DOCKER_APT_SOURCE_MODE = "mirror"
+DOCKER_APT_SOURCE_MODES = ("mirror", "primary")
 DEFAULT_DOCKER_PIP_BUILD_MODE = "isolated"
 DOCKER_PIP_BUILD_MODES = ("isolated", "no-isolation")
 DOCKER_HOST_CPU_ENV = "LOOPX_SKILLSBENCH_DOCKER_CPUS"
@@ -5886,6 +5888,7 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
     for field in (
+        "dockerfile_apt_source_mode",
         "dockerfile_pip_index_host",
         "bootstrap_light_blocker_kind",
         "dockerfile_uv_bootstrap_version",
@@ -5939,6 +5942,12 @@ def _public_task_staging(value: Any) -> dict[str, Any]:
 
 
 def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
+    docker_apt_source_mode = _docker_apt_source_mode(
+        str(
+            plan.get("docker_apt_source_mode")
+            or DEFAULT_DOCKER_APT_SOURCE_MODE
+        )
+    )
     _, docker_pip_index_host = _docker_pip_index(
         str(plan.get("docker_pip_index_mode") or DEFAULT_DOCKER_PIP_INDEX_MODE)
     )
@@ -5978,6 +5987,9 @@ def _discover_prepared_task_staging(plan: dict[str, Any]) -> dict[str, Any]:
             DOCKER_APP_SKILLS_MOUNT_BEGIN in dockerfile_text
         ),
         "apt_retry_patch_applied": DOCKER_APT_RETRY_BEGIN in dockerfile_text,
+        "dockerfile_apt_source_mode": (
+            docker_apt_source_mode if DOCKER_APT_RETRY_BEGIN in dockerfile_text else ""
+        ),
         "dockerfile_ubuntu_apt_mirror_patch_applied": (
             dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN in dockerfile_text
         ),
@@ -7759,6 +7771,12 @@ def _docker_pip_build_mode(mode: str) -> str:
     return mode
 
 
+def _docker_apt_source_mode(mode: str) -> str:
+    if mode not in DOCKER_APT_SOURCE_MODES:
+        raise ValueError(f"unsupported Docker apt source mode: {mode}")
+    return mode
+
+
 def patch_dockerfile_pip_bootstrap(
     dockerfile: Path,
     *,
@@ -8015,6 +8033,7 @@ def stage_task_for_sandbox(
     sandbox: str,
     include_task_skills: bool = True,
     benchmark_egress_proxy_env: Mapping[str, str] | None = None,
+    docker_apt_source_mode: str = DEFAULT_DOCKER_APT_SOURCE_MODE,
     docker_pip_index_mode: str = DEFAULT_DOCKER_PIP_INDEX_MODE,
     docker_pip_build_mode: str = DEFAULT_DOCKER_PIP_BUILD_MODE,
     docker_gcr_mirror_prefix: str = "",
@@ -8024,6 +8043,7 @@ def stage_task_for_sandbox(
     """Return the task path to run, staging Docker tasks when setup needs it."""
 
     task_path = task_path.expanduser().resolve()
+    docker_apt_source_mode = _docker_apt_source_mode(docker_apt_source_mode)
     docker_pip_index_url, docker_pip_index_host = _docker_pip_index(
         docker_pip_index_mode
     )
@@ -8036,6 +8056,7 @@ def stage_task_for_sandbox(
         "staged": False,
         "app_skills_mount_patch_applied": False,
         "apt_retry_patch_applied": False,
+        "dockerfile_apt_source_mode": "",
         "dockerfile_ubuntu_apt_mirror_patch_required": False,
         "dockerfile_ubuntu_apt_mirror_patch_applied": False,
         "dockerfile_ubuntu_apt_mirror_host": "",
@@ -8121,12 +8142,14 @@ def stage_task_for_sandbox(
         task_path / "environment" / "Dockerfile"
     )
     needs_ubuntu_apt_mirror_patch = (
-        dockerfile_runtime.needs_ubuntu_apt_mirror_patch(
+        docker_apt_source_mode == "mirror"
+        and dockerfile_runtime.needs_ubuntu_apt_mirror_patch(
             task_path / "environment" / "Dockerfile"
         )
     )
     needs_debian_apt_mirror_patch = (
-        dockerfile_runtime.needs_debian_apt_mirror_patch(
+        docker_apt_source_mode == "mirror"
+        and dockerfile_runtime.needs_debian_apt_mirror_patch(
             task_path / "environment" / "Dockerfile"
         )
     )
@@ -8191,6 +8214,8 @@ def stage_task_for_sandbox(
     metadata["apt_setup_risk_detected"] = needs_apt_retry_patch
     metadata["apt_retry_patch_required"] = needs_apt_retry_patch
     metadata["apt_risk_preflight_blocked"] = False
+    if needs_apt_retry_patch:
+        metadata["dockerfile_apt_source_mode"] = docker_apt_source_mode
     metadata["dockerfile_ubuntu_apt_mirror_patch_required"] = (
         needs_ubuntu_apt_mirror_patch
     )
@@ -8568,6 +8593,9 @@ def stage_task_for_sandbox(
 def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     task_id = args.task_id
     route = args.route
+    docker_apt_source_mode = _docker_apt_source_mode(
+        getattr(args, "docker_apt_source_mode", DEFAULT_DOCKER_APT_SOURCE_MODE)
+    )
     _, docker_pip_index_host = _docker_pip_index(args.docker_pip_index_mode)
     docker_pip_build_mode = _docker_pip_build_mode(
         getattr(args, "docker_pip_build_mode", DEFAULT_DOCKER_PIP_BUILD_MODE)
@@ -8801,6 +8829,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
+        "docker_apt_source_mode": docker_apt_source_mode,
         "docker_pip_index_mode": args.docker_pip_index_mode,
         "docker_pip_build_mode": docker_pip_build_mode,
         "max_rounds": args.max_rounds,
@@ -9381,6 +9410,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "app_server_reasoning_effort",
         "app_server_goal_prompt_style",
         "sandbox",
+        "docker_apt_source_mode",
         "docker_pip_index_mode",
         "docker_pip_build_mode",
         "run_group_id",
@@ -13790,6 +13820,9 @@ async def run_benchflow_case(
         sandbox=args.sandbox,
         include_task_skills=bool(args.include_task_skills),
         benchmark_egress_proxy_env=_benchmark_egress_proxy_env(args),
+        docker_apt_source_mode=getattr(
+            args, "docker_apt_source_mode", DEFAULT_DOCKER_APT_SOURCE_MODE
+        ),
         docker_pip_index_mode=args.docker_pip_index_mode,
         docker_pip_build_mode=args.docker_pip_build_mode,
         docker_gcr_mirror_prefix=args.docker_gcr_mirror_prefix,
@@ -16636,6 +16669,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help=(
             "Timeout for the benchmark setup/verifier egress proxy preflight. "
             "The probe records no raw proxy URL or raw response output."
+        ),
+    )
+    parser.add_argument(
+        "--docker-apt-source-mode",
+        choices=DOCKER_APT_SOURCE_MODES,
+        default=DEFAULT_DOCKER_APT_SOURCE_MODE,
+        help=(
+            "Apt source policy used by staged Dockerfile repair. mirror "
+            "preserves the default fixed mirrors; primary keeps the task's "
+            "original sources as a bounded fallback after a typed mirror "
+            "network failure."
         ),
     )
     parser.add_argument(
