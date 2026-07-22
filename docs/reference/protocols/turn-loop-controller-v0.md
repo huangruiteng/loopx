@@ -26,11 +26,12 @@ Exactly one typed disposition:
 | disposition | meaning | quota |
 | --- | --- | --- |
 | `run_now` | fresh decision allows the next delivery Turn | no spend by the controller |
-| `wait` | quiet cadence, blocked delivery, or fail-closed hold | no spend |
+| `wait` | quiet cadence or blocked delivery | no spend |
 | `user_action_required` | a concrete user action is projected by receipt or decision | no spend |
 | `repair` | repair-class recovery is required before any successor Turn | no spend |
 | `replan` | replan-class recovery; see continuation boundary below | no spend |
 | `terminal` | terminal postcondition met or bounded budget exhausted | no spend |
+| `contract_error` | input failed the shared contract (envelope, lineage, budget, receipt kind) | no spend |
 
 Every payload carries `spends_quota=false`, `launches_host=false`, and
 `writes_state=false`.
@@ -54,16 +55,27 @@ Every payload carries `spends_quota=false`, `launches_host=false`, and
 | replan-class decision action (`autonomous_replan*`) | — | `replan` |
 | repair-class decision action (`*_repair*`) | — | `repair` |
 | user action projected by decision | — | `user_action_required` |
-| receipt lineage mismatches decision `(goal_id, agent_id)` | — | `wait` with `stale_receipt` reason |
-| malformed decision, broken signature, or unknown receipt kind | — | `wait` with `contract_error` reason |
+| receipt lineage missing or mismatched `(goal_id, agent_id)` for a material receipt | — | `contract_error` (`stale_receipt` / missing lineage) |
+| malformed/truncated decision, marker-only or mismatched signature hashes, over-budget compaction, unknown receipt kind, progress without a proven bounded budget | — | `contract_error` |
 
-## Precedence
+## Precedence And Fail-Closed Rules
 
-A `validated_completion` receipt wins over a decision-only user action: once
-the terminal postcondition is independently proven, the loop is `terminal`
-even if the fresh decision still projects a user gate. Every other
-user-action signal (from receipt or decision) routes to
-`user_action_required` before delivery dispositions.
+- A `validated_completion` receipt wins over a decision-only user action, but
+  only after the receipt is proven valid and fresh: material receipts must
+  carry full `(goal_id, agent_id, todo_id)` lineage, and a goal/agent mismatch
+  with the fresh decision is a `contract_error`, never `terminal`.
+- Every other user-action signal (from receipt or decision) routes to
+  `user_action_required` before delivery dispositions.
+- The fresh decision must satisfy the shared Turn envelope contract
+  (`loopx_turn_envelope_v0` schema, non-empty equal signature hashes, and an
+  in-budget compaction) via the same typed route the Turn plan driver uses;
+  forged or truncated envelopes are `contract_error`, never `run_now`.
+- `validated_progress` may continue only with a proven bounded turn budget
+  (`max_turns` + `completed_turns`); without it the controller fails closed to
+  `contract_error` instead of guessing an unbounded continuation.
+- `contract_error` is a typed terminal-class outcome for invalid input, not a
+  silent `wait`: it never launches, writes, or spends, and it names the failed
+  rule in `reason`.
 
 ## Replan Continuation Boundary
 
@@ -86,5 +98,5 @@ all require replan rather than another delivery attempt.
 
 The controller is a pure function. It must not invoke a model, sleep, mutate a
 host scheduler, write state, or spend quota. Unknown or contradictory input
-fails closed to `wait` with an explicit reason; it never guesses a recovery or
-fabricates a host, gate, or user action.
+fails closed to `contract_error` with an explicit reason; it never guesses a
+recovery or fabricates a host, gate, or user action.

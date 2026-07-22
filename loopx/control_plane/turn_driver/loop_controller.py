@@ -14,8 +14,7 @@ from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
-from ..quota.turn_envelope import TURN_ENVELOPE_SCHEMA_VERSION
-from .driver import REPAIR_ACTIONS, REPLAN_ACTIONS
+from .driver import LoopXTurnRoute, _typed_route
 from .transaction import LoopXTurnResultKind
 
 
@@ -29,9 +28,7 @@ class LoopDisposition(str, Enum):
     REPAIR = "repair"
     REPLAN = "replan"
     TERMINAL = "terminal"
-
-
-_NO_RECEIPT = object()
+    CONTRACT_ERROR = "contract_error"
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -82,36 +79,26 @@ def _decision_lineage(decision: Mapping[str, Any]) -> dict[str, str]:
 def _envelope_route(decision: Mapping[str, Any]) -> str | None:
     """Return a coarse route for a fresh quota/scheduler decision.
 
-    Mirrors the typed-route semantics of the Turn plan driver: replan and
-    repair actions route to their own dispositions, user action blocks host
-    execution, quiet cadence waits, and only an allowed delivery runs now.
-    Returns None when the decision envelope itself is malformed.
+    Reuses the shared typed-route contract from the Turn plan driver, which
+    requires a matching action signature with non-empty equal hashes and an
+    in-budget compaction. A projected user action outranks delivery, so it is
+    resolved before the typed delivery route. Returns None when the envelope
+    fails the shared contract instead of accepting a forged or truncated
+    decision.
     """
 
-    if decision.get("schema_version") != TURN_ENVELOPE_SCHEMA_VERSION:
+    route = _typed_route(decision)
+    if route is LoopXTurnRoute.CONTRACT_ERROR:
         return None
-    signature = _mapping(decision.get("action_signature"))
-    if signature.get("matches") is not True:
-        return None
-
-    action = _mapping(decision.get("action"))
     user = _mapping(decision.get("user"))
-    effective_action = str(decision.get("effective_action") or "")
-
     if user.get("action_required") is True:
         return LoopDisposition.USER_ACTION_REQUIRED.value
-    if decision.get("should_run") is True:
-        if not (action.get("delivery_allowed") is True and action.get("must_attempt") is True):
-            return LoopDisposition.WAIT.value
-        if effective_action in REPLAN_ACTIONS:
-            return LoopDisposition.REPLAN.value
-        if effective_action in REPAIR_ACTIONS or effective_action.endswith(
-            ("_repair", "_repair_required")
-        ):
-            return LoopDisposition.REPAIR.value
+    if route is LoopXTurnRoute.READY_FOR_HOST:
         return LoopDisposition.RUN_NOW.value
-    if action.get("quiet_noop_allowed") is True:
-        return LoopDisposition.WAIT.value
+    if route is LoopXTurnRoute.REPLAN_REQUIRED:
+        return LoopDisposition.REPLAN.value
+    if route is LoopXTurnRoute.REPAIR_REQUIRED:
+        return LoopDisposition.REPAIR.value
     return LoopDisposition.WAIT.value
 
 
@@ -136,29 +123,10 @@ def decide_loop_disposition(
     route = _envelope_route(quota_decision)
     if route is None:
         return _disposition(
-            LoopDisposition.WAIT,
-            reason="contract_error: quota decision is not a valid loopx_turn_envelope_v0",
+            LoopDisposition.CONTRACT_ERROR,
+            reason="quota decision failed the shared envelope contract (schema, signature hashes, or compaction budget)",
         )
     decision_lineage = _decision_lineage(quota_decision)
-
-    # A validated completion settles the terminal postcondition; it wins over
-    # a decision-only user action because a finished loop must not stay
-    # non-terminal behind a stale gate projection.
-    if turn_receipt is not None:
-        completion_kind = str(_mapping(turn_receipt).get("result_kind") or "")
-        if completion_kind == LoopXTurnResultKind.VALIDATED_COMPLETION.value:
-            return _disposition(
-                LoopDisposition.TERMINAL,
-                reason="terminal postcondition met by validated completion",
-                lineage=decision_lineage,
-            )
-
-    if route == LoopDisposition.USER_ACTION_REQUIRED.value:
-        return _disposition(
-            LoopDisposition.USER_ACTION_REQUIRED,
-            reason="fresh decision projects a concrete user action",
-            lineage=decision_lineage,
-        )
 
     if turn_receipt is None:
         if route == LoopDisposition.RUN_NOW.value:
@@ -187,12 +155,30 @@ def decide_loop_disposition(
         result_kind = LoopXTurnResultKind(raw_kind)
     except ValueError:
         return _disposition(
-            LoopDisposition.WAIT,
-            reason=f"contract_error: unsupported turn receipt result_kind {raw_kind!r}",
+            LoopDisposition.CONTRACT_ERROR,
+            reason=f"unsupported turn receipt result_kind {raw_kind!r}",
+            lineage=decision_lineage,
+        )
+
+    if route == LoopDisposition.USER_ACTION_REQUIRED.value and result_kind is not LoopXTurnResultKind.VALIDATED_COMPLETION:
+        return _disposition(
+            LoopDisposition.USER_ACTION_REQUIRED,
+            reason="fresh decision projects a concrete user action",
             lineage=decision_lineage,
         )
 
     receipt_lineage = _receipt_lineage(receipt)
+    if result_kind in {
+        LoopXTurnResultKind.VALIDATED_COMPLETION,
+        LoopXTurnResultKind.VALIDATED_PROGRESS,
+    } and not all(receipt_lineage.values()):
+        # A validated material result without proven lineage cannot be
+        # distinguished from a forged completion; fail closed.
+        return _disposition(
+            LoopDisposition.CONTRACT_ERROR,
+            reason="validated material receipt is missing goal/agent/todo lineage",
+            lineage=decision_lineage,
+        )
     if all(receipt_lineage.values()) and all(decision_lineage.values()):
         mismatched = {
             key
@@ -201,21 +187,31 @@ def decide_loop_disposition(
         }
         if mismatched:
             return _disposition(
-                LoopDisposition.WAIT,
+                LoopDisposition.CONTRACT_ERROR,
                 reason="stale_receipt: receipt lineage does not match the fresh decision",
                 lineage=decision_lineage,
                 extra={"stale_receipt_lineage": receipt_lineage},
             )
 
+    if result_kind is LoopXTurnResultKind.VALIDATED_COMPLETION:
+        return _disposition(
+            LoopDisposition.TERMINAL,
+            reason="terminal postcondition met by validated completion",
+            lineage=decision_lineage,
+        )
+
     if result_kind is LoopXTurnResultKind.VALIDATED_PROGRESS:
         budget = _mapping(bounded_turn_budget)
         max_turns = budget.get("max_turns")
         completed_turns = budget.get("completed_turns")
-        if (
-            isinstance(max_turns, int)
-            and isinstance(completed_turns, int)
-            and completed_turns >= max_turns
-        ):
+        budget_proven = isinstance(max_turns, int) and isinstance(completed_turns, int)
+        if not budget_proven:
+            return _disposition(
+                LoopDisposition.CONTRACT_ERROR,
+                reason="validated progress cannot continue without a proven bounded turn budget",
+                lineage=decision_lineage,
+            )
+        if completed_turns >= max_turns:
             return _disposition(
                 LoopDisposition.TERMINAL,
                 reason="bounded turn budget exhausted after validated progress",
