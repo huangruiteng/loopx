@@ -368,6 +368,7 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
 ) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT"] = "1"
+    env["SKILLSBENCH_APPEND_HISTORY"] = "1"
 
     proc = subprocess.run(
         [str(LAUNCHER), "--dry-run", "public-smoke-case", "setup-progress"],
@@ -381,3 +382,5 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
 
     assert "public_artifact_sync_interval_sec=30" in proc.stdout
     assert "--public-artifact-sync-interval-sec 30" in proc.stdout
+    assert "--setup-only-public-preflight" in proc.stdout
+    assert "--append-history" not in proc.stdout
