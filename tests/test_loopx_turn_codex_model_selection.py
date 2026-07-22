@@ -28,10 +28,10 @@ print(json.dumps({"models": [
     assert selection == {
         "schema_version": "loopx_turn_model_selection_v0",
         "requested_mode": "auto",
-        "profile_id": "codex-sol-luna-v1",
+        "profile_id": "experimental-codex-sol-luna-v1",
         "advisor_model": "gpt-5.6-sol",
         "executor_model": "gpt-5.6-luna",
-        "selection_reason": "highest_priority_available_qualified_pair",
+        "selection_reason": "highest_priority_available_experimental_pair",
     }
 
 

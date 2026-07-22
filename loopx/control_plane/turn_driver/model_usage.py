@@ -36,13 +36,9 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _non_negative_int(value: Any) -> int | None:
-    if isinstance(value, bool):
+    if type(value) is not int:
         return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed >= 0 else None
+    return value if value >= 0 else None
 
 
 def normalize_provider_usage(value: Any) -> dict[str, int] | None:
@@ -87,10 +83,10 @@ def event_usage(event: Mapping[str, Any]) -> dict[str, int] | None:
     payload = _mapping(event.get("payload"))
     info = _mapping(payload.get("info"))
     for candidate in (
-        info.get("last_token_usage"),
-        info.get("lastTokenUsage"),
         info.get("total_token_usage"),
         info.get("totalTokenUsage"),
+        info.get("last_token_usage"),
+        info.get("lastTokenUsage"),
     ):
         usage = normalize_provider_usage(candidate)
         if usage is not None:

@@ -1,4 +1,4 @@
-"""Qualified Codex model-pair resolution for LoopX Turn Advisor auto mode."""
+"""Experimental Codex model-pair resolution for LoopX Turn Advisor auto mode."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ _MODEL_SELECTION_FIELDS = (
 _MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$")
 _SELECTION_LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 
-_QUALIFIED_PROFILES: tuple[dict[str, Any], ...] = (
+_EXPERIMENTAL_PROFILES: tuple[dict[str, Any], ...] = (
     {
-        "profile_id": "codex-sol-luna-v1",
+        "profile_id": "experimental-codex-sol-luna-v1",
         "advisor_model": "gpt-5.6-sol",
         "executor_model": "gpt-5.6-luna",
         "priority": 100,
@@ -72,7 +72,7 @@ def _available_model_slugs(value: Any) -> frozenset[str]:
 def resolve_auto_codex_model_selection(
     codex_bin: str | Path,
 ) -> dict[str, str]:
-    """Select the highest-priority qualified pair present in Codex's catalog."""
+    """Select the highest-priority experimental pair present in Codex's catalog."""
     try:
         completed = subprocess.run(
             [str(codex_bin), "debug", "models"],
@@ -91,7 +91,7 @@ def resolve_auto_codex_model_selection(
         raise ValueError("codex_advisor_auto_catalog_unavailable") from exc
     candidates = [
         profile
-        for profile in _QUALIFIED_PROFILES
+        for profile in _EXPERIMENTAL_PROFILES
         if profile["advisor_model"] in available
         and profile["executor_model"] in available
     ]
@@ -105,6 +105,6 @@ def resolve_auto_codex_model_selection(
             "profile_id": str(selected["profile_id"]),
             "advisor_model": str(selected["advisor_model"]),
             "executor_model": str(selected["executor_model"]),
-            "selection_reason": "highest_priority_available_qualified_pair",
+            "selection_reason": "highest_priority_available_experimental_pair",
         }
     )

@@ -1123,7 +1123,7 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
                 "profile_id": "fixture-pair-v1",
                 "advisor_model": "advisor-fixture",
                 "executor_model": "executor-fixture",
-                "selection_reason": "highest_priority_available_qualified_pair",
+                "selection_reason": "highest_priority_available_experimental_pair",
             },
         ),
     ],

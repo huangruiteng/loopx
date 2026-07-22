@@ -17,7 +17,7 @@ from loopx.control_plane.turn_driver.codex_cli import (
     load_codex_cli_session,
     run_codex_cli_host,
 )
-from loopx.control_plane.turn_driver.model_usage import normalize_provider_usage
+from loopx.control_plane.turn_driver.model_usage import event_usage, normalize_provider_usage
 
 
 def test_provider_usage_rejects_internally_inconsistent_total() -> None:
@@ -27,6 +27,36 @@ def test_provider_usage_rejects_internally_inconsistent_total() -> None:
         )
         is None
     )
+
+
+def test_provider_usage_rejects_fractional_counters() -> None:
+    assert (
+        normalize_provider_usage(
+            {"input_tokens": 40, "output_tokens": 1.9, "total_tokens": 41}
+        )
+        is None
+    )
+
+
+def test_event_usage_prefers_cumulative_total_over_last_segment() -> None:
+    assert event_usage(
+        {
+            "payload": {
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 40,
+                        "output_tokens": 8,
+                        "total_tokens": 48,
+                    },
+                    "total_token_usage": {
+                        "input_tokens": 100,
+                        "output_tokens": 20,
+                        "total_tokens": 120,
+                    },
+                }
+            }
+        }
+    ) == {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120}
 
 
 def _request(
@@ -1096,10 +1126,10 @@ def test_public_e2e_smoke_auto_selects_qualified_models() -> None:
     assert payload["model_selection"] == {
         "schema_version": "loopx_turn_model_selection_v0",
         "requested_mode": "auto",
-        "profile_id": "codex-sol-luna-v1",
+        "profile_id": "experimental-codex-sol-luna-v1",
         "advisor_model": "gpt-5.6-sol",
         "executor_model": "gpt-5.6-luna",
-        "selection_reason": "highest_priority_available_qualified_pair",
+        "selection_reason": "highest_priority_available_experimental_pair",
     }
     assert payload["model_usage"]["mode"] == "advisor"
     assert payload["model_usage"]["total"]["total_tokens"] == 92
