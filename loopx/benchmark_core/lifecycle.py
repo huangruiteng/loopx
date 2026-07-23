@@ -6,6 +6,7 @@ from typing import Any
 
 BENCHMARK_LIFECYCLE_STATE_SCHEMA_VERSION = "benchmark_lifecycle_state_v0"
 BENCHMARK_CANONICAL_LIFECYCLE_SCHEMA_VERSION = "benchmark_canonical_lifecycle_v0"
+BENCHMARK_LIVE_WORKER_PHASE_SCHEMA_VERSION = "benchmark_live_worker_phase_v0"
 
 
 class BenchmarkLifecyclePhase(str, Enum):
@@ -19,7 +20,22 @@ class BenchmarkLifecyclePhase(str, Enum):
     VERIFIER_SCORED = "verifier_scored"
 
 
+class BenchmarkLiveWorkerPhase(str, Enum):
+    NOT_OBSERVED = "not_observed"
+    RUNTIME_PREPARING = "runtime_preparing"
+    WORKER_PREPARED = "worker_prepared"
+    WORKER_RUNNING = "worker_running"
+    AGENT_ACTIVE = "agent_active"
+
+
 CANONICAL_LIFECYCLE_PHASES = tuple(phase.value for phase in BenchmarkLifecyclePhase)
+LIVE_WORKER_PHASES = tuple(phase.value for phase in BenchmarkLiveWorkerPhase)
+LIVE_WORKER_TERMINAL_DISPOSITIONS = (
+    "open",
+    "completed",
+    "failed",
+    "ended_unresolved",
+)
 CASE_ENTRY_PHASES = {
     BenchmarkLifecyclePhase.JOB_ROOT_MATERIALIZED.value,
     BenchmarkLifecyclePhase.TRIAL_STARTED.value,
@@ -27,6 +43,85 @@ CASE_ENTRY_PHASES = {
     BenchmarkLifecyclePhase.RESULT_WRITTEN.value,
     BenchmarkLifecyclePhase.VERIFIER_SCORED.value,
 }
+
+
+def build_benchmark_live_worker_phase(
+    *,
+    runtime_preparing: bool = False,
+    worker_prepared: bool = False,
+    worker_running: bool = False,
+    agent_active: bool = False,
+    terminal_disposition: str = "open",
+) -> dict[str, Any]:
+    """Project a benchmark-neutral live worker phase from public evidence."""
+
+    if terminal_disposition not in LIVE_WORKER_TERMINAL_DISPOSITIONS:
+        raise ValueError(
+            "terminal_disposition must be one of: "
+            + ", ".join(LIVE_WORKER_TERMINAL_DISPOSITIONS)
+        )
+
+    ready = {
+        BenchmarkLiveWorkerPhase.RUNTIME_PREPARING.value: bool(
+            runtime_preparing or worker_prepared or worker_running or agent_active
+        ),
+        BenchmarkLiveWorkerPhase.WORKER_PREPARED.value: bool(
+            worker_prepared or worker_running or agent_active
+        ),
+        BenchmarkLiveWorkerPhase.WORKER_RUNNING.value: bool(
+            worker_running or agent_active
+        ),
+        BenchmarkLiveWorkerPhase.AGENT_ACTIVE.value: bool(agent_active),
+    }
+    current_phase = BenchmarkLiveWorkerPhase.NOT_OBSERVED.value
+    for candidate in LIVE_WORKER_PHASES[1:]:
+        if ready[candidate]:
+            current_phase = candidate
+        else:
+            break
+
+    terminal = terminal_disposition != "open"
+    next_required_phase = ""
+    if not terminal:
+        for candidate in LIVE_WORKER_PHASES[1:]:
+            if not ready[candidate]:
+                next_required_phase = candidate
+                break
+
+    return {
+        "schema_version": BENCHMARK_LIVE_WORKER_PHASE_SCHEMA_VERSION,
+        "current_phase": current_phase,
+        "next_required_phase": next_required_phase,
+        "phase_ready": ready,
+        "worker_live": bool(ready["worker_running"] and not terminal),
+        "agent_active_observed": ready["agent_active"],
+        "terminal": terminal,
+        "terminal_disposition": terminal_disposition,
+        "public_evidence_only": True,
+    }
+
+
+def compact_benchmark_live_worker_phase(value: Any) -> dict[str, Any]:
+    """Return a normalized public-safe live worker phase projection."""
+
+    if not isinstance(value, dict):
+        return {}
+    if value.get("schema_version") != BENCHMARK_LIVE_WORKER_PHASE_SCHEMA_VERSION:
+        return {}
+
+    phase_ready = value.get("phase_ready")
+    if not isinstance(phase_ready, dict):
+        return {}
+    terminal_disposition = value.get("terminal_disposition")
+    if terminal_disposition not in LIVE_WORKER_TERMINAL_DISPOSITIONS:
+        return {}
+    return build_benchmark_live_worker_phase(
+        runtime_preparing=phase_ready.get("runtime_preparing") is True,
+        worker_prepared=phase_ready.get("worker_prepared") is True,
+        worker_running=phase_ready.get("worker_running") is True,
+        agent_active=phase_ready.get("agent_active") is True,
+        terminal_disposition=terminal_disposition,
+    )
 
 
 def _coerce_flags(flags: dict[str, Any]) -> dict[str, bool]:

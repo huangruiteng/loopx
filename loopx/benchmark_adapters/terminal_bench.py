@@ -15,6 +15,7 @@ from ..benchmark_core import (
     BenchmarkFailureClass,
     build_benchmark_attempt_accounting,
     build_benchmark_launch_observable_handle,
+    build_benchmark_live_worker_phase,
     build_run_permission_policy,
     canonical_lifecycle,
     compact_run_permission_policy_for_quota,
@@ -6716,6 +6717,49 @@ def _terminal_bench_compact_failure_marker(
     )
     return marker
 
+
+def _terminal_bench_live_worker_phase(
+    summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    worker_running = bool(
+        summary.get("job_active_without_trial_result") is True
+        or _compact_positive_int(summary.get("job_running_trial_count")) > 0
+    )
+    if summary.get("ready_for_compact_failure_marker") is True:
+        terminal_disposition = "failed"
+    elif (
+        summary.get("ready_for_compact_result_ingest") is True
+        and summary.get("job_result_finished") is True
+    ):
+        terminal_disposition = "completed"
+    elif summary.get("external_handle_terminal") is True:
+        terminal_disposition = "ended_unresolved"
+    else:
+        terminal_disposition = "open"
+    return build_benchmark_live_worker_phase(
+        runtime_preparing=bool(
+            summary.get("checked") is True
+            and (
+                summary.get("external_handle_observed") is True
+                or summary.get("jobs_dir_present") is True
+            )
+        ),
+        worker_prepared=summary.get("ready_for_launch_state") is True,
+        worker_running=worker_running,
+        agent_active=False,
+        terminal_disposition=terminal_disposition,
+    )
+
+
+def _with_terminal_bench_live_worker_phase(
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    summary["benchmark_live_worker_phase"] = _terminal_bench_live_worker_phase(
+        summary
+    )
+    return summary
+
+
 def summarize_terminal_bench_post_launch_materialization(
     jobs_dir: str | Path,
     *,
@@ -6766,7 +6810,7 @@ def summarize_terminal_bench_post_launch_materialization(
         "stale_active_reconcile_requested": bool(reconcile_stale_active),
     }
     if placeholder:
-        return summary
+        return _with_terminal_bench_live_worker_phase(summary)
 
     root = Path(jobs_dir).expanduser()
     jobs_dir_present = root.is_dir()
@@ -6791,7 +6835,7 @@ def summarize_terminal_bench_post_launch_materialization(
                     ),
                 }
             )
-        return summary
+        return _with_terminal_bench_live_worker_phase(summary)
 
     if public_job_name:
         candidates = [root / public_job_name]
@@ -6819,7 +6863,7 @@ def summarize_terminal_bench_post_launch_materialization(
                     ),
                 }
             )
-        return summary
+        return _with_terminal_bench_live_worker_phase(summary)
 
     job_root = existing_candidates[0]
     lock_present = (job_root / "lock.json").is_file()
@@ -7017,7 +7061,7 @@ def summarize_terminal_bench_post_launch_materialization(
             summary["first_blocker"] = "ready_for_compact_polling"
     else:
         summary["first_blocker"] = "ready_for_compact_result_ingest"
-    return summary
+    return _with_terminal_bench_live_worker_phase(summary)
 
 def _terminal_bench_launch_timeout_multiplier_policy(
     argv: list[Any],
