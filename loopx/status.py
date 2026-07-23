@@ -7,7 +7,10 @@ from typing import Any
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
-from .benchmark_core import compact_benchmark_canonical_lifecycle
+from .benchmark_core import (
+    compact_benchmark_canonical_lifecycle,
+    compact_benchmark_live_worker_phase_from_run,
+)
 from .control_plane import compact_control_plane_policy
 from .control_plane.status_collection import (
     StatusCollectionContext,
@@ -2836,6 +2839,9 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_prerequisites:
         compact["runner_prerequisites"] = runner_prerequisites
+    live_worker_phase = compact_benchmark_live_worker_phase_from_run(source)
+    if live_worker_phase:
+        compact["benchmark_live_worker_phase"] = live_worker_phase
     result_discovery = _compact_benchmark_result_discovery(
         source.get("result_discovery")
     )

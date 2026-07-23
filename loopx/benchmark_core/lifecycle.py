@@ -124,6 +124,24 @@ def compact_benchmark_live_worker_phase(value: Any) -> dict[str, Any]:
     )
 
 
+def compact_benchmark_live_worker_phase_from_run(value: Any) -> dict[str, Any]:
+    """Read the shared live worker phase from a run or runner prerequisites."""
+
+    if not isinstance(value, dict):
+        return {}
+    phase = compact_benchmark_live_worker_phase(
+        value.get("benchmark_live_worker_phase")
+    )
+    if phase:
+        return phase
+    runner_prerequisites = value.get("runner_prerequisites")
+    if not isinstance(runner_prerequisites, dict):
+        return {}
+    return compact_benchmark_live_worker_phase(
+        runner_prerequisites.get("benchmark_live_worker_phase")
+    )
+
+
 def _coerce_flags(flags: dict[str, Any]) -> dict[str, bool]:
     coerced: dict[str, bool] = {}
     previous = True

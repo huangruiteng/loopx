@@ -12,6 +12,7 @@ from .benchmark_core import (
     LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     classify_benchmark_artifact_path,
     classify_product_mode_main_table_pair,
+    compact_benchmark_live_worker_phase_from_run,
 )
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
@@ -53,6 +54,7 @@ LEDGER_LOGICAL_BACKFILL_FIELDS = (
     "native_goal_verifier_output_forwarded_to_worker",
     "official_feedback_blinded",
     "reward_feedback_forwarded",
+    "benchmark_live_worker_phase",
     "task_setup_preflight",
     "task_staging",
 )
@@ -2164,6 +2166,9 @@ def build_benchmark_run_ledger_entry(
     )
     if operator_simulator_run:
         entry["operator_simulator_run"] = operator_simulator_run
+    live_worker_phase = compact_benchmark_live_worker_phase_from_run(benchmark_run)
+    if live_worker_phase:
+        entry["benchmark_live_worker_phase"] = live_worker_phase
     attempt_accounting = (
         benchmark_run.get("attempt_accounting")
         if isinstance(benchmark_run.get("attempt_accounting"), dict)
@@ -2431,6 +2436,11 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
     else:
         for key in ("archive_state", "archive_reason", "archive_batch_id", "archived_at"):
             normalized.pop(key, None)
+    live_worker_phase = compact_benchmark_live_worker_phase_from_run(normalized)
+    if live_worker_phase:
+        normalized["benchmark_live_worker_phase"] = live_worker_phase
+    else:
+        normalized.pop("benchmark_live_worker_phase", None)
     refs = normalized.get("artifact_refs")
     if isinstance(refs, dict):
         safe_refs: dict[str, str] = {}
