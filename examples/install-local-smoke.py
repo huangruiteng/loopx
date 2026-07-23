@@ -676,7 +676,8 @@ def main() -> int:
         assert payload["ok"] is True, payload
         assert payload["quota_guard_command"] == (
             'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
-            "quota should-run --goal-id installer-smoke-goal"
+            'quota should-run --goal-id installer-smoke-goal '
+            '--turn-instance-id "${LOOPX_TURN:?}"'
         ), payload
         assert payload["quota_spend_command"] == (
             'loopx --registry "$HOME/.codex/loopx/registry.global.json" '
@@ -689,6 +690,8 @@ def main() -> int:
         assert "--delivery-outcome outcome_progress" in payload["progress_refresh_state_command"], payload
         assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["progress_refresh_state_command"], payload
         assert "follow `interaction_contract`" in payload["task_body"], payload
+        assert "`LOOPX_TURN=<current_time_iso>`; reuse." in payload["task_body"], payload
+        assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
         assert "spend post-writeback" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload
 
