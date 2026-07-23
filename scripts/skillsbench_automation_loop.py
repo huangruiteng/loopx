@@ -2691,6 +2691,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "schema_version",
         "agent_execution_mode",
         "benchflow_run_stage",
+        "benchflow_case_worker_status",
         "host_local_acp_launch_status",
         "host_local_acp_install_stage",
         "host_local_acp_install_failed_stage",
@@ -2899,6 +2900,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "benchflow_setup_stall_raw_logs_read",
         "benchflow_setup_stall_before_agent_lifecycle",
         "benchflow_agent_install_started",
+        "benchflow_lifecycle_private_logs_read",
         "benchflow_setup_stall_task_cancel_requested",
         "benchflow_setup_stall_task_cancel_acknowledged",
         "benchflow_setup_stall_task_cancel_timeout",
@@ -2918,6 +2920,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         compact["benchmark_canonical_lifecycle"] = lifecycle
     for field in (
         "codex_acp_runtime_launch_preflight_rc",
+        "benchflow_lifecycle_receipt_sequence",
         "benchflow_agent_timeout_requested_sec",
         "benchflow_agent_timeout_original_sec",
         "benchflow_agent_timeout_effective_sec",
@@ -3151,11 +3154,40 @@ def _write_public_runner_prerequisites(plan: dict[str, Any]) -> Path | None:
     if path is None:
         return None
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    _write_text_atomic(
+        path,
         json.dumps(compact, indent=2, sort_keys=True, default=_json_default) + "\n",
-        encoding="utf-8",
     )
     return path
+
+
+def _write_public_runner_lifecycle_receipt(
+    plan: dict[str, Any],
+    *,
+    run_stage: str | None = None,
+    worker_status: str | None = None,
+    host_local_acp_status: str | None = None,
+    host_local_acp_install_stage: str | None = None,
+    agent_install_started: bool | None = None,
+) -> Path | None:
+    """Persist one public-safe live phase without inspecting private output."""
+
+    prerequisites = plan.setdefault("runner_prerequisites", {})
+    if run_stage is not None:
+        prerequisites["benchflow_run_stage"] = run_stage
+    if worker_status is not None:
+        prerequisites["benchflow_case_worker_status"] = worker_status
+    if host_local_acp_status is not None:
+        prerequisites["host_local_acp_launch_status"] = host_local_acp_status
+    if host_local_acp_install_stage is not None:
+        prerequisites["host_local_acp_install_stage"] = host_local_acp_install_stage
+    if agent_install_started is not None:
+        prerequisites["benchflow_agent_install_started"] = agent_install_started
+    prerequisites["benchflow_lifecycle_private_logs_read"] = False
+    prerequisites["benchflow_lifecycle_receipt_sequence"] = (
+        int(prerequisites.get("benchflow_lifecycle_receipt_sequence") or 0) + 1
+    )
+    return _write_public_runner_prerequisites(plan)
 
 
 def _read_public_runner_prerequisites(plan: dict[str, Any]) -> dict[str, Any]:
@@ -13967,7 +13999,11 @@ async def run_benchflow_case(
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 
-    prerequisites["benchflow_run_stage"] = "benchflow_import"
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="benchflow_import",
+        worker_status="runtime_preparing",
+    )
     import benchflow.acp.runtime as benchflow_acp_runtime
     import benchflow.rollout as benchflow_rollout_module
     import benchflow.sandbox.setup as benchflow_sandbox_setup_module
@@ -13989,7 +14025,11 @@ async def run_benchflow_case(
         prerequisites["host_local_acp_connect_as_unpack_return_arity"] = (
             connect_as_return_arity
         )
-    prerequisites["benchflow_run_stage"] = "runtime_prepare"
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="runtime_prepare",
+        worker_status="runtime_preparing",
+    )
 
     host_local_acp_command = _host_local_acp_launch_command(args, plan)
     runtime_mounts = (
@@ -14032,7 +14072,11 @@ async def run_benchflow_case(
         from benchflow.acp.transport import StdioTransport
 
         prerequisites = plan.setdefault("runner_prerequisites", {})
-        prerequisites["host_local_acp_launch_status"] = "connecting"
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            worker_status="acp_connecting",
+            host_local_acp_status="connecting",
+        )
         local_acp_command = list(host_local_acp_command)
         sandbox_bridge_command = _host_local_acp_docker_bridge_command(
             env,
@@ -14103,7 +14147,11 @@ async def run_benchflow_case(
             )
             if model:
                 await asyncio.wait_for(client.set_model(model), timeout=60)
-            prerequisites["host_local_acp_launch_status"] = "connected"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                worker_status="acp_connected",
+                host_local_acp_status="connected",
+            )
             if isinstance(controller_trace, dict):
                 controller_trace["native_goal_worker_route"] = (
                     args.route == "codex-app-server-goal-baseline"
@@ -14135,7 +14183,11 @@ async def run_benchflow_case(
                 return client, session, session_adapter, agent_name
             return client, session, agent_name
         except Exception:
-            prerequisites["host_local_acp_launch_status"] = "failed"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                worker_status="acp_connect_failed",
+                host_local_acp_status="failed",
+            )
             with contextlib.suppress(Exception):
                 await client.close()
             raise
@@ -14453,6 +14505,11 @@ async def run_benchflow_case(
         )
         prerequisites["codex_acp_runtime_launch_preflight_status"] = "skipped"
         prerequisites["codex_acp_runtime_launch_preflight_raw_logs_read"] = False
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            worker_status="sandbox_installing",
+            host_local_acp_status="installing_sandbox",
+        )
         try:
             prerequisites["host_local_acp_install_stage"] = (
                 "docker_exec_capture_preflight"
@@ -14609,16 +14666,25 @@ async def run_benchflow_case(
             prerequisites["host_local_acp_install_failed_stage"] = str(
                 prerequisites.get("host_local_acp_install_stage") or "unknown"
             )
-            prerequisites["host_local_acp_launch_status"] = "sandbox_install_failed"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                worker_status="sandbox_install_failed",
+                host_local_acp_status="sandbox_install_failed",
+                host_local_acp_install_stage=str(
+                    prerequisites.get("host_local_acp_install_stage") or "unknown"
+                ),
+            )
             raise
-        prerequisites["host_local_acp_install_stage"] = "sandbox_installed"
-        prerequisites["host_local_acp_launch_status"] = "sandbox_installed"
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            worker_status="sandbox_installed",
+            host_local_acp_status="sandbox_installed",
+            host_local_acp_install_stage="sandbox_installed",
+        )
         self._phase = "installed"
 
     async def install_agent_with_launch_preflight(self: Any) -> Any:
         prerequisites = plan.setdefault("runner_prerequisites", {})
-        prerequisites["benchflow_agent_install_started"] = True
-        prerequisites["benchflow_run_stage"] = "agent_install_started"
         original_timeout = getattr(self, "_timeout", None)
         requested_timeout = _effective_benchflow_agent_timeout_sec(args)
         prerequisites["benchflow_agent_timeout_requested_sec"] = requested_timeout
@@ -14644,6 +14710,12 @@ async def run_benchflow_case(
                 effective_timeout != original_timeout
             )
             self._timeout = effective_timeout
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            run_stage="agent_install_started",
+            worker_status="agent_install_started",
+            agent_install_started=True,
+        )
         if args.host_local_acp_launch:
             return await install_agent_host_local_acp(self)
         result = await original_install_agent(self)
@@ -14784,7 +14856,11 @@ async def run_benchflow_case(
     )
     prerequisites["benchflow_setup_stall_timeout_sec"] = build_stall_timeout_sec
     prerequisites["benchflow_setup_stall_raw_logs_read"] = False
-    prerequisites["benchflow_run_stage"] = "before_benchflow_run"
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="before_benchflow_run",
+        worker_status="worker_prepared",
+    )
 
     def agent_lifecycle_started() -> bool:
         if prerequisites.get("benchflow_agent_install_started") is True:
@@ -14810,11 +14886,19 @@ async def run_benchflow_case(
         return False
 
     async def run_benchflow_with_setup_stall_watchdog() -> None:
-        prerequisites["benchflow_run_stage"] = "benchflow_run_started"
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            run_stage="benchflow_run_started",
+            worker_status="worker_running",
+        )
         task = asyncio.create_task(benchflow_run(config))
         if build_stall_timeout_sec <= 0:
             await task
-            prerequisites["benchflow_run_stage"] = "benchflow_run_completed"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="benchflow_run_completed",
+                worker_status="worker_completed",
+            )
             return
         done, _pending = await asyncio.wait(
             {task},
@@ -14823,18 +14907,32 @@ async def run_benchflow_case(
         )
         if done:
             await task
-            prerequisites["benchflow_run_stage"] = "benchflow_run_completed"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="benchflow_run_completed",
+                worker_status="worker_completed",
+            )
             return
         if agent_lifecycle_started():
-            prerequisites["benchflow_run_stage"] = (
-                "benchflow_run_continues_after_agent_lifecycle_started"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="benchflow_run_continues_after_agent_lifecycle_started",
+                worker_status="agent_active",
             )
             await task
-            prerequisites["benchflow_run_stage"] = "benchflow_run_completed"
+            _write_public_runner_lifecycle_receipt(
+                plan,
+                run_stage="benchflow_run_completed",
+                worker_status="worker_completed",
+            )
             return
         prerequisites["benchflow_setup_stall_timeout_triggered"] = True
         prerequisites["benchflow_setup_stall_before_agent_lifecycle"] = True
-        prerequisites["benchflow_run_stage"] = "build_or_setup_stall_before_agent"
+        _write_public_runner_lifecycle_receipt(
+            plan,
+            run_stage="build_or_setup_stall_before_agent",
+            worker_status="setup_stalled",
+        )
         prerequisites["benchflow_setup_stall_task_cancel_requested"] = True
         task.cancel()
         try:

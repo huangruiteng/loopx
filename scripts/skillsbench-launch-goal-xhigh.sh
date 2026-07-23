@@ -86,7 +86,7 @@ Optional env:
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
   SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC
                                        Incremental public artifact sync interval;
-                                       defaults to 30 for setup-only and 0 otherwise
+                                       defaults to 30; set to 0 to disable
   SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC Reverse-tunnel CONNECT probe timeout,
                                        default 20
   SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
@@ -402,10 +402,8 @@ build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
 if [[ -n "${SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC:-}" ]]; then
   public_artifact_sync_interval="$SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"
-elif [[ "$setup_only_public_preflight" == "1" ]]; then
-  public_artifact_sync_interval=30
 else
-  public_artifact_sync_interval=0
+  public_artifact_sync_interval=30
 fi
 tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
 tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
