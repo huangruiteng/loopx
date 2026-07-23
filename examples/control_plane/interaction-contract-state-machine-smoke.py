@@ -490,8 +490,12 @@ def assert_monitor_quiet_skip_is_no_spend() -> None:
     assert contract["agent_channel"]["must_attempt"] is False, contract
     assert contract["agent_channel"]["quiet_noop_allowed"] is True, contract
     assert contract["cli_channel"]["spend_after_validation"] is False, contract
-    assert contract["cli_channel"]["spend_policy"] == "no spend for unchanged monitor poll", contract
-    assert "monitor-poll" in contract["cli_channel"]["next_cli_actions"][0], contract
+    assert contract["cli_channel"]["spend_policy"] == (
+        "no spend for unchanged heartbeat stall receipt"
+    ), contract
+    assert "heartbeat_receipt" in contract["cli_channel"]["next_cli_actions"][0], contract
+    assert "--turn-instance-id" in contract["cli_channel"]["next_cli_actions"][0], contract
+    assert "LOOPX_HEARTBEAT_TURN_ID" in contract["cli_channel"]["next_cli_actions"][0], contract
 
 
 def assert_autonomous_replan_preempts_monitor_quiet() -> None:

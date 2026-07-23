@@ -1420,6 +1420,9 @@ def assert_state_replan_follows_claimed_frontier_not_monitor_peer() -> None:
     assert monitor_guard.get("autonomous_replan_obligation") is None, monitor_guard
     assert monitor_guard["effective_action"] == "monitor_quiet_skip", monitor_guard
     assert monitor_guard["interaction_contract"]["mode"] == "monitor_quiet_skip", monitor_guard
+    primary_action = monitor_guard["interaction_contract"]["agent_channel"]["primary_action"]
+    assert "idempotent quota receipt" in primary_action, monitor_guard
+    assert "an earlier heartbeat receipt does not satisfy this one" in primary_action, monitor_guard
 
 
 def assert_monitor_schedule_gap_requires_bounded_repair() -> None:

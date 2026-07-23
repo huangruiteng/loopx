@@ -17,6 +17,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 import loopx.cli_commands.quota as quota_command  # noqa: E402
+from loopx.quota import record_quota_monitor_poll  # noqa: E402
+from loopx.rollout_event_log import load_rollout_events, rollout_event_log_path  # noqa: E402
 from loopx.control_plane.quota.monitor_poll import (  # noqa: E402
     build_quota_monitor_poll_event,
 )
@@ -31,7 +33,11 @@ from loopx.control_plane.testing.canary_harness import (  # noqa: E402
     runtime_root_from_registry,
     write_fixture_registry,
 )
-from loopx.status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, parse_active_state_todos  # noqa: E402
+from loopx.status import (  # noqa: E402
+    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
+    collect_status,
+    parse_active_state_todos,
+)
 
 
 GOAL_ID = "monitor-poll-writeback-fixture"
@@ -318,6 +324,8 @@ def assert_unchanged_writeback() -> None:
         )
         assert payload["ok"] is True, payload
         assert payload["appended"] is True, payload
+        assert "turn_instance_id" not in payload, payload
+        assert "replayed" not in payload, payload
         writeback = payload["todo_writeback"]
         assert writeback["todo_id"] == TODO_ID, payload
         assert writeback["consecutive_no_change"] == 2, payload
@@ -793,6 +801,107 @@ def assert_cli_help_names_capability_sensitive_commands() -> None:
         "quota spend-slot",
     ):
         assert command in option_help, (command, option_help)
+    assert "--turn-instance-id" in result.stdout, result.stdout
+
+
+def assert_should_run_turn_receipt_is_idempotent() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-receipt-") as tmp:
+        registry_path, _ = write_fixture(Path(tmp), include_advancement=True)
+        turn_id = "2026-07-23T02:30:00Z"
+        ordinary = run_cli(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--available-capability",
+            "network",
+        )
+        assert ordinary["decision"] == "run", ordinary
+        assert "heartbeat_receipt" not in ordinary, ordinary
+        assert "heartbeat_stall_writeback" not in ordinary, ordinary
+        assert "appended" not in ordinary["rollout_event"], ordinary
+        empty_turn = run_cli_expect_error(
+            registry_path,
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--available-capability",
+            "network",
+            "--turn-instance-id",
+            "",
+        )
+        assert empty_turn["status"] == "quota_collection_failed", empty_turn
+        assert "turn_instance_id must be 1-128" in empty_turn["reason"], empty_turn
+        command = (
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--available-capability",
+            "network",
+            "--turn-instance-id",
+            turn_id,
+        )
+        first = run_cli(registry_path, *command)
+        replay = run_cli(registry_path, *command)
+        assert first["decision"] == "run", first
+        assert first["heartbeat_receipt"]["status"] == "committed", first
+        assert first["heartbeat_receipt"]["stall_observation"] == "not_applicable", first
+        assert replay["heartbeat_receipt"]["status"] == "replayed", replay
+        assert replay["heartbeat_receipt"]["event_id"] == first["heartbeat_receipt"]["event_id"], (
+            first,
+            replay,
+        )
+        runtime_root = runtime_root_from_registry(registry_path)
+        events = load_rollout_events(rollout_event_log_path(runtime_root, GOAL_ID))
+        receipts = [
+            event
+            for event in events
+            if event.get("event_kind") == "quota_should_run"
+            and event.get("agent_id") == AGENT_ID
+            and event.get("run_id") == turn_id
+        ]
+        assert len(receipts) == 1, receipts
+        assert monitor_poll_records(registry_path) == [], monitor_poll_records(registry_path)
+
+
+def assert_turn_scoped_monitor_poll_is_idempotent() -> None:
+    with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-stall-receipt-") as tmp:
+        registry_path, _ = write_fixture(Path(tmp))
+        runtime_root = runtime_root_from_registry(registry_path)
+        status_payload = collect_status(
+            registry_path=registry_path,
+            runtime_root_override=str(runtime_root),
+            scan_roots=[Path(__file__).resolve()],
+            limit=AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
+        )
+        turn_id = "2026-07-23T02:33:00Z"
+        kwargs = {
+            "goal_id": GOAL_ID,
+            "registry_path": registry_path,
+            "execute": True,
+            "source": "heartbeat",
+            "agent_id": AGENT_ID,
+            "todo_id": TODO_ID,
+            "result_hash": "old",
+            "turn_instance_id": turn_id,
+        }
+        first = record_quota_monitor_poll(status_payload, **kwargs)
+        replay = record_quota_monitor_poll(status_payload, **kwargs)
+        assert first["appended"] is True and first["replayed"] is False, first
+        assert replay["appended"] is False and replay["replayed"] is True, replay
+        assert replay["turn_instance_id"] == turn_id, replay
+        records = monitor_poll_records(registry_path)
+        assert len(records) == 1, records
+        assert records[0]["turn_instance_id"] == turn_id, records
 
 
 def cli_monitor_poll_scheduler_hints(registry_path: Path, *scheduler_args: str) -> tuple[dict, dict]:
@@ -983,6 +1092,8 @@ def assert_cli_monitor_poll_uses_should_run_lookback() -> None:
 
 def main() -> int:
     assert_cli_help_names_capability_sensitive_commands()
+    assert_should_run_turn_receipt_is_idempotent()
+    assert_turn_scoped_monitor_poll_is_idempotent()
     assert_cli_monitor_poll_uses_should_run_lookback()
     assert_cli_monitor_poll_preserves_codex_app_scheduler_context()
     assert_cli_monitor_poll_preserves_outer_controller_scheduler_context()

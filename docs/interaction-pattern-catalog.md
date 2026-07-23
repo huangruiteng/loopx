@@ -308,7 +308,7 @@ Hot-path execution decisions: deliver, fallback, recover, or stay quiet.
 | P0 | IP-029 | Handoff Todo Gate State | Status/quota | no interruption unless the handoff itself is user-held | map `blocks_agent` todo lifecycle into wait, successor replan, or concrete successor routing |
 | P0 | IP-021 | Per-Todo Capability Gate | CLI projects, agent decides | ask only when missing capability is owner-held | expose runnable executable candidates; agent chooses one, otherwise repair bridge or skip |
 | P0 | IP-007 | Outcome Floor Recovery | Agent | usually no interruption | produce missing outcome-scale evidence or blocker only |
-| P1 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | append at most one no-spend poll, then stay quiet |
+| P1 | IP-008 | Monitor Quiet Skip | CLI/controller | no notification | commit one turn receipt and stall observation, then stay quiet |
 
 ### Human Decision
 
@@ -783,11 +783,12 @@ the evidence needed to decide whether the goal is working.
 
 **Expected behavior**
 
-The agent may append at most one no-spend monitor poll, rerun the guard, and
-then stay quiet. The automation remains alive; monitor-only quiet skips are not
-completion or deletion signals. The poll records `quota_monitor_target_v0` so
-the next guard can distinguish a harmless unchanged watch from the same target
-repeating.
+The heartbeat passes a stable turn id to `quota should-run`. The guard commits
+one idempotent receipt, idempotently appends the no-spend stall observation,
+and returns the follow-up decision. The automation remains alive; monitor-only
+quiet skips are not completion or deletion signals. The observation records
+`quota_monitor_target_v0` so the next guard can distinguish a harmless
+unchanged watch from the same target repeating.
 
 Status and diagnose should display unchanged monitor-only work as
 `waiting_on=monitor_signal` with `severity=watch`, while retaining the quota
@@ -804,9 +805,8 @@ before another quiet poll.
 flowchart TD
   N["should_run=false"] --> M{"monitor_quiet_skip and no gate?"}
   M -->|"no"| C["follow concrete contract"]
-  M -->|"yes"| P["append no-spend poll"]
-  P --> R["rerun quota guard"]
-  R --> D{"same target repeated?"}
+  M -->|"yes"| P["turn-scoped guard writes receipt + stall"]
+  P --> D{"same target repeated?"}
   D -->|"no"| Q["quiet; keep automation active"]
   D -->|"yes"| A["dead-monitor repair required"]
 ```

@@ -321,9 +321,11 @@ surfaces:
   `waiting_on=external_evidence` goals and to already-launched long-running
   work whose current action is compact-result polling. If no handle exists,
   write a compact blocker instead of quiet waiting.
-- `monitor_quiet_skip`: no material transition is present. The agent may append
-  at most one no-spend monitor-poll event, rerun the guard, then stay quiet.
-  The automation stays active.
+- `monitor_quiet_skip`: no material transition is present. The heartbeat's
+  turn-scoped `quota should-run` guard idempotently commits one receipt and its
+  no-spend stall observation, then returns the follow-up decision. A retry
+  reuses the same turn id and repairs a partial write; a later heartbeat uses a
+  new id. The automation stays active.
 - `autonomous_replan`: repeated no-progress evidence has crossed the self-repair
   threshold. Codex must run one bounded replan/repair segment or write a
   concrete blocker before another quiet no-op.
