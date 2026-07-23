@@ -140,10 +140,10 @@ flowchart LR
 
 先按四种运行责任读这张图：
 
-- **Agent** 通过 host/runtime 完成方案、分析、工具使用和一次有界执行；
-- **Provider** 负责外部调用，并返回 bounded observation、effect result 与 readback；
-- **Capability** 负责归一化事实、验证结果并提出有限的 typed transition；
-- **Kernel** 负责接受或拒绝 transition，并持久化 todo、gate、monitor、writeback、quota 与调度。
+- **Agent:** 通过 host/runtime 完成方案、分析、工具使用和一次有界执行；
+- **Provider:** 负责外部调用，并返回 bounded observation、effect result 与 readback；
+- **Capability:** 负责归一化事实、验证结果并提出有限的 typed transition；
+- **Kernel:** 负责接受或拒绝 transition，并持久化 todo、gate、monitor、writeback、quota 与调度。
 
 Domain State、evidence 和 receipt 是这些角色之间传递的工件，不是新的 owner。Extension
 则是 provider 的交付和生命周期边界，也不是第五种运行责任。Host/runtime 承载 session、
