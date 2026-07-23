@@ -344,6 +344,9 @@ def main() -> int:
             "  <!-- loopx:todo todo_id=todo_merge_gate_1716 status=open "
             "task_class=user_gate decision_scope=direction:action:merge_pr_1716 "
             "blocks_agent=codex-test -->\n\n"
+            "- [ ] Review the validated public PR.\n"
+            "  <!-- loopx:todo todo_id=todo_review_action_1716 status=open "
+            "task_class=user_action bound_agent=codex-test -->\n\n"
             "## Agent Todo\n\n",
             encoding="utf-8",
         )
@@ -556,7 +559,11 @@ def main() -> int:
         gate_projection = parse_active_state_todos(
             state_file.read_text(encoding="utf-8")
         )
-        gate_item = gate_projection["user_todos"]["items"][0]
+        gate_item = next(
+            item
+            for item in gate_projection["user_todos"]["items"]
+            if item["todo_id"] == "todo_merge_gate_1716"
+        )
         assert gate_item["status"] == "done", gate_item
         assert "state=MERGED" in gate_item["evidence"], gate_item
         assert_public_safe(reconciled_gate)
@@ -576,6 +583,126 @@ def main() -> int:
         assert repeated_gate["already_reconciled"] is True, repeated_gate
         assert repeated_gate["write_performed"] is False, repeated_gate
         assert repeated_gate["rollout_event"]["already_recorded"] is True, repeated_gate
+
+        review_base_args = [
+            "issue-fix",
+            "pr-review-reconcile",
+            "--url",
+            "https://github.com/huangruiteng/loopx/pull/1716",
+            "--goal-id",
+            "example-goal",
+            "--todo-id",
+            "todo_review_action_1716",
+            "--agent-id",
+            "codex-test",
+            "--project",
+            str(project),
+        ]
+        open_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_open_metadata_path),
+                    "--owner-acknowledged",
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert open_review["terminal"] is False, open_review
+        assert open_review["write_performed"] is False, open_review
+        assert open_review["skip_reason"] == "pr_not_terminal", open_review
+
+        unacknowledged_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert unacknowledged_review["terminal"] is True, unacknowledged_review
+        assert unacknowledged_review["owner_acknowledged"] is False, (
+            unacknowledged_review
+        )
+        assert unacknowledged_review["write_performed"] is False, (
+            unacknowledged_review
+        )
+        assert unacknowledged_review["skip_reason"] == (
+            "owner_acknowledgement_required"
+        ), unacknowledged_review
+
+        preview_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--owner-acknowledged",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert preview_review["would_reconcile"] is True, preview_review
+        assert preview_review["write_performed"] is False, preview_review
+        assert preview_review["skip_reason"] == "execute_required", preview_review
+
+        reconciled_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--owner-acknowledged",
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert reconciled_review["reconciled"] is True, reconciled_review
+        assert reconciled_review["write_performed"] is True, reconciled_review
+        assert reconciled_review["todo_completion"]["status"] == "done", (
+            reconciled_review
+        )
+        assert reconciled_review["rollout_event"]["already_recorded"] is True, (
+            reconciled_review
+        )
+        review_projection = parse_active_state_todos(
+            state_file.read_text(encoding="utf-8")
+        )
+        review_item = next(
+            item
+            for item in review_projection["user_todos"]["items"]
+            if item["todo_id"] == "todo_review_action_1716"
+        )
+        assert review_item["status"] == "done", review_item
+        assert review_item["no_followup"] is True, review_item
+        assert "state=MERGED" in review_item["evidence"], review_item
+        assert_public_safe(reconciled_review)
+
+        repeated_review = json.loads(
+            run_cli(
+                [
+                    *review_base_args,
+                    "--metadata-json",
+                    str(gate_merged_metadata_path),
+                    "--owner-acknowledged",
+                    "--execute",
+                ],
+                registry_path=registry_path,
+                runtime_root=runtime_root,
+            ).stdout
+        )
+        assert repeated_review["already_reconciled"] is True, repeated_review
+        assert repeated_review["write_performed"] is False, repeated_review
 
         merged_args = [
             "issue-fix",
