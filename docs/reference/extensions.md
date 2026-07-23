@@ -21,6 +21,33 @@ LoopX Core
       `-- extension C -- remains disabled
 ```
 
+## Runtime Responsibilities
+
+Capability and extension are code and delivery boundaries. At runtime, keep
+four responsibilities distinct:
+
+| Responsibility | Contract |
+| --- | --- |
+| Agent | Plans and performs one bounded action through a host/runtime and an available capability. |
+| Provider | Calls an external system and returns a bounded observation, effect result, or readback. |
+| Capability | Normalizes provider output, applies domain policy and validation, and proposes a finite transition. |
+| LoopX Kernel | Accepts or rejects that proposal and owns durable todo, gate, monitor, writeback, quota, recovery, and scheduling state. |
+
+The normal flow is:
+
+```text
+Agent -> Capability -> Provider -> external system
+Provider readback -> Capability transition proposal -> LoopX Kernel
+```
+
+`Provider` is an implementation role. When it implements a LoopX capability,
+it is registered under that capability; a standalone extension provider may
+instead expose only its own bounded command. A provider may be built into LoopX
+or delivered by an extension. `Extension` is not a fifth runtime role: it owns
+provider packaging, installation, enablement, upgrade, and compatibility
+lifecycle. It does not own domain transition policy or goal state. Domain state
+and receipts are data crossing these boundaries, not independent actors.
+
 ## Repository Layout
 
 The repository uses one path for each ownership boundary:

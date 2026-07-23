@@ -315,6 +315,21 @@ benchmark 证据边界。
 [控制面开发者 9 讲](docs/development/control-plane-course/README.md)开始，按真实 CLI
 执行路径、组合状态推理、核心函数、分层质量门禁和 smoke 建立代码心智模型。
 
+### 给开发者：四种运行责任
+
+| 角色 | 负责什么 |
+| --- | --- |
+| **Agent** | 通过 host/runtime 完成方案、分析、工具使用和一次有界执行 |
+| **Provider** | 调用外部系统，返回 observation、effect result 与 readback |
+| **Capability** | 定义调用者结果，归一化并验证 provider 输出，提出 typed transition |
+| **Kernel** | 持久化 todo、gate、monitor、已接受 writeback、quota、恢复与调度 |
+
+执行路径是 `Agent -> Capability -> Provider`，控制结果沿
+`Provider readback -> Capability transition -> Kernel` 返回。Extension 负责可选
+provider 的打包和生命周期，不是另一个控制面 owner。详见
+[核心架构](docs/architecture.md)与
+[Extension / Capability 参考](docs/reference/extensions.md)。
+
 项目角色与维护权限见 [GOVERNANCE.md](GOVERNANCE.md)，创建者与贡献者归属见
 [AUTHORS.md](AUTHORS.md)，关键公开演进见
 [docs/project/history.md](docs/project/history.md)，名称与标识使用见

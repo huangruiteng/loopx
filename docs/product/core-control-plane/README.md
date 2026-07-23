@@ -31,6 +31,23 @@ rediscovering state from chat history or private planning notes. The rule seam
 map is intentionally behavior-preserving: it names extraction seams and parity
 checks before the refactor branch moves control-plane code.
 
+## Execution Ownership
+
+These graphs describe Kernel state and legal transitions. The surrounding turn
+uses four runtime responsibilities:
+
+| Role | Responsibility |
+| --- | --- |
+| Agent | Plans and performs one bounded action through a host/runtime. |
+| Provider | Returns external observations, effect results, and readback. |
+| Capability | Normalizes provider output, validates it, and proposes a typed transition. |
+| Kernel | Owns durable todo, gate, monitor, accepted writeback, quota, recovery, and scheduling. |
+
+Domain state, evidence, receipts, and projections are exchanged or derived
+artifacts, not additional owners. An extension may deliver a provider, but its
+installation lifecycle does not grant Kernel authority. See the full
+[runtime responsibility model](../../architecture.md#runtime-responsibility-model).
+
 ## Three-Lens Contract
 
 ```mermaid
