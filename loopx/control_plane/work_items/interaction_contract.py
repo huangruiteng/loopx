@@ -530,6 +530,15 @@ def interaction_next_cli_actions(
         if scheduler_args
         else "use the current host packet's typed monitor command"
     )
+    typed_heartbeat_receipt_retry = (
+        f"on missing/write_failed heartbeat_receipt only: {typed_quota_guard} "
+        '--turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?required}"'
+        if scheduler_args
+        else (
+            "on missing/write_failed heartbeat_receipt only: retry the current "
+            "host packet's typed quota guard with the same heartbeat turn id"
+        )
+    )
     capability_resolution_actions = build_capability_resolution_writeback_actions(
         payload.get("capability_gate"),
         goal_id=goal_id,
@@ -565,10 +574,7 @@ def interaction_next_cli_actions(
             f"loopx heartbeat-prompt --thin --goal-id {goal_id} --agent-id <registered-agent> --agent-scope '<scope>'",
         ]
     if mode == "monitor_quiet_skip":
-        return [
-            typed_monitor_poll,
-            typed_quota_guard,
-        ]
+        return [typed_heartbeat_receipt_retry]
     if mode == "monitor_due":
         return [
             typed_monitor_poll,
@@ -747,7 +753,7 @@ def _interaction_spend_policy(
     if mode in {"user_gate", "user_todo_blocker_push", "user_action_required"}:
         return "no spend for gate or blocker push"
     if mode == "monitor_quiet_skip":
-        return "no spend for unchanged monitor poll"
+        return "no spend for unchanged heartbeat stall receipt"
     if mode == "monitor_due":
         return (
             "spend once only after a validated material monitor transition; "

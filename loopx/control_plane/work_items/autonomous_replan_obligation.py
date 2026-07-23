@@ -161,6 +161,9 @@ def run_history_stall_signal(
         "delivery_outcome": delivery_outcome.value if delivery_outcome else None,
         "signature": normalized_run_history_stall_signature(action_or_classification),
     }
+    turn_instance_id = str(run.get("turn_instance_id") or "").strip()
+    if turn_instance_id:
+        signal["turn_instance_id"] = turn_instance_id
     monitor_target = run_history_monitor_target(run)
     if monitor_target:
         signal["monitor_target_id"] = str(monitor_target.get("target_id") or "")
@@ -788,8 +791,23 @@ def autonomous_replan_obligation_from_runs(
                 evidence,
                 agent_todos=agent_todos,
             )
-        monitor_signals = signals[:dead_monitor_repeat_threshold]
-        if len(monitor_signals) < dead_monitor_repeat_threshold:
+        heartbeat_monitor_signals = signals[:autonomous_replan_stall_threshold]
+        heartbeat_turn_ids = {
+            str(signal.get("turn_instance_id") or "")
+            for signal in heartbeat_monitor_signals
+            if signal.get("turn_instance_id")
+        }
+        distinct_heartbeat_repeat = (
+            len(heartbeat_monitor_signals) == autonomous_replan_stall_threshold
+            and len(heartbeat_turn_ids) == autonomous_replan_stall_threshold
+        )
+        monitor_repeat_threshold = (
+            autonomous_replan_stall_threshold
+            if distinct_heartbeat_repeat
+            else dead_monitor_repeat_threshold
+        )
+        monitor_signals = signals[:monitor_repeat_threshold]
+        if len(monitor_signals) < monitor_repeat_threshold:
             return periodic_review()
         monitor_classifications = {
             str(signal.get("classification") or "")
@@ -798,7 +816,7 @@ def autonomous_replan_obligation_from_runs(
         }
         if monitor_classifications != {"quota_monitor_poll"}:
             return periodic_review()
-        if run_history_monitor_wait_already_acknowledged(
+        if not distinct_heartbeat_repeat and run_history_monitor_wait_already_acknowledged(
             scoped_latest_runs,
             signal_count=len(monitor_signals),
             autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
@@ -819,11 +837,11 @@ def autonomous_replan_obligation_from_runs(
                 "schema_version": dead_monitor_repeat_schema_version,
                 "section": "run_history",
                 "text": (
-                    f"latest {dead_monitor_repeat_threshold} monitor polls repeated "
+                    f"latest {monitor_repeat_threshold} monitor polls repeated "
                     "the same monitor target without a material transition"
                 ),
                 "run_count": len(monitor_signals),
-                "threshold": dead_monitor_repeat_threshold,
+                "threshold": monitor_repeat_threshold,
                 "monitor_target_id": monitor_target_id,
                 "latest_generated_at": signals[0].get("generated_at"),
                 "agent_id": _single_public_agent_id(monitor_signals),

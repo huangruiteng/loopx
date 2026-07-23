@@ -202,7 +202,11 @@ def resolve_canonical_primary_action(payload: dict[str, Any], *, mode: str) -> s
             return f"run one bounded autonomous replan slice around {lane_action}"
         return "run one bounded self-repair or replan segment before another quiet no-op"
     if mode == "monitor_quiet_skip":
-        return "record at most one no-spend monitor-poll event, rerun the guard, then stay quiet if unchanged"
+        return (
+            "ensure this heartbeat's idempotent quota receipt is committed, then "
+            "stay quiet if unchanged; the guard records the eligible no-progress "
+            "observation and an earlier heartbeat receipt does not satisfy this one"
+        )
     if mode == "agent_monitor_only":
         return "stay quiet until a monitor is due, a verified direct reply arrives, or the work mode changes"
     if mode == "monitor_due":
