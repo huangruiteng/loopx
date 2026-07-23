@@ -76,17 +76,14 @@ def normalize_provider_usage(value: Any) -> dict[str, int] | None:
 
 
 def event_usage(event: Mapping[str, Any]) -> dict[str, int] | None:
-    for candidate in (event.get("usage"), event.get("tokenUsage")):
-        usage = normalize_provider_usage(candidate)
-        if usage is not None:
-            return usage
+    """Read only provider receipts that cover the complete current session."""
     payload = _mapping(event.get("payload"))
     info = _mapping(payload.get("info"))
     for candidate in (
         info.get("total_token_usage"),
         info.get("totalTokenUsage"),
-        info.get("last_token_usage"),
-        info.get("lastTokenUsage"),
+        event.get("usage"),
+        event.get("tokenUsage"),
     ):
         usage = normalize_provider_usage(candidate)
         if usage is not None:
@@ -99,6 +96,33 @@ def aggregate_provider_usage(*phases: Mapping[str, int]) -> dict[str, int]:
     return {
         key: sum(int(phase.get(key, 0)) for phase in phases)
         for key in sorted(keys)
+    }
+
+
+def latest_cumulative_provider_usage(
+    previous: Mapping[str, int],
+    latest: Mapping[str, int],
+) -> dict[str, int] | None:
+    """Return a later same-session cumulative receipt, failing on counter drift."""
+    if not set(previous).issubset(latest):
+        return None
+    if any(int(latest[key]) < int(value) for key, value in previous.items()):
+        return None
+    return dict(latest)
+
+
+def provider_usage_delta(
+    latest: Mapping[str, int],
+    baseline: Mapping[str, int],
+) -> dict[str, int] | None:
+    """Subtract a prior session baseline from a later cumulative receipt."""
+    if not set(baseline).issubset(latest):
+        return None
+    if any(int(latest[key]) < int(value) for key, value in baseline.items()):
+        return None
+    return {
+        key: int(value) - int(baseline.get(key, 0))
+        for key, value in latest.items()
     }
 
 

@@ -20,7 +20,11 @@ from loopx.control_plane.turn_driver.codex_cli import (
     run_codex_cli_host,
 )
 from loopx.control_plane.turn_driver.executor import BuiltInHostError
-from loopx.control_plane.turn_driver.model_usage import event_usage, normalize_provider_usage
+from loopx.control_plane.turn_driver.model_usage import (
+    event_usage,
+    latest_cumulative_provider_usage,
+    normalize_provider_usage,
+)
 
 
 def test_provider_usage_rejects_internally_inconsistent_total() -> None:
@@ -44,6 +48,11 @@ def test_provider_usage_rejects_fractional_counters() -> None:
 def test_event_usage_prefers_cumulative_total_over_last_segment() -> None:
     assert event_usage(
         {
+            "usage": {
+                "input_tokens": 60,
+                "output_tokens": 10,
+                "total_tokens": 70,
+            },
             "payload": {
                 "info": {
                     "last_token_usage": {
@@ -60,6 +69,35 @@ def test_event_usage_prefers_cumulative_total_over_last_segment() -> None:
             }
         }
     ) == {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120}
+
+
+def test_event_usage_rejects_last_segment_without_cumulative_receipt() -> None:
+    assert (
+        event_usage(
+            {
+                "payload": {
+                    "info": {
+                        "last_token_usage": {
+                            "input_tokens": 40,
+                            "output_tokens": 8,
+                            "total_tokens": 48,
+                        }
+                    }
+                }
+            }
+        )
+        is None
+    )
+
+
+def test_latest_cumulative_provider_usage_rejects_counter_regression() -> None:
+    assert (
+        latest_cumulative_provider_usage(
+            {"input_tokens": 100, "output_tokens": 20, "total_tokens": 120},
+            {"input_tokens": 90, "output_tokens": 21, "total_tokens": 111},
+        )
+        is None
+    )
 
 
 def _request(
@@ -117,23 +155,37 @@ if prompt_log:
 turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
 print(json.dumps({
     "type": "thread.started",
-    "thread_id": "session-fixture-0001",
+    "thread_id": (
+        "session-fixture-drift"
+        if os.environ.get("FAKE_CODEX_RESUME_SESSION_DRIFT") == "1"
+        and "resume" in args
+        else "session-fixture-0001"
+    ),
     "raw_trajectory": "must-not-persist",
     "private_material": "must-not-persist"
 }), flush=True)
 model = args[args.index("--model") + 1] if "--model" in args else ""
 advisor = model == "advisor-fixture"
+logged_args = [
+    json.loads(line)
+    for line in log.read_text(encoding="utf-8").splitlines()
+]
+same_model_invocations = sum(
+    1
+    for row in logged_args
+    if "--model" in row and row[row.index("--model") + 1] == model
+)
 if os.environ.get("FAKE_CODEX_USAGE") == "1" and not (
     os.environ.get("FAKE_CODEX_SKIP_RESUME_USAGE") == "1" and "resume" in args
 ):
     print(json.dumps({
         "type": "turn.completed",
         "usage": {
-            "input_tokens": 40 if advisor else 120,
-            "cached_input_tokens": 5 if advisor else 20,
-            "output_tokens": 8 if advisor else 30,
-            "reasoning_output_tokens": 3 if advisor else 10,
-            "total_tokens": 48 if advisor else 150
+            "input_tokens": (40 if advisor else 120) * same_model_invocations,
+            "cached_input_tokens": (5 if advisor else 20) * same_model_invocations,
+            "output_tokens": (8 if advisor else 30) * same_model_invocations,
+            "reasoning_output_tokens": (3 if advisor else 10) * same_model_invocations,
+            "total_tokens": (48 if advisor else 150) * same_model_invocations
         }
     }), flush=True)
 if os.environ.get("FAKE_CODEX_FAIL_ADVISOR") == "1" and advisor:
@@ -152,6 +204,11 @@ schema_path = pathlib.Path(args[args.index("--output-schema") + 1])
 schema = schema_path.read_text(encoding="utf-8")
 if "loopx_turn_complexity_checkpoint_v0" in schema:
     complexity = os.environ.get("FAKE_CODEX_COMPLEXITY", "simple")
+    if (
+        os.environ.get("FAKE_CODEX_INVALID_CHECKPOINT_CONTRACT") == "1"
+        and "resume" not in args
+    ):
+        complexity = "invalid"
     complex_case = complexity == "complex"
     checkpoint_turn_key = (
         "sha256:" + "f" * 64
@@ -251,14 +308,25 @@ with log.open("a", encoding="utf-8") as handle:
 match = re.search(r'"turn_key":"([^"]+)"', prompt)
 turn_key = match.group(1) if match else "sha256:" + "a" * 64
 print(json.dumps({"type": "thread.started", "thread_id": "traex-session-fixture-0001"}), flush=True)
+model = args[args.index("--model") + 1] if "--model" in args else ""
+logged_rows = [
+    json.loads(line)
+    for line in log.read_text(encoding="utf-8").splitlines()
+]
+same_model_invocations = sum(
+    1
+    for row in logged_rows
+    if "--model" in row["args"]
+    and row["args"][row["args"].index("--model") + 1] == model
+)
 print(json.dumps({
     "type": "turn.completed",
     "usage": {
-        "input_tokens": 120,
-        "cached_input_tokens": 20,
-        "output_tokens": 30,
-        "reasoning_output_tokens": 10,
-        "total_tokens": 150
+        "input_tokens": 120 * same_model_invocations,
+        "cached_input_tokens": 20 * same_model_invocations,
+        "output_tokens": 30 * same_model_invocations,
+        "reasoning_output_tokens": 10 * same_model_invocations,
+        "total_tokens": 150 * same_model_invocations
     }
 }), flush=True)
 output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
@@ -354,6 +422,27 @@ def test_traex_cli_dialect_uses_prompt_schema_instead_of_provider_schema(
     assert 'sandbox_mode="workspace-write"' in resumed
 
 
+def test_codex_resume_command_enforces_requested_sandbox(
+    tmp_path: Path,
+) -> None:
+    schema = tmp_path / "schema.json"
+    output = tmp_path / "output.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    resumed = _codex_command(
+        codex_bin="/usr/local/bin/codex",
+        project=tmp_path,
+        schema_path=schema,
+        output_path=output,
+        sandbox="read-only",
+        model="gpt-fixture",
+        session_id="session-fixture",
+    )
+
+    assert 'approval_policy="never"' in resumed
+    assert 'sandbox_mode="read-only"' in resumed
+
+
 def test_traex_cli_repairs_invalid_final_receipt_in_same_session(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -378,6 +467,8 @@ def test_traex_cli_repairs_invalid_final_receipt_in_same_session(
     assert len(rows) == 2
     assert "resume" not in rows[0]["args"]
     assert "resume" in rows[1]["args"]
+    assert 'approval_policy="never"' in rows[1]["args"]
+    assert 'sandbox_mode="read-only"' in rows[1]["args"]
     assert "--output-schema" not in rows[0]["args"]
     assert "loopx_turn_result_v0" in rows[0]["prompt"]
     assert "Do not perform more workspace work" in rows[1]["prompt"]
@@ -565,6 +656,51 @@ def test_codex_cli_host_reports_compact_provider_usage(
             "total_tokens": 150,
         },
     }
+
+
+def test_codex_cli_reports_per_turn_delta_for_resumed_cumulative_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime_root = tmp_path / "runtime"
+
+    results = []
+    for index in range(3):
+        results.append(
+            run_codex_cli_host(
+                _request(
+                    turn_key="sha256:" + str(index + 1) * 64,
+                    session_action="start_new" if index == 0 else "resume",
+                ),
+                runtime_root=runtime_root,
+                project=project,
+                codex_bin=str(executable),
+                model="executor-fixture",
+                timeout_seconds=5,
+            )
+        )
+
+    assert [
+        result["model_usage"]["executor"]["total_tokens"] for result in results
+    ] == [150, 150, 150]
+    assert sum(
+        result["model_usage"]["total"]["total_tokens"] for result in results
+    ) == 450
+    stored = load_codex_cli_session(
+        runtime_root,
+        lineage={
+            "goal_id": "fixture-goal",
+            "agent_id": "codex-fixture",
+            "todo_id": "todo_fixture0001",
+        },
+    )
+    assert stored is not None
+    assert stored["usage_baseline"]["total_tokens"] == 450
 
 
 def test_codex_cli_repairs_semantically_invalid_final_receipt_in_same_session(
@@ -799,6 +935,63 @@ def test_codex_cli_repairs_checkpoint_turn_key_in_same_session(
     assert "prior complexity checkpoint receipt violated" in prompts[1]
     assert result["model_usage"]["advisor_applied"] is False
     assert result["model_usage"]["executor"]["total_tokens"] == 450
+
+
+def test_codex_cli_rejects_checkpoint_repair_session_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_INVALID_CHECKPOINT_TURN_KEY", "1")
+    monkeypatch.setenv("FAKE_CODEX_RESUME_SESSION_DRIFT", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with pytest.raises(
+        RuntimeError,
+        match="codex_cli_complexity_checkpoint_repair_session_mismatch",
+    ):
+        run_codex_cli_host(
+            _request(),
+            runtime_root=tmp_path / "runtime",
+            project=project,
+            codex_bin=str(executable),
+            sandbox="workspace-write",
+            model="executor-fixture",
+            advisor_model="advisor-fixture",
+            timeout_seconds=5,
+        )
+
+
+def test_codex_cli_does_not_repair_other_invalid_checkpoint_contracts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_INVALID_CHECKPOINT_CONTRACT", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with pytest.raises(
+        RuntimeError,
+        match="codex_cli_complexity_checkpoint_contract_invalid",
+    ):
+        run_codex_cli_host(
+            _request(),
+            runtime_root=tmp_path / "runtime",
+            project=project,
+            codex_bin=str(executable),
+            sandbox="workspace-write",
+            model="executor-fixture",
+            advisor_model="advisor-fixture",
+            timeout_seconds=5,
+        )
+
+    assert len(log_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_codex_cli_advisor_escalates_simple_checkpoint_without_workspace_inspection(
@@ -1160,6 +1353,7 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
         "todo_id",
         "host",
         "session_id",
+        "usage_baseline",
     }
     session_paths = list(runtime_root.glob("goals/*/turn-sessions/*.json"))
     assert len(session_paths) == 1
@@ -1167,6 +1361,79 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
     persisted = session_paths[0].read_text(encoding="utf-8")
     assert "raw_trajectory" not in persisted
     assert "private_material" not in persisted
+
+
+def test_codex_cli_rejects_direct_resume_session_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    run_codex_cli_host(
+        _request(),
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+    monkeypatch.setenv("FAKE_CODEX_RESUME_SESSION_DRIFT", "1")
+
+    with pytest.raises(
+        RuntimeError,
+        match="codex_cli_executor_resume_session_mismatch",
+    ):
+        run_codex_cli_host(
+            _request(
+                turn_key="sha256:" + "b" * 64,
+                session_action="resume",
+            ),
+            runtime_root=runtime_root,
+            project=project,
+            codex_bin=str(executable),
+            timeout_seconds=5,
+        )
+
+
+def test_codex_cli_rejects_adaptive_checkpoint_resume_session_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    run_codex_cli_host(
+        _request(),
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        timeout_seconds=5,
+    )
+    monkeypatch.setenv("FAKE_CODEX_RESUME_SESSION_DRIFT", "1")
+
+    with pytest.raises(
+        RuntimeError,
+        match="codex_cli_complexity_checkpoint_resume_session_mismatch",
+    ):
+        run_codex_cli_host(
+            _request(
+                turn_key="sha256:" + "b" * 64,
+                session_action="resume",
+            ),
+            runtime_root=runtime_root,
+            project=project,
+            codex_bin=str(executable),
+            model="executor-fixture",
+            advisor_model="advisor-fixture",
+            timeout_seconds=5,
+        )
 
 
 def test_codex_cli_host_ignores_legacy_session_eligibility(
@@ -1360,6 +1627,8 @@ def test_public_e2e_smoke_runs_n_transactions_on_one_session() -> None:
     assert all(turn["marker_valid"] for turn in payload["turns"])
     assert payload["marker_valid"] is True
     assert payload["quota_slot_spend_count"] == 3
+    assert payload["model_usage"]["executor"]["total_tokens"] == 450
+    assert payload["model_usage"]["total"]["total_tokens"] == 450
     assert payload["replay_effects"] == {
         "host_invoked": False,
         "quota_spent": False,
@@ -1394,8 +1663,8 @@ def test_public_e2e_smoke_triggers_advisor_between_checkpoint_and_executor() -> 
     assert payload["model_usage"]["mode"] == "advisor"
     assert payload["model_usage"]["advisor_applied"] is True
     assert payload["model_usage"]["advisor"]["total_tokens"] == 22
-    assert payload["model_usage"]["executor"]["total_tokens"] == 70
-    assert payload["model_usage"]["total"]["total_tokens"] == 92
+    assert payload["model_usage"]["executor"]["total_tokens"] == 45
+    assert payload["model_usage"]["total"]["total_tokens"] == 67
     assert payload["model_usage"]["usage_complete"] is True
     assert payload["turns"][0]["model_usage"]["advisor_decision"]["decision"] == (
         "applied_complexity"
@@ -1433,7 +1702,7 @@ def test_public_e2e_smoke_auto_selects_qualified_models() -> None:
         "selection_reason": "highest_priority_available_experimental_pair",
     }
     assert payload["model_usage"]["mode"] == "advisor"
-    assert payload["model_usage"]["total"]["total_tokens"] == 92
+    assert payload["model_usage"]["total"]["total_tokens"] == 67
     assert payload["validation_status"] == "passed"
 
 
@@ -1522,6 +1791,8 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     assert result.returncode == 0, result.stderr or result.stdout
     payload = json.loads(result.stdout)
     assert payload["schema_version"] == "loopx_turn_advisor_qualification_v0"
+    assert payload["profile_status"] == "experimental_opt_in"
+    assert payload["automatic_promotion_allowed"] is False
     assert payload["real_codex_cli_invoked"] is False
     assert payload["quality_ok"] is True
     assert payload["baseline"]["total_tokens"] == 150
@@ -1536,10 +1807,10 @@ def test_advisor_qualification_compares_quality_and_total_tokens() -> None:
     assert payload["advisor"]["validation_status"] == "passed"
     assert payload["advisor"]["advisor_applied"] is True
     assert payload["advisor"]["advisor_tokens"] == 22
-    assert payload["advisor"]["executor_tokens"] == 70
-    assert payload["advisor"]["total_tokens"] == 92
-    assert payload["token_delta"] == -58
-    assert payload["token_reduction_ratio"] == 0.3867
+    assert payload["advisor"]["executor_tokens"] == 45
+    assert payload["advisor"]["total_tokens"] == 67
+    assert payload["token_delta"] == -83
+    assert payload["token_reduction_ratio"] == 0.5533
     assert payload["token_reduced"] is True
     assert payload["raw_model_output_recorded"] is False
 

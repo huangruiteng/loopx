@@ -32,6 +32,47 @@ schema = schema_path.read_text(encoding="utf-8")
 checkpoint = "loopx_turn_complexity_checkpoint_v0" in schema
 advisor = "loopx_turn_advisor_v0" in schema
 guided_executor = not advisor and "A read-only advisor produced" in prompt
+turn_number = 1
+if CASE_ID == "marker-step":
+    current_marker = pathlib.Path(MARKER_NAME)
+    if current_marker.is_file():
+        current = current_marker.read_text(encoding="utf-8").strip()
+        match = re.fullmatch(re.escape(MARKER_PREFIX) + r"([1-9][0-9]*)", current)
+        if match is None:
+            raise SystemExit("unexpected marker value")
+        turn_number = int(match.group(1)) + 1
+if advisor:
+    usage = {
+        "input_tokens": 18,
+        "cached_input_tokens": 3,
+        "output_tokens": 4,
+        "reasoning_output_tokens": 2,
+        "total_tokens": 22,
+    }
+elif checkpoint:
+    usage = {
+        "input_tokens": 35 * (turn_number - 1) + 20,
+        "cached_input_tokens": 5 * (turn_number - 1) + 4,
+        "output_tokens": 10 * (turn_number - 1) + 5,
+        "reasoning_output_tokens": 3 * (turn_number - 1) + 2,
+        "total_tokens": 45 * (turn_number - 1) + 25,
+    }
+elif guided_executor:
+    usage = {
+        "input_tokens": 35 * turn_number,
+        "cached_input_tokens": 5 * turn_number,
+        "output_tokens": 10 * turn_number,
+        "reasoning_output_tokens": 3 * turn_number,
+        "total_tokens": 45 * turn_number,
+    }
+else:
+    usage = {
+        "input_tokens": 120 * turn_number,
+        "cached_input_tokens": 20 * turn_number,
+        "output_tokens": 30 * turn_number,
+        "reasoning_output_tokens": 10 * turn_number,
+        "total_tokens": 150 * turn_number,
+    }
 print(
     json.dumps(
         {
@@ -45,13 +86,7 @@ print(
     json.dumps(
         {
             "type": "turn.completed",
-            "usage": {
-                "input_tokens": 18 if advisor else 20 if checkpoint else 35 if guided_executor else 120,
-                "cached_input_tokens": 3 if advisor else 4 if checkpoint else 5 if guided_executor else 20,
-                "output_tokens": 4 if advisor else 5 if checkpoint else 10 if guided_executor else 30,
-                "reasoning_output_tokens": 2 if advisor else 2 if checkpoint else 3 if guided_executor else 10,
-                "total_tokens": 22 if advisor else 25 if checkpoint else 45 if guided_executor else 150,
-            },
+            "usage": usage,
         }
     ),
     flush=True,
@@ -100,15 +135,8 @@ print(
     ),
     flush=True,
 )
-turn_number = 1
 if CASE_ID == "marker-step":
     marker = pathlib.Path(MARKER_NAME)
-    if marker.is_file():
-        current = marker.read_text(encoding="utf-8").strip()
-        match = re.fullmatch(re.escape(MARKER_PREFIX) + r"([1-9][0-9]*)", current)
-        if match is None:
-            raise SystemExit("unexpected marker value")
-        turn_number = int(match.group(1)) + 1
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(MARKER_PREFIX + str(turn_number), encoding="utf-8")
 elif CASE_ID == "arithmetic-fix":

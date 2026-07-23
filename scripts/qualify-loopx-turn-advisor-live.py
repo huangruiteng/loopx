@@ -199,6 +199,7 @@ def main() -> int:
     token_reduced = bool(usage_available and token_delta is not None and token_delta < 0)
     receipt = {
         "schema_version": "loopx_turn_advisor_qualification_v0",
+        "profile_status": "experimental_opt_in",
         "real_codex_cli_invoked": not args.fixture,
         "turn_count": args.turn_count,
         "case_id": args.case_id,

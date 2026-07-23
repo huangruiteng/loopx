@@ -31,11 +31,14 @@ from .model_usage import (
     aggregate_provider_usage,
     direct_model_usage,
     event_usage,
+    latest_cumulative_provider_usage,
+    normalize_provider_usage,
+    provider_usage_delta,
 )
 from .transaction import LOOPX_TURN_RESULT_SCHEMA_VERSION, TRANSACTION_PHASES
 
 
-CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v1"
+CODEX_CLI_SESSION_SCHEMA_VERSION = "loopx_codex_cli_session_v2"
 LOOPX_TURN_ADVISOR_SCHEMA_VERSION = "loopx_turn_advisor_v0"
 LOOPX_TURN_ADVISOR_CONTEXT_SCHEMA_VERSION = "loopx_turn_advisor_context_v0"
 LOOPX_TURN_COMPLEXITY_CHECKPOINT_SCHEMA_VERSION = (
@@ -135,7 +138,14 @@ def load_codex_cli_session(
     session_id = _valid_session_id(value.get("session_id"))
     if not session_id:
         return None
-    return {**value, "session_id": session_id}
+    usage_baseline = normalize_provider_usage(value.get("usage_baseline"))
+    if usage_baseline is None:
+        return None
+    return {
+        **value,
+        "session_id": session_id,
+        "usage_baseline": usage_baseline,
+    }
 
 
 def codex_cli_session_binding(
@@ -157,10 +167,29 @@ def _store_codex_cli_session(
     *,
     lineage: Mapping[str, str],
     session_id: str,
+    usage_baseline: Mapping[str, int] | None = None,
 ) -> None:
     normalized_session_id = _valid_session_id(session_id)
     if not normalized_session_id:
         raise ValueError("Codex CLI returned an invalid session id")
+    normalized_baseline = (
+        normalize_provider_usage(usage_baseline)
+        if usage_baseline is not None
+        else None
+    )
+    existing = load_codex_cli_session(runtime_root, lineage=lineage)
+    if (
+        normalized_baseline is None
+        and existing is not None
+        and existing.get("session_id") == normalized_session_id
+    ):
+        normalized_baseline = dict(existing["usage_baseline"])
+    if normalized_baseline is None:
+        normalized_baseline = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
     path = _session_path(runtime_root, lineage)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -176,6 +205,7 @@ def _store_codex_cli_session(
                     **lineage,
                     "host": "codex-cli",
                     "session_id": normalized_session_id,
+                    "usage_baseline": normalized_baseline,
                 },
                 handle,
                 ensure_ascii=False,
@@ -826,20 +856,26 @@ def _codex_command(
                     "--ignore-rules",
                     "--permission-mode",
                     "custom",
-                    "-c",
-                    'approval_policy="never"',
-                    "-c",
-                    f'sandbox_mode="{sandbox}"',
                 ]
             )
-        command.extend([
-            "--skip-git-repo-check",
-            "--output-last-message",
-            str(output_path),
-            "--json",
-        ])
+        command.extend(
+            [
+                "-c",
+                'approval_policy="never"',
+                "-c",
+                f'sandbox_mode="{sandbox}"',
+                "--skip-git-repo-check",
+            ]
+        )
         if dialect == "codex":
-            command[4:4] = ["--output-schema", str(schema_path)]
+            command.extend(["--output-schema", str(schema_path)])
+        command.extend(
+            [
+                "--output-last-message",
+                str(output_path),
+                "--json",
+            ]
+        )
     else:
         command = [
             codex_bin,
@@ -918,6 +954,12 @@ def _traex_receipt_repair_command(
         "resume",
         "--ignore-user-config",
         "--ignore-rules",
+        "--permission-mode",
+        "custom",
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        'sandbox_mode="read-only"',
         "--skip-git-repo-check",
         "--output-last-message",
         str(output_path),
@@ -1044,13 +1086,24 @@ def _run_codex_process(
             repair_prompt,
             min(timeout_seconds, 60.0),
         )
-        first_usage = invocation.get("usage")
-        repair_usage = repair.get("usage")
-        if isinstance(first_usage, Mapping) and isinstance(repair_usage, Mapping):
-            repair["usage"] = aggregate_provider_usage(first_usage, repair_usage)
-        elif repair_usage is None:
-            repair["usage"] = first_usage
-        repair["session_id"] = invocation["session_id"]
+        if repair.get("session_id") != invocation["session_id"]:
+            repair["returncode"] = 1
+            repair["failure_category"] = "receipt_repair_session_mismatch"
+            repair["usage"] = None
+        else:
+            first_usage = invocation.get("usage")
+            repair_usage = repair.get("usage")
+            if isinstance(first_usage, Mapping) and isinstance(
+                repair_usage, Mapping
+            ):
+                repair["usage"] = latest_cumulative_provider_usage(
+                    first_usage, repair_usage
+                )
+                if repair["usage"] is None:
+                    repair["returncode"] = 1
+                    repair["failure_category"] = "usage_counter_regression"
+            elif repair_usage is None:
+                repair["usage"] = first_usage
         invocation = repair
     return {
         **invocation,
@@ -1084,7 +1137,7 @@ def _run_complexity_checkpoint(
     model: str | None,
     session_id: str | None,
     runtime_root: Path,
-    lineage: str,
+    lineage: Mapping[str, str],
     timeout_seconds: float,
 ) -> _ComplexityCheckpointRun:
     schema_path = temporary / "complexity-checkpoint-schema.json"
@@ -1113,6 +1166,10 @@ def _run_complexity_checkpoint(
         output_path=output_path,
         timeout_seconds=timeout_seconds,
     )
+    if session_id is not None and invocation.get("session_id") != session_id:
+        raise BuiltInHostError(
+            "codex_cli_complexity_checkpoint_resume_session_mismatch"
+        )
     observed_session_id = str(invocation.get("session_id") or session_id or "")
     category = str(invocation["failure_category"])
     if invocation["timed_out"]:
@@ -1145,6 +1202,8 @@ def _run_complexity_checkpoint(
             invocation["result"], turn_key=turn_key
         )
     except BuiltInHostError as exc:
+        if str(exc) != "codex_cli_complexity_checkpoint_turn_key_mismatch":
+            raise
         output_path.unlink(missing_ok=True)
         repair = _run_codex_process(
             _codex_command(
@@ -1184,6 +1243,10 @@ def _run_complexity_checkpoint(
                 "codex_cli_complexity_checkpoint_repair_"
                 + str(repair["failure_category"])
             ) from exc
+        if repair.get("session_id") != observed_session_id:
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_repair_session_mismatch"
+            ) from exc
         checkpoint = _normalize_complexity_checkpoint(
             repair["result"], turn_key=turn_key
         )
@@ -1194,11 +1257,11 @@ def _run_complexity_checkpoint(
             raise BuiltInHostError(
                 "codex_cli_complexity_checkpoint_usage_missing"
             ) from exc
-        raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
-        workspace_inspection_observed = bool(
-            workspace_inspection_observed
-            or repair.get("workspace_inspection_observed") is True
-        )
+        raw_usage = latest_cumulative_provider_usage(raw_usage, repair_usage)
+        if raw_usage is None:
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_usage_counter_regression"
+            ) from exc
     if (
         checkpoint["complexity"] == "simple"
         and not workspace_inspection_observed
@@ -1295,6 +1358,7 @@ def _run_advisor_review(
             and dialect == "traex"
             and invocation.get("session_id")
         ):
+            advisor_session_id = str(invocation["session_id"])
             repair = _run_codex_process(
                 _codex_command(
                     codex_bin=codex_bin,
@@ -1303,7 +1367,7 @@ def _run_advisor_review(
                     output_path=output_path,
                     sandbox="read-only",
                     model=advisor_model,
-                    session_id=str(invocation["session_id"]),
+                    session_id=advisor_session_id,
                 ),
                 project=advisor_project,
                 prompt=(
@@ -1319,9 +1383,15 @@ def _run_advisor_review(
                 output_path=output_path,
                 timeout_seconds=min(timeout_seconds, 60.0),
             )
+            if repair.get("session_id") != advisor_session_id:
+                repair["returncode"] = 1
+                repair["failure_category"] = "receipt_repair_session_mismatch"
+                repair["usage"] = None
             repair_usage = repair.get("usage")
             if isinstance(raw_usage, Mapping) and isinstance(repair_usage, Mapping):
-                raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
+                raw_usage = latest_cumulative_provider_usage(
+                    raw_usage, repair_usage
+                )
             elif isinstance(repair_usage, Mapping):
                 raw_usage = repair_usage
             attempt_usage = dict(raw_usage) if isinstance(raw_usage, Mapping) else None
@@ -1366,7 +1436,12 @@ def _attach_model_usage(
     if executor_usage is None:
         return
     if checkpoint_usage is not None:
-        executor_usage = aggregate_provider_usage(checkpoint_usage, executor_usage)
+        cumulative_usage = latest_cumulative_provider_usage(
+            checkpoint_usage, executor_usage
+        )
+        if cumulative_usage is None:
+            raise BuiltInHostError("codex_cli_executor_usage_counter_regression")
+        executor_usage = cumulative_usage
     if review is not None and review.advice is not None:
         if review.usage is None:
             raise BuiltInHostError("codex_cli_executor_usage_missing")
@@ -1399,7 +1474,7 @@ def _run_final_executor(
     model: str | None,
     session_id: str | None,
     runtime_root: Path,
-    lineage: str,
+    lineage: Mapping[str, str],
     timeout_seconds: float,
     checkpoint_run: _ComplexityCheckpointRun | None,
     review: _AdvisorReviewRun | None,
@@ -1435,6 +1510,8 @@ def _run_final_executor(
         output_path=output_path,
         timeout_seconds=timeout_seconds,
     )
+    if session_id is not None and invocation.get("session_id") != session_id:
+        raise BuiltInHostError("codex_cli_executor_resume_session_mismatch")
     observed_session_id = str(invocation.get("session_id") or session_id or "")
     category = str(invocation["failure_category"])
     if invocation["timed_out"]:
@@ -1499,9 +1576,15 @@ def _run_final_executor(
             raise BuiltInHostError(
                 f"codex_cli_executor_retry_{execution_retry['failure_category']}"
             )
+        if execution_retry.get("session_id") != observed_session_id:
+            raise BuiltInHostError("codex_cli_executor_retry_session_mismatch")
         retry_usage = execution_retry.get("usage")
         if isinstance(raw_usage, Mapping) and isinstance(retry_usage, Mapping):
-            raw_usage = aggregate_provider_usage(raw_usage, retry_usage)
+            raw_usage = latest_cumulative_provider_usage(raw_usage, retry_usage)
+            if raw_usage is None:
+                raise BuiltInHostError(
+                    "codex_cli_executor_retry_usage_counter_regression"
+                )
         elif retry_usage is not None:
             raw_usage = retry_usage
         invocation = execution_retry
@@ -1556,6 +1639,10 @@ def _run_final_executor(
             raise BuiltInHostError(
                 f"codex_cli_final_result_repair_{repair['failure_category']}"
             )
+        if repair.get("session_id") != observed_session_id:
+            raise BuiltInHostError(
+                "codex_cli_final_result_repair_session_mismatch"
+            )
         repaired_result = repair.get("result")
         if not isinstance(repaired_result, dict):
             raise BuiltInHostError("codex_cli_final_result_contract_invalid")
@@ -1566,7 +1653,11 @@ def _run_final_executor(
             raise BuiltInHostError("codex_cli_final_result_contract_invalid")
         repair_usage = repair.get("usage")
         if isinstance(raw_usage, Mapping) and isinstance(repair_usage, Mapping):
-            raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
+            raw_usage = latest_cumulative_provider_usage(raw_usage, repair_usage)
+            if raw_usage is None:
+                raise BuiltInHostError(
+                    "codex_cli_final_result_repair_usage_counter_regression"
+                )
         elif repair_usage is not None:
             raw_usage = repair_usage
         result = repaired_result
@@ -1583,6 +1674,32 @@ def _run_final_executor(
         review=review,
     )
     return result
+
+
+def _apply_turn_usage_baseline(
+    result: dict[str, Any],
+    *,
+    baseline: Mapping[str, int],
+) -> dict[str, int] | None:
+    model_usage = result.get("model_usage")
+    if not isinstance(model_usage, dict):
+        return None
+    latest = model_usage.get("executor")
+    if not isinstance(latest, Mapping):
+        return None
+    turn_executor = provider_usage_delta(latest, baseline)
+    if turn_executor is None:
+        raise BuiltInHostError("codex_cli_executor_usage_baseline_regression")
+    model_usage["executor"] = turn_executor
+    independent_usage = model_usage.get("advisor")
+    if not isinstance(independent_usage, Mapping):
+        independent_usage = model_usage.get("advisor_attempt")
+    model_usage["total"] = (
+        aggregate_provider_usage(turn_executor, independent_usage)
+        if isinstance(independent_usage, Mapping)
+        else dict(turn_executor)
+    )
+    return dict(latest)
 
 
 def run_codex_cli_host(
@@ -1647,7 +1764,7 @@ def run_codex_cli_host(
                     checkpoint=checkpoint_run.checkpoint,
                     timeout_seconds=advisor_timeout_seconds,
                 )
-        return _run_final_executor(
+        result = _run_final_executor(
             request,
             temporary=temporary,
             codex_bin=str(resolved),
@@ -1661,3 +1778,24 @@ def run_codex_cli_host(
             checkpoint_run=checkpoint_run,
             review=review,
         )
+        baseline = (
+            _mapping(binding.get("usage_baseline"))
+            if binding is not None
+            else {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+            }
+        )
+        latest_usage = _apply_turn_usage_baseline(result, baseline=baseline)
+        if latest_usage is not None:
+            stored = load_codex_cli_session(runtime_root, lineage=lineage)
+            if stored is None:
+                raise BuiltInHostError("codex_cli_executor_session_missing")
+            _store_codex_cli_session(
+                runtime_root,
+                lineage=lineage,
+                session_id=str(stored["session_id"]),
+                usage_baseline=latest_usage,
+            )
+        return result
