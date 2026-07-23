@@ -471,7 +471,21 @@ loopx configure-goal \
 
 ## Reward Memory
 
-Reward memory 是 per-agent、default-off 的实验能力，目标是保存 compact experience/reward record，支持后续检索。
+Reward memory 是 per-agent、default-off 的实验能力，目标是让经过验证的人类评价和工程经验
+在后续 run 中被作用域化复用。它不是 LoopX canonical state 的替代品，也不是把聊天记录长期
+注入模型。
+
+| Memory class | 与 LoopX 当前状态的关系 | 允许产生的影响 |
+| --- | --- | --- |
+| `working_context` | 复用 registry、todo/quota、checkout 等 fresh context | 只服务当前执行或 session continuation |
+| `run_bound_reward` | 绑定 exact goal/run 的评价 overlay | 作为候选证据，不直接改变 action set |
+| `soft_preference` | 经 review 的 project/surface 偏好 | advisory ranking 或 rewrite |
+| `procedural_experience` | 带 revision、provenance 和适用范围的经验 | 经当前 artifact 验证后影响诊断或验证计划 |
+| `hard_policy` | 策略内容与独立验证的 authority scope 绑定 | 仅在已有 authority 范围内约束或否决 |
+
+这里最重要的分离是：memory 可以影响模型怎样选择合法动作，不能决定哪些动作原本合法。
+Gate/authority 先给出 action set，fresh state 给出当前事实，Reward Memory 再在匹配 scope 内
+提供偏好或经验。Application receipt 记录哪条记忆被怎样使用，但不能冒充 delivery receipt。
 
 安全边界：
 

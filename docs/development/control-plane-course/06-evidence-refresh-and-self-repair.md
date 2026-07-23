@@ -308,6 +308,27 @@ signal
 - raw feedback 不直接覆盖 Vision，必须形成明确 source、scope 和 delta；
 - performance review 可以影响下一轮优先级，但仍要通过 todo/gate/vision API 写回。
 
+同一句自然语言反馈可能需要落到不同合同，分类依据是它要改变什么：
+
+| 反馈语义 | 应写入的合同 | 不能顺带获得什么 |
+| --- | --- | --- |
+| 对 exact action 的允许或拒绝 | scoped operator gate + decision receipt | 其他 action、其他 head 或其他 goal 的授权 |
+| 对当前事实的纠正 | evidence / fresh observation | 自动可执行的 todo |
+| 对当前路线的纠正 | vision patch / replan delta + successor | 绕过 capability、workspace 或 user gate |
+| 对某次交付的评价 | run-bound reward | 长期策略或通用权限 |
+| 可复用的表达偏好 | reviewed soft preference | publish、merge 或生产 authority |
+| 可复用的工程经验 | procedural experience + current-artifact verification | 把旧经验当当前事实 |
+
+Reward Memory 位于“评价证据”与“未来策略影响”之间。它可以把 run-bound reward 提炼成
+带 source、scope、authority、freshness 和 lifecycle 的候选，再经 review/activation 后影响
+匹配 surface 的排序、改写、诊断或验证计划。它不能读取一段表扬就生成 hard policy，也不能
+用高 confidence 扩大 actor 原本没有的权限；hard policy 的生效 scope 必须由独立 authority
+checkpoint 证明。
+
+应用记忆后仍需生成 influence/application receipt，并在当前 artifact 上验证技术主张。当前
+todo、gate、fresh observation 和 source-of-truth 始终高于 recalled experience。更完整的
+provider 与 default-off 边界见[第 9 讲的 Reward Memory](09-extension-layer.md#reward-memory)。
+
 开发 connector 或 inbox 时，应先把 signal 归一化为 public-safe evidence，再由
 现有 Core State 承接 anchor。第 9 讲的 Lark Event Inbox 展示了这一边界；不要
 为每种外部信号新增一个 quota 分支。

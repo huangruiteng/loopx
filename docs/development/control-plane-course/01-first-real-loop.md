@@ -1,7 +1,8 @@
 # 第 1 讲：从 Showcase 到第一次真实 Loop
 
-> **本讲结论：** 第一次真实 Loop 不是“heartbeat 调一次模型”，而是 source state 被编译成
-> bounded action，执行结果经验证写回，再由 scheduler receipt 决定下一次唤醒。
+> **本讲结论：** 第一次真实 Loop 不是“heartbeat 调一次模型”，而是外置 source state 被
+> 编译成适合有限上下文的 CLI packet 和 bounded action，执行结果经验证写回，再由
+> scheduler receipt 决定下一次唤醒。
 
 ## 本讲在课程中的位置
 
@@ -93,6 +94,29 @@ LoopX CLI -> State Kernel --+
   |
   +-> registry / events / active-state / run history
 ```
+
+## 从外置状态到有限上下文
+
+LoopX 不把整个 registry、event ledger、run history 和所有 todo 直接注入模型。正确路径是先
+从 canonical state 计算当前 read model，再把这一轮真正需要的内容编译成 packet：
+
+| Packet 层 | 典型内容 | 为什么必须保留 |
+| --- | --- | --- |
+| Identity | goal、agent lane、selected todo、snapshot/lineage | 防止把结果写到另一个目标或旧状态 |
+| Decision | mode、primary action、user/agent/CLI channel | 区分 deliver、wait、ask、repair 与 quiet |
+| Proof boundary | required evidence、gate、workspace/capability guard | 防止“做过”或“能做”冒充可提交 |
+| Closeout | refresh、receipt、spend、scheduler ACK 命令 | 让本轮结果进入下一轮可重放事实 |
+
+这与 host 原生 Goal 是互补关系。原生 Goal object 让 objective 和生命周期不依赖一次 prompt；
+LoopX packet 则让当前 Turn 不依赖模型记住完整项目过程。Codex App 可以用 heartbeat task body
+承载 packet，Codex CLI 可以把 thin task body 放进可见 `/goal`；无论 host surface 如何，packet
+都必须在下一 Turn 从最新 LoopX 状态重新生成。
+
+Packet 有三个明确的非目标：
+
+- 它不是 canonical state，不能被当作长期写入源；
+- 它不是 authority，显示某项工作不代表可以越过 gate 或 workspace guard；
+- 它不是历史摘要，长 rationale 应留在 evidence artifact，只通过紧凑 ref 进入本轮。
 
 ## 一次 Codex App 交互的真实路径
 
