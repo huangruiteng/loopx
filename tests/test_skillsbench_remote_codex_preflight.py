@@ -174,6 +174,32 @@ def test_explicit_danger_full_access_does_not_require_a_codex_sandbox_probe(
     )
 
 
+def test_reverse_channel_cli_goal_requires_fixed_pre_agent_bridge_receipt() -> None:
+    args = SimpleNamespace(
+        setup_only_public_preflight=False,
+        route="codex-cli-goal-baseline",
+        host_local_acp_launch=True,
+        local_codex_provider="reverse-channel",
+        host_local_acp_codex_exec_preflight=True,
+        remote_command_file_bridge_solver_command="private-solver-command",
+        remote_command_file_bridge_ready=True,
+        remote_command_file_bridge_probe=False,
+    )
+
+    assert skillsbench_loop._host_local_acp_codex_exec_preflight_should_run(args)
+    assert skillsbench_loop._host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args
+    )
+
+    args.local_codex_provider = "exact-host"
+    assert not skillsbench_loop._host_local_acp_codex_exec_preflight_should_run(args)
+    assert not (
+        skillsbench_loop._host_local_acp_codex_exec_preflight_requires_bridge_action(
+            args
+        )
+    )
+
+
 def test_early_tui_failure_does_not_claim_goal_submission(tmp_path: Path) -> None:
     trace_dir = tmp_path / "traces"
     relay = SkillsBenchLocalAcpRelay(

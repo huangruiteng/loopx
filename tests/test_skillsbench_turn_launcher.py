@@ -147,6 +147,82 @@ def test_launcher_fails_before_batch_when_exact_host_sandbox_probe_fails(
     assert "pid=" not in proc.stdout
 
 
+def test_launcher_split_control_is_opt_in_and_redacts_provider_values(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    private_local_codex = "/private/local/codex-sentinel"
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL": "1",
+            "SKILLSBENCH_LOCAL_CODEX_BIN": private_local_codex,
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "split-control"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    output = proc.stdout
+    assert "local_codex_split_control=1" in output
+    assert "local_codex_provider=reverse_channel" in output
+    assert "remote_codex_bin_mode=split_control_client" in output
+    assert (
+        "exact_host_codex_sandbox_preflight=split_control_not_applicable"
+        in output
+    )
+    assert "private_runner_command_values_redacted=true" in output
+    for arg_name in (
+        "--codex-bridge",
+        "--codex-bin",
+        "--codex-remote-socket",
+        "--codex-remote-client-path",
+        "--codex-prompt-bridge-command",
+        "--codex-participant-sandbox",
+        "--local-codex-provider",
+        "--host-local-acp-codex-exec-preflight",
+        "--host-local-acp-codex-exec-preflight-attempts",
+    ):
+        assert arg_name in output
+    assert private_local_codex not in output
+    assert "codex_bridge_client" not in output
+    assert "loopx-codex-" not in output
+    assert "example.invalid" not in output
+
+
+def test_launcher_split_control_requires_workspace_write(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL": "1",
+            "SKILLSBENCH_LOCAL_CODEX_SANDBOX": "danger-full-access",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "split-control"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL requires "
+        "SKILLSBENCH_LOCAL_CODEX_SANDBOX=workspace-write"
+    ) in proc.stderr
+    assert "supervisor_command=" not in proc.stdout
+
+
 def test_turn_launcher_accepts_stability_policy(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     validator = "private-validator-command sentinel-validator"
