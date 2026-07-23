@@ -17,6 +17,12 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、schedu
 quota、证据、run history 和 handoff 留在同一层轻量状态里。该等人的地方明确等人，
 不该空等的安全侧路继续推进，每一次自动执行都留下边界、验证面和写回轨迹。
 
+一个形象化理解是：LoopX 是
+**[面向长程 Agent 的可执行看板](docs/development/control-plane-course/00-concept-primer.md)**。
+卡片带有稳定身份、权限、证据和 continuation；移动卡片要经过 claim、gate、monitor、
+validate、writeback 等 typed operator；Capability 可以增加 Issue Fix、Auto Research
+等领域泳道，但不会再造一套控制面。看板是 projection，LoopX state 才是事实源。
+
 注册 agent 彼此平级：由 todo claim / lease、任务边界、能力门和 typed
 continuation 决定下一步谁执行，不需要一个长期拥有全局权限的 leader agent。
 

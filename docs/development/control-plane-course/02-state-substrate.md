@@ -43,6 +43,44 @@
 状态展示出来。判断 owner 后，再决定它应进入 registry、event、Domain State 还是只留在
 runtime artifact。
 
+## 看板列是多轴状态的 Projection
+
+面向操作者的界面可以把 todo 渲染成 Kanban，但 canonical state 不能退化成一个
+`column` 字段。同一张卡片至少同时具有四组状态：
+
+| 维度 | 典型字段或对象 | 回答的问题 |
+| --- | --- | --- |
+| Lifecycle | `open`、`blocked`、`deferred`、`done` | 工作是否仍在生命周期中？ |
+| Task class | advancement、user gate/action、monitor、blocker | 这是什么类型的工作或等待？ |
+| Routing and authority | claim、lease、dependency、scope、capability | 谁能执行，前置条件和权限是否满足？ |
+| Proof and time | evidence、receipt、freshness、cadence、`resume_when` | 什么证明变化成立，何时应再次观察？ |
+
+看板可以把这些事实投影成便于操作的逻辑列：
+
+```text
+Runnable | Claimed | Waiting on user | Monitoring | Blocked | Review | Done
+```
+
+这些列不是新的事实源。“Waiting on user”来自 scoped user gate，“Monitoring”来自
+带 cadence 和 target key 的 monitor，“Review”可以来自领域状态与当前 acceptance，
+而不是把每个展示名称写进 Kernel lifecycle enum。
+
+看板上的移动也对应结构化算子，而不是任意拖拽：
+
+| 操作 | 必须保持的约束 |
+| --- | --- |
+| Claim / release | 注册身份、executor exclusion、lease 和 workspace 仍然有效 |
+| Gate / decide | decision scope、阻塞对象和授权结果明确绑定 |
+| Monitor / resume | target、cadence、fresh observation 和恢复条件可重放 |
+| Complete / supersede | evidence、successor 或 no-follow-up rationale 完整 |
+| Writeback / replay / repair | 已提交 transition 可验证，projection 可重建，失败后可恢复 |
+
+Capability Pack 可以在同一组通用算子上增加领域泳道。例如 Issue Fix 展示
+`feasibility -> patch -> CI -> review -> merge`，Auto Research 展示
+`hypothesis -> execute -> evaluate -> promote/retire`。这些阶段来自 Domain State 和
+capability proposal；只要它们涉及 claim、gate、quota、permission 或 terminal closure，
+最终 transition 仍由 Kernel 接受或拒绝。
+
 ## Goal 不是聊天线程
 
 LoopX 的 durable identity 是 goal，不是某个 Codex thread：

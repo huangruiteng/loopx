@@ -70,6 +70,22 @@ Kernel authority. This boundary is represented directly by
 `CapabilityRegistry`, which registers providers, capability contracts, and
 their implementations separately.
 
+### Agent-Native Kanban Is A Projection
+
+LoopX state can be rendered as an agent-native Kanban: todos are cards, logical
+lanes are derived views, and card moves are validated transitions. The metaphor
+does not introduce another state owner. Canonical todo/event/state contracts
+remain authoritative; dashboards and collaboration boards consume public-safe
+projections.
+
+Capabilities may project domain lanes such as Issue Fix
+`feasibility -> patch -> checks -> review -> merge` without adding those labels
+to the Kernel lifecycle. Providers supply the external facts behind the lane,
+capabilities validate them and propose typed transitions, and the Kernel owns
+claim, gate, monitor, quota, writeback, recovery, and terminal closure. See the
+[concept primer](development/control-plane-course/00-concept-primer.md) and
+[state substrate lecture](development/control-plane-course/02-state-substrate.md).
+
 ## Current Dependency Budget
 
 Dependency direction is enforced incrementally while large compatibility

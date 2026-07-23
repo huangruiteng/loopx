@@ -44,6 +44,32 @@ LoopX 面向两种同时存在的运行状态：
 scoped decision、vision patch、todo、reward 或可复用经验。二者共用同一状态内核，否则人工
 干预越多，系统反而越难恢复。
 
+## 一个有用但不完整的比喻：面向 Agent 的可执行看板
+
+可以先把 LoopX 理解成面向长程 Agent 的 Kanban。不同之处在于，普通看板主要帮助人
+整理卡片，LoopX 还要让 Agent 在无人值守、跨 session 和多人接力时正确推进卡片。因此，
+卡片、列和移动都必须对应可验证的状态合同：
+
+| 看板直觉 | LoopX 对应对象 | 增加的工程约束 |
+| --- | --- | --- |
+| Card | Todo | 稳定 `todo_id`、owner、依赖、scope、evidence 与 continuation |
+| Column | 从 canonical state 派生的 lane/view | 列由 lifecycle、task class、routing、proof/time 等维度组合，不是单个字符串 |
+| Move card | Typed transition | 每次移动都检查 authority、前置条件、验证结果和 writeback |
+| WIP limit | Claim、lease、quota、workspace guard | 限制谁能领取、何时运行、在哪里写以及可以消耗多少资源 |
+| Waiting | User gate、monitor、deferred 与 `resume_when` | 等待对象、恢复条件和下一次观察时间都必须明确 |
+| Done | Accepted writeback、receipt 与 terminal audit | 勾选卡片不能替代验收、外部 readback 或 goal closure |
+| Domain swimlane | Capability Pack + Domain State projection | Issue Fix、Auto Research 等领域可以增加泳道，但不能创建第二套 Kernel |
+
+这组映射提供产品直觉，不改变事实归属。Dashboard、Lark Kanban 和其他看板是 projection；
+canonical todo/event/state contract 才能接受 transition。领域泳道也不是新增 Kernel
+枚举：`feasibility -> patch -> CI -> review -> merge` 可以是 Issue Fix 的领域视图，
+`hypothesis -> execute -> evaluate -> promote/retire` 可以是 Auto Research 的领域视图，
+而 claim、gate、monitor、quota、writeback 和 recovery 仍由同一 Kernel 管理。
+
+```text
+Kanban is the picture; the control plane is the contract.
+```
+
 ## 从普通对话、原生 Goal 到 LoopX
 
 理解 LoopX 最容易的方法，不是先背模块，而是看控制信息逐层外置：

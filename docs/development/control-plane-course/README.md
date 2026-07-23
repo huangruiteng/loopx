@@ -9,6 +9,10 @@
 状态投影、调度或扩展能力的开发者。它先从模型上下文为什么不能承担长期状态讲起，再用
 两个端到端 Showcase 推导 ownership，最后沿真实 transition 进入状态机、CLI、核心函数和测试。
 
+贯穿全课的形象化理解是“面向长程 Agent 的可执行看板”：Todo 是带身份、权限和证据的
+卡片，claim、gate、monitor、writeback 等 Kernel operator 决定卡片能否移动，Capability
+Pack 增加领域泳道。看板只是 projection；canonical state 和 typed transition 才是控制合同。
+
 ## 课程先建立一个递进
 
 普通 Agent 对话主要依赖当前 transcript。Codex 原生 Goal 再向外走一步：通过持久 goal object

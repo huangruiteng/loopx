@@ -25,6 +25,34 @@ domain work." It also keeps LoopX useful for ordinary engineering todos
 that do not have experiment boards, primary metrics, guardrails, or production
 job handles.
 
+## Domain Lanes Over One Control Plane
+
+The agent-native Kanban metaphor provides a practical placement rule:
+
+| Surface | Owner | Example |
+| --- | --- | --- |
+| Generic card lifecycle | LoopX Kernel | claim, gate, monitor, defer, complete, supersede, quota, recovery |
+| Domain lane and stage | Capability Pack | Issue Fix review stage or experiment evaluation stage |
+| External fact and effect | Provider | check status, review state, metric result, job readback |
+| Visible board column | Projection | runnable, waiting, monitoring, review, done |
+
+A domain lane is a read model over domain state plus accepted Kernel state. It
+may explain that an issue moved from patching to CI review, or that a hypothesis
+moved from execution to holdout evaluation. It does not own the underlying
+todo, claim, gate, quota, or schedule.
+
+This keeps two different kinds of change separate:
+
+- adding a new domain stage usually changes the pack's Domain State schema,
+  transition proposal, and projection;
+- adding a new cross-domain lifecycle rule changes the Kernel only when the
+  rule has a provider-neutral contract and real callers outside one pack.
+
+Do not add `ci_review`, `holdout`, or `promotion_candidate` to a generic Kernel
+status enum merely to draw a useful board. The pack should derive those labels,
+then submit any consequential claim, gate, monitor, successor, or closeout
+through the existing typed transition boundary.
+
 ## Contract Shape
 
 `domain_pack_contract_v0` is a registry-owned goal-boundary extension:

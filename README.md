@@ -26,6 +26,13 @@ stable while Codex, Claude Code, Cursor, or another runtime executes each
 bounded turn. It does not replace your agent runtime; it makes long-running
 agent work reviewable, restartable, and easier to hand off.
 
+A useful mental model is an
+**[agent-native Kanban for long-running work](docs/development/control-plane-course/00-concept-primer.md)**.
+Its cards carry identity, authority, evidence, and continuation; moves are
+validated operators such as claim, gate, monitor, and writeback rather than UI
+gestures; capabilities add domain lanes without creating a second control plane.
+The board is a projection; LoopX state remains the source of truth.
+
 Registered agents are peers. Claims and leases, task boundaries, capabilities,
 and typed continuation decide who acts next; no durable leader identity is
 required.
