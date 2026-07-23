@@ -63,8 +63,9 @@ loopx turn run-once \
   --execute
 ```
 
-Auto selects an experimental candidate pair from the live Codex catalog and fails closed when
-none is available. Manual mode uses distinct `--advisor-model <strong-model>`
+Auto is an explicit experimental opt-in, not a qualified default or an
+automatic-promotion policy. It selects an experimental candidate pair from the
+live Codex catalog and fails closed when none is available. Manual mode uses distinct `--advisor-model <strong-model>`
 and `--codex-model <lower-cost-model>` values. The executor first emits an
 inspection-only checkpoint. Simple work skips the strong model and resumes the
 executor; complex work names a supported risk signal, receives compact advice

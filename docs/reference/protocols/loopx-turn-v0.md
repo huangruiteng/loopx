@@ -54,12 +54,17 @@ owns tools and implementation, while the TurnEnvelope and validator keep
 their existing authority. An Advisor timeout, provider failure, invalid result,
 or missing usage fails open to the executor with a bounded failure category;
 observed failed-attempt usage remains part of the total receipt.
+The Codex session binding keeps the latest cumulative executor usage as a
+private runtime baseline. Each later LoopX Turn reports only the non-negative
+delta from that baseline, so resuming one provider session across Turns does
+not double-count earlier work.
 
 The Codex host supports `advisor-mode=off|auto|manual`. Auto mode resolves the
 current Codex model catalog when a Turn invokes the host and chooses the
 highest-priority available experimental profile. The profile assigns Advisor and
 executor roles explicitly; catalog descriptions and model-name patterns are
-not selection authority. Catalog failure or absence of a complete qualified
+not selection authority. Auto remains an explicit experimental opt-in and does
+not authorize default enablement or automatic promotion. Catalog failure or absence of a complete qualified
 pair fails closed. Manual mode requires distinct explicit model ids, while an
 omitted mode preserves the earlier interface by inferring manual when an
 Advisor model is supplied and off otherwise.
