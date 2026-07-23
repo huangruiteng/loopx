@@ -26,6 +26,7 @@ from loopx.benchmark_ledger import (  # noqa: E402
     update_benchmark_run_ledger,
     upsert_benchmark_run_ledger_entry,
 )
+from loopx.benchmark_core import build_benchmark_live_worker_phase  # noqa: E402
 from loopx.status import compact_benchmark_run  # noqa: E402
 
 
@@ -228,6 +229,55 @@ def test_ledger_entry_upsert_from_compact_run() -> None:
         assert "blocked_model=gpt-5.1-codex-max" in rendered, rendered
         assert "rerun_model=gpt-5.5" in rendered, rendered
         assert (root / "ledger.md").exists(), "markdown view should be rendered"
+
+
+def test_skillsbench_live_worker_phase_survives_compact_run_and_ledger() -> None:
+    phase = build_benchmark_live_worker_phase(
+        agent_active=True,
+        terminal_disposition="completed",
+    )
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "live-worker-phase-smoke",
+        "job_name": "skillsbench-live-worker-phase-smoke",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "runner_return_status": "completed",
+        "runner_prerequisites": {
+            "benchmark_live_worker_phase": {
+                **phase,
+                "private_detail": "PRIVATE_DETAIL_MUST_NOT_PROJECT",
+            }
+        },
+    }
+
+    compact = compact_benchmark_run(source)
+    assert compact is not None
+    assert compact["benchmark_live_worker_phase"] == phase, compact
+    assert "PRIVATE_DETAIL_MUST_NOT_PROJECT" not in json.dumps(
+        compact,
+        sort_keys=True,
+    )
+    entry = build_benchmark_run_ledger_entry(
+        compact,
+        run_group_id="skillsbench-live-worker-phase-smoke",
+    )
+    assert entry["benchmark_live_worker_phase"] == phase, entry
+
+    with tempfile.TemporaryDirectory(prefix="benchmark-live-worker-ledger-") as tmp:
+        root = Path(tmp)
+        ledger_path = root / "ledger.json"
+        update_benchmark_run_ledger(
+            ledger_path=ledger_path,
+            benchmark_run=compact,
+            run_group_id="skillsbench-live-worker-phase-smoke",
+            cwd=root,
+        )
+        ledger = load_benchmark_run_ledger(ledger_path)
+        persisted = ledger["benchmarks"]["skillsbench@1.1"]["cases"][
+            "live-worker-phase-smoke"
+        ]["runs"][0]
+        assert persisted["benchmark_live_worker_phase"] == phase, persisted
 
 
 def test_ledger_classifies_compact_trial_exception_failure() -> None:
@@ -1356,6 +1406,10 @@ def test_raw_max5_baseline_does_not_force_product_pair_without_product_treatment
 def stale_active_post_launch() -> dict[str, Any]:
     return {
         "schema_version": "terminal_bench_post_launch_materialization_v0",
+        "benchmark_live_worker_phase": build_benchmark_live_worker_phase(
+            worker_running=True,
+            terminal_disposition="failed",
+        ),
         "checked": True,
         "ready_for_launch_state": True,
         "ready_for_compact_result_ingest": False,
@@ -1492,6 +1546,10 @@ def test_ledger_ingests_post_launch_stale_active_marker() -> None:
     assert entry["attempt_failure_class"] == "job_materialization_failed", entry
     assert entry["launcher_attempt_countable"] is True, entry
     assert entry["official_score_attempt_countable"] is False, entry
+    assert entry["benchmark_live_worker_phase"]["current_phase"] == (
+        "worker_running"
+    ), entry
+    assert entry["benchmark_live_worker_phase"]["terminal_disposition"] == "failed", entry
 
     with tempfile.TemporaryDirectory(prefix="benchmark-run-ledger-stale-active-") as tmp:
         root = Path(tmp)
@@ -1511,6 +1569,13 @@ def test_ledger_ingests_post_launch_stale_active_marker() -> None:
             "runner_result_finalization"
         ), update
         ledger = load_benchmark_run_ledger(ledger_path)
+        persisted = ledger["benchmarks"]["terminal-bench@2.0"]["cases"][
+            "multi-source-data-merger"
+        ]["runs"][0]
+        assert (
+            persisted["benchmark_live_worker_phase"]
+            == compact["benchmark_live_worker_phase"]
+        ), persisted
         rendered = render_benchmark_run_ledger_markdown(ledger)
         assert "runner_result_finalization" in rendered, rendered
         assert "stale_active_job_without_trial_result" in rendered, rendered
@@ -2081,6 +2146,7 @@ def test_ledger_merge_combines_run_group_ledgers_without_source_paths() -> None:
 
 if __name__ == "__main__":
     test_ledger_entry_upsert_from_compact_run()
+    test_skillsbench_live_worker_phase_survives_compact_run_and_ledger()
     test_ledger_classifies_compact_trial_exception_failure()
     test_ledger_classifies_setup_timeout_before_generic_timeout()
     test_ledger_routes_environment_setup_before_worker_separately()

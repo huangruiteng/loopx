@@ -8,10 +8,13 @@ import pytest
 from loopx.benchmark_adapters.terminal_bench import (
     summarize_terminal_bench_post_launch_materialization,
 )
+from loopx.benchmark_ledger import build_benchmark_run_ledger_entry
 from loopx.benchmark_core import (
     build_benchmark_live_worker_phase,
     compact_benchmark_live_worker_phase,
 )
+from loopx.benchmark_core.lifecycle import compact_benchmark_live_worker_phase_from_run
+from loopx.status import compact_benchmark_run
 
 
 def test_live_worker_phase_closes_sparse_higher_phase_evidence() -> None:
@@ -86,3 +89,47 @@ def test_terminal_bench_public_fixture_projects_running_worker_phase(
     assert summary["raw_logs_read"] is False
     assert summary["raw_task_text_read"] is False
     assert str(tmp_path) not in json.dumps(summary, sort_keys=True)
+
+    entry = build_benchmark_run_ledger_entry(
+        summary,
+        run_group_id="terminal-bench-live-worker-phase",
+        arm_id="codex_goal_mode_baseline",
+    )
+    assert entry["benchmark_live_worker_phase"] == phase
+
+
+def test_skillsbench_live_worker_phase_survives_compact_run_and_ledger() -> None:
+    phase = build_benchmark_live_worker_phase(
+        agent_active=True,
+        terminal_disposition="completed",
+    )
+    source = {
+        "schema_version": "benchmark_run_v0",
+        "benchmark_id": "skillsbench@1.1",
+        "case_id": "public-live-worker-phase",
+        "job_name": "skillsbench-public-live-worker-phase",
+        "mode": "skillsbench_codex_app_server_goal_baseline",
+        "runner_return_status": "completed",
+        "runner_prerequisites": {
+            "benchmark_live_worker_phase": {
+                **phase,
+                "private_detail": "PRIVATE_DETAIL_MUST_NOT_PROJECT",
+            },
+            "private_runner_detail": "PRIVATE_RUNNER_DETAIL_MUST_NOT_PROJECT",
+        },
+    }
+
+    assert compact_benchmark_live_worker_phase_from_run(source) == phase
+    compact = compact_benchmark_run(source)
+    assert compact is not None
+    assert compact["benchmark_live_worker_phase"] == phase
+    assert "PRIVATE_DETAIL_MUST_NOT_PROJECT" not in json.dumps(
+        compact,
+        sort_keys=True,
+    )
+
+    entry = build_benchmark_run_ledger_entry(
+        compact,
+        run_group_id="skillsbench-live-worker-phase",
+    )
+    assert entry["benchmark_live_worker_phase"] == phase
