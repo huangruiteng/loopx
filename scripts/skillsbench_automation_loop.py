@@ -2134,7 +2134,10 @@ def _host_local_acp_codex_exec_preflight_command(
                 str(Path(relay_trace_dir) / "codex-exec-preflight"),
             ]
         )
-    if _host_local_acp_codex_exec_preflight_requires_bridge_action(args):
+    if _host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args,
+        sandbox_bridge_command=sandbox_bridge_command,
+    ):
         command.extend(
             [
                 "--remote-command-file-bridge-command",
@@ -2207,6 +2210,9 @@ def _host_local_acp_codex_exec_preflight_should_run(
 
 def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     args: argparse.Namespace,
+    *,
+    sandbox_bridge_command: str | None = None,
+    require_materialized_sandbox_bridge: bool = False,
 ) -> bool:
     route = str(getattr(args, "route", "") or "")
     local_codex_provider = str(
@@ -2221,7 +2227,13 @@ def _host_local_acp_codex_exec_preflight_requires_bridge_action(
                 and local_codex_provider == "reverse-channel"
             )
         )
-        and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
+        and (
+            require_materialized_sandbox_bridge
+            or bool(sandbox_bridge_command)
+            or str(
+                getattr(args, "remote_command_file_bridge_solver_command", "") or ""
+            )
+        )
         and (
             bool(getattr(args, "remote_command_file_bridge_ready", False))
             or bool(getattr(args, "remote_command_file_bridge_probe", False))
@@ -2371,7 +2383,8 @@ def _run_host_local_acp_codex_exec_preflight(
     prerequisites["host_local_acp_codex_exec_preflight_requested"] = True
     prerequisites["host_local_acp_codex_exec_preflight_status"] = "running"
     bridge_action_required = _host_local_acp_codex_exec_preflight_requires_bridge_action(
-        args
+        args,
+        sandbox_bridge_command=sandbox_bridge_command,
     )
     prerequisites["host_local_acp_codex_exec_preflight_bridge_action_required"] = (
         bridge_action_required
@@ -14165,7 +14178,10 @@ async def run_benchflow_case(
             plan,
         )
         if (
-            _host_local_acp_codex_exec_preflight_requires_bridge_action(args)
+            _host_local_acp_codex_exec_preflight_requires_bridge_action(
+                args,
+                require_materialized_sandbox_bridge=True,
+            )
             and not sandbox_bridge_command
         ):
             prerequisites["host_local_acp_codex_exec_preflight_status"] = "failed"

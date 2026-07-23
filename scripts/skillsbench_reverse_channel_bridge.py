@@ -70,9 +70,7 @@ def _send_json_line(sock: socket.socket, payload: dict[str, Any]) -> None:
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(
-        f"{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp"
-    )
+    tmp_path = path.with_name(f"{path.name}.{os.getpid()}.{time.monotonic_ns()}.tmp")
     tmp_path.write_text(
         json.dumps(payload, separators=(",", ":"), sort_keys=True),
         encoding="utf-8",
@@ -439,7 +437,13 @@ complete_record["stdout_bytes"] = len((proc.stdout or "").encode("utf-8"))
 complete_record["stderr_bytes"] = len((proc.stderr or "").encode("utf-8"))
 if proc.returncode != 0:
     stderr_text = proc.stderr or ""
-    if int(proc.returncode) < 0:
+    category_match = re.search(
+        r"LOOPX_PROMPT_BRIDGE_FAILURE_CATEGORY=([a-z0-9_]+)",
+        stderr_text,
+    )
+    if category_match:
+        complete_record["failure_category"] = category_match.group(1)
+    elif int(proc.returncode) < 0:
         complete_record["failure_category"] = "bridge_operation_interrupted"
         complete_record["interrupted"] = True
         complete_record["controller_interrupted"] = True
@@ -459,6 +463,111 @@ raise SystemExit(proc.returncode)
     wrapper_path.write_text(script, encoding="utf-8")
     wrapper_path.chmod(0o700)
     return wrapper_path, summary_path
+
+
+def _run_prompt_bridge_broker_payload(
+    payload: dict[str, Any],
+    *,
+    bridge_command: str,
+    private_bridge_command: str,
+    default_timeout_sec: float,
+    stop_event: threading.Event,
+) -> dict[str, Any]:
+    """Execute a Codex-requested bridge outside the Codex sandbox."""
+
+    stdin_text = str(payload.get("stdin") or "")
+    broker_payload = dict(payload)
+    broker_payload["private_bridge_command"] = private_bridge_command
+    command = _bridge_command_with_payload_env(bridge_command, broker_payload)
+    env = _safe_env(payload.get("env"))
+    proc = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        shell=True,
+        env=env,
+        start_new_session=True,
+    )
+    _write_process_stdin_async(proc, stdin_text)
+    deadline = time.monotonic() + max(1.0, float(default_timeout_sec))
+    interrupted = False
+    while proc.poll() is None:
+        if stop_event.is_set() or time.monotonic() >= deadline:
+            interrupted = True
+            _stop_process_group(proc, sig=signal.SIGTERM)
+            break
+        time.sleep(0.05)
+    if interrupted:
+        stdout_text, stderr_text = _communicate_after_stop(proc)
+        return {
+            "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+            "exit_code": 124,
+            "stdout": stdout_text,
+            "stderr": stderr_text or "prompt bridge broker interrupted\n",
+            "raw_stdout_recorded": False,
+            "raw_stderr_recorded": False,
+            "credential_values_recorded": False,
+        }
+    stdout_text, stderr_text = proc.communicate()
+    failure_category = ""
+    if proc.returncode != 0:
+        if "PermissionError" in stderr_text or "Operation not permitted" in stderr_text:
+            failure_category = "bridge_client_permission_error"
+        elif "No such file or directory" in stderr_text:
+            failure_category = "bridge_command_not_found"
+        elif proc.returncode == 255 and command.lstrip().startswith("ssh "):
+            failure_category = "bridge_ssh_unavailable"
+        else:
+            failure_category = "bridge_command_failed"
+    public_stderr = stderr_text or ""
+    if failure_category:
+        public_stderr = (
+            f"LOOPX_PROMPT_BRIDGE_FAILURE_CATEGORY={failure_category}\n{public_stderr}"
+        )
+    return {
+        "schema_version": SERVER_RESPONSE_SCHEMA_VERSION,
+        "exit_code": int(proc.returncode),
+        "stdout": stdout_text or "",
+        "stderr": public_stderr,
+        "raw_stdout_recorded": False,
+        "raw_stderr_recorded": False,
+        "credential_values_recorded": False,
+    }
+
+
+def _start_prompt_bridge_broker(
+    *,
+    local_cwd: Path,
+    bridge_command: str,
+    private_bridge_command: str,
+    default_timeout_sec: float,
+) -> tuple[Path, threading.Event, threading.Thread]:
+    queue_dir = local_cwd / ".loopx-prompt-bridge-broker"
+    client_path = local_cwd / "loopx-host-prompt-bridge"
+    _write_json_file_client(str(queue_dir), client_path)
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=_serve_json_file_queue,
+        kwargs={
+            "queue_dir": queue_dir,
+            "once": False,
+            "poll_interval_sec": 0.02,
+            "handler": lambda payload: _run_prompt_bridge_broker_payload(
+                payload,
+                bridge_command=bridge_command,
+                private_bridge_command=private_bridge_command,
+                default_timeout_sec=default_timeout_sec,
+                stop_event=stop_event,
+            ),
+            "stop_event": stop_event,
+        },
+        name="loopx-prompt-bridge-broker",
+        daemon=True,
+    )
+    thread.start()
+    return client_path, stop_event, thread
 
 
 def _run_codex_payload(
@@ -493,14 +602,24 @@ def _run_codex_payload(
             if isinstance(payload_stdin, str) and payload_stdin:
                 stdin_prompt = payload_stdin
         agent_operations_summary_path: Path | None = None
+        prompt_bridge_stop_event: threading.Event | None = None
+        prompt_bridge_thread: threading.Thread | None = None
         if prompt_bridge_command and stdin_prompt is not None:
             private_bridge_command = _extract_private_bridge_command(stdin_prompt)
             if private_bridge_command:
+                broker_client, prompt_bridge_stop_event, prompt_bridge_thread = (
+                    _start_prompt_bridge_broker(
+                        local_cwd=local_cwd,
+                        bridge_command=prompt_bridge_command,
+                        private_bridge_command=private_bridge_command,
+                        default_timeout_sec=timeout,
+                    )
+                )
                 instrumented_bridge, agent_operations_summary_path = (
                     _write_instrumented_prompt_bridge(
                         tmp_path=tmp_path,
-                        bridge_command=prompt_bridge_command,
-                        private_bridge_command=private_bridge_command,
+                        bridge_command=shlex.quote(str(broker_client)),
+                        private_bridge_command=None,
                     )
                 )
                 stdin_prompt = _rewrite_private_bridge_command(
@@ -511,7 +630,9 @@ def _run_codex_payload(
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdin=subprocess.PIPE if stdin_prompt is not None else subprocess.DEVNULL,
+                stdin=subprocess.PIPE
+                if stdin_prompt is not None
+                else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -527,9 +648,9 @@ def _run_codex_payload(
                 and first_action_timeout_sec > 0
                 and _prompt_requires_bridge_first_action(stdin_prompt)
             ):
-                first_action_deadline = (
-                    time.monotonic() + max(1.0, float(first_action_timeout_sec))
-            )
+                first_action_deadline = time.monotonic() + max(
+                    1.0, float(first_action_timeout_sec)
+                )
             first_action_seen = not bool(first_action_deadline)
             bridge_idle_timeout_sec = max(0.0, float(bridge_idle_timeout_sec or 0.0))
             bridge_activity_seen = False
@@ -552,7 +673,11 @@ def _run_codex_payload(
                         first_action_seen = True
                     elif not first_action_seen and current_agent_operations_size > 0:
                         first_action_seen = True
-                if not first_action_seen and first_action_deadline and now >= first_action_deadline:
+                if (
+                    not first_action_seen
+                    and first_action_deadline
+                    and now >= first_action_deadline
+                ):
                     timeout_kind = "codex_exec_first_action_timeout"
                     _stop_process_group(proc, sig=signal.SIGTERM)
                     break
@@ -627,6 +752,11 @@ def _run_codex_payload(
                 "raw_task_text_recorded": False,
                 "credential_values_recorded": False,
             }
+        finally:
+            if prompt_bridge_stop_event is not None:
+                prompt_bridge_stop_event.set()
+            if prompt_bridge_thread is not None:
+                prompt_bridge_thread.join(timeout=5)
 
 
 def _run_json_bridge_payload(
@@ -761,6 +891,7 @@ def _serve_json_file_queue(
     once: bool,
     poll_interval_sec: float,
     handler: Any,
+    stop_event: threading.Event | None = None,
 ) -> int:
     requests_dir = queue_dir / "requests"
     processing_dir = queue_dir / "processing"
@@ -769,7 +900,7 @@ def _serve_json_file_queue(
     processing_dir.mkdir(parents=True, exist_ok=True)
     responses_dir.mkdir(parents=True, exist_ok=True)
     poll_interval_sec = max(0.01, float(poll_interval_sec or 0.05))
-    while True:
+    while stop_event is None or not stop_event.is_set():
         for request_path in sorted(requests_dir.glob("*.json")):
             processing_path = processing_dir / request_path.name
             try:
@@ -812,7 +943,11 @@ def _serve_json_file_queue(
                     pass
             if once:
                 return 0
-        time.sleep(poll_interval_sec)
+        if stop_event is None:
+            time.sleep(poll_interval_sec)
+        else:
+            stop_event.wait(poll_interval_sec)
+    return 0
 
 
 def _write_codex_client(socket_path: str, output_path: Path) -> None:
@@ -1123,7 +1258,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": True, "kind": args.kind, "raw_path_recorded": False}))
         return 0
     if args.command == "probe-socket":
-        print(json.dumps(_probe_socket(Path(args.socket), timeout_sec=args.timeout_sec), sort_keys=True))
+        print(
+            json.dumps(
+                _probe_socket(Path(args.socket), timeout_sec=args.timeout_sec),
+                sort_keys=True,
+            )
+        )
         return 0
     return 2
 
