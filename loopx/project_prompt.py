@@ -82,6 +82,7 @@ def render_quota_guard_command(
     available_capabilities: Any = None,
     runtime_profile: str | None = None,
     scheduler_execution_context: dict[str, Any] | None = None,
+    heartbeat_turn_receipt: bool = False,
 ) -> str:
     agent_arg = f" --agent-id {shell_arg(agent_id)}" if agent_id else ""
     capability_args = render_available_capability_args(available_capabilities)
@@ -89,11 +90,16 @@ def render_quota_guard_command(
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
     )
+    turn_arg = (
+        ' --turn-instance-id "${LOOPX_TURN:?}"'
+        if heartbeat_turn_receipt
+        else ""
+    )
     return (
         f"{shell_arg(cli_bin)} --format json "
         f"--registry {SHARED_GLOBAL_REGISTRY} "
         f"quota should-run --goal-id {shell_arg(goal_id)}{agent_arg}"
-        f"{capability_args}{scheduler_args}"
+        f"{capability_args}{scheduler_args}{turn_arg}"
     )
 
 

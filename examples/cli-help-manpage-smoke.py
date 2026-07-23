@@ -104,7 +104,7 @@ def assert_top_level_commands_are_explicitly_classified() -> None:
 
 def assert_extension_capabilities_stay_out_of_core_manual() -> None:
     manifest_paths = sorted(REPO_ROOT.glob("loopx/extensions/**/extension.toml"))
-    manifest_paths.extend(sorted(REPO_ROOT.glob("extensions/**/extension.toml")))
+    manifest_paths.extend(sorted(REPO_ROOT.glob("packages/**/extension.toml")))
     extension_owned_ids: set[str] = set()
     for path in manifest_paths:
         manifest = tomllib.loads(path.read_text(encoding="utf-8"))

@@ -320,23 +320,39 @@ open todo count == 0
 
 `terminal_no_followup` 是 LoopX 自己派生的 runtime closure，不是用户自定义 status，也不应由 host 根据自然语言猜测。
 
-## Codex App 与 Codex CLI 的不同
+## 原生 Codex Goal 与 LoopX Host Surface
 
-### Codex App
+### 原生 Goal 的持久边界
 
-- 有 heartbeat automation；
-- host 可以更新 RRULE；
-- task body 绑定目标 thread；
-- scheduler hint 可要求 App update + ACK。
+Codex 原生 Goal 不是“在 prompt 前写 `/goal`”的文本约定。自动化 surface 通过
+`thread/goal/set` 把 objective、status 与可选 token budget 绑定到 thread，通过
+`thread/goal/get` 读回，再用 `turn/start` 继续执行。只有普通 prompt 的 slash 前缀、
+外部 polling loop 或 `codex exec` 成功，都不能单独证明 native Goal 已激活。
 
-### Codex CLI
+这层 object 解决了一个重要问题：目标和 host lifecycle 不必只存在于当前模型上下文。
+LoopX 再补充项目拥有的结构化状态和过程：todo/claim/gate、领域 observation、effect receipt、
+跨 host cadence、replan 与 terminal audit。两者不是竞争状态机，也不能把 LoopX packet 伪装成
+native Goal baseline。
+
+### Codex App 的 LoopX 路径
+
+- App heartbeat automation 持有薄 task body；
+- 每轮 task body 要求重新读取 LoopX state 和 CLI packet；
+- host 可以按 `scheduler_hint` 更新 RRULE；
+- scheduler hint 可要求 App update、readback 与 ACK；
+- App thread/session 不成为 LoopX canonical state owner。
+
+### Codex CLI 的 LoopX 路径
 
 - 当前可见 session 通常由用户启动；
-- LoopX 提供 bootstrap message / thin task body；
+- LoopX 提供 bootstrap message / thin task body，并可让用户设为可见 `/goal <task_body>`；
+- 这里借用 Goal 作为持续 host surface，但长期 todo、gate、evidence 与 cadence 仍从 LoopX 读取；
 - CLI 不应假设用户安装的 `/loopx` 自定义命令一定可用；
 - final-check/self-stop 通过当前可用 host surface 完成。
 
-两者共享同一个 quota/status/todo state kernel，不应复制两套 lifecycle。
+两条 LoopX 路径共享同一个 quota/status/todo state kernel，不应复制两套 lifecycle。Native
+Goal objective 可以长期稳定，CLI packet 则必须随状态变化重新生成；把旧 packet 固定在 host
+里，会让 host 继续执行过期 frontier。
 
 ## Host Capability 与 Effect Receipt
 

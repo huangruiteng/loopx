@@ -18,7 +18,7 @@ from loopx.extensions.runtime import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXTENSION_ROOT = ROOT / "extensions" / "loopx-finance-value-discovery"
+EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
 MANIFEST = EXTENSION_ROOT / "extension.toml"
 EXAMPLE = EXTENSION_ROOT / "examples" / "paypal-debeta-discovery.json"
@@ -127,6 +127,12 @@ def test_legacy_connector_returns_extension_migration_packet(
     assert migration["automatic_provider_install_supported"] is False
     assert migration["packaged_loopx_only_start_supported"] is False
     assert migration["agent_start_mode"] == ("guided_when_provider_source_is_available")
+    assert migration["source_checkout_paths"]["package"] == (
+        "packages/loopx-finance-value-discovery"
+    )
+    assert migration["source_checkout_paths"]["manifest"] == (
+        "packages/loopx-finance-value-discovery/extension.toml"
+    )
     assert migration["truth_contract"]["legacy_connector_executes_finance"] is False
 
 

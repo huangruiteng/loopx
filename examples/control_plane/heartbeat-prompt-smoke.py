@@ -175,7 +175,8 @@ def main() -> int:
     assert "Observed capabilities -> `--available-capability`; never user gates." in thin_task, thin_task
     assert payload["quota_guard_command"] == (
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
-        "quota should-run --goal-id public-heartbeat-goal"
+        'quota should-run --goal-id public-heartbeat-goal '
+        '--turn-instance-id "${LOOPX_TURN:?}"'
     ), payload
     assert payload["quota_spend_command"] == (
         'loopx --registry "$HOME/.codex/loopx/registry.global.json" '
@@ -205,7 +206,7 @@ def main() -> int:
         "including non_blocking",
         "safe_bypass_allowed=true",
         "safe_bypass_kind=outcome_floor_recovery",
-        "unchanged monitor-only polls are not self-stop signals",
+        "receipts do not self-stop",
         "ranker/cross-domain evidence artifact",
         "status/log/metric/marker poll",
         "heartbeat_recommendation",
@@ -254,7 +255,8 @@ def main() -> int:
         scoped_payload
     )
     assert scoped_payload["quota_guard_command"].endswith(
-        "quota should-run --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
+        "quota should-run --goal-id public-heartbeat-goal --agent-id codex-side-bypass "
+        '--turn-instance-id "${LOOPX_TURN:?}"'
     ), scoped_payload
     assert scoped_payload["quota_spend_command"].endswith(
         "quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute --agent-id codex-side-bypass"
@@ -308,21 +310,21 @@ def main() -> int:
         "--goal-id loopx-meta --agent-id codex-product-capability --available-capability network "
         "--available-capability external_evidence_poll",
         "follow `interaction_contract`",
-        "User NOTIFY: concrete Chinese actions even non_blocking false/0",
-        'never only "owner gate"',
+        "NOTIFY Chinese actions incl. non_blocking false/0",
+        'not only "owner gate"',
         "具体 user todo 未投影，需修复 LoopX 状态投影",
-        "Quiet only if DONT_NOTIFY+false/0",
+        "DONT_NOTIFY+false/0 only: quiet",
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
         "spend post-writeback",
-        "Plans/done->todo/rationale; 2 stalls->self-repair",
+        "guard receipt; 2 stalls->replan",
         "`lark_event_inbox`: reply_due",
         "drain_command/reply-readback/ACK",
-        "P0 blocked: safe P1/P2; monitor-only quiet/no-spend",
+        "P0 blocked: safe P1/P2; monitor quiet/no-spend",
         "No project branches",
         "Do not consume learning queue unless asked",
-        "Stop for private material, credentials, destructive git, or unauthorized production actions",
+        "Stop: private material, credentials, destructive git, unauthorized prod",
     ):
         assert phrase in live_peer_task, phrase
     for phrase in (
@@ -362,12 +364,15 @@ def main() -> int:
         "Thin dispatcher",
         "Thin dispatcher; detail",
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Preflight and quota guard",
+        "Guard/retry; `LOOPX_TURN=<current_time_iso>`",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "User NOTIFY: Chinese actions incl. non_blocking at false/0",
         "Only DONT_NOTIFY+false/0: quiet",
-        "Otherwise obey user channel",
-        "status/log/metric/marker poll",
+        "follow user channel",
+        "monitor_quiet_skip",
+        "receipt/stall done",
+        "retry same id",
+        "one read-only poll",
         "safe_bypass_kind=outcome_floor_recovery",
         "ranker/cross-domain evidence recovery",
         "state priority slice",
@@ -397,24 +402,24 @@ def main() -> int:
     thin_task = normalized(str(thin_payload["task_body"]))
     for phrase in (
         "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Skills: `loopx-project`; surprise/tiny/conflict",
+        "Skills: `loopx-project`; surprise/conflict",
         "`loopx-self-repair`",
         "LoopX CLI = truth",
-        "registry/state/status/history/repo",
+        "state/status/repo",
         "`quota should-run`; follow `interaction_contract`",
-        "User NOTIFY: concrete Chinese actions even non_blocking false/0",
-        'never only "owner gate"',
-        "Quiet only if DONT_NOTIFY+false/0",
+        "NOTIFY Chinese actions incl. non_blocking false/0",
+        'not only "owner gate"',
+        "DONT_NOTIFY+false/0 only: quiet",
         "具体 user todo 未投影，需修复 LoopX 状态投影",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/ack/fail",
         "Batch/no-op; spend post-writeback",
-        "Plans/done->todo/rationale; 2 stalls->self-repair",
+        "guard receipt; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
-        "monitor-only quiet/no-spend",
+        "monitor quiet/no-spend",
         "No project branches",
         "Do not consume learning queue unless asked",
-        "Stop for private material, credentials, destructive git, or unauthorized production actions",
+        "Stop: private material, credentials, destructive git, unauthorized prod",
     ):
         assert phrase in thin_task, phrase
     assert "if absent say" not in thin_task, thin_task
@@ -473,10 +478,12 @@ def main() -> int:
         "gate blocks only the gated delivery path",
         "one bounded safe-bypass step",
         "include the projected user actions or todos concretely",
-        "quota monitor-poll --goal-id",
-        "--source heartbeat --execute",
+        "LOOPX_TURN",
+        "<current_time_iso>",
+        "idempotent receipt for every turn",
+        "Do not append a second manual monitor poll",
         "delivery edits",
-        "unchanged monitor-only polls are not self-stop signals",
+        "unchanged monitor-only receipts are not self-stop signals",
         "safe_bypass_kind=outcome_floor_recovery",
         "ranker/cross-domain evidence artifact",
         "explicitly a monitor",
@@ -589,10 +596,12 @@ def main() -> int:
         "gate blocks only the gated delivery path",
         "one bounded safe-bypass step",
         "include those todos",
-        "quota monitor-poll --goal-id",
-        "--source heartbeat --execute",
-        "delivery edits",
-        "unchanged monitor-only polls are not self-stop signals",
+        "LOOPX_TURN",
+        "--turn-instance-id",
+        "receipt/stall is written",
+        "On receipt write failure",
+        "No edits/spend",
+        "receipts do not self-stop",
         "explicitly a monitor",
         "status/log/metric/marker surfaces",
         "New eval/fail/complete/blocker",
@@ -772,6 +781,8 @@ def main() -> int:
     assert "do not infer scale/outcome from the classification name" in normalized(project_skill), project_skill
     assert "no-progress self-repair guard" in project_skill, project_skill
     assert "2 consecutive stalled turns" in normalized(project_skill), project_skill
+    assert "one idempotent receipt on every heartbeat" in normalized(project_skill), project_skill
+    assert "retry with the same turn id" in normalized(project_skill), project_skill
     assert "unchanged monitor-only polls are liveness-preserving no-ops" in normalized(project_skill), project_skill
     assert "Routine public repo publication is a boundary decision" in project_skill, project_skill
     assert "Do not reintroduce a user gate for public-safe publication itself" in project_skill, project_skill

@@ -217,6 +217,10 @@ def write_monitor_fixture(root: Path) -> tuple[Path, Path, Path]:
                             "kind": "harness_self_improvement",
                             "status": "connected-read-only",
                         },
+                        "coordination": {
+                            "registered_agents": ["codex-main-control"],
+                            "agent_model": "peer_v1",
+                        },
                         "authority_sources": [],
                         "quota": {
                             "compute": 1.0,
@@ -765,6 +769,8 @@ def main() -> int:
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--scan-path",
             str(project),
             registry_path=registry_path,
@@ -844,6 +850,8 @@ def main() -> int:
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--scan-path",
             str(project),
             registry_path=registry_path,
@@ -857,6 +865,8 @@ def main() -> int:
             "spend-slot",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--slots",
             "1",
             "--source",
@@ -881,6 +891,8 @@ def main() -> int:
             "spend-slot",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--slots",
             "1",
             "--source",
@@ -916,6 +928,8 @@ def main() -> int:
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--scan-path",
             str(project),
             registry_path=registry_path,
@@ -931,68 +945,83 @@ def main() -> int:
         post_ack_interaction = post_ack_guard["interaction_contract"]
         assert post_ack_interaction["mode"] == "monitor_quiet_skip", post_ack_interaction
         post_ack_actions = post_ack_interaction["cli_channel"]["next_cli_actions"]
-        post_ack_monitor_poll_action = post_ack_actions[0]
-        assert shlex.split(post_ack_monitor_poll_action) == [
-            "loopx",
-            "quota",
-            "monitor-poll",
-            "--goal-id",
-            GOAL_ID,
-            "--codex-app",
-            "--execute",
-        ], post_ack_interaction
-
+        assert len(post_ack_actions) == 1, post_ack_interaction
+        assert "missing/write_failed heartbeat_receipt only" in post_ack_actions[0], (
+            post_ack_interaction
+        )
+        assert '--turn-instance-id "${LOOPX_TURN:?' in post_ack_actions[0], (
+            post_ack_interaction
+        )
         post_ack_poll_count = count_events(runtime, "quota_monitor_poll")
-        for index in range(2):
-            if index == 0:
-                poll = run_projected_loopx_command(
-                    root,
-                    post_ack_monitor_poll_action,
-                    "--scan-path",
-                    str(project),
-                    registry_path=registry_path,
-                    runtime=runtime,
-                )
-            else:
-                poll = run_cli(
-                    root,
-                    "quota",
-                    "monitor-poll",
-                    "--goal-id",
-                    GOAL_ID,
-                    "--codex-app",
-                    "--source",
-                    "heartbeat",
-                    "--execute",
-                    "--scan-path",
-                    str(project),
-                    registry_path=registry_path,
-                    runtime=runtime,
-                )
-            assert poll["ok"] is True, poll
-            assert poll["classification"] == "quota_monitor_poll", poll
-            assert count_spend_events(runtime) == 1, poll
-            assert count_events(runtime, "quota_monitor_poll") == post_ack_poll_count + index + 1, poll
-
-        post_poll_guard = run_cli(
+        heartbeat_turn_one = run_cli(
             root,
             "quota",
             "should-run",
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+            "--turn-instance-id",
+            "2026-07-23T03:00:00Z",
             "--scan-path",
             str(project),
             registry_path=registry_path,
             runtime=runtime,
         )
-        assert post_poll_guard["effective_action"] == "monitor_quiet_skip", post_poll_guard
-        assert post_poll_guard["execution_obligation"]["must_attempt_work"] is False, post_poll_guard
-        assert post_poll_guard.get("autonomous_replan_obligation") is None, post_poll_guard
-        assert (
-            post_poll_guard["heartbeat_recommendation"]["recommended_mode"]
-            == "monitor_quiet_until_material_transition"
-        ), post_poll_guard
+        heartbeat_turn_one_replay = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--codex-app",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+            "--turn-instance-id",
+            "2026-07-23T03:00:00Z",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        heartbeat_turn_two = run_cli(
+            root,
+            "quota",
+            "should-run",
+            "--codex-app",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
+            "--turn-instance-id",
+            "2026-07-23T03:03:00Z",
+            "--scan-path",
+            str(project),
+            registry_path=registry_path,
+            runtime=runtime,
+        )
+        assert heartbeat_turn_one["effective_action"] == "monitor_quiet_skip", heartbeat_turn_one
+        assert heartbeat_turn_one["heartbeat_receipt"]["status"] == "committed", heartbeat_turn_one
+        assert heartbeat_turn_one["heartbeat_receipt"]["stall_observation"] == "appended", (
+            heartbeat_turn_one
+        )
+        assert heartbeat_turn_one_replay["heartbeat_receipt"]["status"] == "replayed", (
+            heartbeat_turn_one_replay
+        )
+        assert heartbeat_turn_one_replay["heartbeat_receipt"]["event_id"] == (
+            heartbeat_turn_one["heartbeat_receipt"]["event_id"]
+        ), (heartbeat_turn_one, heartbeat_turn_one_replay)
+        assert heartbeat_turn_two["effective_action"] == "autonomous_replan_required", (
+            heartbeat_turn_two
+        )
+        assert heartbeat_turn_two["execution_obligation"]["must_attempt_work"] is True, (
+            heartbeat_turn_two
+        )
+        assert count_spend_events(runtime) == 1, heartbeat_turn_two
+        assert count_events(runtime, "quota_monitor_poll") == post_ack_poll_count + 2, (
+            heartbeat_turn_two
+        )
 
     with tempfile.TemporaryDirectory(prefix="loopx-heartbeat-monitor-replan-surface-only-") as tmp:
         root = Path(tmp)
@@ -1004,6 +1033,8 @@ def main() -> int:
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--scan-path",
             str(project),
             registry_path=registry_path,
@@ -1020,7 +1051,7 @@ def main() -> int:
             "--goal-id",
             GOAL_ID,
             "--agent-id",
-            "codex-side-bypass",
+            "codex-main-control",
             "--progress-scope",
             "agent_lane",
             "--classification",
@@ -1050,6 +1081,8 @@ def main() -> int:
             "--codex-app",
             "--goal-id",
             GOAL_ID,
+            "--agent-id",
+            "codex-main-control",
             "--scan-path",
             str(project),
             registry_path=registry_path,

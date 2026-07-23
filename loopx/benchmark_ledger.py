@@ -1076,6 +1076,17 @@ _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS = {
     ),
 }
 
+_SKILLSBENCH_PRE_AGENT_SETUP_FAILURE_CLASSES = frozenset(
+    _SKILLSBENCH_PRE_AGENT_SETUP_STATUS_LABELS.values()
+)
+
+_SKILLSBENCH_SETUP_PREFLIGHT_REPAIR_ATTRIBUTIONS = {
+    "skillsbench_docker_apt_setup_risk_preflight_blocked",
+    "skillsbench_dockerfile_package_bootstrap_risk_preflight_blocked",
+    "skillsbench_verifier_bootstrap_risk_preflight_blocked",
+    "skillsbench_task_source_preflight_blocked",
+}
+
 
 def _skillsbench_pre_agent_setup_failure_class(
     benchmark_run: dict[str, Any],
@@ -1234,6 +1245,20 @@ def _failure_scope(failure_class: str, score: float | int | None, passed: bool |
     if failure_class.startswith("verifier_"):
         return "verifier_or_infra"
     return "runner_or_setup"
+
+
+def _repair_route_failure_class(
+    benchmark_run: dict[str, Any], failure_class: str
+) -> str:
+    if failure_class not in _SKILLSBENCH_PRE_AGENT_SETUP_FAILURE_CLASSES:
+        return failure_class
+    attribution = _compact_text(
+        benchmark_run.get("score_failure_attribution"),
+        limit=120,
+    )
+    if attribution in _SKILLSBENCH_SETUP_PREFLIGHT_REPAIR_ATTRIBUTIONS:
+        return attribution
+    return failure_class
 
 
 def _repair_route(
@@ -1912,7 +1937,7 @@ def build_benchmark_run_ledger_entry(
         else (first_success_round is not None)
     )
     repair_route = _repair_route(
-        failure_class,
+        _repair_route_failure_class(benchmark_run, failure_class),
         failure_scope,
         agent_model=agent_model,
         round_success_observed=round_success_observed,
@@ -2366,7 +2391,10 @@ def _normalize_ledger_run(run: dict[str, Any], *, fallback_benchmark_id: str) ->
         normalized["arm_id"] = resolved_arm
     normalized["benchmark_id"] = benchmark_id
     repair_route = _repair_route(
-        _compact_text(normalized.get("failure_class"), limit=120),
+        _repair_route_failure_class(
+            normalized,
+            _compact_text(normalized.get("failure_class"), limit=120),
+        ),
         _compact_text(normalized.get("failure_scope"), limit=80),
         agent_model=_compact_text(normalized.get("agent_model"), limit=120),
         round_success_observed=normalized.get("round_success_observed") is True

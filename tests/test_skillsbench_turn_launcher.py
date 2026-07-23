@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -81,6 +82,7 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "docker_proxy_host=" not in output
     assert env["SKILLSBENCH_DOCKER_PROXY_HOST"] not in output
     assert "private_runner_command_values_redacted=true" in output
+    assert "exact_host_codex_sandbox_preflight=required" in output
     for arg_name in (
         "--remote-command-file-bridge-probe-command",
         "--remote-command-file-bridge-solver-command",
@@ -95,6 +97,54 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     for private_value in private_values.values():
         assert private_value not in output
     assert "sentinel-" not in output
+
+
+def test_launcher_fails_before_batch_when_exact_host_sandbox_probe_fails(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    call_count = tmp_path / "ssh-call-count"
+    fake_ssh = fake_bin / "ssh"
+    fake_ssh.write_text(
+        "#!/bin/sh\n"
+        f"count_file={call_count!s}\n"
+        'count=0\n'
+        'if [ -f "$count_file" ]; then count=$(cat "$count_file"); fi\n'
+        'count=$((count + 1))\n'
+        'printf "%s" "$count" > "$count_file"\n'
+        'if [ "$count" -eq 1 ]; then exit 0; fi\n'
+        'exit 1\n',
+        encoding="utf-8",
+    )
+    fake_ssh.chmod(0o755)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "public-smoke-case", "exact-host-preflight"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 3, proc
+    payload = json.loads(proc.stderr)
+    assert payload == {
+        "error": "skillsbench_exact_host_codex_sandbox_preflight_failed",
+        "ok": False,
+        "raw_output_recorded": False,
+        "remote_codex_bin_mode": "path_lookup",
+        "remote_path_recorded": False,
+        "sandbox_mode": "workspace-write",
+        "schema_version": "skillsbench_exact_host_codex_sandbox_preflight_v0",
+        "ssh_destination_recorded": False,
+    }
+    assert call_count.read_text(encoding="utf-8") == "2"
+    assert "pid=" not in proc.stdout
 
 
 def test_turn_launcher_accepts_stability_policy(tmp_path: Path) -> None:
@@ -225,6 +275,85 @@ def test_launcher_wires_bounded_primary_pip_index_mode(tmp_path: Path) -> None:
     assert "--docker-pip-index-mode primary" in proc.stdout
 
 
+def test_launcher_wires_bounded_primary_apt_source_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_SOURCE_MODE"] = "primary"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "primary-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "docker_apt_source_mode=primary" in proc.stdout
+    assert "--docker-apt-source-mode primary" in proc.stdout
+
+
+def test_launcher_wires_bounded_proxy_compatible_apt_transport(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "proxy-compatible"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "proxy-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "docker_apt_transport_mode=proxy-compatible" in proc.stdout
+    assert "--docker-apt-transport-mode proxy-compatible" in proc.stdout
+
+
+def test_launcher_rejects_unbounded_apt_transport_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE"] = "private-mode"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-transport"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert (
+        "SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE must be default or "
+        "proxy-compatible"
+    ) in proc.stderr
+
+
+def test_launcher_rejects_unbounded_apt_source_mode(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_DOCKER_APT_SOURCE_MODE"] = "private-url"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "invalid-apt"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 2
+    assert "SKILLSBENCH_DOCKER_APT_SOURCE_MODE must be mirror or primary" in (
+        proc.stderr
+    )
+
+
 def test_launcher_rejects_unbounded_pip_index_mode(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_DOCKER_PIP_INDEX_MODE"] = "private-url"
@@ -289,6 +418,7 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
 ) -> None:
     env = _base_env(tmp_path)
     env["SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT"] = "1"
+    env["SKILLSBENCH_APPEND_HISTORY"] = "1"
 
     proc = subprocess.run(
         [str(LAUNCHER), "--dry-run", "public-smoke-case", "setup-progress"],
@@ -301,4 +431,45 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
     )
 
     assert "public_artifact_sync_interval_sec=30" in proc.stdout
+    assert "exact_host_codex_sandbox_preflight=not_required" in proc.stdout
     assert "--public-artifact-sync-interval-sec 30" in proc.stdout
+    assert "--setup-only-public-preflight" in proc.stdout
+    assert "--append-history" not in proc.stdout
+
+
+def test_formal_launcher_enables_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "live-progress"],
+        cwd=REPO_ROOT,
+        env=_base_env(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "setup_only_public_preflight=0" in proc.stdout
+    assert "public_artifact_sync_interval_sec=30" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 30" in proc.stdout
+
+
+def test_formal_launcher_can_disable_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"] = "0"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "no-live-progress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "public_artifact_sync_interval_sec=0" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 0" in proc.stdout

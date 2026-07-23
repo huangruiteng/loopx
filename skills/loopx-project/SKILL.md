@@ -322,12 +322,16 @@ under that contract, not as competing sources of truth.
 
 If the response has `should_run=false` and not `safe_bypass_allowed=true`, do
 not run implementation or adapter work for that goal in this turn. When
-`effective_action=monitor_quiet_skip`, append at most one no-spend
-`quota monitor-poll --goal-id <STABLE_GOAL_ID> --source heartbeat --execute`
-event, rerun `quota should-run`, and follow
+running from a heartbeat, pass its `<current_time_iso>` as
+`quota should-run --turn-instance-id <HEARTBEAT_TURN_ID>` and reuse that id for
+same-heartbeat retries. This commits one idempotent receipt on every heartbeat;
+when `effective_action=monitor_quiet_skip`, the same guard also commits the
+no-spend stall observation and returns the follow-up decision. Follow
 `autonomous_replan_required` / `execution_obligation.must_attempt_work=true` if
-the next guard exposes it; otherwise quietly report or record the public-safe
-`reason` only when there is no operator gate to ask. Keep the heartbeat
+the guard exposes it. If `heartbeat_receipt.status=write_failed`, retry with the
+same turn id rather than manually appending another poll. Otherwise quietly
+report or record the public-safe `reason` only when there is no operator gate to
+ask. Keep the heartbeat
 automation active: unchanged monitor-only polls are liveness-preserving no-ops,
 not self-stop signals. If the command exits non-zero, fail closed: run
 `loopx doctor` / `loopx status` and fix status collection before

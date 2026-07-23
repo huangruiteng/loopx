@@ -54,18 +54,6 @@ _OVERSIZED_DECISION_RETIREMENT_PLANS = {
     "loopx.control_plane.quota.heartbeat_recommendation:build_heartbeat_recommendation": (
         "Move recommendation modes into ordered policy rules with one projection assembler."
     ),
-    "loopx.control_plane.runtime.benchmark_comparison:benchmark_comparison_decision_note": (
-        "Extract comparison evidence rules from decision-note presentation assembly."
-    ),
-    "loopx.control_plane.runtime.benchmark_experiment_report:compact_benchmark_experiment_report": (
-        "Split experiment evidence normalization from compact report projection."
-    ),
-    "loopx.control_plane.runtime.goal_start_control_score:build_goal_start_product_mode_control_score": (
-        "Extract score dimensions into independently testable rule evaluators."
-    ),
-    "loopx.control_plane.runtime.skillsbench_post_run_debug:build_skillsbench_post_run_debug_gate": (
-        "Separate debug evidence classification from the final gate projection."
-    ),
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": (
         "Replace branch-heavy field parsing with the canonical todo field schema."
     ),
@@ -97,22 +85,6 @@ _OVERSIZED_DECISION_METRIC_CEILINGS = {
     "loopx.control_plane.quota.heartbeat_recommendation:build_heartbeat_recommendation": {
         "statements": 63,
         "decision_points": 64,
-    },
-    "loopx.control_plane.runtime.benchmark_comparison:benchmark_comparison_decision_note": {
-        "statements": 97,
-        "decision_points": 45,
-    },
-    "loopx.control_plane.runtime.benchmark_experiment_report:compact_benchmark_experiment_report": {
-        "statements": 100,
-        "decision_points": 49,
-    },
-    "loopx.control_plane.runtime.goal_start_control_score:build_goal_start_product_mode_control_score": {
-        "statements": 109,
-        "decision_points": 81,
-    },
-    "loopx.control_plane.runtime.skillsbench_post_run_debug:build_skillsbench_post_run_debug_gate": {
-        "statements": 113,
-        "decision_points": 97,
     },
     "loopx.control_plane.todos.contract:parse_todo_metadata_line": {
         "statements": 119,

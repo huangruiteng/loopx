@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXTENSION_ROOT = ROOT / "extensions" / "loopx-finance-value-discovery"
+EXTENSION_ROOT = ROOT / "packages" / "loopx-finance-value-discovery"
 EXTENSION_SRC = EXTENSION_ROOT / "src"
 MANIFEST = EXTENSION_ROOT / "extension.toml"
 EXAMPLE = EXTENSION_ROOT / "examples" / "paypal-debeta-discovery.json"

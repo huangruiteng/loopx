@@ -21,6 +21,7 @@ _STRING_FIELDS = (
     "host_local_codex_cli_preflight_failure_category",
     "host_local_codex_cli_preflight_sandbox_mode",
     "host_local_codex_cli_preflight_sandbox_probe_status",
+    "host_local_codex_cli_preflight_sandbox_failure_subtype",
 )
 _BOOL_FIELDS = (
     "host_local_codex_cli_preflight_requested",
@@ -170,6 +171,20 @@ def _fail(prerequisites: dict[str, Any], blocker: str, category: str) -> None:
     prerequisites["host_local_codex_cli_preflight_failure_category"] = category
 
 
+def _sandbox_failure_subtype(stdout: str, stderr: str) -> str:
+    text = f"{stdout}\n{stderr}".casefold()
+    namespace_markers = (
+        "no permissions to create new namespace",
+        "cannot create user namespace",
+        "failed to create user namespace",
+    )
+    if ("bwrap" in text or "bubblewrap" in text) and any(
+        marker in text for marker in namespace_markers
+    ):
+        return "linux_user_namespace_unavailable"
+    return "unclassified"
+
+
 def run_preflight(args: Any, plan: dict[str, Any]) -> None:
     prerequisites = plan.setdefault("runner_prerequisites", {})
     sandbox_mode = str(
@@ -194,6 +209,7 @@ def run_preflight(args: Any, plan: dict[str, Any]) -> None:
             "host_local_codex_cli_preflight_sandbox_probe_status": (
                 "pending" if sandbox_probe_required else "not_required"
             ),
+            "host_local_codex_cli_preflight_sandbox_failure_subtype": "",
             "host_local_codex_cli_preflight_raw_output_recorded": False,
             "host_local_codex_cli_preflight_path_recorded": False,
         }
@@ -243,14 +259,22 @@ def run_preflight(args: Any, plan: dict[str, Any]) -> None:
                         sandbox_probe_command,
                     ],
                     cwd=tmp,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
                     timeout=10,
                     check=False,
                 )
         except (OSError, subprocess.TimeoutExpired):
             proc = None
         if proc is None or proc.returncode != 0:
+            prerequisites[
+                "host_local_codex_cli_preflight_sandbox_failure_subtype"
+            ] = (
+                "sandbox_probe_process_error"
+                if proc is None
+                else _sandbox_failure_subtype(proc.stdout or "", proc.stderr or "")
+            )
             prerequisites[
                 "host_local_codex_cli_preflight_sandbox_probe_status"
             ] = "failed"

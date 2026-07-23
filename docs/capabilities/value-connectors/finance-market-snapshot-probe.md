@@ -29,7 +29,7 @@ agent this bounded sequence:
 
 1. inspect `loopx extension list --format json`;
 2. when working from a LoopX source checkout and local environment writes are
-   authorized, install `./extensions/loopx-finance-value-discovery`;
+   authorized, install `./packages/loopx-finance-value-discovery`;
 3. register its manifest with `loopx extension install --execute`;
 4. invoke it with `loopx extension run ... --execute`.
 

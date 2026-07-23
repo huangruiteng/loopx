@@ -12,7 +12,7 @@ for anchor in (
     "## Capability And Extension Placement",
     "loopx/capabilities/<capability>/",
     "loopx/extensions/",
-    "extensions/<extension-id>/",
+    "packages/<package-id>/",
     "capability id, provider id",
     "name public capabilities after caller outcomes",
 ):
@@ -20,6 +20,9 @@ for anchor in (
 
 for anchor in (
     "## Placement Decision For Agents",
+    "## Repository Layout",
+    "packages/<package-id>/",
+    "There is intentionally no",
     "What user outcome and caller-visible contract is being added or changed?",
     "Does the implementation need independent installation",
     "An extension-owned command and packet contract may remain a",

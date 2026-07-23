@@ -1,6 +1,6 @@
 ---
 name: loopx-pr-review
-description: Use when the visible request starts with `/loopx-pr-review` or asks LoopX to review a repository PR queue by time window, open/unmerged status, merged/closed status, or current-day PR activity. Run `loopx pr-review` first, preserve the full packet contract, then read PR evidence and produce per-PR reviews with the five required blocks. Do not use for approving, commenting on, merging, self-merging, or admin-bypassing a specific PR; use `loopx-pr-merge` for those actions.
+description: Use when the visible request starts with `/loopx-pr-review` or asks LoopX to review a repository PR queue by time window, open/unmerged status, merged/closed status, or current-day PR activity. Run `loopx pr-review` first, preserve the full packet contract, then read PR evidence and produce per-PR reviews with the five required blocks, including code-volume necessity and concrete simplification analysis. Do not use for approving, commenting on, merging, self-merging, or admin-bypassing a specific PR; use `loopx-pr-merge` for those actions.
 ---
 
 # LoopX PR Review
@@ -118,6 +118,36 @@ metadata risk hints alone. `metadata_risk_hint` is only for queue ordering.
 
 If the queue is too large for one response, review the highest-priority PRs
 first and say which PRs remain. Do not silently replace review with a summary.
+
+## Code Volume And Simplification Review
+
+For every selected PR, analyze whether its code volume is necessary for the
+shipped behavior and name concrete simplification opportunities. Do not treat a
+large diff as a defect by itself or reward a small diff that hides complexity.
+
+- Establish the changed-line shape from the exact reviewed base and head with
+  `git diff --stat`, `git diff --numstat`, or equivalent evidence. Separate
+  production code from tests/fixtures, docs, generated files, and mechanical
+  moves before judging implementation size.
+- Inspect the largest changed production files and the affected symbols, active
+  call sites, and compatibility contracts. Use line count to locate review
+  hotspots, not as the verdict.
+- Classify the volume as `necessary`, `partly avoidable`, or `not yet proven`.
+  Necessary volume may include a cohesive shipped behavior, a real migration or
+  compatibility contract, and focused semantic or regression coverage.
+- Look for avoidable volume in duplicated domain rules, speculative providers or
+  extension points without a caller, compatibility wrappers without a real
+  consumer, parameter-heavy helpers that join unrelated behavior, repeated
+  fixture assertions, and old entry points that should have been removed.
+- Propose a reduction only when it preserves the intended behavior and evidence.
+  Cite the file or symbol, explain what can be deleted or collapsed, and name the
+  validation that would keep the smaller version honest. If no safe reduction is
+  supported by the diff, explicitly say the volume is justified.
+
+Keep the five-heading output contract: put the measured shape and structural
+hotspots under `具体改动`, and put the necessity verdict plus the highest-value
+simplification direction under `我的整体评价`. A code-volume conclusion without
+diff and call-site evidence is incomplete.
 
 ## Output Contract
 

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..control_plane.testing.release_outcome_baseline import (
+from ..benchmarks.qualification.release_outcome_baseline import (
     RELEASE_OUTCOME_BASELINE_SCHEMA_VERSION,
     build_release_outcome_baseline,
 )

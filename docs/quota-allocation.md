@@ -993,9 +993,10 @@ Post-turn accounting protocol:
   concrete successor, blocker, or `outcome_progress`/`primary_goal_outcome`
   writeback, but do not spend for a `surface_only` watch-lane continuation or
   no-follow-up rationale that closes into `monitor_quiet_skip`.
-- for unchanged `monitor_quiet_skip` heartbeat polls, append at most one
-  no-spend `quota monitor-poll --execute` event and rerun `quota should-run`
-  before choosing quiet no-op versus autonomous replan;
+- give each heartbeat a stable turn id and pass it to `quota should-run`; the
+  guard commits one idempotent receipt, and for unchanged `monitor_quiet_skip`
+  it idempotently appends the no-spend stall observation before returning quiet
+  no-op versus autonomous replan;
 - do not append spend for quiet `should_run=false` skips, preflight failures,
   pure dry-run previews, or duplicate accounting attempts;
 - if `should_run=false` but `safe_bypass_allowed=true` and the agent actually

@@ -60,6 +60,9 @@ def main() -> int:
         "pull_requests[].evidence_commands",
         "Do not pipe the first packet through `jq`",
         "Do not fill the five-block review from title, labels, changed-file counts, or metadata risk hints alone",
+        "Code Volume And Simplification Review",
+        "Classify the volume as `necessary`, `partly avoidable`, or `not yet proven`",
+        "A code-volume conclusion without diff and call-site evidence is incomplete",
         "Do not use this skill to approve",
         "Route those decisions to `loopx-pr-merge`",
     ):

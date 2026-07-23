@@ -5676,6 +5676,136 @@ def test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch() -> None:
         assert "LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR" in staged_text
 
 
+def test_skillsbench_docker_task_staging_can_keep_primary_apt_sources() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-primary-apt-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "primary-apt-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n\n"
+            "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="primary-apt-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+        )
+
+        assert metadata["staged"] is True, metadata
+        assert metadata["dockerfile_apt_source_mode"] == "primary", metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["dockerfile_ubuntu_apt_mirror_patch_required"] is False
+        assert metadata["dockerfile_ubuntu_apt_mirror_patch_applied"] is False
+        assert metadata["dockerfile_debian_apt_mirror_patch_required"] is False
+        assert metadata["dockerfile_debian_apt_mirror_patch_applied"] is False
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert DOCKER_APT_RETRY_BEGIN in staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            not in staged_text
+        ), staged_text
+        assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
+        assert dockerfile_runtime.DEBIAN_APT_MIRROR_BEGIN not in staged_text
+
+
+def test_skillsbench_docker_task_staging_supports_proxy_compatible_apt() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-transport-stage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "apt-transport-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04\n\n"
+            "# custom source: http://packages.example.test/repository\n"
+            "RUN apt-get update && apt-get install -y --no-install-recommends curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="apt-transport-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+            docker_apt_transport_mode="proxy-compatible",
+        )
+
+        assert metadata["dockerfile_apt_source_mode"] == "primary", metadata
+        assert metadata["dockerfile_apt_transport_mode"] == (
+            "proxy-compatible"
+        ), metadata
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["original_task_mutated"] is False, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert 'Acquire::http::Pipeline-Depth "0";' in staged_text, staged_text
+        assert 'Acquire::https::Pipeline-Depth "0";' in staged_text, staged_text
+        assert 'Acquire::ForceIPv4 "true";' in staged_text, staged_text
+        assert (
+            "http://archive.ubuntu.com/ubuntu#https://archive.ubuntu.com/ubuntu"
+            in staged_text
+        ), staged_text
+        assert (
+            "http://security.ubuntu.com/ubuntu#https://security.ubuntu.com/ubuntu"
+            in staged_text
+        ), staged_text
+        assert (
+            "http://deb.debian.org/debian#https://deb.debian.org/debian"
+            in staged_text
+        ), staged_text
+        assert "http://packages.example.test/repository" in staged_text
+        assert dockerfile_runtime.UBUNTU_APT_MIRROR_BEGIN not in staged_text
+
+
+def test_skillsbench_apt_transport_covers_each_apt_stage() -> None:
+    with tempfile.TemporaryDirectory(prefix="skillsbench-apt-stage-coverage-") as tmp:
+        root = Path(tmp)
+        task = root / "tasks" / "apt-stage-probe"
+        dockerfile = task / "environment" / "Dockerfile"
+        dockerfile.parent.mkdir(parents=True)
+        original_text = (
+            "FROM ubuntu:24.04 AS build\n\n"
+            "RUN echo build-only\n\n"
+            "FROM ubuntu:24.04 AS runtime\n\n"
+            "RUN apt-get update && apt-get install -y curl\n"
+        )
+        dockerfile.write_text(original_text, encoding="utf-8")
+        (task / "task.toml").write_text("version = \"1.1\"\n", encoding="utf-8")
+
+        staged_path, metadata = stage_task_for_sandbox(
+            task_path=task,
+            jobs_dir=root / "jobs",
+            job_name="apt-stage-probe",
+            sandbox="docker",
+            docker_apt_source_mode="primary",
+            docker_apt_transport_mode="proxy-compatible",
+        )
+
+        assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert dockerfile.read_text(encoding="utf-8") == original_text
+        staged_text = (staged_path / "environment" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        assert staged_text.count(DOCKER_APT_RETRY_BEGIN) == 1, staged_text
+        runtime_stage = staged_text.index("FROM ubuntu:24.04 AS runtime")
+        transport_config = staged_text.rindex('Acquire::ForceIPv4 "true";')
+        apt_update = staged_text.index("RUN apt-get update")
+        assert runtime_stage < transport_config < apt_update, staged_text
+
+
 def test_skillsbench_no_skill_route_removes_staged_task_skills() -> None:
     with tempfile.TemporaryDirectory(prefix="skillsbench-no-skill-stage-") as tmp:
         root = Path(tmp)
@@ -5743,6 +5873,7 @@ def test_skillsbench_docker_task_staging_adds_apt_retry_patch() -> None:
         assert metadata["apt_retry_patch_required"] is True, metadata
         assert metadata["apt_risk_preflight_blocked"] is False, metadata
         assert metadata["apt_retry_patch_applied"] is True, metadata
+        assert metadata["dockerfile_apt_source_mode"] == "mirror", metadata
         assert (
             metadata["dockerfile_ubuntu_apt_mirror_patch_required"] is True
         ), metadata
@@ -14823,6 +14954,9 @@ if __name__ == "__main__":
     test_skillsbench_codex_acp_post_success_finalization_route()
     test_skillsbench_docker_task_staging_adds_app_skills_mount()
     test_skillsbench_docker_task_staging_adds_debian_apt_mirror_patch()
+    test_skillsbench_docker_task_staging_can_keep_primary_apt_sources()
+    test_skillsbench_docker_task_staging_supports_proxy_compatible_apt()
+    test_skillsbench_apt_transport_covers_each_apt_stage()
     test_skillsbench_no_skill_route_removes_staged_task_skills()
     test_skillsbench_docker_task_staging_adds_apt_retry_patch()
     test_skillsbench_docker_task_staging_apt_retry_is_nonroot_safe()

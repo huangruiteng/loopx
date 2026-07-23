@@ -421,7 +421,13 @@ def test_reverse_tunnel_app_goal_defaults_apt_bootstrap_fail_fast() -> None:
         ), case
         latest_run = _latest_decision_run(case)
         assert latest_run["failure_class"] == (
+            "skillsbench_runner_setup_blocked_before_agent_rounds"
+        )
+        assert latest_run["score_failure_attribution"] == (
             "skillsbench_docker_apt_setup_risk_preflight_blocked"
+        )
+        assert latest_run["repair_class"] == (
+            "skillsbench_setup_preflight_selection"
         )
         assert (
             "skillsbench_docker_apt_setup_risk_preflight_blocked"

@@ -17,6 +17,12 @@ loop 状态：目标、用户决策、agent todo、认领关系、scope、schedu
 quota、证据、run history 和 handoff 留在同一层轻量状态里。该等人的地方明确等人，
 不该空等的安全侧路继续推进，每一次自动执行都留下边界、验证面和写回轨迹。
 
+一个形象化理解是：LoopX 是
+**[面向长程 Agent 的可执行看板](docs/development/control-plane-course/00-concept-primer.md)**。
+卡片带有稳定身份、权限、证据和 continuation；移动卡片要经过 claim、gate、monitor、
+validate、writeback 等 typed operator；Capability 可以增加 Issue Fix、Auto Research
+等领域泳道，但不会再造一套控制面。看板是 projection，LoopX state 才是事实源。
+
 注册 agent 彼此平级：由 todo claim / lease、任务边界、能力门和 typed
 continuation 决定下一步谁执行，不需要一个长期拥有全局权限的 leader agent。
 
@@ -314,6 +320,21 @@ benchmark 证据边界。
 第一次修改 LoopX control plane，可以从
 [控制面开发者 9 讲](docs/development/control-plane-course/README.md)开始，按真实 CLI
 执行路径、组合状态推理、核心函数、分层质量门禁和 smoke 建立代码心智模型。
+
+### 给开发者：四种运行责任
+
+| 角色 | 负责什么 |
+| --- | --- |
+| **Agent** | 通过 host/runtime 完成方案、分析、工具使用和一次有界执行 |
+| **Provider** | 调用外部系统，返回 observation、effect result 与 readback |
+| **Capability** | 定义调用者结果，归一化并验证 provider 输出，提出 typed transition |
+| **Kernel** | 持久化 todo、gate、monitor、已接受 writeback、quota、恢复与调度 |
+
+执行路径是 `Agent -> Capability -> Provider`，控制结果沿
+`Provider readback -> Capability transition -> Kernel` 返回。Extension 负责可选
+provider 的打包和生命周期，不是另一个控制面 owner。详见
+[核心架构](docs/architecture.md)与
+[Extension / Capability 参考](docs/reference/extensions.md)。
 
 项目角色与维护权限见 [GOVERNANCE.md](GOVERNANCE.md)，创建者与贡献者归属见
 [AUTHORS.md](AUTHORS.md)，关键公开演进见

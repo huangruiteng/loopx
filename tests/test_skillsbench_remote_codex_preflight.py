@@ -90,13 +90,18 @@ def test_missing_codex_cli_has_precise_runner_attribution(tmp_path: Path) -> Non
 def test_host_local_codex_cli_preflight_fails_when_selected_sandbox_cannot_run(
     tmp_path: Path,
 ) -> None:
+    raw_failure = (
+        "bwrap: No permissions to create new namespace at "
+        "/private/runner/workspace\n"
+    )
     codex = tmp_path / "codex"
     codex.write_text(
         "#!/bin/sh\n"
         "if [ \"$1\" = \"--version\" ]; then exit 0; fi\n"
         "if [ \"$1\" = \"sandbox\" ] && "
         "[ \"$2\" = \"-c\" ] && "
-        "[ \"$3\" = 'sandbox_mode=\"workspace-write\"' ]; then exit 101; fi\n"
+        "[ \"$3\" = 'sandbox_mode=\"workspace-write\"' ]; then "
+        f"printf '%s' '{raw_failure}' >&2; exit 101; fi\n"
         "exit 0\n",
         encoding="utf-8",
     )
@@ -119,6 +124,17 @@ def test_host_local_codex_cli_preflight_fails_when_selected_sandbox_cannot_run(
     assert prerequisites["host_local_codex_cli_preflight_first_blocker"] == (
         "skillsbench_host_local_codex_cli_sandbox_probe_failed"
     )
+    assert prerequisites[
+        "host_local_codex_cli_preflight_sandbox_failure_subtype"
+    ] == "linux_user_namespace_unavailable"
+    serialized = json.dumps(prerequisites, sort_keys=True)
+    assert raw_failure.strip() not in serialized
+    assert "/private/runner/workspace" not in serialized
+    public = skillsbench_loop._public_runner_prerequisites(prerequisites)
+    assert public[
+        "host_local_codex_cli_preflight_sandbox_failure_subtype"
+    ] == "linux_user_namespace_unavailable"
+    assert "/private/runner/workspace" not in json.dumps(public, sort_keys=True)
     attribution = skillsbench_loop._runner_prerequisite_failure_attribution(
         prerequisites
     )

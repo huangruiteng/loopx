@@ -461,14 +461,12 @@ def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
         },
     }
     entry = build_benchmark_run_ledger_entry(passed_false_verifier_infra)
-    assert entry["official_score"] == 0.0, entry
-    assert entry["official_passed"] is False, entry
-    assert entry["score_status"] == "failed", entry
-    assert entry["official_score_attempt_countable"] is True, entry
+    assert "official_score" not in entry, entry
+    assert entry["official_score_bool_fallback_used"] is False, entry
+    assert entry["score_status"] == "missing", entry
+    assert entry["official_score_attempt_countable"] is False, entry
     assert entry["official_score_countable"] is False, entry
-    assert entry["official_score_countability_reason"] == (
-        "official_score_attempt_not_countable"
-    ), entry
+    assert entry["official_score_countability_reason"] == "score_missing", entry
     assert "countable_score" not in entry, entry
 
     completed_task_attempt_pass = {
@@ -506,7 +504,7 @@ def test_ledger_marks_uncountable_numeric_scores_noncountable() -> None:
     assert entry["countable_score"] == 1.0, entry
 
 
-def test_current_aggregate_keeps_setup_bool_fallback_uncountable() -> None:
+def test_current_aggregate_keeps_uncountable_setup_bool_result_missing() -> None:
     entry = build_benchmark_run_ledger_entry(
         {
             "schema_version": "benchmark_run_v0",
@@ -537,12 +535,10 @@ def test_current_aggregate_keeps_setup_bool_fallback_uncountable() -> None:
             },
         }
     )
-    assert entry["official_score"] == 0.0, entry
-    assert entry["official_score_bool_fallback_used"] is True, entry
+    assert "official_score" not in entry, entry
+    assert entry["official_score_bool_fallback_used"] is False, entry
     assert entry["official_score_countable"] is False, entry
-    assert entry["official_score_countability_reason"] == (
-        "official_score_attempt_not_countable"
-    ), entry
+    assert entry["official_score_countability_reason"] == "score_missing", entry
     assert "countable_score" not in entry, entry
     assert entry["case_attempt_countable"] is False, entry
     assert entry["solver_attempt_countable"] is False, entry
@@ -559,8 +555,9 @@ def test_current_aggregate_keeps_setup_bool_fallback_uncountable() -> None:
         canonical_case_ids=["setup-bool-fallback"],
     )
     case_best = aggregate["case_best"]["setup-bool-fallback"]
-    assert case_best["official_score"] == 0.0, case_best
+    assert "official_score" not in case_best, case_best
     assert case_best["official_score_countable"] is False, case_best
+    assert case_best["official_score_countability_reason"] == "score_missing", case_best
     assert case_best["bucket"] == "setup_runner_infra", case_best
     assert "countable_score" not in case_best, case_best
     assert aggregate["distribution"]["setup_runner_infra"] == 1, aggregate
@@ -573,9 +570,9 @@ def test_current_aggregate_keeps_setup_bool_fallback_uncountable() -> None:
         "pass_count": 0,
         "partial_count": 0,
         "official_zero_count": 0,
-        "uncountable_numeric_case_count": 1,
+        "uncountable_numeric_case_count": 0,
         "countable_case_ids": [],
-        "uncountable_numeric_case_ids": ["setup-bool-fallback"],
+        "uncountable_numeric_case_ids": [],
     }, aggregate["countable_score_summary"]
 
 
@@ -774,7 +771,7 @@ def test_current_aggregate_cli_writes_public_safe_json() -> None:
 if __name__ == "__main__":
     test_current_aggregate_prefers_countable_results()
     test_ledger_marks_uncountable_numeric_scores_noncountable()
-    test_current_aggregate_keeps_setup_bool_fallback_uncountable()
+    test_current_aggregate_keeps_uncountable_setup_bool_result_missing()
     test_current_aggregate_default_inference_excludes_sanity_sources()
     test_target_lane_aggregate_uses_current_then_full87_backfill()
     test_current_aggregate_cli_writes_public_safe_json()

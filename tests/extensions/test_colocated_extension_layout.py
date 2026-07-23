@@ -6,9 +6,9 @@ from loopx.extensions.manifest import load_extension_manifest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_colocated_extension_directories_match_manifest_ids() -> None:
-    manifests = sorted((ROOT / "extensions").glob("*/extension.toml"))
-    assert manifests, "expected at least one co-located extension manifest"
+def test_colocated_extension_packages_match_manifest_ids() -> None:
+    manifests = sorted((ROOT / "packages").glob("*/extension.toml"))
+    assert manifests, "expected at least one co-located extension package manifest"
 
     mismatches = []
     for manifest_path in manifests:
@@ -22,3 +22,7 @@ def test_colocated_extension_directories_match_manifest_ids() -> None:
     assert not mismatches, "co-located extension directory mismatch: " + "; ".join(
         mismatches
     )
+
+
+def test_repository_root_does_not_shadow_extension_package_namespace() -> None:
+    assert not (ROOT / "extensions").exists()

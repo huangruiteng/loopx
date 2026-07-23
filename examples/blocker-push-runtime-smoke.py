@@ -209,10 +209,12 @@ def main() -> int:
         compact_prompt = " ".join(prompt.split())
         assert "state=operator_gate" not in compact_prompt, prompt
         assert "follow `interaction_contract`" in compact_prompt, prompt
-        assert "User NOTIFY: concrete Chinese actions even non_blocking false/0" in compact_prompt, prompt
-        assert 'never only "owner gate"' in compact_prompt, prompt
+        assert "NOTIFY Chinese actions incl. non_blocking false/0" in compact_prompt, prompt
+        assert 'not only "owner gate"' in compact_prompt, prompt
         assert "具体 user todo 未投影，需修复 LoopX 状态投影" in compact_prompt, prompt
-        assert "Quiet only if DONT_NOTIFY+false/0" in compact_prompt, prompt
+        assert "DONT_NOTIFY+false/0 only: quiet" in compact_prompt, prompt
+        assert "`LOOPX_TURN=<current_time_iso>`; reuse." in compact_prompt, prompt
+        assert "guard receipt; 2 stalls->replan" in compact_prompt, prompt
         assert "spend post-writeback" in compact_prompt, prompt
 
     print("blocker-push-runtime-smoke ok")

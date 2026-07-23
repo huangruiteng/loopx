@@ -208,9 +208,96 @@ def assert_peer_latest_run_does_not_hide_agent_stall() -> None:
     ) is None
 
 
+def assert_future_due_replacement_monitor_defers_stall_replan() -> None:
+    agent_id = "codex-main-control"
+    monitor_id = "todo_replacement_monitor"
+    target = {
+        "schema_version": "quota_monitor_target_v0",
+        "target_id": "blocked-successor",
+        "monitor_mode": "blocked_successor_wait_without_material_transition",
+        "effective_action": "monitor_quiet_skip",
+        "agent_id": agent_id,
+        "frontier_identity": "stable-frontier",
+    }
+    latest_runs = [
+        {
+            "classification": "quota_monitor_poll",
+            "generated_at": generated_at,
+            "agent_id": agent_id,
+            "health_check": "blocked successor wait unchanged; bounded replan after two polls",
+            "monitor_target": target,
+        }
+        for generated_at in (
+            "2026-07-23T01:45:00+00:00",
+            "2026-07-23T01:42:00+00:00",
+        )
+    ]
+    future_monitor = {
+        "todo_id": monitor_id,
+        "status": "open",
+        "task_class": "continuous_monitor",
+        "claimed_by": agent_id,
+        "next_due_at": "2026-07-23T02:00:00+00:00",
+        "expires_at": "2026-07-23T03:00:00+00:00",
+    }
+
+    def obligation_for(
+        *,
+        target_todo_id: str,
+        successor_todo_ids: list[str] | None = None,
+        monitor: dict[str, object] | None = None,
+    ) -> dict[str, object] | None:
+        deferred = {
+            "todo_id": "todo_deferred_advancement",
+            "text": "[P0] Resume advancement after the bounded monitor.",
+            "status": "deferred",
+            "task_class": "advancement_task",
+            "claimed_by": agent_id,
+            "resume_when": f"todo_done:{target_todo_id}",
+            "resume_ready": False,
+            "resume_condition": {
+                "target_todo_id": target_todo_id,
+                "target_status": "open",
+                "target_task_class": "continuous_monitor",
+                "satisfied": False,
+            },
+        }
+        if successor_todo_ids:
+            deferred["successor_todo_ids"] = successor_todo_ids
+        return autonomous_replan_obligation_from_runs(
+            latest_runs,
+            agent_todos={
+                "monitor_open_items": [monitor or future_monitor],
+                "deferred_items": [deferred],
+            },
+            agent_id=agent_id,
+        )
+
+    assert obligation_for(target_todo_id=monitor_id) is None
+    assert obligation_for(
+        target_todo_id="todo_previous_monitor",
+        successor_todo_ids=[monitor_id],
+    ) is None
+
+    overdue_monitor = {
+        **future_monitor,
+        "next_due_at": "2026-07-23T01:40:00+00:00",
+    }
+    overdue = obligation_for(
+        target_todo_id="todo_previous_monitor",
+        successor_todo_ids=[monitor_id],
+        monitor=overdue_monitor,
+    )
+    assert overdue is not None, overdue
+    assert overdue["triggers"][0]["kind"] == (
+        "blocked_successor_no_progress_repeat"
+    ), overdue
+
+
 def main() -> int:
     assert_payload_builder_contract()
     assert_peer_latest_run_does_not_hide_agent_stall()
+    assert_future_due_replacement_monitor_defers_stall_replan()
 
     regular = assert_parity(
         [

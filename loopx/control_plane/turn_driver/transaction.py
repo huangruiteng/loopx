@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping
 from enum import Enum
 from hashlib import sha256
 from typing import Any
+
+from ...turn_identity import normalize_turn_instance_id
 
 
 LOOPX_TURN_TRANSACTION_PLAN_SCHEMA_VERSION = "loopx_turn_transaction_plan_v0"
@@ -23,7 +24,6 @@ TRANSACTION_PHASES = (
     "scheduler_apply",
     "scheduler_ack",
 )
-TURN_INSTANCE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 
 
 class LoopXTurnResultKind(str, Enum):
@@ -132,15 +132,7 @@ def build_loopx_turn_transaction_plan(
     scheduler_owner: str = "none",
     turn_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    normalized_instance_id = (
-        str(turn_instance_id).strip() if turn_instance_id is not None else None
-    )
-    if normalized_instance_id is not None and not TURN_INSTANCE_ID_RE.fullmatch(
-        normalized_instance_id
-    ):
-        raise ValueError(
-            "turn_instance_id must be 1-128 public-safe letters, numbers, or ._:-"
-        )
+    normalized_instance_id = normalize_turn_instance_id(turn_instance_id)
     identity = {
         "lineage": dict(lineage),
         "host": host,

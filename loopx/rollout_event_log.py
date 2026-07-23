@@ -392,6 +392,49 @@ def append_rollout_event(log_path: Path, event: Mapping[str, Any]) -> dict[str, 
     return payload
 
 
+def append_rollout_event_once(
+    log_path: Path,
+    event: Mapping[str, Any],
+    *,
+    identity_fields: Sequence[str],
+) -> tuple[dict[str, Any], bool]:
+    """Append once by a stable public identity, returning whether it was new."""
+
+    payload = dict(event)
+    if payload.get("schema_version") != ROLLOUT_EVENT_SCHEMA_VERSION:
+        raise ValueError("unsupported rollout event schema")
+    fields = tuple(str(field).strip() for field in identity_fields if str(field).strip())
+    if not fields:
+        raise ValueError("rollout idempotency identity_fields are required")
+    missing = [field for field in fields if payload.get(field) in {None, ""}]
+    if missing:
+        raise ValueError(
+            "rollout idempotency fields must be populated: " + ", ".join(missing)
+        )
+    event_id = str(payload.get("event_id") or "").strip()
+    if not event_id:
+        raise ValueError("rollout event_id is required")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(log_path):
+        with log_path.open("a+", encoding="utf-8") as handle:
+            handle.seek(0)
+            for line in handle:
+                try:
+                    existing = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(existing, dict):
+                    continue
+                if all(existing.get(field) == payload.get(field) for field in fields):
+                    return existing, False
+                if existing.get("event_id") == event_id:
+                    if _idempotency_body(existing) == _idempotency_body(payload):
+                        return existing, False
+                    raise ValueError(f"conflicting rollout event_id: {event_id}")
+            handle.write(json.dumps(payload, sort_keys=True, ensure_ascii=False) + "\n")
+    return payload, True
+
+
 def load_rollout_events(log_path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
     try:
         lines = log_path.read_text(encoding="utf-8").splitlines()

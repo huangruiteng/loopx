@@ -295,7 +295,7 @@ def scaffold_extension(
     destination_path = (
         Path(destination).expanduser()
         if destination is not None
-        else Path("extensions") / validated_id
+        else Path("packages") / validated_id
     )
     if destination_path.exists():
         raise ValueError(

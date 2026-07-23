@@ -293,7 +293,7 @@ if ! command -v loopx >/dev/null 2>&1; then
   fi
 fi
 loopx doctor >/dev/null
-loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_TURN:?}"
 
 If that preflight still fails, do not do implementation work, adapter work,
 file edits, research, project exploration, or quota spend in this turn. Return
@@ -350,18 +350,16 @@ If the result says should_run=false:
   agent todo it can execute next. If no useful
   safe-bypass step exists, report the pending gate compactly instead of doing
   work.
-- If effective_action=monitor_quiet_skip, append at most one no-spend monitor
-  evidence event for this heartbeat:
-
-  loopx --registry "$HOME/.codex/loopx/registry.global.json" quota monitor-poll --goal-id <GOAL_ID> --source heartbeat --execute
-
-  Then rerun quota should-run. If it remains monitor-only after an explicit
-  frontier delta such as watch-lane continuation or no-follow-up, return quiet
+- Give each heartbeat a stable turn id by copying its `<current_time_iso>` into
+  `LOOPX_TURN`; reuse that id for guard retries in the same
+  heartbeat. `quota should-run` commits one idempotent receipt for every turn.
+  If effective_action=monitor_quiet_skip, that same guard idempotently appends
+  the no-spend stall observation and returns the follow-up decision. Do not
+  append a second manual monitor poll. If it remains monitor-only, return quiet
   DONT_NOTIFY: no delivery edits and no spend. Keep the automation active:
-  unchanged monitor-only polls are not self-stop signals. If the next guard
-  reports autonomous_replan_required or another hard
-  replan contract, follow that contract. Do not append more than one monitor
-  poll event for a single heartbeat turn.
+  unchanged monitor-only receipts are not self-stop signals. If the guard
+  reports autonomous_replan_required or another hard replan contract, follow
+  that contract.
 - If waiting_on=external_evidence or state=waiting, and this automation is
   explicitly a monitor, run at most one bounded read-only observation poll using
   project-approved status/log/metric/marker surfaces named in active state,
@@ -542,7 +540,8 @@ Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
 export `$HOME/.local/bin` onto PATH and run `loopx doctor`; if the CLI is
 still unavailable, quietly report that preflight failure and do no work. Then
-run `loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat`. If it
+copy this trigger's `<current_time_iso>` into `LOOPX_TURN` and run
+`loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_TURN:?}"`. If it
 returns `should_run=false`, ask about operator gates with NOTIFY using
 `gate_prompt` unless the same unresolved gate was already surfaced recently. If
 the payload says `notify_user_on_open_todo=true`, ask up to three open
@@ -598,16 +597,18 @@ turn.
 
 For every automatic heartbeat turn, the agent-facing checklist is:
 
-1. Guard first: `quota should-run`.
+1. Guard first: `quota should-run --turn-instance-id <HEARTBEAT_TURN_ID>` using
+   this trigger's `<current_time_iso>` and reusing it for same-heartbeat retries.
    If `loopx` is not initially on PATH, export `$HOME/.local/bin:$PATH`
    and run the local installer fallback before declaring preflight failure.
 2. If `should_run=false` with `state=operator_gate`, ask the user/controller the
    current gate unless the same unresolved gate was already surfaced recently.
-   If `effective_action=monitor_quiet_skip`, append at most one no-spend
-   `quota monitor-poll --execute` event, rerun the guard, then return quiet
-   `DONT_NOTIFY` if it remains monitor-only. Keep monitor todos visible but do
-   no delivery edits and no spend until material evidence changes or the next
-   guard exposes `autonomous_replan_required` /
+   Every heartbeat guard commits one idempotent receipt. If
+   `effective_action=monitor_quiet_skip`, it also commits the no-spend stall
+   observation and returns the follow-up decision; do not append another manual
+   poll. Return quiet `DONT_NOTIFY` if it remains monitor-only. Keep monitor
+   todos visible but do no delivery edits and no spend until material evidence
+   changes or the guard exposes `autonomous_replan_required` /
    `execution_obligation.must_attempt_work=true`.
 3. If `notify_user_on_open_todo=true`, ask up to three open user todos as a
    blocker-push notification and do not spend quota for that blocker-push turn.

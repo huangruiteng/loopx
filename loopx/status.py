@@ -165,40 +165,40 @@ from .control_plane.runtime.run_compaction import (
     compact_operator_gate_resume_contract,
     compact_run_base as _compact_run_base_read_model,
 )
-from .control_plane.runtime.benchmark_projection import (
+from .benchmarks.read_models.benchmark_projection import (
     benchmark_run_source as _benchmark_run_source_read_model,
     build_benchmark_solution_quality_signals,
     compact_benchmark_run_core as _compact_benchmark_run_core_read_model,
 )
-from .control_plane.runtime.benchmark_event_timeline import (
+from .benchmarks.read_models.benchmark_event_timeline import (
     compact_benchmark_case_event_timeline,
 )
-from .control_plane.runtime.benchmark_comparison import (
+from .benchmarks.read_models.benchmark_comparison import (
     benchmark_comparison_decision_note as _benchmark_comparison_decision_note_read_model,
     compact_benchmark_comparison as _compact_benchmark_comparison_read_model,
 )
-from .control_plane.runtime.benchmark_attempt_accounting import (
+from .benchmarks.read_models.benchmark_attempt_accounting import (
     compact_benchmark_attempt_accounting as _compact_benchmark_attempt_accounting,
 )
-from .control_plane.runtime.benchmark_experiment_report import (
+from .benchmarks.read_models.benchmark_experiment_report import (
     benchmark_experiment_report_readiness_note,
     benchmark_experiment_report_replay_decision,
     compact_benchmark_experiment_report,
 )
-from .control_plane.runtime.benchmark_learning_ledger import (
+from .benchmarks.read_models.benchmark_learning_ledger import (
     compact_benchmark_learning_ledger,
 )
-from .control_plane.runtime.benchmark_result import compact_benchmark_result
-from .control_plane.runtime.benchmark_lifecycle_contracts import (
+from .benchmarks.read_models.benchmark_result import compact_benchmark_result
+from .benchmarks.read_models.benchmark_lifecycle_contracts import (
     compact_app_server_goal_round_semantics as _compact_app_server_goal_round_semantics,
     compact_native_goal_worker_contract as _compact_native_goal_worker_contract,
     compact_product_mode_lifecycle_contract as _compact_product_mode_lifecycle_contract,
 )
-from .control_plane.runtime.benchmark_run_metrics import (
+from .benchmarks.read_models.benchmark_run_metrics import (
     compact_benchmark_overhead_attribution_counters as _compact_benchmark_overhead_attribution_counters,
     compact_benchmark_round_reward_trace as _compact_benchmark_round_reward_trace,
 )
-from .control_plane.runtime.goal_start_control_score import (
+from .benchmarks.read_models.goal_start_control_score import (
     compact_goal_start_product_mode_control_score,
 )
 from .control_plane.runtime.public_safety import (
@@ -257,7 +257,7 @@ from .control_plane.runtime.session_runtime import (
     compact_session_runtime_projection_from_run,
     legacy_runtime_goal_attention as _legacy_runtime_goal_attention_read_model,
 )
-from .control_plane.runtime.skillsbench_post_run_debug import (
+from .benchmarks.read_models.skillsbench_post_run_debug import (
     build_skillsbench_post_run_debug_gate,
 )
 from .control_plane.agents.subagent_activity import (

@@ -75,6 +75,7 @@ QUOTA_MONITOR_TARGET_COMPACT_FIELDS = (
 RUN_BASE_COMPACT_FIELDS = (
     "generated_at",
     "run_id",
+    "turn_instance_id",
     "goal_id",
     "parent_run_id",
     "spawned_by_goal_id",

@@ -355,6 +355,7 @@ def build_heartbeat_prompt(
         available_capabilities=normalized_available_capabilities,
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
+        heartbeat_turn_receipt=True,
     )
     quota_spend_command = render_quota_spend_command(
         goal_id,
@@ -563,8 +564,8 @@ output, `quota should-run.goal_boundary`, or boundary rules; if a lifecycle
 rule is needed, update `{cli_bin} heartbeat-prompt` so all projects inherit it.
 {scope_block}
 
-Before spending delivery compute, first make the LoopX CLI reachable and
-run the quota guard:
+Before spending delivery compute, make the CLI reachable; set
+`LOOPX_TURN=<current_time_iso>` per trigger, reuse it on retries, and run guard:
 
 ```bash
 {cli_preflight}
@@ -603,10 +604,9 @@ If the result says `should_run=false`:
   depend on that gate; validate, write back, optionally refresh, spend once, and
   report compactly. If `user_todo_summary.open_count > 0`, include those todos
   and do not say "no new user action". If none exists, report the gate.
-- If `effective_action=monitor_quiet_skip`, run one no-spend
-  `quota monitor-poll --goal-id {goal_id} --source heartbeat --execute`, rerun
-  guard; quiet unless autonomous replan. No delivery edits/spend; unchanged
-  monitor-only polls are not self-stop signals.
+- If `effective_action=monitor_quiet_skip`, receipt/stall is written; quiet
+  unless replan. On receipt write failure, retry same id. No edits/spend;
+  receipts do not self-stop.
 - If `waiting_on=external_evidence` or `state=waiting`, and this automation is
   explicitly a monitor, run at most one bounded read-only observation poll using
   project-approved status/log/metric/marker surfaces named in active state,
@@ -767,22 +767,22 @@ Brief installed LoopX heartbeat. Thin dispatcher; detail:
 `{compact_prompt_command}`.
 {scope_block}
 
-Preflight and quota guard:
+Guard/retry; `LOOPX_TURN=<current_time_iso>`:
 
 ```bash
 {cli_preflight}
 {quota_guard_command}
 ```
 
-Preflight fail: quiet.
+Fail: quiet.
 
 User NOTIFY: Chinese actions incl. non_blocking at false/0; never only "owner
 gate"; required missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
 Only DONT_NOTIFY+false/0: quiet.
 
-If `should_run=false`: no work/spend except `safe_bypass_allowed=true`;
-external/wait monitor -> one read-only status/log/metric/marker poll; new
-evidence -> writeback/spend. Otherwise obey user channel.
+If `should_run=false`: follow user channel. `monitor_quiet_skip`: receipt/stall
+done; quiet unless replan; write failure: retry same id. External/wait monitor:
+one read-only poll; new evidence -> writeback/spend. Safe bypass if allowed.
 {SCHEDULER_HINT_THIN_RULE}
 `lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
@@ -835,7 +835,7 @@ registry/state/adapter/`goal_boundary`.
 Expanded lifecycle contract: `{expanded_prompt_command}`.
 {scope_block}
 
-Preflight/guard:
+Preflight/guard; `LOOPX_TURN=<current_time_iso>`; reuse:
 
 ```bash
 {cli_preflight}
@@ -848,10 +848,8 @@ Preflight fail: quiet; no work/spend.
 
 `lark_event_inbox`: reply_due: drain_command -> effect/reply/readback/ACK.
 
-If `should_run=false`: `monitor_quiet_skip` -> one no-spend
-`quota monitor-poll --execute`, rerun guard; quiet unless
-`autonomous_replan_required` / `must_attempt_work=true`; no edits/spend;
-unchanged monitor-only polls are not self-stop signals.
+If `should_run=false`: `monitor_quiet_skip` -> receipt/stall done; quiet unless
+replan; write failure -> retry same id; no edits/spend; receipts do not self-stop.
 `state=operator_gate` / `notify_user_on_open_todo=true` /
 `user_channel.notify=NOTIFY`: blocker-push including
 non_blocking; `open_todo_notification_policy=repeat_until_resolved`: repeat;
@@ -959,25 +957,26 @@ def render_thin_heartbeat_task_body(
     )
     return f"""Advance `{goal_id}` from {active_state}.
 
-Skills: `loopx-project`; surprise/tiny/conflict -> `loopx-self-repair`.
+Skills: `loopx-project`; surprise/conflict: `loopx-self-repair`.
 LoopX CLI = truth.
 {scope_sentence}
 
-Inspect registry/state/status/history/repo; run
+Inspect state/status/repo; run
 {quota_guard_instruction}; follow `interaction_contract`.
-User NOTIFY: concrete Chinese actions even non_blocking false/0; never only
-"owner gate"; required missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
-Quiet only if DONT_NOTIFY+false/0.
+`LOOPX_TURN=<current_time_iso>`; reuse.
+NOTIFY Chinese actions incl. non_blocking false/0; not only "owner gate";
+missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
+DONT_NOTIFY+false/0 only: quiet.
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 Batch/no-op; spend post-writeback.
-Plans/done->todo/rationale; 2 stalls->self-repair.
+Done->todo/rationale; guard receipt; 2 stalls->replan.
 `lark_event_inbox`: reply_due; drain_command/reply-readback/ACK.
 
-P0 blocked: safe P1/P2; monitor-only quiet/no-spend.
+P0 blocked: safe P1/P2; monitor quiet/no-spend.
 
-No project branches; {material_sentence} Stop for private material,
-credentials, destructive git, or unauthorized production actions{permission_tail}"""
+No project branches; {material_sentence} Stop: private material, credentials,
+destructive git, unauthorized prod{permission_tail}"""
 
 
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:

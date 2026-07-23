@@ -34,6 +34,58 @@ The core repository intentionally avoids domain logic. A data experiment goal,
 a note-maintenance goal, and a harness self-improvement goal should share the
 same runtime and contract, but use different adapters.
 
+## Runtime Responsibility Model
+
+The seven layers above describe durable control-plane surfaces. They do not
+describe who performs each step of a turn. For runtime ownership, use four
+responsibilities:
+
+| Responsibility | Owns | Must not own |
+| --- | --- | --- |
+| **Agent** | Planning, analysis, tool use, and one bounded execution through a host/runtime | Durable goal lifecycle or unscoped effect authority |
+| **Provider** | External calls and bounded observations, effect results, and readback | Domain transition policy or LoopX todo state |
+| **Capability** | The caller-facing outcome contract, domain policy, observation normalization, validation, and typed transition proposals | Durable scheduling, claims, gates, or direct lifecycle writes |
+| **LoopX Kernel** | Goal, todo, claim, gate, monitor, quota, accepted writeback, recovery, and scheduling | Domain-specific reasoning or provider implementation details |
+
+The request and result paths therefore run in opposite directions:
+
+```text
+Agent -> Capability -> Provider -> external system
+external observation / effect readback -> Provider -> Capability
+typed transition proposal -> LoopX Kernel -> next todo / gate / monitor / turn
+```
+
+An observation is not a transition, and a provider receipt is not accepted
+progress until the capability validates it and the Kernel commits the resulting
+state change. Domain state, evidence, and receipts are artifacts exchanged
+between these responsibilities, not additional runtime owners.
+
+The host/runtime carries the Agent's session, tools, and invocation. It is a
+replaceable execution boundary, not a fifth domain decision owner.
+
+An **extension** is a separate delivery and lifecycle axis. It may install an
+optional provider, while a built-in capability may use a core provider. The
+extension does not become a fifth runtime responsibility and does not acquire
+Kernel authority. This boundary is represented directly by
+`CapabilityRegistry`, which registers providers, capability contracts, and
+their implementations separately.
+
+### Agent-Native Kanban Is A Projection
+
+LoopX state can be rendered as an agent-native Kanban: todos are cards, logical
+lanes are derived views, and card moves are validated transitions. The metaphor
+does not introduce another state owner. Canonical todo/event/state contracts
+remain authoritative; dashboards and collaboration boards consume public-safe
+projections.
+
+Capabilities may project domain lanes such as Issue Fix
+`feasibility -> patch -> checks -> review -> merge` without adding those labels
+to the Kernel lifecycle. Providers supply the external facts behind the lane,
+capabilities validate them and propose typed transitions, and the Kernel owns
+claim, gate, monitor, quota, writeback, recovery, and terminal closure. See the
+[concept primer](development/control-plane-course/00-concept-primer.md) and
+[state substrate lecture](development/control-plane-course/02-state-substrate.md).
+
 ## Current Dependency Budget
 
 Dependency direction is enforced incrementally while large compatibility
@@ -72,9 +124,10 @@ explicit migration or deprecation step, and status/quota CLI JSON parity must
 stay characterized independently of the compatibility binding.
 
 Capabilities and extensions are also orthogonal: a capability is a product
-contract, while an extension is an independently managed provider that may
-offer one or more capabilities. The provider-aware registration and manifest
-boundary is documented in [extensions.md](reference/extensions.md).
+contract, while an extension is an independently managed delivery unit that
+may install providers for one or more capabilities. The provider-aware
+registration and manifest boundary is documented in
+[extensions.md](reference/extensions.md).
 
 Operator-inbox urgency is one such inward contract. Quota consumes the
 content-free `operator_inbox_urgency_v0` read model from the control plane; it

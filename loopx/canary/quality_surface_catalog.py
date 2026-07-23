@@ -279,7 +279,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         "layers": {
             "unit_contract": _covered(
                 "tests/control_plane/test_release_commit_qualification.py",
-                "tests/control_plane/test_release_outcome_baseline.py",
+                "tests/benchmarks/qualification/test_release_outcome_baseline.py",
                 "tests/test_doctor_install_freshness.py",
             ),
             "durable_smoke": _covered(
@@ -389,7 +389,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         },
         "layers": {
             "unit_contract": _covered(
-                "tests/control_plane/test_goal_start_control_score.py",
+                "tests/benchmarks/read_models/test_goal_start_control_score.py",
                 "tests/control_plane/test_start_goal_compact_projection.py",
                 "tests/control_plane/test_onboarding_model_behavior_qualification.py",
             ),

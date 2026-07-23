@@ -4,6 +4,22 @@ This directory groups LoopX product capabilities by real usage path. Keep kernel
 control-plane code generic; put scenario-specific protocols, implementation
 modules, CLI entrypoints, and smokes under the capability they serve.
 
+## Capabilities Add Domain Lanes, Not Kernel Columns
+
+An operator surface may render LoopX as an agent-native Kanban. In that view,
+the Kernel supplies generic lifecycle operators such as claim, gate, monitor,
+complete, supersede, quota, and writeback. A capability may add a domain lane
+that interprets provider observations, but it must not create a parallel todo
+or scheduling authority.
+
+For example, Issue Fix can project
+`feasibility -> patch -> checks -> review -> merge`, while an experiment pack
+can project `hypothesis -> execute -> evaluate -> promote/retire`. These labels
+are derived from capability-owned domain state and accepted Kernel transitions.
+They are not new core lifecycle statuses. If a domain stage changes permission,
+claim eligibility, quota, a user gate, or terminal closure, the capability must
+propose a typed transition through the existing Kernel contract.
+
 Current capability paths:
 
 - [periodic-report](periodic-report/README.md): evaluate cadence and material

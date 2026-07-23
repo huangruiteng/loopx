@@ -6,6 +6,7 @@ from .history import load_registry
 from .paths import resolve_runtime_root
 from .rollout_event_log import (
     append_rollout_event,
+    append_rollout_event_once,
     build_rollout_event,
     rollout_event_log_path,
 )
@@ -28,6 +29,7 @@ def append_cli_rollout_event(
     artifact_refs: list[str] | None = None,
     details: dict[str, object] | None = None,
     allow_failed: bool = False,
+    idempotency_fields: list[str] | None = None,
 ) -> dict[str, object]:
     """Append a compact rollout event for core CLI lifecycle commands.
 
@@ -64,14 +66,26 @@ def append_cli_rollout_event(
             artifact_refs=artifact_refs,
             details=details,
         )
-        appended = append_rollout_event(rollout_event_log_path(runtime_root, goal_id), event)
-        payload["rollout_event"] = {
+        log_path = rollout_event_log_path(runtime_root, goal_id)
+        if idempotency_fields:
+            appended, newly_appended = append_rollout_event_once(
+                log_path,
+                event,
+                identity_fields=idempotency_fields,
+            )
+        else:
+            appended = append_rollout_event(log_path, event)
+            newly_appended = True
+        rollout_event_view = {
             "schema_version": appended["schema_version"],
             "event_id": appended["event_id"],
             "event_kind": appended["event_kind"],
             "recorded_at": appended["recorded_at"],
             "status": appended.get("status"),
         }
+        if idempotency_fields:
+            rollout_event_view["appended"] = newly_appended
+        payload["rollout_event"] = rollout_event_view
     except Exception as exc:
         payload["rollout_event_log_error"] = {
             "recorded": False,

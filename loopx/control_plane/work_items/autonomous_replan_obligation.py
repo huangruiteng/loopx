@@ -3,6 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Optional, Pattern
 
+from ..runtime.time import parse_timestamp
+from ..todos.contract import (
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+    normalize_todo_id_list,
+)
+from ..todos.deferred_resume import (
+    todo_summary_deferred_items,
+    todo_summary_monitor_blocked_resume_items,
+)
+
 
 PublicSafeText = Callable[..., Optional[str]]
 AckRecorded = Callable[[dict[str, Any]], bool]
@@ -150,6 +161,9 @@ def run_history_stall_signal(
         "delivery_outcome": delivery_outcome.value if delivery_outcome else None,
         "signature": normalized_run_history_stall_signature(action_or_classification),
     }
+    turn_instance_id = str(run.get("turn_instance_id") or "").strip()
+    if turn_instance_id:
+        signal["turn_instance_id"] = turn_instance_id
     monitor_target = run_history_monitor_target(run)
     if monitor_target:
         signal["monitor_target_id"] = str(monitor_target.get("target_id") or "")
@@ -327,6 +341,80 @@ def _monitor_no_change_evidence(
         "monitor_target_id": monitor_target_id,
         "agent_id": agent_id,
     }
+
+
+def _future_due_blocking_monitor(
+    agent_todos: dict[str, Any] | None,
+    *,
+    latest_generated_at: str,
+    agent_id: str | None,
+) -> dict[str, str] | None:
+    if not isinstance(agent_todos, dict):
+        return None
+    observed_at = parse_timestamp(latest_generated_at)
+    if observed_at is None:
+        return None
+
+    accountable_agent_id = normalize_todo_claimed_by(agent_id)
+    if not accountable_agent_id:
+        return None
+    raw_monitors = agent_todos.get("monitor_open_items")
+    monitors_by_id: dict[str, dict[str, Any]] = {}
+    for monitor in raw_monitors or []:
+        if not isinstance(monitor, dict):
+            continue
+        monitor_todo_id = normalize_todo_id(monitor.get("todo_id"))
+        claimed_by = normalize_todo_claimed_by(monitor.get("claimed_by"))
+        if not monitor_todo_id:
+            continue
+        if accountable_agent_id and claimed_by and claimed_by != accountable_agent_id:
+            continue
+        monitors_by_id[monitor_todo_id] = monitor
+
+    blocking_monitor_ids: set[str] = set()
+    blocked_items = [
+        *todo_summary_monitor_blocked_resume_items(agent_todos),
+        *todo_summary_deferred_items(agent_todos, "deferred_items"),
+    ]
+    for item in blocked_items:
+        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
+        if accountable_agent_id and claimed_by and claimed_by != accountable_agent_id:
+            continue
+        condition = (
+            item.get("resume_condition")
+            if isinstance(item.get("resume_condition"), dict)
+            else {}
+        )
+        monitor_todo_id = normalize_todo_id(
+            item.get("blocking_monitor_todo_id")
+            or condition.get("target_todo_id")
+            or condition.get("target")
+        )
+        if monitor_todo_id in monitors_by_id:
+            blocking_monitor_ids.add(monitor_todo_id)
+        for successor_todo_id in normalize_todo_id_list(
+            item.get("successor_todo_ids")
+        ):
+            if successor_todo_id in monitors_by_id:
+                blocking_monitor_ids.add(successor_todo_id)
+    if not blocking_monitor_ids:
+        return None
+
+    for monitor_todo_id in blocking_monitor_ids:
+        monitor = monitors_by_id[monitor_todo_id]
+        next_due_at = parse_timestamp(monitor.get("next_due_at"))
+        if next_due_at is None or next_due_at <= observed_at:
+            continue
+        expires_at = parse_timestamp(monitor.get("expires_at"))
+        if expires_at is not None and (
+            expires_at <= observed_at or expires_at <= next_due_at
+        ):
+            continue
+        return {
+            "todo_id": monitor_todo_id,
+            "next_due_at": str(monitor.get("next_due_at") or ""),
+        }
+    return None
 
 
 def _has_runnable_agent_advancement(agent_todos: dict[str, Any] | None) -> bool:
@@ -662,6 +750,13 @@ def autonomous_replan_obligation_from_runs(
         if blocked_successor_modes == {
             "blocked_successor_wait_without_material_transition"
         }:
+            signal_agent_id = _single_public_agent_id(blocked_successor_signals)
+            if _future_due_blocking_monitor(
+                agent_todos,
+                latest_generated_at=str(signals[0].get("generated_at") or ""),
+                agent_id=signal_agent_id or agent_id,
+            ):
+                return periodic_review()
             monitor_target_ids = {
                 str(signal.get("monitor_target_id") or "")
                 for signal in blocked_successor_signals
@@ -696,8 +791,23 @@ def autonomous_replan_obligation_from_runs(
                 evidence,
                 agent_todos=agent_todos,
             )
-        monitor_signals = signals[:dead_monitor_repeat_threshold]
-        if len(monitor_signals) < dead_monitor_repeat_threshold:
+        heartbeat_monitor_signals = signals[:autonomous_replan_stall_threshold]
+        heartbeat_turn_ids = {
+            str(signal.get("turn_instance_id") or "")
+            for signal in heartbeat_monitor_signals
+            if signal.get("turn_instance_id")
+        }
+        distinct_heartbeat_repeat = (
+            len(heartbeat_monitor_signals) == autonomous_replan_stall_threshold
+            and len(heartbeat_turn_ids) == autonomous_replan_stall_threshold
+        )
+        monitor_repeat_threshold = (
+            autonomous_replan_stall_threshold
+            if distinct_heartbeat_repeat
+            else dead_monitor_repeat_threshold
+        )
+        monitor_signals = signals[:monitor_repeat_threshold]
+        if len(monitor_signals) < monitor_repeat_threshold:
             return periodic_review()
         monitor_classifications = {
             str(signal.get("classification") or "")
@@ -706,7 +816,7 @@ def autonomous_replan_obligation_from_runs(
         }
         if monitor_classifications != {"quota_monitor_poll"}:
             return periodic_review()
-        if run_history_monitor_wait_already_acknowledged(
+        if not distinct_heartbeat_repeat and run_history_monitor_wait_already_acknowledged(
             scoped_latest_runs,
             signal_count=len(monitor_signals),
             autonomous_replan_ack_recorded=autonomous_replan_ack_recorded,
@@ -727,11 +837,11 @@ def autonomous_replan_obligation_from_runs(
                 "schema_version": dead_monitor_repeat_schema_version,
                 "section": "run_history",
                 "text": (
-                    f"latest {dead_monitor_repeat_threshold} monitor polls repeated "
+                    f"latest {monitor_repeat_threshold} monitor polls repeated "
                     "the same monitor target without a material transition"
                 ),
                 "run_count": len(monitor_signals),
-                "threshold": dead_monitor_repeat_threshold,
+                "threshold": monitor_repeat_threshold,
                 "monitor_target_id": monitor_target_id,
                 "latest_generated_at": signals[0].get("generated_at"),
                 "agent_id": _single_public_agent_id(monitor_signals),

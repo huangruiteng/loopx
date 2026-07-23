@@ -795,7 +795,11 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert audit["selected_todo_is_goal_completion"] is False, guard
     assert audit["closeout_allowed_without_evidence"] is False, guard
     assert "todo_completion_alone" in audit["not_satisfied_by"], guard
+    assert "registry_registration_alone" in audit["not_satisfied_by"], guard
     assert "create_successor_or_write_vision_replan_trigger_when_unproven" in (
+        audit["required_before_closeout"]
+    ), guard
+    assert "inspect_registry_declared_materials_before_external_research" in (
         audit["required_before_closeout"]
     ), guard
     assert "public_safe_evidence_records" in audit["authoritative_evidence_kinds"], guard
@@ -810,6 +814,15 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "Judge vision closure" in judge["agent_judge_instruction"], guard
     assert "evidence-log" in judge["agent_judge_instruction"], guard
     assert "public web research" in judge["agent_judge_instruction"], guard
+    assert "registry-declared material references" in (
+        judge["agent_judge_instruction"]
+    ), guard
+    assert "topic_authority and project_materials" in (
+        judge["registry_read_instruction"]
+    ), guard
+    assert "neither grants access nor proves acceptance" in (
+        judge["registry_read_instruction"]
+    ), guard
     assert "primary or authoritative sources" in (
         judge["external_research_instruction"]
     ), guard
@@ -839,6 +852,9 @@ def assert_agent_vision_gap_derives_replan() -> None:
     assert "Judge vision closure" in cli_judge["agent_judge_instruction"], guard
     assert "loopx evidence-log --goal-id replan-decision-plane-fixture" in (
         cli_judge["evidence_read_instruction"]
+    ), guard
+    assert cli_judge["registry_read_instruction"] == (
+        judge["registry_read_instruction"]
     ), guard
     assert "todo_lifecycle_or_protocol_status_is_the_only_proof" in (
         cli_judge["continue_when"]
@@ -1404,6 +1420,9 @@ def assert_state_replan_follows_claimed_frontier_not_monitor_peer() -> None:
     assert monitor_guard.get("autonomous_replan_obligation") is None, monitor_guard
     assert monitor_guard["effective_action"] == "monitor_quiet_skip", monitor_guard
     assert monitor_guard["interaction_contract"]["mode"] == "monitor_quiet_skip", monitor_guard
+    primary_action = monitor_guard["interaction_contract"]["agent_channel"]["primary_action"]
+    assert "idempotent quota receipt" in primary_action, monitor_guard
+    assert "an earlier heartbeat receipt does not satisfy this one" in primary_action, monitor_guard
 
 
 def assert_monitor_schedule_gap_requires_bounded_repair() -> None:

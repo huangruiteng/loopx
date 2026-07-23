@@ -49,6 +49,7 @@ surfaces into smaller modules:
 | Module | Owns | Must Not Own |
 | --- | --- | --- |
 | `loopx.benchmark_core` | adapter-neutral lifecycle, round summaries, artifact/source boundary policy, JSON/number IO reducers | benchmark-specific launchers or scoring quirks |
+| `loopx.benchmarks.read_models` | public-safe benchmark result, comparison, ledger, lifecycle, and diagnostic projections | generic control-plane runtime rules or benchmark-family launch behavior |
 | `loopx.benchmark_adapters.skillsbench` | SkillsBench routes, arm semantics, job names, public-safe setup failure attribution | Terminal-Bench/ALE/AgentIssue behavior |
 | `loopx.benchmark_adapters.terminal_bench` | Terminal-Bench public constants, runner modes, CLI-bridge/access-packet labels, private-runner launch/materialization/readiness helpers, Harbor result reducers, timeout and compact validation policy constants | ALE/SkillsBench/AgentIssue behavior |
 | `loopx.benchmark_adapters.agents_last_exam` | ALE public constants, case-state path, local runner/source readiness, launch-packet, validation-gate, CUA/Codex-route, task-material and result-report helpers | Terminal-Bench/SkillsBench/AgentIssue behavior or raw ALE task material |

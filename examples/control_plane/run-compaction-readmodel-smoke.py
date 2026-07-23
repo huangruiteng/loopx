@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
 from loopx import status as status_module  # noqa: E402
 from loopx.control_plane.goals import goal_frontier as goal_frontier_read_model  # noqa: E402
 from loopx.control_plane.goals.goal_vision import compact_goal_vision_packet  # noqa: E402
-from loopx.control_plane.runtime import (  # noqa: E402
+from loopx.benchmarks.read_models import (  # noqa: E402
     benchmark_comparison as benchmark_comparison_read_model,
 )
 from loopx.control_plane.runtime import (  # noqa: E402

@@ -31,6 +31,11 @@ Optional env:
                                        require (default), auto, or off
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
+  SKILLSBENCH_DOCKER_APT_SOURCE_MODE   Staged Dockerfile apt sources: mirror
+                                       (default) or primary
+  SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE
+                                       Staged apt transport: default or
+                                       proxy-compatible
   SKILLSBENCH_DOCKER_PIP_INDEX_MODE    Staged Dockerfile pip index: mirror
                                        (default) or primary
   SKILLSBENCH_DOCKER_PIP_BUILD_MODE    Staged Dockerfile pip build mode:
@@ -81,7 +86,7 @@ Optional env:
   SKILLSBENCH_RUN_TIMEOUT_SEC          Supervisor timeout, default 28800
   SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC
                                        Incremental public artifact sync interval;
-                                       defaults to 30 for setup-only and 0 otherwise
+                                       defaults to 30; set to 0 to disable
   SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC Reverse-tunnel CONNECT probe timeout,
                                        default 20
   SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC Reverse-tunnel readiness budget,
@@ -215,6 +220,8 @@ skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
+docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-mirror}"
+docker_apt_transport_mode="${SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE:-default}"
 docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
 docker_pip_build_mode="${SKILLSBENCH_DOCKER_PIP_BUILD_MODE:-isolated}"
 product_mode_soft_verify_policy="${SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY:-}"
@@ -252,6 +259,16 @@ if [[ "$docker_pip_index_mode" != "mirror" ]] &&
   echo "SKILLSBENCH_DOCKER_PIP_INDEX_MODE must be mirror or primary" >&2
   exit 2
 fi
+if [[ "$docker_apt_source_mode" != "mirror" ]] &&
+  [[ "$docker_apt_source_mode" != "primary" ]]; then
+  echo "SKILLSBENCH_DOCKER_APT_SOURCE_MODE must be mirror or primary" >&2
+  exit 2
+fi
+if [[ "$docker_apt_transport_mode" != "default" ]] &&
+  [[ "$docker_apt_transport_mode" != "proxy-compatible" ]]; then
+  echo "SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE must be default or proxy-compatible" >&2
+  exit 2
+fi
 if [[ "$docker_pip_build_mode" != "isolated" ]] &&
   [[ "$docker_pip_build_mode" != "no-isolation" ]]; then
   echo "SKILLSBENCH_DOCKER_PIP_BUILD_MODE must be isolated or no-isolation" >&2
@@ -275,6 +292,7 @@ remote_codex_bin_mode="path_lookup"
 if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
 fi
+exact_host_codex_sandbox_preflight="not_required"
 if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
   if [[ "$remote_codex_bin" == */* ]]; then
     printf -v remote_codex_probe \
@@ -290,6 +308,59 @@ if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
     echo "remote Codex CLI unavailable; set SKILLSBENCH_REMOTE_CODEX_BIN" >&2
     exit 2
   fi
+  remote_codex_sandbox_probe_py='import shutil, subprocess, sys, tempfile
+codex_bin, sandbox_mode = sys.argv[1:]
+with tempfile.TemporaryDirectory(prefix="gh-skillsbench-codex-sandbox-") as tmp:
+    try:
+        proc = subprocess.run(
+            [
+                codex_bin,
+                "sandbox",
+                "-c",
+                f"sandbox_mode=\"{sandbox_mode}\"",
+                "--",
+                shutil.which("true") or "true",
+            ],
+            cwd=tmp,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise SystemExit(1) from None
+raise SystemExit(proc.returncode)'
+  printf -v remote_codex_sandbox_probe \
+    '%q -c %q %q %q' \
+    python3 "$remote_codex_sandbox_probe_py" \
+    "$remote_codex_bin" "$local_codex_sandbox"
+  if ! ssh "${ssh_command_options[@]}" "$SKILLSBENCH_SSH_DESTINATION" \
+    "$remote_codex_sandbox_probe" >/dev/null 2>&1; then
+    python3 - "$local_codex_sandbox" "$remote_codex_bin_mode" <<'PY' >&2
+import json
+import sys
+
+print(
+    json.dumps(
+        {
+            "ok": False,
+            "schema_version": "skillsbench_exact_host_codex_sandbox_preflight_v0",
+            "error": "skillsbench_exact_host_codex_sandbox_preflight_failed",
+            "sandbox_mode": sys.argv[1],
+            "remote_codex_bin_mode": sys.argv[2],
+            "raw_output_recorded": False,
+            "remote_path_recorded": False,
+            "ssh_destination_recorded": False,
+        },
+        sort_keys=True,
+    )
+)
+PY
+    exit 3
+  fi
+  exact_host_codex_sandbox_preflight="passed"
+elif [[ "$setup_only_public_preflight" != "1" ]]; then
+  exact_host_codex_sandbox_preflight="required"
 fi
 
 stamp="${SKILLSBENCH_RUN_STAMP:-$(date +%Y%m%dT%H%M%SCST)}"
@@ -331,10 +402,8 @@ build_stall_timeout="${SKILLSBENCH_BUILD_STALL_TIMEOUT_SEC:-3600}"
 run_timeout="${SKILLSBENCH_RUN_TIMEOUT_SEC:-28800}"
 if [[ -n "${SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC:-}" ]]; then
   public_artifact_sync_interval="$SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"
-elif [[ "$setup_only_public_preflight" == "1" ]]; then
-  public_artifact_sync_interval=30
 else
-  public_artifact_sync_interval=0
+  public_artifact_sync_interval=30
 fi
 tunnel_probe_timeout="${SKILLSBENCH_TUNNEL_PROBE_TIMEOUT_SEC:-20}"
 tunnel_ready_timeout="${SKILLSBENCH_TUNNEL_READY_TIMEOUT_SEC:-60}"
@@ -497,7 +566,8 @@ if ((task_count > 1)); then
 else
   extra_runner_args+=(--task-id "$task_id")
 fi
-if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]]; then
+if [[ "${SKILLSBENCH_APPEND_HISTORY:-0}" == "1" ]] &&
+  [[ "$setup_only_public_preflight" != "1" ]]; then
   extra_runner_args+=(--append-history)
 fi
 if [[ "$skip_global_ledger_sync" == "1" ]]; then
@@ -546,6 +616,8 @@ remote_command=$(
     --codex-api-egress-mode reverse-tunnel \
     --codex-api-reverse-tunnel-proxy "$loopback_proxy_url" \
     --benchmark-egress-proxy-mode "$benchmark_egress_proxy_mode" \
+    --docker-apt-source-mode "$docker_apt_source_mode" \
+    --docker-apt-transport-mode "$docker_apt_transport_mode" \
     --docker-pip-index-mode "$docker_pip_index_mode" \
     --docker-pip-build-mode "$docker_pip_build_mode" \
     --host-local-acp-launch \
@@ -627,12 +699,16 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'runner_profile_path_recorded=false\n'
   printf 'runner_profile_values_recorded=false\n'
   printf 'local_codex_sandbox=%s\n' "$local_codex_sandbox"
+  printf 'exact_host_codex_sandbox_preflight=%s\n' \
+    "$exact_host_codex_sandbox_preflight"
   printf 'codex_cli_goal_thread_prewarm=%s\n' "$codex_cli_goal_thread_prewarm"
   printf 'allow_staged_bootstrap_repair_run=%s\n' "$allow_staged_bootstrap_repair_run"
   printf 'setup_only_public_preflight=%s\n' "$setup_only_public_preflight"
   printf 'public_artifact_sync_interval_sec=%s\n' \
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
+  printf 'docker_apt_source_mode=%s\n' "$docker_apt_source_mode"
+  printf 'docker_apt_transport_mode=%s\n' "$docker_apt_transport_mode"
   printf 'docker_pip_index_mode=%s\n' "$docker_pip_index_mode"
   printf 'docker_pip_build_mode=%s\n' "$docker_pip_build_mode"
   printf 'product_mode_soft_verify_policy=%s\n' \
@@ -729,5 +805,6 @@ local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
 setup_only_public_preflight=${setup_only_public_preflight}
+exact_host_codex_sandbox_preflight=${exact_host_codex_sandbox_preflight}
 public_artifact_sync_interval_sec=${public_artifact_sync_interval}
 EOF
