@@ -7,10 +7,7 @@ from typing import Any
 from .benchmark_adapters.skillsbench_verifier_bootstrap import (
     apply_skillsbench_verifier_bootstrap_missing_score_attribution,
 )
-from .benchmark_core import (
-    compact_benchmark_canonical_lifecycle,
-    compact_benchmark_live_worker_phase_from_run,
-)
+from .benchmark_core import lifecycle as _benchmark_lifecycle
 from .control_plane import compact_control_plane_policy
 from .control_plane.status_collection import (
     StatusCollectionContext,
@@ -1260,7 +1257,7 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
     ):
         if isinstance(value.get(field), bool):
             compact[field] = value[field]
-    lifecycle = compact_benchmark_canonical_lifecycle(
+    lifecycle = _benchmark_lifecycle.compact_benchmark_canonical_lifecycle(
         value.get("benchmark_canonical_lifecycle")
     )
     if lifecycle:
@@ -1351,6 +1348,23 @@ def _compact_benchmark_runner_prerequisites(value: Any) -> dict[str, Any]:
             "remote_command_file_bridge_agent_successful_loopx_command_records"
         ] = command_records
     return compact
+
+
+def _project_benchmark_runner_prerequisites(
+    compact: dict[str, Any],
+    source: dict[str, Any],
+) -> None:
+    runner_prerequisites = _compact_benchmark_runner_prerequisites(
+        source.get("runner_prerequisites")
+    )
+    if runner_prerequisites:
+        compact["runner_prerequisites"] = runner_prerequisites
+    live_worker_phase = _benchmark_lifecycle.compact_benchmark_live_worker_phase_from_run(
+        source
+    )
+    if live_worker_phase:
+        compact["benchmark_live_worker_phase"] = live_worker_phase
+
 
 def _compact_benchmark_task_staging(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
@@ -2834,14 +2848,7 @@ def compact_benchmark_run(run: dict[str, Any]) -> dict[str, Any] | None:
     )
     if runner_warning_labels:
         compact["runner_warning_labels"] = runner_warning_labels
-    runner_prerequisites = _compact_benchmark_runner_prerequisites(
-        source.get("runner_prerequisites")
-    )
-    if runner_prerequisites:
-        compact["runner_prerequisites"] = runner_prerequisites
-    live_worker_phase = compact_benchmark_live_worker_phase_from_run(source)
-    if live_worker_phase:
-        compact["benchmark_live_worker_phase"] = live_worker_phase
+    _project_benchmark_runner_prerequisites(compact, source)
     result_discovery = _compact_benchmark_result_discovery(
         source.get("result_discovery")
     )

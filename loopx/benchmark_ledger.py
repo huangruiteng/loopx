@@ -12,8 +12,8 @@ from .benchmark_core import (
     LEGACY_NONPRODUCT_PROMPT_POLLING_ROUTES,
     classify_benchmark_artifact_path,
     classify_product_mode_main_table_pair,
-    compact_benchmark_live_worker_phase_from_run,
 )
+from .benchmark_core.lifecycle import compact_benchmark_live_worker_phase_from_run
 from .benchmark_adapters.skillsbench_signals import (
     build_skillsbench_solution_quality_signals,
 )

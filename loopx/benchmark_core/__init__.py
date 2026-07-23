@@ -49,7 +49,6 @@ from .lifecycle import (
     canonical_lifecycle,
     compact_benchmark_canonical_lifecycle,
     compact_benchmark_live_worker_phase,
-    compact_benchmark_live_worker_phase_from_run,
 )
 from .loop_protocol import (
     BENCHMARK_LOOP_CONTROLLER_TRACE_SCHEMA_VERSION,
@@ -224,7 +223,6 @@ __all__ = [
     "canonical_lifecycle",
     "compact_benchmark_canonical_lifecycle",
     "compact_benchmark_live_worker_phase",
-    "compact_benchmark_live_worker_phase_from_run",
     "compact_run_permission_policy_for_quota",
     "compact_round_rewards",
     "compact_round_artifact_snapshots",

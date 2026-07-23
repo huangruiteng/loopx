@@ -12,8 +12,8 @@ from loopx.benchmark_ledger import build_benchmark_run_ledger_entry
 from loopx.benchmark_core import (
     build_benchmark_live_worker_phase,
     compact_benchmark_live_worker_phase,
-    compact_benchmark_live_worker_phase_from_run,
 )
+from loopx.benchmark_core.lifecycle import compact_benchmark_live_worker_phase_from_run
 from loopx.status import compact_benchmark_run
 
 
