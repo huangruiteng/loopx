@@ -435,3 +435,41 @@ def test_setup_only_launcher_enables_incremental_public_artifact_sync(
     assert "--public-artifact-sync-interval-sec 30" in proc.stdout
     assert "--setup-only-public-preflight" in proc.stdout
     assert "--append-history" not in proc.stdout
+
+
+def test_formal_launcher_enables_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "live-progress"],
+        cwd=REPO_ROOT,
+        env=_base_env(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "setup_only_public_preflight=0" in proc.stdout
+    assert "public_artifact_sync_interval_sec=30" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 30" in proc.stdout
+
+
+def test_formal_launcher_can_disable_incremental_public_artifact_sync(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env["SKILLSBENCH_PUBLIC_ARTIFACT_SYNC_INTERVAL_SEC"] = "0"
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "no-live-progress"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "public_artifact_sync_interval_sec=0" in proc.stdout
+    assert "--public-artifact-sync-interval-sec 0" in proc.stdout

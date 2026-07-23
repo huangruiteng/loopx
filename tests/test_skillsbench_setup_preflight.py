@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import ast
 import asyncio
+import inspect
 import json
 import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +25,11 @@ from scripts.skillsbench_automation_loop import (
     DOCKER_APT_RETRY_BEGIN,
     _effective_setup_only_stage_timeout_sec,
     _public_runner_config,
+    _write_public_runner_lifecycle_receipt,
     build_compose_setup_diagnostic,
     build_plan,
     parse_args,
+    run_benchflow_case,
     stage_task_for_sandbox,
 )
 
@@ -153,6 +158,88 @@ def test_setup_only_preflight_projects_incremental_public_stages() -> None:
     assert snapshots[-1]["status"] == "passed"
     assert snapshots[-1]["cleanup_status"] == "completed"
     assert all(snapshot["raw_logs_recorded"] is False for snapshot in snapshots)
+
+
+def test_formal_run_lifecycle_receipt_projects_live_worker_without_private_logs(
+    tmp_path: Path,
+) -> None:
+    plan = {
+        "jobs_dir": str(tmp_path / "jobs"),
+        "job_name": "skillsbench-public-live-phase",
+        "runner_prerequisites": {
+            "schema_version": "skillsbench_runner_prerequisites_v0",
+            "private_detail": "PRIVATE_RAW_RUN_DETAIL_SHOULD_NOT_PROJECT",
+        },
+    }
+
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="benchflow_run_started",
+        worker_status="worker_running",
+    )
+    path = _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="agent_install_started",
+        worker_status="agent_install_started",
+        host_local_acp_status="connecting",
+        agent_install_started=True,
+    )
+
+    assert path is not None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["benchflow_run_stage"] == "agent_install_started"
+    assert payload["benchflow_case_worker_status"] == "agent_install_started"
+    assert payload["host_local_acp_launch_status"] == "connecting"
+    assert payload["benchflow_agent_install_started"] is True
+    assert payload["benchflow_lifecycle_receipt_sequence"] == 2
+    assert payload["benchflow_lifecycle_private_logs_read"] is False
+    assert "PRIVATE_RAW_RUN_DETAIL_SHOULD_NOT_PROJECT" not in json.dumps(
+        payload,
+        sort_keys=True,
+    )
+
+
+def test_host_local_acp_callsite_writes_live_phase_receipts() -> None:
+    tree = ast.parse(textwrap.dedent(inspect.getsource(run_benchflow_case)))
+    receipts: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (
+            isinstance(node.func, ast.Name)
+            and node.func.id == "_write_public_runner_lifecycle_receipt"
+        ):
+            continue
+        receipts.append(
+            {
+                keyword.arg: keyword.value.value
+                for keyword in node.keywords
+                if keyword.arg
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, (str, bool))
+            }
+        )
+
+    for expected in (
+        {
+            "worker_status": "worker_running",
+            "run_stage": "benchflow_run_started",
+        },
+        {
+            "worker_status": "agent_install_started",
+            "run_stage": "agent_install_started",
+            "agent_install_started": True,
+        },
+        {
+            "worker_status": "acp_connecting",
+            "host_local_acp_status": "connecting",
+        },
+        {
+            "worker_status": "acp_connected",
+            "host_local_acp_status": "connected",
+        },
+    ):
+        assert expected in receipts
 
 
 def test_setup_only_runner_mode_bypasses_formal_round_budget() -> None:
