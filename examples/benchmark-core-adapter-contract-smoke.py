@@ -34,9 +34,11 @@ from loopx.benchmark_core import (  # noqa: E402
     Observation,
     PreflightResult,
     RunHandle,
+    build_benchmark_live_worker_phase,
     build_round_artifact_restore_plan,
     compact_round_artifact_snapshots,
     compact_benchmark_canonical_lifecycle,
+    compact_benchmark_live_worker_phase,
     canonical_lifecycle,
     load_json_object,
     optional_float,
@@ -118,6 +120,20 @@ def test_process_started_is_not_case_entry() -> None:
     assert "fixture_private_phase" not in compact_benchmark_canonical_lifecycle(
         noisy
     )["phase_ready"]
+
+
+def test_live_worker_phase_keeps_terminal_state_separate_from_progress() -> None:
+    phase = build_benchmark_live_worker_phase(
+        agent_active=True,
+        terminal_disposition="completed",
+    )
+    assert phase["current_phase"] == "agent_active", phase
+    assert phase["worker_live"] is False, phase
+    assert phase["terminal"] is True, phase
+    assert phase["terminal_disposition"] == "completed", phase
+    assert phase["public_evidence_only"] is True, phase
+    noisy = {**phase, "private_detail": "not projected"}
+    assert compact_benchmark_live_worker_phase(noisy) == phase
 
 
 def test_existing_lifecycle_builder_projects_canonical_state() -> None:
@@ -286,6 +302,7 @@ def test_adapter_rollout_matrix_records_current_migration_order() -> None:
 def main() -> int:
     assert_adapter(FixtureAdapter())
     test_process_started_is_not_case_entry()
+    test_live_worker_phase_keeps_terminal_state_separate_from_progress()
     test_existing_lifecycle_builder_projects_canonical_state()
     test_round_reward_summary_prefers_best_score()
     test_best_round_restore_plan_uses_public_snapshot_handle()

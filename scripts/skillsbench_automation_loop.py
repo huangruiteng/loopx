@@ -150,8 +150,10 @@ from loopx.benchmark_adapters.skillsbench_turn_route import (  # noqa: E402
 )
 from loopx.benchmark_core import (  # noqa: E402
     build_benchmark_launch_observable_handle,
+    build_benchmark_live_worker_phase,
     canonical_lifecycle,
     compact_benchmark_canonical_lifecycle,
+    compact_benchmark_live_worker_phase,
     read_container_file_via_compose_copy,
     run_container_command_with_exit_status,
     run_container_command_with_output_capture,
@@ -2918,6 +2920,11 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
     )
     if lifecycle:
         compact["benchmark_canonical_lifecycle"] = lifecycle
+    live_worker_phase = compact_benchmark_live_worker_phase(
+        value.get("benchmark_live_worker_phase")
+    )
+    if live_worker_phase:
+        compact["benchmark_live_worker_phase"] = live_worker_phase
     for field in (
         "codex_acp_runtime_launch_preflight_rc",
         "benchflow_lifecycle_receipt_sequence",
@@ -3173,6 +3180,12 @@ def _write_public_runner_lifecycle_receipt(
     """Persist one public-safe live phase without inspecting private output."""
 
     prerequisites = plan.setdefault("runner_prerequisites", {})
+    previous_live_phase = compact_benchmark_live_worker_phase(
+        prerequisites.get("benchmark_live_worker_phase")
+    )
+    previous_ready = previous_live_phase.get("phase_ready")
+    if not isinstance(previous_ready, dict):
+        previous_ready = {}
     if run_stage is not None:
         prerequisites["benchflow_run_stage"] = run_stage
     if worker_status is not None:
@@ -3183,6 +3196,58 @@ def _write_public_runner_lifecycle_receipt(
         prerequisites["host_local_acp_install_stage"] = host_local_acp_install_stage
     if agent_install_started is not None:
         prerequisites["benchflow_agent_install_started"] = agent_install_started
+    current_worker_status = str(
+        prerequisites.get("benchflow_case_worker_status") or ""
+    )
+    worker_running_statuses = {
+        "worker_running",
+        "sandbox_installing",
+        "sandbox_installed",
+        "sandbox_install_failed",
+        "agent_install_started",
+        "acp_connecting",
+        "acp_connected",
+        "acp_connect_failed",
+        "agent_active",
+        "worker_completed",
+        "setup_stalled",
+    }
+    runtime_preparing_statuses = {
+        "runtime_preparing",
+        "worker_prepared",
+        *worker_running_statuses,
+    }
+    terminal_disposition = {
+        "worker_completed": "completed",
+        "sandbox_install_failed": "failed",
+        "acp_connect_failed": "failed",
+        "setup_stalled": "failed",
+    }.get(
+        current_worker_status,
+        str(previous_live_phase.get("terminal_disposition") or "open"),
+    )
+    prerequisites["benchmark_live_worker_phase"] = (
+        build_benchmark_live_worker_phase(
+            runtime_preparing=bool(
+                previous_ready.get("runtime_preparing")
+                or current_worker_status in runtime_preparing_statuses
+            ),
+            worker_prepared=bool(
+                previous_ready.get("worker_prepared")
+                or current_worker_status == "worker_prepared"
+                or current_worker_status in worker_running_statuses
+            ),
+            worker_running=bool(
+                previous_ready.get("worker_running")
+                or current_worker_status in worker_running_statuses
+            ),
+            agent_active=bool(
+                previous_ready.get("agent_active")
+                or current_worker_status == "agent_active"
+            ),
+            terminal_disposition=terminal_disposition,
+        )
+    )
     prerequisites["benchflow_lifecycle_private_logs_read"] = False
     prerequisites["benchflow_lifecycle_receipt_sequence"] = (
         int(prerequisites.get("benchflow_lifecycle_receipt_sequence") or 0) + 1

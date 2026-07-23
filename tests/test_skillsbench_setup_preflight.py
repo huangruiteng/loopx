@@ -193,10 +193,33 @@ def test_formal_run_lifecycle_receipt_projects_live_worker_without_private_logs(
     assert payload["benchflow_agent_install_started"] is True
     assert payload["benchflow_lifecycle_receipt_sequence"] == 2
     assert payload["benchflow_lifecycle_private_logs_read"] is False
+    live_phase = payload["benchmark_live_worker_phase"]
+    assert live_phase["current_phase"] == "worker_running"
+    assert live_phase["worker_live"] is True
+    assert live_phase["agent_active_observed"] is False
+    assert live_phase["terminal_disposition"] == "open"
+    assert live_phase["public_evidence_only"] is True
     assert "PRIVATE_RAW_RUN_DETAIL_SHOULD_NOT_PROJECT" not in json.dumps(
         payload,
         sort_keys=True,
     )
+
+    _write_public_runner_lifecycle_receipt(
+        plan,
+        worker_status="agent_active",
+    )
+    completed_path = _write_public_runner_lifecycle_receipt(
+        plan,
+        run_stage="benchflow_run_completed",
+        worker_status="worker_completed",
+    )
+    assert completed_path is not None
+    completed = json.loads(completed_path.read_text(encoding="utf-8"))
+    completed_phase = completed["benchmark_live_worker_phase"]
+    assert completed_phase["current_phase"] == "agent_active"
+    assert completed_phase["agent_active_observed"] is True
+    assert completed_phase["worker_live"] is False
+    assert completed_phase["terminal_disposition"] == "completed"
 
 
 def test_host_local_acp_callsite_writes_live_phase_receipts() -> None:
