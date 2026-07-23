@@ -123,6 +123,35 @@ def _json_bridge_requested(args: argparse.Namespace) -> bool:
     )
 
 
+def _codex_bridge_requested(args: argparse.Namespace) -> bool:
+    return bool(
+        args.codex_bridge
+        or args.codex_remote_socket
+        or args.codex_remote_client_path
+        or args.codex_prompt_bridge_command
+    )
+
+
+def _codex_bridge_public_contract(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "enabled": _codex_bridge_requested(args),
+        "server_started": False,
+        "local_socket_ready": False,
+        "reverse_socket_forward_requested": bool(args.codex_remote_socket),
+        "remote_socket_ready": False,
+        "remote_client_materialized": False,
+        "participant_probe_requested": bool(args.codex_participant_sandbox),
+        "participant_probe_passed": False,
+        "participant_sandbox": args.codex_participant_sandbox or "not_requested",
+        "raw_codex_command_recorded": False,
+        "raw_prompt_bridge_command_recorded": False,
+        "raw_socket_paths_recorded": False,
+        "raw_client_path_recorded": False,
+        "raw_probe_output_recorded": False,
+        "remote_socket_cleanup": _remote_codex_socket_cleanup_public_contract(args),
+    }
+
+
 def _json_bridge_public_contract(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "enabled": _json_bridge_requested(args),
@@ -155,6 +184,15 @@ def _resolved_json_local_socket(
     if args.json_local_socket:
         return Path(args.json_local_socket).expanduser()
     return runtime_dir / "json-bridge.sock"
+
+
+def _resolved_codex_local_socket(
+    args: argparse.Namespace,
+    runtime_dir: Path,
+) -> Path:
+    if args.codex_local_socket:
+        return Path(args.codex_local_socket).expanduser()
+    return runtime_dir / "codex-bridge.sock"
 
 
 def _cleanup_stale_local_forward(args: argparse.Namespace) -> dict[str, Any]:
@@ -234,13 +272,62 @@ def _start_json_bridge_server(
     )
 
 
-def _probe_local_json_socket(args: argparse.Namespace, socket_path: Path) -> bool:
-    deadline = time.monotonic() + max(1.0, float(args.json_socket_ready_timeout_sec))
+def _start_codex_bridge_server(
+    args: argparse.Namespace,
+    *,
+    socket_path: Path,
+) -> subprocess.Popen[Any]:
+    command = [
+        sys.executable,
+        str(BRIDGE_HELPER),
+        "serve-codex",
+        "--socket",
+        str(socket_path),
+        "--codex-bin",
+        args.codex_bin,
+        "--timeout-sec",
+        str(max(1.0, float(args.codex_server_timeout_sec))),
+        "--first-action-timeout-sec",
+        str(max(0.0, float(args.codex_first_action_timeout_sec))),
+        "--bridge-idle-timeout-sec",
+        str(max(0.0, float(args.codex_bridge_idle_timeout_sec))),
+    ]
+    if args.codex_prompt_bridge_command:
+        command.extend(["--prompt-bridge-command", args.codex_prompt_bridge_command])
+    return subprocess.Popen(
+        command,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        start_new_session=True,
+    )
+
+
+def _probe_local_socket(
+    socket_path: Path, *, timeout_sec: float, interval_sec: float
+) -> bool:
+    deadline = time.monotonic() + max(1.0, float(timeout_sec))
     while time.monotonic() < deadline:
         if socket_path.exists():
             return True
-        time.sleep(max(0.05, float(args.probe_interval_sec)))
+        time.sleep(max(0.05, float(interval_sec)))
     return False
+
+
+def _probe_local_json_socket(args: argparse.Namespace, socket_path: Path) -> bool:
+    return _probe_local_socket(
+        socket_path,
+        timeout_sec=args.json_socket_ready_timeout_sec,
+        interval_sec=args.probe_interval_sec,
+    )
+
+
+def _probe_local_codex_socket(args: argparse.Namespace, socket_path: Path) -> bool:
+    return _probe_local_socket(
+        socket_path,
+        timeout_sec=args.codex_socket_ready_timeout_sec,
+        interval_sec=args.probe_interval_sec,
+    )
 
 
 def _run_remote_shell_command(
@@ -272,6 +359,31 @@ def _probe_remote_json_socket(args: argparse.Namespace) -> bool:
     return proc.returncode == 0
 
 
+def _probe_remote_codex_socket(args: argparse.Namespace) -> bool:
+    command = "test -S " + shlex.quote(args.codex_remote_socket)
+    try:
+        proc = _run_remote_shell_command(
+            args,
+            command,
+            timeout_sec=args.codex_socket_ready_timeout_sec,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def _remote_codex_socket_cleanup_public_contract(
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "requested": bool(_codex_bridge_requested(args) and args.codex_remote_socket),
+        "attempted": False,
+        "ok": False,
+        "raw_socket_paths_recorded": False,
+        "raw_output_recorded": False,
+    }
+
+
 def _remote_json_socket_cleanup_public_contract(
     args: argparse.Namespace,
 ) -> dict[str, Any]:
@@ -284,12 +396,17 @@ def _remote_json_socket_cleanup_public_contract(
     }
 
 
-def _cleanup_remote_json_socket(args: argparse.Namespace) -> dict[str, Any]:
-    payload = _remote_json_socket_cleanup_public_contract(args)
+def _cleanup_remote_socket(
+    args: argparse.Namespace,
+    *,
+    socket_path: str,
+    payload: dict[str, Any],
+    blocker_prefix: str,
+) -> dict[str, Any]:
     if not payload["requested"]:
         return payload
     payload["attempted"] = True
-    command = "rm -f -- " + shlex.quote(args.json_remote_socket)
+    command = "rm -f -- " + shlex.quote(socket_path)
     try:
         proc = _run_remote_shell_command(
             args,
@@ -297,24 +414,47 @@ def _cleanup_remote_json_socket(args: argparse.Namespace) -> dict[str, Any]:
             timeout_sec=args.remote_setup_timeout_sec,
         )
     except subprocess.TimeoutExpired:
-        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_timeout"
+        payload["first_blocker"] = f"{blocker_prefix}_timeout"
         return payload
     except OSError:
-        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_launch_failed"
+        payload["first_blocker"] = f"{blocker_prefix}_launch_failed"
         return payload
     payload["exit_code"] = proc.returncode
     payload["stdout_size_bucket"] = _size_bucket(proc.stdout or "")
     payload["stderr_size_bucket"] = _size_bucket(proc.stderr or "")
     payload["ok"] = proc.returncode == 0
     if proc.returncode != 0:
-        payload["first_blocker"] = "json_bridge_remote_socket_cleanup_exit_nonzero"
+        payload["first_blocker"] = f"{blocker_prefix}_exit_nonzero"
     return payload
 
 
-def _materialize_remote_json_client(
-    args: argparse.Namespace, runtime_dir: Path
+def _cleanup_remote_codex_socket(args: argparse.Namespace) -> dict[str, Any]:
+    return _cleanup_remote_socket(
+        args,
+        socket_path=args.codex_remote_socket,
+        payload=_remote_codex_socket_cleanup_public_contract(args),
+        blocker_prefix="codex_bridge_remote_socket_cleanup",
+    )
+
+
+def _cleanup_remote_json_socket(args: argparse.Namespace) -> dict[str, Any]:
+    return _cleanup_remote_socket(
+        args,
+        socket_path=args.json_remote_socket,
+        payload=_remote_json_socket_cleanup_public_contract(args),
+        blocker_prefix="json_bridge_remote_socket_cleanup",
+    )
+
+
+def _materialize_remote_bridge_client(
+    args: argparse.Namespace,
+    runtime_dir: Path,
+    *,
+    kind: str,
+    remote_socket: str,
+    remote_path: str,
 ) -> bool:
-    local_client = runtime_dir / "json-bridge-client"
+    local_client = runtime_dir / f"{kind}-bridge-client"
     try:
         subprocess.run(
             [
@@ -322,9 +462,9 @@ def _materialize_remote_json_client(
                 str(BRIDGE_HELPER),
                 "write-client",
                 "--kind",
-                "json",
+                kind,
                 "--socket",
-                args.json_remote_socket,
+                remote_socket,
                 "--output",
                 str(local_client),
             ],
@@ -335,7 +475,6 @@ def _materialize_remote_json_client(
             check=True,
         )
         client_text = local_client.read_text(encoding="utf-8")
-        remote_path = args.json_remote_client_path
         remote_parent = os.path.dirname(remote_path) or "."
         remote_command = (
             "umask 077; mkdir -p "
@@ -359,8 +498,80 @@ def _materialize_remote_json_client(
     return proc.returncode == 0
 
 
+def _materialize_remote_json_client(
+    args: argparse.Namespace, runtime_dir: Path
+) -> bool:
+    return _materialize_remote_bridge_client(
+        args,
+        runtime_dir,
+        kind="json",
+        remote_socket=args.json_remote_socket,
+        remote_path=args.json_remote_client_path,
+    )
+
+
+def _materialize_remote_codex_client(
+    args: argparse.Namespace, runtime_dir: Path
+) -> bool:
+    return _materialize_remote_bridge_client(
+        args,
+        runtime_dir,
+        kind="codex",
+        remote_socket=args.codex_remote_socket,
+        remote_path=args.codex_remote_client_path,
+    )
+
+
+def _probe_remote_codex_participant(args: argparse.Namespace) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "requested": bool(args.codex_participant_sandbox),
+        "passed": False,
+        "sandbox": args.codex_participant_sandbox or "not_requested",
+        "raw_output_recorded": False,
+        "raw_command_recorded": False,
+        "raw_paths_recorded": False,
+        "credential_values_recorded": False,
+    }
+    if not payload["requested"]:
+        return payload
+    command = " ".join(
+        [
+            shlex.quote(args.codex_remote_client_path),
+            "sandbox",
+            "-c",
+            shlex.quote(f'sandbox_mode="{args.codex_participant_sandbox}"'),
+            "--",
+            "true",
+            ">/dev/null",
+            "2>&1",
+        ]
+    )
+    try:
+        proc = _run_remote_shell_command(
+            args,
+            command,
+            timeout_sec=args.codex_participant_probe_timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        payload["first_blocker"] = "codex_bridge_participant_probe_timeout"
+        return payload
+    except OSError:
+        payload["first_blocker"] = "codex_bridge_participant_probe_launch_failed"
+        return payload
+    payload["exit_code"] = proc.returncode
+    payload["passed"] = proc.returncode == 0
+    if proc.returncode != 0:
+        payload["first_blocker"] = "codex_bridge_participant_probe_exit_nonzero"
+    return payload
+
+
 def _render_remote_command(args: argparse.Namespace) -> str:
     command = args.remote_command
+    if _codex_bridge_requested(args):
+        command = command.replace(
+            "{codex_bridge_client}",
+            shlex.quote(args.codex_remote_client_path),
+        )
     if _json_bridge_requested(args):
         command = command.replace(
             "{json_bridge_client}",
@@ -393,6 +604,7 @@ def _tunnel_command(
     args: argparse.Namespace,
     *,
     json_local_socket: Path | None = None,
+    codex_local_socket: Path | None = None,
 ) -> list[str]:
     keepalive = max(1, int(args.keepalive_interval_sec))
     remote_keepalive = (
@@ -411,6 +623,15 @@ def _tunnel_command(
                 "StreamLocalBindUnlink=yes",
                 "-R",
                 f"{args.json_remote_socket}:{json_local_socket}",
+            ]
+        )
+    if _codex_bridge_requested(args) and codex_local_socket is not None:
+        command.extend(
+            [
+                "-o",
+                "StreamLocalBindUnlink=yes",
+                "-R",
+                f"{args.codex_remote_socket}:{codex_local_socket}",
             ]
         )
     command.extend(
@@ -507,9 +728,14 @@ def _start_tunnel_process(
     args: argparse.Namespace,
     *,
     json_local_socket: Path | None = None,
+    codex_local_socket: Path | None = None,
 ) -> subprocess.Popen[Any]:
     return subprocess.Popen(
-        _tunnel_command(args, json_local_socket=json_local_socket),
+        _tunnel_command(
+            args,
+            json_local_socket=json_local_socket,
+            codex_local_socket=codex_local_socket,
+        ),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -1008,6 +1234,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         "private_log_written": False,
         "remote_forward": _forward_public_contract(args.remote_forward),
         "json_bridge": _json_bridge_public_contract(args),
+        "codex_bridge": _codex_bridge_public_contract(args),
         "remote_failure_cleanup": _remote_failure_cleanup_public_contract(args),
         "public_artifact_sync": _public_artifact_sync_contract(args),
         "incremental_public_artifact_sync": (
@@ -1033,8 +1260,10 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
 
     tunnel_proc: subprocess.Popen[Any] | None = None
     json_bridge_proc: subprocess.Popen[Any] | None = None
+    codex_bridge_proc: subprocess.Popen[Any] | None = None
     runtime_dir_obj: tempfile.TemporaryDirectory[str] | None = None
     json_local_socket: Path | None = None
+    codex_local_socket: Path | None = None
 
     def finish(returncode: int) -> tuple[int, dict[str, Any]]:
         payload["duration_sec"] = round(max(0.0, time.time() - started_at), 3)
@@ -1052,6 +1281,13 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
             )
             if json_bridge_proc.returncode is not None:
                 payload["json_bridge"]["server_exit_code"] = json_bridge_proc.returncode
+        if codex_bridge_proc is not None:
+            payload["codex_bridge"]["server_cleanup_status"] = _stop_process_group(
+                codex_bridge_proc,
+                grace_sec=1.0,
+            )
+            if codex_bridge_proc.returncode is not None:
+                payload["codex_bridge"]["server_exit_code"] = codex_bridge_proc.returncode
         if runtime_dir_obj is not None:
             runtime_dir_obj.cleanup()
         checkpoint(
@@ -1101,9 +1337,44 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 )
                 return finish(2)
 
+        if _codex_bridge_requested(args):
+            codex_bridge_payload = payload["codex_bridge"]
+            codex_local_socket = _resolved_codex_local_socket(args, runtime_dir)
+            try:
+                codex_bridge_proc = _start_codex_bridge_server(
+                    args,
+                    socket_path=codex_local_socket,
+                )
+                codex_bridge_payload["server_started"] = True
+            except OSError as exc:
+                payload["first_blocker"] = "codex_bridge_server_launch_failed"
+                codex_bridge_payload["server_error_type"] = type(exc).__name__[:80]
+                return finish(2)
+
+            if not _probe_local_codex_socket(args, codex_local_socket):
+                payload["first_blocker"] = "codex_bridge_local_socket_not_ready"
+                return finish(2)
+            if codex_bridge_proc.poll() is not None:
+                payload["first_blocker"] = "codex_bridge_server_exited_before_ready"
+                codex_bridge_payload["server_exit_code"] = codex_bridge_proc.returncode
+                return finish(2)
+            codex_bridge_payload["local_socket_ready"] = True
+            codex_bridge_payload["remote_socket_cleanup"] = (
+                _cleanup_remote_codex_socket(args)
+            )
+            if not codex_bridge_payload["remote_socket_cleanup"].get("ok"):
+                payload["first_blocker"] = codex_bridge_payload[
+                    "remote_socket_cleanup"
+                ].get(
+                    "first_blocker",
+                    "codex_bridge_remote_socket_cleanup_failed",
+                )
+                return finish(2)
+
         tunnel_proc = _start_tunnel_process(
             args,
             json_local_socket=json_local_socket,
+            codex_local_socket=codex_local_socket,
         )
         payload["tunnel_started"] = True
     except OSError as exc:
@@ -1129,6 +1400,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                 tunnel_proc = _start_tunnel_process(
                     args,
                     json_local_socket=json_local_socket,
+                    codex_local_socket=codex_local_socket,
                 )
             except OSError as exc:
                 liveness["last_probe_status"] = (
@@ -1184,6 +1456,32 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
         json_bridge_payload["remote_command_placeholder_supported"] = (
             "{json_bridge_client}" in args.remote_command
         )
+
+    if _codex_bridge_requested(args):
+        codex_bridge_payload = payload["codex_bridge"]
+        if not _probe_remote_codex_socket(args):
+            payload["first_blocker"] = "codex_bridge_remote_socket_not_ready"
+            return finish(2)
+        codex_bridge_payload["remote_socket_ready"] = True
+        assert runtime_dir_obj is not None
+        if not _materialize_remote_codex_client(args, Path(runtime_dir_obj.name)):
+            payload["first_blocker"] = "codex_bridge_remote_client_materialize_failed"
+            return finish(2)
+        codex_bridge_payload["remote_client_materialized"] = True
+        codex_bridge_payload["remote_command_placeholder_supported"] = (
+            "{codex_bridge_client}" in args.remote_command
+        )
+        participant_probe = _probe_remote_codex_participant(args)
+        codex_bridge_payload["participant_probe"] = participant_probe
+        codex_bridge_payload["participant_probe_passed"] = bool(
+            participant_probe["passed"]
+        )
+        if participant_probe["requested"] and not participant_probe["passed"]:
+            payload["first_blocker"] = participant_probe.get(
+                "first_blocker",
+                "codex_bridge_participant_probe_failed",
+            )
+            return finish(2)
 
     if args.preflight_only or not args.remote_command:
         payload["ok"] = True
@@ -1345,6 +1643,7 @@ def run_supervisor(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
                         tunnel_proc = _start_tunnel_process(
                             args,
                             json_local_socket=json_local_socket,
+                            codex_local_socket=codex_local_socket,
                         )
                     except OSError as exc:
                         liveness["last_probe_status"] = (
@@ -1592,6 +1891,77 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "checks only the local/remote bridge socket and client lifecycle."
         ),
     )
+    parser.add_argument(
+        "--codex-bridge",
+        action="store_true",
+        help=(
+            "Hold an opt-in local Codex reverse-channel provider alongside the "
+            "TCP reverse tunnel."
+        ),
+    )
+    parser.add_argument(
+        "--codex-bin",
+        default="codex",
+        help="Local Codex executable used by the reverse-channel server.",
+    )
+    parser.add_argument(
+        "--codex-local-socket",
+        default="",
+        help=(
+            "Optional local Unix socket path for the Codex bridge server. "
+            "Omit to use a per-run temporary socket."
+        ),
+    )
+    parser.add_argument(
+        "--codex-remote-socket",
+        default="",
+        help=(
+            "Remote Unix socket exposed through ssh -R for the Codex bridge. "
+            "The raw path is not written to public output."
+        ),
+    )
+    parser.add_argument(
+        "--codex-remote-client-path",
+        default="",
+        help=(
+            "Remote path where the Codex bridge client is materialized. "
+            "Use {codex_bridge_client} inside --remote-command to inject it."
+        ),
+    )
+    parser.add_argument(
+        "--codex-prompt-bridge-command",
+        default="",
+        help=(
+            "Private local command used to execute scored sandbox operations "
+            "on the remote participant host. Not written to public output."
+        ),
+    )
+    parser.add_argument("--codex-server-timeout-sec", type=float, default=7200.0)
+    parser.add_argument("--codex-socket-ready-timeout-sec", type=float, default=15.0)
+    parser.add_argument(
+        "--codex-participant-sandbox",
+        choices=("read-only", "workspace-write"),
+        default="",
+        help=(
+            "Fixed sandbox used by the task-free participant probe. "
+            "Split-control benchmark launches must use workspace-write."
+        ),
+    )
+    parser.add_argument(
+        "--codex-participant-probe-timeout-sec",
+        type=float,
+        default=60.0,
+    )
+    parser.add_argument(
+        "--codex-first-action-timeout-sec",
+        type=float,
+        default=180.0,
+    )
+    parser.add_argument(
+        "--codex-bridge-idle-timeout-sec",
+        type=float,
+        default=0.0,
+    )
     parser.add_argument("--remote-command", default="")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument(
@@ -1708,6 +2078,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         if missing:
             parser.error(
                 "--json-bridge requires "
+                + ", ".join("--" + item.replace("_", "-") for item in missing)
+            )
+    if _codex_bridge_requested(args):
+        args.codex_bridge = True
+        missing = [
+            name
+            for name in (
+                "codex_remote_socket",
+                "codex_remote_client_path",
+                "codex_prompt_bridge_command",
+                "codex_participant_sandbox",
+            )
+            if not getattr(args, name)
+        ]
+        if missing:
+            parser.error(
+                "--codex-bridge requires "
                 + ", ".join("--" + item.replace("_", "-") for item in missing)
             )
     if _public_artifact_sync_requested(args):

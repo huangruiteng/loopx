@@ -2171,10 +2171,19 @@ def _host_local_acp_codex_exec_preflight_should_run(
     if bool(getattr(args, "setup_only_public_preflight", False)):
         return False
     route = str(getattr(args, "route", "") or "")
-    if bool(getattr(args, "host_local_acp_launch", False)) and route in {
-        CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
-        CODEX_CLI_GOAL_BASELINE_ROUTE,
-    }:
+    local_codex_provider = str(
+        getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+    )
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    ):
+        return False
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and route == CODEX_CLI_GOAL_BASELINE_ROUTE
+        and local_codex_provider != "reverse-channel"
+    ):
         return False
     if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
         return True
@@ -2188,10 +2197,19 @@ def _host_local_acp_codex_exec_preflight_should_run(
 def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     args: argparse.Namespace,
 ) -> bool:
+    route = str(getattr(args, "route", "") or "")
+    local_codex_provider = str(
+        getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+    )
     return bool(
         getattr(args, "host_local_acp_launch", False)
-        and str(getattr(args, "route", "") or "")
-        in HOST_LOCAL_BRIDGE_ROUTES
+        and (
+            route in HOST_LOCAL_BRIDGE_ROUTES
+            or (
+                route == CODEX_CLI_GOAL_BASELINE_ROUTE
+                and local_codex_provider == "reverse-channel"
+            )
+        )
         and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
         and (
             bool(getattr(args, "remote_command_file_bridge_ready", False))
@@ -9021,6 +9039,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
+        "local_codex_provider": str(
+            getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+        ),
         "docker_apt_source_mode": docker_apt_source_mode,
         "docker_apt_transport_mode": docker_apt_transport_mode,
         "docker_pip_index_mode": args.docker_pip_index_mode,
@@ -9603,6 +9624,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "app_server_reasoning_effort",
         "app_server_goal_prompt_style",
         "sandbox",
+        "local_codex_provider",
         "docker_apt_source_mode",
         "docker_apt_transport_mode",
         "docker_pip_index_mode",
@@ -16726,6 +16748,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--local-codex-bin",
         default="codex",
         help="Codex CLI binary for --local-codex-participant-ping.",
+    )
+    parser.add_argument(
+        "--local-codex-provider",
+        choices=("exact-host", "reverse-channel"),
+        default="exact-host",
+        help=(
+            "Structured host placement for Codex. reverse-channel enables the "
+            "fixed pre-agent bridge receipt for split-control launches."
+        ),
     )
     parser.add_argument(
         "--local-codex-sandbox",
