@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from .skillsbench_failure_signals import (
@@ -220,6 +220,9 @@ def _base_result(
         "job_root_materialized": False,
         "environment_object_materialized": False,
         "environment_started": False,
+        "environment_ready_hook_requested": False,
+        "environment_ready_hook_invoked": False,
+        "environment_ready_hook_status": "not_requested",
         "agent_install_invoked": False,
         "agent_execution_invoked": False,
         "verifier_invoked": False,
@@ -276,6 +279,7 @@ async def run_setup_only_public_preflight(
     stage_timeout_sec: float,
     cleanup_timeout_sec: float = 30.0,
     progress_callback: Callable[[Mapping[str, Any]], None] | None = None,
+    environment_ready_hook: Callable[[Any], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """Materialize a BenchFlow environment without installing or running an agent."""
 
@@ -288,6 +292,9 @@ async def run_setup_only_public_preflight(
     rollout: Any | None = None
     restore_compose_boundary: Callable[[], None] | None = None
     failed = False
+    if environment_ready_hook is not None:
+        result["environment_ready_hook_requested"] = True
+        result["environment_ready_hook_status"] = "pending"
     _emit_progress(progress_callback, result)
     try:
         rollout = await asyncio.wait_for(
@@ -315,11 +322,23 @@ async def run_setup_only_public_preflight(
         _emit_progress(progress_callback, result)
         await asyncio.wait_for(rollout.start(), timeout=stage_timeout_sec)
         result["environment_started"] = True
+        if environment_ready_hook is not None:
+            result["stage"] = "environment_ready_hook"
+            result["environment_ready_hook_invoked"] = True
+            result["environment_ready_hook_status"] = "running"
+            _emit_progress(progress_callback, result)
+            await asyncio.wait_for(
+                environment_ready_hook(getattr(rollout, "env", None)),
+                timeout=stage_timeout_sec,
+            )
+            result["environment_ready_hook_status"] = "passed"
         result["status"] = "passed"
         result["stage"] = "environment_ready_before_agent"
         result["exit_category"] = "passed"
     except Exception as exc:
         failed = True
+        if result["environment_ready_hook_status"] == "running":
+            result["environment_ready_hook_status"] = "failed"
         if rollout is not None:
             result["job_root_materialized"] = (
                 getattr(rollout, "_rollout_dir", None) is not None

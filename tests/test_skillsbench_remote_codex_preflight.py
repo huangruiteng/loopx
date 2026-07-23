@@ -191,6 +191,9 @@ def test_reverse_channel_cli_goal_requires_fixed_pre_agent_bridge_receipt() -> N
         args
     )
 
+    args.setup_only_public_preflight = True
+    assert skillsbench_loop._host_local_acp_codex_exec_preflight_should_run(args)
+
     args.local_codex_provider = "exact-host"
     assert not skillsbench_loop._host_local_acp_codex_exec_preflight_should_run(args)
     assert not (
@@ -198,6 +201,36 @@ def test_reverse_channel_cli_goal_requires_fixed_pre_agent_bridge_receipt() -> N
             args
         )
     )
+
+
+def test_pre_agent_receipt_rebinds_to_materialized_sandbox_bridge() -> None:
+    args = skillsbench_loop.parse_args(
+        [
+            "--task-id",
+            "public-case-id",
+            "--route",
+            "codex-cli-goal-baseline",
+            "--host-local-acp-launch",
+            "--local-codex-provider",
+            "reverse-channel",
+            "--host-local-acp-codex-exec-preflight",
+            "--remote-command-file-bridge-probe",
+            "--remote-command-file-bridge-solver-command",
+            "task-free-placeholder",
+        ]
+    )
+
+    command = skillsbench_loop._host_local_acp_codex_exec_preflight_command(
+        args,
+        {"runner_prerequisites": {}},
+        sandbox_bridge_command="materialized-sandbox-bridge",
+    )
+
+    bridge_index = command.index("--remote-command-file-bridge-command")
+    agent_bridge_index = command.index("--remote-command-file-bridge-agent-command")
+    assert command[bridge_index + 1] == "materialized-sandbox-bridge"
+    assert command[agent_bridge_index + 1] == "materialized-sandbox-bridge"
+    assert "task-free-placeholder" not in command
 
 
 def test_early_tui_failure_does_not_claim_goal_submission(tmp_path: Path) -> None:

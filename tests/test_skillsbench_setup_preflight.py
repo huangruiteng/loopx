@@ -160,6 +160,61 @@ def test_setup_only_preflight_projects_incremental_public_stages() -> None:
     assert all(snapshot["raw_logs_recorded"] is False for snapshot in snapshots)
 
 
+def test_setup_only_preflight_runs_environment_hook_before_cleanup() -> None:
+    async def environment_ready_hook(environment: object) -> None:
+        assert environment is not None
+        FakeRollout.events.append("environment_ready_hook")
+
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+            environment_ready_hook=environment_ready_hook,
+        )
+    )
+
+    assert result["status"] == "passed"
+    assert result["stage"] == "environment_ready_before_agent"
+    assert result["environment_ready_hook_requested"] is True
+    assert result["environment_ready_hook_invoked"] is True
+    assert result["environment_ready_hook_status"] == "passed"
+    assert result["agent_install_invoked"] is False
+    assert result["agent_execution_invoked"] is False
+    assert result["verifier_invoked"] is False
+    assert FakeRollout.events == [
+        "create",
+        "setup",
+        "start",
+        "environment_ready_hook",
+        "cleanup",
+    ]
+
+
+def test_setup_only_preflight_cleans_up_after_environment_hook_failure() -> None:
+    async def failing_environment_ready_hook(_environment: object) -> None:
+        FakeRollout.events.append("environment_ready_hook")
+        raise RuntimeError("private callback detail")
+
+    result = asyncio.run(
+        run_setup_only_public_preflight(
+            rollout_type=FakeRollout,
+            config=object(),
+            stage_timeout_sec=1,
+            environment_ready_hook=failing_environment_ready_hook,
+        )
+    )
+
+    assert result["status"] == "failed"
+    assert result["failure_stage"] == "environment_ready_hook"
+    assert result["environment_ready_hook_status"] == "failed"
+    assert result["cleanup_status"] == "completed"
+    assert result["agent_install_invoked"] is False
+    assert result["verifier_invoked"] is False
+    assert FakeRollout.events[-1] == "cleanup"
+    assert "private callback detail" not in json.dumps(result, sort_keys=True)
+
+
 def test_formal_run_lifecycle_receipt_projects_live_worker_without_private_logs(
     tmp_path: Path,
 ) -> None:
