@@ -203,6 +203,29 @@ def test_reverse_channel_cli_goal_requires_fixed_pre_agent_bridge_receipt() -> N
     )
 
 
+def test_materialized_sandbox_bridge_requires_successful_pre_agent_action() -> None:
+    args = SimpleNamespace(
+        route="codex-cli-goal-baseline",
+        host_local_acp_launch=True,
+        local_codex_provider="reverse-channel",
+        remote_command_file_bridge_solver_command="",
+        remote_command_file_bridge_ready=False,
+        remote_command_file_bridge_probe=True,
+    )
+
+    assert not skillsbench_loop._host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args
+    )
+    assert skillsbench_loop._host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args,
+        require_materialized_sandbox_bridge=True,
+    )
+    assert skillsbench_loop._host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args,
+        sandbox_bridge_command="materialized-sandbox-bridge",
+    )
+
+
 def test_pre_agent_receipt_rebinds_to_materialized_sandbox_bridge() -> None:
     args = skillsbench_loop.parse_args(
         [

@@ -193,6 +193,79 @@ def test_prompt_bridge_rejects_batched_loopx_commands() -> None:
             ), (label, completed)
 
 
+def test_prompt_bridge_host_broker_does_not_inherit_codex_sandbox_env() -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from scripts.skillsbench_reverse_channel_bridge import _run_codex_payload
+
+    with tempfile.TemporaryDirectory(prefix="loopx-prompt-bridge-broker-") as tmp:
+        root = Path(tmp)
+        fake_codex = root / "fake-codex"
+        fake_codex.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import re
+import subprocess
+import sys
+
+prompt = sys.stdin.read()
+match = re.search(r"Private bridge command:\\n([^\\n]+)", prompt)
+assert match, prompt
+env = os.environ.copy()
+env["LOOPX_FAKE_CODEX_SANDBOX"] = "1"
+raise SystemExit(subprocess.run(
+    match.group(1),
+    input=json.dumps({"operation": "preflight"}),
+    text=True,
+    shell=True,
+    env=env,
+).returncode)
+""",
+            encoding="utf-8",
+        )
+        fake_codex.chmod(0o700)
+        host_bridge = root / "host-bridge"
+        host_bridge.write_text(
+            """#!/usr/bin/env python3
+import json
+import os
+import sys
+
+sys.stdin.read()
+if os.environ.get("LOOPX_FAKE_CODEX_SANDBOX"):
+    raise SystemExit(91)
+print(json.dumps({"ok": True}))
+""",
+            encoding="utf-8",
+        )
+        host_bridge.chmod(0o700)
+        response = _run_codex_payload(
+            {
+                "args": ["exec"],
+                "stdin": (
+                    "LoopX bridge action preflight. Your first tool action "
+                    "should call the private bridge.\n\n"
+                    "Private bridge command:\nfixture-bridge"
+                ),
+                "timeout_sec": 10,
+            },
+            codex_bin=str(fake_codex),
+            default_timeout_sec=10,
+            prompt_bridge_command=str(host_bridge),
+            first_action_timeout_sec=5,
+        )
+        assert response["exit_code"] == 0, response
+        records = [
+            json.loads(line)
+            for line in response["agent_operations_jsonl"].splitlines()
+            if line.strip()
+        ]
+        assert records[-1]["success"] is True, records
+        assert records[-1]["returncode"] == 0, records
+        assert response["raw_task_text_recorded"] is False
+        assert response["credential_values_recorded"] is False
+
+
 def test_codex_client_writes_last_message_and_rewrites_bridge() -> None:
     with tempfile.TemporaryDirectory(prefix="loopx-reverse-bridge-smoke-") as tmp:
         root = Path(tmp)
@@ -882,7 +955,7 @@ print(json.dumps({
             env["LOOPX_REVERSE_CONNECT_TIMEOUT_SEC"] = "0.1"
             env["LOOPX_REVERSE_RESPONSE_TIMEOUT_SEC"] = "5"
             env["LOOPX_PRIVATE_BRIDGE_COMMAND"] = (
-                f"{sys.executable} -c \"from pathlib import Path; "
+                f'{sys.executable} -c "from pathlib import Path; '
                 f"Path({str(marker)!r}).write_text('ok', encoding='utf-8'); "
                 "print('private-ok')\""
             )
@@ -1062,7 +1135,9 @@ print(json.dumps({
 
 
 def test_json_file_preflight_does_not_invoke_bridge_command() -> None:
-    with tempfile.TemporaryDirectory(prefix="loopx-reverse-json-file-preflight-") as tmp:
+    with tempfile.TemporaryDirectory(
+        prefix="loopx-reverse-json-file-preflight-"
+    ) as tmp:
         root = Path(tmp)
         queue_dir = root / "queue"
         fake_bridge = root / "fake-json-bridge"
@@ -1154,6 +1229,7 @@ def test_socket_probe_reports_missing_or_orphaned() -> None:
 
 def main() -> int:
     test_prompt_bridge_rejects_batched_loopx_commands()
+    test_prompt_bridge_host_broker_does_not_inherit_codex_sandbox_env()
     test_codex_client_writes_last_message_and_rewrites_bridge()
     test_codex_bridge_template_preserves_dynamic_private_command()
     test_codex_client_plain_prompt_does_not_require_bridge_action()
