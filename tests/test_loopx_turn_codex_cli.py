@@ -153,6 +153,12 @@ schema = schema_path.read_text(encoding="utf-8")
 if "loopx_turn_complexity_checkpoint_v0" in schema:
     complexity = os.environ.get("FAKE_CODEX_COMPLEXITY", "simple")
     complex_case = complexity == "complex"
+    checkpoint_turn_key = (
+        "sha256:" + "f" * 64
+        if os.environ.get("FAKE_CODEX_INVALID_CHECKPOINT_TURN_KEY") == "1"
+        and "resume" not in args
+        else turn_key
+    )
     if os.environ.get("FAKE_CODEX_SKIP_CHECKPOINT_INSPECTION") != "1":
         print(json.dumps({
             "type": "item.completed",
@@ -160,7 +166,7 @@ if "loopx_turn_complexity_checkpoint_v0" in schema:
         }), flush=True)
     output_path.write_text(json.dumps({
         "schema_version": "loopx_turn_complexity_checkpoint_v0",
-        "turn_key": turn_key,
+        "turn_key": checkpoint_turn_key,
         "complexity": complexity,
         "signals": ["ambiguous_root_cause"] if complex_case else [],
         "evidence_summary": (
@@ -750,6 +756,49 @@ def test_codex_cli_advisor_skips_strong_model_for_simple_checkpoint(
     assert result["model_usage"]["advisor_decision"]["checkpoint_digest"].startswith(
         "sha256:"
     )
+
+
+def test_codex_cli_repairs_checkpoint_turn_key_in_same_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    prompt_log = tmp_path / "codex-prompts.jsonl"
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    monkeypatch.setenv("FAKE_CODEX_PROMPT_LOG", str(prompt_log))
+    monkeypatch.setenv("FAKE_CODEX_USAGE", "1")
+    monkeypatch.setenv("FAKE_CODEX_INVALID_CHECKPOINT_TURN_KEY", "1")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "calculator.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8"
+    )
+    request = _request()
+    request["turn_envelope"]["boundary"] = {"write_scope": ["calculator.py"]}
+
+    result = run_codex_cli_host(
+        request,
+        runtime_root=tmp_path / "runtime",
+        project=project,
+        codex_bin=str(executable),
+        sandbox="workspace-write",
+        model="executor-fixture",
+        advisor_model="advisor-fixture",
+        advisor_timeout_seconds=5,
+        timeout_seconds=5,
+    )
+
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(argv_rows) == 3
+    assert "resume" in argv_rows[1]
+    prompts = [
+        json.loads(line) for line in prompt_log.read_text(encoding="utf-8").splitlines()
+    ]
+    assert "prior complexity checkpoint receipt violated" in prompts[1]
+    assert result["model_usage"]["advisor_applied"] is False
+    assert result["model_usage"]["executor"]["total_tokens"] == 450
 
 
 def test_codex_cli_advisor_escalates_simple_checkpoint_without_workspace_inspection(

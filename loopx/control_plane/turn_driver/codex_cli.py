@@ -1135,12 +1135,73 @@ def _run_complexity_checkpoint(
         raise BuiltInHostError(f"codex_cli_complexity_checkpoint_{category}")
     if not observed_session_id:
         raise BuiltInHostError("codex_cli_complexity_checkpoint_session_missing")
-    checkpoint = _normalize_complexity_checkpoint(
-        invocation["result"], turn_key=str(request.get("turn_key") or "")
+    turn_key = str(request.get("turn_key") or "")
+    raw_usage = invocation.get("usage")
+    workspace_inspection_observed = (
+        invocation.get("workspace_inspection_observed") is True
     )
+    try:
+        checkpoint = _normalize_complexity_checkpoint(
+            invocation["result"], turn_key=turn_key
+        )
+    except BuiltInHostError as exc:
+        output_path.unlink(missing_ok=True)
+        repair = _run_codex_process(
+            _codex_command(
+                codex_bin=codex_bin,
+                project=project,
+                schema_path=schema_path,
+                output_path=output_path,
+                sandbox="read-only",
+                model=model,
+                session_id=observed_session_id,
+            ),
+            project=project,
+            prompt="\n".join(
+                [
+                    "Do not perform more workspace work. The prior complexity checkpoint receipt violated the LoopX contract.",
+                    "Re-emit only a corrected checkpoint receipt for the inspection already completed.",
+                    f"Correct this validation error: {exc}",
+                    "Turn request:",
+                    json.dumps(
+                        dict(request),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ]
+            ),
+            schema_path=schema_path,
+            output_path=output_path,
+            timeout_seconds=min(timeout_seconds, 60.0),
+        )
+        if repair["timed_out"]:
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_repair_timeout"
+            ) from exc
+        if repair["returncode"] != 0:
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_repair_"
+                + str(repair["failure_category"])
+            ) from exc
+        checkpoint = _normalize_complexity_checkpoint(
+            repair["result"], turn_key=turn_key
+        )
+        repair_usage = repair.get("usage")
+        if not isinstance(raw_usage, Mapping) or not isinstance(
+            repair_usage, Mapping
+        ):
+            raise BuiltInHostError(
+                "codex_cli_complexity_checkpoint_usage_missing"
+            ) from exc
+        raw_usage = aggregate_provider_usage(raw_usage, repair_usage)
+        workspace_inspection_observed = bool(
+            workspace_inspection_observed
+            or repair.get("workspace_inspection_observed") is True
+        )
     if (
         checkpoint["complexity"] == "simple"
-        and invocation.get("workspace_inspection_observed") is not True
+        and not workspace_inspection_observed
     ):
         checkpoint = {
             **checkpoint,
@@ -1154,7 +1215,6 @@ def _run_complexity_checkpoint(
                 "Which repository evidence proves the proposed patch and validation boundary?"
             ],
         }
-    raw_usage = invocation.get("usage")
     if not isinstance(raw_usage, Mapping):
         raise BuiltInHostError("codex_cli_complexity_checkpoint_usage_missing")
     decision = (
