@@ -23,7 +23,7 @@
 ```
 
 这不是要把全部历史塞回模型，而是让有限上下文每次只接收当前 objective、必要 evidence ref、
-合法 frontier 和 writeback contract。完整推导见[概念导读](concept-primer.md)。
+合法 frontier 和 writeback contract。完整推导见[概念导读](00-concept-primer.md)。
 
 ## 两个 Showcase 是课程主线
 
@@ -98,13 +98,13 @@ vision / goal boundary
 
 ## 课程地图
 
-如果你第一次接触控制面，先读[概念导读](concept-primer.md)。它用一张总图和公开的 Auto PR
+如果你第一次接触控制面，先读[概念导读](00-concept-primer.md)。它用一张总图和公开的 Auto PR
 Issue Fix 案例，区分 goal、todo、capability、provider、Turn、scheduler、gate、evidence、
 receipt、projection、replan 与 self-repair；随后再进入下面的代码课程。
 
 | 讲次 | 主题 | 读完应能回答 |
 | --- | --- | --- |
-| 导读 | [先把 LoopX 放进一张图](concept-primer.md) | 有限上下文为何需要外置状态，原生 Goal 与 LoopX 如何递进，核心概念怎样组成一条生命周期？ |
+| 导读 | [先把 LoopX 放进一张图](00-concept-primer.md) | 有限上下文为何需要外置状态，原生 Goal 与 LoopX 如何递进，核心概念怎样组成一条生命周期？ |
 | [第 0 讲](00-goal-control-plane-architecture.md) | 从两个 Showcase 理解 LoopX 架构 | Issue-Fix 与 Auto Research 如何通过 Capability / Domain State 复用同一 Kernel？ |
 | [第 1 讲](01-first-real-loop.md) | 从 Showcase 到第一次真实 Loop | 用户只说一句目标后，guided start、todo、heartbeat、quota、refresh 和 spend 如何串起来？ |
 | [第 2 讲](02-state-substrate.md) | 状态底座与可重放事实 | registry、event、active state、run history 和 projection 分别拥有什么事实？ |
