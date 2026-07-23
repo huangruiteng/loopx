@@ -482,7 +482,7 @@ def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
     frontier_identity = polls[0]["monitor_target"]["frontier_identity"]
     ack = {
         "classification": "autonomous_replan_recorded",
-        "generated_at": "2026-07-16T00:00:30+00:00",
+        "generated_at": "2026-07-16T00:03:00+00:00",
         "agent_id": AGENT_ID,
         "autonomous_replan_ack": {
             "schema_version": "autonomous_replan_ack_v0",
@@ -507,6 +507,35 @@ def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
     assert changed_frontier["autonomous_replan_obligation"][
         "frontier_identity"
     ] == frontier_identity
+
+
+def test_replan_ack_does_not_cover_newer_same_frontier_stalls() -> None:
+    polls = _blocked_wait_polls()
+    frontier_identity = polls[0]["monitor_target"]["frontier_identity"]
+    older_ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": "2026-07-16T00:00:30+00:00",
+        "agent_id": AGENT_ID,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "frontier_identity": frontier_identity,
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["watch_lane_continuation"],
+            },
+        },
+    }
+
+    replanned = _quota_with_replan_runs([*polls, older_ack, _vision_run()])
+
+    assert replanned["decision"] == "autonomous_replan_required"
+    assert replanned["goal_frontier_projection"]["replan_required"] is True
+    assert replanned["autonomous_replan_obligation"]["frontier_identity"] == (
+        frontier_identity
+    )
 
 
 def test_refresh_ack_preserves_the_observed_blocked_successor_identity(
