@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..runtime.time import parse_timestamp
+
 
 AUTONOMOUS_REPLAN_ACK_MATERIAL_RUN_WINDOW = 20
 
@@ -44,6 +46,9 @@ def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] 
     frontier_identity = str(ack.get("frontier_identity") or "").strip()
     if frontier_identity:
         result["frontier_identity"] = frontier_identity
+    generated_at = str(run.get("generated_at") or "").strip()
+    if generated_at:
+        result["generated_at"] = generated_at
     return result
 
 
@@ -96,7 +101,26 @@ def autonomous_replan_ack_matches_frontier(
         return True
     if not isinstance(ack, dict):
         return False
-    return str(ack.get("frontier_identity") or "").strip() == frontier_identity
+    if str(ack.get("frontier_identity") or "").strip() != frontier_identity:
+        return False
+
+    ack_generated_at = parse_timestamp(
+        ack.get("generated_at") or ack.get("recorded_at")
+    )
+    trigger_times = [
+        parsed
+        for trigger in obligation.get("triggers") or []
+        if isinstance(trigger, dict)
+        if (
+            parsed := parse_timestamp(
+                trigger.get("latest_generated_at") or trigger.get("generated_at")
+            )
+        )
+        is not None
+    ]
+    if ack_generated_at is not None and trigger_times:
+        return ack_generated_at >= max(trigger_times)
+    return True
 
 
 def autonomous_replan_ack_matches_agent(
