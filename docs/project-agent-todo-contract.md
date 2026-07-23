@@ -405,6 +405,33 @@ aggregate integration-branch PR to `main` is the review/merge boundary. This
 keeps review latency from suspending unrelated work without weakening the final
 delivery gate.
 
+Terminal PR state does not silently complete a review reminder: merged PRs may
+still need post-merge review. When the owner explicitly acknowledges that an
+exact review action is complete, persist a typed acknowledgement receipt with
+the exact bound `user_action` and GitHub PR:
+
+```bash
+loopx issue-fix pr-review-ack \
+  --url https://github.com/owner/repo/pull/123 \
+  --goal-id <goal-id> \
+  --todo-id <review-todo-id> \
+  --agent-id <bound-agent> \
+  --owner-acknowledged
+```
+
+The receipt is fail-closed, idempotent per todo revision, and read back after
+append. It binds the goal, todo revision, agent, provider, repository, PR
+number, and canonical permalink without parsing reminder prose. Reopening or
+materially editing the todo invalidates the prior acknowledgement.
+
+Use `pr-review-reconcile` as the single reconciliation path. It may be invoked
+explicitly or by a due `continuous_monitor` through any scheduler or host
+adapter. Supplying `--owner-acknowledged` first records the same typed receipt.
+Reconciliation validates the current todo revision before provider access and
+again before completion, then closes the reminder only for the exact terminal
+PR. A missing receipt, stale revision, unavailable provider, or unsupported
+forge leaves the reminder open. Quota projection has no provider side effects.
+
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
 

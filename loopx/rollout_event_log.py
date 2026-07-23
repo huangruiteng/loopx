@@ -23,6 +23,7 @@ ROLLOUT_EVENT_KINDS = {
     "compact_case_result",
     "failure_attribution",
     "pr_merge",
+    "pr_review_ack",
     "quota_monitor_poll",
     "quota_should_run",
     "quota_spend",
