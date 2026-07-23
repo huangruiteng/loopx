@@ -1,7 +1,8 @@
 # 第 9 讲：扩展层、Explore 与 Multi-Agent 产品
 
-> **本讲结论：** Extension 增加 domain facts、capability 或 presentation；它复用同一份
-> goal、todo、quota、scheduler、evidence 与 handoff contract，不创建第二个 kernel。
+> **本讲结论：** Extension 交付可选 provider、domain facts、capability 或 presentation；
+> 它复用同一份 goal、todo、quota、scheduler、evidence 与 handoff contract，不创建第二个
+> kernel。
 
 建议时长：110 分钟。扩展地图 35 分钟、Explore 30 分钟、Multi-agent/Auto Research 30 分钟、实验 15 分钟。
 
@@ -14,6 +15,7 @@
 3. 解释 Harness 为什么只是 analysis-only planner，而不是执行授权。
 4. 解释 user、preset、kernel 三层 multi-agent minimality。
 5. 判断 supervisor、multi-subagent、reward memory、connector 各自扩展哪个边界。
+6. 区分 Provider 的运行责任与 Extension 的交付生命周期。
 
 本讲采用分层阅读：所有开发者先读 Extension Contract、分层原则和 Feature Catalog；
 做探索产品再读 Graph/Harness；做 multi-agent 产品再读 Generic Kernel 与 Auto Research；
@@ -26,6 +28,7 @@
 | Surface | Auto Research 提供 | 继续由通用层拥有 |
 | --- | --- | --- |
 | User entry | open question、少量 preset 选项 | goal identity、preview/execute boundary |
+| Provider | evaluator、artifact source 与可选 sink 的 observation/readback | transition 与 goal lifecycle |
 | Capability Pack | role defaults、evidence adapter、decision candidates | todo/gate/quota/handoff/terminal semantics |
 | Domain State | hypothesis、experiment、dev/holdout evidence | claim、permission、scheduler、spend |
 | Host integration | visible worker panes、isolated executor turn | session lifecycle、workspace guard、effect receipt |
@@ -51,7 +54,7 @@ LoopX 扩展不应创建第二套：
 一个扩展应该提供：
 
 ```text
-domain evidence / role defaults / host capability / presentation sink
+provider implementation / domain evidence / role defaults / presentation sink
 ```
 
 然后复用：
@@ -60,17 +63,24 @@ domain evidence / role defaults / host capability / presentation sink
 registry -> status -> quota -> interaction contract -> todo/evidence -> refresh/spend
 ```
 
-## Kernel、Capability Pack 与 Domain State
+## 运行责任与扩展交付
 
-扩展层由三类责任组成，它们共享同一个 control plane：
+Extension 是安装、启停、升级和分发边界，不是运行时的第五个 owner。运行时仍按四种责任
+分工：
 
-| 层 | Owns | Must not own |
+| 角色 | Owns | Must not own |
 | --- | --- | --- |
-| Kernel | vision、goal、todo、gate、quota、scheduler、evidence、handoff | Issue-Fix/Explore/ML 的专用判断 |
-| Capability Pack | 领域 route、validator、compact adapter、preset | 绕过 Kernel 的 permission 或 lifecycle |
-| Domain State | feasibility、PR lifecycle、experiment result、checkpoint 等紧凑事实 | claim、quota、gate、host effect authority |
+| Agent | 通过 host/runtime 完成方案、分析、工具与一次有界执行 | durable lifecycle 或未授权 effect |
+| Provider | 外部调用、observation、effect result 与 readback | transition policy 或 todo state |
+| Capability Pack | 领域 route、归一化、validator、typed transition 与 preset | 绕过 Kernel 的 permission 或 lifecycle |
+| Kernel | vision、goal、todo、gate、monitor、quota、writeback、scheduler、evidence、handoff | Issue-Fix/Explore/ML 的专用判断 |
 
-这套分层让领域能力增加专属事实，同时复用 Kernel 的权限和生命周期模型。
+Domain State 保存 feasibility、PR lifecycle、experiment result、checkpoint 等紧凑连续性，
+但它是 Capability 与 Kernel 使用的工件，不是另一个 actor。Extension 可以交付 Provider，
+也可以只携带自己的 command 或 presentation；只有调用者需要稳定、provider-neutral 的结果
+合同时，才新增公共 Capability。
+
+这套分工让领域能力增加专属事实，同时复用 Kernel 的权限和生命周期模型。
 当前 Issue-Fix pack 直接复用通用 Domain State seam：
 
 ```python

@@ -679,6 +679,23 @@ Every surface should answer the same core questions: what is current, who owns
 the next action, which decision is gated, what evidence changed, and whether
 the next agent turn is allowed to spend compute.
 
+### For Developers: Runtime Responsibilities
+
+LoopX keeps four responsibilities separate:
+
+| Role | Responsibility |
+| --- | --- |
+| **Agent** | Plans, analyzes, uses tools, and performs one bounded action through a host/runtime. |
+| **Provider** | Calls external systems and returns observations, effect results, and readback. |
+| **Capability** | Defines the caller outcome, normalizes provider output, validates it, and proposes a typed transition. |
+| **Kernel** | Owns durable todos, gates, monitors, accepted writeback, quota, recovery, and scheduling. |
+
+The execution path is `Agent -> Capability -> Provider`; the control path
+returns `Provider readback -> Capability transition -> Kernel`. An extension is
+how an optional provider is packaged and managed, not another control-plane
+owner. See [Architecture](docs/architecture.md) and
+[Extensions and Capabilities](docs/reference/extensions.md).
+
 ## Community & Feedback
 
 LoopX is still early. The most useful feedback comes from real

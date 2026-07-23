@@ -118,7 +118,8 @@ flowchart LR
   C["Capability Pack<br/>领域事实 -> typed proposal"]
   H["Host / scheduler<br/>唤醒与一次有界执行"]
   A["Agent runtime<br/>推理、工具与 session"]
-  P["Provider / external truth<br/>repository · Git host · CI"]
+  P["Provider<br/>external call · observation · readback"]
+  X["External truth<br/>repository · Git host · CI"]
   E["Evidence + receipt<br/>验证、lineage 与 writeback"]
   V["Projection<br/>status · dashboard · report"]
 
@@ -126,13 +127,27 @@ flowchart LR
   K --> I
   I --> H
   H --> A
-  A --> P
+  A --> C
+  C --> P
+  P --> X
+  X --> P
   P --> C
   C --> E
   E --> K
   K --> V
   V --> U
 ```
+
+先按四种运行责任读这张图：
+
+- **Agent** 通过 host/runtime 完成方案、分析、工具使用和一次有界执行；
+- **Provider** 负责外部调用，并返回 bounded observation、effect result 与 readback；
+- **Capability** 负责归一化事实、验证结果并提出有限的 typed transition；
+- **Kernel** 负责接受或拒绝 transition，并持久化 todo、gate、monitor、writeback、quota 与调度。
+
+Domain State、evidence 和 receipt 是这些角色之间传递的工件，不是新的 owner。Extension
+则是 provider 的交付和生命周期边界，也不是第五种运行责任。Host/runtime 承载 session、
+工具和调用，同样不新增领域 decision owner。
 
 这不是一条永远顺利的流水线。每次 writeback 后，Kernel 都要根据新事实重新决定：
 
@@ -396,8 +411,9 @@ vision/replan 和 run reward 仍能让当前 goal 正确吸收人工干预。
 9. `MERGED`、issue closed 或明确 no-follow-up observation 触发 terminal closeout。Status、dashboard
    和报告都从同一组 canonical state 与 evidence 重建。
 
-这条链路里，repository、Git host 和 CI 决定外部事实；Capability Pack 解释这些事实；
-Kernel 决定生命周期；host/runtime 完成一次有界执行；scheduler 决定何时再观察。
+这条链路里，repository、Git host 和 CI 决定外部事实；Provider 获取事实并返回 bounded
+observation/readback；Capability Pack 解释这些事实；Kernel 决定生命周期；Agent 通过
+host/runtime 完成一次有界执行；scheduler 决定何时再观察。
 
 ## LoopX 不负责什么
 
