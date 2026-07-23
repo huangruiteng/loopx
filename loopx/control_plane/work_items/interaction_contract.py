@@ -13,7 +13,9 @@ from ..goals.goal_frontier import AUTONOMOUS_REPLAN_REQUIRED_MODE
 from ..goals.goal_vision_wait import exact_blocked_successor_wait_state
 from ..scheduler.execution_context import (
     SchedulerExecutionContextResolution,
+    SchedulerRuntimeProfile,
     render_scheduler_execution_args,
+    scheduler_runtime_profile_for_execution_context,
 )
 from ..todos.contract import (
     TODO_TASK_CLASS_MONITOR,
@@ -539,6 +541,12 @@ def interaction_next_cli_actions(
             "host packet's typed quota guard with the same heartbeat turn id"
         )
     )
+    heartbeat_turn_receipt_enabled = (
+        scheduler_runtime_profile_for_execution_context(
+            scheduler_execution_context
+        )
+        is SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+    )
     capability_resolution_actions = build_capability_resolution_writeback_actions(
         payload.get("capability_gate"),
         goal_id=goal_id,
@@ -574,7 +582,12 @@ def interaction_next_cli_actions(
             f"loopx heartbeat-prompt --thin --goal-id {goal_id} --agent-id <registered-agent> --agent-scope '<scope>'",
         ]
     if mode == "monitor_quiet_skip":
-        return [typed_heartbeat_receipt_retry]
+        if heartbeat_turn_receipt_enabled:
+            return [typed_heartbeat_receipt_retry]
+        return [
+            typed_monitor_poll,
+            typed_quota_guard,
+        ]
     if mode == "monitor_due":
         return [
             typed_monitor_poll,

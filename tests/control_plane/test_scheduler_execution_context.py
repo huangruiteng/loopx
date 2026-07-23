@@ -276,6 +276,25 @@ def test_generic_outer_controller_rerun_actions_are_typed() -> None:
     assert all(" -H " not in action for action in actions)
 
 
+def test_codex_app_monitor_quiet_retry_uses_turn_receipt() -> None:
+    actions = interaction_next_cli_actions(
+        {
+            "goal_id": "codex-heartbeat-fixture",
+            "agent_identity": {"agent_id": "codex-fixture"},
+        },
+        mode="monitor_quiet_skip",
+        scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+        ),
+    )
+
+    assert actions == [
+        "on missing/write_failed heartbeat_receipt only: loopx --format json "
+        "quota should-run --goal-id codex-heartbeat-fixture --agent-id "
+        'codex-fixture --codex-app --turn-instance-id "${LOOPX_TURN:?}"'
+    ]
+
+
 def test_unbound_rerun_actions_do_not_emit_executable_bare_guards() -> None:
     actions = interaction_next_cli_actions(
         {"goal_id": "unbound-controller-fixture"},
