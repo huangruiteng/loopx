@@ -405,6 +405,27 @@ aggregate integration-branch PR to `main` is the review/merge boundary. This
 keeps review latency from suspending unrelated work without weakening the final
 delivery gate.
 
+Terminal PR state does not silently complete a review reminder: merged PRs may
+still need post-merge review. When the owner explicitly acknowledges that an
+exact review action is complete, reconcile the exact bound `user_action`
+against compact public PR lifecycle metadata:
+
+```bash
+loopx issue-fix pr-review-reconcile \
+  --url https://github.com/owner/repo/pull/123 \
+  --goal-id <goal-id> \
+  --todo-id <review-todo-id> \
+  --agent-id <bound-agent> \
+  --fetch-metadata \
+  --owner-acknowledged \
+  --execute
+```
+
+The command is fail-closed and idempotent: it requires the exact todo id,
+matching bound agent, explicit owner acknowledgement, and a terminal PR
+observation. It writes the todo lifecycle before quota/status read it; quota
+does not fetch GitHub or infer completion from free-form reminder text.
+
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
 

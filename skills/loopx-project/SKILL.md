@@ -832,6 +832,12 @@ accumulates while the agent frontier is empty, follow
 `autonomous_replan_required`: create and claim a concrete runnable agent todo,
 then record `runnable_todo_set`. Only authoritative terminal-closure evidence
 may replace that todo writeback with explicit no-follow-up.
+Terminal PR state alone does not complete a review reminder because post-merge
+review may still be intentional. When the owner explicitly says that an exact
+review is complete, use `loopx issue-fix pr-review-reconcile` with the exact
+`todo_id`, matching bound agent, compact terminal PR metadata,
+`--owner-acknowledged`, and `--execute`. This writeback is idempotent and
+fail-closed; do not parse arbitrary todo text or make quota fetch GitHub.
 `successor_todo_ids` records lineage only: linking successors does not suspend
 an open parent. When splitting a parent into explicit successors, decide whether
 the parent still has an independent immediate action. If it does not, explicitly
