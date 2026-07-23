@@ -532,7 +532,7 @@ def interaction_next_cli_actions(
     )
     typed_heartbeat_receipt_retry = (
         f"on missing/write_failed heartbeat_receipt only: {typed_quota_guard} "
-        '--turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?required}"'
+        '--turn-instance-id "${LOOPX_TURN:?}"'
         if scheduler_args
         else (
             "on missing/write_failed heartbeat_receipt only: retry the current "

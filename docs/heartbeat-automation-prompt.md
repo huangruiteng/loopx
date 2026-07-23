@@ -293,7 +293,7 @@ if ! command -v loopx >/dev/null 2>&1; then
   fi
 fi
 loopx doctor >/dev/null
-loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?required}"
+loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_TURN:?}"
 
 If that preflight still fails, do not do implementation work, adapter work,
 file edits, research, project exploration, or quota spend in this turn. Return
@@ -351,7 +351,7 @@ If the result says should_run=false:
   safe-bypass step exists, report the pending gate compactly instead of doing
   work.
 - Give each heartbeat a stable turn id by copying its `<current_time_iso>` into
-  `LOOPX_HEARTBEAT_TURN_ID`; reuse that id for guard retries in the same
+  `LOOPX_TURN`; reuse that id for guard retries in the same
   heartbeat. `quota should-run` commits one idempotent receipt for every turn.
   If effective_action=monitor_quiet_skip, that same guard idempotently appends
   the no-spend stall observation and returns the follow-up decision. Do not
@@ -540,8 +540,8 @@ Task:
 Advance <GOAL_ID> using <ACTIVE_GOAL_STATE_PATH>. Before any delivery work,
 export `$HOME/.local/bin` onto PATH and run `loopx doctor`; if the CLI is
 still unavailable, quietly report that preflight failure and do no work. Then
-copy this trigger's `<current_time_iso>` into `LOOPX_HEARTBEAT_TURN_ID` and run
-`loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?required}"`. If it
+copy this trigger's `<current_time_iso>` into `LOOPX_TURN` and run
+`loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID> --runtime-profile codex_app_heartbeat --turn-instance-id "${LOOPX_TURN:?}"`. If it
 returns `should_run=false`, ask about operator gates with NOTIFY using
 `gate_prompt` unless the same unresolved gate was already surfaced recently. If
 the payload says `notify_user_on_open_todo=true`, ask up to three open

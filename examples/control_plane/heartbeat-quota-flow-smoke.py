@@ -949,7 +949,7 @@ def main() -> int:
         assert "missing/write_failed heartbeat_receipt only" in post_ack_actions[0], (
             post_ack_interaction
         )
-        assert '--turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?' in post_ack_actions[0], (
+        assert '--turn-instance-id "${LOOPX_TURN:?' in post_ack_actions[0], (
             post_ack_interaction
         )
         post_ack_poll_count = count_events(runtime, "quota_monitor_poll")

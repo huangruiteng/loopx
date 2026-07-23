@@ -495,7 +495,7 @@ def assert_monitor_quiet_skip_is_no_spend() -> None:
     ), contract
     assert "heartbeat_receipt" in contract["cli_channel"]["next_cli_actions"][0], contract
     assert "--turn-instance-id" in contract["cli_channel"]["next_cli_actions"][0], contract
-    assert "LOOPX_HEARTBEAT_TURN_ID" in contract["cli_channel"]["next_cli_actions"][0], contract
+    assert "LOOPX_TURN" in contract["cli_channel"]["next_cli_actions"][0], contract
 
 
 def assert_autonomous_replan_preempts_monitor_quiet() -> None:

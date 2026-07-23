@@ -91,7 +91,7 @@ def render_quota_guard_command(
         scheduler_execution_context=scheduler_execution_context,
     )
     turn_arg = (
-        ' --turn-instance-id "${LOOPX_HEARTBEAT_TURN_ID:?required}"'
+        ' --turn-instance-id "${LOOPX_TURN:?}"'
         if heartbeat_turn_receipt
         else ""
     )
