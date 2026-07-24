@@ -99,6 +99,31 @@ def test_turn_launcher_wires_private_commands_without_echoing_values(
     assert "sentinel-" not in output
 
 
+def test_launcher_dry_run_does_not_require_reachable_local_proxy(
+    tmp_path: Path,
+) -> None:
+    env = _base_env(tmp_path)
+    env.update(
+        {
+            "SKILLSBENCH_LOCAL_CODEX_PROXY_HOST": "127.0.0.1",
+            "SKILLSBENCH_LOCAL_CODEX_PROXY_PORT": "1",
+        }
+    )
+
+    proc = subprocess.run(
+        [str(LAUNCHER), "--dry-run", "public-smoke-case", "proxy-contract"],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+
+    assert "skillsbench_local_proxy_endpoint_unreachable" not in proc.stderr
+    assert "docker_proxy_host_recorded=false" in proc.stdout
+
+
 def test_launcher_fails_before_batch_when_exact_host_sandbox_probe_fails(
     tmp_path: Path,
 ) -> None:
