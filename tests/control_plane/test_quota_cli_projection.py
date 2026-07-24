@@ -5,6 +5,7 @@ import json
 from loopx.control_plane.quota.cli_projection import (
     QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND,
     QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
+    QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND,
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_VISION_AUDIT_DETAIL_COMMAND,
@@ -415,6 +416,87 @@ def test_compact_quota_should_run_cli_payload_keeps_agent_lane_handoff_lineage()
         include_user_todo_summary_detail=True,
         include_capability_gate_detail=True,
         include_agent_lane_next_action_detail=True,
+        include_vision_audit_detail=True,
+    )
+    assert full == payload
+
+
+def test_compact_quota_should_run_cli_payload_references_next_action_sources() -> None:
+    payload = {
+        "active_state_next_action": "durable goal route",
+        "latest_run_recommended_action": "agent-lane run recommendation",
+        "selected_todo": {
+            "todo_id": "quality-0",
+            "text": "continue the bounded quality slice",
+        },
+        "goal_route_hint": {
+            "schema_version": "goal_route_hint_v0",
+            "route_decision": "run_current_agent_lane",
+            "preserves_goal_next_action": True,
+        },
+        "next_action_projection_warning": {
+            "schema_version": "next_action_projection_warning_v0",
+            "kind": "next_action_projection_mismatch",
+            "severity": "info",
+            "requires_state_writeback": False,
+            "active_state_next_action": "durable goal route",
+            "latest_run_recommended_action": "agent-lane run recommendation",
+            "reason": "the selected lane preserves the durable route",
+            "recommended_action": "run the selected agent lane",
+            "agent_lane_next_action": "continue the bounded quality slice",
+        },
+        "interaction_contract": {"mode": "bounded_delivery"},
+        "scheduler_hint": {"action": "run_now"},
+    }
+
+    compact = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_agent_lane_next_action_detail=True,
+        include_vision_audit_detail=True,
+    )
+
+    warning = compact["next_action_projection_warning"]
+    assert warning["schema_version"] == (
+        "quota_cli_next_action_projection_compaction_v0"
+    )
+    assert warning["source_schema_version"] == (
+        "next_action_projection_warning_v0"
+    )
+    assert warning["kind"] == "next_action_projection_mismatch"
+    assert warning["severity"] == "info"
+    assert warning["requires_state_writeback"] is False
+    assert warning["goal_route_hint_ref"] == "#/goal_route_hint"
+    assert warning["active_state_next_action_ref"] == (
+        "#/active_state_next_action"
+    )
+    assert warning["latest_run_recommended_action_ref"] == (
+        "#/latest_run_recommended_action"
+    )
+    assert warning["agent_lane_next_action_ref"] == "#/selected_todo/text"
+    assert warning["detail_ref"] == (
+        QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND
+    )
+    assert "active_state_next_action" not in warning
+    assert "latest_run_recommended_action" not in warning
+    assert "agent_lane_next_action" not in warning
+    for key in (
+        "goal_route_hint",
+        "interaction_contract",
+        "scheduler_hint",
+        "selected_todo",
+    ):
+        assert compact[key] == payload[key]
+
+    full = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_agent_lane_next_action_detail=True,
+        include_next_action_projection_detail=True,
         include_vision_audit_detail=True,
     )
     assert full == payload

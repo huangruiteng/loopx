@@ -27,6 +27,12 @@ QUOTA_CLI_AGENT_LANE_NEXT_ACTION_COMPACTION_SCHEMA_VERSION = (
 QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND = (
     "quota should-run --include-agent-lane-next-action-detail"
 )
+QUOTA_CLI_NEXT_ACTION_PROJECTION_COMPACTION_SCHEMA_VERSION = (
+    "quota_cli_next_action_projection_compaction_v0"
+)
+QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND = (
+    "quota should-run --include-next-action-projection-detail"
+)
 QUOTA_CLI_VISION_AUDIT_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_vision_audit_compaction_v0"
 )
@@ -109,6 +115,13 @@ _HANDOFF_LINEAGE_FIELDS = (
     "successor_todo_ids",
     "unblocks_todo_id",
     "excluded_agents",
+)
+_NEXT_ACTION_PROJECTION_WARNING_ANCHOR_FIELDS = (
+    "kind",
+    "severity",
+    "requires_state_writeback",
+    "reason",
+    "recommended_action",
 )
 _VISION_AUDIT_ANCHOR_FIELDS = (
     "required",
@@ -323,6 +336,36 @@ def _agent_lane_next_action_anchor(item: dict[str, Any]) -> dict[str, Any]:
     return anchor
 
 
+def _next_action_projection_warning_anchor(
+    warning: dict[str, Any],
+    *,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    anchor: dict[str, Any] = {
+        "schema_version": QUOTA_CLI_NEXT_ACTION_PROJECTION_COMPACTION_SCHEMA_VERSION,
+        "source_schema_version": warning.get("schema_version"),
+    }
+    for field in _NEXT_ACTION_PROJECTION_WARNING_ANCHOR_FIELDS:
+        if warning.get(field) is not None:
+            anchor[field] = warning[field]
+    if isinstance(payload.get("goal_route_hint"), dict):
+        anchor["goal_route_hint_ref"] = "#/goal_route_hint"
+    if payload.get("active_state_next_action") is not None:
+        anchor["active_state_next_action_ref"] = "#/active_state_next_action"
+    if payload.get("latest_run_recommended_action") is not None:
+        anchor["latest_run_recommended_action_ref"] = (
+            "#/latest_run_recommended_action"
+        )
+    if warning.get("agent_lane_next_action") is not None:
+        anchor["agent_lane_next_action_ref"] = (
+            "#/selected_todo/text"
+            if isinstance(payload.get("selected_todo"), dict)
+            else "#/agent_lane_next_action"
+        )
+    anchor["detail_ref"] = QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND
+    return anchor
+
+
 def _vision_audit_anchor(
     audit: dict[str, Any],
     *,
@@ -400,6 +443,7 @@ def compact_quota_should_run_cli_payload(
     include_user_todo_summary_detail: bool = False,
     include_capability_gate_detail: bool = False,
     include_agent_lane_next_action_detail: bool = False,
+    include_next_action_projection_detail: bool = False,
     include_vision_audit_detail: bool = False,
 ) -> dict[str, Any]:
     """Bound CLI-only diagnostics after the full decision is computed."""
@@ -446,6 +490,18 @@ def compact_quota_should_run_cli_payload(
         compact = dict(compact)
         compact["agent_lane_next_action"] = _agent_lane_next_action_anchor(
             agent_lane_next_action
+        )
+    next_action_projection_warning = payload.get("next_action_projection_warning")
+    if not include_next_action_projection_detail and isinstance(
+        next_action_projection_warning,
+        dict,
+    ):
+        compact = dict(compact)
+        compact["next_action_projection_warning"] = (
+            _next_action_projection_warning_anchor(
+                next_action_projection_warning,
+                payload=payload,
+            )
         )
     if not include_vision_audit_detail:
         compact = _compact_vision_audit_copies(compact)

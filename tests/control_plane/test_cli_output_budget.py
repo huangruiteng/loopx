@@ -6,6 +6,7 @@ import io
 import json
 import shlex
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from loopx.cli import main as cli_main
@@ -208,6 +209,52 @@ def _write_agent_vision(runtime: Path, *, agent_id: str) -> None:
     run = json.loads(run_path.read_text(encoding="utf-8"))
     run["agent_vision"] = vision
     run_path.write_text(json.dumps(run) + "\n", encoding="utf-8")
+    index_path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def _seed_goal_and_agent_lane_runs(
+    runtime: Path,
+    *,
+    recommended_action: str,
+) -> None:
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    index_path = runs_dir / "index.jsonl"
+    rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(rows) < 2:
+        raise ValueError("next-action projection fixture requires two runs")
+    lane_generated_at = datetime.now(UTC)
+    status_generated_at = lane_generated_at - timedelta(seconds=1)
+    run_updates = (
+        (
+            rows[-2],
+            {
+                "generated_at": status_generated_at.isoformat(timespec="seconds"),
+                "progress_scope": "goal",
+                "recommended_action": "Preserve the latest goal status route.",
+            },
+        ),
+        (
+            rows[-1],
+            {
+                "generated_at": lane_generated_at.isoformat(timespec="seconds"),
+                "progress_scope": "agent_lane",
+                "recommended_action": recommended_action,
+            },
+        ),
+    )
+    for row, updates in run_updates:
+        row.update(updates)
+        run_path = Path(row["json_path"])
+        run = json.loads(run_path.read_text(encoding="utf-8"))
+        run.update(updates)
+        run_path.write_text(json.dumps(run) + "\n", encoding="utf-8")
     index_path.write_text(
         "".join(json.dumps(row) + "\n" for row in rows),
         encoding="utf-8",
@@ -533,6 +580,18 @@ def _mode_variant_commands(
             str(project),
             "--include-agent-lane-next-action-detail",
         ],
+        "quota_should_run_next_action_projection_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-next-action-projection-detail",
+        ],
         "quota_should_run_vision_audit_detail": common
         + [
             "quota",
@@ -661,6 +720,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "quota_should_run_user_todo_summary_detail",
         "quota_should_run_capability_gate_detail",
         "quota_should_run_agent_lane_next_action_detail",
+        "quota_should_run_next_action_projection_detail",
         "quota_should_run_vision_audit_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
@@ -944,6 +1004,87 @@ def test_quota_cli_keeps_full_agent_lane_next_action_on_explicit_cold_path(
     ):
         assert default_lane[key] == detail_lane[key]
     for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert default_payload[key] == detail_payload[key]
+
+
+def test_quota_cli_keeps_full_next_action_projection_on_explicit_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(
+        tmp_path / "quota-next-action-projection-detail"
+    ) as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[1],
+        )
+        state_file.write_text(
+            state_file.read_text(encoding="utf-8").replace(
+                "## Agent Todo",
+                (
+                    "## Next Action\n\n"
+                    "- Preserve the durable public fixture route.\n\n"
+                    "## Agent Todo"
+                ),
+                1,
+            ),
+            encoding="utf-8",
+        )
+        _seed_goal_and_agent_lane_runs(
+            runtime,
+            recommended_action="Continue the agent-lane fixture diagnostics.",
+        )
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        detail_command = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run_next_action_projection_detail"]
+
+        default_exit_code, default_text = _invoke_cli(default_command)
+        detail_exit_code, detail_text = _invoke_cli(detail_command)
+
+    assert default_exit_code == 0, default_text
+    assert detail_exit_code == 0, detail_text
+    default_payload = json.loads(default_text)
+    detail_payload = json.loads(detail_text)
+    default_warning = default_payload["next_action_projection_warning"]
+    detail_warning = detail_payload["next_action_projection_warning"]
+    assert default_warning["schema_version"] == (
+        "quota_cli_next_action_projection_compaction_v0"
+    )
+    assert default_warning["detail_ref"] == (
+        "quota should-run --include-next-action-projection-detail"
+    )
+    assert default_warning["goal_route_hint_ref"] == "#/goal_route_hint"
+    assert default_warning["active_state_next_action_ref"] == (
+        "#/active_state_next_action"
+    )
+    assert default_warning["latest_run_recommended_action_ref"] == (
+        "#/latest_run_recommended_action"
+    )
+    assert default_warning["agent_lane_next_action_ref"] == "#/selected_todo/text"
+    assert "active_state_next_action" not in default_warning
+    assert "latest_run_recommended_action" not in default_warning
+    assert "agent_lane_next_action" not in default_warning
+    assert detail_warning["active_state_next_action"]
+    assert detail_warning["latest_run_recommended_action"]
+    assert detail_warning["agent_lane_next_action"]
+    for key in ("kind", "severity", "requires_state_writeback", "reason"):
+        assert default_warning[key] == detail_warning[key]
+    for key in (
+        "goal_route_hint",
+        "interaction_contract",
+        "scheduler_hint",
+        "selected_todo",
+    ):
         assert default_payload[key] == detail_payload[key]
 
 
