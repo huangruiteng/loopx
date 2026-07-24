@@ -9,7 +9,7 @@ from .active_state_editing import (
     section_bounds,
     todo_blocks,
 )
-
+from .decision_scope import is_standing_decision_receipt_item
 
 DEFAULT_MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = 12
 DEFAULT_COMPLETED_TODO_ARCHIVE_HEADROOM = 2
@@ -78,15 +78,29 @@ def archive_completed_todo_lines(
     active_done_count = 0
     moved_count = 0
     kept_done_count = 0
+    retained_standing_decision_count = 0
 
     if bounds:
         blocks = todo_blocks(updated_lines, bounds[0], bounds[1], role=role, source_section=section)
         done_blocks = [block for block in blocks if block.get("done") is True]
         active_done_count = len(done_blocks)
-        move_count = max(0, active_done_count - max_active_done)
-        move_starts = {int(block["start"]) for block in done_blocks[:move_count]}
+        standing_receipts = (
+            [block for block in done_blocks if is_standing_decision_receipt_item(block)]
+            if role == "user"
+            else []
+        )
+        retained_standing_decision_count = len(standing_receipts)
+        movable_done_blocks = [
+            block for block in done_blocks if block not in standing_receipts
+        ]
+        move_count = min(
+            len(movable_done_blocks),
+            max(0, active_done_count - max_active_done),
+        )
+        blocks_to_move = movable_done_blocks[:move_count]
+        move_starts = {int(block["start"]) for block in blocks_to_move}
         kept_done_count = active_done_count - move_count
-        for block in done_blocks[:move_count]:
+        for block in blocks_to_move:
             moved_blocks.append(updated_lines[int(block["start"]) : int(block["end"])])
         if move_starts:
             new_lines: list[str] = []
@@ -94,7 +108,7 @@ def archive_completed_todo_lines(
             while index < len(updated_lines):
                 if index in move_starts:
                     matching = next(
-                        block for block in done_blocks[:move_count] if int(block["start"]) == index
+                        block for block in blocks_to_move if int(block["start"]) == index
                     )
                     index = int(matching["end"])
                     while (
@@ -121,4 +135,5 @@ def archive_completed_todo_lines(
         "active_done_after": kept_done_count,
         "max_active_done": max_active_done,
         "moved_count": moved_count,
+        "retained_standing_decision_count": retained_standing_decision_count,
     }

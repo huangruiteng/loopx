@@ -9,7 +9,6 @@ from ..todos.decision_scope import (
 )
 from ..todos.user_gate import open_todo_count
 
-
 STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "goal_id",
     "status",
@@ -57,6 +56,7 @@ def build_quota_stall_self_repair_hint(
     agent_id: str | None,
     user_todo_source_items: list[dict[str, Any]] | None = None,
     agent_todo_source_items: list[dict[str, Any]] | None = None,
+    standing_decision_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
     decision_scope_consistency = build_required_decision_scope_consistency(
@@ -66,6 +66,7 @@ def build_quota_stall_self_repair_hint(
         registered_agent_ids=coordination.get("registered_agents"),
         agent_source_items=agent_todo_source_items,
         user_source_items=user_todo_source_items,
+        standing_decision_authority=standing_decision_authority,
     )
     decision_scope_repair = build_required_decision_scope_repair_hint(
         decision_scope_consistency

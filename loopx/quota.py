@@ -149,6 +149,9 @@ from .control_plane.todos.contract import (
     normalize_todo_claimed_by,
     normalize_todo_status,
 )
+from .control_plane.todos.decision_scope import (
+    standing_decision_authority_for_agent,
+)
 from .control_plane.todos.summary_item import (
     compact_todo_summary_item,
 )
@@ -1010,6 +1013,7 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "agent_todos",
             "active_state_next_action",
             "active_state_next_action_entries",
+            "standing_decision_authority",
         ):
             if optional_field in attention:
                 if optional_field == "handoff_readiness":
@@ -1481,6 +1485,19 @@ def build_quota_should_run(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
         )
+        standing_decision_authority = standing_decision_authority_for_agent(
+            (
+                item.get("standing_decision_authority")
+                if isinstance(item.get("standing_decision_authority"), dict)
+                else (
+                    project_asset.get("standing_decision_authority")
+                    if project_asset
+                    and isinstance(project_asset.get("standing_decision_authority"), dict)
+                    else None
+                )
+            ),
+            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
+        )
         agent_scoped_user_todo_override = _agent_scoped_user_todo_override(
             state=state,
             item=item,
@@ -1558,6 +1575,7 @@ def build_quota_should_run(
             agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
             user_todo_source_items=user_todo_source_items,
             agent_todo_source_items=agent_todo_source_items,
+            standing_decision_authority=standing_decision_authority,
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(
@@ -2216,6 +2234,8 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
+        if standing_decision_authority:
+            payload["standing_decision_authority"] = standing_decision_authority
         if scoped_user_gate_fallback and not replan_decision_allowed:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True
