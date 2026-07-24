@@ -25,14 +25,15 @@
 | Effect owner | 无；quota path 必须保持只读，host/agent 只消费 typed decision |
 | Re-evaluation | 状态或环境变化后重新编译，不复用旧布尔值推断新一轮 |
 
-## 先判四个具体 Turn
+## 先判五个具体 Turn
 
-在读 quota payload 之前，先对四组 source facts 做产品判断：
+在读 quota payload 之前，先对五组 source facts 做产品判断：
 
 | Source facts | 正确的本轮模式 | 为什么 | 禁止的捷径 |
 | --- | --- | --- | --- |
 | PR checks pending，monitor 未到期，没有其他 work | wait / monitor quiet | 没有新 observation，也没有 runnable successor | 因 goal active 就调用模型 |
 | PR checks 失败，已形成同 agent 的 fix successor | bounded delivery | 外部变化已经翻译成合法 advancement todo | 在 host prompt 里直接决定怎么修 |
+| Auto ML Harness 推荐候选，但资源槽已满 | wait / deferred | planner proposal 不等于 capacity、claim 或 launch authority | 按排名直接启动昂贵实验 |
 | 研究实验只有 dev lift，holdout successor 可运行 | bounded delivery | promotion 条件未满足，但下一验证步骤明确 | 把 dev score 当 terminal success |
 | 所有普通 todo 已关闭，但 vision acceptance 仍有 gap | replan / repair | checklist 关闭不等于目标完成 | 用 `open_count=0` 推断 stop |
 
@@ -305,7 +306,7 @@ identity
 
 但 self-repair 和 projection gap 可能在多个阶段插入，因为它们修复的是决策输入本身。新增规则时应在 `rule-seam-map` 中明确它的输入和 precedence。
 
-## 八个典型 Case
+## 九个典型 Case
 
 ### Case A：有 runnable todo
 
@@ -400,6 +401,24 @@ same-agent runnable advancement = none
 若只统计“run history 末尾连续出现了几次同类 monitor poll”，M1 和 M2 会互相打断，两个实际停滞的 target 都可能永远到不了阈值。正确 source 是每个 monitor todo 自己的 `consecutive_no_change`：M2 的 poll 不重置 M1；M1 的 material transition 也只重置 M1。
 
 Quota 扫描 monitor lanes 后，只要任一 lane 达到阈值、且当前 agent 没有 runnable advancement，就形成 `monitor_no_change_streak` replan obligation。若存在可执行 advancement，则 normal delivery 优先；若 advancement 只是 blocked，则不能用它掩盖 monitor 已经停滞的事实。
+
+### Case I：Harness 推荐两个候选，但只有一个资源槽
+
+```text
+Explore Harness = analysis_only
+candidate T1, T2 = ranked and scope-compatible
+short_pool capacity = 1
+short_pool active usage = 1
+T1/T2 resume_when = capacity_available:short_pool
+```
+
+结果：Harness packet 可以帮助解释当前 portfolio，但 quota frontier 仍为空；本轮应 wait，
+而不是 claim、launch 或 spend。已有 external task 的 monitor 也不因为 planner 产生新排名
+就提前 poll。资源 readback 释放槽位后，Kernel 重新计算 `resume_when`，只暴露合法候选。
+
+如果 Harness 从 Graph 读到一条新 `refutes` edge，也只能形成 retirement/replan proposal。
+Graph、Harness 和 quota 分别拥有 evidence、advisory planning 与 action legality，不能把三个
+判断压成一个 `candidate_ready=true`。
 
 ## `action_required` 与 `open_count`
 

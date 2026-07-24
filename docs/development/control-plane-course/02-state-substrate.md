@@ -26,22 +26,34 @@
 | Replay boundary | 从 durable state 重建 read model，再重新探测当前环境；不重放旧推理文本 |
 | Forbidden | Session、dashboard、sink 和 host 不能直接成为 goal truth |
 
-## 从两个 Showcase 找事实归属
+## 从三个 Showcase 找事实归属
 
 先不背状态文件。遇到一条信息时，先问“谁能证明它是真的”：
 
-| 信息 | Issue-Fix 中的 owner | Auto Research 中的 owner | LoopX 怎样保存 |
-| --- | --- | --- | --- |
-| 外部对象当前状态 | Repository / GitHub | evaluator / artifact store / public source | fresh observation，不复制成第二权威源 |
-| 可跨 turn 复用的领域事实 | feasibility、PR lifecycle Domain State | hypothesis、evidence event、metric result Domain State | stable key + compact fingerprint + lineage |
-| 当前必须做的工作 | Kernel todo/gate/monitor | Kernel role todo/promotion gate | canonical lifecycle transition |
-| 本轮临时推理和工具输出 | coding session / workspace | worker session / experiment workspace | 不作为长期事实；只提取 validated ref |
-| 给人和 host 看的当前视图 | status / PR report | frontier / evidence graph | 从 canonical state 重建 projection |
+| 信息 | Issue-Fix owner | Single-Agent Auto ML owner | Auto Research owner | LoopX 怎样保存 |
+| --- | --- | --- | --- | --- |
+| 外部对象当前状态 | Repository / GitHub | training/evaluation provider | evaluator / artifact store / public source | fresh observation，不复制成第二权威源 |
+| 可跨 turn 复用的领域事实 | feasibility、PR lifecycle | experiment contract/result、hypothesis ledger | hypothesis、evidence event、metric result | stable key + compact fingerprint + lineage |
+| 当前必须做的工作 | Kernel todo/gate/monitor | Kernel candidate todo/task monitor/promotion gate | Kernel role todo/promotion gate | canonical lifecycle transition |
+| 本轮临时推理和工具输出 | coding session / workspace | model session / experiment workspace | worker session / experiment workspace | 不作为长期事实；只提取 validated ref |
+| 给人和 host 看的当前视图 | status / PR report | experiment board / Explore Graph | frontier / evidence graph | 从 canonical state 重建 projection |
 
 同一句“PR checks 仍 pending”可能同时出现在 session、Domain State 和 status 中，但它们的
 权威不同：GitHub 证明当前事实，Domain State 证明某轮已观察到什么，status 只是把已提交
 状态展示出来。判断 owner 后，再决定它应进入 registry、event、Domain State 还是只留在
 runtime artifact。
+
+Auto ML 里最容易混淆的是三种“图或表”：
+
+| 表面 | 拥有什么 | 不能证明什么 |
+| --- | --- | --- |
+| External task/metric source | task 当前状态、原始 artifact 与 provider readback | LoopX 已接受结果、候选值得 promotion |
+| ML Experiment Domain State | matched contract、紧凑结果、归因、promotion/no-promote proposal | 通用 todo 已关闭、资源或发布已获授权 |
+| Explore Graph result log/view | hypothesis、experiment、finding 与 supports/refutes lineage | graph edge 已执行、Harness 建议已 claim |
+
+恢复时先重新观察外部 task，再按稳定 identity 更新 Domain State；material finding 才追加到
+Explore result log。Explore Harness 读取这些 projection 做 planning，但它不写回 external
+truth，也不成为第四个状态源。
 
 ## 看板列是多轴状态的 Projection
 
@@ -76,10 +88,11 @@ Runnable | Claimed | Waiting on user | Monitoring | Blocked | Review | Done
 | Writeback / replay / repair | 已提交 transition 可验证，projection 可重建，失败后可恢复 |
 
 Capability Pack 可以在同一组通用算子上增加领域泳道。例如 Issue Fix 展示
-`feasibility -> patch -> CI -> review -> merge`，Auto Research 展示
-`hypothesis -> execute -> evaluate -> promote/retire`。这些阶段来自 Domain State 和
-capability proposal；只要它们涉及 claim、gate、quota、permission 或 terminal closure，
-最终 transition 仍由 Kernel 接受或拒绝。
+`feasibility -> patch -> CI -> review -> merge`，Single-Agent Auto ML 展示
+`candidate -> preflight -> launch -> monitor -> evaluate -> promote/no-promote`，Auto
+Research 展示 `hypothesis -> execute -> evaluate -> promote/retire`。这些阶段来自 Domain
+State 和 capability proposal；只要它们涉及 claim、gate、quota、permission 或 terminal
+closure，最终 transition 仍由 Kernel 接受或拒绝。
 
 ## Goal 不是聊天线程
 

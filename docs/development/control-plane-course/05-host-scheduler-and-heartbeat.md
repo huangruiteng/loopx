@@ -26,7 +26,7 @@
 | Commit receipt | ACK 必须绑定 state key、reset token、identity signature 与实际 host readback |
 | Recovery | Quiet 保持 automation；未结算 proposal 继续 apply/ACK，不伪装成 delivery |
 
-## 两个 Showcase 的 Cadence 不同，ACK 合同相同
+## 三个 Showcase 的 Cadence 不同，ACK 合同相同
 
 Scheduler 不懂 GitHub 或研究指标，但它能根据 Kernel 已分类的 action 调整唤醒节奏：
 
@@ -34,12 +34,21 @@ Scheduler 不懂 GitHub 或研究指标，但它能根据 Kernel 已分类的 ac
 | --- | --- | --- | --- |
 | PR 有 failing checks successor | runnable advancement | 较快继续 | successor 被领取或 material transition |
 | PR checks pending 且连续无变化 | monitor wait | 逐步放慢 | checks/review fingerprint 改变 |
+| Auto ML 候选正在实现或 preflight | runnable advancement | 较快继续 | validated launch proposal 写回 |
+| 外部训练/评估任务仍运行 | task monitor wait | 按任务阶段逐步放慢 | task state、artifact 或 metric fingerprint 改变 |
+| 资源槽已满，候选 deferred | capacity wait | 较慢观察资源 source | capacity readback 使 `resume_when` 成立 |
 | 研究 lane 有 holdout todo | runnable frontier | 较快继续 | evidence packet 写回 |
 | 研究暂无可执行 frontier，等待外部证据 | fresh-evidence wait | 较慢轮询 | 新 evidence event 或 user decision |
 
 无论哪种场景，LoopX 只产生 cadence proposal；host 应用 RRULE 或下一次触发时间后，必须
 回写绑定 `goal + agent + action class + proposal revision` 的 readback。只看到宿主当前值
 “碰巧相同”不能结算一条新 proposal，因为那无法证明 host 应用了本次决定。
+
+Explore Graph 的 material finding 会改变下一轮 evidence frontier，Explore Harness 的新
+portfolio 可能改变 advisory ranking；二者本身都不应创建额外 heartbeat。只有它们经
+Kernel 形成 runnable todo、due monitor、replan obligation 或明确 wait condition 后，
+scheduler hint 才改变 cadence。这样一张展示图刷新失败不会让昂贵实验提前启动，planner
+每次重新排序也不会造成高频空转。
 
 ## Host 是触发器，不是第二控制面
 
