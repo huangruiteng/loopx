@@ -33,6 +33,12 @@ QUOTA_CLI_NEXT_ACTION_PROJECTION_COMPACTION_SCHEMA_VERSION = (
 QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND = (
     "quota should-run --include-next-action-projection-detail"
 )
+QUOTA_CLI_GOAL_BOUNDARY_COMPACTION_SCHEMA_VERSION = (
+    "quota_cli_goal_boundary_compaction_v0"
+)
+QUOTA_CLI_GOAL_BOUNDARY_DETAIL_COMMAND = (
+    "quota should-run --include-goal-boundary-detail"
+)
 QUOTA_CLI_VISION_AUDIT_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_vision_audit_compaction_v0"
 )
@@ -366,6 +372,26 @@ def _next_action_projection_warning_anchor(
     return anchor
 
 
+def _compact_goal_boundary(boundary: dict[str, Any]) -> dict[str, Any]:
+    authority = boundary.get("checkpointed_boundary_authority")
+    if not isinstance(authority, dict) or not isinstance(
+        authority.get("entries"),
+        list,
+    ):
+        return boundary
+
+    compact_authority = dict(authority)
+    entries = compact_authority.pop("entries")
+    compact_authority["payload_compaction"] = {
+        "schema_version": QUOTA_CLI_GOAL_BOUNDARY_COMPACTION_SCHEMA_VERSION,
+        "omitted_entry_count": len(entries),
+        "full_detail_cold_path": QUOTA_CLI_GOAL_BOUNDARY_DETAIL_COMMAND,
+    }
+    compact = dict(boundary)
+    compact["checkpointed_boundary_authority"] = compact_authority
+    return compact
+
+
 def _vision_audit_anchor(
     audit: dict[str, Any],
     *,
@@ -444,6 +470,7 @@ def compact_quota_should_run_cli_payload(
     include_capability_gate_detail: bool = False,
     include_agent_lane_next_action_detail: bool = False,
     include_next_action_projection_detail: bool = False,
+    include_goal_boundary_detail: bool = False,
     include_vision_audit_detail: bool = False,
 ) -> dict[str, Any]:
     """Bound CLI-only diagnostics after the full decision is computed."""
@@ -503,6 +530,12 @@ def compact_quota_should_run_cli_payload(
                 payload=payload,
             )
         )
+    goal_boundary = payload.get("goal_boundary")
+    if not include_goal_boundary_detail and isinstance(goal_boundary, dict):
+        compact_goal_boundary = _compact_goal_boundary(goal_boundary)
+        if compact_goal_boundary is not goal_boundary:
+            compact = dict(compact)
+            compact["goal_boundary"] = compact_goal_boundary
     if not include_vision_audit_detail:
         compact = _compact_vision_audit_copies(compact)
     return compact
