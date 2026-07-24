@@ -453,6 +453,18 @@ def _mode_variant_commands(
             str(project),
             "--include-scheduler-detail",
         ],
+        "quota_should_run_todo_summary_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-todo-summary-detail",
+        ],
         "quota_should_run_turn_envelope": common
         + [
             "quota",
@@ -565,6 +577,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "start_goal_guided_command_pack_detail",
         "bootstrap_command_pack_message_only",
         "quota_should_run_scheduler_detail",
+        "quota_should_run_todo_summary_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
         "loopx_turn_run_once_preview",
@@ -604,6 +617,51 @@ def test_real_cli_output_stays_inside_the_characterized_baseline(
             assert formats["json"]["json_parseable"] is True
             assert formats["json"]["pretty_print_overhead_chars"] > 0
             assert formats["markdown"]["json_parseable"] is False
+
+
+def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "quota-todo-detail") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[1],
+        )
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        detail_command = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run_todo_summary_detail"]
+
+        default_exit_code, default_text = _invoke_cli(default_command)
+        detail_exit_code, detail_text = _invoke_cli(detail_command)
+
+    assert default_exit_code == 0, default_text
+    assert detail_exit_code == 0, detail_text
+    default_payload = json.loads(default_text)
+    detail_payload = json.loads(detail_text)
+    default_summary = default_payload["agent_todo_summary"]
+    detail_summary = detail_payload["agent_todo_summary"]
+    assert default_summary["payload_compaction"]["schema_version"] == (
+        "quota_cli_todo_summary_compaction_v0"
+    )
+    assert default_payload["todo_summary_projection"]["detail_ref"] == (
+        "quota should-run --include-todo-summary-detail"
+    )
+    assert "backlog_items" not in default_summary
+    assert detail_summary["backlog_items"]
+    assert "todo_summary_projection" not in detail_payload
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert default_payload[key] == detail_payload[key]
 
 
 def test_status_and_quota_json_ignore_compatibility_reexport_bindings(
