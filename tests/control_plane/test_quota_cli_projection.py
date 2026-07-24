@@ -17,7 +17,10 @@ def _items(count: int, *, prefix: str) -> list[dict[str, object]]:
             "schema_version": "todo_item_v0",
             "todo_id": f"{prefix}-{index}",
             "text": f"{prefix} item {index}",
+            "status": "open",
+            "priority": "P1",
             "task_class": "advancement_task",
+            "action_kind": f"{prefix}-action",
         }
         for index in range(count)
     ]
@@ -29,10 +32,11 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     first_executable = _items(4, prefix="execute")
     unclaimed = _items(5, prefix="unclaimed")
     monitor_due = _items(2, prefix="monitor")
+    monitor_capability_blocked = _items(3, prefix="monitor-capability")
     monitor_schedule_gap = _items(2, prefix="monitor-gap")
     payload = {
         "interaction_contract": {"mode": "bounded_delivery"},
-        "selected_todo": {"todo_id": "execute-0"},
+        "selected_todo": first_executable[0],
         "scheduler_hint": {"action": "run_now"},
         "agent_todo_summary": {
             "schema_version": "todo_summary_v0",
@@ -43,6 +47,7 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
             "first_executable_items": first_executable,
             "unclaimed_priority_open_items": unclaimed,
             "monitor_due_items": monitor_due,
+            "monitor_capability_blocked_due_items": monitor_capability_blocked,
             "monitor_schedule_gap_count": 2,
             "monitor_schedule_gap_items": monitor_schedule_gap,
             "backlog_items": backlog,
@@ -75,6 +80,7 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
         "unclaimed-2",
     ]
     assert len(summary["monitor_due_items"]) == 1
+    assert len(summary["monitor_capability_blocked_due_items"]) == 2
     assert [item["todo_id"] for item in summary["monitor_schedule_gap_items"]] == [
         "monitor-gap-0",
     ]
@@ -94,6 +100,7 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
         "first_executable_items": 1,
         "first_open_items": 2,
         "monitor_due_items": 1,
+        "monitor_capability_blocked_due_items": 1,
         "monitor_schedule_gap_items": 1,
         "todo_succession_warning.items": 40,
         "unclaimed_priority_open_items": 2,
@@ -158,18 +165,39 @@ def test_compact_quota_should_run_cli_payload_keeps_succession_warning_identity_
     assert "todo_ids=n/a" not in markdown
 
 
-def test_compact_quota_should_run_cli_payload_keeps_unclaimed_and_monitor_repair_identity_in_markdown() -> None:
+def test_compact_quota_should_run_cli_payload_keeps_hot_path_identity_in_markdown() -> None:
+    executable = _items(4, prefix="executable")
     payload = {
         "ok": True,
         "goal_id": "routing-identity-fixture",
+        "selected_todo": executable[0],
+        "agent_lane_next_action": {
+            "todo_id": "executable-0",
+            "selected_by": "current_agent_claimed_todo",
+            "confidence": "selected",
+        },
+        "interaction_contract": {
+            "schema_version": "loopx_interaction_contract_v0",
+            "mode": "bounded_delivery",
+            "user_channel": {"action_required": False},
+            "agent_channel": {"must_attempt": True},
+        },
         "agent_todo_summary": {
             "total_count": 8,
             "open_count": 8,
             "claimed_open_count": 3,
             "unclaimed_open_count": 5,
+            "monitor_due_count": 2,
+            "monitor_capability_blocked_due_count": 3,
             "monitor_schedule_gap_count": 2,
             "first_open_items": _items(3, prefix="claimed"),
+            "first_executable_items": executable,
             "unclaimed_priority_open_items": _items(5, prefix="unclaimed"),
+            "monitor_due_items": _items(2, prefix="monitor-due"),
+            "monitor_capability_blocked_due_items": _items(
+                3,
+                prefix="monitor-capability",
+            ),
             "monitor_schedule_gap_items": _items(2, prefix="monitor-gap"),
         },
     }
@@ -187,9 +215,36 @@ def test_compact_quota_should_run_cli_payload_keeps_unclaimed_and_monitor_repair
     ]
     markdown = render_quota_should_run_markdown(compact)
     assert (
+        "- agent_lane_next_action: todo_id=executable-0 "
+        "selected_by=current_agent_claimed_todo confidence=selected"
+    ) in markdown
+    assert "- agent_todo_next: executable item 0 todo_id=executable-0" in markdown
+    assert "- agent_todo_next: executable item 1 todo_id=executable-1" in markdown
+    assert "- agent_todo_next: executable item 2 todo_id=executable-2" in markdown
+    assert (
         "- agent_todo_unclaimed_candidates: "
-        "todo_ids=unclaimed-0,unclaimed-1,unclaimed-2"
+        "todo_id=unclaimed-0 status=open priority=P1 "
+        "task_class=advancement_task action_kind=unclaimed-action; "
+        "todo_id=unclaimed-1 status=open priority=P1 "
+        "task_class=advancement_task action_kind=unclaimed-action; "
+        "todo_id=unclaimed-2 status=open priority=P1 "
+        "task_class=advancement_task action_kind=unclaimed-action"
     ) in markdown
     assert (
-        "- agent_todo_monitor_schedule_gap: todo_ids=monitor-gap-0"
+        "- agent_todo_monitor_due: "
+        "todo_id=monitor-due-0 status=open priority=P1 "
+        "task_class=advancement_task action_kind=monitor-due-action"
     ) in markdown
+    assert (
+        "- agent_todo_monitor_capability_blocked_due: "
+        "todo_id=monitor-capability-0 status=open priority=P1 "
+        "task_class=advancement_task action_kind=monitor-capability-action; "
+        "todo_id=monitor-capability-1 status=open priority=P1 "
+        "task_class=advancement_task action_kind=monitor-capability-action"
+    ) in markdown
+    assert (
+        "- agent_todo_monitor_schedule_gap: "
+        "todo_id=monitor-gap-0 status=open priority=P1 "
+        "task_class=advancement_task action_kind=monitor-gap-action"
+    ) in markdown
+    assert "- interaction_contract: " in markdown
