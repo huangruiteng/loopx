@@ -21,6 +21,12 @@ _BARE_PIP_INSTALL_RE = re.compile(
     r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)pip3?\s+install\b",
     re.IGNORECASE,
 )
+_PIP_INSTALL_RE = re.compile(
+    r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)"
+    r"(?P<command>(?:(?:python3?|python)\s+-m\s+pip|pip3?)\s+install)\b"
+    r"(?!\s+--no-build-isolation\b)",
+    re.IGNORECASE,
+)
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -241,6 +247,32 @@ def patch_debian_apt_mirror(dockerfile: Path) -> bool:
 def dockerfile_heredoc_delimiter(line: str) -> str | None:
     match = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
     return match.group(1) if match else None
+
+
+def add_pip_no_build_isolation_flags(text: str) -> tuple[str, int]:
+    """Add pip's explicit no-isolation flag outside Dockerfile heredocs."""
+
+    lines: list[str] = []
+    replaced = 0
+    heredoc_delimiter: str | None = None
+    for line in text.splitlines():
+        if heredoc_delimiter is not None:
+            lines.append(line)
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = dockerfile_heredoc_delimiter(line)
+        if line.lstrip().startswith("#"):
+            lines.append(line)
+            continue
+        rewritten, count = _PIP_INSTALL_RE.subn(
+            r"\g<prefix>\g<command> --no-build-isolation",
+            line,
+        )
+        lines.append(rewritten)
+        replaced += count
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + suffix, replaced
 
 
 def _rewrite_bare_pip_installs(text: str) -> tuple[str, int]:

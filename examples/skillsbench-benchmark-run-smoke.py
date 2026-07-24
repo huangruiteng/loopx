@@ -6261,6 +6261,7 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         ), staged_text
         assert "PIP_RETRIES=10" in staged_text, staged_text
         assert "PIP_NO_BUILD_ISOLATION" not in staged_text, staged_text
+        assert "--no-build-isolation" not in staged_text, staged_text
         assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
             "pip3 install"
         ), staged_text
@@ -6298,7 +6299,14 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert no_isolation_metadata["dockerfile_pip_build_mode"] == (
             "no-isolation"
         ), no_isolation_metadata
-        assert "PIP_NO_BUILD_ISOLATION=1" in no_isolation_text, no_isolation_text
+        assert "PIP_NO_BUILD_ISOLATION" not in no_isolation_text, no_isolation_text
+        assert "pip3 install --no-build-isolation numpy" in no_isolation_text, (
+            no_isolation_text
+        )
+        assert (
+            "python3 -m pip install --no-build-isolation pyyaml"
+            in no_isolation_text
+        ), no_isolation_text
 
 
 def test_skillsbench_docker_pip_bootstrap_skips_python_heredoc_imports() -> None:
