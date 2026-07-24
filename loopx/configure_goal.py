@@ -151,6 +151,14 @@ def _positive_number(value: float | None, *, field: str) -> float | None:
     return float(value)
 
 
+def _non_negative_number(value: float | None, *, field: str) -> float | None:
+    if value is None:
+        return None
+    if value < 0:
+        raise ValueError(f"{field} must be greater than or equal to 0")
+    return float(value)
+
+
 def _non_negative_int(value: int | None, *, field: str) -> int | None:
     if value is None:
         return None
@@ -541,7 +549,7 @@ def configure_goal(
                 + ", ".join(EXPLORE_HARNESS_PROFILES)
             )
 
-    quota_compute = _positive_number(quota_compute, field="quota_compute")
+    quota_compute = _non_negative_number(quota_compute, field="quota_compute")
     quota_window_hours = _positive_number(quota_window_hours, field="quota_window_hours")
     max_children = _non_negative_int(max_children, field="max_children")
     allowed_domains = _clean_domains(allowed_domains)
