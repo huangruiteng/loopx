@@ -433,7 +433,8 @@ fi
 batch_case_start_gap="${SKILLSBENCH_BATCH_CASE_START_GAP_SEC:-3}"
 local_proxy_host="${SKILLSBENCH_LOCAL_CODEX_PROXY_HOST:-127.0.0.1}"
 local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
-if ! python3 - "$local_proxy_host" "$local_proxy_port" <<'PY'
+if [[ "$dry_run" == "false" ]] &&
+  ! python3 - "$local_proxy_host" "$local_proxy_port" <<'PY'
 import socket
 import sys
 
