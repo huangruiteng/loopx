@@ -4,6 +4,8 @@ import json
 
 from loopx.control_plane.quota.cli_projection import (
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
+    QUOTA_CLI_VISION_AUDIT_DETAIL_COMMAND,
+    QUOTA_CLI_VISION_AUDIT_ROOT_REF,
     compact_quota_should_run_cli_payload,
 )
 
@@ -102,3 +104,81 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     larger_compact_chars = len(json.dumps(larger_compact, sort_keys=True))
     assert compact_chars < 10_000
     assert larger_compact_chars - compact_chars < 200
+
+
+def test_compact_quota_should_run_cli_payload_deduplicates_vision_audit() -> None:
+    audit = {
+        "schema_version": "vision_continuation_audit_v0",
+        "required": True,
+        "agent_id": "quality-agent",
+        "decision": "acceptance_gap_open",
+        "selected_todo_is_goal_completion": False,
+        "closeout_allowed_without_evidence": False,
+        "trigger_count": 1,
+        "trigger_kinds": ["vision_acceptance_gap"],
+        "acceptance_gaps": _items(30, prefix="gap"),
+        "required_before_closeout": [f"requirement-{index}" for index in range(30)],
+        "recommended_action": "continue one bounded quality slice",
+        "vision_gap_judge": {
+            "done": False,
+            "decision": "continue",
+            "agent_judge_instruction": "inspect authoritative evidence",
+        },
+    }
+    payload = {
+        "selected_todo": {"todo_id": "quality-0"},
+        "scheduler_hint": {"action": "run_now"},
+        "vision_continuation_audit": audit,
+        "goal_frontier_projection": {
+            "vision_continuation_audit": audit,
+        },
+        "interaction_contract": {
+            "mode": "bounded_delivery",
+            "agent_channel": {
+                "must_attempt": True,
+                "vision_continuation_audit": audit,
+            },
+            "cli_channel": {
+                "next_cli_actions": ["continue"],
+                "vision_continuation_audit": audit,
+            },
+        },
+    }
+
+    compact = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+    )
+
+    root = compact["vision_continuation_audit"]
+    assert root["required"] is True
+    assert root["decision"] == "acceptance_gap_open"
+    assert root["recommended_action"] == "continue one bounded quality slice"
+    assert root["detail_ref"] == QUOTA_CLI_VISION_AUDIT_DETAIL_COMMAND
+    assert "acceptance_gaps" not in root
+    assert "vision_gap_judge" not in root
+    for nested in (
+        compact["goal_frontier_projection"]["vision_continuation_audit"],
+        compact["interaction_contract"]["agent_channel"][
+            "vision_continuation_audit"
+        ],
+        compact["interaction_contract"]["cli_channel"][
+            "vision_continuation_audit"
+        ],
+    ):
+        assert nested["required"] is True
+        assert nested["decision"] == "acceptance_gap_open"
+        assert nested["recommended_action"] == "continue one bounded quality slice"
+        assert nested["detail_ref"] == QUOTA_CLI_VISION_AUDIT_ROOT_REF
+        assert "acceptance_gaps" not in nested
+    assert payload["vision_continuation_audit"]["acceptance_gaps"]
+
+    full = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_vision_audit_detail=True,
+    )
+    assert full == payload
+    compact_chars = len(json.dumps(compact, sort_keys=True))
+    full_chars = len(json.dumps(full, sort_keys=True))
+    assert compact_chars < full_chars * 0.45

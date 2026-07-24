@@ -182,6 +182,38 @@ def _write_rollout_event(runtime: Path, *, agent_id: str) -> None:
     )
 
 
+def _write_agent_vision(runtime: Path, *, agent_id: str) -> None:
+    runs_dir = runtime / "goals" / GOAL_ID / "runs"
+    index_path = runs_dir / "index.jsonl"
+    rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    vision = {
+        "schema_version": "goal_vision_replan_contract_v0",
+        "goal_id": GOAL_ID,
+        "agent_id": agent_id,
+        "state": "vision_replanned",
+        "vision_patch": {
+            "vision_summary": "Keep qualifying the CLI output contract.",
+            "acceptance_summary": "The active output budget gap is closed.",
+            "advancement_policy": "repeat_until_closed",
+            "replan_trigger_summary": "The output budget remains above its target.",
+        },
+        "todo_delta": ["continue_quality_qualification"],
+    }
+    rows[-1]["agent_vision"] = vision
+    run_path = Path(rows[-1]["json_path"])
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    run["agent_vision"] = vision
+    run_path.write_text(json.dumps(run) + "\n", encoding="utf-8")
+    index_path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
 def _invoke_cli(args: list[str]) -> tuple[int, str]:
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
@@ -465,6 +497,18 @@ def _mode_variant_commands(
             str(project),
             "--include-todo-summary-detail",
         ],
+        "quota_should_run_vision_audit_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-vision-audit-detail",
+        ],
         "quota_should_run_turn_envelope": common
         + [
             "quota",
@@ -578,6 +622,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "bootstrap_command_pack_message_only",
         "quota_should_run_scheduler_detail",
         "quota_should_run_todo_summary_detail",
+        "quota_should_run_vision_audit_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
         "loopx_turn_run_once_preview",
@@ -661,6 +706,54 @@ def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
     assert detail_summary["backlog_items"]
     assert "todo_summary_projection" not in detail_payload
     for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert default_payload[key] == detail_payload[key]
+
+
+def test_quota_cli_keeps_full_vision_audit_on_explicit_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "quota-vision-detail") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[1],
+        )
+        _write_agent_vision(runtime, agent_id=AGENT_IDS[0])
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        detail_command = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run_vision_audit_detail"]
+
+        default_exit_code, default_text = _invoke_cli(default_command)
+        detail_exit_code, detail_text = _invoke_cli(detail_command)
+
+    assert default_exit_code == 0, default_text
+    assert detail_exit_code == 0, detail_text
+    default_payload = json.loads(default_text)
+    detail_payload = json.loads(detail_text)
+    default_audit = default_payload["vision_continuation_audit"]
+    detail_audit = detail_payload["vision_continuation_audit"]
+    assert default_audit["schema_version"] == (
+        "quota_cli_vision_audit_compaction_v0"
+    )
+    assert default_payload["vision_audit_projection"]["detail_ref"] == (
+        "quota should-run --include-vision-audit-detail"
+    )
+    assert "acceptance_gaps" not in default_audit
+    assert detail_audit["acceptance_gaps"]
+    assert "vision_audit_projection" not in detail_payload
+    for key in ("required", "decision", "recommended_action"):
+        assert default_audit[key] == detail_audit[key]
+    for key in ("scheduler_hint", "selected_todo"):
         assert default_payload[key] == detail_payload[key]
 
 

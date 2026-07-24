@@ -222,6 +222,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-vision-audit-detail",
+        action="store_true",
+        help=(
+            "Include repeated full vision continuation audit diagnostics in "
+            "`quota should-run`. The default keeps decision anchors and refs."
+        ),
+    )
+    quota_parser.add_argument(
         "--codex-app-current-rrule",
         help=(
             "Current RRULE observed from the active Codex App heartbeat. For "
@@ -382,6 +390,14 @@ def handle_quota_command(
         ):
             raise ValueError(
                 "--include-todo-summary-detail is only valid with `quota should-run`"
+            )
+        if (
+            bool(getattr(args, "include_vision_audit_detail", False))
+            and args.quota_command != "should-run"
+        ):
+            raise ValueError(
+                "--include-vision-audit-detail is only valid with "
+                "`quota should-run`"
             )
         raw_heartbeat_turn_id = getattr(args, "turn_instance_id", None)
         heartbeat_turn_id = normalize_turn_instance_id(raw_heartbeat_turn_id)
@@ -876,11 +892,16 @@ def handle_quota_command(
             payload,
             scheduler_execution_context=scheduler_context,
         )
-    elif (
-        args.quota_command == "should-run"
-        and not bool(getattr(args, "include_todo_summary_detail", False))
-    ):
-        payload = compact_quota_should_run_cli_payload(payload)
+    elif args.quota_command == "should-run":
+        payload = compact_quota_should_run_cli_payload(
+            payload,
+            include_todo_summary_detail=bool(
+                getattr(args, "include_todo_summary_detail", False)
+            ),
+            include_vision_audit_detail=bool(
+                getattr(args, "include_vision_audit_detail", False)
+            ),
+        )
     renderer = (
         render_turn_envelope_markdown
         if bool(getattr(args, "turn_envelope", False))
