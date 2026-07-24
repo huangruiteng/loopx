@@ -433,6 +433,24 @@ fi
 batch_case_start_gap="${SKILLSBENCH_BATCH_CASE_START_GAP_SEC:-3}"
 local_proxy_host="${SKILLSBENCH_LOCAL_CODEX_PROXY_HOST:-127.0.0.1}"
 local_proxy_port="${SKILLSBENCH_LOCAL_CODEX_PROXY_PORT:-18180}"
+if ! python3 - "$local_proxy_host" "$local_proxy_port" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+try:
+    port = int(sys.argv[2])
+    if not 1 <= port <= 65535:
+        raise ValueError
+    with socket.create_connection((host, port), timeout=1.0):
+        pass
+except (OSError, ValueError):
+    raise SystemExit(1)
+PY
+then
+  echo "skillsbench_local_proxy_endpoint_unreachable" >&2
+  exit 2
+fi
 docker_api_version="${SKILLSBENCH_DOCKER_API_VERSION:-auto}"
 if [[ -z "$docker_api_version" || "$docker_api_version" == "auto" ]]; then
   docker_api_probe_py='import json, sys; print(json.load(sys.stdin)["ApiVersion"])'

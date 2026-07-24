@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import socketserver
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -20,11 +23,32 @@ from loopx.benchmark_adapters import skillsbench_dockerfile_runtime as dockerfil
 from loopx.benchmark_adapters import skillsbench_proxy_runtime as proxy_runtime
 
 
+class _LocalProxyProbeHandler(socketserver.BaseRequestHandler):
+    def handle(self) -> None:
+        return
+
+
+_LOCAL_PROXY_SERVER = socketserver.ThreadingTCPServer(
+    ("127.0.0.1", 0),
+    _LocalProxyProbeHandler,
+)
+_LOCAL_PROXY_SERVER.daemon_threads = True
+threading.Thread(
+    target=_LOCAL_PROXY_SERVER.serve_forever,
+    daemon=True,
+).start()
+atexit.register(_LOCAL_PROXY_SERVER.server_close)
+atexit.register(_LOCAL_PROXY_SERVER.shutdown)
+
+
 def _launcher_env_without_profile() -> dict[str, str]:
     env = os.environ.copy()
     env.pop("SKILLSBENCH_RUNNER_PROFILE", None)
     env["XDG_STATE_HOME"] = str(
         Path(tempfile.gettempdir()) / f"loopx-skillsbench-smoke-{os.getpid()}"
+    )
+    env["SKILLSBENCH_LOCAL_CODEX_PROXY_PORT"] = str(
+        _LOCAL_PROXY_SERVER.server_address[1]
     )
     return env
 
@@ -243,6 +267,44 @@ def test_public_launcher_rejects_invalid_product_mode_soft_verify_policy() -> No
         "SKILLSBENCH_PRODUCT_MODE_SOFT_VERIFY_POLICY must be "
         "every-round or final-only" in proc.stderr
     ), proc.stderr
+
+
+def test_public_launcher_rejects_unreachable_local_proxy_before_remote_work() -> None:
+    with socketserver.ThreadingTCPServer(
+        ("127.0.0.1", 0),
+        _LocalProxyProbeHandler,
+    ) as unavailable:
+        unavailable_port = unavailable.server_address[1]
+    env = _launcher_env_without_profile()
+    env.update(
+        {
+            "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+            "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+            "SKILLSBENCH_ROOT": "/remote/skillsbench",
+            "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+            "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
+            "SKILLSBENCH_LOCAL_CODEX_PROXY_PORT": str(unavailable_port),
+        }
+    )
+    proc = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+            "--dry-run",
+            "citation-check",
+            "local-proxy-unreachable-smoke",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 2, proc
+    assert proc.stdout == "", proc.stdout
+    assert proc.stderr.strip() == "skillsbench_local_proxy_endpoint_unreachable"
+    assert str(unavailable_port) not in proc.stderr
 
 
 def test_public_launcher_batches_three_cases_with_closeout_sync() -> None:
