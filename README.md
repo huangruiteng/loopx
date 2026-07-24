@@ -287,26 +287,11 @@ cd /path/to/your-project
 codex
 ```
 
-Then paste one setup message:
+Then paste one setup message. The paste block is intentionally one source line
+so Codex CLI receives one TUI message; do not add manual line breaks:
 
 ```text
-Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the
-LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair
-it with the official no-clone installer:
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
-
-Then run `loopx doctor`. Work only from this project root: if LoopX state
-already exists, reuse it and do not create or overwrite a goal or the active objective; if the project
-is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when
-project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`,
-and `.local/` are ignored. Keep me in this TUI, do not use hidden headless
-execution. Then stop and report the project connection status, current user
-gate, top agent todo, and next safe action. After that I will start work with
-`$loopx <complex task>` or the `loopx` skill from `/skills`. When that task
-writes LoopX todos, generate the thin task body and set this visible TUI to
-`/goal <task_body>`; if you cannot mutate `/goal`, show me the exact text to
-paste instead of saying the loop is active.
+Connect this repo to LoopX from this visible Codex CLI TUI. Do not clone the LoopX repository for ordinary use. If `loopx` is not on PATH, install or repair it with the official no-clone installer: curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash; export PATH="$HOME/.local/bin:$PATH". Then run `loopx doctor`. Work only from this project root: if LoopX state already exists, reuse it and do not create or overwrite a goal or the active objective; if the project is not connected, prefer `loopx connect`, and use `loopx bootstrap` only when project state clearly needs initialization. Ensure `.loopx/`, `.codex/goals/`, and `.local/` are ignored. Keep me in this TUI, do not use hidden headless execution. Then stop and report the project connection status, current user gate, top agent todo, and next safe action. After that I will start work with `$loopx <complex task>` or the `loopx` skill from `/skills`. When that task writes LoopX todos, generate the thin task body and set this visible TUI to `/goal <task_body>`; if you cannot mutate `/goal`, show me the exact text to paste instead of saying the loop is active.
 ```
 
 That one message is the install, connect, and status check. The first useful
