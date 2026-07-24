@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from loopx.control_plane.quota.cli_projection import (
+    QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_VISION_AUDIT_DETAIL_COMMAND,
@@ -203,6 +204,121 @@ def test_compact_quota_should_run_cli_payload_keeps_active_user_work_and_gate_sc
         payload,
         include_todo_summary_detail=True,
         include_user_todo_summary_detail=True,
+        include_vision_audit_detail=True,
+    )
+    assert full == payload
+
+
+def test_compact_quota_should_run_cli_payload_bounds_capability_gate_candidates() -> None:
+    runnable = [
+        {
+            **item,
+            "priority": "P1",
+            "action_kind": "run_quality_slice",
+            "task_repository": "git:github.com/example/loopx",
+            "required_capabilities": ["shell", "filesystem_write"],
+            "missing_capabilities": [],
+            "capability_action": "run",
+            "claimed_by": "quality-agent",
+            "handoff_note": {
+                "summary": "duplicated handoff detail " * 40,
+            },
+        }
+        for item in _items(5, prefix="runnable")
+    ]
+    runnable[0]["text"] = "candidate " * 80
+    runnable[0]["title"] = runnable[0]["text"]
+    blocked = [
+        {
+            **item,
+            "priority": "P0",
+            "required_capabilities": ["credentials"],
+            "missing_capabilities": ["credentials"],
+            "capability_action": "ask_owner",
+        }
+        for item in _items(4, prefix="blocked")
+    ]
+    payload = {
+        "interaction_contract": {"mode": "bounded_delivery"},
+        "selected_todo": {"todo_id": "runnable-0"},
+        "scheduler_hint": {"action": "run_now"},
+        "capability_gate": {
+            "schema_version": "capability_gate_v0",
+            "action": "run",
+            "decision_owner": "agent",
+            "selection_policy": "agent_steering_audit_over_runnable_candidates",
+            "candidate_order_policy": "claim_then_priority",
+            "required": ["shell", "filesystem_write"],
+            "available": ["shell", "filesystem_write"],
+            "missing": [],
+            "runnable_count": 5,
+            "runnable_candidates": runnable,
+            "blocked_candidates": blocked,
+            "blocked_missing": ["credentials"],
+            "owner_missing": ["credentials"],
+            "owner_action": "provide or authorize credentials for blocked-0",
+            "resolution_bindings": [
+                {
+                    "owner": "user",
+                    "capability": "credentials",
+                    "primary_blocked_todo_id": "blocked-0",
+                }
+            ],
+        },
+    }
+
+    compact = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_vision_audit_detail=True,
+    )
+
+    gate = compact["capability_gate"]
+    assert gate["action"] == "run"
+    assert gate["decision_owner"] == "agent"
+    assert gate["owner_missing"] == ["credentials"]
+    assert gate["owner_action"] == "provide or authorize credentials for blocked-0"
+    assert gate["resolution_bindings"] == payload["capability_gate"][
+        "resolution_bindings"
+    ]
+    assert gate["runnable_count"] == 5
+    assert gate["blocked_count"] == 4
+    assert [item["todo_id"] for item in gate["runnable_candidates"]] == [
+        "runnable-0",
+        "runnable-1",
+        "runnable-2",
+    ]
+    assert [item["todo_id"] for item in gate["blocked_candidates"]] == [
+        "blocked-0",
+        "blocked-1",
+        "blocked-2",
+    ]
+    assert gate["runnable_candidates"][0]["title_truncated"] is True
+    assert len(gate["runnable_candidates"][0]["title"]) == 240
+    assert "text" not in gate["runnable_candidates"][0]
+    assert "handoff_note" not in gate["runnable_candidates"][0]
+    assert gate["blocked_candidates"][0]["missing_capabilities"] == [
+        "credentials"
+    ]
+    assert gate["payload_compaction"]["omitted_candidates"] == {
+        "blocked_candidates": 1,
+        "runnable_candidates": 2,
+    }
+    assert gate["payload_compaction"]["full_detail_cold_path"] == (
+        QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND
+    )
+    assert compact["capability_gate_projection"]["detail_ref"] == (
+        QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND
+    )
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert compact[key] == payload[key]
+
+    full = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
         include_vision_audit_detail=True,
     )
     assert full == payload
