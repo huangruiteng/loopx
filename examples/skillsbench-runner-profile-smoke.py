@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socketserver
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 
@@ -33,6 +35,11 @@ PROFILE_MODULE = (
     / "benchmark_adapters"
     / "skillsbench_runner_profile.py"
 )
+
+
+class _LocalProxyProbeHandler(socketserver.BaseRequestHandler):
+    def handle(self) -> None:
+        return
 
 
 def _environment() -> dict[str, str]:
@@ -168,21 +175,35 @@ def main() -> None:
         )
         default_profile_path.parent.mkdir(parents=True)
         shutil.copy2(profile_path, default_profile_path)
-        completed = subprocess.run(
-            [
-                "bash",
-                str(launcher),
-                "--dry-run",
-                "fixture-task",
-                "runner-profile-smoke",
-                "18181",
-            ],
-            cwd=launcher.parents[1],
-            env=launch_environment,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        with socketserver.ThreadingTCPServer(
+            ("127.0.0.1", 0),
+            _LocalProxyProbeHandler,
+        ) as local_proxy:
+            local_proxy.daemon_threads = True
+            thread = threading.Thread(
+                target=local_proxy.serve_forever,
+                daemon=True,
+            )
+            thread.start()
+            launch_environment["SKILLSBENCH_LOCAL_CODEX_PROXY_PORT"] = str(
+                local_proxy.server_address[1]
+            )
+            completed = subprocess.run(
+                [
+                    "bash",
+                    str(launcher),
+                    "--dry-run",
+                    "fixture-task",
+                    "runner-profile-smoke",
+                    "18181",
+                ],
+                cwd=launcher.parents[1],
+                env=launch_environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            local_proxy.shutdown()
         assert completed.returncode == 0, completed.stderr
         output = completed.stdout
         assert "runner_profile_loaded=true" in output
