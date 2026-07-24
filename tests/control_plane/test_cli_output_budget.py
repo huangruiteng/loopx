@@ -521,6 +521,18 @@ def _mode_variant_commands(
             str(project),
             "--include-capability-gate-detail",
         ],
+        "quota_should_run_agent_lane_next_action_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-agent-lane-next-action-detail",
+        ],
         "quota_should_run_vision_audit_detail": common
         + [
             "quota",
@@ -648,6 +660,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "quota_should_run_todo_summary_detail",
         "quota_should_run_user_todo_summary_detail",
         "quota_should_run_capability_gate_detail",
+        "quota_should_run_agent_lane_next_action_detail",
         "quota_should_run_vision_audit_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
@@ -873,6 +886,63 @@ def test_quota_cli_keeps_full_capability_gate_on_explicit_cold_path(
         "owner_action",
     ):
         assert default_gate[key] == detail_gate[key]
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert default_payload[key] == detail_payload[key]
+
+
+def test_quota_cli_keeps_full_agent_lane_next_action_on_explicit_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(
+        tmp_path / "quota-agent-lane-next-action-detail"
+    ) as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[1],
+        )
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        detail_command = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run_agent_lane_next_action_detail"]
+
+        default_exit_code, default_text = _invoke_cli(default_command)
+        detail_exit_code, detail_text = _invoke_cli(detail_command)
+
+    assert default_exit_code == 0, default_text
+    assert detail_exit_code == 0, detail_text
+    default_payload = json.loads(default_text)
+    detail_payload = json.loads(detail_text)
+    default_lane = default_payload["agent_lane_next_action"]
+    detail_lane = detail_payload["agent_lane_next_action"]
+    assert default_lane["schema_version"] == (
+        "quota_cli_agent_lane_next_action_compaction_v0"
+    )
+    assert default_lane["detail_ref"] == (
+        "quota should-run --include-agent-lane-next-action-detail"
+    )
+    assert default_lane["instruction_ref"] == "#/selected_todo"
+    assert "text" not in default_lane
+    assert "title" not in default_lane
+    assert detail_lane["text"]
+    for key in (
+        "todo_id",
+        "agent_id",
+        "source",
+        "selected_by",
+        "confidence",
+        "preserves_goal_next_action",
+    ):
+        assert default_lane[key] == detail_lane[key]
     for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
         assert default_payload[key] == detail_payload[key]
 
