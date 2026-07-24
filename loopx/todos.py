@@ -21,7 +21,6 @@ from .control_plane.todos.contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TODO_TASK_CLASS_MONITOR,
-    TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_USER_GATE,
     build_todo_id,
     format_todo_metadata_line,
@@ -48,6 +47,7 @@ from .control_plane.todos.contract import (
     normalize_todo_task_repository,
     parse_todo_metadata_line,
     require_todo_excluded_agents,
+    resolve_next_user_task_class,
     resolve_todo_continuation_policy,
     require_supported_todo_resume_when,
     todo_done_for_status,
@@ -98,20 +98,6 @@ from .control_plane.todos.write_policy import (
 
 
 ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE = max(0, MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE - 2)
-
-
-def resolve_next_user_task_class(
-    next_user_todo: str | None,
-    next_user_task_class: str | None,
-) -> str:
-    if next_user_task_class and not next_user_todo:
-        raise ValueError("--next-user-task-class requires --next-user-todo")
-    effective = next_user_task_class or TODO_TASK_CLASS_USER_GATE
-    if effective not in {TODO_TASK_CLASS_USER_GATE, TODO_TASK_CLASS_USER_ACTION}:
-        raise ValueError(
-            "next_user_task_class must be one of: user_action, user_gate"
-        )
-    return effective
 
 
 def require_registered_todo_excluded_agents(

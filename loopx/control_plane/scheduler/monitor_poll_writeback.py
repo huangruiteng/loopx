@@ -8,6 +8,7 @@ from ..todos.contract import (
     TODO_TASK_CLASS_MONITOR,
     TODO_TASK_CLASS_USER_GATE,
     normalize_todo_id,
+    resolve_next_user_task_class,
 )
 from .monitor_todo import (
     monitor_next_due_at,
@@ -85,6 +86,7 @@ def write_monitor_poll_todo_state(
     reason_summary: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
+    next_user_task_class: str | None = None,
     next_claimed_by: str | None = None,
     agent_id: str | None = None,
 ) -> dict[str, Any] | None:
@@ -95,6 +97,10 @@ def write_monitor_poll_todo_state(
     safe_result_hash = str(result_hash or "").strip()
     if not safe_result_hash:
         raise ValueError("monitor todo writeback requires --result-hash")
+    effective_next_user_task_class = resolve_next_user_task_class(
+        next_user_todo,
+        next_user_task_class,
+    )
     item = resolve_monitor_todo_item(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -166,10 +172,18 @@ def write_monitor_poll_todo_state(
                 goal_id=goal_id,
                 role="user",
                 text=next_user_todo,
-                task_class=TODO_TASK_CLASS_USER_GATE,
-                action_kind="gate",
+                task_class=effective_next_user_task_class,
+                action_kind=(
+                    "gate"
+                    if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                    else None
+                ),
                 agent_id=agent_id,
-                unblocks_todo_id=resolved_todo_id,
+                unblocks_todo_id=(
+                    resolved_todo_id
+                    if effective_next_user_task_class == TODO_TASK_CLASS_USER_GATE
+                    else None
+                ),
                 dry_run=not execute,
             )
         )

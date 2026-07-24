@@ -28,7 +28,11 @@ from ..scheduler.monitor_poll_writeback import (
     write_monitor_poll_todo_state,
 )
 from ..scheduler.monitor_target import build_quota_monitor_target
-from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
+from ..todos.contract import (
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+    resolve_next_user_task_class,
+)
 from ..work_items.delivery_outcome import DeliveryOutcome
 
 
@@ -415,6 +419,7 @@ def record_quota_monitor_poll_for_decision(
     next_due_at: str | None = None,
     next_agent_todo: str | None = None,
     next_user_todo: str | None = None,
+    next_user_task_class: str | None = None,
     next_claimed_by: str | None = None,
     turn_instance_id: str | None = None,
     _index_lock_held: bool = False,
@@ -451,6 +456,13 @@ def record_quota_monitor_poll_for_decision(
         return failure("`quota monitor-poll --material-change` requires --todo-id or --target-key")
     if (next_agent_todo or next_user_todo) and not material_change:
         return failure("`--next-agent-todo` and `--next-user-todo` require --material-change")
+    try:
+        effective_next_user_task_class = resolve_next_user_task_class(
+            next_user_todo,
+            next_user_task_class,
+        )
+    except ValueError as exc:
+        return failure(str(exc))
     decision_agent_id = quota_decision_agent_id(before)
     if normalized_turn_instance_id and not decision_agent_id:
         return failure("turn-scoped monitor-poll requires a registered --agent-id")
@@ -537,6 +549,7 @@ def record_quota_monitor_poll_for_decision(
                 next_due_at=next_due_at,
                 next_agent_todo=next_agent_todo,
                 next_user_todo=next_user_todo,
+                next_user_task_class=effective_next_user_task_class,
                 next_claimed_by=next_claimed_by,
                 turn_instance_id=normalized_turn_instance_id,
                 _index_lock_held=True,
@@ -584,6 +597,7 @@ def record_quota_monitor_poll_for_decision(
             reason_summary=reason_summary,
             next_agent_todo=next_agent_todo,
             next_user_todo=next_user_todo,
+            next_user_task_class=effective_next_user_task_class,
             next_claimed_by=next_claimed_by,
             agent_id=agent_id,
         )
