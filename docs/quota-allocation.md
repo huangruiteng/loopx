@@ -447,11 +447,15 @@ loopx quota monitor-poll --goal-id <GOAL_ID> \
 
 When a poll sees a material transition, add `--material-change` and optionally
 `--next-agent-todo` or `--next-user-todo` so the monitor produces a concrete
-follow-up instead of staying as an opaque watch:
+follow-up instead of staying as an opaque watch. A user follow-up defaults to
+the backward-compatible blocking `user_gate`; select `user_action` explicitly
+for a visible reminder that must not block the bound agent lane:
 
 ```bash
 loopx quota monitor-poll --goal-id <GOAL_ID> \
   --target-key <TARGET_KEY> --result-hash <HASH> --material-change \
+  --next-user-todo "<PUBLIC_SAFE_REVIEW_REMINDER>" \
+  --next-user-task-class user_action \
   --next-agent-todo "<PUBLIC_SAFE_FOLLOW_UP>" --execute
 ```
 

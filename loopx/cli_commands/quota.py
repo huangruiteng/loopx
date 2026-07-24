@@ -282,7 +282,16 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
     quota_parser.add_argument("--cadence", help="Monitor cadence used to compute the next due timestamp, e.g. 30m, 2h, or 1d.")
     quota_parser.add_argument("--next-due-at", help="Explicit ISO timestamp for the next monitor poll.")
     quota_parser.add_argument("--next-agent-todo", help="Agent follow-up todo to add when `--material-change` is set.")
-    quota_parser.add_argument("--next-user-todo", help="User gate todo to add when `--material-change` is set.")
+    quota_parser.add_argument("--next-user-todo", help="User follow-up todo to add when `--material-change` is set.")
+    quota_parser.add_argument(
+        "--next-user-task-class",
+        choices=["user_gate", "user_action"],
+        help=(
+            "Task class for the monitor-poll `--next-user-todo`. Defaults to "
+            "user_gate for backward compatibility; use user_action for a "
+            "visible reminder that must not block the bound agent lane."
+        ),
+    )
     quota_parser.add_argument("--next-claimed-by", help="Registered agent id to claim the `--next-agent-todo` follow-up.")
     quota_parser.add_argument("--surface", default="codex_app", help="Scheduler surface for scheduler ACK/failure commands; defaults to codex_app.")
     quota_parser.add_argument("--state-key", default="scheduler_hint.codex_app.stateful_backoff", help="Scheduler state key for scheduler ACK/failure commands.")
@@ -546,6 +555,7 @@ def handle_quota_command(
                 next_due_at=args.next_due_at,
                 next_agent_todo=args.next_agent_todo,
                 next_user_todo=args.next_user_todo,
+                next_user_task_class=args.next_user_task_class,
                 next_claimed_by=args.next_claimed_by,
                 scheduler_execution_context=scheduler_context,
                 operator_inbox_urgency_projector=operator_inbox_urgency_projector,

@@ -66,6 +66,24 @@ TODO_TASK_CLASS_VALUES = {
     TODO_TASK_CLASS_USER_ACTION,
     TODO_TASK_CLASS_BLOCKER,
 }
+
+
+def resolve_next_user_task_class(
+    next_user_todo: str | None,
+    next_user_task_class: str | None,
+) -> str | None:
+    if not next_user_todo:
+        if next_user_task_class:
+            raise ValueError("--next-user-task-class requires --next-user-todo")
+        return None
+    effective = next_user_task_class or TODO_TASK_CLASS_USER_GATE
+    if effective not in {TODO_TASK_CLASS_USER_GATE, TODO_TASK_CLASS_USER_ACTION}:
+        raise ValueError(
+            "next_user_task_class must be one of: user_action, user_gate"
+        )
+    return effective
+
+
 TODO_DECISION_SCOPE_SCHEMA_VERSION = "decision_scope_v0"
 TODO_DECISION_SCOPE_OUTCOME_SCHEMA_VERSION = "todo_decision_scope_outcome_v0"
 TODO_DECISION_OUTCOME_VALUES = {"approve", "reject", "cancel"}
