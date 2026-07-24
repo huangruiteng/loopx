@@ -120,6 +120,26 @@ def _compact_agent_lane_todos_for_status_display(payload: dict[str, object]) -> 
         }
 
 
+def _compact_agent_lane_todo_index_for_status_display(payload: dict[str, object]) -> None:
+    todo_index = payload.get("todo_index")
+    if not isinstance(todo_index, dict):
+        return
+    items = todo_index.get("items")
+    if not isinstance(items, list) or not items:
+        return
+    omitted_item_count = len(items)
+    todo_index["items"] = []
+    todo_index["payload_compaction"] = {
+        "schema_version": "agent_lane_status_todo_index_compaction_v0",
+        "omitted_item_count": omitted_item_count,
+        "reason": (
+            "status --agent-id uses the attention queue for current work and "
+            "keeps the whole-goal todo index on a cold path"
+        ),
+        "full_detail_cold_path": "status without --agent-id or todo list",
+    }
+
+
 def register_status_commands(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: Callable[[argparse.ArgumentParser], None],
@@ -409,6 +429,7 @@ def handle_status_command(
                 collection_limit=collection_limit,
             )
             _compact_agent_lane_todos_for_status_display(payload)
+            _compact_agent_lane_todo_index_for_status_display(payload)
     except Exception as exc:
         payload = {
             "ok": False,

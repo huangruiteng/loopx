@@ -173,21 +173,24 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         owner="operator and agent status",
         consumer_action="locate the current goal and attention state",
         qualification_policy="absolute_hot_path",
-        cold_path="--include-task-graph, history, and run artifacts",
+        cold_path=(
+            "status without --agent-id or todo list for whole-goal todo index "
+            "detail; --include-task-graph, history, and run artifacts"
+        ),
         semantic_json_keys=("status_contract", "attention_queue", "todo_index"),
         markdown_anchor="# LoopX Status",
         max_chars={
             "small": {"json": 42_000, "markdown": 7_000},
-            "crowded": {"json": 70_000, "markdown": 7_800},
-            "multi_agent": {"json": 70_000, "markdown": 7_800},
+            "crowded": {"json": 58_000, "markdown": 7_800},
+            "multi_agent": {"json": 58_000, "markdown": 7_800},
         },
         max_lines={
             "small": {"json": 1_120, "markdown": 85},
-            "crowded": {"json": 1_850, "markdown": 90},
-            "multi_agent": {"json": 1_850, "markdown": 90},
+            "crowded": {"json": 1_550, "markdown": 90},
+            "multi_agent": {"json": 1_550, "markdown": 90},
         },
         scale_axis="todo_count",
-        max_json_growth_chars_per_unit=750,
+        max_json_growth_chars_per_unit=550,
     ),
     CliOutputBudgetSpec(
         surface_id="diagnose",
