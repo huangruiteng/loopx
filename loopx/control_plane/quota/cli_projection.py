@@ -15,6 +15,12 @@ QUOTA_CLI_USER_TODO_SUMMARY_COMPACTION_SCHEMA_VERSION = (
 QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND = (
     "quota should-run --include-user-todo-summary-detail"
 )
+QUOTA_CLI_CAPABILITY_GATE_COMPACTION_SCHEMA_VERSION = (
+    "quota_cli_capability_gate_compaction_v0"
+)
+QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND = (
+    "quota should-run --include-capability-gate-detail"
+)
 QUOTA_CLI_VISION_AUDIT_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_vision_audit_compaction_v0"
 )
@@ -33,6 +39,33 @@ _RETAINED_USER_ITEM_LANES = {
     "gate_open_items": 3,
     "active_next_action_items": 3,
 }
+_RETAINED_CAPABILITY_GATE_CANDIDATES = 3
+_CAPABILITY_GATE_CANDIDATE_ANCHOR_FIELDS = (
+    "schema_version",
+    "todo_id",
+    "index",
+    "role",
+    "status",
+    "priority",
+    "task_class",
+    "action_kind",
+    "task_repository",
+    "continuation_policy",
+    "required_capabilities",
+    "target_capabilities",
+    "missing_capabilities",
+    "missing_target_capabilities",
+    "capability_action",
+    "capability_repair_mode",
+    "claimed_by",
+    "required_decision_scopes",
+    "unblocks_todo_id",
+    "target_key",
+    "next_due_at",
+    "route_id",
+    "route_key",
+)
+_CAPABILITY_GATE_CANDIDATE_TITLE_MAX_CHARS = 240
 _VISION_AUDIT_ANCHOR_FIELDS = (
     "required",
     "agent_id",
@@ -165,6 +198,60 @@ def _compact_user_todo_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
+def _bounded_candidate_title(item: dict[str, Any]) -> tuple[str | None, bool]:
+    title = str(item.get("title") or item.get("text") or "").strip()
+    if not title:
+        return None, False
+    if len(title) <= _CAPABILITY_GATE_CANDIDATE_TITLE_MAX_CHARS:
+        return title, False
+    return (
+        title[: _CAPABILITY_GATE_CANDIDATE_TITLE_MAX_CHARS - 3].rstrip() + "...",
+        True,
+    )
+
+
+def _capability_gate_candidate_anchor(item: dict[str, Any]) -> dict[str, Any]:
+    anchor: dict[str, Any] = {}
+    for field in _CAPABILITY_GATE_CANDIDATE_ANCHOR_FIELDS:
+        if item.get(field) is not None:
+            anchor[field] = item[field]
+    title, title_truncated = _bounded_candidate_title(item)
+    if title:
+        anchor["title"] = title
+    if title_truncated:
+        anchor["title_truncated"] = True
+    return anchor
+
+
+def _compact_capability_gate(gate: dict[str, Any]) -> dict[str, Any]:
+    compact = dict(gate)
+    omitted_candidates: dict[str, int] = {}
+    for lane in ("runnable_candidates", "blocked_candidates"):
+        candidates = gate.get(lane)
+        if not isinstance(candidates, list):
+            continue
+        typed_candidates = [
+            _capability_gate_candidate_anchor(item)
+            for item in candidates
+            if isinstance(item, dict)
+        ]
+        compact[lane] = typed_candidates[:_RETAINED_CAPABILITY_GATE_CANDIDATES]
+        if len(typed_candidates) > _RETAINED_CAPABILITY_GATE_CANDIDATES:
+            omitted_candidates[lane] = (
+                len(typed_candidates) - _RETAINED_CAPABILITY_GATE_CANDIDATES
+            )
+        if lane == "blocked_candidates":
+            compact["blocked_count"] = len(typed_candidates)
+
+    compact["payload_compaction"] = {
+        "schema_version": QUOTA_CLI_CAPABILITY_GATE_COMPACTION_SCHEMA_VERSION,
+        "retained_candidate_limit": _RETAINED_CAPABILITY_GATE_CANDIDATES,
+        "omitted_candidates": omitted_candidates,
+        "full_detail_cold_path": QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
+    }
+    return compact
+
+
 def _vision_audit_anchor(
     audit: dict[str, Any],
     *,
@@ -240,6 +327,7 @@ def compact_quota_should_run_cli_payload(
     *,
     include_todo_summary_detail: bool = False,
     include_user_todo_summary_detail: bool = False,
+    include_capability_gate_detail: bool = False,
     include_vision_audit_detail: bool = False,
 ) -> dict[str, Any]:
     """Bound CLI-only diagnostics after the full decision is computed."""
@@ -268,6 +356,15 @@ def compact_quota_should_run_cli_payload(
             "compacted_roles": compacted_roles,
             "detail_ref": role_detail_refs[compacted_roles[0]],
             "role_detail_refs": role_detail_refs,
+        }
+    capability_gate = payload.get("capability_gate")
+    if not include_capability_gate_detail and isinstance(capability_gate, dict):
+        compact = dict(compact)
+        compact["capability_gate"] = _compact_capability_gate(capability_gate)
+        compact["capability_gate_projection"] = {
+            "schema_version": QUOTA_CLI_CAPABILITY_GATE_COMPACTION_SCHEMA_VERSION,
+            "mode": "compact_hot_path",
+            "detail_ref": QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
         }
     if not include_vision_audit_detail:
         compact = _compact_vision_audit_copies(compact)
