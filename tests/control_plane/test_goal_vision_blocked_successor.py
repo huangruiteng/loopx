@@ -46,6 +46,7 @@ def _vision_run(
     *,
     state: str = "vision_drift_detected",
     missing_checkpoint: bool = False,
+    advancement_policy: str = "repeat_until_closed",
 ) -> dict:
     run = {
         "classification": "vision_blocked_successor_fixture",
@@ -59,7 +60,7 @@ def _vision_run(
             "vision_patch": {
                 "acceptance_summary": "Deliver the exact successor after its prerequisite clears.",
                 "replan_trigger_summary": "The successor acceptance remains open.",
-                "advancement_policy": "repeat_until_closed",
+                "advancement_policy": advancement_policy,
             },
         },
     }
@@ -82,6 +83,7 @@ def _status_payload(
     blocker_task_class: str = "advancement_task",
     vision_state: str = "vision_drift_detected",
     missing_checkpoint: bool = False,
+    advancement_policy: str = "repeat_until_closed",
     latest_runs: list[dict] | None = None,
     extra_agent_items: list[dict] | None = None,
 ) -> dict:
@@ -121,6 +123,7 @@ def _status_payload(
             _vision_run(
                 state=vision_state,
                 missing_checkpoint=missing_checkpoint,
+                advancement_policy=advancement_policy,
             )
         ],
     )
@@ -477,7 +480,7 @@ def test_compacted_monitor_quiet_vision_waits_trigger_bounded_replan() -> None:
     assert trigger["frontier_identity"] == compact_target["frontier_identity"]
 
 
-def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
+def test_wait_only_ack_does_not_clear_repeat_vision_blocked_successor() -> None:
     polls = _blocked_wait_polls()
     frontier_identity = polls[0]["monitor_target"]["frontier_identity"]
     ack = {
@@ -498,6 +501,35 @@ def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
     }
 
     same_frontier = _quota_with_replan_runs([*polls, ack, _vision_run()])
+    assert same_frontier["decision"] == "autonomous_replan_required"
+    obligation = same_frontier["autonomous_replan_obligation"]
+    assert obligation["frontier_identity"] == frontier_identity
+    assert obligation["triggers"][0]["kind"] == (
+        "blocked_successor_no_progress_repeat"
+    )
+
+
+def test_runnable_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
+    polls = _blocked_wait_polls()
+    frontier_identity = polls[0]["monitor_target"]["frontier_identity"]
+    ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": "2026-07-16T00:03:00+00:00",
+        "agent_id": AGENT_ID,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "frontier_identity": frontier_identity,
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["runnable_todo_set"],
+            },
+        },
+    }
+
+    same_frontier = _quota_with_replan_runs([*polls, ack, _vision_run()])
     assert same_frontier["decision"] == "agent_scope_wait"
     assert same_frontier.get("autonomous_replan_obligation") is None
 
@@ -507,6 +539,38 @@ def test_replan_ack_dedupes_only_the_same_blocked_successor_frontier() -> None:
     assert changed_frontier["autonomous_replan_obligation"][
         "frontier_identity"
     ] == frontier_identity
+
+
+def test_wait_only_ack_can_cover_non_repeating_blocked_successor() -> None:
+    polls = _blocked_wait_polls()
+    frontier_identity = polls[0]["monitor_target"]["frontier_identity"]
+    ack = {
+        "classification": "autonomous_replan_recorded",
+        "generated_at": "2026-07-16T00:03:00+00:00",
+        "agent_id": AGENT_ID,
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "fixture",
+            "frontier_identity": frontier_identity,
+            "delta_contract": {
+                "schema_version": "repair_delta_contract_v0",
+                "delta_present": True,
+                "delta_kinds": ["watch_lane_continuation"],
+            },
+        },
+    }
+
+    covered = _quota_with_replan_runs(
+        [
+            *polls,
+            ack,
+            _vision_run(advancement_policy="as_needed"),
+        ]
+    )
+
+    assert covered["decision"] == "agent_scope_wait"
+    assert covered.get("autonomous_replan_obligation") is None
 
 
 def test_replan_ack_does_not_cover_newer_same_frontier_stalls() -> None:

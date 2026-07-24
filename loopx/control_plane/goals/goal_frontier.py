@@ -244,6 +244,48 @@ def autonomous_replan_ack_has_frontier_delta(ack: dict[str, Any] | None) -> bool
     return repair_delta_kinds_have_frontier_delta(delta_contract.get("delta_kinds"))
 
 
+def autonomous_replan_ack_satisfies_obligation(
+    ack: dict[str, Any] | None,
+    *,
+    replan_obligation: dict[str, Any] | None,
+    acceptance_gaps: list[dict[str, Any]] | None,
+) -> bool:
+    """Reject wait-only ACKs for repeat-until-closed blocked successors."""
+
+    if not autonomous_replan_ack_has_frontier_delta(ack):
+        return False
+    trigger_kinds = {
+        str(trigger.get("kind") or "").strip()
+        for trigger in (
+            replan_obligation.get("triggers") or []
+            if isinstance(replan_obligation, dict)
+            else []
+        )
+        if isinstance(trigger, dict)
+    }
+    repeat_vision_open = any(
+        goal_vision_repeats_advancement_until_closed(gap.get("advancement_policy"))
+        for gap in (acceptance_gaps or [])
+        if isinstance(gap, dict)
+    )
+    if (
+        "blocked_successor_no_progress_repeat" not in trigger_kinds
+        or not repeat_vision_open
+    ):
+        return True
+    delta_contract = ack.get("delta_contract") if isinstance(ack, dict) else {}
+    delta_kinds = {
+        str(item or "").strip()
+        for item in (
+            delta_contract.get("delta_kinds") or []
+            if isinstance(delta_contract, dict)
+            else []
+        )
+        if str(item or "").strip()
+    }
+    return bool(delta_kinds & {"runnable_todo_set", "successor_or_supersede"})
+
+
 def _autonomous_replan_ack_has_delta_kind(
     ack: dict[str, Any] | None,
     *,
@@ -1780,7 +1822,11 @@ def build_goal_frontier_projection_context_from_status(
     effective_replan_ack = latest_agent_replan_ack or projected_replan_ack
     if (
         autonomous_replan_is_required(replan_obligation)
-        and autonomous_replan_ack_has_frontier_delta(effective_replan_ack)
+        and autonomous_replan_ack_satisfies_obligation(
+            effective_replan_ack,
+            replan_obligation=replan_obligation,
+            acceptance_gaps=source_acceptance_gaps,
+        )
         and autonomous_replan_ack_matches_frontier(
             effective_replan_ack,
             replan_obligation,
