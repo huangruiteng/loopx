@@ -391,12 +391,14 @@ loopx todo complete \
   --next-claimed-by <registered-agent>
 ```
 
-`--next-user-todo` defaults to `user_gate` for backward compatibility. Select
-`user_action` explicitly for a reminder that stays visible without setting
-`blocks_agent`. Add a separate `continuous_monitor` todo when the PR lifecycle
-needs periodic readback. Reserve `user_gate` for an exact owner/controller
-authority boundary such as merging an aggregate branch into `main`, release,
-benchmark launch, credentials, or protected production action.
+`--next-user-todo` requires an explicit
+`--next-user-task-class user_gate|user_action`. Use `user_action` for a reminder
+that stays visible without setting `blocks_agent`; reserve `user_gate` for an
+exact owner/controller authority boundary such as merging an aggregate branch
+into `main`, release, benchmark launch, credentials, or protected production
+action. Omitting the task class fails before writeback so LoopX never guesses
+an authorization boundary. Add a separate `continuous_monitor` todo when the
+PR lifecycle needs periodic readback.
 
 For an experimental feature stack, a stable integration branch may collect
 small feature PRs while review reminders remain open. Each feature still uses a

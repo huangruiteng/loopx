@@ -15,9 +15,10 @@ from loopx.control_plane.testing.canary_harness import (
     run_json_cli_result,
     write_fixture_registry,
 )
+from loopx.control_plane.todos.contract import resolve_next_user_task_class
 from loopx.quota import record_quota_monitor_poll
 from loopx.status import collect_status
-from loopx.todos import add_goal_todo, update_goal_todo
+from loopx.todos import add_goal_todo, list_goal_todos, update_goal_todo
 
 
 GOAL_ID = "monitor-followthrough-fixture"
@@ -226,7 +227,61 @@ def test_material_poll_user_action_does_not_block_existing_advancement(
     assert result["after"]["selected_todo"]["todo_id"] == advancement["todo_id"]
 
 
-def test_material_poll_user_followup_defaults_to_blocking_gate(
+def test_material_poll_user_followup_requires_explicit_class_without_writeback(
+    tmp_path: Path,
+) -> None:
+    registry, runtime, state = _write_fixture(tmp_path)
+    monitor = _add_monitor(
+        registry,
+        text="Poll a protected release target.",
+        target_key="protected-release:42",
+        next_due_at="2000-01-01T00:00:00+00:00",
+    )
+    before_state = state.read_text(encoding="utf-8")
+    before_todos = list_goal_todos(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+    )
+
+    returncode, result = run_json_cli_result(
+        "quota",
+        "monitor-poll",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--runtime-profile",
+        "generic_cli",
+        "--todo-id",
+        monitor["todo_id"],
+        "--result-hash",
+        "approval-required-42",
+        "--material-change",
+        "--next-user-todo",
+        "Approve the protected release.",
+        "--execute",
+        registry_path=registry,
+        runtime_root=runtime,
+    )
+
+    assert returncode == 1
+    assert result["ok"] is False
+    assert result["reason"] == (
+        "--next-user-todo requires explicit --next-user-task-class "
+        "user_action|user_gate"
+    )
+    assert "todo_writeback" not in result
+    assert state.read_text(encoding="utf-8") == before_state
+    assert (
+        list_goal_todos(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+        )
+        == before_todos
+    )
+
+
+def test_material_poll_explicit_user_gate_blocks_bound_agent(
     tmp_path: Path,
 ) -> None:
     registry, runtime, _state = _write_fixture(tmp_path)
@@ -253,6 +308,8 @@ def test_material_poll_user_followup_defaults_to_blocking_gate(
         "--material-change",
         "--next-user-todo",
         "Approve the protected release.",
+        "--next-user-task-class",
+        "user_gate",
         "--execute",
         registry_path=registry,
         runtime_root=runtime,
@@ -264,6 +321,26 @@ def test_material_poll_user_followup_defaults_to_blocking_gate(
     assert gate["blocks_agent"] == AGENT_ID
     assert gate["unblocks_todo_id"] == monitor["todo_id"]
     assert result["after"]["effective_action"] == "operator_gate_notify"
+
+
+def test_next_user_task_class_contract_requires_explicit_semantics() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            "--next-user-todo requires explicit --next-user-task-class "
+            r"user_action\|user_gate"
+        ),
+    ):
+        resolve_next_user_task_class("Review the release.", None)
+
+    assert (
+        resolve_next_user_task_class("Review the release.", "user_action")
+        == "user_action"
+    )
+    assert (
+        resolve_next_user_task_class("Approve the release.", "user_gate")
+        == "user_gate"
+    )
 
 
 def test_monitor_poll_user_task_class_requires_user_followup(

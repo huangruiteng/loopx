@@ -287,9 +287,9 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         "--next-user-task-class",
         choices=["user_gate", "user_action"],
         help=(
-            "Task class for the monitor-poll `--next-user-todo`. Defaults to "
-            "user_gate for backward compatibility; use user_action for a "
-            "visible reminder that must not block the bound agent lane."
+            "Required with monitor-poll `--next-user-todo`: user_gate for a "
+            "blocking owner decision or user_action for a visible reminder "
+            "that must not block the bound agent lane."
         ),
     )
     quota_parser.add_argument("--next-claimed-by", help="Registered agent id to claim the `--next-agent-todo` follow-up.")

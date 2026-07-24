@@ -121,9 +121,9 @@ def register_todo_successor_creation_arguments(
         "--next-user-task-class",
         choices=["user_gate", "user_action"],
         help=(
-            "Task class for --next-user-todo. Defaults to user_gate for backward "
-            "compatibility; use user_action for a visible reminder that must not "
-            "block the bound agent lane."
+            "Required with --next-user-todo: user_gate for a blocking owner "
+            "decision or user_action for a visible reminder that must not block "
+            "the bound agent lane."
         ),
     )
     todo_parser.add_argument(
@@ -292,6 +292,11 @@ def validate_capability_gap_options(args: argparse.Namespace) -> None:
 def validate_successor_routing_options(args: argparse.Namespace) -> None:
     if args.next_user_task_class and not args.next_user_todo:
         raise ValueError("--next-user-task-class requires --next-user-todo")
+    if args.next_user_todo and not args.next_user_task_class:
+        raise ValueError(
+            "--next-user-todo requires explicit --next-user-task-class "
+            "user_action|user_gate"
+        )
     if args.next_continuation_policy and not args.next_agent_todo:
         raise ValueError("--next-continuation-policy requires --next-agent-todo")
     if args.next_task_repository and not args.next_agent_todo:
