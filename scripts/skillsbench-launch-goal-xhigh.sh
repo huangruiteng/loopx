@@ -29,6 +29,9 @@ Optional env:
   SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE
                                        Benchmark setup/verifier egress mode:
                                        require (default), auto, or off
+  SKILLSBENCH_BENCHMARK_EGRESS_NO_PROXY
+                                       Comma-separated benchmark setup/verifier
+                                       hosts that bypass the egress proxy
   SKILLSBENCH_DOCKER_API_VERSION       Remote Docker daemon API version passed
                                        to Docker CLI/Compose; default auto
   SKILLSBENCH_DOCKER_APT_SOURCE_MODE   Staged Dockerfile apt sources: mirror
@@ -226,6 +229,7 @@ skip_current_aggregate_update="${SKILLSBENCH_SKIP_CURRENT_AGGREGATE_UPDATE:-0}"
 allow_staged_bootstrap_repair_run="${SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN:-0}"
 setup_only_public_preflight="${SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT:-0}"
 benchmark_egress_proxy_mode="${SKILLSBENCH_BENCHMARK_EGRESS_PROXY_MODE:-require}"
+benchmark_egress_no_proxy="${SKILLSBENCH_BENCHMARK_EGRESS_NO_PROXY:-}"
 docker_apt_source_mode="${SKILLSBENCH_DOCKER_APT_SOURCE_MODE:-mirror}"
 docker_apt_transport_mode="${SKILLSBENCH_DOCKER_APT_TRANSPORT_MODE:-default}"
 docker_pip_index_mode="${SKILLSBENCH_DOCKER_PIP_INDEX_MODE:-mirror}"
@@ -553,6 +557,11 @@ fi
 if [[ "$setup_only_public_preflight" == "1" ]]; then
   extra_runner_args+=(--setup-only-public-preflight)
 fi
+if [[ -n "$benchmark_egress_no_proxy" ]]; then
+  extra_runner_args+=(
+    --benchmark-egress-no-proxy "$benchmark_egress_no_proxy"
+  )
+fi
 if [[ -n "$product_mode_soft_verify_policy" ]]; then
   extra_runner_args+=(
     --product-mode-soft-verify-policy "$product_mode_soft_verify_policy"
@@ -786,6 +795,9 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'public_artifact_sync_interval_sec=%s\n' \
     "$public_artifact_sync_interval"
   printf 'benchmark_egress_proxy_mode=%s\n' "$benchmark_egress_proxy_mode"
+  printf 'benchmark_egress_no_proxy_configured=%s\n' \
+    "$([[ -n "$benchmark_egress_no_proxy" ]] && echo 1 || echo 0)"
+  printf 'benchmark_egress_no_proxy_raw_value_recorded=false\n'
   printf 'docker_apt_source_mode=%s\n' "$docker_apt_source_mode"
   printf 'docker_apt_transport_mode=%s\n' "$docker_apt_transport_mode"
   printf 'docker_pip_index_mode=%s\n' "$docker_pip_index_mode"
@@ -816,7 +828,8 @@ if [[ "$dry_run" == "true" ]]; then
     [[ -n "$remote_command_file_bridge_probe_command" ]] ||
     [[ -n "$remote_command_file_bridge_solver_command" ]] ||
     [[ -n "$remote_command_file_bridge_agent_command" ]] ||
-    [[ -n "$loopx_turn_validation_command" ]]; then
+    [[ -n "$loopx_turn_validation_command" ]] ||
+    [[ -n "$benchmark_egress_no_proxy" ]]; then
     printf 'private_runner_command_values_redacted=true\n'
     printf 'private_runner_arg_names='
     [[ "$local_codex_split_control" == "1" ]] &&
@@ -839,6 +852,8 @@ if [[ "$dry_run" == "true" ]]; then
       printf '%s ' --remote-command-file-bridge-agent-command-instrumented
     [[ -n "$loopx_turn_validation_command" ]] &&
       printf '%s ' --loopx-turn-validation-command
+    [[ -n "$benchmark_egress_no_proxy" ]] &&
+      printf '%s ' --benchmark-egress-no-proxy
     [[ "$route" == "loopx-turn-agent-cli" ]] &&
       printf '%s ' --loopx-turn-max-turns --loopx-turn-progress-exit-code
     [[ "$route" == "loopx-turn-agent-cli" ]] &&

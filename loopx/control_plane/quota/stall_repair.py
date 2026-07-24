@@ -6,9 +6,9 @@ from .. import compact_control_plane_policy, control_plane_self_repair_allows
 from ..todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
+    standing_decision_authority_for_agent,
 )
 from ..todos.user_gate import open_todo_count
-
 
 STALL_HEALTH_ITEM_COMPACT_FIELDS = (
     "goal_id",
@@ -23,6 +23,39 @@ USER_GATE_SCOPE_REPAIR_TRIGGER = "user_gate_scope_projection_drift"
 TODO_PROJECTION_REPAIR_TRIGGERS = frozenset(
     {DECISION_SCOPE_REPAIR_TRIGGER, USER_GATE_SCOPE_REPAIR_TRIGGER}
 )
+
+
+def standing_decision_authority_from_status_item(
+    item: dict[str, Any],
+    *,
+    project_asset: dict[str, Any] | None,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Read and agent-scope a standing authority receipt from status."""
+
+    authority = item.get("standing_decision_authority")
+    if not isinstance(authority, dict):
+        authority = (
+            project_asset.get("standing_decision_authority")
+            if project_asset
+            and isinstance(project_asset.get("standing_decision_authority"), dict)
+            else None
+        )
+    return standing_decision_authority_for_agent(authority, agent_id=agent_id)
+
+
+def standing_decision_authority_payload_from_status_item(
+    item: dict[str, Any],
+    *,
+    project_asset: dict[str, Any] | None,
+    agent_id: str | None,
+) -> dict[str, Any]:
+    authority = standing_decision_authority_from_status_item(
+        item,
+        project_asset=project_asset,
+        agent_id=agent_id,
+    )
+    return {"standing_decision_authority": authority} if authority else {}
 
 
 def _compact_health_items(
@@ -57,6 +90,7 @@ def build_quota_stall_self_repair_hint(
     agent_id: str | None,
     user_todo_source_items: list[dict[str, Any]] | None = None,
     agent_todo_source_items: list[dict[str, Any]] | None = None,
+    standing_decision_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     coordination = item.get("coordination") if isinstance(item.get("coordination"), dict) else {}
     decision_scope_consistency = build_required_decision_scope_consistency(
@@ -66,6 +100,7 @@ def build_quota_stall_self_repair_hint(
         registered_agent_ids=coordination.get("registered_agents"),
         agent_source_items=agent_todo_source_items,
         user_source_items=user_todo_source_items,
+        standing_decision_authority=standing_decision_authority,
     )
     decision_scope_repair = build_required_decision_scope_repair_hint(
         decision_scope_consistency

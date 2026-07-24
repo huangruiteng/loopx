@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -16,11 +18,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from loopx.capabilities.issue_fix.pr_gate_reconcile import (  # noqa: E402
+    reconcile_acknowledged_issue_fix_pr_reviews,
     reconcile_issue_fix_pr_review,
 )
 from loopx.capabilities.issue_fix.pr_review_ack import (  # noqa: E402
     record_issue_fix_pr_review_ack,
 )
+from loopx.heartbeat_prequota import run_heartbeat_pre_quota  # noqa: E402
 from loopx.status import parse_active_state_todos  # noqa: E402
 from loopx.todos import update_goal_todo  # noqa: E402
 
@@ -207,34 +211,123 @@ def main() -> int:
         assert current_ack["binding"]["todo_revision"] != (
             first_ack["binding"]["todo_revision"]
         )
-        reconciled = reconcile_issue_fix_pr_review(
+        with patch(
+            "loopx.capabilities.issue_fix.pr_gate_reconcile."
+            "build_issue_fix_pr_lifecycle_monitor_packet",
+            side_effect=ValueError("private provider detail"),
+        ):
+            degraded = reconcile_acknowledged_issue_fix_pr_reviews(
+                registry_path=registry_path,
+                runtime_root_arg=str(runtime_root),
+                goal_id="example-goal",
+                agent_id="codex-test",
+                project=project,
+                fetch_metadata=True,
+                execute=True,
+            )
+        assert degraded["degraded"] is True, degraded
+        assert degraded["failure_count"] == 1, degraded
+        assert degraded["results"][0]["error_category"] == (
+            "provider_observation_failed"
+        ), degraded
+        assert "error" not in degraded["results"][0], degraded
+
+        with patch(
+            "loopx.capabilities.issue_fix.pr_gate_reconcile."
+            "build_issue_fix_pr_lifecycle_monitor_packet",
+            return_value={
+                "observation": {
+                    "repo": "huangruiteng/loopx",
+                    "number": 1716,
+                    "permalink": PR_URL,
+                    "state": "MERGED",
+                    "merged_at": "2026-07-24T01:02:00Z",
+                },
+                "external_reads_performed": True,
+            },
+        ):
+            batch = reconcile_acknowledged_issue_fix_pr_reviews(
+                registry_path=registry_path,
+                runtime_root_arg=str(runtime_root),
+                goal_id="example-goal",
+                agent_id="codex-test",
+                project=project,
+                fetch_metadata=True,
+                execute=True,
+            )
+        assert batch["ok"] is True, batch
+        assert batch["ack_receipt_count"] == 1, batch
+        assert batch["external_read_count"] == 1, batch
+        assert batch["terminal_count"] == 1, batch
+        assert batch["reconciled_count"] == 1, batch
+        assert batch["quota_spend_required"] is False, batch
+        assert todo(state_file, "todo_github_review")["status"] == "done"
+
+        with patch(
+            "loopx.capabilities.issue_fix.pr_gate_reconcile."
+            "build_issue_fix_pr_lifecycle_monitor_packet",
+            side_effect=AssertionError(
+                "completed acknowledgement must not read provider"
+            ),
+        ):
+            repeated = reconcile_acknowledged_issue_fix_pr_reviews(
+                registry_path=registry_path,
+                runtime_root_arg=str(runtime_root),
+                goal_id="example-goal",
+                agent_id="codex-test",
+                project=project,
+                fetch_metadata=True,
+                execute=True,
+            )
+        assert repeated["already_reconciled_count"] == 1, repeated
+        assert repeated["external_read_count"] == 0, repeated
+        assert repeated["reconciled_count"] == 0, repeated
+
+        prequota = run_heartbeat_pre_quota(
             registry_path=registry_path,
             runtime_root_arg=str(runtime_root),
             goal_id="example-goal",
-            todo_id="todo_github_review",
             agent_id="codex-test",
-            project=project,
-            url=PR_URL,
-            ack_receipt=current_ack["ack_receipt"],
-            provider_payload={
-                "state": "MERGED",
-                "mergedAt": "2026-07-24T01:02:00Z",
-            },
-            execute=True,
         )
-        assert reconciled["reconciled"] is True, reconciled
-        assert reconciled["write_performed"] is True, reconciled
-        assert todo(state_file, "todo_github_review")["status"] == "done"
+        assert prequota["ok"] is True, prequota
+        assert prequota["continue_to_quota"] is True, prequota
+        assert prequota["quota_spend_required"] is False, prequota
+        assert prequota["degraded"] is False, prequota
 
-        repeated = reconcile_without_provider(
-            registry_path=registry_path,
-            runtime_root=runtime_root,
-            project=project,
-            todo_id="todo_github_review",
-            ack_receipt=current_ack["ack_receipt"],
+        home = project / "home"
+        global_registry = home / ".codex" / "loopx" / "registry.global.json"
+        global_registry.parent.mkdir(parents=True)
+        global_registry.write_text(
+            registry_path.read_text(encoding="utf-8"),
+            encoding="utf-8",
         )
-        assert repeated["already_reconciled"] is True, repeated
-        assert repeated["external_read_performed"] is False, repeated
+        cli_env = dict(os.environ)
+        cli_env["HOME"] = str(home)
+        cli_env["PYTHONPATH"] = str(ROOT)
+        cli = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "heartbeat-prequota",
+                "-g",
+                "example-goal",
+                "-a",
+                "codex-test",
+            ],
+            cwd=project,
+            env=cli_env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert cli.returncode == 0, cli.stderr
+        cli_payload = json.loads(cli.stdout)
+        assert cli_payload["schema_version"] == "heartbeat_pre_quota_v0", cli_payload
+        assert cli_payload["continue_to_quota"] is True, cli_payload
+        assert cli_payload["quota_spend_required"] is False, cli_payload
 
         assert todo(state_file, "todo_other_provider")["status"] == "open"
 

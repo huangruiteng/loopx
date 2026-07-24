@@ -8015,18 +8015,19 @@ def patch_dockerfile_pip_bootstrap(
         DOCKER_PIP_BOOTSTRAP_BEGIN,
         DOCKER_PIP_BOOTSTRAP_END,
     )
-    build_mode_env = (
-        "    PIP_NO_BUILD_ISOLATION=1 \\\n"
-        if build_mode == "no-isolation"
-        else ""
-    )
+    if build_mode == "no-isolation":
+        text, _ = dockerfile_runtime.add_pip_no_build_isolation_flags(text)
+        text, _ = (
+            dockerfile_runtime.add_pip_no_isolation_build_prerequisite_steps(
+                text
+            )
+        )
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
         f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={index_url}\n"
         "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
         "    PIP_DEFAULT_TIMEOUT=120 \\\n"
         "    PIP_RETRIES=10 \\\n"
-        f"{build_mode_env}"
         "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
         f"{DOCKER_PIP_BOOTSTRAP_END}"
     )
@@ -18009,6 +18010,40 @@ async def async_independent_goal_retry_main(args: argparse.Namespace) -> dict[st
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     logging.getLogger().setLevel(logging.WARNING)
+    if args.local_codex_participant_ping:
+        payload = codex_runtime.materialize_local_codex_participant(
+            codex_bin=args.local_codex_bin,
+            timeout_sec=args.local_codex_ping_timeout_sec,
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
+        return 0 if payload.get("codex_cli_invoked") is True else 1
+    if args.local_driver_worker_handshake_preflight:
+        ensure_skillsbench_dependency_python(args)
+        payload = inspect_skillsbench_worker_handshake(
+            skillsbench_root=args.skillsbench_root,
+            dataset=args.dataset,
+            task_id=args.task_id,
+            local_codex_cli_participant_ready=args.local_codex_cli_participant_ready,
+            local_acp_relay_command=args.local_acp_relay_command,
+            probe_local_acp_relay=args.local_acp_relay_probe,
+            local_acp_relay_probe_timeout_sec=args.local_acp_relay_probe_timeout_sec,
+            probe_host_local_acp_transport=args.host_local_acp_transport_probe,
+            host_local_acp_transport_probe_timeout_sec=(
+                args.host_local_acp_transport_probe_timeout_sec
+            ),
+            probe_remote_command_file_bridge=args.remote_command_file_bridge_probe,
+            remote_command_file_bridge_probe_command=(
+                args.remote_command_file_bridge_probe_command
+            ),
+            remote_command_file_bridge_probe_timeout_sec=(
+                args.remote_command_file_bridge_probe_timeout_sec
+            ),
+            remote_command_file_bridge_ready=args.remote_command_file_bridge_ready,
+            remote_executor_ready=True,
+            remote_task_data_ready=True,
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
+        return 0
     if (
         args.route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
         and not args.plan_only
@@ -18283,40 +18318,6 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(payload, indent=2, sort_keys=True), file=sys.stderr)
         return 2
-    if args.local_codex_participant_ping:
-        payload = codex_runtime.materialize_local_codex_participant(
-            codex_bin=args.local_codex_bin,
-            timeout_sec=args.local_codex_ping_timeout_sec,
-        )
-        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
-        return 0 if payload.get("codex_cli_invoked") is True else 1
-    if args.local_driver_worker_handshake_preflight:
-        ensure_skillsbench_dependency_python(args)
-        payload = inspect_skillsbench_worker_handshake(
-            skillsbench_root=args.skillsbench_root,
-            dataset=args.dataset,
-            task_id=args.task_id,
-            local_codex_cli_participant_ready=args.local_codex_cli_participant_ready,
-            local_acp_relay_command=args.local_acp_relay_command,
-            probe_local_acp_relay=args.local_acp_relay_probe,
-            local_acp_relay_probe_timeout_sec=args.local_acp_relay_probe_timeout_sec,
-            probe_host_local_acp_transport=args.host_local_acp_transport_probe,
-            host_local_acp_transport_probe_timeout_sec=(
-                args.host_local_acp_transport_probe_timeout_sec
-            ),
-            probe_remote_command_file_bridge=args.remote_command_file_bridge_probe,
-            remote_command_file_bridge_probe_command=(
-                args.remote_command_file_bridge_probe_command
-            ),
-            remote_command_file_bridge_probe_timeout_sec=(
-                args.remote_command_file_bridge_probe_timeout_sec
-            ),
-            remote_command_file_bridge_ready=args.remote_command_file_bridge_ready,
-            remote_executor_ready=True,
-            remote_task_data_ready=True,
-        )
-        print(json.dumps(payload, indent=2, sort_keys=True, default=_json_default))
-        return 0
     task_ids = _batch_task_ids(args)
     batch_mode = len(task_ids) > 1
     independent_retry_mode = _independent_goal_retry_enabled(args) and not args.plan_only

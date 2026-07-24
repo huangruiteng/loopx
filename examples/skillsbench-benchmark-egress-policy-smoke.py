@@ -210,6 +210,9 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "DOCKER_API_VERSION=1.43" in output, output
     assert "--codex-api-reverse-tunnel-proxy http://127.0.0.1:18186" in output, output
     assert "--benchmark-egress-proxy-mode require" in output, output
+    assert "benchmark_egress_no_proxy_configured=0" in output, output
+    assert "benchmark_egress_no_proxy_raw_value_recorded=false" in output, output
+    assert "--benchmark-egress-no-proxy" not in output, output
     assert "--local-codex-bin /remote/bin/codex" in output, output
     assert "--local-codex-sandbox danger-full-access" in output, output
     assert "local_codex_sandbox=danger-full-access" in output, output
@@ -236,6 +239,45 @@ def test_public_launcher_uses_container_reachable_benchmark_proxy() -> None:
     assert "skip_current_aggregate_update=1" in output, output
     assert "--skip-global-ledger-sync" in output, output
     assert "--skip-current-aggregate-update" in output, output
+
+
+def test_public_launcher_projects_private_benchmark_no_proxy_binding() -> None:
+    env = _launcher_env_without_profile()
+    env.update(
+        {
+            "SKILLSBENCH_SSH_DESTINATION": "example.invalid",
+            "SKILLSBENCH_REMOTE_ROOT": "/remote/loopx",
+            "SKILLSBENCH_ROOT": "/remote/skillsbench",
+            "SKILLSBENCH_EXPECTED_LOOPX_GIT_HEAD": "abc1234",
+            "SKILLSBENCH_DOCKER_PROXY_HOST": "host.docker.internal",
+            "SKILLSBENCH_DOCKER_API_VERSION": "1.43",
+            "SKILLSBENCH_BENCHMARK_EGRESS_NO_PROXY": (
+                "pypi.org,files.pythonhosted.org,"
+                "private-egress-sentinel.example.invalid"
+            ),
+        }
+    )
+    proc = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts" / "skillsbench-launch-goal-xhigh.sh"),
+            "--dry-run",
+            "citation-check",
+            "egress-no-proxy-smoke",
+            "18186",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=True,
+    )
+    output = proc.stdout
+    assert "benchmark_egress_no_proxy_configured=1" in output, output
+    assert "benchmark_egress_no_proxy_raw_value_recorded=false" in output, output
+    assert "--benchmark-egress-no-proxy" in output, output
+    assert "private_runner_command_values_redacted=true" in output, output
+    assert "private-egress-sentinel.example.invalid" not in output, output
 
 
 def test_public_launcher_rejects_invalid_product_mode_soft_verify_policy() -> None:
@@ -679,6 +721,7 @@ if __name__ == "__main__":
     test_formal_cli_goal_auto_requires_benchmark_egress_proxy()
     test_formal_cli_goal_proxy_env_is_forwarded_without_public_url()
     test_public_launcher_uses_container_reachable_benchmark_proxy()
+    test_public_launcher_projects_private_benchmark_no_proxy_binding()
     test_public_launcher_batches_three_cases_with_closeout_sync()
     test_public_launcher_rejects_aggregate_without_explicit_ledger()
     test_public_launcher_applies_ssh_options_to_remote_discovery()

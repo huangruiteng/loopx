@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import tempfile
 from pathlib import Path
 
 VENV_PIP_INVOCATION_MARKER = "# LOOPX_SKILLSBENCH_VENV_PIP_INVOCATION"
+PIP_NO_ISOLATION_BUILD_PREREQUISITES_MARKER = (
+    "# LOOPX_SKILLSBENCH_PIP_NO_ISOLATION_BUILD_PREREQUISITES"
+)
 UBUNTU_APT_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
 UBUNTU_APT_MIRROR_END = "# END LOOPX_SKILLSBENCH_UBUNTU_APT_MIRROR"
 DEBIAN_APT_MIRROR_BEGIN = "# BEGIN LOOPX_SKILLSBENCH_DEBIAN_APT_MIRROR"
@@ -19,6 +23,12 @@ DEFAULT_DEBIAN_SECURITY_MIRROR_BASE = (
 DEFAULT_DEBIAN_APT_MIRROR_HOST = "mirrors.tuna.tsinghua.edu.cn"
 _BARE_PIP_INSTALL_RE = re.compile(
     r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)pip3?\s+install\b",
+    re.IGNORECASE,
+)
+_PIP_INSTALL_RE = re.compile(
+    r"(?P<prefix>^\s*(?:RUN\s+)?|(?:&&|\|\||;|\|)\s*)"
+    r"(?P<command>(?:(?:python3?|python)\s+-m\s+pip|pip3?)\s+install)\b"
+    r"(?!\s+--no-build-isolation\b)",
     re.IGNORECASE,
 )
 
@@ -241,6 +251,123 @@ def patch_debian_apt_mirror(dockerfile: Path) -> bool:
 def dockerfile_heredoc_delimiter(line: str) -> str | None:
     match = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
     return match.group(1) if match else None
+
+
+def add_pip_no_build_isolation_flags(text: str) -> tuple[str, int]:
+    """Add pip's explicit no-isolation flag outside Dockerfile heredocs."""
+
+    lines: list[str] = []
+    replaced = 0
+    heredoc_delimiter: str | None = None
+    for line in text.splitlines():
+        if heredoc_delimiter is not None:
+            lines.append(line)
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            continue
+        heredoc_delimiter = dockerfile_heredoc_delimiter(line)
+        if line.lstrip().startswith("#"):
+            lines.append(line)
+            continue
+        rewritten, count = _PIP_INSTALL_RE.subn(
+            r"\g<prefix>\g<command> --no-build-isolation",
+            line,
+        )
+        lines.append(rewritten)
+        replaced += count
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(lines) + suffix, replaced
+
+
+def _declared_requirement(tokens: list[str], package: str) -> str | None:
+    requirement = re.compile(
+        rf"^{re.escape(package)}(?:\[[^\]]+\])?"
+        r"(?:(?:===|==|~=|!=|<=|>=|<|>).+)?$",
+        re.IGNORECASE,
+    )
+    return next(
+        (
+            token
+            for token in tokens
+            if "$" not in token and requirement.fullmatch(token)
+        ),
+        None,
+    )
+
+
+def add_pip_no_isolation_build_prerequisite_steps(
+    text: str,
+) -> tuple[str, int]:
+    """Materialize declared build prerequisites before no-isolation installs."""
+
+    if PIP_NO_ISOLATION_BUILD_PREREQUISITES_MARKER in text:
+        return text, 0
+
+    lines = text.splitlines()
+    patched: list[str] = []
+    inserted = 0
+    index = 0
+    heredoc_delimiter: str | None = None
+    while index < len(lines):
+        line = lines[index]
+        if heredoc_delimiter is not None:
+            patched.append(line)
+            if line.strip() == heredoc_delimiter:
+                heredoc_delimiter = None
+            index += 1
+            continue
+        heredoc_delimiter = dockerfile_heredoc_delimiter(line)
+        if heredoc_delimiter is not None or not re.match(
+            r"^\s*RUN\s+", line, re.IGNORECASE
+        ):
+            patched.append(line)
+            index += 1
+            continue
+
+        end = index + 1
+        while lines[end - 1].rstrip().endswith("\\") and end < len(lines):
+            end += 1
+        command_lines = lines[index:end]
+        logical_command = " ".join(
+            command_line.rstrip().removesuffix("\\").strip()
+            for command_line in command_lines
+        )
+        try:
+            tokens = shlex.split(logical_command)
+        except ValueError:
+            tokens = []
+        setuptools_requirement = _declared_requirement(tokens, "setuptools")
+        numpy_requirement = _declared_requirement(tokens, "numpy")
+        wheel_requirement = _declared_requirement(tokens, "wheel") or "wheel"
+        if (
+            "--no-build-isolation" in tokens
+            and setuptools_requirement
+            and numpy_requirement
+        ):
+            indent = re.match(r"^\s*", line).group(0)
+            prerequisites = " ".join(
+                shlex.quote(requirement)
+                for requirement in (
+                    setuptools_requirement,
+                    wheel_requirement,
+                    numpy_requirement,
+                )
+            )
+            patched.extend(
+                [
+                    f"{indent}{PIP_NO_ISOLATION_BUILD_PREREQUISITES_MARKER}",
+                    (
+                        f"{indent}RUN python3 -m pip install --no-cache-dir "
+                        f"{prerequisites}"
+                    ),
+                ]
+            )
+            inserted += 1
+        patched.extend(command_lines)
+        index = end
+
+    suffix = "\n" if text.endswith("\n") else ""
+    return "\n".join(patched) + suffix, inserted
 
 
 def _rewrite_bare_pip_installs(text: str) -> tuple[str, int]:

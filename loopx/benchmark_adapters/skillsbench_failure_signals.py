@@ -545,8 +545,10 @@ def skillsbench_pip_bootstrap_failure_subtype(error_text: str) -> str:
         "protocolerror",
         "proxyerror",
     )
-    if "pip._vendor." in text and any(
-        marker in text for marker in pip_vendor_network_markers
+    if any(
+        "pip._vendor." in line
+        and any(marker in line for marker in pip_vendor_network_markers)
+        for line in text.splitlines()
     ):
         return "package_index_network_failure"
     if "subprocess-exited-with-error" in text:
