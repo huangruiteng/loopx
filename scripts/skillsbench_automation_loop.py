@@ -8017,6 +8017,11 @@ def patch_dockerfile_pip_bootstrap(
     )
     if build_mode == "no-isolation":
         text, _ = dockerfile_runtime.add_pip_no_build_isolation_flags(text)
+        text, _ = (
+            dockerfile_runtime.add_pip_no_isolation_build_prerequisite_steps(
+                text
+            )
+        )
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
         f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={index_url}\n"

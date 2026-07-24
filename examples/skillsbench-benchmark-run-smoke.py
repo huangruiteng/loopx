@@ -6222,7 +6222,8 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         dockerfile.parent.mkdir(parents=True)
         original_text = (
             "FROM ubuntu:24.04 AS builder\n"
-            "RUN pip3 install numpy==1.26.4 pandas==2.2.2\n"
+            'RUN pip3 install "setuptools<81" numpy==1.26.4 '
+            "batman-package==2.5.2 pandas==2.2.2\n"
             "FROM python:3.12-slim\n"
             "RUN python3 -m pip install pyyaml==6.0.1\n"
         )
@@ -6262,6 +6263,10 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
         assert "PIP_RETRIES=10" in staged_text, staged_text
         assert "PIP_NO_BUILD_ISOLATION" not in staged_text, staged_text
         assert "--no-build-isolation" not in staged_text, staged_text
+        assert (
+            dockerfile_runtime.PIP_NO_ISOLATION_BUILD_PREREQUISITES_MARKER
+            not in staged_text
+        ), staged_text
         assert staged_text.index(DOCKER_PIP_BOOTSTRAP_BEGIN) < staged_text.index(
             "pip3 install"
         ), staged_text
@@ -6300,9 +6305,19 @@ def test_skillsbench_docker_task_staging_adds_pip_bootstrap_patch() -> None:
             "no-isolation"
         ), no_isolation_metadata
         assert "PIP_NO_BUILD_ISOLATION" not in no_isolation_text, no_isolation_text
-        assert "pip3 install --no-build-isolation numpy" in no_isolation_text, (
-            no_isolation_text
+        prerequisite_step = (
+            "RUN python3 -m pip install --no-cache-dir "
+            "'setuptools<81' wheel numpy==1.26.4"
         )
+        assert prerequisite_step in no_isolation_text, no_isolation_text
+        assert (
+            no_isolation_text.index(prerequisite_step)
+            < no_isolation_text.index("RUN pip3 install --no-build-isolation")
+        ), no_isolation_text
+        assert (
+            'pip3 install --no-build-isolation "setuptools<81"'
+            in no_isolation_text
+        ), no_isolation_text
         assert (
             "python3 -m pip install --no-build-isolation pyyaml"
             in no_isolation_text
