@@ -21,6 +21,12 @@ QUOTA_CLI_CAPABILITY_GATE_COMPACTION_SCHEMA_VERSION = (
 QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND = (
     "quota should-run --include-capability-gate-detail"
 )
+QUOTA_CLI_AGENT_LANE_NEXT_ACTION_COMPACTION_SCHEMA_VERSION = (
+    "quota_cli_agent_lane_next_action_compaction_v0"
+)
+QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND = (
+    "quota should-run --include-agent-lane-next-action-detail"
+)
 QUOTA_CLI_VISION_AUDIT_COMPACTION_SCHEMA_VERSION = (
     "quota_cli_vision_audit_compaction_v0"
 )
@@ -66,6 +72,44 @@ _CAPABILITY_GATE_CANDIDATE_ANCHOR_FIELDS = (
     "route_key",
 )
 _CAPABILITY_GATE_CANDIDATE_TITLE_MAX_CHARS = 240
+_AGENT_LANE_NEXT_ACTION_ANCHOR_FIELDS = (
+    "todo_id",
+    "task_class",
+    "action_kind",
+    "task_repository",
+    "continuation_policy",
+    "required_capabilities",
+    "target_capabilities",
+    "missing_capabilities",
+    "capability_action",
+    "claimed_by",
+    "required_decision_scopes",
+    "unblocks_todo_id",
+    "successor_todo_ids",
+    "agent_id",
+    "source",
+    "selected_by",
+    "confidence",
+    "preserves_goal_next_action",
+    "route_id",
+    "route_key",
+)
+_HANDOFF_LINEAGE_FIELDS = (
+    "schema_version",
+    "handoff_id",
+    "todo_id",
+    "goal_id",
+    "from_agent",
+    "to_agent",
+    "intent",
+    "evidence_refs",
+    "unresolved_decisions",
+    "blocked_on",
+    "source",
+    "successor_todo_ids",
+    "unblocks_todo_id",
+    "excluded_agents",
+)
 _VISION_AUDIT_ANCHOR_FIELDS = (
     "required",
     "agent_id",
@@ -198,7 +242,7 @@ def _compact_user_todo_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
-def _bounded_candidate_title(item: dict[str, Any]) -> tuple[str | None, bool]:
+def _bounded_projection_title(item: dict[str, Any]) -> tuple[str | None, bool]:
     title = str(item.get("title") or item.get("text") or "").strip()
     if not title:
         return None, False
@@ -215,7 +259,7 @@ def _capability_gate_candidate_anchor(item: dict[str, Any]) -> dict[str, Any]:
     for field in _CAPABILITY_GATE_CANDIDATE_ANCHOR_FIELDS:
         if item.get(field) is not None:
             anchor[field] = item[field]
-    title, title_truncated = _bounded_candidate_title(item)
+    title, title_truncated = _bounded_projection_title(item)
     if title:
         anchor["title"] = title
     if title_truncated:
@@ -250,6 +294,33 @@ def _compact_capability_gate(gate: dict[str, Any]) -> dict[str, Any]:
         "full_detail_cold_path": QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
     }
     return compact
+
+
+def _handoff_lineage_anchor(value: object) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    anchor = {
+        field: value[field]
+        for field in _HANDOFF_LINEAGE_FIELDS
+        if value.get(field) is not None
+    }
+    return anchor or None
+
+
+def _agent_lane_next_action_anchor(item: dict[str, Any]) -> dict[str, Any]:
+    anchor: dict[str, Any] = {
+        "schema_version": QUOTA_CLI_AGENT_LANE_NEXT_ACTION_COMPACTION_SCHEMA_VERSION,
+        "source_schema_version": item.get("schema_version"),
+    }
+    for field in _AGENT_LANE_NEXT_ACTION_ANCHOR_FIELDS:
+        if item.get(field) is not None:
+            anchor[field] = item[field]
+    handoff_lineage = _handoff_lineage_anchor(item.get("handoff_note"))
+    if handoff_lineage:
+        anchor["handoff_lineage"] = handoff_lineage
+    anchor["instruction_ref"] = "#/selected_todo"
+    anchor["detail_ref"] = QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND
+    return anchor
 
 
 def _vision_audit_anchor(
@@ -328,6 +399,7 @@ def compact_quota_should_run_cli_payload(
     include_todo_summary_detail: bool = False,
     include_user_todo_summary_detail: bool = False,
     include_capability_gate_detail: bool = False,
+    include_agent_lane_next_action_detail: bool = False,
     include_vision_audit_detail: bool = False,
 ) -> dict[str, Any]:
     """Bound CLI-only diagnostics after the full decision is computed."""
@@ -366,6 +438,15 @@ def compact_quota_should_run_cli_payload(
             "mode": "compact_hot_path",
             "detail_ref": QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
         }
+    agent_lane_next_action = payload.get("agent_lane_next_action")
+    if not include_agent_lane_next_action_detail and isinstance(
+        agent_lane_next_action,
+        dict,
+    ):
+        compact = dict(compact)
+        compact["agent_lane_next_action"] = _agent_lane_next_action_anchor(
+            agent_lane_next_action
+        )
     if not include_vision_audit_detail:
         compact = _compact_vision_audit_copies(compact)
     return compact

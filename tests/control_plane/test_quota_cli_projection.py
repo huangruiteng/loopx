@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from loopx.control_plane.quota.cli_projection import (
+    QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND,
     QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND,
@@ -319,6 +320,101 @@ def test_compact_quota_should_run_cli_payload_bounds_capability_gate_candidates(
         include_todo_summary_detail=True,
         include_user_todo_summary_detail=True,
         include_capability_gate_detail=True,
+        include_vision_audit_detail=True,
+    )
+    assert full == payload
+
+
+def test_compact_quota_should_run_cli_payload_keeps_agent_lane_handoff_lineage() -> None:
+    payload = {
+        "interaction_contract": {"mode": "bounded_delivery"},
+        "selected_todo": {"todo_id": "quality-0"},
+        "scheduler_hint": {"action": "run_now"},
+        "agent_lane_next_action": {
+            "schema_version": "agent_lane_next_action_v0",
+            "todo_id": "quality-0",
+            "index": 12,
+            "text": "continue the bounded quality slice " * 30,
+            "title": "continue the bounded quality slice " * 30,
+            "role": "agent",
+            "status": "open",
+            "priority": "P1",
+            "archive_state": "active",
+            "source_section": "Agent Todo",
+            "task_class": "advancement_task",
+            "action_kind": "qualify_output",
+            "task_repository": "git:github.com/example/loopx",
+            "continuation_policy": "independent_handoff",
+            "required_capabilities": ["shell", "filesystem_write"],
+            "claimed_by": "quality-agent",
+            "updated_at": "2026-07-24T00:00:00Z",
+            "agent_id": "quality-agent",
+            "source": "capability_gate.runnable_candidates",
+            "selected_by": "current_agent_claimed_todo",
+            "confidence": "selected",
+            "preserves_goal_next_action": True,
+            "handoff_note": {
+                "schema_version": "handoff_note_v0",
+                "handoff_id": "handoff_quality_0",
+                "todo_id": "quality-0",
+                "from_agent": "planner-agent",
+                "to_agent": "quality-agent",
+                "intent": "qualify_output",
+                "summary": "duplicated handoff summary " * 30,
+                "evidence_refs": ["todo:quality-0:evidence"],
+                "blocked_on": "todo:design-0",
+                "suggested_next_action": "duplicated next action " * 30,
+                "unblocks_todo_id": "design-0",
+            },
+        },
+    }
+
+    compact = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_vision_audit_detail=True,
+    )
+
+    lane = compact["agent_lane_next_action"]
+    assert lane["schema_version"] == (
+        "quota_cli_agent_lane_next_action_compaction_v0"
+    )
+    assert lane["source_schema_version"] == "agent_lane_next_action_v0"
+    assert lane["todo_id"] == "quality-0"
+    assert lane["agent_id"] == "quality-agent"
+    assert lane["source"] == "capability_gate.runnable_candidates"
+    assert "text" not in lane
+    assert "title" not in lane
+    assert "index" not in lane
+    assert "status" not in lane
+    assert "updated_at" not in lane
+    assert "archive_state" not in lane
+    assert lane["handoff_lineage"] == {
+        "schema_version": "handoff_note_v0",
+        "handoff_id": "handoff_quality_0",
+        "todo_id": "quality-0",
+        "from_agent": "planner-agent",
+        "to_agent": "quality-agent",
+        "intent": "qualify_output",
+        "evidence_refs": ["todo:quality-0:evidence"],
+        "blocked_on": "todo:design-0",
+        "unblocks_todo_id": "design-0",
+    }
+    assert lane["detail_ref"] == (
+        QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND
+    )
+    assert lane["instruction_ref"] == "#/selected_todo"
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert compact[key] == payload[key]
+
+    full = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_agent_lane_next_action_detail=True,
         include_vision_audit_detail=True,
     )
     assert full == payload

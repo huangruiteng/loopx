@@ -238,6 +238,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-agent-lane-next-action-detail",
+        action="store_true",
+        help=(
+            "Include the full agent-lane next-action todo and handoff note in "
+            "`quota should-run`. The default keeps a typed action and lineage anchor."
+        ),
+    )
+    quota_parser.add_argument(
         "--include-vision-audit-detail",
         action="store_true",
         help=(
@@ -421,6 +429,14 @@ def handle_quota_command(
         ):
             raise ValueError(
                 "--include-capability-gate-detail is only valid with "
+                "`quota should-run`"
+            )
+        if (
+            bool(getattr(args, "include_agent_lane_next_action_detail", False))
+            and args.quota_command != "should-run"
+        ):
+            raise ValueError(
+                "--include-agent-lane-next-action-detail is only valid with "
                 "`quota should-run`"
             )
         if (
@@ -935,6 +951,9 @@ def handle_quota_command(
             ),
             include_capability_gate_detail=bool(
                 getattr(args, "include_capability_gate_detail", False)
+            ),
+            include_agent_lane_next_action_detail=bool(
+                getattr(args, "include_agent_lane_next_action_detail", False)
             ),
             include_vision_audit_detail=bool(
                 getattr(args, "include_vision_audit_detail", False)
