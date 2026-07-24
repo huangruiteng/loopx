@@ -113,6 +113,8 @@ objective · lifecycle     goal · todo · authority · quota · evidence · rec
 
 CLI packet 不是第二份 canonical state，也不是把所有历史塞回 prompt。它是带版本、lineage 和
 下一步命令的当前决策投影；下一 Turn 必须重新读取并重新生成，不能靠模型记住上一份 packet。
+Host 中长期保留的是稳定的 re-entry body：它只说明怎样找到 goal、调用 LoopX CLI 并取得
+当前 packet，不承载某一轮的 packet 内容。
 
 ## 先从数据面与控制面开始
 

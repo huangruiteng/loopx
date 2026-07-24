@@ -57,14 +57,15 @@ LoopX 支持多种 host：
 | Host surface | 如何开始 | 谁持续触发 |
 | --- | --- | --- |
 | Codex App | `$loopx <task>` | App heartbeat automation |
-| Codex CLI | 生成 thin task body，设置可见 goal/session | 用户或 CLI 可见循环 |
+| Codex CLI | 设置稳定的 thin re-entry body 与可见 goal/session | 用户或 CLI 可见循环 |
 | Claude Code | `/loopx <task>`，可选 native loop adapter | Claude native loop 或用户 |
 | 其他 shell/agent | `start-goal --guided` | 外部 runner 或人工触发 |
 
 Host 负责：
 
 - 创建或恢复 executor turn；
-- 传入 LoopX 生成的 task body；
+- 传入 LoopX 生成的稳定 re-entry body；
+- 唤醒后调用 CLI，取得当前 Turn 的动态 packet；
 - 声明 host capability；
 - 应用 scheduler cadence；
 - 返回真实 effect receipt。
@@ -345,8 +346,8 @@ native Goal baseline。
 
 ### Codex App 的 LoopX 路径
 
-- App heartbeat automation 持有薄 task body；
-- 每轮 task body 要求重新读取 LoopX state 和 CLI packet；
+- App heartbeat automation 持有稳定的薄 task body；
+- 每次唤醒时，executor 按 task body 调用 LoopX CLI，从最新 state 取得本轮 packet；
 - host 可以按 `scheduler_hint` 更新 RRULE；
 - scheduler hint 可要求 App update、readback 与 ACK；
 - App thread/session 不成为 LoopX canonical state owner。
@@ -354,7 +355,8 @@ native Goal baseline。
 ### Codex CLI 的 LoopX 路径
 
 - 当前可见 session 通常由用户启动；
-- LoopX 提供 bootstrap message / thin task body，并可让用户设为可见 `/goal <task_body>`；
+- LoopX 提供 bootstrap message / thin re-entry body，并可让用户设为可见 `/goal <task_body>`；
+- 可见 Goal 保留 objective 与 re-entry contract；每一 Turn 的 packet 仍由 CLI 重新生成；
 - 这里借用 Goal 作为持续 host surface，但长期 todo、gate、evidence 与 cadence 仍从 LoopX 读取；
 - CLI 不应假设用户安装的 `/loopx` 自定义命令一定可用；
 - final-check/self-stop 通过当前可用 host surface 完成。
@@ -429,8 +431,8 @@ poll? / write? / spend? / next cadence? / automation active?
 这一讲最容易把三件事混在一起：heartbeat prompt、scheduler hint、host automation。先画清权责：
 
 ```text
-heartbeat_prompt  生成“下一轮怎么问 LoopX”的通用任务体
-quota              生成当前轮的执行义务
+heartbeat_prompt  生成稳定的“下一轮怎样重新进入 LoopX”任务体
+quota              从最新 state 生成当前轮的动态 packet 与执行义务
 scheduler_hint     把义务投影成 cadence/backoff 建议
 host               真正修改 RRULE、触发 session
 scheduler_ack      证明 host 应用了哪个 RRULE
