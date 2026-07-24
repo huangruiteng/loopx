@@ -83,20 +83,27 @@ benchmark-boundary, or public/private evidence changes.
 
 ### Release Contributor Attribution
 
-Every public GitHub release note must recognize the people whose merged pull
-requests are included in the tag range. Put a prominent `## Contributors`
-section near the start of the English release note and a matching
-`### 贡献者致谢` section first under `## 中文摘要`. Link each contributor's GitHub
-handle and the relevant pull requests, and describe the concrete contribution
-instead of publishing an unannotated name list. Explicitly highlight external
-and first-time contributors when applicable, while still crediting maintainer
-contributions accurately.
+Keep the shipped product changes as the primary release narrative. When the tag
+range contains merged work from community contributors other than project
+founder `@huangruiteng`, add a prominent `## Community Contributors` section
+after the English product groups and a matching `### 社区贡献者` section after
+the Chinese product groups. Place both before compatibility, validation, or
+update material so the credit remains visible without replacing the release
+summary.
+
+Link each eligible contributor's GitHub handle and relevant pull requests, and
+describe the concrete contribution instead of publishing an unannotated name
+list. Explicitly highlight external and first-time contributors when
+applicable. Do not list or thank `@huangruiteng` in contributor sections;
+founder stewardship is implicit in LoopX releases. Omit both contributor
+sections when the tag range has no eligible community contribution.
 
 Derive attribution from the previous-tag-to-current-tag Git range plus merged
 PR metadata. Do not guess from commit display names, omit contributors because
-their work is summarized elsewhere, or invent community attribution when a
-release contains only maintainer-authored work. The release PR and final
-GitHub release body must preserve the same bilingual attribution.
+their work is summarized elsewhere, let contributor credit displace product
+content, or invent community attribution for a founder-only release. The
+release PR and final GitHub release body must preserve the same bilingual
+attribution.
 
 ## First-Screen Review Gate
 
