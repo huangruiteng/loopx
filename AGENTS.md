@@ -81,6 +81,23 @@ manual holds, and why the coverage is enough. One hand-picked smoke is not
 enough for runtime, quota/status, scheduler, todo, install, dashboard,
 benchmark-boundary, or public/private evidence changes.
 
+### Release Contributor Attribution
+
+Every public GitHub release note must recognize the people whose merged pull
+requests are included in the tag range. Put a prominent `## Contributors`
+section near the start of the English release note and a matching
+`### 贡献者致谢` section first under `## 中文摘要`. Link each contributor's GitHub
+handle and the relevant pull requests, and describe the concrete contribution
+instead of publishing an unannotated name list. Explicitly highlight external
+and first-time contributors when applicable, while still crediting maintainer
+contributions accurately.
+
+Derive attribution from the previous-tag-to-current-tag Git range plus merged
+PR metadata. Do not guess from commit display names, omit contributors because
+their work is summarized elsewhere, or invent community attribution when a
+release contains only maintainer-authored work. The release PR and final
+GitHub release body must preserve the same bilingual attribution.
+
 ## First-Screen Review Gate
 
 Treat the first visible screen of public product surfaces as owner-reviewed
