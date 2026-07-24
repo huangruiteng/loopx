@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from ...history import load_registry
+from ...paths import resolve_runtime_root
 from ...control_plane.todos.contract import (
     normalize_todo_decision_scope,
 )
@@ -10,11 +12,17 @@ from ...control_plane.todos.projection import todo_item_task_class
 from ...todos import complete_goal_todo, list_goal_todos
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event
-from .pr_review_ack import resolve_issue_fix_pr_review_context
+from .pr_review_ack import (
+    load_issue_fix_pr_review_ack_receipts,
+    resolve_issue_fix_pr_review_context,
+)
 
 
 PR_GATE_RECONCILIATION_SCHEMA_VERSION = "issue_fix_pr_gate_reconciliation_v0"
 PR_REVIEW_RECONCILIATION_SCHEMA_VERSION = "issue_fix_pr_review_reconciliation_v0"
+PR_REVIEW_ACKED_RECONCILIATION_SCHEMA_VERSION = (
+    "issue_fix_pr_review_acked_reconciliation_v0"
+)
 TERMINAL_PR_STATES = {"MERGED", "CLOSED"}
 
 
@@ -340,6 +348,113 @@ def reconcile_issue_fix_pr_review(
         )
     receipt["reconciled"] = True
     return receipt
+
+
+def reconcile_acknowledged_issue_fix_pr_reviews(
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    goal_id: str,
+    agent_id: str,
+    project: Path | None,
+    fetch_metadata: bool = False,
+    fetch_timeout_seconds: int = 10,
+    execute: bool = False,
+    generated_at: str | None = None,
+) -> dict[str, Any]:
+    """Reconcile current review todos from their persisted acknowledgement bindings."""
+
+    runtime_root = (
+        Path(runtime_root_arg).expanduser()
+        if runtime_root_arg
+        else resolve_runtime_root(load_registry(registry_path.expanduser()), None)
+    )
+    receipts = load_issue_fix_pr_review_ack_receipts(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    results: list[dict[str, Any]] = []
+    for ack_receipt in receipts:
+        binding = ack_receipt.get("binding")
+        if not isinstance(binding, Mapping):
+            results.append(
+                {
+                    "ok": False,
+                    "ack_receipt_id": ack_receipt.get("receipt_id"),
+                    "skip_reason": "ack_receipt_binding_missing",
+                    "external_read_performed": False,
+                    "write_performed": False,
+                }
+            )
+            continue
+        todo_id = str(binding.get("todo_id") or "").strip()
+        url = str(binding.get("permalink") or "").strip()
+        if not todo_id or not url:
+            results.append(
+                {
+                    "ok": False,
+                    "ack_receipt_id": ack_receipt.get("receipt_id"),
+                    "todo_id": todo_id or None,
+                    "skip_reason": "ack_receipt_binding_incomplete",
+                    "external_read_performed": False,
+                    "write_performed": False,
+                }
+            )
+            continue
+        try:
+            result = reconcile_issue_fix_pr_review(
+                registry_path=registry_path,
+                runtime_root_arg=str(runtime_root),
+                goal_id=goal_id,
+                todo_id=todo_id,
+                agent_id=agent_id,
+                project=project,
+                url=url,
+                ack_receipt=ack_receipt,
+                fetch_metadata=fetch_metadata,
+                fetch_timeout_seconds=fetch_timeout_seconds,
+                execute=execute,
+                generated_at=generated_at,
+            )
+        except ValueError:
+            result = {
+                "ok": False,
+                "todo_id": todo_id,
+                "ack_receipt_id": ack_receipt.get("receipt_id"),
+                "skip_reason": "provider_observation_failed",
+                "error_category": "provider_observation_failed",
+                "external_read_performed": fetch_metadata,
+                "write_performed": False,
+            }
+        results.append(result)
+
+    failure_count = sum(result.get("ok") is False for result in results)
+    return {
+        "ok": True,
+        "schema_version": PR_REVIEW_ACKED_RECONCILIATION_SCHEMA_VERSION,
+        "goal_id": goal_id,
+        "agent_id": agent_id,
+        "execute": execute,
+        "degraded": failure_count > 0,
+        "ack_receipt_count": len(receipts),
+        "result_count": len(results),
+        "terminal_count": sum(result.get("terminal") is True for result in results),
+        "reconciled_count": sum(
+            result.get("write_performed") is True for result in results
+        ),
+        "already_reconciled_count": sum(
+            result.get("already_reconciled") is True for result in results
+        ),
+        "external_read_count": sum(
+            result.get("external_read_performed") is True for result in results
+        ),
+        "failure_count": failure_count,
+        "private_material_read": False,
+        "external_write_performed": False,
+        "quota_spend_required": False,
+        "results": results,
+    }
 
 
 def render_issue_fix_pr_gate_reconciliation_markdown(payload: dict[str, Any]) -> str:

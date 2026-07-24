@@ -378,6 +378,13 @@ def build_heartbeat_prompt(
         delivery_outcome="outcome_progress",
     )
     cli_preflight = render_cli_preflight(cli_bin=cli_bin)
+    pr_review_pre_quota_command = (
+        f"{cli_bin} heartbeat-prequota -g {shlex.quote(goal_id)} "
+        f"-a {shlex.quote(normalized_agent_id)}"
+        if normalized_agent_id
+        and "external_evidence_poll" in normalized_available_capabilities
+        else ""
+    )
     scheduler_args = render_scheduler_execution_args(
         runtime_profile=runtime_profile,
         scheduler_execution_context=scheduler_execution_context,
@@ -398,6 +405,7 @@ def build_heartbeat_prompt(
         goal_id=goal_id,
         active_state=active_state_text,
         cli_preflight=cli_preflight,
+        pr_review_pre_quota_command=pr_review_pre_quota_command,
         quota_guard_command=quota_guard_command,
         quota_spend_command=quota_spend_command,
         refresh_state_command=refresh_state_command,
@@ -435,6 +443,7 @@ def build_heartbeat_prompt(
         "compact_prompt_command": compact_prompt_command,
         "brief_prompt_command": brief_prompt_command,
         "thin_prompt_command": thin_prompt_command,
+        "pr_review_pre_quota_command": pr_review_pre_quota_command or None,
         "quota_guard_command": quota_guard_command,
         "quota_spend_command": quota_spend_command,
         "refresh_state_command": refresh_state_command,
@@ -542,6 +551,7 @@ def render_heartbeat_task_body(
     goal_id: str,
     active_state: str,
     cli_preflight: str,
+    pr_review_pre_quota_command: str,
     quota_guard_command: str,
     quota_spend_command: str,
     refresh_state_command: str,
@@ -556,6 +566,9 @@ def render_heartbeat_task_body(
     thin_prompt_command: str,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
+    pr_review_pre_quota_block = (
+        f"{pr_review_pre_quota_command}\n" if pr_review_pre_quota_command else ""
+    )
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 Generic LoopX lifecycle. Keep project-specific branching out of the
@@ -569,7 +582,7 @@ Before spending delivery compute, make the CLI reachable; set
 
 ```bash
 {cli_preflight}
-{quota_guard_command}
+{pr_review_pre_quota_block}{quota_guard_command}
 ```
 
 If that preflight still fails: no work/spend; quiet `DONT_NOTIFY`.
@@ -747,6 +760,7 @@ def render_brief_heartbeat_task_body(
     goal_id: str,
     active_state: str,
     cli_preflight: str,
+    pr_review_pre_quota_command: str,
     quota_guard_command: str,
     quota_spend_command: str,
     refresh_state_command: str,
@@ -761,6 +775,9 @@ def render_brief_heartbeat_task_body(
     thin_prompt_command: str,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
+    pr_review_pre_quota_block = (
+        f"{pr_review_pre_quota_command}\n" if pr_review_pre_quota_command else ""
+    )
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 Brief installed LoopX heartbeat. Thin dispatcher; detail:
@@ -771,7 +788,7 @@ Guard/retry; `LOOPX_TURN=<current_time_iso>`:
 
 ```bash
 {cli_preflight}
-{quota_guard_command}
+{pr_review_pre_quota_block}{quota_guard_command}
 ```
 
 Fail: quiet.
@@ -814,6 +831,7 @@ def render_compact_heartbeat_task_body(
     goal_id: str,
     active_state: str,
     cli_preflight: str,
+    pr_review_pre_quota_command: str,
     quota_guard_command: str,
     quota_spend_command: str,
     refresh_state_command: str,
@@ -828,6 +846,9 @@ def render_compact_heartbeat_task_body(
     thin_prompt_command: str,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
+    pr_review_pre_quota_block = (
+        f"{pr_review_pre_quota_command}\n" if pr_review_pre_quota_command else ""
+    )
     return f"""Advance `{goal_id}` using `{active_state}`.
 
 This compact LoopX heartbeat body stays generic; local policy:
@@ -839,7 +860,7 @@ Preflight/guard; `LOOPX_TURN=<current_time_iso>`; reuse:
 
 ```bash
 {cli_preflight}
-{quota_guard_command}
+{pr_review_pre_quota_block}{quota_guard_command}
 ```
 
 Preflight fail: quiet; no work/spend.
@@ -921,6 +942,7 @@ def render_thin_heartbeat_task_body(
     goal_id: str,
     active_state: str,
     cli_preflight: str,
+    pr_review_pre_quota_command: str,
     quota_guard_command: str,
     quota_spend_command: str,
     refresh_state_command: str,
@@ -955,14 +977,19 @@ def render_thin_heartbeat_task_body(
         )
         else "`quota should-run`"
     )
+    pr_review_pre_quota_instruction = (
+        f"Pre: `{pr_review_pre_quota_command}`\n"
+        if pr_review_pre_quota_command
+        else ""
+    )
     return f"""Advance `{goal_id}` from {active_state}.
 
-Skills: `loopx-project`; surprise/conflict: `loopx-self-repair`.
+No runtime `loopx-project`; repair: `loopx-self-repair`.
 LoopX CLI = truth.
 {scope_sentence}
 
 Inspect state/status/repo; run
-{quota_guard_instruction}; follow `interaction_contract`.
+{pr_review_pre_quota_instruction}{quota_guard_instruction}; follow `interaction_contract`.
 `LOOPX_TURN=<current_time_iso>`; reuse.
 NOTIFY Chinese actions incl. non_blocking false/0; not only "owner gate";
 missing -> "具体 user todo 未投影，需修复 LoopX 状态投影".
@@ -1003,6 +1030,8 @@ def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
             f"- compact_prompt_command: `{payload.get('compact_prompt_command')}`",
             f"- brief_prompt_command: `{payload.get('brief_prompt_command')}`",
             f"- thin_prompt_command: `{payload.get('thin_prompt_command')}`",
+            "- pr_review_pre_quota_command: "
+            f"`{payload.get('pr_review_pre_quota_command')}`",
             f"- quota_guard_command: `{payload.get('quota_guard_command')}`",
             f"- quota_spend_command: `{payload.get('quota_spend_command')}`",
             f"- cli_preflight: `{payload.get('cli_preflight')}`",
