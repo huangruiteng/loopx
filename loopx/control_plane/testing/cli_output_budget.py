@@ -126,21 +126,24 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         owner="quota guard",
         consumer_action="decide whether one agent may run",
         qualification_policy="absolute_hot_path",
-        cold_path="status, history, active state, and --include-scheduler-detail",
+        cold_path=(
+            "status, history, active state, --include-scheduler-detail, and "
+            "--include-todo-summary-detail"
+        ),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
         max_chars={
-            "small": {"json": 26_000, "markdown": 6_700},
-            "crowded": {"json": 40_000, "markdown": 7_800},
-            "multi_agent": {"json": 36_000, "markdown": 7_000},
+            "small": {"json": 20_000, "markdown": 6_700},
+            "crowded": {"json": 30_000, "markdown": 7_800},
+            "multi_agent": {"json": 23_000, "markdown": 7_000},
         },
         max_lines={
-            "small": {"json": 720, "markdown": 72},
-            "crowded": {"json": 1_050, "markdown": 78},
-            "multi_agent": {"json": 1_000, "markdown": 75},
+            "small": {"json": 520, "markdown": 72},
+            "crowded": {"json": 750, "markdown": 78},
+            "multi_agent": {"json": 650, "markdown": 75},
         },
         scale_axis="todo_count",
-        max_json_growth_chars_per_unit=400,
+        max_json_growth_chars_per_unit=300,
     ),
     CliOutputBudgetSpec(
         surface_id="loopx_turn_plan",
@@ -372,6 +375,16 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
         markdown_anchor="# LoopX Quota Should Run",
         max_chars={"json": 31_000, "markdown": 6_700},
         max_lines={"json": 820, "markdown": 72},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="quota_should_run_todo_summary_detail",
+        parent_surface_id="quota_should_run",
+        command="quota should-run --include-todo-summary-detail",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
+        markdown_anchor="# LoopX Quota Should Run",
+        max_chars={"json": 55_000, "markdown": 7_800},
+        max_lines={"json": 1_350, "markdown": 78},
     ),
     CliOutputModeVariantSpec(
         variant_id="quota_should_run_turn_envelope",
