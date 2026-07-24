@@ -61,6 +61,8 @@ from .control_plane.quota.stall_repair import (
     build_quota_stall_self_repair_hint,
     stall_repair_blocked_action_scope,
     stall_repair_payload,
+    standing_decision_authority_from_status_item as _standing_decision_authority_from_status_item,
+    standing_decision_authority_payload_from_status_item as _standing_decision_authority_payload_from_status_item,
 )
 from .control_plane.quota.decision_summary import (
     quota_decision_agent_id,
@@ -1010,6 +1012,7 @@ def build_quota_plan(status_payload: dict[str, Any], *, mode: str = "status") ->
             "agent_todos",
             "active_state_next_action",
             "active_state_next_action_entries",
+            "standing_decision_authority",
         ):
             if optional_field in attention:
                 if optional_field == "handoff_readiness":
@@ -1558,6 +1561,13 @@ def build_quota_should_run(
             agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
             user_todo_source_items=user_todo_source_items,
             agent_todo_source_items=agent_todo_source_items,
+            standing_decision_authority=_standing_decision_authority_from_status_item(
+                item,
+                project_asset=project_asset,
+                agent_id=normalize_todo_claimed_by(
+                    (agent_identity or {}).get("agent_id")
+                ),
+            ),
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(
@@ -2038,6 +2048,13 @@ def build_quota_should_run(
             agent_scope_frontier=agent_scope_frontier,
         )
         payload = {
+            **_standing_decision_authority_payload_from_status_item(
+                item,
+                project_asset=project_asset,
+                agent_id=normalize_todo_claimed_by(
+                    (agent_identity or {}).get("agent_id")
+                ),
+            ),
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
             "mode": "should-run",

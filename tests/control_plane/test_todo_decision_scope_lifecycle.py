@@ -9,13 +9,13 @@ from loopx.quota import build_quota_should_run
 from loopx.status import collect_status, parse_active_state_todos
 from loopx.todos import add_goal_todo, complete_goal_todo, supersede_goal_todo
 
-
 GOAL_ID = "decision-scope-lifecycle"
 AGENT_ID = "codex-delivery"
 OTHER_AGENT_ID = "codex-review"
 PUBLISH_SCOPE = "direction:action:publish_release"
 ANNOUNCE_SCOPE = "direction:action:announce_release"
 PRIVATE_READ_SCOPE = "private_read:project:restricted_material"
+BENCHMARK_MERGE_SCOPE = "write_scope:goal:benchmark_pr_self_merge"
 
 
 def _write_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -156,6 +156,63 @@ def test_completed_gate_consumes_scope_for_already_open_publication(
         goal_id=GOAL_ID,
     )
     quota = build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
+    assert quota["effective_action"] != "todo_decision_scope_projection_repair"
+    consistency = quota.get("todo_decision_scope_consistency")
+    assert consistency is None or consistency["ok"] is True
+
+
+def test_completed_broad_gate_projects_standing_authority_into_quota(
+    tmp_path: Path,
+) -> None:
+    repo, state, registry = _write_fixture(tmp_path)
+    target = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="agent",
+        text="Validate and self-merge a benchmark PR.",
+        task_class="advancement_task",
+        claimed_by=AGENT_ID,
+        required_decision_scopes=[BENCHMARK_MERGE_SCOPE],
+    )
+    gate = add_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        role="user",
+        text="Approve validated benchmark PR self-merge for this goal.",
+        task_class="user_gate",
+        blocks_agent=AGENT_ID,
+        decision_scope=BENCHMARK_MERGE_SCOPE,
+    )
+
+    complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=gate["todo_id"],
+        role="user",
+        agent_id=AGENT_ID,
+        decision_outcome="approve",
+        evidence="owner approved the standing benchmark PR merge policy",
+    )
+
+    parsed = parse_active_state_todos(state.read_text(encoding="utf-8"))
+    authority = parsed["standing_decision_authority"]
+    assert authority["active_count"] == 1
+    assert authority["entries"][0]["source_todo_id"] == gate["todo_id"]
+
+    status = collect_status(
+        registry_path=registry,
+        runtime_root_override=str(tmp_path / "runtime"),
+        scan_roots=[repo],
+        limit=1,
+        goal_id=GOAL_ID,
+    )
+    quota = build_quota_should_run(status, goal_id=GOAL_ID, agent_id=AGENT_ID)
+
+    assert quota["standing_decision_authority"]["active_count"] == 1
+    assert quota["standing_decision_authority"]["entries"][0]["source_todo_id"] == (
+        gate["todo_id"]
+    )
+    assert quota["selected_todo"]["todo_id"] == target["todo_id"]
     assert quota["effective_action"] != "todo_decision_scope_projection_repair"
     consistency = quota.get("todo_decision_scope_consistency")
     assert consistency is None or consistency["ok"] is True

@@ -10,9 +10,10 @@ from loopx.control_plane.testing.quota_fixtures import (
 from loopx.control_plane.todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
+    build_standing_decision_authority,
+    standing_decision_authority_for_agent,
 )
 from loopx.quota import build_quota_should_run
-
 
 AGENT_ID = "codex-quality-qualification"
 SCOPE = {
@@ -248,6 +249,118 @@ def test_complete_source_items_take_precedence_over_hot_path_summary() -> None:
     assert result["checked_agent_todo_count"] == 1
     assert result["checked_required_scope_count"] == 1
     assert result["errors"][0]["reason_code"] == "dangling_required_decision_scope"
+
+
+def test_standing_approval_satisfies_matching_agent_scope() -> None:
+    standing_scope = {
+        "schema_version": "decision_scope_v0",
+        "kind": "write_scope",
+        "granularity": "goal",
+        "scope_key": "benchmark_pr_self_merge",
+    }
+    authority = build_standing_decision_authority(
+        [
+            {
+                "todo_id": "todo_standing_approval",
+                "status": "done",
+                "done": True,
+                "task_class": "user_gate",
+                "blocks_agent": AGENT_ID,
+                "decision_scope": standing_scope,
+                "decision_outcome": "approve",
+            }
+        ]
+    )
+    agent_item = {
+        "todo_id": "todo_benchmark_pr",
+        "status": "open",
+        "task_class": "advancement_task",
+        "claimed_by": AGENT_ID,
+        "required_decision_scopes": [standing_scope],
+    }
+
+    result = build_required_decision_scope_consistency(
+        None,
+        None,
+        agent_id=AGENT_ID,
+        registered_agent_ids=[AGENT_ID, "codex-other-agent"],
+        agent_source_items=[agent_item],
+        user_source_items=[],
+        standing_decision_authority=authority,
+    )
+
+    assert result["ok"] is True
+    assert result["standing_authority_match_count"] == 1
+    assert standing_decision_authority_for_agent(
+        authority,
+        agent_id="codex-other-agent",
+    ) is None
+
+
+def test_latest_rejection_revokes_exact_standing_approval() -> None:
+    base = {
+        "status": "done",
+        "done": True,
+        "task_class": "user_gate",
+        "blocks_agent": AGENT_ID,
+        "decision_scope": "write_scope:goal:benchmark_pr_self_merge",
+    }
+    authority = build_standing_decision_authority(
+        [
+            {
+                **base,
+                "todo_id": "todo_standing_approval",
+                "decision_outcome": "approve",
+            },
+            {
+                **base,
+                "todo_id": "todo_standing_rejection",
+                "decision_outcome": "reject",
+            },
+        ]
+    )
+
+    assert authority is not None
+    assert authority["active_count"] == 0
+    assert authority["inactive_count"] == 1
+    assert authority["entries"][0]["source_todo_id"] == "todo_standing_rejection"
+    assert authority["entries"][0]["active"] is False
+
+
+@pytest.mark.parametrize(
+    "invalid_item",
+    [
+        {
+            "todo_id": "todo_user_action",
+            "status": "done",
+            "task_class": "user_action",
+            "blocks_agent": AGENT_ID,
+            "decision_scope": "write_scope:goal:benchmark_pr_self_merge",
+            "decision_outcome": "approve",
+        },
+        {
+            "todo_id": "todo_one_shot_gate",
+            "status": "done",
+            "task_class": "user_gate",
+            "blocks_agent": AGENT_ID,
+            "decision_scope": "write_scope:goal:benchmark_pr_self_merge",
+            "decision_outcome": "approve",
+            "unblocks_todo_id": "todo_benchmark_pr",
+        },
+        {
+            "todo_id": "todo_deferred_gate",
+            "status": "deferred",
+            "task_class": "user_gate",
+            "blocks_agent": AGENT_ID,
+            "decision_scope": "write_scope:goal:benchmark_pr_self_merge",
+            "decision_outcome": "approve",
+        },
+    ],
+)
+def test_non_authoritative_completed_items_do_not_become_standing(
+    invalid_item: dict,
+) -> None:
+    assert build_standing_decision_authority([invalid_item]) is None
 
 
 @pytest.mark.parametrize("decision_outcome", ["reject", "cancel"])

@@ -10,16 +10,17 @@ from __future__ import annotations
 from typing import Any
 
 from .contract import (
-    normalize_todo_decision_scope,
-    normalize_todo_decision_scope_outcomes,
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
+    normalize_todo_decision_outcome,
+    normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_required_decision_scopes,
+    normalize_todo_status,
 )
 from .user_gate import is_user_gate_todo_item
-
 
 DECISION_SCOPE_GRANULARITY_RANK = {
     "action": 0,
@@ -34,6 +35,9 @@ TODO_GATE_BLOCKING_STATES = frozenset(
 )
 
 DECISION_SCOPE_CONSISTENCY_SCHEMA_VERSION = "required_decision_scope_consistency_v0"
+STANDING_DECISION_AUTHORITY_SCHEMA_VERSION = "standing_decision_authority_v0"
+STANDING_DECISION_RECEIPT_SCHEMA_VERSION = "standing_decision_receipt_v0"
+STANDING_DECISION_GRANULARITIES = frozenset({"goal", "project", "global"})
 _AGENT_SUMMARY_ITEM_KEYS = (
     "current_agent_claimed_open_items",
     "current_agent_claimed_advancement_items",
@@ -108,6 +112,125 @@ def _scope_identity(scope: dict[str, Any]) -> str:
     return f"{scope['kind']}:{scope['granularity']}:{scope['scope_key']}"
 
 
+def is_standing_decision_receipt_item(item: dict[str, Any]) -> bool:
+    """Return whether a completed user gate is a reusable decision receipt."""
+
+    if not is_user_gate_todo_item(item):
+        return False
+    status = normalize_todo_status(
+        item.get("status") or ("done" if item.get("done") else "open")
+    )
+    if status != "done":
+        return False
+    if normalize_todo_id(item.get("unblocks_todo_id")):
+        return False
+    scope = normalize_todo_decision_scope(item.get("decision_scope"))
+    outcome = normalize_todo_decision_outcome(item.get("decision_outcome"))
+    if not scope or not outcome:
+        return False
+    if scope["granularity"] not in STANDING_DECISION_GRANULARITIES:
+        return False
+    return bool(
+        normalize_todo_global_gate(item.get("global_gate"))
+        or normalize_todo_blocks_agent(item.get("blocks_agent"))
+    )
+
+
+def build_standing_decision_authority(
+    user_items: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """Compile latest broad, unlinked user-gate decisions into receipts."""
+
+    latest_by_identity: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for item in user_items or []:
+        if not isinstance(item, dict) or not is_standing_decision_receipt_item(item):
+            continue
+        scope = normalize_todo_decision_scope(item.get("decision_scope"))
+        outcome = normalize_todo_decision_outcome(item.get("decision_outcome"))
+        source_todo_id = normalize_todo_id(item.get("todo_id"))
+        if not scope or not outcome or not source_todo_id:
+            continue
+        global_gate = bool(normalize_todo_global_gate(item.get("global_gate")))
+        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
+        owner_key = "global" if global_gate else f"agent:{blocks_agent}"
+        receipt: dict[str, Any] = {
+            "schema_version": STANDING_DECISION_RECEIPT_SCHEMA_VERSION,
+            "source_todo_id": source_todo_id,
+            "decision_scope": scope,
+            "outcome": outcome,
+            "active": outcome == "approve",
+            "global_gate": global_gate,
+        }
+        if blocks_agent:
+            receipt["blocks_agent"] = blocks_agent
+        for key in ("completed_at", "updated_at"):
+            value = str(item.get(key) or "").strip()
+            if value:
+                receipt[key] = value
+        identity = (
+            scope["kind"],
+            scope["granularity"],
+            scope["scope_key"],
+            owner_key,
+        )
+        latest_by_identity[identity] = receipt
+    if not latest_by_identity:
+        return None
+    entries = list(latest_by_identity.values())
+    return {
+        "schema_version": STANDING_DECISION_AUTHORITY_SCHEMA_VERSION,
+        "active_count": sum(entry["active"] is True for entry in entries),
+        "inactive_count": sum(entry["active"] is not True for entry in entries),
+        "entries": entries,
+    }
+
+
+def standing_decision_authority_for_agent(
+    authority: dict[str, Any] | None,
+    *,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Filter standing decision receipts to one agent lane."""
+
+    if not isinstance(authority, dict):
+        return None
+    entries = authority.get("entries")
+    if not isinstance(entries, list):
+        return None
+    compatible = [
+        dict(entry)
+        for entry in entries
+        if isinstance(entry, dict)
+        and _gate_owner_compatible(entry, agent_id=agent_id)
+    ]
+    if not compatible:
+        return None
+    return {
+        "schema_version": STANDING_DECISION_AUTHORITY_SCHEMA_VERSION,
+        "agent_id": normalize_todo_claimed_by(agent_id),
+        "active_count": sum(entry.get("active") is True for entry in compatible),
+        "inactive_count": sum(entry.get("active") is not True for entry in compatible),
+        "entries": compatible,
+    }
+
+
+def _standing_authority_receipts_covering(
+    authority: dict[str, Any] | None,
+    required_scope: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> list[dict[str, Any]]:
+    scoped = standing_decision_authority_for_agent(authority, agent_id=agent_id)
+    if not scoped:
+        return []
+    return [
+        entry
+        for entry in scoped["entries"]
+        if entry.get("active") is True
+        and decision_scope_covers(entry.get("decision_scope"), required_scope)
+    ]
+
+
 def build_required_decision_scope_consistency(
     agent_todo_summary: dict[str, Any] | None,
     user_todo_summary: dict[str, Any] | None,
@@ -116,6 +239,7 @@ def build_required_decision_scope_consistency(
     registered_agent_ids: list[str] | None = None,
     agent_source_items: list[dict[str, Any]] | None = None,
     user_source_items: list[dict[str, Any]] | None = None,
+    standing_decision_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate that blocking decision dependencies resolve to live user gates."""
 
@@ -134,6 +258,7 @@ def build_required_decision_scope_consistency(
     errors: list[dict[str, Any]] = []
     checked_scope_count = 0
     terminal_outcome_count = 0
+    standing_authority_match_count = 0
 
     registered_agents = sorted(
         {
@@ -178,6 +303,14 @@ def build_required_decision_scope_consistency(
                 if _gate_owner_compatible(gate, agent_id=effective_owner)
             ]
             if compatible_gates:
+                continue
+            standing_receipts = _standing_authority_receipts_covering(
+                standing_decision_authority,
+                required_scope,
+                agent_id=effective_owner,
+            )
+            if standing_receipts:
+                standing_authority_match_count += 1
                 continue
             terminal_outcomes = [
                 item
@@ -237,6 +370,7 @@ def build_required_decision_scope_consistency(
         "checked_agent_todo_count": len(agent_items),
         "checked_required_scope_count": checked_scope_count,
         "terminal_outcome_count": terminal_outcome_count,
+        "standing_authority_match_count": standing_authority_match_count,
         "errors": errors,
     }
 

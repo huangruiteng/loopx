@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 
@@ -116,6 +117,16 @@ def active_state_todo_fields(
     )
     if event_fields.get("user_todos") or event_fields.get("agent_todos"):
         fields = event_fields
+        markdown_fields = parse_active_state_todos(
+            state_text,
+            goal=goal,
+            state_path=state_path,
+            preferred_todo_ids=preferred_todo_ids,
+            rollout_events=rollout_events,
+        )
+        standing_decision_authority = markdown_fields.get("standing_decision_authority")
+        if isinstance(standing_decision_authority, dict):
+            fields["standing_decision_authority"] = standing_decision_authority
         monitor_writeback_contract_writer(
             fields,
             supported=False,
