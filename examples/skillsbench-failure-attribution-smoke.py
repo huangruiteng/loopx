@@ -40,6 +40,39 @@ def test_pip_bootstrap_failure_attribution() -> None:
     assert "pip_bootstrap_failure" in fingerprint["matched_patterns"], fingerprint
 
 
+def test_injected_pip_retry_env_does_not_imply_network_failure() -> None:
+    error_text = (
+        "Docker compose command failed.\n"
+        "ENV PIP_RETRIES=10\n"
+        "RUN pip install transitleastsquares==1.32\n"
+        "pip._vendor.packaging.requirements.InvalidRequirement: bad metadata"
+    )
+
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert fingerprint["pip_failure_subtype"] == "pip_internal_error", fingerprint
+    assert fingerprint["failure_reason_codes"] == [], fingerprint
+
+
+def test_line_local_pip_vendor_retry_remains_network_failure() -> None:
+    error_text = (
+        "Docker compose command failed. RUN pip install numpy==1.26.4.\n"
+        "pip._vendor.urllib3 MaxRetryError from pypi.org: max retries exceeded"
+    )
+
+    fingerprint = skillsbench_runner_error_fingerprint(error_text)
+    assert fingerprint["pip_failure_subtype"] == (
+        "package_index_network_failure"
+    ), fingerprint
+    assert fingerprint["terminal_failure_reason_codes"] == [
+        "retry_exhausted",
+        "pip_vendor_network",
+    ], fingerprint
+    assert fingerprint["terminal_failure_dependency_endpoints"] == [
+        "pypi_primary"
+    ], fingerprint
+    assert fingerprint["retryability"] == "retryable", fingerprint
+
+
 def test_task_skills_context_does_not_shadow_pip_failure() -> None:
     error_text = (
         "Docker compose command failed while task skills metadata references "
@@ -254,6 +287,8 @@ def test_full_score_without_completed_verifier_evidence_is_uncountable() -> None
 
 if __name__ == "__main__":
     test_pip_bootstrap_failure_attribution()
+    test_injected_pip_retry_env_does_not_imply_network_failure()
+    test_line_local_pip_vendor_retry_remains_network_failure()
     test_task_skills_context_does_not_shadow_pip_failure()
     test_docker_api_version_mismatch_attribution()
     test_docker_compose_plugin_unavailable_attribution()
