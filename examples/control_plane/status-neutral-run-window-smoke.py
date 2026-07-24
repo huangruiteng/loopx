@@ -13,6 +13,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.diagnose import collect_diagnosis  # noqa: E402
+from loopx.control_plane.scheduler.execution_context import (  # noqa: E402
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+)
 from loopx.quota import (  # noqa: E402
     QUOTA_MONITOR_POLL_CLASSIFICATION,
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -295,7 +298,13 @@ def main() -> int:
         readiness = item["handoff_readiness"]
         assert readiness["post_handoff_latest_run"]["classification"] == REAL_CLASSIFICATION, readiness
 
-        quota = build_quota_should_run(status, goal_id=GOAL_ID)
+        quota = build_quota_should_run(
+            status,
+            goal_id=GOAL_ID,
+            scheduler_execution_context=(
+                GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+            ),
+        )
         assert quota["state"] != "operator_gate", quota
         assert quota["effective_action"] == "normal_run", quota
         assert quota["actionable_by_codex"] is True, quota
@@ -354,10 +363,18 @@ def main() -> int:
         assert item["agent_lane_recommendation"]["agent_id"] == AGENT_ID, item
         assert item["agent_lane_recommendation"]["recommended_action"] == AGENT_LANE_ACTION, item
 
-        quota = build_quota_should_run(status, goal_id=AGENT_LANE_GOAL_ID, agent_id=AGENT_ID)
+        quota = build_quota_should_run(
+            status,
+            goal_id=AGENT_LANE_GOAL_ID,
+            agent_id=AGENT_ID,
+            scheduler_execution_context=(
+                GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+            ),
+        )
         assert quota["recommended_action"] == AGENT_LANE_TODO, quota
-        assert quota["latest_run_recommended_action"] == STALE_GOAL_ACTION, quota
+        assert quota["latest_run_recommended_action"] == AGENT_LANE_ACTION, quota
         assert quota["agent_lane_next_action"]["todo_id"] == "todo_agent_lane_repair", quota
+        assert quota["next_action_projection_warning"]["severity"] == "info", quota
         assert quota["interaction_contract"]["agent_channel"]["must_attempt"] is True, quota
 
     print("status-neutral-run-window-smoke ok")

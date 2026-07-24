@@ -668,12 +668,15 @@ def _sync_next_action_projection_warning_from_guard(
     guard: dict[str, object],
 ) -> None:
     warning = guard.get("next_action_projection_warning")
-    if not isinstance(warning, dict):
-        return
-    item["next_action_projection_warning"] = warning
     project_asset = item.get("project_asset")
-    if isinstance(project_asset, dict):
-        project_asset["next_action_projection_warning"] = warning
+    targets = (item, project_asset)
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        if isinstance(warning, dict):
+            target["next_action_projection_warning"] = warning
+        else:
+            target.pop("next_action_projection_warning", None)
 
 
 def _agent_reward_memory_projection(

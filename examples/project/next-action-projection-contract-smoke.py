@@ -12,6 +12,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import loopx.state_refresh as state_refresh
+from loopx.control_plane.scheduler.execution_context import (
+    GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
+)
 from loopx.presentation.renderers.status_markdown import render_status_markdown
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown
 from loopx.state_projection import (
@@ -28,6 +31,7 @@ RUN_RECOMMENDATION = "Inspect the vliw suite result before changing the durable 
 UPDATED_NEXT_ACTION = "Promote the vliw repair slice as the durable next action."
 UPDATED_RUN_RECOMMENDATION = "Validate the vliw repair slice and then write compact evidence."
 SIDE_AGENT_ACTION = "Polish the hosted frontstage public case card."
+SIDE_AGENT_RUN_RECOMMENDATION = "Continue the hosted frontstage public case card."
 
 
 def write_fixture(root: Path, *, include_next_action: bool = True) -> tuple[Path, Path, Path, Path]:
@@ -118,6 +122,9 @@ def collect_projection(registry_path: Path, runtime: Path, project: Path) -> dic
         status,
         goal_id=GOAL_ID,
         agent_id="codex-side-bypass",
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
     )
     return {"status": status, "item": item, "decision": decision}
 
@@ -239,6 +246,22 @@ def main() -> None:
             assert_state_next_action(state_path, ACTIVE_NEXT_ACTION)
             assert RUN_RECOMMENDATION not in state_text(state_path), state_text(state_path)
 
+            state_refresh.now_local = lambda: "2026-06-22T00:01:30+00:00"
+            lane_payload = state_refresh.refresh_state_run(
+                registry_path=registry_path,
+                runtime_root_override=str(runtime),
+                goal_id=GOAL_ID,
+                project=project,
+                state_file=None,
+                classification="agent_lane_progress",
+                recommended_action=SIDE_AGENT_RUN_RECOMMENDATION,
+                agent_id="codex-side-bypass",
+                progress_scope="agent_lane",
+                dry_run=False,
+                sync_global=False,
+            )
+            assert lane_payload["recommended_action"] == SIDE_AGENT_RUN_RECOMMENDATION, lane_payload
+
             first_projection = collect_projection(registry_path, runtime, project)
             first_item = first_projection["item"]
             first_decision = first_projection["decision"]
@@ -246,7 +269,10 @@ def main() -> None:
             assert first_item["latest_run_recommended_action"] == RUN_RECOMMENDATION, first_item
             assert first_item["next_action_projection_warning"]["requires_state_writeback"] is True, first_item
             assert first_decision["active_state_next_action"] == ACTIVE_NEXT_ACTION, first_decision
-            assert first_decision["latest_run_recommended_action"] == RUN_RECOMMENDATION, first_decision
+            assert (
+                first_decision["latest_run_recommended_action"]
+                == SIDE_AGENT_RUN_RECOMMENDATION
+            ), first_decision
             first_agent_channel = first_decision["interaction_contract"]["agent_channel"]
             assert SIDE_AGENT_ACTION in first_agent_channel["primary_action"], first_decision
             first_trace = first_agent_channel["resolution_trace"]
@@ -288,7 +314,10 @@ def main() -> None:
             assert second_item["active_state_next_action"] == UPDATED_NEXT_ACTION, second_item
             assert second_item["latest_run_recommended_action"] == UPDATED_RUN_RECOMMENDATION, second_item
             assert second_decision["active_state_next_action"] == UPDATED_NEXT_ACTION, second_decision
-            assert second_decision["latest_run_recommended_action"] == UPDATED_RUN_RECOMMENDATION, second_decision
+            assert (
+                second_decision["latest_run_recommended_action"]
+                == SIDE_AGENT_RUN_RECOMMENDATION
+            ), second_decision
             second_agent_channel = second_decision["interaction_contract"]["agent_channel"]
             assert SIDE_AGENT_ACTION in second_agent_channel["primary_action"], second_decision
             second_trace = second_agent_channel["resolution_trace"]
