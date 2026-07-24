@@ -31,6 +31,56 @@ LoopX decides -> agent CLI executes -> validator proves -> LoopX commits
 | Validate | Independent task-specific command or callback | Check the real artifact, test, remote state, or declared read-only postcondition. |
 | Commit | LoopX CLI | Write durable state and spend one quota slot only after validation passes. |
 
+The built-in Codex host may add an adaptive Advisor stage inside Execute. The
+lower-cost executor first inspects the task and emits a strict complexity
+checkpoint from the same opaque session that performs the work. A simple task
+skips the strong model and resumes that executor to perform and validate the
+work. A complex checkpoint first triggers an ephemeral read-only Advisor over
+the bounded Turn request, executor evidence, and a size-capped packet of
+literal, non-symlink files from the declared write scope or checkpoint paths.
+The repository itself is not mounted in the Advisor session. Keeping
+classification separate from execution avoids asking a lower-cost model to
+mix repository work with a nested final-result receipt. These controls minimize
+context; they do not establish a confidentiality or security sandbox.
+
+The deterministic trigger accepts only these bounded complexity signals:
+`cross_file_reasoning`, `ambiguous_root_cause`, `invariant_risk`,
+`validation_uncertainty`, and `external_contract`. A complex checkpoint must
+name at least one signal and carries no final result; a simple checkpoint may
+not include signals or open questions and resumes the executor without advice.
+The Advisor returns compact guidance under a strict schema, then the same
+executor session resumes with that non-authoritative review. The executor still
+owns tools and implementation, while the TurnEnvelope and validator keep
+their existing authority. An Advisor timeout, provider failure, invalid result,
+or missing usage fails open to the executor with a bounded failure category;
+observed failed-attempt usage remains part of the total receipt.
+The Codex session binding keeps the latest cumulative executor usage as a
+private runtime baseline. Each later LoopX Turn reports only the non-negative
+delta from that baseline, so resuming one provider session across Turns does
+not double-count earlier work.
+
+The Codex host supports `advisor-mode=off|auto|manual`. Auto mode resolves the
+current Codex model catalog when a Turn invokes the host and chooses the
+highest-priority available experimental profile. The profile assigns Advisor and
+executor roles explicitly; catalog descriptions and model-name patterns are
+not selection authority. Auto remains an explicit experimental opt-in and does
+not authorize default enablement or automatic promotion. Catalog failure or absence of a complete qualified
+pair fails closed. Manual mode requires distinct explicit model ids, while an
+omitted mode preserves the earlier interface by inferring manual when an
+Advisor model is supplied and off otherwise.
+
+Preview and committed-transaction replay do not invoke the host, so they also
+do not require a model-catalog lookup. This keeps inspection and idempotent
+recovery available when the provider catalog is temporarily unavailable.
+
+An auto-mode execution projects `loopx_turn_model_selection_v0` with
+`requested_mode`, `profile_id`, exact Advisor and executor model ids, and a
+bounded selection reason. This receipt reports resolution; actual invocation
+remains visible through `model_usage.advisor_applied` because the complexity
+trigger may skip the selected Advisor for a particular Turn. The validated
+selection receipt is stored with the host result and projected unchanged by a
+committed replay; replay never reselects a different pair.
+
 This separation lets the same Turn contract govern coding, operations, data,
 document, knowledge-maintenance, and other long-running workflows. The agent
 CLI remains responsible for model and tool execution; it does not become the
@@ -138,6 +188,16 @@ dedicated typed result channel; passing `trae chat` directly as the adapter is
 not sufficient. Check the installed CLI's help and pin the qualified command
 shape because flags and headless behavior may vary by version.
 
+The built-in qualification seam recognizes executables named `traex`,
+`trae-cli`, or `traecli`. It injects the result schema into the prompt, accepts
+only one JSON object (optionally in one JSON fence), and permits one
+same-session receipt-only repair. TraeX resume calls explicitly restore the
+requested sandbox with headless `custom` permission mode and
+`approval_policy=never`; otherwise current TraeX versions resume in read-only
+mode even when the initial call used `workspace-write`. This seam is for
+qualification with explicit model ids and does not extend Codex-only automatic
+model catalog selection to TraeX.
+
 ### Repeatable Codex CLI Qualification
 
 The repository includes an opt-in end-to-end qualification that creates an
@@ -166,6 +226,12 @@ according to local Codex policy so a later adapter turn can resume it. A compact
 `codex_cli_model_requires_newer_codex` failure is a host-compatibility result:
 the transaction must show zero state writes and zero quota spend; select a
 compatible model or update Codex before retrying.
+
+Advisor qualification uses the exact same strong model identifier for the
+baseline and Advisor roles, records all three bounded model identifiers in its
+receipt, and accepts provider usage only when each phase's total equals input
+plus output tokens. Quality must pass in both arms before a lower combined
+Advisor-plus-executor total can count as a reduction.
 
 For a coding collaboration, the validator may run focused tests and inspect the
 expected git diff. For operations, it may read back the declared resource
@@ -372,6 +438,18 @@ The driver may discard raw stdout and stderr, but it must not mistake their
 absence for a typed result. Raw prompts, transcripts, benchmark task text,
 verifier tails, credentials, and local session paths stay outside committed
 fixtures and LoopX state.
+
+For a provider that emits usage events, a built-in adapter may attach
+`loopx_turn_model_usage_v0` to the normalized host result. Direct mode records
+executor usage. Advisor mode records Advisor usage, combined checkpoint and
+executor usage, their field-wise total, and a digest of the applied advice. An
+adaptive receipt also carries the checkpoint digest, selected complexity
+signals, and one decision: `skipped_simple`, `applied_complexity`, or
+`fallback_failure`. A failed Advisor attempt includes its observed usage and an
+explicit completeness flag. The adapter must reject inconsistent totals and
+must not persist the checkpoint text, advice, prompt, raw response, or event
+stream as usage evidence. Consumers must use `advisor_applied` and the decision
+receipt, not the presence of an Advisor CLI option, as the applied-stage signal.
 
 ## Promotion Gates
 

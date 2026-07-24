@@ -8,7 +8,7 @@ import contextlib
 import io
 import json
 import shutil
-import stat
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -21,6 +21,10 @@ sys.path.insert(0, str(REPO_ROOT))
 from loopx.cli import main as cli_main  # noqa: E402
 from loopx.control_plane.turn_driver import (  # noqa: E402
     load_loopx_turn_plan_from_journal,
+)
+from loopx.control_plane.testing.turn_advisor_cases import (  # noqa: E402
+    TURN_ADVISOR_CASE_IDS,
+    TURN_ADVISOR_CASE_SPECS,
 )
 
 
@@ -42,13 +46,19 @@ def _marker_value(turn_number: int) -> str:
     return f"{MARKER_PREFIX}{turn_number}"
 
 
-def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Path]:
+def _write_fixture(
+    root: Path, *, case_id: str, turn_count: int
+) -> tuple[Path, Path, Path, Path]:
     project = root / "project"
     runtime = root / "runtime"
     workspace = root / "workspace"
     runtime.mkdir(parents=True)
     workspace.mkdir(parents=True)
-    (workspace / "docs").mkdir()
+    spec = TURN_ADVISOR_CASE_SPECS[case_id]
+    for relative, content in spec["files"].items():
+        path = workspace / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
     state = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
     state.parent.mkdir(parents=True)
     state.write_text(
@@ -63,13 +73,7 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
                 "",
                 "## Agent Todo",
                 "",
-                (
-                    f"- [ ] [P0] Advance `{MARKER_NAME}` by exactly one numbered "
-                    f"step per Turn: missing -> `{_marker_value(1)}`; step-k -> "
-                    f"step-(k+1). Stop after `{_marker_value(turn_count)}` and report "
-                    "validated progress after each step. Name the completed and next "
-                    "numbered step in the typed result so LoopX can plan the next action."
-                ),
+                f"- [ ] [P0] {spec['todo']}",
                 (
                     f"  <!-- loopx:todo todo_id={TODO_ID} status=open "
                     "task_class=advancement_task action_kind=real_cli_e2e "
@@ -109,7 +113,7 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
                                     "scope": "public qualification",
                                 }
                             },
-                            "write_scope": ["docs/**"],
+                            "write_scope": spec["write_scope"],
                         },
                     }
                 ],
@@ -123,61 +127,21 @@ def _write_fixture(root: Path, *, turn_count: int) -> tuple[Path, Path, Path, Pa
     return project, runtime, workspace, registry
 
 
-def _write_fake_codex(root: Path) -> Path:
+def _write_fake_codex(root: Path, *, case_id: str) -> Path:
     executable = root / "fake-codex"
-    executable.write_text(
-        f"""#!/usr/bin/env python3
-import json
-import pathlib
-import re
-import sys
-
-args = sys.argv[1:]
-prompt = sys.stdin.read()
-turn_key = re.search(r'"turn_key":"([^"]+)"', prompt).group(1)
-marker = pathlib.Path({MARKER_NAME!r})
-turn_number = 1
-if marker.is_file():
-    current = marker.read_text(encoding="utf-8").strip()
-    match = re.fullmatch(re.escape({MARKER_PREFIX!r}) + r"([1-9][0-9]*)", current)
-    if match is None:
-        raise SystemExit("unexpected marker value")
-    turn_number = int(match.group(1)) + 1
-marker.write_text({MARKER_PREFIX!r} + str(turn_number), encoding="utf-8")
-print(json.dumps({{
-    "type": "thread.started",
-    "thread_id": "session-fixture-0001",
-}}), flush=True)
-output_path = pathlib.Path(args[args.index("--output-last-message") + 1])
-output_path.write_text(json.dumps({{
-    "schema_version": "loopx_turn_result_v0",
-    "turn_key": turn_key,
-    "result_kind": "validated_progress",
-    "completed_phases": ["host_execute", "typed_result"],
-    "classification": f"real_cli_e2e_step_{{turn_number}}_progress",
-    "recommended_action": f"Advance the marker to step {{turn_number + 1}}.",
-    "next_action": f"Run the independently validated step {{turn_number + 1}} Turn.",
-    "delivery_batch_scale": "single_surface",
-    "delivery_outcome": "outcome_progress",
-    "vision_unchanged_reason": "The fixture objective remains unchanged.",
-    "summary": f"The isolated public marker reached step {{turn_number}}.",
-}}), encoding="utf-8")
-""",
-        encoding="utf-8",
-    )
-    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    shutil.copyfile(REPO_ROOT / "examples" / "fixtures" / "loopx-turn-fake-codex.py", executable)
+    (root / "case-id.txt").write_text(case_id, encoding="utf-8")
+    executable.chmod(0o755)
     return executable
 
 
-def _validator_command(expected_marker: str) -> list[str]:
-    program = (
-        "import json,pathlib,sys; "
-        "json.load(sys.stdin); "
-        f"p=pathlib.Path({MARKER_NAME!r}); "
-        "raise SystemExit(0 if p.is_file() and "
-        f"p.read_text(encoding='utf-8').strip() == {expected_marker!r} else 9)"
-    )
-    return [sys.executable, "-c", program]
+def _validator_command(case_id: str, expected_marker: str) -> list[str]:
+    return [
+        sys.executable,
+        str(REPO_ROOT / "examples" / "fixtures" / "validate-loopx-turn-case.py"),
+        case_id,
+        expected_marker,
+    ]
 
 
 def _run_cli(argv: list[str]) -> tuple[int, dict[str, Any]]:
@@ -196,7 +160,11 @@ def _base_argv(
     workspace: Path,
     codex_bin: Path,
     model: str | None,
+    advisor_model: str | None,
+    advisor_mode: str | None,
+    advisor_timeout_seconds: float,
     timeout_seconds: float,
+    case_id: str,
     expected_marker: str,
     turn_instance_id: str,
 ) -> list[str]:
@@ -226,7 +194,7 @@ def _base_argv(
         "--codex-sandbox",
         "workspace-write",
         "--validation-command-json",
-        json.dumps(_validator_command(expected_marker)),
+        json.dumps(_validator_command(case_id, expected_marker)),
         "--scan-root",
         str(registry.parent.parent),
         "--no-global-sync",
@@ -235,6 +203,17 @@ def _base_argv(
     ]
     if model:
         argv.extend(["--codex-model", model])
+    if advisor_model:
+        argv.extend(
+            [
+                "--advisor-model",
+                advisor_model,
+                "--advisor-timeout-seconds",
+                str(advisor_timeout_seconds),
+            ]
+        )
+    if advisor_mode:
+        argv.extend(["--advisor-mode", advisor_mode])
     return argv
 
 
@@ -249,9 +228,16 @@ def _quota_spend_count(runtime: Path) -> int:
     )
 
 
-def _marker_matches(workspace: Path, expected: str) -> bool:
-    marker = workspace / MARKER_NAME
-    return marker.is_file() and marker.read_text(encoding="utf-8").strip() == expected
+def _case_matches(workspace: Path, case_id: str, expected: str) -> bool:
+    completed = subprocess.run(
+        _validator_command(case_id, expected),
+        cwd=workspace,
+        input="{}",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0
 
 
 def _session_action(runtime: Path, turn_key: object) -> str | None:
@@ -289,8 +275,41 @@ def _turn_summary(
             validation.get("status") if isinstance(validation, dict) else None
         ),
         "effects": effects if isinstance(effects, dict) else {},
+        "model_usage": payload.get("model_usage"),
+        "model_selection": payload.get("model_selection"),
         "marker_valid": marker_valid,
     }
+
+
+def _aggregate_model_usage(turns: list[dict[str, Any]]) -> dict[str, Any] | None:
+    usages = [turn.get("model_usage") for turn in turns]
+    if not usages or not all(isinstance(usage, dict) for usage in usages):
+        return None
+    typed_usages = [usage for usage in usages if isinstance(usage, dict)]
+    mode = str(typed_usages[0].get("mode") or "")
+    if mode not in {"direct", "advisor"} or any(
+        usage.get("mode") != mode for usage in typed_usages
+    ):
+        return None
+    phases = ["executor"] if mode == "direct" else ["advisor", "executor"]
+    aggregated: dict[str, Any] = {
+        "schema_version": "loopx_turn_model_usage_v0",
+        "mode": mode,
+        "advisor_applied": mode == "advisor",
+        "usage_complete": all(
+            usage.get("usage_complete", True) is True for usage in typed_usages
+        ),
+    }
+    for phase in [*phases, "total"]:
+        phase_rows = [usage.get(phase) for usage in typed_usages]
+        if not all(isinstance(row, dict) for row in phase_rows):
+            return None
+        keys = {key for row in phase_rows if isinstance(row, dict) for key in row}
+        aggregated[phase] = {
+            key: sum(int(row.get(key, 0)) for row in phase_rows if isinstance(row, dict))
+            for key in sorted(keys)
+        }
+    return aggregated
 
 
 def _summary(
@@ -303,6 +322,8 @@ def _summary(
     runtime: Path,
     workspace: Path,
     model_explicit: bool,
+    advisor_mode: bool,
+    case_id: str,
 ) -> dict[str, Any]:
     final_turn = turns[-1] if turns else {}
     session_actions = [turn.get("session_action") for turn in turns]
@@ -310,6 +331,10 @@ def _summary(
         "schema_version": "loopx_turn_real_cli_e2e_v1",
         "real_codex_cli_invoked": real_codex_cli,
         "model_explicit": model_explicit,
+        "advisor_mode": advisor_mode,
+        "case_id": case_id,
+        "model_usage": _aggregate_model_usage(turns),
+        "model_selection": final_turn.get("model_selection"),
         "requested_turn_count": turn_count,
         "observed_turn_count": len(turns),
         "committed_turn_count": sum(
@@ -327,7 +352,8 @@ def _summary(
         "receipt_status": final_turn.get("receipt_status"),
         "validation_status": final_turn.get("validation_status"),
         "effects": final_turn.get("effects", {}),
-        "marker_valid": _marker_matches(workspace, _marker_value(turn_count)),
+        "case_valid": _case_matches(workspace, case_id, _marker_value(turn_count)),
+        "marker_valid": _case_matches(workspace, case_id, _marker_value(turn_count)),
         "quota_slot_spend_count": _quota_spend_count(runtime),
         "replay_exit_code": replay_exit_code,
         "replay_effects": replay.get("effects") if isinstance(replay, dict) else None,
@@ -345,6 +371,16 @@ def main() -> int:
     )
     parser.add_argument("--codex-bin", type=Path)
     parser.add_argument("--codex-model")
+    parser.add_argument("--advisor-model")
+    parser.add_argument("--advisor-mode", choices=["off", "auto", "manual"])
+    parser.add_argument(
+        "--advisor-timeout-seconds",
+        type=float,
+        help="Advisor timeout; defaults to --timeout-seconds for paired qualification.",
+    )
+    parser.add_argument(
+        "--case-id", choices=TURN_ADVISOR_CASE_IDS, default="marker-step"
+    )
     parser.add_argument("--timeout-seconds", type=float, default=180.0)
     parser.add_argument(
         "--turn-count",
@@ -357,11 +393,14 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    advisor_timeout_seconds = args.advisor_timeout_seconds or args.timeout_seconds
+    if args.case_id != "marker-step" and args.turn_count != 1:
+        raise SystemExit("non-marker cases support exactly one Turn")
 
     with tempfile.TemporaryDirectory(prefix="loopx-turn-real-cli-e2e-") as directory:
         root = Path(directory)
         project, runtime, workspace, registry = _write_fixture(
-            root,
+            root, case_id=args.case_id,
             turn_count=args.turn_count,
         )
         if args.real_codex_cli:
@@ -372,7 +411,7 @@ def main() -> int:
                 raise SystemExit("codex CLI is required for --real-codex-cli")
             codex_bin = candidate
         else:
-            codex_bin = _write_fake_codex(root)
+            codex_bin = _write_fake_codex(root, case_id=args.case_id)
 
         turns: list[dict[str, Any]] = []
         turn_payloads: list[dict[str, Any]] = []
@@ -384,7 +423,11 @@ def main() -> int:
                 workspace=workspace,
                 codex_bin=codex_bin,
                 model=args.codex_model,
+                advisor_model=args.advisor_model,
+                advisor_mode=args.advisor_mode,
+                advisor_timeout_seconds=advisor_timeout_seconds,
                 timeout_seconds=args.timeout_seconds,
+                case_id=args.case_id,
                 expected_marker=_marker_value(turn_number),
                 turn_instance_id=f"qualification-turn-{turn_number}",
             )
@@ -394,9 +437,8 @@ def main() -> int:
                     turn_number=turn_number,
                     exit_code=exit_code,
                     payload=payload,
-                    marker_valid=_marker_matches(
-                        workspace,
-                        _marker_value(turn_number),
+                    marker_valid=_case_matches(
+                        workspace, args.case_id, _marker_value(turn_number)
                     ),
                     runtime=runtime,
                 )
@@ -425,6 +467,11 @@ def main() -> int:
             runtime=runtime,
             workspace=workspace,
             model_explicit=bool(args.codex_model),
+            advisor_mode=bool(
+                args.advisor_model
+                or args.advisor_mode in {"auto", "manual"}
+            ),
+            case_id=args.case_id,
         )
 
     print(json.dumps(summary, indent=2, sort_keys=True))
@@ -466,6 +513,7 @@ def main() -> int:
         and summary["validation_status"] == "passed"
         and summary["effects"] == expected_effects
         and summary["marker_valid"] is True
+        and summary["case_valid"] is True
         and summary["quota_slot_spend_count"] == args.turn_count
         and summary["replay_exit_code"] == 0
         and summary["replay_effects"] == replay_effects

@@ -17,6 +17,9 @@ from loopx.control_plane.turn_driver import (
     run_loopx_turn_once,
 )
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
+from loopx.control_plane.testing.cli_output_budget import (
+    assert_turn_run_once_model_usage_budget,
+)
 
 
 def _envelope(
@@ -447,7 +450,8 @@ def test_quota_cli_projects_outer_controller_without_codex_app_action(
             ]
         )
 
-    payload = json.loads(output.getvalue())
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
     hint = payload["scheduler_hint"]
     assert exit_code == 0, payload
     assert hint["execution_context"]["codex_app_applicability"] == "not_applicable"
@@ -1026,6 +1030,21 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
             "delivery_outcome": "outcome_progress",
             "vision_unchanged_reason": "The fixture objective remains unchanged.",
             "summary": "One public fixture advanced.",
+            "model_usage": {
+                "schema_version": "loopx_turn_model_usage_v0",
+                "mode": "direct",
+                "advisor_applied": False,
+                "executor": {
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                },
+                "total": {
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                },
+            },
         }
 
     monkeypatch.setattr("loopx.cli_commands.turn.run_codex_cli_host", fake_codex_host)
@@ -1064,11 +1083,14 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
             ]
         )
 
-    payload = json.loads(output.getvalue())
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
     assert exit_code == 0, payload
     assert payload["host"] == {"executable": "built-in", "kind": "codex-cli"}
     assert payload["effects"]["state_written"] is True
     assert payload["effects"]["quota_spent"] is True
+    assert payload["model_usage"]["total"]["total_tokens"] == 150
+    assert_turn_run_once_model_usage_budget(emitted, expected_mode="direct")
     state = (
         project
         / ".codex"
@@ -1079,3 +1101,300 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     assert "Run one revised public fixture check" in state
     if result_kind != "validated_progress":
         assert f"LoopX%20Turn%20{result_kind}" in state
+
+
+@pytest.mark.parametrize(
+    ("model_args", "auto_selection"),
+    [
+        (
+            [
+                "--codex-model",
+                "executor-fixture",
+                "--advisor-model",
+                "advisor-fixture",
+            ],
+            None,
+        ),
+        (
+            ["--advisor-mode", "auto"],
+            {
+                "schema_version": "loopx_turn_model_selection_v0",
+                "requested_mode": "auto",
+                "profile_id": "fixture-pair-v1",
+                "advisor_model": "advisor-fixture",
+                "executor_model": "executor-fixture",
+                "selection_reason": "highest_priority_available_experimental_pair",
+            },
+        ),
+    ],
+)
+def test_turn_run_once_cli_enables_distinct_advisor_and_executor_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    model_args: list[str],
+    auto_selection: dict[str, str] | None,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    observed: dict[str, object] = {}
+
+    def fake_codex_host(
+        request: dict[str, object], **kwargs: object
+    ) -> dict[str, object]:
+        observed.update(kwargs)
+        return {
+            "schema_version": "loopx_turn_result_v0",
+            "turn_key": request["turn_key"],
+            "result_kind": "validated_progress",
+            "completed_phases": ["host_execute", "typed_result"],
+            "classification": "fixture_advisor_progress",
+            "recommended_action": "Continue with bounded advice",
+            "next_action": "Run the next public fixture check",
+            "delivery_batch_scale": "implementation",
+            "delivery_outcome": "outcome_progress",
+            "vision_unchanged_reason": "The fixture objective remains unchanged.",
+            "summary": "Advisor guidance was applied.",
+            "model_usage": {
+                "schema_version": "loopx_turn_model_usage_v0",
+                "mode": "advisor",
+                "advisor_applied": True,
+                "advisor": {
+                    "input_tokens": 40,
+                    "output_tokens": 8,
+                    "total_tokens": 48,
+                },
+                "executor": {
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                },
+                "total": {
+                    "input_tokens": 160,
+                    "output_tokens": 38,
+                    "total_tokens": 198,
+                },
+                "advice_digest": "sha256:" + "a" * 64,
+            },
+        }
+
+    monkeypatch.setattr("loopx.cli_commands.turn.run_codex_cli_host", fake_codex_host)
+    if auto_selection is not None:
+        monkeypatch.setattr(
+            "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+            lambda _codex_bin: dict(auto_selection),
+        )
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host",
+                "codex-cli",
+                "--project",
+                str(project),
+                *model_args,
+                "--advisor-timeout-seconds",
+                "7",
+                "--validation-command-json",
+                json.dumps([sys.executable, "-c", "import json,sys; json.load(sys.stdin)"]),
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    emitted = output.getvalue()
+    payload = json.loads(emitted)
+    assert exit_code == 0, payload
+    assert observed["model"] == "executor-fixture"
+    assert observed["advisor_model"] == "advisor-fixture"
+    assert observed["advisor_timeout_seconds"] == 7.0
+    assert payload["model_usage"]["mode"] == "advisor"
+    assert payload["model_usage"]["total"]["total_tokens"] == 198
+    if auto_selection is not None:
+        assert payload["model_selection"] == auto_selection
+        monkeypatch.setattr(
+            "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+            lambda _codex_bin: (_ for _ in ()).throw(
+                AssertionError("committed replay must not resolve the model catalog")
+            ),
+        )
+        replay_output = io.StringIO()
+        with contextlib.redirect_stdout(replay_output):
+            replay_exit_code = cli_main(
+                [
+                    "--registry",
+                    str(registry),
+                    "--runtime-root",
+                    str(runtime),
+                    "--format",
+                    "json",
+                    "turn",
+                    "run-once",
+                    "--goal-id",
+                    "loopx-turn-fixture",
+                    "--agent-id",
+                    "codex-fixture",
+                    "--host",
+                    "codex-cli",
+                    "--project",
+                    str(project),
+                    "--advisor-mode",
+                    "auto",
+                    "--resume-turn-key",
+                    payload["resume_turn_key"],
+                    "--no-global-sync",
+                    "--execute",
+                ]
+            )
+        replay = json.loads(replay_output.getvalue())
+        assert replay_exit_code == 0, replay
+        assert replay["replayed"] is True
+        assert replay["effects"]["host_invoked"] is False
+        assert replay["model_selection"] == auto_selection
+    assert_turn_run_once_model_usage_budget(emitted, expected_mode="advisor")
+
+
+def test_turn_run_once_cli_defers_auto_model_selection_until_host_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+
+    def fail_if_resolved(_codex_bin: str) -> dict[str, str]:
+        raise AssertionError("dry-run must not resolve the Codex model catalog")
+
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.resolve_auto_codex_model_selection",
+        fail_if_resolved,
+    )
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host",
+                "codex-cli",
+                "--project",
+                str(project),
+                "--advisor-mode",
+                "auto",
+                "--no-global-sync",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["status"] == "preview"
+    assert "model_selection" not in payload
+
+
+@pytest.mark.parametrize(
+    ("host", "models", "expected_error"),
+    [
+        (
+            "generic-cli",
+            ["--advisor-model", "advisor-fixture"],
+            "Advisor mode requires --host codex-cli",
+        ),
+        (
+            "generic-cli",
+            ["--advisor-mode", "auto"],
+            "Advisor mode requires --host codex-cli",
+        ),
+        (
+            "codex-cli",
+            [
+                "--codex-model",
+                "same-fixture",
+                "--advisor-model",
+                "same-fixture",
+            ],
+            "distinct explicit advisor and executor models",
+        ),
+        (
+            "codex-cli",
+            ["--advisor-mode", "auto", "--codex-model", "executor-fixture"],
+            "auto mode selects both models",
+        ),
+        (
+            "codex-cli",
+            [
+                "--advisor-mode",
+                "off",
+                "--codex-model",
+                "executor-fixture",
+                "--advisor-model",
+                "advisor-fixture",
+            ],
+            "off mode cannot be combined with --advisor-model",
+        ),
+    ],
+)
+def test_turn_run_once_cli_rejects_invalid_advisor_configuration(
+    tmp_path: Path,
+    host: str,
+    models: list[str],
+    expected_error: str,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    output = io.StringIO()
+    argv = [
+        "--registry",
+        str(registry),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "turn",
+        "run-once",
+        "--goal-id",
+        "loopx-turn-fixture",
+        "--agent-id",
+        "codex-fixture",
+        "--host",
+        host,
+        "--project",
+        str(project),
+        *models,
+        "--scan-root",
+        str(project),
+        "--no-global-sync",
+    ]
+    if host == "generic-cli":
+        argv.extend(
+            [
+                "--host-command-json",
+                json.dumps([sys.executable, "-c", "raise SystemExit(0)"]),
+            ]
+        )
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(argv)
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 1
+    assert expected_error in payload["error"]
+    assert payload["effects"]["host_invoked"] is False

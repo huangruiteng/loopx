@@ -46,65 +46,65 @@ path. A different Agent CLI uses the same Turn contract through a thin
 `generic-cli` adapter that reads one JSON request from stdin and writes one JSON
 result to stdout.
 
+## Use A Read-Only Advisor
+
+Advisor mode lets a lower-cost model inspect the task first and call a stronger
+model only when a strict complexity checkpoint justifies the extra cost:
+
+```bash
+loopx turn run-once \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --host codex-cli \
+  --project "$PWD" \
+  --codex-sandbox workspace-write \
+  --advisor-mode auto \
+  --validation-command-json '["./verify-postcondition"]' \
+  --execute
+```
+
+Auto is an explicit experimental opt-in, not a qualified default or an
+automatic-promotion policy. It selects an experimental candidate pair from the
+live Codex catalog and fails closed when none is available. Manual mode uses distinct `--advisor-model <strong-model>`
+and `--codex-model <lower-cost-model>` values. The executor first emits an
+inspection-only checkpoint. Simple work skips the strong model and resumes the
+executor; complex work names a supported risk signal, receives compact advice
+from an ephemeral read-only session, then resumes the same executor. Advisor
+guidance cannot change the TurnEnvelope, sandbox, validator, writeback, or quota. This minimizes context; it is not a confidentiality or security sandbox.
+
+`model_usage` records exact observed counters and a `skipped_simple`,
+`applied_complexity`, or `fallback_failure` decision. Prompts, raw event stream,
+responses, and advice text are not persisted. Explicit TraeX qualification may
+use `--codex-bin <path-to-traex>` plus manual model ids; its prompt-carried JSON
+schema and headless resume sandbox are qualified here, while auto selection
+remains Codex-only.
+
 ## Read The Result
 
-The compact JSON result tells the caller what happens next:
+`status=committed` means independent validation passed and LoopX spent once.
+`result_kind=repair_required` retries the todo; `result_kind=replan_required`
+changes its route; `result_kind=wait` runs no host work; and
+`result_kind=user_action_required` exposes the concrete user gate. Failure does
+not commit or spend, and replay invokes nothing. New work gets a new `turn_key`.
 
-| Signal | Meaning |
-| --- | --- |
-| `status=committed` | Independent validation passed; LoopX wrote the durable result and spent once. |
-| `result_kind=repair_required` | Keep the todo, repair the execution or artifact, then retry. |
-| `result_kind=replan_required` | The current route is no longer valid; write a successor or vision delta. |
-| `result_kind=wait` | No host work should run yet. |
-| `result_kind=user_action_required` | Show the concrete user action and do not invent a substitute. |
-
-A failed validator cannot commit or spend; replay invokes nothing. A new logical
-Turn uses a new stable `--turn-instance-id`, while retries reuse that id.
-
-## Fit Another Runtime
-
-Keep the same boundary when the Agent CLI is backed by a managed runtime:
-
-| Runtime owns | LoopX owns |
-| --- | --- |
-| Session, turn, sandbox, raw event stream, platform outcome | Goal, todo, gate, control decision, compact evidence, durable outcome |
-
-The adapter carries the existing `turn_key` as a correlation id, creates or
-resumes the host run, consumes its Event/Outcome API, and emits one existing
-result kind. The validator independently reads tests, a grader, or platform
-state. Host observations such as requested, accepted, running, outcome-ready,
-failed, and resumed map to committed, repair, replan, or wait; they do not
-become new Turn states.
-
-Qualify a new adapter with a real task, scenario owner, adapter owner, validator,
-and measurable outcome. Add an event reference only after that call site proves
-the compact result cannot carry the evidence.
+For another runtime, keep session, sandbox, and raw event stream inside the
+host while LoopX owns goal state and durable outcomes. Host observations map to
+existing outcomes; they do not become new Turn states. Qualification needs a
+real task, scenario owner, adapter owner, validator, and measurable outcome.
 
 ## Verify The Integration
 
-The repository ships a disposable qualification that keeps raw prompts,
-transcripts, credentials, and temporary workspaces out of LoopX state:
+The disposable smoke keeps raw prompts and temporary workspaces out of state:
 
 ```bash
 python3 examples/loopx-turn-codex-cli-e2e-smoke.py
-python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
-  --real-codex-cli \
+python3 examples/loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli \
   --codex-model <qualified-model>
-python3 examples/loopx-turn-codex-cli-e2e-smoke.py \
-  --real-codex-cli --turn-count 3 --codex-model <qualified-model>
+python3 examples/loopx-turn-codex-cli-e2e-smoke.py --real-codex-cli \
+  --turn-count 3 --codex-model <qualified-model>
 ```
 
-The first command is deterministic and model-free. The second makes one real
-Codex CLI call and must report `status=committed`, `validation_status=passed`,
-one quota spend, and a replay with no side effects. A compact
-`codex_cli_model_requires_newer_codex` result is a host compatibility failure,
-not task progress; it must show zero state writes and zero quota spend.
-
-The third command makes N real calls against one temporary goal and todo. It
-starts one opaque session, resumes it for Turns 2 through N, and independently
-validates every marker. With `--turn-count 3`, success reports
-`committed_turn_count=3`, `session_resumed=true`, and three quota spends. The
-session id remains private and is never printed or synced.
-
-That is the complete partner-facing path. For implementation details, read the
-[adapter notes](codex-cli-automation-driver.md) or the [Turn protocol](../reference/protocols/loopx-turn-v0.md).
+Success requires `status=committed`, `validation_status=passed`, one spend, and side-effect-free replay.
+Three Turns also require session resume and three commits. `codex_cli_model_requires_newer_codex` is compatibility failure, not progress.
+Use `scripts/qualify-loopx-turn-advisor-live.py` for paired quality and Token comparison; it never records raw output or promotes a profile.
+See the [adapter notes](codex-cli-automation-driver.md) and [Turn protocol](../reference/protocols/loopx-turn-v0.md).

@@ -16,6 +16,8 @@ from ...file_lock import exclusive_file_lock
 from ..goals.goal_vision import normalize_goal_vision_packet
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
+from .codex_model_selection import normalize_codex_model_selection
+from .model_usage import normalize_model_usage_receipt
 from .transaction import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     TRANSACTION_PHASES,
@@ -65,6 +67,8 @@ HOST_RESULT_FIELDS = {
     "path_delta_mode",
     "agent_vision_json",
     "summary",
+    "model_usage",
+    "model_selection",
 }
 
 Writeback = Callable[[dict[str, Any]], dict[str, Any]]
@@ -278,6 +282,19 @@ def validate_loopx_turn_host_result(
         )
         if text:
             normalized[field] = text
+    model_usage, model_usage_errors = normalize_model_usage_receipt(
+        result.get("model_usage")
+    )
+    errors.extend(model_usage_errors)
+    if model_usage is not None:
+        normalized["model_usage"] = model_usage
+    if result.get("model_selection") is not None:
+        try:
+            normalized["model_selection"] = normalize_codex_model_selection(
+                result.get("model_selection")
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
     if material:
         try:
             normalized["delivery_batch_scale"] = require_delivery_batch_scale(
@@ -695,6 +712,11 @@ def _execution_payload(
     quota_spent = effects.get("quota_spent") is True or "quota_spend" in list(
         journal.get("completed_phases") or []
     )
+    host_result = (
+        journal.get("host_result")
+        if isinstance(journal.get("host_result"), dict)
+        else {}
+    )
     return {
         "ok": journal.get("status") in {
             "preview",
@@ -717,6 +739,16 @@ def _execution_payload(
         "scheduler": journal.get("scheduler"),
         "effects": dict(effects),
         "quota_slot_spend_count": 1 if quota_spent else 0,
+        **(
+            {"model_usage": host_result["model_usage"]}
+            if isinstance(host_result.get("model_usage"), dict)
+            else {}
+        ),
+        **(
+            {"model_selection": host_result["model_selection"]}
+            if isinstance(host_result.get("model_selection"), dict)
+            else {}
+        ),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
     }
 

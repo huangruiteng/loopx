@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""Compare a strong-model Turn baseline with Advisor plus cheaper execution."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.control_plane.testing.turn_advisor_cases import (  # noqa: E402
+    TURN_ADVISOR_CASE_IDS,
+)
+
+
+E2E_SCRIPT = REPO_ROOT / "examples" / "loopx-turn-codex-cli-e2e-smoke.py"
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("turn count must be at least 1")
+    return parsed
+
+
+def _run_arm(
+    *,
+    real: bool,
+    codex_bin: Path | None,
+    model: str,
+    advisor_model: str | None,
+    turn_count: int,
+    timeout_seconds: float,
+    case_id: str,
+) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        str(E2E_SCRIPT),
+        "--codex-model",
+        model,
+        "--turn-count",
+        str(turn_count),
+        "--timeout-seconds",
+        str(timeout_seconds),
+        "--case-id",
+        case_id,
+    ]
+    if real:
+        command.append("--real-codex-cli")
+    if codex_bin is not None:
+        command.extend(["--codex-bin", str(codex_bin)])
+    if advisor_model:
+        command.extend(["--advisor-model", advisor_model])
+    completed = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=max(30.0, timeout_seconds * turn_count * (2 if advisor_model else 1) + 30.0),
+    )
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        payload = {}
+    return {
+        "exit_code": completed.returncode,
+        "payload": payload if isinstance(payload, dict) else {},
+    }
+
+
+def _quality_ok(arm: dict[str, Any], *, turn_count: int) -> bool:
+    payload = arm["payload"]
+    return bool(
+        arm["exit_code"] == 0
+        and payload.get("requested_turn_count") == turn_count
+        and payload.get("committed_turn_count") == turn_count
+        and payload.get("marker_valid") is True
+        and payload.get("validation_status") == "passed"
+        and payload.get("replay_exit_code") == 0
+    )
+
+
+def _usage(payload: dict[str, Any]) -> dict[str, Any]:
+    usage = payload.get("model_usage")
+    return dict(usage) if isinstance(usage, dict) else {}
+
+
+def _tokens(usage: dict[str, Any], phase: str = "total") -> int | None:
+    row = usage.get(phase)
+    if not isinstance(row, dict):
+        return None
+    value = row.get("total_tokens")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _advisor_tokens(usage: dict[str, Any]) -> int | None:
+    observed = _tokens(usage, "advisor")
+    if observed is not None:
+        return observed
+    if (
+        usage.get("mode") == "direct"
+        and usage.get("advisor_applied") is False
+        and usage.get("usage_complete", True) is True
+    ):
+        return 0
+    return None
+
+
+def _bounded_status(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text[:160] if text else None
+
+
+def _arm_status(arm: dict[str, Any]) -> dict[str, Any]:
+    payload = arm["payload"]
+    return {
+        "exit_code": arm["exit_code"],
+        "status": _bounded_status(payload.get("status")),
+        "reason": _bounded_status(payload.get("reason")),
+        "result_kind": _bounded_status(payload.get("result_kind")),
+        "validation_status": _bounded_status(payload.get("validation_status")),
+        "replay_exit_code": payload.get("replay_exit_code"),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--baseline-model", required=True)
+    parser.add_argument("--advisor-model", required=True)
+    parser.add_argument("--executor-model", required=True)
+    parser.add_argument(
+        "--case-id",
+        choices=TURN_ADVISOR_CASE_IDS,
+        default="marker-step",
+    )
+    parser.add_argument("--codex-bin", type=Path)
+    parser.add_argument("--turn-count", type=_positive_int, default=1)
+    parser.add_argument("--timeout-seconds", type=float, default=180.0)
+    parser.add_argument(
+        "--fixture",
+        action="store_true",
+        help="Use the deterministic no-provider fixture instead of real Codex CLI calls.",
+    )
+    args = parser.parse_args()
+    if args.baseline_model != args.advisor_model:
+        raise SystemExit("baseline and advisor models must be identical")
+    if args.advisor_model == args.executor_model:
+        raise SystemExit("advisor and executor models must be distinct")
+
+    baseline = _run_arm(
+        real=not args.fixture,
+        codex_bin=args.codex_bin,
+        model=args.baseline_model,
+        advisor_model=None,
+        turn_count=args.turn_count,
+        timeout_seconds=args.timeout_seconds,
+        case_id=args.case_id,
+    )
+    advisor = _run_arm(
+        real=not args.fixture,
+        codex_bin=args.codex_bin,
+        model=args.executor_model,
+        advisor_model=args.advisor_model,
+        turn_count=args.turn_count,
+        timeout_seconds=args.timeout_seconds,
+        case_id=args.case_id,
+    )
+    baseline_usage = _usage(baseline["payload"])
+    advisor_usage = _usage(advisor["payload"])
+    baseline_tokens = _tokens(baseline_usage)
+    advisor_tokens = _tokens(advisor_usage)
+    quality_ok = _quality_ok(baseline, turn_count=args.turn_count) and _quality_ok(
+        advisor, turn_count=args.turn_count
+    )
+    usage_available = bool(
+        baseline_tokens is not None
+        and advisor_tokens is not None
+        and baseline_usage.get("usage_complete", True) is True
+        and advisor_usage.get("usage_complete", True) is True
+    )
+    token_delta = (
+        advisor_tokens - baseline_tokens
+        if usage_available
+        and baseline_tokens is not None
+        and advisor_tokens is not None
+        else None
+    )
+    token_reduction_ratio = (
+        round((baseline_tokens - advisor_tokens) / baseline_tokens, 4)
+        if usage_available and baseline_tokens and advisor_tokens is not None
+        else None
+    )
+    token_reduced = bool(usage_available and token_delta is not None and token_delta < 0)
+    receipt = {
+        "schema_version": "loopx_turn_advisor_qualification_v0",
+        "profile_status": "experimental_opt_in",
+        "real_codex_cli_invoked": not args.fixture,
+        "turn_count": args.turn_count,
+        "case_id": args.case_id,
+        "quality_ok": quality_ok,
+        "usage_available": usage_available,
+        "baseline": {
+            "model": args.baseline_model,
+            "quality_ok": _quality_ok(baseline, turn_count=args.turn_count),
+            "total_tokens": baseline_tokens,
+            **_arm_status(baseline),
+        },
+        "advisor": {
+            "model": args.advisor_model,
+            "executor_model": args.executor_model,
+            "advisor_applied": advisor_usage.get("advisor_applied"),
+            "quality_ok": _quality_ok(advisor, turn_count=args.turn_count),
+            "advisor_tokens": _advisor_tokens(advisor_usage),
+            "executor_tokens": _tokens(advisor_usage, "executor"),
+            "total_tokens": advisor_tokens,
+            **_arm_status(advisor),
+        },
+        "token_delta": token_delta,
+        "token_reduction_ratio": token_reduction_ratio,
+        "token_reduced": token_reduced,
+        "raw_model_output_recorded": False,
+        "automatic_promotion_allowed": False,
+    }
+    print(json.dumps(receipt, indent=2, sort_keys=True))
+    return 0 if quality_ok and token_reduced else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
