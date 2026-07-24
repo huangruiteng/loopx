@@ -16,13 +16,15 @@
 5. 判断一个未来扩展应该进入 production schema，还是只保留 design gate。
 6. 把高风险隐式分支重构为有序、可审计、可反例验证的规则表。
 
-## 本讲怎样使用两个 Showcase
+## 本讲怎样使用三个 Showcase
 
 新增规则前，先判断变化属于领域翻译还是通用 Kernel：
 
 | 需求 | 应落在哪里 | 为什么 |
 | --- | --- | --- |
 | PR 出现 branch/merge blocker 时形成 `issue_fix_branch_or_merge_blocker_replan` successor | Issue-Fix Capability + Domain State | 这是 GitHub lifecycle observation 的领域含义 |
+| 外部实验结果先检查 revision/window/baseline，再区分 model/infra outcome | ML Experiment Capability + Domain State | 可比性与 failure attribution 是领域规则 |
+| Harness 根据 Graph refs 与 resource capacity 排序候选，但不得 launch | Explore Capability 的 read-only planner | planner 可以复用通用状态，不能拥有 effect authority |
 | 所有普通工作关闭但 acceptance gap 仍开时触发 replan | Kernel ordered rules | 任何 capability 都需要相同 completion 语义 |
 | Auto Research 增加一种 evaluator evidence | Auto Research Capability / Domain State | 新增领域事实和 validator，不改变通用 authority |
 | promotion 必须经过 scoped user/reviewer decision | Kernel gate contract + preset declaration | gate、scope 与 authority 不能由 preset 私有实现 |

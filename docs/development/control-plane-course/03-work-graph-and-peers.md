@@ -26,9 +26,9 @@
 | Commit receipt | Completion 必须绑定 evidence，并产生 successor、handoff 或 `no_followup` |
 | Recovery | Handoff 保存 material frontier 和 lineage，不复制完整 transcript |
 
-## 从两个 Showcase 看同一类工作图
+## 从三个 Showcase 看同一类工作图
 
-Issue-Fix 和 Auto Research 的 todo 文本不同，但都不是线性 checklist：
+Issue-Fix、Single-Agent Auto ML 和 Auto Research 的 todo 文本不同，但都不是线性 checklist：
 
 ```text
 Issue-Fix
@@ -38,6 +38,14 @@ Issue-Fix
          -> ci_failure_replan | review_changes_replan
          -> branch_or_merge_blocker_replan | no_followup
 
+Single-Agent Auto ML
+  experiment_contract
+    -> candidate_preflight
+    -> launch
+    -> task_monitor
+         -> evaluate
+         -> promote | no_promote | retry | replan
+
 Auto Research
   research_contract
     -> hypothesis
@@ -45,19 +53,24 @@ Auto Research
          -> holdout | retry | retirement | promotion_gate
 ```
 
-图中的箭头不是模型随口建议的“下一步”，而是带 lineage 的 successor transition。两条图
+图中的箭头不是模型随口建议的“下一步”，而是带 lineage 的 successor transition。三条图
 都需要回答相同问题：
 
-| 问题 | Issue-Fix 示例 | Auto Research 示例 |
-| --- | --- | --- |
-| 谁可领取？ | 具备 repo/write scope 的 peer | 具备对应 role/capability 的 peer |
-| 什么只是等待？ | checks pending 的 PR monitor | 等待新证据或未到期 evaluator poll |
-| 什么会派生 successor？ | CI failure、changes requested、branch/merge blocker | dev lift、negative evidence、retryable attempt |
-| 什么需要 gate？ | 发布、权限或风险决定 | promotion、protected evaluator 或边界改变 |
-| 什么才算终局？ | merged/closed 且 no-followup 成立 | acceptance 满足且没有 runnable/retry frontier |
+| 问题 | Issue-Fix | Single-Agent Auto ML | Auto Research |
+| --- | --- | --- | --- |
+| 谁可领取？ | 具备 repo/write scope 的 peer | 具备实验 capability、resource route 的同一 peer | 具备对应 role/capability 的 peer |
+| 什么只是等待？ | checks pending 的 PR monitor | 外部 task monitor 或容量恢复条件 | 等待新证据或未到期 evaluator poll |
+| 什么会派生 successor？ | CI failure、changes requested、branch/merge blocker | terminal metric、infra diagnosis、no-promote result | dev lift、negative evidence、retryable attempt |
+| 什么需要 gate？ | 发布、权限或风险决定 | provider launch、promotion、online activation | promotion、protected evaluator 或边界改变 |
+| 什么才算终局？ | merged/closed 且 no-followup 成立 | acceptance 满足且没有候选、运行、monitor 或 replan frontier | acceptance 满足且没有 runnable/retry frontier |
 
 有了这张图，后面的 claim、lease、gate 和 handoff 就不再是五组独立名词，而是筛选和推进
 同一个 frontier 的不同约束。
+
+Explore Graph 与 Harness 不会给这张工作图增加一种 lifecycle。Graph edge 解释某个候选为何
+来自或反驳另一个候选；Harness branch 解释哪些 todo 可以在 scope 和容量上组成更有价值的
+portfolio。只有显式 `todo add/claim/defer/complete/supersede` 才改变工作图。单 Agent 场景
+同样需要这条边界，否则 planner 排名变化会被误当成任务已经重排或启动。
 
 ## 从 Todo 列表升级为工作图
 

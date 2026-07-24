@@ -6,8 +6,9 @@
 
 ## 本讲在课程中的位置
 
-[第 0 讲](00-goal-control-plane-architecture.md)已经从 Issue-Fix 与 Auto Research 两条产品
-闭环推导出 Kernel、Capability Pack、Domain State、host/runtime 和外部事实源的边界。
+[第 0 讲](00-goal-control-plane-architecture.md)已经从 Issue-Fix、Single-Agent Auto ML
+与 Auto Research 三条产品闭环推导出 Kernel、Capability Pack、Domain State、host/runtime
+和外部事实源的边界。
 本讲不再展开领域判断，而是沿共同生命周期跑通第一次真实 Loop。
 全课由第 0 讲架构导论和 9 讲专题组成，每讲只增加一个主要抽象：
 
@@ -36,7 +37,7 @@
 4. 把一个 Showcase 产品闭环压成一次 bounded Turn。
 5. 在不修改状态的前提下预览一次 guided start。
 
-## 先把两个 Showcase 压成一轮
+## 先把三个 Showcase 压成一轮
 
 第 0 讲看到的是完整产品闭环。本讲只截取其中一轮，观察 LoopX 如何把长期状态变成
 一次可提交的小变化：
@@ -45,10 +46,12 @@
 | --- | --- | --- | --- | --- |
 | Issue-Fix 实现修复 | 已确认 feasibility 的 fix todo、repository boundary | 在独立 worktree 复现、修改、运行聚焦验证 | diff、测试结果、commit/PR ref | PR lifecycle monitor |
 | Issue-Fix 跟进 PR | PR ref、checks/review observation、monitor due | 只读 poll 一次权威状态 | changed/no-change fingerprint | fix successor、继续 monitor 或 terminal |
+| Auto ML 启动候选 | metric/baseline contract、candidate todo、resource capacity、Graph refs | 实现并 preflight 一个候选，请求一次已授权 launch | code/task revision、window、provider readback | external-task monitor |
+| Auto ML 评价终态 | task monitor、matched result、guardrail contract | 检查可比性并完成一次结果归因 | model/infra classification、result ledger、Graph event | promote/no-promote、retry 或 replan |
 | Auto Research 执行假设 | 当前 agent frontier、hypothesis todo、metric contract | 运行一个隔离实验 | typed evidence packet、artifact ref | holdout、retry 或 retirement candidate |
 | Auto Research 做 holdout | dev evidence、protected evaluator、promotion policy | 在独立 oracle 上评价一次 | holdout result、boundary receipt | promotion review 或继续研究 |
 
-四种轮次都遵循同一个 transaction shape：
+六种轮次都遵循同一个 transaction shape：
 
 ```text
 read current source state
@@ -62,6 +65,11 @@ read current source state
 Showcase 的价值不是给出可复制的 prompt，而是证明这个 transaction shape 能在多轮之后
 仍保留正确的 identity、authority、evidence 和 recovery。仓库中的
 `docs/showcases/showcase-catalog.json` 只是公开证据目录，不是隐藏的工作流模板。
+
+Auto ML 还说明同一轮可以消费两个可选 read model：Explore Graph 提供与当前候选相关的
+正负证据 lineage，Explore Harness 提供基于 todo、scope 和资源容量的 analysis-only
+portfolio。它们帮助 Agent 理解“为什么选这个候选”，但 `quota should-run` 仍决定“这一轮
+能不能做”，provider receipt 与 validator 才证明“一轮到底做成了什么”。
 
 ## 一句话心智模型
 

@@ -25,15 +25,19 @@
 | Commit boundary | Validation 先于 writeback，writeback 先于 spend，scheduler apply 先于 ACK |
 | Recovery | 按失败 phase 恢复；repair/replan 必须写出可 read back 的 state delta |
 
-## 两个 Showcase 中什么才算推进
+## 三个 Showcase 中什么才算推进
 
-产物存在只是第一步。对两个 Showcase，可以直接比较“看起来完成”和“控制面已接受”：
+产物存在只是第一步。对三个 Showcase，可以直接比较“看起来完成”和“控制面已接受”：
 
 | 观察 | 是否已构成 material progress | 还缺什么 |
 | --- | --- | --- |
 | Issue-Fix 修改了文件 | 否 | 聚焦验证、正确 worktree、todo lineage |
 | PR 已创建 | 视情况 | PR/commit readback、monitor successor、durable writeback |
 | PR checks 轮询仍无变化 | 否 | 只更新 lane-local no-change evidence 和 next due，不 spend |
+| Auto ML 外部任务启动成功 | 是 effect progress，不是模型证据 | exact revision/window/task receipt、monitor successor |
+| 外部任务因基础设施失败 | 是诊断证据，不是模型负证据 | failure attribution、repair/retry successor |
+| matched result 未超过 baseline 或触发 guardrail | 是 no-promote evidence | result ledger、Graph refutes/supports edge、路线收缩 |
+| matched result 达到目标与 guardrail | 是 promotion candidate | 独立 evaluator、promotion/release gate 与 activation receipt |
 | 研究 dev metric 提升 | 是局部证据，不是目标完成 | holdout 或独立 evaluator evidence |
 | holdout 通过且 boundary clean | 是候选推进 | promotion review/receipt 与 acceptance checkpoint |
 | worker 声称“没有更多想法” | 否 | 从 durable frontier、retry 和 vision gap 推导 completion |
@@ -41,6 +45,36 @@
 这张表也是 self-repair 的入口：当外部结果已经存在但 writeback、successor、vision 或
 projection 缺失时，应修补丢失的 state delta；当根本没有新证据时，不应靠改写总结制造
 “推进”。
+
+## Auto ML：先判可比性，再判模型价值
+
+Single-Agent Auto ML 的结果 reducer 应按固定顺序工作：
+
+```text
+provider terminal readback
+  -> identity/revision/window match
+  -> artifact completeness
+  -> failure attribution
+  -> baseline/guardrail comparison
+  -> promote | no-promote | retry | repair
+  -> compact result ledger
+  -> Explore Graph event
+```
+
+前四步不通过时，metric 没有资格进入模型判断。常见分类如下：
+
+| 结果 | 进入模型证据？ | Kernel 下一步 | Explore 记录 |
+| --- | --- | --- | --- |
+| task 仍运行或 readback unchanged | 否 | monitor continuation | 通常 zero-write |
+| provider/transport/resource failure | 否 | repair 或 bounded retry | diagnostic node/depends_on，可选 |
+| revision、窗口或 baseline 不匹配 | 否 | blocker/replan | invalid-comparison finding |
+| comparable negative result | 是 | no-promote、retire near-neighbor 或新 successor | refutes/negative finding |
+| comparable positive result，guardrail clean | 是 | promotion gate | supports/promotion-candidate finding |
+
+Explore Graph 只追加 compact、public-safe、带 lineage 的 material finding；不保存 raw log。
+Explore Harness 下一轮可以利用 negative finding、近邻排除和资源状态减少重复实验，但它不能
+把一次高置信排序升级为 acceptance evidence。Reward Memory 可以补充历史经验，同样必须
+在当前 revision 和数据合同上重新验证。
 
 ## “做了”与“控制面推进了”之间的差距
 
