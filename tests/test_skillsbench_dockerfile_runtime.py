@@ -74,3 +74,46 @@ def test_pip_no_build_isolation_flags_are_explicit_and_heredoc_safe() -> None:
     assert 'echo "pip install remains documentation"' in patched
     assert "pip install not-a-docker-command" in patched
     assert runtime.add_pip_no_build_isolation_flags(patched) == (patched, 0)
+
+
+def test_no_isolation_materializes_declared_build_prerequisites() -> None:
+    original = (
+        "FROM python:3.12-slim\n"
+        "RUN pip install --no-cache-dir \\\n"
+        '    "setuptools<81" \\\n'
+        "    numpy==1.26.4 \\\n"
+        "    batman-package==2.5.2\n"
+    )
+    flagged, flag_count = runtime.add_pip_no_build_isolation_flags(original)
+
+    patched, prerequisite_count = (
+        runtime.add_pip_no_isolation_build_prerequisite_steps(flagged)
+    )
+
+    prerequisite_step = (
+        "RUN python3 -m pip install --no-cache-dir "
+        "'setuptools<81' wheel numpy==1.26.4"
+    )
+    assert flag_count == 1
+    assert prerequisite_count == 1
+    assert runtime.PIP_NO_ISOLATION_BUILD_PREREQUISITES_MARKER in patched
+    assert prerequisite_step in patched
+    assert patched.index(prerequisite_step) < patched.index(
+        "RUN pip install --no-build-isolation"
+    )
+    assert runtime.add_pip_no_isolation_build_prerequisite_steps(patched) == (
+        patched,
+        0,
+    )
+
+
+def test_no_isolation_prerequisite_step_requires_declared_numpy() -> None:
+    original = (
+        "FROM python:3.12-slim\n"
+        "RUN pip install --no-build-isolation 'setuptools<81' package==1.0\n"
+    )
+
+    assert runtime.add_pip_no_isolation_build_prerequisite_steps(original) == (
+        original,
+        0,
+    )

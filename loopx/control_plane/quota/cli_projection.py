@@ -12,8 +12,10 @@ QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND = (
 _RETAINED_AGENT_ITEM_LANES = {
     "first_open_items": 3,
     "first_executable_items": 3,
+    "unclaimed_priority_open_items": 3,
     "monitor_due_items": 1,
     "monitor_capability_blocked_due_items": 2,
+    "monitor_schedule_gap_items": 1,
 }
 _RETAINED_SUCCESSION_WARNING_TODO_IDS = 3
 

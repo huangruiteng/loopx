@@ -664,6 +664,50 @@ def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
         assert default_payload[key] == detail_payload[key]
 
 
+def test_agent_scoped_status_keeps_whole_goal_todo_index_on_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "agent-status") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[1],
+        )
+        command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["status"]
+        agent_flag = command.index("--agent-id")
+        operator_command = command[:agent_flag] + command[agent_flag + 2 :]
+
+        exit_code, text = _invoke_cli(command)
+        operator_exit_code, operator_text = _invoke_cli(operator_command)
+
+    assert exit_code == 0, text
+    payload = json.loads(text)
+    todo_index = payload["todo_index"]
+    assert todo_index["total_count"] > 0
+    assert todo_index["items"] == []
+    assert todo_index["payload_compaction"] == {
+        "schema_version": "agent_lane_status_todo_index_compaction_v0",
+        "omitted_item_count": todo_index["total_count"],
+        "reason": (
+            "status --agent-id uses the attention queue for current work and "
+            "keeps the whole-goal todo index on a cold path"
+        ),
+        "full_detail_cold_path": "status without --agent-id or todo list",
+    }
+    assert payload["attention_queue"]["items"][0]["agent_todos"]["open_count"] == (
+        SCENARIOS[1].todo_count
+    )
+    assert operator_exit_code == 0, operator_text
+    operator_todo_index = json.loads(operator_text)["todo_index"]
+    assert len(operator_todo_index["items"]) == operator_todo_index["total_count"]
+    assert "payload_compaction" not in operator_todo_index
+
+
 def test_status_and_quota_json_ignore_compatibility_reexport_bindings(
     tmp_path: Path,
     monkeypatch,

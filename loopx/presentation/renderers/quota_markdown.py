@@ -718,11 +718,33 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             summary_parts.insert(2, f"unclaimed={summary.get('unclaimed_open_count', 0)}")
         if summary.get("monitor_due_count"):
             summary_parts.append(f"monitor_due={summary.get('monitor_due_count')}")
+        if summary.get("monitor_schedule_gap_count"):
+            summary_parts.append(
+                f"monitor_schedule_gap={summary.get('monitor_schedule_gap_count')}"
+            )
         if summary.get("completed_without_successor_count"):
             summary_parts.append(
                 f"succession_warning={summary.get('completed_without_successor_count')}"
             )
         lines.append(f"- {label}_summary: {' '.join(summary_parts)}")
+        for lane, suffix in (
+            ("unclaimed_priority_open_items", "unclaimed_candidates"),
+            ("monitor_schedule_gap_items", "monitor_schedule_gap"),
+        ):
+            lane_items = (
+                summary.get(lane)
+                if isinstance(summary.get(lane), list)
+                else []
+            )
+            todo_ids = [
+                str(item.get("todo_id"))
+                for item in lane_items[:3]
+                if isinstance(item, dict) and item.get("todo_id")
+            ]
+            if todo_ids:
+                lines.append(
+                    f"- {label}_{suffix}: todo_ids={','.join(todo_ids)}"
+                )
         succession_warning = (
             summary.get("todo_succession_warning")
             if isinstance(summary.get("todo_succession_warning"), dict)

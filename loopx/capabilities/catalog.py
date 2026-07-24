@@ -214,6 +214,11 @@ BUILTIN_CAPABILITIES: tuple[dict[str, Any], ...] = (
                 "module": "loopx.capabilities.issue_fix.pr_review_ack",
                 "doc": "docs/project-agent-todo-contract.md",
             },
+            {
+                "schema_version": "issue_fix_pr_review_acked_reconciliation_v0",
+                "module": "loopx.capabilities.issue_fix.pr_gate_reconcile",
+                "doc": "docs/project-agent-todo-contract.md",
+            },
         ],
         "smokes": [
             "python3 examples/value-connectors-github-public-probe-smoke.py",

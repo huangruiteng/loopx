@@ -7,6 +7,7 @@ import sys
 from typing import Any
 
 from .pr_gate_reconcile import (
+    reconcile_acknowledged_issue_fix_pr_reviews,
     reconcile_issue_fix_pr_gate,
     reconcile_issue_fix_pr_review,
     render_issue_fix_pr_gate_reconciliation_markdown,
@@ -167,6 +168,55 @@ def register_pr_gate_reconciliation_command(
         default=None,
         help="Public-safe reconciliation timestamp; defaults to current UTC.",
     )
+    acked_parser = issue_fix_sub.add_parser(
+        "pr-review-reconcile-acked",
+        help=(
+            "Reconcile current PR review user_actions from persisted exact "
+            "owner acknowledgement bindings."
+        ),
+    )
+    acked_parser.add_argument(
+        "--format",
+        dest="subcommand_format",
+        choices=["markdown", "json"],
+        help="Output format for this subcommand.",
+    )
+    acked_parser.add_argument(
+        "--goal-id",
+        required=True,
+        help="Goal whose persisted review acknowledgement receipts are read.",
+    )
+    acked_parser.add_argument(
+        "--agent-id",
+        required=True,
+        help="Registered lifecycle actor bound by each acknowledgement receipt.",
+    )
+    acked_parser.add_argument(
+        "--project",
+        default=None,
+        help="Optional project root; defaults to the registry-declared project.",
+    )
+    acked_parser.add_argument(
+        "--fetch-metadata",
+        action="store_true",
+        help="Fetch compact public PR state for each current matching receipt.",
+    )
+    acked_parser.add_argument(
+        "--fetch-timeout-seconds",
+        type=int,
+        default=10,
+        help="Timeout for each compact public PR metadata fetch.",
+    )
+    acked_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Complete exact acknowledged review actions whose PR is terminal.",
+    )
+    acked_parser.add_argument(
+        "--generated-at",
+        default=None,
+        help="Public-safe reconciliation timestamp; defaults to current UTC.",
+    )
     ack_parser = issue_fix_sub.add_parser(
         "pr-review-ack",
         help=(
@@ -313,6 +363,27 @@ def build_pr_review_reconciliation_from_args(
     )
 
 
+def build_acked_pr_review_reconciliation_from_args(
+    args: argparse.Namespace,
+    registry_path: Path | None,
+    runtime_root_arg: str | None,
+    generated_at: str,
+) -> dict[str, Any]:
+    if registry_path is None:
+        raise ValueError("pr-review-reconcile-acked requires a LoopX registry")
+    return reconcile_acknowledged_issue_fix_pr_reviews(
+        registry_path=registry_path,
+        runtime_root_arg=runtime_root_arg,
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+        project=Path(args.project).expanduser() if args.project else None,
+        fetch_metadata=args.fetch_metadata,
+        fetch_timeout_seconds=args.fetch_timeout_seconds,
+        execute=args.execute,
+        generated_at=generated_at,
+    )
+
+
 def build_pr_review_ack_from_args(
     args: argparse.Namespace,
     registry_path: Path | None,
@@ -359,11 +430,34 @@ def render_issue_fix_pr_review_ack_markdown(payload: dict[str, Any]) -> str:
     )
 
 
+def render_issue_fix_acked_pr_review_reconciliation_markdown(
+    payload: dict[str, Any],
+) -> str:
+    return "\n".join(
+        [
+            "# LoopX Acknowledged PR Review Reconciliation",
+            "",
+            f"- ok: `{payload.get('ok')}`",
+            f"- degraded: `{payload.get('degraded')}`",
+            f"- ack_receipt_count: `{payload.get('ack_receipt_count')}`",
+            f"- result_count: `{payload.get('result_count')}`",
+            f"- terminal_count: `{payload.get('terminal_count')}`",
+            f"- reconciled_count: `{payload.get('reconciled_count')}`",
+            f"- already_reconciled_count: `{payload.get('already_reconciled_count')}`",
+            f"- external_read_count: `{payload.get('external_read_count')}`",
+            f"- failure_count: `{payload.get('failure_count')}`",
+            "- quota_spend_required: `False`",
+        ]
+    )
+
+
 __all__ = [
+    "build_acked_pr_review_reconciliation_from_args",
     "build_pr_gate_reconciliation_from_args",
     "build_pr_review_ack_from_args",
     "build_pr_review_reconciliation_from_args",
     "register_pr_gate_reconciliation_command",
+    "render_issue_fix_acked_pr_review_reconciliation_markdown",
     "render_issue_fix_pr_gate_reconciliation_markdown",
     "render_issue_fix_pr_review_ack_markdown",
     "render_issue_fix_pr_review_reconciliation_markdown",

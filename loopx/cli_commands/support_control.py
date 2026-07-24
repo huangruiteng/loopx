@@ -15,6 +15,10 @@ from ..heartbeat_prompt import (
     build_heartbeat_prompt_error_payload,
     render_heartbeat_prompt_markdown,
 )
+from ..heartbeat_prequota import (
+    render_heartbeat_pre_quota_markdown,
+    run_heartbeat_pre_quota,
+)
 from ..control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from ..history import load_registry
 from ..paths import resolve_runtime_root
@@ -66,6 +70,7 @@ AddFormat = Callable[[argparse.ArgumentParser], None]
 
 SUPPORT_CONTROL_COMMANDS = {
     "backup-state",
+    "heartbeat-prequota",
     "heartbeat-prompt",
     "promotion-gate",
     "upgrade-plan",
@@ -220,6 +225,33 @@ def register_support_control_commands(
         "--thin",
         action="store_true",
         help="Generate the thinnest generic dispatcher body for trusted agents that inspect LoopX state themselves.",
+    )
+
+    heartbeat_prequota_parser = subparsers.add_parser(
+        "heartbeat-prequota",
+        help=(
+            "Run best-effort kernel reconciliation hooks before heartbeat quota "
+            "selection without spending quota."
+        ),
+    )
+    add_subcommand_format(heartbeat_prequota_parser)
+    heartbeat_prequota_parser.add_argument(
+        "-g",
+        "--goal-id",
+        required=True,
+        help="Stable LoopX goal id.",
+    )
+    heartbeat_prequota_parser.add_argument(
+        "-a",
+        "--agent-id",
+        required=True,
+        help="Registered heartbeat lifecycle actor.",
+    )
+    heartbeat_prequota_parser.add_argument(
+        "--fetch-timeout-seconds",
+        type=int,
+        default=10,
+        help="Timeout for each bounded compact external metadata fetch.",
     )
 
     register_supervisor_control_commands(subparsers, add_subcommand_format)
@@ -390,6 +422,26 @@ def handle_support_control_command(
             }
         print_payload(payload, output_format(args), render_state_backup_markdown)
         return 0 if payload.get("ok") else 1
+
+    if args.command == "heartbeat-prequota":
+        prequota_registry = (
+            registry_path
+            if registry_was_supplied
+            else explicit_global_registry(args.runtime_root)
+        )
+        payload = run_heartbeat_pre_quota(
+            registry_path=prequota_registry,
+            runtime_root_arg=args.runtime_root,
+            goal_id=args.goal_id,
+            agent_id=args.agent_id,
+            fetch_timeout_seconds=args.fetch_timeout_seconds,
+        )
+        print_payload(
+            payload,
+            output_format(args),
+            render_heartbeat_pre_quota_markdown,
+        )
+        return 0
 
     if args.command == "heartbeat-prompt":
         active_state = None
