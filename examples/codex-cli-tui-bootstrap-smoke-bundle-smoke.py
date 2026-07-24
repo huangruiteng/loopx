@@ -22,7 +22,11 @@ def add_tree(tar: tarfile.TarFile, root: Path, name: str) -> None:
         for child in sorted(path.rglob("*")):
             if ".git" in child.parts or "__pycache__" in child.parts:
                 continue
-            tar.add(child, arcname=str(Path("loopx-main") / child.relative_to(root)))
+            tar.add(
+                child,
+                arcname=str(Path("loopx-main") / child.relative_to(root)),
+                recursive=False,
+            )
     else:
         tar.add(path, arcname=str(Path("loopx-main") / name))
 
