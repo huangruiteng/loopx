@@ -10,23 +10,23 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.testing.quota_fixtures import (
+from loopx.control_plane.testing.quota_fixtures import (  # noqa: E402
     quota_status_payload,
     quota_todo_item,
     quota_todo_summary,
 )
-from loopx.control_plane.todos.active_state_todo_parser import (
+from loopx.control_plane.todos.active_state_todo_parser import (  # noqa: E402
     parse_active_state_todos,
 )
-from loopx.control_plane.todos.completed_archive import (
+from loopx.control_plane.todos.completed_archive import (  # noqa: E402
     archive_completed_todo_lines,
 )
-from loopx.control_plane.todos.decision_scope import (
+from loopx.control_plane.todos.decision_scope import (  # noqa: E402
     build_required_decision_scope_consistency,
     build_standing_decision_authority,
     standing_decision_authority_for_agent,
 )
-from loopx.quota import build_quota_should_run
+from loopx.quota import build_quota_should_run  # noqa: E402
 
 GOAL_ID = "standing-decision-authority-fixture"
 PRIMARY_AGENT = "codex-main-control"

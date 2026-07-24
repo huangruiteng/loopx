@@ -61,6 +61,8 @@ from .control_plane.quota.stall_repair import (
     build_quota_stall_self_repair_hint,
     stall_repair_blocked_action_scope,
     stall_repair_payload,
+    standing_decision_authority_from_status_item as _standing_decision_authority_from_status_item,
+    standing_decision_authority_payload_from_status_item as _standing_decision_authority_payload_from_status_item,
 )
 from .control_plane.quota.decision_summary import (
     quota_decision_agent_id,
@@ -148,9 +150,6 @@ from .control_plane.todos.contract import (
     TODO_TASK_CLASS_BLOCKER,
     normalize_todo_claimed_by,
     normalize_todo_status,
-)
-from .control_plane.todos.decision_scope import (
-    standing_decision_authority_for_agent,
 )
 from .control_plane.todos.summary_item import (
     compact_todo_summary_item,
@@ -1485,19 +1484,6 @@ def build_quota_should_run(
             item.get("agent_todos"),
             project_asset.get("agent_todos") if project_asset else None,
         )
-        standing_decision_authority = standing_decision_authority_for_agent(
-            (
-                item.get("standing_decision_authority")
-                if isinstance(item.get("standing_decision_authority"), dict)
-                else (
-                    project_asset.get("standing_decision_authority")
-                    if project_asset
-                    and isinstance(project_asset.get("standing_decision_authority"), dict)
-                    else None
-                )
-            ),
-            agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
-        )
         agent_scoped_user_todo_override = _agent_scoped_user_todo_override(
             state=state,
             item=item,
@@ -1575,7 +1561,13 @@ def build_quota_should_run(
             agent_id=normalize_todo_claimed_by((agent_identity or {}).get("agent_id")),
             user_todo_source_items=user_todo_source_items,
             agent_todo_source_items=agent_todo_source_items,
-            standing_decision_authority=standing_decision_authority,
+            standing_decision_authority=_standing_decision_authority_from_status_item(
+                item,
+                project_asset=project_asset,
+                agent_id=normalize_todo_claimed_by(
+                    (agent_identity or {}).get("agent_id")
+                ),
+            ),
         )
         self_repair_allowed = bool(stall_self_repair and stall_self_repair.get("allowed"))
         normal_delivery_allowed, recovery_allowed, reason = apply_stall_repair_delivery_guard(
@@ -2056,6 +2048,13 @@ def build_quota_should_run(
             agent_scope_frontier=agent_scope_frontier,
         )
         payload = {
+            **_standing_decision_authority_payload_from_status_item(
+                item,
+                project_asset=project_asset,
+                agent_id=normalize_todo_claimed_by(
+                    (agent_identity or {}).get("agent_id")
+                ),
+            ),
             "ok": bool(plan.get("ok")) or self_repair_allowed or capability_repair_allowed or workspace_repair_allowed,
             "status_health_ok": bool(plan.get("ok")),
             "mode": "should-run",
@@ -2234,8 +2233,6 @@ def build_quota_should_run(
                         or "no-work polling should ask the current open user todo"
                     )
                     payload["open_todo_notification_policy"] = "repeat_until_resolved"
-        if standing_decision_authority:
-            payload["standing_decision_authority"] = standing_decision_authority
         if scoped_user_gate_fallback and not replan_decision_allowed:
             payload["scoped_user_gate_fallback"] = scoped_user_gate_fallback
             payload["should_run"] = True

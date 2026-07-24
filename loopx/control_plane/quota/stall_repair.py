@@ -6,6 +6,7 @@ from .. import compact_control_plane_policy, control_plane_self_repair_allows
 from ..todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
+    standing_decision_authority_for_agent,
 )
 from ..todos.user_gate import open_todo_count
 
@@ -22,6 +23,39 @@ USER_GATE_SCOPE_REPAIR_TRIGGER = "user_gate_scope_projection_drift"
 TODO_PROJECTION_REPAIR_TRIGGERS = frozenset(
     {DECISION_SCOPE_REPAIR_TRIGGER, USER_GATE_SCOPE_REPAIR_TRIGGER}
 )
+
+
+def standing_decision_authority_from_status_item(
+    item: dict[str, Any],
+    *,
+    project_asset: dict[str, Any] | None,
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    """Read and agent-scope a standing authority receipt from status."""
+
+    authority = item.get("standing_decision_authority")
+    if not isinstance(authority, dict):
+        authority = (
+            project_asset.get("standing_decision_authority")
+            if project_asset
+            and isinstance(project_asset.get("standing_decision_authority"), dict)
+            else None
+        )
+    return standing_decision_authority_for_agent(authority, agent_id=agent_id)
+
+
+def standing_decision_authority_payload_from_status_item(
+    item: dict[str, Any],
+    *,
+    project_asset: dict[str, Any] | None,
+    agent_id: str | None,
+) -> dict[str, Any]:
+    authority = standing_decision_authority_from_status_item(
+        item,
+        project_asset=project_asset,
+        agent_id=agent_id,
+    )
+    return {"standing_decision_authority": authority} if authority else {}
 
 
 def _compact_health_items(
