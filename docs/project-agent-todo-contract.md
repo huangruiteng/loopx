@@ -432,6 +432,20 @@ again before completion, then closes the reminder only for the exact terminal
 PR. A missing receipt, stale revision, unavailable provider, or unsupported
 forge leaves the reminder open. Quota projection has no provider side effects.
 
+Heartbeat hosts with `external_evidence_poll` may run the bounded batch form
+before quota:
+
+```bash
+loopx heartbeat-prequota -g <goal-id> -a <bound-agent>
+```
+
+The batch reads only persisted exact acknowledgement bindings, skips stale or
+already reconciled todos before provider access, and performs no quota spend.
+Provider failures are reported as degraded results and do not block the
+subsequent quota guard. Binding, acknowledgement, and reconciliation are kernel
+contracts; `loopx-project` may document the workflow but is not a runtime
+dependency.
+
 If an agent takes ownership at completion time, include the claim in the same
 locked lifecycle write:
 

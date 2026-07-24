@@ -286,6 +286,10 @@ def main() -> int:
     assert "--available-capability external_evidence_poll" in capability_task_body, (
         capability_task_body
     )
+    assert "heartbeat-prequota" in capability_task_body, capability_task_body
+    assert capability_scoped_payload["pr_review_pre_quota_command"] == (
+        "loopx heartbeat-prequota -g public-heartbeat-goal -a codex-side-bypass"
+    ), capability_scoped_payload
     assert "productization showcase docs lane" in normalized(str(profile_scoped_payload["task_body"])), (
         profile_scoped_payload
     )
@@ -306,6 +310,8 @@ def main() -> int:
         "todo continuation",
         "no cross-agent authority",
         "no scope in todo metadata",
+        "No runtime `loopx-project`",
+        "heartbeat-prequota",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run '
         "--goal-id loopx-meta --agent-id codex-product-capability --available-capability network "
         "--available-capability external_evidence_poll",
@@ -402,7 +408,7 @@ def main() -> int:
     thin_task = normalized(str(thin_payload["task_body"]))
     for phrase in (
         "Advance `public-heartbeat-goal` from /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
-        "Skills: `loopx-project`; surprise/conflict",
+        "No runtime `loopx-project`",
         "`loopx-self-repair`",
         "LoopX CLI = truth",
         "state/status/repo",
