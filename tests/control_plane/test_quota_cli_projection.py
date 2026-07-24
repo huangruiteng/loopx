@@ -5,6 +5,7 @@ import json
 from loopx.control_plane.quota.cli_projection import (
     QUOTA_CLI_AGENT_LANE_NEXT_ACTION_DETAIL_COMMAND,
     QUOTA_CLI_CAPABILITY_GATE_DETAIL_COMMAND,
+    QUOTA_CLI_GOAL_BOUNDARY_DETAIL_COMMAND,
     QUOTA_CLI_NEXT_ACTION_PROJECTION_DETAIL_COMMAND,
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     QUOTA_CLI_USER_TODO_SUMMARY_DETAIL_COMMAND,
@@ -497,6 +498,77 @@ def test_compact_quota_should_run_cli_payload_references_next_action_sources() -
         include_capability_gate_detail=True,
         include_agent_lane_next_action_detail=True,
         include_next_action_projection_detail=True,
+        include_vision_audit_detail=True,
+    )
+    assert full == payload
+
+
+def test_compact_quota_should_run_cli_payload_bounds_boundary_authority_entries() -> None:
+    payload = {
+        "goal_boundary": {
+            "checkpointed_boundary_authority": {
+                "schema_version": "checkpointed_boundary_authority_v0",
+                "active_count": 1,
+                "inactive_count": 0,
+                "active_write_scope": ["docs/**"],
+                "entries": [
+                    {
+                        "status": "active",
+                        "decision": "approve",
+                        "write_scope": ["docs/**"],
+                        "source": "public_fixture_owner_approval",
+                    }
+                ],
+            },
+            "write_scope": ["docs/**"],
+            "requires_parent_approval": ["publish"],
+            "guards": ["keep private state out of public changes"],
+            "stop_condition": "stop when owner approval is required",
+        },
+        "interaction_contract": {"mode": "bounded_delivery"},
+        "scheduler_hint": {"action": "run_now"},
+        "selected_todo": {"todo_id": "quality-0"},
+    }
+
+    compact = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_agent_lane_next_action_detail=True,
+        include_next_action_projection_detail=True,
+        include_vision_audit_detail=True,
+    )
+
+    boundary = compact["goal_boundary"]
+    authority = boundary["checkpointed_boundary_authority"]
+    assert "entries" not in authority
+    assert authority["active_count"] == 1
+    assert authority["inactive_count"] == 0
+    assert authority["active_write_scope"] == ["docs/**"]
+    assert authority["payload_compaction"] == {
+        "schema_version": "quota_cli_goal_boundary_compaction_v0",
+        "omitted_entry_count": 1,
+        "full_detail_cold_path": QUOTA_CLI_GOAL_BOUNDARY_DETAIL_COMMAND,
+    }
+    for key in (
+        "write_scope",
+        "requires_parent_approval",
+        "guards",
+        "stop_condition",
+    ):
+        assert boundary[key] == payload["goal_boundary"][key]
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert compact[key] == payload[key]
+
+    full = compact_quota_should_run_cli_payload(
+        payload,
+        include_todo_summary_detail=True,
+        include_user_todo_summary_detail=True,
+        include_capability_gate_detail=True,
+        include_agent_lane_next_action_detail=True,
+        include_next_action_projection_detail=True,
+        include_goal_boundary_detail=True,
         include_vision_audit_detail=True,
     )
     assert full == payload

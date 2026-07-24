@@ -254,6 +254,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-goal-boundary-detail",
+        action="store_true",
+        help=(
+            "Include checkpointed goal-boundary authority entries in "
+            "`quota should-run`. The default keeps effective scope and counts."
+        ),
+    )
+    quota_parser.add_argument(
         "--include-vision-audit-detail",
         action="store_true",
         help=(
@@ -453,6 +461,14 @@ def handle_quota_command(
         ):
             raise ValueError(
                 "--include-next-action-projection-detail is only valid with "
+                "`quota should-run`"
+            )
+        if (
+            bool(getattr(args, "include_goal_boundary_detail", False))
+            and args.quota_command != "should-run"
+        ):
+            raise ValueError(
+                "--include-goal-boundary-detail is only valid with "
                 "`quota should-run`"
             )
         if (
@@ -973,6 +989,9 @@ def handle_quota_command(
             ),
             include_next_action_projection_detail=bool(
                 getattr(args, "include_next_action_projection_detail", False)
+            ),
+            include_goal_boundary_detail=bool(
+                getattr(args, "include_goal_boundary_detail", False)
             ),
             include_vision_audit_detail=bool(
                 getattr(args, "include_vision_audit_detail", False)

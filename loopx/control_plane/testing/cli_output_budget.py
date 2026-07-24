@@ -131,8 +131,8 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
             "--include-todo-summary-detail, --include-user-todo-summary-detail, "
             "--include-capability-gate-detail, "
             "--include-agent-lane-next-action-detail, "
-            "--include-next-action-projection-detail, or "
-            "--include-vision-audit-detail"
+            "--include-next-action-projection-detail, "
+            "--include-goal-boundary-detail, or --include-vision-audit-detail"
         ),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
@@ -421,6 +421,16 @@ CLI_OUTPUT_MODE_VARIANT_SPECS: tuple[CliOutputModeVariantSpec, ...] = (
         variant_id="quota_should_run_next_action_projection_detail",
         parent_surface_id="quota_should_run",
         command="quota should-run --include-next-action-projection-detail",
+        output_formats=("json", "markdown"),
+        semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
+        markdown_anchor="# LoopX Quota Should Run",
+        max_chars={"json": 40_000, "markdown": 7_800},
+        max_lines={"json": 1_000, "markdown": 78},
+    ),
+    CliOutputModeVariantSpec(
+        variant_id="quota_should_run_goal_boundary_detail",
+        parent_surface_id="quota_should_run",
+        command="quota should-run --include-goal-boundary-detail",
         output_formats=("json", "markdown"),
         semantic_json_keys=("interaction_contract", "scheduler_hint", "selected_todo"),
         markdown_anchor="# LoopX Quota Should Run",
