@@ -27,6 +27,7 @@ PublicSafeText = Callable[..., Optional[str]]
 ActionAlignment = Callable[[Any, Any], bool]
 TimestampParser = Callable[[Any], Any]
 AGENT_LANE_NEXT_ACTION_SCHEMA_VERSION = "agent_lane_next_action_v0"
+AGENT_LANE_PROGRESS_SCOPE = "agent_lane"
 
 
 def is_status_neutral_run(
@@ -45,15 +46,23 @@ def latest_agent_lane_run(
     goal: dict[str, Any],
     *,
     agent_lane_progress_scope: str,
+    preferred_agent_id: str | None = None,
 ) -> dict[str, Any] | None:
     runs = goal.get("latest_runs")
     if not isinstance(runs, list):
         return None
+    preferred_agent = normalize_todo_claimed_by(preferred_agent_id)
     for run in runs:
         if not isinstance(run, dict):
             continue
-        if str(run.get("progress_scope") or "") == agent_lane_progress_scope:
-            return run
+        if str(run.get("progress_scope") or "") != agent_lane_progress_scope:
+            continue
+        if (
+            preferred_agent
+            and normalize_todo_claimed_by(run.get("agent_id")) != preferred_agent
+        ):
+            continue
+        return run
     return None
 
 
@@ -84,6 +93,81 @@ def compact_agent_lane_recommendation(
         if run.get(field) is not None:
             compact[field] = run.get(field)
     return compact
+
+
+def scope_status_item_to_agent_lane(
+    item: dict[str, Any],
+    *,
+    latest_runs: list[dict[str, Any]],
+    agent_id: str | None,
+    public_safe_compact_text: PublicSafeText,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+    scoped_item = dict(item)
+    project_asset = (
+        dict(scoped_item.get("project_asset"))
+        if isinstance(scoped_item.get("project_asset"), dict)
+        else {}
+    )
+    safe_agent_id = normalize_todo_claimed_by(agent_id)
+    if not safe_agent_id:
+        return scoped_item, project_asset, None
+    item_had_recommendation = isinstance(
+        scoped_item.get("agent_lane_recommendation"), dict
+    )
+    item_had_latest_action = bool(
+        scoped_item.get("latest_run_recommended_action")
+        or scoped_item.get("latest_run_recommended_action_source")
+    )
+    asset_had_recommendation = isinstance(
+        project_asset.get("agent_lane_recommendation"), dict
+    )
+    asset_had_latest_action = bool(
+        project_asset.get("latest_run_recommended_action")
+        or project_asset.get("latest_run_recommended_action_source")
+    )
+    for field in (
+        "agent_lane_recommendation",
+        "latest_run_recommended_action",
+        "latest_run_recommended_action_source",
+    ):
+        scoped_item.pop(field, None)
+        project_asset.pop(field, None)
+
+    lane_run = latest_agent_lane_run(
+        {"latest_runs": latest_runs},
+        agent_lane_progress_scope=AGENT_LANE_PROGRESS_SCOPE,
+        preferred_agent_id=safe_agent_id,
+    )
+    recommendation = compact_agent_lane_recommendation(
+        lane_run,
+        agent_lane_progress_scope=AGENT_LANE_PROGRESS_SCOPE,
+        public_safe_compact_text=public_safe_compact_text,
+    )
+    lane_action = public_safe_compact_text(
+        recommendation.get("recommended_action")
+        if isinstance(recommendation, dict)
+        else None,
+        limit=320,
+    )
+    if recommendation and lane_action:
+        if item_had_recommendation:
+            scoped_item["agent_lane_recommendation"] = recommendation
+        if item_had_latest_action:
+            scoped_item["latest_run_recommended_action"] = lane_action
+            scoped_item["latest_run_recommended_action_source"] = (
+                "agent_lane_recommendation"
+            )
+        if asset_had_recommendation:
+            project_asset["agent_lane_recommendation"] = recommendation
+        if asset_had_latest_action:
+            project_asset["latest_run_recommended_action"] = lane_action
+            project_asset["latest_run_recommended_action_source"] = (
+                "agent_lane_recommendation"
+            )
+
+    if project_asset:
+        scoped_item["project_asset"] = project_asset
+    return scoped_item, project_asset, recommendation
 
 
 def latest_run_recommended_action_for_projection(
@@ -174,8 +258,18 @@ def selected_recommended_action_from_work_lane(
     *,
     agent_todo_summary: dict[str, Any] | None,
     work_lane_contract: dict[str, Any] | None,
+    agent_lane_recommendation: dict[str, Any] | None = None,
+    prefer_agent_lane_recommendation: bool = False,
 ) -> Any:
     raw_action = item.get("recommended_action")
+    if prefer_agent_lane_recommendation:
+        if isinstance(agent_lane_recommendation, dict):
+            lane_action = agent_lane_recommendation.get("recommended_action")
+            if lane_action:
+                return lane_action
+        if isinstance(work_lane_contract, dict):
+            return work_lane_contract.get("action")
+        return None
     if work_lane_contract_is_lark_inbox_reply_due(work_lane_contract):
         return work_lane_contract.get("action") or raw_action
     if work_lane_contract_is_due_monitor_attempt(work_lane_contract):

@@ -18,6 +18,7 @@ from .control_plane.agents.agent_scope import (
 )
 from .control_plane.agents.agent_lane_recommendation import (
     build_agent_lane_next_action,
+    scope_status_item_to_agent_lane as _scope_status_item_to_agent_lane,
     selected_action_with_agent_lane,
     selected_recommended_action_from_work_lane,
 )
@@ -1445,8 +1446,15 @@ def build_quota_should_run(
         reason = str(quota.get("reason") or "quota state is not eligible")
         if not plan.get("ok"):
             reason = "status or contract health is not ok; skip automatic compute"
-        project_asset = item.get("project_asset") if isinstance(item.get("project_asset"), dict) else {}
         agent_identity = build_quota_agent_identity(item, agent_id=agent_id)
+        item, project_asset, agent_lane_recommendation = (
+            _scope_status_item_to_agent_lane(
+                item=item,
+                latest_runs=_goal_latest_runs(status_payload, goal_id=safe_goal_id),
+                agent_id=agent_id,
+                public_safe_compact_text=_protocol_action_text,
+            )
+        )
         effective_available_capabilities = _effective_available_capabilities(
             available_capabilities,
             item=item,
@@ -1878,6 +1886,8 @@ def build_quota_should_run(
             item,
             agent_todo_summary=agent_todo_summary,
             work_lane_contract=work_lane_contract,
+            agent_lane_recommendation=agent_lane_recommendation,
+            prefer_agent_lane_recommendation=monitor_quiet_skip,
         )
         selected_recommended_action = task_selected_recommended_action(
             task_orchestration_contract,

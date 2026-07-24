@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from loopx.cli_commands.status import attach_agent_lane_next_actions
+from loopx.control_plane.agents.agent_lane_recommendation import (
+    scope_status_item_to_agent_lane,
+    selected_recommended_action_from_work_lane,
+)
+from loopx.control_plane.quota.monitor_poll import build_quota_monitor_poll_event
 from loopx.control_plane.scheduler.execution_context import (
     GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
 )
@@ -14,6 +20,7 @@ from loopx.quota import build_quota_should_run
 GOAL_ID = "monitor-replan-agent-scope-fixture"
 AGENT_ID = "codex-quality-agent"
 PEER_AGENT_ID = "codex-delivery-peer"
+SECOND_PEER_AGENT_ID = "codex-main-control"
 
 
 def _guard(
@@ -178,6 +185,181 @@ def test_interleaved_monitors_keep_independent_no_change_streaks() -> None:
     assert guard["agent_todo_summary"]["payload_compaction"]["compacted_lanes"][
         "monitor_open_items"
     ] == {"shown": 2, "total": 3}
+
+
+def test_three_peer_status_quota_and_monitor_recommendations_stay_agent_scoped() -> None:
+    current_action = "Wait for the quality lane's own material evidence."
+    peer_action = "Advance the delivery peer's unrelated adapter."
+    main_action = "Continue the main-control provider rollout."
+    monitor = quota_todo_item(
+        todo_id="todo_quality_monitor",
+        index=1,
+        title="Watch the quality qualification evidence.",
+        task_class="continuous_monitor",
+        claimed_by=AGENT_ID,
+        target_key="quality-evidence",
+        consecutive_no_change="0",
+        cadence="30m",
+        next_due_at="2099-01-01T00:00:00+00:00",
+    )
+    blocker = quota_todo_item(
+        todo_id="todo_quality_prerequisite",
+        index=2,
+        title="Complete the quality baseline prerequisite.",
+        task_class="advancement_task",
+        claimed_by=SECOND_PEER_AGENT_ID,
+        successor_todo_ids=["todo_quality_baseline"],
+    )
+    blocked_successor = quota_todo_item(
+        todo_id="todo_quality_baseline",
+        index=3,
+        status="deferred",
+        title="Run the release outcome baseline.",
+        task_class="advancement_task",
+        claimed_by=AGENT_ID,
+        resume_when="todo_done:todo_quality_prerequisite",
+    )
+    peer_recommendation = {
+        "schema_version": "agent_lane_recommendation_v0",
+        "progress_scope": "agent_lane",
+        "agent_id": PEER_AGENT_ID,
+        "recommended_action": peer_action,
+        "generated_at": "2026-07-24T03:20:00+00:00",
+    }
+    payload = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        recommended_action=main_action,
+        agent_todos=quota_todo_summary([monitor, blocker, blocked_successor]),
+        coordination={
+            "agent_model": "peer_v1",
+            "registered_agents": [
+                AGENT_ID,
+                PEER_AGENT_ID,
+                SECOND_PEER_AGENT_ID,
+            ],
+        },
+        latest_runs=[
+            {
+                "classification": "main_control_progress",
+                "generated_at": "2026-07-24T03:30:00+00:00",
+                "agent_id": SECOND_PEER_AGENT_ID,
+                "progress_scope": "goal",
+                "recommended_action": main_action,
+                "delivery_outcome": "outcome_progress",
+            },
+            {
+                "classification": "delivery_peer_progress",
+                "generated_at": "2026-07-24T03:20:00+00:00",
+                "agent_id": PEER_AGENT_ID,
+                "progress_scope": "agent_lane",
+                "recommended_action": peer_action,
+                "delivery_outcome": "outcome_progress",
+            },
+            {
+                "classification": "quality_lane_progress",
+                "generated_at": "2026-07-24T03:10:00+00:00",
+                "agent_id": AGENT_ID,
+                "progress_scope": "agent_lane",
+                "recommended_action": current_action,
+                "delivery_outcome": "outcome_progress",
+                "agent_vision": {
+                    "schema_version": "goal_vision_replan_contract_v0",
+                    "agent_id": AGENT_ID,
+                    "state": "vision_active",
+                    "vision_patch": {
+                        "acceptance_summary": (
+                            "Keep quality qualification advancing until closed."
+                        ),
+                        "advancement_policy": "repeat_until_closed",
+                        "replan_trigger_summary": (
+                            "Replan when the quality baseline remains unavailable."
+                        ),
+                    },
+                },
+            },
+        ],
+        item_extra={
+            "agent_lane_recommendation": peer_recommendation,
+            "latest_run_recommended_action": main_action,
+            "latest_run_recommended_action_source": "latest_status_run",
+        },
+        project_asset_extra={
+            "agent_lane_recommendation": peer_recommendation,
+            "latest_run_recommended_action": main_action,
+            "latest_run_recommended_action_source": "latest_status_run",
+        },
+    )
+
+    guard = build_quota_should_run(
+        payload,
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        scheduler_execution_context=(
+            GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT
+        ),
+    )
+
+    assert guard["effective_action"] == "monitor_quiet_skip"
+    assert guard["recommended_action"] == current_action
+    assert guard["latest_run_recommended_action"] == current_action
+    event = build_quota_monitor_poll_event(guard)
+    assert event["agent_id"] == AGENT_ID
+    assert event["recommended_action"] == current_action
+
+    attach_agent_lane_next_actions(payload, agent_id=AGENT_ID)
+    item = payload["attention_queue"]["items"][0]
+    assert item["recommended_action"] == main_action
+    assert item["latest_run_recommended_action"] == current_action
+    assert item["agent_lane_recommendation"]["agent_id"] == AGENT_ID
+    assert item["project_asset"]["next_action"] == main_action
+    assert item["project_asset"]["latest_run_recommended_action"] == current_action
+
+
+def test_monitor_quiet_without_own_lane_run_drops_peer_recommendation() -> None:
+    peer_action = "Advance the delivery peer's unrelated adapter."
+    monitor_action = "wait quietly for material monitor evidence"
+    item, project_asset, recommendation = scope_status_item_to_agent_lane(
+        {
+            "recommended_action": peer_action,
+            "agent_lane_recommendation": {
+                "agent_id": PEER_AGENT_ID,
+                "recommended_action": peer_action,
+            },
+            "latest_run_recommended_action": peer_action,
+            "project_asset": {
+                "agent_lane_recommendation": {
+                    "agent_id": PEER_AGENT_ID,
+                    "recommended_action": peer_action,
+                },
+                "latest_run_recommended_action": peer_action,
+            },
+        },
+        latest_runs=[
+            {
+                "agent_id": PEER_AGENT_ID,
+                "progress_scope": "agent_lane",
+                "recommended_action": peer_action,
+            }
+        ],
+        agent_id=AGENT_ID,
+        public_safe_compact_text=lambda value, **_: str(value) if value else None,
+    )
+
+    assert recommendation is None
+    assert "agent_lane_recommendation" not in item
+    assert "latest_run_recommended_action" not in item
+    assert "agent_lane_recommendation" not in project_asset
+    assert (
+        selected_recommended_action_from_work_lane(
+            item,
+            agent_todo_summary=None,
+            work_lane_contract={"action": monitor_action},
+            agent_lane_recommendation=recommendation,
+            prefer_agent_lane_recommendation=True,
+        )
+        == monitor_action
+    )
 
 
 def _combined_user_frontier_guard(*, user_task_class: str) -> dict:

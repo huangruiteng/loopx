@@ -739,7 +739,11 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
         if not goal_id:
             continue
         try:
-            guard = build_quota_should_run(payload, goal_id=goal_id, agent_id=safe_agent_id)
+            guard = build_quota_should_run(
+                payload,
+                goal_id=goal_id,
+                agent_id=safe_agent_id,
+            )
         except Exception:
             continue
         next_action = guard.get("agent_lane_next_action")
@@ -811,6 +815,43 @@ def attach_agent_lane_next_actions(payload: dict[str, object], *, agent_id: str)
                 project_asset["agent_reward_memory"] = reward_memory_projection
             reward_memory_attached += 1
             changed = True
+        latest_action = guard.get("latest_run_recommended_action")
+        for target in (item, project_asset):
+            if not isinstance(target, dict):
+                continue
+            existing_recommendation = target.get("agent_lane_recommendation")
+            had_latest_action = bool(
+                target.get("latest_run_recommended_action")
+                or target.get("latest_run_recommended_action_source")
+            )
+            for field in (
+                "agent_lane_recommendation",
+                "latest_run_recommended_action",
+                "latest_run_recommended_action_source",
+            ):
+                target.pop(field, None)
+            if isinstance(existing_recommendation, dict):
+                existing_agent_id = normalize_todo_claimed_by(
+                    existing_recommendation.get("agent_id")
+                )
+                if existing_agent_id == safe_agent_id:
+                    target["agent_lane_recommendation"] = existing_recommendation
+                elif latest_action:
+                    target["agent_lane_recommendation"] = {
+                        "schema_version": existing_recommendation.get(
+                            "schema_version"
+                        )
+                        or "agent_lane_recommendation_v0",
+                        "progress_scope": "agent_lane",
+                        "agent_id": safe_agent_id,
+                        "recommended_action": latest_action,
+                    }
+            if had_latest_action and latest_action:
+                target["latest_run_recommended_action"] = latest_action
+                target["latest_run_recommended_action_source"] = (
+                    "agent_lane_recommendation"
+                )
+        changed = True
         if not changed:
             continue
     if (
