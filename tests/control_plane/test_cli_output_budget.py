@@ -497,6 +497,18 @@ def _mode_variant_commands(
             str(project),
             "--include-todo-summary-detail",
         ],
+        "quota_should_run_user_todo_summary_detail": common
+        + [
+            "quota",
+            "should-run",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_IDS[0],
+            "--scan-root",
+            str(project),
+            "--include-user-todo-summary-detail",
+        ],
         "quota_should_run_vision_audit_detail": common
         + [
             "quota",
@@ -622,6 +634,7 @@ def test_manifest_covers_the_declared_agent_facing_surface_set() -> None:
         "bootstrap_command_pack_message_only",
         "quota_should_run_scheduler_detail",
         "quota_should_run_todo_summary_detail",
+        "quota_should_run_user_todo_summary_detail",
         "quota_should_run_vision_audit_detail",
         "quota_should_run_turn_envelope",
         "loopx_turn_plan_transaction_detail",
@@ -705,6 +718,79 @@ def test_quota_cli_keeps_full_agent_todo_diagnostics_on_explicit_cold_path(
     assert "backlog_items" not in default_summary
     assert detail_summary["backlog_items"]
     assert "todo_summary_projection" not in detail_payload
+    for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
+        assert default_payload[key] == detail_payload[key]
+
+
+def test_quota_cli_keeps_full_user_todo_diagnostics_on_explicit_cold_path(
+    tmp_path: Path,
+) -> None:
+    with _stable_budget_fixture_root(tmp_path / "quota-user-todo-detail") as stable_root:
+        project, runtime, registry_path, state_file = _write_fixture(
+            stable_root,
+            SCENARIOS[2],
+        )
+        state_text = state_file.read_text(encoding="utf-8")
+        user_section = "\n".join(
+            [
+                "## User Todo",
+                "",
+                "- [ ] [P0-user] Approve the scoped output release.",
+                (
+                    "  <!-- loopx:todo todo_id=todo_user_gate_001 status=open "
+                    "task_class=user_gate action_kind=approve_output_release "
+                    "blocks_agent=codex-alpha "
+                    "decision_scope=release:action:quota-output priority=P0-USER -->"
+                ),
+                "- [ ] [P1] Review the other agent output notes.",
+                (
+                    "  <!-- loopx:todo todo_id=todo_user_action_001 status=open "
+                    "task_class=user_action action_kind=review_output_notes "
+                    "bound_agent=codex-beta priority=P1 -->"
+                ),
+                "",
+            ]
+        )
+        state_file.write_text(
+            state_text.replace("## Agent Todo", f"{user_section}\n## Agent Todo"),
+            encoding="utf-8",
+        )
+        default_command = _surface_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run"]
+        detail_command = _mode_variant_commands(
+            project=project,
+            runtime=runtime,
+            registry_path=registry_path,
+            state_file=state_file,
+            output_format="json",
+        )["quota_should_run_user_todo_summary_detail"]
+
+        default_exit_code, default_text = _invoke_cli(default_command)
+        detail_exit_code, detail_text = _invoke_cli(detail_command)
+
+    assert default_exit_code == 0, default_text
+    assert detail_exit_code == 0, detail_text
+    default_payload = json.loads(default_text)
+    detail_payload = json.loads(detail_text)
+    default_summary = default_payload["user_todo_summary"]
+    detail_summary = detail_payload["user_todo_summary"]
+    assert default_summary["payload_compaction"]["schema_version"] == (
+        "quota_cli_user_todo_summary_compaction_v0"
+    )
+    assert default_payload["todo_summary_projection"]["role_detail_refs"]["user"] == (
+        "quota should-run --include-user-todo-summary-detail"
+    )
+    assert default_summary["gate_open_items"][0]["todo_id"] == "todo_user_gate_001"
+    assert default_summary["gate_open_items"][0]["blocks_agent"] == "codex-alpha"
+    assert "other_agent_bound_user_action_items" not in default_summary
+    assert detail_summary["other_agent_bound_user_action_items"][0]["todo_id"] == (
+        "todo_user_action_001"
+    )
     for key in ("interaction_contract", "scheduler_hint", "selected_todo"):
         assert default_payload[key] == detail_payload[key]
 
