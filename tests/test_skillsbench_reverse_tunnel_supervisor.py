@@ -44,6 +44,16 @@ raise SystemExit(0)
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
+def _write_fake_codex(path: Path) -> None:
+    path.write_text(
+        """#!/bin/sh
+exit 0
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
 def test_supervisor_writes_starting_periodic_and_terminal_public_liveness(
     tmp_path: Path,
     monkeypatch,
@@ -204,3 +214,75 @@ def test_supervisor_projects_only_allowlisted_remote_failure_subtype(
     assert "--private-value" not in public_text
     assert "usage: runner" not in public_text
     assert persisted["raw_remote_output_recorded"] is False
+
+
+def test_supervisor_codex_bridge_preflight_is_task_free_and_public_safe(
+    tmp_path: Path,
+) -> None:
+    supervisor = _load_supervisor_module()
+    fake_ssh = tmp_path / "fake-ssh"
+    fake_codex = tmp_path / "fake-codex"
+    public_output = tmp_path / "public" / "supervisor.public.json"
+    _write_fake_ssh(fake_ssh)
+    _write_fake_codex(fake_codex)
+    private_socket = "/tmp/private-codex-socket"
+    private_client = "/tmp/private-codex-client"
+    private_prompt_bridge = "private-prompt-bridge sentinel-bridge"
+    args = supervisor.parse_args(
+        [
+            "--ssh-bin",
+            str(fake_ssh),
+            "--ssh-destination",
+            "runner.example",
+            "--codex-bridge",
+            "--codex-bin",
+            str(fake_codex),
+            "--codex-remote-socket",
+            private_socket,
+            "--codex-remote-client-path",
+            private_client,
+            "--codex-prompt-bridge-command",
+            private_prompt_bridge,
+            "--codex-participant-sandbox",
+            "workspace-write",
+            "--preflight-only",
+            "--public-output-path",
+            str(public_output),
+            "--probe-interval-sec",
+            "0.01",
+            "--probe-timeout-sec",
+            "1",
+            "--tunnel-ready-timeout-sec",
+            "1",
+            "--codex-socket-ready-timeout-sec",
+            "1",
+            "--codex-participant-probe-timeout-sec",
+            "1",
+        ]
+    )
+
+    returncode, payload = supervisor.run_supervisor(args)
+    persisted = json.loads(public_output.read_text(encoding="utf-8"))
+    public_text = json.dumps(persisted, sort_keys=True)
+
+    assert returncode == 0
+    assert payload["ok"] is True
+    assert persisted == payload
+    assert persisted["remote_command_requested"] is False
+    assert persisted["codex_bridge"]["enabled"] is True
+    assert persisted["codex_bridge"]["server_started"] is True
+    assert persisted["codex_bridge"]["local_socket_ready"] is True
+    assert persisted["codex_bridge"]["remote_socket_ready"] is True
+    assert persisted["codex_bridge"]["remote_client_materialized"] is True
+    assert persisted["codex_bridge"]["participant_probe_passed"] is True
+    assert persisted["codex_bridge"]["participant_probe"]["sandbox"] == (
+        "workspace-write"
+    )
+    assert persisted["codex_bridge"]["participant_probe"]["raw_output_recorded"] is (
+        False
+    )
+    assert private_socket not in public_text
+    assert private_client not in public_text
+    assert private_prompt_bridge not in public_text
+    assert "runner.example" not in public_text
+    assert "sentinel-bridge" not in public_text

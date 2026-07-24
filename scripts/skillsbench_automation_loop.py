@@ -2094,6 +2094,8 @@ def install_benchflow_docker_exec_output_capture(
 def _host_local_acp_codex_exec_preflight_command(
     args: argparse.Namespace,
     plan: dict[str, Any],
+    *,
+    sandbox_bridge_command: str | None = None,
 ) -> list[str]:
     local_acp_relay_command = getattr(args, "local_acp_relay_command", None)
     if local_acp_relay_command:
@@ -2132,7 +2134,10 @@ def _host_local_acp_codex_exec_preflight_command(
                 str(Path(relay_trace_dir) / "codex-exec-preflight"),
             ]
         )
-    if _host_local_acp_codex_exec_preflight_requires_bridge_action(args):
+    if _host_local_acp_codex_exec_preflight_requires_bridge_action(
+        args,
+        sandbox_bridge_command=sandbox_bridge_command,
+    ):
         command.extend(
             [
                 "--remote-command-file-bridge-command",
@@ -2160,6 +2165,17 @@ def _host_local_acp_codex_exec_preflight_command(
         )
         if agent_command:
             command.extend(["--remote-command-file-bridge-agent-command", agent_command])
+    if sandbox_bridge_command:
+        command = _set_option_value(
+            command,
+            "--remote-command-file-bridge-command",
+            sandbox_bridge_command,
+        )
+        command = _set_option_value(
+            command,
+            "--remote-command-file-bridge-agent-command",
+            sandbox_bridge_command,
+        )
     return command
 
 
@@ -2168,13 +2184,20 @@ def _host_local_acp_codex_exec_preflight_should_run(
 ) -> bool:
     """Return whether the host-local Codex exec path must be probed first."""
 
-    if bool(getattr(args, "setup_only_public_preflight", False)):
-        return False
     route = str(getattr(args, "route", "") or "")
-    if bool(getattr(args, "host_local_acp_launch", False)) and route in {
-        CODEX_APP_SERVER_GOAL_BASELINE_ROUTE,
-        CODEX_CLI_GOAL_BASELINE_ROUTE,
-    }:
+    local_codex_provider = str(
+        getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+    )
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and route == CODEX_APP_SERVER_GOAL_BASELINE_ROUTE
+    ):
+        return False
+    if (
+        bool(getattr(args, "host_local_acp_launch", False))
+        and route == CODEX_CLI_GOAL_BASELINE_ROUTE
+        and local_codex_provider != "reverse-channel"
+    ):
         return False
     if bool(getattr(args, "host_local_acp_codex_exec_preflight", False)):
         return True
@@ -2187,12 +2210,30 @@ def _host_local_acp_codex_exec_preflight_should_run(
 
 def _host_local_acp_codex_exec_preflight_requires_bridge_action(
     args: argparse.Namespace,
+    *,
+    sandbox_bridge_command: str | None = None,
+    require_materialized_sandbox_bridge: bool = False,
 ) -> bool:
+    route = str(getattr(args, "route", "") or "")
+    local_codex_provider = str(
+        getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+    )
     return bool(
         getattr(args, "host_local_acp_launch", False)
-        and str(getattr(args, "route", "") or "")
-        in HOST_LOCAL_BRIDGE_ROUTES
-        and str(getattr(args, "remote_command_file_bridge_solver_command", "") or "")
+        and (
+            route in HOST_LOCAL_BRIDGE_ROUTES
+            or (
+                route == CODEX_CLI_GOAL_BASELINE_ROUTE
+                and local_codex_provider == "reverse-channel"
+            )
+        )
+        and (
+            require_materialized_sandbox_bridge
+            or bool(sandbox_bridge_command)
+            or str(
+                getattr(args, "remote_command_file_bridge_solver_command", "") or ""
+            )
+        )
         and (
             bool(getattr(args, "remote_command_file_bridge_ready", False))
             or bool(getattr(args, "remote_command_file_bridge_probe", False))
@@ -2335,12 +2376,15 @@ def _first_bridge_failure_category(bridge_summary: dict[str, Any]) -> str:
 def _run_host_local_acp_codex_exec_preflight(
     args: argparse.Namespace,
     plan: dict[str, Any],
+    *,
+    sandbox_bridge_command: str | None = None,
 ) -> None:
     prerequisites = plan.setdefault("runner_prerequisites", {})
     prerequisites["host_local_acp_codex_exec_preflight_requested"] = True
     prerequisites["host_local_acp_codex_exec_preflight_status"] = "running"
     bridge_action_required = _host_local_acp_codex_exec_preflight_requires_bridge_action(
-        args
+        args,
+        sandbox_bridge_command=sandbox_bridge_command,
     )
     prerequisites["host_local_acp_codex_exec_preflight_bridge_action_required"] = (
         bridge_action_required
@@ -2349,7 +2393,11 @@ def _run_host_local_acp_codex_exec_preflight(
         1,
         int(getattr(args, "host_local_acp_codex_exec_preflight_attempts", 1) or 1),
     )
-    command = _host_local_acp_codex_exec_preflight_command(args, plan)
+    command = _host_local_acp_codex_exec_preflight_command(
+        args,
+        plan,
+        sandbox_bridge_command=sandbox_bridge_command,
+    )
     target_env = _host_local_acp_target_env({}, args=args)
     prerequisites["host_local_acp_target_env_forwarded"] = bool(target_env)
     prerequisites["host_local_acp_target_env_key_count"] = len(target_env)
@@ -2729,6 +2777,7 @@ def _public_runner_prerequisites(value: Any) -> dict[str, Any]:
         "host_local_acp_pwd_probe_exception_type",
         "host_local_acp_pwd_probe_stdout_type",
         "host_local_acp_codex_exec_preflight_status",
+        "host_local_acp_codex_exec_preflight_placement",
         "host_local_acp_codex_exec_preflight_stage",
         "host_local_acp_codex_exec_preflight_first_blocker",
         "host_local_acp_codex_exec_failure_category",
@@ -9021,6 +9070,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "run_group_id": str(args.run_group_id or ""),
         "sandbox": args.sandbox,
+        "local_codex_provider": str(
+            getattr(args, "local_codex_provider", "exact-host") or "exact-host"
+        ),
         "docker_apt_source_mode": docker_apt_source_mode,
         "docker_apt_transport_mode": docker_apt_transport_mode,
         "docker_pip_index_mode": args.docker_pip_index_mode,
@@ -9603,6 +9655,7 @@ def _public_runner_config(plan: dict[str, Any]) -> dict[str, Any]:
         "app_server_reasoning_effort",
         "app_server_goal_prompt_style",
         "sandbox",
+        "local_codex_provider",
         "docker_apt_source_mode",
         "docker_apt_transport_mode",
         "docker_pip_index_mode",
@@ -14112,6 +14165,47 @@ async def run_benchflow_case(
         *verifier_dependency_cache_mounts,
     ]
 
+    async def run_host_local_acp_codex_exec_preflight_after_environment(
+        env: Any,
+    ) -> None:
+        prerequisites = plan.setdefault("runner_prerequisites", {})
+        prerequisites["host_local_acp_codex_exec_preflight_placement"] = (
+            "after_sandbox_setup_before_agent"
+        )
+        sandbox_bridge_command = _host_local_acp_docker_bridge_command(
+            env,
+            args,
+            plan,
+        )
+        if (
+            _host_local_acp_codex_exec_preflight_requires_bridge_action(
+                args,
+                require_materialized_sandbox_bridge=True,
+            )
+            and not sandbox_bridge_command
+        ):
+            prerequisites["host_local_acp_codex_exec_preflight_status"] = "failed"
+            prerequisites["host_local_acp_codex_exec_preflight_ready"] = False
+            prerequisites["host_local_acp_codex_exec_preflight_first_blocker"] = (
+                "skillsbench_host_local_acp_sandbox_bridge_missing_after_setup"
+            )
+            prerequisites["host_local_acp_codex_exec_failure_category"] = (
+                "codex_sandbox_bridge_unavailable"
+            )
+            raise RuntimeError(
+                "host-local ACP sandbox bridge missing after environment setup"
+            )
+        try:
+            await asyncio.to_thread(
+                _run_host_local_acp_codex_exec_preflight,
+                args,
+                plan,
+                sandbox_bridge_command=sandbox_bridge_command,
+            )
+        finally:
+            _write_public_runner_config(plan)
+            _write_public_runner_prerequisites(plan)
+
     async def connect_host_local_acp(
         env: Any,
         agent: str,
@@ -14874,6 +14968,13 @@ async def run_benchflow_case(
     if _is_case_loopx_route(args.route) and not args.host_local_acp_launch:
         if not setup_only_public_preflight:
             pre_agent_hooks.append(seed_product_mode_case_state)
+    if (
+        not setup_only_public_preflight
+        and _host_local_acp_codex_exec_preflight_should_run(args)
+    ):
+        pre_agent_hooks.append(
+            run_host_local_acp_codex_exec_preflight_after_environment
+        )
 
     agent_env: dict[str, str] = {}
     if runtime_mounts:
@@ -15050,6 +15151,11 @@ async def run_benchflow_case(
                 progress_callback=lambda progress: _write_setup_only_public_preflight(
                     plan,
                     progress,
+                ),
+                environment_ready_hook=(
+                    run_host_local_acp_codex_exec_preflight_after_environment
+                    if _host_local_acp_codex_exec_preflight_should_run(args)
+                    else None
                 ),
             )
             plan["setup_only_public_preflight_result"] = setup_only_result
@@ -16728,6 +16834,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Codex CLI binary for --local-codex-participant-ping.",
     )
     parser.add_argument(
+        "--local-codex-provider",
+        choices=("exact-host", "reverse-channel"),
+        default="exact-host",
+        help=(
+            "Structured host placement for Codex. reverse-channel enables the "
+            "fixed pre-agent bridge receipt for split-control launches."
+        ),
+    )
+    parser.add_argument(
         "--local-codex-sandbox",
         choices=("read-only", "workspace-write", "danger-full-access"),
         default="workspace-write",
@@ -17409,14 +17524,6 @@ async def _async_main_with_observable_handle(
         finally:
             _write_public_runner_config(plan)
             _write_public_runner_prerequisites(plan)
-
-    if (
-        _host_local_acp_codex_exec_preflight_should_run(args)
-        and args.host_local_acp_launch
-        and not args.reduce_only
-        and not args.setup_only_public_preflight
-    ):
-        _run_host_local_acp_codex_exec_preflight(args, plan)
 
     if not args.reduce_only:
         _write_public_runner_config(plan)

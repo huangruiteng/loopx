@@ -5,6 +5,7 @@ import json
 import os
 import shlex
 import stat
+import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -12,6 +13,9 @@ from typing import Any
 
 
 SKILLSBENCH_RUNNER_PROFILE_SCHEMA_VERSION = "skillsbench_runner_profile_v0"
+SKILLSBENCH_RUNNER_CONNECTIVITY_PROBE_SCHEMA_VERSION = (
+    "skillsbench_runner_connectivity_probe_v0"
+)
 SKILLSBENCH_RUNNER_PROFILE_RELATIVE_PATH = Path(
     "loopx/skillsbench/runner-profile.json"
 )
@@ -175,6 +179,63 @@ def skillsbench_runner_profile_summary(
     }
 
 
+def probe_skillsbench_runner_connectivity(
+    profile: Mapping[str, str],
+    *,
+    timeout_seconds: int = 15,
+) -> dict[str, Any]:
+    ssh_options: list[str] = []
+    try:
+        options = shlex.split(str(profile.get("SKILLSBENCH_SSH_OPTIONS") or ""))
+    except ValueError as error:
+        raise SkillsBenchRunnerProfileError("ssh_options_invalid") from error
+    for option in options:
+        ssh_options.extend(["-o", option])
+    destination = str(profile.get("SKILLSBENCH_SSH_DESTINATION") or "")
+    if not destination:
+        raise SkillsBenchRunnerProfileError("required_runner_environment_missing")
+    try:
+        completed = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={timeout_seconds}",
+                *ssh_options,
+                destination,
+                "true",
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout_seconds + 5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {
+            "ok": True,
+            "schema_version": SKILLSBENCH_RUNNER_CONNECTIVITY_PROBE_SCHEMA_VERSION,
+            "reachable": False,
+            "result": "transport_unavailable",
+            "task_material_read": False,
+            "benchmark_job_launched": False,
+            "raw_output_recorded": False,
+            "profile_values_recorded": False,
+        }
+    return {
+        "ok": True,
+        "schema_version": SKILLSBENCH_RUNNER_CONNECTIVITY_PROBE_SCHEMA_VERSION,
+        "reachable": completed.returncode == 0,
+        "result": (
+            "reachable" if completed.returncode == 0 else "transport_unavailable"
+        ),
+        "task_material_read": False,
+        "benchmark_job_launched": False,
+        "raw_output_recorded": False,
+        "profile_values_recorded": False,
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -183,11 +244,13 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("export-shell", "inspect"):
+    for name in ("export-shell", "inspect", "probe-ssh"):
         command = commands.add_parser(name)
         command.add_argument("--profile", type=Path)
         if name == "export-shell":
             command.add_argument("--if-present", action="store_true")
+        if name == "probe-ssh":
+            command.add_argument("--timeout-seconds", type=int, default=15)
     capture = commands.add_parser("capture")
     capture.add_argument("--profile", type=Path)
     capture.add_argument("--force", action="store_true")
@@ -216,6 +279,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "inspect":
             print(json.dumps(skillsbench_runner_profile_summary(profile), sort_keys=True))
             return 0
+        if args.command == "probe-ssh":
+            if args.timeout_seconds < 1:
+                raise SkillsBenchRunnerProfileError("probe_timeout_invalid")
+            summary = probe_skillsbench_runner_connectivity(
+                profile,
+                timeout_seconds=args.timeout_seconds,
+            )
+            print(json.dumps(summary, sort_keys=True))
+            return 0 if summary["reachable"] else 3
         exports = skillsbench_runner_profile_shell_exports(profile)
         if exports:
             print(exports)

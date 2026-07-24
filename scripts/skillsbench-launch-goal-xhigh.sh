@@ -45,6 +45,10 @@ Optional env:
   SKILLSBENCH_REASONING_EFFORT         Reasoning effort, default xhigh
   SKILLSBENCH_REMOTE_CODEX_BIN          Codex CLI executable on remote runner;
                                        default codex from remote PATH
+  SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL Set to 1 to run Codex locally through
+                                       the opt-in reverse-channel provider
+  SKILLSBENCH_LOCAL_CODEX_BIN           Local Codex executable for split
+                                       control; default codex from local PATH
   SKILLSBENCH_LOCAL_CODEX_SANDBOX      Host Codex sandbox mode; default
                                        workspace-write
   SKILLSBENCH_CLI_GOAL_THREAD_PREWARM  Set to 1 to prewarm the persisted Codex
@@ -209,6 +213,8 @@ if [[ -n "${SKILLSBENCH_SSH_OPTIONS:-}" ]]; then
 fi
 
 remote_codex_bin="${SKILLSBENCH_REMOTE_CODEX_BIN:-codex}"
+local_codex_split_control="${SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL:-0}"
+local_codex_bin="${SKILLSBENCH_LOCAL_CODEX_BIN:-codex}"
 local_codex_sandbox="${SKILLSBENCH_LOCAL_CODEX_SANDBOX:-workspace-write}"
 codex_cli_goal_thread_prewarm="${SKILLSBENCH_CLI_GOAL_THREAD_PREWARM:-0}"
 if [[ "$codex_cli_goal_thread_prewarm" != "0" && "$codex_cli_goal_thread_prewarm" != "1" ]]; then
@@ -248,6 +254,13 @@ validate_bool_toggle \
   SKILLSBENCH_ALLOW_STAGED_BOOTSTRAP_REPAIR_RUN "$allow_staged_bootstrap_repair_run"
 validate_bool_toggle \
   SKILLSBENCH_SETUP_ONLY_PUBLIC_PREFLIGHT "$setup_only_public_preflight"
+validate_bool_toggle \
+  SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL "$local_codex_split_control"
+if [[ "$local_codex_split_control" == "1" ]] &&
+  [[ "$local_codex_sandbox" != "workspace-write" ]]; then
+  echo "SKILLSBENCH_LOCAL_CODEX_SPLIT_CONTROL requires SKILLSBENCH_LOCAL_CODEX_SANDBOX=workspace-write" >&2
+  exit 2
+fi
 if [[ "$benchmark_egress_proxy_mode" != "require" ]] &&
   [[ "$benchmark_egress_proxy_mode" != "auto" ]] &&
   [[ "$benchmark_egress_proxy_mode" != "off" ]]; then
@@ -293,7 +306,10 @@ if [[ -n "${SKILLSBENCH_REMOTE_CODEX_BIN:-}" ]]; then
   remote_codex_bin_mode="explicit"
 fi
 exact_host_codex_sandbox_preflight="not_required"
-if [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
+if [[ "$local_codex_split_control" == "1" ]]; then
+  remote_codex_bin_mode="split_control_client"
+  exact_host_codex_sandbox_preflight="split_control_not_applicable"
+elif [[ "$dry_run" == "false" && "$setup_only_public_preflight" != "1" ]]; then
   if [[ "$remote_codex_bin" == */* ]]; then
     printf -v remote_codex_probe \
       'test -x %q && %q --version >/dev/null 2>&1' \
@@ -502,6 +518,13 @@ while True:
     threading.Thread(target=pipe, args=(client, upstream), daemon=True).start()
 '
 extra_runner_args=()
+if [[ "$local_codex_split_control" == "1" ]]; then
+  extra_runner_args+=(
+    --local-codex-provider reverse-channel
+    --host-local-acp-codex-exec-preflight
+    --host-local-acp-codex-exec-preflight-attempts 1
+  )
+fi
 if [[ "$codex_cli_goal_thread_prewarm" == "1" ]]; then
   extra_runner_args+=(--codex-cli-goal-thread-prewarm)
 fi
@@ -579,6 +602,23 @@ fi
 
 run_group="skillsbench-codex-cli-goal-xhigh-${safe_task}-${tag}-${stamp}"
 job_name="${safe_task}__codex_cli_goal_xhigh_${tag}_${stamp}"
+codex_channel_id="$(
+  python3 - "$job_name" <<'PY'
+import hashlib
+import sys
+
+print(hashlib.sha256(sys.argv[1].encode("utf-8")).hexdigest()[:16])
+PY
+)"
+codex_remote_socket="/tmp/loopx-codex-${codex_channel_id}.sock"
+codex_remote_client="/tmp/loopx-codex-${codex_channel_id}"
+codex_prompt_bridge_command=$(
+  printf '%q ' ssh "${ssh_command_options[@]}" \
+    "$SKILLSBENCH_SSH_DESTINATION" env
+  printf '%s ' '{loopx_allowed_env}'
+  printf '%q ' bash -lc
+  printf '%s' '{private_bridge_command_sh}'
+)
 if [[ -n "${SKILLSBENCH_LEDGER_CATCHUP_GROUP:-}" ]]; then
   ledger_catchup_group="$SKILLSBENCH_LEDGER_CATCHUP_GROUP"
 elif [[ -n "${SKILLSBENCH_CANONICAL_CASE_IDS_FILE:-}" ]]; then
@@ -621,7 +661,13 @@ remote_command=$(
     --docker-pip-index-mode "$docker_pip_index_mode" \
     --docker-pip-build-mode "$docker_pip_build_mode" \
     --host-local-acp-launch \
-    --local-codex-bin "$remote_codex_bin" \
+    --local-codex-bin
+  if [[ "$local_codex_split_control" == "1" ]]; then
+    printf '%s ' '{codex_bridge_client}'
+  else
+    printf '%q ' "$remote_codex_bin"
+  fi
+  printf '%q ' \
     --local-codex-sandbox "$local_codex_sandbox" \
     --remote-command-file-bridge-probe \
     --run-group-id "$run_group" \
@@ -661,6 +707,17 @@ supervisor_cmd=(
   --public-output-path "${public_dir}/supervisor.public.json"
 )
 
+if [[ "$local_codex_split_control" == "1" ]]; then
+  supervisor_cmd+=(
+    --codex-bridge
+    --codex-bin "$local_codex_bin"
+    --codex-remote-socket "$codex_remote_socket"
+    --codex-remote-client-path "$codex_remote_client"
+    --codex-prompt-bridge-command "$codex_prompt_bridge_command"
+    --codex-participant-sandbox "$local_codex_sandbox"
+  )
+fi
+
 if [[ "$setup_only_public_preflight" != "1" ]]; then
   supervisor_cmd+=(
     --local-run-ledger-path "$local_run_ledger"
@@ -695,6 +752,9 @@ if [[ "$dry_run" == "true" ]]; then
   printf 'docker_proxy_endpoint_mode=%s\n' "$docker_proxy_endpoint_mode"
   printf 'docker_api_version=%s\n' "$docker_api_version"
   printf 'remote_codex_bin_mode=%s\n' "$remote_codex_bin_mode"
+  printf 'local_codex_split_control=%s\n' "$local_codex_split_control"
+  printf 'local_codex_provider=%s\n' \
+    "$([[ "$local_codex_split_control" == "1" ]] && echo reverse_channel || echo exact_host)"
   printf 'runner_profile_loaded=%s\n' "$runner_profile_loaded"
   printf 'runner_profile_path_recorded=false\n'
   printf 'runner_profile_values_recorded=false\n'
@@ -733,12 +793,23 @@ if [[ "$dry_run" == "true" ]]; then
     printf 'standard_aggregate=%s\n' "$standard_aggregate"
   fi
   if [[ "$runner_profile_loaded" == "true" ]] ||
+    [[ "$local_codex_split_control" == "1" ]] ||
     [[ -n "$remote_command_file_bridge_probe_command" ]] ||
     [[ -n "$remote_command_file_bridge_solver_command" ]] ||
     [[ -n "$remote_command_file_bridge_agent_command" ]] ||
     [[ -n "$loopx_turn_validation_command" ]]; then
     printf 'private_runner_command_values_redacted=true\n'
     printf 'private_runner_arg_names='
+    [[ "$local_codex_split_control" == "1" ]] &&
+      printf '%s ' --codex-bridge --codex-bin --codex-remote-socket
+    [[ "$local_codex_split_control" == "1" ]] &&
+      printf '%s ' --codex-remote-client-path --codex-prompt-bridge-command
+    [[ "$local_codex_split_control" == "1" ]] &&
+      printf '%s ' --codex-participant-sandbox
+    [[ "$local_codex_split_control" == "1" ]] &&
+      printf '%s ' --local-codex-provider --host-local-acp-codex-exec-preflight
+    [[ "$local_codex_split_control" == "1" ]] &&
+      printf '%s ' --host-local-acp-codex-exec-preflight-attempts
     [[ -n "$remote_command_file_bridge_probe_command" ]] &&
       printf '%s ' --remote-command-file-bridge-probe-command
     [[ -n "$remote_command_file_bridge_solver_command" ]] &&
@@ -801,6 +872,8 @@ docker_proxy_host=${docker_proxy_host}
 docker_proxy_endpoint_mode=${docker_proxy_endpoint_mode}
 docker_api_version=${docker_api_version}
 remote_codex_bin_mode=${remote_codex_bin_mode}
+local_codex_split_control=${local_codex_split_control}
+local_codex_provider=$([[ "$local_codex_split_control" == "1" ]] && echo reverse_channel || echo exact_host)
 local_codex_sandbox=${local_codex_sandbox}
 codex_cli_goal_thread_prewarm=${codex_cli_goal_thread_prewarm}
 allow_staged_bootstrap_repair_run=${allow_staged_bootstrap_repair_run}
