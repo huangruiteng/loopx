@@ -729,12 +729,21 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             else {}
         )
         if succession_warning:
+            projected_todo_ids = (
+                succession_warning.get("todo_ids")
+                if isinstance(succession_warning.get("todo_ids"), list)
+                else []
+            )
             warning_items = (
                 succession_warning.get("items")
                 if isinstance(succession_warning.get("items"), list)
                 else []
             )
             todo_ids = [
+                str(todo_id)
+                for todo_id in projected_todo_ids[:3]
+                if str(todo_id or "").strip()
+            ] or [
                 str(item.get("todo_id"))
                 for item in warning_items[:3]
                 if isinstance(item, dict) and item.get("todo_id")

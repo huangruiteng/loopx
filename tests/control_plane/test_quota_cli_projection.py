@@ -6,6 +6,9 @@ from loopx.control_plane.quota.cli_projection import (
     QUOTA_CLI_TODO_SUMMARY_DETAIL_COMMAND,
     compact_quota_should_run_cli_payload,
 )
+from loopx.presentation.renderers.quota_markdown import (
+    render_quota_should_run_markdown,
+)
 
 
 def _items(count: int, *, prefix: str) -> list[dict[str, object]]:
@@ -66,6 +69,11 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     assert "claimed_open_items" not in summary
     assert "other_agent_claimed_items" not in summary["claim_scope"]
     assert "items" not in summary["todo_succession_warning"]
+    assert summary["todo_succession_warning"]["todo_ids"] == [
+        "backlog-0",
+        "backlog-1",
+        "backlog-2",
+    ]
     assert summary["payload_compaction"]["omitted_lanes"] == {
         "backlog_items": 40,
         "claim_scope.other_agent_claimed_items": 40,
@@ -102,3 +110,34 @@ def test_compact_quota_should_run_cli_payload_keeps_decision_lanes_and_counts() 
     larger_compact_chars = len(json.dumps(larger_compact, sort_keys=True))
     assert compact_chars < 10_000
     assert larger_compact_chars - compact_chars < 200
+
+
+def test_compact_quota_should_run_cli_payload_keeps_succession_warning_identity_in_markdown() -> None:
+    payload = {
+        "ok": True,
+        "goal_id": "succession-warning-fixture",
+        "agent_todo_summary": {
+            "total_count": 5,
+            "open_count": 1,
+            "completed_without_successor_count": 4,
+            "first_open_items": _items(1, prefix="open"),
+            "todo_succession_warning": {
+                "reason_code": "completed_advancement_without_successor",
+                "count": 4,
+                "items": _items(4, prefix="repair"),
+            },
+        },
+    }
+
+    compact = compact_quota_should_run_cli_payload(payload)
+    warning = compact["agent_todo_summary"]["todo_succession_warning"]
+
+    assert warning["todo_ids"] == ["repair-0", "repair-1", "repair-2"]
+    assert "items" not in warning
+    markdown = render_quota_should_run_markdown(compact)
+    assert (
+        "- agent_todo_succession_warning: "
+        "reason=completed_advancement_without_successor "
+        "count=4 todo_ids=repair-0,repair-1,repair-2"
+    ) in markdown
+    assert "todo_ids=n/a" not in markdown

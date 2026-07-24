@@ -15,6 +15,7 @@ _RETAINED_AGENT_ITEM_LANES = {
     "monitor_due_items": 1,
     "monitor_capability_blocked_due_items": 2,
 }
+_RETAINED_SUCCESSION_WARNING_TODO_IDS = 3
 
 
 def _compact_nested_item_lists(
@@ -26,6 +27,14 @@ def _compact_nested_item_lists(
     compact: dict[str, Any] = {}
     for key, child in value.items():
         if isinstance(child, list) and key.endswith("items"):
+            if path == "todo_succession_warning":
+                todo_ids = [
+                    str(item.get("todo_id"))
+                    for item in child
+                    if isinstance(item, dict) and item.get("todo_id")
+                ][:_RETAINED_SUCCESSION_WARNING_TODO_IDS]
+                if todo_ids:
+                    compact["todo_ids"] = todo_ids
             if child:
                 omitted_lanes[f"{path}.{key}"] = len(child)
             continue
