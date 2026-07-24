@@ -75,20 +75,11 @@ cd /path/to/your-project
 codex
 ```
 
-然后在 TUI 里粘贴一条消息：
+然后在 TUI 里粘贴一条消息。下面的粘贴块故意保持为源码单行，直接整行复制到
+TUI，不要手动加入换行：
 
 ```text
-请在这个可见 Codex CLI TUI 中把当前 repo 接入 LoopX。普通使用不要 clone LoopX
-仓库。若 `loopx` 不在 PATH，请使用官方 no-clone installer 安装或修复：
-curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash
-
-然后运行 `loopx doctor`。只在当前项目根目录操作：如果项目已存在 LoopX 状态，
-请复用，不要新建或覆盖 goal；如果尚未接入，优先用 `loopx connect`，只有明确
-缺少 goal 状态且需要初始化时才用 `loopx bootstrap`。确保 `.loopx/`、
-`.codex/goals/`、`.local/` 不会被提交。请留在这个 TUI，不要使用隐藏 headless
-执行；项目连接后，生成 thin task body 并把当前 Codex CLI goal 设置为
-`/goal <thin task_body>`。然后停止，不要在接入这轮开始长任务，只汇报 goal id、
-当前 user gate、top agent todo 和下一步安全动作。
+请在这个可见 Codex CLI TUI 中把当前 repo 接入 LoopX。普通使用不要 clone LoopX 仓库。若 `loopx` 不在 PATH，请使用官方 no-clone installer 安装或修复：curl -fsSL https://raw.githubusercontent.com/huangruiteng/loopx/main/scripts/install-from-github.sh | bash; export PATH="$HOME/.local/bin:$PATH"。然后运行 `loopx doctor`。只在当前项目根目录操作：如果项目已存在 LoopX 状态，请复用，不要新建或覆盖 goal；如果尚未接入，优先用 `loopx connect`，只有明确缺少 goal 状态且需要初始化时才用 `loopx bootstrap`。确保 `.loopx/`、`.codex/goals/`、`.local/` 不会被提交。请留在这个 TUI，不要使用隐藏 headless 执行；项目连接后，生成 thin task body 并把当前 Codex CLI goal 设置为 `/goal <thin task_body>`。然后停止，不要在接入这轮开始长任务，只汇报 goal id、当前 user gate、top agent todo 和下一步安全动作。
 ```
 
 这条消息就是安装、连接、可见 `/goal` 设置和状态检查。更细的生成模板、idle/proof 边界见
