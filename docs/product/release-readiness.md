@@ -527,8 +527,21 @@ Treat these as experimental until their contract docs say otherwise:
 
 ## Release Note Checklist
 
-Organize every public release note into the following stable groups. Omit an
-empty group instead of inventing filler:
+Begin every public release note with a prominent `## Contributors` section
+before the product groups. Credit every human contributor whose merged pull
+request is included between the previous and current tags. Link each GitHub
+handle and the relevant pull requests, summarize the concrete contribution,
+and explicitly call out external or first-time contributors when applicable.
+Core-maintainer work still receives accurate credit; a maintainer-only release
+must not invent community participation.
+
+Build the list from the tag-to-tag Git range and merged pull-request metadata,
+not commit display names or an unreviewed generated changelog. Attribution is
+part of the release contract even when the same pull request is linked again
+under a product group.
+
+Organize the remaining release note into the following stable groups. Omit an
+empty product group instead of inventing filler:
 
 1. **State Kernel & Control Plane** for state, todo, quota, scheduler, gate,
    peer-routing, and runtime authority changes.
@@ -541,11 +554,13 @@ empty group instead of inventing filler:
 5. **Documentation & Compatibility** for public contracts, install/update
    guidance, migrations, defaults, and intentional exclusions.
 
-Bilingual releases must preserve these same group boundaries in both
-languages. Under `## 中文摘要`, use the matching headings **状态内核与控制面**,
-**能力与工作流**, **质量与测试**, **基准与集成**, and **文档与兼容性**. The Chinese
-copy may be shorter, but it must not collapse several groups into a generic
-highlights list or omit a non-empty English group.
+Bilingual releases must put `### 贡献者致谢` first under `## 中文摘要`, with the
+same people, pull-request links, and concrete contribution scope as the English
+section. Bilingual releases must preserve these same group boundaries in both
+languages. Use the matching headings **状态内核与控制面**, **能力与工作流**,
+**质量与测试**, **基准与集成**, and **文档与兼容性**. The Chinese copy may be
+shorter, but it must not collapse several groups into a generic highlights
+list, omit a non-empty English group, or weaken contributor attribution.
 
 Within each non-empty group, every material claim must carry one or more direct
 GitHub pull-request links such as
@@ -616,9 +631,10 @@ last-mile boundary. Translation may be shorter, but it must not replace the
 user-facing outcome with architecture-only terminology.
 
 The release PR and final GitHub release body must use the same grouping and
-validation receipt. Re-run the gates after rebasing or merging any additional
-runtime change; results from an earlier commit do not qualify a later tag.
-Public git history and shipped CLI behavior remain the source of truth.
+contributor attribution, plus the same validation receipt. Re-run the gates
+after rebasing or merging any additional runtime change; results from an
+earlier commit do not qualify a later tag. Public git history, merged PR
+metadata, and shipped CLI behavior remain the source of truth.
 
 ## Related Docs
 
