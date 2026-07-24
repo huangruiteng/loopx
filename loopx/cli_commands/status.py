@@ -6,23 +6,27 @@ from pathlib import Path
 from typing import Any
 
 from ..contract import check_contract, render_contract_markdown
-from ..diagnose import collect_diagnosis, render_diagnosis_markdown
-from ..handoff_budget import build_handoff_interface_budget
-from ..quota import build_quota_should_run
-from ..presentation.renderers.status_markdown import render_status_markdown
-from ..review_packet import build_review_packet, render_review_packet_markdown
-from ..status import (
-    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
-    collect_status,
-)
 from ..control_plane.runtime.status_projection_cache import (
     load_status_projection_cache,
     resolve_status_projection_cache_runtime_root,
     write_status_projection_cache,
 )
 from ..control_plane.todos.contract import normalize_todo_claimed_by
-from ..control_plane.todos.quota_summary import compact_quota_todo_summary_for_payload
-
+from ..control_plane.todos.quota_summary import (
+    compact_agent_lane_todos_for_status_display,
+)
+from ..control_plane.todos.todo_index import (
+    compact_agent_lane_todo_index_for_status_display,
+)
+from ..diagnose import collect_diagnosis, render_diagnosis_markdown
+from ..handoff_budget import build_handoff_interface_budget
+from ..presentation.renderers.status_markdown import render_status_markdown
+from ..quota import build_quota_should_run
+from ..review_packet import build_review_packet, render_review_packet_markdown
+from ..status import (
+    AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK,
+    collect_status,
+)
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
@@ -84,60 +88,6 @@ def _trim_run_history_for_status_display(
                 "status display limit"
             ),
         }
-
-
-def _compact_agent_lane_todos_for_status_display(payload: dict[str, object]) -> None:
-    queue = payload.get("attention_queue")
-    if not isinstance(queue, dict):
-        return
-    items = queue.get("items")
-    if not isinstance(items, list):
-        return
-    compacted = 0
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        for key in ("user_todos", "agent_todos"):
-            summary = item.get(key)
-            if not isinstance(summary, dict):
-                continue
-            compact = compact_quota_todo_summary_for_payload(summary)
-            compaction = compact.get("payload_compaction")
-            if isinstance(compaction, dict):
-                compaction["full_detail_cold_path"] = (
-                    "status without --agent-id, todo list, or active state"
-                )
-            item[key] = compact
-            compacted += 1
-    if compacted:
-        payload["agent_lane_todo_summary_compaction"] = {
-            "schema_version": "agent_lane_status_todo_summary_compaction_v0",
-            "compacted_summary_count": compacted,
-            "reason": (
-                "status --agent-id keeps agent-lane display payloads bounded; "
-                "full todo detail remains on cold paths"
-            ),
-        }
-
-
-def _compact_agent_lane_todo_index_for_status_display(payload: dict[str, object]) -> None:
-    todo_index = payload.get("todo_index")
-    if not isinstance(todo_index, dict):
-        return
-    items = todo_index.get("items")
-    if not isinstance(items, list) or not items:
-        return
-    omitted_item_count = len(items)
-    todo_index["items"] = []
-    todo_index["payload_compaction"] = {
-        "schema_version": "agent_lane_status_todo_index_compaction_v0",
-        "omitted_item_count": omitted_item_count,
-        "reason": (
-            "status --agent-id uses the attention queue for current work and "
-            "keeps the whole-goal todo index on a cold path"
-        ),
-        "full_detail_cold_path": "status without --agent-id or todo list",
-    }
 
 
 def register_status_commands(
@@ -428,8 +378,8 @@ def handle_status_command(
                 display_limit=display_limit,
                 collection_limit=collection_limit,
             )
-            _compact_agent_lane_todos_for_status_display(payload)
-            _compact_agent_lane_todo_index_for_status_display(payload)
+            compact_agent_lane_todos_for_status_display(payload)
+            compact_agent_lane_todo_index_for_status_display(payload)
     except Exception as exc:
         payload = {
             "ok": False,
