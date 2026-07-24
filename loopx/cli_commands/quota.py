@@ -222,6 +222,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-user-todo-summary-detail",
+        action="store_true",
+        help=(
+            "Include cold-path user todo diagnostic lanes in `quota should-run`. "
+            "The default keeps counts, active user actions, and gate scope only."
+        ),
+    )
+    quota_parser.add_argument(
         "--include-vision-audit-detail",
         action="store_true",
         help=(
@@ -390,6 +398,14 @@ def handle_quota_command(
         ):
             raise ValueError(
                 "--include-todo-summary-detail is only valid with `quota should-run`"
+            )
+        if (
+            bool(getattr(args, "include_user_todo_summary_detail", False))
+            and args.quota_command != "should-run"
+        ):
+            raise ValueError(
+                "--include-user-todo-summary-detail is only valid with "
+                "`quota should-run`"
             )
         if (
             bool(getattr(args, "include_vision_audit_detail", False))
@@ -897,6 +913,9 @@ def handle_quota_command(
             payload,
             include_todo_summary_detail=bool(
                 getattr(args, "include_todo_summary_detail", False)
+            ),
+            include_user_todo_summary_detail=bool(
+                getattr(args, "include_user_todo_summary_detail", False)
             ),
             include_vision_audit_detail=bool(
                 getattr(args, "include_vision_audit_detail", False)
