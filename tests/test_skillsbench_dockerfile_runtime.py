@@ -52,3 +52,25 @@ def test_ubuntu_apt_mirror_patch_ignores_from_inside_heredoc(tmp_path: Path) -> 
     patched = dockerfile.read_text(encoding="utf-8")
     assert patched.count(runtime.UBUNTU_APT_MIRROR_BEGIN) == 1
     assert patched.index(runtime.UBUNTU_APT_MIRROR_BEGIN) < patched.index("RUN python3")
+
+
+def test_pip_no_build_isolation_flags_are_explicit_and_heredoc_safe() -> None:
+    original = (
+        "FROM python:3.12-slim\n"
+        "RUN pip3 install numpy && python3 -m pip install cython\n"
+        "RUN python -m pip install --no-build-isolation pandas\n"
+        'RUN echo "pip install remains documentation"\n'
+        "RUN python3 - <<'PY'\n"
+        "pip install not-a-docker-command\n"
+        "PY\n"
+    )
+
+    patched, count = runtime.add_pip_no_build_isolation_flags(original)
+
+    assert count == 2
+    assert "pip3 install --no-build-isolation numpy" in patched
+    assert "python3 -m pip install --no-build-isolation cython" in patched
+    assert patched.count("python -m pip install --no-build-isolation pandas") == 1
+    assert 'echo "pip install remains documentation"' in patched
+    assert "pip install not-a-docker-command" in patched
+    assert runtime.add_pip_no_build_isolation_flags(patched) == (patched, 0)

@@ -8015,18 +8015,14 @@ def patch_dockerfile_pip_bootstrap(
         DOCKER_PIP_BOOTSTRAP_BEGIN,
         DOCKER_PIP_BOOTSTRAP_END,
     )
-    build_mode_env = (
-        "    PIP_NO_BUILD_ISOLATION=1 \\\n"
-        if build_mode == "no-isolation"
-        else ""
-    )
+    if build_mode == "no-isolation":
+        text, _ = dockerfile_runtime.add_pip_no_build_isolation_flags(text)
     block = (
         f"{DOCKER_PIP_BOOTSTRAP_BEGIN}\n"
         f"ARG LOOPX_SKILLSBENCH_PIP_INDEX_URL={index_url}\n"
         "ENV PIP_INDEX_URL=${LOOPX_SKILLSBENCH_PIP_INDEX_URL} \\\n"
         "    PIP_DEFAULT_TIMEOUT=120 \\\n"
         "    PIP_RETRIES=10 \\\n"
-        f"{build_mode_env}"
         "    PIP_DISABLE_PIP_VERSION_CHECK=1\n"
         f"{DOCKER_PIP_BOOTSTRAP_END}"
     )
