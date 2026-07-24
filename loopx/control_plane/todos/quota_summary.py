@@ -37,7 +37,6 @@ from .succession_warning import build_todo_succession_warning_lanes
 from .summary_item import compact_todo_summary_item, todo_summary_source_items
 from .user_gate import is_user_gate_todo_item
 
-
 MONITOR_DUE_ITEM_LIMIT = 1
 TODO_BACKLOG_ITEM_LIMIT = 8
 TODO_DEFERRED_VISIBILITY_LIMIT = 8
@@ -630,6 +629,40 @@ def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str,
         "full_detail_cold_path": "status, todo list, or active state",
     }
     return compact
+
+
+def compact_agent_lane_todos_for_status_display(payload: dict[str, object]) -> None:
+    queue = payload.get("attention_queue")
+    if not isinstance(queue, dict):
+        return
+    items = queue.get("items")
+    if not isinstance(items, list):
+        return
+    compacted = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        for key in ("user_todos", "agent_todos"):
+            summary = item.get(key)
+            if not isinstance(summary, dict):
+                continue
+            compact = compact_quota_todo_summary_for_payload(summary)
+            compaction = compact.get("payload_compaction")
+            if isinstance(compaction, dict):
+                compaction["full_detail_cold_path"] = (
+                    "status without --agent-id, todo list, or active state"
+                )
+            item[key] = compact
+            compacted += 1
+    if compacted:
+        payload["agent_lane_todo_summary_compaction"] = {
+            "schema_version": "agent_lane_status_todo_summary_compaction_v0",
+            "compacted_summary_count": compacted,
+            "reason": (
+                "status --agent-id keeps agent-lane display payloads bounded; "
+                "full todo detail remains on cold paths"
+            ),
+        }
 
 
 def summarize_project_asset_todos_for_quota(

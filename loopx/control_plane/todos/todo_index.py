@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 from .contract import normalize_todo_id, normalize_todo_status, todo_done_for_status
 from .handoff_note import attach_todo_handoff_note
 from .todo_summary import compact_todo_item
-
 
 TODO_INDEX_SCHEMA_VERSION = "todo_index_v0"
 TODO_INDEX_ITEM_SCHEMA_VERSION = "todo_index_item_v0"
@@ -15,6 +15,28 @@ MAX_TODO_INDEX_ITEMS = 240
 MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL = 500
 
 CompactText = Callable[..., Any]
+
+
+def compact_agent_lane_todo_index_for_status_display(
+    payload: dict[str, object],
+) -> None:
+    todo_index = payload.get("todo_index")
+    if not isinstance(todo_index, dict):
+        return
+    items = todo_index.get("items")
+    if not isinstance(items, list) or not items:
+        return
+    omitted_item_count = len(items)
+    todo_index["items"] = []
+    todo_index["payload_compaction"] = {
+        "schema_version": "agent_lane_status_todo_index_compaction_v0",
+        "omitted_item_count": omitted_item_count,
+        "reason": (
+            "status --agent-id uses the attention queue for current work and "
+            "keeps the whole-goal todo index on a cold path"
+        ),
+        "full_detail_cold_path": "status without --agent-id or todo list",
+    }
 
 
 def _todo_index_key(goal_id: str, todo: dict[str, Any]) -> tuple[str, str]:

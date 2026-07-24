@@ -5,7 +5,6 @@ from typing import Any
 
 from . import __version__
 
-
 GLOBAL_OPTIONS_WITH_VALUE = {"--registry", "--runtime-root", "--format"}
 GLOBAL_OPTIONS_WITH_EQUALS = tuple(f"{option}=" for option in sorted(GLOBAL_OPTIONS_WITH_VALUE))
 HELP_FLAGS = {"-h", "--help"}
@@ -220,6 +219,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "demo",
         "dreaming",
         "global-summary",
+        "heartbeat-prequota",
         "import-doc-registry-authority",
         "lark-inbox",
         "migrate-state",
