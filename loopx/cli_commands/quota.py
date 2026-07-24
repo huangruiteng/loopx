@@ -246,6 +246,14 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
         ),
     )
     quota_parser.add_argument(
+        "--include-next-action-projection-detail",
+        action="store_true",
+        help=(
+            "Include repeated next-action mismatch text in `quota should-run`. "
+            "The default keeps warning semantics and references canonical actions."
+        ),
+    )
+    quota_parser.add_argument(
         "--include-vision-audit-detail",
         action="store_true",
         help=(
@@ -437,6 +445,14 @@ def handle_quota_command(
         ):
             raise ValueError(
                 "--include-agent-lane-next-action-detail is only valid with "
+                "`quota should-run`"
+            )
+        if (
+            bool(getattr(args, "include_next_action_projection_detail", False))
+            and args.quota_command != "should-run"
+        ):
+            raise ValueError(
+                "--include-next-action-projection-detail is only valid with "
                 "`quota should-run`"
             )
         if (
@@ -954,6 +970,9 @@ def handle_quota_command(
             ),
             include_agent_lane_next_action_detail=bool(
                 getattr(args, "include_agent_lane_next_action_detail", False)
+            ),
+            include_next_action_projection_detail=bool(
+                getattr(args, "include_next_action_projection_detail", False)
             ),
             include_vision_audit_detail=bool(
                 getattr(args, "include_vision_audit_detail", False)
