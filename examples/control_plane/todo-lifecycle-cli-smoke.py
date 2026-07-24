@@ -330,7 +330,29 @@ def assert_nonblocking_review_continuation() -> None:
         assert guard["interaction_contract"]["mode"] == "bounded_delivery", guard
         assert guard["requires_user_action"] is False, guard
 
-        invalid = run_cli_error(
+        missing_class = run_cli_error(
+            registry_path,
+            "todo",
+            "complete",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            continuation["todo_id"],
+            "--claimed-by",
+            "codex-main-control",
+            "--agent-id",
+            "codex-main-control",
+            "--evidence",
+            "missing successor classification probe",
+            "--next-user-todo",
+            "Review an explicitly classified successor.",
+        )
+        assert (
+            "--next-user-todo requires explicit --next-user-task-class "
+            "user_action|user_gate"
+        ) in missing_class["error"], missing_class
+
+        missing_todo = run_cli_error(
             registry_path,
             "todo",
             "complete",
@@ -347,7 +369,10 @@ def assert_nonblocking_review_continuation() -> None:
             "--next-user-task-class",
             "user_action",
         )
-        assert "--next-user-task-class requires --next-user-todo" in invalid["error"], invalid
+        assert (
+            "--next-user-task-class requires --next-user-todo"
+            in missing_todo["error"]
+        ), missing_todo
 
 
 def main() -> int:

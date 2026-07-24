@@ -146,7 +146,8 @@ When a worker discovers follow-up work, it should classify the need first:
 
 - same-slice continuation: keep evidence in the current row until review;
 - real successor: complete the current LoopX todo with `--next-agent-todo` or
-  `--next-user-todo`;
+  `--next-user-todo` plus an explicit
+  `--next-user-task-class user_action|user_gate`;
 - replacement or narrower split: use `todo supersede --next-agent-todo`;
 - strategy-heavy fan-out: run `complex_request_intake_v0` to create a small
   typed todo batch.
