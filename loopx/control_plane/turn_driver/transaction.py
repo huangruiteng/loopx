@@ -152,6 +152,11 @@ def build_loopx_turn_transaction_plan(
         "schema_version": LOOPX_TURN_TRANSACTION_PLAN_SCHEMA_VERSION,
         "status": "planned" if planned else "not_applicable",
         "turn_key": turn_key,
+        "lineage": {
+            "goal_id": str(lineage.get("goal_id") or ""),
+            "agent_id": str(lineage.get("agent_id") or ""),
+            "todo_id": str(lineage.get("todo_id") or ""),
+        },
         "phases": list(TRANSACTION_PHASES) if planned else [],
         "commit_policy": "result<validate<writeback<spend;apply<ack;cadence:no-spend",
         "receipt_seed": {
@@ -244,6 +249,11 @@ def validate_loopx_turn_receipt(
         "ok": ok,
         "schema_version": LOOPX_TURN_RECEIPT_VALIDATION_SCHEMA_VERSION,
         "turn_key": turn_key or None,
+        "lineage": {
+            "goal_id": str(plan.get("lineage", {}).get("goal_id") or ""),
+            "agent_id": str(plan.get("lineage", {}).get("agent_id") or ""),
+            "todo_id": str(plan.get("lineage", {}).get("todo_id") or ""),
+        },
         "result_kind": kind.value if kind is not None else None,
         "completed_phases": completed,
         "failed_phase": failed_phase,

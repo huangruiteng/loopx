@@ -1,8 +1,8 @@
 # loop_turn_loop_disposition_v0
 
 `loop_turn_loop_disposition_v0` is the pure Turn Loop Controller transition
-contract. It decides what a governed loop does next from one Turn receipt plus
-a fresh quota/scheduler decision, and nothing else.
+contract. It decides what a governed loop does next from one validated Turn
+receipt plus a fresh quota/scheduler decision, and nothing else.
 
 `loopx turn run-once` remains the atomic governed executor: decide, execute one
 bounded host segment, validate independently, write back, spend once. The
@@ -15,9 +15,18 @@ Turn Loop Controller plan.
 
 | Input | Shape | Notes |
 | --- | --- | --- |
-| `turn_receipt` | one Turn receipt mapping (`result_kind`, optional `lineage`) | may be absent when no Turn has run yet |
-| `quota_decision` | fresh `loopx_turn_envelope_v0` | must carry a matching action signature |
-| `bounded_turn_budget` | optional `max_turns` + `completed_turns` | bounds validated-progress sequences |
+| `turn_receipt` | one `ValidatedTurnReceipt` (proven by `validate_loopx_turn_receipt`) | may be absent when no Turn has run yet |
+| `quota_decision` | fresh `loopx_turn_envelope_v0` | must satisfy the shared typed envelope contract |
+| `bounded_turn_budget` | one `BoundedTurnBudget` | required when the receipt is `validated_progress` |
+
+Inputs are typed and validated at the boundary. The controller does not accept
+caller-authored `result_kind + lineage` mappings: a receipt must be a
+`loopx_turn_receipt_validation_v0` result with `ok=true`, a supported result
+kind, and full `(goal_id, agent_id, todo_id)` lineage. A budget must carry
+strict integer domains (`type(...) is int`, `max_turns > 0`,
+`0 <= completed_turns <= max_turns`) and the same lineage as the fresh
+decision. Invalid or stale input raises `ValueError`; it is never encoded as a
+disposition.
 
 ## Output
 
@@ -31,10 +40,11 @@ Exactly one typed disposition:
 | `repair` | repair-class recovery is required before any successor Turn | no spend |
 | `replan` | replan-class recovery; see continuation boundary below | no spend |
 | `terminal` | terminal postcondition met or bounded budget exhausted | no spend |
-| `contract_error` | input failed the shared contract (envelope, lineage, budget, receipt kind) | no spend |
 
-Every payload carries `spends_quota=false`, `launches_host=false`, and
-`writes_state=false`.
+The output space is exactly these six dispositions. There is no
+`contract_error` disposition: contract failures are rejected at the typed-input
+boundary. Every payload carries `spends_quota=false`, `launches_host=false`,
+and `writes_state=false`.
 
 ## Decision Table
 
@@ -55,27 +65,26 @@ Every payload carries `spends_quota=false`, `launches_host=false`, and
 | replan-class decision action (`autonomous_replan*`) | — | `replan` |
 | repair-class decision action (`*_repair*`) | — | `repair` |
 | user action projected by decision | — | `user_action_required` |
-| receipt lineage missing or mismatched `(goal_id, agent_id)` for a material receipt | — | `contract_error` (`stale_receipt` / missing lineage) |
-| malformed/truncated decision, marker-only or mismatched signature hashes, over-budget compaction, unknown receipt kind, progress without a proven bounded budget | — | `contract_error` |
 
 ## Precedence And Fail-Closed Rules
 
 - A `validated_completion` receipt wins over a decision-only user action, but
-  only after the receipt is proven valid and fresh: material receipts must
-  carry full `(goal_id, agent_id, todo_id)` lineage, and a goal/agent mismatch
-  with the fresh decision is a `contract_error`, never `terminal`.
+  only after the receipt is proven valid and fresh. Material receipts must
+  carry full `(goal_id, agent_id, todo_id)` lineage, and any mismatch with the
+  fresh decision (including `todo_id`) raises `ValueError` (`stale_receipt`),
+  never `terminal`.
 - Every other user-action signal (from receipt or decision) routes to
   `user_action_required` before delivery dispositions.
 - The fresh decision must satisfy the shared Turn envelope contract
   (`loopx_turn_envelope_v0` schema, non-empty equal signature hashes, and an
   in-budget compaction) via the same typed route the Turn plan driver uses;
-  forged or truncated envelopes are `contract_error`, never `run_now`.
-- `validated_progress` may continue only with a proven bounded turn budget
-  (`max_turns` + `completed_turns`); without it the controller fails closed to
-  `contract_error` instead of guessing an unbounded continuation.
-- `contract_error` is a typed terminal-class outcome for invalid input, not a
-  silent `wait`: it never launches, writes, or spends, and it names the failed
-  rule in `reason`.
+  forged or truncated envelopes raise `ValueError`, never `run_now`.
+- `validated_progress` may continue only with a proven `BoundedTurnBudget`
+  whose lineage matches the fresh decision; without it the controller raises
+  `ValueError` instead of guessing an unbounded continuation.
+- Input validity is enforced at the typed-input boundary, not encoded as a
+  seventh disposition. The transition output space is always one of the six
+  dispositions above.
 
 ## Replan Continuation Boundary
 
@@ -97,6 +106,6 @@ all require replan rather than another delivery attempt.
 ## Boundary
 
 The controller is a pure function. It must not invoke a model, sleep, mutate a
-host scheduler, write state, or spend quota. Unknown or contradictory input
-fails closed to `contract_error` with an explicit reason; it never guesses a
-recovery or fabricates a host, gate, or user action.
+host scheduler, write state, or spend quota. Invalid or stale input is rejected
+at the typed-input boundary with a `ValueError`; it never guesses a recovery
+or fabricates a host, gate, or user action.
