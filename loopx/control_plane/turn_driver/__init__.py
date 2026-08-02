@@ -5,6 +5,15 @@ from .driver import (
     LoopXTurnRoute,
     build_loopx_turn_plan,
 )
+from .loop_controller import (
+    BOUNDED_TURN_BUDGET_SCHEMA_VERSION,
+    LOOP_CONTROLLER_DISPOSITION_SCHEMA_VERSION,
+    VALIDATED_TURN_RECEIPT_SCHEMA_VERSION,
+    BoundedTurnBudget,
+    LoopDisposition,
+    ValidatedTurnReceipt,
+    decide_loop_disposition,
+)
 from .codex_cli import (
     CODEX_CLI_SESSION_SCHEMA_VERSION,
     codex_cli_session_id_from_jsonl,
@@ -41,6 +50,12 @@ __all__ = [
     "LOOPX_TURN_EXECUTION_SCHEMA_VERSION",
     "LOOPX_TURN_HOST_REQUEST_SCHEMA_VERSION",
     "LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION",
+    "BOUNDED_TURN_BUDGET_SCHEMA_VERSION",
+    "LOOP_CONTROLLER_DISPOSITION_SCHEMA_VERSION",
+    "VALIDATED_TURN_RECEIPT_SCHEMA_VERSION",
+    "BoundedTurnBudget",
+    "LoopDisposition",
+    "ValidatedTurnReceipt",
     "LoopXTurnRoute",
     "LoopXTurnResultKind",
     "build_loopx_turn_plan",
@@ -58,6 +73,7 @@ __all__ = [
     "run_codex_cli_host",
     "codex_cli_result_schema",
     "codex_cli_session_binding",
+    "decide_loop_disposition",
     "validate_loopx_turn_host_result",
     "validate_loopx_turn_receipt",
 ]
