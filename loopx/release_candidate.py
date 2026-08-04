@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .command_invocation import command_argv
+
 
 REPRESENTATIVE_CLI_IMPORTS = (
     "loopx.cli",
@@ -57,7 +59,7 @@ def _command_summary(command_path: Path | None) -> dict[str, Any]:
     for probe_name, args in REPRESENTATIVE_CLI_COMMANDS:
         try:
             result = subprocess.run(
-                [str(command_path), *args],
+                command_argv(command_path, args),
                 check=False,
                 capture_output=True,
                 text=True,

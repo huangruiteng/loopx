@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 from unittest import mock
 
 from loopx import __version__
-from loopx.self_update import build_update_plan
+import pytest
+
+from loopx.self_update import build_update_plan, execute_update_plan
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -198,3 +201,16 @@ def test_cli_rejects_installed_doctor_snapshot_outside_check(tmp_path: Path) -> 
     payload = json.loads(result.stdout)
     assert payload["ok"] is False
     assert payload["error"] == "--installed-doctor-json requires update --check"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="native Windows update boundary")
+def test_windows_execute_update_fails_closed_without_launching_bash() -> None:
+    payload = {"ok": True, "source": {}, "plan": {}}
+
+    with mock.patch("loopx.self_update.subprocess.run") as run:
+        updated = execute_update_plan(payload)
+
+    run.assert_not_called()
+    assert updated["ok"] is False
+    assert updated["execution"]["status"] == "unsupported_platform"
+    assert "install-windows.ps1" in updated["recommended_action"]

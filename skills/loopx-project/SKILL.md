@@ -194,7 +194,29 @@ in canonical Explore state first, then refresh the executive projection.
 
 ## Preflight
 
-From the target project shell:
+Resolve the host command once before project work. On native Windows PowerShell
+7, keep the installed `loopx.ps1` directory on the Windows user `PATH` and run:
+
+```powershell
+loopx doctor
+```
+
+When the current Windows executor is not PowerShell, preserve the same entry by
+calling PowerShell 7 explicitly:
+
+```text
+pwsh.exe -NoLogo -NoProfile -File "$HOME/.local/bin/loopx.ps1" doctor
+```
+
+If the Windows entry is missing, run the trusted checkout installer from
+PowerShell 7, then start a fresh host process so it inherits the user `PATH`:
+
+```powershell
+pwsh -NoLogo -NoProfile -File .\scripts\install-windows.ps1 -Python (Get-Command python).Source -AddToUserPath
+loopx doctor
+```
+
+On POSIX hosts, use the existing shell entry:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -282,6 +304,10 @@ the repaired source behavior. A dirty or non-main checkout is canary-only by
 default. Use `LOOPX_PROMOTE_DEFAULT=1 scripts/install-local.sh` only after the
 checkout has passed its promotion validation and the default replacement is an
 intentional write.
+
+On native Windows, automatic archive update and rollback are fail-closed. Update
+the trusted checkout, rerun `scripts/install-windows.ps1`, and verify the new
+release with `loopx doctor --deep` before spending quota.
 
 If the response has `state=operator_gate`, treat it as a user/controller
 interaction, not a silent skip. Read `gate_prompt`, `operator_question`,

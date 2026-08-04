@@ -7,10 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None  # type: ignore[assignment]
+from .file_lock import exclusive_file_lock
 
 
 _DOMAIN_STATE_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,79}$")
@@ -67,67 +64,61 @@ def upsert_domain_state_jsonl(
         raise ValueError("domain-state upsert key must be a non-empty dict")
     path = Path(ledger_path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = path.with_name(path.name + ".lock")
-    with lock_path.open("a+", encoding="utf-8") as lock_file:
-        if fcntl is not None:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            rows: list[dict[str, Any]] = []
-            updated = False
-            unchanged = False
-            candidate = {**payload, "domain_state_key": key}
-            if path.exists():
-                for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-                    if not line.strip():
-                        continue
-                    try:
-                        row = json.loads(line)
-                    except json.JSONDecodeError as exc:
-                        raise ValueError(f"invalid JSONL row {index} in domain-state ledger") from exc
-                    row_key = row.get("domain_state_key") if isinstance(row, dict) else None
-                    if row_key is None and existing_key_fn is not None and isinstance(row, dict):
-                        row_key = existing_key_fn(row)
-                    if isinstance(row, dict) and row_key == key:
-                        if not updated:
-                            merged_candidate = (
-                                merge_existing_fn(row, candidate)
-                                if merge_existing_fn is not None
-                                else candidate
-                            )
-                            if (
-                                unchanged_fn is not None
-                                and unchanged_fn(row, merged_candidate)
-                            ):
-                                rows.append(row)
-                                unchanged = True
-                            else:
-                                rows.append(merged_candidate)
-                            updated = True
-                        continue
-                    rows.append(row)
-            if not updated:
-                rows.append(candidate)
-
-            if not unchanged:
-                with tempfile.NamedTemporaryFile(
-                    "w",
-                    encoding="utf-8",
-                    dir=path.parent,
-                    prefix=f"{path.name}.",
-                    suffix=".tmp",
-                    delete=False,
-                ) as tmp_file:
-                    tmp_name = tmp_file.name
-                    tmp_file.write(
-                        "".join(
-                            json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n"
-                            for row in rows
+    with exclusive_file_lock(path):
+        rows: list[dict[str, Any]] = []
+        updated = False
+        unchanged = False
+        candidate = {**payload, "domain_state_key": key}
+        if path.exists():
+            for index, line in enumerate(
+                path.read_text(encoding="utf-8").splitlines(), start=1
+            ):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"invalid JSONL row {index} in domain-state ledger"
+                    ) from exc
+                row_key = row.get("domain_state_key") if isinstance(row, dict) else None
+                if row_key is None and existing_key_fn is not None and isinstance(row, dict):
+                    row_key = existing_key_fn(row)
+                if isinstance(row, dict) and row_key == key:
+                    if not updated:
+                        merged_candidate = (
+                            merge_existing_fn(row, candidate)
+                            if merge_existing_fn is not None
+                            else candidate
                         )
+                        if unchanged_fn is not None and unchanged_fn(row, merged_candidate):
+                            rows.append(row)
+                            unchanged = True
+                        else:
+                            rows.append(merged_candidate)
+                        updated = True
+                    continue
+                rows.append(row)
+        if not updated:
+            rows.append(candidate)
+
+        if not unchanged:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f"{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp_file:
+                tmp_name = tmp_file.name
+                tmp_file.write(
+                    "".join(
+                        json.dumps(row, sort_keys=True, ensure_ascii=False) + "\n"
+                        for row in rows
                     )
-                os.replace(tmp_name, path)
-        finally:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                )
+            os.replace(tmp_name, path)
     return {
         "status": "unchanged" if unchanged else "updated" if updated else "inserted",
         "write_performed": not unchanged,
