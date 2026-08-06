@@ -105,6 +105,13 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Opt into `--with-goal-bridge`, then use `loopx_goal_activate` to bind the quota-gated bridge.",
             },
             {
+                "command": "KunlunCode native Goal controller",
+                "purpose": (
+                    "Run `loopx-kunluncode connect`, verify the managed MCP entry, then let "
+                    "`loopx-kunluncode run` create or resume a verifier-gated native Goal Pro."
+                ),
+            },
+            {
                 "command": "Other agent or shell",
                 "purpose": "Use a CLI, task, automation, heartbeat, or scheduler hook; otherwise drive LoopX manually.",
             },
@@ -349,6 +356,7 @@ def render_concise_help(program: str = "loopx") -> str:
             "  Codex CLI      keep visible TUI; run loopx codex-cli-bootstrap-message.",
             "  Claude Code    use installed /loopx skills; adapter only for gated native /loop.",
             "  OpenCode       opt into the goal bridge, then use loopx_goal_activate.",
+            "  KunlunCode     run loopx-kunluncode connect, then loopx-kunluncode run.",
             "  Other agents   need a CLI/task/automation/loop hook, or run LoopX manually.",
             "",
             "Global options: --registry PATH   --runtime-root PATH   --format markdown|json",

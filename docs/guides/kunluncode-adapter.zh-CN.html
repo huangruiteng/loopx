@@ -1,0 +1,707 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="使用 uv 将 KunlunCode 独立接入 LoopX 的完整中文操作指南。">
+  <title>在 LoopX 中使用 KunlunCode</title>
+  <style>
+    :root {
+      --bg: #f4f2ec;
+      --paper: #fffdf7;
+      --ink: #17211d;
+      --muted: #5d6862;
+      --line: #d9ddd4;
+      --accent: #096b58;
+      --accent-2: #d95d39;
+      --accent-soft: #dff3eb;
+      --code: #13231d;
+      --code-ink: #e9fff5;
+      --warning: #fff1cf;
+      --danger: #ffe5df;
+      --shadow: 0 20px 55px rgba(35, 52, 44, .09);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 9% 2%, rgba(9, 107, 88, .10), transparent 27rem),
+        radial-gradient(circle at 92% 0%, rgba(217, 93, 57, .09), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font: 16px/1.72 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    a { color: var(--accent); text-underline-offset: .18em; }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    :focus-visible { outline: 3px solid rgba(217, 93, 57, .55); outline-offset: 3px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 58px;
+      padding: 0 5vw;
+      border-bottom: 1px solid rgba(23, 33, 29, .11);
+      background: rgba(244, 242, 236, .89);
+      backdrop-filter: blur(14px);
+    }
+    .brand { font-weight: 800; letter-spacing: -.02em; }
+    .top-actions { display: flex; gap: 16px; align-items: center; }
+    .top-actions a { font-size: 14px; font-weight: 700; text-decoration: none; }
+
+    .hero {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 72px 5vw 46px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+      gap: 56px;
+      align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 11px;
+      border: 1px solid rgba(9, 107, 88, .25);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 760px;
+      margin: 18px 0 16px;
+      font-size: clamp(42px, 6vw, 74px);
+      line-height: 1.02;
+      letter-spacing: -.055em;
+    }
+    h1 span { display: block; }
+    h1 .second-line { font-size: .82em; white-space: nowrap; }
+    .lead { max-width: 720px; color: var(--muted); font-size: 19px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
+    .badge {
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 253, 247, .7);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .quick-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(9, 107, 88, .22);
+      border-radius: 24px;
+      background: #12251f;
+      color: #eafff6;
+      box-shadow: var(--shadow);
+    }
+    .quick-card::before {
+      content: "";
+      position: absolute;
+      width: 240px;
+      height: 240px;
+      right: -95px;
+      top: -120px;
+      border-radius: 50%;
+      background: rgba(79, 209, 164, .16);
+    }
+    .quick-head { padding: 21px 24px 0; color: #aee5d0; font-weight: 800; }
+    .quick-card pre { margin: 0; padding: 16px 24px 24px; font-size: 13px; white-space: pre-wrap; }
+
+    .layout {
+      max-width: 1220px;
+      margin: 0 auto 90px;
+      padding: 0 5vw;
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: 42px;
+      align-items: start;
+    }
+    .toc {
+      position: sticky;
+      top: 82px;
+      max-height: calc(100vh - 100px);
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 253, 247, .74);
+    }
+    .toc strong { display: block; margin: 0 0 9px; font-size: 13px; color: var(--muted); }
+    .toc a {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 8px;
+      color: var(--ink);
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .toc a:hover { background: var(--accent-soft); color: var(--accent); }
+
+    main {
+      min-width: 0;
+      padding: 12px clamp(22px, 4vw, 54px) 54px;
+      border: 1px solid rgba(23, 33, 29, .09);
+      border-radius: 24px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+    section { padding-top: 45px; scroll-margin-top: 70px; }
+    section + section { border-top: 1px solid var(--line); margin-top: 44px; }
+    h2 { margin: 0 0 18px; font-size: 30px; line-height: 1.22; letter-spacing: -.035em; }
+    h3 { margin: 30px 0 10px; font-size: 20px; line-height: 1.3; }
+    p { margin: 12px 0; }
+    ul, ol { padding-left: 1.35em; }
+    li + li { margin-top: 6px; }
+    .section-no { display: block; margin-bottom: 5px; color: var(--accent-2); font: 800 13px/1 ui-monospace, monospace; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin: 24px 0;
+    }
+    .flow div {
+      position: relative;
+      padding: 14px 10px;
+      border: 1px solid rgba(9, 107, 88, .2);
+      border-radius: 12px;
+      background: var(--accent-soft);
+      color: #075344;
+      text-align: center;
+      font: 750 12px/1.35 ui-monospace, monospace;
+    }
+    .flow div:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      z-index: 2;
+      transform: translateY(-50%);
+      color: var(--accent-2);
+      font-size: 17px;
+    }
+
+    .code-wrap { position: relative; margin: 16px 0 22px; }
+    pre {
+      overflow: auto;
+      margin: 0;
+      padding: 20px;
+      border-radius: 14px;
+      background: var(--code);
+      color: var(--code-ink);
+      font-size: 13px;
+      line-height: 1.62;
+    }
+    :not(pre) > code {
+      padding: .12em .38em;
+      border-radius: 5px;
+      background: #e8ebe5;
+      color: #183f34;
+      font-size: .9em;
+    }
+    .copy {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      padding: 6px 9px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,.08);
+      color: #d8f9eb;
+      cursor: pointer;
+      font: 700 12px/1 system-ui, sans-serif;
+    }
+    .copy:hover { background: rgba(255,255,255,.16); }
+
+    .table-scroll { overflow-x: auto; margin: 18px 0 25px; }
+    table { width: 100%; border-collapse: collapse; min-width: 600px; }
+    th, td { padding: 12px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eef2eb; color: #34463f; font-size: 13px; }
+    td { font-size: 14px; }
+    .callout {
+      margin: 20px 0;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      border-radius: 8px 14px 14px 8px;
+      background: var(--accent-soft);
+    }
+    .callout.warning { border-left-color: #bd7b00; background: var(--warning); }
+    .callout.danger { border-left-color: var(--accent-2); background: var(--danger); }
+    .callout strong { display: block; margin-bottom: 3px; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 20px 0; }
+    .card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfaf5; }
+    .card h3 { margin: 0 0 7px; font-size: 17px; }
+    .checklist { list-style: none; padding: 0; }
+    .checklist li { position: relative; padding-left: 28px; }
+    .checklist li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: .43em;
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      background: #fff;
+    }
+    footer { max-width: 1220px; margin: -52px auto 50px; padding: 0 5vw; color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; gap: 26px; padding-top: 48px; }
+      .layout { grid-template-columns: 1fr; }
+      .toc { position: static; max-height: none; columns: 2; }
+      .toc strong { column-span: all; }
+      .flow { grid-template-columns: 1fr; }
+      .flow div:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -17px; transform: translateX(50%); }
+    }
+    @media (max-width: 620px) {
+      .topbar { padding: 0 18px; }
+      .hero, .layout { padding-left: 18px; padding-right: 18px; }
+      h1 { font-size: 43px; }
+      main { padding: 0 19px 38px; border-radius: 18px; }
+      .toc { columns: 1; }
+      .cards { grid-template-columns: 1fr; }
+      .top-actions .optional { display: none; }
+    }
+    @media print {
+      .topbar, .toc, .copy { display: none !important; }
+      body { background: #fff; }
+      .hero, .layout { display: block; max-width: none; padding: 20px 0; }
+      .quick-card, main { box-shadow: none; }
+      main { border: 0; }
+      section { break-inside: avoid; }
+      pre { white-space: pre-wrap; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">LoopX × KunlunCode</div>
+    <nav class="top-actions" aria-label="文档格式">
+      <a class="optional" href="kunluncode-adapter.zh-CN.md">Markdown 版本</a>
+      <a href="#quickstart">快速开始</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <span class="eyebrow">原生 Goal Pro 接入 · uv 环境</span>
+      <h1><span>在 LoopX 中</span><span class="second-line">使用 KunlunCode</span></h1>
+      <p class="lead">让 LoopX 选择任务和管理回写，让 KunlunCode 原生 Goal Pro 自动续跑并独立验证；中断后可恢复，verifier PASS 前绝不完成 LoopX todo。</p>
+      <div class="badges" aria-label="关键特性">
+        <span class="badge">独立 kunlun 身份</span>
+        <span class="badge">原生 Goal Pro</span>
+        <span class="badge">独立 verifier</span>
+        <span class="badge">uv-only provisioning</span>
+        <span class="badge">可恢复 writeback</span>
+      </div>
+    </div>
+    <aside id="quickstart" class="quick-card" aria-label="四步快速开始">
+      <div class="quick-head">四步快速开始</div>
+      <pre>uv venv .venv
+uv pip install --python .venv/bin/python -e . 'mcp==1.27.2'
+
+.venv/bin/loopx-kunluncode connect \
+  --project /path/to/project \
+  --goal-id my-goal \
+  --agent-id kunlun \
+  --objective "持续完成经过验证的任务" \
+  --python "$PWD/.venv/bin/python"
+
+.venv/bin/python examples/kunluncode-app-server-goal-pro-smoke.py --require
+
+.venv/bin/loopx-kunluncode add \
+  --project /path/to/project \
+  "完成一个有明确验收条件的任务"
+.venv/bin/loopx-kunluncode run \
+  --project /path/to/project \
+  --mode goal-pro</pre>
+    </aside>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" aria-label="目录">
+      <strong>本页目录</strong>
+      <a href="#model">1. 接入模型</a>
+      <a href="#commands">2. 三套命令空间</a>
+      <a href="#requirements">3. 前置条件</a>
+      <a href="#environment">4. uv 环境</a>
+      <a href="#connect">5. 连接项目</a>
+      <a href="#verify">6. 验证连接</a>
+      <a href="#run">7. 添加并运行任务</a>
+      <a href="#permissions">8. 权限模式</a>
+      <a href="#security">9. 身份与安全</a>
+      <a href="#maintenance">10. 维护与卸载</a>
+      <a href="#troubleshooting">11. 故障排查</a>
+      <a href="#acceptance">12. 验收清单</a>
+      <a href="#reference">13. 命令速查</a>
+    </nav>
+
+    <main>
+      <section id="model">
+        <span class="section-no">01 / MODEL</span>
+        <h2>接入后得到什么</h2>
+        <p>KunlunCode 是 LoopX 的一等 host surface。LoopX 保存 goal、todo、claim、quota、边界和 writeback；KunlunCode app-server 运行原生 Goal continuation 与 Goal Pro 独立 verifier。</p>
+        <div class="flow" aria-label="LoopX KunlunCode 生命周期">
+          <div>should_run + claim</div><div>thread start/resume</div><div>native Goal Pro</div><div>verifier PASS</div><div>LoopX writeback</div>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>部件</th><th>负责</th><th>不负责</th></tr></thead>
+          <tbody>
+            <tr><td>LoopX</td><td>持久 goal/todo、身份、gate、quota、证据</td><td>Agent 推理和外部工具</td></tr>
+            <tr><td><code>loopx-kunluncode</code></td><td>连接、添加任务、创建/恢复 Goal、验收并事务化回写</td><td>常驻 scheduler</td></tr>
+            <tr><td>KunlunCode</td><td>原生自动续跑、工具执行与独立验证</td><td>绕过 LoopX policy 或隐式扩大权限</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout"><strong>身份隔离</strong>KunlunCode 使用 <code>.loopx/kunluncode.json</code>，不会读取 <code>.claude/loop.md</code>，也不会作为 Claude Code 的 <code>cc</code> lane 执行。连接已有 goal 时会保留其他注册 Agent。</div>
+      </section>
+
+      <section id="commands">
+        <span class="section-no">02 / COMMAND SPACES</span>
+        <h2>三套命令空间：并不完全一致</h2>
+        <p>接入后同时存在 LoopX shell CLI、KunlunCode TUI slash 和 LoopX MCP tools。名称相似不代表状态相通，也不存在自动的一一映射。</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>命令空间</th><th>例子</th><th>所有者</th><th>当前适配器如何使用</th></tr></thead>
+          <tbody>
+            <tr><td>LoopX shell CLI</td><td><code>loopx ...</code><br><code>loopx-kunluncode ...</code></td><td>LoopX 控制面</td><td>连接、添加 todo、启动 native controller 和读取合并状态</td></tr>
+            <tr><td>KunlunCode TUI slash</td><td><code>/goal</code>、<code>/goal-pro</code>、<code>/plan</code>、<code>/mcp</code></td><td>KunlunCode session runtime</td><td>仍由 TUI 解析；适配器通过等价 app-server API 激活 Goal</td></tr>
+            <tr><td>LoopX MCP tools</td><td><code>should_run</code>、<code>claim_task</code>、<code>complete_task</code></td><td>LoopX MCP server</td><td>交互/兼容模式使用；native run 期间写工具失败关闭</td></tr>
+          </tbody>
+        </table></div>
+
+        <div class="cards">
+          <div class="card">
+            <h3><code>/goal</code>：KunlunCode 原生 Goal</h3>
+            <p>保存 KunlunCode session 自己的 persistent objective、continuation status 和 token budget。直接从 TUI 启动时不会自动完成 LoopX todo。</p>
+          </div>
+          <div class="card">
+            <h3><code>/goal-pro</code>：<code>/goal</code> + 独立完成验证</h3>
+            <p>沿用原生 Goal 生命周期；请求完成时必须由独立 verifier 通过。失败或验证基础设施出错时仍保持 active。</p>
+          </div>
+        </div>
+        <p>从产品语义看，<code>/goal-pro</code> 就是普通 native Goal 加强制独立验证。协议中普通 Goal 对应 <code>arrangement</code>，Goal Pro 对应 <code>strict</code>；Strict 还约束协调/委派方式，但真正决定完成的是 verifier gate。它仍是 KunlunCode 原生状态，不是 LoopX goal 的高级版。</p>
+        <div class="code-wrap"><pre><code>/goal [status|history|pause|resume|clear|edit [--budget &lt;tokens&gt;] &lt;objective&gt;
+      |--budget &lt;tokens&gt; &lt;objective&gt;|&lt;objective&gt;]
+
+/goal-pro [status|history|pause|resume|clear|edit [--budget &lt;tokens&gt;] &lt;objective&gt;
+          |[--answer] [--budget &lt;tokens&gt;] [--] &lt;objective&gt;]</code></pre></div>
+        <div class="callout"><strong>原生 Goal 开关</strong>若 KunlunCode 提示 Goal continuation disabled，可在 TUI 中执行 <code>/set goal_enabled true</code>。它只控制 KunlunCode 的 <code>/goal</code> 与 <code>/goal-pro</code>，不会启用、暂停或恢复 LoopX goal。</div>
+
+        <h3>原生 Goal 由谁激活</h3>
+        <p><code>/goal</code> 由 KunlunCode TUI 解析，并不是模型能够输入给自己的普通文本命令。除人工 slash 命令外，本机版本还提供受约束的模型工具和 app-server 路径。</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>激活路径</th><th>调用者</th><th>约束</th></tr></thead>
+          <tbody>
+            <tr><td><code>/goal ...</code> 或 <code>/goal-pro ...</code></td><td>人工操作者</td><td>TUI 创建并激活原生 Goal</td></tr>
+            <tr><td><code>create_goal</code></td><td>KunlunCode 模型</td><td>仅在用户明确要求 persistent Goal 时允许；模型不能自行升级普通任务</td></tr>
+            <tr><td><code>thread/goal/set</code></td><td>app-server 客户端</td><td>确定性写入 materialized thread；控制器仍需启动或恢复首个 turn</td></tr>
+            <tr><td><code>loopx-kunluncode run</code></td><td>LoopX 外层控制器</td><td>先选择 todo，再调用 app-server；默认创建 strict Goal Pro</td></tr>
+          </tbody>
+        </table></div>
+        <p>只有 Goal 被激活后，KunlunCode runtime 才会注入 continuation 指令并驱动后续 Goal turns。普通 headless prompt 不会因为任务看起来很长就自动进入 native Goal。</p>
+
+        <h3>当前适配器组合两个循环</h3>
+        <div class="flow" aria-label="当前适配器命令路径">
+          <div>LoopX select</div><div>app-server Goal Pro</div><div>native continuation</div><div>verifier PASS</div><div>LoopX commit</div>
+        </div>
+        <p><code>loopx-kunluncode run</code> 不伪造 slash 文本，也不等待模型自行决定是否调用 <code>create_goal</code>。它直接创建或恢复 thread，调用 <code>thread/goal/set</code> 与 <code>turn/start</code>，让 KunlunCode 自动续跑；本地 journal 负责进程中断后的恢复和 writeback 对账。</p>
+        <ul>
+          <li>LoopX 管理 + 原生严格长任务：默认 <code>--mode goal-pro</code>。</li>
+          <li>普通 native Goal：使用 <code>--mode goal</code>；旧单轮 MCP worker：使用 <code>--mode headless</code>。</li>
+          <li>只使用 KunlunCode 自己的持久目标：使用 <code>/goal</code> 或 <code>/goal-pro</code>，但不要把其状态当作 LoopX writeback。</li>
+          <li><code>/mcp</code> 只查看 KunlunCode 已加载的 MCP 工具，不会把 LoopX CLI 变成 slash 命令。</li>
+        </ul>
+        <div class="callout danger"><strong>避免双执行器</strong>适配器已把 LoopX 外层与一个 native Goal 唯一映射。不要再为同一 todo 手工启动第二个 TUI Goal。</div>
+      </section>
+
+      <section id="requirements">
+        <span class="section-no">03 / REQUIREMENTS</span>
+        <h2>前置条件</h2>
+        <ul>
+          <li>主机上的 <code>kunluncode</code> 已安装并能启动 provider；</li>
+          <li><code>uv</code> 与 Git 可用；</li>
+          <li>拥有包含 KunlunCode 适配器的 LoopX 源码或安装包；</li>
+          <li>拥有目标项目目录；若安装 MCP/使用 legacy headless，还需用户 MCP 配置写权限。</li>
+        </ul>
+        <div class="code-wrap"><pre><code>kunluncode --version
+uv --version
+git --version
+
+export LOOPX_SOURCE=/path/to/loopx
+export TARGET_PROJECT=/path/to/your-project
+export LOOPX_GOAL_ID=my-long-running-goal
+export KUNLUN_AGENT_ID=kunlun</code></pre></div>
+        <div class="callout danger"><strong>不要写入秘密</strong>不要把 token、provider 密钥、内部地址、客户信息或私有链接放入变量、todo、文档或 Git 提交。</div>
+      </section>
+
+      <section id="environment">
+        <span class="section-no">04 / ENVIRONMENT</span>
+        <h2>用 uv 准备适配器环境</h2>
+        <p>LoopX 与固定版本的 MCP SDK 必须位于同一个 uv 环境。适配器不会用 pip 修改系统 Python。</p>
+        <div class="code-wrap"><pre><code>cd "$LOOPX_SOURCE"
+uv venv .venv
+uv pip install --python .venv/bin/python -e . 'mcp==1.27.2'</code></pre></div>
+        <p>验证导入与命令入口：</p>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/python" -c \
+  'from importlib.metadata import version; import loopx.kunluncode_goal_mode.server; print(version("mcp"))'
+
+"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" --help</code></pre></div>
+        <p>应输出 MCP <code>1.27.2</code>，并列出 <code>connect / install / uninstall / add / run / status</code>。</p>
+      </section>
+
+      <section id="connect">
+        <span class="section-no">05 / CONNECT</span>
+        <h2>连接项目</h2>
+        <h3>新项目：创建 goal 并安装 MCP</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" connect \
+  --project "$TARGET_PROJECT" \
+  --goal-id "$LOOPX_GOAL_ID" \
+  --agent-id "$KUNLUN_AGENT_ID" \
+  --objective "持续完成该项目中经过验证的实现任务" \
+  --python "$LOOPX_SOURCE/.venv/bin/python"</code></pre></div>
+        <p>当项目没有 <code>.loopx/registry.json</code> 时，<code>--objective</code> 必填。命令会 bootstrap goal、注册 peer Agent、加入 <code>kunluncode</code> backend、写项目绑定，并安装用户级 <code>loopx-kunluncode</code> MCP entry。</p>
+
+        <h3>已有 LoopX goal</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" connect \
+  --project "$TARGET_PROJECT" \
+  --goal-id "$LOOPX_GOAL_ID" \
+  --agent-id "$KUNLUN_AGENT_ID" \
+  --python "$LOOPX_SOURCE/.venv/bin/python"</code></pre></div>
+        <p>使用 registry 中真实存在的 goal id。适配器会保留已有的 <code>cc</code>、Codex 或其他 Agent，再追加 KunlunCode 身份；不存在的 goal 会失败关闭。</p>
+
+        <h3>拆开项目绑定和 MCP 安装</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" connect \
+  --project "$TARGET_PROJECT" \
+  --goal-id "$LOOPX_GOAL_ID" \
+  --agent-id "$KUNLUN_AGENT_ID" \
+  --skip-mcp
+
+        "$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" install \
+  --python "$LOOPX_SOURCE/.venv/bin/python"</code></pre></div>
+        <div class="callout warning"><strong>同名 entry 保护</strong>若 <code>loopx-kunluncode</code> 不是 LoopX 管理的 entry，安装器拒绝覆盖。先 readback，只有确认应接管时才使用 <code>--replace</code>。</div>
+        <p>Native <code>goal-pro</code>/<code>goal</code> 由 app-server 外层回写，本身不依赖 MCP；<code>--skip-mcp</code> 后仍可运行。MCP 用于 readback、交互使用和 <code>--mode headless</code>。</p>
+      </section>
+
+      <section id="verify">
+        <span class="section-no">06 / VERIFY</span>
+        <h2>验证连接</h2>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/python" \
+  "$LOOPX_SOURCE/examples/kunluncode-app-server-goal-pro-smoke.py" --require
+
+kunluncode --cwd "$TARGET_PROJECT" mcp test loopx-kunluncode
+
+"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" status \
+  --project "$TARGET_PROJECT"
+
+kunluncode config get mcp_servers</code></pre></div>
+        <p>协议 smoke 应证明 <code>2026-07-27</code>、<code>mode=strict</code>、<code>status=complete</code>、<code>verification_passed=true</code> 和跨进程同 thread 恢复。若安装 MCP，MCP test 应列出四个 LoopX 工具。</p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>状态字段</th><th>期望值</th></tr></thead>
+          <tbody>
+            <tr><td><code>ok</code></td><td><code>true</code></td></tr>
+            <tr><td><code>goal_id</code></td><td>连接的 goal id</td></tr>
+            <tr><td><code>agent_identity.agent_id</code></td><td><code>kunlun</code> 或显式指定值</td></tr>
+            <tr><td><code>agent_identity.registered</code></td><td><code>true</code></td></tr>
+            <tr><td><code>host_surface</code></td><td><code>kunluncode</code></td></tr>
+            <tr><td><code>source</code></td><td><code>runtime_profile:kunluncode</code></td></tr>
+            <tr><td><code>kunluncode_native_goal.phase</code></td><td>运行后最终为 <code>committed</code></td></tr>
+            <tr><td><code>verification_passed</code></td><td>成功 Goal Pro 为 <code>true</code></td></tr>
+          </tbody>
+        </table></div>
+        <p><code>should_run=false</code> 可能只是当前没有工作、处于 gate、等待 cadence 或已经终态，并不自动表示安装失败。</p>
+        <div class="callout"><strong>全局 entry，项目级解析</strong>KunlunCode 当前把 MCP registration 写入用户配置；具体 goal 与 Agent 仍按当前工作目录和 <code>.loopx/kunluncode.json</code> 解析。始终从正确项目运行或传入 <code>--cwd</code>。</div>
+      </section>
+
+      <section id="run">
+        <span class="section-no">07 / RUN</span>
+        <h2>添加并运行任务</h2>
+        <h3>添加一个有界 todo</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" add \
+  --project "$TARGET_PROJECT" \
+  "修复配置解析问题，运行相关测试，并记录通过结果"</code></pre></div>
+        <p><code>add</code> 会把 todo 绑定并 claim 给当前 KunlunCode Agent。任务文本应包含清晰完成条件，但不应包含密钥、原始日志或私有材料。</p>
+
+        <h3>默认：可恢复的原生 Goal Pro</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" run \
+  --project "$TARGET_PROJECT" \
+  --mode goal-pro \
+  --permission-mode auto \
+  --max-duration-secs 600 \
+  --controller-timeout-secs 3600</code></pre></div>
+        <p>控制器先由 LoopX 选择/claim todo，再创建或恢复 app-server thread，设置 <code>mode=strict</code> 的 Goal，启动首轮并等待原生 auto-continuation。只有 <code>complete + verification_passed</code> 才执行 delivery、todo、quota 三阶段回写。</p>
+        <h3>其他显式模式</h3>
+        <div class="code-wrap"><pre><code># 普通 native Goal（无严格 verifier gate）
+loopx-kunluncode run --project "$TARGET_PROJECT" --mode goal
+
+# 旧版一轮一进程 MCP worker
+loopx-kunluncode run --project "$TARGET_PROJECT" \
+  --mode headless --permission-mode auto</code></pre></div>
+        <p>Legacy worker 仍要求模型在 <code>next_agent_todo</code> 与 <code>no_follow_up=true</code> 中二选一；native 模式的 writeback 则由外层事务控制器完成。</p>
+        <div class="cards">
+          <div class="card"><h3>中断后继续</h3><p>直接重跑同一命令；journal 会恢复同一 thread 或只补齐缺失 writeback。</p></div>
+          <div class="card"><h3>立即停止</h3><p>终态、user gate、quota、wait 或 monitor-only 时，按 packet 处理，不要循环调用模型。</p></div>
+        </div>
+        <p><code>--max-duration-secs</code> 是每 turn 软预算，<code>--controller-timeout-secs</code> 是完整 Goal 等待预算；可选 <code>--token-budget</code>。机器消费输出时加 <code>--json</code>；只预览时加 <code>--dry-run</code>。</p>
+      </section>
+
+      <section id="permissions">
+        <span class="section-no">08 / PERMISSIONS</span>
+        <h2>权限模式怎么选</h2>
+        <div class="table-scroll"><table>
+          <thead><tr><th>模式</th><th>适用场景</th><th>注意</th></tr></thead>
+          <tbody>
+            <tr><td><code>ask</code></td><td>TUI 或 legacy 人工流程</td><td>native app-server 不处理交互审批，会失败关闭</td></tr>
+            <tr><td><code>auto</code></td><td>默认 native Goal/Goal Pro</td><td>非交互工具策略，但不扩大 LoopX authority</td></tr>
+            <tr><td><code>accept-edits</code></td><td>KunlunCode 原生编辑确认策略</td><td>仍需验证写入范围和 postcondition</td></tr>
+            <tr><td><code>dont-ask</code></td><td>不希望出现提示并接受拒绝</td><td>可能让 Goal 保持 active 或 blocked</td></tr>
+            <tr><td><code>bypass</code> / <code>yolo</code></td><td>用户明确授权的强隔离环境</td><td>高风险，不等于发布或生产授权</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout warning"><strong>推荐顺序</strong>先用 status、dry-run 和协议 smoke 验证 workspace 与 todo，再在已有 authority boundary 内使用默认 <code>auto</code>。需要逐项审批时改用 TUI；不要为了“跑起来”使用 bypass/yolo。</div>
+      </section>
+
+      <section id="security">
+        <span class="section-no">09 / SECURITY</span>
+        <h2>身份、状态与安全边界</h2>
+        <div class="table-scroll"><table>
+          <thead><tr><th>状态</th><th>位置</th><th>提交？</th></tr></thead>
+          <tbody>
+            <tr><td>Registry</td><td><code>&lt;project&gt;/.loopx/registry.json</code></td><td>否</td></tr>
+            <tr><td>KunlunCode binding</td><td><code>&lt;project&gt;/.loopx/kunluncode.json</code></td><td>否</td></tr>
+            <tr><td>Native runtime journal</td><td><code>&lt;project&gt;/.loopx/kunluncode-runtime.json</code></td><td>否</td></tr>
+            <tr><td>Active goal</td><td><code>&lt;project&gt;/.loopx/goals/...</code></td><td>否</td></tr>
+            <tr><td>MCP registration</td><td>KunlunCode 用户配置</td><td>否</td></tr>
+            <tr><td>uv 环境</td><td><code>.venv</code></td><td>否</td></tr>
+          </tbody>
+        </table></div>
+        <ul>
+          <li>Native Goal 激活不授予 write、push、publish、destructive、credential、external sink 或 production 权限。</li>
+          <li>claim/complete 会验证请求 Agent 与项目绑定一致；冒充其他 lane 会失败。</li>
+          <li>Native run 期间 MCP claim/complete 与 shell 中直接发往当前绑定 goal 的 LoopX lifecycle CLI 写命令都会失败关闭，防止模型在 verifier 前绕行提交。</li>
+          <li>只有 <code>complete + verification_passed</code> 后才执行 refresh、todo complete、quota spend。</li>
+          <li>Refresh 显式 suppress external sinks；journal 不保存原始 objective、output 或 trajectory。</li>
+          <li>原始 transcript、长日志、provider 响应、密钥和本机路径不得进入公共提交。</li>
+        </ul>
+      </section>
+
+      <section id="maintenance">
+        <span class="section-no">10 / MAINTENANCE</span>
+        <h2>常用维护命令</h2>
+        <h3>源码或 uv 环境搬家后刷新 MCP</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" install \
+  --python "$LOOPX_SOURCE/.venv/bin/python"
+
+        kunluncode --cwd "$TARGET_PROJECT" mcp test loopx-kunluncode</code></pre></div>
+        <h3>停止执行但保留状态</h3>
+        <p>停止调用 <code>run</code> 即可。适配器没有常驻 scheduler；active native Goal 的 opaque identity 留在本地 journal，之后同一命令会恢复。</p>
+        <h3>卸载 LoopX 管理的 MCP entry</h3>
+        <div class="code-wrap"><pre><code>"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" uninstall</code></pre></div>
+        <p>卸载器只删除能确认由 LoopX 管理的 entry；native app-server mode 仍可运行。解除项目绑定时删除 <code>kunluncode.json</code>。仅在 journal <code>phase=committed</code> 后删除 <code>kunluncode-runtime.json</code>；active 阶段删除代表明确放弃恢复。以上操作都不会删除 goal、todo、历史、KunlunCode thread 或其他 Agent。</p>
+      </section>
+
+      <section id="troubleshooting">
+        <span class="section-no">11 / TROUBLESHOOTING</span>
+        <h2>故障排查</h2>
+        <div class="cards">
+          <div class="card"><h3>找不到 kunluncode</h3><p>运行 <code>command -v kunluncode</code> 和 <code>kunluncode --version</code>，修复 PATH。</p></div>
+          <div class="card"><h3>uv is required</h3><p>安装 uv，或传入已包含 LoopX 与 <code>mcp==1.27.2</code> 的 uv Python。</p></div>
+          <div class="card"><h3>MCP 无法连接</h3><p>依次 readback 配置、重新 install、从目标项目执行 <code>mcp test</code>。</p></div>
+          <div class="card"><h3>身份不匹配</h3><p>用正确 goal/Agent 重新 connect；不要修改请求去冒充另一个 Agent。</p></div>
+          <div class="card"><h3>goal-mode 未激活</h3><p>确认当前目录、registry 和 binding，再重新 connect。</p></div>
+          <div class="card"><h3>ask 被 native run 拒绝</h3><p>app-server 无交互 TUI。使用已审查的 auto，或直接在 TUI 手动运行。</p></div>
+          <div class="card"><h3>运行中断或超时</h3><p>读取 native phase 后重跑同一命令。若记录的 thread 无法恢复，控制器会失败关闭而不会另建重复 Goal；确认旧执行器停止并明确放弃恢复后，才能删除 journal 重启。</p></div>
+          <div class="card"><h3>complete 但未回写</h3><p>Goal Pro 还必须有 verifier PASS；PASS 后中断会由 evidence log 对账恢复。</p></div>
+        </div>
+        <h3>重新同步 Python 环境</h3>
+        <div class="code-wrap"><pre><code>cd "$LOOPX_SOURCE"
+uv pip install --python .venv/bin/python -e . 'mcp==1.27.2'
+
+"$LOOPX_SOURCE/.venv/bin/loopx-kunluncode" install \
+  --python "$LOOPX_SOURCE/.venv/bin/python"</code></pre></div>
+        <h3><code>should_run=false</code></h3>
+        <p>读取 <code>effective_action</code>、<code>reason</code>、<code>interaction_contract</code> 与 <code>scheduler_hint</code>。没有 todo、终态、quota、user gate 或 monitor cadence 都可能正确阻止执行。</p>
+        <div class="callout"><strong>实现已规避关键宿主陷阱</strong>MCP 脚本避免遮蔽 Python 包；registration 使用绝对路径；native controller 不伪造 slash prompt，直接使用协议版本 <code>2026-07-27</code>；写回阶段有本地 journal 与 agent-scoped evidence 对账。</div>
+      </section>
+
+      <section id="acceptance">
+        <span class="section-no">12 / ACCEPTANCE</span>
+        <h2>完整验收清单</h2>
+        <ul class="checklist">
+          <li>uv 可用；LoopX 与 <code>mcp==1.27.2</code> 位于同一环境。</li>
+          <li>connect 返回成功，goal id 与 Agent id 正确。</li>
+          <li><code>.loopx/kunluncode.json</code> 未被 Git 跟踪。</li>
+          <li>已有 goal 的其他 registered agents 被保留。</li>
+          <li>若安装 MCP，MCP test 显示四个工具。</li>
+          <li>status 显示 registered kunlun、host kunluncode、runtime profile kunluncode。</li>
+          <li>真实 app-server smoke 证明 strict Goal、verifier PASS 与跨进程 resume。</li>
+          <li>低风险 todo 只在 native Goal Pro verifier PASS 后完成 delivery/todo/quota writeback。</li>
+          <li>status 显示 native <code>phase=committed</code>、<code>verification_passed=true</code>。</li>
+          <li>人为中断后重跑不会重复已完成 writeback 阶段。</li>
+          <li>错误 Agent id 被拒绝。</li>
+          <li>终态、quota 或 user gate 时停止重复运行。</li>
+          <li>凭据、私有状态、原始日志和本机路径未进入提交。</li>
+        </ul>
+      </section>
+
+      <section id="reference">
+        <span class="section-no">13 / REFERENCE</span>
+        <h2>命令速查</h2>
+        <div class="code-wrap"><pre><code># 连接或初始化
+loopx-kunluncode connect --project DIR --goal-id ID [--agent-id ID] \
+  [--objective TEXT] [--python PYTHON] [--skip-mcp] [--replace] [--dry-run]
+
+# 安装 / 卸载用户级 MCP entry
+loopx-kunluncode install [--python PYTHON] [--replace] [--dry-run]
+loopx-kunluncode uninstall [--dry-run]
+
+# 添加 todo、运行原生 Goal、读取状态
+loopx-kunluncode add --project DIR TEXT...
+loopx-kunluncode run --project DIR \
+  [--mode goal-pro|goal|headless] \
+  [--permission-mode ask|auto|accept-edits|dont-ask|bypass|yolo] \
+  [--max-duration-secs N] [--controller-timeout-secs N] \
+  [--token-budget N] [--json] [--dry-run]
+loopx-kunluncode status --project DIR</code></pre></div>
+        <div class="callout"><strong>事实源</strong>每次操作都重新读取 <code>status</code>、native journal 摘要和 app-server/MCP readback。不要依赖聊天记录猜测 goal、todo、verifier 或 gate。</div>
+      </section>
+    </main>
+  </div>
+
+  <footer>LoopX KunlunCode Adapter Guide · 中文独立 HTML 版本 · 可离线打开与打印</footer>
+  <script>
+    document.querySelectorAll('.code-wrap').forEach((wrap) => {
+      const button = document.createElement('button');
+      button.className = 'copy';
+      button.type = 'button';
+      button.textContent = '复制';
+      button.setAttribute('aria-label', '复制命令');
+      button.addEventListener('click', async () => {
+        const code = wrap.querySelector('code');
+        if (!code) return;
+        try {
+          await navigator.clipboard.writeText(code.textContent);
+          button.textContent = '已复制';
+          window.setTimeout(() => { button.textContent = '复制'; }, 1400);
+        } catch (_) {
+          button.textContent = '请手动复制';
+        }
+      });
+      wrap.appendChild(button);
+    });
+  </script>
+</body>
+</html>

@@ -18,7 +18,19 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from loopx.goal_mode_context import (  # noqa: E402
+    find_registry as _find_registry,
+    first_registered_agent,
+    project_root_for as _project_root_for,
+    resolve_goal_context,
+)
 
 REGISTRY_DIRS = (".loopx", ".goal-harness")  # prefer loopx; fall back to legacy
 
@@ -27,33 +39,15 @@ _ARMED_RE = re.compile(r"<!--\s*loopx:armed\s*(\{.*?\})\s*-->")
 
 def find_registry(cwd) -> Path | None:
     """Nearest ancestor of cwd (inclusive) holding a registry.json, else None."""
-    try:
-        cur = Path(cwd).resolve()
-    except Exception:
-        return None
-    for d in [cur, *cur.parents]:
-        for sub in REGISTRY_DIRS:
-            cand = d / sub / "registry.json"
-            if cand.exists():
-                return cand
-    return None
+    return _find_registry(cwd)
 
 
 def project_root_for(cwd) -> Path | None:
-    reg = find_registry(cwd)
-    return reg.parent.parent if reg else None
+    return _project_root_for(cwd)
 
 
 def _agent_of(goal: dict):
-    coord = goal.get("coordination") or {}
-    for entry in coord.get("registered_agents") or []:
-        if isinstance(entry, dict):
-            val = entry.get("id") or entry.get("agent_id") or entry.get("name")
-            if val:
-                return str(val)
-        elif entry:
-            return str(entry)
-    return None
+    return first_registered_agent(goal)
 
 
 def loop_md_path(project_root) -> Path:
@@ -91,37 +85,13 @@ def goal_context(cwd) -> dict | None:
     project_root — everything the hooks / MCP / statusline need. When the project
     is armed (`.claude/loop.md` carries a `loopx:armed` marker), the marker's goal
     is authoritative; otherwise we fall back to the first registry goal."""
-    reg = find_registry(cwd)
-    if not reg:
-        return None
-    try:
-        data = json.loads(reg.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    goals = data.get("goals") or []
-    if not goals:
-        return None
-    root = reg.parent.parent
-    # Prefer the goal /loopx armed for this project; only fall back to registry
-    # order when there is no armed marker or it points at a goal not in the registry.
-    armed = read_armed_goal(root)
-    chosen = None
-    armed_agent = None
-    if armed:
-        chosen = next((g for g in goals if g.get("id") == armed.get("goal_id")), None)
-        if chosen is not None:
-            armed_agent = armed.get("agent_id")
-    if chosen is None:
-        chosen = goals[0]
-    repo = chosen.get("repo")
-    scope = [str(repo).replace("\\", "/")] if repo else [str(root).replace("\\", "/")]
-    return {
-        "goal_id": chosen.get("id"),
-        "registry": str(reg).replace("\\", "/"),
-        "agent_id": armed_agent or _agent_of(chosen),
-        "write_scope": scope,
-        "project_root": str(root).replace("\\", "/"),
-    }
+    root = project_root_for(cwd)
+    armed = read_armed_goal(root) if root else None
+    return resolve_goal_context(
+        cwd,
+        preferred_goal_id=str((armed or {}).get("goal_id") or "") or None,
+        preferred_agent_id=str((armed or {}).get("agent_id") or "") or None,
+    )
 
 
 def is_armed(project_root) -> bool:

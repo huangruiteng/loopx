@@ -37,6 +37,7 @@ def scheduler_command_binding_for_agent_type(
         "codex-cli": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "codex-ide-plugin": SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
         "claude-code": SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+        "kunluncode": SchedulerRuntimeProfile.KUNLUNCODE_VISIBLE,
         "opencode": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
         "traex-cli": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
     }.get(canonical)
@@ -56,6 +57,7 @@ SUPPORTED_AGENT_TYPES = [
     "codex-ide-plugin",
     "codex-cli",
     "claude-code",
+    "kunluncode",
     "opencode",
     "traex-cli",
     "manual",
@@ -133,6 +135,18 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
         "host_loop": "native /loop gated by LoopX",
         "entry": "/loopx <task> then /loop",
         "accepted_inputs": ["claude-code", "claude_code", "claude code", "cc"],
+    },
+    "kunluncode": {
+        "display_name": "KunlunCode",
+        "host_loop": "recoverable native Goal Pro controlled by LoopX",
+        "entry": "loopx-kunluncode add <task> then loopx-kunluncode run",
+        "accepted_inputs": [
+            "kunluncode",
+            "kunlun-code",
+            "kunlun_code",
+            "kunlun code",
+            "kunlun",
+        ],
     },
     "opencode": {
         "display_name": "OpenCode",
@@ -629,6 +643,44 @@ def _claude_code_activation(commands: dict[str, str], cli_bin: str) -> dict[str,
     }
 
 
+def _kunluncode_activation(commands: dict[str, str]) -> dict[str, Any]:
+    return {
+        "host_surface": "kunluncode_native_goal_controller",
+        "entry_command_hint": (
+            "loopx-kunluncode add <task> then loopx-kunluncode run"
+        ),
+        "activation_method": "bind_project_then_run_native_goal",
+        "activation_input_command": commands["heartbeat_prompt_json"],
+        "setup_command": (
+            "loopx-kunluncode connect --project . --goal-id <goal-id> "
+            "--agent-id <registered-agent-id>"
+        ),
+        "host_mutation": {
+            "owner": "KunlunCode user MCP configuration",
+            "host_command": "loopx-kunluncode run --project .",
+            "cli_can_mutate_directly": True,
+            "managed_mcp_server": "loopx-kunluncode",
+            "missing_host_tool_gate": (
+                "KunlunCode or its managed LoopX MCP server is unavailable; run "
+                "the connect command and mcp test before claiming activation."
+            ),
+        },
+        "activation_steps": [
+            "Connect the project goal to a dedicated registered KunlunCode agent.",
+            "Read back the managed MCP tools with `kunluncode mcp test loopx-kunluncode`.",
+            "Add one bounded todo, then invoke or schedule `loopx-kunluncode run`.",
+            "The outer controller creates or resumes native Goal Pro through app-server; the model does not type `/goal-pro`.",
+            "Accept LoopX completion and quota writeback only after KunlunCode reports verifier-backed terminal success.",
+        ],
+        "success_criteria": [
+            "KunlunCode resolves its own project binding and registered agent identity.",
+            "The native strict goal auto-continues and preserves its thread across controller restarts.",
+            "Model-visible MCP tools and same-goal lifecycle CLI writes cannot bypass outer-controller writeback ownership.",
+            "The outer controller records delivery, completes the todo, and spends quota only after independent verification passes.",
+        ],
+    }
+
+
 def _opencode_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any]:
     return {
         "host_surface": "opencode_visible_goal_mode",
@@ -773,6 +825,8 @@ def build_host_loop_activation_packet(
         surface = _codex_cli_activation(commands)
     elif canonical == "claude-code":
         surface = _claude_code_activation(commands, cli_bin)
+    elif canonical == "kunluncode":
+        surface = _kunluncode_activation(commands)
     elif canonical == "opencode":
         surface = _opencode_activation(commands, cli_bin)
     elif canonical == "traex-cli":

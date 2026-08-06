@@ -142,6 +142,8 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
     assert agent_type_for_host_surface("codex-cli-tui") == "codex-cli"
     assert normalize_agent_type("Open Code") == "opencode"
     assert agent_type_for_host_surface("opencode") == "opencode"
+    assert normalize_agent_type("Kunlun Code") == "kunluncode"
+    assert agent_type_for_host_surface("kunlun") == "kunluncode"
     assert agent_type_for_host_surface("ark-managed-agent") == "ark-managed-agent"
 
     packet = build_host_loop_activation_packet(
@@ -174,6 +176,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
         ("codex-cli", "codex_cli"),
         ("codex-ide-plugin", "codex_cli"),
         ("claude-code", "claude_code"),
+        ("kunluncode", "kunluncode"),
         ("opencode", "generic_cli"),
         ("traex-cli", "generic_cli"),
     ),
@@ -463,6 +466,32 @@ def test_opencode_activation_uses_bridge_tool_and_generic_cli_quota() -> None:
     assert "--runtime-profile generic_cli" in packet["commands"]["heartbeat_prompt"]
 
 
+def test_kunluncode_activation_uses_native_goal_controller_and_runtime_profile() -> None:
+    packet = build_host_loop_activation_packet(
+        agent_type="kunluncode",
+        goal_id="fixture-goal",
+        agent_id="kunlun-fixture",
+        registered_agents=["kunlun-fixture"],
+    )
+
+    assert packet["host_surface"] == "kunluncode_native_goal_controller"
+    assert packet["activation_method"] == "bind_project_then_run_native_goal"
+    assert packet["host_mutation"]["managed_mcp_server"] == "loopx-kunluncode"
+    assert packet["host_mutation"]["host_command"] == "loopx-kunluncode run --project ."
+    assert "loopx-kunluncode connect" in packet["setup_command"]
+    assert any(
+        "model does not type `/goal-pro`" in step
+        for step in packet["activation_steps"]
+    )
+    assert any(
+        "independent verification" in criterion
+        for criterion in packet["success_criteria"]
+    )
+    assert any(
+        "lifecycle CLI writes" in criterion
+        for criterion in packet["success_criteria"]
+    )
+    assert "--runtime-profile kunluncode" in packet["commands"]["heartbeat_prompt"]
 def test_standard_heartbeat_omits_inactive_visible_goal_host() -> None:
     payload = build_heartbeat_prompt(goal_id="standard-heartbeat-fixture", thin=True)
 

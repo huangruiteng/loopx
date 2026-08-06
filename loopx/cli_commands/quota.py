@@ -244,6 +244,7 @@ def register_quota_command(subparsers: argparse._SubParsersAction) -> None:
             "codex_cli",
             "generic_cli",
             "claude_code",
+            "kunluncode",
             "local_scheduler",
         ],
         help="Host surface that will consume this scheduler projection.",

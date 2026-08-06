@@ -38,7 +38,7 @@ VALID_COMBINATIONS = {
     ("local_scheduler", "host_automation", "hosted_automation"),
     *{
         (surface, owner, mode)
-        for surface in ("codex_cli", "generic_cli", "claude_code")
+        for surface in ("codex_cli", "generic_cli", "claude_code", "kunluncode")
         for owner, mode in (
             ("agent_cli_loop", "interactive"),
             ("agent_cli_loop", "isolated_headless"),
@@ -73,6 +73,11 @@ FIRST_CLASS_RUNTIME_PROFILES = (
         SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
         ("claude_code", "agent_cli_loop", "interactive"),
         " --runtime-profile claude_code",
+    ),
+    (
+        SchedulerRuntimeProfile.KUNLUNCODE_VISIBLE,
+        ("kunluncode", "agent_cli_loop", "interactive"),
+        " --runtime-profile kunluncode",
     ),
     (
         SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,

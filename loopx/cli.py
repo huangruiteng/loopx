@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -293,6 +294,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(raw_argv)
     args.format = resolve_global_output_format(args)
+    if os.environ.get("LOOPX_KUNLUNCODE_OUTER_CONTROLLER") == "1":
+        from .kunluncode_goal_mode.guards import native_controller_cli_write_block
+
+        native_write_block = native_controller_cli_write_block(args)
+        if native_write_block is not None:
+            print(
+                json.dumps(native_write_block, ensure_ascii=False, indent=2),
+                file=sys.stderr,
+            )
+            return 2
     registry_path = Path(args.registry).expanduser()
     if (
         args.command

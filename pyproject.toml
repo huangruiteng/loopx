@@ -24,6 +24,7 @@ test = [
 
 [project.scripts]
 loopx = "loopx.entrypoint:main"
+loopx-kunluncode = "loopx.kunluncode_goal_mode.cli:main"
 loopx-lark-provider = "loopx.extensions.lark.provider:main"
 loopx-openviking-semantic-preference = "loopx.extensions.openviking_semantic_preference.provider:main"
 
@@ -36,6 +37,7 @@ include = ["loopx*"]
 "loopx.extensions.openviking_periodic_report" = ["extension.toml"]
 "loopx.extensions.openviking_semantic_preference" = ["extension.toml"]
 "loopx.opencode_goal_mode" = ["*.js", "*.mjs", "README.md"]
+"loopx.kunluncode_goal_mode" = ["README.md"]
 
 [tool.mypy]
 python_version = "3.11"
