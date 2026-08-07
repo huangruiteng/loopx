@@ -538,7 +538,7 @@ def _quota_failure_payload(
         "goal_id": args.goal_id,
         "decision": "skip",
         "should_run": False,
-        "reason": str(error),
+        "reason": "quota collection failed",
         "state": "blocked_health",
         "waiting_on": "codex",
         "status": "quota_collection_failed",
