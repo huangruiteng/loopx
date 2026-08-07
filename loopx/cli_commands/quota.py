@@ -523,7 +523,9 @@ def _quota_failure_payload(
                     "status": "quota_collection_failed",
                     "waiting_on": "codex",
                     "severity": "high",
-                    "recommended_action": str(error),
+                    "recommended_action": (
+                        "fix quota/status collection before spending automatic compute"
+                    ),
                     "source": "quota",
                 }
             ],
