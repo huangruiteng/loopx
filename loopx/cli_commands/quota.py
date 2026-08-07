@@ -509,7 +509,7 @@ def _quota_failure_payload(
             "mode": command,
             "registry": str(registry_path),
             "runtime_root": runtime_root_arg,
-            "error": str(error),
+            "error_code": "QUOTA_COLLECTION_FAILED",
             "summary": {
                 "registered_goals": 0,
                 "health_blockers": 1,
