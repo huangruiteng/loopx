@@ -26,6 +26,7 @@ test = [
 [project.scripts]
 loopx = "loopx.entrypoint:main"
 loopx-lark-provider = "loopx.extensions.lark.provider:main"
+loopx-openviking-history-export = "loopx.extensions.openviking_semantic_preference.history_export:main"
 loopx-openviking-semantic-preference = "loopx.extensions.openviking_semantic_preference.provider:main"
 
 [tool.setuptools.packages.find]
