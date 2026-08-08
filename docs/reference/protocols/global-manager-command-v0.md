@@ -10,9 +10,10 @@ lanes, and choose the next safe action without reading every thread.
 
 This protocol is not a general chat-command router yet. It defines the
 request, allowed sources, response shape, privacy boundary, and action ladder
-for Codex hosts, CLI wrappers, or dashboard command palettes. The first CLI
-wrapper is `loopx global-summary`, which returns the canonical
-`/loopx-global-summary` response.
+for Codex hosts, CLI wrappers, or dashboard command palettes. The implemented
+CLI wrappers are `loopx global-summary`, which returns the broad compact
+`/loopx-global-summary` digest, and `loopx global-gates`, which returns the
+focused current-state `/loopx-global-gates` inbox.
 
 ## Command Set
 
@@ -27,13 +28,19 @@ Recommended first commands:
 | `/loopx-pr-review` | Walk the current project's or explicit repository's open and merged GitHub PRs one by one with motivation, scope, checks, risks, and review prompts. | current open + merged PRs, optionally bounded by `--since` |
 | `/loop-goal-summary <goal id>` | Drill into one goal without scanning unrelated projects. | 24 hours |
 
+`/loopx-global-todos`, `/loopx-global-risks`, and `/loop-goal-summary` remain
+host-only manager commands under this protocol; they do not yet have dedicated
+CLI wrappers.
+
 Commands are read-only by default. They can propose follow-up actions, but
 they do not approve gates, promote suggested todos, spend quota, merge PRs,
 pause automations, or run destructive operations.
 
 Legacy `/loop-global-*` forms may be accepted as aliases during migration, but
 hosts should canonicalize command packets and user-facing help to the
-`/loopx-global-*` names.
+`/loopx-global-*` names. These are host/slash aliases, not CLI command names:
+unknown commands and legacy CLI aliases fail closed with help instead of
+falling back to a broader status or summary dump.
 
 | Legacy alias | Canonical command |
 | --- | --- |
@@ -73,6 +80,9 @@ Request rules:
 - `privacy_mode` defaults to `public_safe_summary`.
 - `goal_filter` and `agent_filter` narrow the read; omitted filters mean all
   registered goals or agents visible in the local control plane.
+- For `loopx global-gates`, `--agent-id` excludes goals where the selected
+  agent is not registered; an unavailable per-goal quota projection is not a
+  substitute for agent filtering.
 - `dry_run=true` is the default because the first implementation should be a
   report, not an executor.
 - Unknown commands must fail closed with a help packet, not a broad status
@@ -89,6 +99,11 @@ Implementations may read only compact LoopX control-plane surfaces:
 - run history summaries;
 - rollout event log summaries;
 - review packets for explicit goal drilldown.
+
+`loopx global-gates` reads the compact status projection. Status internally
+consumes compact run-history state to build its current attention queue, but
+the gates builder does not issue a second history read or expose history items
+in its response.
 
 They must not include raw transcripts, raw benchmark logs, raw connector
 payloads, credentials, local absolute paths, or private source bodies.
@@ -155,6 +170,17 @@ payloads, credentials, local absolute paths, or private source bodies.
 }
 ```
 
+Focused gate responses follow these relation rules:
+
+- a formal user gate comes from the interaction contract or a formal open
+  user-gate todo, not merely from the count of all open user todos;
+- `blocks` uses the gate todo's `unblocks_todo_id` when present, then a verified
+  decision-scope relation, and otherwise falls back to the goal scope rather
+  than guessing from the selected runnable todo;
+- `waiting_on=user_or_controller` is routing metadata, not a new gate-owner
+  enum; gate owners continue to use the protocol's user, controller,
+  registered-agent, or external-system owner classes.
+
 ## Action Ladder
 
 Responses may include actions, but each action must declare its authority:
@@ -195,8 +221,13 @@ or omission, not the material itself.
 A first implementation is acceptable when:
 
 - command responses are read-only by default;
+- `loopx global-summary` and `loopx global-gates` emit their matching canonical
+  command responses, while the remaining manager commands stay host-only;
 - each command names its compact LoopX source surfaces;
-- gates name owner, blocked todo or scope, question, and next safe action;
+- gates name owner, formally related blocked todo or goal scope, question, and
+  next safe action;
+- agent filtering excludes goals where the selected agent is not registered;
+- unknown commands and legacy CLI aliases fail closed with help;
 - actions declare approval and ownership requirements;
 - risks carry public-safe evidence refs;
 - no raw logs, transcripts, credentials, local paths, or private source bodies

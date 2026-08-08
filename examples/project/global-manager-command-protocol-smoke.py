@@ -98,6 +98,15 @@ def main() -> int:
         "Action Ladder",
         "Privacy Boundary",
         "global_manager_command_response_v0",
+        "loopx global-summary",
+        "loopx global-gates",
+        "compact run-history",
+        "unblocks_todo_id",
+        "goal scope",
+        "waiting_on=user_or_controller",
+        "not registered",
+        "host-only",
+        "fail closed",
         "python3 examples/project/global-manager-command-protocol-smoke.py",
     ]:
         assert_contains(contract, needle, "global manager command contract")

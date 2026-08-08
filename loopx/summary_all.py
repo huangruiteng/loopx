@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from .control_plane.runtime.time import now_utc, now_utc_iso
+from .control_plane.todos.decision_scope import todo_gate_relation
+from .control_plane.todos.user_gate import open_user_gate_todo_items
 from .history import collect_history, load_registry
 from .paths import resolve_runtime_root
 from .presentation.markdown import as_dict as _as_dict
@@ -15,6 +17,7 @@ from .status import collect_status
 
 
 COMMAND = "/loopx-global-summary"
+GLOBAL_GATES_COMMAND = "/loopx-global-gates"
 LEGACY_COMMAND_ALIASES = {
     "/loopx-summary-all": COMMAND,
     "/loop-global-summary": COMMAND,
@@ -29,6 +32,13 @@ SOURCE_SURFACES = [
     "quota should-run summaries",
     "active-state todo projections",
     "run history index summaries",
+]
+
+GLOBAL_GATES_SOURCE_SURFACES = [
+    "status attention queue",
+    "quota should-run summaries",
+    "active-state todo projections",
+    "compact run-history projection consumed by status",
 ]
 
 LANE_PRIORITY = {
@@ -182,6 +192,312 @@ def _gate_from_item(
         "question": _redact_text(question),
         "next_safe_action": "Wait for the projected user/controller decision before running the blocked path.",
     }
+
+
+def _quota_matches_agent_scope(
+    quota_payload: dict[str, Any],
+    *,
+    agent_id: str | None,
+) -> bool:
+    if not agent_id:
+        return True
+    if quota_payload.get("ok") is False:
+        return False
+    identity = _as_dict(quota_payload.get("agent_identity"))
+    return str(identity.get("agent_id") or "") == agent_id
+
+
+def _agent_todo_candidates(quota_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    seen: set[tuple[object, object, object]] = set()
+
+    def add_candidate(value: object) -> None:
+        if not isinstance(value, dict):
+            return
+        item_key = (value.get("todo_id"), value.get("index"), value.get("text"))
+        if item_key in seen:
+            return
+        seen.add(item_key)
+        candidates.append(value)
+
+    add_candidate(quota_payload.get("selected_todo"))
+    add_candidate(quota_payload.get("agent_lane_next_action"))
+    summary = _as_dict(quota_payload.get("agent_todo_summary"))
+    for key in (
+        "first_open_items",
+        "first_executable_items",
+        "items",
+        "open_items",
+        "backlog_items",
+        "executable_backlog_items",
+    ):
+        for item in _as_list(summary.get(key)):
+            add_candidate(item)
+    return candidates
+
+
+def _blocked_refs_for_gate(
+    gate_item: dict[str, Any] | None,
+    *,
+    quota_payload: dict[str, Any],
+    goal_id: str,
+) -> list[str]:
+    if not gate_item:
+        return [goal_id]
+    exact_todo_id = str(gate_item.get("unblocks_todo_id") or "").strip()
+    if exact_todo_id:
+        return [exact_todo_id]
+    for agent_item in _agent_todo_candidates(quota_payload):
+        relation = todo_gate_relation(gate_item, agent_item)
+        if not relation or relation.get("state") not in {
+            "gate_targets_todo",
+            "gate_covers_action",
+        }:
+            continue
+        todo_id = str(agent_item.get("todo_id") or "").strip()
+        if todo_id:
+            return [todo_id]
+    return [goal_id]
+
+
+def _global_gate_from_item(
+    item: dict[str, Any],
+    *,
+    quota_payload: dict[str, Any],
+    agent_id: str | None,
+) -> dict[str, Any] | None:
+    interaction = _as_dict(quota_payload.get("interaction_contract"))
+    user_channel = _as_dict(interaction.get("user_channel"))
+    user_summary = _as_dict(quota_payload.get("user_todo_summary"))
+    formal_gates = open_user_gate_todo_items(user_summary)
+    formal_gate = formal_gates[0] if formal_gates else None
+    action_required = user_channel.get("action_required") is True
+    waiting_on = str(item.get("waiting_on") or "").strip()
+    controller_routed = waiting_on in {"controller", "user_or_controller"} and (
+        not agent_id or quota_payload.get("state") == "operator_gate"
+    )
+    if not action_required and not formal_gate and not controller_routed:
+        return None
+
+    owner = "user" if formal_gate or action_required else "controller"
+    goal_id = str(item.get("goal_id") or quota_payload.get("goal_id") or "").strip()
+    question = (
+        user_channel.get("question")
+        or item.get("operator_question")
+        or (formal_gate or {}).get("text")
+        or (formal_gate or {}).get("title")
+        or quota_payload.get("recommended_action")
+        or item.get("recommended_action")
+    )
+    gate_id = (
+        quota_payload.get("gate_id")
+        or (formal_gate or {}).get("todo_id")
+        or f"{goal_id}:{owner}-gate"
+    )
+    return {
+        "gate_id": str(gate_id),
+        "goal_id": goal_id,
+        "owner": owner,
+        "waiting_on": waiting_on or owner,
+        "blocks": _blocked_refs_for_gate(
+            formal_gate,
+            quota_payload=quota_payload,
+            goal_id=goal_id,
+        ),
+        "question": _redact_text(question),
+        "next_safe_action": (
+            "Wait for the projected user/controller decision before "
+            "running the blocked path."
+        ),
+    }
+
+
+def _collect_global_gate_state(
+    status_payload: dict[str, Any],
+    *,
+    agent_id: str | None,
+    limit: int,
+) -> dict[str, list[dict[str, Any]]]:
+    queue = _as_dict(status_payload.get("attention_queue"))
+    queue_items = [
+        item for item in _as_list(queue.get("items")) if isinstance(item, dict)
+    ]
+    gates: list[dict[str, Any]] = []
+    lanes: list[dict[str, Any]] = []
+    seen_goal_ids: set[str] = set()
+    for item in queue_items:
+        goal_id = str(item.get("goal_id") or "").strip()
+        if not goal_id or goal_id in seen_goal_ids:
+            continue
+        seen_goal_ids.add(goal_id)
+        quota_payload = _build_goal_quota(
+            status_payload,
+            goal_id=goal_id,
+            agent_id=agent_id,
+        )
+        if not _quota_matches_agent_scope(quota_payload, agent_id=agent_id):
+            continue
+        gate = _global_gate_from_item(
+            item,
+            quota_payload=quota_payload,
+            agent_id=agent_id,
+        )
+        if not gate:
+            continue
+        gates.append(gate)
+        lane = _lane_from_item(item, quota_payload=quota_payload)
+        verified_todo_ids = {
+            str(blocked_ref)
+            for blocked_ref in _as_list(gate.get("blocks"))
+            if str(blocked_ref) != goal_id
+        }
+        if str(lane.get("top_todo_id") or "") not in verified_todo_ids:
+            lane.pop("top_todo_id", None)
+        lanes.append(lane)
+        if len(gates) >= limit:
+            break
+    return {"gates": gates, "lanes": lanes}
+
+
+def _global_gates_request() -> dict[str, Any]:
+    return {
+        "schema_version": "global_manager_command_request_v0",
+        "command": GLOBAL_GATES_COMMAND,
+        "legacy_aliases": ["/loop-global-gates"],
+        "cli_command": "loopx global-gates",
+        "include": ["gates", "blocked_work", "next_questions"],
+        "privacy_mode": "public_safe_summary",
+        "dry_run": True,
+    }
+
+
+def build_global_gates(
+    *,
+    registry_path: Path,
+    runtime_root_override: str | None,
+    scan_roots: list[Path],
+    agent_id: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    normalized_limit = max(1, limit)
+    status_payload = collect_status(
+        registry_path=registry_path,
+        runtime_root_override=runtime_root_override,
+        scan_roots=scan_roots,
+        limit=normalized_limit,
+    )
+    if status_payload.get("ok") is not True:
+        return build_global_gates_error("Global status source unavailable.")
+    state = _collect_global_gate_state(
+        status_payload,
+        agent_id=agent_id,
+        limit=normalized_limit,
+    )
+    gates = state["gates"]
+    lanes = state["lanes"]
+    gate_count = len(gates)
+    noun = "gate requires" if gate_count == 1 else "gates require"
+    actions = []
+    if gates:
+        actions = [
+            {
+                "action_id": "act_read_gate_detail",
+                "kind": "read_more",
+                "requires_user_approval": False,
+                "requires_maintainer_authority": False,
+                "preview": (
+                    "Run `loopx quota should-run --goal-id <goal>` for one "
+                    "blocked lane."
+                ),
+            },
+            {
+                "action_id": "act_ask_gate_owner",
+                "kind": "ask_user",
+                "requires_user_approval": False,
+                "requires_maintainer_authority": False,
+                "preview": "Surface the projected gate question without changing state.",
+            },
+        ]
+    return {
+        "ok": True,
+        "schema_version": SCHEMA_VERSION,
+        "request": _global_gates_request(),
+        "generated_at": _now_iso(),
+        "summary": {
+            "headline": f"{gate_count} open user/controller {noun} a decision.",
+            "open_gate_count": gate_count,
+            "blocked_lane_count": len(lanes),
+            "source_surfaces": GLOBAL_GATES_SOURCE_SURFACES,
+        },
+        "groups": {
+            "user_gates": [gate for gate in gates if gate.get("owner") == "user"],
+            "controller_gates": [
+                gate for gate in gates if gate.get("owner") == "controller"
+            ],
+            "blocked_work": lanes,
+        },
+        "gates": gates,
+        "lanes": lanes,
+        "actions": actions,
+        "omissions": [
+            (
+                "Raw logs, raw transcripts, connector payloads, credential values, "
+                "local paths, and private source bodies were intentionally omitted."
+            ),
+            "Recent progress and unrelated risks are outside this focused command.",
+        ],
+        "boundary": BOUNDARY,
+    }
+
+
+def build_global_gates_error(error: object) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "schema_version": SCHEMA_VERSION,
+        "request": _global_gates_request(),
+        "generated_at": _now_iso(),
+        "error": _redact_text(error),
+        "omissions": [
+            "Raw/private failure details and local paths were intentionally omitted."
+        ],
+        "boundary": BOUNDARY,
+    }
+
+
+def render_global_gates_markdown(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return "# LoopX Global Gates\n\n- ok: `False`\n- error: " + _redact_text(
+            payload.get("error")
+        )
+
+    summary = _as_dict(payload.get("summary"))
+    lines = [
+        "# LoopX Global Gates",
+        "",
+        f"- command: `{_as_dict(payload.get('request')).get('command')}`",
+        f"- open_gate_count: `{summary.get('open_gate_count')}`",
+        "",
+        "## Gates",
+    ]
+    gates = [item for item in _as_list(payload.get("gates")) if isinstance(item, dict)]
+    if not gates:
+        lines.append("- none")
+    for gate in gates:
+        blocked_refs = ", ".join(str(item) for item in _as_list(gate.get("blocks")))
+        lines.append(
+            "- "
+            f"`{gate.get('goal_id')}` owner=`{gate.get('owner')}` "
+            f"waiting_on=`{gate.get('waiting_on')}` blocks=`{blocked_refs}`: "
+            f"{gate.get('question')} Next: {gate.get('next_safe_action')}"
+        )
+    lines.extend(
+        [
+            "",
+            "## Boundary",
+            "- raw/private material omitted; local paths are not recorded.",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _todo_from_quota(goal_id: str, quota_payload: dict[str, Any]) -> dict[str, Any] | None:

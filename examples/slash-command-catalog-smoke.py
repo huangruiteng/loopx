@@ -40,6 +40,10 @@ def main() -> int:
         assert command in commands, commands
     assert "/loop-global-summary" in commands["/loopx-global-summary"]["legacy_aliases"]
     assert "/loopx-summary-all" not in json.dumps(payload)
+    global_gates = commands["/loopx-global-gates"]
+    assert global_gates["implementation_status"] == "available", global_gates
+    assert global_gates["cli_reference"] == "loopx global-gates", global_gates
+    assert global_gates["legacy_aliases"] == ["/loop-global-gates"], global_gates
     project_start = commands["/loopx <goal text>"]
     assert "loopx start-goal --guided --project . --goal-text" in project_start["cli_reference"], project_start
     assert "bootstrap-command-pack --project . --goal-text" not in project_start["cli_reference"], project_start
@@ -89,6 +93,7 @@ def main() -> int:
     assert "# LoopX Slash Commands" in markdown, markdown
     assert "`/loopx-global-summary`" in markdown, markdown
     assert "`loopx global-summary`" in markdown, markdown
+    assert "`loopx global-gates`" in markdown, markdown
     assert "`/loopx-pr-review`" in markdown, markdown
     assert "`loopx pr-review [--repo owner/repo] [--state open\\|merged\\|all] [--since ISO]`" in markdown, markdown
     assert "Agent contract: run the CLI reference first" in markdown, markdown

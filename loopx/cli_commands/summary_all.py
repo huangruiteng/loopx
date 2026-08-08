@@ -4,7 +4,13 @@ import argparse
 from collections.abc import Callable
 from pathlib import Path
 
-from ..summary_all import build_summary_all, render_summary_all_markdown
+from ..summary_all import (
+    build_global_gates,
+    build_global_gates_error,
+    build_summary_all,
+    render_global_gates_markdown,
+    render_summary_all_markdown,
+)
 
 
 PrintPayload = Callable[
@@ -23,28 +29,68 @@ def _scan_roots(args: argparse.Namespace) -> list[Path]:
     return scan_roots or [Path(args.scan_root).expanduser()]
 
 
+def _add_current_manager_flags(
+    parser: argparse.ArgumentParser,
+    *,
+    agent_help: str,
+    limit_help: str,
+) -> None:
+    parser.add_argument("--agent-id", help=agent_help)
+    parser.add_argument("--limit", type=int, default=8, help=limit_help)
+    parser.add_argument(
+        "--scan-root",
+        default=default_public_scan_root(),
+        help=(
+            "Public files to scan for obvious private material. "
+            "Defaults to the LoopX install root."
+        ),
+    )
+    parser.add_argument(
+        "--scan-path",
+        action="append",
+        default=[],
+        help=(
+            "Specific public file or directory to scan. Repeatable. "
+            "Overrides --scan-root when set."
+        ),
+    )
+
+
 def register_summary_all_command(
     subparsers: argparse._SubParsersAction,
     add_subcommand_format: Callable[[argparse.ArgumentParser], None],
 ) -> None:
     parser = subparsers.add_parser(
         "global-summary",
-        help="Read a public-safe /loopx-global-summary progress digest; see `loopx slash-commands` for slash help.",
+        help=(
+            "Read a public-safe /loopx-global-summary progress digest; "
+            "see `loopx slash-commands` for slash help."
+        ),
     )
     add_subcommand_format(parser)
-    parser.add_argument("--agent-id", help="Registered agent id for agent-lane quota projection.")
-    parser.add_argument("--time-range", default="24h", help="Recent progress window, e.g. 24h or 7d.")
-    parser.add_argument("--limit", type=int, default=8, help="Maximum items per digest section.")
-    parser.add_argument(
-        "--scan-root",
-        default=default_public_scan_root(),
-        help="Public files to scan for obvious private material. Defaults to the LoopX install root.",
+    _add_current_manager_flags(
+        parser,
+        agent_help="Registered agent id for agent-lane quota projection.",
+        limit_help="Maximum items per digest section.",
     )
     parser.add_argument(
-        "--scan-path",
-        action="append",
-        default=[],
-        help="Specific public file or directory to scan. Repeatable. Overrides --scan-root when set.",
+        "--time-range",
+        default="24h",
+        help="Recent progress window, e.g. 24h or 7d.",
+    )
+
+    gates_parser = subparsers.add_parser(
+        "global-gates",
+        help=(
+            "Read public-safe /loopx-global-gates user/controller decisions; "
+            "see `loopx slash-commands` for slash help."
+        ),
+    )
+    add_subcommand_format(gates_parser)
+    _add_current_manager_flags(
+        gates_parser,
+        agent_help="Registered agent id used to narrow gate projection.",
+        limit_help="Maximum returned gate count.",
     )
 
 
@@ -56,8 +102,22 @@ def handle_summary_all_command(
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int | None:
-    if args.command != "global-summary":
+    if args.command not in {"global-summary", "global-gates"}:
         return None
+    if args.command == "global-gates":
+        try:
+            payload = build_global_gates(
+                registry_path=registry_path,
+                runtime_root_override=runtime_root_arg,
+                scan_roots=_scan_roots(args),
+                agent_id=args.agent_id,
+                limit=max(1, args.limit),
+            )
+        except Exception as exc:
+            payload = build_global_gates_error(exc)
+        print_payload(payload, output_format(args), render_global_gates_markdown)
+        return 0 if payload.get("ok") else 1
+
     try:
         payload = build_summary_all(
             registry_path=registry_path,

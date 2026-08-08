@@ -98,9 +98,8 @@ def build_slash_command_catalog(
             scope="global",
             intent="List open user/controller gates and what each blocks.",
             mutation_policy="read_only",
-            cli_reference=f"{cli_bin} slash-commands; use {cli_bin} global-summary for the current compact global packet",
+            cli_reference=f"{cli_bin} global-gates",
             legacy_aliases=legacy_gates,
-            implementation_status="host_command_defined",
         ),
         _command(
             command="/loopx-global-todos",
