@@ -24,6 +24,7 @@ from .preset import (
 from .rollout_append import append_auto_research_rollout_events
 from .user_contract import build_auto_research_user_contract
 from .worker_loop import run_auto_research_worker_loop
+from .worker_runtime import load_auto_research_worker_frontier
 from ...control_plane.agents.multi_agent.collective_round_ledger import (
     build_multi_agent_collective_round_ledger,
 )
@@ -1655,15 +1656,127 @@ def run_auto_research_demo_e2e(
                 visible_proof["visible_lanes_accepted"] = bool(visible_acceptance.get("accepted"))
                 visible_proof["evidence_source"] = "visible_launcher"
             if wake_visible_after_launch and visible_wake is not None:
-                lane_ids = [
-                    str(lane).strip()
-                    for lane in launch_result.get("started_lanes") or []
-                    if str(lane).strip()
-                ]
-                wake_payload = visible_wake(
-                    str(launch_result.get("session_name") or session_name),
-                    lane_ids,
-                )
+                session = str(launch_result.get("session_name") or session_name)
+                workspace = demo_root / "visible-control-plane"
+
+                # Build lane_id → agent_id mapping from the supervisor lanes.
+                lane_agent_lookup: dict[str, str] = {}
+                for lane in supervisor.get("lanes") or []:
+                    if not isinstance(lane, dict):
+                        continue
+                    lid = str(lane.get("lane_id") or "").strip()
+                    aid = str(lane.get("agent_id") or "").strip()
+                    if lid and aid:
+                        lane_agent_lookup[lid] = aid
+
+                # Filter: only wake lanes that have a selected runnable todo and
+                # are not in quiet-completion.
+                ready_lanes: list[str] = []
+                skipped_lanes: list[dict[str, object]] = []
+                for raw_lane in launch_result.get("started_lanes") or []:
+                    lane_id = str(raw_lane).strip() if raw_lane else ""
+                    if not lane_id:
+                        continue
+                    agent_id = lane_agent_lookup.get(lane_id)
+                    if not agent_id:
+                        skipped_lanes.append({
+                            "lane_id": lane_id,
+                            "reason": "no_agent_mapping",
+                        })
+                        continue
+                    try:
+                        frontier = load_auto_research_worker_frontier(
+                            registry_path=visible_registry_path,
+                            runtime_root_arg=visible_runtime_root_arg,
+                            goal_id=goal_id,
+                            agent_id=agent_id,
+                            workspace=workspace,
+                        )
+                    except Exception:
+                        skipped_lanes.append({
+                            "lane_id": lane_id,
+                            "agent_id": agent_id,
+                            "reason": "frontier_load_failed",
+                            "error_code": "FRONTIER_LOAD_FAILED",
+                        })
+                        continue
+                    frontier_data = (
+                        frontier.get("frontier")
+                        if isinstance(frontier.get("frontier"), dict)
+                        else {}
+                    )
+                    selected = frontier_data.get("selected")
+                    completion = (
+                        frontier_data.get("completion")
+                        if isinstance(frontier_data.get("completion"), dict)
+                        else None
+                    )
+                    quota = (
+                        frontier.get("quota")
+                        if isinstance(frontier.get("quota"), dict)
+                        else {}
+                    )
+                    if completion and completion.get("quiet_completion_allowed") is True:
+                        skipped_lanes.append({
+                            "lane_id": lane_id,
+                            "agent_id": agent_id,
+                            "reason": "quiet_completion_allowed",
+                        })
+                        continue
+                    if not selected:
+                        skipped_lanes.append({
+                            "lane_id": lane_id,
+                            "agent_id": agent_id,
+                            "reason": "no_selected_todo",
+                            "runnable_count": frontier_data.get("runnable_count"),
+                            "blocked_count": frontier_data.get("blocked_count"),
+                        })
+                        continue
+                    if quota.get("should_run") is False:
+                        skipped_lanes.append({
+                            "lane_id": lane_id,
+                            "agent_id": agent_id,
+                            "reason": "quota_should_run_false",
+                            "quota_state": quota.get("state"),
+                        })
+                        continue
+                    ready_lanes.append(lane_id)
+
+                if not ready_lanes:
+                    wake_payload: dict[str, object] = {
+                        "ok": True,
+                        "schema_version": "multi_agent_pane_a2a_wakeup_v0",
+                        "mode": "no_op_all_filtered",
+                        "session_name": session,
+                        "target_lanes": [],
+                        "prompt": "",
+                        "prompt_hash": "",
+                        "coordination_model": "decentralized_state_a2a",
+                        "wakeup_model": "state_aware_filter_no_ready_lanes",
+                        "workflow_driver": False,
+                        "broadcaster_reads_frontier": False,
+                        "broadcaster_reads_todo_readiness": False,
+                        "broadcaster_selects_todo": False,
+                        "prompt_delivery": "skipped_no_ready_lanes",
+                        "prompt_delivered": False,
+                        "auto_wake_backoff_recommended": False,
+                    }
+                else:
+                    wake_payload = visible_wake(session, ready_lanes)
+                if skipped_lanes:
+                    wake_payload = dict(wake_payload)
+                    wake_payload["state_aware_filter"] = {
+                        "schema_version": "auto_research_state_aware_wake_filter_v0",
+                        "total_started_lanes": len(
+                            [
+                                s for s in (launch_result.get("started_lanes") or [])
+                                if str(s).strip()
+                            ]
+                        ),
+                        "ready_lane_count": len(ready_lanes),
+                        "skipped_lane_count": len(skipped_lanes),
+                        "skipped_lanes": skipped_lanes,
+                    }
                 _load_visible_wake_into_payload(
                     payload=payload,
                     wake=wake_payload,

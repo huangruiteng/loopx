@@ -94,9 +94,13 @@ def run_auto_research_worker_loop(
 
     workspace = workspace.resolve()
     effective_lane_count = lane_count or len(clean_agents)
+    stop_marker = workspace / ".loopx-auto-research-stop"
     turns: list[dict[str, object]] = []
     stop_reason = "max_rounds"
     for round_index in range(1, max_rounds + 1):
+        if stop_marker.exists():
+            stop_reason = "operator_stop_requested"
+            break
         round_turns: list[dict[str, object]] = []
         for agent_id in clean_agents:
             turn = run_auto_research_worker_turn(
@@ -122,7 +126,10 @@ def run_auto_research_worker_loop(
             stop_reason = "no_runnable_frontier"
             break
         if execute and not any(turn.get("executed") for turn in round_turns):
-            stop_reason = "no_executed_turns"
+            if any(turn.get("mode") == "paused_by_quota" for turn in round_turns):
+                stop_reason = "quota_paused"
+            else:
+                stop_reason = "no_executed_turns"
             break
 
     executed_turns = [turn for turn in turns if turn.get("executed")]

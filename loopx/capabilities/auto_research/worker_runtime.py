@@ -594,6 +594,27 @@ def run_auto_research_worker_turn(
             "executed": False,
             "frontier": frontier_packet,
         }
+    quota_ok = bool(frontier_packet.get("quota", {}).get("ok"))
+    quota_should_run = bool(frontier_packet.get("quota", {}).get("should_run"))
+    if quota_ok and not quota_should_run:
+        return {
+            "ok": True,
+            "schema_version": AUTO_RESEARCH_WORKER_TURN_SCHEMA_VERSION,
+            "mode": "paused_by_quota",
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "selected_todo_id": todo_id,
+            "selected_action": action,
+            "executed": False,
+            "quota": frontier_packet.get("quota"),
+            "frontier": frontier_packet,
+            "public_boundary": {
+                "raw_logs_recorded": False,
+                "private_artifacts_recorded": False,
+                "absolute_paths_recorded": False,
+                "credentials_recorded": False,
+            },
+        }
     if action not in SUPPORTED_WORKER_ACTIONS:
         return {
             "ok": True,
