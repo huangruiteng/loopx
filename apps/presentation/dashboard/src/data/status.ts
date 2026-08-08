@@ -689,6 +689,8 @@ export const localDashboardApiSchema = z.object({
   status_url: z.string().optional().nullable(),
   health_url: z.string().optional().nullable(),
   review_material_url: z.string().optional().nullable(),
+  presentation_surfaces_url: z.string().optional().nullable(),
+  presentation_detail_url: z.string().optional().nullable(),
   reward_dry_run_url: z.string().optional().nullable(),
   reward_append_url: z.string().optional().nullable(),
   reward_write_enabled: z.boolean().optional().default(false),
@@ -696,6 +698,83 @@ export const localDashboardApiSchema = z.object({
   configure_goal_apply_url: z.string().optional().nullable(),
   control_plane_write_enabled: z.boolean().optional().default(false),
 }).optional().nullable();
+
+// Core keeps the presentation status contract provider-neutral. A ready/
+// review_due item carries a compact, content-addressed `detail_ref` pointing at
+// the published projection rather than inlining the provider-owned view. The
+// finance decision-research view schema lives with the finance extension, not
+// in this generic Core dashboard contract.
+const presentationDetailRefSchema = z.object({
+  extension_id: z.string().min(1),
+  surface_id: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  extension_revision: z.string().min(1),
+  payload_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+}).strict();
+
+const presentationSurfaceBaseSchema = z.object({
+  extension_id: z.string().min(1),
+  extension_revision: z.string().min(1),
+  surface_id: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  surface_kind: z.string().regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/),
+  title: z.string().min(1),
+  view_schema: z.string().regex(/^[a-z][a-z0-9_]*_v\d+$/),
+  visibility: z.enum(["public-safe", "owner-only"]),
+  goal_id: z.string().min(1).nullable(),
+  generated_at: z.string().min(1).nullable(),
+  review_due_at: z.string().min(1).nullable(),
+  diagnostic: z.string().min(1).nullable(),
+  empty_state_title: z.string().min(1),
+  empty_state_detail: z.string().min(1),
+});
+
+const readyPresentationSurfaceSchema = presentationSurfaceBaseSchema.extend({
+  state: z.enum(["ready", "review_due"]),
+  goal_id: z.string().min(1),
+  generated_at: z.string().min(1),
+  detail_ref: presentationDetailRefSchema,
+}).strict();
+
+const emptyPresentationSurfaceSchema = presentationSurfaceBaseSchema.extend({
+  state: z.literal("empty"),
+  detail_ref: z.never().optional(),
+}).strict();
+
+const invalidPresentationSurfaceSchema = presentationSurfaceBaseSchema.extend({
+  state: z.literal("invalid"),
+  diagnostic: z.string().min(1),
+  detail_ref: z.never().optional(),
+}).strict();
+
+export const presentationSurfaceSchema = z.union([
+  readyPresentationSurfaceSchema,
+  emptyPresentationSurfaceSchema,
+  invalidPresentationSurfaceSchema,
+]);
+
+export const presentationSurfaceCollectionSchema = z.object({
+  schema_version: z.literal("extension_presentation_surfaces_v0"),
+  count: z.number().int().nonnegative(),
+  ready_count: z.number().int().nonnegative(),
+  review_due_count: z.number().int().nonnegative(),
+  empty_count: z.number().int().nonnegative(),
+  invalid_count: z.number().int().nonnegative(),
+  items: z.array(presentationSurfaceSchema),
+}).strict();
+
+const emptyPresentationSurfaceCollection = {
+  schema_version: "extension_presentation_surfaces_v0" as const,
+  count: 0,
+  ready_count: 0,
+  review_due_count: 0,
+  empty_count: 0,
+  invalid_count: 0,
+  items: [],
+};
+
+export const presentationSurfaceCollectionResponseSchema = z.object({
+  ok: z.literal(true),
+  presentation_surfaces: presentationSurfaceCollectionSchema,
+}).strict();
 
 export const statusPayloadSchema = z.object({
   ok: z.boolean(),
@@ -759,6 +838,9 @@ export const statusPayloadSchema = z.object({
   usage_summary: usageSummarySchema.default(null),
   todo_index: todoIndexSchema.optional().nullable().default(null),
   agent_management_projection: agentManagementProjectionSchema.optional().nullable().default(null),
+  presentation_surfaces: presentationSurfaceCollectionSchema.optional().default(
+    emptyPresentationSurfaceCollection,
+  ),
 });
 
 export const rewardDryRunResponseSchema = z.object({
@@ -818,6 +900,14 @@ export type PromotionGate = NonNullable<z.infer<typeof promotionGateSchema>>;
 export type DecisionFreshnessSummary = NonNullable<z.infer<typeof decisionFreshnessSummarySchema>>;
 export type DecisionFreshnessItem = z.infer<typeof decisionFreshnessItemSchema>;
 export type UsageSummary = NonNullable<z.infer<typeof usageSummarySchema>>;
+export type PresentationSurface = z.infer<typeof presentationSurfaceSchema>;
+export type PresentationSurfaceCollection = z.infer<typeof presentationSurfaceCollectionSchema>;
+
+export function parsePresentationSurfaceCollectionResponse(
+  payload: unknown,
+): PresentationSurfaceCollection {
+  return presentationSurfaceCollectionResponseSchema.parse(payload).presentation_surfaces;
+}
 export type RunGoal = z.infer<typeof runGoalSchema>;
 export type RunRecord = z.infer<typeof runRecordSchema>;
 export type RewardDryRunResponse = z.infer<typeof rewardDryRunResponseSchema>;

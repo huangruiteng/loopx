@@ -8,7 +8,7 @@ version = "0.4.0"
 description = "Public-safe finance value-discovery extension for LoopX."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["loopx>=0.2.9"]
+dependencies = ["loopx>=0.4.0"]
 
 [project.scripts]
 loopx-finance-value-discovery = "loopx_finance_value_discovery.cli:main"

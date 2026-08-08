@@ -1,0 +1,301 @@
+{
+  "schema_version": "finance_research_dashboard_input_v0",
+  "surface_id": "investment-research",
+  "goal_id": "synthetic-research-goal",
+  "source_id": "synthetic-research-2026-01-15",
+  "source_version": 1,
+  "supersedes": [],
+  "point_in_time": "2026-01-15T12:00:00+00:00",
+  "evidence_cutoff": "2026-01-15",
+  "review_due_at": "2026-02-15T12:00:00+00:00",
+  "title": "Synthetic Technology Research",
+  "subtitle": "Evidence-gated decision review",
+  "adjudication": {
+    "status": "insufficient_evidence",
+    "label": "Insufficient Evidence",
+    "summary": "The frozen gates do not yet support a selected conclusion.",
+    "confidence": "medium"
+  },
+  "metrics": [
+    {
+      "id": "validated-alpha",
+      "label": "Validated company alpha",
+      "value": "0",
+      "detail": "No company-specific residual passed every frozen gate.",
+      "tone": "warning"
+    },
+    {
+      "id": "method-state",
+      "label": "Active method",
+      "value": "unchanged",
+      "detail": "The active method was not promoted or replaced.",
+      "tone": "neutral"
+    }
+  ],
+  "dashboard_summaries": [
+    {
+      "id": "adjudication-summary",
+      "label": "Current adjudication",
+      "title": "Evidence remains insufficient",
+      "summary": "Continue monitoring the frozen event gates.",
+      "tone": "warning",
+      "destination_anchor": "executive-adjudication"
+    }
+  ],
+  "research_layers": [
+    {
+      "id": "beta",
+      "order": 1,
+      "label": "Beta",
+      "status": "supported",
+      "summary": "Discount-rate exposure explains part of the move.",
+      "supporting_evidence": [
+        {
+          "classification": "current_fact",
+          "statement": "Broad synthetic peers moved in the same direction."
+        }
+      ],
+      "counterevidence": [
+        {
+          "classification": "agent_inference",
+          "statement": "The entity retained modest relative strength."
+        }
+      ],
+      "thesis_breakers": [
+        "Peer dispersion rises while rate sensitivity disappears."
+      ]
+    },
+    {
+      "id": "cycle",
+      "order": 2,
+      "label": "Cycle",
+      "status": "partial",
+      "summary": "The cycle signal remains mixed.",
+      "supporting_evidence": [
+        {
+          "classification": "management_guidance",
+          "statement": "Demand guidance remained inside the frozen range."
+        }
+      ],
+      "counterevidence": [
+        {
+          "classification": "analyst_estimate",
+          "statement": "Consensus expects slower sequential growth."
+        }
+      ],
+      "thesis_breakers": [
+        "Official guidance turns sequentially negative."
+      ]
+    },
+    {
+      "id": "company-value",
+      "order": 3,
+      "label": "Company value",
+      "status": "insufficient_evidence",
+      "summary": "Quality is visible but valuation is not yet decisive.",
+      "supporting_evidence": [
+        {
+          "classification": "historical_fact",
+          "statement": "Cash conversion stayed positive in the frozen period."
+        }
+      ],
+      "counterevidence": [
+        {
+          "classification": "current_fact",
+          "statement": "Capital intensity remains elevated."
+        }
+      ],
+      "thesis_breakers": [
+        "Cash conversion deteriorates for two consecutive periods."
+      ]
+    },
+    {
+      "id": "residual-alpha",
+      "order": 4,
+      "label": "Residual alpha",
+      "status": "rejected",
+      "summary": "Validated company alpha = 0.",
+      "supporting_evidence": [
+        {
+          "classification": "agent_inference",
+          "statement": "A candidate residual was observed."
+        }
+      ],
+      "counterevidence": [
+        {
+          "classification": "current_fact",
+          "statement": "The residual failed the frozen persistence gate."
+        }
+      ],
+      "thesis_breakers": [
+        "No breaker can revive a residual that failed persistence."
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "synthetic-cloud",
+      "symbol": "SYN",
+      "display_name": "Synthetic Cloud",
+      "classification": "Watchlist",
+      "status": "insufficient_evidence",
+      "confidence": "medium",
+      "inference": "A quality business is not yet a validated mispricing.",
+      "supporting_evidence": [
+        {
+          "classification": "current_fact",
+          "statement": "Official revenue remained inside the frozen range."
+        }
+      ],
+      "counterevidence": [
+        {
+          "classification": "agent_inference",
+          "statement": "Capital intensity may remain above the assumption."
+        }
+      ],
+      "thesis_breakers": [
+        "Two periods of slower growth and weaker cash conversion."
+      ],
+      "observations": [
+        {
+          "id": "observation-range",
+          "label": "Observation range",
+          "classification": "current_fact",
+          "kind": "observation_range",
+          "value": "90-100 synthetic units",
+          "as_of": "2026-01-15T12:00:00+00:00",
+          "source_ref": "filing:syn-q4",
+          "source_type": "company_filing",
+          "confidence": "high",
+          "invalidation": "A verified close below 90 with weaker fundamentals."
+        }
+      ],
+      "scenarios": [
+        {
+          "scenario": "bull",
+          "label": "Bull scenario estimate",
+          "value": "140 synthetic units",
+          "horizon": "24 months",
+          "probability": 0.25,
+          "assumptions": [
+            "Growth reaccelerates.",
+            "Free cash flow conversion improves."
+          ]
+        },
+        {
+          "scenario": "base",
+          "label": "Base scenario estimate",
+          "value": "112 synthetic units",
+          "horizon": "24 months",
+          "probability": 0.5,
+          "assumptions": [
+            "Growth remains durable.",
+            "The valuation multiple is stable."
+          ]
+        },
+        {
+          "scenario": "bear",
+          "label": "Bear scenario estimate",
+          "value": "72 synthetic units",
+          "horizon": "24 months",
+          "probability": 0.25,
+          "assumptions": [
+            "Growth slows.",
+            "The valuation multiple compresses."
+          ]
+        }
+      ],
+      "next_events": [
+        "Next official earnings release.",
+        "Updated capital expenditure guidance."
+      ]
+    }
+  ],
+  "research_ledger": [
+    {
+      "case_id": "case-rejected-residual",
+      "label": "Rejected residual-alpha case",
+      "gate_states": [
+        {
+          "gate_id": "persistence",
+          "label": "Persistence",
+          "status": "failed",
+          "summary": "The residual did not persist."
+        }
+      ],
+      "decision": "rejected",
+      "summary": "The company-specific alpha claim was rejected.",
+      "evidence_refs": [
+        "market:synthetic-peer-control"
+      ]
+    },
+    {
+      "case_id": "case-insufficient-value",
+      "label": "Insufficient company-value case",
+      "gate_states": [
+        {
+          "gate_id": "valuation",
+          "label": "Valuation",
+          "status": "insufficient_evidence",
+          "summary": "The evidence does not establish a margin of safety."
+        }
+      ],
+      "decision": "insufficient_evidence",
+      "summary": "The company-value conclusion remains open.",
+      "evidence_refs": [
+        "filing:syn-q4"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "synthetic-research-packet",
+      "kind": "research_packet",
+      "label": "Synthetic research packet",
+      "summary": "Frozen adjudication, scenarios, and evidence lineage.",
+      "artifact_ref": "artifact:synthetic-research-packet",
+      "evidence_refs": [
+        "filing:syn-q4",
+        "market:synthetic-peer-control"
+      ]
+    }
+  ],
+  "event_gates": [
+    {
+      "event_id": "E1",
+      "label": "Synthetic cloud earnings",
+      "status": "pending",
+      "frozen_at": "2026-01-15T12:00:00+00:00",
+      "observation_window": "Next official reporting window",
+      "frozen_hypothesis": "Returns depend on monetization, not capital spending alone.",
+      "observables": [
+        "Cloud growth versus frozen guidance.",
+        "Capital expenditure and free cash flow direction."
+      ],
+      "current_evidence": [],
+      "supports": [
+        "Growth above the frozen range with stable cash conversion."
+      ],
+      "refutes": [
+        "Higher capital expenditure without measurable cloud return."
+      ],
+      "thesis_breakers": [
+        "Official guidance shows deteriorating returns on investment."
+      ],
+      "next_review": "After the official filing is available."
+    }
+  ],
+  "method_state": {
+    "revision": "candidate-v1",
+    "lifecycle_state": "active_method_unchanged",
+    "active_method_changed": false,
+    "summary": "Active method unchanged."
+  },
+  "boundary": {
+    "research_aid_only": true,
+    "investment_advice": false,
+    "trading_allowed": false,
+    "raw_provider_payload_recorded": false,
+    "private_source_content_read": false
+  }
+}

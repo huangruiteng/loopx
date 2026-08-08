@@ -8,22 +8,15 @@ import shlex
 import shutil
 from textwrap import dedent
 
+from .manifest import validate_extension_id
+
 
 EXTENSION_SCAFFOLD_SCHEMA_VERSION = "loopx_extension_scaffold_v0"
-_EXTENSION_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-_MAX_EXTENSION_ID_LENGTH = 48
 
 
 def _validated_extension_id(value: str) -> str:
-    extension_id = value.strip()
-    if (
-        not extension_id
-        or len(extension_id) > _MAX_EXTENSION_ID_LENGTH
-        or _EXTENSION_ID_RE.fullmatch(extension_id) is None
-    ):
-        raise ValueError("extension id must be a lower-kebab token up to 48 characters")
-    return extension_id
+    return validate_extension_id(value)
 
 
 def _validated_version(value: str) -> str:

@@ -129,6 +129,7 @@ def test_status_collection_keeps_material_projection_default_off(
     row = payload["agent_management_projection"]["agents"][0]
     assert "material_frontier" not in row
     assert "handoff_note" not in row
+    assert "presentation_surfaces" not in payload
 
 
 def test_status_collection_forwards_material_capability_to_projection(

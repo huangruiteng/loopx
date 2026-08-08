@@ -20,6 +20,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.cli_commands.status import review_packet_handoff_only_payload  # noqa: E402
+from loopx.extensions.presentation import (  # noqa: E402
+    collect_active_extension_presentation_surfaces,
+    publish_extension_projection,
+)
+from loopx.extensions.runtime import install_extension  # noqa: E402
 from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
 from loopx.interface_budget import build_interface_budget_cadence  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
@@ -164,6 +169,86 @@ def append_run(
         )
 
 
+def install_ready_presentation_surface(root: Path) -> None:
+    provider = root / "presentation-provider"
+    provider.write_text(
+        f"""#!{sys.executable}
+import json
+import sys
+
+if "--doctor" in sys.argv:
+    raise SystemExit(0)
+
+json.load(sys.stdin)
+json.dump(
+    {{
+        "presentation_projection": {{
+            "schema_version": "extension_presentation_projection_v0",
+            "surface_id": "budget-surface",
+            "goal_id": "{GOAL_ID}",
+            "generated_at": "2026-01-01T00:06:00+00:00",
+            "review_due_at": None,
+            "lineage": {{
+                "source_id": "budget-surface-source",
+                "version": 1,
+                "row_lifecycle": "active",
+                "supersedes": [],
+                "superseded_by": None,
+            }},
+            "view_schema": "budget_surface_v0",
+            "view": {{"headline": "Ready budget surface"}},
+        }},
+    }},
+    sys.stdout,
+)
+""",
+        encoding="utf-8",
+    )
+    provider.chmod(0o755)
+    manifest = root / "presentation-extension.toml"
+    manifest.write_text(
+        f"""\
+schema_version = "loopx_extension_manifest_v0"
+id = "budget-presentation-extension"
+version = "1.0.0"
+requires_loopx_api = ">=1,<2"
+permissions = []
+
+[runtime]
+protocol = "budget_presentation_extension_v0"
+entrypoint = {json.dumps(str(provider))}
+doctor_args = ["--doctor"]
+required_permissions = []
+timeout_seconds = 5
+
+[[presentation_surfaces]]
+id = "budget-surface"
+kind = "budget_surface"
+title = "Budget Surface"
+view_schema = "budget_surface_v0"
+view_validator = "loopx.extensions.presentation:validate_opaque_presentation_view"
+visibility = "public-safe"
+empty_state_title = "No budget surface yet"
+empty_state_detail = "Publish the bounded budget projection."
+""",
+        encoding="utf-8",
+    )
+    state_file = root / "runtime" / "extensions" / "state.json"
+    install_extension(manifest, state_file=state_file, execute=True)
+    publish_extension_projection(
+        "budget-presentation-extension",
+        "budget-surface",
+        state_file=state_file,
+        request={"schema_version": "budget_surface_request_v0"},
+        execute=True,
+    )
+    surfaces = collect_active_extension_presentation_surfaces(
+        state_file=state_file,
+    )
+    assert surfaces["ready_count"] == 1, surfaces
+    assert surfaces["items"][0]["state"] == "ready", surfaces
+
+
 def json_size(payload: dict[str, Any]) -> int:
     return len(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
@@ -284,12 +369,14 @@ def main() -> int:
         root = Path(tmp)
         registry_path, project = write_registry(root)
         append_run(root)
+        install_ready_presentation_surface(root)
         status_payload = collect_status(
             registry_path=registry_path,
             runtime_root_override=str(root / "runtime"),
             scan_roots=[project],
             limit=5,
         )
+        assert "presentation_surfaces" not in status_payload, status_payload
         status_items = status_payload["attention_queue"]["items"]
         assert status_items, status_payload
         assert "task_graph_projection" not in status_items[0], status_items[0]

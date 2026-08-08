@@ -18,6 +18,7 @@
     "smoke:home-route": "rm -rf /tmp/loopx-home-route-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/loopx-home-route-smoke smoke/home-route-smoke.ts && node /tmp/loopx-home-route-smoke/home-route-smoke.js",
     "smoke:ops-decision-freshness": "node ../../../examples/dashboard-ops-decision-freshness-smoke.mjs",
     "smoke:promotion-readiness": "node ../../../examples/dashboard-promotion-readiness-browser-smoke.mjs",
+    "smoke:presentation-surface-schema": "rm -rf /tmp/loopx-presentation-surface-schema-smoke && tsc --ignoreConfig --target ES2022 --module CommonJS --moduleResolution Node --ignoreDeprecations 6.0 --skipLibCheck --strict --resolveJsonModule --esModuleInterop --outDir /tmp/loopx-presentation-surface-schema-smoke smoke/presentation-surface-schema-smoke.ts src/data/status.ts src/data/decision-research.ts src/data/goal-channel-frontstage.ts && NODE_PATH=\"$PWD/node_modules\" node /tmp/loopx-presentation-surface-schema-smoke/apps/presentation/dashboard/smoke/presentation-surface-schema-smoke.js",
     "smoke:usage-progress": "rm -rf /tmp/loopx-usage-progress-smoke && tsc --ignoreConfig --target ES2022 --module NodeNext --moduleResolution NodeNext --skipLibCheck --strict --outDir /tmp/loopx-usage-progress-smoke smoke/usage-progress-smoke.ts && node /tmp/loopx-usage-progress-smoke/usage-progress-smoke.js"
   },
   "dependencies": {

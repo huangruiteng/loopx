@@ -268,6 +268,115 @@ profile/chat schema and private config reads stay in the extension. If the
 extension is missing, disabled, or stale, urgency is unavailable and cannot
 activate a Lark work lane. This adds no agent-facing CLI arguments.
 
+## Presentation Surfaces
+
+An independently delivered extension can declare an operator-facing
+presentation surface without shipping browser code or making Core understand
+the provider's domain. The provider owns source validation, the `view_schema`
+contract, and the mapping into it. Core owns lifecycle resolution, revision
+binding, persistence, and the public-safe surface catalog. Every declared
+surface names its validator with a `module:callable` reference. The publisher
+process loads that exact callable before accepting the provider view; missing or
+unloadable validators fail closed. Core does not freeze any one domain's view
+into core. Dashboard's generic status parser consumes only that compact
+contract. A built-in renderer may separately own a provider view schema, as the
+Finance renderer does for `decision_research_dashboard_v0`.
+
+The finance value-discovery extension declares the first such view,
+`decision_research_dashboard_v0`, a read-only decision-research view:
+
+```toml
+[[presentation_surfaces]]
+id = "investment-research"
+kind = "decision_research_dashboard"
+title = "Investment Research"
+view_schema = "decision_research_dashboard_v0"
+view_validator = "loopx_finance_value_discovery.presentation_view:validate_decision_research_view"
+visibility = "public-safe"
+empty_state_title = "No validated research yet"
+empty_state_detail = "Publish a validated projection."
+```
+
+Declarations are strict and bounded. Surface ids are stable kebab-case
+identifiers. Titles and empty-state text are plain text without markup, URLs,
+or local paths. A declaration does not make the surface visible by itself:
+the extension must be installed, enabled, and doctor-ready at its active
+manifest revision.
+
+Publication uses the same managed, dry-run-by-default lifecycle gate as a
+standalone extension invocation:
+
+```bash
+loopx extension publish-projection \
+  <extension-id> \
+  <surface-id> \
+  --input-json <validated-owner-input.json> \
+  --format json
+
+loopx extension publish-projection \
+  <extension-id> \
+  <surface-id> \
+  --input-json <validated-owner-input.json> \
+  --execute \
+  --format json
+```
+
+The preview resolves the active declaration but does not run the provider or
+write a file. With `--execute`, LoopX runs the exact ready provider, validates
+its `extension_presentation_projection_v0`, binds extension id, active revision,
+surface kind, schema, and visibility from lifecycle state, then atomically
+writes an `extension_projection_surface_v0` envelope. The receipt includes the
+canonical payload SHA-256 and confirms exact readback. If lifecycle identity or
+the declaration changes while publishing, the write fails closed.
+
+Status collection never executes the provider, reads its owner input, or grows
+the Dashboard status hot path with extension rows. The loopback status server
+advertises a cold-path surface-catalog endpoint that reads only the active
+manifest snapshot and persisted, bounded envelope. A `ready` or `review_due`
+catalog item carries a content-addressed `detail_ref` (extension id, surface id,
+revision, and payload SHA-256) rather than inlining the full provider view.
+Consumers that need the view use the separately advertised projection endpoint.
+That read revalidates the active extension revision, declared surface, persisted
+envelope, and payload hash before returning a `public-safe` projection. Because
+the endpoints have no authenticated audience contract, projection reads reject
+`owner-only` surfaces rather than treating loopback access as owner
+authentication.
+Visibility follows this matrix:
+
+| Lifecycle or projection state | Cold-path surface catalog | Dashboard |
+| --- | --- | --- |
+| Not installed, disabled, or doctor-stale | No item | Tab and home summary hidden |
+| Ready declaration, no matching active-revision file | `empty` | Declarative empty state |
+| Valid active-revision envelope | `ready` with `detail_ref` | Read-only view and summaries |
+| Valid envelope past `review_due_at` | `review_due` with `detail_ref` | View retained with review warning |
+| Corrupt active-revision envelope | `invalid` without `detail_ref` | Safe diagnostic, no partial content |
+| File belongs to another revision | `empty` | No fallback to old content |
+
+Disable hides the surface but does not delete its projection. Re-enabling and
+successfully re-running doctor restores a matching-revision projection.
+Upgrade keeps the old file for audit continuity, but the new revision sees
+`empty` until it publishes its own envelope. Rollback applies the same exact
+revision rule.
+
+Presentation projections are display sinks, not authority. They cannot change
+goal state, promote a method, submit a trade, or grant provider permissions.
+The finance research view rejects credentials, account or order fields, raw
+provider/request/response bodies, private relative or absolute paths, sensitive
+URL parameters, non-finite numbers, and unbounded text. Canonical persistence
+uses standard JSON only; `NaN` and infinity fail closed before publication.
+Providers must emit compact references and conclusions, not private evidence
+bodies. Dashboard routing identifies a surface by both extension id and surface
+id so independently versioned providers may reuse a local surface id without
+colliding. A `public-safe` surface still passes the public/private scan; an
+`owner-only` surface describes an operator boundary and is never permission to
+persist secrets or bypass that scan.
+
+Run the public synthetic lifecycle proof after changing this contract:
+
+```bash
+uv run --extra test python examples/extension-presentation-surface-smoke.py
+```
+
 ## Placement Decision For Agents
 
 Before creating a directory, LoopX or an executing agent must answer these

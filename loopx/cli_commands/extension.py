@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from ..extensions.bundled import BUNDLED_EXTENSION_IDS, bundled_extension_manifest
+from ..extensions.presentation import publish_extension_projection
 from ..extensions.scaffold import scaffold_extension
 from ..extensions.runtime import (
     MAX_EXTENSION_REQUEST_BYTES,
@@ -150,6 +151,20 @@ def register_extension_commands(
     )
     run.add_argument("--execute", action="store_true")
 
+    publish_projection = commands.add_parser(
+        "publish-projection",
+        help="Validate and publish one declared extension presentation surface.",
+    )
+    _add_common(publish_projection, add_subcommand_format)
+    publish_projection.add_argument("extension_id")
+    publish_projection.add_argument("surface_id")
+    publish_projection.add_argument(
+        "--input-json",
+        required=True,
+        help="Path to one provider request JSON object, or '-' for stdin.",
+    )
+    publish_projection.add_argument("--execute", action="store_true")
+
 
 def _load_json_object(path_text: str) -> dict[str, object]:
     try:
@@ -225,6 +240,14 @@ def handle_extension_command(
         elif args.extension_command == "run":
             payload = run_standalone_extension(
                 args.extension_id,
+                state_file=state_file,
+                request=_load_json_object(args.input_json),
+                execute=args.execute,
+            )
+        elif args.extension_command == "publish-projection":
+            payload = publish_extension_projection(
+                args.extension_id,
+                args.surface_id,
                 state_file=state_file,
                 request=_load_json_object(args.input_json),
                 execute=args.execute,

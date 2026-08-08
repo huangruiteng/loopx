@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from ...extensions.manifest import validate_extension_id
 from ...extensions.runtime import (
     default_extension_state_file,
     doctor_installed_extension,
@@ -126,9 +127,7 @@ def _extension_id(provider: Mapping[str, Any]) -> str | None:
     raw = provider.get("extension_id")
     if raw is None:
         return None
-    extension_id = str(raw).strip()
-    if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", extension_id):
-        raise ValueError("provider extension_id must use lower-kebab token syntax")
+    extension_id = validate_extension_id(str(raw))
     if provider.get("argv") is not None:
         raise ValueError("provider argv and extension_id are mutually exclusive")
     return extension_id

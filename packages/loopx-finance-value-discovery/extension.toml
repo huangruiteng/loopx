@@ -10,3 +10,13 @@ entrypoint = "loopx-finance-value-discovery"
 doctor_args = ["--doctor"]
 required_permissions = []
 timeout_seconds = 30
+
+[[presentation_surfaces]]
+id = "investment-research"
+kind = "decision_research_dashboard"
+title = "Investment Research"
+view_schema = "decision_research_dashboard_v0"
+view_validator = "loopx_finance_value_discovery.presentation_view:validate_decision_research_view"
+visibility = "public-safe"
+empty_state_title = "No validated research yet"
+empty_state_detail = "Publish a validated projection."

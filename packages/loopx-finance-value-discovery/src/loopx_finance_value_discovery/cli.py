@@ -28,6 +28,10 @@ from .replay import (
     build_finance_case_evaluation,
     replay_finance_case_evaluation,
 )
+from .presentation_compat import presentation_api_error
+
+
+FINANCE_RESEARCH_DASHBOARD_INPUT_SCHEMA_VERSION = "finance_research_dashboard_input_v0"
 
 
 def _load_json(path_text: str) -> dict[str, Any]:
@@ -134,6 +138,10 @@ def run(argv: Sequence[str] | None = None) -> int:
                 packet = build_finance_beta_attribution(payload)
             elif schema_version == FINANCE_METRIC_PACK_INPUT_SCHEMA_VERSION:
                 packet = build_finance_metric_pack_evaluation(payload)
+            elif schema_version == FINANCE_RESEARCH_DASHBOARD_INPUT_SCHEMA_VERSION:
+                from .dashboard import build_finance_research_dashboard_packet
+
+                packet = build_finance_research_dashboard_packet(payload)
             else:
                 packet = build_finance_value_discovery_packet(payload)
         except Exception as exc:
@@ -144,6 +152,9 @@ def run(argv: Sequence[str] | None = None) -> int:
 
     args = _direct_parser().parse_args(arguments)
     if args.doctor:
+        if error := presentation_api_error():
+            print(json.dumps(_error_packet(RuntimeError(error)), sort_keys=True))
+            return 1
         return 0
     try:
         if args.command == "reduce":

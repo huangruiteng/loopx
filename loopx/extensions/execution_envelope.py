@@ -7,6 +7,8 @@ import json
 import re
 from typing import Any
 
+from .manifest import validate_extension_id
+
 
 EXTENSION_EXECUTION_ENVELOPE_SCHEMA_VERSION = "loopx_extension_execution_envelope_v0"
 _TOKEN_RE = re.compile(r"^[a-z][a-z0-9_.:-]{0,127}$")
@@ -77,7 +79,7 @@ def build_extension_execution_envelope(
         "action": _token(action, "action"),
         "scope": _scope(scope),
         "extension": {
-            "id": _token(extension_id, "extension_id"),
+            "id": validate_extension_id(extension_id),
             "revision": revision,
         },
         "request_digest": extension_request_digest(request),
@@ -109,7 +111,7 @@ def validate_extension_execution_envelope(
         "action": _token(action, "action"),
         "scope": _scope(scope),
         "extension": {
-            "id": _token(extension_id, "extension_id"),
+            "id": validate_extension_id(extension_id),
             "revision": str(extension_revision or "").strip(),
         },
         "request_digest": extension_request_digest(request),

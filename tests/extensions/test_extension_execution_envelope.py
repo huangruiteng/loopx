@@ -86,3 +86,14 @@ def test_execution_envelope_rejects_unknown_fields() -> None:
 
     with pytest.raises(ValueError, match="fields do not match the schema"):
         _validate(envelope)
+
+
+@pytest.mark.parametrize(
+    "extension_id",
+    ["bad--extension", "contains_underscore", f"a{'b' * 48}"],
+)
+def test_execution_envelope_reuses_strict_extension_id_grammar(
+    extension_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="lower-kebab path segment"):
+        _envelope(extension_id=extension_id)
