@@ -310,6 +310,22 @@ def assert_query_semantics(
     assert forged["peer_review"]["state"] == "self_review_only", forged
     assert forged["finding_status"] == "tentative", forged
 
+    downgraded_independence_claim = {
+        **review_events[1],
+        "details": {
+            **review_events[1]["details"],
+            "independent": False,
+        },
+    }
+    downgraded = build_terminal_result_query(
+        evidence_graph=graph,
+        rollout_events=[*decisions, downgraded_independence_claim],
+        registered_agent_ids=REGISTERED_AGENTS,
+        hypothesis_id="value_case",
+    )["results"][0]
+    assert downgraded["peer_review"]["state"] == "self_review_only", downgraded
+    assert downgraded["finding_status"] == "tentative", downgraded
+
     removed_reviewer = build_terminal_result_query(
         evidence_graph=graph,
         rollout_events=[*decisions, *review_events],
@@ -392,6 +408,34 @@ def assert_query_semantics(
     )["results"][0]
     assert stale["decision_state"] == "stale", stale
     assert stale["finding_status"] == "tentative", stale
+
+    revised_decision = build_terminal_decision_event(
+        evidence_graph=stale_graph,
+        hypothesis_id="value_case",
+        outcome="retired",
+        reason="duplicate",
+        decided_by=PROMOTER,
+        recorded_at="2026-08-08T00:04:00Z",
+    )
+    assert (
+        revised_decision["causality"]["decision_id"]
+        != decisions[0]["causality"]["decision_id"]
+    )
+    assert (
+        revised_decision["details"]["hypothesis_evidence_revision"]
+        != decisions[0]["details"]["hypothesis_evidence_revision"]
+    )
+    revised = build_terminal_result_query(
+        evidence_graph=stale_graph,
+        rollout_events=[*decisions, revised_decision, *review_events],
+        registered_agent_ids=REGISTERED_AGENTS,
+        hypothesis_id="value_case",
+        include_history=True,
+    )["results"][0]
+    assert revised["decision_state"] == "current", revised
+    assert revised["terminal_decision"]["outcome"] == "retired", revised
+    assert len(revised["decision_history"]) == 2, revised
+    assert revised["finding_status"] == "tentative", revised
 
     unrelated_hypothesis = hypothesis(
         "unrelated_route",
