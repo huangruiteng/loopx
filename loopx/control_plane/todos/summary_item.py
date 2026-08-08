@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from .contract import (
     normalize_removed_todo_continuation_policy,
@@ -95,12 +95,70 @@ TODO_SUMMARY_SOURCE_KEYS = (
 )
 
 
+class TodoSummaryItemDict(TypedDict, total=False):
+    index: int
+    text: str
+    schema_version: str
+    todo_id: str
+    role: str
+    status: str
+    priority: str
+    title: str
+    archive_state: str
+    source_section: str
+    task_class: str
+    action_kind: str
+    task_domain: str
+    capability_binding_ref: str
+    task_repository: str
+    continuation_policy: str
+    removed_continuation_policy: str
+    required_write_scopes: list[str]
+    required_capabilities: list[str]
+    target_capabilities: list[str]
+    decision_scope: Any
+    required_decision_scopes: list[Any]
+    decision_outcome: str
+    decision_scope_outcomes: list[Any]
+    claimed_by: str
+    bound_agent: str
+    goal_bound: bool
+    blocks_agent: str
+    excluded_agents: list[str]
+    global_gate: bool
+    unblocks_todo_id: str
+    resume_when: str
+    resume_condition: Any
+    resume_ready: bool
+    no_followup: bool
+    successor_todo_ids: list[str]
+    target_key: str
+    cadence: str
+    next_due_at: str
+    expires_at: str
+    last_checked_at: str
+    result_hash: str
+    consecutive_no_change: int
+    material_change: bool
+    max_no_change_before_replan: int
+    route_continuation_replan_required: bool
+    route_continuation_reason: str
+    route_id: str
+    route_key: str
+    completed_at: str
+    updated_at: str
+    superseded_by: str
+    handoff_note: Any
+    continuation_hint: str
+    reason: str
+
+
 def compact_todo_summary_item(
     item: dict[str, Any],
     *,
     text: str | None = None,
-) -> dict[str, Any]:
-    compact: dict[str, Any] = {
+) -> TodoSummaryItemDict:
+    compact: TodoSummaryItemDict = {
         "index": item.get("index"),
         "text": text if text is not None else item.get("text"),
     }
