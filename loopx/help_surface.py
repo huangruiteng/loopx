@@ -252,6 +252,7 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "material-lifecycle",
         "demo",
         "dreaming",
+        "global-gates",
         "global-summary",
         "heartbeat-prequota",
         "import-doc-registry-authority",

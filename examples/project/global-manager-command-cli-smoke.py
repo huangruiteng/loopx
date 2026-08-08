@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-test the public-safe `loopx global-summary` command."""
+"""Smoke-test public-safe global manager CLI commands."""
 
 from __future__ import annotations
 
@@ -90,6 +90,26 @@ def main() -> int:
             text=True,
             capture_output=True,
         )
+        gates_proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "loopx.cli",
+                "--format",
+                "json",
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "global-gates",
+                "--limit",
+                "5",
+            ],
+            cwd=REPO_ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
     payload = json.loads(proc.stdout)
     assert payload["schema_version"] == "global_manager_command_response_v0", payload
     request = payload["request"]
@@ -101,6 +121,15 @@ def main() -> int:
     assert payload["boundary"]["absolute_paths_recorded"] is False, payload["boundary"]
     assert "groups" in payload and "recent_progress" in payload["groups"], payload
     assert_public_safe(payload)
+
+    gates_payload = json.loads(gates_proc.stdout)
+    gates_request = gates_payload["request"]
+    assert gates_request["command"] == "/loopx-global-gates", gates_request
+    assert gates_request["legacy_aliases"] == ["/loop-global-gates"], gates_request
+    assert gates_request["cli_command"] == "loopx global-gates", gates_request
+    assert gates_payload["groups"] == {"user_gates": gates_payload["gates"]}
+    assert gates_payload["boundary"]["absolute_paths_recorded"] is False
+    assert_public_safe(gates_payload)
 
     print("global-manager-command-cli-smoke ok")
     return 0

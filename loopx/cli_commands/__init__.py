@@ -159,6 +159,7 @@ from .starter_visible_pilot import (
     register_starter_visible_pilot_commands,
 )
 from .summary_all import handle_summary_all_command, register_summary_all_command
+from .gates_all import handle_gates_all_command, register_gates_all_command
 from .status import (
     handle_check_command,
     handle_diagnose_command,
@@ -256,6 +257,7 @@ __all__ = [
     "handle_starter_visible_driver_command",
     "handle_starter_visible_pilot_command",
     "handle_summary_all_command",
+    "handle_gates_all_command",
     "handle_support_control_command",
     "handle_task_lease_command",
     "handle_terminal_bench_adapter_command",
@@ -311,6 +313,7 @@ __all__ = [
     "register_starter_visible_driver_commands",
     "register_starter_visible_pilot_commands",
     "register_summary_all_command",
+    "register_gates_all_command",
     "register_status_commands",
     "register_support_control_commands",
     "register_task_lease_command",

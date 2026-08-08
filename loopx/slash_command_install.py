@@ -176,7 +176,7 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "argument_hint": "[optional focus]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
-                f"Run `{cli_bin} global-summary` first, then focus the answer on open gates, blocked work, owner decisions, and exact next questions.",
+                f"Run `{cli_bin} global-gates` first, then focus the answer on open gates, blocked work, owner decisions, and exact next questions.",
                 "This command is read-only unless the user explicitly asks for a state update.",
             ],
         },
