@@ -10,6 +10,7 @@ material available without putting all of it on one page.
 | You want to... | Start here | Continue with |
 | --- | --- | --- |
 | Understand LoopX before installing | [Public homepage](https://huangruiteng.github.io/loopx/) | [Project README](../README.md) |
+| Follow the curated developer curriculum | [Developer Book](/loopx/docs/book/) | [English edition](/loopx/docs/book/en/) |
 | Try LoopX in a repository | [Getting started](guides/getting-started.md) | [Newcomer command path](guides/newcomer-command-path.md) |
 | Run or recover a long-lived goal | [Operations](operations/README.md) | [Integration guide](integration.md) |
 | Understand the control plane | [Architecture](architecture.md) | [Concepts](concepts/README.md) |
@@ -42,6 +43,8 @@ a longer onboarding path.
 ## Browse By Subject
 
 - [Guides](guides/): onboarding and task-oriented walkthroughs.
+- [Developer Book](/loopx/docs/book/): bilingual foundations, project onboarding, and
+  contribution paths.
 - [Concepts](concepts/README.md): mental models and reusable design patterns.
 - [Operations](operations/README.md): running goals, cadence, attention, and
   authority sources.

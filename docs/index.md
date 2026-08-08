@@ -22,6 +22,13 @@ Claude Code, OpenCode, Cursor, or a custom runner executes bounded turns.
 
     [:octicons-arrow-right-24: Concepts](concepts/README.md)
 
+-   :material-book-open-page-variant: **Follow the Developer Book**
+
+    Use a curated bilingual path from control-plane foundations to project
+    onboarding and developer contributions.
+
+    [:octicons-arrow-right-24: Developer Book](/loopx/docs/book/)
+
 -   :material-console-line: **Operate a long task**
 
     Use status, quota, review packets, and the local dashboard without making

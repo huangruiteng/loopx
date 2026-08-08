@@ -1,0 +1,277 @@
+:root {
+  --loopx-ink: #050914;
+  --loopx-ink-soft: #07101f;
+  --loopx-panel: #091425;
+  --loopx-line: rgba(125, 174, 255, 0.2);
+  --loopx-blue: #6eabff;
+  --loopx-blue-soft: #96c8ff;
+  --loopx-indigo: #6c6eff;
+  --loopx-white: #f3f5f8;
+  --loopx-muted: #8e9bb1;
+  --loopx-muted-strong: #b4becd;
+  --loopx-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --loopx-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --loopx-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --md-text-font: var(--loopx-sans);
+  --md-code-font: var(--loopx-mono);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--loopx-ink);
+  --md-default-fg-color: var(--loopx-white);
+  --md-default-fg-color--light: var(--loopx-muted-strong);
+  --md-default-fg-color--lighter: var(--loopx-muted);
+  --md-default-fg-color--lightest: rgba(142, 155, 177, 0.2);
+  --md-primary-fg-color: var(--loopx-ink);
+  --md-primary-bg-color: var(--loopx-white);
+  --md-accent-fg-color: var(--loopx-blue-soft);
+  --md-typeset-a-color: var(--loopx-blue-soft);
+  --md-code-bg-color: #020711;
+  --md-code-fg-color: #c7d5e8;
+  --md-footer-bg-color: #020711;
+  --md-footer-bg-color--dark: #01040a;
+}
+
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #f7f9fc;
+  --md-default-fg-color: #142033;
+  --md-default-fg-color--light: #4f5d72;
+  --md-default-fg-color--lighter: #718097;
+  --md-default-fg-color--lightest: rgba(49, 86, 142, 0.14);
+  --md-primary-fg-color: #f7f9fc;
+  --md-primary-bg-color: #142033;
+  --md-accent-fg-color: #356fd4;
+  --md-typeset-a-color: #356fd4;
+  --md-code-bg-color: #e8eef7;
+  --md-code-fg-color: #233650;
+  --loopx-ink: #f7f9fc;
+  --loopx-ink-soft: #edf2f8;
+  --loopx-panel: #ffffff;
+  --loopx-line: rgba(49, 86, 142, 0.18);
+  --loopx-blue: #356fd4;
+  --loopx-blue-soft: #5f8fe0;
+  --loopx-white: #142033;
+  --loopx-muted: #718097;
+  --loopx-muted-strong: #4f5d72;
+}
+
+html {
+  font-family: var(--loopx-sans);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+[data-md-color-scheme="slate"] body {
+  background:
+    radial-gradient(circle at 75% 5%, rgba(40, 90, 180, 0.13), transparent 28rem),
+    var(--loopx-ink);
+}
+
+.md-header {
+  border-bottom: 1px solid var(--loopx-line);
+  background: rgba(5, 9, 20, 0.9);
+  backdrop-filter: blur(18px);
+}
+
+[data-md-color-scheme="default"] .md-header,
+[data-md-color-scheme="default"] .md-tabs {
+  background: rgba(247, 249, 252, 0.92);
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 0 14px rgba(97, 154, 255, 0.18);
+}
+
+.md-header__title {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.md-tabs {
+  border-bottom: 1px solid var(--loopx-line);
+  background: rgba(5, 9, 20, 0.86);
+}
+
+.md-tabs__link {
+  color: var(--loopx-muted-strong);
+}
+
+.md-tabs__link:hover,
+.md-tabs__item--active .md-tabs__link {
+  color: var(--loopx-white);
+}
+
+.md-main__inner {
+  margin-top: 1.4rem;
+}
+
+.md-sidebar {
+  padding-top: 0.8rem;
+}
+
+[data-md-color-scheme="slate"] .md-sidebar {
+  background: color-mix(in srgb, var(--loopx-ink-soft) 88%, transparent);
+}
+
+.md-sidebar--primary {
+  border-right: 1px solid var(--loopx-line);
+}
+
+.md-nav__title {
+  color: var(--loopx-muted-strong);
+  font-family: var(--loopx-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
+.md-nav__item--section {
+  margin-top: 0.95rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--loopx-line);
+}
+
+.md-nav__item--section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.md-nav__item--section > .md-nav__link {
+  color: var(--loopx-muted-strong);
+  font-family: var(--loopx-mono);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+  line-height: 1.55;
+}
+
+.md-nav__item .md-nav__link {
+  margin-top: 0.45rem;
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.md-nav__link:hover,
+.md-nav__link--active {
+  color: var(--loopx-blue-soft);
+}
+
+.md-content {
+  max-width: 52rem;
+}
+
+.md-typeset {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.82rem;
+  line-height: 1.82;
+}
+
+.md-typeset h1 {
+  color: var(--md-default-fg-color);
+  font-family: var(--loopx-serif);
+  font-size: clamp(2.35rem, 4vw, 3.35rem);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+
+.md-typeset h2 {
+  margin-top: 2.4rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--loopx-line);
+  color: var(--md-default-fg-color);
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h3 {
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset a {
+  text-decoration-color: color-mix(in srgb, var(--loopx-blue) 42%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.md-typeset code {
+  border: 1px solid var(--loopx-line);
+  border-radius: 0.25rem;
+}
+
+.md-typeset pre > code {
+  border: 0;
+}
+
+.md-typeset .highlight,
+.md-typeset table:not([class]) {
+  border: 1px solid var(--loopx-line);
+  border-radius: 0.65rem;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.1);
+}
+
+.md-typeset table:not([class]) th {
+  color: var(--md-default-fg-color);
+  background: color-mix(in srgb, var(--loopx-panel) 78%, transparent);
+}
+
+.md-typeset table:not([class]) td,
+.md-typeset table:not([class]) th {
+  border-color: var(--loopx-line);
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-color: var(--loopx-line);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--loopx-panel) 76%, transparent);
+}
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li {
+  border-color: var(--loopx-line);
+  border-radius: 0.75rem;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--loopx-panel) 92%, transparent),
+    color-mix(in srgb, var(--loopx-ink-soft) 96%, transparent)
+  );
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover {
+  border-color: var(--loopx-blue);
+  transform: translateY(-2px);
+}
+
+@media screen and (max-width: 76.234375em) {
+  .md-sidebar--primary {
+    border-right: 0;
+  }
+}
+
+@media screen and (max-width: 44.984375em) {
+  .md-typeset {
+    font-size: 0.78rem;
+  }
+
+  .md-typeset h1 {
+    font-size: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

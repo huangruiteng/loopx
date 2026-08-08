@@ -114,6 +114,21 @@ if (!homepageHtml.includes('href="/loopx/frontstage/"')) {
 if (!homepageHtml.includes('href="/loopx/docs/"')) {
   throw new Error("homepage navigation must link to the hosted docs portal");
 }
+for (const developerBookContract of [
+  'href="/loopx/docs/book/en/"',
+  'data-devbook-base="/loopx/docs/book"',
+  'data-devbook-path="/"',
+  'data-devbook-path="/chapters/01-from-session-to-loop"',
+  'data-devbook-path="/chapters/05-connect-existing-project"',
+  'data-devbook-path="/chapters/source-protocol-map"',
+]) {
+  if (!homepageHtml.includes(developerBookContract)) {
+    throw new Error(`homepage is missing the monorepo Developer Book contract: ${developerBookContract}`);
+  }
+}
+if (homepageHtml.includes("cocolord.github.io/loopx-book")) {
+  throw new Error("homepage must not depend on the retired external Developer Book publication");
+}
 if (homepageHtml.includes('https://github.com/huangruiteng/loopx/tree/main/docs')) {
   throw new Error("homepage Docs links must not bypass the hosted docs portal");
 }
@@ -154,6 +169,12 @@ for (const assetName of [
 const homepageScript = await readFile(resolve(siteDir, "site-assets/home.js"), "utf8");
 if (!homepageScript.includes('"hero.eyebrow": "开放 · 有状态 · Provider-neutral"') || !homepageScript.includes('requestedLanguage === "zh" ? "zh" : "en"')) {
   throw new Error("homepage language switch must include the public-safe Chinese locale and default to English");
+}
+if (
+  !homepageScript.includes("developerBookTargets")
+  || !homepageScript.includes('language === "zh" ? "" : "/en"')
+) {
+  throw new Error("homepage language switch must route the Developer Book to the matching locale");
 }
 for (const promptContract of [
   "Connect the current project to LoopX",

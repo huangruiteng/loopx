@@ -24,6 +24,7 @@ P0/P1/P2 todos，让我能看到当前要做什么、什么被 gate 卡住、
 const zh = {
   "nav.product": "产品",
   "nav.workflow": "工作方式",
+  "nav.learn": "学习",
   "nav.showcases": "案例",
   "nav.docs": "文档",
   "nav.github": "GitHub",
@@ -155,11 +156,25 @@ const zh = {
   "quickstart.inspect": "查看安装脚本 ↗",
   "footer.tagline": "让闭环持续运转，让判断始终属于人。",
   "footer.frontstage": "Frontstage",
+  "learn.eyebrow": "开发者手册",
+  "learn.title": "选择你的 LoopX 学习路径。",
+  "learn.body": "为想要理解控制面、接入真实项目或在正确 ownership 边界上贡献的开发者准备的系统性双语协议指南。",
+  "learn.openBook": "打开开发者手册 →",
+  "learn.foundations": "理解控制面",
+  "learn.foundationsBody": "从会话与目标出发，逐步建立对持久状态、权限、治理回合与恢复的完整认知。",
+  "learn.readFoundations": "从基础开始 ↗",
+  "learn.onboarding": "接入已有项目",
+  "learn.onboardingBody": "让 Agent 建立 Goal、身份、Host 与 Git 边界，然后验证结果。",
+  "learn.readOnboarding": "跟随项目接入指南 ↗",
+  "learn.contribute": "贡献 LoopX",
+  "learn.contributeBody": "从协议追踪到源码归属，选择正确的贡献面，验证后提交聚焦的 PR。",
+  "learn.readContribute": "打开贡献地图 ↗",
 };
 
 const textTargets = document.querySelectorAll("[data-i18n]");
 const htmlTargets = document.querySelectorAll("[data-i18n-html]");
 const ariaTargets = document.querySelectorAll("[data-i18n-aria]");
+const developerBookTargets = document.querySelectorAll("[data-devbook-path]");
 textTargets.forEach((target) => { target.dataset.english = target.textContent; });
 htmlTargets.forEach((target) => { target.dataset.englishHtml = target.innerHTML; });
 ariaTargets.forEach((target) => { target.dataset.englishAria = target.getAttribute("aria-label") ?? ""; });
@@ -176,6 +191,12 @@ function applyLanguage(nextLanguage, updateUrl = false) {
   });
   ariaTargets.forEach((target) => {
     target.setAttribute("aria-label", language === "zh" ? (zh[target.dataset.i18nAria] ?? target.dataset.englishAria) : target.dataset.englishAria);
+  });
+  developerBookTargets.forEach((target) => {
+    const developerBookBase = target.dataset.devbookBase;
+    const localePrefix = language === "zh" ? "" : "/en";
+    const chapterPath = target.dataset.devbookPath === "/" ? "" : target.dataset.devbookPath;
+    target.setAttribute("href", `${developerBookBase}${localePrefix}${chapterPath}/`);
   });
   prepareHeroWaves();
   document.querySelectorAll("[data-language-toggle]").forEach((toggle) => {

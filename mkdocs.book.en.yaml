@@ -1,0 +1,77 @@
+INHERIT: mkdocs.yaml
+
+site_name: LoopX · Developer Book
+site_url: https://huangruiteng.github.io/loopx/docs/book/en/
+docs_dir: docs/book/en
+site_dir: output/docs-book-en
+edit_uri: edit/main/docs/book/en/
+
+theme:
+  name: material
+  language: en
+  font: false
+  logo: /loopx/docs/assets/loopx-logo.png
+  favicon: /loopx/docs/assets/loopx-logo.png
+  palette:
+    - scheme: slate
+      primary: black
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+    - scheme: default
+      primary: white
+      accent: blue
+      toggle:
+        icon: material/brightness-2
+        name: Switch to dark mode
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.top
+    - navigation.path
+    - search.highlight
+    - search.share
+    - toc.follow
+
+extra_css:
+  - /loopx/docs/stylesheets/loopx.css
+
+extra:
+  alternate:
+    - name: 简体中文
+      link: /loopx/docs/book/
+      lang: zh
+    - name: English
+      link: /loopx/docs/book/en/
+      lang: en
+
+nav:
+  - Home: index.md
+  - Start:
+      - How to use this book: chapters/00-reading-guide.md
+  - Part I — Control-plane foundations:
+      - 1. From one session to long-running work: chapters/01-from-session-to-loop.md
+      - 2. Sessions, Codex Goal, and LoopX: chapters/02-session-goal-loopx.md
+      - 3. Durable state and read-only projections: chapters/state-substrate.md
+      - 4. Work graphs, authority, and peers: chapters/work-graph-and-authority.md
+      - 5. One governed turn: chapters/03-one-turn.md
+      - 6. Recovery, self-repair, and boundaries: chapters/04-runtime-boundaries.md
+  - Part II — Connect an existing project:
+      - 7. Connect an existing Git project: chapters/05-connect-existing-project.md
+      - 8. Start from Codex App: chapters/06-codex-app.md
+      - 9. Start from Codex CLI: chapters/07-codex-cli.md
+  - Part III — Developer contributions:
+      - 10. Developer contribution map: chapters/source-protocol-map.md
+      - 11. Trace one protocol chain: chapters/source-trace-protocol-chain.md
+      - 12. Change one control-plane rule: chapters/source-change-control-plane-rule.md
+      - 13. From focused validation to a PR: chapters/source-validation-to-pr.md
+      - 14. Choose the right extension point: chapters/08-extension-placement.md
+      - 15. Build a standalone Extension: chapters/09-extension-scaffold.md
+      - 16. Lifecycle and managed runtime: chapters/10-extension-lifecycle.md
+  - Part IV — Engineering boundaries:
+      - 17. Validation, compatibility, and safety: chapters/11-engineering-boundaries.md
+      - Appendix — Terms and commands: chapters/appendix-reference.md

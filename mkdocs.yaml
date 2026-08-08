@@ -8,6 +8,7 @@ use_directory_urls: true
 exclude_docs: |
   /README.md
   archive/**
+  book/**
   research/long-horizon-agent-benchmarks/*.json
   showcases/**/*.html
   showcases/showcase-animation-prototype.html

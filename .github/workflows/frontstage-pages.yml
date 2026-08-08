@@ -13,12 +13,15 @@ on:
       - "apps/presentation/site/**"
       - "docs/**"
       - "mkdocs.yaml"
+      - "mkdocs.book.zh.yaml"
+      - "mkdocs.book.en.yaml"
       - "docs/showcases/**"
       - "docs/assets/long-running-loop-openviking-trajectory.png"
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
       - "examples/readme-star-history-smoke.py"
+      - "examples/dev-book-publication-smoke.py"
       - "examples/goal-channel-frontstage-fixture.py"
       - "examples/showcase-catalog-smoke.py"
       - "examples/status.example.json"
@@ -34,12 +37,15 @@ on:
       - "apps/presentation/site/**"
       - "docs/**"
       - "mkdocs.yaml"
+      - "mkdocs.book.zh.yaml"
+      - "mkdocs.book.en.yaml"
       - "docs/showcases/**"
       - "docs/assets/long-running-loop-openviking-trajectory.png"
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
       - "examples/readme-star-history-smoke.py"
+      - "examples/dev-book-publication-smoke.py"
       - "examples/goal-channel-frontstage-fixture.py"
       - "examples/showcase-catalog-smoke.py"
       - "examples/status.example.json"
@@ -88,8 +94,11 @@ jobs:
       - name: Validate public showcase catalog
         run: python3 examples/showcase-catalog-smoke.py
 
-      - name: Validate README star history
+- name: Validate README star history
         run: python3 examples/readme-star-history-smoke.py
+
+      - name: Validate Developer Book publication
+        run: python3 examples/dev-book-publication-smoke.py
 
       - name: Validate public-safe frontstage bundle
         working-directory: apps/presentation/dashboard
@@ -158,6 +167,15 @@ jobs:
 
       - name: Build documentation site
         run: mkdocs build --strict --site-dir output/frontstage-pages/site/docs
+
+      - name: Build Chinese Developer Book
+        run: mkdocs build --strict --config-file mkdocs.book.zh.yaml --site-dir output/frontstage-pages/site/docs/book
+
+      - name: Build English Developer Book
+        run: mkdocs build --strict --config-file mkdocs.book.en.yaml --site-dir output/frontstage-pages/site/docs/book/en
+
+      - name: Validate rendered Developer Book
+        run: python3 examples/dev-book-publication-smoke.py --site-dir output/frontstage-pages/site/docs/book
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'
