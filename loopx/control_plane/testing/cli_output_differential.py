@@ -55,7 +55,7 @@ _GROWTH_ALLOWANCE_BY_POLICY: dict[str, GrowthAllowance] = {
         json={
             "chars": 256,
             "utf8_bytes": 512,
-            "lines": 3,
+            "lines": 5,
             "compact_payload_chars": 256,
         },
         markdown={
@@ -70,7 +70,7 @@ _GROWTH_ALLOWANCE_BY_POLICY: dict[str, GrowthAllowance] = {
         json={
             "chars": 256,
             "utf8_bytes": 512,
-            "lines": 3,
+            "lines": 5,
             "compact_payload_chars": 256,
         },
         markdown={

@@ -454,6 +454,8 @@ def compact_todo_item(item: dict[str, Any]) -> dict[str, Any]:
         "decision_outcome",
         "decision_scope_outcomes",
         "claimed_by",
+        "created_by",
+        "last_actor_agent_id",
         "bound_agent",
         "goal_bound",
         "blocks_agent",

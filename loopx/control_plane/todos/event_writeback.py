@@ -153,6 +153,7 @@ def _append_event_projected_successor(
     continuation_policy: str | None,
     claimed_by: str | None,
     dry_run: bool,
+    actor_agent_id: str | None = None,
     bound_agent: str | None = None,
     goal_bound: bool | None = None,
     blocks_agent: str | None = None,
@@ -248,6 +249,7 @@ def _append_event_projected_successor(
         payload=payload,
         recorded_at=updated_at,
         producer="loopx.todo.complete",
+        actor_agent_id=actor_agent_id,
     )
     claimed_event: dict[str, Any] | None = None
     if claimed_by:
@@ -265,6 +267,7 @@ def _append_event_projected_successor(
             payload={"claimed_by": claimed_by},
             recorded_at=updated_at,
             producer="loopx.todo.complete",
+            actor_agent_id=actor_agent_id,
         )
     if not dry_run:
         store.append(added_event)
@@ -319,6 +322,7 @@ def complete_event_projected_goal_todo(
     registered_agents: list[str],
     updated_at: str,
     dry_run: bool,
+    actor_agent_id: str | None = None,
 ) -> dict[str, Any]:
     item = dict(context["item"])
     role = str(context["role"])
@@ -359,6 +363,7 @@ def complete_event_projected_goal_todo(
                 excluded_agents=next_excluded_agents,
                 unblocks_todo_id=next_unblocks_todo_id,
                 dry_run=dry_run,
+                actor_agent_id=actor_agent_id,
             )
         )
     if next_user_todo:
@@ -387,6 +392,7 @@ def complete_event_projected_goal_todo(
                 ),
                 unblocks_todo_id=None,
                 dry_run=dry_run,
+                actor_agent_id=actor_agent_id,
             )
         )
 
@@ -420,6 +426,7 @@ def complete_event_projected_goal_todo(
         payload=completion_payload,
         recorded_at=updated_at,
         producer="loopx.todo.complete",
+        actor_agent_id=actor_agent_id,
     )
     if not already_done and not dry_run:
         store.append(completion_event)

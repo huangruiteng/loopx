@@ -1709,6 +1709,7 @@ def complete_goal_todo(
                     registered_agents=registered_agents,
                     updated_at=updated_at,
                     dry_run=dry_run,
+                    actor_agent_id=mutation_authority.get("actor_agent_id"),
                 )
                 event_result["linked_successor_id"] = completion_policy.linked_successor_id
                 event_result["mutation_authority"] = mutation_authority

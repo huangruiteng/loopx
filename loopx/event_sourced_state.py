@@ -499,6 +499,9 @@ def normalize_state_event(event: dict[str, Any], *, append_sequence: int | None 
         "refs": _sorted_dict(refs),
         "payload": _sorted_dict(payload),
     }
+    actor_agent_id = normalize_todo_claimed_by(event.get("actor_agent_id"))
+    if actor_agent_id:
+        normalized["actor_agent_id"] = actor_agent_id
     if normalized["schema_version"] != STATE_EVENT_SCHEMA_VERSION:
         raise StateEventError(f"schema_version must be {STATE_EVENT_SCHEMA_VERSION}")
     if sequence is not None:
@@ -517,6 +520,7 @@ def make_state_event(
     producer: str | None = None,
     privacy: str = PUBLIC_PRIVACY,
     projection_version: str = STATE_PROJECTION_VERSION,
+    actor_agent_id: str | None = None,
 ) -> dict[str, Any]:
     return normalize_state_event(
         {
@@ -530,6 +534,7 @@ def make_state_event(
             "projection_version": projection_version,
             "refs": refs or {},
             "payload": payload or {},
+            "actor_agent_id": actor_agent_id,
         }
     )
 
@@ -642,6 +647,7 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
     global_gate = normalize_todo_global_gate(payload.get("global_gate"))
     excluded_agents = normalize_todo_excluded_agents(payload.get("excluded_agents"))
     claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
+    actor_agent_id = normalize_todo_claimed_by(event.get("actor_agent_id"))
     todo: dict[str, Any] = {
         "schema_version": "todo_item_v0",
         "todo_id": todo_id,
@@ -692,12 +698,19 @@ def _todo_from_added_event(event: dict[str, Any]) -> dict[str, Any]:
             todo[key] = compact_text(payload[key])
     if claimed_by:
         todo["claimed_by"] = claimed_by
+    if actor_agent_id:
+        todo["created_by"] = actor_agent_id
     return todo
 
 
 def _update_todo_from_event(todo: dict[str, Any], event: dict[str, Any]) -> None:
     payload = event.get("payload") or {}
     event_type = event.get("event_type")
+    actor_agent_id = normalize_todo_claimed_by(event.get("actor_agent_id"))
+    if actor_agent_id:
+        todo["last_actor_agent_id"] = actor_agent_id
+    elif event_type not in (REFRESH_RECORDED, RUN_RECORDED, QUOTA_SPENT, EVIDENCE_ATTACHED):
+        todo.pop("last_actor_agent_id", None)
     if event_type == TODO_CLAIMED:
         claimed_by = normalize_todo_claimed_by(payload.get("claimed_by"))
         if claimed_by:
@@ -844,16 +857,17 @@ def build_state_projection(
                 raise StateEventError(f"{event_type} references unknown todo_id: {todo_id}")
             _update_todo_from_event(todo, event)
         elif event_type in {REFRESH_RECORDED, RUN_RECORDED, QUOTA_SPENT, EVIDENCE_ATTACHED}:
-            timeline.append(
-                {
-                    "event_id": event["event_id"],
-                    "event_type": event_type,
-                    "append_sequence": event.get("append_sequence"),
-                    "recorded_at": event.get("recorded_at"),
-                    "summary": compact_text((event.get("payload") or {}).get("summary")),
-                    "refs": event.get("refs") or {},
-                }
-            )
+            timeline_entry: dict[str, Any] = {
+                "event_id": event["event_id"],
+                "event_type": event_type,
+                "append_sequence": event.get("append_sequence"),
+                "recorded_at": event.get("recorded_at"),
+                "summary": compact_text((event.get("payload") or {}).get("summary")),
+                "refs": event.get("refs") or {},
+            }
+            if event.get("actor_agent_id"):
+                timeline_entry["actor_agent_id"] = event["actor_agent_id"]
+            timeline.append(timeline_entry)
 
     todo_items = sorted(
         todos.values(),
