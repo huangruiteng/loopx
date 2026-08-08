@@ -55,3 +55,32 @@ benchmark-specific read models.
 This is a product boundary, not an isolation claim: benchmark execution still
 uses LoopX state and receipts, and it remains covered by the same release and
 public-evidence policies.
+
+## EdgeBench Provider Boundary
+
+EdgeBench uses the same ownership rule. The built-in
+`loopx.benchmark_adapters.edgebench` module owns only LoopX-facing readiness,
+single-task planning, and compact result normalization. The upstream SForge
+harness remains the runner provider and owns task acquisition, work/judge
+container isolation, iterative submissions, hidden evaluation, Docker or
+Kubernetes execution, and agent/model launch.
+
+The first integration slice deliberately does not wrap `sforge fetch-tasks`,
+`sforge pull`, `sforge serve`, or `sforge run`. Those commands can download
+large task assets, pull images, start containers, invoke paid model APIs, and
+run for up to 12 hours. LoopX instead exposes fail-closed commands that make the
+boundary reviewable before any of those effects:
+
+```bash
+loopx benchmark edgebench-preflight --task-id <public-task-id>
+loopx benchmark edgebench-run-plan --preflight-json <compact-preflight.json> \
+  --agent <agent> --model <model> --run-id <public-run-id>
+loopx benchmark edgebench-result-reduce --result-json <final-result.json> \
+  --task-id <public-task-id> --run-id <public-run-id>
+```
+
+The result reducer accepts only SForge's compact final result shape and keeps
+best score, pass rate, best round, submission counts, runtime, timeout, and
+resume count. It does not preserve raw agent output, archives, task bodies,
+hidden tests, logs, trajectories, credentials, paths, uploads, or leaderboard
+claims.

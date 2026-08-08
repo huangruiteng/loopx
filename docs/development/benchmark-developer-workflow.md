@@ -1437,9 +1437,71 @@ selected reducer can be rerun without private material.
 | Terminal-Bench | Cloud Codex CLI runs the task on a dedicated benchmark host; LoopX ingests compact no-upload evidence. | Prior split-control adapters remain useful reducers, but the next run should prefer direct cloud-host Codex plus container runtime. |
 | SkillsBench | Cloud Codex CLI and BenchFlow run on the same dedicated host; LoopX records compact base/test mini-pair evidence. | Prior host-local ACP relay work is historical route-repair evidence. Do not add more bridge layers before trying the cloud-host path. |
 | Agents' Last Exam | Cloud Codex CLI drives the local-Docker-capable ALE route on the dedicated host; LoopX ingests compact no-upload evidence. | Formal task runs still need task-data and public-claim gates, but Docker/Codex colocation should replace the earlier local-host split-control assumption. |
+| EdgeBench | SForge owns isolated work/judge containers and iterative feedback; LoopX gates one public task plan and ingests compact best-over-time evidence. | The built-in adapter is no-execution and fail-closed. A real task still requires explicit task/image/judge readiness, private model credentials, launch authority, and a cost review. |
 
 This table is intentionally about runner maturity, not leaderboard score.
 Score claims require separate public-safe result ingestion and review.
+
+### EdgeBench SForge Gate
+
+EdgeBench publishes 51 open tasks from a 134-task benchmark. Tasks are designed
+for long-horizon environment learning, use isolated work and judge containers,
+and score the best submission observed during the run. Official reports compare
+2, 4, 6, 8, 10, and 12 hour checkpoints. One frontier-model task can cost
+hundreds to more than one thousand USD, so repository validation must never
+start a task.
+
+Start with the compact preflight:
+
+```bash
+loopx benchmark edgebench-preflight \
+  --task-id ad_placement_optimization \
+  --backend docker \
+  --task-catalog-ready \
+  --task-images-ready \
+  --judge-ready \
+  --require-ready \
+  --format json > edgebench-preflight.json
+```
+
+This checks only public-safe readiness signals plus local Linux, SForge, and
+container-runtime availability. It does not fetch tasks, pull images, start
+containers, read task bodies, invoke a model, upload, or submit. When the
+preflight is ready, create a bounded private launch plan:
+
+```bash
+loopx benchmark edgebench-run-plan \
+  --preflight-json edgebench-preflight.json \
+  --agent codex \
+  --model <public-model-label> \
+  --run-id <public-run-id> \
+  --timeout-seconds 7200 \
+  --require-ready \
+  --format json
+```
+
+The plan names required credential and endpoint environment variables but never
+reads or records their values. It rejects budgets above the official 43,200
+second ceiling and does not claim official-setting or leaderboard
+comparability. Launch SForge separately only after the operator approves model
+cost, credentials, task assets, and the selected backend.
+
+After a private run, reduce only SForge's compact `final_result.json`:
+
+```bash
+loopx benchmark edgebench-result-reduce \
+  --result-json <private-final-result.json> \
+  --task-id <public-task-id> \
+  --run-id <public-run-id> \
+  --require-countable \
+  --format json
+```
+
+The reducer retains best score/pass rate, best round, submission counts,
+runtime, timeout, and resume count. It ignores raw agent output and archive
+metadata. A compact result is still not an official score or treatment claim;
+use the normal benchmark ledger and comparison review gates before making
+either claim.
 
 ### SkillsBench Split-Control Preflight
 

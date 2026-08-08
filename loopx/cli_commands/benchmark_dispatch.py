@@ -28,6 +28,10 @@ from .benchmark_run_ledger import (
     handle_benchmark_run_ledger_command,
     register_benchmark_run_ledger_commands,
 )
+from .edgebench import (
+    handle_edgebench_command,
+    register_edgebench_commands,
+)
 from .terminal_bench_adapter import (
     handle_terminal_bench_adapter_command,
     register_terminal_bench_adapter_commands,
@@ -62,6 +66,7 @@ def register_benchmark_command_group(
     register_terminal_bench_adapter_commands(benchmark_sub, add_subcommand_format)
 
     register_agents_last_exam_commands(benchmark_sub, add_subcommand_format)
+    register_edgebench_commands(benchmark_sub, add_subcommand_format)
 
     register_benchmark_review_lifecycle_commands(benchmark_sub, add_subcommand_format)
     register_terminal_bench_environment_result_commands(benchmark_sub, add_subcommand_format)
@@ -117,6 +122,14 @@ def handle_benchmark_command(
     )
     if agents_last_exam_result is not None:
         return agents_last_exam_result
+
+    edgebench_result = handle_edgebench_command(
+        args,
+        print_payload=print_payload,
+        output_format=output_format,
+    )
+    if edgebench_result is not None:
+        return edgebench_result
 
     benchmark_review_lifecycle_result = handle_benchmark_review_lifecycle_command(
         args,
