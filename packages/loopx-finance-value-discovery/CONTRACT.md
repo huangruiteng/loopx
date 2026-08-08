@@ -69,6 +69,11 @@ typed and compared with the frozen rule to produce `passed` or `failed`.
 Providers may instead report `missing` or `conflict`. The first `failed`,
 `missing`, or `conflict` result blocks the case, and every later observation
 must be `not_run`.
+
+Evidence references are state-dependent: `observed` observations require at
+least one reference, `conflict` observations require at least two references,
+and `not_run` observations must contain none.
+
 Running a later gate after a blocker is rejected as an invalid input rather
 than silently accepted.
 
