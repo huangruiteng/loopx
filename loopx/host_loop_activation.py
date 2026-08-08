@@ -40,6 +40,8 @@ def scheduler_command_binding_for_agent_type(
         "opencode": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
         "traex-cli": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
         "pi": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
+        "gemini-cli": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
+        "cursor-agent": SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
     }.get(canonical)
     if runtime_profile is not None:
         return {"runtime_profile": runtime_profile.value}
@@ -60,6 +62,8 @@ SUPPORTED_AGENT_TYPES = [
     "opencode",
     "traex-cli",
     "pi",
+    "gemini-cli",
+    "cursor-agent",
     "manual",
     "other-agent",
 ]
@@ -171,6 +175,34 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
             "earendil pi",
         ],
     },
+    "gemini-cli": {
+        "display_name": "Gemini CLI",
+        "host_loop": "agent-driven Gemini CLI loop gated by LoopX quota should-run",
+        "entry": "the LoopX skill installed in GEMINI_HOME/skills",
+        "accepted_inputs": [
+            "gemini-cli",
+            "gemini_cli",
+            "gemini cli",
+            "gemini",
+            "gemini-code",
+            "gemini code",
+            "google-gemini",
+            "google gemini",
+        ],
+    },
+    "cursor-agent": {
+        "display_name": "Cursor Agent CLI",
+        "host_loop": "agent-driven cursor-agent loop gated by LoopX quota should-run",
+        "entry": "the LoopX skill installed in CURSOR_HOME/skills, with the LoopX MCP server registered",
+        "accepted_inputs": [
+            "cursor-agent",
+            "cursor_agent",
+            "cursor agent",
+            "cursor",
+            "cursor-cli",
+            "cursor cli",
+        ],
+    },
     "manual": {
         "display_name": "Manual shell / external scheduler",
         "host_loop": "external scheduler or manual quota/status loop",
@@ -239,6 +271,10 @@ HOST_SURFACE_TO_AGENT_TYPE = {
     "traex": "traex-cli",
     "pi": "pi",
     "pi-tui": "pi",
+    "gemini-cli": "gemini-cli",
+    "gemini": "gemini-cli",
+    "cursor-agent": "cursor-agent",
+    "cursor": "cursor-agent",
     "shell": "manual",
     "http": "other-agent",
     "worker-bridge": "other-agent",
@@ -366,6 +402,8 @@ def _heartbeat_commands(
         "opencode": "OpenCode visible goal loop gated by LoopX",
         "traex-cli": "TraeX CLI /goal visible TUI loop gated by LoopX",
         "pi": "Pi visible goal loop gated by LoopX",
+        "gemini-cli": "Gemini CLI agent loop gated by LoopX",
+        "cursor-agent": "Cursor Agent CLI loop gated by LoopX",
         "manual": "External scheduler or manual shell LoopX poll",
         "other-agent": "Custom agent host loop gated by LoopX",
     }
@@ -848,6 +886,97 @@ def _traex_activation(commands: dict[str, str]) -> dict[str, Any]:
     }
 
 
+def _skill_facade_cli_activation(
+    commands: dict[str, str],
+    cli_bin: str,
+    *,
+    host_label: str,
+    host_surface: str,
+    install_surface: str,
+    skills_root: str,
+    extra_host_mutation: dict[str, Any] | None = None,
+    extra_activation_steps: list[str] | None = None,
+) -> dict[str, Any]:
+    """Activation for a CLI host that LoopX reaches through a skill facade only.
+
+    Gemini CLI and cursor-agent have no goal primitive to bind: no `/goal` to
+    set, no extension tool to call, no host automation to schedule. What they do
+    have is skill discovery, so the loop driver is the agent's own turn loop and
+    LoopX gates it the only way it can — every continuation has to enter through
+    quota should-run. That is a weaker guarantee than a host-owned loop and is
+    stated as such, because claiming autonomous heartbeat support these hosts
+    cannot deliver is worse than admitting the agent drives itself.
+    """
+    return {
+        "host_surface": host_surface,
+        "entry_command_hint": f"the LoopX skill installed in {skills_root}",
+        "activation_method": "run_agent_cli_loop_gated_by_quota",
+        "activation_input_command": commands["heartbeat_prompt_json"],
+        "setup_command": (
+            f"{cli_bin} slash-commands --install --surface {install_surface}"
+        ),
+        "host_mutation": {
+            "owner": f"{host_label} session",
+            "host_loop_primitive": None,
+            "cli_can_mutate_directly": False,
+            "loop_driver": "agent_cli_turn_loop",
+            "missing_host_tool_gate": (
+                f"{host_label} exposes no goal or automation primitive for LoopX to "
+                "bind. If the session cannot keep entering through quota should-run, "
+                "show the exact heartbeat-prompt command for the user to run and do "
+                "not claim autonomous heartbeat support."
+            ),
+            **(extra_host_mutation or {}),
+        },
+        "activation_steps": [
+            f"Install or refresh the LoopX {host_label} surface when needed.",
+            "Run the heartbeat-prompt JSON command after project state and todos are written.",
+            "Read task_body from the JSON payload and carry it as the session objective.",
+            *(extra_activation_steps or []),
+            "Start every following turn with quota should-run and stop when it says stop; "
+            "there is no host scheduler to fall back on.",
+        ],
+        "success_criteria": [
+            f"The {host_label} session has the LoopX skill facade installed and the "
+            "generated task_body as its objective.",
+            "Each continuation enters through LoopX quota/status/state, and a stop "
+            "decision ends the session loop instead of free-running.",
+        ],
+    }
+
+
+def _gemini_cli_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any]:
+    return _skill_facade_cli_activation(
+        commands,
+        cli_bin,
+        host_label="Gemini CLI",
+        host_surface="gemini_cli_agent_loop",
+        install_surface="gemini",
+        skills_root="GEMINI_HOME/skills",
+    )
+
+
+def _cursor_agent_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any]:
+    return _skill_facade_cli_activation(
+        commands,
+        cli_bin,
+        host_label="Cursor Agent CLI",
+        host_surface="cursor_agent_loop",
+        install_surface="cursor",
+        skills_root="CURSOR_HOME/skills",
+        extra_host_mutation={
+            # The MCP server is how a cursor-agent session reads LoopX state
+            # without shelling out; the loop is still the agent's own turns.
+            "host_mcp_server": "loopx",
+            "host_mcp_config": "CURSOR_HOME/mcp.json",
+        },
+        extra_activation_steps=[
+            "Confirm the `loopx` MCP server is enabled in this session "
+            "(`cursor-agent mcp`); it is registered by the surface installer.",
+        ],
+    )
+
+
 def _manual_activation(commands: dict[str, str]) -> dict[str, Any]:
     return {
         "host_surface": "external_scheduler_or_manual_shell",
@@ -930,6 +1059,10 @@ def build_host_loop_activation_packet(
         surface = _traex_activation(commands)
     elif canonical == "pi":
         surface = _pi_activation(commands, cli_bin)
+    elif canonical == "gemini-cli":
+        surface = _gemini_cli_activation(commands, cli_bin)
+    elif canonical == "cursor-agent":
+        surface = _cursor_agent_activation(commands, cli_bin)
     else:
         surface = _manual_activation(commands)
         if canonical == "other-agent":

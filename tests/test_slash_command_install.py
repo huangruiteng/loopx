@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
+from loopx import slash_command_install
 from loopx.slash_command_install import (
     install_slash_commands,
     materialize_loopx_entry_skill,
@@ -604,3 +606,262 @@ def test_pi_install_retires_managed_extension_on_uninstall(tmp_path: Path) -> No
     assert not runtime.exists()
     assert _row(payload, "pi_goal_extension")["status"] == "retired_managed_file"
     assert _row(payload, "pi_goal_extension_runtime")["status"] == "retired_managed_file"
+
+
+def test_gemini_surface_writes_skill_files_gemini_cli_can_discover(tmp_path: Path) -> None:
+    """Gemini CLI reads user skills from GEMINI_HOME/skills with the same
+    SKILL.md front matter as Claude Code, so the facade must land there."""
+    gemini_home = tmp_path / "gemini"
+    payload = install_slash_commands(
+        execute=True,
+        surfaces=["gemini"],
+        gemini_home=str(gemini_home),
+    )
+    assert payload["ok"] is True
+    assert payload["effective_surfaces"] == ["gemini"]
+
+    skill = gemini_home / "skills" / "loopx" / "SKILL.md"
+    assert skill.exists()
+    body = skill.read_text(encoding="utf-8")
+    assert body.startswith("---")
+    assert 'name: "loopx"' in body
+
+    row = _row(payload, "gemini_cli_skills")
+    assert row["surface"] == "gemini"
+    assert row["host_surfaces"] == ["gemini-cli"]
+
+
+def test_gemini_uninstall_keeps_user_files(tmp_path: Path) -> None:
+    """Uninstall removes only what LoopX manages — a skill the user wrote
+    under the same name must survive."""
+    gemini_home = tmp_path / "gemini"
+    install_slash_commands(execute=True, surfaces=["gemini"], gemini_home=str(gemini_home))
+
+    mine = gemini_home / "skills" / "my-own-skill" / "SKILL.md"
+    mine.parent.mkdir(parents=True, exist_ok=True)
+    mine.write_text("---\nname: my-own-skill\n---\nhand written\n", encoding="utf-8")
+
+    install_slash_commands(
+        execute=True, uninstall=True, surfaces=["gemini"], gemini_home=str(gemini_home)
+    )
+    assert not (gemini_home / "skills" / "loopx" / "SKILL.md").exists()
+    assert mine.exists(), "user-owned skill must not be removed"
+
+
+def test_cursor_surface_installs_skills(tmp_path: Path) -> None:
+    """Cursor discovers SKILL.md from CURSOR_HOME/skills — the same format the
+    other hosts use — so the facade lands there too, not only as MCP."""
+    cursor_home = tmp_path / "cursor"
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    skill = cursor_home / "skills" / "loopx" / "SKILL.md"
+    assert skill.exists()
+    assert 'name: "loopx"' in skill.read_text(encoding="utf-8")
+    assert _row(payload, "cursor_skills")["host_surfaces"] == ["cursor-agent"]
+
+
+def test_opencode_surface_installs_skills_next_to_commands(tmp_path: Path) -> None:
+    """OpenCode reads global skills from OPENCODE_CONFIG_DIR/skills. The typed
+    command facade must stay — the two are different invocation paths."""
+    opencode_home = tmp_path / "opencode"
+    install_slash_commands(
+        execute=True,
+        surfaces=["opencode"],
+        opencode_home=str(opencode_home),
+    )
+    assert (opencode_home / "skills" / "loopx" / "SKILL.md").exists()
+    assert (opencode_home / "commands" / "loopx.md").exists()
+
+
+def test_cursor_surface_merges_mcp_and_leaves_other_servers(tmp_path: Path) -> None:
+    """The mcp.json usually already holds the user's own servers — we may
+    touch nothing but our own key."""
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    (cursor_home / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"other": {"command": "somebin", "args": []}}}),
+        encoding="utf-8",
+    )
+
+    payload = install_slash_commands(
+        execute=False, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    row = _row(payload, "cursor_mcp_server")
+    assert row["status"] == "would_write"
+    # Dry run must not touch the file at all.
+    after = json.loads((cursor_home / "mcp.json").read_text(encoding="utf-8"))
+    assert after == {"mcpServers": {"other": {"command": "somebin", "args": []}}}
+
+
+def test_cursor_surface_reports_unreadable_config_instead_of_overwriting(
+    tmp_path: Path,
+) -> None:
+    """A broken mcp.json is the user's file — overwriting it would silently
+    drop their servers, so we report and stop."""
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    (cursor_home / "mcp.json").write_text("{ this is not json", encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    row = _row(payload, "cursor_mcp_server")
+    assert row["status"] == "blocked_invalid_cursor_mcp_json"
+    assert payload["ok"] is False
+    assert (cursor_home / "mcp.json").read_text(encoding="utf-8") == "{ this is not json"
+
+
+def test_gemini_and_cursor_are_opt_in_not_part_of_all(tmp_path: Path) -> None:
+    """`all` must not start writing into homes of CLIs the user may not have —
+    the two new surfaces are opt-in, the same way `pi` is."""
+    payload = install_slash_commands(
+        execute=False,
+        surfaces=["all"],
+        gemini_home=str(tmp_path / "g"),
+        cursor_home=str(tmp_path / "c"),
+    )
+    assert "gemini" not in payload["effective_surfaces"]
+    assert "cursor" not in payload["effective_surfaces"]
+    assert not (tmp_path / "g").exists()
+    assert not (tmp_path / "c").exists()
+
+
+def _stub_mcp_command(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Pretend `mcp` is provisioned: these tests are about file ownership, not
+    about building a venv."""
+    entry = {"command": "/opt/loopx/bin/python", "args": ["/opt/loopx/mcp/loopx_mcp.py"]}
+    monkeypatch.setattr(
+        slash_command_install,
+        "_loopx_mcp_command",
+        lambda: (str(entry["command"]), str(entry["args"][0])),
+    )
+    return entry
+
+
+def test_cursor_mcp_refuses_to_replace_a_user_owned_loopx_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server the user named `loopx` is theirs. LoopX did not write it, cannot
+    prove it did, and must not take the name — silently replacing a working
+    server is the one failure the user cannot see happening."""
+    _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    mine = {
+        "mcpServers": {
+            "loopx": {"command": "my-own-loopx", "args": ["--mine"]},
+            "other": {"command": "somebin", "args": []},
+        }
+    }
+    (cursor_home / "mcp.json").write_text(json.dumps(mine), encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert json.loads((cursor_home / "mcp.json").read_text(encoding="utf-8")) == mine
+
+    # And uninstall may not delete it either — removing a server we never wrote
+    # is the same violation in the other direction.
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert json.loads((cursor_home / "mcp.json").read_text(encoding="utf-8")) == mine
+
+
+def test_cursor_mcp_dry_run_reports_the_foreign_entry_before_execute(
+    tmp_path: Path,
+) -> None:
+    """The dry run is where a user finds out; reporting `would_write` here and
+    skipping at execute time would make the preview a lie."""
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    (cursor_home / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"loopx": {"command": "my-own-loopx"}}}),
+        encoding="utf-8",
+    )
+    payload = install_slash_commands(
+        execute=False, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+
+
+def test_cursor_mcp_fails_closed_on_an_unexpected_servers_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A list-valued `mcpServers` is either a shape LoopX does not understand or
+    a damaged file. Normalizing it to `{}` would discard whatever it held."""
+    _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    raw = json.dumps({"mcpServers": [{"name": "other"}]})
+    (cursor_home / "mcp.json").write_text(raw, encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "blocked_invalid_cursor_mcp_json"
+    assert (cursor_home / "mcp.json").read_text(encoding="utf-8") == raw
+
+
+def test_cursor_mcp_writes_then_retires_only_its_own_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The whole point of the provenance marker: what LoopX wrote, LoopX may
+    take back — and nothing else moves."""
+    entry = _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    cursor_home.mkdir()
+    (cursor_home / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"other": {"command": "somebin", "args": []}}}),
+        encoding="utf-8",
+    )
+
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "written"
+    written = json.loads((cursor_home / "mcp.json").read_text(encoding="utf-8"))
+    assert written["mcpServers"]["loopx"] == entry
+    assert written["mcpServers"]["other"] == {"command": "somebin", "args": []}
+
+    # Reinstalling the same entry is not a change.
+    payload = install_slash_commands(
+        execute=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "unchanged"
+
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "retired"
+    after = json.loads((cursor_home / "mcp.json").read_text(encoding="utf-8"))
+    assert after["mcpServers"] == {"other": {"command": "somebin", "args": []}}
+    assert not (cursor_home / slash_command_install.CURSOR_MCP_MARKER_NAME).exists()
+
+
+def test_cursor_mcp_hand_edited_entry_becomes_the_users(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Provenance is the recorded entry, not the key name. Once a user edits the
+    entry LoopX wrote, it is theirs and LoopX stops touching it."""
+    _stub_mcp_command(monkeypatch)
+    cursor_home = tmp_path / "cursor"
+    install_slash_commands(execute=True, surfaces=["cursor"], cursor_home=str(cursor_home))
+
+    config = cursor_home / "mcp.json"
+    edited = json.loads(config.read_text(encoding="utf-8"))
+    edited["mcpServers"]["loopx"]["args"].append("--my-flag")
+    config.write_text(json.dumps(edited), encoding="utf-8")
+
+    payload = install_slash_commands(
+        execute=True, uninstall=True, surfaces=["cursor"], cursor_home=str(cursor_home)
+    )
+    assert _row(payload, "cursor_mcp_server")["status"] == "skipped_user_owned_mcp_entry"
+    assert json.loads(config.read_text(encoding="utf-8")) == edited

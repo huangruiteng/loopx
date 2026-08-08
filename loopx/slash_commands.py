@@ -72,6 +72,8 @@ def build_slash_command_catalog(
                     "claude-code": "arm LoopX with `/loopx <task>`, then run native `/loop`",
                     "opencode": "call `loopx_goal_activate`",
                     "pi": "call `loopx_goal_activate`",
+                    "gemini-cli": "drive the loop from the agent's own turns; enter every turn through quota should-run",
+                    "cursor-agent": "drive the loop from the agent's own turns; enter every turn through quota should-run",
                     "manual": "wire an external scheduler or run quota/status manually",
                     "other-agent": "use the custom host loop driver declared by `loopx agent-onboard`",
                 },

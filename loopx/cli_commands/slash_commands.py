@@ -50,11 +50,26 @@ def register_slash_commands_command(
     parser.add_argument(
         "--surface",
         action="append",
-        choices=["all", "codex", "codex-cli", "codex-app", "codex-app-ssh", "codex-ide-plugin", "codex-ide", "claude-code", "opencode", "pi"],
+        choices=[
+            "all",
+            "codex",
+            "codex-cli",
+            "codex-app",
+            "codex-app-ssh",
+            "codex-ide-plugin",
+            "codex-ide",
+            "claude-code",
+            "opencode",
+            "gemini",
+            "gemini-cli",
+            "cursor",
+            "cursor-agent",
+            "pi",
+        ],
         help=(
             "Host surface to install. Repeatable. Defaults to static command facades "
-            "for Codex, Claude Code, and OpenCode. `pi` installs the self-contained "
-            "Pi goal extension into the project's .pi/extensions/."
+            "for Codex, Claude Code, and OpenCode. `gemini`, `cursor` and `pi` are "
+            "opt-in: they write into those hosts' own homes only when requested."
         ),
     )
     parser.add_argument(
@@ -72,6 +87,14 @@ def register_slash_commands_command(
     parser.add_argument(
         "--claude-home",
         help="Claude Code home for skill installation. Defaults to CLAUDE_HOME or ~/.claude.",
+    )
+    parser.add_argument(
+        "--gemini-home",
+        help="Gemini CLI home for skill installation. Defaults to GEMINI_HOME or ~/.gemini.",
+    )
+    parser.add_argument(
+        "--cursor-home",
+        help="Cursor CLI home for MCP registration. Defaults to CURSOR_HOME or ~/.cursor.",
     )
     parser.add_argument(
         "--opencode-home",
@@ -108,6 +131,8 @@ def handle_slash_commands_command(
             codex_home=args.codex_home,
             claude_home=args.claude_home,
             opencode_home=args.opencode_home,
+            gemini_home=args.gemini_home,
+            cursor_home=args.cursor_home,
             pi_project=args.pi_project,
         )
         print_payload(payload, output_format(args), render_slash_command_install_markdown)

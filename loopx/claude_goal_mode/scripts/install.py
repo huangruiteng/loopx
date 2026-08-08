@@ -73,9 +73,19 @@ def _venv_python(venv: Path) -> Path:
     return venv / sub / exe
 
 
+# The server imports `mcp.server.fastmcp`, which MCP SDK 2.x no longer ships.
+# Checking a bare `import mcp` accepts an interpreter that cannot actually run
+# the server, so registration would write a config that fails to start —
+# `cursor-agent mcp list` reports "Connection failed" and Claude silently drops
+# the tools. Probe the module the server really needs.
+MCP_PROBE = "import mcp.server.fastmcp"
+# Upper bound for the same reason; drop it once loopx_mcp.py speaks the 2.x API.
+MCP_REQUIREMENT = "mcp<2"
+
+
 def _has_mcp(py) -> bool:
     try:
-        return subprocess.run([str(py), "-c", "import mcp"], capture_output=True).returncode == 0
+        return subprocess.run([str(py), "-c", MCP_PROBE], capture_output=True).returncode == 0
     except (FileNotFoundError, OSError):
         return False
 
@@ -102,7 +112,7 @@ def provision_mcp_python(dry: bool, allow_system_pip: bool = False) -> str:
     r = subprocess.run([sys.executable, "-m", "venv", str(MCP_VENV)], capture_output=True, text=True)
     if r.returncode == 0:
         subprocess.run([str(vpy), "-m", "pip", "install", "-q", "--upgrade", "pip"], capture_output=True, text=True)
-        pip = subprocess.run([str(vpy), "-m", "pip", "install", "-q", "mcp"], capture_output=True, text=True)
+        pip = subprocess.run([str(vpy), "-m", "pip", "install", "-q", MCP_REQUIREMENT], capture_output=True, text=True)
         if pip.returncode == 0 and _has_mcp(vpy):
             print(f"[deps] mcp installed into {MCP_VENV}")
             return str(vpy)
@@ -113,14 +123,14 @@ def provision_mcp_python(dry: bool, allow_system_pip: bool = False) -> str:
     # user's active/system interpreter unless they explicitly opted in.
     if allow_system_pip:
         print("[deps] --allow-system-pip: pip install --break-system-packages mcp")
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", "mcp"],
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", MCP_REQUIREMENT],
                        capture_output=True, text=True)
         if _has_mcp(sys.executable):
             return sys.executable
     print("[deps] WARNING: could not provision `mcp` into a dedicated venv, and we will\n"
           "       NOT modify your system Python. The loopx MCP tools will not load until\n"
           "       you install `mcp` yourself, e.g.:\n"
-          f"       {sys.executable} -m venv {MCP_VENV} && {vpy} -m pip install mcp\n"
+          f"       {sys.executable} -m venv {MCP_VENV} && {vpy} -m pip install '{MCP_REQUIREMENT}'\n"
           "       (or re-run install.py with --allow-system-pip to use the active interpreter).")
     return _python_cmd()
 
