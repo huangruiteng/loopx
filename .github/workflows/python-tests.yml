@@ -55,6 +55,8 @@ jobs:
         run: python -m mypy
 
       - name: Qualify agent-facing CLI output
+        env:
+          LOOPX_CLI_OUTPUT_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
         run: python examples/control_plane/cli-output-budget-regression-smoke.py
 
       - name: Run fast tests

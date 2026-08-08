@@ -14,7 +14,10 @@ from typing import Any
 from urllib.parse import quote, urljoin, urlparse
 from urllib.request import urlopen
 
-from .public_safety import public_safe_boundary
+from .public_safety import (
+    PUBLIC_BOUNDARY_PATTERNS,
+    public_safe_boundary,
+)
 
 
 STATIC_SITE_MANIFEST_VERSION = "loopx_static_site_presentation_manifest_v0"
@@ -30,19 +33,7 @@ REVISION_DIR = "revisions"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _TEXT_SUFFIXES = {".css", ".html", ".js", ".json", ".md", ".svg", ".txt", ".xml"}
-_PUBLIC_BOUNDARY_PATTERNS = (
-    (
-        "absolute local path",
-        re.compile(r"/(?:Users|home|private|tmp|var)/[^\s`\"'<>]+"),
-    ),
-    ("private key material", re.compile(r"BEGIN (?:RSA |OPENSSH |EC |)PRIVATE KEY")),
-    (
-        "credential assignment",
-        re.compile(
-            r"\b(?:api[_-]?key|auth[_-]?token|access[_-]?token)\s*[:=]", re.IGNORECASE
-        ),
-    ),
-)
+_PUBLIC_BOUNDARY_PATTERNS = PUBLIC_BOUNDARY_PATTERNS
 _RESERVED_TOP_LEVEL = {MANIFEST_FILE, RECEIPT_FILE, REVISION_FILE, REVISION_DIR}
 
 

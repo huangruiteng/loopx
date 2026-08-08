@@ -40,3 +40,34 @@ def redact_public_text(
     if len(text) > limit:
         return text[: max(0, limit - 1)].rstrip() + truncation_marker
     return text
+
+
+PUBLIC_BOUNDARY_PATTERNS = (
+    (
+        "absolute local path",
+        re.compile(r"/(?:Users|home|private|tmp|var)/[^\s`\"'<>]+"),
+    ),
+    ("private key material", re.compile(r"BEGIN (?:RSA |OPENSSH |EC |)PRIVATE KEY")),
+    (
+        "credential assignment",
+        re.compile(
+            r"\b(?:api[_-]?key|auth[_-]?token|access[_-]?token)\s*[:=]", re.IGNORECASE
+        ),
+    ),
+)
+
+
+def scan_public_boundary_text(text: str) -> dict[str, object]:
+    """Scan text for obvious private material before public presentation.
+
+    Returns ``{"ok": bool, "warnings": [label, ...]}``. The scanner is the
+    canonical public/private boundary check for generated presentation text;
+    the static-site exporter and the session dash generator share it.
+    """
+
+    warnings = [
+        label
+        for label, pattern in PUBLIC_BOUNDARY_PATTERNS
+        if pattern.search(text)
+    ]
+    return {"ok": not warnings, "warnings": warnings}

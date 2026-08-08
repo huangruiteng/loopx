@@ -7,3 +7,4 @@
 - [Frontstage dashboard interaction baseline](frontstage-dashboard-interaction-baseline.md)
 - [Frontstage two-surface strategy](frontstage-two-surface-strategy.md)
 - [Presentation surface layout](presentation-surface-layout.md)
+- [Session dash panel design](session-dash-panel-design.md)

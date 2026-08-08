@@ -281,6 +281,43 @@ local inspection file only. For public demos, use the sanitized
 You can also import a JSON file directly in the browser, or load a local API
 URL that returns the same `loopx --format json status` shape.
 
+## Live Single-Page Session Dash
+
+The primary way to watch session task progress is a loopback single-page panel:
+
+```bash
+loopx dash                 # serve at http://127.0.0.1:8767/ (auto-refresh every 10s)
+loopx dash --goal-id <goal-id>   # narrow the panel to one goal
+```
+
+Open the printed URL in any browser and keep it open while the agents work.
+The page is a human-focused fleet view: an overview strip of sessions, goals,
+active / needs-you / blocked / done buckets, open todos and run statistics,
+followed by one card per session with the goals it owns and each goal's
+status badge, todo progress bar, waiting reason, and latest run. It refreshes
+itself in place every 10 seconds by re-fetching the `/panel` fragment.
+Internal control machinery (decision frames, work-lane contracts, quota slot
+math, source warnings) is intentionally not rendered. The panel is
+read-only: no write controls, no browser write authority. The server binds
+loopback only and exposes no write routes.
+
+A one-shot static snapshot is also available for demos or sharing:
+
+```bash
+loopx dash generate [--goal-id <goal-id>] --out dash.html
+```
+
+Open `dash.html` in any browser. The command runs the public/private
+boundary scan before reporting success and withholds output on failure.
+
+```bash
+# print the projection + html as JSON instead
+loopx --format json dash generate --goal-id <goal-id>
+```
+
+See [the session dash panel design](../../../docs/product/surfaces/session-dash-panel-design.md)
+for the layout, data boundary, and validation contract.
+
 ## Browser Smokes
 
 Dashboard browser smokes are explicit because they start a temporary Vite
