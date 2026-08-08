@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -70,12 +71,14 @@ from .control_plane.todos.completion_policy import (
     linked_successor_from_todo,
     resolve_completion_policy,
 )
+from .control_plane.todos.completion_fence import completed_todo_replay
 from .control_plane.todos.event_writeback import (
     complete_event_projected_goal_todo,
     event_projection_todo_context,
 )
 from .control_plane.todos.line_update import (
     apply_todo_update_to_lines,
+    link_generated_successor_todo_ids,
     upsert_todo_metadata,
 )
 from .control_plane.todos.list_projection import (
@@ -102,6 +105,7 @@ from .control_plane.todos.write_policy import (
     require_user_todo_task_class,
     resolve_user_gate_global_gate_update,
 )
+from .control_plane.work_items.task_lease import hold_task_lease_mutation_fence
 
 
 ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE = max(0, MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE - 2)
@@ -588,38 +592,6 @@ def matching_todo_block(
         if normalize_todo_text(str(block.get("text") or "")) == expected:
             return block
     return None
-
-
-def link_generated_successor_todo_ids(
-    lines: list[str],
-    *,
-    update_result: dict[str, Any],
-    role: str | None,
-    successor_todo_ids: list[str],
-) -> bool:
-    merged_successor_ids = merge_todo_id_lists(
-        update_result.get("successor_todo_ids"),
-        successor_todo_ids,
-    )
-    if merged_successor_ids == normalize_todo_id_list(update_result.get("successor_todo_ids")):
-        return False
-    block_match = find_todo_block(
-        lines,
-        todo_id=str(update_result.get("todo_id") or ""),
-        role=role,
-    )
-    if not block_match:
-        return False
-    _resolved_role, _section, _start, _end, block = block_match
-    metadata_updated = upsert_todo_metadata(
-        lines,
-        block,
-        metadata_line_for_todo_block(block, {"successor_todo_ids": merged_successor_ids}),
-    )
-    update_result["successor_todo_ids"] = merged_successor_ids
-    update_result["metadata_updated"] = bool(update_result.get("metadata_updated") or metadata_updated)
-    update_result["changed"] = bool(update_result.get("changed") or metadata_updated)
-    return metadata_updated
 
 
 def add_todo_to_lines(
@@ -1534,6 +1506,8 @@ def complete_goal_todo(
     decision_outcome: str | None = None,
     evidence: str | None = None,
     completion_turn_key: str | None = None,
+    task_lease_idempotency_key: str | None = None,
+    task_lease_expected_version: int | None = None,
     note: str | None = None,
     no_followup: bool = False,
     successor_todo_ids: list[str] | None = None,
@@ -1573,7 +1547,7 @@ def complete_goal_todo(
         resolved_state_file,
         agent_id=agent_id or claimed_by,
         operation="todo_complete",
-    ):
+    ), ExitStack() as lease_fence_stack:
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
         updated_at = now_local()
@@ -1631,28 +1605,35 @@ def complete_goal_todo(
             decision_outcome=effective_decision_outcome,
             decision_target=decision_target,
         )
-        existing_completion_turn_key = str(
-            completion_todo.get("completion_turn_key") or ""
+        terminal_replay = completed_todo_replay(
+            todo=completion_todo,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            completion_turn_key=completion_turn_key,
+            mutation_authority=mutation_authority,
+            state_file=str(resolved_state_file),
+            project=str(resolved_project) if resolved_project else None,
+            dry_run=dry_run,
         )
-        if completion_match and str(completion_todo.get("status") or "") == TODO_STATUS_DONE:
-            if completion_turn_key and completion_turn_key == existing_completion_turn_key:
-                return {
-                    "ok": True,
-                    "dry_run": dry_run,
-                    "completed": True,
-                    "idempotent_replay": True,
-                    "changed": False,
-                    "goal_id": goal_id,
-                    "todo_id": todo_id,
-                    "status": TODO_STATUS_DONE,
-                    "mutation_authority": mutation_authority,
-                    "state_file": str(resolved_state_file),
-                    "project": str(resolved_project) if resolved_project else None,
-                }
-            if completion_turn_key:
-                raise ValueError(
-                    "todo is already completed under a different completion_turn_key"
-                )
+        if terminal_replay:
+            return terminal_replay
+        task_lease_fence = lease_fence_stack.enter_context(
+            hold_task_lease_mutation_fence(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                todo_id=todo_id,
+                todo=completion_todo,
+                actor_agent_id=agent_id or claimed_by,
+                idempotency_key=(
+                    task_lease_idempotency_key or completion_turn_key
+                ),
+                expected_version=task_lease_expected_version,
+                require_active_when_key_supplied=(
+                    task_lease_idempotency_key is not None
+                    or task_lease_expected_version is not None
+                ),
+            )
+        )
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)
         if successor_todo_ids and not normalized_successor_todo_ids:
             raise ValueError("successor_todo_ids must contain public todo_<letters-digits-underscore-hyphen> tokens")
@@ -1857,6 +1838,7 @@ def complete_goal_todo(
         "next_todos": next_results,
         "linked_successor_id": completion_policy.linked_successor_id,
         "mutation_authority": mutation_authority,
+        "task_lease_fence": task_lease_fence,
         "state_file": str(resolved_state_file),
         "project": str(resolved_project) if resolved_project else None,
         "updated_at": updated_at if changed else None,

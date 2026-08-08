@@ -602,12 +602,31 @@ If it carried `blocks_agent` / `unblocks_todo_id`, the replacement inherits
 those unblock fields too. Use `--next-claimed-by <agent-id>` to make a handoff
 explicit.
 
-`todo complete` and `todo supersede` are intentionally idempotent for repeated
-heartbeats: if the old todo is already complete and the next todo already
-exists with the same metadata, the command returns `changed=false` and does not
-duplicate the next checkbox. `todo archive-completed` is only a hygiene command:
+`todo complete` is terminal-idempotent for repeated heartbeats: once the source
+todo is complete, a later completion returns `changed=false` and cannot append
+or relink a different successor. Correct a completed route with an explicit
+follow-up todo or lifecycle command instead of replaying `complete` with new
+arguments. `todo supersede` keeps its own idempotent successor insertion.
+`todo archive-completed` is only a hygiene command:
 it moves already-completed active todos into `Completed Work Archive`; it does
 not mark open todos as done.
+
+When an open todo has an effective hard task lease, completion must prove the
+execution instance, not only the shared agent identity:
+
+```bash
+loopx todo complete \
+  --goal-id <goal-id> \
+  --todo-id <todo_id> \
+  --claimed-by <agent-id> \
+  --task-lease-idempotency-key <acquire-key> \
+  --task-lease-expected-version <lease-version> \
+  --evidence "<public-safe evidence>"
+```
+
+The version check is optional; the idempotency key is required while the lease
+is active. A missing or mismatched key fails before Todo or successor state is
+written, including when two host processes intentionally share one `agent_id`.
 
 ## Parsed Schema
 

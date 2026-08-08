@@ -127,7 +127,13 @@ def claim_task(todo_id: str, agent_id: str) -> str:
 
 
 @mcp.tool()
-def complete_task(todo_id: str, agent_id: str, evidence: str, next_agent_todo: str = "") -> str:
+def complete_task(
+    todo_id: str,
+    agent_id: str,
+    evidence: str,
+    next_agent_todo: str = "",
+    task_lease_idempotency_key: str = "",
+) -> str:
     """Complete a todo (with evidence), then spend one quota slot.
 
     Mirrors the Codex heartbeat contract: spend exactly once AFTER validated
@@ -136,6 +142,8 @@ def complete_task(todo_id: str, agent_id: str, evidence: str, next_agent_todo: s
     gid, _ = _ctx()
     args = ["todo", "complete", "--goal-id", gid, "--todo-id", todo_id,
             "--claimed-by", agent_id, "--evidence", evidence]
+    if task_lease_idempotency_key:
+        args += ["--task-lease-idempotency-key", task_lease_idempotency_key]
     if next_agent_todo:
         # Don't hard-code a next claimer. With --next-agent-todo and no
         # --next-claimed-by, LoopX assigns the new todo using its own completion

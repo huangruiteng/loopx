@@ -5,19 +5,20 @@ from collections.abc import Callable
 from pathlib import Path
 
 from ..control_plane.todos.contract import TODO_CONTINUATION_POLICY_VALUES
+from ..control_plane.todos.markdown import render_todo_markdown
+from ..control_plane.work_items.task_lease import TaskLeaseError
+from ..file_lock import lock_timeout_error_fields
+from ..todo_followups import capture_followup_todos
 from ..todo_suggestion_prompt import (
     ALLOWED_TODO_SUGGESTION_SOURCES,
     ALLOWED_TODO_SUGGESTION_TRIGGERS,
     build_todo_suggestion_prompt_packet,
     render_todo_suggestion_prompt_markdown,
 )
-from ..todo_followups import capture_followup_todos
-from ..control_plane.todos.markdown import render_todo_markdown
-from ..file_lock import lock_timeout_error_fields
 from ..todos import (
     ARCHIVE_COMPLETED_DEFAULT_MAX_ACTIVE_DONE,
-    archive_completed_todos,
     add_goal_todo,
+    archive_completed_todos,
     complete_goal_todo,
     list_goal_todos,
     supersede_goal_todo,
@@ -39,7 +40,6 @@ from .todo_argument_validation import (
     validate_todo_update_options,
 )
 from .todo_event import RolloutEventAppender, append_todo_rollout_event
-
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
@@ -238,6 +238,21 @@ def register_todo_command(
             "the assignment target, not the lifecycle actor; multi-agent lifecycle "
             "commands still require --agent-id. User todos use --bound-agent or "
             "--goal-bound instead."
+        ),
+    )
+    todo_parser.add_argument(
+        "--task-lease-idempotency-key",
+        help=(
+            "For todo complete, prove the execution instance that owns an active "
+            "hard task lease. Required when that todo has an effective lease."
+        ),
+    )
+    todo_parser.add_argument(
+        "--task-lease-expected-version",
+        type=int,
+        help=(
+            "For todo complete, optionally CAS the active hard task lease version. "
+            "Requires --task-lease-idempotency-key."
         ),
     )
     todo_parser.add_argument(
@@ -548,6 +563,8 @@ def handle_todo_command(
                 role=args.role,
                 decision_outcome=args.decision_outcome,
                 evidence=args.evidence,
+                task_lease_idempotency_key=args.task_lease_idempotency_key,
+                task_lease_expected_version=args.task_lease_expected_version,
                 note=args.note,
                 no_followup=bool(args.no_follow_up),
                 successor_todo_ids=args.successor_todo_ids,
@@ -650,6 +667,9 @@ def handle_todo_command(
             "error": str(exc),
             **lock_timeout_error_fields(exc),
         }
+        if isinstance(exc, TaskLeaseError):
+            payload["error_code"] = exc.code
+            payload.update(exc.payload)
     append_todo_rollout_event(
         payload,
         args=args,

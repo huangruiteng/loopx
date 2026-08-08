@@ -216,7 +216,7 @@ the host lacks authority. A host adapter may expose these write classes:
 
 | Write Class | CLI Baseline | Required Guards |
 | --- | --- | --- |
-| Todo claim and lifecycle | `loopx todo claim/update/complete` | registered agent id, active-state file lock, task class, optional successor handoff with `blocks_agent` / `unblocks_todo_id` |
+| Todo claim and lifecycle | `loopx todo claim/update/complete` | registered agent id, active-state file lock, task class, active task-lease execution key when present, optional successor handoff with `blocks_agent` / `unblocks_todo_id` |
 | User/agent todo creation | `loopx todo add --role user --task-class user_gate\|user_action` / `--role agent` | public-safe text, concrete actor, duplicate detection |
 | Gate decision | `loopx operator-gate --decision approve|reject|defer` | explicit controller/user decision, dry-run preview before write |
 | Human reward | `loopx reward ... --dry-run` then explicit write | run-bound judgment, public-safe reason, no score impersonation |
@@ -293,7 +293,15 @@ quota, capability, write-scope, or workspace guards:
 
 ```bash
 loopx task-lease acquire --goal-id <goal-id> --todo-id <todo_id> --owner <agent-id> --idempotency-key <turn-key> --write-scope <scope>
+loopx todo complete --goal-id <goal-id> --todo-id <todo_id> --claimed-by <agent-id> --task-lease-idempotency-key <turn-key> --evidence "<public-safe evidence>"
 ```
+
+The acquire key is an execution-instance fence. A lifecycle writer cannot rely
+on `agent_id` alone because multiple host processes may share one registered
+peer identity. While an effective lease exists, `todo complete` holds the lease
+lock through canonical state writeback and rejects a missing, stale, or
+mismatched key before creating successors. Hosts may also pass
+`--task-lease-expected-version` for an explicit version CAS.
 
 If the host adapter is unavailable, the user or automation can run those
 commands and preserve the same state transitions. If a host offers an operation

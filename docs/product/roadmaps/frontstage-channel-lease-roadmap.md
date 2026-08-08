@@ -230,7 +230,14 @@ review action over an independent handoff, optionally excluding the author.
 
 The current implementation is local and file-backed, with per-goal locking,
 renewal, transfer, release, registered-owner validation, and stale-owner
-invalidation. A later server can own the same schema and coordination surface.
+invalidation. A concrete same-agent/multi-process completion race established
+the first lifecycle adoption case: while a lease is effective, `todo complete`
+must present the acquire idempotency key and holds the lease lock through Todo
+and successor writeback. The key fences execution instances that share one
+registered `agent_id`; an optional expected version adds an explicit CAS. A
+completed Todo is terminal-idempotent, so a stale replay cannot append a second
+successor after the canonical completion commits. A later server can own the
+same schema and coordination surface.
 Conflicts should be detected by `(goal_id, todo_id)` plus overlapping
 write-scope checks: another agent may claim a different todo in the same goal,
 but a second pending claim on the same todo must fail closed, renew, or
@@ -240,9 +247,10 @@ explicitly transfer ownership.
 
 P1:
 
-- Keep the shipped optional `task_lease_v0` runtime and conflict smoke stable.
-  Adopt it in a host execution path only after a concrete concurrent-write bad
-  case demonstrates value; do not silently turn it into a default quota gate.
+- Keep the shipped optional `task_lease_v0` runtime, lifecycle fence, and
+  conflict smoke stable. The proven same-agent completion race justifies
+  fencing `todo complete` when a lease is active; do not turn lease acquisition
+  into a default quota gate.
 - Treat the shipped React `/frontstage` route as the baseline
   `goal_channel_projection_v0` reader. Future work should polish visual
   acceptance, operator onboarding, and local fixture realism while preserving

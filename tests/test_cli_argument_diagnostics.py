@@ -638,6 +638,10 @@ def test_todo_update_validation_accepts_a_mutable_field() -> None:
             "todo complete does not update --continuation-policy; use todo update first",
         ),
         (
+            ["--todo-id", "todo_example", "--task-lease-expected-version", "2"],
+            "--task-lease-expected-version requires --task-lease-idempotency-key",
+        ),
+        (
             ["--todo-id", "todo_example", "--next-user-todo", "Approve."],
             "--next-user-todo requires explicit --next-user-task-class "
             "user_action|user_gate",
@@ -656,6 +660,46 @@ def test_todo_complete_validation_preserves_exact_diagnostics(
         validate_todo_complete_options(args)
 
     assert str(exc_info.value) == expected
+
+
+def test_todo_complete_preserves_typed_task_lease_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def reject_stale_instance(**_kwargs: object) -> dict[str, object]:
+        raise todo_command.TaskLeaseError(
+            "todo has an active task lease",
+            code="lease_fence_required",
+            payload={"lease_version": 3},
+        )
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(todo_command, "complete_goal_todo", reject_stale_instance)
+    args = build_parser().parse_args(
+        [
+            "todo",
+            "complete",
+            "--goal-id",
+            "example-goal",
+            "--todo-id",
+            "todo_example",
+            "--claimed-by",
+            "codex-example",
+        ]
+    )
+
+    exit_code = todo_command.handle_todo_command(
+        args,
+        registry_path=tmp_path / "registry.json",
+        runtime_root_arg=None,
+        print_payload=lambda payload, *_args: captured.update(payload),
+        append_cli_rollout_event=lambda *_args, **_kwargs: {},
+        format_name="json",
+    )
+
+    assert exit_code == 1
+    assert captured["error_code"] == "lease_fence_required"
+    assert captured["lease_version"] == 3
 
 
 def test_todo_complete_validation_accepts_no_follow_up_with_evidence() -> None:

@@ -14,6 +14,7 @@ from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
     TodoContinuationPolicy,
+    merge_todo_id_lists,
     metadata_line_for_todo_block,
     normalize_explore_result_node_refs,
     normalize_required_capabilities,
@@ -59,6 +60,45 @@ def upsert_todo_metadata(
         insert_at -= 1
     lines.insert(insert_at, metadata_line)
     return True
+
+
+def link_generated_successor_todo_ids(
+    lines: list[str],
+    *,
+    update_result: dict[str, Any],
+    role: str | None,
+    successor_todo_ids: list[str],
+) -> bool:
+    merged_successor_ids = merge_todo_id_lists(
+        update_result.get("successor_todo_ids"),
+        successor_todo_ids,
+    )
+    if merged_successor_ids == normalize_todo_id_list(
+        update_result.get("successor_todo_ids")
+    ):
+        return False
+    block_match = find_todo_block(
+        lines,
+        todo_id=str(update_result.get("todo_id") or ""),
+        role=role,
+    )
+    if not block_match:
+        return False
+    _resolved_role, _section, _start, _end, block = block_match
+    metadata_updated = upsert_todo_metadata(
+        lines,
+        block,
+        metadata_line_for_todo_block(
+            block,
+            {"successor_todo_ids": merged_successor_ids},
+        ),
+    )
+    update_result["successor_todo_ids"] = merged_successor_ids
+    update_result["metadata_updated"] = bool(
+        update_result.get("metadata_updated") or metadata_updated
+    )
+    update_result["changed"] = bool(update_result.get("changed") or metadata_updated)
+    return metadata_updated
 
 
 def apply_todo_update_to_lines(

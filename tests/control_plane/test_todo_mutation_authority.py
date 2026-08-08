@@ -5,16 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from loopx.control_plane.todos.event_writeback import (
-    complete_event_projected_goal_todo,
-)
 from loopx.control_plane.scheduler.monitor_poll_writeback import (
     write_monitor_poll_todo_state,
 )
+from loopx.control_plane.todos.event_writeback import (
+    complete_event_projected_goal_todo,
+)
+from loopx.control_plane.work_items.task_lease import (
+    TaskLeaseError,
+    acquire_task_lease,
+)
 from loopx.event_sourced_state import (
-    AppendOnlyStateEventStore,
     TODO_ADDED,
     TODO_UPDATED,
+    AppendOnlyStateEventStore,
     StateEventError,
     backfill_todo_events_from_markdown,
     build_state_projection,
@@ -27,7 +31,6 @@ from loopx.todos import (
     supersede_goal_todo,
     update_goal_todo,
 )
-
 
 GOAL_ID = "todo-mutation-authority"
 AUTHOR_AGENT = "codex-author"
@@ -75,6 +78,7 @@ def _write_fixture(
     registry.write_text(
         json.dumps(
             {
+                "common_runtime_root": str(tmp_path / "runtime"),
                 "goals": [
                     {
                         "id": GOAL_ID,
@@ -268,6 +272,86 @@ def test_capability_binding_follows_generated_agent_successor(tmp_path: Path) ->
     )
 
 
+def test_active_task_lease_fences_same_agent_completion_instance(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(tmp_path, multi_agent=False)
+    todo = _add_agent_todo(registry)
+    lease_key = "turn-owner-instance"
+    acquire_task_lease(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        owner=AUTHOR_AGENT,
+        idempotency_key=lease_key,
+        ttl_seconds=600,
+    )
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(TaskLeaseError) as missing_fence:
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            claimed_by=AUTHOR_AGENT,
+            evidence="stale execution instance",
+            next_agent_todo="Create a stale successor.",
+        )
+    assert missing_fence.value.code == "lease_fence_required"
+    assert state.read_text(encoding="utf-8") == before
+
+    with pytest.raises(TaskLeaseError) as mismatched_fence:
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=todo["todo_id"],
+            claimed_by=AUTHOR_AGENT,
+            task_lease_idempotency_key="other-instance",
+            evidence="wrong execution instance",
+        )
+    assert mismatched_fence.value.code == "lease_cas_mismatch"
+    assert state.read_text(encoding="utf-8") == before
+
+    completed = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        claimed_by=AUTHOR_AGENT,
+        task_lease_idempotency_key=lease_key,
+        task_lease_expected_version=1,
+        evidence="lease owner validated the result",
+        next_agent_todo="Create the canonical successor.",
+    )
+    assert completed["task_lease_fence"] == {
+        "schema_version": "task_lease_v0",
+        "required": True,
+        "active": True,
+        "owner": AUTHOR_AGENT,
+        "version": 1,
+        "execution_instance_verified": True,
+    }
+
+    replayed = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        claimed_by=AUTHOR_AGENT,
+        evidence="late result from another execution instance",
+        next_agent_todo="Create a duplicate stale successor.",
+    )
+    assert replayed["idempotent_replay"] is True
+    assert replayed["changed"] is False
+    agent_todos = parse_active_state_todos(state.read_text(encoding="utf-8"))[
+        "agent_todos"
+    ]["items"]
+    todo_titles = [
+        str(item.get("title") or item.get("text") or "") for item in agent_todos
+    ]
+    assert todo_titles.count("Create the canonical successor.") == 1
+    assert "Create a duplicate stale successor." not in todo_titles
+
+
 def test_capability_binding_cannot_be_rebound_by_duplicate_add(tmp_path: Path) -> None:
     registry, state = _write_fixture(tmp_path)
     add_goal_todo(
@@ -360,6 +444,45 @@ def test_capability_binding_follows_event_projected_successor(tmp_path: Path) ->
     assert successor["capability_binding_ref"] == (
         "issue-fix:feasibility-a1b2c3d4"
     )
+
+    event_count = len(AppendOnlyStateEventStore(event_log).load())
+    completed_parent = next(
+        item
+        for item in replayed["agent_todos"]["items"]
+        if item["todo_id"] == parent["todo_id"]
+    )
+    duplicate = complete_event_projected_goal_todo(
+        goal_id=GOAL_ID,
+        context={
+            "item": completed_parent,
+            "role": "agent",
+            "event_log_path": event_log,
+            "fields": {"agent_todos": replayed["agent_todos"]},
+        },
+        evidence="late stale completion",
+        note=None,
+        no_followup=False,
+        successor_todo_ids=[],
+        claimed_by=AUTHOR_AGENT,
+        clear_claim=False,
+        next_agent_todo="Create a duplicate event successor.",
+        next_user_todo=None,
+        next_user_task_class="user_gate",
+        next_claimed_by=AUTHOR_AGENT,
+        next_task_class="advancement_task",
+        next_action_kind="issue_fix_reviewer_request",
+        next_task_repository=None,
+        next_required_capabilities=None,
+        next_continuation_policy="same_agent_non_delivery",
+        self_merged=False,
+        next_excluded_agents=[],
+        registered_agents=[AUTHOR_AGENT],
+        updated_at="2026-07-18T00:02:00+00:00",
+        dry_run=False,
+    )
+    assert duplicate["idempotent_replay"] is True
+    assert duplicate["changed"] is False
+    assert len(AppendOnlyStateEventStore(event_log).load()) == event_count
 
 
 def test_task_domain_survives_markdown_event_projection() -> None:

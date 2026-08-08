@@ -331,6 +331,26 @@ def complete_event_projected_goal_todo(
     effective_claimed_by = claimed_by or normalize_todo_claimed_by(item.get("claimed_by"))
     store = AppendOnlyStateEventStore(Path(context["event_log_path"]))
     already_done = todo_done_for_status(str(item.get("status") or TODO_STATUS_OPEN))
+    if already_done:
+        return {
+            "ok": True,
+            "dry_run": dry_run,
+            "completed": True,
+            "idempotent_replay": True,
+            "changed": False,
+            "goal_id": goal_id,
+            "role": role,
+            "section": TODO_SECTION_HEADINGS[role],
+            "todo": item.get("text") or item.get("title"),
+            "todo_id": todo_id,
+            "status": TODO_STATUS_DONE,
+            "status_changed": False,
+            "next_todos": [],
+            "state_file": str(context.get("state_file") or ""),
+            "project": str(context.get("project") or "") or None,
+            "updated_at": None,
+            "source": "event_log",
+        }
     next_unblocks_todo_id = todo_id if next_agent_todo else None
     next_user_bound_agent = effective_claimed_by
     if next_user_todo and len(registered_agents) > 1:

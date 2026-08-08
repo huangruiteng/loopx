@@ -3,11 +3,16 @@ from __future__ import annotations
 import fnmatch
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from ...agent_registry import registered_agent_ids_from_registry, require_registered_agent_id
+from ...agent_registry import (
+    registered_agent_ids_from_registry,
+    require_registered_agent_id,
+)
 from ...file_lock import exclusive_file_lock
 from ...history import load_registry
 from ...paths import resolve_runtime_root
@@ -95,6 +100,124 @@ def task_lease_path(*, runtime_root: Path, goal_id: str, todo_id: str) -> Path:
 
 def task_lease_lock_path(*, runtime_root: Path, goal_id: str) -> Path:
     return task_lease_dir(runtime_root=runtime_root, goal_id=goal_id) / ".task-leases"
+
+
+@contextmanager
+def hold_task_lease_mutation_fence(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    todo_id: str,
+    todo: dict[str, Any],
+    actor_agent_id: str | None,
+    idempotency_key: str | None,
+    expected_version: int | None = None,
+    require_active_when_key_supplied: bool = True,
+) -> Iterator[dict[str, Any]]:
+    """Hold the per-goal lease lock while one todo lifecycle write commits.
+
+    Task leases are optional. Once an effective lease exists, however, the
+    lifecycle writer must prove that it is the execution instance that acquired
+    the lease. The idempotency key is the execution-instance fence; agent ids
+    alone are insufficient because multiple host processes may share one peer
+    identity.
+    """
+
+    normalized_goal_id = normalize_goal_id(goal_id)
+    normalized_todo_id = normalize_lease_todo_id(todo_id)
+    requested_key = (
+        normalize_idempotency_key(idempotency_key)
+        if idempotency_key is not None
+        else None
+    )
+    runtime_root = runtime_root_from_registry(registry_path, None)
+    lease_path = task_lease_path(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+        todo_id=normalized_todo_id,
+    )
+    lock_target = task_lease_lock_path(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+    )
+    with exclusive_file_lock(
+        lock_target,
+        agent_id=actor_agent_id,
+        operation="task_lease_mutation_fence",
+    ):
+        lease = read_lease(lease_path)
+        active = lease_is_active(lease)
+        if active and lease:
+            constraint = task_lease_owner_constraint(
+                todo,
+                owner=lease.get("owner"),
+                registered_agents=registered_agent_ids_from_registry(
+                    registry_path,
+                    normalized_goal_id,
+                ),
+            )
+            active = constraint.get("effective") is True
+
+        if not active:
+            if (
+                require_active_when_key_supplied
+                and (requested_key is not None or expected_version is not None)
+            ):
+                raise TaskLeaseError(
+                    "task lease fence was supplied but no effective lease is active",
+                    code="lease_not_active",
+                    payload={
+                        "goal_id": normalized_goal_id,
+                        "todo_id": normalized_todo_id,
+                        "lease_path": str(lease_path),
+                    },
+                )
+            yield {
+                "schema_version": TASK_LEASE_SCHEMA_VERSION,
+                "required": False,
+                "active": False,
+            }
+            return
+
+        assert lease is not None
+        if requested_key is None:
+            raise TaskLeaseError(
+                "todo has an active task lease; lifecycle mutation requires its idempotency key",
+                code="lease_fence_required",
+                payload={
+                    "goal_id": normalized_goal_id,
+                    "todo_id": normalized_todo_id,
+                    "lease_owner": lease.get("owner"),
+                    "lease_version": lease.get("version"),
+                    "lease_path": str(lease_path),
+                },
+            )
+        normalized_actor = normalize_todo_claimed_by(actor_agent_id)
+        if (
+            lease.get("owner") != normalized_actor
+            or lease.get("idempotency_key") != requested_key
+        ):
+            raise TaskLeaseError(
+                "task lease owner or execution-instance key mismatch",
+                code="lease_cas_mismatch",
+                payload={
+                    "goal_id": normalized_goal_id,
+                    "todo_id": normalized_todo_id,
+                    "lease_owner": lease.get("owner"),
+                    "lease_version": lease.get("version"),
+                    "actor_agent_id": normalized_actor,
+                    "lease_path": str(lease_path),
+                },
+            )
+        assert_expected_version(lease, expected_version)
+        yield {
+            "schema_version": TASK_LEASE_SCHEMA_VERSION,
+            "required": True,
+            "active": True,
+            "owner": normalized_actor,
+            "version": lease.get("version"),
+            "execution_instance_verified": True,
+        }
 
 
 def runtime_root_from_registry(registry_path: Path, runtime_root_override: str | None) -> Path:

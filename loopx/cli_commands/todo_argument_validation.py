@@ -5,7 +5,6 @@ from collections.abc import Iterable
 
 from ..control_plane.todos.contract import TODO_CONTINUATION_POLICY_VALUES
 
-
 TODO_OPTION_FIELDS = (
     ("--role", "role"),
     ("--text", "text"),
@@ -32,6 +31,8 @@ TODO_OPTION_FIELDS = (
     ("--required-decision-scope", "required_decision_scopes"),
     ("--decision-outcome", "decision_outcome"),
     ("--claimed-by", "claimed_by"),
+    ("--task-lease-idempotency-key", "task_lease_idempotency_key"),
+    ("--task-lease-expected-version", "task_lease_expected_version"),
     ("--bound-agent", "bound_agent"),
     ("--goal-bound", "goal_bound"),
     ("--blocks-agent", "blocks_agent"),
@@ -329,6 +330,10 @@ def validate_todo_complete_options(args: argparse.Namespace) -> None:
         raise ValueError("todo complete does not update --explore-result-node-ref; use todo update first")
     if args.claimed_by and args.clear_claim:
         raise ValueError("todo complete accepts either --claimed-by or --clear-claim, not both")
+    if args.task_lease_expected_version is not None and not args.task_lease_idempotency_key:
+        raise ValueError(
+            "--task-lease-expected-version requires --task-lease-idempotency-key"
+        )
     if any(getattr(args, field) for field in ("task_repository", "bound_agent", "goal_bound", "blocks_agent", "clear_blocks_agent", "excluded_agents", "clear_excluded_agents", "global_gate", "clear_global_gate", "unblocks_todo_id", "resume_when")):
         raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
     if any(getattr(args, field) for field in ("monitor_target_key", "cadence", "next_due_at", "expires_at")):
@@ -443,6 +448,17 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
         "complete",
         "supersede",
     }
+    if (
+        args.todo_command != "complete"
+        and (
+            args.task_lease_idempotency_key
+            or args.task_lease_expected_version is not None
+        )
+    ):
+        raise ValueError(
+            "--task-lease-idempotency-key and --task-lease-expected-version "
+            "are supported only by todo complete"
+        )
     if args.capability_binding_ref and args.todo_command != "add":
         raise ValueError(
             "--capability-binding-ref is immutable and supported only by todo add"
