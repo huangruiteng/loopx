@@ -519,15 +519,15 @@ def _require_task_lease_fence_unlocked(
     if not lease_is_active(lease, at=at):
         raise TaskLeaseError("lease is missing or expired", code="lease_not_active")
     assert lease is not None
-    if lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key:
-        raise TaskLeaseError(
-            "lease owner or idempotency key mismatch",
-            code="lease_cas_mismatch",
-        )
     if task_lease_fencing_token(lease) != fencing_token:
         raise TaskLeaseError(
             "worker fencing token is stale",
             code="stale_fencing_token",
+        )
+    if lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key:
+        raise TaskLeaseError(
+            "lease owner or idempotency key mismatch",
+            code="lease_cas_mismatch",
         )
     return dict(lease)
 

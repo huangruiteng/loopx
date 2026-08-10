@@ -92,7 +92,10 @@ def _committed_payload(value: Mapping[str, Any] | None) -> bool:
     return bool(
         isinstance(value, Mapping)
         and value.get("ok") is True
-        and value.get("appended") is True
+        and (
+            value.get("appended") is True
+            or value.get("idempotent") is True
+        )
     )
 
 

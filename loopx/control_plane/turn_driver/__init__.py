@@ -43,10 +43,12 @@ from .journal import (
     turn_journal_path,
     turn_projection_path,
 )
+from .lease import TurnFence, TurnLeaseController
 from .transaction import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     LoopXTurnResultKind,
+    TurnEffectEnvelope,
     build_loopx_turn_transaction_plan,
     loopx_turn_execution_committed,
     loopx_turn_execution_has_durable_effects,
@@ -71,6 +73,9 @@ __all__ = [
     "LoopXTurnResultKind",
     "LoopXTurnRoute",
     "TurnJournalError",
+    "TurnFence",
+    "TurnEffectEnvelope",
+    "TurnLeaseController",
     "ValidatedTurnReceipt",
     "build_loopx_turn_command_validator",
     "build_loopx_turn_host_request",
