@@ -7,6 +7,8 @@ from typing import Any, Literal
 from ..quota.turn_envelope import (
     ACTION_SIGNATURE_COVERAGE_V0,
     ACTION_SIGNATURE_COVERAGE_V1,
+    ACTION_SIGNATURE_COVERAGE_V2,
+    ACTION_SIGNATURE_COVERAGE_V3,
 )
 
 
@@ -123,11 +125,23 @@ def _action_signature_migration(
 ) -> str | None:
     base_coverages = base.get("action_signature_coverages")
     candidate_coverages = candidate.get("action_signature_coverages")
-    if base_coverages != [ACTION_SIGNATURE_COVERAGE_V0]:
+    if not (
+        isinstance(base_coverages, list)
+        and len(base_coverages) == 1
+        and isinstance(candidate_coverages, list)
+        and len(candidate_coverages) == 1
+    ):
         return None
-    if candidate_coverages != [ACTION_SIGNATURE_COVERAGE_V1]:
+    transition = (base_coverages[0], candidate_coverages[0])
+    allowed_transitions = {
+        (ACTION_SIGNATURE_COVERAGE_V0, ACTION_SIGNATURE_COVERAGE_V1),
+        (ACTION_SIGNATURE_COVERAGE_V0, ACTION_SIGNATURE_COVERAGE_V2),
+        (ACTION_SIGNATURE_COVERAGE_V1, ACTION_SIGNATURE_COVERAGE_V3),
+        (ACTION_SIGNATURE_COVERAGE_V2, ACTION_SIGNATURE_COVERAGE_V3),
+    }
+    if transition not in allowed_transitions:
         return None
-    return f"{ACTION_SIGNATURE_COVERAGE_V0} -> {ACTION_SIGNATURE_COVERAGE_V1}"
+    return f"{transition[0]} -> {transition[1]}"
 
 
 def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

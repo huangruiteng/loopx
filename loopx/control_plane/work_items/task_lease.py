@@ -563,6 +563,25 @@ def _require_task_lease_fence_unlocked(
     return dict(lease)
 
 
+def require_task_lease_fence_value(
+    lease: dict[str, Any] | None,
+    *,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """Validate an already-read lease, including remote CLI projections."""
+
+    return _require_task_lease_fence_unlocked(
+        lease,
+        owner=normalize_owner(owner),
+        idempotency_key=normalize_idempotency_key(idempotency_key),
+        fencing_token=str(fencing_token or ""),
+        at=at,
+    )
+
+
 def require_task_lease_fence(
     *,
     runtime_root: Path,
@@ -591,6 +610,42 @@ def require_task_lease_fence(
             read_lease(path),
             owner=owner,
             idempotency_key=idempotency_key,
+            fencing_token=str(fencing_token or ""),
+        )
+
+
+@contextmanager
+def hold_task_lease_fence(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    todo_id: str,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+    operation: str,
+) -> Iterator[dict[str, Any]]:
+    """Hold the lease lock while one fenced durable effect executes."""
+
+    normalized_goal_id = normalize_goal_id(goal_id)
+    normalized_todo_id = normalize_lease_todo_id(todo_id)
+    normalized_owner = normalize_owner(owner)
+    normalized_idempotency_key = normalize_idempotency_key(idempotency_key)
+    path = task_lease_path(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+        todo_id=normalized_todo_id,
+    )
+    with hold_task_lease_lock(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+        agent_id=normalized_owner,
+        operation=operation,
+    ):
+        yield _require_task_lease_fence_unlocked(
+            read_lease(path),
+            owner=normalized_owner,
+            idempotency_key=normalized_idempotency_key,
             fencing_token=str(fencing_token or ""),
         )
 

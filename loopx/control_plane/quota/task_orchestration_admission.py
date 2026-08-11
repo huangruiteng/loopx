@@ -139,6 +139,10 @@ def build_adaptive_task_orchestration_contract(
         return None
 
     primary = admitted[0]
+    primary_todo = {
+        "todo_id": primary.todo_id,
+        "required_write_scopes": list(primary.required_write_scopes),
+    }
     child_brief_defaults = _child_brief_defaults(
         parent_goal_id=parent_goal_id,
         available_capabilities=available_capabilities,
@@ -188,6 +192,7 @@ def build_adaptive_task_orchestration_contract(
         "strategy_owner": "task_coordinator",
         "max_children": max_children,
         "primary_todo_id": primary.todo_id,
+        "primary_todo": primary_todo,
         "child_brief_defaults": child_brief_defaults,
         "eligible_child_lanes": selected_children,
         "blocked_lanes": blocked,

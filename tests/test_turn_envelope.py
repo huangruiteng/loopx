@@ -763,6 +763,41 @@ def test_action_signature_detects_semantic_drift() -> None:
     ) != turn_envelope_action_signature_document(envelope)
 
 
+@pytest.mark.parametrize(
+    ("write_scopes", "include_response_plan", "expected_coverage"),
+    [
+        ([], False, "turn_envelope_action_dimensions_v2"),
+        ([], True, "turn_envelope_action_dimensions_v3"),
+        (["src/**"], False, "turn_envelope_action_dimensions_v2"),
+        (["src/**"], True, "turn_envelope_action_dimensions_v3"),
+    ],
+)
+def test_action_signature_versions_required_write_scope_coverage(
+    write_scopes: list[str],
+    include_response_plan: bool,
+    expected_coverage: str,
+) -> None:
+    source = _full_decision()
+    source["selected_todo"]["required_write_scopes"] = write_scopes
+    if include_response_plan:
+        source["interaction_contract"]["response_plan"] = {
+            "schema_version": "interaction_response_plan_v0",
+            "kind": "continue_agent_work",
+            "decision": "run",
+            "action_sequence": ["execute"],
+            "silent_wait_allowed": False,
+        }
+
+    envelope = build_turn_envelope(source)
+
+    assert envelope["action"]["selected_todo"]["required_write_scopes"] == write_scopes
+    assert envelope["action_signature"]["coverage"] == expected_coverage
+    envelope["action"]["selected_todo"]["required_write_scopes"] = ["docs/**"]
+    assert quota_action_signature_document(
+        source
+    ) != turn_envelope_action_signature_document(envelope)
+
+
 def test_protocol_packet_derivation_keeps_only_real_residue() -> None:
     source = _full_decision()
     source["interaction_contract"]["agent_channel"]["primary_action"] = (

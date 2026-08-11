@@ -17,15 +17,20 @@ from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     TurnEffectEnvelope,
+    TurnJournalError,
     TurnLeaseController,
+    append_turn_event,
     build_loopx_turn_command_validator,
     build_loopx_turn_plan,
     codex_cli_session_binding,
     load_loopx_turn_plan_from_journal,
+    load_turn_events,
     run_codex_cli_host,
     run_loopx_turn_once,
     selected_turn_todo,
+    selected_turn_todo_write_scopes,
 )
+from ..control_plane.work_items.task_lease import TaskLeaseError
 from ..quota import spend_quota_slot
 from ..state_refresh import refresh_state_run
 from ..status import AUTONOMOUS_REPLAN_PERIODIC_LOOKBACK, collect_status
@@ -175,6 +180,23 @@ def register_turn_commands(
     run_once.add_argument("--scan-path", action="append", default=[])
     run_once.add_argument("--limit", type=int, default=5)
 
+    journal_read = command_sub.add_parser(
+        "journal-read",
+        help=argparse.SUPPRESS,
+    )
+    add_subcommand_format(journal_read)
+    journal_read.add_argument("--goal-id", required=True)
+    journal_read.add_argument("--turn-key", required=True)
+
+    journal_append = command_sub.add_parser(
+        "journal-append",
+        help=argparse.SUPPRESS,
+    )
+    add_subcommand_format(journal_append)
+    journal_append.add_argument("--goal-id", required=True)
+    journal_append.add_argument("--turn-key", required=True)
+    journal_append.add_argument("--event-json", required=True)
+
 
 def _add_turn_decision_arguments(
     parser: argparse.ArgumentParser,
@@ -272,6 +294,114 @@ def _render_loopx_turn_execution_markdown(payload: dict[str, object]) -> str:
     )
 
 
+def _render_loopx_turn_journal_markdown(payload: dict[str, object]) -> str:
+    return "\n".join(
+        [
+            "# LoopX Turn Journal",
+            f"- ok: {payload.get('ok')}",
+            f"- mode: {payload.get('mode')}",
+            f"- event_count: {payload.get('event_count')}",
+            f"- error: {payload.get('error')}",
+        ]
+    )
+
+
+def _handle_turn_journal_command(
+    args: argparse.Namespace,
+    *,
+    registry_path: Path,
+    runtime_root_arg: str | None,
+    output_format: FormatSelector,
+    print_payload: PrintPayload,
+) -> int:
+    runtime_root = resolve_status_projection_cache_runtime_root(
+        registry_path=registry_path,
+        runtime_root_override=runtime_root_arg,
+    )
+    try:
+        if args.turn_command == "journal-read":
+            events = load_turn_events(runtime_root, args.goal_id, args.turn_key)
+            payload: dict[str, object] = {
+                "ok": True,
+                "schema_version": "loopx_turn_journal_cli_v0",
+                "mode": "journal_read",
+                "goal_id": args.goal_id,
+                "turn_key": args.turn_key,
+                "event_count": len(events),
+                "events": events,
+            }
+        else:
+            request = json.loads(args.event_json)
+            if not isinstance(request, dict) or set(request) != {
+                "event_type",
+                "phase_key",
+                "fencing",
+                "payload",
+            }:
+                raise ValueError("Turn journal event JSON fields are invalid")
+            fencing = request["fencing"]
+            event_payload = request["payload"]
+            if not isinstance(fencing, dict) or set(fencing) != {
+                "todo_id",
+                "owner",
+                "idempotency_key",
+                "token",
+            }:
+                raise ValueError("Turn journal fencing fields are invalid")
+            if not isinstance(event_payload, dict):
+                raise ValueError("Turn journal payload must be an object")
+            event = append_turn_event(
+                runtime_root=runtime_root,
+                goal_id=args.goal_id,
+                turn_key=args.turn_key,
+                event_type=str(request["event_type"]),
+                phase_key=str(request["phase_key"]),
+                fencing=fencing,
+                payload=event_payload,
+            )
+            payload = {
+                "ok": True,
+                "schema_version": "loopx_turn_journal_cli_v0",
+                "mode": "journal_append",
+                "goal_id": args.goal_id,
+                "turn_key": args.turn_key,
+                "event_count": None,
+                "event": event,
+            }
+    except TaskLeaseError as exc:
+        payload = {
+            "ok": False,
+            "schema_version": "loopx_turn_journal_cli_v0",
+            "mode": args.turn_command.replace("-", "_"),
+            "goal_id": args.goal_id,
+            "turn_key": args.turn_key,
+            "error": str(exc),
+            "error_code": exc.code,
+        }
+    except TurnJournalError as exc:
+        payload = {
+            "ok": False,
+            "schema_version": "loopx_turn_journal_cli_v0",
+            "mode": args.turn_command.replace("-", "_"),
+            "goal_id": args.goal_id,
+            "turn_key": args.turn_key,
+            "error": str(exc),
+            "error_code": "journal_invariant_failed",
+        }
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "schema_version": "loopx_turn_journal_cli_v0",
+            "mode": args.turn_command.replace("-", "_"),
+            "goal_id": args.goal_id,
+            "turn_key": args.turn_key,
+            "error": str(exc),
+            "error_code": exc.__class__.__name__,
+        }
+    print_payload(payload, output_format(args), _render_loopx_turn_journal_markdown)
+    return 0 if payload.get("ok") else 1
+
+
 def handle_turn_command(
     args: argparse.Namespace,
     *,
@@ -282,6 +412,14 @@ def handle_turn_command(
 ) -> int | None:
     if args.command != "turn":
         return None
+    if args.turn_command in {"journal-read", "journal-append"}:
+        return _handle_turn_journal_command(
+            args,
+            registry_path=registry_path,
+            runtime_root_arg=runtime_root_arg,
+            output_format=output_format,
+            print_payload=print_payload,
+        )
     try:
         scan_roots = [Path(item).expanduser() for item in args.scan_path]
         if not scan_roots:
@@ -449,17 +587,7 @@ def handle_turn_command(
                     raise ValueError(
                         "executing run-once requires a transaction turn_key"
                     )
-                raw_write_scopes = selected_todo.get("required_write_scopes")
-                if raw_write_scopes is None:
-                    write_scopes: list[str] = []
-                elif isinstance(raw_write_scopes, list) and all(
-                    isinstance(scope, str) for scope in raw_write_scopes
-                ):
-                    write_scopes = list(raw_write_scopes)
-                else:
-                    raise ValueError(
-                        "selected todo required_write_scopes must be a string array"
-                    )
+                write_scopes = selected_turn_todo_write_scopes(selected_todo)
                 lease_controller = TurnLeaseController(
                     registry_path=registry_path,
                     runtime_root=runtime_root,

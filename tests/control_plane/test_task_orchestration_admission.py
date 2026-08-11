@@ -458,7 +458,10 @@ def test_claimed_primary_agent_coordinates_unclaimed_child_work() -> None:
     summary = {
         "items": [
             {
-                **_todo("todo_primary"),
+                **_todo(
+                    "todo_primary",
+                    required_write_scopes=["loopx/**"],
+                ),
                 "claimed_by": AGENT_ID,
             },
             _todo("todo_child"),
@@ -490,6 +493,10 @@ def test_claimed_primary_agent_coordinates_unclaimed_child_work() -> None:
     assert len(contracts) == 1
     assert contracts[0]["coordinator_agent_id"] == AGENT_ID
     assert contracts[0]["primary_todo_id"] == "todo_primary"
+    assert contracts[0]["primary_todo"] == {
+        "todo_id": "todo_primary",
+        "required_write_scopes": ["loopx/**"],
+    }
     assert contracts[0]["eligible_child_lanes"][0]["todo_id"] == "todo_child"
 
 

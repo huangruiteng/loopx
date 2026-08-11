@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 import threading
 import time
@@ -24,6 +25,9 @@ from loopx.benchmark_adapters.skillsbench_turn_route import (
     sync_skillsbench_loopx_turn_trace_into_compact,
 )
 from loopx.control_plane.turn_driver import executor as turn_executor
+from loopx.control_plane.turn_driver import build_loopx_turn_plan
+from loopx.control_plane.turn_driver.journal import build_turn_event
+from loopx.control_plane.work_items.task_lease import task_lease_fencing_token
 
 
 def test_agent_prompt_runner_alias_is_bootstrap_python_39_safe() -> None:
@@ -40,6 +44,181 @@ def _config(tmp_path: Path) -> runtime.SkillsBenchTurnRuntimeConfig:
         agent_id="synthetic-agent",
         runtime_root=tmp_path,
     )
+
+
+def _synthetic_turn_plan(
+    *,
+    turn_instance_id: str | None = None,
+) -> dict[str, Any]:
+    return build_loopx_turn_plan(
+        {
+            "ok": True,
+            "schema_version": "loopx_turn_envelope_v0",
+            "goal_id": "synthetic-goal",
+            "agent_id": "synthetic-agent",
+            "should_run": True,
+            "effective_action": "normal_run",
+            "action": {
+                "must_attempt": True,
+                "delivery_allowed": True,
+                "quiet_noop_allowed": False,
+                "selected_todo": {
+                    "todo_id": "todo_fixture0001",
+                    "text": "Advance one public fixture",
+                    "required_write_scopes": ["src/**"],
+                },
+            },
+            "user": {
+                "action_required": False,
+                "open_count": 0,
+                "notify": "DONT_NOTIFY",
+            },
+            "writeback": {"spend_after_validation": True},
+            "scheduler": {"action": "run_now"},
+            "action_signature": {
+                "matches": True,
+                "source_hash": "sha256:fixture",
+                "envelope_hash": "sha256:fixture",
+            },
+            "compaction": {"within_budget": True},
+        },
+        host="generic-cli",
+        execution_mode="isolated-headless",
+        turn_instance_id=turn_instance_id,
+    )
+
+
+def test_real_turn_path_uses_scored_workspace_lease_journal_and_effect_fence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan = _synthetic_turn_plan()
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    lease = {
+        "schema_version": "task_lease_v0",
+        "goal_id": "synthetic-goal",
+        "todo_id": "todo_fixture0001",
+        "owner": "synthetic-agent",
+        "idempotency_key": f"turn:{turn_key}",
+        "write_scopes": ["src/**"],
+        "status": "active",
+        "version": 1,
+        "fencing_generation": 1,
+        "acquired_at": "2026-08-11T00:00:00+00:00",
+        "renewed_at": "2026-08-11T00:00:00+00:00",
+        "expires_at": "2099-08-11T00:00:00+00:00",
+    }
+    remote_events: list[dict[str, Any]] = []
+    bridge_commands: list[str] = []
+    host_calls: list[str] = []
+
+    class ScoredWorkspaceBridge:
+        def __init__(self, _config: Any) -> None:
+            self.meaningful_operation_count = 0
+
+        def exec(
+            self,
+            command: str,
+            *,
+            meaningful: bool = False,
+            allow_nonzero: bool = False,
+        ) -> dict[str, Any]:
+            bridge_commands.append(command)
+            if allow_nonzero:
+                if meaningful:
+                    self.meaningful_operation_count += 1
+                    return {"ok": True, "exit_code": 0, "stdout": "", "elapsed_ms": 1}
+                return {"ok": False, "exit_code": 3, "elapsed_ms": 1}
+            return {"ok": True, "exit_code": 0, "stdout": "", "elapsed_ms": 1}
+
+        def loopx_json(self, command: str) -> dict[str, Any]:
+            bridge_commands.append(command)
+            argv = shlex.split(command)
+            if "turn" in argv and "plan" in argv:
+                return plan
+            if "task-lease" in argv:
+                action = argv[argv.index("task-lease") + 1]
+                if action == "renew":
+                    lease["version"] = int(lease["version"]) + 1
+                elif action == "release":
+                    lease["status"] = "released"
+                return {
+                    "ok": True,
+                    "active": lease["status"] == "active",
+                    "lease": dict(lease),
+                }
+            if "journal-read" in argv:
+                return {"ok": True, "events": list(remote_events)}
+            if "journal-append" in argv:
+                request = json.loads(argv[argv.index("--event-json") + 1])
+                fencing = request["fencing"]
+                assert fencing["token"] == task_lease_fencing_token(lease)
+                event = build_turn_event(
+                    turn_key=turn_key,
+                    goal_id="synthetic-goal",
+                    event_type=request["event_type"],
+                    phase_key=request["phase_key"],
+                    fencing_token=fencing["token"],
+                    payload=request["payload"],
+                )
+                prior = next(
+                    (
+                        item
+                        for item in remote_events
+                        if item["phase_key"] == event["phase_key"]
+                    ),
+                    None,
+                )
+                if prior is None:
+                    remote_events.append(event)
+                else:
+                    assert prior == event
+                return {"ok": True, "event": event}
+            if "refresh-state" in argv:
+                assert argv[argv.index("--turn-effect-key") + 1] == (
+                    f"{turn_key}:durable_writeback"
+                )
+                assert argv[argv.index("--turn-fencing-token") + 1] == (
+                    task_lease_fencing_token(lease)
+                )
+                return {"ok": True, "appended": True}
+            if "spend-slot" in argv:
+                assert argv[argv.index("--turn-effect-key") + 1] == (
+                    f"{turn_key}:quota_spend"
+                )
+                assert argv[argv.index("--turn-fencing-token") + 1] == (
+                    task_lease_fencing_token(lease)
+                )
+                return {"ok": True, "appended": True, "slots": 1}
+            if "should-run" in argv:
+                return {
+                    "scheduler_hint": {
+                        "execution_phase": {
+                            "disposition": "outer_controller_owned",
+                            "completed": True,
+                            "acknowledged": False,
+                            "apply_needed": False,
+                        }
+                    }
+                }
+            raise AssertionError(f"unexpected scored-workspace command: {command}")
+
+    monkeypatch.setattr(runtime, "SkillsBenchTurnBridge", ScoredWorkspaceBridge)
+
+    execution, validation = runtime.run_skillsbench_loopx_turn(
+        prompt="synthetic prompt",
+        agent_runner=lambda prompt: host_calls.append(prompt) or "done",
+        config=_config(tmp_path),
+    )
+
+    assert execution["status"] == "committed"
+    assert validation["status"] == "passed"
+    assert host_calls == ["synthetic prompt"]
+    assert lease["status"] == "released"
+    assert remote_events
+    assert not (tmp_path / "goals" / "synthetic-goal" / "turn-journals").exists()
 
 
 def _install_sequence_runtime(
@@ -107,7 +286,7 @@ def _install_sequence_runtime(
     ) -> dict[str, Any]:
         plan_instance_ids.append(turn_instance_id)
         sequence_baseline_paths.append(_config.sequence_baseline_path)
-        return {"ok": True, "turn_key": turn_instance_id}
+        return _synthetic_turn_plan(turn_instance_id=turn_instance_id)
 
     def fake_turn_once(
         plan: dict[str, Any],
@@ -119,16 +298,42 @@ def _install_sequence_runtime(
         scheduler: Any,
         **_kwargs: Any,
     ) -> dict[str, Any]:
-        result = host_runner({"turn_key": plan["turn_key"]})
+        transaction = plan["transaction"]
+        assert isinstance(transaction, dict)
+        turn_key = str(transaction["turn_key"])
+        result = host_runner({"turn_key": turn_key})
         validation = turn_executor._run_task_validator(
             plan,
             result,
             validator=task_validator,
         )
         assert validation["status"] in {"progress", "passed"}
-        writeback_payload = writeback(result)
-        spend_payload = spend()
-        scheduler(spend_payload)
+        writeback_payload = writeback(
+            runtime.TurnEffectEnvelope(
+                turn_key=turn_key,
+                phase="durable_writeback",
+                phase_key=f"{turn_key}:durable_writeback",
+                fencing_token="fence:" + "0" * 64,
+            ),
+            result,
+        )
+        spend_payload = spend(
+            runtime.TurnEffectEnvelope(
+                turn_key=turn_key,
+                phase="quota_spend",
+                phase_key=f"{turn_key}:quota_spend",
+                fencing_token="fence:" + "0" * 64,
+            )
+        )
+        scheduler(
+            runtime.TurnEffectEnvelope(
+                turn_key=turn_key,
+                phase="scheduler_apply",
+                phase_key=f"{turn_key}:scheduler_apply",
+                fencing_token="fence:" + "0" * 64,
+            ),
+            spend_payload,
+        )
         return {
             "status": "committed",
             "validation": validation,
@@ -183,6 +388,72 @@ def test_nonzero_validation_probe_does_not_return_private_output(
     assert result["exit_code"] == 17
     assert set(result) == {"ok", "exit_code", "elapsed_ms"}
     assert "private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    ("typed_field", "typed_value", "expected_category"),
+    [
+        ("reason", "stale_fencing_token", "stale_fencing_token"),
+        ("error_code", "lease_not_active", "lease_not_active"),
+    ],
+)
+def test_bridge_classifies_typed_loopx_cli_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    typed_field: str,
+    typed_value: str,
+    expected_category: str,
+) -> None:
+    payload = {
+        "schema_version": runtime.SKILLSBENCH_BRIDGE_OPERATION_SCHEMA_VERSION,
+        "ok": False,
+        "exit_code": 2,
+        "stdout": json.dumps(
+            {
+                "ok": False,
+                typed_field: typed_value,
+            }
+        ),
+        "stderr": "",
+    }
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+
+    with pytest.raises(runtime.SkillsBenchTurnBridgeError) as exc_info:
+        runtime.SkillsBenchTurnBridge(_config(tmp_path)).exec("quota spend-slot")
+
+    assert exc_info.value.category == expected_category
+
+
+def test_remote_lease_preserves_non_authority_bridge_failure_category(
+    tmp_path: Path,
+) -> None:
+    class FailingBridge:
+        def loopx_json(self, _command: str) -> dict[str, Any]:
+            raise runtime.SkillsBenchTurnBridgeError(
+                "LoopX CLI is unavailable",
+                category="case_loopx_cli_missing",
+            )
+
+    controller = runtime.SkillsBenchTurnLeaseController(
+        bridge=FailingBridge(),
+        config=_config(tmp_path),
+        turn_key="sha256:" + "a" * 64,
+        todo_id="todo_fixture0001",
+        write_scopes=["src/**"],
+    )
+
+    with pytest.raises(runtime.SkillsBenchTurnBridgeError) as exc_info:
+        controller.acquire()
+
+    assert exc_info.value.category == "case_loopx_cli_missing"
 
 
 def test_bridge_progress_receipt_requires_successful_task_content_change(
@@ -395,7 +666,11 @@ def test_bridge_content_progress_can_commit_when_workspace_command_cannot(
         }
 
     monkeypatch.setattr(runtime, "SkillsBenchTurnBridge", NonFileProgressBridge)
-    monkeypatch.setattr(runtime, "_turn_plan", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        runtime,
+        "_turn_plan",
+        lambda *_args, **_kwargs: _synthetic_turn_plan(),
+    )
     monkeypatch.setattr(runtime, "run_loopx_turn_once", fake_turn_once)
     evidence = {
         "schema_version": "skillsbench_bridge_task_progress_receipt_v0",
@@ -478,7 +753,11 @@ def test_satisfied_pre_agent_postcondition_runs_but_does_not_claim_readiness(
         }
 
     monkeypatch.setattr(runtime, "SkillsBenchTurnBridge", BaselineSatisfiedBridge)
-    monkeypatch.setattr(runtime, "_turn_plan", lambda *_args: {"ok": True})
+    monkeypatch.setattr(
+        runtime,
+        "_turn_plan",
+        lambda *_args: _synthetic_turn_plan(),
+    )
     monkeypatch.setattr(runtime, "run_loopx_turn_once", fake_turn_once)
 
     execution, validation = runtime.run_skillsbench_loopx_turn(
@@ -534,7 +813,11 @@ def test_fixed_n_maps_accepted_exit_zero_to_nonterminal_progress(
         }
 
     monkeypatch.setattr(runtime, "SkillsBenchTurnBridge", ProgressBridge)
-    monkeypatch.setattr(runtime, "_turn_plan", lambda *_args: {"ok": True})
+    monkeypatch.setattr(
+        runtime,
+        "_turn_plan",
+        lambda *_args: _synthetic_turn_plan(),
+    )
     monkeypatch.setattr(runtime, "run_loopx_turn_once", fake_turn_once)
 
     execution, validation = runtime.run_skillsbench_loopx_turn(
@@ -601,7 +884,7 @@ def test_unsatisfied_baseline_then_satisfied_postcondition_is_runner_ready(
     monkeypatch.setattr(
         runtime,
         "_turn_plan",
-        lambda *_args: {"ok": True, "turn_key": "synthetic-turn"},
+        lambda *_args: _synthetic_turn_plan(),
     )
     monkeypatch.setattr(runtime, "run_loopx_turn_once", fake_turn_once)
 

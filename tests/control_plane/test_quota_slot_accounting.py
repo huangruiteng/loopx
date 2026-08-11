@@ -204,6 +204,58 @@ def test_quota_spend_deduplicates_same_turn_effect_key(tmp_path: Path) -> None:
     assert len(index_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
+def test_quota_spend_replays_after_accounting_projection_advances(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    preview = _preview(
+        runtime,
+        before_overrides={
+            "should_run": True,
+            "effective_action": "normal_run",
+        },
+    )
+    preview.update(
+        {
+            "delivery_run_generated_at": "2026-08-11T00:00:00+00:00",
+            "delivery_run_classification": "fixture_delivery",
+            "delivery_run_agent_id": AGENT_A,
+        }
+    )
+    reprojected = json.loads(json.dumps(preview))
+    reprojected["before"]["quota"]["spent_slots"] = 1
+    reprojected["after"]["quota"]["spent_slots"] = 2
+    reprojected["delivery_run_generated_at"] = None
+    reprojected["delivery_run_classification"] = None
+    reprojected["delivery_run_agent_id"] = None
+    effect_key = "sha256:" + "e" * 64 + ":quota_spend"
+    kwargs = {
+        "goal_id": GOAL_ID,
+        "self_repair_spend_actions": frozenset(),
+        "render_markdown": lambda _payload: "quota fixture",
+        "execute": True,
+        "source": "adapter",
+        "turn_effect_key": effect_key,
+    }
+
+    first = record_quota_slot_spend_from_preview(
+        preview,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+    replay = record_quota_slot_spend_from_preview(
+        reprojected,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+
+    assert replay["appended"] is False
+    assert replay["idempotent_replay"] is True
+    assert replay["effect_input_hash"] == first["effect_input_hash"]
+    assert replay["before"]["spent_slots"] == 0
+    assert replay["after"]["spent_slots"] == 1
+
+
 def test_quota_spend_rejects_turn_effect_key_content_drift(tmp_path: Path) -> None:
     runtime = tmp_path / "runtime"
     preview = _preview(
@@ -228,7 +280,8 @@ def test_quota_spend_rejects_turn_effect_key_content_drift(tmp_path: Path) -> No
         **kwargs,
     )
     changed = json.loads(json.dumps(preview))
-    changed["after"]["recommended_action"] = "A different next action."
+    changed["slots"] = 2
+    changed["after"]["quota"]["spent_slots"] = 2
 
     with pytest.raises(ValueError, match="turn effect key conflict"):
         record_quota_slot_spend_from_preview(

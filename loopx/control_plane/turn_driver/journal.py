@@ -8,7 +8,7 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from ...file_lock import exclusive_file_lock
 from ..work_items.task_lease import (
@@ -43,6 +43,30 @@ EVENT_FIELDS = {
 
 class TurnJournalError(ValueError):
     """The authoritative Turn journal is malformed or internally inconsistent."""
+
+
+class TurnJournalStore(Protocol):
+    """Persistence interface for a Turn journal at its lease-authority seam."""
+
+    def load_events(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+    ) -> list[dict[str, Any]]: ...
+
+    def append_event(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+        event_type: str,
+        phase_key: str,
+        fencing: object,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]: ...
 
 
 def _require_turn_key(value: object) -> str:
@@ -399,3 +423,37 @@ def append_turn_event(
                 events=events,
             )
             return event
+
+
+class LocalTurnJournalStore:
+    """Local filesystem adapter for the canonical fenced Turn journal."""
+
+    def load_events(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+    ) -> list[dict[str, Any]]:
+        return load_turn_events(runtime_root, goal_id, turn_key)
+
+    def append_event(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+        event_type: str,
+        phase_key: str,
+        fencing: object,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return append_turn_event(
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+            turn_key=turn_key,
+            event_type=event_type,
+            phase_key=phase_key,
+            fencing=fencing,
+            payload=payload,
+        )

@@ -21,12 +21,15 @@ from loopx.control_plane.turn_driver import (
     load_turn_events,
     loopx_turn_execution_committed,
     run_loopx_turn_once,
+    selected_turn_todo_write_scopes,
 )
 from loopx.control_plane.turn_driver.codex_cli import _store_codex_cli_session
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
 from loopx.control_plane.work_items.task_lease import (
     acquire_task_lease,
     read_lease,
+    release_task_lease,
+    task_lease_fencing_token,
     task_lease_path,
 )
 from loopx.todos import complete_goal_todo
@@ -133,6 +136,11 @@ def _adaptive_envelope() -> dict[str, object]:
         "schema_version": "task_orchestration_contract_v2",
         "mode": "adaptive",
         "coordinator_agent_id": "codex-fixture",
+        "primary_todo_id": "todo_fixture0001",
+        "primary_todo": {
+            "todo_id": "todo_fixture0001",
+            "required_write_scopes": [],
+        },
         "child_brief_defaults": {
             "schema_version": "subagent_control_plane_handoff_v0",
             "parent_goal_id": "fixture-goal",
@@ -196,6 +204,10 @@ def _signed_adaptive_envelope(
         "task_orchestration_contract": {
             **_adaptive_envelope()["task_orchestration_contract"],
             "primary_todo_id": "todo_primary",
+            "primary_todo": {
+                "todo_id": "todo_primary",
+                "required_write_scopes": ["src/**"],
+            },
         },
     }
     return build_turn_envelope(decision)
@@ -264,7 +276,7 @@ def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
     )
     assert (
         first_envelope["action_signature"]["source_hash"]
-        != second_envelope["action_signature"]["source_hash"]
+        == second_envelope["action_signature"]["source_hash"]
     )
 
     payload = build_loopx_turn_plan(
@@ -277,7 +289,8 @@ def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
     assert payload["route"]["kind"] == LoopXTurnRoute.READY_FOR_HOST.value
     assert payload["route"]["selected_todo"] == {
         "todo_id": "todo_primary",
-        "source": "task_orchestration_contract.primary_todo_id",
+        "source": "task_orchestration_contract.primary_todo",
+        "required_write_scopes": ["src/**"],
     }
     same_primary_plan = build_loopx_turn_plan(
         second_envelope,
@@ -300,6 +313,19 @@ def test_turn_plan_uses_adaptive_primary_todo_for_bundle_lineage() -> None:
         payload["transaction"]["turn_key"]
         != changed_action_plan["transaction"]["turn_key"]
     )
+
+
+def test_adaptive_primary_todo_without_scope_projection_fails_closed() -> None:
+    with pytest.raises(
+        ValueError,
+        match="adaptive primary todo must project required_write_scopes",
+    ):
+        selected_turn_todo_write_scopes(
+            {
+                "todo_id": "todo_primary",
+                "source": "task_orchestration_contract.primary_todo_id",
+            }
+        )
 
 
 def test_turn_plan_exposes_only_qualified_claude_child_contexts() -> None:
@@ -349,6 +375,10 @@ def test_codex_session_binding_uses_adaptive_primary_todo(
         "text": "A stale pre-orchestration selection",
     }
     envelope["task_orchestration_contract"]["primary_todo_id"] = "todo_primary"
+    envelope["task_orchestration_contract"]["primary_todo"] = {
+        "todo_id": "todo_primary",
+        "required_write_scopes": ["src/**"],
+    }
     lineage = {
         "goal_id": "fixture-goal",
         "agent_id": "codex-fixture",
@@ -1390,6 +1420,211 @@ json.dump({
     assert lease["idempotency_key"] == "turn:competing-worker"
 
 
+def test_remote_turn_cli_journal_and_effects_share_one_lease_fence(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    envelope = _envelope()
+    envelope["goal_id"] = "loopx-turn-fixture"
+    plan = build_loopx_turn_plan(
+        envelope,
+        host="generic-cli",
+        execution_mode="isolated-headless",
+    )
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    idempotency_key = f"turn:{turn_key}"
+    acquired = acquire_task_lease(
+        registry_path=registry,
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=idempotency_key,
+        write_scopes=["docs/**"],
+    )
+    lease = acquired["lease"]
+    assert isinstance(lease, dict)
+    fencing_token = task_lease_fencing_token(lease)
+    event_request = {
+        "event_type": "turn_owned",
+        "phase_key": f"{turn_key}:ownership:1",
+        "fencing": {
+            "todo_id": "todo_fixture0001",
+            "owner": "codex-fixture",
+            "idempotency_key": idempotency_key,
+            "token": fencing_token,
+        },
+        "payload": {"phase": "ownership"},
+    }
+
+    append_output = io.StringIO()
+    with contextlib.redirect_stdout(append_output):
+        append_exit = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "journal-append",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--turn-key",
+                turn_key,
+                "--event-json",
+                json.dumps(event_request),
+            ]
+        )
+    appended = json.loads(append_output.getvalue())
+    assert append_exit == 0, appended
+    assert appended["event"]["phase_key"] == event_request["phase_key"]
+
+    read_output = io.StringIO()
+    with contextlib.redirect_stdout(read_output):
+        read_exit = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "journal-read",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--turn-key",
+                turn_key,
+            ]
+        )
+    readback = json.loads(read_output.getvalue())
+    assert read_exit == 0, readback
+    assert readback["event_count"] == 1
+
+    fence_args = [
+        "--turn-fence-todo-id",
+        "todo_fixture0001",
+        "--turn-fence-idempotency-key",
+        idempotency_key,
+        "--turn-fencing-token",
+        fencing_token,
+    ]
+    writeback_key = f"{turn_key}:durable_writeback"
+    refresh_argv = [
+        "--registry",
+        str(registry),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "refresh-state",
+        "--goal-id",
+        "loopx-turn-fixture",
+        "--classification",
+        "fixture_remote_turn_progress",
+        "--recommended-action",
+        "Continue the fixture.",
+        "--next-action",
+        "Run the next bounded fixture Turn.",
+        "--delivery-batch-scale",
+        "single_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--agent-id",
+        "codex-fixture",
+        "--progress-scope",
+        "goal",
+        "--vision-unchanged-reason",
+        "The fixture objective remains open.",
+        "--no-global-sync",
+        "--turn-effect-key",
+        writeback_key,
+        *fence_args,
+    ]
+    refresh_payloads: list[dict[str, object]] = []
+    for _ in range(2):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            exit_code = cli_main(refresh_argv)
+        payload = json.loads(output.getvalue())
+        assert exit_code == 0, payload
+        refresh_payloads.append(payload)
+    assert refresh_payloads[0]["appended"] is True
+    assert refresh_payloads[1]["appended"] is False
+    assert refresh_payloads[1]["idempotent_replay"] is True
+
+    spend_key = f"{turn_key}:quota_spend"
+    spend_argv = [
+        "--registry",
+        str(registry),
+        "--runtime-root",
+        str(runtime),
+        "--format",
+        "json",
+        "quota",
+        "spend-slot",
+        "--goal-id",
+        "loopx-turn-fixture",
+        "--agent-id",
+        "codex-fixture",
+        "--source",
+        "adapter",
+        "--execute",
+        "--scan-root",
+        str(project),
+        "--turn-effect-key",
+        spend_key,
+        *fence_args,
+    ]
+    spend_payloads: list[dict[str, object]] = []
+    for _ in range(2):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            exit_code = cli_main(spend_argv)
+        payload = json.loads(output.getvalue())
+        assert exit_code == 0, payload
+        spend_payloads.append(payload)
+    assert spend_payloads[0]["appended"] is True
+    assert spend_payloads[1]["appended"] is False
+    assert spend_payloads[1]["idempotent_replay"] is True
+
+    release_task_lease(
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=idempotency_key,
+        expected_version=int(lease["version"]),
+    )
+    acquire_task_lease(
+        registry_path=registry,
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key="turn:replacement-worker",
+        write_scopes=["docs/**"],
+    )
+    stale_output = io.StringIO()
+    stale_argv = [
+        *refresh_argv,
+        "--classification",
+        "fixture_stale_write_must_not_append",
+        "--turn-effect-key",
+        f"{turn_key}:stale_writeback",
+    ]
+    with contextlib.redirect_stdout(stale_output):
+        stale_exit = cli_main(stale_argv)
+    stale = json.loads(stale_output.getvalue())
+    assert stale_exit == 1, stale
+    assert stale["appended"] is False
+    assert "stale" in str(stale["error"]).lower()
+
+
 def test_turn_run_once_cli_rejects_execute_without_selected_todo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1671,6 +1906,7 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
 
     def adaptive_turn_envelope(*args: object, **kwargs: object) -> dict[str, object]:
         envelope = real_build_turn_envelope(*args, **kwargs)
+        primary_todo = dict(envelope["action"]["selected_todo"])
         envelope["action"]["selected_todo"] = {
             "todo_id": "todo_stale_selection",
             "text": "A stale pre-orchestration selection",
@@ -1679,6 +1915,10 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
             "schema_version": "task_orchestration_contract_v2",
             "mode": "adaptive",
             "primary_todo_id": "todo_fixture0001",
+            "primary_todo": {
+                **primary_todo,
+                "source": "task_orchestration_contract.primary_todo",
+            },
             "eligible_child_lanes": [],
         }
         return envelope
@@ -1772,6 +2012,15 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     assert updated_todo_ids == (
         [] if result_kind == "validated_progress" else ["todo_fixture0001"]
     )
+    lease = read_lease(
+        task_lease_path(
+            runtime_root=runtime,
+            goal_id="loopx-turn-fixture",
+            todo_id="todo_fixture0001",
+        )
+    )
+    assert lease is not None
+    assert lease["write_scopes"] == ["docs/**"]
     state = (
         project
         / ".codex"

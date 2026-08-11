@@ -33,8 +33,8 @@ from .executor import (
     normalize_host_argv,
     validate_loopx_turn_host_result,
 )
-from .journal import TurnJournalError, append_turn_event, load_turn_events
-from .lease import TurnFence, TurnLeaseController
+from .journal import LocalTurnJournalStore, TurnJournalError, TurnJournalStore
+from .lease import TurnFence, TurnLeaseAuthority
 from .settlement import execute_turn_driver_settlement
 from .transaction import TRANSACTION_PHASES, LoopXTurnResultKind, TurnEffectEnvelope
 
@@ -59,8 +59,14 @@ def load_turn_state(
     *,
     goal_id: str,
     turn_key: str,
+    journal_store: TurnJournalStore | None = None,
 ) -> dict[str, Any] | None:
-    events = load_turn_events(runtime_root, goal_id, turn_key)
+    store = journal_store or LocalTurnJournalStore()
+    events = store.load_events(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        turn_key=turn_key,
+    )
     state = _state_from_events(events)
     if state is None:
         return None
@@ -104,9 +110,10 @@ def _append_state(
     phase: str,
     fence: TurnFence,
     state: dict[str, Any],
+    journal_store: TurnJournalStore,
 ) -> None:
     state["fencing_token"] = fence.token
-    append_turn_event(
+    journal_store.append_event(
         runtime_root=runtime_root,
         goal_id=goal_id,
         turn_key=turn_key,
@@ -123,8 +130,15 @@ def _unique_phase_key(
     goal_id: str,
     turn_key: str,
     prefix: str,
+    journal_store: TurnJournalStore,
 ) -> str:
-    event_count = len(load_turn_events(runtime_root, goal_id, turn_key))
+    event_count = len(
+        journal_store.load_events(
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+            turn_key=turn_key,
+        )
+    )
     return f"{turn_key}:{prefix}:event:{event_count:06d}"
 
 
@@ -135,13 +149,18 @@ def _record_intent(
     turn_key: str,
     envelope: TurnEffectEnvelope,
     fence: TurnFence,
+    journal_store: TurnJournalStore,
 ) -> None:
     phase_key = f"{envelope.phase_key}:intent"
     expected_payload = {
         "phase": envelope.phase,
         "phase_key": envelope.phase_key,
     }
-    for event in load_turn_events(runtime_root, goal_id, turn_key):
+    for event in journal_store.load_events(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        turn_key=turn_key,
+    ):
         if event.get("phase_key") != phase_key:
             continue
         if event.get("event_type") != "phase_intent" or event.get(
@@ -149,7 +168,7 @@ def _record_intent(
         ) != expected_payload:
             raise TurnJournalError("turn journal phase intent conflict")
         return
-    append_turn_event(
+    journal_store.append_event(
         runtime_root=runtime_root,
         goal_id=goal_id,
         turn_key=turn_key,
@@ -262,6 +281,7 @@ def _record_failure(
     goal_id: str,
     turn_key: str,
     fence: TurnFence,
+    journal_store: TurnJournalStore,
 ) -> None:
     completed = list(state.get("completed_phases") or [])
     failure = _host_failure(
@@ -287,10 +307,12 @@ def _record_failure(
             goal_id=goal_id,
             turn_key=turn_key,
             prefix=f"{failed_phase}:failed",
+            journal_store=journal_store,
         ),
         phase=failed_phase,
         fence=fence,
         state=state,
+        journal_store=journal_store,
     )
 
 
@@ -301,6 +323,7 @@ def _prepare_retry(
     goal_id: str,
     turn_key: str,
     fence: TurnFence,
+    journal_store: TurnJournalStore,
 ) -> None:
     receipt = state.get("receipt") if isinstance(state.get("receipt"), dict) else {}
     if receipt.get("failed_phase") == "validation":
@@ -328,22 +351,25 @@ def _prepare_retry(
             goal_id=goal_id,
             turn_key=turn_key,
             prefix="retry",
+            journal_store=journal_store,
         ),
         phase="retry",
         fence=fence,
         state=state,
+        journal_store=journal_store,
     )
 
 
 def _guarded_effect(
     *,
-    controller: TurnLeaseController,
+    controller: TurnLeaseAuthority,
     latest: Callable[[], TurnFence],
     runtime_root: Path,
     goal_id: str,
     turn_key: str,
     phase: str,
     invoke: Callable[[TurnEffectEnvelope], dict[str, Any]],
+    journal_store: TurnJournalStore,
 ) -> dict[str, Any]:
     fence = latest()
     envelope = TurnEffectEnvelope(
@@ -359,6 +385,7 @@ def _guarded_effect(
         turn_key=turn_key,
         envelope=envelope,
         fence=fence,
+        journal_store=journal_store,
     )
     fence = latest()
     controller.require_current(fence)
@@ -385,14 +412,20 @@ def _execute_fenced(
     completion_writeback: CompletionWriteback | None,
     spend: Spend,
     scheduler: Scheduler,
-    controller: TurnLeaseController,
+    controller: TurnLeaseAuthority,
     fence: TurnFence,
     latest: Callable[[], TurnFence],
     fault_injector: FaultInjector | None,
     effects: dict[str, bool],
+    journal_store: TurnJournalStore,
 ) -> dict[str, Any]:
     turn_key = str(request["turn_key"])
-    state = load_turn_state(runtime_root, goal_id=goal_id, turn_key=turn_key)
+    state = load_turn_state(
+        runtime_root,
+        goal_id=goal_id,
+        turn_key=turn_key,
+        journal_store=journal_store,
+    )
     if state is not None and (
         state.get("status") in {"committed", "stopped"}
         or state.get("status") == "failed" and not retry_failed
@@ -425,6 +458,7 @@ def _execute_fenced(
             phase="ownership",
             fence=fence,
             state=state,
+            journal_store=journal_store,
         )
     if state.get("status") == "failed" and retry_failed:
         _prepare_retry(
@@ -433,6 +467,7 @@ def _execute_fenced(
             goal_id=goal_id,
             turn_key=turn_key,
             fence=latest(),
+            journal_store=journal_store,
         )
 
     completed = list(state.get("completed_phases") or [])
@@ -460,6 +495,7 @@ def _execute_fenced(
                 goal_id=goal_id,
                 turn_key=turn_key,
                 fence=latest(),
+                journal_store=journal_store,
             )
             return _public_payload(
                 plan,
@@ -490,6 +526,7 @@ def _execute_fenced(
                 goal_id=goal_id,
                 turn_key=turn_key,
                 fence=latest(),
+                journal_store=journal_store,
             )
             return _public_payload(
                 plan,
@@ -516,6 +553,7 @@ def _execute_fenced(
             phase="typed_result",
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
         _fault(fault_injector, "after_host")
     assert result is not None
@@ -545,6 +583,7 @@ def _execute_fenced(
             phase="validation",
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
         _fault(fault_injector, "after_validation")
         return _public_payload(
@@ -585,6 +624,7 @@ def _execute_fenced(
             goal_id=goal_id,
             turn_key=turn_key,
             fence=latest(),
+            journal_store=journal_store,
         )
         return _public_payload(
             plan,
@@ -610,6 +650,7 @@ def _execute_fenced(
             phase="validation",
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
         _fault(fault_injector, "after_validation")
 
@@ -657,6 +698,7 @@ def _execute_fenced(
             turn_key=turn_key,
             phase="durable_writeback",
             invoke=invoke,
+            journal_store=journal_store,
         )
 
     def spend_effect() -> Mapping[str, Any]:
@@ -672,6 +714,7 @@ def _execute_fenced(
                 (envelope,),
                 (),
             ),
+            journal_store=journal_store,
         )
 
     def checkpoint(
@@ -702,6 +745,7 @@ def _execute_fenced(
             phase=step_kind.value,
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
         fault_phase = (
             "after_writeback"
@@ -749,6 +793,7 @@ def _execute_fenced(
             goal_id=goal_id,
             turn_key=turn_key,
             fence=latest(),
+            journal_store=journal_store,
         )
         return _public_payload(
             plan,
@@ -774,6 +819,7 @@ def _execute_fenced(
             phase="quota_spend",
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
 
     scheduler_payload = (
@@ -794,6 +840,7 @@ def _execute_fenced(
                 (envelope, dict(settlement_state.quota_spend)),
                 (dict(settlement_state.quota_spend),),
             ),
+            journal_store=journal_store,
         )
         state["scheduler"] = scheduler_payload
         if scheduler_payload.get("completed") is not True:
@@ -811,10 +858,12 @@ def _execute_fenced(
                     goal_id=goal_id,
                     turn_key=turn_key,
                     prefix="scheduler_apply:pending",
+                    journal_store=journal_store,
                 ),
                 phase="scheduler_apply",
                 fence=latest(),
                 state=state,
+                journal_store=journal_store,
             )
             return _public_payload(
                 plan,
@@ -838,6 +887,7 @@ def _execute_fenced(
             phase="scheduler_apply",
             fence=latest(),
             state=state,
+            journal_store=journal_store,
         )
         _fault(fault_injector, "after_scheduler_apply")
 
@@ -856,6 +906,7 @@ def _execute_fenced(
         phase="scheduler_ack",
         fence=latest(),
         state=state,
+        journal_store=journal_store,
     )
     return _public_payload(
         plan,
@@ -883,7 +934,8 @@ def run_fenced_loopx_turn_once(
     completion_writeback: CompletionWriteback | None = None,
     spend: Spend | None = None,
     scheduler: Scheduler | None = None,
-    lease_controller: TurnLeaseController | None = None,
+    lease_controller: TurnLeaseAuthority | None = None,
+    journal_store: TurnJournalStore | None = None,
     fault_injector: FaultInjector | None = None,
 ) -> dict[str, Any]:
     if host_runner is not None and host_argv is not None:
@@ -927,8 +979,14 @@ def run_fenced_loopx_turn_once(
             "executing run-once requires writeback, spend, and scheduler callbacks"
         )
     turn_key = str(request["turn_key"])
+    store = journal_store or LocalTurnJournalStore()
     try:
-        prior = load_turn_state(runtime_root, goal_id=goal_id, turn_key=turn_key)
+        prior = load_turn_state(
+            runtime_root,
+            goal_id=goal_id,
+            turn_key=turn_key,
+            journal_store=store,
+        )
     except TurnJournalError as exc:
         return _failed_closed_payload(
             plan,
@@ -978,6 +1036,7 @@ def run_fenced_loopx_turn_once(
                 latest=latest,
                 fault_injector=fault_injector,
                 effects=effects,
+                journal_store=store,
             )
         final_fence = latest()
     except TaskLeaseError as exc:

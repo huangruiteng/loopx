@@ -12,6 +12,7 @@ from .quota_request import (
     QUOTA_DETAIL_SECTIONS,
     register_quota_monitor_poll_request_arguments,
 )
+from .task_lease import add_turn_effect_fence_arguments
 
 
 def _default_public_scan_root() -> str:
@@ -163,6 +164,7 @@ def register_quota_command(
         default=DEFAULT_SLOT_SPEND_SOURCE,
         help="Source label for `quota spend-slot`.",
     )
+    add_turn_effect_fence_arguments(quota_parser)
     quota_parser.add_argument("--void-generated-at", help="generated_at timestamp of the quota_slot_spent run to void.")
     quota_parser.add_argument("--reason-summary", help="Public-safe reason for `quota void-slot`.")
     register_quota_monitor_poll_request_arguments(quota_parser)

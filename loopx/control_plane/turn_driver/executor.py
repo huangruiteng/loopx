@@ -14,7 +14,8 @@ from ..goals.goal_vision import normalize_goal_vision_packet
 from ..work_items.delivery_batch_scale import require_delivery_batch_scale
 from ..work_items.delivery_outcome import require_delivery_outcome
 from .driver import selected_turn_todo
-from .lease import TurnLeaseController
+from .lease import TurnLeaseAuthority
+from .journal import TurnJournalStore
 from .transaction import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
@@ -794,7 +795,8 @@ def run_loopx_turn_once(
     completion_writeback: CompletionWriteback | None = None,
     spend: Spend | None = None,
     scheduler: Scheduler | None = None,
-    lease_controller: TurnLeaseController | None = None,
+    lease_controller: TurnLeaseAuthority | None = None,
+    journal_store: TurnJournalStore | None = None,
     fault_injector: FaultInjector | None = None,
 ) -> dict[str, Any]:
     from .fenced_runtime import run_fenced_loopx_turn_once
@@ -815,5 +817,6 @@ def run_loopx_turn_once(
         spend=spend,
         scheduler=scheduler,
         lease_controller=lease_controller,
+        journal_store=journal_store,
         fault_injector=fault_injector,
     )

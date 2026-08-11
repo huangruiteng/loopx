@@ -1136,10 +1136,18 @@ def record_quota_slot_spend_from_preview(
     effect_input_hash = (
         turn_effect_input_hash(
             {
-                "preview": preview,
+                "request": {
+                    field: preview.get(field)
+                    for field in (
+                        "goal_id",
+                        "slots",
+                        "agent_id",
+                        "todo_id",
+                        "turn_instance_id",
+                    )
+                },
                 "goal_id": goal_id,
                 "source": source,
-                "self_repair_spend_actions": sorted(self_repair_spend_actions),
                 "execute": execute,
             }
         )
