@@ -14,8 +14,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.turn_driver import (  # noqa: E402
+    TurnEffectEnvelope,
+    TurnLeaseController,
     build_loopx_turn_command_validator,
     build_loopx_turn_plan,
+    load_turn_events,
     load_loopx_turn_plan_from_journal,
     run_loopx_turn_once,
 )
@@ -39,6 +42,7 @@ def _envelope(*, action_hash: str, should_run: bool = True) -> dict[str, Any]:
                     "selected_todo": {
                         "todo_id": "todo_fakehost0001",
                         "text": "Advance one synthetic public fixture.",
+                        "required_write_scopes": ["synthetic/**"],
                     }
                 }
                 if should_run
@@ -135,17 +139,23 @@ raise SystemExit(0 if valid else 9)
 
 
 def _callbacks(calls: dict[str, int], phases: list[str]):
-    def writeback(_result: dict[str, Any]) -> dict[str, Any]:
+    def writeback(
+        _effect: TurnEffectEnvelope,
+        _result: dict[str, Any],
+    ) -> dict[str, Any]:
         calls["writeback"] += 1
         phases.append("writeback")
         return {"ok": True, "appended": True, "classification": "fixture_progress"}
 
-    def spend() -> dict[str, Any]:
+    def spend(_effect: TurnEffectEnvelope) -> dict[str, Any]:
         calls["spend"] += 1
         phases.append("spend")
         return {"ok": True, "appended": True, "slots": 1}
 
-    def scheduler(_spend: dict[str, Any]) -> dict[str, Any]:
+    def scheduler(
+        _effect: TurnEffectEnvelope,
+        _spend: dict[str, Any],
+    ) -> dict[str, Any]:
         calls["scheduler"] += 1
         phases.append("scheduler")
         return {
@@ -160,6 +170,7 @@ def _callbacks(calls: dict[str, int], phases: list[str]):
 def _common(
     *,
     root: Path,
+    plan: dict[str, Any],
     calls: dict[str, int],
     phases: list[str],
 ) -> tuple[dict[str, Any], Path, Path]:
@@ -167,11 +178,57 @@ def _common(
     project.mkdir(parents=True)
     effect_path = project / "synthetic-task.json"
     count_path = root / "host-count"
+    state_path = project / "ACTIVE_GOAL_STATE.md"
+    state_path.write_text(
+        "\n".join(
+            [
+                "---",
+                "status: active",
+                "---",
+                "",
+                "# Fake Host Walkthrough",
+                "",
+                "## Agent Todo",
+                "",
+                "- [ ] [P0] Advance one synthetic public fixture.",
+                "  <!-- loopx:todo todo_id=todo_fakehost0001 status=open "
+                "claimed_by=generic-fixture-host "
+                "required_write_scopes=synthetic%2F%2A%2A priority=P0 -->",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runtime_root = root / "runtime"
+    registry_path = root / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "common_runtime_root": str(runtime_root),
+                "goals": [
+                    {
+                        "id": "fake-host-walkthrough",
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state_path.name,
+                        "coordination": {
+                            "registered_agents": ["generic-fixture-host"],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    transaction = plan.get("transaction")
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
     writeback, spend, scheduler = _callbacks(calls, phases)
     return {
         "host_argv": _host_argv(effect_path, count_path),
         "project": project,
-        "runtime_root": root / "runtime",
+        "runtime_root": runtime_root,
         "goal_id": "fake-host-walkthrough",
         "timeout_seconds": 5,
         "execute": True,
@@ -183,6 +240,15 @@ def _common(
         "writeback": writeback,
         "spend": spend,
         "scheduler": scheduler,
+        "lease_controller": TurnLeaseController(
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            goal_id="fake-host-walkthrough",
+            todo_id="todo_fakehost0001",
+            owner="generic-fixture-host",
+            idempotency_key=f"turn:{turn_key}",
+            write_scopes=["synthetic/**"],
+        ),
     }, effect_path, count_path
 
 
@@ -190,7 +256,12 @@ def _commit_replay_and_boundary(root: Path) -> dict[str, Any]:
     plan = _plan(action_hash="sha256:fake-host-commit")
     calls = {"writeback": 0, "spend": 0, "scheduler": 0}
     phases: list[str] = []
-    kwargs, effect_path, count_path = _common(root=root, calls=calls, phases=phases)
+    kwargs, effect_path, count_path = _common(
+        root=root,
+        plan=plan,
+        calls=calls,
+        phases=phases,
+    )
 
     preview = run_loopx_turn_once(plan, **{**kwargs, "execute": False})
     committed = run_loopx_turn_once(plan, **kwargs)
@@ -215,10 +286,19 @@ def _commit_replay_and_boundary(root: Path) -> dict[str, Any]:
         "synthetic_public_fixture"
     )
 
-    journal = next(
-        (root / "runtime" / "goals" / "fake-host-walkthrough" / "turns").glob("*.json")
+    events = load_turn_events(
+        root / "runtime",
+        "fake-host-walkthrough",
+        committed["resume_turn_key"],
     )
-    journal_payload = json.loads(journal.read_text(encoding="utf-8"))
+    states = [
+        event["payload"]["state"]
+        for event in events
+        if isinstance(event.get("payload"), dict)
+        and isinstance(event["payload"].get("state"), dict)
+    ]
+    assert states
+    journal_payload = states[-1]
     assert journal_payload["host"] == {
         "executable": Path(sys.executable).name,
         "argv_count": 4,
@@ -254,10 +334,15 @@ def _recover_after_writeback(root: Path) -> dict[str, Any]:
     plan = _plan(action_hash="sha256:fake-host-recovery")
     calls = {"writeback": 0, "spend": 0, "scheduler": 0}
     phases: list[str] = []
-    kwargs, effect_path, count_path = _common(root=root, calls=calls, phases=phases)
+    kwargs, effect_path, count_path = _common(
+        root=root,
+        plan=plan,
+        calls=calls,
+        phases=phases,
+    )
     healthy_spend = kwargs["spend"]
 
-    def interrupted_spend() -> dict[str, Any]:
+    def interrupted_spend(_effect: TurnEffectEnvelope) -> dict[str, Any]:
         calls["spend"] += 1
         phases.append("spend-interrupted")
         raise SystemExit(8)
