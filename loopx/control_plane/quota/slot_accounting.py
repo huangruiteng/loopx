@@ -6,9 +6,16 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from ...file_lock import exclusive_file_lock
 from ..agents.workspace_guard import (
     build_delivery_workspace_guard,
     delivery_workspace_repository,
+)
+from ..turn_effect import (
+    find_turn_effect_record,
+    normalize_turn_effect_key,
+    require_matching_turn_effect,
+    turn_effect_input_hash,
 )
 from ..runtime.run_artifacts import (
     next_run_artifact_paths,
@@ -1025,7 +1032,7 @@ def record_quota_slot_void_from_preview(
     return payload
 
 
-def record_quota_slot_spend_from_preview(
+def _record_quota_slot_spend_from_preview(
     preview: dict[str, Any],
     status_payload: dict[str, Any],
     *,
@@ -1034,6 +1041,8 @@ def record_quota_slot_spend_from_preview(
     render_markdown: Callable[[dict[str, Any]], str],
     execute: bool = False,
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
+    _turn_effect_key: str | None = None,
+    _effect_input_hash: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     if not preview.get("ok"):
@@ -1046,6 +1055,11 @@ def record_quota_slot_spend_from_preview(
         source=source,
         generated_at=generated_at,
     )
+    if _turn_effect_key is not None:
+        if _effect_input_hash is None:
+            raise ValueError("turn effect input hash is required")
+        record["turn_effect_key"] = _turn_effect_key
+        record["effect_input_hash"] = _effect_input_hash
     raw_runtime_root = status_payload.get("runtime_root")
     if not raw_runtime_root:
         raise ValueError("status payload does not include runtime_root")
@@ -1064,6 +1078,9 @@ def record_quota_slot_spend_from_preview(
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
     }
+    if _turn_effect_key is not None:
+        index_record["turn_effect_key"] = _turn_effect_key
+        index_record["effect_input_hash"] = _effect_input_hash
     if record.get("agent_id"):
         index_record["agent_id"] = record["agent_id"]
     for field in ("turn_instance_id", "todo_id", "settlement_identity"):
@@ -1089,6 +1106,10 @@ def record_quota_slot_spend_from_preview(
             f"{record['quota_event']['after']['spent_slots']} slots"
         ),
     }
+    if _turn_effect_key is not None:
+        payload["turn_effect_key"] = _turn_effect_key
+        payload["effect_input_hash"] = _effect_input_hash
+        payload["idempotent"] = False
     if execute:
         payload["before"] = record["quota_event"]["before"]
         payload["after"] = record["quota_event"]["after"]
@@ -1098,3 +1119,90 @@ def record_quota_slot_spend_from_preview(
         with index_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
     return payload
+
+
+def record_quota_slot_spend_from_preview(
+    preview: dict[str, Any],
+    status_payload: dict[str, Any],
+    *,
+    goal_id: str,
+    self_repair_spend_actions: set[str] | frozenset[str],
+    render_markdown: Callable[[dict[str, Any]], str],
+    execute: bool = False,
+    source: str = DEFAULT_SLOT_SPEND_SOURCE,
+    turn_effect_key: str | None = None,
+) -> dict[str, Any]:
+    normalized_effect_key = normalize_turn_effect_key(turn_effect_key)
+    effect_input_hash = (
+        turn_effect_input_hash(
+            {
+                "preview": preview,
+                "goal_id": goal_id,
+                "source": source,
+                "self_repair_spend_actions": sorted(self_repair_spend_actions),
+                "execute": execute,
+            }
+        )
+        if normalized_effect_key is not None
+        else None
+    )
+    def write_once() -> dict[str, Any]:
+        return _record_quota_slot_spend_from_preview(
+            preview,
+            status_payload,
+            goal_id=goal_id,
+            self_repair_spend_actions=self_repair_spend_actions,
+            render_markdown=render_markdown,
+            execute=execute,
+            source=source,
+            _turn_effect_key=normalized_effect_key,
+            _effect_input_hash=effect_input_hash,
+        )
+
+    if normalized_effect_key is None or not execute:
+        return write_once()
+    safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
+    raw_runtime_root = status_payload.get("runtime_root")
+    if not raw_runtime_root:
+        raise ValueError("status payload does not include runtime_root")
+    runtime_root = Path(str(raw_runtime_root)).expanduser()
+    index_path = runtime_root / "goals" / safe_goal_id / "runs" / "index.jsonl"
+    with exclusive_file_lock(
+        index_path,
+        agent_id=preview.get("agent_id"),
+        operation="quota_spend_turn_effect",
+    ):
+        existing = find_turn_effect_record(index_path, normalized_effect_key)
+        if existing is not None:
+            assert effect_input_hash is not None
+            require_matching_turn_effect(existing, effect_input_hash)
+            quota_event = load_quota_event_from_run(existing)
+            if quota_event is None:
+                raise ValueError("turn effect durable record is missing quota_event")
+            before = quota_event.get("before")
+            after = quota_event.get("after")
+            if not isinstance(before, dict) or not isinstance(after, dict):
+                raise ValueError("turn effect durable quota_event is incomplete")
+            return {
+                **preview,
+                "ok": True,
+                "dry_run": False,
+                "appended": False,
+                "idempotent": True,
+                "idempotent_replay": True,
+                "registry_mutated": False,
+                "source": quota_event.get("source"),
+                "classification": QUOTA_SLOT_SPENT_CLASSIFICATION,
+                "generated_at": existing.get("generated_at"),
+                "agent_id": existing.get("agent_id"),
+                "quota_event": quota_event,
+                "before": before,
+                "after": after,
+                "json_path": existing.get("json_path"),
+                "markdown_path": existing.get("markdown_path"),
+                "index_path": str(index_path),
+                "turn_effect_key": normalized_effect_key,
+                "effect_input_hash": effect_input_hash,
+                "reason": "quota slot spend replayed for the same Turn effect",
+            }
+        return write_once()

@@ -1045,6 +1045,7 @@ def spend_quota_slot(
     operator_inbox_urgency_projector: Callable[..., dict[str, Any]] | None = None,
     todo_id: str | None = None,
     turn_instance_id: str | None = None,
+    turn_effect_key: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = _validate_goal_id_path_segment(str(goal_id or ""))
     if turn_instance_id and source != DEFAULT_SLOT_SPEND_SOURCE:
@@ -1173,4 +1174,5 @@ def spend_quota_slot(
         render_markdown=_render_quota_slot_preview_markdown,
         execute=execute,
         source=source,
+        turn_effect_key=turn_effect_key,
     )
