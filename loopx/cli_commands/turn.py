@@ -596,6 +596,7 @@ def handle_turn_command(
                     owner=args.agent_id,
                     idempotency_key=f"turn:{turn_key}",
                     write_scopes=write_scopes,
+                    terminal_replay_key=turn_key,
                 )
             writeback_contract = (
                 envelope.get("writeback")
@@ -677,6 +678,7 @@ def handle_turn_command(
                     completion_turn_key=str(result["turn_key"]),
                     task_lease_idempotency_key=f"turn:{effect.turn_key}",
                     task_lease_runtime_root=runtime_root,
+                    release_task_lease_on_commit=False,
                     evidence=(
                         "LoopX Turn validated completion: "
                         + str(result.get("summary") or result["classification"])

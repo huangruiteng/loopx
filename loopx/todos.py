@@ -106,10 +106,9 @@ from .control_plane.todos.write_policy import (
     resolve_user_gate_global_gate_update,
 )
 from .control_plane.work_items.task_lease import (
-    hold_task_lease_lock,
     hold_task_lease_mutation_fence,
+    hold_task_lease_mutation_locks,
     release_verified_task_lease_fence,
-    runtime_root_from_registry,
 )
 
 
@@ -1514,6 +1513,7 @@ def complete_goal_todo(
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
     task_lease_runtime_root: Path | None = None,
+    release_task_lease_on_commit: bool = True,
     note: str | None = None,
     no_followup: bool = False,
     successor_todo_ids: list[str] | None = None,
@@ -1549,20 +1549,11 @@ def complete_goal_todo(
         project=project,
         state_file=state_file,
     )
-    lease_runtime_root = task_lease_runtime_root or runtime_root_from_registry(
-        registry_path,
-        None,
-    )
-    with hold_task_lease_lock(
-        runtime_root=lease_runtime_root,
-        goal_id=goal_id,
-        agent_id=agent_id or claimed_by,
-        operation="todo_complete_lease_fence",
-    ), exclusive_file_lock(
-        resolved_state_file,
-        agent_id=agent_id or claimed_by,
-        operation="todo_complete",
-    ), ExitStack() as lease_fence_stack:
+    with hold_task_lease_mutation_locks(
+        registry_path=registry_path, lease_runtime_root=task_lease_runtime_root,
+        state_file=resolved_state_file, goal_id=goal_id,
+        agent_id=agent_id or claimed_by, operation="todo_complete",
+    ) as lease_runtime_root, ExitStack() as lease_fence_stack:
         original = resolved_state_file.read_text(encoding="utf-8")
         lines = original.splitlines()
         updated_at = now_local()
@@ -1735,10 +1726,11 @@ def complete_goal_todo(
                 event_result["linked_successor_id"] = completion_policy.linked_successor_id
                 event_result["mutation_authority"] = mutation_authority
                 event_result["task_lease_fence"] = task_lease_fence
-                release_verified_task_lease_fence(
-                    task_lease_fence,
-                    committed=bool(event_result.get("changed")) and not dry_run,
-                )
+                if release_task_lease_on_commit:
+                    release_verified_task_lease_fence(
+                        task_lease_fence,
+                        committed=bool(event_result.get("changed")) and not dry_run,
+                    )
                 return event_result
         update_result = apply_todo_update_to_lines(
             lines,
@@ -1850,10 +1842,11 @@ def complete_goal_todo(
             new_text = replace_updated_at(new_text, updated_at)
         if changed and not dry_run:
             resolved_state_file.write_text(new_text, encoding="utf-8")
-        release_verified_task_lease_fence(
-            task_lease_fence,
-            committed=changed and not dry_run,
-        )
+        if release_task_lease_on_commit:
+            release_verified_task_lease_fence(
+                task_lease_fence,
+                committed=changed and not dry_run,
+            )
     result = {
         "ok": True,
         "dry_run": dry_run,

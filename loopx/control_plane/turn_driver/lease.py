@@ -125,6 +125,7 @@ class TurnLeaseController:
         write_scopes: list[str] | None = None,
         ttl_seconds: int | None = None,
         heartbeat_interval_seconds: float | None = None,
+        terminal_replay_key: str | None = None,
     ) -> None:
         self._registry_path = registry_path
         self._runtime_root = runtime_root
@@ -134,6 +135,7 @@ class TurnLeaseController:
         self._idempotency_key = idempotency_key
         self._write_scopes = list(write_scopes or [])
         self._ttl_seconds = ttl_seconds
+        self._terminal_replay_key = terminal_replay_key
         ttl = ttl_seconds or DEFAULT_TASK_LEASE_TTL_SECONDS
         self._heartbeat_interval_seconds = (
             max(0.001, heartbeat_interval_seconds)
@@ -151,6 +153,7 @@ class TurnLeaseController:
             idempotency_key=self._idempotency_key,
             write_scopes=self._write_scopes,
             ttl_seconds=self._ttl_seconds,
+            terminal_replay_key=self._terminal_replay_key,
         )
         return _turn_fence(dict(outcome["lease"]))
 
@@ -164,6 +167,7 @@ class TurnLeaseController:
             idempotency_key=fence.idempotency_key,
             ttl_seconds=self._ttl_seconds,
             expected_version=fence.version,
+            terminal_replay_key=self._terminal_replay_key,
         )
         return _turn_fence(dict(outcome["lease"]))
 

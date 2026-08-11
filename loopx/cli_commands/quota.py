@@ -14,7 +14,6 @@ from ..control_plane.quota.heartbeat_receipt import (
     fail_heartbeat_receipt,
     find_heartbeat_receipt,
     heartbeat_receipt_view,
-    upgrade_identityless_heartbeat_receipt,
 )
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.monitor_poll import find_quota_monitor_poll_turn
