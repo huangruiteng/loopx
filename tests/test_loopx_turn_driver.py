@@ -14,14 +14,21 @@ from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
     LoopXTurnRoute,
+    TurnLeaseController,
     build_loopx_turn_host_request,
     build_loopx_turn_plan,
     codex_cli_session_binding,
+    load_turn_events,
     loopx_turn_execution_committed,
     run_loopx_turn_once,
 )
 from loopx.control_plane.turn_driver.codex_cli import _store_codex_cli_session
 from loopx.control_plane.quota.live_decision import bind_scheduler_followup_cli_routes
+from loopx.control_plane.work_items.task_lease import (
+    acquire_task_lease,
+    read_lease,
+    task_lease_path,
+)
 from loopx.todos import complete_goal_todo
 
 
@@ -664,7 +671,7 @@ def _write_live_fixture(root: Path) -> tuple[Path, Path, Path]:
                 "## Agent Todo",
                 "",
                 "- [ ] [P0] Advance one public fixture.",
-                "  <!-- loopx:todo todo_id=todo_fixture0001 status=open task_class=advancement_task action_kind=fixture claimed_by=codex-fixture priority=P0 -->",
+                "  <!-- loopx:todo todo_id=todo_fixture0001 status=open task_class=advancement_task action_kind=fixture claimed_by=codex-fixture required_write_scopes=docs%2F%2A%2A priority=P0 -->",
                 "",
             ]
         ),
@@ -1096,6 +1103,7 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7
         "quota_spent": True,
         "scheduler_acknowledged": False,
     }
+    assert payload["lease_release"] == {"released": True}
     state_path = (
         project
         / ".codex"
@@ -1110,6 +1118,23 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "validated" else 7
         "fixture_progress",
         "quota_slot_spent",
     ]
+    turn_key = payload["resume_turn_key"]
+    assert [row["turn_effect_key"] for row in rows] == [
+        f"{turn_key}:durable_writeback",
+        f"{turn_key}:quota_spend",
+    ]
+    lease = read_lease(
+        task_lease_path(
+            runtime_root=runtime,
+            goal_id="loopx-turn-fixture",
+            todo_id="todo_fixture0001",
+        )
+    )
+    assert lease is not None
+    assert lease["status"] == "released"
+    assert lease["owner"] == "codex-fixture"
+    assert lease["idempotency_key"] == f"turn:{turn_key}"
+    assert lease["write_scopes"] == ["docs/**"]
 
     resumed_output = io.StringIO()
     with contextlib.redirect_stdout(resumed_output):
@@ -1228,10 +1253,19 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "completed" else 7
     assert payload["status"] == "committed"
     assert payload["effects"]["state_written"] is True
     assert payload["effects"]["quota_spent"] is True
-    journal_path = next(
-        (runtime / "goals" / "loopx-turn-fixture" / "turns").glob("*.json")
+    events = load_turn_events(
+        runtime,
+        "loopx-turn-fixture",
+        payload["resume_turn_key"],
     )
-    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    states = [
+        event["payload"]["state"]
+        for event in events
+        if isinstance(event.get("payload"), dict)
+        and isinstance(event["payload"].get("state"), dict)
+    ]
+    assert states
+    journal = states[-1]
     assert journal["writeback"]["completion"] == {
         "todo_id": "todo_fixture0001",
         "continuation": "active_goal",
@@ -1275,13 +1309,167 @@ raise SystemExit(0 if artifact.read_text(encoding="utf-8") == "completed" else 7
     assert not any(replayed["effects"].values())
 
 
+def test_turn_run_once_cli_fails_closed_before_host_on_lease_conflict(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    host_project = tmp_path / "isolated-host-workspace"
+    host_project.mkdir()
+    acquire_task_lease(
+        registry_path=registry,
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key="turn:competing-worker",
+        write_scopes=["docs/**"],
+    )
+    host_script = """
+import json
+import pathlib
+import sys
+request = json.load(sys.stdin)
+pathlib.Path("host-invoked.txt").write_text("invoked", encoding="utf-8")
+json.dump({
+    "schema_version": "loopx_turn_result_v0",
+    "turn_key": request["turn_key"],
+    "result_kind": "wait",
+    "completed_phases": ["host_execute", "typed_result"],
+    "classification": "fixture_wait",
+    "recommended_action": "Wait",
+    "next_action": "Wait",
+    "delivery_batch_scale": "single_surface",
+    "delivery_outcome": "outcome_noop",
+    "vision_unchanged_reason": "The fixture is unchanged.",
+    "summary": "No work was attempted."
+}, sys.stdout)
+"""
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--project",
+                str(host_project),
+                "--host-adapter-command-json",
+                json.dumps([sys.executable, "-c", host_script]),
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 1, payload
+    assert payload["status"] == "failed_closed"
+    assert payload["reason_code"] == "todo_lease_conflict"
+    assert payload["effects"]["host_invoked"] is False
+    assert not (host_project / "host-invoked.txt").exists()
+    lease = read_lease(
+        task_lease_path(
+            runtime_root=runtime,
+            goal_id="loopx-turn-fixture",
+            todo_id="todo_fixture0001",
+        )
+    )
+    assert lease is not None
+    assert lease["status"] == "active"
+    assert lease["idempotency_key"] == "turn:competing-worker"
+
+
+def test_turn_run_once_cli_rejects_execute_without_selected_todo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from loopx.cli_commands.turn import build_turn_envelope as real_build_turn_envelope
+
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    host_project = tmp_path / "isolated-host-workspace"
+    host_project.mkdir()
+
+    def envelope_without_selected_todo(
+        *args: object,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        envelope = real_build_turn_envelope(*args, **kwargs)
+        action = envelope.get("action")
+        assert isinstance(action, dict)
+        action.pop("selected_todo", None)
+        return envelope
+
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.build_turn_envelope",
+        envelope_without_selected_todo,
+    )
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--project",
+                str(host_project),
+                "--host-adapter-command-json",
+                json.dumps([sys.executable, "-c", "raise SystemExit(9)"]),
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 1, payload
+    assert payload["effects"]["host_invoked"] is False
+    assert "requires one selected todo" in payload["error"]
+    assert not (runtime / "goals" / "loopx-turn-fixture" / "task-leases").exists()
+
+
 def test_turn_run_once_commits_independently_validated_progress(
     tmp_path: Path,
 ) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    envelope = _envelope()
+    envelope["goal_id"] = "loopx-turn-fixture"
     plan = build_loopx_turn_plan(
-        _envelope(),
+        envelope,
         host="generic-cli",
         execution_mode="isolated-headless",
+    )
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    lease_controller = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=f"turn:{turn_key}",
+        write_scopes=["docs/**"],
     )
 
     def host_runner(request: dict[str, object]) -> dict[str, object]:
@@ -1302,9 +1490,9 @@ def test_turn_run_once_commits_independently_validated_progress(
     execution = run_loopx_turn_once(
         plan,
         host_runner=host_runner,
-        project=tmp_path,
-        runtime_root=tmp_path / "runtime",
-        goal_id="fixture-goal",
+        project=project,
+        runtime_root=runtime,
+        goal_id="loopx-turn-fixture",
         timeout_seconds=10,
         execute=True,
         task_validator=lambda _plan, _result: {
@@ -1313,14 +1501,15 @@ def test_turn_run_once_commits_independently_validated_progress(
             "summary": "intermediate fixture progress is independently valid",
             "exit_code": 10,
         },
-        writeback=lambda _result: {"ok": True, "appended": True},
-        spend=lambda: {"ok": True, "appended": True, "slots": 1},
-        scheduler=lambda _spend: {
+        writeback=lambda _effect, _result: {"ok": True, "appended": True},
+        spend=lambda _effect: {"ok": True, "appended": True, "slots": 1},
+        scheduler=lambda _effect, _spend: {
             "disposition": "outer_controller_owned",
             "completed": True,
             "acknowledged": False,
             "apply_needed": False,
         },
+        lease_controller=lease_controller,
     )
 
     assert execution["status"] == "committed"
@@ -1413,6 +1602,17 @@ raise SystemExit(0 if pathlib.Path("claimed-artifact.txt").is_file() else 9)
     assert payload["effects"]["quota_spent"] is False
     assert state_path.read_text(encoding="utf-8") == before_state
     assert not (runtime / "goals" / "loopx-turn-fixture" / "runs").exists()
+    lease = read_lease(
+        task_lease_path(
+            runtime_root=runtime,
+            goal_id="loopx-turn-fixture",
+            todo_id="todo_fixture0001",
+        )
+    )
+    assert lease is not None
+    assert lease["status"] == "active"
+    assert lease["owner"] == "codex-fixture"
+    assert lease["idempotency_key"] == f"turn:{payload['resume_turn_key']}"
 
 
 @pytest.mark.parametrize(

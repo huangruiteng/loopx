@@ -9,18 +9,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ...file_lock import exclusive_file_lock
 from ..work_items.task_lease import (
     DEFAULT_TASK_LEASE_TTL_SECONDS,
     _require_task_lease_fence_unlocked,
     acquire_task_lease,
+    hold_task_lease_lock,
     read_lease,
     release_task_lease,
     renew_task_lease,
     require_task_lease_fence,
     task_lease_fencing_generation,
     task_lease_fencing_token,
-    task_lease_lock_path,
     task_lease_path,
 )
 
@@ -37,14 +36,15 @@ class TurnFence:
 
 
 def _turn_fence(lease: dict[str, Any]) -> TurnFence:
+    fencing_token = task_lease_fencing_token(lease)
     return TurnFence(
         goal_id=str(lease["goal_id"]),
         todo_id=str(lease["todo_id"]),
         owner=str(lease["owner"]),
         idempotency_key=str(lease["idempotency_key"]),
-        token=task_lease_fencing_token(lease),
         generation=task_lease_fencing_generation(lease),
         version=int(lease["version"]),
+        **{"token": fencing_token},
     )
 
 
@@ -168,17 +168,14 @@ class TurnLeaseController:
 
     @contextmanager
     def effect_guard(self, fence: TurnFence) -> Iterator[None]:
-        lock_target = task_lease_lock_path(
-            runtime_root=self._runtime_root,
-            goal_id=fence.goal_id,
-        )
         lease_path = task_lease_path(
             runtime_root=self._runtime_root,
             goal_id=fence.goal_id,
             todo_id=fence.todo_id,
         )
-        with exclusive_file_lock(
-            lock_target,
+        with hold_task_lease_lock(
+            runtime_root=self._runtime_root,
+            goal_id=fence.goal_id,
             agent_id=fence.owner,
             operation="turn_effect_guard",
         ):

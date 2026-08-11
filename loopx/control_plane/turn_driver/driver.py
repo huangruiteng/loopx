@@ -99,6 +99,8 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
 def selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve the todo that owns one Turn across adaptive bundle execution."""
 
+    action = _mapping(envelope.get("action"))
+    action_selected_todo = _mapping(action.get("selected_todo"))
     orchestration = _mapping(envelope.get("task_orchestration_contract"))
     primary_todo_id = str(orchestration.get("primary_todo_id") or "").strip()
     if (
@@ -106,12 +108,13 @@ def selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
         and orchestration.get("mode") == "adaptive"
         and primary_todo_id
     ):
+        if str(action_selected_todo.get("todo_id") or "") == primary_todo_id:
+            return action_selected_todo
         return {
             "todo_id": primary_todo_id,
             "source": "task_orchestration_contract.primary_todo_id",
         }
-    action = _mapping(envelope.get("action"))
-    return _mapping(action.get("selected_todo"))
+    return action_selected_todo
 
 
 def _turn_lineage(

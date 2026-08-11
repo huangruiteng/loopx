@@ -256,6 +256,7 @@ def _selected_todo(
         "task_class",
         "action_kind",
         "task_repository",
+        "required_write_scopes",
         "continuation_policy",
         "claimed_by",
         "bound_agent",

@@ -16,6 +16,8 @@ from ..control_plane.scheduler.execution_context import (
 from ..control_plane.turn_driver import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_SESSION_BINDING_SCHEMA_VERSION,
+    TurnEffectEnvelope,
+    TurnLeaseController,
     build_loopx_turn_command_validator,
     build_loopx_turn_plan,
     codex_cli_session_binding,
@@ -430,6 +432,43 @@ def handle_turn_command(
                 task_validator = None
             envelope = payload.get("turn_envelope") if isinstance(payload.get("turn_envelope"), dict) else {}
             selected_todo = selected_turn_todo(envelope)
+            lease_controller = None
+            if args.execute:
+                todo_id = str(selected_todo.get("todo_id") or "")
+                if not todo_id:
+                    raise ValueError(
+                        "executing run-once requires one selected todo for its task lease"
+                    )
+                transaction = (
+                    payload.get("transaction")
+                    if isinstance(payload.get("transaction"), dict)
+                    else {}
+                )
+                turn_key = str(transaction.get("turn_key") or "")
+                if not turn_key:
+                    raise ValueError(
+                        "executing run-once requires a transaction turn_key"
+                    )
+                raw_write_scopes = selected_todo.get("required_write_scopes")
+                if raw_write_scopes is None:
+                    write_scopes: list[str] = []
+                elif isinstance(raw_write_scopes, list) and all(
+                    isinstance(scope, str) for scope in raw_write_scopes
+                ):
+                    write_scopes = list(raw_write_scopes)
+                else:
+                    raise ValueError(
+                        "selected todo required_write_scopes must be a string array"
+                    )
+                lease_controller = TurnLeaseController(
+                    registry_path=registry_path,
+                    runtime_root=runtime_root,
+                    goal_id=args.goal_id,
+                    todo_id=todo_id,
+                    owner=args.agent_id,
+                    idempotency_key=f"turn:{turn_key}",
+                    write_scopes=write_scopes,
+                )
             writeback_contract = (
                 envelope.get("writeback")
                 if isinstance(envelope.get("writeback"), dict)
@@ -443,7 +482,10 @@ def handle_turn_command(
                 else None
             )
 
-            def writeback(result: dict[str, object]) -> dict[str, object]:
+            def writeback(
+                effect: TurnEffectEnvelope,
+                result: dict[str, object],
+            ) -> dict[str, object]:
                 # The host workspace is execution context, not state authority.
                 state_project = None
                 result_kind = str(result.get("result_kind") or "")
@@ -487,9 +529,13 @@ def handle_turn_command(
                     ),
                     dry_run=False,
                     sync_global=not bool(args.no_global_sync),
+                    turn_effect_key=effect.phase_key,
                 )
 
-            def completion_writeback(result: dict[str, object]) -> dict[str, object]:
+            def completion_writeback(
+                effect: TurnEffectEnvelope,
+                result: dict[str, object],
+            ) -> dict[str, object]:
                 todo_id = str(selected_todo.get("todo_id") or "")
                 if not todo_id:
                     raise ValueError(
@@ -501,6 +547,8 @@ def handle_turn_command(
                     todo_id=todo_id,
                     role="agent",
                     completion_turn_key=str(result["turn_key"]),
+                    task_lease_idempotency_key=f"turn:{effect.turn_key}",
+                    task_lease_runtime_root=runtime_root,
                     evidence=(
                         "LoopX Turn validated completion: "
                         + str(result.get("summary") or result["classification"])
@@ -510,7 +558,7 @@ def handle_turn_command(
                     project=None,
                     dry_run=False,
                 )
-                refresh = writeback(result)
+                refresh = writeback(effect, result)
                 return {
                     "ok": bool(completion.get("ok")) and bool(refresh.get("ok")),
                     # A completed Todo is idempotent under Turn replay: after an
@@ -535,7 +583,7 @@ def handle_turn_command(
                     available_capabilities=args.available_capabilities,
                 )
 
-            def spend() -> dict[str, object]:
+            def spend(effect: TurnEffectEnvelope) -> dict[str, object]:
                 return spend_quota_slot(
                     current_status(),
                     goal_id=args.goal_id,
@@ -546,9 +594,13 @@ def handle_turn_command(
                     workspace_path=delivery_workspace_path,
                     available_capabilities=args.available_capabilities,
                     operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+                    turn_effect_key=effect.phase_key,
                 )
 
-            def scheduler(_spend_payload: dict[str, object]) -> dict[str, object]:
+            def scheduler(
+                _effect: TurnEffectEnvelope,
+                _spend_payload: dict[str, object],
+            ) -> dict[str, object]:
                 turn_scheduler_context = (
                     payload.get("scheduler_execution_context")
                     if isinstance(payload.get("scheduler_execution_context"), dict)
@@ -606,6 +658,7 @@ def handle_turn_command(
                 completion_writeback=completion_writeback if args.execute else None,
                 spend=spend if args.execute else None,
                 scheduler=scheduler if args.execute else None,
+                lease_controller=lease_controller,
             )
         else:
             raise ValueError("turn requires the `plan` or `run-once` subcommand")

@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -32,6 +33,7 @@ TASK_LEASE_SCHEMA_VERSION = "task_lease_v0"
 DEFAULT_TASK_LEASE_TTL_SECONDS = 45 * 60
 MAX_TASK_LEASE_TTL_SECONDS = 24 * 60 * 60
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.:@/-]{1,160}$")
+_TASK_LEASE_LOCK_STATE = threading.local()
 
 
 class TaskLeaseError(ValueError):
@@ -115,6 +117,37 @@ class _VerifiedTaskLeaseFence(dict):
 
 
 @contextmanager
+def hold_task_lease_lock(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    agent_id: str | None,
+    operation: str,
+) -> Iterator[Path]:
+    """Hold the canonical per-goal lease lock, reusing it on this thread."""
+
+    lock_target = task_lease_lock_path(runtime_root=runtime_root, goal_id=goal_id)
+    lock_key = str(lock_target.expanduser().resolve(strict=False))
+    held = getattr(_TASK_LEASE_LOCK_STATE, "paths", None)
+    if held is None:
+        held = set()
+        _TASK_LEASE_LOCK_STATE.paths = held
+    if lock_key in held:
+        yield lock_target
+        return
+    with exclusive_file_lock(
+        lock_target,
+        agent_id=agent_id,
+        operation=operation,
+    ):
+        held.add(lock_key)
+        try:
+            yield lock_target
+        finally:
+            held.remove(lock_key)
+
+
+@contextmanager
 def hold_task_lease_mutation_fence(
     *,
     registry_path: Path,
@@ -125,6 +158,7 @@ def hold_task_lease_mutation_fence(
     idempotency_key: str | None,
     expected_version: int | None = None,
     require_active_when_key_supplied: bool = True,
+    lease_runtime_root: Path | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Hold the per-goal lease lock while one todo lifecycle write commits.
 
@@ -142,18 +176,15 @@ def hold_task_lease_mutation_fence(
         if idempotency_key is not None
         else None
     )
-    runtime_root = runtime_root_from_registry(registry_path, None)
+    runtime_root = lease_runtime_root or runtime_root_from_registry(registry_path, None)
     lease_path = task_lease_path(
         runtime_root=runtime_root,
         goal_id=normalized_goal_id,
         todo_id=normalized_todo_id,
     )
-    lock_target = task_lease_lock_path(
+    with hold_task_lease_lock(
         runtime_root=runtime_root,
         goal_id=normalized_goal_id,
-    )
-    with exclusive_file_lock(
-        lock_target,
         agent_id=actor_agent_id,
         operation="task_lease_mutation_fence",
     ):

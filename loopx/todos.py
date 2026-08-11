@@ -106,8 +106,10 @@ from .control_plane.todos.write_policy import (
     resolve_user_gate_global_gate_update,
 )
 from .control_plane.work_items.task_lease import (
+    hold_task_lease_lock,
     hold_task_lease_mutation_fence,
     release_verified_task_lease_fence,
+    runtime_root_from_registry,
 )
 
 
@@ -1511,6 +1513,7 @@ def complete_goal_todo(
     completion_turn_key: str | None = None,
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
+    task_lease_runtime_root: Path | None = None,
     note: str | None = None,
     no_followup: bool = False,
     successor_todo_ids: list[str] | None = None,
@@ -1546,7 +1549,16 @@ def complete_goal_todo(
         project=project,
         state_file=state_file,
     )
-    with exclusive_file_lock(
+    lease_runtime_root = task_lease_runtime_root or runtime_root_from_registry(
+        registry_path,
+        None,
+    )
+    with hold_task_lease_lock(
+        runtime_root=lease_runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id or claimed_by,
+        operation="todo_complete_lease_fence",
+    ), exclusive_file_lock(
         resolved_state_file,
         agent_id=agent_id or claimed_by,
         operation="todo_complete",
@@ -1635,6 +1647,7 @@ def complete_goal_todo(
                     task_lease_idempotency_key is not None
                     or task_lease_expected_version is not None
                 ),
+                lease_runtime_root=lease_runtime_root,
             )
         )
         normalized_successor_todo_ids = normalize_todo_id_list(successor_todo_ids)

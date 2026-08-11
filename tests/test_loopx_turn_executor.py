@@ -1540,6 +1540,15 @@ def test_run_once_stops_without_writeback_or_spend(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["status"] == "stopped"
     assert payload["receipt"]["status"] == "stopped"
+    assert payload["lease_release"] == {"released": True}
+    inspected = inspect_task_lease(
+        registry_path=tmp_path / "registry.json",
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+    )
+    assert inspected["active"] is False
+    assert inspected["lease"]["status"] == "released"
     assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
 
 
