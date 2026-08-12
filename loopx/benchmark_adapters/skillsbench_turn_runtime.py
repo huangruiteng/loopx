@@ -16,13 +16,31 @@ import shlex
 import subprocess
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Union
 
 from ..benchmark_case_state import benchmark_case_loopx_command_prefix
-from ..control_plane.turn_driver import run_loopx_turn_once
+from ..control_plane.turn_driver import (
+    TurnEffectEnvelope,
+    TurnFence,
+    TurnJournalError,
+    TurnJournalStore,
+    hold_turn_lease_heartbeat,
+    run_loopx_turn_once,
+    selected_turn_todo,
+    selected_turn_todo_write_scopes,
+)
+from ..control_plane.work_items.task_lease import (
+    DEFAULT_TASK_LEASE_TTL_SECONDS,
+    MAX_TASK_LEASE_TTL_SECONDS,
+    TaskLeaseError,
+    require_task_lease_fence_value,
+    task_lease_fencing_generation,
+    task_lease_fencing_token,
+)
 from .skillsbench_acp_failure_policy import (
     RECOVERABLE_CODEX_TURN_FAILURE_PREFIX,
     recoverable_codex_turn_failure_message,
@@ -114,9 +132,16 @@ def _loopx_cli_failure_category(stdout: Any, stderr: Any) -> str:
         payload = json.loads(str(stdout or ""))
     except json.JSONDecodeError:
         payload = {}
-    error = " ".join(
-        f"{payload.get('error') if isinstance(payload, dict) else ''} {stderr or ''}".lower().split()
+    typed_errors = (
+        [
+            value
+            for key in ("error_code", "reason", "error")
+            if isinstance((value := payload.get(key)), str)
+        ]
+        if isinstance(payload, dict)
+        else []
     )
+    error = " ".join(" ".join([*typed_errors, str(stderr or "")]).lower().split())
     classifiers = (
         (r"/app/\.local/bin/loopx.*not found", "case_loopx_cli_missing"),
         (r"no module named loopx", "case_loopx_source_missing"),
@@ -128,6 +153,11 @@ def _loopx_cli_failure_category(stdout: Any, stderr: Any) -> str:
         (r"goal .*not found|no matching goal", "case_goal_not_found"),
         (r"public boundary|private material", "case_public_boundary_rejected"),
         (r"operator inbox|lark", "case_operator_inbox_projection_failed"),
+        (r"todo_lease_conflict|conflicts with active lease", "todo_lease_conflict"),
+        (r"stale_fencing_token|fencing token is stale", "stale_fencing_token"),
+        (r"lease_not_active|lease is missing or expired", "lease_not_active"),
+        (r"lease_cas_mismatch|lease owner or idempotency key mismatch", "lease_cas_mismatch"),
+        (r"turn journal|journal.*conflict|journal.*invalid", "journal_invariant_failed"),
     )
     for pattern, category in classifiers:
         if re.search(pattern, error):
@@ -228,6 +258,251 @@ class SkillsBenchTurnBridge:
         if not isinstance(payload, dict):
             raise SkillsBenchTurnBridgeError("LoopX CLI output was not an object")
         return payload
+
+
+def _bridge_authority_error(exc: SkillsBenchTurnBridgeError) -> None:
+    if exc.category in {
+        "todo_lease_conflict",
+        "stale_fencing_token",
+        "lease_not_active",
+        "lease_cas_mismatch",
+    }:
+        raise TaskLeaseError(
+            "scored-workspace Turn lease rejected the operation",
+            code=exc.category,
+        ) from exc
+    if exc.category == "journal_invariant_failed":
+        raise TurnJournalError(
+            "scored-workspace Turn journal operation failed"
+        ) from exc
+    raise exc
+
+
+def _turn_fence_from_remote_lease(lease: Mapping[str, Any]) -> TurnFence:
+    normalized = dict(lease)
+    fencing_token = task_lease_fencing_token(normalized)
+    return TurnFence(
+        goal_id=str(normalized.get("goal_id") or ""),
+        todo_id=str(normalized.get("todo_id") or ""),
+        owner=str(normalized.get("owner") or ""),
+        idempotency_key=str(normalized.get("idempotency_key") or ""),
+        generation=task_lease_fencing_generation(normalized),
+        version=int(normalized.get("version") or 0),
+        **{"token": fencing_token},
+    )
+
+
+class SkillsBenchTurnLeaseController:
+    """Task-lease adapter whose authority lives in the scored workspace."""
+
+    def __init__(
+        self,
+        *,
+        bridge: SkillsBenchTurnBridge,
+        config: SkillsBenchTurnRuntimeConfig,
+        turn_key: str,
+        todo_id: str,
+        write_scopes: list[str],
+    ) -> None:
+        self._bridge = bridge
+        self._prefix = _case_cli_prefix(config)
+        self._goal_id = config.goal_id
+        self._todo_id = todo_id
+        self._owner = config.agent_id
+        self._idempotency_key = f"turn:{turn_key}"
+        self._write_scopes = list(write_scopes)
+        self._ttl_seconds = min(
+            MAX_TASK_LEASE_TTL_SECONDS,
+            max(
+                DEFAULT_TASK_LEASE_TTL_SECONDS,
+                int(config.agent_timeout_seconds) + 300,
+            ),
+        )
+        self._heartbeat_interval_seconds = self._ttl_seconds / 3
+
+    def _lease_command(
+        self,
+        action: str,
+        *,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
+        command = (
+            f"{self._prefix} task-lease {action} "
+            f"--goal-id {shlex.quote(self._goal_id)} "
+            f"--todo-id {shlex.quote(self._todo_id)}"
+        )
+        if action != "inspect":
+            command += (
+                f" --owner {shlex.quote(self._owner)} "
+                f"--idempotency-key {shlex.quote(self._idempotency_key)}"
+            )
+        if action in {"acquire", "renew"}:
+            command += f" --ttl-seconds {self._ttl_seconds}"
+        if action == "acquire":
+            command += "".join(
+                f" --write-scope {shlex.quote(scope)}"
+                for scope in self._write_scopes
+            )
+        if expected_version is not None:
+            command += f" --expected-version {expected_version}"
+        try:
+            payload = self._bridge.loopx_json(command)
+        except SkillsBenchTurnBridgeError as exc:
+            _bridge_authority_error(exc)
+            raise AssertionError("unreachable")
+        if payload.get("ok") is not True:
+            raise TaskLeaseError(
+                "scored-workspace Turn lease rejected the operation",
+                code=str(payload.get("error_code") or "task_lease_failed"),
+            )
+        return payload
+
+    def _fence(self, payload: Mapping[str, Any]) -> TurnFence:
+        lease = payload.get("lease")
+        if not isinstance(lease, Mapping):
+            raise TaskLeaseError(
+                "scored-workspace Turn lease response was malformed",
+                code="corrupt_lease",
+            )
+        fence = _turn_fence_from_remote_lease(lease)
+        if (
+            fence.goal_id != self._goal_id
+            or fence.todo_id != self._todo_id
+            or fence.owner != self._owner
+            or fence.idempotency_key != self._idempotency_key
+        ):
+            raise TaskLeaseError(
+                "scored-workspace Turn lease response had mismatched lineage",
+                code="lease_cas_mismatch",
+            )
+        return fence
+
+    def acquire(self) -> TurnFence:
+        return self._fence(self._lease_command("acquire"))
+
+    def renew(self, fence: TurnFence) -> TurnFence:
+        return self._fence(
+            self._lease_command("renew", expected_version=fence.version)
+        )
+
+    def require_current(self, fence: TurnFence) -> None:
+        payload = self._lease_command("inspect")
+        lease = payload.get("lease")
+        if not isinstance(lease, dict):
+            raise TaskLeaseError(
+                "scored-workspace Turn lease response was malformed",
+                code="corrupt_lease",
+            )
+        require_task_lease_fence_value(
+            lease,
+            owner=fence.owner,
+            idempotency_key=fence.idempotency_key,
+            fencing_token=fence.token,
+        )
+
+    def release(self, fence: TurnFence) -> None:
+        self._lease_command("release", expected_version=fence.version)
+
+    @contextmanager
+    def heartbeat(
+        self,
+        fence: TurnFence,
+    ) -> Iterator[Callable[[], TurnFence]]:
+        with hold_turn_lease_heartbeat(
+            fence,
+            renew=self.renew,
+            interval_seconds=self._heartbeat_interval_seconds,
+        ) as latest:
+            yield latest
+
+    @contextmanager
+    def effect_guard(self, _fence: TurnFence) -> Iterator[None]:
+        # Remote write callbacks carry the same fence into the scored-workspace
+        # command, which holds its task-lease lock around the durable effect.
+        yield
+
+
+class SkillsBenchTurnJournalStore(TurnJournalStore):
+    """Turn journal adapter colocated with the scored-workspace task lease."""
+
+    def __init__(
+        self,
+        *,
+        bridge: SkillsBenchTurnBridge,
+        config: SkillsBenchTurnRuntimeConfig,
+    ) -> None:
+        self._bridge = bridge
+        self._prefix = _case_cli_prefix(config)
+
+    def load_events(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+    ) -> list[dict[str, Any]]:
+        del runtime_root
+        command = (
+            f"{self._prefix} turn journal-read "
+            f"--goal-id {shlex.quote(goal_id)} "
+            f"--turn-key {shlex.quote(turn_key)}"
+        )
+        try:
+            payload = self._bridge.loopx_json(command)
+        except SkillsBenchTurnBridgeError as exc:
+            _bridge_authority_error(exc)
+            raise AssertionError("unreachable")
+        events = payload.get("events")
+        if payload.get("ok") is not True or not isinstance(events, list) or not all(
+            isinstance(event, dict) for event in events
+        ):
+            raise TurnJournalError(
+                "scored-workspace Turn journal read response was malformed"
+            )
+        return [dict(event) for event in events]
+
+    def append_event(
+        self,
+        *,
+        runtime_root: Path,
+        goal_id: str,
+        turn_key: str,
+        event_type: str,
+        phase_key: str,
+        fencing: object,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        del runtime_root
+        request = {
+            "event_type": event_type,
+            "phase_key": phase_key,
+            "fencing": {
+                "todo_id": str(getattr(fencing, "todo_id", "")),
+                "owner": str(getattr(fencing, "owner", "")),
+                "idempotency_key": str(
+                    getattr(fencing, "idempotency_key", "")
+                ),
+                "token": str(getattr(fencing, "token", "")),
+            },
+            "payload": dict(payload),
+        }
+        command = (
+            f"{self._prefix} turn journal-append "
+            f"--goal-id {shlex.quote(goal_id)} "
+            f"--turn-key {shlex.quote(turn_key)} "
+            f"--event-json {shlex.quote(json.dumps(request, sort_keys=True, separators=(',', ':')))}"
+        )
+        try:
+            response = self._bridge.loopx_json(command)
+        except SkillsBenchTurnBridgeError as exc:
+            _bridge_authority_error(exc)
+            raise AssertionError("unreachable")
+        event = response.get("event")
+        if response.get("ok") is not True or not isinstance(event, dict):
+            raise TurnJournalError(
+                "scored-workspace Turn journal append response was malformed"
+            )
+        return dict(event)
 
 
 def _case_cli_prefix(config: SkillsBenchTurnRuntimeConfig) -> str:
@@ -339,6 +614,19 @@ def _callback_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _turn_effect_fence_arguments(
+    effect: TurnEffectEnvelope,
+    *,
+    todo_id: str,
+) -> str:
+    return (
+        f" --turn-effect-key {shlex.quote(effect.phase_key)}"
+        f" --turn-fence-todo-id {shlex.quote(todo_id)}"
+        f" --turn-fence-idempotency-key {shlex.quote(f'turn:{effect.turn_key}')}"
+        f" --turn-fencing-token {shlex.quote(effect.fencing_token)}"
+    )
+
+
 def _validation_baseline(
     bridge: SkillsBenchTurnBridge,
     config: SkillsBenchTurnRuntimeConfig,
@@ -424,6 +712,41 @@ def run_skillsbench_loopx_turn(
         if turn_instance_id is not None
         else _turn_plan(bridge, config)
     )
+    envelope = plan.get("turn_envelope")
+    if not isinstance(envelope, Mapping):
+        raise SkillsBenchTurnBridgeError(
+            "LoopX Turn plan omitted its Turn envelope",
+            stage="turn_plan",
+            category="loopx_turn_plan_not_executable",
+        )
+    selected_todo = selected_turn_todo(envelope)
+    todo_id = str(selected_todo.get("todo_id") or "")
+    transaction = plan.get("transaction")
+    turn_key = str(
+        transaction.get("turn_key") if isinstance(transaction, Mapping) else ""
+    )
+    if not todo_id or not turn_key:
+        raise SkillsBenchTurnBridgeError(
+            "LoopX Turn plan omitted its lease lineage",
+            stage="turn_plan",
+            category="loopx_turn_plan_not_executable",
+        )
+    try:
+        write_scopes = selected_turn_todo_write_scopes(selected_todo)
+    except ValueError as exc:
+        raise SkillsBenchTurnBridgeError(
+            "LoopX Turn selected Todo write scopes were malformed",
+            stage="turn_plan",
+            category="loopx_turn_plan_not_executable",
+        ) from exc
+    lease_controller = SkillsBenchTurnLeaseController(
+        bridge=bridge,
+        config=config,
+        turn_key=turn_key,
+        todo_id=todo_id,
+        write_scopes=write_scopes,
+    )
+    journal_store = SkillsBenchTurnJournalStore(bridge=bridge, config=config)
     validation_baseline = _validation_baseline(bridge, config)
     prefix = _case_cli_prefix(config)
     baseline_path = ""
@@ -562,7 +885,10 @@ def run_skillsbench_loopx_turn(
             "exit_code": 0,
         }
 
-    def writeback(result: dict[str, Any]) -> dict[str, Any]:
+    def writeback(
+        effect: TurnEffectEnvelope,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
         command = (
             f"{prefix} refresh-state "
             f"--goal-id {shlex.quote(config.goal_id)} "
@@ -575,19 +901,24 @@ def run_skillsbench_loopx_turn(
             "--progress-scope goal "
             f"--vision-unchanged-reason {shlex.quote(str(result['vision_unchanged_reason']))} "
             "--no-global-sync"
+            + _turn_effect_fence_arguments(effect, todo_id=todo_id)
         )
         return _callback_payload(bridge.loopx_json(command))
 
-    def spend() -> dict[str, Any]:
+    def spend(effect: TurnEffectEnvelope) -> dict[str, Any]:
         command = (
             f"{prefix} quota spend-slot "
             f"--goal-id {shlex.quote(config.goal_id)} --slots 1 "
             "--source adapter --execute "
             f"--agent-id {shlex.quote(config.agent_id)}"
+            + _turn_effect_fence_arguments(effect, todo_id=todo_id)
         )
         return _callback_payload(bridge.loopx_json(command))
 
-    def scheduler(_spend_payload: dict[str, Any]) -> dict[str, Any]:
+    def scheduler(
+        _effect: TurnEffectEnvelope,
+        _spend_payload: dict[str, Any],
+    ) -> dict[str, Any]:
         command = (
             f"{prefix} quota should-run "
             f"--goal-id {shlex.quote(config.goal_id)} "
@@ -621,6 +952,8 @@ def run_skillsbench_loopx_turn(
             writeback=writeback,
             spend=spend,
             scheduler=scheduler,
+            lease_controller=lease_controller,
+            journal_store=journal_store,
         )
     finally:
         if baseline_path:

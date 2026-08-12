@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from .control_plane.runtime.time import now_local_iso
+from .control_plane.state_refresh_recording import (
+    append_state_refresh_index,
+    build_state_refresh_output_projections as _build_state_refresh_output_projections,
+)
 from .control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_CHOICES as DELIVERY_BATCH_SCALE_CHOICES,
     require_delivery_batch_scale,
@@ -601,103 +605,6 @@ def build_state_refresh_record(
     return record
 
 
-def _build_state_refresh_output_projections(
-    *,
-    record: dict[str, Any],
-    registry_path: Path,
-    runtime_root: Path,
-    project: Path | None,
-    json_path: Path,
-    markdown_path: Path,
-    index_path: Path,
-    dry_run: bool,
-    autonomous_replan_recorded_requested: bool,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Project one refresh record into its compact index and CLI response."""
-
-    record_state = record.get("state") if isinstance(record.get("state"), dict) else {}
-    record_frontmatter = record_state.get("frontmatter") or {}
-    index_record = {
-        field: record[field]
-        for field in (
-            "generated_at", "goal_id", "classification", "recommended_action",
-            "recommended_action_source", "health_check",
-        )
-    }
-    index_record.update({
-        "json_path": str(json_path),
-        "markdown_path": str(markdown_path),
-        "state": {
-            "sha256_16": record_state.get("sha256_16"),
-            "frontmatter": {"updated_at": record_frontmatter.get("updated_at")},
-        },
-        "runtime_projection_route": record["runtime_projection_route"],
-    })
-    for field in (
-        "delivery_batch_scale",
-        "delivery_outcome",
-        "delivery_workspace",
-        "settlement_identity",
-        "turn_instance_id",
-        "todo_id",
-    ):
-        if field in record:
-            index_record[field] = record[field]
-
-    replan_ack = record.get("autonomous_replan_ack") or {}
-    if autonomous_replan_recorded_requested:
-        index_record["autonomous_replan_ack"] = replan_ack
-        if replan_ack.get("requested_classification"):
-            index_record["requested_classification"] = replan_ack["requested_classification"]
-
-    agent_vision = record.get("agent_vision")
-    if isinstance(agent_vision, dict):
-        index_record["agent_vision"] = {
-            field: agent_vision.get(field)
-            for field in (
-                "schema_version", "agent_id", "state", "vision_patch",
-                "todo_delta", "vision_budget",
-            )
-        }
-        if isinstance(agent_vision.get("path_delta"), dict):
-            index_record["agent_vision"]["path_delta"] = agent_vision["path_delta"]
-
-    for field in ("vision_checkpoint", "progress_scope", "agent_id", "agent_lane"):
-        if field in record:
-            index_record[field] = record[field]
-
-    payload: dict[str, Any] = {
-        "ok": True,
-        "dry_run": dry_run,
-        "appended": not dry_run,
-        "registry": str(registry_path),
-        "runtime_root": str(runtime_root),
-        "project": str(project) if project else None,
-    }
-    payload.update({
-        field: record.get(field)
-        for field in ("goal_id", "classification", "progress_scope", "agent_id", "agent_lane")
-    })
-    payload.update({
-        "autonomous_replan_recorded": bool(replan_ack.get("recorded")),
-        "autonomous_replan_recorded_requested": autonomous_replan_recorded_requested,
-        "repair_delta_contract": replan_ack.get("delta_contract"),
-        "json_path": str(json_path),
-        "markdown_path": str(markdown_path),
-        "index_path": str(index_path),
-    })
-    payload.update({
-        field: record.get(field)
-        for field in (
-            "agent_vision", "vision_checkpoint", "recommended_action",
-            "recommended_action_source", "active_state_next_action_update",
-            "generated_at", "health_check",
-        )
-    })
-    payload.update(record)
-    return index_record, payload
-
-
 def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
     state = payload.get("state") if isinstance(payload.get("state"), dict) else {}
     frontmatter = state.get("frontmatter") if isinstance(state.get("frontmatter"), dict) else {}
@@ -876,7 +783,7 @@ def render_state_refresh_markdown(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def refresh_state_run(
+def _refresh_state_run(
     *,
     registry_path: Path,
     runtime_root_override: str | None,
@@ -901,6 +808,8 @@ def refresh_state_run(
     vision_unchanged_reason: str | None = None,
     dry_run: bool,
     sync_global: bool = True,
+    _turn_effect_key: str | None = None,
+    _effect_input_hash: str | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     validate_public_safe_text("classification", classification)
@@ -1283,7 +1192,11 @@ def refresh_state_run(
     compact_route["projection_enabled"] = bool(sync_global)
     compact_route["projection_marker_field"] = "shared_runtime_projection"
     record["runtime_projection_route"] = compact_route
-
+    if _turn_effect_key is not None and _effect_input_hash is None:
+        raise ValueError("turn effect input hash is required")
+    if _turn_effect_key is not None:
+        record["turn_effect_key"] = _turn_effect_key
+        record["effect_input_hash"] = _effect_input_hash
     runs_dir = runtime_root / "goals" / safe_goal_id / "runs"
     json_path, markdown_path = unique_run_paths(runs_dir, generated_at)
     index_path = runs_dir / "index.jsonl"
@@ -1298,6 +1211,12 @@ def refresh_state_run(
         dry_run=dry_run,
         autonomous_replan_recorded_requested=bool(autonomous_replan_recorded),
     )
+    if _turn_effect_key is not None:
+        index_record["turn_effect_key"] = _turn_effect_key
+        index_record["effect_input_hash"] = _effect_input_hash
+        payload["turn_effect_key"] = _turn_effect_key
+        payload["effect_input_hash"] = _effect_input_hash
+        payload["idempotent"] = False
     if dry_run:
         expected_write_scopes = ["runtime_history"]
         if active_state_next_action_update and active_state_next_action_update.get("would_update"):
@@ -1353,8 +1272,8 @@ def refresh_state_run(
             encoding="utf-8",
         )
         markdown_path.write_text(render_state_refresh_markdown(payload) + "\n", encoding="utf-8")
-        with index_path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(index_record, ensure_ascii=False) + "\n")
+        if _turn_effect_key is None:
+            append_state_refresh_index(index_path, index_record)
     if sync_global and route_status in {"missing", "ambiguous"}:
         payload["ok"] = False
         payload["partial_write"] = not dry_run
@@ -1437,4 +1356,12 @@ def refresh_state_run(
             "raw_artifacts_copied": False,
             "recommended_action_copied": False,
         }
+    if not dry_run and _turn_effect_key is not None:
+        append_state_refresh_index(
+            index_path,
+            index_record,
+            turn_effect_result_ok=payload.get("ok") is True,
+        )
     return payload
+
+from .control_plane.state_refresh_effect import refresh_state_run as refresh_state_run  # noqa: E402

@@ -140,26 +140,60 @@ def test_smaller_candidate_still_fails_when_semantics_are_removed(
     assert any(failure_fragment in failure for failure in result["rows"][0]["failures"])
 
 
-def test_declared_action_signature_coverage_migration_requires_review() -> None:
+@pytest.mark.parametrize(
+    ("base_coverage", "candidate_coverage"),
+    [
+        (
+            "turn_envelope_action_dimensions_v0",
+            "turn_envelope_action_dimensions_v1",
+        ),
+        (
+            "turn_envelope_action_dimensions_v0",
+            "turn_envelope_action_dimensions_v2",
+        ),
+        (
+            "turn_envelope_action_dimensions_v1",
+            "turn_envelope_action_dimensions_v3",
+        ),
+        (
+            "turn_envelope_action_dimensions_v2",
+            "turn_envelope_action_dimensions_v3",
+        ),
+    ],
+)
+def test_declared_action_signature_coverage_migration_requires_review(
+    base_coverage: str,
+    candidate_coverage: str,
+) -> None:
+    base = _row(action_signature_coverages=[base_coverage])
     candidate = _row(
         action_signature_sha256="versioned-semantic-signature",
-        action_signature_coverages=["turn_envelope_action_dimensions_v1"],
+        action_signature_coverages=[candidate_coverage],
     )
 
-    result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
+    result = compare_cli_output_receipts(_receipt(base), _receipt(candidate))
 
     assert result["ok"] is True
     assert result["review_required"] is True
     assert result["rows"][0]["review_signals"] == [
         "action_signature coverage migrated: "
-        "turn_envelope_action_dimensions_v0 -> turn_envelope_action_dimensions_v1"
+        f"{base_coverage} -> {candidate_coverage}"
     ]
 
 
-def test_unknown_action_signature_coverage_migration_fails_closed() -> None:
+@pytest.mark.parametrize(
+    "candidate_coverage",
+    [
+        "turn_envelope_action_dimensions_v3",
+        "turn_envelope_action_dimensions_v99",
+    ],
+)
+def test_unknown_action_signature_coverage_migration_fails_closed(
+    candidate_coverage: str,
+) -> None:
     candidate = _row(
         action_signature_sha256="unknown-semantic-signature",
-        action_signature_coverages=["turn_envelope_action_dimensions_v2"],
+        action_signature_coverages=[candidate_coverage],
     )
 
     result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))

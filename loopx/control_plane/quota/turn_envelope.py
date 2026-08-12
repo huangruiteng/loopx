@@ -29,6 +29,8 @@ CONTRACT_CAPSULE_SCHEMA_VERSION = "loopx_contract_capsule_v0"
 ACTION_SIGNATURE_SCHEMA_VERSION = "loopx_action_signature_v0"
 ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
 ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
+ACTION_SIGNATURE_COVERAGE_V2 = "turn_envelope_action_dimensions_v2"
+ACTION_SIGNATURE_COVERAGE_V3 = "turn_envelope_action_dimensions_v3"
 ACTION_SIGNATURE_COVERAGE = ACTION_SIGNATURE_COVERAGE_V0
 ACTIONABLE_WARNING_FIELDS = (
     "state_projection_gap",
@@ -256,6 +258,7 @@ def _selected_todo(
         "task_class",
         "action_kind",
         "task_repository",
+        "required_write_scopes",
         "continuation_policy",
         "claimed_by",
         "bound_agent",
@@ -641,6 +644,18 @@ def _action_projection(
         or payload.get("recommended_action"),
         limit=480,
     )
+    selected_todo_source: Mapping[str, Any] = payload
+    task_orchestration = _mapping(payload.get("task_orchestration_contract"))
+    primary_todo_id = str(task_orchestration.get("primary_todo_id") or "").strip()
+    primary_todo = _mapping(task_orchestration.get("primary_todo"))
+    if (
+        task_orchestration.get("schema_version")
+        == "task_orchestration_contract_v2"
+        and task_orchestration.get("mode") == "adaptive"
+        and primary_todo_id
+        and str(primary_todo.get("todo_id") or "") == primary_todo_id
+    ):
+        selected_todo_source = {"selected_todo": primary_todo}
     action = {
         "recommended_action": recommended_action,
         "primary_action": _text(agent_channel.get("primary_action"), limit=480),
@@ -648,7 +663,7 @@ def _action_projection(
         "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
         "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
         "selected_todo": _selected_todo(
-            payload,
+            selected_todo_source,
             recommended_action=recommended_action,
         ),
     }
@@ -690,8 +705,7 @@ def _action_projection(
             scheduler=scheduler,
         ),
     }
-    task_orchestration = payload.get("task_orchestration_contract")
-    if isinstance(task_orchestration, Mapping):
+    if task_orchestration:
         projection["task_orchestration_contract"] = dict(task_orchestration)
     response_plan = _response_plan(interaction)
     if response_plan is not None:
@@ -717,11 +731,16 @@ def turn_envelope_action_signature_document(envelope: Mapping[str, Any]) -> dict
         "task_orchestration_contract",
     )
     response_plan = envelope.get("response_plan")
-    coverage = (
-        ACTION_SIGNATURE_COVERAGE_V1
-        if isinstance(response_plan, Mapping)
-        else ACTION_SIGNATURE_COVERAGE_V0
-    )
+    action = _mapping(envelope.get("action"))
+    selected_todo = _mapping(action.get("selected_todo"))
+    has_write_scopes = "required_write_scopes" in selected_todo
+    has_response_plan = isinstance(response_plan, Mapping)
+    coverage = {
+        (False, False): ACTION_SIGNATURE_COVERAGE_V0,
+        (False, True): ACTION_SIGNATURE_COVERAGE_V1,
+        (True, False): ACTION_SIGNATURE_COVERAGE_V2,
+        (True, True): ACTION_SIGNATURE_COVERAGE_V3,
+    }[(has_write_scopes, has_response_plan)]
     signature = {
         "schema_version": ACTION_SIGNATURE_SCHEMA_VERSION,
         "coverage": coverage,

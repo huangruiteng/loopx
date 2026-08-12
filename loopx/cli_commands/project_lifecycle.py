@@ -54,6 +54,11 @@ from ..state_refresh import (
     refresh_state_run,
     render_state_refresh_markdown,
 )
+from .task_lease import (
+    add_turn_effect_fence_arguments,
+    hold_cli_turn_effect_fence,
+    turn_effect_key_from_args,
+)
 
 
 PrintPayload = Callable[
@@ -362,6 +367,7 @@ def register_project_lifecycle_commands(
             "sink writes for this refresh. Pending sink digests remain retryable."
         ),
     )
+    add_turn_effect_fence_arguments(refresh_state_parser)
 
     read_only_map_parser = subparsers.add_parser(
         "read-only-map",
@@ -540,35 +546,46 @@ def handle_project_lifecycle_command(
             print_payload(payload, fmt, render_state_refresh_markdown)
             return 1
         try:
-            payload = refresh_state_run(
-                registry_path=registry_path,
-                runtime_root_override=args.runtime_root,
-                goal_id=args.goal_id,
-                project=Path(args.project).expanduser() if args.project else None,
-                state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                classification=args.classification,
-                recommended_action=args.recommended_action,
-                next_action=args.next_action,
-                delivery_batch_scale=args.delivery_batch_scale,
-                delivery_outcome=args.delivery_outcome,
-                delivery_workspace_path=(
-                    Path(args.delivery_workspace_path).expanduser()
-                    if args.delivery_workspace_path
-                    else None
-                ),
-                todo_id=getattr(args, "todo_id", None),
-                turn_instance_id=getattr(args, "turn_instance_id", None),
-                agent_id=args.agent_id,
-                agent_lane=args.agent_lane,
-                progress_scope=args.progress_scope,
-                autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
-                repair_delta_kinds=args.repair_delta_kinds,
-                agent_vision_packet=agent_vision_packet,
-                merge_agent_vision_patch=merge_agent_vision_patch,
-                vision_unchanged_reason=args.vision_unchanged_reason,
-                dry_run=bool(args.dry_run),
-                sync_global=not bool(args.no_global_sync),
+            effect_runtime_root = resolve_runtime_root(
+                load_registry(registry_path),
+                args.runtime_root,
             )
+            with hold_cli_turn_effect_fence(
+                args,
+                runtime_root=effect_runtime_root,
+                goal_id=args.goal_id,
+                owner=args.agent_id,
+            ):
+                payload = refresh_state_run(
+                    registry_path=registry_path,
+                    runtime_root_override=args.runtime_root,
+                    goal_id=args.goal_id,
+                    project=Path(args.project).expanduser() if args.project else None,
+                    state_file=Path(args.state_file).expanduser() if args.state_file else None,
+                    classification=args.classification,
+                    recommended_action=args.recommended_action,
+                    next_action=args.next_action,
+                    delivery_batch_scale=args.delivery_batch_scale,
+                    delivery_outcome=args.delivery_outcome,
+                    delivery_workspace_path=(
+                        Path(args.delivery_workspace_path).expanduser()
+                        if args.delivery_workspace_path
+                        else None
+                    ),
+                    todo_id=getattr(args, "todo_id", None),
+                    turn_instance_id=getattr(args, "turn_instance_id", None),
+                    agent_id=args.agent_id,
+                    agent_lane=args.agent_lane,
+                    progress_scope=args.progress_scope,
+                    autonomous_replan_recorded=bool(args.autonomous_replan_recorded),
+                    repair_delta_kinds=args.repair_delta_kinds,
+                    agent_vision_packet=agent_vision_packet,
+                    merge_agent_vision_patch=merge_agent_vision_patch,
+                    vision_unchanged_reason=args.vision_unchanged_reason,
+                    dry_run=bool(args.dry_run),
+                    sync_global=not bool(args.no_global_sync),
+                    turn_effect_key=turn_effect_key_from_args(args),
+                )
         except Exception as exc:
             payload = {
                 "ok": False,

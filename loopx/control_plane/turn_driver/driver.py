@@ -99,6 +99,8 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
 def selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve the todo that owns one Turn across adaptive bundle execution."""
 
+    action = _mapping(envelope.get("action"))
+    action_selected_todo = _mapping(action.get("selected_todo"))
     orchestration = _mapping(envelope.get("task_orchestration_contract"))
     primary_todo_id = str(orchestration.get("primary_todo_id") or "").strip()
     if (
@@ -106,12 +108,41 @@ def selected_turn_todo(envelope: Mapping[str, Any]) -> dict[str, Any]:
         and orchestration.get("mode") == "adaptive"
         and primary_todo_id
     ):
+        primary_todo = _mapping(orchestration.get("primary_todo"))
+        if str(primary_todo.get("todo_id") or "") == primary_todo_id:
+            return {
+                **primary_todo,
+                "source": "task_orchestration_contract.primary_todo",
+            }
+        if str(action_selected_todo.get("todo_id") or "") == primary_todo_id:
+            return action_selected_todo
         return {
             "todo_id": primary_todo_id,
             "source": "task_orchestration_contract.primary_todo_id",
         }
-    action = _mapping(envelope.get("action"))
-    return _mapping(action.get("selected_todo"))
+    return action_selected_todo
+
+
+def selected_turn_todo_write_scopes(
+    selected_todo: Mapping[str, Any],
+) -> list[str]:
+    """Return the selected Todo's normalized lease scope projection."""
+
+    raw_write_scopes = selected_todo.get("required_write_scopes")
+    if raw_write_scopes is None:
+        if (
+            selected_todo.get("source")
+            == "task_orchestration_contract.primary_todo_id"
+        ):
+            raise ValueError(
+                "adaptive primary todo must project required_write_scopes"
+            )
+        return []
+    if not isinstance(raw_write_scopes, list) or not all(
+        isinstance(scope, str) for scope in raw_write_scopes
+    ):
+        raise ValueError("selected todo required_write_scopes must be a string array")
+    return list(raw_write_scopes)
 
 
 def _turn_lineage(

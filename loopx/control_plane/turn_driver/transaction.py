@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import Enum
 from hashlib import sha256
 from typing import Any
@@ -30,6 +32,27 @@ TRANSACTION_PHASES = (
     "scheduler_apply",
     "scheduler_ack",
 )
+TURN_EFFECT_PHASES = {"durable_writeback", "quota_spend", "scheduler_apply"}
+TURN_KEY_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+FENCING_TOKEN_PATTERN = re.compile(r"^fence:[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True, slots=True)
+class TurnEffectEnvelope:
+    turn_key: str
+    phase: str
+    phase_key: str
+    fencing_token: str
+
+    def __post_init__(self) -> None:
+        if not TURN_KEY_PATTERN.fullmatch(self.turn_key):
+            raise ValueError("Turn effect turn_key must be a sha256 digest")
+        if self.phase not in TURN_EFFECT_PHASES:
+            raise ValueError("Turn effect phase is not irreversible")
+        if self.phase_key != f"{self.turn_key}:{self.phase}":
+            raise ValueError("Turn effect phase_key is not canonical")
+        if not FENCING_TOKEN_PATTERN.fullmatch(self.fencing_token):
+            raise ValueError("Turn effect fencing_token is invalid")
 
 
 class LoopXTurnResultKind(str, Enum):
@@ -43,6 +66,7 @@ class LoopXTurnResultKind(str, Enum):
     VALIDATION_FAILED = "validation_failed"
     WRITEBACK_FAILED = "writeback_failed"
     QUOTA_SPEND_FAILED = "quota_spend_failed"
+    FAILED_CLOSED = "failed_closed"
 
 
 MATERIAL_RESULT_KINDS = {
@@ -58,6 +82,7 @@ NO_SPEND_RESULT_KINDS = {
     LoopXTurnResultKind.VALIDATION_FAILED,
     LoopXTurnResultKind.WRITEBACK_FAILED,
     LoopXTurnResultKind.QUOTA_SPEND_FAILED,
+    LoopXTurnResultKind.FAILED_CLOSED,
 }
 STOP_RESULT_KINDS = {
     LoopXTurnResultKind.USER_ACTION_REQUIRED,
@@ -304,8 +329,14 @@ def validate_loopx_turn_receipt(
 
     if failed_phase and failed_phase != expected_next:
         errors.append("failed_phase must be the next uncompleted transaction phase")
-    if failed_phase and kind not in FAILURE_PHASES:
+    if (
+        failed_phase
+        and kind not in FAILURE_PHASES
+        and kind is not LoopXTurnResultKind.FAILED_CLOSED
+    ):
         errors.append("failed_phase is only valid for a typed failure result")
+    if kind is LoopXTurnResultKind.FAILED_CLOSED and failed_phase is None:
+        errors.append("failed_closed must declare the next uncompleted phase")
     if kind in FAILURE_PHASES and failed_phase != FAILURE_PHASES[kind]:
         errors.append(f"{kind.value} must declare failed_phase={FAILURE_PHASES[kind]}")
     if kind in MATERIAL_RESULT_KINDS and "validation" not in completed:
@@ -315,7 +346,13 @@ def validate_loopx_turn_receipt(
 
     ok = not errors
     fully_committed = completed == list(TRANSACTION_PHASES)
-    failed = kind in FAILURE_PHASES if kind is not None else False
+    failed = bool(
+        kind is not None
+        and (
+            kind in FAILURE_PHASES
+            or kind is LoopXTurnResultKind.FAILED_CLOSED
+        )
+    )
     stopped = kind in STOP_RESULT_KINDS if kind is not None else False
     status = (
         "invalid"

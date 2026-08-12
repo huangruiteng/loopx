@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
+    TurnEffectEnvelope,
+    TurnLeaseController,
     build_loopx_turn_plan,
+    load_turn_events,
     load_loopx_turn_plan_from_journal,
-    run_loopx_turn_once,
+    rebuild_turn_projection,
+    run_loopx_turn_once as _run_loopx_turn_once,
     validate_loopx_turn_host_result,
 )
-from loopx.control_plane.turn_driver.executor import (
-    BuiltInHostError,
-    _task_validation_stage,
-)
+from loopx.control_plane.work_items.task_lease import inspect_task_lease
+from loopx.control_plane.work_items.task_lease import transfer_task_lease
+from loopx.control_plane.turn_driver.executor import BuiltInHostError
 from loopx.control_plane.turn_driver.settlement import execute_turn_driver_settlement
 from loopx.control_plane.turn_driver.transaction import TRANSACTION_PHASES
 
@@ -107,32 +112,6 @@ def _host_result(plan: dict[str, object], *, kind: str = "validated_progress") -
             ),
         )
     return result
-
-
-def test_task_validation_stage_reads_result_kind_through_effect_turn(
-    tmp_path: Path,
-) -> None:
-    plan = _plan()
-    result = _host_result(plan, kind="wait")
-    journal = {
-        "status": "in_progress",
-        "completed_phases": list(TRANSACTION_PHASES[:2]),
-    }
-
-    completed, payload = _task_validation_stage(
-        plan,
-        result,
-        task_validator=None,
-        completed_phases=list(TRANSACTION_PHASES[:2]),
-        journal=journal,
-        journal_path=tmp_path / "journal.json",
-        effects={},
-    )
-
-    assert completed == list(TRANSACTION_PHASES[:3])
-    assert journal["status"] == "stopped"
-    assert payload is not None
-    assert payload["status"] == "stopped"
 
 
 def test_typed_settlement_fails_closed_when_journal_receipt_payload_is_missing() -> None:
@@ -228,10 +207,19 @@ def _callbacks(calls: dict[str, int]):
 
 def _journal(runtime_root: Path) -> dict[str, object]:
     journal_paths = list(
-        (runtime_root / "goals" / "fixture-goal" / "turns").glob("*.json")
+        (runtime_root / "goals" / "fixture-goal" / "turn-journals").glob("*.jsonl")
     )
     assert len(journal_paths) == 1
-    return json.loads(journal_paths[0].read_text(encoding="utf-8"))
+    turn_key = f"sha256:{journal_paths[0].stem}"
+    events = load_turn_events(runtime_root, "fixture-goal", turn_key)
+    states = [
+        event["payload"]["state"]
+        for event in events
+        if isinstance(event.get("payload"), dict)
+        and isinstance(event["payload"].get("state"), dict)
+    ]
+    assert states
+    return states[-1]
 
 
 def _passing_validator(
@@ -243,6 +231,424 @@ def _passing_validator(
         "validator_kind": "fixture",
         "summary": "independent fixture postconditions passed",
     }
+
+
+def _write_lease_registry(tmp_path: Path) -> Path:
+    state = tmp_path / "ACTIVE_GOAL_STATE.md"
+    state.write_text(
+        "\n".join(
+            [
+                "---",
+                "status: active",
+                "updated_at: 2026-01-01T00:00:00+00:00",
+                "---",
+                "",
+                "# Fixture Goal",
+                "",
+                "## Agent Todo",
+                "",
+                "- [ ] [P0] Advance one public fixture.",
+                "  <!-- loopx:todo todo_id=todo_fixture0001 status=open "
+                "claimed_by=codex-fixture priority=P0 -->",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "common_runtime_root": str(tmp_path / "runtime"),
+                "goals": [
+                    {
+                        "id": "fixture-goal",
+                        "status": "active",
+                        "repo": str(tmp_path),
+                        "state_file": state.name,
+                        "coordination": {
+                            "registered_agents": ["codex-fixture"],
+                        },
+                    }
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return registry
+
+
+_TURN_CONTROLLERS: dict[tuple[str, str], TurnLeaseController] = {}
+
+
+def run_loopx_turn_once(
+    plan: dict[str, object],
+    **kwargs: object,
+) -> dict[str, object]:
+    if kwargs.get("execute") is True and "lease_controller" not in kwargs:
+        runtime_root = kwargs.get("runtime_root")
+        assert isinstance(runtime_root, Path)
+        transaction = plan.get("transaction")
+        assert isinstance(transaction, dict)
+        turn_key = str(transaction["turn_key"])
+        key = (str(runtime_root), turn_key)
+        controller = _TURN_CONTROLLERS.get(key)
+        if controller is None:
+            registry = _write_lease_registry(runtime_root.parent)
+            controller = TurnLeaseController(
+                registry_path=registry,
+                runtime_root=runtime_root,
+                goal_id="fixture-goal",
+                todo_id="todo_fixture0001",
+                owner="codex-fixture",
+                idempotency_key=f"turn:{turn_key}",
+                write_scopes=["docs/**"],
+                ttl_seconds=120,
+            )
+            _TURN_CONTROLLERS[key] = controller
+        kwargs["lease_controller"] = controller
+    return _run_loopx_turn_once(plan, **kwargs)
+
+
+def test_turn_lease_controller_preserves_fence_across_renew_and_release(
+    tmp_path: Path,
+) -> None:
+    registry = _write_lease_registry(tmp_path)
+    controller = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key="turn:fixture",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+    )
+
+    acquired = controller.acquire()
+    renewed = controller.renew(acquired)
+    controller.require_current(renewed)
+    controller.release(renewed)
+
+    assert renewed.token == acquired.token
+    assert renewed.generation == acquired.generation
+    assert renewed.version > acquired.version
+    inspected = inspect_task_lease(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+    )
+    assert inspected["active"] is False
+    assert inspected["lease"]["status"] == "released"
+
+
+def test_turn_lease_heartbeat_renews_without_changing_fencing_token(
+    tmp_path: Path,
+) -> None:
+    registry = _write_lease_registry(tmp_path)
+    controller = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key="turn:fixture",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+        heartbeat_interval_seconds=0.01,
+    )
+    acquired = controller.acquire()
+
+    with controller.heartbeat(acquired) as current:
+        deadline = time.monotonic() + 1
+        while current().version == acquired.version and time.monotonic() < deadline:
+            time.sleep(0.005)
+    renewed = current()
+
+    assert renewed.version > acquired.version
+    assert renewed.token == acquired.token
+    assert renewed.generation == acquired.generation
+    controller.release(renewed)
+
+
+def test_turn_effect_guard_serializes_lease_transfer_with_effect_commit(
+    tmp_path: Path,
+) -> None:
+    registry = _write_lease_registry(tmp_path)
+    controller = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key="turn:fixture:a",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+    )
+    acquired = controller.acquire()
+    effect_entered = threading.Event()
+    allow_effect_exit = threading.Event()
+    transfer_finished = threading.Event()
+
+    def hold_effect() -> None:
+        with controller.effect_guard(acquired):
+            effect_entered.set()
+            assert allow_effect_exit.wait(timeout=2)
+
+    def transfer() -> None:
+        transfer_task_lease(
+            registry_path=registry,
+            runtime_root=tmp_path / "runtime",
+            goal_id="fixture-goal",
+            todo_id="todo_fixture0001",
+            owner="codex-fixture",
+            idempotency_key="turn:fixture:a",
+            new_owner="codex-fixture",
+            new_idempotency_key="turn:fixture:b",
+            expected_version=acquired.version,
+        )
+        transfer_finished.set()
+
+    effect_thread = threading.Thread(target=hold_effect)
+    effect_thread.start()
+    assert effect_entered.wait(timeout=1)
+    transfer_thread = threading.Thread(target=transfer)
+    transfer_thread.start()
+    time.sleep(0.05)
+
+    assert transfer_finished.is_set() is False
+    allow_effect_exit.set()
+    effect_thread.join(timeout=2)
+    transfer_thread.join(timeout=2)
+    assert transfer_finished.is_set() is True
+
+
+def test_run_once_rejects_stale_worker_after_lease_transfer(
+    tmp_path: Path,
+) -> None:
+    plan = _plan()
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    registry = _write_lease_registry(tmp_path)
+    runtime_root = tmp_path / "runtime"
+    controller_a = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=runtime_root,
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=f"turn:{turn_key}:a",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+    )
+    controller_b = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=runtime_root,
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=f"turn:{turn_key}:b",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+    )
+    host_a_entered = threading.Event()
+    release_host_a = threading.Event()
+    b_after_scheduler_apply = threading.Event()
+    release_worker_b = threading.Event()
+    calls = {"writeback": 0, "spend": 0, "scheduler": 0}
+    results: dict[str, dict[str, object]] = {}
+
+    def host_a(_request: dict[str, object]) -> dict[str, object]:
+        host_a_entered.set()
+        assert release_host_a.wait(timeout=3)
+        result = _host_result(plan)
+        result["summary"] = "Worker A stale result must never be journaled."
+        return result
+
+    def host_b(_request: dict[str, object]) -> dict[str, object]:
+        result = _host_result(plan)
+        result["summary"] = "Worker B owns the durable result."
+        return result
+
+    def writeback(
+        envelope: TurnEffectEnvelope,
+        _result: dict[str, object],
+    ) -> dict[str, object]:
+        assert envelope.phase_key == f"{turn_key}:durable_writeback"
+        calls["writeback"] += 1
+        return {"ok": True, "appended": True}
+
+    def spend(envelope: TurnEffectEnvelope) -> dict[str, object]:
+        assert envelope.phase_key == f"{turn_key}:quota_spend"
+        calls["spend"] += 1
+        return {"ok": True, "appended": True}
+
+    def scheduler(
+        envelope: TurnEffectEnvelope,
+        _spend: dict[str, object],
+    ) -> dict[str, object]:
+        assert envelope.phase_key == f"{turn_key}:scheduler_apply"
+        calls["scheduler"] += 1
+        return {"completed": True, "acknowledged": True}
+
+    common = {
+        "project": tmp_path,
+        "runtime_root": runtime_root,
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": writeback,
+        "spend": spend,
+        "scheduler": scheduler,
+    }
+
+    def run_a() -> None:
+        results["a"] = run_loopx_turn_once(
+            plan,
+            host_runner=host_a,
+            lease_controller=controller_a,
+            **common,
+        )
+
+    def pause_b(phase: str) -> None:
+        if phase == "after_scheduler_apply":
+            b_after_scheduler_apply.set()
+            assert release_worker_b.wait(timeout=3)
+
+    def run_b() -> None:
+        results["b"] = run_loopx_turn_once(
+            plan,
+            host_runner=host_b,
+            lease_controller=controller_b,
+            fault_injector=pause_b,
+            **common,
+        )
+
+    worker_a = threading.Thread(target=run_a)
+    worker_a.start()
+    assert host_a_entered.wait(timeout=2)
+    active = inspect_task_lease(
+        registry_path=registry,
+        runtime_root=runtime_root,
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+    )["lease"]
+    assert isinstance(active, dict)
+    transfer_task_lease(
+        registry_path=registry,
+        runtime_root=runtime_root,
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=f"turn:{turn_key}:a",
+        new_owner="codex-fixture",
+        new_idempotency_key=f"turn:{turn_key}:b",
+        expected_version=int(active["version"]),
+    )
+    worker_b = threading.Thread(target=run_b)
+    worker_b.start()
+    assert b_after_scheduler_apply.wait(timeout=2)
+    release_host_a.set()
+    worker_a.join(timeout=2)
+
+    assert results["a"]["status"] == "failed_closed"
+    assert results["a"]["reason_code"] == "stale_fencing_token"
+    release_worker_b.set()
+    worker_b.join(timeout=2)
+    assert results["b"]["status"] == "committed"
+    assert calls == {"writeback": 1, "spend": 1, "scheduler": 1}
+    events = load_turn_events(runtime_root, "fixture-goal", turn_key)
+    assert "Worker A stale result" not in json.dumps(events)
+    projection = rebuild_turn_projection(runtime_root, "fixture-goal", turn_key)
+    assert projection["fencing_token"] == results["b"]["fencing_token"]
+
+
+@pytest.mark.parametrize(
+    "crash_phase",
+    [
+        "after_host",
+        "after_validation",
+        "after_writeback",
+        "after_spend",
+        "after_scheduler_apply",
+    ],
+)
+def test_run_once_resumes_after_each_durable_phase_without_duplicate_effects(
+    tmp_path: Path,
+    crash_phase: str,
+) -> None:
+    plan = _plan()
+    transaction = plan["transaction"]
+    assert isinstance(transaction, dict)
+    turn_key = str(transaction["turn_key"])
+    registry = _write_lease_registry(tmp_path)
+    controller = TurnLeaseController(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+        owner="codex-fixture",
+        idempotency_key=f"turn:{turn_key}",
+        write_scopes=["docs/**"],
+        ttl_seconds=120,
+    )
+    calls = {"host": 0, "writeback": 0, "spend": 0, "scheduler": 0}
+
+    def host(_request: dict[str, object]) -> dict[str, object]:
+        calls["host"] += 1
+        return _host_result(plan)
+
+    def writeback(
+        _envelope: TurnEffectEnvelope,
+        _result: dict[str, object],
+    ) -> dict[str, object]:
+        calls["writeback"] += 1
+        return {"ok": True, "appended": True}
+
+    def spend(_envelope: TurnEffectEnvelope) -> dict[str, object]:
+        calls["spend"] += 1
+        return {"ok": True, "appended": True}
+
+    def scheduler(
+        _envelope: TurnEffectEnvelope,
+        _spend: dict[str, object],
+    ) -> dict[str, object]:
+        calls["scheduler"] += 1
+        return {"completed": True, "acknowledged": True}
+
+    def crash_after_persisted_phase(phase: str) -> None:
+        if phase == crash_phase:
+            raise SystemExit(91)
+
+    common = {
+        "host_runner": host,
+        "project": tmp_path,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": "fixture-goal",
+        "timeout_seconds": 5,
+        "execute": True,
+        "task_validator": _passing_validator,
+        "writeback": writeback,
+        "spend": spend,
+        "scheduler": scheduler,
+        "lease_controller": controller,
+    }
+    with pytest.raises(SystemExit, match="91"):
+        run_loopx_turn_once(
+            plan,
+            fault_injector=crash_after_persisted_phase,
+            **common,
+        )
+
+    recovered = run_loopx_turn_once(plan, **common)
+
+    assert recovered["status"] == "committed"
+    assert calls == {"host": 1, "writeback": 1, "spend": 1, "scheduler": 1}
 
 
 def test_host_result_requires_bounded_public_material_fields() -> None:
@@ -1134,6 +1540,15 @@ def test_run_once_stops_without_writeback_or_spend(tmp_path: Path) -> None:
     assert payload["ok"] is True
     assert payload["status"] == "stopped"
     assert payload["receipt"]["status"] == "stopped"
+    assert payload["lease_release"] == {"released": True}
+    inspected = inspect_task_lease(
+        registry_path=tmp_path / "registry.json",
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        todo_id="todo_fixture0001",
+    )
+    assert inspected["active"] is False
+    assert inspected["lease"]["status"] == "released"
     assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
 
 

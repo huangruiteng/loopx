@@ -5,6 +5,7 @@ import pytest
 from loopx.control_plane.turn_driver import (
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
     LoopXTurnResultKind,
+    TurnEffectEnvelope,
     build_loopx_turn_transaction_plan,
     loopx_turn_execution_committed,
     loopx_turn_execution_has_durable_effects,
@@ -275,3 +276,34 @@ def test_public_execution_outcome_predicates_share_transaction_semantics() -> No
 
     repair["effects"] = {"state_written": True, "quota_spent": False}
     assert loopx_turn_execution_has_durable_effects(repair) is True
+
+
+def test_failed_closed_receipt_stops_at_next_uncompleted_phase() -> None:
+    plan = _plan()
+
+    receipt = validate_loopx_turn_receipt(
+        plan,
+        _result(
+            plan,
+            result_kind=LoopXTurnResultKind.FAILED_CLOSED,
+            completed_phases=["host_execute", "typed_result"],
+            failed_phase="validation",
+        ),
+    )
+
+    assert receipt["ok"] is True
+    assert receipt["status"] == "failed"
+    assert receipt["next_phase"] == "validation"
+    assert receipt["commit_eligibility"]["quota_spend"] is False
+
+
+def test_turn_effect_envelope_rejects_noncanonical_phase_key() -> None:
+    plan = _plan()
+
+    with pytest.raises(ValueError, match="phase_key"):
+        TurnEffectEnvelope(
+            turn_key=str(plan["turn_key"]),
+            phase="durable_writeback",
+            phase_key="sha256:wrong:durable_writeback",
+            fencing_token="fence:" + "a" * 64,
+        )

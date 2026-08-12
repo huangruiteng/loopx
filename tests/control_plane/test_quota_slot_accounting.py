@@ -9,6 +9,7 @@ import pytest
 from loopx.control_plane.quota.slot_accounting import (
     build_quota_slot_preview_for_decision,
     build_quota_slot_spend_event,
+    record_quota_slot_spend_from_preview,
 )
 from loopx.quota import spend_quota_slot
 from loopx.rollout_event_log import rollout_event_log_path
@@ -149,6 +150,185 @@ def test_unchanged_monitor_poll_is_not_accountable_delivery(tmp_path: Path) -> N
     _write_run_index(runtime, [_poll("2026-01-01T00:00:00+00:00", material=False)])
 
     assert _preview(runtime)["ok"] is False
+
+
+def test_quota_spend_deduplicates_same_turn_effect_key(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    preview = _preview(
+        runtime,
+        before_overrides={
+            "should_run": True,
+            "effective_action": "normal_run",
+        },
+    )
+    effect_key = "sha256:" + "b" * 64 + ":quota_spend"
+    kwargs = {
+        "goal_id": GOAL_ID,
+        "self_repair_spend_actions": frozenset(),
+        "render_markdown": lambda _payload: "quota fixture",
+        "execute": True,
+        "source": "adapter",
+        "turn_effect_key": effect_key,
+    }
+
+    first = record_quota_slot_spend_from_preview(
+        preview,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+    replay = record_quota_slot_spend_from_preview(
+        preview,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+    index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    index_record = json.loads(index_path.read_text(encoding="utf-8"))
+    run_record = json.loads(
+        Path(str(first["json_path"])).read_text(encoding="utf-8")
+    )
+
+    assert first["appended"] is True
+    assert replay["appended"] is False
+    assert replay["idempotent"] is True
+    assert replay["json_path"] == first["json_path"]
+    assert replay["markdown_path"] == first["markdown_path"]
+    assert run_record["turn_effect_key"] == effect_key
+    assert index_record["turn_effect_key"] == effect_key
+    assert run_record["effect_input_hash"] == first["effect_input_hash"]
+    assert index_record["effect_input_hash"] == first["effect_input_hash"]
+    assert first["before"]["spent_slots"] == 0
+    assert first["after"]["spent_slots"] == 1
+    assert replay["before"]["spent_slots"] == 0
+    assert replay["after"]["spent_slots"] == 1
+    assert replay["quota_event"] == first["quota_event"]
+    assert len(index_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_quota_spend_replays_after_accounting_projection_advances(
+    tmp_path: Path,
+) -> None:
+    runtime = tmp_path / "runtime"
+    preview = _preview(
+        runtime,
+        before_overrides={
+            "should_run": True,
+            "effective_action": "normal_run",
+        },
+    )
+    preview.update(
+        {
+            "delivery_run_generated_at": "2026-08-11T00:00:00+00:00",
+            "delivery_run_classification": "fixture_delivery",
+            "delivery_run_agent_id": AGENT_A,
+        }
+    )
+    reprojected = json.loads(json.dumps(preview))
+    reprojected["before"]["quota"]["spent_slots"] = 1
+    reprojected["after"]["quota"]["spent_slots"] = 2
+    reprojected["delivery_run_generated_at"] = None
+    reprojected["delivery_run_classification"] = None
+    reprojected["delivery_run_agent_id"] = None
+    effect_key = "sha256:" + "e" * 64 + ":quota_spend"
+    kwargs = {
+        "goal_id": GOAL_ID,
+        "self_repair_spend_actions": frozenset(),
+        "render_markdown": lambda _payload: "quota fixture",
+        "execute": True,
+        "source": "adapter",
+        "turn_effect_key": effect_key,
+    }
+
+    first = record_quota_slot_spend_from_preview(
+        preview,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+    replay = record_quota_slot_spend_from_preview(
+        reprojected,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+
+    assert replay["appended"] is False
+    assert replay["idempotent_replay"] is True
+    assert replay["effect_input_hash"] == first["effect_input_hash"]
+    assert replay["before"]["spent_slots"] == 0
+    assert replay["after"]["spent_slots"] == 1
+
+
+def test_quota_spend_rejects_turn_effect_key_content_drift(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    preview = _preview(
+        runtime,
+        before_overrides={
+            "should_run": True,
+            "effective_action": "normal_run",
+        },
+    )
+    effect_key = "sha256:" + "c" * 64 + ":quota_spend"
+    kwargs = {
+        "goal_id": GOAL_ID,
+        "self_repair_spend_actions": frozenset(),
+        "render_markdown": lambda _payload: "quota fixture",
+        "execute": True,
+        "source": "adapter",
+        "turn_effect_key": effect_key,
+    }
+    record_quota_slot_spend_from_preview(
+        preview,
+        {"runtime_root": str(runtime)},
+        **kwargs,
+    )
+    changed = json.loads(json.dumps(preview))
+    changed["slots"] = 2
+    changed["after"]["quota"]["spent_slots"] = 2
+
+    with pytest.raises(ValueError, match="turn effect key conflict"):
+        record_quota_slot_spend_from_preview(
+            changed,
+            {"runtime_root": str(runtime)},
+            **kwargs,
+        )
+
+
+def test_spend_quota_slot_propagates_turn_effect_key_to_durable_writer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = tmp_path / "runtime"
+    preview = _preview(
+        runtime,
+        before_overrides={
+            "should_run": True,
+            "effective_action": "normal_run",
+        },
+    )
+    monkeypatch.setattr(
+        "loopx.quota.build_quota_slot_preview",
+        lambda *_args, **_kwargs: preview,
+    )
+    effect_key = "sha256:" + "d" * 64 + ":quota_spend"
+
+    first = spend_quota_slot(
+        {"runtime_root": str(runtime)},
+        goal_id=GOAL_ID,
+        execute=True,
+        source="adapter",
+        turn_effect_key=effect_key,
+    )
+    replay = spend_quota_slot(
+        {"runtime_root": str(runtime)},
+        goal_id=GOAL_ID,
+        execute=True,
+        source="adapter",
+        turn_effect_key=effect_key,
+    )
+    index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+
+    assert first["appended"] is True
+    assert replay["appended"] is False
+    assert replay["idempotent"] is True
+    assert len(index_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 @pytest.mark.parametrize("before_overrides", SAFE_BYPASS_CASES)

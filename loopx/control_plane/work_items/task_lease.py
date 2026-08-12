@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import json
+import os
 import re
+import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -30,6 +33,7 @@ TASK_LEASE_SCHEMA_VERSION = "task_lease_v0"
 DEFAULT_TASK_LEASE_TTL_SECONDS = 45 * 60
 MAX_TASK_LEASE_TTL_SECONDS = 24 * 60 * 60
 IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_.:@/-]{1,160}$")
+_TASK_LEASE_LOCK_STATE = threading.local()
 
 
 class TaskLeaseError(ValueError):
@@ -109,7 +113,64 @@ class _VerifiedTaskLeaseFence(dict):
     the payload stays JSON-serializable for every consumer at all times.
     """
 
-    release_hook: Callable[[], None] | None = None
+    release_hook: Callable[[], dict[str, Any]] | None = None
+
+
+@contextmanager
+def hold_task_lease_lock(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    agent_id: str | None,
+    operation: str,
+) -> Iterator[Path]:
+    """Hold the canonical per-goal lease lock, reusing it on this thread."""
+
+    lock_target = task_lease_lock_path(runtime_root=runtime_root, goal_id=goal_id)
+    lock_key = str(lock_target.expanduser().resolve(strict=False))
+    held = getattr(_TASK_LEASE_LOCK_STATE, "paths", None)
+    if held is None:
+        held = set()
+        _TASK_LEASE_LOCK_STATE.paths = held
+    if lock_key in held:
+        yield lock_target
+        return
+    with exclusive_file_lock(
+        lock_target,
+        agent_id=agent_id,
+        operation=operation,
+    ):
+        held.add(lock_key)
+        try:
+            yield lock_target
+        finally:
+            held.remove(lock_key)
+
+
+@contextmanager
+def hold_task_lease_mutation_locks(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    state_file: Path,
+    agent_id: str | None,
+    operation: str,
+    lease_runtime_root: Path | None = None,
+) -> Iterator[Path]:
+    """Hold lease then state-file locks for one todo lifecycle mutation."""
+
+    runtime_root = lease_runtime_root or runtime_root_from_registry(registry_path, None)
+    with hold_task_lease_lock(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        operation=f"{operation}_lease_fence",
+    ), exclusive_file_lock(
+        state_file,
+        agent_id=agent_id,
+        operation=operation,
+    ):
+        yield runtime_root
 
 
 @contextmanager
@@ -123,6 +184,7 @@ def hold_task_lease_mutation_fence(
     idempotency_key: str | None,
     expected_version: int | None = None,
     require_active_when_key_supplied: bool = True,
+    lease_runtime_root: Path | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Hold the per-goal lease lock while one todo lifecycle write commits.
 
@@ -140,18 +202,15 @@ def hold_task_lease_mutation_fence(
         if idempotency_key is not None
         else None
     )
-    runtime_root = runtime_root_from_registry(registry_path, None)
+    runtime_root = lease_runtime_root or runtime_root_from_registry(registry_path, None)
     lease_path = task_lease_path(
         runtime_root=runtime_root,
         goal_id=normalized_goal_id,
         todo_id=normalized_todo_id,
     )
-    lock_target = task_lease_lock_path(
+    with hold_task_lease_lock(
         runtime_root=runtime_root,
         goal_id=normalized_goal_id,
-    )
-    with exclusive_file_lock(
-        lock_target,
         agent_id=actor_agent_id,
         operation="task_lease_mutation_fence",
     ):
@@ -230,7 +289,11 @@ def hold_task_lease_mutation_fence(
                 "execution_instance_verified": True,
             }
         )
-        fence.release_hook = lambda: remove_lease(lease_path)
+        fence.release_hook = lambda: _write_released_lease(
+            lease_path,
+            lease,
+            released_at=now_utc(),
+        )
         yield fence
 
 
@@ -245,14 +308,15 @@ def release_verified_task_lease_fence(
     the per-goal lease lock it acquired is still held; the lease therefore
     cannot have been renewed, transferred, or re-acquired since the fence
     verified the owner and idempotency key. The release reuses the CLI release
-    semantics (the lease file is removed; no new lifecycle state).
+    semantics and atomically writes a released tombstone so future acquisitions
+    retain a monotonic fencing generation.
 
     The private release hook rides on the fence object's attribute, not inside
     the payload mapping, and is disarmed here on every call. Only a committed,
     key-verified fence releases the lease; non-verified fences carry no hook
     and are never touched. A release failure never unwinds the committed
     lifecycle write: it is surfaced additively as fence["released"] = False
-    and the lease file is left for an explicit `loopx task-lease release` or
+    and the active lease is left for an explicit `loopx task-lease release` or
     TTL expiry.
     """
 
@@ -370,6 +434,7 @@ def require_task_lease_owner_allowed(
     goal_id: str,
     todo_id: str,
     owner: str,
+    terminal_replay_key: str | None = None,
 ) -> dict[str, Any]:
     owner = require_registered_task_lease_owner(
         registry_path=registry_path,
@@ -387,6 +452,26 @@ def require_task_lease_owner_allowed(
         owner=owner,
         registered_agents=registered_agent_ids_from_registry(registry_path, goal_id),
     )
+    normalized_replay_key = str(terminal_replay_key or "").strip()
+    if (
+        constraint.get("reason") == "todo_not_open"
+        and isinstance(todo, dict)
+        and str(todo.get("status") or "").strip().lower() == "done"
+        and normalized_replay_key
+        and str(todo.get("completion_turn_key") or "").strip()
+        == normalized_replay_key
+    ):
+        replay_todo = {**todo, "status": "open"}
+        replay_constraint = task_lease_owner_constraint(
+            replay_todo,
+            owner=owner,
+            registered_agents=registered_agent_ids_from_registry(
+                registry_path,
+                goal_id,
+            ),
+        )
+        if replay_constraint.get("effective") is True:
+            constraint = {"effective": True, "terminal_replay": True}
     if constraint.get("effective") is not True:
         reason = str(constraint.get("reason") or "owner_not_allowed")
         if reason == "todo_not_found":
@@ -440,18 +525,197 @@ def read_lease(path: Path) -> dict[str, Any] | None:
     return payload
 
 
+def _fsync_parent_directory(path: Path) -> None:
+    if os.name == "nt":  # Windows does not expose a portable directory fsync.
+        return
+    directory = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def write_lease(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f".{path.name}.{id(payload)}.tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temp_path.replace(path)
-
-
-def remove_lease(path: Path) -> None:
+    encoded = (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode(
+        "utf-8"
+    )
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.{id(payload)}.tmp")
     try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+        descriptor = os.open(
+            temp_path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+        _fsync_parent_directory(path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _write_released_lease(
+    path: Path,
+    lease: dict[str, Any],
+    *,
+    released_at: datetime,
+) -> dict[str, Any]:
+    released_lease = dict(lease)
+    released_lease["status"] = "released"
+    released_lease["version"] = int(lease.get("version") or 0) + 1
+    released_lease["fencing_generation"] = task_lease_fencing_generation(lease)
+    released_lease["released_at"] = isoformat(released_at)
+    released_lease["updated_at"] = isoformat(released_at)
+    write_lease(path, released_lease)
+    return released_lease
+
+
+def task_lease_fencing_generation(lease: dict[str, Any]) -> int:
+    if lease.get("schema_version") != TASK_LEASE_SCHEMA_VERSION:
+        raise TaskLeaseError("lease schema is unsupported", code="corrupt_lease")
+    try:
+        generation = int(lease.get("fencing_generation") or lease.get("version") or 0)
+    except (TypeError, ValueError) as exc:
+        raise TaskLeaseError(
+            "lease fencing generation is invalid",
+            code="corrupt_lease",
+        ) from exc
+    if generation <= 0:
+        raise TaskLeaseError(
+            "lease fencing generation is invalid",
+            code="corrupt_lease",
+        )
+    return generation
+
+
+def task_lease_fencing_token(lease: dict[str, Any]) -> str:
+    generation = task_lease_fencing_generation(lease)
+    material = "\0".join(
+        [
+            str(lease.get("goal_id") or ""),
+            str(lease.get("todo_id") or ""),
+            str(lease.get("owner") or ""),
+            str(lease.get("idempotency_key") or ""),
+            str(lease.get("acquired_at") or ""),
+            str(generation),
+        ]
+    )
+    return "fence:" + hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _require_task_lease_fence_unlocked(
+    lease: dict[str, Any] | None,
+    *,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    if not lease_is_active(lease, at=at):
+        raise TaskLeaseError("lease is missing or expired", code="lease_not_active")
+    assert lease is not None
+    if task_lease_fencing_token(lease) != fencing_token:
+        raise TaskLeaseError(
+            "worker fencing token is stale",
+            code="stale_fencing_token",
+        )
+    if lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key:
+        raise TaskLeaseError(
+            "lease owner or idempotency key mismatch",
+            code="lease_cas_mismatch",
+        )
+    return dict(lease)
+
+
+def require_task_lease_fence_value(
+    lease: dict[str, Any] | None,
+    *,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+    at: datetime | None = None,
+) -> dict[str, Any]:
+    """Validate an already-read lease, including remote CLI projections."""
+
+    return _require_task_lease_fence_unlocked(
+        lease,
+        owner=normalize_owner(owner),
+        idempotency_key=normalize_idempotency_key(idempotency_key),
+        fencing_token=str(fencing_token or ""),
+        at=at,
+    )
+
+
+def require_task_lease_fence(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    todo_id: str,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+) -> dict[str, Any]:
+    goal_id = normalize_goal_id(goal_id)
+    todo_id = normalize_lease_todo_id(todo_id)
+    owner = normalize_owner(owner)
+    idempotency_key = normalize_idempotency_key(idempotency_key)
+    lock_target = task_lease_lock_path(runtime_root=runtime_root, goal_id=goal_id)
+    path = task_lease_path(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        todo_id=todo_id,
+    )
+    with exclusive_file_lock(
+        lock_target,
+        agent_id=owner,
+        operation="task_lease_fence",
+    ):
+        return _require_task_lease_fence_unlocked(
+            read_lease(path),
+            owner=owner,
+            idempotency_key=idempotency_key,
+            fencing_token=str(fencing_token or ""),
+        )
+
+
+@contextmanager
+def hold_task_lease_fence(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    todo_id: str,
+    owner: str,
+    idempotency_key: str,
+    fencing_token: str,
+    operation: str,
+) -> Iterator[dict[str, Any]]:
+    """Hold the lease lock while one fenced durable effect executes."""
+
+    normalized_goal_id = normalize_goal_id(goal_id)
+    normalized_todo_id = normalize_lease_todo_id(todo_id)
+    normalized_owner = normalize_owner(owner)
+    normalized_idempotency_key = normalize_idempotency_key(idempotency_key)
+    path = task_lease_path(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+        todo_id=normalized_todo_id,
+    )
+    with hold_task_lease_lock(
+        runtime_root=runtime_root,
+        goal_id=normalized_goal_id,
+        agent_id=normalized_owner,
+        operation=operation,
+    ):
+        yield _require_task_lease_fence_unlocked(
+            read_lease(path),
+            owner=normalized_owner,
+            idempotency_key=normalized_idempotency_key,
+            fencing_token=str(fencing_token or ""),
+        )
 
 
 def lease_expires_at(lease: dict[str, Any] | None) -> datetime | None:
@@ -602,6 +866,7 @@ def build_lease(
     write_scopes: list[str],
     acquire_ttl_seconds: int,
     version: int,
+    fencing_generation: int,
     acquired_at: str,
     updated_at: str,
     expires_at: str,
@@ -615,6 +880,7 @@ def build_lease(
         "write_scopes": write_scopes,
         "acquire_ttl_seconds": acquire_ttl_seconds,
         "version": version,
+        "fencing_generation": fencing_generation,
         "acquired_at": acquired_at,
         "updated_at": updated_at,
         "expires_at": expires_at,
@@ -633,6 +899,7 @@ def acquire_task_lease(
     ttl_seconds: int | None = None,
     write_scopes: list[str] | None = None,
     expected_version: int | None = None,
+    terminal_replay_key: str | None = None,
 ) -> dict[str, Any]:
     goal_id = normalize_goal_id(goal_id)
     todo_id = normalize_lease_todo_id(todo_id)
@@ -654,6 +921,7 @@ def acquire_task_lease(
             goal_id=goal_id,
             todo_id=todo_id,
             owner=owner,
+            terminal_replay_key=terminal_replay_key,
         )
         existing = read_lease(lease_path)
         assert_expected_version(existing, expected_version)
@@ -727,6 +995,9 @@ def acquire_task_lease(
             write_scopes=normalized_write_scopes,
             acquire_ttl_seconds=ttl,
             version=int((existing or {}).get("version") or 0) + 1,
+            fencing_generation=(
+                task_lease_fencing_generation(existing) + 1 if existing else 1
+            ),
             acquired_at=updated_at,
             updated_at=updated_at,
             expires_at=expires_at,
@@ -754,6 +1025,7 @@ def renew_task_lease(
     idempotency_key: str,
     ttl_seconds: int | None = None,
     expected_version: int | None = None,
+    terminal_replay_key: str | None = None,
 ) -> dict[str, Any]:
     goal_id = normalize_goal_id(goal_id)
     todo_id = normalize_lease_todo_id(todo_id)
@@ -773,6 +1045,7 @@ def renew_task_lease(
             goal_id=goal_id,
             todo_id=todo_id,
             owner=owner,
+            terminal_replay_key=terminal_replay_key,
         )
         lease = read_lease(lease_path)
         assert_expected_version(lease, expected_version)
@@ -781,6 +1054,7 @@ def renew_task_lease(
         if lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key:
             raise TaskLeaseError("lease owner or idempotency key mismatch", code="lease_cas_mismatch")
         lease = dict(lease)
+        lease["fencing_generation"] = task_lease_fencing_generation(lease)
         lease["version"] = int(lease.get("version") or 0) + 1
         lease["updated_at"] = isoformat(at)
         lease["expires_at"] = isoformat(at + timedelta(seconds=ttl))
@@ -844,6 +1118,7 @@ def transfer_task_lease(
         lease = dict(lease)
         lease["owner"] = new_owner
         lease["idempotency_key"] = new_idempotency_key
+        lease["fencing_generation"] = task_lease_fencing_generation(lease) + 1
         lease["version"] = int(lease.get("version") or 0) + 1
         lease["updated_at"] = isoformat(at)
         lease["expires_at"] = isoformat(at + timedelta(seconds=ttl))
@@ -890,15 +1165,23 @@ def release_task_lease(
                 "missing": True,
                 "lease_path": str(lease_path),
             }
-        if lease_is_active(lease, at=at) and (
-            lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key
-        ):
+        if lease.get("owner") != owner or lease.get("idempotency_key") != idempotency_key:
             raise TaskLeaseError("lease owner or idempotency key mismatch", code="lease_cas_mismatch")
-        remove_lease(lease_path)
-        released_lease = dict(lease)
-        released_lease["status"] = "released"
-        released_lease["released_at"] = isoformat(at)
-        released_lease["updated_at"] = isoformat(at)
+        if lease.get("status") == "released":
+            return {
+                "ok": True,
+                "schema_version": TASK_LEASE_SCHEMA_VERSION,
+                "action": "release",
+                "released": False,
+                "idempotent": True,
+                "lease": lease,
+                "lease_path": str(lease_path),
+            }
+        released_lease = _write_released_lease(
+            lease_path,
+            lease,
+            released_at=at,
+        )
         return {
             "ok": True,
             "schema_version": TASK_LEASE_SCHEMA_VERSION,

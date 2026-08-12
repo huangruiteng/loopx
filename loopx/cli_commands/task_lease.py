@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+from ..control_plane.turn_effect import normalize_turn_effect_key
 from ..control_plane.work_items.task_lease import (
     TaskLeaseError,
     inspect_task_lease,
+    hold_task_lease_fence,
     release_task_lease,
     renew_task_lease,
     runtime_root_from_registry,
@@ -24,6 +27,72 @@ PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
     None,
 ]
+
+
+def add_turn_effect_fence_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--turn-effect-key", help=argparse.SUPPRESS)
+    parser.add_argument("--turn-fence-todo-id", help=argparse.SUPPRESS)
+    parser.add_argument("--turn-fence-idempotency-key", help=argparse.SUPPRESS)
+    parser.add_argument("--turn-fencing-token", help=argparse.SUPPRESS)
+
+
+def turn_effect_key_from_args(args: argparse.Namespace) -> str | None:
+    return normalize_turn_effect_key(getattr(args, "turn_effect_key", None))
+
+
+def turn_effect_fence_requested(args: argparse.Namespace) -> bool:
+    return any(
+        str(getattr(args, attr, None) or "").strip()
+        for attr in (
+            "turn_effect_key",
+            "turn_fence_todo_id",
+            "turn_fence_idempotency_key",
+            "turn_fencing_token",
+        )
+    )
+
+
+@contextmanager
+def hold_cli_turn_effect_fence(
+    args: argparse.Namespace,
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    owner: str | None,
+) -> Iterator[None]:
+    values = {
+        "--turn-effect-key": getattr(args, "turn_effect_key", None),
+        "--turn-fence-todo-id": getattr(args, "turn_fence_todo_id", None),
+        "--turn-fence-idempotency-key": getattr(
+            args,
+            "turn_fence_idempotency_key",
+            None,
+        ),
+        "--turn-fencing-token": getattr(args, "turn_fencing_token", None),
+    }
+    supplied = {flag for flag, value in values.items() if str(value or "").strip()}
+    if not supplied:
+        yield
+        return
+    missing = sorted(set(values) - supplied)
+    if missing:
+        raise ValueError(
+            "Turn effect fencing requires all internal fence arguments; missing: "
+            + ", ".join(missing)
+        )
+    if not str(owner or "").strip():
+        raise ValueError("Turn effect fencing requires --agent-id")
+    turn_effect_key_from_args(args)
+    with hold_task_lease_fence(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        todo_id=str(values["--turn-fence-todo-id"]),
+        owner=str(owner),
+        idempotency_key=str(values["--turn-fence-idempotency-key"]),
+        fencing_token=str(values["--turn-fencing-token"]),
+        operation="cli_turn_effect",
+    ):
+        yield
 
 
 def render_task_lease_markdown(payload: dict[str, object]) -> str:

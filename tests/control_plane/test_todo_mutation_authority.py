@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -417,7 +418,12 @@ def test_active_task_lease_fences_same_agent_completion_instance(
         "execution_instance_verified": True,
         "released": True,
     }
-    assert not _lease_path(tmp_path, todo["todo_id"]).exists()
+    released_lease = json.loads(
+        _lease_path(tmp_path, todo["todo_id"]).read_text(encoding="utf-8")
+    )
+    assert released_lease["status"] == "released"
+    assert released_lease["version"] == 2
+    assert released_lease["fencing_generation"] == 1
 
     replayed = complete_goal_todo(
         registry_path=registry,
@@ -535,7 +541,12 @@ def test_event_projected_completion_reports_task_lease_fence(
         "execution_instance_verified": True,
         "released": True,
     }
-    assert not _lease_path(tmp_path, todo_id).exists()
+    released_lease = json.loads(
+        _lease_path(tmp_path, todo_id).read_text(encoding="utf-8")
+    )
+    assert released_lease["status"] == "released"
+    assert released_lease["version"] == 2
+    assert released_lease["fencing_generation"] == 1
 
 
 def test_unfenced_completion_leaves_no_lease_artifacts(tmp_path: Path) -> None:
@@ -640,6 +651,100 @@ def test_dry_run_completion_does_not_release_lease(tmp_path: Path) -> None:
     assert state.read_text(encoding="utf-8") == before
 
 
+def test_completion_can_defer_release_until_outer_turn_commit(tmp_path: Path) -> None:
+    registry, _state = _write_fixture(tmp_path, multi_agent=False)
+    todo = _add_agent_todo(registry)
+    lease_key = "outer-turn-instance"
+    acquired = acquire_task_lease(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        owner=AUTHOR_AGENT,
+        idempotency_key=lease_key,
+        ttl_seconds=600,
+    )
+
+    completed = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        claimed_by=AUTHOR_AGENT,
+        task_lease_idempotency_key=lease_key,
+        release_task_lease_on_commit=False,
+        evidence="outer Turn still has fenced effects to settle",
+        no_followup=True,
+    )
+
+    assert completed["task_lease_fence"]["execution_instance_verified"] is True
+    assert "released" not in completed["task_lease_fence"]
+    lease_path = _lease_path(tmp_path, todo["todo_id"])
+    assert json.loads(lease_path.read_text(encoding="utf-8"))["status"] == "active"
+
+    released = release_task_lease(
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        owner=AUTHOR_AGENT,
+        idempotency_key=lease_key,
+        expected_version=acquired["lease"]["version"],
+    )
+    assert released["lease"]["status"] == "released"
+    assert released["lease"]["fencing_generation"] == 1
+
+
+def test_terminal_turn_replay_reacquires_only_matching_completed_todo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_lease_module, "now_utc", lambda: current)
+    registry, _state = _write_fixture(tmp_path, multi_agent=False)
+    todo = _add_agent_todo(registry)
+    turn_key = "sha256:" + "a" * 64
+    lease_key = f"turn:{turn_key}"
+    arguments = {
+        "registry_path": registry,
+        "runtime_root": tmp_path / "runtime",
+        "goal_id": GOAL_ID,
+        "todo_id": todo["todo_id"],
+        "owner": AUTHOR_AGENT,
+        "idempotency_key": lease_key,
+        "ttl_seconds": 1,
+    }
+    acquired = acquire_task_lease(**arguments)
+    stale_token = task_lease_module.task_lease_fencing_token(acquired["lease"])
+    complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        claimed_by=AUTHOR_AGENT,
+        completion_turn_key=turn_key,
+        task_lease_idempotency_key=lease_key,
+        release_task_lease_on_commit=False,
+        evidence="Turn completion persisted before outer settlement",
+        no_followup=True,
+    )
+    current += timedelta(seconds=2)
+
+    with pytest.raises(TaskLeaseError) as ordinary_reacquire:
+        acquire_task_lease(**arguments)
+    assert ordinary_reacquire.value.code == "todo_not_open"
+    with pytest.raises(TaskLeaseError) as wrong_turn:
+        acquire_task_lease(**arguments, terminal_replay_key="sha256:other")
+    assert wrong_turn.value.code == "todo_not_open"
+
+    recovered = acquire_task_lease(
+        **arguments,
+        terminal_replay_key=turn_key,
+    )
+    assert recovered["lease"]["fencing_generation"] == 2
+    assert recovered["lease"]["version"] == 2
+    assert task_lease_module.task_lease_fencing_token(
+        recovered["lease"]
+    ) != stale_token
+
+
 def test_release_failure_after_commit_keeps_completion_ok(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -657,10 +762,10 @@ def test_release_failure_after_commit_keeps_completion_ok(
         ttl_seconds=600,
     )
 
-    def _fail_remove(path: Path) -> None:
-        raise OSError("simulated unlink failure")
+    def _fail_write(path: Path, payload: dict[str, object]) -> None:
+        raise OSError("simulated tombstone write failure")
 
-    monkeypatch.setattr(task_lease_module, "remove_lease", _fail_remove)
+    monkeypatch.setattr(task_lease_module, "write_lease", _fail_write)
     completed = complete_goal_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
@@ -682,17 +787,7 @@ def test_release_failure_after_commit_keeps_completion_ok(
 def test_reopened_todo_completes_unfenced_after_lease_release(
     tmp_path: Path,
 ) -> None:
-    """Pin the accepted reopen-window divergence of release-on-completion.
-
-    Before leases were released on completion, the leftover lease file
-    resurrected as the execution-instance fence if a done todo was manually
-    reopened inside the lease TTL, so a second completion without the key
-    was rejected with lease_fence_required. With the lease released at the
-    first committed completion, the reopened todo completes unfenced. This
-    matches the end state of the disciplined baseline flow (complete followed
-    by an explicit `loopx task-lease release`); no production path reopens
-    done todos.
-    """
+    """A released tombstone stays inactive if a Todo is manually reopened."""
 
     registry, _state = _write_fixture(tmp_path, multi_agent=False)
     todo = _add_agent_todo(registry)
@@ -717,7 +812,9 @@ def test_reopened_todo_completes_unfenced_after_lease_release(
         no_followup=True,
     )
     assert completed["task_lease_fence"]["released"] is True
-    assert not _lease_path(tmp_path, todo["todo_id"]).exists()
+    assert json.loads(
+        _lease_path(tmp_path, todo["todo_id"]).read_text(encoding="utf-8")
+    )["status"] == "released"
 
     reopened = update_goal_todo(
         registry_path=registry,
@@ -745,13 +842,8 @@ def test_reopened_todo_completes_unfenced_after_lease_release(
     }
 
 
-def test_cli_release_after_auto_release_reports_missing(tmp_path: Path) -> None:
-    """A post-completion `loopx task-lease release` now sees no lease file.
-
-    Baseline removed the then-stale lease and reported released=True; after
-    release-on-completion the same call reports released=False, missing=True
-    with ok=True (the pre-existing double-release shape).
-    """
+def test_cli_release_after_auto_release_is_idempotent(tmp_path: Path) -> None:
+    """A post-completion release replays the persisted tombstone."""
 
     registry, _state = _write_fixture(tmp_path, multi_agent=False)
     todo = _add_agent_todo(registry)
@@ -785,7 +877,9 @@ def test_cli_release_after_auto_release_reports_missing(tmp_path: Path) -> None:
 
     assert released["ok"] is True
     assert released["released"] is False
-    assert released["missing"] is True
+    assert released["idempotent"] is True
+    assert released["lease"]["status"] == "released"
+    assert released["lease"]["fencing_generation"] == 1
 
 
 def test_exception_after_verified_fence_leaves_lease_intact(

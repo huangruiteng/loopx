@@ -14,7 +14,6 @@ from ..control_plane.quota.heartbeat_receipt import (
     fail_heartbeat_receipt,
     find_heartbeat_receipt,
     heartbeat_receipt_view,
-    upgrade_identityless_heartbeat_receipt,
 )
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.monitor_poll import find_quota_monitor_poll_turn
@@ -72,6 +71,11 @@ from .quota_request import (
     validate_quota_command_request,
 )
 from .quota_registration import register_quota_command as register_quota_command
+from .task_lease import (
+    hold_cli_turn_effect_fence,
+    turn_effect_fence_requested,
+    turn_effect_key_from_args,
+)
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
@@ -194,6 +198,10 @@ def _prepare_quota_command_context(
         raise ValueError("turn-scoped quota settlement requires --agent-id")
     if heartbeat_turn_id and command == "should-run" and bool(args.dry_run):
         raise ValueError("turn-scoped `quota should-run` cannot use --dry-run")
+    if turn_effect_fence_requested(args) and command != "spend-slot":
+        raise ValueError(
+            "Turn effect fencing is only valid with `quota spend-slot`"
+        )
 
     scan_roots = [Path(item).expanduser() for item in args.scan_path]
     if not scan_roots:
@@ -587,18 +595,37 @@ def handle_quota_command(
                 failure_kind=args.failure_kind,
             )
         elif args.quota_command == "spend-slot":
-            payload = spend_quota_slot(
-                status_payload,
+            with hold_cli_turn_effect_fence(
+                args,
+                runtime_root=runtime_root,
                 goal_id=args.goal_id,
-                slots=args.slots,
-                execute=bool(args.execute),
-                source=args.source,
-                agent_id=args.agent_id,
-                available_capabilities=args.available_capabilities,
-                operator_inbox_urgency_projector=operator_inbox_urgency_projector,
-                todo_id=args.todo_id,
-                turn_instance_id=heartbeat_turn_id,
-            )
+                owner=args.agent_id,
+            ):
+                spend_status = (
+                    collect_status(
+                        registry_path=registry_path,
+                        runtime_root_override=runtime_root_arg,
+                        scan_roots=scan_roots,
+                        limit=status_limit,
+                        goal_id=status_goal_id,
+                        available_capabilities=args.available_capabilities,
+                    )
+                    if turn_effect_fence_requested(args)
+                    else status_payload
+                )
+                payload = spend_quota_slot(
+                    spend_status,
+                    goal_id=args.goal_id,
+                    slots=args.slots,
+                    execute=bool(args.execute),
+                    source=args.source,
+                    agent_id=args.agent_id,
+                    available_capabilities=args.available_capabilities,
+                    operator_inbox_urgency_projector=operator_inbox_urgency_projector,
+                    todo_id=args.todo_id,
+                    turn_instance_id=heartbeat_turn_id,
+                    turn_effect_key=turn_effect_key_from_args(args),
+                )
         elif args.quota_command == "void-slot":
             payload = void_quota_slot(
                 status_payload,
