@@ -48,6 +48,8 @@ def _surface_install_command(agent_type: str, cli_bin: str, project: str) -> str
         return f"{shell_arg(cli_bin)} slash-commands --install --surface gemini"
     if agent_type == "cursor-agent":
         return f"{shell_arg(cli_bin)} slash-commands --install --surface cursor"
+    if agent_type == "zcode":
+        return f"{shell_arg(cli_bin)} slash-commands --install --surface zcode"
     if agent_type == "pi":
         # The slash-commands installer resolves the Pi extension target through
         # --pi-project; pass the resolved project so the command stays correct
@@ -257,6 +259,7 @@ def _bootstrap_pack_command(
         "pi": "pi",
         "gemini-cli": "gemini-cli",
         "cursor-agent": "cursor-agent",
+        "zcode": "zcode",
         "deepseek-harness": "deepseek-harness",
         "ark-managed-agent": "ark-managed-agent",
         "manual": "shell",
@@ -310,6 +313,13 @@ def _start_instruction(agent_type: str) -> str:
             "carry the generated heartbeat task body as the session objective and "
             "start every following turn with `quota should-run`, reading state through "
             "the registered `loopx` MCP server or the CLI."
+        )
+    if agent_type == "zcode":
+        return (
+            "Invoke the LoopX skill from `AGENTS_HOME/skills` (or a project-local "
+            "`.agents/skills` copy); after todo writeback, carry the generated "
+            "heartbeat task body as the session objective and start every following "
+            "turn with `quota should-run`."
         )
     if agent_type == "deepseek-harness":
         return (
