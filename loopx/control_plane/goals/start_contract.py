@@ -89,6 +89,7 @@ def build_goal_start_contract(
                 "pi": "Pi `loopx_goal_activate`",
                 "gemini-cli": "agent-driven Gemini CLI loop; every turn enters through quota should-run",
                 "cursor-agent": "agent-driven cursor-agent loop; every turn enters through quota should-run",
+                "zcode": "agent-driven ZCode loop; every turn enters through quota should-run",
                 "ark-managed-agent": "one-shot Goal",
                 "manual": "external scheduler or manual quota/status loop",
                 "other-agent": "custom host loop driver using the returned task body and quota guard",
