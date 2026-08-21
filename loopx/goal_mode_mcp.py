@@ -158,6 +158,7 @@ class GoalModeMCPControlPlane:
         evidence: str,
         next_agent_todo: str = "",
         task_lease_idempotency_key: str = "",
+        task_lease_expected_version: int | None = None,
         no_follow_up: bool = False,
     ) -> str:
         goal_id, _ = self.context()
@@ -191,6 +192,11 @@ class GoalModeMCPControlPlane:
             args += ["--next-agent-todo", next_agent_todo]
         if task_lease_idempotency_key:
             args += ["--task-lease-idempotency-key", task_lease_idempotency_key]
+        if task_lease_expected_version is not None:
+            args += [
+                "--task-lease-expected-version",
+                str(task_lease_expected_version),
+            ]
         if no_follow_up:
             args.append("--no-follow-up")
         output = self.run_cli(args)
@@ -262,6 +268,7 @@ def create_fastmcp_server(
         evidence: str,
         next_agent_todo: str = "",
         task_lease_idempotency_key: str = "",
+        task_lease_expected_version: int | None = None,
         no_follow_up: bool = False,
     ) -> str:
         """Complete one verified todo, write follow-up state, then spend quota."""
@@ -271,6 +278,7 @@ def create_fastmcp_server(
             evidence,
             next_agent_todo=next_agent_todo,
             task_lease_idempotency_key=task_lease_idempotency_key,
+            task_lease_expected_version=task_lease_expected_version,
             no_follow_up=no_follow_up,
         )
 

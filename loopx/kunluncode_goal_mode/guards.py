@@ -39,9 +39,15 @@ def guard_native_controller_writeback(control_plane: Any) -> None:
         _evidence: str,
         next_agent_todo: str = "",
         task_lease_idempotency_key: str = "",
+        task_lease_expected_version: int | None = None,
         no_follow_up: bool = False,
     ) -> str:
-        del next_agent_todo, task_lease_idempotency_key, no_follow_up
+        del (
+            next_agent_todo,
+            task_lease_idempotency_key,
+            task_lease_expected_version,
+            no_follow_up,
+        )
         return _native_controller_rejection("complete_task")
 
     control_plane.claim_task = blocked_claim

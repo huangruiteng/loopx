@@ -655,6 +655,38 @@ only the `load` / `compare_and_put` provider. This prerequisite does not create
 a generic storage abstraction over registry, run history, quota, scheduler, or
 evidence; those ledgers retain the owners defined in Section 3.
 
+#### Stage 1 Part 2 boundary
+
+This slice is a behavior-preserving extraction of a pure decision core for the
+todo lifecycle, task-lease lifecycle, and `handoff_mode` rules that the current
+writers already enforce. Markdown goal state and task-lease files remain
+canonical. The extraction does not synthesize todo, authorization, dependency,
+or gate revisions for domains that have no current revision publisher. It also
+does not replace today's separate claim and lease verbs with the atomic
+`claim_work` command described above; that command belongs to the future shared
+aggregate.
+
+Keep three layers distinct as the provider work proceeds:
+
+1. `DomainDecision` is the pure apply/reject/no-change judgment over an explicit
+   coordination snapshot and command.
+2. Authority execution and its result own locking, revalidation, committing the
+   decision, and eventually the durable semantic receipt.
+3. The provider result reports storage observations such as
+   `loaded | missing | conflict | unavailable | failed` and an opaque provider
+   generation; it is not a domain decision or a semantic receipt.
+
+Stage 1 Part 2 does not claim durable semantic receipts or A/B/A replay. Those
+require the Stage 2 aggregate and provider shadow. That aggregate must treat
+`handoff_mode` as a real, revision-covered decision input. Its provider
+contract must never collapse `missing` into `unavailable` or `failed`.
+`provider_generation`, `authority_revision`, and `lease_epoch` remain three
+independent version domains. Likewise, a restore may preserve frozen bytes and
+lineage without granting current authority: promoting restored state to the
+live authority head requires an explicit lineage and binding fence.
+
+The file-backed provider shadow is Stage 2. It has not started in this slice.
+
 Durable completion continuation read-back
 (`durable_completion.py`: `read_persisted_todo_record` /
 `project_durable_completion_outcome`) is a provider read point: it re-reads

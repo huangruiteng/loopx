@@ -287,3 +287,61 @@ def test_task_lease_lifecycle_preserves_idempotency_and_versions(
             idempotency_key="turn-3",
         )
     assert missing_version.value.code == "version_required"
+
+
+def test_legacy_generation_and_unrelated_ttl_do_not_block_release_or_reacquire(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime(2026, 7, 13, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_lease, "now_utc", lambda: now)
+    monkeypatch.setattr(task_lease, "require_task_lease_owner_allowed", lambda **_: {})
+    monkeypatch.setattr(task_lease, "active_conflicts", lambda **_: [])
+    runtime_root = tmp_path / "runtime"
+    lease_path = task_lease.task_lease_path(
+        runtime_root=runtime_root,
+        goal_id="goal-a",
+        todo_id="todo_legacy",
+    )
+    task_lease.write_lease(
+        lease_path,
+        {
+            "schema_version": "task_lease_v0",
+            "goal_id": "goal-a",
+            "todo_id": "todo_legacy",
+            "owner": "agent-a",
+            "idempotency_key": "legacy-key",
+            "write_scopes": [],
+            "acquire_ttl_seconds": "unrelated-corrupt-legacy-field",
+            "version": 7,
+            "status": "active",
+            "acquired_at": now.isoformat().replace("+00:00", "Z"),
+            "updated_at": now.isoformat().replace("+00:00", "Z"),
+            "expires_at": (now + timedelta(seconds=120))
+            .isoformat()
+            .replace("+00:00", "Z"),
+        },
+    )
+
+    released = release_task_lease(
+        runtime_root=runtime_root,
+        goal_id="goal-a",
+        todo_id="todo_legacy",
+        owner="agent-a",
+        idempotency_key="legacy-key",
+        expected_version=7,
+    )
+    assert released["lease"]["lease_epoch"] == 1
+
+    reacquired = acquire_task_lease(
+        registry_path=tmp_path / "registry.json",
+        runtime_root=runtime_root,
+        goal_id="goal-a",
+        todo_id="todo_legacy",
+        owner="agent-a",
+        idempotency_key="new-key",
+        ttl_seconds=120,
+        expected_version=7,
+    )
+    assert reacquired["lease"]["version"] == 8
+    assert reacquired["lease"]["lease_epoch"] == 2

@@ -565,6 +565,35 @@ gate/dependency ref、claim/lease field 与按 privacy class 标注的 opaque po
 history、quota、scheduler 或 evidence 的通用存储抽象，这些账继续遵守第 3 节的 owner
 边界。
 
+#### Stage 1 Part 2 边界
+
+这一切片只做行为保持的抽取：把现有 writer 已经执行的 todo lifecycle、task-lease
+lifecycle 与 `handoff_mode` 规则收敛进纯决策 core。Markdown goal state 与
+task-lease 文件仍是 canonical。此次抽取不会为目前没有 revision publisher 的 todo、
+authorization、dependency 或 gate 域凭空制造 revision；也不会把今天相互分开的
+claim 与 lease verb 偷换成上文的 atomic `claim_work`。后者属于未来的 shared
+aggregate。
+
+后续 provider 工作必须始终分开三层：
+
+1. `DomainDecision` 只根据显式 coordination snapshot 与 command，纯函数式地给出
+   apply / reject / no-change 判断。
+2. Authority execution 及其 result 负责加锁、重验、提交该判断，并最终持有 durable
+   semantic receipt。
+3. Provider result 只报告 `loaded | missing | conflict | unavailable | failed` 等存储
+   observation 与 opaque provider generation；它既不是领域判断，也不是 semantic
+   receipt。
+
+Stage 1 Part 2 不声称已经提供 durable semantic receipt 或 A/B/A replay；它们需要
+Stage 2 的 aggregate 与 provider shadow。该 aggregate 必须把 `handoff_mode` 当作
+真实且由 revision 覆盖的决策输入。Provider 合同绝不能把 `missing` 折叠成
+`unavailable` 或 `failed`。`provider_generation`、`authority_revision` 与
+`lease_epoch` 始终是三个独立版本域。同样，restore 可以保存 frozen bytes 与
+lineage，却不会因此获得当前权威；把恢复状态晋升为 live authority head，必须经过
+显式的 lineage 与 binding fence。
+
+File-backed provider shadow 属于 Stage 2；这一切片尚未开始它。
+
 完成续接（continuation）的持久化读回
 （`durable_completion.py`：`read_persisted_todo_record` /
 `project_durable_completion_outcome`）是一个 provider read point：它在完成写入之后、

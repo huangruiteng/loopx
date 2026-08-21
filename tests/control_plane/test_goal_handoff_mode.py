@@ -338,6 +338,48 @@ def test_event_only_claim_is_not_a_v0_quiescence_offender_but_hard_gate_blocks_w
     assert projected_after["todo"]["claimed_by"] == AGENT_A
 
 
+def test_mode_transition_keeps_each_missing_todo_id_offender(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_workspace(tmp_path)
+    claimed = [
+        {"todo_id": None, "claimed_by": AGENT_A, "status": "open"},
+        {"todo_id": "", "claimed_by": AGENT_B, "status": "open"},
+    ]
+    leases = [
+        {
+            "todo_id": None,
+            "owner": AGENT_A,
+            "expires_at": "2026-08-01T01:00:00Z",
+            "lease_path": ".loopx/task-leases/lease-a.json",
+        },
+        {
+            "todo_id": "",
+            "owner": AGENT_B,
+            "expires_at": "2026-08-01T01:00:00Z",
+            "lease_path": ".loopx/task-leases/lease-b.json",
+        },
+    ]
+    monkeypatch.setattr(
+        "loopx.control_plane.todos.handoff_mode._quiescence_offenders",
+        lambda **_kwargs: (claimed, leases),
+    )
+    before = state.read_bytes()
+
+    with pytest.raises(HandoffModeError) as error:
+        set_goal_handoff_mode(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            mode=HANDOFF_MODE_HARD_LEASE,
+        )
+
+    assert error.value.code == "handoff_mode_not_quiescent"
+    assert error.value.payload["claimed_todos"] == claimed
+    assert error.value.payload["active_leases"] == leases
+    assert state.read_bytes() == before
+
+
 # ---------------------------------------------------------------------------
 # (a) Legacy characterization pins: the split-brain hole stays open, loudly.
 # ---------------------------------------------------------------------------

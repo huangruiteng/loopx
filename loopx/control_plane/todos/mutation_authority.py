@@ -5,19 +5,22 @@ from typing import Any, Mapping
 
 from ...agent_registry import (
     load_goal_from_registry,
-    registered_agent_ids_from_registry,
-    require_registered_agent_id,
+    registered_agent_ids_for_goal,
 )
+from ..coordination.authority_core import (
+    CoordinationSnapshot,
+    DecisionOutcome,
+    LifecycleGrant,
+    TodoAction,
+    TodoMutationCommand,
+    TodoSnapshot,
+    decide,
+)
+from ..coordination.local_snapshot import todo_snapshot_from_mapping
 from .contract import (
-    TODO_TASK_CLASS_USER_GATE,
-    normalize_todo_blocks_agent,
-    normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
-    normalize_todo_excluded_agents,
-    normalize_todo_id,
-    normalize_todo_required_decision_scopes,
 )
 
 
@@ -115,62 +118,66 @@ def todo_update_authority_action(
     return "update" if has_other_change else "reassign"
 
 
-def _scope_identity(scope: Mapping[str, Any] | None) -> tuple[str, str, str] | None:
-    normalized = normalize_todo_decision_scope(scope)
-    if not normalized:
-        return None
-    return (
-        str(normalized.get("kind") or ""),
-        str(normalized.get("granularity") or ""),
-        str(normalized.get("scope_key") or ""),
-    )
-
-
-def _exact_user_gate_override(
+def _raise_core_authority_rejection(
     *,
+    code: str,
+    goal_id: str,
+    registered_agents: list[str],
     command: str,
-    todo: Mapping[str, Any],
-    decision_outcome: str | None,
-    decision_target: Mapping[str, Any] | None,
-) -> dict[str, Any] | None:
-    if (
-        command != "complete"
-        or str(todo.get("role") or "") != "user"
-        or str(todo.get("task_class") or "") != TODO_TASK_CLASS_USER_GATE
-        or normalize_todo_decision_outcome(decision_outcome) is None
-    ):
-        return None
-    gate_scope = normalize_todo_decision_scope(todo.get("decision_scope"))
-    gate_scope_identity = _scope_identity(gate_scope)
-    target_todo_id = normalize_todo_id(todo.get("unblocks_todo_id"))
-    if (
-        not gate_scope
-        or not gate_scope_identity
-        or not target_todo_id
-        or not decision_target
-        or normalize_todo_id(decision_target.get("todo_id")) != target_todo_id
-    ):
-        return None
-    target_scope_identities = {
-        identity
-        for scope in normalize_todo_required_decision_scopes(
-            decision_target.get("required_decision_scopes")
+    actor: str | None,
+    requested_owner: str | None,
+    todo: TodoSnapshot,
+    action: str,
+) -> None:
+    if code == "actor_not_registered" and actor:
+        if not registered_agents:
+            raise ValueError(
+                f"agent_id={actor!r} cannot be used because goal {goal_id!r} "
+                "has no coordination.registered_agents list. Register this peer "
+                "identity first: loopx configure-goal --goal-id "
+                f"{goal_id} --registered-agent {actor} --execute"
+            )
+        raise ValueError(
+            f"agent_id={actor!r} is not registered for goal {goal_id!r}; "
+            f"registered_agents={', '.join(registered_agents)}"
         )
-        if (identity := _scope_identity(scope)) is not None
-    }
-    if gate_scope_identity not in target_scope_identities:
-        return None
-    return {
-        "schema_version": TODO_MUTATION_AUTHORITY_SCHEMA_VERSION,
-        "command": command,
-        "mode": "exact_user_gate_decision_scope_override",
-        "actor_agent_id": None,
-        "todo_id": normalize_todo_id(todo.get("todo_id")),
-        "target_todo_id": target_todo_id,
-        "decision_outcome": normalize_todo_decision_outcome(decision_outcome),
-        "decision_scope": gate_scope,
-        "authority_source": "linked_user_gate_decision_scope",
-    }
+    if code == "actor_required":
+        raise ValueError(
+            f"multi-agent todo {command} requires --agent-id to attribute the "
+            "lifecycle actor; only completion of an exactly linked user_gate "
+            "decision_scope may use the typed owner/controller override"
+        )
+    if code == "actor_excluded":
+        raise ValueError(
+            f"agent_id={actor!r} is excluded from mutating todo_id={todo.todo_id!r}"
+        )
+    if code == "bound_agent_mismatch":
+        bound_agent = todo.bound_agent or todo.blocks_agent
+        raise ValueError(
+            f"agent_id={actor!r} cannot {command} user todo_id={todo.todo_id!r}; "
+            f"its response continuation is bound to bound_agent={bound_agent!r}"
+        )
+    if code == "claim_owner_mismatch":
+        raise ValueError(
+            f"agent_id={actor!r} cannot {command} todo_id={todo.todo_id!r}; "
+            f"it is claimed_by={todo.claimed_by!r}"
+        )
+    if code == "delegation_action_not_granted":
+        raise ValueError(
+            "coordination.todo_lifecycle_authority for "
+            f"agent_id={actor!r} does not grant action={action!r}"
+        )
+    if code == "delegation_reason_required":
+        raise ValueError(f"delegated {action} override requires --authority-reason")
+    if code == "claim_actor_mismatch":
+        raise ValueError(
+            "todo claim requires --claimed-by to match the lifecycle "
+            "--agent-id; use todo update for an owner-attributed transfer"
+        )
+    raise ValueError(
+        f"todo lifecycle authority rejected command={command!r} code={code!r} "
+        f"actor={actor!r} requested_owner={requested_owner!r}"
+    )
 
 
 def authorize_todo_lifecycle_mutation(
@@ -188,112 +195,101 @@ def authorize_todo_lifecycle_mutation(
 ) -> dict[str, Any]:
     """Authorize one existing-todo lifecycle mutation before state changes."""
 
-    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
+    goal = load_goal_from_registry(registry_path, goal_id)
+    registered_agents = registered_agent_ids_for_goal(goal)
     normalized_actor = normalize_todo_claimed_by(actor_agent_id)
-    normalized_todo_id = normalize_todo_id(todo.get("todo_id"))
-    if len(registered_agents) <= 1:
-        if normalized_actor and registered_agents:
-            normalized_actor = require_registered_agent_id(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                agent_id=normalized_actor,
-                field="agent_id",
-            )
-        return {
-            "schema_version": TODO_MUTATION_AUTHORITY_SCHEMA_VERSION,
-            "command": command,
-            "mode": "single_agent_compatibility",
-            "actor_agent_id": normalized_actor,
-            "todo_id": normalized_todo_id,
-            "registered_agent_count": len(registered_agents),
-        }
-
-    override = _exact_user_gate_override(
-        command=command,
-        todo=todo,
-        decision_outcome=decision_outcome,
-        decision_target=decision_target,
+    core_todo = todo_snapshot_from_mapping(todo, infer_status_from_done=True)
+    assert core_todo is not None
+    core_target = todo_snapshot_from_mapping(
+        decision_target,
+        infer_status_from_done=True,
     )
-    if override:
-        override["registered_agent_count"] = len(registered_agents)
-        return override
-
-    if not normalized_actor:
-        raise ValueError(
-            f"multi-agent todo {command} requires --agent-id to attribute the "
-            "lifecycle actor; only completion of an exactly linked user_gate "
-            "decision_scope may use the typed owner/controller override"
-        )
-    normalized_actor = require_registered_agent_id(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        agent_id=normalized_actor,
-        field="agent_id",
+    requested_owner = normalize_todo_claimed_by(requested_claimed_by)
+    effective_action = str(authority_action or command).strip().lower()
+    try:
+        core_action = TodoAction(command)
+    except ValueError as exc:
+        raise ValueError(f"unsupported todo lifecycle command={command!r}") from exc
+    normalized_decision_outcome = normalize_todo_decision_outcome(decision_outcome)
+    core_command = TodoMutationCommand(
+        action=core_action,
+        actor_agent_id=normalized_actor,
+        requested_claimed_by=requested_owner,
+        authority_action=effective_action,
+        authority_reason=authority_reason,
+        decision_outcome=normalized_decision_outcome,
     )
-    excluded_agents = normalize_todo_excluded_agents(todo.get("excluded_agents"))
-    if normalized_actor in excluded_agents:
-        raise ValueError(
-            f"agent_id={normalized_actor!r} is excluded from mutating todo_id="
-            f"{normalized_todo_id!r}"
-        )
-    bound_agent = normalize_todo_bound_agent(todo.get("bound_agent"))
-    if not bound_agent and str(todo.get("role") or "") == "user":
-        bound_agent = normalize_todo_blocks_agent(todo.get("blocks_agent"))
-    if bound_agent and bound_agent != normalized_actor:
-        raise ValueError(
-            f"agent_id={normalized_actor!r} cannot {command} user todo_id="
-            f"{normalized_todo_id!r}; its response continuation is bound to "
-            f"bound_agent={bound_agent!r}"
-        )
-    claim_owner = normalize_todo_claimed_by(todo.get("claimed_by"))
-    if claim_owner and claim_owner != normalized_actor:
-        effective_action = str(authority_action or command).strip().lower()
-        grant = todo_lifecycle_authority_for_goal(
-            load_goal_from_registry(registry_path, goal_id),
-            agent_id=normalized_actor,
+    core_snapshot = CoordinationSnapshot(
+        registered_agents=tuple(registered_agents),
+        todo=core_todo,
+        decision_target=core_target,
+    )
+    raw_grants: list[dict[str, Any]] = []
+    plan = decide(core_snapshot, core_command)
+    if plan.outcome is DecisionOutcome.REJECTED and plan.code == "claim_owner_mismatch":
+        coordination = goal.get("coordination") if isinstance(goal, Mapping) else None
+        raw_grants = normalize_todo_lifecycle_authority(
+            coordination.get("todo_lifecycle_authority")
+            if isinstance(coordination, Mapping)
+            else None,
             registered_agents=registered_agents,
         )
-        if grant is None:
-            raise ValueError(
-                f"agent_id={normalized_actor!r} cannot {command} todo_id="
-                f"{normalized_todo_id!r}; it is claimed_by={claim_owner!r}"
-            )
-        if effective_action not in grant["actions"]:
-            raise ValueError(
-                "coordination.todo_lifecycle_authority for "
-                f"agent_id={normalized_actor!r} does not grant "
-                f"action={effective_action!r}"
-            )
-        normalized_reason = str(authority_reason or "").strip()
-        if grant["requires_reason"] and not normalized_reason:
-            raise ValueError(
-                f"delegated {effective_action} override requires --authority-reason"
-            )
+        plan = decide(
+            CoordinationSnapshot(
+                registered_agents=core_snapshot.registered_agents,
+                lifecycle_grants=tuple(
+                    LifecycleGrant(
+                        agent_id=grant["agent_id"],
+                        actions=frozenset(grant["actions"]),
+                        requires_reason=grant["requires_reason"],
+                    )
+                    for grant in raw_grants
+                ),
+                todo=core_todo,
+                decision_target=core_target,
+            ),
+            core_command,
+        )
+    if plan.outcome is DecisionOutcome.REJECTED:
+        _raise_core_authority_rejection(
+            code=plan.code,
+            goal_id=goal_id,
+            registered_agents=registered_agents,
+            command=command,
+            actor=normalized_actor,
+            requested_owner=requested_owner,
+            todo=core_todo,
+            action=effective_action,
+        )
+    base = {
+        "schema_version": TODO_MUTATION_AUTHORITY_SCHEMA_VERSION,
+        "command": command,
+        "mode": plan.authority_mode,
+        "actor_agent_id": normalized_actor,
+        "todo_id": core_todo.todo_id,
+        "registered_agent_count": len(registered_agents),
+    }
+    if plan.authority_mode == "exact_user_gate_decision_scope_override":
+        gate_scope = normalize_todo_decision_scope(todo.get("decision_scope"))
         return {
-            "schema_version": TODO_MUTATION_AUTHORITY_SCHEMA_VERSION,
-            "command": command,
-            "mode": "delegated_orchestration_override",
-            "actor_agent_id": normalized_actor,
-            "todo_id": normalized_todo_id,
-            "claim_owner": claim_owner,
+            **base,
+            "actor_agent_id": None,
+            "target_todo_id": core_todo.unblocks_todo_id,
+            "decision_outcome": normalized_decision_outcome,
+            "decision_scope": gate_scope,
+            "authority_source": "linked_user_gate_decision_scope",
+        }
+    if plan.authority_mode == "delegated_orchestration_override":
+        grant = next(item for item in raw_grants if item["agent_id"] == normalized_actor)
+        normalized_reason = str(authority_reason or "").strip()
+        return {
+            **base,
+            "claim_owner": core_todo.claimed_by,
             "authority_action": effective_action,
             "authority_source": "coordination.todo_lifecycle_authority",
             "authority_reason": normalized_reason or None,
             "requires_reason": grant["requires_reason"],
-            "registered_agent_count": len(registered_agents),
         }
-    requested_owner = normalize_todo_claimed_by(requested_claimed_by)
-    if command == "claim" and requested_owner != normalized_actor:
-        raise ValueError(
-            "todo claim requires --claimed-by to match the lifecycle "
-            "--agent-id; use todo update for an owner-attributed transfer"
-        )
-    return {
-        "schema_version": TODO_MUTATION_AUTHORITY_SCHEMA_VERSION,
-        "command": command,
-        "mode": "registered_peer_actor",
-        "actor_agent_id": normalized_actor,
-        "todo_id": normalized_todo_id,
-        "claim_owner": claim_owner,
-        "registered_agent_count": len(registered_agents),
-    }
+    if plan.authority_mode == "registered_peer_actor":
+        base["claim_owner"] = core_todo.claimed_by
+    return base
