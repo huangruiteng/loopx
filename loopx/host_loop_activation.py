@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
+from .agy_goal_mode import AGY_NATIVE_WAKE_TOOLS
 from .control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
@@ -240,7 +241,7 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
     },
     "agy": {
         "display_name": "Antigravity CLI",
-        "host_loop": "agent-driven Antigravity CLI loop gated by LoopX quota should-run",
+        "host_loop": "agent-driven Antigravity CLI loop with native schedule self-wakes, gated by LoopX quota should-run",
         "entry": "the LoopX skill installed in AGY_CLI_HOME/skills",
         "accepted_inputs": [
             "agy",
@@ -1058,6 +1059,7 @@ def _skill_facade_cli_activation(
     skills_root: str,
     extra_host_mutation: dict[str, Any] | None = None,
     extra_activation_steps: list[str] | None = None,
+    host_scheduler_note: str | None = None,
 ) -> dict[str, Any]:
     """Activation for a CLI host that LoopX reaches through a skill facade only.
 
@@ -1068,6 +1070,10 @@ def _skill_facade_cli_activation(
     quota should-run. That is a weaker guarantee than a host-owned loop and is
     stated as such, because claiming autonomous heartbeat support these hosts
     cannot deliver is worse than admitting the agent drives itself.
+
+    A host that does ship a native in-session scheduler (agy's ``schedule``
+    tool) passes ``host_scheduler_note`` so the packet states that primitive
+    instead of the default no-scheduler sentence; the quota gate is unchanged.
     """
     return {
         "host_surface": host_surface,
@@ -1096,7 +1102,10 @@ def _skill_facade_cli_activation(
             "Read task_body from the JSON payload and carry it as the session objective.",
             *(extra_activation_steps or []),
             "Start every following turn with quota should-run and stop when it says stop; "
-            "there is no host scheduler to fall back on.",
+            + (
+                host_scheduler_note
+                or "there is no host scheduler to fall back on."
+            ),
         ],
         "success_criteria": [
             f"The {host_label} session has the LoopX skill facade installed and the "
@@ -1147,6 +1156,36 @@ def _agy_cli_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any
         host_surface="agy_agent_loop",
         install_surface="agy",
         skills_root="AGY_CLI_HOME/skills",
+        # agy has no persistent goal primitive to bind, but it does ship a
+        # native in-session scheduler: the `schedule` tool (DurationSeconds +
+        # wake Prompt, recurring via MaxIterations) plus background-task and
+        # subagent wakes (verified live on agy 1.1.18). Those wakes fire only
+        # while the CLI session is alive — no daemon survives the process — so
+        # the loop is still the agent's own turns gated by quota, now with
+        # self-armed wakes between them.
+        extra_host_mutation={
+            "host_loop_primitive": "agy-schedule-tool",
+            "loop_driver": "agent_cli_turn_loop_with_native_schedule_wake",
+            "native_wake_tools": list(AGY_NATIVE_WAKE_TOOLS),
+            "missing_host_tool_gate": (
+                "agy native wakes (schedule, background tasks, subagents) fire "
+                "only while the CLI session is alive; there is no cross-session "
+                "daemon. If the session ends before the goal is done, show the "
+                "exact heartbeat-prompt command for the user to run and do not "
+                "claim unattended heartbeat support."
+            ),
+        },
+        extra_activation_steps=[
+            "When a turn ends with work remaining and quota allows more, arm the "
+            "next bounded segment with the native `schedule` tool "
+            "(DurationSeconds + wake Prompt; MaxIterations bounds recurring "
+            "wakes) instead of idling — every wake re-enters through quota "
+            "should-run before any delivery work.",
+        ],
+        host_scheduler_note=(
+            "the native `schedule` tool can wake this session on a timer, and "
+            "every wake enters through quota should-run too."
+        ),
     )
 
 

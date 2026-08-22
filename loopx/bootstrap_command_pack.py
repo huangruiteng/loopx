@@ -325,7 +325,7 @@ def build_start_goal_host_surface_selection_packet(
         "pi": "Pi LoopX goal extension",
         "gemini-cli": "Gemini CLI driving its own loop through the LoopX skill facade",
         "cursor-agent": "cursor-agent driving its own loop through the LoopX skill facade and MCP server",
-        "agy": "Antigravity CLI (agy) driving its own loop through the LoopX skill facade",
+        "agy": "Antigravity CLI (agy) driving its own loop through the LoopX skill facade, arming native schedule self-wakes while the session lives",
         "deepseek-harness": "DeepSeek Harness automation loop through loopx.dsh_goal_mode (compat: scripts/dsh_turn_host_adapter.py)",
         "deepseek-harness-native": "DeepSeek Harness same-session LoopX skill and plugin driver",
         "ark-managed-agent": "Ark Managed Agent with one-shot Goal submission",

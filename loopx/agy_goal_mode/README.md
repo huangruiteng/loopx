@@ -2,21 +2,42 @@
 
 LoopX adapter for the [Antigravity CLI](https://antigravity.google/docs/cli/using/)
 (binary `agy`) — Google's terminal coding agent whose extension points are
-markdown skills and MCP config, not a goal primitive or a host automation
-scheduler.
+markdown skills and MCP config. It has no persistent goal primitive (no
+`/goal`, no goal store) for LoopX to bind, but it does ship native
+in-session automation, so the loop is not waiting on the user to return.
+
+## Native wake primitives (verified live on agy 1.1.18)
+
+- `schedule` tool — `DurationSeconds` + `Prompt` (wake message), recurring
+  wakes via `MaxIterations`, one-shot timers with early-termination
+  conditions. Live probe: a turn that ended with "scheduled" at T received a
+  SYSTEM_MESSAGE wake at T+25s and the session answered autonomously — no
+  external driver, no user input.
+- Background tasks (`manage_task`) and async subagents
+  (`invoke_subagent`/`send_message`) wake a live session; agent messages land
+  in the session inbox (`manage_inbox`).
+- `hooks.json` (user or plugin) runs `PostToolUse`/`Stop`/`PostInvocation`
+  automation on tool events.
+
+These wakes only fire while the CLI session is alive — there is no
+cross-session daemon — so they arm a live session's next bounded segment,
+not an unattended host loop.
 
 ## What this surface is
 
 Antigravity CLI discovers skills the same way the other skill-facade CLI hosts
 do: a directory per skill with a `SKILL.md` inside, rooted at
 `~/.gemini/antigravity-cli/skills`. LoopX therefore reaches an `agy` session
-through the generated `/loopx` skill facade only, and the loop driver is the
-agent's own turn loop gated by LoopX quota — every continuation enters through
-`quota should-run`, and a stop decision ends the session loop.
+through the generated `/loopx` skill facade only. The loop driver is the
+agent's own turn loop, and every continuation — each turn and each native
+`schedule` wake — enters through LoopX `quota should-run`; a stop decision
+ends the session loop.
 
-This is a weaker guarantee than a host-owned loop and is stated as such in the
-activation packet; claiming heartbeat support `agy` cannot deliver would be
-worse than admitting the agent drives itself.
+The wake primitives make `agy` stronger than a plain turn-loop facade host:
+when a turn ends with work remaining and quota allows more, the session can
+arm its own next wake with `schedule` instead of idling. The guarantee is
+still weaker than a host-owned loop (no daemon survives the CLI process) and
+is stated as such in the activation packet.
 
 ## Install
 
@@ -40,9 +61,12 @@ loopx start-goal --guided --project . --slash-command-arguments="<task>" --host-
 ```
 
 After todo writeback, carry the generated heartbeat task body as the session
-objective and start every following turn with `quota should-run`.
+objective, start every following turn (and every `schedule` wake) with
+`quota should-run`, and arm the next bounded wake with the native `schedule`
+tool only when quota allows more work.
 
 ## Layout
 
-- `__init__.py` — host facts: install surface id, skills root resolution, and
-  the env override used by the installer and the activation packet.
+- `__init__.py` — host facts: install surface id, skills root resolution, the
+  env override used by the installer and the activation packet, and the
+  native wake primitives the activation cites.

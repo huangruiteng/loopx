@@ -25,7 +25,12 @@ from loopx.host_loop_activation import (
     scheduler_command_binding_for_agent_type,
 )
 from loopx.slash_command_install import install_slash_commands
-from loopx.agy_goal_mode import AGY_HOME_ENV, agy_home
+from loopx.agy_goal_mode import (
+    AGY_HOME_ENV,
+    AGY_NATIVE_WAKE_FACTS,
+    AGY_NATIVE_WAKE_TOOLS,
+    agy_home,
+)
 
 HOST_SURFACE = "agy"
 
@@ -246,10 +251,14 @@ def test_agent_type_catalog_and_scheduler_binding() -> None:
     }
 
 
-def test_activation_claims_no_host_loop_agy_does_not_have() -> None:
-    """Antigravity CLI owns no goal primitive or automation scheduler. The
-    packet has to say so: an overstated capability here is what makes an agent
-    claim autonomous setup it cannot deliver."""
+def test_activation_states_native_wake_and_keeps_the_quota_gate() -> None:
+    """Antigravity CLI owns no persistent goal primitive, but it does ship a
+    native in-session scheduler (the `schedule` tool plus background-task and
+    subagent wakes, verified live on agy 1.1.18). The packet has to state
+    exactly that capability envelope: cite the wake primitive, keep every turn
+    and wake gated through quota, and admit wakes die with the session — an
+    overstated capability here is what makes an agent claim autonomous setup
+    it cannot deliver."""
     packet = build_host_loop_activation_packet(
         agent_type=HOST_SURFACE,
         goal_id="surface-goal",
@@ -258,9 +267,41 @@ def test_activation_claims_no_host_loop_agy_does_not_have() -> None:
     )
     assert packet["activation_method"] == "run_agent_cli_loop_gated_by_quota"
     assert packet["host_mutation"]["cli_can_mutate_directly"] is False
-    assert packet["host_mutation"]["host_loop_primitive"] is None
-    assert packet["host_mutation"]["loop_driver"] == "agent_cli_turn_loop"
+    # Native in-session wake scheduler is real and must be named, not denied.
+    assert packet["host_mutation"]["host_loop_primitive"] == "agy-schedule-tool"
+    assert (
+        packet["host_mutation"]["loop_driver"]
+        == "agent_cli_turn_loop_with_native_schedule_wake"
+    )
+    assert "schedule" in packet["host_mutation"]["native_wake_tools"]
+    assert "manage_task" in packet["host_mutation"]["native_wake_tools"]
+    # The wake dies with the CLI session; the gate text must say so instead of
+    # promising unattended heartbeat support.
+    gate = packet["host_mutation"]["missing_host_tool_gate"]
+    assert "only" in gate and "alive" in gate
+    assert "daemon" in gate
+    steps = " ".join(packet["activation_steps"])
+    assert "`schedule` tool" in steps
+    assert "MaxIterations" in steps
+    assert "quota should-run" in steps
+    assert "no host scheduler to fall back on" not in steps
     assert packet["setup_command"] == _surface_install_command(HOST_SURFACE, "loopx", ".")
-    assert "quota should-run" in " ".join(packet["activation_steps"])
     assert "quota should-run" in _start_instruction(HOST_SURFACE)
     assert packet["entry_command_hint"] == "the LoopX skill installed in AGY_CLI_HOME/skills"
+
+
+def test_native_wake_facts_match_the_live_probe() -> None:
+    """The host-facts constants are the single source the activation packet,
+    README and PR narrative cite; they must stay pinned to what the live
+    agy 1.1.18 probe actually demonstrated."""
+    facts = " ".join(AGY_NATIVE_WAKE_FACTS)
+    assert "DurationSeconds" in facts and "Prompt" in facts
+    assert "MaxIterations" in facts
+    assert "hooks.json" in facts
+    assert set(AGY_NATIVE_WAKE_TOOLS) >= {
+        "schedule",
+        "manage_task",
+        "invoke_subagent",
+        "send_message",
+        "manage_inbox",
+    }

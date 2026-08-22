@@ -339,7 +339,10 @@ def _start_instruction(agent_type: str) -> str:
             "Invoke the LoopX skill from `AGY_CLI_HOME/skills` (default "
             "`~/.gemini/antigravity-cli/skills`) via `/loopx <task>`; after todo "
             "writeback, carry the generated heartbeat task body as the session "
-            "objective and start every following turn with `quota should-run`."
+            "objective, start every following turn with `quota should-run`, and "
+            "arm the next bounded wake with the native `schedule` tool "
+            "(DurationSeconds + wake Prompt; recurring via MaxIterations) when "
+            "quota allows more work — every wake re-enters through quota too."
         )
     if agent_type == "deepseek-harness":
         return (
