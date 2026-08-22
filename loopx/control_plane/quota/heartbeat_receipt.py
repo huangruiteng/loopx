@@ -133,6 +133,67 @@ def find_heartbeat_receipt(
     )
 
 
+def ensure_turn_heartbeat_settlement_receipt(
+    runtime_root: Path,
+    identity: SettlementIdentity,
+) -> dict[str, object]:
+    """Idempotently bind a Turn-created quota guard to its settlement identity."""
+
+    log_path = rollout_event_log_path(runtime_root, identity.goal_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(log_path):
+        events = load_rollout_events(log_path)
+        matching = _heartbeat_receipt_events(
+            events,
+            goal_id=identity.goal_id,
+            agent_id=identity.agent_id,
+            turn_instance_id=identity.turn_instance_id,
+        )
+        effective = _effective_heartbeat_receipt(matching)
+        expected = (
+            identity.binding_kind,
+            identity.binding_id,
+            identity.effect_id,
+        )
+        if effective is not None:
+            observed = _receipt_settlement_identity(effective)
+            if observed is not None:
+                if observed != expected:
+                    raise HeartbeatReceiptIdentityConflictError(
+                        "Turn heartbeat receipt belongs to another settlement identity"
+                    )
+                return effective
+
+        details = {
+            "turn_instance_id": identity.turn_instance_id,
+            "todo_id": str(identity.todo_id or ""),
+            "replan_obligation_id": str(identity.replan_obligation_id or ""),
+            "settlement_effect_id": identity.effect_id,
+            "stall_observation": "not_applicable",
+            "source": "loopx_turn_run_once",
+        }
+        source_event_id = (
+            str(effective.get("event_id") or "").strip()
+            if effective is not None
+            else ""
+        )
+        receipt = build_rollout_event(
+            goal_id=identity.goal_id,
+            event_kind="quota_should_run",
+            agent_id=identity.agent_id,
+            todo_id=identity.todo_id,
+            run_id=identity.turn_instance_id,
+            status="turn_run_once",
+            summary=f"Turn settlement guard prepared for turn={identity.turn_instance_id}",
+            source_event_id=source_event_id or None,
+            caused_by=source_event_id or None,
+            details=details,
+        )
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(receipt, sort_keys=True, ensure_ascii=False) + "\n")
+        return receipt
+
+
 def upgrade_identityless_heartbeat_receipt(
     runtime_root: Path,
     *,

@@ -113,6 +113,7 @@ class SettlementFailureKind(StrEnum):
     CANCELLED = "cancelled"
     PERMISSION_DENIED = "permission_denied"
     BUDGET_REJECTED = "budget_rejected"
+    EFFECT_OUTCOME_UNKNOWN = "effect_outcome_unknown"
 
 
 @lru_cache(maxsize=4096)

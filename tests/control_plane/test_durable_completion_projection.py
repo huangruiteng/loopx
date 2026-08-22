@@ -8,7 +8,9 @@ import pytest
 from loopx.control_plane.todos.durable_completion import (
     project_durable_completion_intent,
     project_durable_completion_outcome,
+    project_durable_terminal_completion_readback,
     read_persisted_todo_record,
+    read_persisted_todo_record_with_source,
 )
 from loopx.event_sourced_state import (
     TODO_ADDED,
@@ -81,6 +83,79 @@ def test_projects_terminal_intent_without_premature_completion() -> None:
         "todo_id": "todo_fixture0001",
         "continuation": "no_followup",
     }
+
+
+@pytest.mark.parametrize(
+    ("status", "projection_source"),
+    [
+        ("blocked", "materialized"),
+        ("deferred", "materialized"),
+        ("deferred", "event_log"),
+    ],
+)
+def test_terminal_readback_does_not_treat_ambiguous_state_as_absent(
+    status: str,
+    projection_source: str,
+) -> None:
+    with pytest.raises(ValueError, match="not safely replayable"):
+        project_durable_terminal_completion_readback(
+            todo={
+                "todo_id": "todo_fixture0001",
+                "status": status,
+                "no_followup": True,
+            },
+            expected_todo_id="todo_fixture0001",
+            expected_completion_turn_key="sha256:current-turn",
+            projection_source=projection_source,
+        )
+
+
+def test_terminal_readback_reports_explicitly_open_state_absent() -> None:
+    assert project_durable_terminal_completion_readback(
+        todo={
+            "todo_id": "todo_fixture0001",
+            "status": "open",
+            "no_followup": True,
+        },
+        expected_todo_id="todo_fixture0001",
+        expected_completion_turn_key="sha256:current-turn",
+        projection_source="materialized",
+    ) == {"kind": "absent"}
+
+
+def test_terminal_readback_commits_same_turn_no_followup() -> None:
+    assert project_durable_terminal_completion_readback(
+        todo={
+            "todo_id": "todo_fixture0001",
+            "status": "done",
+            "completion_continuation": "no_followup",
+            "completion_turn_key": "sha256:current-turn",
+            "no_followup": True,
+        },
+        expected_todo_id="todo_fixture0001",
+        expected_completion_turn_key="sha256:current-turn",
+        projection_source="materialized",
+    ) == {
+        "kind": "committed",
+        "completion": {
+            "todo_id": "todo_fixture0001",
+            "continuation": "no_followup",
+        },
+    }
+
+
+def test_terminal_readback_allows_same_turn_terminal_upgrade() -> None:
+    assert project_durable_terminal_completion_readback(
+        todo={
+            "todo_id": "todo_fixture0001",
+            "status": "done",
+            "completion_continuation": "active_goal",
+            "completion_turn_key": "sha256:current-turn",
+        },
+        expected_todo_id="todo_fixture0001",
+        expected_completion_turn_key="sha256:current-turn",
+        projection_source="materialized",
+    ) == {"kind": "absent"}
 
 
 def test_no_followup_without_existing_ids_needs_no_successor_verification() -> None:
@@ -204,10 +279,11 @@ def test_read_persisted_todo_record_projects_declared_successor(
         ),
         encoding="utf-8",
     )
-    todo, existing_todo_ids = read_persisted_todo_record(
+    todo, existing_todo_ids, projection_source = read_persisted_todo_record_with_source(
         state_file,
         todo_id="todo_fixture0001",
     )
+    assert projection_source == "materialized"
     assert existing_todo_ids == {"todo_fixture0001", "todo_fixture0002"}
     outcome = project_durable_completion_outcome(
         todo=todo,
@@ -324,12 +400,13 @@ def test_read_persisted_todo_record_falls_back_to_event_projection(
         encoding="utf-8",
     )
 
-    todo, existing_todo_ids = read_persisted_todo_record(
+    todo, existing_todo_ids, projection_source = read_persisted_todo_record_with_source(
         state_file,
         todo_id="todo_fixture0001",
         registry_path=registry,
         goal_id=goal_id,
     )
+    assert projection_source == "event_log"
     assert existing_todo_ids == {"todo_fixture0001"}
     outcome = project_durable_completion_outcome(
         todo=todo,

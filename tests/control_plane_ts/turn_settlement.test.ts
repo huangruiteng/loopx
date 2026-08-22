@@ -38,6 +38,8 @@ function request(
     terminal_closeout_required: false,
     terminal_closeout_payload: null,
     failed_provider_attempt: null,
+    effect_attempts: {},
+    provider_observations: {},
     ...overrides,
   };
 }
@@ -78,10 +80,14 @@ test("preflight authorizes ordered providers without settling early", () => {
   assert.deepEqual(reduced.provider_effects, [
     {
       step_kind: "durable_writeback",
+      action: "prepare_and_execute",
+      effect_ref: `${identity.effect_id}#durable_writeback`,
       completed_phases: [...phases.slice(0, 4)],
     },
     {
       step_kind: "quota_spend",
+      action: "prepare_and_execute",
+      effect_ref: `${identity.effect_id}#quota_spend`,
       completed_phases: [...phases.slice(0, 5)],
     },
   ]);
@@ -161,4 +167,134 @@ test("non-prefix journals fail closed instead of inventing provider work", () =>
     reduced.result.failure?.reason ?? "",
     /ordered transaction prefix/,
   );
+});
+
+test("prepared provider attempts authorize one identity-bound readback", () => {
+  const effectRef = `${identity.effect_id}#durable_writeback`;
+  const reduced = reduceTurnSettlementTransaction(
+    request({
+      completed_phases: [...phases.slice(0, 3)],
+      writeback_payload: null,
+      quota_spend_payload: null,
+      effect_attempts: {
+        durable_writeback: { status: "prepared", effect_ref: effectRef },
+      },
+    }),
+  );
+
+  assert.equal(reduced.decision, "execute");
+  assert.deepEqual(reduced.provider_effects, [
+    {
+      step_kind: "durable_writeback",
+      action: "resolve_prepared",
+      effect_ref: effectRef,
+      completed_phases: [...phases.slice(0, 4)],
+      resolution_policy: {
+        committed: "checkpoint",
+        absent: "execute",
+        unknown: "fail_closed",
+      },
+    },
+    {
+      step_kind: "quota_spend",
+      action: "prepare_and_execute",
+      effect_ref: `${identity.effect_id}#quota_spend`,
+      completed_phases: [...phases.slice(0, 5)],
+    },
+  ]);
+});
+
+test("prepared provider attempts reject identity drift before readback", () => {
+  const reduced = reduceTurnSettlementTransaction(
+    request({
+      completed_phases: [...phases.slice(0, 3)],
+      writeback_payload: null,
+      quota_spend_payload: null,
+      effect_attempts: {
+        durable_writeback: {
+          status: "prepared",
+          effect_ref: "another-effect#durable_writeback",
+        },
+      },
+    }),
+  );
+
+  assert.equal(reduced.decision, "failed");
+  assert.equal(reduced.result.failure?.kind, "identity_mismatch");
+  assert.equal(reduced.result.failure?.step_kind, "durable_writeback");
+  assert.deepEqual(reduced.provider_effects, []);
+});
+
+test("unknown prepared provider outcomes fail closed", () => {
+  const effectRef = `${identity.effect_id}#durable_writeback`;
+  const reduced = reduceTurnSettlementTransaction(
+    request({
+      completed_phases: [...phases.slice(0, 3)],
+      writeback_payload: null,
+      quota_spend_payload: null,
+      effect_attempts: {
+        durable_writeback: { status: "prepared", effect_ref: effectRef },
+      },
+      provider_observations: {
+        durable_writeback: {
+          kind: "unknown",
+          payload: null,
+          reason: "provider readback timed out",
+        },
+      },
+    }),
+  );
+
+  assert.equal(reduced.decision, "failed");
+  assert.equal(reduced.result.failure?.kind, "effect_outcome_unknown");
+  assert.equal(reduced.result.failure?.step_kind, "durable_writeback");
+  assert.match(reduced.result.failure?.reason ?? "", /readback timed out/);
+  assert.deepEqual(reduced.provider_effects, []);
+});
+
+test("committed readback without a durable payload fails closed", () => {
+  const effectRef = `${identity.effect_id}#durable_writeback`;
+  const reduced = reduceTurnSettlementTransaction(
+    request({
+      completed_phases: [...phases.slice(0, 3)],
+      writeback_payload: null,
+      quota_spend_payload: null,
+      effect_attempts: {
+        durable_writeback: { status: "prepared", effect_ref: effectRef },
+      },
+      provider_observations: {
+        durable_writeback: {
+          kind: "committed",
+          payload: { ok: true, appended: false },
+          reason: null,
+        },
+      },
+    }),
+  );
+
+  assert.equal(reduced.decision, "failed");
+  assert.equal(reduced.result.failure?.kind, "receipt_missing");
+  assert.equal(reduced.result.failure?.step_kind, "durable_writeback");
+  assert.deepEqual(reduced.provider_effects, []);
+});
+
+test("prepared attempts cannot skip an earlier provider step", () => {
+  const reduced = reduceTurnSettlementTransaction(
+    request({
+      completed_phases: [...phases.slice(0, 3)],
+      writeback_payload: null,
+      quota_spend_payload: null,
+      effect_attempts: {
+        quota_spend: {
+          status: "prepared",
+          effect_ref: `${identity.effect_id}#quota_spend`,
+        },
+      },
+    }),
+  );
+
+  assert.equal(reduced.decision, "failed");
+  assert.equal(reduced.result.failure?.kind, "receipt_missing");
+  assert.equal(reduced.result.failure?.step_kind, "quota_spend");
+  assert.deepEqual(reduced.provider_effects, []);
 });

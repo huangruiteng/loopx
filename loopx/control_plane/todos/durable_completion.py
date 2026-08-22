@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal, Mapping
 
 from .active_state_editing import (
     TODO_SECTION_HEADINGS,
@@ -35,7 +35,11 @@ from .completion_state import (
     normalize_todo_completion_continuation,
     normalize_todo_completion_recovery,
 )
+from .completion_fence import evaluate_todo_completion_fence
 from .event_writeback import event_projection_todo_context
+
+
+TodoCompletionProjectionSource = Literal["materialized", "event_log"]
 
 
 def read_persisted_todo_record(
@@ -55,8 +59,29 @@ def read_persisted_todo_record(
     durable lifecycle, so the caller can fail closed instead of projecting a
     fabricated continuation.
     """
+    todo, existing_todo_ids, _projection_source = (
+        read_persisted_todo_record_with_source(
+            state_file,
+            todo_id=todo_id,
+            registry_path=registry_path,
+            goal_id=goal_id,
+        )
+    )
+    return todo, existing_todo_ids
+
+
+def read_persisted_todo_record_with_source(
+    state_file: Path,
+    *,
+    todo_id: str,
+    registry_path: Path | None = None,
+    goal_id: str | None = None,
+) -> tuple[dict[str, Any], set[str], TodoCompletionProjectionSource]:
+    """Read one durable Todo together with its authoritative projection source."""
+
     lines = state_file.read_text(encoding="utf-8").splitlines()
     block: dict[str, Any] | None = None
+    projection_source: TodoCompletionProjectionSource = "materialized"
     match = find_todo_block(lines, todo_id=todo_id)
     if match is not None:
         _role, _section, _start, _end, block = match
@@ -80,6 +105,7 @@ def read_persisted_todo_record(
         )
         if context is not None:
             block = dict(context["item"])
+            projection_source = "event_log"
             for candidate_role in ("user", "agent"):
                 summary = context["fields"].get(f"{candidate_role}_todos")
                 items = summary.get("items") if isinstance(summary, dict) else []
@@ -95,7 +121,7 @@ def read_persisted_todo_record(
             f"durable completion todo_id {normalized_todo_id!r} was not found "
             "in persisted Todo lifecycle state"
         )
-    return block, existing_todo_ids
+    return block, existing_todo_ids, projection_source
 
 
 def project_durable_completion_outcome(
@@ -125,6 +151,48 @@ def project_durable_completion_outcome(
         existing_todo_ids=existing_todo_ids,
         require_done=True,
     )
+
+
+def project_durable_terminal_completion_readback(
+    *,
+    todo: Mapping[str, Any],
+    expected_todo_id: str,
+    expected_completion_turn_key: str,
+    projection_source: TodoCompletionProjectionSource,
+    existing_todo_ids: Collection[str] | None = None,
+) -> dict[str, Any]:
+    """Resolve terminal completion evidence under the canonical Turn fence.
+
+    A still-open Todo or a same-Turn terminal upgrade proves the terminal
+    effect absent.  A completed no-follow-up Todo proves the effect committed
+    only when its durable ``completion_turn_key`` matches the recovering Turn.
+    The TypeScript fence raises for missing, cross-Turn, or contradictory
+    completion identity so callers can map uncertainty to fail-closed recovery.
+    """
+
+    fence = evaluate_todo_completion_fence(
+        todo=todo,
+        projection_source=projection_source,
+        completion_turn_key=expected_completion_turn_key,
+        no_followup=True,
+    )
+    if fence["outcome"] == "continue":
+        if fence["reason"] == "same_turn_terminal_upgrade" or (
+            fence["reason"] == "not_terminal" and fence["status"] == "open"
+        ):
+            return {"kind": "absent"}
+        raise ValueError("durable terminal completion is not safely replayable")
+    if normalize_todo_status(todo.get("status")) != TODO_STATUS_DONE:
+        raise ValueError("durable terminal completion is not safely replayable")
+
+    completion = project_durable_completion_outcome(
+        todo=todo,
+        expected_todo_id=expected_todo_id,
+        existing_todo_ids=existing_todo_ids,
+    )
+    if completion.get("continuation") != TodoCompletionContinuation.NO_FOLLOWUP.value:
+        raise ValueError("durable terminal completion is not no-follow-up")
+    return {"kind": "committed", "completion": completion}
 
 
 def project_durable_completion_intent(

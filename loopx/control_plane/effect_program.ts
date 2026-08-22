@@ -90,6 +90,7 @@ export const SETTLEMENT_FAILURE_KINDS = [
   "cancelled",
   "permission_denied",
   "budget_rejected",
+  "effect_outcome_unknown",
 ] as const;
 export type SettlementFailureKind = (typeof SETTLEMENT_FAILURE_KINDS)[number];
 

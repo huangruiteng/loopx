@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -19,7 +20,11 @@ from .transaction import (
 )
 
 
-TurnEffect = Callable[[], Mapping[str, Any]]
+TurnEffect = Callable[..., Mapping[str, Any]]
+TurnEffectResolver = Callable[[str], Mapping[str, Any]]
+ResultEffect = Callable[..., Mapping[str, Any]]
+TurnSettlementPrepare = Callable[[SettlementStepKind, str], None]
+TurnSettlementAbort = Callable[[SettlementStepKind, str], None]
 TurnSettlementCheckpoint = Callable[
     [SettlementStepKind, Mapping[str, Any], tuple[str, ...]],
     None,
@@ -38,6 +43,164 @@ class TurnSettlementState:
 
 TURN_SETTLEMENT_TRANSACTION_SCHEMA_VERSION = "loopx_turn_settlement_transaction_v0"
 TURN_SETTLEMENT_REDUCTION_SCHEMA_VERSION = "loopx_turn_settlement_reduction_v0"
+
+
+def _invoke_turn_effect(effect: TurnEffect, effect_ref: str) -> Mapping[str, Any]:
+    """Invoke a provider with a stable ref while retaining zero-arg callbacks."""
+
+    try:
+        signature = inspect.signature(effect)
+    except (TypeError, ValueError):
+        return effect(effect_ref)
+    try:
+        signature.bind(effect_ref=effect_ref)
+    except TypeError:
+        pass
+    else:
+        return effect(effect_ref=effect_ref)
+    try:
+        signature.bind()
+    except TypeError:
+        signature.bind(effect_ref)
+        return effect(effect_ref)
+    return effect()
+
+
+def invoke_result_effect(
+    effect: ResultEffect,
+    result: Mapping[str, Any],
+    effect_ref: str,
+) -> Mapping[str, Any]:
+    """Invoke a result provider with optional stable-ref compatibility."""
+
+    try:
+        signature = inspect.signature(effect)
+    except (TypeError, ValueError):
+        return effect(result, effect_ref)
+    try:
+        signature.bind(result, effect_ref=effect_ref)
+    except TypeError:
+        pass
+    else:
+        return effect(result, effect_ref=effect_ref)
+    try:
+        signature.bind(result)
+    except TypeError:
+        signature.bind(result, effect_ref)
+        return effect(result, effect_ref)
+    return effect(result)
+
+
+def turn_effect_resolvers(
+    *,
+    writeback: TurnEffectResolver | None,
+    spend: TurnEffectResolver | None,
+    terminal_closeout: TurnEffectResolver | None,
+) -> dict[SettlementStepKind, TurnEffectResolver]:
+    """Collect configured provider readbacks under their typed steps."""
+
+    return {
+        step: resolver
+        for step, resolver in (
+            (SettlementStepKind.DURABLE_WRITEBACK, writeback),
+            (SettlementStepKind.QUOTA_SPEND, spend),
+            (SettlementStepKind.TERMINAL_CLOSEOUT, terminal_closeout),
+        )
+        if resolver is not None
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class TurnSettlementJournalAdapter:
+    """Mechanically persist prepared effects and committed provider payloads."""
+
+    journal: dict[str, Any]
+    effects: dict[str, bool]
+    persist: Callable[[], None]
+    compact_payload: Callable[[Mapping[str, Any]], Mapping[str, Any]]
+
+    @property
+    def effect_attempts(self) -> Mapping[str, Mapping[str, Any]]:
+        attempts = self.journal.get("effect_attempts")
+        return attempts if isinstance(attempts, Mapping) else {}
+
+    def prepare(self, step_kind: SettlementStepKind, effect_ref: str) -> None:
+        attempts = self.journal.setdefault("effect_attempts", {})
+        if not isinstance(attempts, dict):
+            raise RuntimeError("Turn journal effect_attempts shape mismatch")
+        attempts[step_kind.value] = {
+            "status": "prepared",
+            "effect_ref": effect_ref,
+        }
+        self.persist()
+
+    def abort(self, step_kind: SettlementStepKind, effect_ref: str) -> None:
+        self._forget(step_kind, effect_ref)
+        self.persist()
+
+    def checkpoint(
+        self,
+        step_kind: SettlementStepKind,
+        payload: Mapping[str, Any],
+        phases: tuple[str, ...],
+    ) -> None:
+        if step_kind is SettlementStepKind.DURABLE_WRITEBACK:
+            self.effects["state_written"] = True
+            self.journal["writeback"] = self._completion_payload(payload)
+        elif step_kind is SettlementStepKind.QUOTA_SPEND:
+            self.effects["quota_spent"] = True
+            self.journal["quota_spend"] = dict(self.compact_payload(payload))
+        self.journal["completed_phases"] = list(phases)
+        self._forget(step_kind, str(payload.get("effect_ref") or ""), strict=False)
+        self.persist()
+
+    def checkpoint_terminal(self, payload: Mapping[str, Any]) -> None:
+        compact = self._completion_payload(payload)
+        self.journal["terminal_closeout"] = compact
+        writeback = self.journal.get("writeback")
+        self.journal["writeback"] = {
+            **(dict(writeback) if isinstance(writeback, Mapping) else {}),
+            "completion": compact.get("completion"),
+        }
+        self._forget(
+            SettlementStepKind.TERMINAL_CLOSEOUT,
+            str(payload.get("effect_ref") or ""),
+            strict=False,
+        )
+        self.persist()
+
+    def _completion_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            **dict(self.compact_payload(payload)),
+            **(
+                {"completion": dict(payload["completion"])}
+                if isinstance(payload.get("completion"), Mapping)
+                else {}
+            ),
+        }
+
+    def _forget(
+        self,
+        step_kind: SettlementStepKind,
+        effect_ref: str,
+        *,
+        strict: bool = True,
+    ) -> None:
+        attempts = self.journal.get("effect_attempts")
+        if not isinstance(attempts, dict):
+            return
+        attempt = attempts.get(step_kind.value)
+        if (
+            isinstance(attempt, Mapping)
+            and effect_ref
+            and (attempt.get("effect_ref") != effect_ref)
+        ):
+            if strict:
+                raise RuntimeError("Turn journal prepared effect ref changed")
+            return
+        attempts.pop(step_kind.value, None)
+        if not attempts:
+            self.journal.pop("effect_attempts", None)
 
 
 def completion_writeback_outcome(
@@ -95,6 +258,79 @@ def terminal_closeout_requirement(
     return outcome["continuation"] == "no_followup", None
 
 
+def verified_terminal_closeout_effect(
+    effect: ResultEffect,
+    *,
+    result: Mapping[str, Any],
+    plan: Mapping[str, Any],
+) -> TurnEffect:
+    """Wrap terminal closeout with its durable no-followup postcondition."""
+
+    def verified(effect_ref: str) -> Mapping[str, Any]:
+        callback_payload = invoke_result_effect(effect, result, effect_ref)
+        outcome = completion_writeback_outcome(callback_payload, plan=plan)
+        if outcome is None or outcome.get("continuation") != "no_followup":
+            return {
+                "ok": False,
+                "appended": False,
+                "reason": (
+                    "terminal closeout adapter did not durably record the "
+                    "selected Todo as no_followup"
+                ),
+            }
+        return {**callback_payload, "completion": outcome}
+
+    return verified
+
+
+def _resolve_prepared_effect(
+    resolvers: Mapping[SettlementStepKind, TurnEffectResolver],
+    step_kind: SettlementStepKind,
+    effect_ref: str,
+) -> tuple[bool, Mapping[str, Any] | None, Mapping[str, Any] | None]:
+    """Return execute, committed payload, or a fail-closed observation."""
+
+    resolver = resolvers.get(step_kind)
+    if resolver is None:
+        return (
+            False,
+            None,
+            {
+                "kind": "unknown",
+                "reason": "provider readback is unavailable",
+            },
+        )
+    try:
+        resolution = dict(resolver(effect_ref))
+    except Exception as exc:
+        return (
+            False,
+            None,
+            {
+                "kind": "unknown",
+                "reason": f"provider readback raised {type(exc).__name__}",
+            },
+        )
+    kind = str(resolution.get("kind") or "unknown")
+    if kind == "absent":
+        return True, None, None
+    if kind != "committed":
+        observation = (
+            resolution
+            if kind == "unknown"
+            else {
+                "kind": "unknown",
+                "reason": f"unsupported provider readback kind: {kind}",
+            }
+        )
+        return False, None, observation
+    raw_payload = resolution.get("payload")
+    observed = dict(raw_payload) if isinstance(raw_payload, Mapping) else {}
+    if observed.get("ok") is True and observed.get("appended") is True:
+        return False, observed, None
+    return False, None, resolution
+
+
 def execute_turn_driver_settlement(
     transaction_plan: Mapping[str, Any],
     *,
@@ -110,6 +346,10 @@ def execute_turn_driver_settlement(
     terminal_closeout_payload: Mapping[str, Any] | None = None,
     terminal_closeout: TurnEffect | None = None,
     terminal_checkpoint: TerminalCloseoutCheckpoint | None = None,
+    prepare: TurnSettlementPrepare | None = None,
+    abort: TurnSettlementAbort | None = None,
+    effect_attempts: Mapping[str, Mapping[str, Any]] | None = None,
+    effect_resolvers: Mapping[SettlementStepKind, TurnEffectResolver] | None = None,
 ) -> SettlementResult[TurnSettlementState]:
     """Run external effect providers and reduce one complete Turn settlement.
 
@@ -124,6 +364,14 @@ def execute_turn_driver_settlement(
     spend_value = quota_spend_payload
     terminal_value = terminal_closeout_payload
     failed_attempt: tuple[SettlementStepKind, Mapping[str, Any]] | None = None
+    attempts = {
+        (step.value if isinstance(step, SettlementStepKind) else str(step)): dict(
+            attempt
+        )
+        for step, attempt in (effect_attempts or {}).items()
+    }
+    observations: dict[str, Mapping[str, Any]] = {}
+    resolvers = dict(effect_resolvers or {})
 
     def committed(payload: Mapping[str, Any]) -> bool:
         # This transport guard only prevents a later provider from running
@@ -162,6 +410,8 @@ def execute_turn_driver_settlement(
                     if failed_attempt is not None
                     else None
                 ),
+                "effect_attempts": attempts,
+                "provider_observations": observations,
             },
         )
         if (
@@ -185,30 +435,64 @@ def execute_turn_driver_settlement(
             if not isinstance(raw_effect, Mapping):
                 raise RuntimeError("TypeScript Turn settlement provider shape mismatch")
             step_kind = SettlementStepKind(str(raw_effect.get("step_kind") or ""))
+            action = str(raw_effect.get("action") or "")
+            effect_ref = str(raw_effect.get("effect_ref") or "")
+            if action not in {"prepare_and_execute", "resolve_prepared"}:
+                raise RuntimeError("TypeScript Turn settlement action mismatch")
+            if not effect_ref:
+                raise RuntimeError("TypeScript Turn settlement effect ref is empty")
             raw_phases = raw_effect.get("completed_phases")
             if not isinstance(raw_phases, list):
                 raise RuntimeError("TypeScript Turn settlement phases shape mismatch")
             authorized_phases = tuple(str(phase) for phase in raw_phases)
+            should_execute = action == "prepare_and_execute"
+            if action == "prepare_and_execute":
+                if prepare is not None:
+                    prepare(step_kind, effect_ref)
+                attempts[step_kind.value] = {
+                    "status": "prepared",
+                    "effect_ref": effect_ref,
+                }
+            else:
+                should_execute, observed, observation = _resolve_prepared_effect(
+                    resolvers, step_kind, effect_ref
+                )
+                if observation is not None:
+                    observations[step_kind.value] = observation
+                    break
+
             if step_kind is SettlementStepKind.TERMINAL_CLOSEOUT:
                 if terminal_closeout is None or terminal_checkpoint is None:
                     raise ValueError(
                         "terminal closeout requires an effect provider and checkpoint"
                     )
-                observed = dict(terminal_closeout())
+                if should_execute:
+                    observed = dict(_invoke_turn_effect(terminal_closeout, effect_ref))
+                assert observed is not None
                 if committed(observed):
                     terminal_value = observed
                     terminal_checkpoint(observed)
+                    attempts.pop(step_kind.value, None)
                 else:
+                    if abort is not None:
+                        abort(step_kind, effect_ref)
+                    attempts.pop(step_kind.value, None)
                     failed_attempt = (step_kind, observed)
                     break
                 continue
 
-            observed = dict(providers[step_kind]())
+            if should_execute:
+                observed = dict(_invoke_turn_effect(providers[step_kind], effect_ref))
+            assert observed is not None
             if not committed(observed):
+                if abort is not None:
+                    abort(step_kind, effect_ref)
+                attempts.pop(step_kind.value, None)
                 failed_attempt = (step_kind, observed)
                 break
             phases = authorized_phases
             checkpoint(step_kind, observed, phases)
+            attempts.pop(step_kind.value, None)
             if step_kind is SettlementStepKind.DURABLE_WRITEBACK:
                 writeback_value = observed
             else:

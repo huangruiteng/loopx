@@ -28,9 +28,14 @@ from .session_recovery import (
     require_host_recovery_kind,
 )
 from .settlement import (
+    TurnEffectResolver,
+    TurnSettlementJournalAdapter,
     completion_writeback_outcome,
     execute_turn_driver_settlement,
+    invoke_result_effect,
     terminal_closeout_requirement,
+    turn_effect_resolvers,
+    verified_terminal_closeout_effect,
 )
 from .transaction import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
@@ -89,11 +94,11 @@ HOST_RESULT_FIELDS = {
     "summary",
 }
 
-Writeback = Callable[[dict[str, Any]], dict[str, Any]]
-CompletionWriteback = Callable[[dict[str, Any]], dict[str, Any]]
+Writeback = Callable[..., dict[str, Any]]
+CompletionWriteback = Callable[..., dict[str, Any]]
 CompletionIntent = Callable[[dict[str, Any]], dict[str, Any]]
-TerminalCloseout = Callable[[dict[str, Any]], dict[str, Any]]
-Spend = Callable[[], dict[str, Any]]
+TerminalCloseout = Callable[..., dict[str, Any]]
+Spend = Callable[..., dict[str, Any]]
 Scheduler = Callable[[dict[str, Any]], dict[str, Any]]
 HostRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
 TaskValidator = Callable[
@@ -136,7 +141,9 @@ def _normalize_task_validator_argv(value: Sequence[str]) -> list[str]:
 
 
 def build_loopx_turn_host_request(plan: Mapping[str, Any]) -> dict[str, Any]:
-    transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    transaction = (
+        plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    )
     turn_key = str(transaction.get("turn_key") or "")
     if not TURN_KEY_RE.fullmatch(turn_key):
         raise ValueError("LoopX Turn plan has no valid transaction turn_key")
@@ -245,13 +252,9 @@ def _normalize_host_path_delta(
                 "material_replan agent_vision_json requires goal_path_delta_v0"
             )
         elif agent_vision["path_delta"].get("outcome") != "replan":
-            errors.append(
-                "material_replan goal_path_delta_v0 outcome must be replan"
-            )
+            errors.append("material_replan goal_path_delta_v0 outcome must be replan")
         if unchanged_reason:
-            errors.append(
-                "material_replan cannot also declare vision_unchanged_reason"
-            )
+            errors.append("material_replan cannot also declare vision_unchanged_reason")
     elif path_delta_mode == "unchanged":
         if agent_vision is not None:
             errors.append("unchanged path_delta_mode cannot include agent_vision_json")
@@ -275,7 +278,9 @@ def validate_loopx_turn_host_result(
     if result.get("schema_version") != LOOPX_TURN_RESULT_SCHEMA_VERSION:
         errors.append("unsupported host result schema_version")
 
-    transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    transaction = (
+        plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    )
     turn_key = str(transaction.get("turn_key") or "")
     if not turn_key or str(result.get("turn_key") or "") != turn_key:
         errors.append("host result turn_key does not match the transaction plan")
@@ -349,9 +354,10 @@ def validate_loopx_turn_host_result(
         normalized["path_delta_mode"] = path_delta_mode
         if agent_vision is not None:
             normalized["agent_vision"] = agent_vision
-    elif str(result.get("path_delta_mode") or "").strip() or str(
-        result.get("agent_vision_json") or ""
-    ).strip():
+    elif (
+        str(result.get("path_delta_mode") or "").strip()
+        or str(result.get("agent_vision_json") or "").strip()
+    ):
         errors.append(
             "wait and user_action_required results cannot declare a path delta"
         )
@@ -394,7 +400,9 @@ def _task_validation_receipt(
         LoopXTurnResultKind.REPAIR_REQUIRED.value,
         LoopXTurnResultKind.REPLAN_REQUIRED.value,
     }:
-        errors.append("task validation recovery_kind must be repair_required or replan_required")
+        errors.append(
+            "task validation recovery_kind must be repair_required or replan_required"
+        )
     if status in {"failed", "inconclusive", "unavailable"} and recovery_kind is None:
         errors.append("failed task validation requires a typed recovery_kind")
     if status in {"passed", "progress", "not_required"} and recovery_kind is not None:
@@ -575,7 +583,10 @@ def _load_journal(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or value.get("schema_version") != LOOPX_TURN_JOURNAL_SCHEMA_VERSION:
+    if (
+        not isinstance(value, dict)
+        or value.get("schema_version") != LOOPX_TURN_JOURNAL_SCHEMA_VERSION
+    ):
         raise ValueError("LoopX Turn journal has an unsupported schema")
     return value
 
@@ -655,10 +666,14 @@ def load_loopx_turn_plan_from_journal(
     plan = journal.get("plan")
     if not isinstance(plan, dict):
         raise TypeError("LoopX Turn resume journal does not contain a plan")
-    transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    transaction = (
+        plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    )
     if transaction.get("turn_key") != turn_key or journal.get("turn_key") != turn_key:
         raise ValueError("LoopX Turn resume journal has mismatched turn lineage")
-    envelope = plan.get("turn_envelope") if isinstance(plan.get("turn_envelope"), dict) else {}
+    envelope = (
+        plan.get("turn_envelope") if isinstance(plan.get("turn_envelope"), dict) else {}
+    )
     if envelope.get("goal_id") != goal_id or journal.get("goal_id") != goal_id:
         raise ValueError("LoopX Turn resume journal belongs to another goal")
     return dict(plan)
@@ -695,7 +710,9 @@ def _host_failure(
     failed_phase: str,
     reason: str,
 ) -> dict[str, Any]:
-    transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    transaction = (
+        plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    )
     result = {"turn_key": transaction.get("turn_key"), "result_kind": kind.value}
     return {
         "ok": False,
@@ -738,13 +755,25 @@ def _run_host(
         }
     encoded = completed.stdout.encode("utf-8")
     if len(encoded) > HOST_RESULT_MAX_BYTES:
-        return {"ok": False, "reason": "host stdout exceeded the result budget", "returncode": 0}
+        return {
+            "ok": False,
+            "reason": "host stdout exceeded the result budget",
+            "returncode": 0,
+        }
     try:
         value = json.loads(completed.stdout)
     except json.JSONDecodeError:
-        return {"ok": False, "reason": "host stdout is not one JSON value", "returncode": 0}
+        return {
+            "ok": False,
+            "reason": "host stdout is not one JSON value",
+            "returncode": 0,
+        }
     if not isinstance(value, dict):
-        return {"ok": False, "reason": "host stdout must be one JSON object", "returncode": 0}
+        return {
+            "ok": False,
+            "reason": "host stdout must be one JSON object",
+            "returncode": 0,
+        }
     return {"ok": True, "value": value, "returncode": 0}
 
 
@@ -770,16 +799,28 @@ def _run_host_runner(
         return {"ok": False, "reason": type(exc).__name__, "returncode": None}
     if not isinstance(value, dict):
         return {"ok": False, "reason": "built-in host result must be one JSON object"}
-    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
     if len(encoded) > HOST_RESULT_MAX_BYTES:
-        return {"ok": False, "reason": "built-in host result exceeded the result budget"}
+        return {
+            "ok": False,
+            "reason": "built-in host result exceeded the result budget",
+        }
     return {"ok": True, "value": value, "returncode": 0}
 
 
 def _compact_callback(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         key: payload.get(key)
-        for key in ("ok", "appended", "classification", "generated_at", "slots", "reason")
+        for key in (
+            "ok",
+            "appended",
+            "classification",
+            "generated_at",
+            "slots",
+            "reason",
+        )
         if key in payload
     }
 
@@ -796,7 +837,9 @@ def _execution_payload(
     replayed: bool,
     effects: Mapping[str, bool],
 ) -> dict[str, Any]:
-    transaction = plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    transaction = (
+        plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
+    )
     turn_key = str(transaction.get("turn_key") or "")
     planned_host = plan.get("host") if isinstance(plan.get("host"), dict) else {}
     writeback = _mapping(journal.get("writeback"))
@@ -805,7 +848,8 @@ def _execution_payload(
         journal.get("completed_phases") or []
     )
     return {
-        "ok": journal.get("status") in {
+        "ok": journal.get("status")
+        in {
             "preview",
             "committed",
             "stopped",
@@ -1044,14 +1088,6 @@ def _ensure_turn_settlement_plan(
     plan: Mapping[str, Any],
     transaction_plan: dict[str, Any],
 ) -> None:
-    """Upgrade a legacy transaction plan with a typed settlement plan.
-
-    Turn plans produced by older LoopX releases (for example plans read from a
-    scored-workspace image) do not carry ``settlement_plan``. Rebuild it from
-    the plan's own ``turn_envelope`` lineage so the typed closeout can bind
-    validation -> writeback -> spend instead of failing every legacy run.
-    """
-
     if isinstance(transaction_plan.get("settlement_plan"), Mapping):
         return
     envelope = plan.get("turn_envelope")
@@ -1071,9 +1107,7 @@ def _ensure_turn_settlement_plan(
         planned=True,
         lineage=lineage,
         host=str(host_fields.get("kind") or "generic-cli"),
-        execution_mode=str(
-            host_fields.get("execution_mode") or "isolated-headless"
-        ),
+        execution_mode=str(host_fields.get("execution_mode") or "isolated-headless"),
         session_action=str(host_fields.get("session_action") or "resume"),
         turn_instance_id=transaction_plan.get("turn_instance_id"),
     )
@@ -1095,12 +1129,11 @@ def _typed_settlement_stage(
     completion_intent: CompletionIntent | None,
     terminal_closeout: TerminalCloseout | None,
     spend: Spend,
+    effect_resolvers: Mapping[SettlementStepKind, TurnEffectResolver],
     scheduler: Scheduler,
 ) -> dict[str, Any]:
     transaction_plan = (
-        plan.get("transaction")
-        if isinstance(plan.get("transaction"), Mapping)
-        else {}
+        plan.get("transaction") if isinstance(plan.get("transaction"), Mapping) else {}
     )
     _ensure_turn_settlement_plan(plan, transaction_plan)
 
@@ -1125,7 +1158,7 @@ def _typed_settlement_stage(
             )
         )
 
-    def writeback_effect() -> Mapping[str, Any]:
+    def writeback_effect(effect_ref: str) -> Mapping[str, Any]:
         if completion_intent_error:
             return {
                 "ok": False,
@@ -1133,13 +1166,16 @@ def _typed_settlement_stage(
                 "reason": completion_intent_error,
             }
         if (
-            result.get("result_kind")
-            == LoopXTurnResultKind.VALIDATED_COMPLETION.value
+            result.get("result_kind") == LoopXTurnResultKind.VALIDATED_COMPLETION.value
             and not terminal_closeout_required
         ):
             if completion_writeback is None:
-                raise ValueError("validated_completion requires a todo lifecycle adapter")
-            callback_payload = completion_writeback(result)
+                raise ValueError(
+                    "validated_completion requires a todo lifecycle adapter"
+                )
+            callback_payload = invoke_result_effect(
+                completion_writeback, result, effect_ref
+            )
             completion_outcome = completion_writeback_outcome(
                 callback_payload,
                 plan=plan,
@@ -1161,66 +1197,23 @@ def _typed_settlement_stage(
                 **callback_payload,
                 "completion": completion_outcome,
             }
-        return writeback(result)
+        return invoke_result_effect(writeback, result, effect_ref)
 
-    def checkpoint(
-        step_kind: SettlementStepKind,
-        payload: Mapping[str, Any],
-        phases: tuple[str, ...],
-    ) -> None:
-        if step_kind is SettlementStepKind.DURABLE_WRITEBACK:
-            effects["state_written"] = True
-            journal["writeback"] = {
-                **_compact_callback(payload),
-                **(
-                    {"completion": payload["completion"]}
-                    if isinstance(payload.get("completion"), dict)
-                    else {}
-                ),
-            }
-        elif step_kind is SettlementStepKind.QUOTA_SPEND:
-            effects["quota_spent"] = True
-            journal["quota_spend"] = _compact_callback(payload)
-        journal["completed_phases"] = list(phases)
-        _write_journal(journal_path, journal)
+    journal_adapter = TurnSettlementJournalAdapter(
+        journal,
+        effects,
+        lambda: _write_journal(journal_path, journal),
+        _compact_callback,
+    )
 
     terminal_effect = None
     terminal_checkpoint = None
     if terminal_closeout_required:
         assert terminal_closeout is not None
-
-        def verified_terminal_effect() -> Mapping[str, Any]:
-            callback_payload = terminal_closeout(result)
-            outcome = completion_writeback_outcome(callback_payload, plan=plan)
-            if outcome is None or outcome.get("continuation") != "no_followup":
-                return {
-                    "ok": False,
-                    "appended": False,
-                    "reason": (
-                        "terminal closeout adapter did not durably record the "
-                        "selected Todo as no_followup"
-                    ),
-                }
-            return {**callback_payload, "completion": outcome}
-
-        def checkpoint_terminal(payload: Mapping[str, Any]) -> None:
-            compact = {
-                **_compact_callback(payload),
-                **(
-                    {"completion": payload["completion"]}
-                    if isinstance(payload.get("completion"), Mapping)
-                    else {}
-                ),
-            }
-            journal["terminal_closeout"] = compact
-            journal["writeback"] = {
-                **_mapping(journal.get("writeback")),
-                "completion": compact.get("completion"),
-            }
-            _write_journal(journal_path, journal)
-
-        terminal_effect = verified_terminal_effect
-        terminal_checkpoint = checkpoint_terminal
+        terminal_effect = verified_terminal_closeout_effect(
+            terminal_closeout, result=result, plan=plan
+        )
+        terminal_checkpoint = journal_adapter.checkpoint_terminal
 
     settlement_result = execute_turn_driver_settlement(
         transaction_plan,
@@ -1238,7 +1231,7 @@ def _typed_settlement_stage(
         ),
         writeback=writeback_effect,
         spend=spend,
-        checkpoint=checkpoint,
+        checkpoint=journal_adapter.checkpoint,
         committed_effect_id=_journal_committed_effect_id(journal),
         terminal_closeout_required=terminal_closeout_required,
         terminal_closeout_payload=(
@@ -1248,6 +1241,10 @@ def _typed_settlement_stage(
         ),
         terminal_closeout=terminal_effect,
         terminal_checkpoint=terminal_checkpoint,
+        prepare=journal_adapter.prepare,
+        abort=journal_adapter.abort,
+        effect_attempts=journal_adapter.effect_attempts,
+        effect_resolvers=effect_resolvers,
     )
 
     journal["settlement_result"] = settlement_result_payload(settlement_result)
@@ -1287,7 +1284,9 @@ def _typed_settlement_stage(
 
     settlement_state = settlement_result.value
     if settlement_state is None or settlement_state.quota_spend is None:
-        raise ValueError("typed Turn settlement completed without a quota spend receipt")
+        raise ValueError(
+            "typed Turn settlement completed without a quota spend receipt"
+        )
     completed_phases = list(settlement_state.completed_phases)
     spend_payload = dict(settlement_state.quota_spend)
     _write_journal(journal_path, journal)
@@ -1343,6 +1342,9 @@ def run_loopx_turn_once(
     completion_intent: CompletionIntent | None = None,
     terminal_closeout: TerminalCloseout | None = None,
     spend: Spend | None = None,
+    writeback_resolver: TurnEffectResolver | None = None,
+    spend_resolver: TurnEffectResolver | None = None,
+    terminal_closeout_resolver: TurnEffectResolver | None = None,
     scheduler: Scheduler | None = None,
 ) -> dict[str, Any]:
     if host_runner is not None and host_argv is not None:
@@ -1381,7 +1383,9 @@ def run_loopx_turn_once(
             effects=empty_effects,
         )
     if writeback is None or spend is None or scheduler is None:
-        raise ValueError("executing run-once requires writeback, spend, and scheduler callbacks")
+        raise ValueError(
+            "executing run-once requires writeback, spend, and scheduler callbacks"
+        )
 
     turn_key = str(request["turn_key"])
     journal_path = turn_journal_path(runtime_root, goal_id=goal_id, turn_key=turn_key)
@@ -1389,7 +1393,8 @@ def run_loopx_turn_once(
         journal = _load_journal(journal_path)
         if journal and (
             journal.get("status") in {"committed", "stopped"}
-            or journal.get("status") == "failed" and not retry_failed
+            or journal.get("status") == "failed"
+            and not retry_failed
         ):
             return _execution_payload(
                 plan,
@@ -1404,7 +1409,11 @@ def run_loopx_turn_once(
                 journal,
                 session_binding_resolver=session_binding_resolver,
             )
-            receipt = journal.get("receipt") if isinstance(journal.get("receipt"), dict) else {}
+            receipt = (
+                journal.get("receipt")
+                if isinstance(journal.get("receipt"), dict)
+                else {}
+            )
             if receipt.get("failed_phase") == "validation":
                 if journal.get("validation_stage") != "task_postcondition":
                     journal.pop("host_result", None)
@@ -1481,5 +1490,10 @@ def run_loopx_turn_once(
             completion_intent=completion_intent,
             terminal_closeout=terminal_closeout,
             spend=spend,
+            effect_resolvers=turn_effect_resolvers(
+                writeback=writeback_resolver,
+                spend=spend_resolver,
+                terminal_closeout=terminal_closeout_resolver,
+            ),
             scheduler=scheduler,
         )
