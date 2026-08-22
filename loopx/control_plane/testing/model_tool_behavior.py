@@ -496,9 +496,16 @@ def execute_loopx_cli(
     source_root: Path,
     project_root: Path,
     argument_overrides: Mapping[str, str] | None = None,
+    accepted_return_codes: Sequence[int] = (0,),
     timeout_seconds: float = 60,
 ) -> str:
-    """Execute only the parsed LoopX argv against an isolated project."""
+    """Execute only the parsed LoopX argv against an isolated project.
+
+    Most behavior actors accept only successful CLI calls. A scenario that
+    starts from a typed, actionable rejection may explicitly accept that
+    command's documented non-zero code while still failing closed on every
+    other result.
+    """
 
     tokens = loopx_command_tokens(command)
     if not tokens:
@@ -524,12 +531,10 @@ def execute_loopx_cli(
         text=True,
         timeout=timeout_seconds,
     )
-    if completed.returncode != 0:
+    if completed.returncode not in accepted_return_codes:
         detail = completed.stderr.strip() or completed.stdout.strip()
         bounded_detail = (
-            detail
-            if len(detail) <= 1_000
-            else detail[:500] + "\n...\n" + detail[-500:]
+            detail if len(detail) <= 1_000 else detail[:500] + "\n...\n" + detail[-500:]
         )
         raise RuntimeError(
             "LoopX CLI command failed with "

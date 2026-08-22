@@ -178,6 +178,10 @@ export function evaluateTodoCompletionValidationPlan(
       request.requested_completion_turn_key,
       "requested_completion_turn_key",
     ),
+    requested_completion_identity_source:
+      request.requested_completion_identity_source,
+    goal_id: request.goal_id,
+    todo_id: request.todo_id,
   });
   if (fence.outcome === "replay") {
     return {

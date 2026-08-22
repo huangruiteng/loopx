@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ...heartbeat_prompt import build_heartbeat_prompt
+from ...todos import add_goal_todo, complete_goal_todo
 from ..quota.turn_envelope import quota_action_signature_document
 from .doubao_model_behavior_actor import (
     ARK_API_KEY_ENV,
@@ -31,7 +32,11 @@ from .selected_todo_tool_behavior import bounded_workspace_read_plan
 TERMINAL_SETTLEMENT_TOOL_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
     "terminal_settlement_tool_behavior_receipt_v0"
 )
+TERMINAL_SETTLEMENT_REENTRY_TOOL_BEHAVIOR_RECEIPT_SCHEMA_VERSION = (
+    "terminal_settlement_reentry_tool_behavior_receipt_v0"
+)
 TERMINAL_SETTLEMENT_TOOL_BEHAVIOR_MAX_CALLS = 10
+TERMINAL_SETTLEMENT_REENTRY_TOOL_BEHAVIOR_MAX_CALLS = 5
 
 TERMINAL_SETTLEMENT_FIXTURE_GOAL_ID = "terminal-settlement-fixture"
 TERMINAL_SETTLEMENT_FIXTURE_AGENT_ID = "codex-terminal-settlement"
@@ -41,6 +46,8 @@ TERMINAL_SETTLEMENT_FIXTURE_ACTION_TEXT = (
     f"Read `{TERMINAL_SETTLEMENT_FIXTURE_PROOF}`, verify the bounded delivery, "
     "then settle this final Todo from the quota-projected plan. It has no successor."
 )
+TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID = "terminal-reentry-fixture"
+TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID = "codex-terminal-reentry"
 _EXPECTED_RECEIPT_STEPS = [
     "validation",
     "durable_writeback",
@@ -58,6 +65,26 @@ class _TerminalSettlementFixture:
     global_registry_path: Path
     source_root: Path
     proof_target: Path
+
+
+@dataclass(frozen=True)
+class _TerminalSettlementReentryFixture:
+    project_root: Path
+    source_root: Path
+    rejection_command: str
+    rejection_packet: dict[str, Any]
+    projected_actions_by_todo: dict[str, str]
+    quota_reentry_action: str
+
+
+@dataclass
+class _ReentryQualificationState:
+    fixture: _TerminalSettlementReentryFixture
+    messages: list[dict[str, Any]]
+    steps: list[dict[str, Any]] = field(default_factory=list)
+    settled_todo_ids: list[str] = field(default_factory=list)
+    provider_call_count: int = 0
+    terminal_quota_observed: bool = False
 
 
 @dataclass
@@ -211,6 +238,226 @@ def _build_fixture(root: Path) -> _TerminalSettlementFixture:
         global_registry_path=global_registry_path,
         source_root=source_root,
         proof_target=proof_target,
+    )
+
+
+def _reentry_projection(
+    packet: Mapping[str, Any],
+    *,
+    expected_todo_ids: set[str],
+) -> tuple[dict[str, str], str]:
+    transition = packet.get("replan_transition")
+    if not (
+        packet.get("ok") is False
+        and isinstance(transition, Mapping)
+        and transition.get("schema_version") == "replan_writeback_rejection_v0"
+        and transition.get("host_action") == "settle_todo_lifecycle"
+        and transition.get("resolution_mode") == "todo_lifecycle_settlement"
+        and isinstance(transition.get("obligation_id"), str)
+        and transition.get("obligation_id")
+    ):
+        raise ValueError("real refresh rejection did not expose lifecycle reentry")
+    triggers = transition.get("triggers")
+    actions = transition.get("next_cli_actions")
+    if not isinstance(triggers, list) or not isinstance(actions, list):
+        raise ValueError("lifecycle reentry projection is incomplete")
+    projected_ids: set[str] = set()
+    projected_keys: dict[str, str] = {}
+    for trigger in triggers:
+        if not isinstance(trigger, Mapping):
+            raise ValueError("lifecycle reentry trigger is malformed")
+        todo_id = str(trigger.get("todo_id") or "")
+        completion_key = str(trigger.get("completion_turn_key") or "")
+        if (
+            trigger.get("kind") != "completed_advancement_without_successor"
+            or todo_id not in expected_todo_ids
+            or trigger.get("completion_identity_source") != "unscoped_completion"
+            or not completion_key.startswith("local_completion_")
+        ):
+            raise ValueError("lifecycle reentry completion identity is malformed")
+        projected_ids.add(todo_id)
+        projected_keys[todo_id] = completion_key
+    if projected_ids != expected_todo_ids:
+        raise ValueError("lifecycle reentry did not project every completed Todo")
+
+    actions_by_todo: dict[str, str] = {}
+    quota_action = ""
+    for action_value in actions:
+        if not isinstance(action_value, str):
+            raise ValueError("lifecycle reentry action must be a string")
+        tokens = loopx_command_tokens(action_value)
+        if not tokens:
+            continue
+        command_kind, command_action = _command_path(tokens)
+        if command_kind == "todo" and command_action == "complete":
+            todo_id = argument_value(tokens, "--todo-id") or ""
+            if (
+                todo_id not in expected_todo_ids
+                or argument_value(tokens, "--goal-id")
+                != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID
+                or argument_value(tokens, "--agent-id")
+                != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID
+                or argument_value(tokens, "--completion-identity-key")
+                != projected_keys[todo_id]
+                or "--turn-instance-id" in tokens
+                or "--replan-obligation-id" in tokens
+                or "--no-follow-up" not in tokens
+            ):
+                raise ValueError("lifecycle reentry action identity is malformed")
+            actions_by_todo[todo_id] = action_value
+        elif command_kind == "quota" and command_action == "should-run":
+            quota_action = action_value
+        elif command_kind in {"refresh_state", "quota"}:
+            raise ValueError("lifecycle reentry projected a prohibited write/spend")
+    if set(actions_by_todo) != expected_todo_ids or not quota_action:
+        raise ValueError("lifecycle reentry executable action set is incomplete")
+    return actions_by_todo, quota_action
+
+
+def _build_reentry_fixture(root: Path) -> _TerminalSettlementReentryFixture:
+    source_root = Path(__file__).resolve().parents[3]
+    project_root = root / "project"
+    runtime_root = root / "runtime"
+    state_relative = (
+        Path(".codex")
+        / "goals"
+        / TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID
+        / "ACTIVE_GOAL_STATE.md"
+    )
+    state_path = project_root / state_relative
+    registry_path = project_root / ".loopx" / "registry.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    registry_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "init", "-q"],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    subprocess.run(
+        [
+            "git",
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/example/terminal-reentry-fixture.git",
+        ],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    state_path.write_text(
+        "---\n"
+        "status: active\n"
+        "owner_mode: goal\n"
+        'objective: "Close validated terminal work without inventing a successor."\n'
+        "updated_at: 2026-08-23T00:00:00+08:00\n"
+        "---\n\n"
+        "# Terminal Reentry Behavior Fixture\n\n"
+        "## Objective\n\n"
+        "Close validated terminal work without inventing a successor.\n\n"
+        "## Next Action\n\n"
+        "- Settle the two validated completed slices and stop.\n\n"
+        "## User Todo / Owner Review Reading Queue\n\n"
+        "## Agent Todo\n\n",
+        encoding="utf-8",
+    )
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1",
+                "updated_at": "2026-08-23T00:00:00+08:00",
+                "common_runtime_root": str(runtime_root),
+                "goals": [
+                    {
+                        "id": TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID,
+                        "domain": "terminal-reentry-live-fixture",
+                        "status": "active",
+                        "repo": str(project_root),
+                        "state_file": str(state_relative),
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "coordination": {
+                            "registered_agents": [
+                                TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID
+                            ],
+                            "agent_model": "peer_v1",
+                        },
+                        "authority_sources": [],
+                        "quota": {
+                            "compute": 1.0,
+                            "window_hours": 24,
+                            "allowed_slots": 5,
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    todos = [
+        add_goal_todo(
+            registry_path=registry_path,
+            goal_id=TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID,
+            role="agent",
+            text=f"Validate terminal slice {index}.",
+            task_class="advancement_task",
+            claimed_by=TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID,
+        )
+        for index in (1, 2)
+    ]
+    expected_todo_ids = {str(todo["todo_id"]) for todo in todos}
+    for todo_id in expected_todo_ids:
+        result = complete_goal_todo(
+            registry_path=registry_path,
+            goal_id=TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID,
+            todo_id=todo_id,
+            role="agent",
+            evidence=f"validated terminal result for {todo_id}",
+            agent_id=TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID,
+        )
+        if result.get("ok") is not True:
+            raise ValueError("unscoped completion did not commit")
+
+    rejection_command = (
+        "loopx --format json refresh-state "
+        f"--goal-id {TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID} "
+        f"--agent-id {TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID} "
+        "--progress-scope agent_lane "
+        "--classification terminal_delivery_closeout "
+        "--delivery-batch-scale single_surface "
+        "--delivery-outcome surface_only --no-global-sync"
+    )
+    rejection_output = execute_loopx_cli(
+        rejection_command,
+        source_root=source_root,
+        project_root=project_root,
+        accepted_return_codes=(1,),
+    )
+    rejection_packet = json.loads(rejection_output)
+    if not isinstance(rejection_packet, dict):
+        raise ValueError("refresh rejection must be a JSON object")
+    projected_actions, quota_action = _reentry_projection(
+        rejection_packet,
+        expected_todo_ids=expected_todo_ids,
+    )
+    return _TerminalSettlementReentryFixture(
+        project_root=project_root,
+        source_root=source_root,
+        rejection_command=rejection_command,
+        rejection_packet=rejection_packet,
+        projected_actions_by_todo=projected_actions,
+        quota_reentry_action=quota_action,
     )
 
 
@@ -462,6 +709,71 @@ def _receipt(
     }
 
 
+def _execute_reentry_cli(
+    command: str,
+    *,
+    state: _ReentryQualificationState,
+    accepted_return_codes: tuple[int, ...] = (0,),
+) -> dict[str, Any]:
+    tokens = loopx_command_tokens(command)
+    if tokens and "--format" not in tokens:
+        command = shlex.join([tokens[0], "--format", "json", *tokens[1:]])
+    output = execute_loopx_cli(
+        command,
+        source_root=state.fixture.source_root,
+        project_root=state.fixture.project_root,
+        accepted_return_codes=accepted_return_codes,
+    )
+    payload = json.loads(output)
+    if not isinstance(payload, dict):
+        raise ValueError("LoopX reentry command output must be an object")
+    return payload
+
+
+def _reentry_receipt(
+    state: _ReentryQualificationState,
+    *,
+    qualification_id: str,
+    actor_ref: str,
+    passed: bool,
+    failure_code: str | None,
+) -> dict[str, Any]:
+    expected_count = len(state.fixture.projected_actions_by_todo)
+    return {
+        "schema_version": (
+            TERMINAL_SETTLEMENT_REENTRY_TOOL_BEHAVIOR_RECEIPT_SCHEMA_VERSION
+        ),
+        "qualification_id": qualification_id,
+        "actor_ref": actor_ref,
+        "scenario": "post_refresh_rejection_reentry",
+        "qualification_passed": passed,
+        "failure_code": failure_code,
+        "provider_call_count": state.provider_call_count,
+        "tool_call_count": len(state.steps),
+        "projected_todo_count": expected_count,
+        "settled_todo_count": len(state.settled_todo_ids),
+        "completion_identity_preserved": bool(
+            passed and len(state.settled_todo_ids) == expected_count
+        ),
+        "terminal_quota_observed": state.terminal_quota_observed,
+        "model_stopped_after_terminal_quota": bool(
+            passed and state.terminal_quota_observed
+        ),
+        "observed_tool_sequence": [step["kind"] for step in state.steps],
+        "tool_call_receipts": list(state.steps),
+        "boundary": {
+            "raw_prompt_persisted": False,
+            "raw_provider_response_persisted": False,
+            "raw_command_persisted": False,
+            "filesystem_writes_executed": True,
+            "writes_limited_to_temporary_fixture": True,
+            "external_writes_executed": False,
+            "shell_commands_executed": False,
+            "read_only_host_commands_executed": True,
+        },
+    }
+
+
 class DoubaoTerminalSettlementToolBehaviorActor:
     """Prove the model follows the real post-spend terminal closeout plan."""
 
@@ -638,6 +950,215 @@ class DoubaoTerminalSettlementToolBehaviorActor:
                 return receipt(passed=False, failure_code=failure_code)
             if kind == "terminal_closeout":
                 return receipt(passed=True, failure_code=None)
+            state.messages.extend(
+                [
+                    {
+                        "role": "assistant",
+                        "content": step.assistant_content,
+                        "tool_calls": [tool_call.provider_value],
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call.call_id,
+                        "content": output,
+                    },
+                ]
+            )
+
+        return receipt(passed=False, failure_code="tool_call_budget_exhausted")
+
+    def qualify_reentry(
+        self,
+        *,
+        qualification_id: str,
+        fixture_root: Path,
+    ) -> dict[str, Any]:
+        """Prove the model executes a real rejected-refresh recovery packet."""
+
+        fixture = _build_reentry_fixture(fixture_root)
+        seed_call_id = "seed-refresh-rejection"
+        state = _ReentryQualificationState(
+            fixture=fixture,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are Codex recovering one LoopX terminal turn. The "
+                        "latest exec tool result is the authoritative typed "
+                        "recovery projection. The user confirms no real successor "
+                        "remains. Use one command per tool call. Execute every "
+                        "projected Todo lifecycle settlement with a concise "
+                        "public-safe note; do not repeat refresh-state, inspect the "
+                        "workspace, spend quota, or invent filler work. Then run "
+                        "the projected quota should-run command. When it reports "
+                        "should_run=false, return a concise final response without "
+                        "another tool call."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Both validated implementation slices are complete and the "
+                        "bounded Goal is exhausted. No real successor remains. "
+                        "Recover from the latest typed rejection and close out."
+                    ),
+                },
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": seed_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": "exec_command",
+                                "arguments": json.dumps(
+                                    {"cmd": fixture.rejection_command},
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                    separators=(",", ":"),
+                                ),
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": seed_call_id,
+                    "content": json.dumps(
+                        fixture.rejection_packet,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                },
+            ],
+        )
+        actor_ref = self._client.actor_ref
+
+        def receipt(*, passed: bool, failure_code: str | None) -> dict[str, Any]:
+            return _reentry_receipt(
+                state,
+                qualification_id=qualification_id,
+                actor_ref=actor_ref,
+                passed=passed,
+                failure_code=failure_code,
+            )
+
+        for _ in range(TERMINAL_SETTLEMENT_REENTRY_TOOL_BEHAVIOR_MAX_CALLS):
+            step = self._client.next_step(state.messages)
+            state.provider_call_count += 1
+            tool_call = step.tool_call
+            if tool_call is None:
+                if state.terminal_quota_observed:
+                    return receipt(passed=True, failure_code=None)
+                return receipt(
+                    passed=False,
+                    failure_code=(
+                        "model_returned_before_terminal_quota"
+                        if len(state.settled_todo_ids)
+                        == len(fixture.projected_actions_by_todo)
+                        else "model_returned_before_lifecycle_settlement"
+                    ),
+                )
+
+            tokens = loopx_command_tokens(tool_call.command)
+            command_kind, command_action = (
+                _command_path(tokens) if tokens else ("unknown", None)
+            )
+            kind = "unexpected_command"
+            output = ""
+            failure_code: str | None = None
+            try:
+                if state.terminal_quota_observed:
+                    raise ValueError("model_called_tool_after_terminal_quota")
+                if command_kind == "refresh_state":
+                    raise ValueError("repeated_refresh_state")
+                if command_kind == "todo" and command_action == "complete":
+                    if not tokens:
+                        raise ValueError("lifecycle_settlement_command_malformed")
+                    todo_id = argument_value(tokens, "--todo-id") or ""
+                    expected_action = fixture.projected_actions_by_todo.get(todo_id)
+                    expected_tokens = (
+                        loopx_command_tokens(expected_action)
+                        if expected_action is not None
+                        else None
+                    )
+                    if todo_id in state.settled_todo_ids:
+                        raise ValueError("repeated_lifecycle_settlement")
+                    note = str(argument_value(tokens, "--note") or "").strip()
+                    if (
+                        expected_tokens is None
+                        or argument_value(tokens, "--goal-id")
+                        != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID
+                        or argument_value(tokens, "--agent-id")
+                        != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID
+                        or argument_value(tokens, "--completion-identity-key")
+                        != argument_value(
+                            expected_tokens,
+                            "--completion-identity-key",
+                        )
+                        or "--turn-instance-id" in tokens
+                        or "--replan-obligation-id" in tokens
+                        or "--no-follow-up" not in tokens
+                        or not note
+                        or note == "<public-safe no-follow-up rationale>"
+                    ):
+                        raise ValueError("lifecycle_settlement_identity_mismatch")
+                    payload = _execute_reentry_cli(tool_call.command, state=state)
+                    if not (
+                        payload.get("ok") is True
+                        and payload.get("todo_id") == todo_id
+                        and payload.get("completion_continuation") == "no_followup"
+                        and payload.get("completion_recovery")
+                        == "lifecycle_reentry_terminal_closeout"
+                    ):
+                        raise ValueError("lifecycle_settlement_execution_failed")
+                    state.settled_todo_ids.append(todo_id)
+                    kind = "todo_lifecycle_settlement"
+                    output = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                elif command_kind == "quota" and command_action == "should-run":
+                    if len(state.settled_todo_ids) != len(
+                        fixture.projected_actions_by_todo
+                    ):
+                        raise ValueError("quota_reentry_before_lifecycle_settlement")
+                    if not tokens or (
+                        argument_value(tokens, "--goal-id")
+                        != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_GOAL_ID
+                        or argument_value(tokens, "--agent-id")
+                        != TERMINAL_SETTLEMENT_REENTRY_FIXTURE_AGENT_ID
+                    ):
+                        raise ValueError("quota_reentry_identity_mismatch")
+                    payload = _execute_reentry_cli(
+                        tool_call.command,
+                        state=state,
+                        accepted_return_codes=(0, 1),
+                    )
+                    if payload.get("should_run") is not False:
+                        raise ValueError("quota_reentry_did_not_terminate")
+                    state.terminal_quota_observed = True
+                    kind = "terminal_quota_reentry"
+                    output = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                elif command_kind == "todo" and command_action == "add":
+                    raise ValueError("invented_lifecycle_successor")
+                elif command_kind == "quota" and command_action == "spend-slot":
+                    raise ValueError("unexpected_quota_spend")
+                else:
+                    raise ValueError("unexpected_command")
+            except (RuntimeError, ValueError, json.JSONDecodeError) as exc:
+                failure_code = str(exc)
+
+            step_receipt = {
+                "ordinal": len(state.steps) + 1,
+                "kind": kind if failure_code is None else failure_code,
+                "command_digest": digest_text(tool_call.command),
+            }
+            if failure_code is not None:
+                step_receipt["redacted_command_shape"] = _redacted_command_shape(
+                    tool_call.command
+                )
+            state.steps.append(step_receipt)
+            if failure_code is not None:
+                return receipt(passed=False, failure_code=failure_code)
             state.messages.extend(
                 [
                     {

@@ -342,6 +342,13 @@ def validate_todo_complete_options(args: argparse.Namespace) -> None:
         raise ValueError(
             "--task-lease-expected-version requires --task-lease-idempotency-key"
         )
+    if args.turn_instance_id and args.completion_identity_key:
+        raise ValueError(
+            "todo complete accepts either --turn-instance-id or "
+            "--completion-identity-key, not both"
+        )
+    if args.completion_identity_key and not args.no_follow_up:
+        raise ValueError("--completion-identity-key is only valid with --no-follow-up")
     if any(getattr(args, field) for field in ("task_repository", "bound_agent", "goal_bound", "blocks_agent", "clear_blocks_agent", "excluded_agents", "clear_excluded_agents", "global_gate", "clear_global_gate", "unblocks_todo_id", "resume_when")):
         raise ValueError("todo complete does not update current todo routing metadata; use todo update first")
     if any(getattr(args, field) for field in ("monitor_target_key", "cadence", "next_due_at", "expires_at")):

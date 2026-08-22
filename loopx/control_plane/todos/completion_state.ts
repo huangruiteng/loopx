@@ -17,6 +17,7 @@ export const TODO_COMPLETION_CONTINUATIONS = [
 ] as const;
 export const TODO_COMPLETION_RECOVERIES = [
   "same_turn_terminal_closeout",
+  "lifecycle_reentry_terminal_closeout",
 ] as const;
 
 export type TodoCompletionContinuation =
@@ -116,7 +117,10 @@ export function requireTodoCompletionMetadata(
   if (normalized !== null || value === null || value === undefined || value === "") {
     return normalized;
   }
-  throw new Error("completion_recovery must be same_turn_terminal_closeout");
+  throw new Error(
+    "completion_recovery must be same_turn_terminal_closeout or " +
+      "lifecycle_reentry_terminal_closeout",
+  );
 }
 
 export function completionContinuationForWrite(
@@ -184,11 +188,25 @@ export function selectTodoCompletionState(value: unknown): TodoCompletionStateRe
     effectiveNoFollowup,
     requiredBoolean(request.has_successor, "has_successor"),
   );
+  const completionIdentitySource = optionalString(
+    request.completion_identity_source,
+    "completion_identity_source",
+  );
+  if (
+    completionIdentitySource !== null &&
+    completionIdentitySource !== "turn_settlement" &&
+    completionIdentitySource !== "unscoped_completion" &&
+    completionIdentitySource !== "lifecycle_reentry"
+  ) {
+    throw new Error("completion_identity_source is unsupported");
+  }
   const recovery = String(todo.status ?? "") === "done" &&
       requestedNoFollowup &&
       normalizeTodoCompletionContinuation(todo.completion_continuation) ===
         "active_goal"
-    ? "same_turn_terminal_closeout"
+    ? completionIdentitySource === "lifecycle_reentry"
+      ? "lifecycle_reentry_terminal_closeout"
+      : "same_turn_terminal_closeout"
     : null;
   return {
     schema_version: TODO_COMPLETION_STATE_RESULT_SCHEMA,

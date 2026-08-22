@@ -458,6 +458,7 @@ def complete_event_projected_goal_todo(
     updated_at: str,
     dry_run: bool,
     completion_turn_key: str | None = None,
+    completion_identity_source: str | None = None,
     actor_agent_id: str | None = None,
     completion_fence: dict[str, Any] | None = None,
     completion_validation_source_authority: dict[str, Any] | None = None,
@@ -486,13 +487,20 @@ def complete_event_projected_goal_todo(
             projection_source="event_log",
             completion_turn_key=completion_turn_key,
             no_followup=no_followup,
+            goal_id=goal_id,
+            todo_id=todo_id,
+            completion_identity_source=completion_identity_source,
         )
     already_done = bool(completion_fence["terminal_before_request"])
-    terminal_upgrade = (
-        completion_fence["reason"] == "same_turn_terminal_upgrade"
-    )
+    terminal_upgrade = completion_fence["reason"] in {
+        "same_turn_terminal_upgrade",
+        "lifecycle_reentry_terminal_upgrade",
+    }
     untyped_completion_repair = (
         completion_fence["reason"] == "untyped_completion_repair"
+    )
+    unscoped_identity_repair = (
+        completion_fence["reason"] == "unscoped_completion_identity_repair"
     )
     if completion_fence["outcome"] == "replay":
         return {
@@ -589,6 +597,7 @@ def complete_event_projected_goal_todo(
         item,
         requested_no_followup=no_followup,
         has_successor=bool(normalized_successor_todo_ids),
+        completion_identity_source=completion_identity_source,
     )
     completion_continuation = completion_state.continuation
     completion_recovery = completion_state.recovery
@@ -624,7 +633,12 @@ def complete_event_projected_goal_todo(
         producer="loopx.todo.complete",
         actor_agent_id=actor_agent_id,
     )
-    if (not already_done or terminal_upgrade or untyped_completion_repair) and not dry_run:
+    if (
+        not already_done
+        or terminal_upgrade
+        or untyped_completion_repair
+        or unscoped_identity_repair
+    ) and not dry_run:
         store.append(completion_event)
 
     result = {
@@ -640,12 +654,16 @@ def complete_event_projected_goal_todo(
         "status_changed": not already_done,
         "text_changed": False,
         "metadata_updated": (
-            (not already_done) or terminal_upgrade or untyped_completion_repair
+            (not already_done)
+            or terminal_upgrade
+            or untyped_completion_repair
+            or unscoped_identity_repair
         ),
         "changed": (
             (not already_done)
             or terminal_upgrade
             or untyped_completion_repair
+            or unscoped_identity_repair
             or bool(next_results)
         ),
         "claimed_by": normalize_todo_claimed_by(effective_claimed_by),

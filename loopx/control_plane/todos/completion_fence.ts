@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
+
 import type { JsonObject } from "../effect_program.ts";
 import {
   requireBoolean as requiredBoolean,
   requireJsonObject as requiredObject,
+  requireNonEmptyString,
 } from "../runtime_decode.ts";
 import {
   normalizeTodoCompletionContinuation,
@@ -13,12 +16,20 @@ export const TODO_COMPLETION_FENCE_REQUEST_SCHEMA =
   "loopx_todo_completion_fence_request_v0";
 export const TODO_COMPLETION_FENCE_RESULT_SCHEMA =
   "loopx_todo_completion_fence_result_v0";
+export const TODO_COMPLETION_IDENTITY_REQUEST_SCHEMA =
+  "loopx_todo_completion_identity_request_v0";
+export const TODO_COMPLETION_IDENTITY_RESULT_SCHEMA =
+  "loopx_todo_completion_identity_v0";
 
 const TODO_STATUSES = ["open", "done", "blocked", "deferred"] as const;
 const TODO_ID_PATTERN = /^todo_[a-z0-9_-]{3,64}$/;
 
 export type TodoStatus = (typeof TODO_STATUSES)[number];
 export type TodoCompletionProjectionSource = "materialized" | "event_log";
+export type TodoCompletionIdentitySource =
+  | "turn_settlement"
+  | "unscoped_completion"
+  | "lifecycle_reentry";
 
 export interface TodoCompletionFenceRequest {
   schema_version: typeof TODO_COMPLETION_FENCE_REQUEST_SCHEMA;
@@ -32,11 +43,16 @@ export interface TodoCompletionFenceRequest {
   };
   requested_no_followup: boolean;
   requested_completion_turn_key: string | null;
+  requested_completion_identity_source: TodoCompletionIdentitySource | null;
+  goal_id: string | null;
+  todo_id: string | null;
 }
 
 export type TodoCompletionFenceContinueReason =
   | "not_terminal"
   | "same_turn_terminal_upgrade"
+  | "lifecycle_reentry_terminal_upgrade"
+  | "unscoped_completion_identity_repair"
   | "untyped_completion_repair";
 
 export type TodoCompletionFenceResult =
@@ -63,6 +79,50 @@ function optionalOpaqueString(value: unknown, label: string): string | null {
     throw new Error(`${label} must be a string or null`);
   }
   return value;
+}
+
+function completionIdentitySource(
+  value: unknown,
+): TodoCompletionIdentitySource | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (
+    value === "turn_settlement" || value === "unscoped_completion" ||
+    value === "lifecycle_reentry"
+  ) {
+    return value;
+  }
+  throw new Error("requested_completion_identity_source is unsupported");
+}
+
+export function localTodoCompletionIdentity(
+  goalId: string,
+  todoId: string,
+): string {
+  const digest = createHash("sha256")
+    .update(`loopx-local-todo-completion-v0\0${goalId}\0${todoId}`, "utf8")
+    .digest("hex");
+  return `local_completion_${digest.slice(0, 32)}`;
+}
+
+export function isLocalTodoCompletionIdentity(value: string): boolean {
+  return /^local_completion_[0-9a-f]{32}$/.test(value);
+}
+
+export function projectTodoCompletionIdentity(value: unknown): JsonObject {
+  const request = requiredObject(value, "todo.completion_identity params");
+  if (request.schema_version !== TODO_COMPLETION_IDENTITY_REQUEST_SCHEMA) {
+    throw new Error("Todo completion identity request schema mismatch");
+  }
+  const goalId = requireNonEmptyString(request.goal_id, "goal_id");
+  const todoId = requireNonEmptyString(request.todo_id, "todo_id");
+  if (!TODO_ID_PATTERN.test(todoId)) {
+    throw new Error("todo_id has an unsupported shape");
+  }
+  return {
+    schema_version: TODO_COMPLETION_IDENTITY_RESULT_SCHEMA,
+    identity_source: "unscoped_completion",
+    completion_identity_key: localTodoCompletionIdentity(goalId, todoId),
+  };
 }
 
 function todoNoFollowup(value: unknown): boolean | null {
@@ -157,6 +217,11 @@ export function decodeTodoCompletionFenceRequest(
       request.requested_completion_turn_key,
       "requested_completion_turn_key",
     ),
+    requested_completion_identity_source: completionIdentitySource(
+      request.requested_completion_identity_source,
+    ),
+    goal_id: optionalOpaqueString(request.goal_id, "goal_id"),
+    todo_id: optionalOpaqueString(request.todo_id, "todo_id"),
   };
 }
 
@@ -171,10 +236,25 @@ export function evaluateTodoCompletionFence(
   const done = status === "done";
   const terminalBeforeRequest = done ||
     (request.projection_source === "event_log" && status === "deferred");
+  const requestedKey = request.requested_completion_turn_key;
+  const storedKey = request.todo.completion_turn_key;
+  const expectedLocalKey = request.goal_id !== null && request.todo_id !== null
+    ? localTodoCompletionIdentity(request.goal_id, request.todo_id)
+    : null;
+  const unscopedIdentityRepair = done && storedKey === null &&
+    request.requested_completion_identity_source === "lifecycle_reentry" &&
+    requestedKey !== null && requestedKey === expectedLocalKey;
 
   if (
-    done && request.requested_completion_turn_key !== null &&
-    request.requested_completion_turn_key !== request.todo.completion_turn_key
+    request.requested_completion_identity_source === "lifecycle_reentry" &&
+    !done
+  ) {
+    throw new Error("Todo lifecycle reentry requires an already completed Todo");
+  }
+
+  if (
+    done && requestedKey !== null && requestedKey !== storedKey &&
+    !unscopedIdentityRepair
   ) {
     throw new Error(
       "todo is already completed under a different completion_turn_key",
@@ -203,8 +283,8 @@ export function evaluateTodoCompletionFence(
       );
     }
     if (
-      request.requested_completion_turn_key === null ||
-      request.requested_completion_turn_key !== request.todo.completion_turn_key
+      requestedKey === null ||
+      (requestedKey !== storedKey && !unscopedIdentityRepair)
     ) {
       throw new Error(
         "todo terminal closeout requires the original completion_turn_key",
@@ -213,7 +293,11 @@ export function evaluateTodoCompletionFence(
     return {
       schema_version: TODO_COMPLETION_FENCE_RESULT_SCHEMA,
       outcome: "continue",
-      reason: "same_turn_terminal_upgrade",
+      reason: unscopedIdentityRepair
+        ? "unscoped_completion_identity_repair"
+        : request.requested_completion_identity_source === "lifecycle_reentry"
+        ? "lifecycle_reentry_terminal_upgrade"
+        : "same_turn_terminal_upgrade",
       status,
       terminal_before_request: true,
       completion_continuation: continuation,

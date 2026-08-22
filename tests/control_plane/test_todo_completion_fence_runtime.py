@@ -55,7 +55,24 @@ def test_python_facade_sends_one_coarse_typed_request(monkeypatch) -> None:
         },
         "requested_no_followup": True,
         "requested_completion_turn_key": "turn-a",
+        "requested_completion_identity_source": None,
+        "goal_id": None,
+        "todo_id": None,
     }
+
+
+def test_python_facade_projects_stable_unscoped_completion_identity() -> None:
+    first = completion_fence.local_todo_completion_identity(
+        goal_id="goal-example",
+        todo_id="todo_local001",
+    )
+    second = completion_fence.local_todo_completion_identity(
+        goal_id="goal-example",
+        todo_id="todo_local001",
+    )
+
+    assert first == second
+    assert first.startswith("local_completion_")
 
 
 @pytest.mark.parametrize(

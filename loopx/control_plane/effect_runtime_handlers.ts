@@ -41,7 +41,10 @@ import {
   type TurnJournalInspectionRequest,
 } from "./turn_driver/turn_journal.ts";
 import { commitTurnJournal } from "./turn_driver/turn_journal_effects.ts";
-import { evaluateTodoCompletionFence } from "./todos/completion_fence.ts";
+import {
+  evaluateTodoCompletionFence,
+  projectTodoCompletionIdentity,
+} from "./todos/completion_fence.ts";
 import {
   buildTodoCompletionMetadataUpdates,
   normalizeTodoCompletionValue,
@@ -376,6 +379,7 @@ export function createEffectRuntimeHandlers(
       ),
     ],
     ["turn.settlement.reduce", reduceTurnSettlementTransaction],
+    ["todo.completion_identity.project", projectTodoCompletionIdentity],
     ["work_item.replan_settlement.project", projectReplanSettlementContract],
     [
       "work_item.replan_settlement.reentry",

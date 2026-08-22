@@ -182,6 +182,32 @@ through the shipped packet and interaction-contract builders, requires
 runtime-injected `ARK_API_KEY`, invokes the canonical Ark endpoint, and prints
 only the Git-bound bounded portfolio receipt.
 
+### Focused Terminal Rejection Reentry
+
+The terminal-settlement actor also has a focused `rejection-reentry` scenario
+for changes to the post-completion recovery packet. The fixture completes two
+real unscoped advancement Todos, invokes the shipped `refresh-state` CLI and
+requires its non-zero typed rejection, then gives that actual tool result to
+the model. The model must execute each exact
+`todo complete --no-follow-up --completion-identity-key ...` action, re-enter
+the projected `quota should-run` command, observe `should_run=false`, and stop.
+Repeating refresh, changing a completion identity, spending quota, inventing a
+successor, returning early, or calling another tool after terminal quota fails
+the qualification.
+
+```bash
+python3 scripts/qualify-doubao-terminal-settlement-live.py \
+  --scenario rejection-reentry \
+  --qualification-id <public-safe-run-id>
+```
+
+Ordinary CI uses the same actor with a scripted provider transport to prove the
+fixture, CLI, state machine, negative cases, and bounded receipt. Only a run of
+the command above with a runtime-injected key and a non-zero provider call count
+is evidence that a named Doubao model followed the projection. Raw prompts,
+tool results, provider responses, commands, Todo ids, and local paths are not
+retained in its receipt.
+
 ## New-User Onboarding Closed Loop
 
 `onboarding_actual_behavior_qualification_v0` extends the same low-frequency

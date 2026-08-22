@@ -377,17 +377,26 @@ Turn journal records that outcome before quota spend. A Todo completion alone
 never terminates the goal; a fresh decision owns successor selection and goal
 termination.
 
-Every newly completed Todo persists `completion_continuation` explicitly. The
+Every newly completed Todo persists `completion_continuation` and an opaque
+completion identity explicitly. The
 value must agree with its durable relations: `successor` requires at least one
 `successor_todo_id`, `no_followup` requires `no_followup=true`, and
 `active_goal` requires neither. A completed record that omits the field is not
 interpreted as `active_goal`; it fails closed until an agent explicitly repairs
 it by replaying `loopx todo complete`. The only post-completion transition is
-the narrow #3261 recovery seam: during the original `completion_turn_key`, an
-explicit `active_goal` may be upgraded to `no_followup` after the matching
-writeback and spend receipts exist. The recovery records
-`completion_recovery=same_turn_terminal_closeout`; it cannot cross a Turn or
-replace a successor.
+the narrow #3261 recovery seam: during the original quota-bound
+`completion_turn_key`, an explicit `active_goal` may be upgraded to
+`no_followup` after the matching writeback and spend receipts exist. The
+recovery records `completion_recovery=same_turn_terminal_closeout`; it cannot
+cross a Turn or replace a successor. A completion made outside a quota Turn
+instead persists a TS-derived `local_completion_*` identity. When a strict
+`refresh-state` rejection later proves that only Todo lifecycle settlement is
+missing, it may project that exact key through `--completion-identity-key`.
+The completion fence accepts this distinct
+`lifecycle_reentry_terminal_closeout` only for the matching completed Todo with
+`active_goal`, no successor, and an authorized lifecycle actor. It does not
+reinterpret the local key as a quota receipt or permit arbitrary cross-Turn
+terminal replay.
 
 `repair_required` and `replan_required` are distinct. Repair preserves the
 current task intent. Replan changes the runnable todo set or route because the

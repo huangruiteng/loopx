@@ -71,6 +71,9 @@ def evaluate_todo_completion_validation_plan(
     completion_turn_key: str | None,
     no_followup: bool,
     dry_run: bool,
+    completion_identity_source: str | None = None,
+    goal_id: str | None = None,
+    todo_id: str | None = None,
 ) -> dict[str, Any]:
     """Ask the TypeScript Todo owner for the validation decision/effect plan."""
     try:
@@ -96,6 +99,9 @@ def evaluate_todo_completion_validation_plan(
                 },
                 "requested_no_followup": no_followup,
                 "requested_completion_turn_key": completion_turn_key,
+                "requested_completion_identity_source": completion_identity_source,
+                "goal_id": goal_id,
+                "todo_id": todo_id,
                 "dry_run": dry_run,
             },
         )
@@ -295,6 +301,7 @@ def run_completion_validation_gate(
     dry_run: bool,
     no_followup: bool = False,
     completion_turn_key: str | None = None,
+    completion_identity_source: str | None = None,
 ) -> dict[str, Any] | None:
     return run_completion_validation_gate_with_source(
         state_file=state_file,
@@ -305,6 +312,7 @@ def run_completion_validation_gate(
         dry_run=dry_run,
         no_followup=no_followup,
         completion_turn_key=completion_turn_key,
+        completion_identity_source=completion_identity_source,
     ).get("failure")
 
 
@@ -318,6 +326,7 @@ def run_completion_validation_gate_with_source(
     dry_run: bool,
     no_followup: bool = False,
     completion_turn_key: str | None = None,
+    completion_identity_source: str | None = None,
 ) -> dict[str, Any]:
     """Run the caller-approved completion validation gate, OUTSIDE the mutation lock.
 
@@ -352,6 +361,9 @@ def run_completion_validation_gate_with_source(
         completion_turn_key=completion_turn_key,
         no_followup=no_followup,
         dry_run=dry_run,
+        completion_identity_source=completion_identity_source,
+        goal_id=goal_id,
+        todo_id=todo_id,
     )
     completion_validation = None
     if plan["effect"] == "reject":

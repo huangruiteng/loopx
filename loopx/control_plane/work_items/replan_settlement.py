@@ -39,14 +39,7 @@ def project_todo_lifecycle_settlement_reentry(
         raise RuntimeError("TypeScript Todo lifecycle reentry result must be an object")
     projected_triggers = result.get("triggers")
     next_cli_actions = result.get("next_cli_actions")
-    expected_triggers = [
-        {
-            "kind": trigger.get("kind"),
-            "todo_id": trigger.get("todo_id"),
-            "completion_turn_key": trigger.get("completion_turn_key") or None,
-        }
-        for trigger in triggers[:3]
-    ]
+    expected_triggers = triggers[:3]
     if (
         result.get("schema_version") != TODO_LIFECYCLE_REENTRY_SCHEMA
         or result.get("resolution_mode") != "todo_lifecycle_settlement"
@@ -57,13 +50,41 @@ def project_todo_lifecycle_settlement_reentry(
             or trigger.get("kind") != "completed_advancement_without_successor"
             or not isinstance(trigger.get("todo_id"), str)
             or not trigger.get("todo_id")
-            or (
-                trigger.get("completion_turn_key") is not None
-                and not isinstance(trigger.get("completion_turn_key"), str)
-            )
+            or not isinstance(trigger.get("completion_turn_key"), str)
+            or not trigger.get("completion_turn_key")
+            or trigger.get("completion_identity_source")
+            not in {"turn_settlement", "unscoped_completion"}
             for trigger in projected_triggers
         )
-        or [dict(trigger) for trigger in projected_triggers] != expected_triggers
+        or any(
+            dict(projected).get("kind") != expected.get("kind")
+            or dict(projected).get("todo_id") != expected.get("todo_id")
+            or (
+                expected.get("completion_turn_key") is not None
+                and dict(projected).get("completion_turn_key")
+                != expected.get("completion_turn_key")
+            )
+            or (
+                expected.get("completion_turn_key") is None
+                and not str(
+                    dict(projected).get("completion_turn_key") or ""
+                ).startswith("local_completion_")
+            )
+            or dict(projected).get("completion_identity_source")
+            != (
+                "unscoped_completion"
+                if expected.get("completion_turn_key") is None
+                or str(expected.get("completion_turn_key") or "").startswith(
+                    "local_completion_"
+                )
+                else "turn_settlement"
+            )
+            for projected, expected in zip(
+                projected_triggers,
+                expected_triggers,
+                strict=True,
+            )
+        )
         or not isinstance(next_cli_actions, list)
         or not next_cli_actions
         or any(not isinstance(action, str) or not action for action in next_cli_actions)

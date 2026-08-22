@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from copy import deepcopy
 from pathlib import Path
 
@@ -921,9 +922,10 @@ def test_todo_lifecycle_rejection_projects_exact_direct_settlement() -> None:
     assert transition["triggers"] == [
         {
             "kind": "completed_advancement_without_successor",
-            "todo_id": "todo_unsettled_completion",
-            "completion_turn_key": "turn-unsettled",
-        }
+                "todo_id": "todo_unsettled_completion",
+                "completion_turn_key": "turn-unsettled",
+                "completion_identity_source": "turn_settlement",
+            }
     ]
     actions = transition["next_cli_actions"]
     assert "--todo-id todo_unsettled_completion" in actions[0]
@@ -948,6 +950,8 @@ def test_todo_complete_then_refresh_cli_projects_direct_settlement(
                 "updated_at: 2026-08-22T00:00:00+00:00",
                 "---",
                 "",
+                "## User Todo / Owner Review Reading Queue",
+                "",
                 "## Agent Todo",
                 "",
             ]
@@ -967,6 +971,10 @@ def test_todo_complete_then_refresh_cli_projects_direct_settlement(
                         "status": "active",
                         "repo": str(project),
                         "state_file": state.name,
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
                         "coordination": {
                             "agent_model": "peer_v1",
                             "registered_agents": [AGENT_ID],
@@ -1044,12 +1052,163 @@ def test_todo_complete_then_refresh_cli_projects_direct_settlement(
     projected_ids = {trigger["todo_id"] for trigger in transition["triggers"]}
     expected_ids = {str(todo["todo_id"]) for todo in todos}
     assert projected_ids == expected_ids
+    assert all(
+        trigger["completion_identity_source"] == "unscoped_completion"
+        and str(trigger["completion_turn_key"]).startswith("local_completion_")
+        for trigger in transition["triggers"]
+    )
     actions = transition["next_cli_actions"]
     for todo_id in expected_ids:
         assert any(f"--todo-id {todo_id}" in action for action in actions)
         assert f"--todo-id {todo_id}" in payload["error"]
+    lifecycle_actions = [
+        action for action in actions if "loopx todo complete" in action
+    ]
+    assert len(lifecycle_actions) == 2
+    assert all("--completion-identity-key" in action for action in lifecycle_actions)
+    assert all("--turn-instance-id" not in action for action in lifecycle_actions)
     assert all("refresh-state" not in action for action in actions)
     assert all("spend-slot" not in action for action in actions)
+
+    for action in lifecycle_actions:
+        tokens = shlex.split(action)
+        loopx_index = tokens.index("loopx")
+        assert cli_main(
+            [
+                "--registry",
+                str(registry_path),
+                "--format",
+                "json",
+                *tokens[loopx_index + 1 :],
+            ]
+        ) == 0
+        settled = json.loads(capsys.readouterr().out)
+        assert settled["completion_continuation"] == "no_followup"
+        assert settled["completion_recovery"] == (
+            "lifecycle_reentry_terminal_closeout"
+        )
+
+    quota_action = next(action for action in actions if "quota should-run" in action)
+    quota_tokens = shlex.split(quota_action)
+    loopx_index = quota_tokens.index("loopx")
+    terminal_exit = cli_main(
+        [
+            "--registry",
+            str(registry_path),
+            *quota_tokens[loopx_index + 1 :],
+        ]
+    )
+    terminal_quota = json.loads(capsys.readouterr().out)
+    assert terminal_exit == 1
+    assert terminal_quota["should_run"] is False
+    assert terminal_quota["effective_action"] == "terminal_no_followup"
+
+
+def test_legacy_unscoped_completion_projects_executable_identity_repair(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    state = project / "ACTIVE_GOAL_STATE.md"
+    state.write_text(
+        "---\n"
+        f"goal_id: {GOAL_ID}\n"
+        "updated_at: 2026-08-22T00:00:00+00:00\n"
+        "---\n\n"
+        "## User Todo / Owner Review Reading Queue\n\n"
+        "## Agent Todo\n\n"
+        "- [x] [P0] Complete legacy terminal slice.\n"
+        "  <!-- loopx:todo todo_id=todo_legacy_unscoped status=done "
+        "task_class=advancement_task "
+        f"claimed_by={AGENT_ID} no_followup=false "
+        "completion_continuation=active_goal "
+        "completed_at=2026-08-22T00%3A00%3A00%2B00%3A00 -->\n",
+        encoding="utf-8",
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "common_runtime_root": str(tmp_path / "runtime"),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "status": "active",
+                        "repo": str(project),
+                        "state_file": state.name,
+                        "adapter": {
+                            "kind": "fixture_connected_delivery_v0",
+                            "status": "connected-delivery",
+                        },
+                        "coordination": {
+                            "agent_model": "peer_v1",
+                            "registered_agents": [AGENT_ID],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert cli_main(
+        [
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            "refresh-state",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--progress-scope",
+            "agent_lane",
+            "--classification",
+            "terminal_delivery_closeout",
+            "--delivery-batch-scale",
+            "single_surface",
+            "--delivery-outcome",
+            "surface_only",
+            "--no-global-sync",
+        ]
+    ) == 1
+    rejection = json.loads(capsys.readouterr().out)
+    transition = rejection["replan_transition"]
+    assert transition["triggers"] == [
+        {
+            "kind": "completed_advancement_without_successor",
+            "todo_id": "todo_legacy_unscoped",
+            "completion_turn_key": transition["triggers"][0][
+                "completion_turn_key"
+            ],
+            "completion_identity_source": "unscoped_completion",
+        }
+    ]
+    completion_key = transition["triggers"][0]["completion_turn_key"]
+    assert str(completion_key).startswith("local_completion_")
+    action = next(
+        item for item in transition["next_cli_actions"] if "loopx todo complete" in item
+    )
+    action_tokens = shlex.split(action)
+    loopx_index = action_tokens.index("loopx")
+    assert cli_main(
+        [
+            "--registry",
+            str(registry_path),
+            "--format",
+            "json",
+            *action_tokens[loopx_index + 1 :],
+        ]
+    ) == 0
+    repaired = json.loads(capsys.readouterr().out)
+
+    assert repaired["completion_continuation"] == "no_followup"
+    assert repaired["completion_recovery"] == (
+        "lifecycle_reentry_terminal_closeout"
+    )
+    assert f"completion_turn_key={completion_key}" in state.read_text(encoding="utf-8")
 
 
 def test_persisted_semantic_no_followup_ack_cannot_retire_todo_gap() -> None:

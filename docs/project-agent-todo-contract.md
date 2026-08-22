@@ -360,10 +360,17 @@ the agent should do one of two things:
 
 This succession decision is durable Todo state. A later progress observation,
 vision ACK, coverage-exhausted result, or rewritten rationale cannot substitute
-for it. If the Todo is already complete without either branch, use the supported
-same-turn `todo complete --no-follow-up` recovery when its completion identity
-is still current; otherwise add/link a real successor. Do not create a user
-gate merely to silence a succession warning.
+for it. Every new completion therefore retains an opaque completion identity.
+A quota-bound completion still permits only the receipt-backed same-turn
+`todo complete --no-follow-up` recovery. An ordinary unscoped completion gets a
+stable `local_completion_*` identity; if a later `refresh-state` discovers that
+the finished Goal has no real successor, its typed rejection may project
+`--completion-identity-key` for one direct lifecycle reentry. That command is
+valid only for the exact already-completed Todo, its matching local identity,
+`active_goal` continuation, no successor, and the authorized lifecycle actor.
+It cannot be supplied for an open Todo or used as a quota turn identity.
+Otherwise add/link a real successor. Do not create a user gate merely to
+silence a succession warning.
 
 This keeps the active checklist honest without making LoopX a heavyweight
 project-management state machine.

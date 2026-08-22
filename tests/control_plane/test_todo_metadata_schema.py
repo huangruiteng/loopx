@@ -151,6 +151,21 @@ def test_todo_metadata_round_trip_preserves_terminal_recovery_state() -> None:
     }
 
 
+def test_todo_metadata_round_trip_preserves_lifecycle_reentry_recovery() -> None:
+    line = format_todo_metadata_line(
+        todo_id="todo_terminal002",
+        status="done",
+        no_followup=True,
+        completion_continuation="no_followup",
+        completion_recovery="lifecycle_reentry_terminal_closeout",
+    )
+
+    assert line is not None
+    assert parse_todo_metadata_line(line)["completion_recovery"] == (
+        "lifecycle_reentry_terminal_closeout"
+    )
+
+
 def test_todo_metadata_parser_ignores_noncanonical_field_names() -> None:
     parsed = parse_todo_metadata_line(
         "  <!-- loopx:todo "
@@ -226,7 +241,6 @@ def test_todo_metadata_formatter_enforces_cross_field_constraints() -> None:
             claimed_by="codex-quality",
             excluded_agents=["codex-quality"],
         )
-
 
 
 def test_multi_subagent_todo_parser_projects_untruncated_admission_authority() -> None:

@@ -197,6 +197,14 @@ def register_todo_command(
         ),
     )
     todo_parser.add_argument(
+        "--completion-identity-key",
+        help=(
+            "For todo complete --no-follow-up lifecycle reentry, reuse the "
+            "exact completion identity projected by LoopX. This is not a quota "
+            "turn id and cannot be combined with --turn-instance-id."
+        ),
+    )
+    todo_parser.add_argument(
         "--replan-obligation-id",
         help=(
             "For todo add, bind one newly selected runnable advancement successor "
@@ -753,6 +761,7 @@ def handle_todo_command(
             settlement_result = None
             settlement_identity = None
             completion_turn_key = None
+            completion_identity_source = None
             if getattr(args, "turn_instance_id", None):
                 runtime_root = resolve_runtime_root(
                     load_registry(registry_path),
@@ -790,6 +799,10 @@ def handle_todo_command(
                             + settlement_result.failure.reason
                         )
                 completion_turn_key = identity.effect_id
+                completion_identity_source = "turn_settlement"
+            elif getattr(args, "completion_identity_key", None):
+                completion_turn_key = str(args.completion_identity_key)
+                completion_identity_source = "lifecycle_reentry"
             payload = complete_goal_todo(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
@@ -798,6 +811,7 @@ def handle_todo_command(
                 decision_outcome=args.decision_outcome,
                 evidence=args.evidence,
                 completion_turn_key=completion_turn_key,
+                completion_identity_source=completion_identity_source,
                 task_lease_idempotency_key=args.task_lease_idempotency_key,
                 task_lease_expected_version=args.task_lease_expected_version,
                 note=args.note,

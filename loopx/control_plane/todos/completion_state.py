@@ -26,6 +26,7 @@ class TodoCompletionRecovery(str, Enum):
     """Stable Python import compatibility for the persisted wire value."""
 
     SAME_TURN_TERMINAL_CLOSEOUT = "same_turn_terminal_closeout"
+    LIFECYCLE_REENTRY_TERMINAL_CLOSEOUT = "lifecycle_reentry_terminal_closeout"
 
 
 def _string_value(value: Any) -> str:
@@ -148,6 +149,7 @@ def completion_state_for_todo_write(
     *,
     requested_no_followup: bool,
     has_successor: bool,
+    completion_identity_source: str | None = None,
 ) -> TodoCompletionState:
     result = _result(
         "todo.completion_state.evaluate",
@@ -162,6 +164,7 @@ def completion_state_for_todo_write(
             },
             "requested_no_followup": requested_no_followup,
             "has_successor": has_successor,
+            "completion_identity_source": completion_identity_source,
         },
     )
     continuation = result.get("continuation")

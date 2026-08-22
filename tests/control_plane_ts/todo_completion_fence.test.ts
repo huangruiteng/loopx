@@ -4,6 +4,8 @@ import test from "node:test";
 
 import {
   evaluateTodoCompletionFence,
+  projectTodoCompletionIdentity,
+  TODO_COMPLETION_IDENTITY_REQUEST_SCHEMA,
   TODO_COMPLETION_FENCE_REQUEST_SCHEMA,
 } from "../../loopx/control_plane/todos/completion_fence.ts";
 
@@ -139,4 +141,74 @@ test("evaluation is input-immutable and normalizes persisted metadata", () => {
   assert.equal(result.outcome, "replay");
   assert.equal(result.completion_continuation, "no_followup");
   assert.deepEqual(request, before);
+});
+
+test("unscoped completion identity is stable and repairs a legacy terminal gap", () => {
+  const identity = projectTodoCompletionIdentity({
+    schema_version: TODO_COMPLETION_IDENTITY_REQUEST_SCHEMA,
+    goal_id: "goal-example",
+    todo_id: "todo_legacy001",
+  });
+  assert.equal(identity.identity_source, "unscoped_completion");
+  assert.match(
+    String(identity.completion_identity_key),
+    /^local_completion_[0-9a-f]{32}$/,
+  );
+  assert.deepEqual(
+    evaluateTodoCompletionFence({
+      schema_version: TODO_COMPLETION_FENCE_REQUEST_SCHEMA,
+      projection_source: "materialized",
+      goal_id: "goal-example",
+      todo_id: "todo_legacy001",
+      todo: {
+        status: "done",
+        no_followup: false,
+        completion_continuation: "active_goal",
+        completion_turn_key: null,
+        successor_todo_ids: [],
+      },
+      requested_no_followup: true,
+      requested_completion_turn_key: identity.completion_identity_key,
+      requested_completion_identity_source: "lifecycle_reentry",
+    }),
+    {
+      schema_version: "loopx_todo_completion_fence_result_v0",
+      outcome: "continue",
+      reason: "unscoped_completion_identity_repair",
+      status: "done",
+      terminal_before_request: true,
+      completion_continuation: "active_goal",
+    },
+  );
+});
+
+test("lifecycle reentry rejects invented identities and open Todos", () => {
+  const base = {
+    schema_version: TODO_COMPLETION_FENCE_REQUEST_SCHEMA,
+    projection_source: "materialized",
+    goal_id: "goal-example",
+    todo_id: "todo_legacy001",
+    todo: {
+      status: "done",
+      no_followup: false,
+      completion_continuation: "active_goal",
+      completion_turn_key: null,
+      successor_todo_ids: [],
+    },
+    requested_no_followup: true,
+    requested_completion_turn_key: "local_completion_00000000000000000000000000000000",
+    requested_completion_identity_source: "lifecycle_reentry",
+  };
+  assert.throws(
+    () => evaluateTodoCompletionFence(base),
+    /different completion_turn_key/,
+  );
+  assert.throws(
+    () =>
+      evaluateTodoCompletionFence({
+        ...base,
+        todo: { ...base.todo, status: "open" },
+      }),
+    /requires an already completed Todo/,
+  );
 });

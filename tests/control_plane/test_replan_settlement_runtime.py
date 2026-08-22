@@ -15,6 +15,7 @@ def _reentry(**overrides: object) -> dict[str, object]:
                 "kind": "completed_advancement_without_successor",
                 "todo_id": "todo_current001",
                 "completion_turn_key": "turn-current001",
+                "completion_identity_source": "turn_settlement",
             }
         ],
         "next_cli_actions": ["loopx todo complete --todo-id todo_current001"],

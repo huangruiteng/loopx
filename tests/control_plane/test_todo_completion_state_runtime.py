@@ -51,8 +51,27 @@ def test_python_facade_sends_one_typed_state_request(monkeypatch) -> None:
             },
             "requested_no_followup": True,
             "has_successor": False,
+            "completion_identity_source": None,
         },
     }
+
+
+def test_lifecycle_reentry_has_distinct_recovery_receipt() -> None:
+    state = completion_state.completion_state_for_todo_write(
+        {
+            "status": "done",
+            "no_followup": "false",
+            "completion_continuation": "active_goal",
+        },
+        requested_no_followup=True,
+        has_successor=False,
+        completion_identity_source="lifecycle_reentry",
+    )
+
+    assert state == completion_state.TodoCompletionState(
+        continuation="no_followup",
+        recovery="lifecycle_reentry_terminal_closeout",
+    )
 
 
 def test_scalar_normalization_uses_bounded_process_cache(monkeypatch) -> None:

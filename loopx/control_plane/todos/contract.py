@@ -1100,7 +1100,8 @@ _TODO_METADATA_FIELD_SCHEMA = (
         "completion_recovery",
         normalize_todo_completion_recovery,
         invalid_message=(
-            "completion_recovery must be same_turn_terminal_closeout"
+            "completion_recovery must be same_turn_terminal_closeout or "
+            "lifecycle_reentry_terminal_closeout"
         ),
     ),
     _TodoMetadataField(

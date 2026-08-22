@@ -109,3 +109,24 @@ test("state and metadata decisions do not mutate caller input", () => {
   buildTodoCompletionMetadataUpdates(metadata);
   assert.deepEqual(metadata, metadataBefore);
 });
+
+test("lifecycle reentry emits a distinct terminal recovery", () => {
+  assert.deepEqual(
+    selectTodoCompletionState({
+      schema_version: TODO_COMPLETION_STATE_REQUEST_SCHEMA,
+      todo: {
+        status: "done",
+        no_followup: false,
+        completion_continuation: "active_goal",
+      },
+      requested_no_followup: true,
+      has_successor: false,
+      completion_identity_source: "lifecycle_reentry",
+    }),
+    {
+      schema_version: "loopx_todo_completion_state_result_v0",
+      continuation: "no_followup",
+      recovery: "lifecycle_reentry_terminal_closeout",
+    },
+  );
+});

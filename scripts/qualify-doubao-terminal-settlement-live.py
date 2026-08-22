@@ -29,6 +29,15 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--qualification-id", required=True)
+    parser.add_argument(
+        "--scenario",
+        choices=("ordered-settlement", "rejection-reentry"),
+        default="ordered-settlement",
+        help=(
+            "Qualification path: the existing quota settlement chain or the "
+            "post-refresh-rejection lifecycle reentry path."
+        ),
+    )
     parser.add_argument("--attempts", type=int, default=2)
     parser.add_argument("--timeout-seconds", type=float, default=90.0)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
@@ -53,8 +62,13 @@ def main() -> int:
         for attempt in range(1, args.attempts + 1):
             run_id = f"{args.qualification_id}:r{attempt}"
             run_digest = sha256(run_id.encode("utf-8")).hexdigest()[:16]
+            qualify = (
+                actor.qualify_reentry
+                if args.scenario == "rejection-reentry"
+                else actor.qualify
+            )
             receipts.append(
-                actor.qualify(
+                qualify(
                     qualification_id=run_id,
                     fixture_root=temp_root / run_digest,
                 )
@@ -63,11 +77,13 @@ def main() -> int:
     result = {
         "schema_version": "terminal_settlement_model_behavior_live_v0",
         "qualification_id": args.qualification_id,
+        "scenario": args.scenario,
         "qualification_passed": passed,
         "attempts_required": args.attempts,
         "attempts_completed": len(receipts),
         "provider_call_count": sum(
-            int(item.get("tool_call_count") or 0) for item in receipts
+            int(item.get("provider_call_count") or item.get("tool_call_count") or 0)
+            for item in receipts
         ),
         "receipts": receipts,
         "source": source,

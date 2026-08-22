@@ -4,6 +4,10 @@ import {
   requireJsonObject,
   requireNonEmptyString,
 } from "../runtime_decode.ts";
+import {
+  isLocalTodoCompletionIdentity,
+  localTodoCompletionIdentity,
+} from "../todos/completion_fence.ts";
 
 export const REPLAN_SETTLEMENT_REQUEST_SCHEMA =
   "loopx_replan_settlement_request_v0";
@@ -55,7 +59,25 @@ export function projectTodoLifecycleSettlementReentry(value: unknown): JsonObjec
   if (!Array.isArray(request.triggers) || request.triggers.length === 0) {
     throw new Error("triggers must be a non-empty array");
   }
-  const triggers = request.triggers.slice(0, 3).map(lifecycleTrigger);
+  const triggers = request.triggers.slice(0, 3).map(lifecycleTrigger).map(
+    (trigger) => {
+      const todoId = String(trigger.todo_id);
+      const persistedKey = trigger.completion_turn_key;
+      const completionIdentityKey = typeof persistedKey === "string"
+        ? persistedKey
+        : localTodoCompletionIdentity(goalId, todoId);
+      return {
+        kind: trigger.kind,
+        todo_id: todoId,
+        completion_turn_key: completionIdentityKey,
+        completion_identity_source: isLocalTodoCompletionIdentity(
+            completionIdentityKey,
+          )
+          ? "unscoped_completion"
+          : "turn_settlement",
+      };
+    },
+  );
   const lifecycleActorArgs = Array.isArray(request.lifecycle_actor_args)
     ? request.lifecycle_actor_args.map((item, index) =>
       requireNonEmptyString(item, `lifecycle_actor_args[${index}]`)
@@ -68,15 +90,16 @@ export function projectTodoLifecycleSettlementReentry(value: unknown): JsonObjec
     : [];
   const nextCliActions = triggers.map((trigger) => {
     const todoId = String(trigger.todo_id);
-    const completionTurnKey = trigger.completion_turn_key;
-    const completionTurnArgs = typeof completionTurnKey === "string"
-      ? ["--turn-instance-id", completionTurnKey]
-      : [];
+    const completionIdentityKey = String(trigger.completion_turn_key);
+    const completionIdentityArgs =
+      trigger.completion_identity_source === "unscoped_completion"
+        ? ["--completion-identity-key", completionIdentityKey]
+        : ["--turn-instance-id", completionIdentityKey];
     return (
       `when no real successor remains for completed Todo ${todoId}: ` +
       `loopx todo complete --goal-id ${shellArgument(goalId)} ` +
       `--todo-id ${shellArgument(todoId)}` +
-      argumentSuffix(completionTurnArgs) +
+      argumentSuffix(completionIdentityArgs) +
       argumentSuffix(lifecycleActorArgs) +
       " --no-follow-up --note '<public-safe no-follow-up rationale>'"
     );

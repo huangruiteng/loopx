@@ -84,6 +84,19 @@ def _find_todo(
     )
 
 
+def completion_decision_target(
+    lines: list[str],
+    completion_todo: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return the agent Todo whose decision is resolved by this completion."""
+
+    target_todo_id = normalize_todo_id(completion_todo.get("unblocks_todo_id"))
+    if not target_todo_id:
+        return None
+    target = _find_todo(lines, role="agent", todo_id=target_todo_id)
+    return {**target, "role": "agent"} if target else None
+
+
 def plan_completed_user_unblock_resume(
     lines: list[str],
     *,
