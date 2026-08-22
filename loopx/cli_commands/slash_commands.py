@@ -64,12 +64,14 @@ def register_slash_commands_command(
             "gemini-cli",
             "cursor",
             "cursor-agent",
+            "agy",
+            "antigravity",
             "pi",
         ],
         help=(
             "Host surface to install. Repeatable. Defaults to static command facades "
-            "for Codex, Claude Code, and OpenCode. `gemini`, `cursor` and `pi` are "
-            "opt-in: they write into those hosts' own homes only when requested."
+            "for Codex, Claude Code, and OpenCode. `gemini`, `cursor`, `agy` and `pi` "
+            "are opt-in: they write into those hosts' own homes only when requested."
         ),
     )
     parser.add_argument(
