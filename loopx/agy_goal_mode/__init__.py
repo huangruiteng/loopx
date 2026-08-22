@@ -31,22 +31,34 @@ AGY_NATIVE_WAKE_FACTS = (
     "automation on tool events",
 )
 
+# Native goal primitive (built into the agy binary; live-verified on 1.1.18 in
+# both the interactive TUI and headless `-p` print mode). The host injects a
+# forced-continuation contract that audits work until the model emits the
+# completion token; `GoalState` persists across the session.
+AGY_GOAL_COMMAND = "/goal"
+AGY_GOAL_COMMAND_DESCRIPTION = "Run until the specified goal is completely finished."
+AGY_GOAL_COMPLETE_TOKEN = "<!-- GOAL_COMPLETE -->"
+AGY_GOAL_CANCELLED_TOKEN = "<!-- GOAL_CANCELLED -->"
+
 
 def agy_home(value: str | None = None) -> Path:
     """Antigravity CLI discovers user skills from AGY_CLI_HOME/skills.
 
-    The Antigravity CLI binary is ``agy``. It has no persistent goal primitive
-    (no ``/goal`` to set, no goal store) for LoopX to bind, but it is not
-    scheduler-less either: it ships native in-session automation — the
-    ``schedule`` tool wakes a live session with a prompt on a timer (recurring
-    via MaxIterations), and background tasks, async subagents and agent
-    messages can wake a session without an external driver (verified live on
-    agy 1.1.18). LoopX therefore gates every turn and every native wake
-    through quota; the ``schedule`` tool lets a live session arm its own next
-    bounded segment instead of waiting for the user to return. The global
-    skills root is ``~/.gemini/antigravity-cli/skills`` (directory-style
-    ``SKILL.md`` entries) and is shared with no other host, so installs there
-    cannot collide with the ZCode or Gemini CLI surfaces.
+    The Antigravity CLI binary is ``agy``. It ships a native goal primitive —
+    the ``/goal <task>`` command ("Run until the specified goal is completely
+    finished"): the host injects a forced-continuation contract that keeps
+    auditing the work until the model emits ``<!-- GOAL_COMPLETE -->`` (or
+    cancels with ``<!-- GOAL_CANCELLED -->``), verified live in both the
+    interactive TUI and headless ``-p`` mode. It also ships native in-session
+    automation — the ``schedule`` tool wakes a live session with a prompt on
+    a timer (recurring via MaxIterations), and background tasks, async
+    subagents and agent messages can wake a session without an external
+    driver. LoopX gates every turn, wake and audit-continuation through
+    quota; agy's goal loop enforces thoroughness, LoopX enforces pacing and
+    authorization. The global skills root is
+    ``~/.gemini/antigravity-cli/skills`` (directory-style ``SKILL.md``
+    entries) and is shared with no other host, so installs there cannot
+    collide with the ZCode or Gemini CLI surfaces.
     """
     raw = value or os.environ.get(AGY_HOME_ENV) or str(Path.home() / DEFAULT_AGY_HOME)
     return Path(raw).expanduser()

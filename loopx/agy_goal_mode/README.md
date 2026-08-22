@@ -1,10 +1,25 @@
 # Antigravity CLI goal mode
 
 LoopX adapter for the [Antigravity CLI](https://antigravity.google/docs/cli/using/)
-(binary `agy`) — Google's terminal coding agent whose extension points are
-markdown skills and MCP config. It has no persistent goal primitive (no
-`/goal`, no goal store) for LoopX to bind, but it does ship native
-in-session automation, so the loop is not waiting on the user to return.
+(binary `agy`) — Google's terminal coding agent. agy ships both halves of a
+goal-mode host natively: a goal primitive and an in-session scheduler, so
+LoopX binds the objective to the host's own loop instead of pretending the
+agent merely drives itself.
+
+## Native goal primitive (verified live on agy 1.1.18)
+
+`/goal <task>` — built-in command, "Run until the specified goal is
+completely finished." The host injects a forced-continuation contract that
+keeps auditing the work until the model emits `<!-- GOAL_COMPLETE -->`
+(cancel with `<!-- GOAL_CANCELLED -->`). Live evidence:
+
+- Interactive TUI (tmux): `/goal Create the file … and verify …` ran
+  "Initiating Goal Analysis", created the file, self-verified content, and
+  completed — file landed on disk with exact content.
+- Headless print mode: `agy -p '/goal just reply ok'` returned a response
+  ending in `<!-- GOAL_COMPLETE -->`.
+- The mechanism is built into the binary (command description,
+  forced-continuation system prompt, `GoalState` persistence, both tokens).
 
 ## Native wake primitives (verified live on agy 1.1.18)
 
@@ -19,25 +34,20 @@ in-session automation, so the loop is not waiting on the user to return.
 - `hooks.json` (user or plugin) runs `PostToolUse`/`Stop`/`PostInvocation`
   automation on tool events.
 
-These wakes only fire while the CLI session is alive — there is no
-cross-session daemon — so they arm a live session's next bounded segment,
-not an unattended host loop.
-
 ## What this surface is
 
 Antigravity CLI discovers skills the same way the other skill-facade CLI hosts
 do: a directory per skill with a `SKILL.md` inside, rooted at
-`~/.gemini/antigravity-cli/skills`. LoopX therefore reaches an `agy` session
-through the generated `/loopx` skill facade only. The loop driver is the
-agent's own turn loop, and every continuation — each turn and each native
-`schedule` wake — enters through LoopX `quota should-run`; a stop decision
-ends the session loop.
+`~/.gemini/antigravity-cli/skills`. LoopX reaches an `agy` session through
+the generated `/loopx` skill facade, and the activation binds the objective
+with the native `/goal <task_body>` command. agy's forced continuation
+enforces thoroughness; LoopX enforces pacing and authorization — every turn,
+wake and audit-continuation enters through `quota should-run`, and a stop
+decision ends the goal loop.
 
-The wake primitives make `agy` stronger than a plain turn-loop facade host:
-when a turn ends with work remaining and quota allows more, the session can
-arm its own next wake with `schedule` instead of idling. The guarantee is
-still weaker than a host-owned loop (no daemon survives the CLI process) and
-is stated as such in the activation packet.
+The honest envelope, stated in the activation packet: the goal loop and wakes
+fire only while the CLI session is alive — there is no cross-session daemon —
+so they arm a live session's bounded segments, not an unattended host loop.
 
 ## Install
 
@@ -60,13 +70,13 @@ skill (or type `/loopx <complex task>`). The facade instructs the agent to run:
 loopx start-goal --guided --project . --slash-command-arguments="<task>" --host-surface agy
 ```
 
-After todo writeback, carry the generated heartbeat task body as the session
-objective, start every following turn (and every `schedule` wake) with
-`quota should-run`, and arm the next bounded wake with the native `schedule`
-tool only when quota allows more work.
+After todo writeback, bind the generated heartbeat task body with the native
+`/goal <task_body>`, start every following turn (and every `schedule` wake
+and audit-continuation) with `quota should-run`, and arm the next bounded
+wake with the native `schedule` tool only when quota allows more work.
 
 ## Layout
 
 - `__init__.py` — host facts: install surface id, skills root resolution, the
   env override used by the installer and the activation packet, and the
-  native wake primitives the activation cites.
+  native goal + wake primitives the activation cites.

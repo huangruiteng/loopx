@@ -89,7 +89,7 @@ def build_goal_start_contract(
                 "pi": "Pi `loopx_goal_activate`",
                 "gemini-cli": "agent-driven Gemini CLI loop; every turn enters through quota should-run",
                 "cursor-agent": "agent-driven cursor-agent loop; every turn enters through quota should-run",
-                "agy": "agent-driven Antigravity CLI loop with native schedule self-wakes; every turn and wake enters through quota should-run",
+                "agy": "Antigravity CLI native /goal loop with schedule self-wakes; every turn, wake and audit-continuation enters through quota should-run",
                 "deepseek-harness-native": "DeepSeek Harness same-session plugin driver; every turn enters through quota should-run",
                 "ark-managed-agent": "one-shot Goal",
                 "manual": "external scheduler or manual quota/status loop",
