@@ -387,6 +387,47 @@ def required_semantic_outcomes(
     return list(REPLAN_REQUIRED_OUTCOMES)
 
 
+def replan_obligation_trigger_kinds(
+    obligation: Mapping[str, Any],
+) -> list[str]:
+    """Return the typed trigger sources owned by one obligation generation."""
+
+    return list(
+        dict.fromkeys(
+            str(trigger.get("kind") or "").strip()
+            for trigger in (obligation.get("triggers") or [])
+            if isinstance(trigger, Mapping)
+            and str(trigger.get("kind") or "").strip()
+        )
+    )
+
+
+def replan_obligation_trigger_checkpoints(
+    obligation: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Bind an ACK to typed trigger revisions supplied by the obligation."""
+
+    checkpoints: list[dict[str, str]] = []
+    for trigger in obligation.get("triggers") or []:
+        if not isinstance(trigger, Mapping):
+            continue
+        kind = str(trigger.get("kind") or "").strip()
+        frontier_revision = str(trigger.get("frontier_revision") or "").strip()
+        if (
+            not kind
+            or not frontier_revision
+            or trigger.get("frontier_revision_complete") is not True
+        ):
+            continue
+        checkpoints.append(
+            {
+                "kind": kind,
+                "frontier_revision": frontier_revision,
+            }
+        )
+    return checkpoints
+
+
 def semantic_delta_from_writeback(
     *,
     obligation: Mapping[str, Any],
@@ -471,6 +512,8 @@ def semantic_delta_from_writeback(
         "outcomes": outcomes,
         "satisfying_outcomes": satisfying,
         "required_any_of": required,
+        "trigger_kinds": replan_obligation_trigger_kinds(obligation),
+        "trigger_checkpoints": replan_obligation_trigger_checkpoints(obligation),
         "obligation_id": obligation.get("obligation_id"),
         "observation_fingerprint": observation_delta.get(
             "observation_fingerprint"

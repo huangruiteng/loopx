@@ -151,6 +151,7 @@ def side_agent_claimed_advancement(
         "task_class": "advancement_task",
         "action_kind": "canary_refactor_next_batch",
         "claimed_by": SIDE_AGENT,
+        "updated_at": "2026-07-04T00:00:00+00:00",
     }
 
 
@@ -447,6 +448,37 @@ def legacy_unbound_replan_ack_run(
             }
         ]
     return run
+
+
+def accepted_long_chain_replan_ack_run(
+    *, obligation_id: str, frontier_revision: str
+) -> dict:
+    return {
+        "classification": "autonomous_replan_recorded",
+        "agent_id": SIDE_AGENT,
+        "generated_at": "2026-07-04T00:10:00+00:00",
+        "progress_scope": "agent_lane",
+        "delivery_outcome": "outcome_progress",
+        "autonomous_replan_ack": {
+            "schema_version": "autonomous_replan_ack_v0",
+            "recorded": True,
+            "source": "refresh_state_semantic_delta",
+            "semantic_delta": {
+                "schema_version": "replan_semantic_delta_v0",
+                "accepted": True,
+                "outcomes": ["new_runnable_successor"],
+                "satisfying_outcomes": ["new_runnable_successor"],
+                "trigger_kinds": ["long_todo_chain"],
+                "trigger_checkpoints": [
+                    {
+                        "kind": "long_todo_chain",
+                        "frontier_revision": frontier_revision,
+                    }
+                ],
+                "obligation_id": obligation_id,
+            },
+        },
+    }
 
 
 def unchanged_heartbeat_monitor_runs() -> list[dict]:
@@ -835,6 +867,69 @@ def assert_unbound_legacy_ack_cannot_close_long_chain_replan() -> None:
     assert guard["autonomous_replan_obligation"]["triggers"][0]["kind"] == (
         "long_todo_chain"
     ), guard
+
+
+def assert_accepted_long_chain_checkpoint_is_edge_triggered() -> None:
+    chain = long_side_agent_todo_chain()
+    initial = build_quota_should_run(
+        status_payload(chain, replan_obligation=None),
+        goal_id=GOAL_ID,
+        agent_id=SIDE_AGENT,
+    )
+    initial_obligation = initial["autonomous_replan_obligation"]
+    ack_run = accepted_long_chain_replan_ack_run(
+        obligation_id=initial_obligation["obligation_id"],
+        frontier_revision=initial_obligation["triggers"][0]["frontier_revision"],
+    )
+    newer_runs = [
+        {
+            "classification": "state_refreshed",
+            "agent_id": SIDE_AGENT,
+            "generated_at": f"2026-07-04T00:{minute:02d}:00+00:00",
+            "progress_scope": "agent_lane",
+            "delivery_outcome": "outcome_progress",
+        }
+        for minute in range(35, 10, -1)
+    ]
+
+    def payload_for(items: list[dict]) -> dict:
+        payload = status_payload(
+            items,
+            replan_obligation=None,
+            latest_runs=[*newer_runs, ack_run],
+        )
+        payload["run_history"]["goals"][0]["semantic_history"] = {
+            "schema_version": "goal_semantic_history_v0",
+            "agents": [
+                {
+                    "agent_id": SIDE_AGENT,
+                    "latest_autonomous_replan_ack_run": ack_run,
+                }
+            ],
+        }
+        return payload
+
+    settled = build_quota_should_run(
+        payload_for(chain), goal_id=GOAL_ID, agent_id=SIDE_AGENT
+    )
+    assert settled["decision"] != "autonomous_replan_required", settled
+    assert settled["goal_frontier_projection"]["replan_required"] is False, settled
+
+    changed_chain = [dict(item) for item in chain]
+    changed_chain[-1]["updated_at"] = "2026-07-04T00:15:00+00:00"
+    touched = build_quota_should_run(
+        payload_for(changed_chain), goal_id=GOAL_ID, agent_id=SIDE_AGENT
+    )
+    assert touched["decision"] != "autonomous_replan_required", touched
+
+    changed_chain[-1]["action_kind"] = "validate_replanned_chain"
+    rearmed = build_quota_should_run(
+        payload_for(changed_chain), goal_id=GOAL_ID, agent_id=SIDE_AGENT
+    )
+    assert rearmed["decision"] == "autonomous_replan_required", rearmed
+    assert rearmed["autonomous_replan_obligation"]["obligation_id"] != (
+        initial_obligation["obligation_id"]
+    ), rearmed
 
 
 def assert_agent_vision_gap_derives_replan() -> None:
@@ -1681,6 +1776,7 @@ def main() -> None:
     assert_replan_preserves_current_agent_runnable_frontier()
     assert_long_agent_todo_chain_derives_replan_before_linear_delivery()
     assert_unbound_legacy_ack_cannot_close_long_chain_replan()
+    assert_accepted_long_chain_checkpoint_is_edge_triggered()
     assert_agent_vision_gap_derives_replan()
     assert_closed_agent_vision_requires_current_semantic_closure()
     assert_generic_replan_ack_does_not_turn_future_monitor_into_replan()

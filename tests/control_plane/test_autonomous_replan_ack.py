@@ -151,3 +151,36 @@ def test_compact_run_exposes_path_disposition_to_status_consumers() -> None:
     compact = compact_run(_accepted_ack_run(path_outcome="replan"))
 
     assert compact["autonomous_replan_ack"]["path_disposition"] == "replan"
+
+
+def test_long_chain_trigger_checkpoint_survives_ack_compaction() -> None:
+    frontier_revision = "todo_frontier_revision_v0:0123456789abcdef01234567"
+    semantic_delta = semantic_delta_from_writeback(
+        obligation={
+            "obligation_id": "replan-3338",
+            "satisfying_semantic_outcomes": ["new_surface"],
+            "triggers": [
+                {
+                    "kind": "long_todo_chain",
+                    "frontier_revision": frontier_revision,
+                    "frontier_revision_complete": True,
+                }
+            ],
+        },
+        progress_observation={
+            "schema_version": "typed_progress_observation_v0",
+            "work_item_id": "todo-replan-3338",
+            "surface_id": "surface-new",
+            "result_class": "advanced",
+            "evidence_ids": ["evidence:new-surface"],
+        },
+    )
+
+    compact = compact_autonomous_replan_ack(
+        _accepted_ack_run(path_outcome=None, semantic_delta=semantic_delta)
+    )
+
+    assert compact is not None
+    assert compact["semantic_delta"]["trigger_checkpoints"] == [
+        {"kind": "long_todo_chain", "frontier_revision": frontier_revision}
+    ]

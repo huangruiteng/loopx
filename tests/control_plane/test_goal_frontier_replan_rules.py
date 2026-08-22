@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -170,6 +171,99 @@ def _advancement(todo_id: str, claimed_by: str) -> dict[str, object]:
         "task_class": "advancement_task",
         "claimed_by": claimed_by,
     }
+
+
+def _long_chain_source_items(
+    *, updated_at: str = "2026-08-22T09:00:00+08:00"
+) -> list[dict[str, object]]:
+    return [
+        {
+            **_advancement(f"todo_{index:012x}", "current-agent"),
+            "updated_at": updated_at,
+        }
+        for index in range(15)
+    ]
+
+
+def _long_chain_summary(source_items: list[dict[str, object]]) -> dict[str, object]:
+    return {
+        "open_count": len(source_items),
+        "current_agent_claimed_open_count": len(source_items),
+        "current_agent_claimed_advancement_count": len(source_items),
+        "unclaimed_open_count": 0,
+        "unclaimed_priority_open_items": [],
+        "executable_backlog_items": source_items[:8],
+        "claim_scope": {"other_agent_claimed_items": []},
+    }
+
+
+def _accepted_long_chain_ack(obligation: dict[str, object]) -> dict[str, object]:
+    trigger = obligation["triggers"][0]
+    return {
+        "schema_version": "autonomous_replan_ack_v0",
+        "recorded": True,
+        "generated_at": "2026-08-22T09:05:00+08:00",
+        "semantic_delta": {
+            "schema_version": "replan_semantic_delta_v0",
+            "accepted": True,
+            "outcomes": ["new_runnable_successor"],
+            "satisfying_outcomes": ["new_runnable_successor"],
+            "trigger_kinds": ["long_todo_chain"],
+            "trigger_checkpoints": [
+                {
+                    "kind": "long_todo_chain",
+                    "frontier_revision": trigger["frontier_revision"],
+                }
+            ],
+            "obligation_id": obligation["obligation_id"],
+        },
+    }
+
+
+def _derive_long_chain(
+    source_items: list[dict[str, object]],
+    *,
+    latest_replan_ack: dict[str, object] | None = None,
+    current_transition_replan_ack: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    return derive_goal_frontier_replan_obligation_from_summaries(
+        user_todo_summary={"open_count": 0},
+        agent_todo_summary=_long_chain_summary(source_items),
+        agent_todo_source_items=source_items,
+        work_lane_contract={"lane": "advancement_task", "must_attempt_work": True},
+        agent_id="current-agent",
+        existing_replan_obligation=None,
+        latest_replan_ack=latest_replan_ack,
+        current_transition_replan_ack=current_transition_replan_ack,
+        acceptance_gaps=[],
+    )
+
+
+def test_long_todo_chain_checkpoint_is_edge_triggered_and_rearms_on_change() -> None:
+    source_items = _long_chain_source_items()
+    original = _derive_long_chain(source_items)
+    assert original is not None
+    ack = _accepted_long_chain_ack(original)
+    unrecorded_ack = deepcopy(ack)
+    unrecorded_ack["recorded"] = False
+
+    assert _derive_long_chain(source_items, latest_replan_ack=unrecorded_ack) is not None
+    assert _derive_long_chain(source_items, latest_replan_ack=ack) is None
+
+    maintenance_touch = deepcopy(source_items)
+    maintenance_touch[-1]["updated_at"] = "2026-08-22T09:10:00+08:00"
+    assert _derive_long_chain(maintenance_touch, latest_replan_ack=ack) is None
+
+    changed_items = deepcopy(source_items)
+    changed_items[-1]["updated_at"] = "2026-08-22T09:10:00+08:00"
+    changed_items[-1]["priority"] = "P0"
+    rearmed = _derive_long_chain(changed_items, latest_replan_ack=ack)
+    assert rearmed is not None
+    assert rearmed["obligation_id"] != original["obligation_id"]
+    assert rearmed["rearmed_after_obligation_id"] == original["obligation_id"]
+    assert rearmed["triggers"][0]["frontier_revision"] != (
+        original["triggers"][0]["frontier_revision"]
+    )
 
 
 def test_todo_succession_gap_prefers_exact_lifecycle_settlement() -> None:
@@ -407,6 +501,69 @@ def test_exact_replan_successor_uses_authoritative_todo_source() -> None:
         "action_kind": "validate",
         "target_key": "experiment:selected-bounded-slice",
     }
+
+
+def test_long_chain_successor_transition_is_bound_to_current_frontier() -> None:
+    source_items = _long_chain_source_items()
+    original = _derive_long_chain(source_items)
+    assert original is not None
+    changed_items = deepcopy(source_items)
+    changed_items[-1]["updated_at"] = "2026-08-22T09:10:00+08:00"
+    changed_items[-1]["priority"] = "P0"
+    rearmed = _derive_long_chain(changed_items)
+    assert rearmed is not None
+
+    stale_successor = {
+        **_advancement("todo_0123456789ab", "current-agent"),
+        "replan_obligation_id": original["obligation_id"],
+        "action_kind": "validate",
+        "target_key": "experiment:stale-successor",
+        "updated_at": "2026-08-22T09:05:00+08:00",
+    }
+    stale_ack = replan_successor_transition_ack(
+        {"first_executable_items": [stale_successor]},
+        agent_id="current-agent",
+        replan_obligation=rearmed,
+        agent_todo_items=[*changed_items, stale_successor],
+    )
+    fresh_successor = {
+        **stale_successor,
+        "todo_id": "todo_abcdef012345",
+        "replan_obligation_id": rearmed["obligation_id"],
+        "target_key": "experiment:fresh-successor",
+        "updated_at": "2026-08-22T09:10:00+08:00",
+    }
+    fresh_ack = replan_successor_transition_ack(
+        {"first_executable_items": [stale_successor, fresh_successor]},
+        agent_id="current-agent",
+        replan_obligation=rearmed,
+        agent_todo_items=[*changed_items, stale_successor, fresh_successor],
+    )
+    post_successor_obligation = _derive_long_chain(
+        [*changed_items, stale_successor, fresh_successor]
+    )
+
+    assert stale_ack is None
+    assert fresh_ack is not None
+    assert post_successor_obligation is not None
+    assert post_successor_obligation["triggers"][0]["frontier_revision"] != (
+        rearmed["triggers"][0]["frontier_revision"]
+    )
+    assert fresh_ack["semantic_delta"]["trigger_checkpoints"] == [
+        {
+            "kind": "long_todo_chain",
+            "frontier_revision": post_successor_obligation["triggers"][0][
+                "frontier_revision"
+            ],
+        }
+    ]
+    assert (
+        _derive_long_chain(
+            [*changed_items, stale_successor, fresh_successor],
+            current_transition_replan_ack=fresh_ack,
+        )
+        is None
+    )
 
 
 def test_untyped_replan_successor_cannot_close_replan() -> None:
