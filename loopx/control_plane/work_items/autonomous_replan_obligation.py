@@ -207,6 +207,7 @@ def ensure_replan_novelty_policy(
             for key in (
                 "kind",
                 "frontier_identity",
+                "frontier_revision",
                 "monitor_target_id",
                 "progress_fingerprint",
                 "agent_id",

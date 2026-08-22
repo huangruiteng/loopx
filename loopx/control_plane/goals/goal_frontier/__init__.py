@@ -44,6 +44,11 @@ from .ack_policy import (
     autonomous_replan_ack_satisfies_obligation,
     replan_successor_transition_ack,
 )
+from .long_todo_chain import (
+    LONG_TODO_CHAIN_TRIGGER,
+    classify_long_todo_chain_ack,
+    observe_long_todo_chain,
+)
 from .replan_rules import (
     GoalFrontierReplanFacts,
     GoalFrontierReplanRule,
@@ -77,15 +82,12 @@ AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION = "autonomous_replan_obligation_v0"
 AUTONOMOUS_REPLAN_REQUIRED_MODE = "autonomous_replan_required"
 FRONTIER_EXHAUSTED_MONITOR_TRIGGER = "frontier_exhausted_monitor_lane"
 MONITOR_NO_CHANGE_STREAK_TRIGGER = "monitor_no_change_streak"
-LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 VISION_ACCEPTANCE_GAP_TRIGGER = "vision_acceptance_gap"
 VISION_SUCCESSOR_GAP_TRIGGER = "vision_successor_required"
 VISION_PROFILE_MISSING_TRIGGER = "required_agent_vision_missing"
 TODO_SUCCESSION_GAP_TRIGGER = TODO_SUCCESSION_WARNING_REASON_CODE
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 TODO_TASK_CLASS_MONITOR = "continuous_monitor"
-LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
-LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
 VISION_FRONTIER_TODO_DELTA_ACTIONS = {
     "activate",
     "create",
@@ -805,59 +807,6 @@ def _frontier_advancement_counts(
     }
 
 
-def _long_todo_chain_trigger(
-    *,
-    agent_todo_summary: dict[str, Any] | None,
-    agent_counts: dict[str, int],
-    frontier_counts: dict[str, int],
-    agent_id: str | None,
-) -> dict[str, Any] | None:
-    """Return a trigger when one lane is long enough to need vision replan.
-
-    The trigger is scoped to the current agent plus unclaimed selectable work.
-    Other-agent claimed todos stay out of this count so one role cannot replan
-    another role's backlog.
-    """
-
-    current_advancement = frontier_counts.get("current_agent_claimed_advancement_count", 0)
-    unclaimed_advancement = frontier_counts.get("unclaimed_advancement_count", 0)
-    selectable_advancement = current_advancement + unclaimed_advancement
-    if isinstance(agent_todo_summary, dict):
-        current_open = safe_non_negative_int(
-            agent_todo_summary.get("current_agent_claimed_open_count")
-        )
-        unclaimed_open = safe_non_negative_int(agent_todo_summary.get("unclaimed_open_count"))
-        selectable_open = max(current_open + unclaimed_open, selectable_advancement)
-    else:
-        selectable_open = max(agent_counts.get("open", 0), selectable_advancement)
-    if selectable_advancement >= LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD:
-        return {
-            "trigger_count": selectable_advancement,
-            "count_kind": "selectable_advancement_todos",
-            "selectable_open_count": selectable_open,
-            "selectable_advancement_count": selectable_advancement,
-            "current_agent_claimed_advancement_count": current_advancement,
-            "unclaimed_advancement_count": unclaimed_advancement,
-            "threshold": LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD,
-            "agent_id": agent_id,
-        }
-    if (
-        selectable_open >= LONG_TODO_CHAIN_OPEN_THRESHOLD
-        and selectable_advancement > 0
-    ):
-        return {
-            "trigger_count": selectable_open,
-            "count_kind": "selectable_open_todos",
-            "selectable_open_count": selectable_open,
-            "selectable_advancement_count": selectable_advancement,
-            "current_agent_claimed_advancement_count": current_advancement,
-            "unclaimed_advancement_count": unclaimed_advancement,
-            "threshold": LONG_TODO_CHAIN_OPEN_THRESHOLD,
-            "agent_id": agent_id,
-        }
-    return None
-
-
 def _compact_todo_id(item: Any) -> str | None:
     if not isinstance(item, dict):
         return None
@@ -1097,7 +1046,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
     work_lane_contract: dict[str, Any] | None,
     agent_id: str | None,
     existing_replan_obligation: dict[str, Any] | None,
+    agent_todo_source_items: list[dict[str, Any]] | None = None,
     latest_replan_ack: dict[str, Any] | None = None,
+    current_transition_replan_ack: dict[str, Any] | None = None,
     acceptance_gaps: list[dict[str, Any]] | None = None,
     monitor_lane_semantically_valid: bool = True,
 ) -> dict[str, Any] | None:
@@ -1143,11 +1094,20 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         agent_todo_summary,
         agent_id=agent_id,
     )
-    long_chain_trigger = _long_todo_chain_trigger(
+    long_chain_observation = observe_long_todo_chain(
         agent_todo_summary=agent_todo_summary,
         agent_counts=agent_counts,
         frontier_counts=frontier_counts,
         agent_id=agent_id,
+        agent_todo_source_items=agent_todo_source_items,
+    )
+    long_chain_ack_decision = (
+        classify_long_todo_chain_ack(
+            long_chain_observation,
+            current_transition_replan_ack or latest_replan_ack,
+        )
+        if long_chain_observation is not None
+        else None
     )
     replan_rule = select_goal_frontier_replan_rule(
         GoalFrontierReplanFacts(
@@ -1181,7 +1141,11 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             outcome_checkpoint_replan_required=(
                 outcome_checkpoint_replan_required
             ),
-            long_todo_chain_triggered=long_chain_trigger is not None,
+            long_todo_chain_triggered=(
+                long_chain_observation is not None
+                and long_chain_ack_decision is not None
+                and not long_chain_ack_decision.acknowledged
+            ),
             current_agent_blocker_count=safe_non_negative_int(
                 (agent_todo_summary or {}).get("current_agent_blocker_count")
             ),
@@ -1336,7 +1300,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
             rearmed_after_obligation_id=rearmed_after_obligation_id,
         )
     if replan_rule.rule is GoalFrontierReplanRule.LONG_TODO_CHAIN:
-        assert long_chain_trigger is not None
+        assert long_chain_observation is not None
+        assert long_chain_ack_decision is not None
+        long_chain_trigger = long_chain_observation.to_trigger()
         return build_autonomous_replan_obligation_payload(
             schema_version=AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
             agent_id=agent_id,
@@ -1381,6 +1347,9 @@ def derive_goal_frontier_replan_obligation_from_summaries(
                 "run a bounded long-chain vision replan before continuing a 15+ "
                 "todo lane: read evidence, use public research if local evidence "
                 "is weak, group/prune work, and write a concrete todo or vision delta"
+            ),
+            rearmed_after_obligation_id=(
+                long_chain_ack_decision.rearmed_after_obligation_id
             ),
         )
     if replan_rule.rule is GoalFrontierReplanRule.MONITOR_NO_CHANGE_STREAK:
@@ -1704,7 +1673,9 @@ def build_goal_frontier_projection_context_from_status(
         work_lane_contract=work_lane_contract,
         agent_id=agent_id,
         existing_replan_obligation=replan_obligation,
+        agent_todo_source_items=agent_todo_source_items,
         latest_replan_ack=effective_replan_ack,
+        current_transition_replan_ack=replan_transition_ack,
         acceptance_gaps=acceptance_gaps,
         monitor_lane_semantically_valid=not goal_vision_state_is_closed(
             (latest_agent_vision or {}).get("state")

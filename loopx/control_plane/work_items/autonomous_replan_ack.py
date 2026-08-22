@@ -74,6 +74,8 @@ def compact_autonomous_replan_ack(run: dict[str, Any] | None) -> dict[str, Any] 
                 "outcomes",
                 "satisfying_outcomes",
                 "required_any_of",
+                "trigger_kinds",
+                "trigger_checkpoints",
                 "obligation_id",
                 "observation_fingerprint",
                 "reason",
