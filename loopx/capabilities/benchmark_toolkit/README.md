@@ -367,12 +367,14 @@ A countable experiment uses the toolkit in this order:
 3. Upsert the planned or running row, then launch one frozen case/arm; do not expose
    evaluator sources or official feedback.
 4. Capture ATIF tool evidence and a runner-owned runtime attestation.
-5. Run `integrity-qualification`; stop on any blocker.
-6. Run the independent verifier only after the agent phase.
-7. Reduce the official result through the benchmark-owned scoring path.
-8. Upsert terminal score, countability, effort, treatment fidelity, and insight
+5. During active monitoring, classify exact-job runtime evidence; do not infer
+   liveness from an occupied admission slot.
+6. Run `integrity-qualification`; stop on any blocker.
+7. Run the independent verifier only after the agent phase.
+8. Reduce the official result through the benchmark-owned scoring path.
+9. Upsert terminal score, countability, effort, treatment fidelity, and insight
    status, then read the matched-comparison projection.
-9. Apply attempt-countability, treatment-fidelity, and matched-pair gates before any
+10. Apply attempt-countability, treatment-fidelity, and matched-pair gates before any
    comparison claim.
 
 Integrity qualification is necessary but not sufficient for a score claim. It does
@@ -462,6 +464,31 @@ solver's trajectory phase. A clean worktree or a high raw log-error count alone 
 not evidence that a run is stuck. The provider-owned classifier may mark a run
 stalled only when committed and uncommitted progress are both absent and either the
 trajectory is stale or typed fatal runner evidence is present.
+
+Admission-ledger occupancy is not process liveness. On each bounded active review,
+the provider should reduce compact facts through:
+
+```bash
+loopx benchmark runtime-observation \
+  --admission-active \
+  --job-receipt-state resolved \
+  --runner-owner-state alive \
+  --require-healthy \
+  --format json
+```
+
+Only a resolved exact-job receipt plus a live exact runner owner is healthy active.
+A terminal result, typed fatal runner error, or exact owner missing after the
+provider's startup grace produces a reconciliation transition; the provider must
+write the terminal classification before releasing its slot. Missing or ambiguous
+runtime authority fails closed. The reducer performs no process discovery, writes,
+or slot release, and its receipt contains no run identity, process arguments, raw
+error, or path.
+
+Every due active-campaign monitor cycle must also advance at least one bounded
+solver-trajectory slice, even when no case became terminal. This readback is for
+campaign supervision and insight discovery only; it must not expose hidden
+evaluator evidence to the solving arm.
 
 Use this analyst hint:
 

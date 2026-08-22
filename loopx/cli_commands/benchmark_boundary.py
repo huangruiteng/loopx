@@ -11,9 +11,12 @@ from pathlib import Path
 from ..capabilities.benchmark_toolkit import (
     BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION,
     BENCHMARK_SOURCE_REVISION_FENCE_SCHEMA_VERSION,
+    BenchmarkJobReceiptState,
+    BenchmarkRunnerOwnerState,
     BenchmarkSourceRevisionFenceError,
     build_benchmark_candidate_source_boundary,
     build_benchmark_integrity_qualification,
+    build_benchmark_runtime_observation,
     compact_benchmark_source_revision_fence_receipt,
     filter_public_benchmark_artifact_paths,
     inspect_benchmark_source_revision_fence,
@@ -30,6 +33,7 @@ BENCHMARK_TOOLKIT_COMMANDS = {
     "candidate-source-boundary",
     "classify-artifacts",
     "integrity-qualification",
+    "runtime-observation",
     "source-revision-fence",
     "verify-verifier-reward",
 }
@@ -97,6 +101,17 @@ def _render_source_revision_fence(payload: dict[str, object]) -> str:
     )
 
 
+def _render_runtime_observation(payload: dict[str, object]) -> str:
+    return (
+        "# Benchmark Runtime Observation\n\n"
+        f"- Classification: `{payload.get('classification')}`\n"
+        f"- Healthy active: `{payload.get('healthy_active')}`\n"
+        f"- Reconciliation required: `{payload.get('reconciliation_required')}`\n"
+        f"- Recommended transition: `{payload.get('recommended_transition')}`\n"
+        "- Admission ledger alone proves liveness: `False`\n"
+    )
+
+
 def register_benchmark_boundary_commands(
     benchmark_subparsers: argparse._SubParsersAction,
     add_subcommand_format: Callable[[argparse.ArgumentParser], None],
@@ -127,6 +142,26 @@ def register_benchmark_boundary_commands(
     revision_parser.add_argument("--expected-revision", required=True)
     revision_parser.add_argument("--observed-reference-revision", required=True)
     revision_parser.add_argument("--require-admitted", action="store_true")
+
+    runtime_parser = benchmark_subparsers.add_parser(
+        "runtime-observation",
+        help="Classify exact-job runtime evidence without trusting ledger occupancy.",
+    )
+    add_subcommand_format(runtime_parser)
+    runtime_parser.add_argument("--admission-active", action="store_true")
+    runtime_parser.add_argument(
+        "--job-receipt-state",
+        choices=[item.value for item in BenchmarkJobReceiptState],
+        required=True,
+    )
+    runtime_parser.add_argument(
+        "--runner-owner-state",
+        choices=[item.value for item in BenchmarkRunnerOwnerState],
+        required=True,
+    )
+    runtime_parser.add_argument("--terminal-result-present", action="store_true")
+    runtime_parser.add_argument("--typed-fatal-runner-error", action="store_true")
+    runtime_parser.add_argument("--require-healthy", action="store_true")
 
     integrity_parser = benchmark_subparsers.add_parser(
         "integrity-qualification",
@@ -230,6 +265,17 @@ def handle_benchmark_boundary_command(
             payload = _invalid_source_revision_fence_input()
         print_payload(payload, output_format(args), _render_source_revision_fence)
         return 1 if args.require_admitted and not payload.get("admitted") else 0
+
+    if args.benchmark_command == "runtime-observation":
+        payload = build_benchmark_runtime_observation(
+            admission_active=args.admission_active,
+            job_receipt_state=args.job_receipt_state,
+            runner_owner_state=args.runner_owner_state,
+            terminal_result_present=args.terminal_result_present,
+            typed_fatal_runner_error=args.typed_fatal_runner_error,
+        )
+        print_payload(payload, output_format(args), _render_runtime_observation)
+        return 1 if args.require_healthy and not payload.get("healthy_active") else 0
 
     if args.benchmark_command == "verify-verifier-reward":
         if args.reward_json == "-":

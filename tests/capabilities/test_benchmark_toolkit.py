@@ -155,9 +155,17 @@ def test_catalog_exposes_post_run_case_insight_monitor_contract() -> None:
         "current_worktree_status",
     ]
     assert active["runtime_basis"] == [
+        "active_admission_ledger",
+        "exact_job_runtime_receipt",
+        "exact_runner_owner_liveness_after_startup_grace",
+        "terminal_result_presence",
         "goal_state_and_event_freshness",
         "typed_runner_error_category",
     ]
+    assert "Admission-ledger occupancy is not liveness" in active["runtime_contract"]
+    assert "resolved exact-job receipt" in active["runtime_contract"]
+    assert "advance at least one" in monitor_template["text"]
+    assert "even when no case became terminal" in monitor_template["text"]
     assert "solver_trajectory_phase" in active["trajectory_basis"]
     assert active["classification_owner"] == "benchmark_monitor_provider"
     assert active["stalled_when"] == {
@@ -658,7 +666,9 @@ def test_permitted_solving_policy_requires_network_permitted_attestation() -> No
     )
 
     assert receipt["integrity_qualified"] is False
-    assert "runtime_attestation_network_permitted_solving_missing" in receipt["blockers"]
+    assert (
+        "runtime_attestation_network_permitted_solving_missing" in receipt["blockers"]
+    )
     assert receipt["classification"] == "runtime_isolation_not_attested"
 
 
