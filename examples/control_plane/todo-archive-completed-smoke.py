@@ -13,9 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.status import parse_active_state_todos  # noqa: E402
-from loopx.control_plane.todos.completed_archive import completed_todo_archive_warning  # noqa: E402
-
+from loopx.control_plane.todos.completed_archive import completed_todo_archive_warning
+from loopx.status import parse_active_state_todos
 
 GOAL_ID = "todo-archive-completed-goal"
 
@@ -39,6 +38,9 @@ def state_text() -> str:
         "## Agent Todo\n\n"
         "- [ ] [P1] Keep current open benchmark validation work visible.\n"
         + "".join(done_lines)
+        + "- [-] [P0] Resume deferred acceptance after its dependency.\n"
+        + "  <!-- loopx:todo todo_id=todo_deferred_acceptance status=deferred "
+        + "task_class=advancement_task resume_when=todo_done:todo_dependency -->\n"
         + "- [ ] [P2] Keep monitor work after completed items visible.\n\n"
         "## Completed Work Archive\n\n"
         "- [x] [P1] Previously archived completed work.\n"
@@ -114,7 +116,8 @@ def main() -> int:
         registry_path, runtime, state_path = write_fixture(Path(tmp))
         original = state_path.read_text(encoding="utf-8")
         parsed = parse_active_state_todos(original)
-        assert parsed["agent_todos"]["done_count"] == 14, parsed
+        assert parsed["agent_todos"]["done_count"] == 15, parsed
+        assert parsed["agent_todos"]["deferred_count"] == 1, parsed
         assert parsed["agent_todos"]["open_count"] == 2, parsed
         warning = completed_todo_archive_warning(parsed["agent_todos"])
         assert warning is not None, parsed
@@ -181,7 +184,8 @@ def main() -> int:
 
         updated = state_path.read_text(encoding="utf-8")
         parsed_after = parse_active_state_todos(updated)
-        assert parsed_after["agent_todos"]["done_count"] == 12, parsed_after
+        assert parsed_after["agent_todos"]["done_count"] == 13, parsed_after
+        assert parsed_after["agent_todos"]["deferred_count"] == 1, parsed_after
         assert parsed_after["agent_todos"]["open_count"] == 2, parsed_after
         assert completed_todo_archive_warning(parsed_after["agent_todos"]) is None, parsed_after
         assert updated.index("## Completed Work Archive") < updated.index("[P1] Completed implementation lane 1.")
@@ -195,7 +199,10 @@ def main() -> int:
         assert status_after["ok"] is True, status_after
         assert status_after["contract_errors"] == [], status_after
 
-        done_before_completion = parsed_after["agent_todos"]["done_count"]
+        done_before_completion = (
+            parsed_after["agent_todos"]["done_count"]
+            - parsed_after["agent_todos"]["deferred_count"]
+        )
         lineage_source_text = "Complete work whose successor lineage must survive archiving."
         lineage_successor_text = "Continue the public archive interplay validation."
         lineage_source = run_cli(
@@ -286,6 +293,29 @@ def main() -> int:
         )
         assert successor_item["status"] == "open", successor_item
         assert successor_item["claimed_by"] == "codex-reviewer", successor_item
+        deferred_item = next(
+            item
+            for item in active_after_archive["items"]
+            if item["todo_id"] == "todo_deferred_acceptance"
+        )
+        assert deferred_item["status"] == "deferred", deferred_item
+        assert deferred_item["archive_state"] == "active", deferred_item
+        deferred_update = run_cli(
+            registry_path,
+            runtime,
+            "todo",
+            "update",
+            "--goal-id",
+            GOAL_ID,
+            "--todo-id",
+            "todo_deferred_acceptance",
+            "--agent-id",
+            "codex-reviewer",
+            "--note",
+            "Deferred acceptance remains lifecycle-addressable after archive compaction.",
+        )
+        assert deferred_update["ok"] is True, deferred_update
+        assert deferred_update["changed"] is True, deferred_update
         assert completed_todo_archive_warning(active_after_archive) is None, active_after_archive
 
         lineage_status = run_cli(registry_path, runtime, "status")
