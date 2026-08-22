@@ -10,6 +10,7 @@ the facade dead-ends at argparse and the surface is decorative.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -30,7 +31,6 @@ from loopx.agy_goal_mode import (
     AGY_GOAL_COMMAND,
     AGY_GOAL_COMMAND_DESCRIPTION,
     AGY_GOAL_COMPLETE_TOKEN,
-    AGY_HOME_ENV,
     AGY_NATIVE_WAKE_FACTS,
     AGY_NATIVE_WAKE_TOOLS,
     agy_home,
@@ -139,15 +139,15 @@ def test_agent_onboarding_setup_command_installs_the_agy_surface(
     """agent-onboard hands back a setup command; executing it must provision
     the host it named, from any cwd."""
     monkeypatch.delenv("LOOPX_SKILLS_DIR", raising=False)
-    monkeypatch.delenv(AGY_HOME_ENV, raising=False)
     project = _connected_project(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
     env = {
         "PATH": "/usr/bin:/bin",
         "HOME": str(tmp_path / "home"),
-        AGY_HOME_ENV: str(tmp_path / "agy-home"),
     }
+    if "PYTHONPATH" in os.environ:  # keep hermetic when run from a worktree
+        env["PYTHONPATH"] = os.environ["PYTHONPATH"]
 
     onboard = _run_cli(
         "agent-onboard",
@@ -175,17 +175,18 @@ def test_agent_onboarding_setup_command_installs_the_agy_surface(
     assert install.returncode == 0, install.stderr
     assert json.loads(install.stdout)["ok"] is True
 
-    assert (tmp_path / "agy-home" / "skills" / "loopx" / "SKILL.md").is_file()
+    skills_root = tmp_path / "home" / ".gemini" / "antigravity-cli" / "skills"
+    assert (skills_root / "loopx.md").is_file()
 
 
-def test_agy_home_env_override_wins_over_default(
+def test_agy_home_is_the_documented_fixed_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The official CLI documents no home override, so LoopX exposes none:
+    # only HOME itself (tests stay hermetic) and the internal injection
+    # parameter move the root.
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv(AGY_HOME_ENV, str(tmp_path / "custom-agy"))
-    assert agy_home() == tmp_path / "custom-agy"
-    monkeypatch.delenv(AGY_HOME_ENV, raising=False)
     assert agy_home() == tmp_path / "home" / ".gemini" / "antigravity-cli"
     assert agy_home(str(tmp_path / "explicit")) == tmp_path / "explicit"
 
@@ -194,7 +195,7 @@ def test_installer_preserves_user_owned_agy_skill(tmp_path: Path) -> None:
     """The skills root is shared with the user's own skills; an unmarked file
     must never be overwritten, and a rerun over a managed file is a no-op."""
     skills_dir = tmp_path / "agy-home" / "skills"
-    skill_path = skills_dir / "loopx" / "SKILL.md"
+    skill_path = skills_dir / "loopx.md"
     skill_path.parent.mkdir(parents=True)
     skill_path.write_text("user-owned skill body\n", encoding="utf-8")
 
@@ -272,7 +273,7 @@ def test_activation_binds_native_goal_and_wake_and_keeps_the_quota_gate() -> Non
         registered_agents=["probe-agent"],
     )
     assert (
-        packet["activation_method"] == "bind_native_goal_then_gate_turns_by_quota"
+        packet["activation_method"] == "bind_native_goal_with_advisory_quota_entry"
     )
     assert packet["host_mutation"]["cli_can_mutate_directly"] is False
     # Both native primitives are real and must be named, not denied.
@@ -281,7 +282,11 @@ def test_activation_binds_native_goal_and_wake_and_keeps_the_quota_gate() -> Non
     )
     assert (
         packet["host_mutation"]["loop_driver"]
-        == "agy_goal_loop_with_schedule_wakes_gated_by_quota"
+        == "agy_native_goal_loop_with_schedule_wakes"
+    )
+    # The quota claim must be honest: advisory guidance, no host hook.
+    assert (
+        packet["host_mutation"]["quota_gate_enforcement"] == "advisory_only"
     )
     assert packet["host_mutation"]["native_goal_command"] == "/goal"
     assert packet["host_mutation"]["goal_complete_token"] == AGY_GOAL_COMPLETE_TOKEN
@@ -303,7 +308,10 @@ def test_activation_binds_native_goal_and_wake_and_keeps_the_quota_gate() -> Non
     assert packet["setup_command"] == _surface_install_command(HOST_SURFACE, "loopx", ".")
     assert "quota should-run" in _start_instruction(HOST_SURFACE)
     assert "/goal" in _start_instruction(HOST_SURFACE)
-    assert packet["entry_command_hint"] == "the LoopX skill installed in AGY_CLI_HOME/skills"
+    assert (
+        packet["entry_command_hint"]
+        == "the LoopX skill installed in ~/.gemini/antigravity-cli/skills"
+    )
 
 
 def test_native_goal_and_wake_facts_match_the_live_probes() -> None:

@@ -336,8 +336,8 @@ def _start_instruction(agent_type: str) -> str:
         )
     if agent_type == "agy":
         return (
-            "Invoke the LoopX skill from `AGY_CLI_HOME/skills` (default "
-            "`~/.gemini/antigravity-cli/skills`) via `/loopx <task>`; after todo "
+            "Invoke the LoopX skill from the fixed agy skills root "
+            "`~/.gemini/antigravity-cli/skills` via `/loopx <task>`; after todo "
             "writeback, bind the objective with the native `/goal <task_body>` "
             "command (agy audits work until `<!-- GOAL_COMPLETE -->`; cancel "
             "with `<!-- GOAL_CANCELLED -->`), start every following turn, wake "

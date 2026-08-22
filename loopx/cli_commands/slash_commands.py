@@ -99,13 +99,6 @@ def register_slash_commands_command(
         help="Cursor CLI home for MCP registration. Defaults to CURSOR_HOME or ~/.cursor.",
     )
     parser.add_argument(
-        "--agy-cli-home",
-        help=(
-            "Antigravity CLI home for skill installation. Defaults to AGY_CLI_HOME "
-            "or ~/.gemini/antigravity-cli."
-        ),
-    )
-    parser.add_argument(
         "--opencode-home",
         help="OpenCode config directory. Defaults to OPENCODE_CONFIG_DIR or ~/.config/opencode.",
     )
@@ -142,7 +135,6 @@ def handle_slash_commands_command(
             opencode_home=args.opencode_home,
             gemini_home=args.gemini_home,
             cursor_home=args.cursor_home,
-            agy_home=args.agy_cli_home,
             pi_project=args.pi_project,
         )
         print_payload(payload, output_format(args), render_slash_command_install_markdown)

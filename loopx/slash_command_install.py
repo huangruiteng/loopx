@@ -1033,15 +1033,22 @@ def install_slash_commands(
         host_surfaces: list[str],
         mechanism: str,
         invoke_prefix: str = "",
+        flat: bool = False,
     ) -> None:
-        """Write the command facade as SKILL.md files under `skills_dir`.
+        """Write the command facade as skill files under `skills_dir`.
 
         Claude Code, Gemini CLI and Cursor all discover user skills the same
-        way — a directory per skill with SKILL.md front matter — so the body is
-        identical and only the root differs.
+        way — a directory per skill with SKILL.md front matter. Antigravity
+        CLI's documented global layout is flat — one ``<name>.md`` file per
+        skill directly under ``skills/`` — so `flat=True` writes that shape.
+        The body is identical either way; only the layout differs.
         """
         for spec in specs:
-            path = skills_dir / str(spec["name"]) / "SKILL.md"
+            path = (
+                skills_dir / f"{spec['name']}.md"
+                if flat
+                else skills_dir / str(spec["name"]) / "SKILL.md"
+            )
             if uninstall:
                 installed.append(
                     {
@@ -1091,16 +1098,18 @@ def install_slash_commands(
         )
 
     if "agy" in effective_surfaces:
-        # Antigravity CLI discovers user skills from AGY_CLI_HOME/skills
-        # (default ~/.gemini/antigravity-cli/skills) using the same directory
-        # per skill + SKILL.md layout. That root belongs to agy alone — Gemini
-        # CLI reads ~/.gemini/skills, ZCode reads ~/.agents/skills — so the
-        # three skill-facade installs never collide.
+        # Antigravity CLI discovers global skills from the fixed
+        # ~/.gemini/antigravity-cli/skills root using the documented flat
+        # layout (one <name>.md per skill). The official docs describe no home
+        # override, so LoopX offers none: installs target exactly that path,
+        # and the root belongs to agy alone — Gemini CLI reads ~/.gemini/skills,
+        # ZCode reads ~/.agents/skills — so the surfaces never collide.
         _install_skill_facade(
             skills_dir=agy_root / "skills",
             surface="agy",
             host_surfaces=["agy"],
             mechanism="agy_cli_skills",
+            flat=True,
         )
 
     if "cursor" in effective_surfaces:
@@ -1439,7 +1448,7 @@ def install_slash_commands(
             "Claude Code discovers user skills from CLAUDE_HOME/skills and exposes each skill name as a slash command.",
             "Gemini CLI discovers user skills from GEMINI_HOME/skills with the same SKILL.md front matter; files are written directly because `gemini skills install` copies from a git URL or an existing local path and hands the copy to the host, which would lose the managed marker, per-file status and dry-run reporting every other surface has.",
             "Cursor discovers skills from CURSOR_HOME/skills and has no user-defined slash commands, so the cursor surface installs the skill facade and registers the LoopX MCP server in CURSOR_HOME/mcp.json; run `cursor-agent mcp enable loopx` once to approve it.",
-            "Antigravity CLI (agy) discovers user skills from AGY_CLI_HOME/skills (default ~/.gemini/antigravity-cli/skills); the agy surface is opt-in and writes the same managed skill facades into that host-owned root.",
+            "Antigravity CLI discovers global skills from the fixed ~/.gemini/antigravity-cli/skills root using the documented flat layout (one <name>.md per skill); the agy surface is opt-in and offers no home override because the host documents none.",
             "OpenCode discovers global skills from OPENCODE_CONFIG_DIR/skills in addition to the static command facade; a command is typed by the user, a skill can be reached by the model itself.",
             "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
             "The Pi surface is opt-in and installs the self-contained goal extension and its loop runtime into the project's .pi/extensions/; it is not part of the default all surface.",

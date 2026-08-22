@@ -242,7 +242,7 @@ AGENT_TYPE_CATALOG: dict[str, dict[str, Any]] = {
     "agy": {
         "display_name": "Antigravity CLI",
         "host_loop": "Antigravity CLI native /goal loop with schedule self-wakes, gated by LoopX quota should-run",
-        "entry": "the LoopX skill installed in AGY_CLI_HOME/skills",
+        "entry": "the LoopX skill installed in ~/.gemini/antigravity-cli/skills",
         "accepted_inputs": [
             "agy",
             "antigravity",
@@ -1161,7 +1161,7 @@ def _agy_cli_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any
         host_label="Antigravity CLI",
         host_surface="agy_agent_loop",
         install_surface="agy",
-        skills_root="AGY_CLI_HOME/skills",
+        skills_root="~/.gemini/antigravity-cli/skills",
         **agy_activation_extras(),
     )
 

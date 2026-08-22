@@ -36,18 +36,22 @@ keeps auditing the work until the model emits `<!-- GOAL_COMPLETE -->`
 
 ## What this surface is
 
-Antigravity CLI discovers skills the same way the other skill-facade CLI hosts
-do: a directory per skill with a `SKILL.md` inside, rooted at
-`~/.gemini/antigravity-cli/skills`. LoopX reaches an `agy` session through
-the generated `/loopx` skill facade, and the activation binds the objective
-with the native `/goal <task_body>` command. agy's forced continuation
-enforces thoroughness; LoopX enforces pacing and authorization — every turn,
-wake and audit-continuation enters through `quota should-run`, and a stop
-decision ends the goal loop.
+Antigravity CLI discovers global skills from the fixed
+`~/.gemini/antigravity-cli/skills` root using its documented flat layout —
+one `<name>.md` file per skill. LoopX reaches an `agy` session through the
+generated `/loopx` skill facade, and the activation binds the objective with
+the native `/goal <task_body>` command.
 
-The honest envelope, stated in the activation packet: the goal loop and wakes
-fire only while the CLI session is alive — there is no cross-session daemon —
-so they arm a live session's bounded segments, not an unattended host loop.
+Two honest limits, stated in the activation packet:
+
+- **Quota pacing is advisory.** LoopX installs no AGY hook that intercepts
+  native continuations or wakes, so `quota should-run` entry is facade
+  guidance the agent is instructed to follow — not a host-enforced gate. agy
+  will continue natively without it.
+- **Everything lives and dies with the session.** The goal loop and wakes
+  fire only while the CLI session is alive — there is no cross-session
+  daemon — so they arm a live session's bounded segments, not an unattended
+  host loop.
 
 ## Install
 
@@ -55,9 +59,10 @@ so they arm a live session's bounded segments, not an unattended host loop.
 loopx slash-commands --install --surface agy
 ```
 
-Writes the managed LoopX skill facades (`loopx`, `loopx-global-*`, …) into
-`AGY_CLI_HOME/skills` (default `~/.gemini/antigravity-cli/skills`; override
-with `AGY_CLI_HOME` or `--agy-cli-home`). Managed files carry the
+Writes the managed LoopX skill facades (`loopx.md`, `loopx-global-*.md`, …)
+flat into `~/.gemini/antigravity-cli/skills/` — the documented agy layout.
+The official CLI documents no home override, so LoopX offers none either:
+installs target exactly that path. Managed files carry the
 `loopx-managed-slash-command` marker and are refreshed by rerunning the
 installer; user-owned files are never overwritten.
 

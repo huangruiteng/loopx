@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 AGY_INSTALL_SURFACE = "agy"
-AGY_HOME_ENV = "AGY_CLI_HOME"
 DEFAULT_AGY_HOME = ".gemini/antigravity-cli"
 SKILLS_SUBDIR = "skills"
-SKILLS_ROOT_LABEL = "AGY_CLI_HOME/skills"
+SKILLS_ROOT_LABEL = "~/.gemini/antigravity-cli/skills"
 
 # Native in-session automation primitives agy ships (verified against agy
 # 1.1.18 live; no external driver involved). The `schedule` tool takes
@@ -56,18 +54,21 @@ def agy_activation_extras() -> dict[str, Any]:
     loop and wakes live and die with the session; no cross-session daemon.
     """
     return {
-        "activation_method": "bind_native_goal_then_gate_turns_by_quota",
+        "activation_method": "bind_native_goal_with_advisory_quota_entry",
         "extra_host_mutation": {
             "host_loop_primitive": "agy-/goal-and-schedule-tool",
-            "loop_driver": "agy_goal_loop_with_schedule_wakes_gated_by_quota",
+            "loop_driver": "agy_native_goal_loop_with_schedule_wakes",
+            "quota_gate_enforcement": "advisory_only",
             "native_goal_command": AGY_GOAL_COMMAND,
             "goal_complete_token": AGY_GOAL_COMPLETE_TOKEN,
             "goal_cancelled_token": AGY_GOAL_CANCELLED_TOKEN,
             "native_wake_tools": list(AGY_NATIVE_WAKE_TOOLS),
             "missing_host_tool_gate": (
                 "agy's /goal loop and native wakes fire only while the CLI "
-                "session is alive; there is no cross-session daemon. If the "
-                "session ends before the goal is done, show the exact "
+                "session is alive; there is no cross-session daemon. LoopX has "
+                "no host hook intercepting native continuations, so quota "
+                "pacing is advisory: the facade instructs, it cannot enforce. "
+                "If the session ends before the goal is done, show the exact "
                 "heartbeat-prompt command for the user to run and do not claim "
                 "unattended heartbeat support."
             ),
@@ -77,38 +78,33 @@ def agy_activation_extras() -> dict[str, Any]:
             "`/goal <task_body>` — agy's forced continuation audits the work "
             "until completion is emitted; `<!-- GOAL_COMPLETE -->` ends the "
             "goal loop and `<!-- GOAL_CANCELLED -->` cancels it.",
-            "When a turn ends with work remaining and quota allows more, arm the "
-            "next bounded segment with the native `schedule` tool "
-            "(DurationSeconds + wake Prompt; MaxIterations bounds recurring "
-            "wakes) instead of idling — every wake re-enters through quota "
-            "should-run before any delivery work.",
+            "Start every turn, native wake, and audit-continuation with "
+            "`quota should-run` and honor a stop/throttle decision before any "
+            "delivery work — instructed pacing, not a host-enforced gate.",
+            "When a turn ends with work remaining and quota allows more, arm "
+            "the next bounded segment with the native `schedule` tool "
+            "(recurring wakes bounded by MaxIterations); the wake re-enters "
+            "through `quota should-run` on the same advisory basis.",
         ],
         "host_scheduler_note": (
-            "the native `/goal` loop and `schedule` tool drive this session, and "
-            "every turn, wake and audit-continuation enters through quota "
-            "should-run too."
+            "the native `/goal` loop and `schedule` tool drive this session; "
+            "quota should-run entry is advisory guidance in the facade, not a "
+            "host-enforced gate."
         ),
     }
 
 
 def agy_home(value: str | None = None) -> Path:
-    """Antigravity CLI discovers user skills from AGY_CLI_HOME/skills.
+    """The fixed Antigravity CLI home: ``~/.gemini/antigravity-cli``.
 
-    The Antigravity CLI binary is ``agy``. It ships a native goal primitive —
-    the ``/goal <task>`` command ("Run until the specified goal is completely
-    finished"): the host injects a forced-continuation contract that keeps
-    auditing the work until the model emits ``<!-- GOAL_COMPLETE -->`` (or
-    cancels with ``<!-- GOAL_CANCELLED -->``), verified live in both the
-    interactive TUI and headless ``-p`` mode. It also ships native in-session
-    automation — the ``schedule`` tool wakes a live session with a prompt on
-    a timer (recurring via MaxIterations), and background tasks, async
-    subagents and agent messages can wake a session without an external
-    driver. LoopX gates every turn, wake and audit-continuation through
-    quota; agy's goal loop enforces thoroughness, LoopX enforces pacing and
-    authorization. The global skills root is
-    ``~/.gemini/antigravity-cli/skills`` (directory-style ``SKILL.md``
-    entries) and is shared with no other host, so installs there cannot
-    collide with the ZCode or Gemini CLI surfaces.
+    agy discovers global skills from ``~/.gemini/antigravity-cli/skills``
+    using the documented flat layout — one markdown file per skill
+    (``skills/<name>.md`` with front matter). The official CLI docs do not
+    document any home override, so LoopX exposes none either: installs target
+    exactly this path (HOME-relative, which keeps tests hermetic), and the
+    root is shared with no other host — Gemini CLI reads ``~/.gemini/skills``,
+    ZCode reads ``~/.agents/skills``. ``value`` is an internal injection point
+    for tests, not a public override.
     """
-    raw = value or os.environ.get(AGY_HOME_ENV) or str(Path.home() / DEFAULT_AGY_HOME)
+    raw = value or str(Path.home() / DEFAULT_AGY_HOME)
     return Path(raw).expanduser()
