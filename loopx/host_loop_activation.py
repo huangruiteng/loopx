@@ -3,12 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .agent_registry import normalize_registered_agents
-from .agy_goal_mode import (
-    AGY_GOAL_CANCELLED_TOKEN,
-    AGY_GOAL_COMMAND,
-    AGY_GOAL_COMPLETE_TOKEN,
-    AGY_NATIVE_WAKE_TOOLS,
-)
+from .agy_goal_mode import agy_activation_extras
 from .control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from .control_plane.todos.contract import (
     normalize_required_capabilities,
@@ -1158,6 +1153,8 @@ def _cursor_agent_activation(commands: dict[str, str], cli_bin: str) -> dict[str
 
 
 def _agy_cli_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any]:
+    # The agy-specific goal/wake facts and activation steps live in
+    # loopx.agy_goal_mode so this module stays within its metric budget.
     return _skill_facade_cli_activation(
         commands,
         cli_bin,
@@ -1165,48 +1162,7 @@ def _agy_cli_activation(commands: dict[str, str], cli_bin: str) -> dict[str, Any
         host_surface="agy_agent_loop",
         install_surface="agy",
         skills_root="AGY_CLI_HOME/skills",
-        activation_method="bind_native_goal_then_gate_turns_by_quota",
-        # agy ships BOTH halves of a goal-mode host, verified live on 1.1.18:
-        # a native goal primitive — `/goal <task>` ("Run until the specified
-        # goal is completely finished"), whose host-side forced continuation
-        # audits work until the model emits `<!-- GOAL_COMPLETE -->` (works in
-        # the interactive TUI and in headless `-p`) — and a native in-session
-        # scheduler: the `schedule` tool plus background-task/subagent wakes.
-        # LoopX still gates every turn, wake and audit-continuation through
-        # quota: agy's goal loop enforces thoroughness, LoopX enforces pacing
-        # and authorization. Wakes and the goal loop live and die with the
-        # session; there is no cross-session daemon.
-        extra_host_mutation={
-            "host_loop_primitive": "agy-/goal-and-schedule-tool",
-            "loop_driver": "agy_goal_loop_with_schedule_wakes_gated_by_quota",
-            "native_goal_command": AGY_GOAL_COMMAND,
-            "goal_complete_token": AGY_GOAL_COMPLETE_TOKEN,
-            "goal_cancelled_token": AGY_GOAL_CANCELLED_TOKEN,
-            "native_wake_tools": list(AGY_NATIVE_WAKE_TOOLS),
-            "missing_host_tool_gate": (
-                "agy's /goal loop and native wakes fire only while the CLI "
-                "session is alive; there is no cross-session daemon. If the "
-                "session ends before the goal is done, show the exact "
-                "heartbeat-prompt command for the user to run and do not claim "
-                "unattended heartbeat support."
-            ),
-        },
-        extra_activation_steps=[
-            "Bind the objective with the native goal command: "
-            "`/goal <task_body>` — agy's forced continuation audits the work "
-            "until completion is emitted; `<!-- GOAL_COMPLETE -->` ends the "
-            "goal loop and `<!-- GOAL_CANCELLED -->` cancels it.",
-            "When a turn ends with work remaining and quota allows more, arm the "
-            "next bounded segment with the native `schedule` tool "
-            "(DurationSeconds + wake Prompt; MaxIterations bounds recurring "
-            "wakes) instead of idling — every wake re-enters through quota "
-            "should-run before any delivery work.",
-        ],
-        host_scheduler_note=(
-            "the native `/goal` loop and `schedule` tool drive this session, and "
-            "every turn, wake and audit-continuation enters through quota "
-            "should-run too."
-        ),
+        **agy_activation_extras(),
     )
 
 
