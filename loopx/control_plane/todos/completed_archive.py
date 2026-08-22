@@ -9,6 +9,7 @@ from .active_state_editing import (
     section_bounds,
     todo_blocks,
 )
+from .contract import TODO_STATUS_DONE, normalize_todo_status
 from .decision_scope import is_standing_decision_receipt_item
 
 DEFAULT_MAX_ACTIVE_DONE_TODOS_BEFORE_ARCHIVE = 12
@@ -31,9 +32,14 @@ def completed_todo_archive_warning(
     if not isinstance(agent_todos, dict):
         return None
     try:
-        done_count = int(agent_todos.get("done_count") or 0)
+        terminal_count = int(agent_todos.get("done_count") or 0)
     except (TypeError, ValueError):
-        done_count = 0
+        terminal_count = 0
+    try:
+        deferred_count = int(agent_todos.get("deferred_count") or 0)
+    except (TypeError, ValueError):
+        deferred_count = 0
+    done_count = max(0, terminal_count - deferred_count)
     if done_count <= max_active_done_todos:
         return None
     try:
@@ -82,7 +88,11 @@ def archive_completed_todo_lines(
 
     if bounds:
         blocks = todo_blocks(updated_lines, bounds[0], bounds[1], role=role, source_section=section)
-        done_blocks = [block for block in blocks if block.get("done") is True]
+        done_blocks = [
+            block
+            for block in blocks
+            if normalize_todo_status(block.get("status")) == TODO_STATUS_DONE
+        ]
         active_done_count = len(done_blocks)
         standing_receipts = (
             [block for block in done_blocks if is_standing_decision_receipt_item(block)]
