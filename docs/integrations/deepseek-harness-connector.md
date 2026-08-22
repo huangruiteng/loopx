@@ -128,6 +128,7 @@ final message, and complete LoopX validation/writeback/quota spend.
 
 ## Related Contracts
 
+- [DeepSeek Harness control-plane adapter](deepseek-harness-control-plane-adapter.md)
 - [Runtime connector catalog](runtime-connector-catalog.md)
 - [LoopX Turn v0](../reference/protocols/loopx-turn-v0.md)
 - [Host integration surface v0](../reference/protocols/host-integration-surface-v0.md)
