@@ -277,6 +277,21 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
                 "This command is read-only; do not comment, approve, merge, rerun CI, or spend quota unless separately authorized.",
             ],
         },
+        {
+            "command": "/loopx-deepresearch",
+            "name": "loopx-deepresearch",
+            "description": "Run a bounded LoopX deep-research loop: packet-driven expeditions, evidence ledgers, citation-auditable report.",
+            "argument_hint": "<research question> [--max-sources N]",
+            "instructions": [
+                "Visible command arguments: `$ARGUMENTS`.",
+                f"Run `{cli_bin} --format json deepresearch status --project .` first; if no research is active, treat `$ARGUMENTS` as the question and run `{cli_bin} --format json deepresearch start --project . --question $ARGUMENTS`.",
+                "Keep `research_contract`, `stop_conditions`, `next_expedition`, and `evidence_commands` from the packet visible; the packet owns what to research next and when to stop.",
+                "Record every finding through the typed subcommands (`add-source`, `add-subquestion`, `resolve-question`); never edit the state file directly, and never fabricate URLs or claims — a claim exists only if a tool you actually ran produced it.",
+                "Resolve a question only with recorded evidence claim ids; an open contradiction blocks resolution until an explicit sides-with claim and rationale are recorded.",
+                "Re-run `status` after every expedition; stop when `stop_conditions.stopped` is true, then run `deepresearch report` and present the report path.",
+                "One active run per project: to research a new question, run `deepresearch close` (or `start --new-run` once stopped) — the previous run is archived by that typed transition, never by editing state files.",
+            ],
+        },
     ]
     if include_legacy_aliases:
         legacy_specs = []

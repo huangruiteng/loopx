@@ -90,6 +90,7 @@ from .cli_commands import (
     handle_project_command,
     handle_project_lifecycle_command,
     handle_pr_review_command,
+    handle_deepresearch_command,
     handle_quota_command,
     handle_ready_score_command,
     handle_review_batch_command,
@@ -131,6 +132,7 @@ from .cli_commands import (
     register_project_commands,
     register_project_lifecycle_commands,
     register_pr_review_command,
+    register_deepresearch_command,
     register_quota_command,
     register_ready_score_command,
     register_review_batch_commands,
@@ -312,6 +314,7 @@ def build_parser() -> LoopXArgumentParser:
     register_status_commands(sub, add_subcommand_format)
     register_summary_all_command(sub, add_subcommand_format)
     register_pr_review_command(sub, add_subcommand_format)
+    register_deepresearch_command(sub, add_subcommand_format)
     register_slash_commands_command(sub, add_subcommand_format)
     register_workflow_skills_command(sub, add_subcommand_format)
     register_dreaming_commands(sub, add_subcommand_format)
@@ -821,6 +824,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     if pr_review_result is not None:
         return pr_review_result
+
+    deepresearch_result = handle_deepresearch_command(
+        args,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if deepresearch_result is not None:
+        return deepresearch_result
 
     slash_commands_result = handle_slash_commands_command(
         args,
