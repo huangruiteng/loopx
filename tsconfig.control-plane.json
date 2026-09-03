@@ -32,6 +32,7 @@
     "loopx/control_plane/agents/delivery_workspace.ts",
     "loopx/control_plane/goals/vision_checkpoint.ts",
     "loopx/control_plane/goals/shared_goal_alignment.ts",
+    "loopx/control_plane/goals/goal_amendment_proposal.ts",
     "loopx/control_plane/quota/settlement_workspace_causality.ts",
     "loopx/control_plane/quota/settlement_readback.ts",
     "loopx/control_plane/quota/monitor_poll_commit.ts",
@@ -95,6 +96,7 @@
     "tests/control_plane_ts/turn_journal.test.ts",
     "tests/control_plane_ts/turn_journal_effects.test.ts",
     "tests/control_plane_ts/vision_checkpoint.test.ts",
-    "tests/control_plane_ts/shared_goal_alignment.test.ts"
+    "tests/control_plane_ts/shared_goal_alignment.test.ts",
+    "tests/control_plane_ts/goal_amendment_proposal.test.ts"
   ]
 }
