@@ -16,22 +16,31 @@ import {
  *
  * The reducer performs RFC §5 step 2 (admit): strict schema decode, actor
  * identity shape, a closed `amendment_class` enum, bounded evidence pointers,
- * and the relation between `base_goal_revision` and the current derived goal
- * basis. Admission validates and retains a proposal; it never approves,
+ * and the relation between the proposal's base basis and the current derived
+ * goal basis. Admission validates and retains a proposal; it never approves,
  * commits, or applies one. The answer always carries `canonical_effect:
  * "none"` — a proposal has no canonical effect by construction (RFC §3.4).
  *
+ * Basis binding: the proposal binds to the derived basis with BOTH its
+ * `base_state_event_basis_sequence` and its `base_source_basis_digest`. An
+ * equal sequence with a different digest is a `needs_rebase` admission with
+ * a `base_source_basis_digest_mismatch` fact — never a silently fresh
+ * admission. The basis facts follow Stage 1's downgraded naming: they are an
+ * event-log-derived source projection basis, not a canonical intent
+ * revision/digest (no typed shared_goal_intent_v0 source exists yet).
+ *
  * Admitted statuses are fact tokens only: `admitted`, or `needs_rebase` when
- * the proposal's base revision is behind the derived head (RFC §7: a stale
- * base is never silently merged). A schema violation fails closed as a
- * request rejection — the equivalent `rejected_schema` outcome never yields a
- * record. There is no `approved` status and no commit path in this contract;
- * governed commit belongs to Stage 3+ behind the `GoalAmendmentAuthority`.
+ * the proposal's base is behind the derived head or its digest mismatches
+ * (RFC §7: a stale base is never silently merged). A schema violation fails
+ * closed as a request rejection — the equivalent `rejected_schema` outcome
+ * never yields a record. There is no `approved` status and no commit path in
+ * this contract; governed commit belongs to Stage 3+ behind the
+ * `GoalAmendmentAuthority`.
  *
  * The derived goal basis facts arrive from the Python adapter via the Stage 1
  * alignment projection (`state_event_log` head = last append sequence). When
- * no event log exists the basis is `markdown_active_state` and the base
- * revision is reported unverifiable instead of fabricating a stale verdict.
+ * no event log exists the basis is `markdown_active_state` and the base is
+ * reported unverifiable instead of fabricating a stale verdict.
  */
 
 export const GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION =
@@ -57,8 +66,9 @@ export type GoalAmendmentAdmission =
   (typeof GOAL_AMENDMENT_PROPOSAL_ADMISSIONS)[number];
 
 export const GOAL_AMENDMENT_PROPOSAL_ADMISSION_FACTS = [
-  "base_revision_behind_derived_head",
-  "base_revision_unverifiable",
+  "base_state_event_basis_sequence_behind_derived_head",
+  "base_source_basis_digest_mismatch",
+  "base_source_basis_unverifiable",
 ] as const;
 export type GoalAmendmentAdmissionFact =
   (typeof GOAL_AMENDMENT_PROPOSAL_ADMISSION_FACTS)[number];
@@ -77,8 +87,11 @@ export const MAX_INTENT_STATEMENT_LENGTH = 500;
 export const MAX_AFFECTED_TODO_IDS = 16;
 
 const PROPOSAL_ID_PATTERN = /^gap_[a-z0-9_-]{3,64}$/;
-const REPLAN_OBLIGATION_ID_PATTERN = /^replan:[a-z0-9_.:@-]{1,80}$/;
-const INTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
+// Mirrors TODO_REPLAN_OBLIGATION_ID_PATTERN / normalize_todo_replan_obligation_id
+// (loopx/control_plane/todos/contract.py): replan obligation ids are
+// "replan-" + 16 lowercase hex chars, e.g. "replan-fe2d75e84da47ac3".
+const REPLAN_OBLIGATION_ID_PATTERN = /^replan-[a-f0-9]{16}$/;
+const SOURCE_BASIS_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const AGENT_ID_PATTERN = /^[a-z][a-z0-9_.:@-]{0,79}$/;
 const TODO_ID_PATTERN = /^todo_[a-z0-9_-]{3,64}$/;
 
@@ -88,8 +101,8 @@ export interface GoalAmendmentProposal extends JsonObject {
   goal_id: string;
   proposer_agent_id: string;
   amendment_class: GoalAmendmentClass;
-  base_goal_revision: number;
-  base_intent_digest: string;
+  base_state_event_basis_sequence: number;
+  base_source_basis_digest: string;
   retained: string[];
   changed: string[];
   stopped: string[];
@@ -99,9 +112,9 @@ export interface GoalAmendmentProposal extends JsonObject {
 }
 
 export interface DerivedGoalBasisFacts extends JsonObject {
-  goal_revision: number;
+  state_event_basis_sequence: number;
   revision_basis: AmendmentRevisionBasis;
-  intent_digest: string;
+  source_basis_digest: string;
 }
 
 export interface GoalAmendmentProposalRequest extends JsonObject {
@@ -117,8 +130,8 @@ export interface GoalAmendmentProposalAdmission extends JsonObject {
   proposer_agent_id: string;
   amendment_class: GoalAmendmentClass;
   proposal_digest: string;
-  base_goal_revision: number;
-  base_intent_digest: string;
+  base_state_event_basis_sequence: number;
+  base_source_basis_digest: string;
   retained: string[];
   changed: string[];
   stopped: string[];
@@ -140,9 +153,9 @@ function agentId(value: unknown, label: string): string {
   return decoded;
 }
 
-function intentDigest(value: unknown, label: string): string {
+function sourceBasisDigest(value: unknown, label: string): string {
   const digest = requireNonEmptyString(value, label);
-  if (!INTENT_DIGEST_PATTERN.test(digest)) {
+  if (!SOURCE_BASIS_DIGEST_PATTERN.test(digest)) {
     throw new EffectRuntimeRequestError(
       `${label} must be a sha256:<hex> digest`,
     );
@@ -287,7 +300,7 @@ function decodeProposal(value: unknown): GoalAmendmentProposal {
   ).trim();
   if (!REPLAN_OBLIGATION_ID_PATTERN.test(replanObligationId)) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.replan_obligation_id must match replan:<slug>",
+      "goal_amendment_proposal.replan_obligation_id must match replan-<16 lowercase hex> (normalize_todo_replan_obligation_id)",
     );
   }
   return {
@@ -305,15 +318,15 @@ function decodeProposal(value: unknown): GoalAmendmentProposal {
       proposal.amendment_class,
       GOAL_AMENDMENT_CLASSES,
       "goal_amendment_proposal.amendment_class",
-      "goal amendment class is unsupported",
+      "amendment class is unsupported",
     ),
-    base_goal_revision: positiveInteger(
-      proposal.base_goal_revision,
-      "goal_amendment_proposal.base_goal_revision",
+    base_state_event_basis_sequence: positiveInteger(
+      proposal.base_state_event_basis_sequence,
+      "goal_amendment_proposal.base_state_event_basis_sequence",
     ),
-    base_intent_digest: intentDigest(
-      proposal.base_intent_digest,
-      "goal_amendment_proposal.base_intent_digest",
+    base_source_basis_digest: sourceBasisDigest(
+      proposal.base_source_basis_digest,
+      "goal_amendment_proposal.base_source_basis_digest",
     ),
     retained: boundedStatementArray(proposal.retained, "goal_amendment_proposal.retained", {
       minimum: 1,
@@ -346,31 +359,31 @@ function decodeDerivedBasis(value: unknown): DerivedGoalBasisFacts {
     "goal_amendment_proposal.derived_basis.revision_basis",
     "goal amendment derived revision_basis is unsupported",
   );
-  const goalRevision = requireInteger(
-    raw.goal_revision,
-    "goal_amendment_proposal.derived_basis.goal_revision",
+  const basisSequence = requireInteger(
+    raw.state_event_basis_sequence,
+    "goal_amendment_proposal.derived_basis.state_event_basis_sequence",
   );
-  if (goalRevision < 0) {
+  if (basisSequence < 0) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.derived_basis.goal_revision must be non-negative",
+      "goal_amendment_proposal.derived_basis.state_event_basis_sequence must be non-negative",
     );
   }
-  if (revisionBasis === "state_event_log" && goalRevision < 1) {
+  if (revisionBasis === "state_event_log" && basisSequence < 1) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.derived_basis.goal_revision must be a positive event append sequence when revision_basis is state_event_log",
+      "goal_amendment_proposal.derived_basis.state_event_basis_sequence must be a positive event append sequence when revision_basis is state_event_log",
     );
   }
-  if (revisionBasis === "markdown_active_state" && goalRevision !== 0) {
+  if (revisionBasis === "markdown_active_state" && basisSequence !== 0) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.derived_basis.goal_revision must be 0 when revision_basis is markdown_active_state",
+      "goal_amendment_proposal.derived_basis.state_event_basis_sequence must be 0 when revision_basis is markdown_active_state",
     );
   }
   return {
-    goal_revision: goalRevision,
+    state_event_basis_sequence: basisSequence,
     revision_basis: revisionBasis,
-    intent_digest: intentDigest(
-      raw.intent_digest,
-      "goal_amendment_proposal.derived_basis.intent_digest",
+    source_basis_digest: sourceBasisDigest(
+      raw.source_basis_digest,
+      "goal_amendment_proposal.derived_basis.source_basis_digest",
     ),
   };
 }
@@ -407,23 +420,30 @@ function admissionOutcome(
     // fabricated stale verdict (same policy as Stage 1).
     return {
       admission: "admitted",
-      facts: ["base_revision_unverifiable"],
+      facts: ["base_source_basis_unverifiable"],
     };
   }
-  if (proposal.base_goal_revision > derived.goal_revision) {
+  if (proposal.base_state_event_basis_sequence > derived.state_event_basis_sequence) {
     throw new EffectRuntimeRequestError(
-      "goal amendment proposal base_goal_revision is ahead of the derived goal head",
+      "goal amendment proposal base_state_event_basis_sequence is ahead of the derived state event basis head",
     );
   }
-  if (proposal.base_goal_revision < derived.goal_revision) {
+  const facts: GoalAmendmentAdmissionFact[] = [];
+  if (proposal.base_state_event_basis_sequence < derived.state_event_basis_sequence) {
     // Stale bases stay admitted as retained facts with a needs_rebase
     // marker; admission never silently drops or merges them (RFC §7).
-    return {
-      admission: "needs_rebase",
-      facts: ["base_revision_behind_derived_head"],
-    };
+    facts.push("base_state_event_basis_sequence_behind_derived_head");
   }
-  return { admission: "admitted", facts: [] };
+  if (proposal.base_source_basis_digest !== derived.source_basis_digest) {
+    // The proposal must actually bind to the source basis it claims: a
+    // different basis identity — even at an equal sequence — is a
+    // rebase-required mismatch, never a fresh admission.
+    facts.push("base_source_basis_digest_mismatch");
+  }
+  if (facts.length > 0) {
+    return { admission: "needs_rebase", facts };
+  }
+  return { admission: "admitted", facts };
 }
 
 export function decodeGoalAmendmentProposalRequest(
@@ -458,8 +478,8 @@ export function admitGoalAmendmentProposal(
     proposer_agent_id: proposal.proposer_agent_id,
     amendment_class: proposal.amendment_class,
     proposal_digest: canonicalDigest(proposal),
-    base_goal_revision: proposal.base_goal_revision,
-    base_intent_digest: proposal.base_intent_digest,
+    base_state_event_basis_sequence: proposal.base_state_event_basis_sequence,
+    base_source_basis_digest: proposal.base_source_basis_digest,
     retained: proposal.retained,
     changed: proposal.changed,
     stopped: proposal.stopped,

@@ -6,8 +6,10 @@ import {
   admitGoalAmendmentProposal,
 } from "../../loopx/control_plane/goals/goal_amendment_proposal.ts";
 
-const BASE_DIGEST = "sha256:" + "a".repeat(64);
-const DERIVED_DIGEST = "sha256:" + "b".repeat(64);
+// The default proposal binds to the derived basis: equal sequence AND
+// equal source basis digest. MISMATCHED_DIGEST exercises the binding.
+const DIGEST = "sha256:" + "a".repeat(64);
+const MISMATCHED_DIGEST = "sha256:" + "b".repeat(64);
 
 function baseRequest(overrides: Record<string, unknown> = {}) {
   return {
@@ -18,19 +20,19 @@ function baseRequest(overrides: Record<string, unknown> = {}) {
       goal_id: "goal-stage2",
       proposer_agent_id: "agent-a",
       amendment_class: "shared_acceptance",
-      base_goal_revision: 17,
-      base_intent_digest: BASE_DIGEST,
+      base_state_event_basis_sequence: 17,
+      base_source_basis_digest: DIGEST,
       retained: ["original outcome remains unchanged"],
       changed: ["acceptance now requires the recovered receipt"],
       stopped: [],
       evidence_refs: ["evidence:evt_stage2_001"],
       affected_todo_ids: ["todo_stage2_a", "todo_stage2_b"],
-      replan_obligation_id: "replan:stage2-001",
+      replan_obligation_id: "replan-fe2d75e84da47ac3",
     },
     derived_basis: {
-      goal_revision: 17,
+      state_event_basis_sequence: 17,
       revision_basis: "state_event_log",
-      intent_digest: DERIVED_DIGEST,
+      source_basis_digest: DIGEST,
     },
     ...overrides,
   };
@@ -55,35 +57,72 @@ test("admits a well-formed proposal with no canonical effect", () => {
   assert.deepEqual(result.evidence_refs, ["evidence:evt_stage2_001"]);
 });
 
-test("a base revision behind the derived head is retained as needs_rebase", () => {
+test("a base sequence behind the derived head is retained as needs_rebase", () => {
   const result = admitGoalAmendmentProposal(
     baseRequest({
       proposal: {
         ...baseRequest().proposal,
-        base_goal_revision: 12,
+        base_state_event_basis_sequence: 12,
       },
     }),
   );
 
   assert.equal(result.admission, "needs_rebase");
   assert.deepEqual(result.admission_facts, [
-    "base_revision_behind_derived_head",
+    "base_state_event_basis_sequence_behind_derived_head",
   ]);
   assert.equal(result.canonical_effect, "none");
 });
 
-test("a base revision ahead of the derived head fails closed", () => {
+test("an equal sequence with a mismatched base digest needs rebase", () => {
+  // Same sequence, different source basis identity: the proposal is NOT
+  // bound to the basis it claims, so it must never be admitted fresh.
+  const result = admitGoalAmendmentProposal(
+    baseRequest({
+      proposal: {
+        ...baseRequest().proposal,
+        base_source_basis_digest: MISMATCHED_DIGEST,
+      },
+    }),
+  );
+
+  assert.equal(result.admission, "needs_rebase");
+  assert.deepEqual(result.admission_facts, [
+    "base_source_basis_digest_mismatch",
+  ]);
+  assert.equal(result.canonical_effect, "none");
+});
+
+test("a behind sequence with a mismatched digest reports both facts", () => {
+  const result = admitGoalAmendmentProposal(
+    baseRequest({
+      proposal: {
+        ...baseRequest().proposal,
+        base_state_event_basis_sequence: 12,
+        base_source_basis_digest: MISMATCHED_DIGEST,
+      },
+    }),
+  );
+
+  assert.equal(result.admission, "needs_rebase");
+  assert.deepEqual(result.admission_facts, [
+    "base_state_event_basis_sequence_behind_derived_head",
+    "base_source_basis_digest_mismatch",
+  ]);
+});
+
+test("a base sequence ahead of the derived head fails closed", () => {
   assert.throws(
     () =>
       admitGoalAmendmentProposal(
         baseRequest({
           proposal: {
             ...baseRequest().proposal,
-            base_goal_revision: 99,
+            base_state_event_basis_sequence: 99,
           },
         }),
       ),
-    /ahead of the derived goal head/,
+    /ahead of the derived state event basis head/,
   );
 });
 
@@ -91,15 +130,15 @@ test("a markdown basis admits with an unverifiable base fact", () => {
   const result = admitGoalAmendmentProposal(
     baseRequest({
       derived_basis: {
-        goal_revision: 0,
+        state_event_basis_sequence: 0,
         revision_basis: "markdown_active_state",
-        intent_digest: DERIVED_DIGEST,
+        source_basis_digest: DIGEST,
       },
     }),
   );
 
   assert.equal(result.admission, "admitted");
-  assert.deepEqual(result.admission_facts, ["base_revision_unverifiable"]);
+  assert.deepEqual(result.admission_facts, ["base_source_basis_unverifiable"]);
 });
 
 test("an unknown amendment class is rejected", () => {
@@ -141,7 +180,7 @@ test("a base digest that is not sha256 hex is rejected", () => {
         baseRequest({
           proposal: {
             ...baseRequest().proposal,
-            base_intent_digest: "md5:zz",
+            base_source_basis_digest: "md5:zz",
           },
         }),
       ),
@@ -375,17 +414,37 @@ test("a blank stopped statement is rejected", () => {
   );
 });
 
-test("a replan obligation id outside the replan namespace is rejected", () => {
-  assert.throws(
-    () =>
-      admitGoalAmendmentProposal(
-        baseRequest({
-          proposal: {
-            ...baseRequest().proposal,
-            replan_obligation_id: "obligation-stage2-001",
-          },
-        }),
-      ),
-    /must match replan:<slug>/,
+test("replan obligation ids follow the normalize_todo_replan_obligation_id contract", () => {
+  // The repository authority is TODO_REPLAN_OBLIGATION_ID_PATTERN:
+  // "replan-" + 16 lowercase hex, e.g. "replan-fe2d75e84da47ac3".
+  // A second obligation namespace must not be invented here.
+  const result = admitGoalAmendmentProposal(
+    baseRequest({
+      proposal: {
+        ...baseRequest().proposal,
+        replan_obligation_id: "replan-0123456789abcdef",
+      },
+    }),
   );
+  assert.equal(result.replan_obligation_id, "replan-0123456789abcdef");
+  for (const replanObligationId of [
+    "replan:stage2-001",
+    "replan-FE2D75E84DA47AC3",
+    "replan-fe2d75e84da47ac",
+    "replan-fe2d75e84da47ac33",
+    "obligation-stage2-001",
+  ]) {
+    assert.throws(
+      () =>
+        admitGoalAmendmentProposal(
+          baseRequest({
+            proposal: {
+              ...baseRequest().proposal,
+              replan_obligation_id: replanObligationId,
+            },
+          }),
+        ),
+      /replan-<16 lowercase hex>/,
+    );
+  }
 });

@@ -5,28 +5,32 @@ This adapter implements RFC §5 steps 1–2 for
 the TypeScript-owned reducer (``goal.amendment_proposal.admit``) validates
 schema completeness, actor identity, a closed ``amendment_class`` enum,
 bounded evidence pointers, and the relation between the proposal's
-``base_goal_revision`` and the currently derived goal basis, and the
-resulting admission record is retained in an append-only journal.
+``base_state_event_basis_sequence``/``base_source_basis_digest`` and the
+currently derived goal basis, and the resulting admission record is
+retained in an append-only journal.
 
 Stage 2 is proposal only: admission has **zero canonical effect**. No goal
-state is written, no frontier changes, and the state event log — the
-canonical revision carrier — is never appended to. The journal lives beside
-``task-leases`` under ``runtime/goals/<goal_id>/amendment-proposals/`` so
-retention can never advance the canonical head it reports against.
+state is written, no frontier changes, and the state event log is never
+appended to. The journal lives beside ``task-leases`` under
+``runtime/goals/<goal_id>/amendment-proposals/`` so retention can never
+advance the basis head it reports against.
 
 There is no approval field, no ``approved`` status, and no commit path.
 Admission outcomes are fact tokens only: ``admitted`` (including the
-``base_revision_unverifiable`` fact when no event log exists) or
-``needs_rebase`` (a stale base stays admitted and retained, never silently
-dropped or merged — RFC §7). A schema violation fails closed as a request
-rejection, the equivalent ``rejected_schema`` outcome, and nothing is
-retained. Governed commit belongs to Stage 3+ behind the
-``GoalAmendmentAuthority``.
+``base_source_basis_unverifiable`` fact when no event log exists) or
+``needs_rebase`` (a behind or digest-mismatched base stays admitted and
+retained, never silently dropped or merged — RFC §7). A schema violation
+fails closed as a request rejection, the equivalent ``rejected_schema``
+outcome, and nothing is retained. Governed commit belongs to Stage 3+
+behind the ``GoalAmendmentAuthority``.
 
-The derived basis (``goal_revision``, ``revision_basis``,
-``intent_digest``) comes from the Stage 1 read-only projection
+The derived basis (``state_event_basis_sequence``, ``revision_basis``,
+``source_basis_digest``) comes from the Stage 1 read-only projection
 (``project_shared_goal_alignment``), which also fails closed on unknown
-goals and unregistered proposers.
+goals and unregistered proposers. This is an event-log-derived source
+projection basis, not a canonical intent revision/digest: the RFC §3.1
+intent envelope has no typed storage yet, and the proposal binds to the
+basis under Stage 1's downgraded naming.
 """
 
 from __future__ import annotations
@@ -60,8 +64,9 @@ GOAL_AMENDMENT_CLASSES = (
 )
 GOAL_AMENDMENT_PROPOSAL_ADMISSIONS = ("admitted", "needs_rebase")
 GOAL_AMENDMENT_PROPOSAL_ADMISSION_FACTS = (
-    "base_revision_behind_derived_head",
-    "base_revision_unverifiable",
+    "base_state_event_basis_sequence_behind_derived_head",
+    "base_source_basis_digest_mismatch",
+    "base_source_basis_unverifiable",
 )
 AMENDMENT_PROPOSAL_JOURNAL_DIRNAME = "amendment-proposals"
 AMENDMENT_PROPOSAL_JOURNAL_BASENAME = "journal.jsonl"
@@ -110,7 +115,7 @@ def admit_goal_amendment_proposal(
 
     Raises ``ValueError`` for any admission-blocking defect (unknown goal,
     unregistered proposer, schema violation, evidence over budget, a base
-    revision ahead of the derived head, or a conflicting replayed
+    basis sequence ahead of the derived head, or a conflicting replayed
     ``proposal_id``). Nothing is retained when admission fails.
     """
 
@@ -147,9 +152,9 @@ def admit_goal_amendment_proposal(
     )
 
     # Stage 1 reuse: the read-only projection fails closed on unknown goals
-    # and unregistered proposers, and derives the canonical revision basis
-    # (state event log append sequence, or markdown fallback) the proposal's
-    # base revision is checked against.
+    # and unregistered proposers, and derives the source basis (state event
+    # log append sequence, or markdown fallback) the proposal's base binds
+    # against — both its sequence and its digest.
     alignment = project_shared_goal_alignment(
         goal_id=proposal_goal_id,
         agent_id=proposer_agent_id,
@@ -157,13 +162,15 @@ def admit_goal_amendment_proposal(
         registry_path=effective_registry_path,
         runtime_root=effective_runtime_root,
     )
-    canonical_goal = alignment.get("canonical_goal")
-    if not isinstance(canonical_goal, Mapping):
+    source_basis = alignment.get("source_basis")
+    if not isinstance(source_basis, Mapping):
         raise RuntimeError("TypeScript shared goal alignment shape mismatch")
     derived_basis = {
-        "goal_revision": canonical_goal.get("goal_revision"),
-        "revision_basis": canonical_goal.get("revision_basis"),
-        "intent_digest": canonical_goal.get("intent_digest"),
+        "state_event_basis_sequence": source_basis.get(
+            "state_event_basis_sequence"
+        ),
+        "revision_basis": source_basis.get("revision_basis"),
+        "source_basis_digest": source_basis.get("source_basis_digest"),
     }
 
     request = {

@@ -27,6 +27,9 @@ from loopx.control_plane.goals.goal_amendment_proposal import (
     admit_goal_amendment_proposal,
     read_goal_amendment_proposal_journal,
 )
+from loopx.control_plane.goals.shared_goal_alignment import (
+    project_shared_goal_alignment,
+)
 from loopx.event_sourced_state import (
     AppendOnlyStateEventStore,
     TODO_ADDED,
@@ -36,7 +39,7 @@ from loopx.event_sourced_state import (
 GOAL_ID = "goal-stage2"
 AGENTS = ("agent-a", "agent-b")
 EVENT_LOG_NAME = "events.jsonl"
-BASE_DIGEST = "sha256:" + "a" * 64
+MISMATCHED_DIGEST = "sha256:" + "a" * 64
 
 STATE_TEXT = "\n".join(
     [
@@ -141,21 +144,41 @@ def _default_events() -> list[dict[str, str]]:
     ]
 
 
-def _proposal(overrides: dict[str, object] | None = None) -> dict[str, object]:
+def _derived_source_basis(paths: dict[str, Path]) -> dict[str, object]:
+    """Project the live Stage 1 source basis the proposal binds against."""
+
+    alignment = project_shared_goal_alignment(
+        goal_id=GOAL_ID,
+        agent_id="agent-a",
+        project=paths["project"],
+    )
+    basis = alignment["source_basis"]
+    assert isinstance(basis, dict)
+    return basis
+
+
+def _proposal(
+    paths: dict[str, Path],
+    overrides: dict[str, object] | None = None,
+) -> dict[str, object]:
+    # Default base binds to the live derived basis: equal sequence AND equal
+    # source basis digest, exactly like a proposer that just re-read the
+    # Stage 1 projection before proposing.
+    basis = _derived_source_basis(paths)
     proposal: dict[str, object] = {
         "schema_version": "goal_amendment_proposal_v0",
         "proposal_id": "gap_stage2_001",
         "goal_id": GOAL_ID,
         "proposer_agent_id": "agent-a",
         "amendment_class": "shared_acceptance",
-        "base_goal_revision": 3,
-        "base_intent_digest": BASE_DIGEST,
+        "base_state_event_basis_sequence": basis["state_event_basis_sequence"],
+        "base_source_basis_digest": basis["source_basis_digest"],
         "retained": ["original outcome remains unchanged"],
         "changed": ["acceptance now requires the recovered receipt"],
         "stopped": [],
         "evidence_refs": ["evidence:evt_stage2_001"],
         "affected_todo_ids": ["todo_stage2_a", "todo_stage2_b"],
-        "replan_obligation_id": "replan:stage2-001",
+        "replan_obligation_id": "replan-fe2d75e84da47ac3",
     }
     if overrides:
         proposal.update(overrides)
@@ -175,9 +198,9 @@ def _admit(
 def _canonical_tree_snapshot(paths: dict[str, Path]) -> dict[str, bytes]:
     """Snapshot every runtime byte except the proposal journal sidecars.
 
-    Admission must leave the canonical revision carrier (the state event
-    log), the goal state file, and every other runtime artifact untouched;
-    only ``amendment-proposals/`` and the advisory lock sidecars may move.
+    Admission must leave the state event log (the basis sequence carrier),
+    the goal state file, and every other runtime artifact untouched; only
+    ``amendment-proposals/`` and the advisory lock sidecars may move.
     """
 
     snapshot: dict[str, bytes] = {}
@@ -204,7 +227,7 @@ def _proposal_journal(paths: dict[str, Path]) -> Path:
 def test_admits_and_retains_a_well_formed_proposal(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
 
-    record = _admit(paths, _proposal())
+    record = _admit(paths, _proposal(paths))
 
     assert record["schema_version"] == "goal_amendment_proposal_admission_v0"
     assert record["proposal_id"] == "gap_stage2_001"
@@ -227,7 +250,7 @@ def test_proposal_digest_matches_the_python_canonical_recipe(
     tmp_path: Path,
 ) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
-    proposal = _proposal()
+    proposal = _proposal(paths)
 
     record = _admit(paths, proposal)
 
@@ -241,10 +264,11 @@ def test_proposal_digest_matches_the_python_canonical_recipe(
 def test_stale_base_is_retained_with_needs_rebase(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
 
-    record = _admit(paths, _proposal({"base_goal_revision": 1}))
+    record = _admit(paths, _proposal(paths, {"base_state_event_basis_sequence": 1}))
 
-    assert record["admission"] == "needs_rebase"
-    assert record["admission_facts"] == ["base_revision_behind_derived_head"]
+    assert record["admission_facts"] == [
+        "base_state_event_basis_sequence_behind_derived_head"
+    ]
     assert record["canonical_effect"] == "none"
     rows = read_goal_amendment_proposal_journal(
         runtime_root=paths["runtime"],
@@ -256,13 +280,64 @@ def test_stale_base_is_retained_with_needs_rebase(tmp_path: Path) -> None:
 def test_future_base_fails_closed_without_retention(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
 
-    with pytest.raises(ValueError, match="ahead of the derived goal head"):
-        _admit(paths, _proposal({"base_goal_revision": 99}))
+    with pytest.raises(
+        ValueError, match="ahead of the derived state event basis head"
+    ):
+        _admit(paths, _proposal(paths, {"base_state_event_basis_sequence": 99}))
 
     assert read_goal_amendment_proposal_journal(
         runtime_root=paths["runtime"],
         goal_id=GOAL_ID,
     ) == []
+
+
+def test_equal_sequence_with_mismatched_digest_needs_rebase(
+    tmp_path: Path,
+) -> None:
+    # A proposal claiming the current sequence but binding to a different
+    # source basis identity must never be admitted fresh: the digest
+    # participates in admission, not only the sequence (review P1b).
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    record = _admit(
+        paths,
+        _proposal(paths, {"base_source_basis_digest": MISMATCHED_DIGEST}),
+    )
+
+    assert record["admission"] == "needs_rebase"
+    assert record["admission_facts"] == ["base_source_basis_digest_mismatch"]
+    assert record["canonical_effect"] == "none"
+    rows = read_goal_amendment_proposal_journal(
+        runtime_root=paths["runtime"],
+        goal_id=GOAL_ID,
+    )
+    assert [row["admission"] for row in rows] == ["needs_rebase"]
+
+
+def test_replan_obligation_ids_follow_the_todo_contract(
+    tmp_path: Path,
+) -> None:
+    # Python -> TS regression: the authority is
+    # normalize_todo_replan_obligation_id's "replan-<16 lowercase hex>"
+    # (real values such as "replan-fe2d75e84da47ac3"); the colon namespace
+    # must be rejected end to end through the managed TS runtime.
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    record = _admit(paths, _proposal(paths))  # default uses the real format
+
+    assert record["replan_obligation_id"] == "replan-fe2d75e84da47ac3"
+    assert record["admission"] == "admitted"
+    with pytest.raises(ValueError, match=r"replan-<16 lowercase hex>"):
+        _admit(
+            paths,
+            _proposal(
+                paths,
+                {
+                    "proposal_id": "gap_stage2_replan",
+                    "replan_obligation_id": "replan:stage2-001",
+                },
+            ),
+        )
 
 
 def test_unknown_amendment_class_is_rejected_without_retention(
@@ -271,7 +346,7 @@ def test_unknown_amendment_class_is_rejected_without_retention(
     paths = _write_fixture(tmp_path, events=_default_events())
 
     with pytest.raises(ValueError, match="amendment class is unsupported"):
-        _admit(paths, _proposal({"amendment_class": "emergency_powers"}))
+        _admit(paths, _proposal(paths, {"amendment_class": "emergency_powers"}))
 
     assert read_goal_amendment_proposal_journal(
         runtime_root=paths["runtime"],
@@ -286,6 +361,7 @@ def test_evidence_refs_over_budget_are_rejected(tmp_path: Path) -> None:
         _admit(
             paths,
             _proposal(
+                paths,
                 {
                     "evidence_refs": [
                         f"evidence:evt_stage2_{index}" for index in range(9)
@@ -304,14 +380,14 @@ def test_unregistered_proposer_fails_closed(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
 
     with pytest.raises(ValueError, match="not registered"):
-        _admit(paths, _proposal({"proposer_agent_id": "agent-z"}))
+        _admit(paths, _proposal(paths, {"proposer_agent_id": "agent-z"}))
 
 
 def test_unknown_goal_fails_closed(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
 
     with pytest.raises(ValueError, match="not registered"):
-        _admit(paths, _proposal({"goal_id": "goal-unknown"}))
+        _admit(paths, _proposal(paths, {"goal_id": "goal-unknown"}))
 
 
 def test_journal_is_append_only_and_replay_is_idempotent(
@@ -326,19 +402,20 @@ def test_journal_is_append_only_and_replay_is_idempotent(
         / "journal.jsonl"
     )
 
-    _admit(paths, _proposal())
+    _admit(paths, _proposal(paths))
     first_snapshot = journal.read_text(encoding="utf-8")
 
-    replay = _admit(paths, _proposal())
+    replay = _admit(paths, _proposal(paths))
     assert replay["proposal_id"] == "gap_stage2_001"
     assert journal.read_text(encoding="utf-8") == first_snapshot
 
     _admit(
         paths,
         _proposal(
+            paths,
             {
                 "proposal_id": "gap_stage2_002",
-                "replan_obligation_id": "replan:stage2-002",
+                "replan_obligation_id": "replan-2f8e1d0c9b7a6453",
             }
         ),
     )
@@ -354,12 +431,12 @@ def test_journal_is_append_only_and_replay_is_idempotent(
 
 def test_conflicting_proposal_id_replay_fails_closed(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
-    _admit(paths, _proposal())
+    _admit(paths, _proposal(paths))
 
     with pytest.raises(ValueError, match="conflicting proposal_id"):
         _admit(
             paths,
-            _proposal({"changed": ["a different amendment content"]}),
+            _proposal(paths, {"changed": ["a different amendment content"]}),
         )
 
     rows = read_goal_amendment_proposal_journal(
@@ -373,10 +450,10 @@ def test_conflicting_proposal_id_replay_fails_closed(tmp_path: Path) -> None:
 def test_markdown_basis_admits_with_unverifiable_fact(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=None)
 
-    record = _admit(paths, _proposal({"base_goal_revision": 5}))
+    record = _admit(paths, _proposal(paths, {"base_state_event_basis_sequence": 5}))
 
     assert record["admission"] == "admitted"
-    assert record["admission_facts"] == ["base_revision_unverifiable"]
+    assert record["admission_facts"] == ["base_source_basis_unverifiable"]
     assert record["canonical_effect"] == "none"
 
 
@@ -387,13 +464,14 @@ def test_admission_has_zero_canonical_effect(tmp_path: Path) -> None:
     before_events = event_log.read_bytes()
     before_registry = paths["registry"].read_bytes()
 
-    _admit(paths, _proposal())
+    _admit(paths, _proposal(paths))
     _admit(
         paths,
         _proposal(
+            paths,
             {
                 "proposal_id": "gap_stage2_002",
-                "replan_obligation_id": "replan:stage2-002",
+                "replan_obligation_id": "replan-2f8e1d0c9b7a6453",
             }
         ),
     )
@@ -410,16 +488,32 @@ def test_admission_has_zero_canonical_effect(tmp_path: Path) -> None:
 def test_registered_effect_method_rejects_an_illegal_request() -> None:
     # Direct call through the managed TS runtime: a digest that violates
     # the sha256 contract is a request rejection, not an admission record.
+    # The proposal is built inline — this test needs no fixture on disk.
+    proposal: dict[str, object] = {
+        "schema_version": "goal_amendment_proposal_v0",
+        "proposal_id": "gap_stage2_001",
+        "goal_id": GOAL_ID,
+        "proposer_agent_id": "agent-a",
+        "amendment_class": "shared_acceptance",
+        "base_state_event_basis_sequence": 3,
+        "base_source_basis_digest": "md5:zz",
+        "retained": ["original outcome remains unchanged"],
+        "changed": ["acceptance now requires the recovered receipt"],
+        "stopped": [],
+        "evidence_refs": ["evidence:evt_stage2_001"],
+        "affected_todo_ids": ["todo_stage2_a"],
+        "replan_obligation_id": "replan-fe2d75e84da47ac3",
+    }
     with pytest.raises(EffectRuntimeRejected) as excinfo:
         effect_runtime_result(
             "goal.amendment_proposal.admit",
             {
                 "schema_version": "goal_amendment_proposal_request_v0",
-                "proposal": _proposal({"base_intent_digest": "md5:zz"}),
+                "proposal": proposal,
                 "derived_basis": {
-                    "goal_revision": 3,
+                    "state_event_basis_sequence": 3,
                     "revision_basis": "state_event_log",
-                    "intent_digest": "sha256:" + "b" * 64,
+                    "source_basis_digest": "sha256:" + "b" * 64,
                 },
             },
         )
@@ -452,8 +546,8 @@ print(record["proposal_id"], record["journal_append_sequence"])
         os.pathsep + existing_pythonpath if existing_pythonpath else ""
     )
     overrides = (
-        {"proposal_id": "gap_stage2_p1", "replan_obligation_id": "replan:stage2-p1"},
-        {"proposal_id": "gap_stage2_p2", "replan_obligation_id": "replan:stage2-p2"},
+        {"proposal_id": "gap_stage2_p1", "replan_obligation_id": "replan-3a9f2c8e71b6d045"},
+        {"proposal_id": "gap_stage2_p2", "replan_obligation_id": "replan-4b8e3d7f52c9a160"},
     )
     children = [
         subprocess.Popen(
@@ -462,7 +556,7 @@ print(record["proposal_id"], record["journal_append_sequence"])
                 "-c",
                 child_code,
                 str(paths["project"]),
-                json.dumps(_proposal(proposal_overrides)),
+                json.dumps(_proposal(paths, proposal_overrides)),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -498,7 +592,7 @@ def test_corrupt_journal_line_fails_closed_and_retains_nothing(
     tmp_path: Path,
 ) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
-    _admit(paths, _proposal())
+    _admit(paths, _proposal(paths))
     journal = _proposal_journal(paths)
     with journal.open("a", encoding="utf-8") as stream:
         stream.write('{"schema_version": "goal_amendment_proposal_admis\n')
@@ -508,9 +602,10 @@ def test_corrupt_journal_line_fails_closed_and_retains_nothing(
         _admit(
             paths,
             _proposal(
+                paths,
                 {
                     "proposal_id": "gap_stage2_002",
-                    "replan_obligation_id": "replan:stage2-002",
+                    "replan_obligation_id": "replan-2f8e1d0c9b7a6453",
                 }
             ),
         )
@@ -527,13 +622,14 @@ def test_retention_does_not_advance_the_derived_head(tmp_path: Path) -> None:
     paths = _write_fixture(tmp_path, events=_default_events())
     before_tree = _canonical_tree_snapshot(paths)
 
-    first = _admit(paths, _proposal())
+    first = _admit(paths, _proposal(paths))
     second = _admit(
         paths,
         _proposal(
+            paths,
             {
                 "proposal_id": "gap_stage2_002",
-                "replan_obligation_id": "replan:stage2-002",
+                "replan_obligation_id": "replan-2f8e1d0c9b7a6453",
             }
         ),
     )
@@ -555,10 +651,12 @@ def test_needs_rebase_admission_has_zero_canonical_effect(
     paths = _write_fixture(tmp_path, events=_default_events())
     before_tree = _canonical_tree_snapshot(paths)
 
-    record = _admit(paths, _proposal({"base_goal_revision": 1}))
+    record = _admit(paths, _proposal(paths, {"base_state_event_basis_sequence": 1}))
 
     assert record["admission"] == "needs_rebase"
-    assert record["admission_facts"] == ["base_revision_behind_derived_head"]
+    assert record["admission_facts"] == [
+        "base_state_event_basis_sequence_behind_derived_head"
+    ]
     assert _canonical_tree_snapshot(paths) == before_tree
     rows = read_goal_amendment_proposal_journal(
         runtime_root=paths["runtime"],
