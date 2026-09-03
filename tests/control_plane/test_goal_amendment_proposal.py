@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -166,6 +169,35 @@ def _admit(
     return admit_goal_amendment_proposal(
         proposal=proposal,
         project=paths["project"],
+    )
+
+
+def _canonical_tree_snapshot(paths: dict[str, Path]) -> dict[str, bytes]:
+    """Snapshot every runtime byte except the proposal journal sidecars.
+
+    Admission must leave the canonical revision carrier (the state event
+    log), the goal state file, and every other runtime artifact untouched;
+    only ``amendment-proposals/`` and the advisory lock sidecars may move.
+    """
+
+    snapshot: dict[str, bytes] = {}
+    for candidate in sorted(paths["runtime"].rglob("*")):
+        if not candidate.is_file():
+            continue
+        relative = candidate.relative_to(paths["runtime"]).as_posix()
+        if "/amendment-proposals/" in relative:
+            continue
+        snapshot[relative] = candidate.read_bytes()
+    return snapshot
+
+
+def _proposal_journal(paths: dict[str, Path]) -> Path:
+    return (
+        paths["runtime"]
+        / "goals"
+        / GOAL_ID
+        / "amendment-proposals"
+        / "journal.jsonl"
     )
 
 
@@ -392,3 +424,145 @@ def test_registered_effect_method_rejects_an_illegal_request() -> None:
             },
         )
     assert excinfo.value.error_kind == "request_rejected"
+
+
+def test_concurrent_admissions_serialize_journal_appends(
+    tmp_path: Path,
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    repo_root = Path(__file__).resolve().parents[2]
+    child_code = """
+import json
+import sys
+from pathlib import Path
+
+from loopx.control_plane.goals.goal_amendment_proposal import (
+    admit_goal_amendment_proposal,
+)
+
+record = admit_goal_amendment_proposal(
+    proposal=json.loads(sys.argv[2]),
+    project=Path(sys.argv[1]),
+)
+print(record["proposal_id"], record["journal_append_sequence"])
+"""
+    env = dict(os.environ)
+    existing_pythonpath = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = str(repo_root) + (
+        os.pathsep + existing_pythonpath if existing_pythonpath else ""
+    )
+    overrides = (
+        {"proposal_id": "gap_stage2_p1", "replan_obligation_id": "replan:stage2-p1"},
+        {"proposal_id": "gap_stage2_p2", "replan_obligation_id": "replan:stage2-p2"},
+    )
+    children = [
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                child_code,
+                str(paths["project"]),
+                json.dumps(_proposal(proposal_overrides)),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+        for proposal_overrides in overrides
+    ]
+    try:
+        for child in children:
+            stdout, stderr = child.communicate(timeout=60)
+            assert child.returncode == 0, stderr
+    finally:
+        for child in children:
+            if child.poll() is None:  # pragma: no cover - failure cleanup
+                child.kill()
+                child.wait()
+
+    rows = read_goal_amendment_proposal_journal(
+        runtime_root=paths["runtime"],
+        goal_id=GOAL_ID,
+    )
+    # The cross-process lock must serialize both appends: exactly one row
+    # per proposal, no interleaved JSON, and unique sequence numbers.
+    assert sorted(row["proposal_id"] for row in rows) == [
+        "gap_stage2_p1",
+        "gap_stage2_p2",
+    ]
+    assert sorted(row["journal_append_sequence"] for row in rows) == [1, 2]
+
+
+def test_corrupt_journal_line_fails_closed_and_retains_nothing(
+    tmp_path: Path,
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    _admit(paths, _proposal())
+    journal = _proposal_journal(paths)
+    with journal.open("a", encoding="utf-8") as stream:
+        stream.write('{"schema_version": "goal_amendment_proposal_admis\n')
+    corrupted = journal.read_bytes()
+
+    with pytest.raises(ValueError, match="invalid proposal journal JSONL"):
+        _admit(
+            paths,
+            _proposal(
+                {
+                    "proposal_id": "gap_stage2_002",
+                    "replan_obligation_id": "replan:stage2-002",
+                }
+            ),
+        )
+    with pytest.raises(ValueError, match="invalid proposal journal JSONL"):
+        read_goal_amendment_proposal_journal(
+            runtime_root=paths["runtime"],
+            goal_id=GOAL_ID,
+        )
+
+    assert journal.read_bytes() == corrupted
+
+
+def test_retention_does_not_advance_the_derived_head(tmp_path: Path) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    before_tree = _canonical_tree_snapshot(paths)
+
+    first = _admit(paths, _proposal())
+    second = _admit(
+        paths,
+        _proposal(
+            {
+                "proposal_id": "gap_stage2_002",
+                "replan_obligation_id": "replan:stage2-002",
+            }
+        ),
+    )
+
+    assert first["admission"] == "admitted"
+    assert first["admission_facts"] == []
+    # The first journal append must not move the canonical head the second
+    # proposal reports against: retention lives outside the revision
+    # carrier, so the same base stays fresh (not needs_rebase) and every
+    # non-journal runtime byte is unchanged.
+    assert second["admission"] == "admitted"
+    assert second["admission_facts"] == []
+    assert _canonical_tree_snapshot(paths) == before_tree
+
+
+def test_needs_rebase_admission_has_zero_canonical_effect(
+    tmp_path: Path,
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    before_tree = _canonical_tree_snapshot(paths)
+
+    record = _admit(paths, _proposal({"base_goal_revision": 1}))
+
+    assert record["admission"] == "needs_rebase"
+    assert record["admission_facts"] == ["base_revision_behind_derived_head"]
+    assert _canonical_tree_snapshot(paths) == before_tree
+    rows = read_goal_amendment_proposal_journal(
+        runtime_root=paths["runtime"],
+        goal_id=GOAL_ID,
+    )
+    assert [row["admission"] for row in rows] == ["needs_rebase"]
+    assert rows[0]["canonical_effect"] == "none"

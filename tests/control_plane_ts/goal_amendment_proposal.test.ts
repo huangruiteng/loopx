@@ -311,3 +311,81 @@ test("the proposal digest is deterministic and content-bound", () => {
   assert.equal(second.proposal_digest, first.proposal_digest);
   assert.notEqual(third.proposal_digest, first.proposal_digest);
 });
+
+test("an empty evidence_refs array is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            evidence_refs: [],
+          },
+        }),
+      ),
+    /requires at least one pointer/,
+  );
+});
+
+test("affected todo ids over the budget are rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            affected_todo_ids: Array.from(
+              { length: 17 },
+              (_, index) => `todo_stage2_${index}`,
+            ),
+          },
+        }),
+      ),
+    /exceeds 16 ids/,
+  );
+});
+
+test("a malformed affected todo id is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            affected_todo_ids: ["todo-stage2-a"],
+          },
+        }),
+      ),
+    /must be a valid Todo id/,
+  );
+});
+
+test("a blank stopped statement is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            stopped: ["   "],
+          },
+        }),
+      ),
+    /stopped\[0\] must be a non-empty statement/,
+  );
+});
+
+test("a replan obligation id outside the replan namespace is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            replan_obligation_id: "obligation-stage2-001",
+          },
+        }),
+      ),
+    /must match replan:<slug>/,
+  );
+});
