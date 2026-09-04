@@ -148,15 +148,17 @@ def admit_goal_amendment_proposal(
     is empty and any proposal referencing a replan obligation fails
     closed: admission never trusts a causal chain on string shape alone.
 
-    Raises ``ValueError`` for any admission-blocking defect (unknown goal,
-    unregistered proposer, schema violation, evidence over budget, an
-    invalid replan obligation / affected Todo reference, a base basis
-    sequence ahead of the derived head, or a conflicting replayed
-    ``proposal_id``). Nothing is retained when admission fails.
+    Raises ``TypeError`` when ``proposal`` or the registry/JTS payload is
+    not the expected object type, and ``ValueError`` for any other
+    admission-blocking defect (unknown goal, unregistered proposer,
+    schema violation, evidence over budget, an invalid replan obligation
+    / affected Todo reference, a base basis sequence ahead of the derived
+    head, or a conflicting replayed ``proposal_id``). Nothing is retained
+    when admission fails.
     """
 
     if not isinstance(proposal, Mapping):
-        raise ValueError("proposal must be a goal_amendment_proposal_v0 object")
+        raise TypeError("proposal must be a goal_amendment_proposal_v0 object")
     proposal_goal_id = str(proposal.get("goal_id") or "").strip()
     if not proposal_goal_id:
         raise ValueError("proposal.goal_id must be a non-empty registered goal id")
@@ -179,7 +181,7 @@ def admit_goal_amendment_proposal(
             f"goal registry is unreadable: {effective_registry_path}"
         ) from None
     if not isinstance(registry_payload, dict):
-        raise ValueError("goal registry must contain a JSON object")
+        raise TypeError("goal registry must contain a JSON object")
 
     effective_runtime_root = (
         runtime_root
@@ -202,7 +204,7 @@ def admit_goal_amendment_proposal(
     )
     source_basis = alignment.get("source_basis")
     if not isinstance(source_basis, Mapping):
-        raise RuntimeError("TypeScript shared goal alignment shape mismatch")
+        raise TypeError("TypeScript shared goal alignment shape mismatch")
     derived_basis = {
         "state_event_basis_sequence": source_basis.get(
             "state_event_basis_sequence"
@@ -381,7 +383,7 @@ def _check_admission_shape(
     """
 
     if not isinstance(admission, Mapping):
-        raise RuntimeError("TypeScript goal amendment admission shape mismatch")
+        raise TypeError("TypeScript goal amendment admission shape mismatch")
     if (
         admission.get("schema_version")
         != GOAL_AMENDMENT_PROPOSAL_ADMISSION_SCHEMA_VERSION
@@ -453,7 +455,7 @@ def _read_journal_rows(journal_path: Path) -> list[dict[str, Any]]:
                 f"invalid proposal journal JSONL at line {line_number}: {exc}"
             ) from None
         if not isinstance(row, dict):
-            raise ValueError(
+            raise TypeError(
                 f"invalid proposal journal row at line {line_number}"
             )
         rows.append(row)

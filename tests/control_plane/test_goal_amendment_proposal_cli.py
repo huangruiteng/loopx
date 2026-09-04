@@ -17,7 +17,6 @@ from typing import Any
 import pytest
 
 from loopx.cli import main as cli_main
-
 from tests.control_plane.test_goal_amendment_proposal import (
     GOAL_ID,
     _default_events,

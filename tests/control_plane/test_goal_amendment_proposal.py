@@ -19,9 +19,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -43,8 +43,8 @@ from loopx.control_plane.work_items.autonomous_replan_obligation import (
     ensure_replan_novelty_policy,
 )
 from loopx.event_sourced_state import (
-    AppendOnlyStateEventStore,
     TODO_ADDED,
+    AppendOnlyStateEventStore,
     make_state_event,
 )
 
