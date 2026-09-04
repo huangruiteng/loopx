@@ -19,6 +19,8 @@ import pytest
 from loopx.cli import main as cli_main
 from loopx.control_plane.goals.goal_amendment_proposal import (
     build_replan_obligation_authority_envelope,
+    close_or_rotate_replan_obligation_receipt,
+    record_replan_obligation_receipt,
 )
 from tests.control_plane.test_goal_amendment_proposal import (
     GOAL_ID,
@@ -55,6 +57,7 @@ def _obligation_envelope(
     obligations_by_agent: dict[str, dict[str, object]] | None = None,
     derived_basis: dict[str, object] | None = None,
     receipt_id: str | None = None,
+    record_in_authority: bool = True,
 ) -> dict[str, Any]:
     basis = (
         derived_basis
@@ -66,6 +69,14 @@ def _obligation_envelope(
         if obligations_by_agent is not None
         else {"agent-a": _fixture_obligation("agent-a")}
     )
+    if record_in_authority:
+        return record_replan_obligation_receipt(
+            runtime_root=paths["runtime"],
+            goal_id=goal_id,
+            derived_basis=basis,
+            obligations_by_agent=by_agent,
+            receipt_id=receipt_id,
+        )
     return build_replan_obligation_authority_envelope(
         goal_id=goal_id,
         derived_basis=basis,
@@ -580,6 +591,61 @@ def test_cli_submit_fabricated_obligation_fails_closed(
     assert exit_code == 1
     assert payload["ok"] is False
     assert "fabricated or tampered" in payload["error"]
+
+    # 3. Caller self-minted envelope using public helper without authority recording
+    unrecorded_envelope = _obligation_envelope(paths, record_in_authority=False)
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=unrecorded_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "not authoritative" in payload["error"]
+
+
+def test_cli_submit_closed_or_rotated_obligation_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    proposal = _proposal(paths)
+
+    # Authority emits and records the initial obligation receipt
+    recorded_envelope = _obligation_envelope(paths)
+    receipt_id = recorded_envelope["receipt"]["receipt_id"]
+
+    # Authority later marks the obligation closed/rotated in the durable receipt
+    # store, while the state event log and Stage 1 source basis remain unchanged.
+    close_or_rotate_replan_obligation_receipt(
+        runtime_root=paths["runtime"],
+        goal_id=GOAL_ID,
+        receipt_id=receipt_id,
+        status="closed",
+        reason="obligation_settled_by_quota_monitor",
+    )
+
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=recorded_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "stale" in payload["error"]
+    assert "closed (not open)" in payload["error"]
 
 
 def test_cli_submit_stale_obligation_fails_closed(

@@ -102,6 +102,8 @@ REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION = (
 REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION = (
     "replan_obligation_receipt_v0"
 )
+REPLAN_OBLIGATION_RECEIPT_DIRNAME = "replan-obligations"
+REPLAN_OBLIGATION_RECEIPT_BASENAME = "receipts.jsonl"
 
 
 def amendment_proposal_journal_path(
@@ -119,6 +121,84 @@ def amendment_proposal_journal_path(
         / AMENDMENT_PROPOSAL_JOURNAL_DIRNAME
         / AMENDMENT_PROPOSAL_JOURNAL_BASENAME
     )
+
+
+def replan_obligation_receipt_journal_path(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> Path:
+    """Return the append-only replan obligation receipt journal path for one goal."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    return (
+        runtime_root
+        / "goals"
+        / safe_goal_id
+        / REPLAN_OBLIGATION_RECEIPT_DIRNAME
+        / REPLAN_OBLIGATION_RECEIPT_BASENAME
+    )
+
+
+def read_replan_obligation_receipt_journal(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    """Read every recorded replan obligation receipt from the durable journal."""
+
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    if not journal_path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    text = journal_path.read_text(encoding="utf-8")
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"invalid replan obligation receipt journal JSONL at line {line_number}: {exc}"
+            ) from None
+        if not isinstance(row, dict):
+            raise TypeError(
+                f"invalid replan obligation receipt journal row at line {line_number}"
+            )
+        rows.append(row)
+    return rows
+
+
+def read_latest_open_replan_obligation_envelope(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> dict[str, Any] | None:
+    """Return the latest open replan obligation envelope from the durable journal."""
+
+    rows = read_replan_obligation_receipt_journal(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    latest_by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        receipt = row.get("receipt")
+        if isinstance(receipt, dict):
+            rcpt_id = receipt.get("receipt_id")
+            if rcpt_id:
+                latest_by_id[str(rcpt_id)] = row
+    open_envelopes = [
+        row
+        for row in latest_by_id.values()
+        if (
+            str(row.get("status") or "open").lower() == "open"
+            and str(row.get("receipt", {}).get("status") or "open").lower() == "open"
+        )
+    ]
+    return open_envelopes[-1] if open_envelopes else None
 
 
 def _canonical_receipt_digest(payload: object) -> str:
@@ -161,6 +241,143 @@ def _extract_obligations_payload(
     }
 
 
+def record_replan_obligation_receipt(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    derived_basis: Mapping[str, Any],
+    obligations_by_agent: Mapping[str, Any] | None = None,
+    obligation: Mapping[str, Any] | None = None,
+    receipt_id: str | None = None,
+    projection_revision: int | None = None,
+    status: str = "open",
+    issued_at: str | None = None,
+) -> dict[str, Any]:
+    """Authoritative producer action: emit and append a durable replan obligation receipt."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    seq = derived_basis.get("state_event_basis_sequence")
+    digest = derived_basis.get("source_basis_digest")
+    obligations_payload = {
+        "autonomous_replan_obligations_by_agent": (
+            dict(obligations_by_agent)
+            if isinstance(obligations_by_agent, Mapping)
+            else None
+        ),
+        "autonomous_replan_obligation": (
+            dict(obligation) if isinstance(obligation, Mapping) else None
+        ),
+    }
+    receipt_digest = compute_replan_obligation_receipt_digest(
+        goal_id=safe_goal_id,
+        source_basis_digest=str(digest or ""),
+        state_event_basis_sequence=seq if isinstance(seq, int) else None,
+        obligations=obligations_payload,
+    )
+    actual_receipt_id = (
+        receipt_id
+        or f"rcpt_{hashlib.sha256(f'{safe_goal_id}:{seq}:{digest}:{receipt_digest}'.encode()).hexdigest()[:16]}"
+    )
+    timestamp = issued_at or now_utc_iso()
+    rev = (
+        projection_revision
+        if isinstance(projection_revision, int)
+        else (seq if isinstance(seq, int) else 0)
+    )
+    receipt = {
+        "schema_version": REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION,
+        "receipt_id": actual_receipt_id,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt_digest": receipt_digest,
+        "projection_revision": rev,
+        "status": status,
+        "issued_at": timestamp,
+    }
+    envelope: dict[str, Any] = {
+        "schema_version": REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt": receipt,
+        "status": status,
+        "recorded_at": timestamp,
+    }
+    if obligations_by_agent is not None:
+        envelope["autonomous_replan_obligations_by_agent"] = dict(
+            obligations_by_agent
+        )
+    if obligation is not None:
+        envelope["autonomous_replan_obligation"] = dict(obligation)
+
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(journal_path):
+        with journal_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(envelope, sort_keys=True, ensure_ascii=False) + "\n"
+            )
+    return envelope
+
+
+def close_or_rotate_replan_obligation_receipt(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    receipt_id: str,
+    status: str = "closed",
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Append a status change (closed or rotated) into the authority receipt journal."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    rows = read_replan_obligation_receipt_journal(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    matching = [
+        r
+        for r in rows
+        if isinstance(r.get("receipt"), Mapping)
+        and r["receipt"].get("receipt_id") == receipt_id
+    ]
+    if not matching:
+        raise ValueError(
+            f"receipt_id {receipt_id!r} not found in authority journal for {safe_goal_id}"
+        )
+    last = matching[-1]
+    last_receipt = dict(last.get("receipt") or {})
+    timestamp = now_utc_iso()
+    updated_receipt = {
+        **last_receipt,
+        "status": status,
+        "updated_at": timestamp,
+    }
+    if reason:
+        updated_receipt["reason"] = reason
+    updated_envelope: dict[str, Any] = {
+        **dict(last),
+        "receipt": updated_receipt,
+        "status": status,
+        "recorded_at": timestamp,
+    }
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(journal_path):
+        with journal_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(updated_envelope, sort_keys=True, ensure_ascii=False) + "\n"
+            )
+    return updated_envelope
+
+
 def build_replan_obligation_authority_envelope(
     *,
     goal_id: str,
@@ -169,6 +386,8 @@ def build_replan_obligation_authority_envelope(
     obligation: Mapping[str, Any] | None = None,
     receipt_id: str | None = None,
     issued_at: str | None = None,
+    projection_revision: int | None = None,
+    status: str = "open",
 ) -> dict[str, Any]:
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     seq = derived_basis.get("state_event_basis_sequence")
@@ -193,6 +412,12 @@ def build_replan_obligation_authority_envelope(
         receipt_id
         or f"rcpt_{hashlib.sha256(f'{safe_goal_id}:{seq}:{digest}'.encode()).hexdigest()[:16]}"
     )
+    timestamp = issued_at or now_utc_iso()
+    rev = (
+        projection_revision
+        if isinstance(projection_revision, int)
+        else (seq if isinstance(seq, int) else 0)
+    )
     receipt = {
         "schema_version": REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION,
         "receipt_id": actual_receipt_id,
@@ -200,7 +425,9 @@ def build_replan_obligation_authority_envelope(
         "state_event_basis_sequence": seq,
         "source_basis_digest": digest,
         "receipt_digest": receipt_digest,
-        "issued_at": issued_at or now_utc_iso(),
+        "projection_revision": rev,
+        "status": status,
+        "issued_at": timestamp,
     }
     envelope: dict[str, Any] = {
         "schema_version": REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION,
@@ -208,6 +435,7 @@ def build_replan_obligation_authority_envelope(
         "state_event_basis_sequence": seq,
         "source_basis_digest": digest,
         "receipt": receipt,
+        "status": status,
     }
     if obligations_by_agent is not None:
         envelope["autonomous_replan_obligations_by_agent"] = dict(
@@ -223,6 +451,7 @@ def validate_replan_obligation_authority_envelope(
     *,
     goal_id: str,
     derived_basis: Mapping[str, Any],
+    runtime_root: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(envelope, Mapping):
         raise TypeError("replan obligation authority envelope must be a JSON object")
@@ -259,6 +488,10 @@ def validate_replan_obligation_authority_envelope(
             f"expected {safe_goal_id!r}, got {receipt_goal_id!r}"
         )
 
+    receipt_id = str(receipt.get("receipt_id") or "").strip()
+    if not receipt_id:
+        raise ValueError("obligation authority receipt must carry a non-empty receipt_id")
+
     envelope_seq = envelope.get("state_event_basis_sequence")
     derived_seq = derived_basis.get("state_event_basis_sequence")
     if envelope_seq != derived_seq:
@@ -267,12 +500,26 @@ def validate_replan_obligation_authority_envelope(
             f"(envelope sequence={envelope_seq}, live sequence={derived_seq})"
         )
 
+    receipt_seq = receipt.get("state_event_basis_sequence")
+    if receipt_seq != derived_seq:
+        raise ValueError(
+            f"obligation authority receipt is stale: sequence mismatch "
+            f"(receipt sequence={receipt_seq}, live sequence={derived_seq})"
+        )
+
     envelope_digest = str(envelope.get("source_basis_digest") or "").strip()
     derived_digest = str(derived_basis.get("source_basis_digest") or "").strip()
     if envelope_digest != derived_digest:
         raise ValueError(
             f"obligation authority envelope is stale: source_basis_digest mismatch "
             f"(envelope digest={envelope_digest!r}, live digest={derived_digest!r})"
+        )
+
+    receipt_digest_field = str(receipt.get("source_basis_digest") or "").strip()
+    if receipt_digest_field != derived_digest:
+        raise ValueError(
+            f"obligation authority receipt is stale: source_basis_digest mismatch "
+            f"(receipt digest={receipt_digest_field!r}, live digest={derived_digest!r})"
         )
 
     expected_digest = compute_replan_obligation_receipt_digest(
@@ -289,6 +536,39 @@ def validate_replan_obligation_authority_envelope(
             "obligation authority receipt is fabricated or tampered "
             f"(expected {expected_digest}, got {observed_digest})"
         )
+
+    # Authority provenance readback check against durable authority store
+    if runtime_root is not None:
+        journal_rows = read_replan_obligation_receipt_journal(
+            runtime_root=runtime_root,
+            goal_id=safe_goal_id,
+        )
+        matching_rows = [
+            row
+            for row in journal_rows
+            if isinstance(row.get("receipt"), Mapping)
+            and row["receipt"].get("receipt_id") == receipt_id
+        ]
+        if not matching_rows:
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is not authoritative: "
+                f"receipt was not found in the authority receipt journal for goal {safe_goal_id!r}"
+            )
+        latest_record = matching_rows[-1]
+        stored_receipt = latest_record["receipt"]
+        if str(stored_receipt.get("receipt_digest") or "").strip() != observed_digest:
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is fabricated or tampered: "
+                "digest does not match authority record"
+            )
+        current_status = str(
+            latest_record.get("status") or stored_receipt.get("status") or "open"
+        ).strip().lower()
+        if current_status != "open":
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is stale: "
+                f"obligation is {current_status} (not open) in authority store"
+            )
 
     return dict(envelope)
 
@@ -405,6 +685,7 @@ def admit_goal_amendment_proposal(
             obligation_envelope,
             goal_id=proposal_goal_id,
             derived_basis=derived_basis,
+            runtime_root=effective_runtime_root,
         )
     elif (
         isinstance(status_item, Mapping)
@@ -415,6 +696,7 @@ def admit_goal_amendment_proposal(
             status_item,
             goal_id=proposal_goal_id,
             derived_basis=derived_basis,
+            runtime_root=effective_runtime_root,
         )
 
     goal = _registered_goal(registry_payload, goal_id=proposal_goal_id)

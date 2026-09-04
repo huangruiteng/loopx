@@ -125,9 +125,9 @@ def register_goal_amendment_proposal_command(
         "--obligations-json",
         help=(
             "Path to a verified receipt-bound replan obligation authority "
-            "envelope (carrying a valid receipt, matching goal_id, and "
-            "revision/freshness binding against the live source basis). "
-            "Raw unverified JSON payloads fail closed."
+            "envelope exported from the authoritative receipt store. "
+            "Admission verifies provenance and freshness against the live "
+            "source basis and the durable authority receipt journal."
         ),
     )
     parser.add_argument(
