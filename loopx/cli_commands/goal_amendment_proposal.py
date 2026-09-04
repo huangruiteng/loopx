@@ -19,6 +19,11 @@ from ..control_plane.goals.goal_amendment_proposal import (
     admit_goal_amendment_proposal,
     read_goal_amendment_proposal_journal,
 )
+from ..control_plane.goals.shared_goal_alignment import (
+    DEFAULT_REGISTRY_RELATIVE_PATH,
+    _registered_goal,
+)
+from ..runtime import validate_goal_id_path_segment
 from ..todos import resolve_todo_state_path
 
 PrintPayload = Callable[
@@ -119,14 +124,10 @@ def register_goal_amendment_proposal_command(
     parser.add_argument(
         "--obligations-json",
         help=(
-            "Path to the replan obligation payload exported by the LoopX "
-            "quota/status projection (autonomous_replan_obligation or "
-            "autonomous_replan_obligations_by_agent shape) to use as the "
-            "admission-time obligation authority. The CLI only decodes and "
-            "forwards it; goal, agent, and basis authority stays with the "
-            "registry and the Stage 1 projection, and admission fails "
-            "closed when a proposal references an obligation this payload "
-            "does not carry."
+            "Path to a verified receipt-bound replan obligation authority "
+            "envelope (carrying a valid receipt, matching goal_id, and "
+            "revision/freshness binding against the live source basis). "
+            "Raw unverified JSON payloads fail closed."
         ),
     )
     parser.add_argument(
@@ -219,11 +220,31 @@ def _handle_list(
 ) -> dict[str, object]:
     if not goal_id:
         raise ValueError("--list requires --goal-id")
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+
+    effective_registry_path = registry_path
+    if getattr(args, "project", None):
+        project_candidate = (
+            Path(args.project).expanduser() / DEFAULT_REGISTRY_RELATIVE_PATH
+        )
+        if project_candidate.is_file():
+            effective_registry_path = project_candidate
+
+    try:
+        registry_payload = json.loads(
+            effective_registry_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        raise ValueError(
+            f"goal registry is unreadable: {effective_registry_path}"
+        ) from None
+    if not isinstance(registry_payload, dict):
+        raise TypeError("goal registry must contain a JSON object")
+
+    _registered_goal(registry_payload, goal_id=safe_goal_id)
+
     effective_runtime_root = runtime_root
     if effective_runtime_root is None:
-        registry_payload = json.loads(
-            registry_path.read_text(encoding="utf-8")
-        )
         effective_runtime_root = _runtime_root_from_registry(registry_payload)
     if effective_runtime_root is None:
         raise ValueError(
@@ -232,9 +253,9 @@ def _handle_list(
         )
     rows = read_goal_amendment_proposal_journal(
         runtime_root=effective_runtime_root,
-        goal_id=goal_id,
+        goal_id=safe_goal_id,
     )
-    return {"goal_id": goal_id, "count": len(rows), "rows": rows}
+    return {"goal_id": safe_goal_id, "count": len(rows), "rows": rows}
 
 
 def _handle_submit(
@@ -249,20 +270,26 @@ def _handle_submit(
             "submit mode requires --proposal-json (or use --list for readback)"
         )
     proposal = _read_json_object(args.proposal_json, "--proposal-json")
-    proposal_goal_id = str(proposal.get("goal_id") or "").strip()
-    if goal_id and goal_id != proposal_goal_id:
-        raise ValueError(
-            f"--goal-id ({goal_id}) must match proposal.goal_id "
-            f"({proposal_goal_id}) when both are given"
-        )
-    status_item = (
+    proposal_goal_id_raw = str(proposal.get("goal_id") or "").strip()
+    if not proposal_goal_id_raw:
+        raise ValueError("proposal.goal_id must be a non-empty registered goal id")
+    proposal_goal_id = validate_goal_id_path_segment(proposal_goal_id_raw)
+
+    if goal_id:
+        safe_goal_id = validate_goal_id_path_segment(goal_id)
+        if safe_goal_id != proposal_goal_id:
+            raise ValueError(
+                f"--goal-id ({goal_id}) must match proposal.goal_id "
+                f"({proposal_goal_id}) when both are given"
+            )
+    obligation_envelope = (
         _read_json_object(args.obligations_json, "--obligations-json")
         if getattr(args, "obligations_json", None)
         else None
     )
     project = _resolve_project(
         args,
-        goal_id=proposal_goal_id or goal_id,
+        goal_id=proposal_goal_id,
         registry_path=registry_path,
     )
     record = admit_goal_amendment_proposal(
@@ -270,6 +297,6 @@ def _handle_submit(
         project=project,
         registry_path=registry_path,
         runtime_root=runtime_root,
-        status_item=status_item,
+        obligation_envelope=obligation_envelope,
     )
     return dict(record)

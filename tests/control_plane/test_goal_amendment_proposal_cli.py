@@ -17,9 +17,14 @@ from typing import Any
 import pytest
 
 from loopx.cli import main as cli_main
+from loopx.control_plane.goals.goal_amendment_proposal import (
+    build_replan_obligation_authority_envelope,
+)
 from tests.control_plane.test_goal_amendment_proposal import (
     GOAL_ID,
     _default_events,
+    _derived_source_basis,
+    _fixture_obligation,
     _proposal,
     _status_item,
     _write_fixture,
@@ -30,8 +35,12 @@ def _run_amendment_cli(
     capsys: pytest.CaptureFixture[str],
     registry: Path,
     *argv: str,
+    runtime_root: Path | None = None,
 ) -> tuple[int, dict[str, Any], str]:
-    exit_code = cli_main(["--registry", str(registry), *argv])
+    top_argv = ["--registry", str(registry)]
+    if runtime_root is not None:
+        top_argv.extend(["--runtime-root", str(runtime_root)])
+    exit_code = cli_main([*top_argv, *argv])
     captured = capsys.readouterr()
     payload: dict[str, Any] = {}
     if "--format" in argv and "json" in argv:
@@ -39,15 +48,50 @@ def _run_amendment_cli(
     return exit_code, payload, captured.out
 
 
+def _obligation_envelope(
+    paths: dict[str, Path],
+    *,
+    goal_id: str = GOAL_ID,
+    obligations_by_agent: dict[str, dict[str, object]] | None = None,
+    derived_basis: dict[str, object] | None = None,
+    receipt_id: str | None = None,
+) -> dict[str, Any]:
+    basis = (
+        derived_basis
+        if derived_basis is not None
+        else _derived_source_basis(paths)
+    )
+    by_agent = (
+        obligations_by_agent
+        if obligations_by_agent is not None
+        else {"agent-a": _fixture_obligation("agent-a")}
+    )
+    return build_replan_obligation_authority_envelope(
+        goal_id=goal_id,
+        derived_basis=basis,
+        obligations_by_agent=by_agent,
+        receipt_id=receipt_id,
+    )
+
+
 def _write_submit_inputs(
     tmp_path: Path,
     paths: dict[str, Path],
     proposal: dict[str, object],
+    *,
+    envelope: dict[str, object] | None = None,
 ) -> tuple[Path, Path]:
     proposal_json = tmp_path / "proposal.json"
     proposal_json.write_text(json.dumps(proposal), encoding="utf-8")
     obligations_json = tmp_path / "obligations.json"
-    obligations_json.write_text(json.dumps(_status_item()), encoding="utf-8")
+    payload = (
+        envelope
+        if envelope is not None
+        else _obligation_envelope(
+            paths, goal_id=str(proposal.get("goal_id") or GOAL_ID)
+        )
+    )
+    obligations_json.write_text(json.dumps(payload), encoding="utf-8")
     return proposal_json, obligations_json
 
 
@@ -366,3 +410,278 @@ def test_cli_submit_without_obligations_fails_closed(
     assert exit_code == 1
     assert payload["ok"] is False
     assert "does not match an open replan obligation" in payload["error"]
+
+
+def test_cli_list_path_traversal_sibling_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    # Place a sibling journal under runtime/goals/victim/amendment-proposals/journal.jsonl
+    sibling_journal = (
+        paths["runtime"]
+        / "goals"
+        / "victim"
+        / "amendment-proposals"
+        / "journal.jsonl"
+    )
+    sibling_journal.parent.mkdir(parents=True, exist_ok=True)
+    sibling_journal.write_text(
+        json.dumps(
+            {"proposal_id": "gap_victim_001", "journal_append_sequence": 1}
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        "--list",
+        "--goal-id",
+        "../victim",
+        "--format",
+        "json",
+        runtime_root=paths["runtime"],
+    )
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "single path segment" in payload["error"]
+    assert "gap_victim_001" not in str(payload)
+
+
+def test_cli_list_path_traversal_dotdot_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        "--list",
+        "--goal-id",
+        "..",
+        "--format",
+        "json",
+    )
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "single path segment" in payload["error"]
+
+
+def test_cli_list_absolute_path_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        "--list",
+        "--goal-id",
+        "/victim",
+        "--format",
+        "json",
+    )
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "single path segment" in payload["error"]
+
+
+def test_cli_list_path_separator_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        "--list",
+        "--goal-id",
+        "victim/extra",
+        "--format",
+        "json",
+    )
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "single path segment" in payload["error"]
+
+
+def test_cli_list_unknown_goal_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        "--list",
+        "--goal-id",
+        "goal_unknown",
+        "--format",
+        "json",
+    )
+
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "goal is not registered" in payload["error"]
+
+
+def test_cli_submit_fabricated_obligation_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    proposal = _proposal(paths)
+
+    # 1. Raw unverified JSON dictionary without envelope/receipt
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=_status_item()
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "verified envelope" in payload["error"]
+
+    # 2. Tampered receipt digest
+    tampered_envelope = _obligation_envelope(paths)
+    tampered_envelope["receipt"]["receipt_digest"] = "sha256:deadbeef" * 8
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=tampered_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "fabricated or tampered" in payload["error"]
+
+
+def test_cli_submit_stale_obligation_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    proposal = _proposal(paths)
+
+    # Stale sequence
+    stale_seq_envelope = _obligation_envelope(
+        paths,
+        derived_basis={
+            **_derived_source_basis(paths),
+            "state_event_basis_sequence": 999,
+        },
+    )
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=stale_seq_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "stale" in payload["error"]
+    assert "sequence mismatch" in payload["error"]
+
+    # Stale digest
+    stale_digest_envelope = _obligation_envelope(
+        paths,
+        derived_basis={
+            **_derived_source_basis(paths),
+            "source_basis_digest": "sha256:0123456789abcdef" * 4,
+        },
+    )
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=stale_digest_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "stale" in payload["error"]
+    assert "source_basis_digest mismatch" in payload["error"]
+
+
+def test_cli_submit_wrong_goal_obligation_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    proposal = _proposal(paths)
+
+    wrong_goal_envelope = _obligation_envelope(paths, goal_id="goal_sibling")
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=wrong_goal_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 1
+    assert payload["ok"] is False
+    assert "goal_id mismatch" in payload["error"]
+
+
+def test_cli_submit_valid_receipt_bound_obligation_admitted(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    paths = _write_fixture(tmp_path, events=_default_events())
+    proposal = _proposal(paths)
+
+    valid_envelope = _obligation_envelope(paths, goal_id=GOAL_ID)
+    proposal_json, obligations_json = _write_submit_inputs(
+        tmp_path, paths, proposal, envelope=valid_envelope
+    )
+    exit_code, payload, _ = _run_amendment_cli(
+        capsys,
+        paths["registry"],
+        "goal-amendment-proposal",
+        *_submit_argv(paths, proposal_json, obligations_json),
+        "--format",
+        "json",
+    )
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["admission"] == "admitted"
+    assert payload["canonical_effect"] == "none"
