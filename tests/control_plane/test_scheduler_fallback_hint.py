@@ -18,7 +18,12 @@ from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
 )
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
-from loopx.upgrade import resolve_codex_app_automation_rrule
+from loopx.upgrade import (
+    load_codex_app_automation_manifest,
+    prompt_digest,
+    resolve_codex_app_automation_rrule,
+)
+from scripts.codex_app_apply_rrule import _write_automation_toml
 
 GOAL_ID = "fallback-hint-goal"
 AGENT_ID = "codex-fixture"
@@ -283,3 +288,48 @@ def test_resolve_codex_app_automation_rrule_returns_automation_id(
     )
     assert result["available"] is True
     assert result["automation_id"] == "fixture"
+
+
+def test_codex_app_automation_writer_round_trips_multiline_prompt(
+    tmp_path: Path,
+) -> None:
+    prompt = (
+        "Advance `multiline-goal` from active state.\n\n"
+        "Keep the heartbeat thin.\n"
+        "Use `quota should-run --available-capability=network`.\n\n"
+        "Agent: `multiline-agent`\n"
+    )
+    _write_automation_toml(
+        tmp_path / "automations" / "multiline" / "automation.toml",
+        automation_id="multiline",
+        name="Multiline heartbeat",
+        prompt=prompt,
+        rrule="FREQ=MINUTELY;INTERVAL=3",
+        thread_id="multiline-thread",
+    )
+
+    manifest = load_codex_app_automation_manifest(tmp_path)
+    assert manifest["available"] is True
+    assert len(manifest["entries"]) == 1
+    entry = manifest["entries"][0]
+    assert entry["goal_id"] == "multiline-goal"
+    assert entry["agent_id"] == "multiline-agent"
+    assert entry["target_thread_id"] == "multiline-thread"
+    assert entry["rrule"] == "FREQ=MINUTELY;INTERVAL=3"
+    assert entry["prompt_sha256"] == prompt_digest(prompt)
+    assert entry["char_count"] == len(prompt)
+    assert entry["line_count"] == len(prompt.splitlines())
+    assert entry["available_capabilities"] == ["network"]
+
+    resolved = resolve_codex_app_automation_rrule(
+        goal_id="multiline-goal",
+        agent_id="multiline-agent",
+        thread_id="multiline-thread",
+        root=tmp_path,
+    )
+    assert resolved == {
+        "available": True,
+        "rrule": "FREQ=MINUTELY;INTERVAL=3",
+        "automation_id": "multiline",
+        "source": "codex_app_automation_manifest",
+    }
