@@ -151,6 +151,10 @@ from .cli_commands.shared_goal_alignment import (
     handle_shared_goal_alignment_command,
     register_shared_goal_alignment_command,
 )
+from .cli_commands.goal_amendment_proposal import (
+    handle_goal_amendment_proposal_command,
+    register_goal_amendment_proposal_command,
+)
 from .cli_rollout import append_cli_rollout_event
 from .capabilities.project_skill_delivery.cli import (
     handle_project_skill_command,
@@ -324,6 +328,7 @@ def build_parser() -> LoopXArgumentParser:
     register_task_lease_command(sub, add_subcommand_format)
     register_handoff_mode_command(sub, add_subcommand_format)
     register_shared_goal_alignment_command(sub, add_subcommand_format)
+    register_goal_amendment_proposal_command(sub, add_subcommand_format)
     register_quota_command(sub)
 
     return parser
@@ -826,6 +831,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     if shared_goal_alignment_result is not None:
         return shared_goal_alignment_result
+
+    goal_amendment_proposal_result = handle_goal_amendment_proposal_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if goal_amendment_proposal_result is not None:
+        return goal_amendment_proposal_result
 
     if args.command == "auto-research":
         try:
