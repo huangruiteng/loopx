@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import {
+  optionalNonEmptyString,
+  requireBoolean,
   requireInteger,
   requireJsonObject,
   requireNonEmptyString,
@@ -41,6 +43,17 @@ import {
  * alignment projection (`state_event_log` head = last append sequence). When
  * no event log exists the basis is `markdown_active_state` and the base is
  * reported unverifiable instead of fabricating a stale verdict.
+ *
+ * Causal binding (RFC §5 "impact scope"): the request also carries typed
+ * inventories the Python authority derived at admission time — the goal's
+ * open, required replan obligations (with explicit agent-lane bindings) and
+ * the goal's actionable open Todos. The proposal's `replan_obligation_id`
+ * must resolve to an inventory entry of the same goal whose lane includes
+ * the proposer, and every `affected_todo_ids` entry must resolve to an open
+ * Todo of that goal. An invalid reference is a request rejection — fail
+ * closed, nothing retained — never a new admission outcome, because a
+ * proposal without a valid causal target is untrustworthy input for Stage 3
+ * settlement rather than a base that merely needs a rebase.
  */
 
 export const GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION =
@@ -117,10 +130,44 @@ export interface DerivedGoalBasisFacts extends JsonObject {
   source_basis_digest: string;
 }
 
+/**
+ * One open, required replan obligation of the goal being amended, with its
+ * agent-lane binding folded into explicit `bound_agent_ids` by the Python
+ * authority (`autonomous_replan_scope_decision`): agent-scoped obligations
+ * carry their owners, unscoped goal-level ones carry their deterministic
+ * peer assignment. An empty array means the obligation imposes no lane
+ * constraint. The reducer only compares these typed facts; it never
+ * re-derives scope.
+ */
+export interface OpenReplanObligationFacts extends JsonObject {
+  schema_version: string;
+  obligation_id: string;
+  goal_id: string;
+  required: true;
+  bound_agent_ids: string[];
+}
+
+/**
+ * One actionable open Todo of the goal being amended. `claimed_by` and
+ * `bound_agent` are diagnostic facts only: admission checks existence,
+ * openness, and goal membership — not proposer ownership (shared
+ * amendments legitimately affect peer-claimed work; lease disposition
+ * belongs to the Stage 3 commit step).
+ */
+export interface GoalTodoInventoryFacts extends JsonObject {
+  todo_id: string;
+  status: string;
+  task_class: string | null;
+  claimed_by: string | null;
+  bound_agent: string | null;
+}
+
 export interface GoalAmendmentProposalRequest extends JsonObject {
   schema_version: typeof GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION;
   proposal: GoalAmendmentProposal;
   derived_basis: DerivedGoalBasisFacts;
+  open_replan_obligations: OpenReplanObligationFacts[];
+  goal_todo_inventory: GoalTodoInventoryFacts[];
 }
 
 export interface GoalAmendmentProposalAdmission extends JsonObject {
@@ -388,6 +435,170 @@ function decodeDerivedBasis(value: unknown): DerivedGoalBasisFacts {
   };
 }
 
+function decodeOpenReplanObligations(
+  value: unknown,
+): OpenReplanObligationFacts[] {
+  if (!Array.isArray(value)) {
+    throw new EffectRuntimeRequestError(
+      "goal_amendment_proposal_request.open_replan_obligations must be an array",
+    );
+  }
+  const obligations = value.map((item, index) => {
+    const raw = requireJsonObject(
+      item,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}]`,
+    );
+    const schemaVersion = requireNonEmptyString(
+      raw.schema_version,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}].schema_version`,
+    );
+    const obligationId = requireNonEmptyString(
+      raw.obligation_id,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}].obligation_id`,
+    ).trim();
+    if (!REPLAN_OBLIGATION_ID_PATTERN.test(obligationId)) {
+      throw new EffectRuntimeRequestError(
+        `goal_amendment_proposal_request.open_replan_obligations[${index}].obligation_id must match replan-<16 lowercase hex> (normalize_todo_replan_obligation_id)`,
+      );
+    }
+    const goalId = requireNonEmptyString(
+      raw.goal_id,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}].goal_id`,
+    ).trim();
+    // The inventory is an admission-time snapshot of *open* obligations: a
+    // closed/settled one (required=false) must never reach the reducer. The
+    // literal-true guard defends against a Python-side filtering regression.
+    const required = requireBoolean(
+      raw.required,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}].required`,
+    );
+    if (required !== true) {
+      throw new EffectRuntimeRequestError(
+        `goal_amendment_proposal_request.open_replan_obligations[${index}].required must be true for listed obligations (closed obligations are not admissible causal chains)`,
+      );
+    }
+    const boundAgentIds = requireStringArray(
+      raw.bound_agent_ids,
+      `goal_amendment_proposal_request.open_replan_obligations[${index}].bound_agent_ids`,
+    ).map((candidate, agentIndex) => {
+      const boundAgentId = candidate.trim().toLowerCase();
+      if (!AGENT_ID_PATTERN.test(boundAgentId)) {
+        throw new EffectRuntimeRequestError(
+          `goal_amendment_proposal_request.open_replan_obligations[${index}].bound_agent_ids[${agentIndex}] must be a public-safe agent id`,
+        );
+      }
+      return boundAgentId;
+    });
+    return {
+      schema_version: schemaVersion,
+      obligation_id: obligationId,
+      goal_id: goalId,
+      required: true as const,
+      bound_agent_ids: boundAgentIds,
+    };
+  });
+  requireNoDuplicateValues(
+    obligations.map((entry) => entry.obligation_id),
+    "goal_amendment_proposal_request.open_replan_obligations",
+    "obligation_id",
+  );
+  return obligations;
+}
+
+function decodeGoalTodoInventory(value: unknown): GoalTodoInventoryFacts[] {
+  if (!Array.isArray(value)) {
+    throw new EffectRuntimeRequestError(
+      "goal_amendment_proposal_request.goal_todo_inventory must be an array",
+    );
+  }
+  const entries = value.map((item, index) => {
+    const raw = requireJsonObject(
+      item,
+      `goal_amendment_proposal_request.goal_todo_inventory[${index}]`,
+    );
+    const todoId = requireNonEmptyString(
+      raw.todo_id,
+      `goal_amendment_proposal_request.goal_todo_inventory[${index}].todo_id`,
+    ).trim().toLowerCase();
+    if (!TODO_ID_PATTERN.test(todoId)) {
+      throw new EffectRuntimeRequestError(
+        `goal_amendment_proposal_request.goal_todo_inventory[${index}].todo_id must be a valid Todo id`,
+      );
+    }
+    return {
+      todo_id: todoId,
+      status: optionalNonEmptyString(
+        raw.status,
+        `goal_amendment_proposal_request.goal_todo_inventory[${index}].status`,
+      ) ?? "",
+      task_class: optionalNonEmptyString(
+        raw.task_class,
+        `goal_amendment_proposal_request.goal_todo_inventory[${index}].task_class`,
+      ),
+      claimed_by: optionalNonEmptyString(
+        raw.claimed_by,
+        `goal_amendment_proposal_request.goal_todo_inventory[${index}].claimed_by`,
+      ),
+      bound_agent: optionalNonEmptyString(
+        raw.bound_agent,
+        `goal_amendment_proposal_request.goal_todo_inventory[${index}].bound_agent`,
+      ),
+    };
+  });
+  requireNoDuplicateValues(
+    entries.map((entry) => entry.todo_id),
+    "goal_amendment_proposal_request.goal_todo_inventory",
+    "todo_id",
+  );
+  return entries;
+}
+
+function requireCausalBinding(
+  proposal: GoalAmendmentProposal,
+  request: GoalAmendmentProposalRequest,
+): void {
+  // RFC §5 admit step "impact scope": the proposal's causal chain must
+  // resolve against the authoritative inventories the Python adapter
+  // derived at admission time. An invalid reference is a request
+  // rejection (fail closed, nothing retained) — never a new admission
+  // outcome and never a silently admitted proposal.
+  const obligations = new Map(
+    request.open_replan_obligations.map((entry) => [entry.obligation_id, entry]),
+  );
+  const linked = obligations.get(proposal.replan_obligation_id);
+  if (!linked) {
+    throw new EffectRuntimeRequestError(
+      `goal_amendment_proposal.replan_obligation_id does not match an open replan obligation of goal ${proposal.goal_id}: ${proposal.replan_obligation_id}`,
+    );
+  }
+  if (linked.goal_id !== proposal.goal_id) {
+    // Defensive: the Python adapter builds a per-goal inventory, so this
+    // branch should be unreachable in production — it exists so a future
+    // adapter regression cannot silently admit a cross-goal causal chain.
+    throw new EffectRuntimeRequestError(
+      `goal_amendment_proposal.replan_obligation_id belongs to another goal: ${linked.goal_id}`,
+    );
+  }
+  if (
+    linked.bound_agent_ids.length > 0 &&
+    !linked.bound_agent_ids.includes(proposal.proposer_agent_id)
+  ) {
+    throw new EffectRuntimeRequestError(
+      `goal_amendment_proposal.replan_obligation_id is bound to another agent lane: ${proposal.replan_obligation_id}`,
+    );
+  }
+  const openTodoIds = new Set(
+    request.goal_todo_inventory.map((entry) => entry.todo_id),
+  );
+  for (const todoId of proposal.affected_todo_ids) {
+    if (!openTodoIds.has(todoId)) {
+      throw new EffectRuntimeRequestError(
+        `goal_amendment_proposal.affected_todo_ids references a todo that is not open on goal ${proposal.goal_id}: ${todoId}`,
+      );
+    }
+  }
+}
+
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
   if (typeof value !== "object" || value === null) return value;
@@ -461,6 +672,10 @@ export function decodeGoalAmendmentProposalRequest(
     schema_version: GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION,
     proposal: decodeProposal(request.proposal),
     derived_basis: decodeDerivedBasis(request.derived_basis),
+    open_replan_obligations: decodeOpenReplanObligations(
+      request.open_replan_obligations,
+    ),
+    goal_todo_inventory: decodeGoalTodoInventory(request.goal_todo_inventory),
   };
 }
 
@@ -470,6 +685,7 @@ export function admitGoalAmendmentProposal(
 ): GoalAmendmentProposalAdmission {
   const request = decodeGoalAmendmentProposalRequest(value);
   const { proposal } = request;
+  requireCausalBinding(proposal, request);
   const outcome = admissionOutcome(proposal, request.derived_basis);
   return {
     schema_version: GOAL_AMENDMENT_PROPOSAL_ADMISSION_SCHEMA_VERSION,

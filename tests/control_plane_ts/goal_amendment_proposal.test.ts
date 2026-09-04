@@ -34,8 +34,52 @@ function baseRequest(overrides: Record<string, unknown> = {}) {
       revision_basis: "state_event_log",
       source_basis_digest: DIGEST,
     },
+    // Authoritative admission-time inventories: the open replan obligation
+    // this proposal's causal chain binds to, and the goal's actionable open
+    // Todos. Bound to agent-a's lane so the default proposal admits.
+    open_replan_obligations: [
+      {
+        schema_version: "autonomous_replan_obligation_v0",
+        obligation_id: "replan-fe2d75e84da47ac3",
+        goal_id: "goal-stage2",
+        required: true,
+        bound_agent_ids: ["agent-a"],
+      },
+    ],
+    goal_todo_inventory: [
+      {
+        todo_id: "todo_stage2_a",
+        status: "open",
+        task_class: "advancement_task",
+        claimed_by: "agent-a",
+        bound_agent: null,
+      },
+      {
+        todo_id: "todo_stage2_b",
+        status: "open",
+        task_class: "advancement_task",
+        claimed_by: null,
+        bound_agent: null,
+      },
+    ],
     ...overrides,
   };
+}
+
+/** Replace the single default obligation with the given inventory entries. */
+function withObligations(
+  request: Record<string, unknown>,
+  obligations: unknown,
+): Record<string, unknown> {
+  return { ...request, open_replan_obligations: obligations };
+}
+
+/** Replace the default todo inventory with the given entries. */
+function withTodoInventory(
+  request: Record<string, unknown>,
+  entries: unknown,
+): Record<string, unknown> {
+  return { ...request, goal_todo_inventory: entries };
 }
 
 test("admits a well-formed proposal with no canonical effect", () => {
@@ -424,6 +468,15 @@ test("replan obligation ids follow the normalize_todo_replan_obligation_id contr
         ...baseRequest().proposal,
         replan_obligation_id: "replan-0123456789abcdef",
       },
+      open_replan_obligations: [
+        {
+          schema_version: "autonomous_replan_obligation_v0",
+          obligation_id: "replan-0123456789abcdef",
+          goal_id: "goal-stage2",
+          required: true,
+          bound_agent_ids: ["agent-a"],
+        },
+      ],
     }),
   );
   assert.equal(result.replan_obligation_id, "replan-0123456789abcdef");
@@ -447,4 +500,212 @@ test("replan obligation ids follow the normalize_todo_replan_obligation_id contr
       /replan-<16 lowercase hex>/,
     );
   }
+});
+
+test("a replan obligation id absent from the inventory fails closed", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            replan_obligation_id: "replan-deadbeefdeadbeef",
+          },
+        }),
+      ),
+    /does not match an open replan obligation of goal goal-stage2: replan-deadbeefdeadbeef/,
+  );
+});
+
+test("an affected todo absent from the inventory fails closed", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        baseRequest({
+          proposal: {
+            ...baseRequest().proposal,
+            affected_todo_ids: ["todo_stage2_a", "todo_missing"],
+          },
+        }),
+      ),
+    /references a todo that is not open on goal goal-stage2: todo_missing/,
+  );
+});
+
+test("a closed obligation in the inventory is a decode rejection", () => {
+  // Python filters settled obligations before building the inventory; a
+  // required=false entry reaching the reducer is an authority regression
+  // and must fail closed at decode time.
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), [
+          {
+            schema_version: "autonomous_replan_obligation_v0",
+            obligation_id: "replan-fe2d75e84da47ac3",
+            goal_id: "goal-stage2",
+            required: false,
+            bound_agent_ids: [],
+          },
+        ]),
+      ),
+    /required must be true for listed obligations/,
+  );
+});
+
+test("an obligation bound to another goal fails closed", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), [
+          {
+            schema_version: "autonomous_replan_obligation_v0",
+            obligation_id: "replan-fe2d75e84da47ac3",
+            goal_id: "goal-other",
+            required: true,
+            bound_agent_ids: ["agent-a"],
+          },
+        ]),
+      ),
+    /belongs to another goal: goal-other/,
+  );
+});
+
+test("an obligation bound to another agent lane fails closed", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), [
+          {
+            schema_version: "autonomous_replan_obligation_v0",
+            obligation_id: "replan-fe2d75e84da47ac3",
+            goal_id: "goal-stage2",
+            required: true,
+            bound_agent_ids: ["agent-b", "agent-c"],
+          },
+        ]),
+      ),
+    /is bound to another agent lane: replan-fe2d75e84da47ac3/,
+  );
+});
+
+test("a shared obligation with no lane binding still admits", () => {
+  const result = admitGoalAmendmentProposal(
+    withObligations(baseRequest(), [
+      {
+        schema_version: "autonomous_replan_obligation_v0",
+        obligation_id: "replan-fe2d75e84da47ac3",
+        goal_id: "goal-stage2",
+        required: true,
+        bound_agent_ids: [],
+      },
+    ]),
+  );
+
+  assert.equal(result.admission, "admitted");
+  assert.equal(result.canonical_effect, "none");
+});
+
+test("a proposal with no affected todos still admits", () => {
+  // A pure intent amendment (no affected Todo) has no inventory membership
+  // to check beyond the obligation binding.
+  const result = admitGoalAmendmentProposal(
+    baseRequest({
+      proposal: {
+        ...baseRequest().proposal,
+        affected_todo_ids: [],
+      },
+    }),
+  );
+
+  assert.equal(result.admission, "admitted");
+});
+
+test("an empty obligation inventory fails closed for any reference", () => {
+  assert.throws(
+    () => admitGoalAmendmentProposal(withObligations(baseRequest(), [])),
+    /does not match an open replan obligation/,
+  );
+});
+
+test("duplicate obligation ids in the inventory are rejected", () => {
+  const duplicate = {
+    schema_version: "autonomous_replan_obligation_v0",
+    obligation_id: "replan-fe2d75e84da47ac3",
+    goal_id: "goal-stage2",
+    required: true,
+    bound_agent_ids: ["agent-a"],
+  };
+  assert.throws(
+    () => admitGoalAmendmentProposal(withObligations(baseRequest(), [duplicate, duplicate])),
+    /duplicate obligation_id/,
+  );
+});
+
+test("duplicate todo ids in the inventory are rejected", () => {
+  const duplicate = {
+    todo_id: "todo_stage2_a",
+    status: "open",
+    task_class: "advancement_task",
+    claimed_by: "agent-a",
+    bound_agent: null,
+  };
+  assert.throws(
+    () => admitGoalAmendmentProposal(withTodoInventory(baseRequest(), [duplicate, duplicate])),
+    /duplicate todo_id/,
+  );
+});
+
+test("an inventory entry missing required fields is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), [
+          { schema_version: "autonomous_replan_obligation_v0" },
+        ]),
+      ),
+    /obligation_id must be a non-empty string/,
+  );
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withTodoInventory(baseRequest(), [{ status: "open" }]),
+      ),
+    /todo_id must be a non-empty string/,
+  );
+});
+
+test("a malformed bound agent id in the inventory is rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), [
+          {
+            schema_version: "autonomous_replan_obligation_v0",
+            obligation_id: "replan-fe2d75e84da47ac3",
+            goal_id: "goal-stage2",
+            required: true,
+            bound_agent_ids: ["_not_an_agent_id"],
+          },
+        ]),
+      ),
+    /must be a public-safe agent id/,
+  );
+});
+
+test("non-array inventories are rejected", () => {
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withObligations(baseRequest(), "not-an-array"),
+      ),
+    /open_replan_obligations must be an array/,
+  );
+  assert.throws(
+    () =>
+      admitGoalAmendmentProposal(
+        withTodoInventory(baseRequest(), null),
+      ),
+    /goal_todo_inventory must be an array/,
+  );
 });
