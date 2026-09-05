@@ -102,7 +102,37 @@ def test_exclusive_lock_persists_public_safe_holder_metadata(tmp_path: Path) -> 
     assert holder_path.exists()
 
 
-def test_stalled_holder_times_out_and_records_independent_incident(tmp_path: Path) -> None:
+def test_exclusive_lock_can_expose_revalidatable_lease(tmp_path: Path) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+
+    with exclusive_file_lock(target, expose_lease=True) as lease:
+        assert isinstance(lease, file_lock.ExclusiveFileLockLease)
+        lease.check()
+        assert lease.path == lock_path
+        assert lease.exists()
+
+
+def test_exclusive_lock_lease_detects_replacement_before_context_exit(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+    detached = tmp_path / "detached.lock"
+    replacement = tmp_path / "replacement.lock"
+
+    with pytest.raises(OSError, match="lock_file_replaced_during_lock"):
+        with exclusive_file_lock(target, expose_lease=True) as lease:
+            assert isinstance(lease, file_lock.ExclusiveFileLockLease)
+            lock_path.rename(detached)
+            replacement.write_text("", encoding="utf-8")
+            replacement.replace(lock_path)
+            lease.check()
+
+
+def test_stalled_holder_times_out_and_records_independent_incident(
+    tmp_path: Path,
+) -> None:
     target = tmp_path / "todos.md"
     process = _start_stalled_holder(target)
     try:
@@ -155,6 +185,333 @@ def test_single_flight_returns_none_without_timeout_incident(tmp_path: Path) -> 
         assert not lock_incident_path(target).exists()
     finally:
         _stop(process)
+
+
+def test_exclusive_file_lock_rejects_precreated_symlink_lock_file(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "state.json"
+    victim = tmp_path / "victim.txt"
+    victim.write_text("KEEP-ME\n", encoding="utf-8")
+    lock_path = target.with_name(f"{target.name}.lock")
+    lock_path.symlink_to(victim)
+
+    with pytest.raises(OSError, match="lock_file_symlink_rejected"):
+        with exclusive_file_lock(target):
+            pytest.fail("symlink lock unexpectedly acquired")
+
+    assert lock_path.is_symlink()
+    assert victim.read_text(encoding="utf-8") == "KEEP-ME\n"
+
+
+def test_exclusive_file_lock_rejects_precreated_hardlink_lock_file(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "state.json"
+    victim = tmp_path / "victim.txt"
+    victim.write_text("KEEP-ME\n", encoding="utf-8")
+    lock_path = target.with_name(f"{target.name}.lock")
+    os.link(victim, lock_path)
+
+    with pytest.raises(OSError, match="lock_file_hardlink_rejected"):
+        with exclusive_file_lock(target):
+            pytest.fail("hardlinked lock unexpectedly acquired")
+
+    assert victim.read_text(encoding="utf-8") == "KEEP-ME\n"
+    assert victim.stat().st_nlink == 2
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO support required")
+def test_try_exclusive_file_lock_rejects_nonregular_lock_file(tmp_path: Path) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+    os.mkfifo(lock_path)
+
+    with pytest.raises(OSError, match="lock_file_not_regular"):
+        with try_exclusive_file_lock(target) as lock_state:
+            pytest.fail(f"nonregular lock unexpectedly acquired: {lock_state}")
+
+
+def test_exclusive_file_lock_closes_raw_fd_when_fdopen_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state.json"
+    real_open_verified = file_lock._open_verified_lock_descriptor
+    real_close = file_lock.os.close
+    opened_descriptors: set[int] = set()
+    closed_descriptors: set[int] = set()
+
+    def record_open_verified(path: Path) -> int:
+        descriptor = real_open_verified(path)
+        opened_descriptors.add(descriptor)
+        return descriptor
+
+    def fail_fdopen(*args: object, **kwargs: object) -> object:
+        raise OSError("injected-fdopen-failure")
+
+    def record_close(descriptor: int) -> None:
+        if descriptor in opened_descriptors:
+            closed_descriptors.add(descriptor)
+        real_close(descriptor)
+
+    monkeypatch.setattr(
+        file_lock, "_open_verified_lock_descriptor", record_open_verified
+    )
+    monkeypatch.setattr(file_lock.os, "fdopen", fail_fdopen)
+    monkeypatch.setattr(file_lock.os, "close", record_close)
+
+    with pytest.raises(OSError, match="injected-fdopen-failure"):
+        with exclusive_file_lock(target):
+            pytest.fail("lock unexpectedly acquired")
+
+    assert len(opened_descriptors) == 1
+    assert closed_descriptors == opened_descriptors
+
+
+def test_write_holder_sidecar_closes_raw_fd_when_fdopen_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    holder_path = tmp_path / "state.json.lock.holder.json"
+    record = {"schema_version": "file_lock_holder_v0", "pid": 1}
+    real_close = file_lock.os.close
+    closed_descriptors: list[int] = []
+
+    def fail_fdopen(descriptor: int, *args: object, **kwargs: object) -> object:
+        raise OSError("injected-holder-fdopen-failure")
+
+    def record_close(descriptor: int) -> None:
+        closed_descriptors.append(descriptor)
+        real_close(descriptor)
+
+    monkeypatch.setattr(file_lock.os, "fdopen", fail_fdopen)
+    monkeypatch.setattr(file_lock.os, "close", record_close)
+
+    with pytest.raises(OSError, match="injected-holder-fdopen-failure"):
+        file_lock._write_holder_sidecar(holder_path, record)
+
+    assert len(closed_descriptors) == 1
+    assert not holder_path.exists()
+
+
+def test_try_exclusive_file_lock_closes_raw_fd_when_fdopen_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state.json"
+    real_open_verified = file_lock._open_verified_lock_descriptor
+    real_close = file_lock.os.close
+    opened_descriptors: set[int] = set()
+    closed_descriptors: set[int] = set()
+
+    def record_open_verified(path: Path) -> int:
+        descriptor = real_open_verified(path)
+        opened_descriptors.add(descriptor)
+        return descriptor
+
+    def fail_fdopen(*args: object, **kwargs: object) -> object:
+        raise OSError("injected-fdopen-failure")
+
+    def record_close(descriptor: int) -> None:
+        if descriptor in opened_descriptors:
+            closed_descriptors.add(descriptor)
+        real_close(descriptor)
+
+    monkeypatch.setattr(
+        file_lock, "_open_verified_lock_descriptor", record_open_verified
+    )
+    monkeypatch.setattr(file_lock.os, "fdopen", fail_fdopen)
+    monkeypatch.setattr(file_lock.os, "close", record_close)
+
+    with pytest.raises(OSError, match="injected-fdopen-failure"):
+        with try_exclusive_file_lock(target):
+            pytest.fail("lock unexpectedly acquired")
+
+    assert len(opened_descriptors) == 1
+    assert closed_descriptors == opened_descriptors
+
+
+def test_stalled_holder_timeout_does_not_follow_symlinked_incident_path(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "todos.md"
+    victim = tmp_path / "victim.txt"
+    victim.write_text("KEEP-ME\n", encoding="utf-8")
+    incident_path = lock_incident_path(target)
+    incident_path.parent.mkdir(parents=True, exist_ok=True)
+    incident_path.symlink_to(victim)
+    process = _start_stalled_holder(target)
+    try:
+        with pytest.raises(LockAcquireTimeoutError) as raised:
+            with exclusive_file_lock(
+                target,
+                timeout_seconds=0.15,
+                poll_interval_seconds=0.02,
+                agent_id="waiter-agent",
+                operation="todo-add",
+            ):
+                pytest.fail("waiter unexpectedly acquired the stalled lock")
+        payload = raised.value.to_payload()
+        assert payload["incident_recorded"] is False
+    finally:
+        _stop(process)
+
+    assert incident_path.is_symlink()
+    assert victim.read_text(encoding="utf-8") == "KEEP-ME\n"
+
+
+def test_stalled_holder_timeout_does_not_append_to_hardlinked_incident_path(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "todos.md"
+    victim = tmp_path / "victim.txt"
+    victim.write_text("KEEP-ME\n", encoding="utf-8")
+    incident_path = lock_incident_path(target)
+    incident_path.parent.mkdir(parents=True, exist_ok=True)
+    os.link(victim, incident_path)
+    process = _start_stalled_holder(target)
+    try:
+        with pytest.raises(LockAcquireTimeoutError) as raised:
+            with exclusive_file_lock(
+                target,
+                timeout_seconds=0.15,
+                poll_interval_seconds=0.02,
+                agent_id="waiter-agent",
+                operation="todo-add",
+            ):
+                pytest.fail("waiter unexpectedly acquired the stalled lock")
+        assert raised.value.to_payload()["incident_recorded"] is False
+    finally:
+        _stop(process)
+
+    assert victim.read_text(encoding="utf-8") == "KEEP-ME\n"
+    assert victim.stat().st_nlink == 2
+
+
+def test_append_incident_reports_false_when_path_is_replaced_after_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "todos.md"
+    incident_path = lock_incident_path(target)
+    detached = tmp_path / "detached.incidents.jsonl"
+    replacement = tmp_path / "replacement.incidents.jsonl"
+    real_assert_live = file_lock._assert_live_incident_path_matches_descriptor
+
+    def replace_then_revalidate(path: Path, descriptor: int) -> None:
+        incident_path.rename(detached)
+        replacement.write_text("replacement\n", encoding="utf-8")
+        replacement.replace(incident_path)
+        real_assert_live(path, descriptor)
+
+    monkeypatch.setattr(
+        file_lock,
+        "_assert_live_incident_path_matches_descriptor",
+        replace_then_revalidate,
+    )
+
+    recorded = file_lock._append_incident(
+        target,
+        {"error_code": "lock_acquire_timeout", "lock_id": "opaque"},
+    )
+
+    assert recorded is False
+    assert detached.exists()
+    assert incident_path.exists()
+    assert detached.read_text(encoding="utf-8").startswith("{")
+    assert incident_path.read_text(encoding="utf-8") == "replacement\n"
+
+
+def test_exclusive_file_lock_rejects_path_replacement_after_kernel_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+    detached = tmp_path / "detached.lock"
+    real_try_acquire = file_lock._try_acquire_kernel_lock
+    calls = 0
+
+    def replace_before_first_lock(lock_file: object) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            lock_path.rename(detached)
+            replacement = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            os.close(replacement)
+        return real_try_acquire(lock_file)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        file_lock, "_try_acquire_kernel_lock", replace_before_first_lock
+    )
+
+    with pytest.raises(OSError, match="lock_file_replaced_during_lock"):
+        with exclusive_file_lock(target, timeout_seconds=0):
+            pytest.fail("replaced lock unexpectedly acquired")
+
+    assert detached.exists()
+    assert lock_path.exists()
+    assert detached.stat().st_ino != lock_path.stat().st_ino
+
+
+def test_exclusive_file_lock_rejects_path_replacement_while_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+    detached = tmp_path / "detached.lock"
+    replacement = tmp_path / "replacement.lock"
+    real_assert_live = file_lock._assert_live_lock_path_matches_descriptor
+    checks = 0
+
+    def replace_on_second_check(path: Path, descriptor: int) -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            path.rename(detached)
+            replacement.write_text("", encoding="utf-8")
+            replacement.replace(path)
+        real_assert_live(path, descriptor)
+
+    monkeypatch.setattr(
+        file_lock, "_assert_live_lock_path_matches_descriptor", replace_on_second_check
+    )
+
+    with pytest.raises(OSError, match="lock_file_replaced_during_lock"):
+        with exclusive_file_lock(target, timeout_seconds=0):
+            pass
+
+    assert detached.exists()
+    assert lock_path.exists()
+    assert detached.stat().st_ino != lock_path.stat().st_ino
+
+
+def test_try_exclusive_file_lock_rejects_path_replacement_while_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "state.json"
+    lock_path = target.with_name(f"{target.name}.lock")
+    detached = tmp_path / "detached.lock"
+    replacement = tmp_path / "replacement.lock"
+    real_assert_live = file_lock._assert_live_lock_path_matches_descriptor
+    checks = 0
+
+    def replace_on_second_check(path: Path, descriptor: int) -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            path.rename(detached)
+            replacement.write_text("", encoding="utf-8")
+            replacement.replace(path)
+        real_assert_live(path, descriptor)
+
+    monkeypatch.setattr(
+        file_lock, "_assert_live_lock_path_matches_descriptor", replace_on_second_check
+    )
+
+    with pytest.raises(OSError, match="lock_file_replaced_during_lock"):
+        with try_exclusive_file_lock(target):
+            pass
+
+    assert detached.exists()
+    assert lock_path.exists()
+    assert detached.stat().st_ino != lock_path.stat().st_ino
 
 
 def test_cross_runtime_lock_publishes_the_typescript_owner_file(tmp_path: Path) -> None:
@@ -252,10 +609,13 @@ def test_cross_runtime_release_does_not_remove_a_replacement_token(
         encoding="utf-8",
     )
 
-    assert file_lock._release_effect_mutation_lock(
-        effect_lock,
-        "old-token",
-    ) is False
+    assert (
+        file_lock._release_effect_mutation_lock(
+            effect_lock,
+            "old-token",
+        )
+        is False
+    )
     assert effect_lock.exists()
     assert json.loads(effect_lock.read_text(encoding="utf-8"))["token"] == (
         "replacement-token"

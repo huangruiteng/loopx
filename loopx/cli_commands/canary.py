@@ -77,11 +77,7 @@ def _run_git_name_only(repo_root: Path, args: list[str]) -> dict[str, object]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    files = [
-        line.strip()
-        for line in completed.stdout.splitlines()
-        if line.strip()
-    ]
+    files = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
     return {
         "ok": completed.returncode == 0,
         "returncode": completed.returncode,
@@ -114,10 +110,14 @@ def collect_git_diff_changed_files(
 
     base_ref = (base_ref or "origin/main").strip() or "origin/main"
     sources = {
-        "base": _run_git_name_only(repo_root, ["diff", "--name-only", f"{base_ref}...HEAD"]),
+        "base": _run_git_name_only(
+            repo_root, ["diff", "--name-only", f"{base_ref}...HEAD"]
+        ),
         "staged": _run_git_name_only(repo_root, ["diff", "--name-only", "--cached"]),
         "unstaged": _run_git_name_only(repo_root, ["diff", "--name-only"]),
-        "untracked": _run_git_name_only(repo_root, ["ls-files", "--others", "--exclude-standard"]),
+        "untracked": _run_git_name_only(
+            repo_root, ["ls-files", "--others", "--exclude-standard"]
+        ),
     }
     changed_files = _dedupe_preserving_order(
         [
@@ -127,10 +127,7 @@ def collect_git_diff_changed_files(
             if isinstance(file, str)
         ]
     )
-    successful_sources = [
-        name for name, source in sources.items()
-        if source.get("ok")
-    ]
+    successful_sources = [name for name, source in sources.items() if source.get("ok")]
     warnings = [
         {
             "source": name,
@@ -151,14 +148,18 @@ def collect_git_diff_changed_files(
     }
 
 
-def _resolve_canary_changed_files(args: argparse.Namespace) -> tuple[list[str], dict[str, object] | None]:
+def _resolve_canary_changed_files(
+    args: argparse.Namespace,
+) -> tuple[list[str], dict[str, object] | None]:
     changed_files = list(args.changed_file or [])
     git_diff_selector = None
     if bool(getattr(args, "from_git_diff", False)):
         repo_root = _resolve_git_repo_root(Path.cwd())
         git_diff_selector = collect_git_diff_changed_files(
             repo_root=repo_root,
-            base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
+            base_ref=str(
+                getattr(args, "git_diff_base", "origin/main") or "origin/main"
+            ),
         )
         changed_files.extend(
             file
@@ -289,7 +290,10 @@ def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--include-deep-checks",
         action="store_true",
-        help="Include deep/browser/integration checks. Defaults stay bounded and fixture-level.",
+        help=(
+            "Include deep/browser/integration checks outside premerge --tier deep; "
+            "the deep premerge tier includes them by default."
+        ),
     )
     parser.add_argument(
         "--max-checks-per-family",
@@ -301,7 +305,11 @@ def _add_canary_selector_args(parser: argparse.ArgumentParser) -> None:
         "--max-checks-per-profile",
         type=int,
         default=3,
-        help="Maximum candidate checks to include per selected current-repo profile.",
+        help=(
+            "Soft target for candidate checks per selected current-repo profile; "
+            "mandatory checks may expand beyond it. Defaults to 3 generally and "
+            "4 for canary premerge."
+        ),
     )
 
 
@@ -520,11 +528,19 @@ def register_canary_commands(
     )
     add_subcommand_format(premerge_parser)
     _add_canary_selector_args(premerge_parser)
+    premerge_parser.set_defaults(
+        include_deep_checks=None,
+        max_checks_per_profile=4,
+    )
     premerge_parser.add_argument(
         "--tier",
         choices=sorted(PREMERGE_TIERS),
         default="standard",
-        help="Validation depth. standard runs bounded catalog and risk-profile checks.",
+        help=(
+            "Validation depth. deep includes deep profile checks by default; "
+            "standard (the default) and quick exclude them unless "
+            "--include-deep-checks is set."
+        ),
     )
     premerge_parser.add_argument(
         "--goal-id",
@@ -659,13 +675,21 @@ def handle_canary_command(
         changed_files, git_diff_selector = _resolve_canary_changed_files(args)
         target_repo_root = _resolve_git_repo_root(Path.cwd())
         payload = build_premerge_validation_gate(
+            catalog_path=args.catalog,
             changed_files=changed_files,
-            base_ref=str(getattr(args, "git_diff_base", "origin/main") or "origin/main"),
+            surfaces=list(args.surface or []),
+            families=list(args.family or []),
+            profiles=list(args.profile or []),
+            base_ref=str(
+                getattr(args, "git_diff_base", "origin/main") or "origin/main"
+            ),
             tier=str(args.tier or "standard"),
             execute=not bool(args.no_execute),
             timeout_seconds=float(args.timeout_seconds or 120.0),
             fail_fast=bool(args.fail_fast),
-            include_deep_checks=bool(args.include_deep_checks),
+            include_deep_checks=args.include_deep_checks,
+            max_checks_per_family=int(args.max_checks_per_family or 3),
+            max_checks_per_profile=int(args.max_checks_per_profile or 4),
             repo_root=target_repo_root,
             progress_callback=(
                 None
@@ -677,7 +701,9 @@ def handle_canary_command(
         goal_id = str(args.goal_id or "").strip()
         if goal_id:
             if registry_path is None:
-                raise ValueError("--goal-id receipt verification requires a registry path")
+                raise ValueError(
+                    "--goal-id receipt verification requires a registry path"
+                )
             registry = read_json(registry_path)
             runtime_root = resolve_runtime_root(
                 registry,
@@ -690,8 +716,7 @@ def handle_canary_command(
                 goal_id=goal_id,
                 repo_path=target_repo_root,
                 base_ref=str(
-                    getattr(args, "git_diff_base", "origin/main")
-                    or "origin/main"
+                    getattr(args, "git_diff_base", "origin/main") or "origin/main"
                 ),
             )
             apply_change_quality_verification(payload, verification)

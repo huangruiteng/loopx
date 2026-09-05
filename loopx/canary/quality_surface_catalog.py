@@ -46,6 +46,51 @@ def _deferred(*, owner: str, rationale: str) -> dict[str, Any]:
 
 QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
     {
+        "surface_id": "benchmark-integrity-launch-lineage",
+        "title": "Benchmark integrity launch lineage",
+        "risk": "high",
+        "canary_profile_id": "benchmark-toolkit-boundary",
+        "owner_paths": [
+            "loopx/capabilities/benchmark_toolkit/integrity.py",
+            "loopx/capabilities/benchmark_toolkit/launch_admission.py",
+            "loopx/capabilities/benchmark_toolkit/route_receipt.py",
+            "loopx/capabilities/benchmark_toolkit/external_agent.py",
+            "loopx/capabilities/benchmark_toolkit/traex_evidence.py",
+        ],
+        "semantic_oracle": {
+            "source_kind": "specification",
+            "refs": ["loopx/capabilities/benchmark_toolkit/README.md"],
+            "independence_rationale": (
+                "The documented public contract requires exact agreement across "
+                "launch admission, runtime attestation, route observation, terminal "
+                "result, trajectory evidence, policy, and isolation mechanisms, while "
+                "excluding raw private material, independently of reducer output."
+            ),
+        },
+        "layers": {
+            "unit_contract": _covered(
+                "tests/capabilities/test_benchmark_launch_admission.py",
+                "tests/capabilities/test_benchmark_route_receipt.py",
+                "tests/capabilities/test_benchmark_strict_integrity.py",
+            ),
+            "durable_smoke": _covered(
+                "examples/benchmark-integrity-launch-lineage-smoke.py"
+            ),
+            "catalog_canary": _covered("benchmark-toolkit-boundary"),
+            "host_upgrade": _not_applicable(
+                "This provider-neutral receipt and reducer contract does not validate "
+                "host installation or upgrade continuity."
+            ),
+            "model_behavior": _not_applicable(
+                "Route identity comes from a typed provider-owned receipt; deterministic "
+                "lineage qualification must not invoke or depend on a model."
+            ),
+            "release_gate": _covered(
+                "loopx canary premerge --profile benchmark-toolkit-boundary --tier deep"
+            ),
+        },
+    },
+    {
         "surface_id": "change-quality-exact-receipt",
         "title": "Change-quality exact-scope receipt integrity",
         "risk": "high",
@@ -65,12 +110,8 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
             ),
         },
         "layers": {
-            "unit_contract": _covered(
-                "tests/capabilities/test_change_quality.py"
-            ),
-            "durable_smoke": _covered(
-                "examples/change-quality-qualification-smoke.py"
-            ),
+            "unit_contract": _covered("tests/capabilities/test_change_quality.py"),
+            "durable_smoke": _covered("examples/change-quality-qualification-smoke.py"),
             "catalog_canary": _covered("change-quality-exact-receipt"),
             "host_upgrade": _not_applicable(
                 "This surface is exercised through the packaged CLI entrypoint in "
@@ -195,9 +236,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         ],
         "semantic_oracle": {
             "source_kind": "specification",
-            "refs": [
-                "docs/reference/protocols/goal-vision-replan-contract-v0.md"
-            ],
+            "refs": ["docs/reference/protocols/goal-vision-replan-contract-v0.md"],
             "independence_rationale": (
                 "The goal-vision contract defines when an agent-local frontier is "
                 "exhausted, blocked, or already advancing before the ordered rule "
@@ -259,7 +298,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
             ),
             "model_behavior": _covered(
                 "actual_default_model_behavior_portfolio_v0",
-                "onboarding_actual_behavior_qualification_v0"
+                "onboarding_actual_behavior_qualification_v0",
             ),
             "release_gate": _covered(
                 "loopx canary premerge --profile agent-facing-cli-output-budget"
@@ -298,9 +337,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
             "host_upgrade": _covered(
                 "examples/release/release-version-contract-smoke.py"
             ),
-            "model_behavior": _covered(
-                "actual_default_model_behavior_portfolio_v0"
-            ),
+            "model_behavior": _covered("actual_default_model_behavior_portfolio_v0"),
             "release_gate": _covered(
                 "loopx canary premerge --profile release-promotion",
                 "loopx canary release-qualification",
@@ -387,9 +424,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         ],
         "semantic_oracle": {
             "source_kind": "specification",
-            "refs": [
-                "docs/architecture/rfcs/goal-channel-collaboration-v0.md"
-            ],
+            "refs": ["docs/architecture/rfcs/goal-channel-collaboration-v0.md"],
             "independence_rationale": (
                 "The Goal Channel RFC defines opt-in delivery, canonical quota "
                 "selection, gate identity, suppression, idempotency, readback, "
@@ -406,17 +441,14 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
             "durable_smoke": _covered(
                 "examples/lark-goal-channel-human-gate-delivery-smoke.py"
             ),
-            "catalog_canary": _covered(
-                "lark-goal-channel-human-gate-delivery"
-            ),
+            "catalog_canary": _covered("lark-goal-channel-human-gate-delivery"),
             "host_upgrade": _covered("examples/install-local-smoke.py"),
             "model_behavior": _not_applicable(
                 "Gate selection and provider delivery safety are deterministic "
                 "control-plane and transport contracts."
             ),
             "release_gate": _covered(
-                "loopx canary premerge "
-                "--profile lark-goal-channel-human-gate-delivery"
+                "loopx canary premerge --profile lark-goal-channel-human-gate-delivery"
             ),
         },
     },
@@ -432,9 +464,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
         ],
         "semantic_oracle": {
             "source_kind": "specification",
-            "refs": [
-                "docs/reference/protocols/model-behavior-qualification-v0.md"
-            ],
+            "refs": ["docs/reference/protocols/model-behavior-qualification-v0.md"],
             "independence_rationale": (
                 "The onboarding contract specifies identity, goal selection, command, and host "
                 "activation outcomes before the actual default packet is shown to the actor."
@@ -454,7 +484,7 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
             ),
             "model_behavior": _covered(
                 "actual_default_model_behavior_portfolio_v0",
-                "onboarding_actual_behavior_qualification_v0"
+                "onboarding_actual_behavior_qualification_v0",
             ),
             "release_gate": _covered(
                 "loopx canary premerge --profile new-user-onboarding-lifecycle"
@@ -496,7 +526,9 @@ QUALITY_SURFACE_CATALOG: tuple[dict[str, Any], ...] = (
                 "turn_peer_agent_identity",
                 "turn_same_agent_continuation",
             ),
-            "release_gate": _covered("loopx canary premerge --profile peer-agent-runtime"),
+            "release_gate": _covered(
+                "loopx canary premerge --profile peer-agent-runtime"
+            ),
         },
     },
 )

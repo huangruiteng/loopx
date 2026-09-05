@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,12 +14,22 @@ import pytest
 from loopx.capabilities.benchmark_toolkit import (
     BENCHMARK_EXACT_CONTAINER_BINDING_SCHEMA_VERSION,
     BENCHMARK_INTEGRITY_POLICY_SCHEMA_VERSION,
+    BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION,
+    BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION,
     BENCHMARK_RESTRICTED_ACCESS_ADJUDICATION_SCHEMA_VERSION,
     BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_SCHEMA_VERSION,
+    BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION,
+    EXTERNAL_AGENT_RESULT_V2_SCHEMA_VERSION,
     REQUIRED_RUNTIME_ATTESTATIONS,
     DockerContainerBindingError,
+    benchmark_integrity_policy_sha256,
+    build_benchmark_integrity_input_invalid_qualification_v1,
     build_benchmark_integrity_qualification,
+    build_benchmark_launch_admission_receipt,
+    build_benchmark_trajectory_lineage_receipt,
+    build_traex_model_route_receipt,
     compact_docker_container_binding_receipt,
+    normalize_benchmark_integrity_qualification_v1,
     select_exact_docker_container,
 )
 from loopx.capabilities.catalog import build_capability_detail_packet
@@ -154,13 +166,9 @@ def test_catalog_exposes_post_run_case_insight_monitor_contract() -> None:
     ]
     effort_stratification = reporting["effort_stratification"]
     assert effort_stratification["default_reference_arm"] == "baseline"
-    assert effort_stratification["default_reference_field"] == (
-        "effort.duration_ms"
-    )
+    assert effort_stratification["default_reference_field"] == ("effort.duration_ms")
     assert effort_stratification["candidate_duration_affects_bucket"] is False
-    assert effort_stratification["interpretation"] == (
-        "descriptive_sensitivity_only"
-    )
+    assert effort_stratification["interpretation"] == ("descriptive_sensitivity_only")
     assert "Do not send a repetitive" in reporting["unchanged_policy"]
     active = analysis["active_progress_readback"]
     assert active["workspace_basis"] == [
@@ -1236,13 +1244,668 @@ def test_invalid_private_inputs_fail_before_receipt_building() -> None:
         )
 
 
-def test_cli_emits_only_compact_public_safe_receipt(tmp_path: Path) -> None:
+def _sha256(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _strict_cli_inputs(
+    *, benchmark_id: str = "fixture@v0"
+) -> dict[str, dict[str, object]]:
+    trajectory = _trajectory()
+    launch = build_benchmark_launch_admission_receipt(
+        benchmark_id=benchmark_id,
+        case_id="case-1",
+        run_id="run-1",
+        arm_id="treatment",
+        instruction_sha256=_sha256("do the task"),
+        integrity_policy_sha256=benchmark_integrity_policy_sha256(None),
+        expected_provider="trae",
+        expected_model="GPT-5.4",
+        containment_binding_sha256=_sha256("containment-ref"),
+        runtime_binding_sha256=_sha256("runtime-generation"),
+        credential_isolation={
+            "mechanism": "runner-owned-gateway",
+            "authority": "runner",
+            "evidence_sha256": _sha256("credential-evidence"),
+        },
+        controller_isolation={
+            "mechanism": "container-namespace",
+            "authority": "runner",
+            "evidence_sha256": _sha256("controller-evidence"),
+        },
+        runner_authority="runner",
+        provider_authority="provider-adapter",
+        issued_at="2026-09-03T08:30:00+08:00",
+    )
+    attestation = {
+        "schema_version": BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION,
+        "authority": "runner",
+        **{
+            field: launch[field]
+            for field in ("benchmark_id", "case_id", "run_id", "arm_id")
+        },
+        **{
+            field: launch[field]
+            for field in (
+                "launch_binding_digest",
+                "integrity_policy_sha256",
+                "containment_binding_sha256",
+                "runtime_binding_sha256",
+                "credential_isolation",
+                "controller_isolation",
+            )
+        },
+        **{field: True for field in REQUIRED_RUNTIME_ATTESTATIONS},
+    }
+    route_receipt = build_traex_model_route_receipt(
+        [
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "context": {
+                        "model": "GPT-5.4",
+                        "modelProviderId": "trae",
+                    },
+                },
+            }
+        ],
+        requested_model="GPT-5.4",
+        run_id=str(launch["run_id"]),
+        arm_id=str(launch["arm_id"]),
+        launch_binding_digest=str(launch["launch_binding_digest"]),
+        authority="provider-adapter",
+    )
+    external_agent_result = {
+        "schema_version": EXTERNAL_AGENT_RESULT_V2_SCHEMA_VERSION,
+        "status": "succeeded",
+        "exit_code": 0,
+        "receipt": {
+            "schema_version": "external_agent_phase_receipt_v2",
+            "classification": "solver_completed",
+            "command_recorded": False,
+            "command_argument_count": 2,
+            "duration_ms": 10,
+            "instruction_recorded": False,
+            "workspace_recorded": False,
+            "instruction_sha256": launch["instruction_sha256"],
+            "instruction_chars": len("do the task"),
+            "launch_binding_digest": launch["launch_binding_digest"],
+        },
+    }
+    trajectory_lineage = build_benchmark_trajectory_lineage_receipt(
+        authority=str(launch["runner_authority"]),
+        run_id=str(launch["run_id"]),
+        arm_id=str(launch["arm_id"]),
+        launch_binding_digest=str(launch["launch_binding_digest"]),
+        external_agent_result=external_agent_result,
+        trajectory=trajectory,
+        containment_binding_sha256=str(launch["containment_binding_sha256"]),
+        containment_termination_postcondition=("destroyed_before_result_consumption"),
+        containment_absence_verified=True,
+        containment_absence_evidence_sha256=_sha256("containment-absence-evidence"),
+    )
+    return {
+        "trajectory": trajectory,
+        "runtime_attestation": attestation,
+        "launch_admission": launch,
+        "route_receipt": route_receipt,
+        "external_agent_result": external_agent_result,
+        "trajectory_lineage_receipt": trajectory_lineage,
+    }
+
+
+def _write_json_inputs(
+    tmp_path: Path, inputs: dict[str, dict[str, object]]
+) -> dict[str, Path]:
+    paths: dict[str, Path] = {}
+    for name, payload in inputs.items():
+        path = tmp_path / f"private-{name.replace('_', '-')}.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        paths[name] = path
+    return paths
+
+
+def _run_strict_integrity_cli(
+    paths: dict[str, Path],
+    *,
+    extra_args: Sequence[str] = (),
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(paths["trajectory"]),
+            "--runtime-attestation-json",
+            str(paths["runtime_attestation"]),
+            "--launch-admission-json",
+            str(paths["launch_admission"]),
+            "--route-receipt-json",
+            str(paths["route_receipt"]),
+            "--external-agent-result-json",
+            str(paths["external_agent_result"]),
+            "--trajectory-lineage-receipt-json",
+            str(paths["trajectory_lineage_receipt"]),
+            *extra_args,
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable, **(env or {})},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _run_traex_capture_cli(
+    tmp_path: Path,
+    *,
+    source_text: str,
+    binding_args: tuple[str, ...] = (),
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    source = tmp_path / "private-source.jsonl"
+    atif = tmp_path / "private-output" / "trajectory.json"
+    route_receipt = tmp_path / "public-output" / "route.json"
+    source.write_text(source_text, encoding="utf-8")
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "traex-evidence",
+            "--source-jsonl",
+            str(source),
+            "--atif-output",
+            str(atif),
+            "--route-receipt-output",
+            str(route_receipt),
+            "--requested-model",
+            "GPT-5.4",
+            *binding_args,
+            "--execute",
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed, atif, route_receipt
+
+
+@pytest.mark.parametrize(
+    "binding_args",
+    [
+        ("--run-id", "private-partial-run"),
+        ("--arm-id", "private-partial-arm"),
+        ("--launch-binding-digest", "a" * 64),
+        ("--authority", "private-partial-authority"),
+    ],
+)
+def test_cli_partial_bound_traex_capture_uses_safe_error_envelope(
+    tmp_path: Path,
+    binding_args: tuple[str, ...],
+) -> None:
+    private_marker = "private-partial-source-content"
+    completed, atif, route_receipt = _run_traex_capture_cli(
+        tmp_path,
+        source_text=private_marker,
+        binding_args=binding_args,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "input_invalid"
+    assert payload["model_route"] is None
+    assert payload["error"] == {
+        "schema_version": "benchmark_model_route_capture_error_v0",
+        "classification": "input_invalid",
+        "requested_receipt_schema_version": "benchmark_model_route_receipt_v1",
+        "bound_requested": True,
+        "raw_content_recorded": False,
+        "input_path_recorded": False,
+    }
+    assert payload["write_performed"] is False
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+    assert not atif.exists()
+    assert not route_receipt.exists()
+
+
+def test_cli_malformed_bound_traex_capture_uses_safe_error_envelope(
+    tmp_path: Path,
+) -> None:
+    private_marker = "private-malformed-bound-content"
+    completed, atif, route_receipt = _run_traex_capture_cli(
+        tmp_path,
+        source_text=f"not-json {private_marker}\n",
+        binding_args=(
+            "--run-id",
+            "run-1",
+            "--arm-id",
+            "treatment",
+            "--launch-binding-digest",
+            "a" * 64,
+            "--authority",
+            "provider-adapter",
+        ),
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["model_route"] is None
+    assert payload["error"]["schema_version"] == (
+        "benchmark_model_route_capture_error_v0"
+    )
+    assert payload["error"]["requested_receipt_schema_version"] == (
+        "benchmark_model_route_receipt_v1"
+    )
+    assert payload["private_atif_written"] is False
+    assert payload["route_receipt_written"] is False
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+    assert not atif.exists()
+    assert not route_receipt.exists()
+
+
+def test_cli_unbound_traex_capture_preserves_legacy_v0_error_shape(
+    tmp_path: Path,
+) -> None:
+    private_marker = "private-malformed-unbound-content"
+    completed, atif, route_receipt = _run_traex_capture_cli(
+        tmp_path,
+        source_text=f"not-json {private_marker}\n",
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == {
+        "ok": False,
+        "schema_version": "benchmark_trae_evidence_capture_v0",
+        "source_runtime": "traex",
+        "status": "input_invalid",
+        "event_count": 0,
+        "route_event_count": 0,
+        "route_source_bound": False,
+        "step_count": 0,
+        "tool_call_count": 0,
+        "private_atif_written": False,
+        "route_receipt_written": False,
+        "write_performed": False,
+        "model_route": {
+            "schema_version": "benchmark_model_route_receipt_v0",
+            "runtime": "traex",
+            "status": "route_requested_not_runtime_audited",
+            "runtime_audited": False,
+            "matched": False,
+            "observed_route_count": 0,
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+        },
+        "public_boundary": {
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+            "output_path_recorded": False,
+        },
+    }
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+    assert not atif.exists()
+    assert not route_receipt.exists()
+
+
+def test_cli_accepts_complete_strict_integrity_input_bundle(tmp_path: Path) -> None:
+    inputs = _strict_cli_inputs()
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(paths["trajectory"]),
+            "--runtime-attestation-json",
+            str(paths["runtime_attestation"]),
+            "--launch-admission-json",
+            str(paths["launch_admission"]),
+            "--route-receipt-json",
+            str(paths["route_receipt"]),
+            "--external-agent-result-json",
+            str(paths["external_agent_result"]),
+            "--trajectory-lineage-receipt-json",
+            str(paths["trajectory_lineage_receipt"]),
+            "--require-qualified",
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == (
+        BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION
+    )
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert payload["integrity_qualified"] is True
+    assert payload["launch_lineage"]["qualified"] is True
+    assert payload["public_boundary"]["input_paths_recorded"] is False
+    assert str(inputs["launch_admission"]["launch_binding_digest"]) not in (
+        completed.stdout
+    )
+    assert str(tmp_path) not in completed.stdout
+
+
+def test_cli_strict_integrity_accepts_unmatched_sensitive_value_without_leak(
+    tmp_path: Path,
+) -> None:
+    paths = _write_json_inputs(tmp_path, _strict_cli_inputs())
+    secret = "fixture-cli-private-identity-123456"
+
+    completed = _run_strict_integrity_cli(
+        paths,
+        extra_args=(
+            "--sensitive-value-env",
+            "BENCHMARK_TOOLKIT_TEST_SECRET",
+            "--require-qualified",
+        ),
+        env={"BENCHMARK_TOOLKIT_TEST_SECRET": secret},
+    )
+
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["integrity_qualified"] is True
+    assert payload["public_boundary"]["private_trajectory_read"] is True
+    assert secret not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_strict_integrity_rejects_sensitive_launch_id_after_trajectory_read(
+    tmp_path: Path,
+) -> None:
+    secret = "fixture-cli-private-identity-123456"
+    inputs = _strict_cli_inputs(benchmark_id=secret)
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = _run_strict_integrity_cli(
+        paths,
+        extra_args=(
+            "--sensitive-value-env",
+            "BENCHMARK_TOOLKIT_TEST_SECRET",
+        ),
+        env={"BENCHMARK_TOOLKIT_TEST_SECRET": secret},
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1(
+        private_trajectory_read=True
+    )
+    assert secret not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_strict_integrity_classifies_false_runtime_attestation(
+    tmp_path: Path,
+) -> None:
+    inputs = _strict_cli_inputs()
+    inputs["runtime_attestation"]["agent_phase_isolated"] = False
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = _run_strict_integrity_cli(paths, extra_args=("--require-qualified",))
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["classification"] == "runtime_isolation_not_attested"
+    assert payload["integrity_qualified"] is False
+    assert "runtime_attestation_agent_phase_isolated_missing" in payload["blockers"]
+    assert payload["public_boundary"]["private_trajectory_read"] is True
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_strict_lineage_failure_emits_closed_v1_receipt(tmp_path: Path) -> None:
+    inputs = _strict_cli_inputs()
+    inputs["runtime_attestation"]["run_id"] = "run-2"
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(paths["trajectory"]),
+            "--runtime-attestation-json",
+            str(paths["runtime_attestation"]),
+            "--launch-admission-json",
+            str(paths["launch_admission"]),
+            "--route-receipt-json",
+            str(paths["route_receipt"]),
+            "--external-agent-result-json",
+            str(paths["external_agent_result"]),
+            "--trajectory-lineage-receipt-json",
+            str(paths["trajectory_lineage_receipt"]),
+            "--require-qualified",
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == (
+        BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION
+    )
+    assert payload["classification"] == "launch_lineage_not_qualified"
+    assert payload["integrity_qualified"] is False
+    assert "runtime_attestation_run_id_mismatch" in payload["blockers"]
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_rejects_v1_attestation_without_strict_input_bundle(
+    tmp_path: Path,
+) -> None:
+    inputs = _strict_cli_inputs()
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(paths["trajectory"]),
+            "--runtime-attestation-json",
+            str(paths["runtime_attestation"]),
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1()
+    assert payload["public_boundary"]["private_trajectory_read"] is False
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_rejects_partial_strict_integrity_input_bundle(tmp_path: Path) -> None:
+    trajectory_path = tmp_path / "private-trajectory.json"
+    attestation_path = tmp_path / "private-attestation.json"
+    partial_path = tmp_path / "private-launch-admission.json"
+    trajectory_path.write_text(json.dumps(_trajectory()), encoding="utf-8")
+    attestation_path.write_text(json.dumps(_attestation()), encoding="utf-8")
+    private_marker = "private-partial-input-content"
+    partial_path.write_text(json.dumps({"raw": private_marker}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(trajectory_path),
+            "--runtime-attestation-json",
+            str(attestation_path),
+            "--launch-admission-json",
+            str(partial_path),
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1()
+    assert payload["public_boundary"]["private_trajectory_read"] is False
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_rejects_invalid_strict_integrity_json_without_leaking_input(
+    tmp_path: Path,
+) -> None:
+    paths = _write_json_inputs(tmp_path, _strict_cli_inputs())
+    private_marker = "private-invalid-route-content"
+    paths["route_receipt"].write_text(
+        '{"private":"' + private_marker,
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            str(REPO_ROOT / "scripts/loopx"),
+            "benchmark",
+            "integrity-qualification",
+            "--trajectory-json",
+            str(paths["trajectory"]),
+            "--runtime-attestation-json",
+            str(paths["runtime_attestation"]),
+            "--launch-admission-json",
+            str(paths["launch_admission"]),
+            "--route-receipt-json",
+            str(paths["route_receipt"]),
+            "--external-agent-result-json",
+            str(paths["external_agent_result"]),
+            "--trajectory-lineage-receipt-json",
+            str(paths["trajectory_lineage_receipt"]),
+            "--format",
+            "json",
+        ],
+        cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1()
+    assert payload["public_boundary"]["private_trajectory_read"] is False
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_marks_malformed_private_trajectory_as_read(tmp_path: Path) -> None:
+    paths = _write_json_inputs(tmp_path, _strict_cli_inputs())
+    private_marker = "private-malformed-trajectory-content"
+    paths["trajectory"].write_text(
+        '{"private":"' + private_marker,
+        encoding="utf-8",
+    )
+
+    completed = _run_strict_integrity_cli(paths)
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1(
+        private_trajectory_read=True
+    )
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert private_marker not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize("unreadable_kind", ["missing", "directory"])
+def test_cli_does_not_mark_unreadable_private_trajectory_as_read(
+    tmp_path: Path,
+    unreadable_kind: str,
+) -> None:
+    paths = _write_json_inputs(tmp_path, _strict_cli_inputs())
+    trajectory_path = paths["trajectory"]
+    trajectory_path.unlink()
+    if unreadable_kind == "directory":
+        trajectory_path.mkdir()
+
+    completed = _run_strict_integrity_cli(paths)
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1(
+        private_trajectory_read=False
+    )
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_rejects_invalid_strict_attestation_after_trajectory_read(
+    tmp_path: Path,
+) -> None:
+    inputs = _strict_cli_inputs()
+    inputs["runtime_attestation"]["agent_phase_isolated"] = "false"
+    paths = _write_json_inputs(tmp_path, inputs)
+
+    completed = _run_strict_integrity_cli(paths)
+
+    assert completed.returncode == 1
+    payload = json.loads(completed.stdout)
+    assert payload == build_benchmark_integrity_input_invalid_qualification_v1(
+        private_trajectory_read=True
+    )
+    assert normalize_benchmark_integrity_qualification_v1(payload) == payload
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+
+
+def test_cli_preserves_legacy_v0_without_strict_input_bundle(tmp_path: Path) -> None:
     trajectory_path = tmp_path / "private-trajectory.json"
     attestation_path = tmp_path / "private-attestation.json"
     trajectory_path.write_text(json.dumps(_trajectory()), encoding="utf-8")
     attestation_path.write_text(json.dumps(_attestation()), encoding="utf-8")
     secret = "fixture-cli-sensitive-value-123456"
-    env = {**os.environ, "BENCHMARK_TOOLKIT_TEST_SECRET": secret}
+    env = {
+        **os.environ,
+        "BENCHMARK_TOOLKIT_TEST_SECRET": secret,
+        "LOOPX_PYTHON": sys.executable,
+    }
 
     completed = subprocess.run(
         [
@@ -1255,7 +1918,6 @@ def test_cli_emits_only_compact_public_safe_receipt(tmp_path: Path) -> None:
             str(attestation_path),
             "--sensitive-value-env",
             "BENCHMARK_TOOLKIT_TEST_SECRET",
-            "--require-qualified",
             "--format",
             "json",
         ],
@@ -1266,6 +1928,7 @@ def test_cli_emits_only_compact_public_safe_receipt(tmp_path: Path) -> None:
         check=True,
     )
     payload = json.loads(completed.stdout)
+    assert payload["schema_version"] == BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION
     assert payload["integrity_qualified"] is True
     assert payload["public_boundary"]["input_paths_recorded"] is False
     assert secret not in completed.stdout
@@ -1309,6 +1972,7 @@ def test_cli_accepts_compact_post_run_restricted_access_adjudication(
             "json",
         ],
         cwd=REPO_ROOT,
+        env={**os.environ, "LOOPX_PYTHON": sys.executable},
         text=True,
         capture_output=True,
         check=True,

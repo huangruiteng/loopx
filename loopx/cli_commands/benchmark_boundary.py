@@ -13,6 +13,8 @@ from ..capabilities.benchmark_toolkit import (
     BENCHMARK_FOUR_ARM_QUALIFICATION_SCOPE,
     BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION,
     BENCHMARK_MODEL_ROUTE_RECEIPT_SCHEMA_VERSION,
+    BENCHMARK_MODEL_ROUTE_RECEIPT_V1_SCHEMA_VERSION,
+    BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION,
     BENCHMARK_RUNTIME_CONTINUITY_SCHEMA_VERSION,
     BENCHMARK_SOURCE_REVISION_FENCE_SCHEMA_VERSION,
     BENCHMARK_TREATMENT_CONTINUATION_RECEIPT_SCHEMA_VERSION,
@@ -25,10 +27,12 @@ from ..capabilities.benchmark_toolkit import (
     BenchmarkSourceRevisionFenceError,
     build_benchmark_candidate_source_boundary,
     build_benchmark_four_arm_contract_from_spec,
+    build_benchmark_integrity_input_invalid_qualification_v1,
     build_benchmark_integrity_qualification,
     build_benchmark_runtime_continuity,
     build_benchmark_runtime_observation,
     build_benchmark_treatment_continuation_receipt,
+    build_strict_benchmark_integrity_qualification,
     capture_traex_benchmark_evidence,
     compact_benchmark_four_arm_contract,
     compact_benchmark_source_revision_fence_receipt,
@@ -36,12 +40,20 @@ from ..capabilities.benchmark_toolkit import (
     inspect_benchmark_source_revision_fence,
     verify_verifier_reward_file,
 )
+from ..capabilities.benchmark_toolkit.traex_evidence import (
+    TRAE_EVIDENCE_PAIR_PUBLICATION_CONTRACT,
+    TraexEvidencePairPublishError,
+)
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
     None,
 ]
 OutputFormat = Callable[[argparse.Namespace], str]
+
+BENCHMARK_MODEL_ROUTE_CAPTURE_ERROR_SCHEMA_VERSION = (
+    "benchmark_model_route_capture_error_v0"
+)
 
 BENCHMARK_TOOLKIT_COMMANDS = {
     "candidate-source-boundary",
@@ -57,12 +69,21 @@ BENCHMARK_TOOLKIT_COMMANDS = {
 }
 
 
-def _read_json_object(path_text: str, label: str) -> dict[str, object]:
-    raw = (
-        sys.stdin.read()
-        if path_text == "-"
-        else Path(path_text).expanduser().read_text(encoding="utf-8")
-    )
+def _read_json_object(
+    path_text: str,
+    label: str,
+    *,
+    on_bytes_read: Callable[[], None] | None = None,
+) -> dict[str, object]:
+    if path_text == "-":
+        raw = sys.stdin.read()
+    else:
+        raw_bytes = Path(path_text).expanduser().read_bytes()
+        if on_bytes_read is not None:
+            on_bytes_read()
+        raw = raw_bytes.decode("utf-8")
+    if path_text == "-" and on_bytes_read is not None:
+        on_bytes_read()
     loaded = json.loads(raw)
     if not isinstance(loaded, dict):
         raise TypeError(f"{label} must contain a JSON object")
@@ -275,6 +296,10 @@ def register_benchmark_boundary_commands(
     integrity_parser.add_argument("--trajectory-json", required=True)
     integrity_parser.add_argument("--runtime-attestation-json", required=True)
     integrity_parser.add_argument("--policy-json")
+    integrity_parser.add_argument("--launch-admission-json")
+    integrity_parser.add_argument("--route-receipt-json")
+    integrity_parser.add_argument("--external-agent-result-json")
+    integrity_parser.add_argument("--trajectory-lineage-receipt-json")
     integrity_parser.add_argument(
         "--restricted-access-adjudication-json",
         help=(
@@ -287,9 +312,7 @@ def register_benchmark_boundary_commands(
 
     treatment_continuation_parser = benchmark_subparsers.add_parser(
         "treatment-continuation-receipt",
-        help=(
-            "Separate treatment control persistence from score and countability."
-        ),
+        help=("Separate treatment control persistence from score and countability."),
     )
     add_subcommand_format(treatment_continuation_parser)
     treatment_continuation_parser.add_argument(
@@ -315,6 +338,19 @@ def register_benchmark_boundary_commands(
     traex_parser.add_argument("--route-receipt-output", required=True)
     traex_parser.add_argument("--requested-model", required=True)
     traex_parser.add_argument("--requested-provider", default="trae")
+    traex_parser.add_argument("--run-id")
+    traex_parser.add_argument("--arm-id")
+    traex_parser.add_argument("--launch-binding-digest")
+    traex_parser.add_argument("--authority")
+    traex_parser.add_argument(
+        "--sensitive-value-env",
+        action="append",
+        default=[],
+        help=(
+            "Environment variable containing a private identity or credential "
+            "that must not appear in any public route or launch label. Repeatable."
+        ),
+    )
     traex_parser.add_argument("--require-runtime-route", action="store_true")
     traex_parser.add_argument(
         "--execute",
@@ -331,7 +367,13 @@ def register_benchmark_boundary_commands(
     reward_parser.add_argument("--require-valid", action="store_true")
 
 
-def _invalid_integrity_input() -> dict[str, object]:
+def _invalid_integrity_input(
+    *, strict_requested: bool = False, private_trajectory_read: bool = False
+) -> dict[str, object]:
+    if strict_requested:
+        return build_benchmark_integrity_input_invalid_qualification_v1(
+            private_trajectory_read=private_trajectory_read
+        )
     return {
         "ok": False,
         "schema_version": BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION,
@@ -427,8 +469,10 @@ def _invalid_treatment_continuation_input() -> dict[str, object]:
     }
 
 
-def _invalid_traex_evidence_input() -> dict[str, object]:
-    return {
+def _invalid_traex_evidence_input(
+    *, bound_requested: bool = False
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "ok": False,
         "schema_version": TRAE_BENCHMARK_EVIDENCE_SCHEMA_VERSION,
         "source_runtime": "traex",
@@ -457,6 +501,67 @@ def _invalid_traex_evidence_input() -> dict[str, object]:
             "output_path_recorded": False,
         },
     }
+    if bound_requested:
+        # A failed bound capture cannot satisfy the closed v1 receipt contract.
+        # Keep the historical unbound v0 shape while giving bound failures their
+        # own public-safe error schema instead of emitting a partial route receipt.
+        payload["model_route"] = None
+        payload["error"] = {
+            "schema_version": BENCHMARK_MODEL_ROUTE_CAPTURE_ERROR_SCHEMA_VERSION,
+            "classification": "input_invalid",
+            "requested_receipt_schema_version": (
+                BENCHMARK_MODEL_ROUTE_RECEIPT_V1_SCHEMA_VERSION
+            ),
+            "bound_requested": True,
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+        }
+    return payload
+
+
+def _traex_evidence_publish_failure(
+    error: TraexEvidencePairPublishError,
+    *,
+    bound_requested: bool,
+) -> dict[str, object]:
+    rollback_verified = error.rollback_verified
+    no_write_verified = error.write_state.startswith("no_write_")
+    write_absent = no_write_verified or rollback_verified is True
+    payload: dict[str, object] = {
+        "ok": False,
+        "schema_version": TRAE_BENCHMARK_EVIDENCE_SCHEMA_VERSION,
+        "source_runtime": "traex",
+        "status": error.classification,
+        "private_atif_written": False if write_absent else None,
+        "route_receipt_written": False if write_absent else None,
+        "write_performed": False if write_absent else None,
+        "write_state": error.write_state,
+        "rollback_verified": rollback_verified,
+        "model_route": None,
+        "error": {
+            "schema_version": BENCHMARK_MODEL_ROUTE_CAPTURE_ERROR_SCHEMA_VERSION,
+            "classification": error.classification,
+            "requested_receipt_schema_version": (
+                BENCHMARK_MODEL_ROUTE_RECEIPT_V1_SCHEMA_VERSION
+                if bound_requested
+                else BENCHMARK_MODEL_ROUTE_RECEIPT_SCHEMA_VERSION
+            ),
+            "bound_requested": bound_requested,
+            "write_state": error.write_state,
+            "rollback_verified": rollback_verified,
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+            "output_path_recorded": False,
+        },
+        "publication_contract": dict(TRAE_EVIDENCE_PAIR_PUBLICATION_CONTRACT),
+        "public_boundary": {
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+            "output_path_recorded": False,
+        },
+    }
+    payload.update(error.failure_metadata)
+    return payload
 
 
 def handle_benchmark_boundary_command(
@@ -563,7 +668,25 @@ def handle_benchmark_boundary_command(
         return 1 if args.require_valid and not payload.get("valid") else 0
 
     if args.benchmark_command == "traex-evidence":
+        route_binding = {
+            field: getattr(args, field, None)
+            for field in (
+                "run_id",
+                "arm_id",
+                "launch_binding_digest",
+                "authority",
+            )
+        }
+        bound_requested = any(value is not None for value in route_binding.values())
         try:
+            sensitive_values: list[str] = []
+            for env_name in getattr(args, "sensitive_value_env", []):
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_name):
+                    raise ValueError("invalid sensitive value environment name")
+                sensitive_value = os.environ.get(env_name)
+                if not sensitive_value:
+                    raise ValueError("missing sensitive value environment variable")
+                sensitive_values.append(sensitive_value)
             payload = capture_traex_benchmark_evidence(
                 source_jsonl=args.source_jsonl,
                 atif_output=args.atif_output,
@@ -571,10 +694,18 @@ def handle_benchmark_boundary_command(
                 requested_model=args.requested_model,
                 requested_provider=args.requested_provider,
                 route_source_jsonl=args.route_source_jsonl,
+                **route_binding,
+                sensitive_values=sensitive_values,
+                require_runtime_route=args.require_runtime_route,
                 execute=args.execute,
             )
+        except TraexEvidencePairPublishError as error:
+            payload = _traex_evidence_publish_failure(
+                error,
+                bound_requested=bound_requested,
+            )
         except (OSError, UnicodeError, TypeError, ValueError):
-            payload = _invalid_traex_evidence_input()
+            payload = _invalid_traex_evidence_input(bound_requested=bound_requested)
         print_payload(payload, output_format(args), _render_traex_evidence)
         if not payload.get("ok"):
             return 1
@@ -587,12 +718,35 @@ def handle_benchmark_boundary_command(
             return 1
         return 0
 
+    strict_input_paths = {
+        "launch_admission_receipt": getattr(args, "launch_admission_json", None),
+        "route_receipt": getattr(args, "route_receipt_json", None),
+        "external_agent_result": getattr(args, "external_agent_result_json", None),
+        "trajectory_lineage_receipt": getattr(
+            args, "trajectory_lineage_receipt_json", None
+        ),
+    }
+    strict_input_provided = [path is not None for path in strict_input_paths.values()]
+    strict_requested = any(strict_input_provided)
+    private_trajectory_read = False
+
+    def mark_private_trajectory_read() -> None:
+        nonlocal private_trajectory_read
+        private_trajectory_read = True
+
     try:
-        trajectory = _read_json_object(args.trajectory_json, "--trajectory-json")
+        if any(strict_input_provided) and not all(strict_input_provided):
+            raise ValueError("strict integrity inputs must be provided together")
         attestation = _read_json_object(
             args.runtime_attestation_json,
             "--runtime-attestation-json",
         )
+        strict_requested = strict_requested or (
+            attestation.get("schema_version")
+            == BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION
+        )
+        if strict_requested and not all(strict_input_provided):
+            raise ValueError("strict integrity inputs required for v1 attestation")
         policy = (
             _read_json_object(args.policy_json, "--policy-json")
             if args.policy_json
@@ -606,6 +760,18 @@ def handle_benchmark_boundary_command(
             if args.restricted_access_adjudication_json
             else None
         )
+        strict_inputs = (
+            {
+                name: _read_json_object(
+                    path,
+                    "--" + name.replace("_", "-") + "-json",
+                )
+                for name, path in strict_input_paths.items()
+                if path is not None
+            }
+            if all(strict_input_provided)
+            else None
+        )
         sensitive_values: list[str] = []
         for env_name in args.sensitive_value_env:
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_name):
@@ -614,15 +780,29 @@ def handle_benchmark_boundary_command(
             if not value:
                 raise ValueError("missing sensitive value environment variable")
             sensitive_values.append(value)
-        payload = build_benchmark_integrity_qualification(
+        trajectory = _read_json_object(
+            args.trajectory_json,
+            "--trajectory-json",
+            on_bytes_read=mark_private_trajectory_read,
+        )
+        qualification_builder = (
+            build_strict_benchmark_integrity_qualification
+            if strict_inputs is not None
+            else build_benchmark_integrity_qualification
+        )
+        payload = qualification_builder(
             trajectory=trajectory,
             runtime_attestation=attestation,
             policy=policy,
             restricted_access_adjudication=restricted_access_adjudication,
             sensitive_values=sensitive_values,
+            **(strict_inputs or {}),
         )
     except (OSError, UnicodeError, TypeError, ValueError):
-        payload = _invalid_integrity_input()
+        payload = _invalid_integrity_input(
+            strict_requested=strict_requested,
+            private_trajectory_read=private_trajectory_read,
+        )
     print_payload(payload, output_format(args), _render_integrity)
     if not payload.get("ok"):
         return 1

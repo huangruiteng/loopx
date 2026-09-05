@@ -169,9 +169,39 @@ compilation, and public-boundary scanning, while LoopX's installed canary
 catalog continues to run from its own trusted release root. This also supports
 running the command from another repository or one of its subdirectories.
 
+`premerge` uses `--tier standard` unless another tier is selected. Selecting
+`--tier deep` includes checks marked `deep` in every selected catalog profile;
+it does not require a separate `--include-deep-checks` flag. The premerge
+default for `--max-checks-per-profile` is `4`, and that value is a soft target:
+mandatory profile checks still run when they expand the selected set beyond
+four. This currently affects the `benchmark-toolkit-boundary` lane, whose deep
+gate adds the focused benchmark-integrity pytest check to its mandatory public
+boundary checks. It increases local validation time and can expose deterministic
+contract failures, but does not launch a benchmark job or invoke a model.
+
+To opt out of deep profile checks when deep qualification is not required,
+explicitly use `--tier standard` (or `--tier quick` for bounded triage) and do
+not add `--include-deep-checks`. That omission must be reported in the PR and
+does not satisfy a release gate that names `--tier deep`. Use `--no-execute` to
+preview the selected commands; it previews the gate rather than qualifying the
+change.
+
 `premerge` 会把调用方 Git 根目录用于 diff 卫生检查、变更 Python 编译和公开边界扫描；
 LoopX 已安装的 canary catalog 仍从自身可信 release root 运行。因此该命令也可从其他
 仓库或其子目录执行。
+
+`premerge` 默认使用 `--tier standard`。显式选择 `--tier deep` 时，所有已选 catalog
+profile 中标记为 `deep` 的检查都会默认加入，无需再传 `--include-deep-checks`。
+premerge 的 `--max-checks-per-profile` 默认值是 `4`，但它只是软目标：如果 profile
+包含更多 mandatory check，实际选择数仍会超过四项。当前受影响的 lane 是
+`benchmark-toolkit-boundary`；它的 deep 门禁会在 mandatory 公开边界检查之外加入聚焦的
+benchmark integrity pytest 检查。这会增加本地验证时间，并可能暴露确定性的合同失败，
+但不会启动 benchmark job，也不会调用模型。
+
+如果当前变更不要求 deep qualification，可显式改用 `--tier standard`（或仅做有界诊断时
+使用 `--tier quick`），并且不要增加 `--include-deep-checks`。PR 中必须披露这项省略；
+它不能满足明确要求 `--tier deep` 的 release gate。`--no-execute` 只用于预览所选命令，
+不会让变更通过验证。
 
 The complete public sweep remains explicit and bounded:
 

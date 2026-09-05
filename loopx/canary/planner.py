@@ -4,7 +4,19 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .qualification_profiles import CONTROL_PLANE_QUALIFICATION_PROFILES
+from .plan_selection import (
+    catalog_profile_id,
+    catalog_selection_reasons,
+    domain_selection_reasons,
+    resolve_explicit_selectors,
+    select_domain_profile_checks,
+    selector_blob,
+    slug,
+)
+from .qualification_profiles import (
+    BENCHMARK_QUALIFICATION_PROFILES,
+    CONTROL_PLANE_QUALIFICATION_PROFILES,
+)
 from .quality_surface_catalog import (
     build_quality_surface_catalog_audit as _build_quality_surface_catalog_audit,
 )
@@ -19,7 +31,9 @@ CANARY_PLAN_SCHEMA_VERSION = "catalog_canary_plan_v0"
 CANARY_COVERAGE_AUDIT_SCHEMA_VERSION = "catalog_canary_coverage_audit_v0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CATALOG_PATH = REPO_ROOT / "docs" / "concepts" / "interaction-pattern-catalog.md"
+DEFAULT_CATALOG_PATH = (
+    REPO_ROOT / "docs" / "concepts" / "interaction-pattern-catalog.md"
+)
 
 
 FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
@@ -116,83 +130,24 @@ FAMILY_CHECKS: dict[str, list[dict[str, str]]] = {
 }
 
 
-FAMILY_SELECTOR_HINTS: dict[str, tuple[str, ...]] = {
-    "Work Routing": (
-        "quota",
-        "should-run",
-        "status",
-        "review-packet",
-        "heartbeat",
-        "scheduler",
-        "work-lane",
-        "monitor",
-        "handoff",
-        "loopx/quota.py",
-        "loopx/status.py",
-        "loopx/review_packet.py",
-        "loopx/heartbeat_prompt.py",
-    ),
-    "Human Decision": (
-        "user todo",
-        "operator-gate",
-        "reward",
-        "decision-scope",
-        "deferred",
-        "gate",
-        "loopx/operator_gate.py",
-        "loopx/control_plane/todos/decision_scope.py",
-        "loopx/feedback.py",
-    ),
-    "State And Boundary": (
-        "active state",
-        "todo",
-        "task graph",
-        "authority",
-        "boundary",
-        "connector",
-        "public/private",
-        "loopx/todos.py",
-        "loopx/control_plane/todos/contract.py",
-        "loopx/status.py",
-        "loopx/state_projection.py",
-        "loopx/boundary_authority.py",
-        "loopx/authority.py",
-    ),
-    "Evidence Lifecycle": (
-        "benchmark",
-        "evidence",
-        "ledger",
-        "artifact",
-        "public handle",
-        "ci",
-        "content-ops",
-        "worker_bridge",
-        "loopx/benchmark",
-        "loopx/worker_bridge.py",
-        "loopx/capabilities/content_ops",
-    ),
-    "Planning Governance": (
-        "replan",
-        "repair",
-        "cadence",
-        "dreaming",
-        "plan-to-todo",
-        "refresh-state",
-        "monitor-poll",
-        "loopx/dreaming.py",
-        "loopx/state_refresh.py",
-        "loopx/long_task_cadence.py",
-    ),
-}
-
-
 CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
     {
         "id": "pr-review-and-merge",
         "title": "PR review and merge workflow",
         "purpose": "Check public PR review packets, public-handle evidence, and merge-gate boundaries without approving or merging anything.",
-        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
-        "trigger_hints": ("pr-review", "pull request", "github pr", "self-merge", "merge policy", "public pr metadata"),
+        "catalog_families": [
+            "Human Decision",
+            "Evidence Lifecycle",
+            "State And Boundary",
+        ],
+        "trigger_hints": (
+            "pr-review",
+            "pull request",
+            "github pr",
+            "self-merge",
+            "merge policy",
+            "public pr metadata",
+        ),
         "checks": [
             {
                 "command": "python3 examples/pr-review-command-smoke.py",
@@ -217,7 +172,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Install and update safety",
         "quality_risk": "high",
         "purpose": "Check local install, packaged install, update planning, rollback, and uninstall safety before install/update changes ship.",
-        "catalog_families": ["State And Boundary", "Work Routing", "Planning Governance"],
+        "catalog_families": [
+            "State And Boundary",
+            "Work Routing",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "install",
             "installer",
@@ -282,7 +241,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "control-plane-refactor",
         "title": "Control-plane refactor safety",
         "purpose": "Sample hot-path route, policy seam, and interface budget checks for quota/status refactors.",
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "refactor",
             "quota.py",
@@ -524,7 +487,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "event-sourced-read-path",
         "title": "Event-sourced read-path contract",
         "purpose": "Check event projection, status read path, downstream read surfaces, and migration gates before event-store/read-path changes ship.",
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "event-sourced",
             "event sourced",
@@ -594,7 +561,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "todo-lifecycle",
         "title": "Todo lifecycle contract",
         "purpose": "Check todo metadata, lifecycle transitions, and event/list projection before todo read/write CLI changes ship.",
-        "catalog_families": ["State And Boundary", "Human Decision", "Planning Governance"],
+        "catalog_families": [
+            "State And Boundary",
+            "Human Decision",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "todo lifecycle",
             "todo claim",
@@ -651,7 +622,13 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "Monitor scheduler routing",
         "purpose": "Check monitor due/quiet/replan behavior without polling external targets by default.",
         "catalog_families": ["Work Routing", "Planning Governance"],
-        "trigger_hints": ("monitor", "scheduler", "next_due_at", "monitor-poll", "continuous_monitor"),
+        "trigger_hints": (
+            "monitor",
+            "scheduler",
+            "next_due_at",
+            "monitor-poll",
+            "continuous_monitor",
+        ),
         "checks": [
             {
                 "command": "python3 examples/control_plane/monitor-scheduler-contract-smoke.py",
@@ -675,8 +652,19 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "title": "State write correctness",
         "quality_risk": "high",
         "purpose": "Check local state writes, refresh-state, and todo write paths before touching writer internals.",
-        "catalog_families": ["State And Boundary", "Planning Governance", "Human Decision"],
-        "trigger_hints": ("state write", "refresh-state", "todo write", "idempotency", "revision", "lease"),
+        "catalog_families": [
+            "State And Boundary",
+            "Planning Governance",
+            "Human Decision",
+        ],
+        "trigger_hints": (
+            "state write",
+            "refresh-state",
+            "todo write",
+            "idempotency",
+            "revision",
+            "lease",
+        ),
         "checks": [
             {
                 "command": "python3 examples/control_plane/task-lease-runtime-smoke.py",
@@ -712,7 +700,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "Check user-facing product entry routes for issue-fix, content-ops, "
             "update notes, and cross-runtime demo surfaces without reading private sources."
         ),
-        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary", "Work Routing"],
+        "catalog_families": [
+            "Human Decision",
+            "Evidence Lifecycle",
+            "State And Boundary",
+            "Work Routing",
+        ],
         "trigger_hints": (
             "product-entry",
             "product entry",
@@ -798,7 +791,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "reviewer recommendation plus authority-gated verified notification "
             "contract."
         ),
-        "catalog_families": ["Human Decision", "Evidence Lifecycle", "State And Boundary"],
+        "catalog_families": [
+            "Human Decision",
+            "Evidence Lifecycle",
+            "State And Boundary",
+        ],
         "trigger_hints": (
             "reviewer-plan",
             "reviewer recommendation",
@@ -854,7 +851,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "Check the derived issue case read model and generic Kanban projection "
             "without adding a parallel issue-fix state machine."
         ),
-        "catalog_families": ["Evidence Lifecycle", "State And Boundary", "Work Routing"],
+        "catalog_families": [
+            "Evidence Lifecycle",
+            "State And Boundary",
+            "Work Routing",
+        ],
         "trigger_hints": (
             "issue-fix outcome",
             "issue_fix_outcome",
@@ -878,10 +879,17 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
                 "tier": "default",
                 "reason": "guards explicit owner gating, validated distilled facts, idempotent provider writes, and unsafe-capture rejection",
             },
-            {"command": "python3 examples/context-provider-service-ownership-smoke.py", "tier": "default", "reason": "guards persistent ownership, restart detection, append-attempt accounting, and public-safe receipts"},
-            {"command": "python3 examples/lark-projection-source-reconcile-smoke.py",
-             "tier": "default", "reason": "guards preview-first complete-source "
-             "orphan and stale-mapping reconciliation"},
+            {
+                "command": "python3 examples/context-provider-service-ownership-smoke.py",
+                "tier": "default",
+                "reason": "guards persistent ownership, restart detection, append-attempt accounting, and public-safe receipts",
+            },
+            {
+                "command": "python3 examples/lark-projection-source-reconcile-smoke.py",
+                "tier": "default",
+                "reason": "guards preview-first complete-source "
+                "orphan and stale-mapping reconciliation",
+            },
         ],
     },
     {
@@ -1009,7 +1017,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "Check Codex App heartbeat, Codex CLI TUI, Claude Code loop, "
             "and worker bridge connector contracts from the public runtime catalog."
         ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Planning Governance"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Planning Governance",
+        ],
         "trigger_hints": (
             "runtime connector",
             "runtime connector catalog",
@@ -1072,7 +1084,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "frontstage-rollout",
         "title": "Frontstage rollout projection",
         "purpose": "Check public frontstage/showcase projection data before visual browser smokes.",
-        "catalog_families": ["State And Boundary", "Evidence Lifecycle", "Human Decision"],
+        "catalog_families": [
+            "State And Boundary",
+            "Evidence Lifecycle",
+            "Human Decision",
+        ],
         "trigger_hints": ("frontstage", "showcase", "rollout", "dashboard", "visual"),
         "checks": [
             {
@@ -1099,7 +1115,12 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "Check the minimal auto-research kernel and shared frontier projection; "
             "keep legacy visible/demo wrappers out of the default canary path."
         ),
-        "catalog_families": ["Work Routing", "Evidence Lifecycle", "State And Boundary", "Human Decision"],
+        "catalog_families": [
+            "Work Routing",
+            "Evidence Lifecycle",
+            "State And Boundary",
+            "Human Decision",
+        ],
         "trigger_hints": (
             "auto-research",
             "auto research",
@@ -1144,7 +1165,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "Check the deny-by-default goal boundary, planner agreement, resumable "
             "runtime state, and per-item failure isolation."
         ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Evidence Lifecycle"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Evidence Lifecycle",
+        ],
         "trigger_hints": (
             "explore harness",
             "explore-harness",
@@ -1187,7 +1212,11 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
             "completion, symmetric workspace isolation, task-scoped coordination, "
             "and atomic registry/heartbeat migration."
         ),
-        "catalog_families": ["Work Routing", "State And Boundary", "Evidence Lifecycle"],
+        "catalog_families": [
+            "Work Routing",
+            "State And Boundary",
+            "Evidence Lifecycle",
+        ],
         "trigger_hints": (
             "peer agent",
             "peer-agent",
@@ -1262,11 +1291,24 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         "id": "catalog-canary-contract",
         "title": "Catalog canary contract",
         "purpose": "Check catalog-to-canary planning, JSON actionability, shell-free no-write execution, and full/module smoke-suite selection.",
-        "catalog_families": ["Planning Governance", "State And Boundary", "Work Routing"],
+        "catalog_families": [
+            "Planning Governance",
+            "State And Boundary",
+            "Work Routing",
+        ],
         "trigger_hints": (
-            "catalog canary", "canary planner", "canary runner", "canary plan", "canary run",
-            "smoke-suite", "run-smokes", "full smoke", "loopx/canary", "loopx/cli_commands/canary.py",
-            "examples/canary/catalog", "examples/run-smokes.py",
+            "catalog canary",
+            "canary planner",
+            "canary runner",
+            "canary plan",
+            "canary run",
+            "smoke-suite",
+            "run-smokes",
+            "full smoke",
+            "loopx/canary",
+            "loopx/cli_commands/canary.py",
+            "examples/canary/catalog",
+            "examples/run-smokes.py",
         ),
         "checks": [
             {
@@ -1297,42 +1339,7 @@ CURRENT_REPO_PROFILES: tuple[dict[str, Any], ...] = (
         ],
     },
     *PACKAGE_QUALIFICATION_PROFILES,
-    {
-        "id": "benchmark-toolkit-boundary",
-        "title": "Benchmark toolkit boundary",
-        "purpose": "Check provider-neutral permission, artifact, candidate-source, and integrity boundaries without launching jobs.",
-        "catalog_families": ["Evidence Lifecycle", "State And Boundary", "Work Routing"],
-        "trigger_hints": (
-            "benchmark",
-            "benchmark toolkit",
-            "benchmark research",
-            "loopx/capabilities/benchmark_toolkit",
-            "benchmark/",
-            "examples/benchmark",
-        ),
-        "checks": [
-            {
-                "command": "python3 examples/benchmark-run-permission-policy-smoke.py",
-                "tier": "default",
-                "reason": "guards explicit execution and publication permission policy",
-            },
-            {
-                "command": "python3 examples/benchmark-candidate-source-boundary-smoke.py",
-                "tier": "default",
-                "reason": "guards candidate selection against raw and private sources",
-            },
-            {
-                "command": "python3 examples/benchmark-artifact-path-filter-smoke.py",
-                "tier": "default",
-                "reason": "guards raw/private benchmark artifact path exclusion",
-            },
-            {
-                "command": "python3 -m pytest -q tests/capabilities/test_benchmark_toolkit.py",
-                "tier": "deep",
-                "reason": "checks integrity qualification and fail-closed public boundaries",
-            },
-        ],
-    },
+    *BENCHMARK_QUALIFICATION_PROFILES,
 )
 
 
@@ -1356,14 +1363,6 @@ def build_quality_surface_catalog_audit(
         CURRENT_REPO_PROFILES,
         repo_root=_quality_audit_source_root(repo_root),
     )
-
-
-def _slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-
-
-def _catalog_profile_id(profile: dict[str, Any]) -> str:
-    return _slug(str(profile.get("id") or profile.get("family") or ""))
 
 
 def _split_table_row(line: str) -> list[str]:
@@ -1428,7 +1427,7 @@ def build_catalog_canary_profiles(catalog_path: Path | None = None) -> dict[str,
         name = row.get("Canary Archetype", "")
         archetypes.append(
             {
-                "id": _slug(name),
+                "id": slug(name),
                 "name": name,
                 "primary_question": row.get("Primary Question", ""),
                 "trigger_surface": row.get("Typical Trigger Surface", ""),
@@ -1445,12 +1444,12 @@ def build_catalog_canary_profiles(catalog_path: Path | None = None) -> dict[str,
         profiles.append(
             {
                 "schema_version": CANARY_PROFILE_SCHEMA_VERSION,
-                "id": _slug(family),
+                "id": slug(family),
                 "family": family,
                 "pattern_ids": _pattern_ids(row.get("P0/P1 Pattern Coverage", "")),
                 "default_archetypes": [
                     {
-                        "id": _slug(name),
+                        "id": slug(name),
                         "name": name,
                     }
                     for name in archetype_names
@@ -1495,7 +1494,9 @@ def _catalog_pattern_rows(text: str) -> list[dict[str, str]]:
         cells = _split_table_row(line)
         if len(cells) < 3:
             continue
-        if cells[0] not in {"P0", "P1", "P2"} or not re.fullmatch(r"IP-\d{3}", cells[1]):
+        if cells[0] not in {"P0", "P1", "P2"} or not re.fullmatch(
+            r"IP-\d{3}", cells[1]
+        ):
             continue
         rows.append(
             {
@@ -1514,7 +1515,7 @@ def _coverage_exception_rows(text: str) -> dict[str, dict[str, str]]:
         pattern_id = next(iter(_pattern_ids(row.get("Pattern ID", ""))), "")
         if not pattern_id:
             continue
-        status = _slug(row.get("Canary Coverage Status", ""))
+        status = slug(row.get("Canary Coverage Status", ""))
         if status not in {"non-applicable", "not-applicable", "deferred"}:
             continue
         exceptions[pattern_id] = {
@@ -1606,66 +1607,6 @@ def build_catalog_canary_coverage_audit(
     }
 
 
-def _selector_blob(changed_files: list[str], surfaces: list[str]) -> str:
-    return "\n".join([*changed_files, *surfaces]).lower()
-
-
-def _selection_reasons(profile: dict[str, Any], selector_blob: str) -> list[str]:
-    family = str(profile.get("family") or "")
-    family_lc = family.lower()
-    reasons: list[str] = []
-    if family_lc and family_lc in selector_blob:
-        reasons.append(f"selector names catalog family `{family}`")
-    for hint in FAMILY_SELECTOR_HINTS.get(family, ()):
-        if hint.lower() in selector_blob:
-            reasons.append(f"selector matches `{hint}`")
-    trigger_surfaces = str(profile.get("trigger_surfaces") or "").lower()
-    for token in re.findall(r"[a-z][a-z0-9_-]{2,}", selector_blob):
-        if token in trigger_surfaces and f"trigger surface mentions `{token}`" not in reasons:
-            reasons.append(f"trigger surface mentions `{token}`")
-    return reasons
-
-
-def _domain_selection_reasons(profile: dict[str, Any], selector_blob: str) -> list[str]:
-    reasons: list[str] = []
-    profile_id = str(profile.get("id") or "")
-    title = str(profile.get("title") or "")
-    if profile_id and profile_id in selector_blob:
-        reasons.append(f"selector names profile `{profile_id}`")
-    if title and title.lower() in selector_blob:
-        reasons.append(f"selector names profile `{title}`")
-    for hint in profile.get("trigger_hints", []):
-        hint_text = str(hint or "").lower()
-        if hint_text and hint_text in selector_blob:
-            reasons.append(f"selector matches `{hint}`")
-    for family in profile.get("catalog_families", []):
-        family_text = str(family or "").lower()
-        if family_text and family_text in selector_blob:
-            reasons.append(f"selector matches family `{family}`")
-    return reasons
-
-
-def _domain_profile_with_checks(
-    profile: dict[str, Any],
-    *,
-    include_deep_checks: bool,
-    max_checks: int,
-) -> dict[str, Any]:
-    checks = [
-        dict(check)
-        for check in profile.get("checks", [])
-        if include_deep_checks or check.get("tier") != "deep"
-    ]
-    copied = dict(profile)
-    copied["checks"] = checks[: max(1, max_checks)]
-    copied["deep_checks_available"] = any(
-        isinstance(check, dict) and check.get("tier") == "deep"
-        for check in profile.get("checks", [])
-    )
-    copied["deep_checks_included"] = bool(include_deep_checks)
-    return copied
-
-
 def flatten_catalog_canary_checks(plan: dict[str, Any]) -> list[dict[str, Any]]:
     """Return selected canary checks in execution order."""
 
@@ -1726,33 +1667,56 @@ def build_catalog_canary_plan(
     packet = build_catalog_canary_profiles(catalog_path)
     changed_files = changed_files or []
     surfaces = surfaces or []
-    requested_families = {_slug(family) for family in (families or []) if family.strip()}
-    requested_profiles = {_slug(profile) for profile in (profiles or []) if profile.strip()}
-    selector_blob = _selector_blob(changed_files, surfaces)
+    selector_text = selector_blob(changed_files, surfaces)
     max_checks = max(1, max_checks_per_family)
     max_profile_checks = max(1, max_checks_per_profile)
-    catalog_profile_ids = {
-        _catalog_profile_id(profile)
-        for profile in packet["profiles"]
-        if isinstance(profile, dict)
-    }
-    requested_catalog_profiles = requested_profiles & catalog_profile_ids
-    requested_domain_profiles = requested_profiles - requested_catalog_profiles
+    selector_resolution = resolve_explicit_selectors(
+        catalog_profiles=[
+            profile for profile in packet["profiles"] if isinstance(profile, dict)
+        ],
+        domain_profiles=[
+            profile
+            for profile in packet["domain_profiles"]
+            if isinstance(profile, dict)
+        ],
+        families=families or [],
+        profiles=profiles or [],
+        surfaces=surfaces,
+    )
+    requested_families = selector_resolution.requested_families
+    requested_catalog_profiles = selector_resolution.requested_catalog_profiles
+    requested_domain_profiles = selector_resolution.requested_domain_profiles
+    selection_errors = list(selector_resolution.errors)
 
     selected_profiles: list[dict[str, Any]] = []
     for profile in packet["profiles"]:
-        profile_id = _catalog_profile_id(profile)
-        if requested_domain_profiles and not requested_catalog_profiles and not requested_families and not selector_blob:
+        profile_id = catalog_profile_id(profile)
+        if (
+            requested_domain_profiles
+            and not requested_catalog_profiles
+            and not requested_families
+            and not selector_text
+        ):
             continue
-        reasons = _selection_reasons(profile, selector_blob)
+        reasons = catalog_selection_reasons(profile, selector_text)
         if requested_catalog_profiles and profile_id not in requested_catalog_profiles:
             continue
-        if requested_families and _slug(str(profile.get("family") or "")) not in requested_families:
+        if (
+            requested_families
+            and slug(str(profile.get("family") or "")) not in requested_families
+        ):
             continue
-        if not requested_catalog_profiles and not requested_families and selector_blob and not reasons:
+        if (
+            not requested_catalog_profiles
+            and not requested_families
+            and selector_text
+            and not reasons
+        ):
             continue
         profile_copy = dict(profile)
-        profile_copy["candidate_checks"] = list(profile_copy.get("candidate_checks", []))[:max_checks]
+        profile_copy["candidate_checks"] = list(
+            profile_copy.get("candidate_checks", [])
+        )[:max_checks]
         if requested_catalog_profiles and profile_id in requested_catalog_profiles:
             profile_copy["selection_reasons"] = reasons or [
                 "selected because this catalog profile was explicitly requested",
@@ -1765,16 +1729,19 @@ def build_catalog_canary_plan(
 
     selected_domain_profiles: list[dict[str, Any]] = []
     for profile in packet["domain_profiles"]:
-        reasons = _domain_selection_reasons(profile, selector_blob)
-        if requested_domain_profiles and _slug(str(profile.get("id") or "")) not in requested_domain_profiles:
+        reasons = domain_selection_reasons(profile, selector_text)
+        if (
+            requested_domain_profiles
+            and slug(str(profile.get("id") or "")) not in requested_domain_profiles
+        ):
             continue
         if requested_catalog_profiles and not requested_domain_profiles:
             continue
-        if not requested_domain_profiles and selector_blob and not reasons:
+        if not requested_domain_profiles and selector_text and not reasons:
             continue
-        if not requested_domain_profiles and not selector_blob:
+        if not requested_domain_profiles and not selector_text:
             continue
-        profile_copy = _domain_profile_with_checks(
+        profile_copy = select_domain_profile_checks(
             profile,
             include_deep_checks=include_deep_checks,
             max_checks=max_profile_checks,
@@ -1785,7 +1752,7 @@ def build_catalog_canary_plan(
         selected_domain_profiles.append(profile_copy)
 
     payload = {
-        "ok": True,
+        "ok": not selection_errors,
         "schema_version": CANARY_PLAN_SCHEMA_VERSION,
         "source": packet["source"],
         "dry_run": True,
@@ -1797,12 +1764,14 @@ def build_catalog_canary_plan(
             "profiles": profiles or [],
             "include_deep_checks": include_deep_checks,
             "max_checks_per_family": max_checks,
-            "max_checks_per_profile": max_profile_checks,
+            "check_soft_target_per_profile": max_profile_checks,
         },
         "profile_count": len(selected_profiles),
         "domain_profile_count": len(selected_domain_profiles),
         "profiles": selected_profiles,
         "domain_profiles": selected_domain_profiles,
+        "selection_error_count": len(selection_errors),
+        "selection_errors": selection_errors,
         "note": (
             "This planner only selects and explains candidate canary checks. "
             "It does not execute smoke tests or create new runtime contracts. "
@@ -1814,7 +1783,9 @@ def build_catalog_canary_plan(
     suggested_checks = flatten_catalog_canary_checks(payload)
     payload["suggested_check_count"] = len(suggested_checks)
     payload["suggested_checks"] = suggested_checks
-    payload["commands"] = [str(check.get("command") or "") for check in suggested_checks]
+    payload["commands"] = [
+        str(check.get("command") or "") for check in suggested_checks
+    ]
     return payload
 
 
@@ -1854,10 +1825,14 @@ def render_catalog_canary_profiles_markdown(payload: dict[str, Any]) -> str:
             if not isinstance(profile, dict):
                 continue
             default_count = sum(
-                1 for check in profile.get("checks", []) if isinstance(check, dict) and check.get("tier") != "deep"
+                1
+                for check in profile.get("checks", [])
+                if isinstance(check, dict) and check.get("tier") != "deep"
             )
             deep_count = sum(
-                1 for check in profile.get("checks", []) if isinstance(check, dict) and check.get("tier") == "deep"
+                1
+                for check in profile.get("checks", [])
+                if isinstance(check, dict) and check.get("tier") == "deep"
             )
             lines.extend(
                 [
@@ -1874,7 +1849,11 @@ def render_catalog_canary_profiles_markdown(payload: dict[str, Any]) -> str:
 
 
 def render_catalog_canary_plan_markdown(payload: dict[str, Any]) -> str:
-    inputs = payload.get("selection_inputs") if isinstance(payload.get("selection_inputs"), dict) else {}
+    inputs = (
+        payload.get("selection_inputs")
+        if isinstance(payload.get("selection_inputs"), dict)
+        else {}
+    )
     lines = [
         "# Catalog Canary Plan",
         "",
@@ -1900,7 +1879,9 @@ def render_catalog_canary_plan_markdown(payload: dict[str, Any]) -> str:
                 f"## {profile.get('family')}",
                 f"- patterns: `{', '.join(profile.get('pattern_ids') or [])}`",
                 "- selected because: "
-                + "; ".join(str(reason) for reason in profile.get("selection_reasons", [])),
+                + "; ".join(
+                    str(reason) for reason in profile.get("selection_reasons", [])
+                ),
                 "- archetypes: "
                 + ", ".join(
                     f"`{item.get('name')}`"
@@ -1925,7 +1906,9 @@ def render_catalog_canary_plan_markdown(payload: dict[str, Any]) -> str:
                 f"- id: `{profile.get('id')}`",
                 f"- catalog families: `{', '.join(profile.get('catalog_families') or [])}`",
                 "- selected because: "
-                + "; ".join(str(reason) for reason in profile.get("selection_reasons", [])),
+                + "; ".join(
+                    str(reason) for reason in profile.get("selection_reasons", [])
+                ),
                 f"- purpose: {profile.get('purpose')}",
                 f"- deep checks available: `{str(profile.get('deep_checks_available')).lower()}`",
                 f"- deep checks included: `{str(profile.get('deep_checks_included')).lower()}`",

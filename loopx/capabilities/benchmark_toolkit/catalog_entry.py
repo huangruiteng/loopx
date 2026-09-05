@@ -242,6 +242,30 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
         },
         {
             "command": (
+                "loopx benchmark integrity-qualification "
+                "--trajectory-json <private-trajectory.json> "
+                "--runtime-attestation-json <bound-attestation.json> "
+                "--launch-admission-json <launch-admission.json> "
+                "--route-receipt-json <route-receipt.json> "
+                "--external-agent-result-json <external-agent-result.json> "
+                "--trajectory-lineage-receipt-json <trajectory-lineage.json> "
+                "--require-qualified --format json"
+            ),
+            "purpose": (
+                "Fail closed unless launch admission, the terminal agent result, "
+                "runtime and route evidence, and private trajectory lineage all "
+                "bind to the same run and arm."
+            ),
+            "write_boundary": (
+                "read-only local inputs; emits the public-safe trajectory SHA-256, "
+                "per-evidence content SHA-256 hashes, compact counts, classifications, "
+                "blocker reason codes, and lineage-binding booleans, but no "
+                "launch-binding, instruction, containment, credential, or "
+                "runtime-identity digests, raw input content, or input paths"
+            ),
+        },
+        {
+            "command": (
                 "loopx benchmark traex-evidence "
                 "--source-jsonl <private-stdout.jsonl> "
                 "--route-source-jsonl <private-session.jsonl> "
@@ -685,9 +709,7 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
                 "do not establish persistence."
             ),
             "observation_template": {
-                "schema_version": (
-                    "benchmark_treatment_continuation_observation_v0"
-                ),
+                "schema_version": ("benchmark_treatment_continuation_observation_v0"),
                 "treatment_applicable": "<true-or-false>",
                 "startup_state": (
                     "<qualified-not_qualified-unknown-or-not_applicable>"
@@ -916,6 +938,41 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
             "doc": "loopx/capabilities/benchmark_toolkit/README.md",
         },
         {
+            "schema_version": "benchmark_integrity_qualification_v1",
+            "module": "loopx.capabilities.benchmark_toolkit.integrity",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_launch_admission_receipt_v0",
+            "module": "loopx.capabilities.benchmark_toolkit.launch_admission",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "external_agent_request_v2",
+            "module": "loopx.capabilities.benchmark_toolkit.external_agent",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "external_agent_result_v2",
+            "module": "loopx.capabilities.benchmark_toolkit.external_agent",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_model_route_receipt_v1",
+            "module": "loopx.capabilities.benchmark_toolkit.route_receipt",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_runtime_integrity_attestation_v1",
+            "module": "loopx.capabilities.benchmark_toolkit.integrity",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_trajectory_lineage_receipt_v0",
+            "module": "loopx.capabilities.benchmark_toolkit.integrity",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
             "schema_version": "benchmark_restricted_access_adjudication_v0",
             "module": "loopx.capabilities.benchmark_toolkit.integrity",
             "doc": "loopx/capabilities/benchmark_toolkit/README.md",
@@ -947,12 +1004,13 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
         },
     ],
     "smokes": [
+        "python3 examples/benchmark-integrity-launch-lineage-smoke.py",
         (
             "python -m pytest tests/capabilities/test_benchmark_toolkit.py "
             "tests/capabilities/test_benchmark_concurrency_envelope.py "
             "tests/capabilities/test_benchmark_experiment_board.py "
             "tests/capabilities/test_benchmark_source_revision_fence.py -q"
-        )
+        ),
     ],
     "docs": ["loopx/capabilities/benchmark_toolkit/README.md"],
     "boundaries": [

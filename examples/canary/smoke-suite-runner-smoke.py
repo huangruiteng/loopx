@@ -29,8 +29,15 @@ def assert_default_public_preview_excludes_grouped_smokes() -> None:
     assert payload["dry_run"] is True, payload
     commands = [check["command"] for check in payload["selected_checks"]]
     assert commands, payload
-    assert all("canary-promotion-readiness-smoke.py" not in item for item in commands), payload
-    assert all("dashboard-demo-readiness-smoke.py" not in item for item in commands), payload
+    assert all(
+        "benchmark-integrity-deep-pytest-gate.py" not in item for item in commands
+    ), payload
+    assert all(
+        "canary-promotion-readiness-smoke.py" not in item for item in commands
+    ), payload
+    assert all("dashboard-demo-readiness-smoke.py" not in item for item in commands), (
+        payload
+    )
 
 
 def assert_full_public_preview_injects_safe_group_args() -> None:
@@ -47,9 +54,18 @@ def assert_full_public_preview_injects_safe_group_args() -> None:
         check["normalized"]["script"]: check["normalized"]
         for check in payload["selected_checks"]
     }
-    assert "--no-write-evidence" in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"], payload
-    assert "--dashboard-mode=skip" in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"], payload
-    assert "--skip-browser" in by_script["examples/dashboard-demo-readiness-smoke.py"]["argv"], payload
+    assert (
+        "--no-write-evidence"
+        in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"]
+    ), payload
+    assert (
+        "--dashboard-mode=skip"
+        in by_script["examples/canary/canary-promotion-readiness-smoke.py"]["argv"]
+    ), payload
+    assert (
+        "--skip-browser"
+        in by_script["examples/dashboard-demo-readiness-smoke.py"]["argv"]
+    ), payload
 
 
 def assert_module_preview_selects_matching_scripts() -> None:
@@ -90,7 +106,11 @@ def assert_module_preview_supports_exclusions() -> None:
 
 def assert_subdirectory_smoke_selection_is_supported() -> None:
     script = "examples/canary/smoke-suite-subdir-discovery-smoke.py"
-    for selector in [script, "canary/smoke-suite-subdir-discovery-smoke.py", Path(script).name]:
+    for selector in [
+        script,
+        "canary/smoke-suite-subdir-discovery-smoke.py",
+        Path(script).name,
+    ]:
         payload = build_canary_smoke_suite_run(
             suite="default-public",
             scripts=[selector],
@@ -125,7 +145,9 @@ def assert_legacy_root_script_selector_matches_moved_smokes() -> None:
         assert payload["ok"] is True, payload
         assert payload["warning_count"] == 0, payload
         assert payload["selected_check_count"] == 1, payload
-        assert payload["selected_checks"][0]["normalized"]["script"] == expected_script, payload
+        assert (
+            payload["selected_checks"][0]["normalized"]["script"] == expected_script
+        ), payload
 
 
 def assert_catalog_profile_preview_is_supported() -> None:
@@ -136,7 +158,10 @@ def assert_catalog_profile_preview_is_supported() -> None:
     )
     assert payload["ok"] is True, payload
     assert payload["selected_check_count"] == 1, payload
-    assert payload["selected_checks"][0]["command"] == "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py", payload
+    assert (
+        payload["selected_checks"][0]["command"]
+        == "python3 examples/control_plane/control-plane-maintainability-ratchet-smoke.py"
+    ), payload
     assert payload["catalog_plan"]["planned_check_count"] == 1, payload
 
 
@@ -150,14 +175,20 @@ def assert_named_smoke_profile_expands_to_suite_selection() -> None:
     assert payload["suite"] == "full-public", payload
     assert payload["catalog_plan"] is None, payload
     assert payload["selection_inputs"]["profiles"] == ["core-control-plane"], payload
-    assert payload["selection_inputs"]["smoke_profiles"] == ["core-control-plane"], payload
+    assert payload["selection_inputs"]["smoke_profiles"] == ["core-control-plane"], (
+        payload
+    )
     assert payload["selection_inputs"]["catalog_profiles"] == [], payload
     assert "quota" in payload["selection_inputs"]["modules"], payload
     assert "benchmark" in payload["selection_inputs"]["exclude_modules"], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
     assert scripts, payload
-    assert any(script.startswith("examples/control_plane/") for script in scripts), payload
-    assert "examples/control_plane/bounded-context-namespace-smoke.py" in scripts, payload
+    assert any(script.startswith("examples/control_plane/") for script in scripts), (
+        payload
+    )
+    assert "examples/control_plane/bounded-context-namespace-smoke.py" in scripts, (
+        payload
+    )
     assert all("benchmark" not in script for script in scripts), payload
     assert all("skillsbench" not in script for script in scripts), payload
 
@@ -179,7 +210,9 @@ def assert_smoke_profile_offset_windows_selection() -> None:
     assert first_window["ok"] is True, first_window
     assert second_window["ok"] is True, second_window
     assert first_window["matched_check_count"] >= 10, first_window
-    assert second_window["matched_check_count"] == first_window["matched_check_count"], second_window
+    assert (
+        second_window["matched_check_count"] == first_window["matched_check_count"]
+    ), second_window
     assert first_window["offset"] == 0, first_window
     assert second_window["offset"] == 5, second_window
     assert first_window["limit"] == 5, first_window
@@ -227,10 +260,15 @@ def assert_public_smoke_watch_profile_covers_health_surfaces() -> None:
     )
     assert payload["ok"] is True, payload
     assert payload["suite"] == "full-public", payload
-    assert payload["selection_inputs"]["smoke_profiles"] == ["public-smoke-watch"], payload
+    assert payload["selection_inputs"]["smoke_profiles"] == ["public-smoke-watch"], (
+        payload
+    )
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
     assert "examples/canary/smoke-suite-runner-smoke.py" in scripts, payload
-    assert "examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in scripts, payload
+    assert (
+        "examples/control_plane/control-plane-maintainability-ratchet-smoke.py"
+        in scripts
+    ), payload
     assert "examples/issue-fix-workflow-e2e-smoke.py" in scripts, payload
     assert any("monitor" in script for script in scripts), payload
     assert all("skillsbench" not in script for script in scripts), payload
@@ -245,12 +283,18 @@ def assert_named_smoke_profile_can_mix_with_catalog_profile() -> None:
     )
     assert payload["ok"] is True, payload
     assert payload["selection_inputs"]["smoke_profiles"] == ["canary-runner"], payload
-    assert payload["selection_inputs"]["catalog_profiles"] == ["repo-architecture-budget"], payload
+    assert payload["selection_inputs"]["catalog_profiles"] == [
+        "repo-architecture-budget"
+    ], payload
     assert payload["catalog_plan"]["planned_check_count"] == 1, payload
     commands = [check["command"] for check in payload["selected_checks"]]
     assert any("examples/canary/" in command for command in commands), payload
     assert all("canary-promotion" not in command for command in commands), payload
-    assert any("examples/control_plane/control-plane-maintainability-ratchet-smoke.py" in command for command in commands), payload
+    assert any(
+        "examples/control_plane/control-plane-maintainability-ratchet-smoke.py"
+        in command
+        for command in commands
+    ), payload
 
 
 def assert_cli_json_preview_works() -> None:
@@ -372,7 +416,9 @@ def assert_run_smokes_profile_preview_matches_runner_selection() -> None:
     payload = json.loads(completed.stdout)
     assert payload["ok"] is True, payload
     assert payload["offset"] == 1, payload
-    assert payload["selection_inputs"]["smoke_profiles"] == ["core-control-plane"], payload
+    assert payload["selection_inputs"]["smoke_profiles"] == ["core-control-plane"], (
+        payload
+    )
     assert "status" in payload["selection_inputs"]["exclude_modules"], payload
     scripts = [check["normalized"]["script"] for check in payload["selected_checks"]]
     assert scripts, payload
@@ -409,7 +455,10 @@ def assert_execution_reports_progress_indices() -> None:
     check = payload["selected_checks"][0]
     assert check["check_index"] == 1, payload
     assert check["check_count"] == 1, payload
-    assert [event["event"] for event in events] == ["check_started", "check_finished"], events
+    assert [event["event"] for event in events] == [
+        "check_started",
+        "check_finished",
+    ], events
     assert events[0]["check_index"] == 1, events
     assert events[0]["check_count"] == 1, events
     assert events[1]["status"] == "passed", events
@@ -445,7 +494,9 @@ def assert_parallel_jobs_execute_and_preserve_report_order() -> None:
     assert payload["parallel_jobs"] == 4, payload
     assert payload["effective_parallel_jobs"] == 2, payload
     assert payload["executed_check_count"] == 2, payload
-    assert [check["check_index"] for check in payload["selected_checks"]] == [1, 2], payload
+    assert [check["check_index"] for check in payload["selected_checks"]] == [1, 2], (
+        payload
+    )
     assert [event["event"] for event in events].count("check_started") == 2, events
     assert [event["event"] for event in events].count("check_finished") == 2, events
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
@@ -478,7 +529,9 @@ def assert_parallel_jobs_keep_marked_smokes_serial() -> None:
         check_index: int | None = None,
         check_count: int | None = None,
     ) -> dict[str, object]:
-        normalized = canary_runner.normalize_canary_command(str(check.get("command") or ""))
+        normalized = canary_runner.normalize_canary_command(
+            str(check.get("command") or "")
+        )
         observed.append((str(normalized.get("script") or ""), check_index))
         return _fake_passed_check(
             check,
@@ -516,7 +569,9 @@ def assert_parallel_jobs_keep_marked_smokes_serial() -> None:
         if check.get("serial_execution_required")
     )
     assert serial_check["serial_execution_required"] is True, payload
-    assert "temporary git repository" in serial_check["serial_execution_reason"], payload
+    assert "temporary git repository" in serial_check["serial_execution_reason"], (
+        payload
+    )
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
     assert "- serial_check_count: `1`" in rendered, rendered
     assert "serial_execution_reason" in rendered, rendered
@@ -628,10 +683,14 @@ def assert_readonly_run_rejects_and_restores_tracked_side_effects() -> None:
     assert restored == [["examples/generated-tracked-side-effect.txt"]], payload
     check = payload["selected_checks"][0]
     assert check["status"] == "failed_tracked_side_effect", payload
-    assert check["tracked_side_effects"] == ["examples/generated-tracked-side-effect.txt"], payload
+    assert check["tracked_side_effects"] == [
+        "examples/generated-tracked-side-effect.txt"
+    ], payload
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
     assert "- tracked_side_effect_failures: `1`" in rendered, rendered
-    assert "- read_only_guard_reason: `tracked_side_effect_guard_active`" in rendered, rendered
+    assert "- read_only_guard_reason: `tracked_side_effect_guard_active`" in rendered, (
+        rendered
+    )
     assert "- tracked_side_effect_restore_ok: `true`" in rendered, rendered
 
 
@@ -660,7 +719,9 @@ def assert_unavailable_git_worktree_is_reported_explicitly() -> None:
     assert payload["tracked_side_effect_failure_count"] == 0, payload
     assert payload["side_effect_guard"]["git_status_ok"] is False, payload
     assert payload["side_effect_guard"]["enforced"] is False, payload
-    assert payload["side_effect_guard"]["enforcement_reason"] == "git_worktree_unavailable", payload
+    assert (
+        payload["side_effect_guard"]["enforcement_reason"] == "git_worktree_unavailable"
+    ), payload
     assert (
         payload["side_effect_guard"]["git_status_unavailable_reason"]
         == "not_a_git_worktree: fixture"
@@ -679,7 +740,9 @@ def assert_tracked_side_effects_require_explicit_allow() -> None:
         return True, [], ""
 
     def fail_restore_tracked_paths(paths: list[str]) -> dict[str, object]:
-        raise AssertionError(f"restore should not run when side effects are allowed: {paths}")
+        raise AssertionError(
+            f"restore should not run when side effects are allowed: {paths}"
+        )
 
     try:
         canary_runner._run_check = _fake_passed_check
@@ -709,7 +772,10 @@ def assert_tracked_side_effects_require_explicit_allow() -> None:
     rendered = canary_runner.render_canary_smoke_suite_run_markdown(payload)
     assert "- writes_evidence: `true`" in rendered, rendered
     assert "- read_only_guard_enforced: `false`" in rendered, rendered
-    assert "- read_only_guard_reason: `tracked_side_effects_explicitly_allowed`" in rendered, rendered
+    assert (
+        "- read_only_guard_reason: `tracked_side_effects_explicitly_allowed`"
+        in rendered
+    ), rendered
 
 
 def main() -> int:

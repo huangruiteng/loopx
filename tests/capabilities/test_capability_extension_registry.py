@@ -15,6 +15,10 @@ from loopx.capabilities.context_providers import (
     OpenVikingContextProvider,
     build_context_provider,
 )
+from loopx.canary.qualification_profiles import (
+    BENCHMARK_TOOLKIT_DEEP_TEST_COMMAND,
+    BENCHMARK_TOOLKIT_DEEP_TEST_PATHS,
+)
 from loopx.cli import main
 from loopx.extensions.runtime import (
     default_extension_state_file,
@@ -66,6 +70,55 @@ def test_benchmark_toolkit_catalog_exposes_integrity_boundary() -> None:
         "continuation-decision" in command["command"]
         for command in capability["commands"]
     )
+    strict_entries = [
+        command
+        for command in capability["commands"]
+        if "integrity-qualification" in command["command"]
+        and "--launch-admission-json" in command["command"]
+    ]
+    assert len(strict_entries) == 1
+    strict_command = strict_entries[0]["command"]
+    strict_lineage_options = {
+        option for option in strict_command.split() if option.endswith("-json")
+    } - {"--trajectory-json", "--runtime-attestation-json"}
+    assert strict_lineage_options == {
+        "--launch-admission-json",
+        "--route-receipt-json",
+        "--external-agent-result-json",
+        "--trajectory-lineage-receipt-json",
+    }
+    assert "--require-qualified" in strict_command
+    assert strict_entries[0]["write_boundary"] == (
+        "read-only local inputs; emits the public-safe trajectory SHA-256, "
+        "per-evidence content SHA-256 hashes, compact counts, classifications, "
+        "blocker reason codes, and lineage-binding booleans, but no "
+        "launch-binding, instruction, containment, credential, or "
+        "runtime-identity digests, raw input content, or input paths"
+    )
+    assert capability["smokes"][0] == (
+        "python3 examples/benchmark-integrity-launch-lineage-smoke.py"
+    )
+    assert BENCHMARK_TOOLKIT_DEEP_TEST_COMMAND not in capability["smokes"]
+    assert BENCHMARK_TOOLKIT_DEEP_TEST_PATHS == (
+        "tests/capabilities/test_benchmark_launch_admission.py",
+        "tests/capabilities/test_benchmark_route_receipt.py",
+        "tests/capabilities/test_benchmark_external_agent.py",
+        "tests/capabilities/test_traex_benchmark_evidence.py",
+        "tests/capabilities/test_benchmark_strict_integrity.py",
+        "tests/capabilities/test_benchmark_toolkit.py",
+    )
+    protocol_ids = {
+        protocol["schema_version"] for protocol in capability["implemented_protocols"]
+    }
+    assert protocol_ids >= {
+        "benchmark_integrity_qualification_v1",
+        "benchmark_launch_admission_receipt_v0",
+        "external_agent_request_v2",
+        "external_agent_result_v2",
+        "benchmark_model_route_receipt_v1",
+        "benchmark_runtime_integrity_attestation_v1",
+        "benchmark_trajectory_lineage_receipt_v0",
+    }
     assert any(
         protocol["schema_version"] == "benchmark_public_progress_v0"
         for protocol in capability["implemented_protocols"]
@@ -251,20 +304,15 @@ def test_issue_fix_catalog_is_default_off() -> None:
 
 
 def test_project_skill_delivery_catalog_is_host_neutral() -> None:
-    capability = build_capability_detail_packet("project-skill-delivery")[
-        "capability"
-    ]
+    capability = build_capability_detail_packet("project-skill-delivery")["capability"]
 
     assert capability["status"] == "active-preview"
     assert capability["entry_command"].startswith("loopx project-skill status")
-    command_text = "\n".join(
-        str(item["command"]) for item in capability["commands"]
-    )
+    command_text = "\n".join(str(item["command"]) for item in capability["commands"])
     assert "project-skill install" in command_text
     assert "project-skill uninstall" in command_text
     assert {
-        protocol["schema_version"]
-        for protocol in capability["implemented_protocols"]
+        protocol["schema_version"] for protocol in capability["implemented_protocols"]
     } == {
         "loopx_project_skill_status_v0",
         "loopx_managed_project_skill_v0",

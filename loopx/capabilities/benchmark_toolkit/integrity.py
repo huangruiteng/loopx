@@ -14,16 +14,36 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .environment_access import _heredoc_delimiters, credential_probe_present
+from .external_agent import (
+    EXTERNAL_AGENT_CONTAINMENT_TERMINATION_POSTCONDITION,
+    normalize_external_agent_result_v2,
+)
+from .launch_admission import normalize_benchmark_launch_admission_receipt
+from .route_receipt import (
+    BENCHMARK_MODEL_ROUTE_RECEIPT_V1_SCHEMA_VERSION,
+    normalize_benchmark_model_route_receipt_v1,
+    normalize_sensitive_values,
+    route_identity_matches,
+)
 
 BENCHMARK_INTEGRITY_POLICY_SCHEMA_VERSION = "benchmark_integrity_policy_v0"
 BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_SCHEMA_VERSION = (
     "benchmark_runtime_integrity_attestation_v0"
 )
+BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION = (
+    "benchmark_runtime_integrity_attestation_v1"
+)
 BENCHMARK_INTEGRITY_QUALIFICATION_SCHEMA_VERSION = (
     "benchmark_integrity_qualification_v0"
 )
+BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION = (
+    "benchmark_integrity_qualification_v1"
+)
 BENCHMARK_RESTRICTED_ACCESS_ADJUDICATION_SCHEMA_VERSION = (
     "benchmark_restricted_access_adjudication_v0"
+)
+BENCHMARK_TRAJECTORY_LINEAGE_RECEIPT_SCHEMA_VERSION = (
+    "benchmark_trajectory_lineage_receipt_v0"
 )
 
 INTEGRITY_EVIDENCE_CATEGORIES = (
@@ -118,8 +138,11 @@ _PATH_LIKE_LABEL_PATTERN = re.compile(
     r"(?i)^(?:[~/\\]|[a-z]:[\\/])|(?:^|[\\/])\.\.(?:[\\/]|$)|[\\/]"
 )
 _NAMESPACED_PUBLIC_IDENTIFIER_PATTERN = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}/[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$"
+    r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,79}/"
+    r"[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,119}$"
 )
+_PUBLIC_COMPACT_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$")
+_SUPPORTED_ATIF_SCHEMA_PATTERN = re.compile(r"^ATIF-v1\.[0-9]+$")
 _NETWORK_COMMAND_PATTERN = re.compile(r"(?is)\b(?:curl|wget)\b|\bgit\s+clone\b")
 _HTTP_URL_PATTERN = re.compile(r"(?is)https?://[^\s\"'<>]+")
 _GIT_CLONE_COMMAND_PATTERN = re.compile(r"(?is)\bgit\s+clone\b")
@@ -137,6 +160,256 @@ _NON_ACCESS_CONTROL_TOOLS = frozenset({"update_plan"})
 _PUBLIC_EVIDENCE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _REQUIRED_ADJUDICATION_REVIEW_SURFACES = frozenset(
     {"solver_trajectory", "tool_results", "final_workspace"}
+)
+_INTEGRITY_QUALIFICATION_V1_FIELDS = frozenset(
+    {
+        "ok",
+        "schema_version",
+        "benchmark_id",
+        "case_id",
+        "policy_id",
+        "classification",
+        "integrity_qualified",
+        "integrity_countable",
+        "score_claim_eligible",
+        "score_claim_countable",
+        "matched_pair_countable",
+        "benchmark_cheating_detected",
+        "restricted_access_review",
+        "blockers",
+        "evidence_counts",
+        "evidence",
+        "network_access",
+        "runtime_attestation_checks",
+        "audit_coverage",
+        "public_boundary",
+        "claim_boundary",
+        "launch_lineage",
+    }
+)
+_INTEGRITY_QUALIFICATION_CLASSIFICATIONS = frozenset(
+    {
+        "integrity_qualified",
+        "integrity_qualified_with_suspicion",
+        "integrity_qualified_with_audit_warning",
+        "restricted_evaluation_use_confirmed",
+        "credential_exposure_detected",
+        "runtime_isolation_not_attested",
+        "trajectory_audit_incomplete",
+        "integrity_policy_violation",
+        "launch_lineage_not_qualified",
+        "input_invalid",
+    }
+)
+_QUALIFIED_INTEGRITY_CLASSIFICATIONS = frozenset(
+    {
+        "integrity_qualified",
+        "integrity_qualified_with_suspicion",
+        "integrity_qualified_with_audit_warning",
+    }
+)
+_RESTRICTED_ACCESS_REVIEW_BASE_FIELDS = frozenset(
+    {
+        "schema_version",
+        "state",
+        "review_required",
+        "decision",
+        "suspected_categories",
+        "suspicion_count",
+    }
+)
+_RESTRICTED_ACCESS_REVIEW_ADJUDICATION_FIELDS = frozenset(
+    {
+        "reviewer_role",
+        "reviewed_surfaces",
+        "restricted_material_disclosed",
+        "causal_use_observed",
+        "evidence_id",
+    }
+)
+_AUDIT_COVERAGE_FIELDS = frozenset(
+    {
+        "trajectory_schema_version",
+        "step_count",
+        "tool_call_count",
+        "observation_count",
+        "invalid_step_count",
+        "invalid_tool_calls_field_count",
+        "invalid_tool_call_count",
+        "trajectory_sha256",
+    }
+)
+_PUBLIC_BOUNDARY_V1 = {
+    "private_trajectory_read": True,
+    "raw_content_recorded": False,
+    "raw_arguments_recorded": False,
+    "raw_observations_recorded": False,
+    "sensitive_values_recorded": False,
+    "input_paths_recorded": False,
+    "launch_binding_digest_recorded": False,
+}
+_CLAIM_BOUNDARY = {
+    "integrity_qualification_only": True,
+    "official_score_still_required": True,
+    "matched_pair_check_still_required": True,
+    "runner_attestation_required": True,
+    "absence_of_detected_calls_alone_is_not_proof": True,
+    "suspicion_alone_does_not_disqualify": True,
+    "confirmed_cheating_requires_disclosure_and_causal_use": True,
+}
+_LAUNCH_LINEAGE_FIELDS = frozenset(
+    {
+        "qualified",
+        "launch_binding_digest_recorded",
+        "runtime_attestation_bound",
+        "route_receipt_bound",
+        "external_agent_result_bound",
+        "containment_absence_bound",
+        "trajectory_evidence_bound",
+        "mechanism_evidence_bound",
+    }
+)
+_STRUCTURAL_INTEGRITY_BLOCKERS = frozenset(
+    {
+        "integrity_policy_id_path_like",
+        "integrity_policy_id_invalid",
+        "runtime_attestation_benchmark_id_path_like",
+        "runtime_attestation_case_id_path_like",
+        "runtime_attestation_benchmark_id_invalid",
+        "runtime_attestation_case_id_invalid",
+        "trajectory_schema_not_supported",
+        "trajectory_steps_missing",
+        "trajectory_step_invalid",
+        "trajectory_tool_calls_invalid",
+        "trajectory_tool_call_invalid",
+    }
+)
+_STRICT_STRUCTURAL_INTEGRITY_BLOCKERS = frozenset(
+    {
+        "trajectory_schema_not_supported",
+        "trajectory_steps_missing",
+        "trajectory_step_invalid",
+        "trajectory_tool_calls_invalid",
+        "trajectory_tool_call_invalid",
+    }
+)
+_RUNTIME_ATTESTATION_CHECK_NAMES = frozenset(
+    {
+        *_COMMON_RUNTIME_ATTESTATIONS,
+        "shell_network_denied",
+        LOOPBACK_ONLY_ATTESTATION,
+        NETWORK_PERMITTED_SOLVING_ATTESTATION,
+    }
+)
+_RUNTIME_ATTESTATION_CHECK_BLOCKERS = {
+    field: f"runtime_attestation_{field}_missing"
+    for field in _RUNTIME_ATTESTATION_CHECK_NAMES
+}
+_RUNTIME_ATTESTATION_BLOCKERS = frozenset(_RUNTIME_ATTESTATION_CHECK_BLOCKERS.values())
+_POLICY_EVIDENCE_BLOCKERS = frozenset(
+    {
+        "credential_probe",
+        "credential_value_observed",
+        "loopback_network_request",
+        "external_network_request",
+    }
+)
+_CONFIRMED_CHEATING_MARKER = "restricted_access_confirmed_cheating"
+_CONFIRMED_CHEATING_BLOCKERS = frozenset(
+    {_CONFIRMED_CHEATING_MARKER, *_RESTRICTED_ACCESS_REVIEW_CATEGORIES}
+)
+_LINEAGE_BLOCKERS_BY_CHECK = {
+    "runtime_attestation_bound": frozenset(
+        {
+            f"runtime_attestation_{field}_mismatch"
+            for field in (
+                "benchmark_id",
+                "case_id",
+                "run_id",
+                "arm_id",
+                "launch_binding_digest",
+                "integrity_policy_sha256",
+                "containment_binding_sha256",
+                "runtime_binding_sha256",
+            )
+        }
+    ),
+    "route_receipt_bound": frozenset(
+        {
+            f"route_receipt_{field}_mismatch"
+            for field in (
+                "schema_version",
+                "run_id",
+                "arm_id",
+                "launch_binding_digest",
+                "requested_route",
+                "runtime_verified",
+            )
+        }
+    ),
+    "external_agent_result_bound": frozenset(
+        {
+            f"external_agent_result_{field}_mismatch"
+            for field in (
+                "solver_completed",
+                "launch_binding_digest",
+                "instruction_sha256",
+            )
+        }
+    ),
+    "containment_absence_bound": frozenset(
+        {
+            "containment_absence_authority_mismatch",
+            "containment_absence_binding_sha256_mismatch",
+            "containment_absence_postcondition_mismatch",
+            "containment_absence_not_verified",
+        }
+    ),
+    "trajectory_evidence_bound": frozenset(
+        {
+            f"trajectory_lineage_{field}_mismatch"
+            for field in (
+                "authority",
+                "run_id",
+                "arm_id",
+                "launch_binding_digest",
+                "external_agent_result_sha256",
+                "trajectory_sha256",
+            )
+        }
+    ),
+    "mechanism_evidence_bound": frozenset(
+        {
+            "integrity_policy_binding_mismatch",
+            *(
+                f"launch_{field}_mismatch"
+                for field in (
+                    "runner_authority",
+                    "provider_authority",
+                    "credential_isolation",
+                    "controller_isolation",
+                )
+            ),
+        }
+    ),
+}
+_LINEAGE_INTEGRITY_BLOCKERS = frozenset(
+    {
+        *(
+            blocker
+            for blockers in _LINEAGE_BLOCKERS_BY_CHECK.values()
+            for blocker in blockers
+        ),
+    }
+)
+_INTEGRITY_QUALIFICATION_V1_BLOCKERS = frozenset(
+    {
+        *_STRICT_STRUCTURAL_INTEGRITY_BLOCKERS,
+        *_RUNTIME_ATTESTATION_BLOCKERS,
+        *_POLICY_EVIDENCE_BLOCKERS,
+        *_CONFIRMED_CHEATING_BLOCKERS,
+        *_LINEAGE_INTEGRITY_BLOCKERS,
+    }
 )
 
 
@@ -168,6 +441,27 @@ def _canonical_text(value: object) -> str:
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _public_compact_label(
+    value: object, *, field: str, fallback: str = "unknown"
+) -> str:
+    """Return a stable public label without retaining an input path or prose."""
+
+    if value is None or value == "":
+        return fallback
+    text = str(value).strip()
+    if _PUBLIC_COMPACT_LABEL_PATTERN.fullmatch(
+        text
+    ) is not None and not _path_like_label(text):
+        return text
+    return f"{field}-{_sha256_text(_canonical_text(value))[:16]}"
+
+
+def benchmark_integrity_policy_sha256(policy: Mapping[str, Any] | None) -> str:
+    """Hash the canonical effective policy used by launch lineage."""
+
+    return _sha256_text(_canonical_text(normalize_benchmark_integrity_policy(policy)))
 
 
 def _path_like_label(value: object) -> bool:
@@ -275,6 +569,176 @@ def _validated_policy(
         if normalized:
             markers[category] = (*markers.get(category, ()), *normalized)
     return policy_id, policy_id_path_like, markers, raw_network_access
+
+
+def normalize_benchmark_integrity_policy(
+    policy: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Expose the validated effective policy as a stable digest preimage."""
+
+    if policy is not None and set(policy) - {
+        "schema_version",
+        "policy_id",
+        "network_access",
+        "denied_argument_markers",
+    }:
+        raise ValueError("benchmark_integrity_policy_fields_invalid")
+    policy_id, path_like, markers, network_access = _validated_policy(policy)
+    if path_like:
+        raise ValueError("benchmark_integrity_policy_id_path_like")
+    if _PUBLIC_COMPACT_LABEL_PATTERN.fullmatch(policy_id) is None:
+        raise ValueError("benchmark_integrity_policy_id_invalid")
+    return {
+        "schema_version": BENCHMARK_INTEGRITY_POLICY_SCHEMA_VERSION,
+        "policy_id": policy_id,
+        "network_access": network_access,
+        "denied_argument_markers": {
+            category: sorted(set(values))
+            for category, values in sorted(markers.items())
+        },
+    }
+
+
+def _normalize_bound_runtime_attestation(
+    value: Mapping[str, Any], *, network_access: str
+) -> dict[str, Any]:
+    lineage_fields = {
+        "schema_version",
+        "authority",
+        "benchmark_id",
+        "case_id",
+        "run_id",
+        "arm_id",
+        "launch_binding_digest",
+        "integrity_policy_sha256",
+        "containment_binding_sha256",
+        "runtime_binding_sha256",
+        "credential_isolation",
+        "controller_isolation",
+    }
+    required_attestations = set(required_runtime_attestations(network_access))
+    if (
+        not isinstance(value, Mapping)
+        or set(value) != lineage_fields | required_attestations
+    ):
+        raise ValueError("benchmark_runtime_integrity_attestation_v1_fields_invalid")
+    if (
+        value.get("schema_version")
+        != BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_V1_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "benchmark_runtime_integrity_attestation_v1_schema_unsupported"
+        )
+    if any(not isinstance(value.get(field), bool) for field in required_attestations):
+        raise TypeError("benchmark_runtime_integrity_attestation_v1_claim_invalid")
+    return dict(value)
+
+
+def normalize_benchmark_trajectory_lineage_receipt(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate runner-owned ATIF lineage and post-exit absence evidence."""
+
+    fields = {
+        "schema_version",
+        "authority",
+        "run_id",
+        "arm_id",
+        "launch_binding_digest",
+        "external_agent_result_sha256",
+        "trajectory_sha256",
+        "containment_binding_sha256",
+        "containment_termination_postcondition",
+        "containment_absence_verified",
+        "containment_absence_evidence_sha256",
+        "raw_content_recorded",
+        "input_path_recorded",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ValueError("benchmark_trajectory_lineage_receipt_fields_invalid")
+    if (
+        value.get("schema_version")
+        != BENCHMARK_TRAJECTORY_LINEAGE_RECEIPT_SCHEMA_VERSION
+    ):
+        raise ValueError("benchmark_trajectory_lineage_receipt_schema_unsupported")
+    if (
+        value.get("raw_content_recorded") is not False
+        or value.get("input_path_recorded") is not False
+    ):
+        raise ValueError("benchmark_trajectory_lineage_public_boundary_invalid")
+    normalized = dict(value)
+    for field in ("authority", "run_id", "arm_id"):
+        raw_text = value.get(field)
+        if not isinstance(raw_text, str):
+            raise TypeError(f"benchmark_trajectory_lineage_{field}_invalid")
+        text = raw_text.strip()
+        if not text or _path_like_label(text) or _safe_label(text, limit=128) != text:
+            raise ValueError(f"benchmark_trajectory_lineage_{field}_invalid")
+        normalized[field] = text
+    for field in (
+        "launch_binding_digest",
+        "external_agent_result_sha256",
+        "trajectory_sha256",
+        "containment_binding_sha256",
+        "containment_absence_evidence_sha256",
+    ):
+        raw_digest = value.get(field)
+        if not isinstance(raw_digest, str):
+            raise TypeError(f"benchmark_trajectory_lineage_{field}_invalid")
+        digest = raw_digest.strip()
+        if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(f"benchmark_trajectory_lineage_{field}_invalid")
+        normalized[field] = digest
+    postcondition = value.get("containment_termination_postcondition")
+    if not isinstance(postcondition, str):
+        raise TypeError(
+            "benchmark_trajectory_lineage_containment_termination_postcondition_invalid"
+        )
+    normalized["containment_termination_postcondition"] = postcondition.strip()
+    if not isinstance(value.get("containment_absence_verified"), bool):
+        raise TypeError(
+            "benchmark_trajectory_lineage_containment_absence_verified_invalid"
+        )
+    return normalized
+
+
+def build_benchmark_trajectory_lineage_receipt(
+    *,
+    authority: str,
+    run_id: str,
+    arm_id: str,
+    launch_binding_digest: str,
+    external_agent_result: Mapping[str, Any],
+    trajectory: Mapping[str, Any],
+    containment_binding_sha256: str,
+    containment_termination_postcondition: str,
+    containment_absence_verified: bool,
+    containment_absence_evidence_sha256: str,
+) -> dict[str, Any]:
+    """Bind terminal evidence after the runner has inspected containment absence."""
+
+    result = normalize_external_agent_result_v2(external_agent_result)
+    return normalize_benchmark_trajectory_lineage_receipt(
+        {
+            "schema_version": BENCHMARK_TRAJECTORY_LINEAGE_RECEIPT_SCHEMA_VERSION,
+            "authority": authority,
+            "run_id": run_id,
+            "arm_id": arm_id,
+            "launch_binding_digest": launch_binding_digest,
+            "external_agent_result_sha256": _sha256_text(_canonical_text(result)),
+            "trajectory_sha256": _sha256_text(_canonical_text(trajectory)),
+            "containment_binding_sha256": containment_binding_sha256,
+            "containment_termination_postcondition": (
+                containment_termination_postcondition
+            ),
+            "containment_absence_verified": containment_absence_verified,
+            "containment_absence_evidence_sha256": (
+                containment_absence_evidence_sha256
+            ),
+            "raw_content_recorded": False,
+            "input_path_recorded": False,
+        }
+    )
 
 
 def _validated_restricted_access_adjudication(
@@ -492,7 +956,7 @@ def _patch_heredoc_declarations(
     """Bind each heredoc to its own shell segment and patch consumer.
 
     The boolean in each result says whether that one body is proven to be
-    patch data.  Unknown syntax and unknown ``--apply-patch`` consumers stay
+    patch data. Unknown syntax and unknown ``--apply-patch`` consumers stay
     visible so the integrity scan fails closed.
     """
 
@@ -507,7 +971,9 @@ def _patch_heredoc_declarations(
         lexer.commenters = ""
         tokens = list(lexer)
     except ValueError:
-        return tuple((*declaration, False) for declaration in _heredoc_delimiters(command_line))
+        return tuple(
+            (*declaration, False) for declaration in _heredoc_delimiters(command_line)
+        )
 
     declarations: list[tuple[str, bool, bool]] = []
     segment: list[str] = []
@@ -549,8 +1015,8 @@ def _without_patch_stdin_bodies(command: str) -> str:
 
     The shell executes the declaration line, while ``apply_patch`` and the
     benchmark bridge's ``--apply-patch`` mode consume the heredoc body as
-    source data.  URLs or command-looking text inside that patch are not
-    network requests.  Keep bodies for every other heredoc fail-closed because
+    source data. URLs or command-looking text inside that patch are not
+    network requests. Keep bodies for every other heredoc fail-closed because
     they may be executable input to a shell or interpreter.
     """
 
@@ -603,8 +1069,7 @@ def _network_request_scope(arguments: object) -> NetworkRequestScope:
     # same argument object contains a supported network client and literal URLs,
     # classify those URLs fail-closed instead of silently losing split argv.
     leaves = tuple(
-        _without_patch_stdin_bodies(text)
-        for text in _argument_text_values(arguments)
+        _without_patch_stdin_bodies(text) for text in _argument_text_values(arguments)
     )
     if not any(_NETWORK_COMMAND_PATTERN.search(text) for text in leaves):
         return scope
@@ -615,6 +1080,39 @@ def _network_request_scope(arguments: object) -> NetworkRequestScope:
                 return current
             scope = current
     return scope
+
+
+def _trajectory_structural_counts(
+    trajectory: Mapping[str, Any],
+) -> tuple[list[Any], int, int, int]:
+    """Return typed counts from the same ATIF structure the audit consumes."""
+
+    raw_steps = trajectory.get("steps")
+    steps = raw_steps if isinstance(raw_steps, list) else []
+    invalid_step_count = 0
+    invalid_tool_calls_field_count = 0
+    invalid_tool_call_count = 0
+    for raw_step in steps:
+        if not isinstance(raw_step, Mapping):
+            invalid_step_count += 1
+            continue
+        raw_tool_calls = raw_step.get("tool_calls")
+        if raw_tool_calls is None:
+            tool_calls: list[Any] = []
+        elif not isinstance(raw_tool_calls, list):
+            invalid_tool_calls_field_count += 1
+            continue
+        else:
+            tool_calls = raw_tool_calls
+        invalid_tool_call_count += sum(
+            1 for raw_call in tool_calls if not isinstance(raw_call, Mapping)
+        )
+    return (
+        steps,
+        invalid_step_count,
+        invalid_tool_calls_field_count,
+        invalid_tool_call_count,
+    )
 
 
 def build_benchmark_integrity_qualification(
@@ -660,36 +1158,62 @@ def build_benchmark_integrity_qualification(
         limit=120,
         allow_namespaced=True,
     )
+    if not policy_id_path_like and (
+        _PUBLIC_COMPACT_LABEL_PATTERN.fullmatch(policy_id) is None
+        or _path_like_label(policy_id)
+    ):
+        structural_failures.append("integrity_policy_id_invalid")
+        policy_id = "redacted"
+    for field, identifier, allow_namespaced in (
+        ("benchmark_id", benchmark_id, False),
+        ("case_id", case_id, True),
+    ):
+        valid = _PUBLIC_COMPACT_LABEL_PATTERN.fullmatch(identifier) is not None
+        if allow_namespaced:
+            valid = valid or (
+                _NAMESPACED_PUBLIC_IDENTIFIER_PATTERN.fullmatch(identifier) is not None
+            )
+        if not valid:
+            structural_failures.append(f"runtime_attestation_{field}_invalid")
+            if field == "benchmark_id":
+                benchmark_id = "redacted"
+            else:
+                case_id = "redacted"
     schema_version = str(trajectory.get("schema_version") or "")
-    if not schema_version.startswith("ATIF-v1."):
+    if _SUPPORTED_ATIF_SCHEMA_PATTERN.fullmatch(schema_version) is None:
         structural_failures.append("trajectory_schema_not_supported")
-    steps = trajectory.get("steps")
-    if not isinstance(steps, list) or not steps:
+    (
+        steps,
+        invalid_step_count,
+        invalid_tool_calls_field_count,
+        invalid_tool_call_count,
+    ) = _trajectory_structural_counts(trajectory)
+    if not isinstance(trajectory.get("steps"), list) or not steps:
         structural_failures.append("trajectory_steps_missing")
-        steps = []
 
     evidence_counts: Counter[str] = Counter()
     evidence: list[dict[str, Any]] = []
     tool_call_count = 0
     observation_count = 0
-    invalid_tool_call_count = 0
     for index, raw_step in enumerate(steps, start=1):
         if not isinstance(raw_step, Mapping):
-            structural_failures.append("trajectory_step_invalid")
             continue
-        step_id = _safe_label(raw_step.get("step_id") or index, limit=40)
-        tool_calls = raw_step.get("tool_calls") or []
-        if not isinstance(tool_calls, list):
-            structural_failures.append("trajectory_tool_calls_invalid")
+        step_id = _public_compact_label(
+            raw_step.get("step_id") or str(index), field="step"
+        )
+        raw_tool_calls = raw_step.get("tool_calls")
+        if raw_tool_calls is None:
             tool_calls = []
+        elif not isinstance(raw_tool_calls, list):
+            tool_calls = []
+        else:
+            tool_calls = raw_tool_calls
         for raw_call in tool_calls:
             if not isinstance(raw_call, Mapping):
-                invalid_tool_call_count += 1
                 continue
             tool_call_count += 1
-            function_name = _safe_label(
-                raw_call.get("function_name") or "unknown", limit=80
-            )
+            raw_function_name = raw_call.get("function_name") or "unknown"
+            function_name = _public_compact_label(raw_function_name, field="tool")
             raw_arguments = raw_call.get("arguments") or {}
             arguments = _canonical_text(raw_arguments)
             lowered = arguments.lower()
@@ -698,7 +1222,7 @@ def build_benchmark_integrity_qualification(
                 *(text.lower() for text in _argument_text_values(raw_arguments)),
             )
             categories: set[str] = set()
-            if function_name.lower() not in _NON_ACCESS_CONTROL_TOOLS:
+            if str(raw_function_name).lower() not in _NON_ACCESS_CONTROL_TOOLS:
                 categories = {
                     category
                     for category, category_markers in markers.items()
@@ -708,7 +1232,7 @@ def build_benchmark_integrity_qualification(
                         for text in argument_texts
                     )
                 }
-                if credential_probe_present(function_name, raw_arguments):
+                if credential_probe_present(str(raw_function_name), raw_arguments):
                     categories.add("credential_probe")
                 network_scope = _network_request_scope(raw_arguments)
                 if network_scope is NetworkRequestScope.LOOPBACK:
@@ -736,12 +1260,18 @@ def build_benchmark_integrity_qualification(
                 evidence.append(
                     {
                         "step_id": step_id,
-                        "source": _safe_label(raw_step.get("source"), limit=40),
+                        "source": _public_compact_label(
+                            raw_step.get("source"), field="source"
+                        ),
                         "category": "credential_value_observed",
                         "content_sha256": _sha256_text(observation),
                     }
                 )
 
+    if invalid_step_count:
+        structural_failures.append("trajectory_step_invalid")
+    if invalid_tool_calls_field_count:
+        structural_failures.append("trajectory_tool_calls_invalid")
     if invalid_tool_call_count:
         structural_failures.append("trajectory_tool_call_invalid")
     structural_failures = list(dict.fromkeys(structural_failures))
@@ -836,7 +1366,9 @@ def build_benchmark_integrity_qualification(
             for field in required_runtime_attestations(network_access)
         },
         "audit_coverage": {
-            "trajectory_schema_version": _safe_label(schema_version, limit=40),
+            "trajectory_schema_version": _public_compact_label(
+                schema_version, field="schema"
+            ),
             "step_count": len(steps),
             "tool_call_count": tool_call_count,
             "observation_count": observation_count,
@@ -861,3 +1393,853 @@ def build_benchmark_integrity_qualification(
             "confirmed_cheating_requires_disclosure_and_causal_use": True,
         },
     }
+
+
+def _qualification_mapping(
+    value: Any, *, fields: frozenset[str], field: str
+) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ValueError(f"benchmark_integrity_qualification_v1_{field}_fields_invalid")
+    return value
+
+
+def _qualification_non_negative_int(value: Any, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"benchmark_integrity_qualification_v1_{field}_invalid")
+    return value
+
+
+def _qualification_string(value: Any, *, field: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"benchmark_integrity_qualification_v1_{field}_invalid")
+    return value
+
+
+def _qualification_public_identifier(
+    value: Any, *, field: str, allow_namespaced: bool = False
+) -> str:
+    text = _qualification_string(value, field=field)
+    valid = _PUBLIC_COMPACT_LABEL_PATTERN.fullmatch(text) is not None
+    if allow_namespaced:
+        valid = (
+            valid or _NAMESPACED_PUBLIC_IDENTIFIER_PATTERN.fullmatch(text) is not None
+        )
+    if not valid or (_path_like_label(text) and not allow_namespaced):
+        raise ValueError(
+            f"benchmark_integrity_qualification_v1_{field}_public_token_invalid"
+        )
+    return text
+
+
+def _expected_strict_integrity_semantics(
+    *,
+    blockers: frozenset[str],
+    evidence_counts: Mapping[str, int],
+    review_state: str,
+    attestation_checks: Mapping[str, bool],
+    audit_coverage: Mapping[str, Any],
+    lineage: Mapping[str, bool],
+    network_access: str,
+) -> tuple[str, frozenset[str]]:
+    """Derive the only legal classification and exact blocker set."""
+
+    expected_blockers: set[str] = set()
+    trajectory_schema = audit_coverage["trajectory_schema_version"]
+    if _SUPPORTED_ATIF_SCHEMA_PATTERN.fullmatch(trajectory_schema) is None:
+        expected_blockers.add("trajectory_schema_not_supported")
+    if audit_coverage["step_count"] == 0:
+        expected_blockers.add("trajectory_steps_missing")
+    if audit_coverage["invalid_step_count"] > 0:
+        expected_blockers.add("trajectory_step_invalid")
+    if audit_coverage["invalid_tool_calls_field_count"] > 0:
+        expected_blockers.add("trajectory_tool_calls_invalid")
+    if audit_coverage["invalid_tool_call_count"] > 0:
+        expected_blockers.add("trajectory_tool_call_invalid")
+
+    expected_blockers.update(
+        _RUNTIME_ATTESTATION_CHECK_BLOCKERS[field]
+        for field, passed in attestation_checks.items()
+        if not passed
+    )
+    permitted_network_categories = {
+        "denied": frozenset(),
+        "loopback_only": frozenset({"loopback_network_request"}),
+        "permitted_solving": frozenset(
+            {"loopback_network_request", "external_network_request"}
+        ),
+    }[network_access]
+    expected_blockers.update(
+        category
+        for category in _POLICY_EVIDENCE_BLOCKERS
+        if evidence_counts[category] > 0
+        and category not in permitted_network_categories
+    )
+
+    cheating_detected = review_state == "cheating_confirmed"
+    if cheating_detected:
+        expected_blockers.add(_CONFIRMED_CHEATING_MARKER)
+        expected_blockers.update(
+            category
+            for category in _RESTRICTED_ACCESS_REVIEW_CATEGORIES
+            if evidence_counts[category] > 0
+        )
+
+    for check, check_blockers in _LINEAGE_BLOCKERS_BY_CHECK.items():
+        present = blockers & check_blockers
+        if lineage[check]:
+            if present:
+                raise ValueError(
+                    "benchmark_integrity_qualification_v1_"
+                    "launch_lineage_blockers_inconsistent"
+                )
+        elif not present:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_"
+                "launch_lineage_blockers_inconsistent"
+            )
+        expected_blockers.update(present)
+    structural_blockers = expected_blockers & _STRICT_STRUCTURAL_INTEGRITY_BLOCKERS
+    attestation_blockers = blockers & _RUNTIME_ATTESTATION_BLOCKERS
+    if attestation_blockers != {
+        _RUNTIME_ATTESTATION_CHECK_BLOCKERS[field]
+        for field, passed in attestation_checks.items()
+        if not passed
+    }:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_runtime_attestation_state_inconsistent"
+        )
+
+    if blockers & _LINEAGE_INTEGRITY_BLOCKERS:
+        classification = "launch_lineage_not_qualified"
+    elif cheating_detected:
+        classification = "restricted_evaluation_use_confirmed"
+    elif evidence_counts["credential_value_observed"] > 0:
+        classification = "credential_exposure_detected"
+    elif attestation_blockers:
+        classification = "runtime_isolation_not_attested"
+    elif structural_blockers:
+        classification = "trajectory_audit_incomplete"
+    elif blockers:
+        classification = "integrity_policy_violation"
+    elif review_state == "suspected":
+        classification = "integrity_qualified_with_suspicion"
+    elif review_state == "adjudicated_countable":
+        classification = "integrity_qualified_with_audit_warning"
+    else:
+        classification = "integrity_qualified"
+    return classification, frozenset(expected_blockers)
+
+
+def _benchmark_integrity_input_invalid_qualification_v1(
+    *, private_trajectory_read: bool = False
+) -> dict[str, Any]:
+    public_boundary = {field: False for field in _PUBLIC_BOUNDARY_V1}
+    public_boundary["private_trajectory_read"] = private_trajectory_read
+    return {
+        "ok": False,
+        "schema_version": BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION,
+        "benchmark_id": "unknown",
+        "case_id": "unknown",
+        "policy_id": "unknown",
+        "classification": "input_invalid",
+        "integrity_qualified": False,
+        "integrity_countable": False,
+        "score_claim_eligible": False,
+        "score_claim_countable": False,
+        "matched_pair_countable": False,
+        "benchmark_cheating_detected": False,
+        "restricted_access_review": {
+            "schema_version": (BENCHMARK_RESTRICTED_ACCESS_ADJUDICATION_SCHEMA_VERSION),
+            "state": "not_required",
+            "review_required": False,
+            "decision": "not_applicable",
+            "suspected_categories": [],
+            "suspicion_count": 0,
+        },
+        "blockers": ["benchmark_integrity_input_invalid"],
+        "evidence_counts": {category: 0 for category in INTEGRITY_EVIDENCE_CATEGORIES},
+        "evidence": [],
+        "network_access": "denied",
+        "runtime_attestation_checks": {
+            field: False for field in required_runtime_attestations("denied")
+        },
+        "audit_coverage": {
+            "trajectory_schema_version": "unknown",
+            "step_count": 0,
+            "tool_call_count": 0,
+            "observation_count": 0,
+            "invalid_step_count": 0,
+            "invalid_tool_calls_field_count": 0,
+            "invalid_tool_call_count": 0,
+            "trajectory_sha256": "0" * 64,
+        },
+        "public_boundary": public_boundary,
+        "claim_boundary": dict(_CLAIM_BOUNDARY),
+        "launch_lineage": {field: False for field in _LAUNCH_LINEAGE_FIELDS},
+    }
+
+
+def _qualification_value_matches(value: Any, expected: Any) -> bool:
+    """Compare a closed receipt without treating integers as booleans."""
+
+    if isinstance(expected, Mapping):
+        return (
+            isinstance(value, Mapping)
+            and set(value) == set(expected)
+            and all(
+                _qualification_value_matches(value[field], expected_value)
+                for field, expected_value in expected.items()
+            )
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(value, list)
+            and len(value) == len(expected)
+            and all(
+                _qualification_value_matches(item, expected_item)
+                for item, expected_item in zip(value, expected, strict=True)
+            )
+        )
+    return type(value) is type(expected) and value == expected
+
+
+def build_benchmark_integrity_input_invalid_qualification_v1(
+    *, private_trajectory_read: bool = False
+) -> dict[str, Any]:
+    """Build the public-safe strict receipt for malformed or partial input."""
+
+    if not isinstance(private_trajectory_read, bool):
+        raise TypeError(
+            "benchmark_integrity_input_invalid_private_trajectory_read_invalid"
+        )
+    return normalize_benchmark_integrity_qualification_v1(
+        _benchmark_integrity_input_invalid_qualification_v1(
+            private_trajectory_read=private_trajectory_read
+        )
+    )
+
+
+def _normalize_restricted_access_review_v1(
+    value: Any, *, evidence_counts: Mapping[str, int]
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_fields_invalid"
+        )
+    state = value.get("state")
+    if not isinstance(state, str):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_state_invalid"
+        )
+    adjudicated = state in {"adjudicated_countable", "cheating_confirmed"}
+    expected_fields = _RESTRICTED_ACCESS_REVIEW_BASE_FIELDS | (
+        _RESTRICTED_ACCESS_REVIEW_ADJUDICATION_FIELDS if adjudicated else frozenset()
+    )
+    review = _qualification_mapping(
+        value, fields=expected_fields, field="restricted_access_review"
+    )
+    if (
+        review.get("schema_version")
+        != BENCHMARK_RESTRICTED_ACCESS_ADJUDICATION_SCHEMA_VERSION
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_schema_invalid"
+        )
+    if not isinstance(review.get("review_required"), bool):
+        raise TypeError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_boolean_invalid"
+        )
+    categories = review.get("suspected_categories")
+    if (
+        not isinstance(categories, list)
+        or any(
+            not isinstance(category, str)
+            or category not in _RESTRICTED_ACCESS_REVIEW_CATEGORIES
+            for category in categories
+        )
+        or categories != sorted(set(categories))
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_suspected_categories_invalid"
+        )
+    suspicion_count = _qualification_non_negative_int(
+        review.get("suspicion_count"), field="suspicion_count"
+    )
+    expected_categories = sorted(
+        category
+        for category in _RESTRICTED_ACCESS_REVIEW_CATEGORIES
+        if evidence_counts[category] > 0
+    )
+    if categories != expected_categories:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_suspected_categories_inconsistent"
+        )
+    expected_suspicion_count = sum(evidence_counts[category] for category in categories)
+    if suspicion_count != expected_suspicion_count:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_suspicion_count_inconsistent"
+        )
+
+    state_matrix = {
+        "not_required": (False, "not_applicable", False),
+        "suspected": (True, "pending", True),
+        "adjudicated_countable": (False, "qualified_with_warning", True),
+        "cheating_confirmed": (False, "confirmed_cheating", True),
+    }
+    if state not in state_matrix:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_state_invalid"
+        )
+    review_required, decision, suspicion_required = state_matrix[state]
+    if (
+        review.get("review_required") is not review_required
+        or review.get("decision") != decision
+        or bool(categories) is not suspicion_required
+        or (suspicion_count > 0) is not suspicion_required
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_restricted_access_review_state_inconsistent"
+        )
+
+    normalized = dict(review)
+    normalized["suspected_categories"] = list(categories)
+    normalized["suspicion_count"] = suspicion_count
+    if adjudicated:
+        if (
+            review.get("reviewer_role") != "post_run_analyst"
+            or not isinstance(review.get("restricted_material_disclosed"), bool)
+            or not isinstance(review.get("causal_use_observed"), bool)
+        ):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_restricted_access_review_adjudication_invalid"
+            )
+        reviewed_surfaces = review.get("reviewed_surfaces")
+        if not isinstance(reviewed_surfaces, list) or reviewed_surfaces != sorted(
+            _REQUIRED_ADJUDICATION_REVIEW_SURFACES
+        ):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_reviewed_surfaces_invalid"
+            )
+        evidence_id = review.get("evidence_id")
+        if (
+            not isinstance(evidence_id, str)
+            or _PUBLIC_EVIDENCE_ID_PATTERN.fullmatch(evidence_id) is None
+        ):
+            raise ValueError("benchmark_integrity_qualification_v1_evidence_id_invalid")
+        disclosed = review["restricted_material_disclosed"]
+        causal_use = review["causal_use_observed"]
+        if causal_use and not disclosed:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_restricted_access_review_adjudication_inconsistent"
+            )
+        if state == "cheating_confirmed" and not (disclosed and causal_use):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_restricted_access_review_adjudication_inconsistent"
+            )
+        if state == "adjudicated_countable" and causal_use:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_restricted_access_review_adjudication_inconsistent"
+            )
+        normalized["reviewed_surfaces"] = list(reviewed_surfaces)
+    return normalized
+
+
+def normalize_benchmark_integrity_qualification_v1(
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate the closed strict-integrity qualification protocol."""
+
+    receipt = _qualification_mapping(
+        value, fields=_INTEGRITY_QUALIFICATION_V1_FIELDS, field="receipt"
+    )
+    if (
+        receipt.get("schema_version")
+        != BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION
+    ):
+        raise ValueError("benchmark_integrity_qualification_v1_schema_unsupported")
+    classification = receipt.get("classification")
+    if (
+        not isinstance(classification, str)
+        or classification not in _INTEGRITY_QUALIFICATION_CLASSIFICATIONS
+    ):
+        raise ValueError("benchmark_integrity_qualification_v1_classification_invalid")
+    if classification == "input_invalid":
+        public_boundary = receipt.get("public_boundary")
+        if not isinstance(public_boundary, Mapping):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_input_invalid_state_inconsistent"
+            )
+        private_trajectory_read = public_boundary.get("private_trajectory_read")
+        if not isinstance(private_trajectory_read, bool):
+            raise TypeError(
+                "benchmark_integrity_qualification_v1_"
+                "input_invalid_private_trajectory_read_invalid"
+            )
+        expected = _benchmark_integrity_input_invalid_qualification_v1(
+            private_trajectory_read=private_trajectory_read
+        )
+        if not _qualification_value_matches(receipt, expected):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_input_invalid_state_inconsistent"
+            )
+        return expected
+
+    boolean_fields = (
+        "ok",
+        "integrity_qualified",
+        "integrity_countable",
+        "score_claim_eligible",
+        "score_claim_countable",
+        "matched_pair_countable",
+        "benchmark_cheating_detected",
+    )
+    if any(not isinstance(receipt.get(field), bool) for field in boolean_fields):
+        raise TypeError("benchmark_integrity_qualification_v1_boolean_invalid")
+    qualified = receipt["integrity_qualified"]
+    if (
+        receipt["ok"] is not True
+        or receipt["integrity_countable"] is not qualified
+        or receipt["score_claim_eligible"] is not qualified
+        or receipt["score_claim_countable"] is not False
+        or receipt["matched_pair_countable"] is not False
+        or (classification in _QUALIFIED_INTEGRITY_CLASSIFICATIONS) is not qualified
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_countability_inconsistent"
+        )
+
+    normalized = dict(receipt)
+    normalized["benchmark_id"] = _qualification_public_identifier(
+        receipt.get("benchmark_id"), field="benchmark_id"
+    )
+    normalized["case_id"] = _qualification_public_identifier(
+        receipt.get("case_id"), field="case_id", allow_namespaced=True
+    )
+    normalized["policy_id"] = _qualification_public_identifier(
+        receipt.get("policy_id"), field="policy_id"
+    )
+
+    blockers = receipt.get("blockers")
+    if not isinstance(blockers, list) or any(
+        not isinstance(blocker, str)
+        or blocker not in _INTEGRITY_QUALIFICATION_V1_BLOCKERS
+        for blocker in blockers
+    ):
+        raise ValueError("benchmark_integrity_qualification_v1_blockers_invalid")
+    if len(blockers) != len(set(blockers)):
+        raise ValueError("benchmark_integrity_qualification_v1_blockers_invalid")
+    if bool(blockers) is qualified:
+        raise ValueError("benchmark_integrity_qualification_v1_blockers_inconsistent")
+    normalized["blockers"] = list(blockers)
+
+    network_access = receipt.get("network_access")
+    if network_access not in NETWORK_ACCESS_MODES:
+        raise ValueError("benchmark_integrity_qualification_v1_network_access_invalid")
+    counts = _qualification_mapping(
+        receipt.get("evidence_counts"),
+        fields=frozenset(INTEGRITY_EVIDENCE_CATEGORIES),
+        field="evidence_counts",
+    )
+    normalized_counts = {
+        category: _qualification_non_negative_int(
+            counts.get(category), field=f"evidence_counts_{category}"
+        )
+        for category in INTEGRITY_EVIDENCE_CATEGORIES
+    }
+    normalized["evidence_counts"] = normalized_counts
+
+    evidence = receipt.get("evidence")
+    if not isinstance(evidence, list):
+        raise ValueError("benchmark_integrity_qualification_v1_evidence_invalid")
+    normalized_evidence: list[dict[str, Any]] = []
+    observed_counts: Counter[str] = Counter()
+    for item in evidence:
+        if not isinstance(item, Mapping):
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_evidence_item_fields_invalid"
+            )
+        source_field = "tool" if "tool" in item else "source"
+        expected_fields = {
+            "step_id",
+            source_field,
+            "category",
+            "content_sha256",
+        }
+        if set(item) != expected_fields:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_evidence_item_fields_invalid"
+            )
+        category = item.get("category")
+        if category not in INTEGRITY_EVIDENCE_CATEGORIES:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_evidence_category_invalid"
+            )
+        digest = item.get("content_sha256")
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise ValueError(
+                "benchmark_integrity_qualification_v1_evidence_digest_invalid"
+            )
+        _qualification_public_identifier(item.get("step_id"), field="evidence_step_id")
+        _qualification_public_identifier(
+            item.get(source_field), field=f"evidence_{source_field}"
+        )
+        observed_counts[category] += 1
+        normalized_evidence.append(dict(item))
+    if any(
+        observed_counts[category] != normalized_counts[category]
+        for category in INTEGRITY_EVIDENCE_CATEGORIES
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_evidence_counts_inconsistent"
+        )
+    normalized["evidence"] = normalized_evidence
+    normalized["restricted_access_review"] = _normalize_restricted_access_review_v1(
+        receipt.get("restricted_access_review"),
+        evidence_counts=normalized_counts,
+    )
+
+    attestation_fields = frozenset(required_runtime_attestations(network_access))
+    attestation_checks = _qualification_mapping(
+        receipt.get("runtime_attestation_checks"),
+        fields=attestation_fields,
+        field="runtime_attestation_checks",
+    )
+    if any(not isinstance(value, bool) for value in attestation_checks.values()):
+        raise TypeError(
+            "benchmark_integrity_qualification_v1_runtime_attestation_checks_boolean_invalid"
+        )
+    normalized["runtime_attestation_checks"] = dict(attestation_checks)
+
+    audit = _qualification_mapping(
+        receipt.get("audit_coverage"),
+        fields=_AUDIT_COVERAGE_FIELDS,
+        field="audit_coverage",
+    )
+    trajectory_schema = _qualification_public_identifier(
+        audit.get("trajectory_schema_version"), field="trajectory_schema_version"
+    )
+    trajectory_digest = audit.get("trajectory_sha256")
+    if (
+        not isinstance(trajectory_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", trajectory_digest) is None
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_trajectory_sha256_invalid"
+        )
+    normalized["audit_coverage"] = {
+        "trajectory_schema_version": trajectory_schema,
+        **{
+            field: _qualification_non_negative_int(audit.get(field), field=field)
+            for field in (
+                "step_count",
+                "tool_call_count",
+                "observation_count",
+                "invalid_step_count",
+                "invalid_tool_calls_field_count",
+                "invalid_tool_call_count",
+            )
+        },
+        "trajectory_sha256": trajectory_digest,
+    }
+    if (
+        normalized["audit_coverage"]["invalid_step_count"]
+        > normalized["audit_coverage"]["step_count"]
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_invalid_step_count_inconsistent"
+        )
+    valid_step_count = (
+        normalized["audit_coverage"]["step_count"]
+        - normalized["audit_coverage"]["invalid_step_count"]
+    )
+    if (
+        normalized["audit_coverage"]["invalid_tool_calls_field_count"]
+        > valid_step_count
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_"
+            "invalid_tool_calls_field_count_inconsistent"
+        )
+    if normalized["audit_coverage"]["observation_count"] > valid_step_count:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_observation_count_inconsistent"
+        )
+    if valid_step_count == 0 and (
+        normalized["audit_coverage"]["tool_call_count"] > 0
+        or normalized["audit_coverage"]["invalid_tool_call_count"] > 0
+    ):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_tool_call_count_inconsistent"
+        )
+
+    for field, expected in (
+        ("public_boundary", _PUBLIC_BOUNDARY_V1),
+        ("claim_boundary", _CLAIM_BOUNDARY),
+    ):
+        boundary = _qualification_mapping(
+            receipt.get(field), fields=frozenset(expected), field=field
+        )
+        if any(not isinstance(value, bool) for value in boundary.values()):
+            raise TypeError(
+                f"benchmark_integrity_qualification_v1_{field}_boolean_invalid"
+            )
+        if any(
+            boundary[name] is not expected_value
+            for name, expected_value in expected.items()
+        ):
+            raise ValueError(f"benchmark_integrity_qualification_v1_{field}_invalid")
+        normalized[field] = dict(boundary)
+
+    lineage = _qualification_mapping(
+        receipt.get("launch_lineage"),
+        fields=_LAUNCH_LINEAGE_FIELDS,
+        field="launch_lineage",
+    )
+    if any(not isinstance(value, bool) for value in lineage.values()):
+        raise TypeError(
+            "benchmark_integrity_qualification_v1_launch_lineage_boolean_invalid"
+        )
+    if lineage["launch_binding_digest_recorded"] is not False:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_launch_lineage_boundary_invalid"
+        )
+    lineage_checks_qualified = all(
+        lineage[field]
+        for field in _LAUNCH_LINEAGE_FIELDS
+        if field not in {"qualified", "launch_binding_digest_recorded"}
+    )
+    if lineage["qualified"] is not lineage_checks_qualified:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_launch_lineage_state_inconsistent"
+        )
+    normalized["launch_lineage"] = dict(lineage)
+
+    cheating_detected = receipt["benchmark_cheating_detected"]
+    review_state = normalized["restricted_access_review"]["state"]
+    if cheating_detected is not (review_state == "cheating_confirmed"):
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_cheating_state_inconsistent"
+        )
+
+    normalized_blockers = frozenset(blockers)
+    expected_classification, expected_blockers = _expected_strict_integrity_semantics(
+        blockers=normalized_blockers,
+        evidence_counts=normalized_counts,
+        review_state=review_state,
+        attestation_checks=normalized["runtime_attestation_checks"],
+        audit_coverage=normalized["audit_coverage"],
+        lineage=normalized["launch_lineage"],
+        network_access=network_access,
+    )
+    if normalized_blockers != expected_blockers:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_blockers_state_inconsistent"
+        )
+    if classification != expected_classification:
+        raise ValueError(
+            "benchmark_integrity_qualification_v1_classification_state_inconsistent"
+        )
+    return normalized
+
+
+def build_strict_benchmark_integrity_qualification(
+    *,
+    trajectory: Mapping[str, Any],
+    trajectory_lineage_receipt: Mapping[str, Any] | None = None,
+    external_agent_result: Mapping[str, Any] | None = None,
+    runtime_attestation: Mapping[str, Any],
+    launch_admission_receipt: Mapping[str, Any],
+    route_receipt: Mapping[str, Any],
+    policy: Mapping[str, Any] | None = None,
+    restricted_access_adjudication: Mapping[str, Any] | None = None,
+    sensitive_values: Iterable[str] = (),
+) -> dict[str, Any]:
+    """Qualify integrity only when launch, result, and evidence lineage agree.
+
+    This explicit API leaves the legacy reducer unchanged. Provider adapters own
+    private observations; the runner binds the audited ATIF to its terminal result
+    with a compact, content-addressed lineage receipt.
+    """
+
+    if trajectory_lineage_receipt is None or external_agent_result is None:
+        raise ValueError("benchmark_strict_integrity_evidence_lineage_required")
+    secrets = normalize_sensitive_values(sensitive_values)
+    launch = normalize_benchmark_launch_admission_receipt(
+        launch_admission_receipt, sensitive_values=secrets
+    )
+    route = normalize_benchmark_model_route_receipt_v1(
+        route_receipt, sensitive_values=secrets
+    )
+    result = normalize_external_agent_result_v2(external_agent_result)
+    trajectory_lineage = normalize_benchmark_trajectory_lineage_receipt(
+        trajectory_lineage_receipt
+    )
+    effective_policy = normalize_benchmark_integrity_policy(policy)
+    bound_attestation = _normalize_bound_runtime_attestation(
+        runtime_attestation, network_access=str(effective_policy["network_access"])
+    )
+    strict_attestation = dict(bound_attestation)
+    strict_attestation["schema_version"] = (
+        BENCHMARK_RUNTIME_INTEGRITY_ATTESTATION_SCHEMA_VERSION
+    )
+    # The legacy reducer uses "runner" as the provider-neutral role label; the
+    # bound v1 attestation retains and is checked against the concrete authority.
+    # It also serializes benchmark and case identifiers, so only pass identifiers
+    # already validated by the launch admission authority into the public receipt.
+    strict_attestation["authority"] = "runner"
+    strict_attestation["benchmark_id"] = launch["benchmark_id"]
+    strict_attestation["case_id"] = launch["case_id"]
+    receipt = build_benchmark_integrity_qualification(
+        trajectory=trajectory,
+        runtime_attestation=strict_attestation,
+        policy=policy,
+        restricted_access_adjudication=restricted_access_adjudication,
+        sensitive_values=secrets,
+    )
+    (
+        _steps,
+        invalid_step_count,
+        invalid_tool_calls_field_count,
+        _invalid_tool_call_count,
+    ) = _trajectory_structural_counts(trajectory)
+    receipt["audit_coverage"] = {
+        **receipt["audit_coverage"],
+        "invalid_step_count": invalid_step_count,
+        "invalid_tool_calls_field_count": invalid_tool_calls_field_count,
+    }
+    lineage_failures: list[str] = []
+    for field in ("benchmark_id", "case_id", "run_id", "arm_id"):
+        if bound_attestation.get(field) != launch[field]:
+            lineage_failures.append(f"runtime_attestation_{field}_mismatch")
+    for field in (
+        "launch_binding_digest",
+        "integrity_policy_sha256",
+        "containment_binding_sha256",
+        "runtime_binding_sha256",
+    ):
+        if bound_attestation.get(field) != launch[field]:
+            lineage_failures.append(f"runtime_attestation_{field}_mismatch")
+
+    if benchmark_integrity_policy_sha256(policy) != launch["integrity_policy_sha256"]:
+        lineage_failures.append("integrity_policy_binding_mismatch")
+
+    result_receipt = result["receipt"]
+    result_checks = {
+        "solver_completed": (
+            result_receipt.get("classification") == "solver_completed"
+            and result.get("status") == "succeeded"
+            and result.get("exit_code") == 0
+        ),
+        "launch_binding_digest": result_receipt.get("launch_binding_digest")
+        == launch["launch_binding_digest"],
+        "instruction_sha256": result_receipt.get("instruction_sha256")
+        == launch["instruction_sha256"],
+    }
+    lineage_failures.extend(
+        f"external_agent_result_{field}_mismatch"
+        for field, matched in result_checks.items()
+        if not matched
+    )
+
+    trajectory_checks = {
+        "authority": trajectory_lineage.get("authority") == launch["runner_authority"],
+        "run_id": trajectory_lineage.get("run_id") == launch["run_id"],
+        "arm_id": trajectory_lineage.get("arm_id") == launch["arm_id"],
+        "launch_binding_digest": trajectory_lineage.get("launch_binding_digest")
+        == launch["launch_binding_digest"],
+        "external_agent_result_sha256": trajectory_lineage.get(
+            "external_agent_result_sha256"
+        )
+        == _sha256_text(_canonical_text(result)),
+        "trajectory_sha256": trajectory_lineage.get("trajectory_sha256")
+        == receipt["audit_coverage"]["trajectory_sha256"],
+    }
+    lineage_failures.extend(
+        f"trajectory_lineage_{field}_mismatch"
+        for field, matched in trajectory_checks.items()
+        if not matched
+    )
+
+    containment_absence_checks = {
+        "authority": trajectory_lineage.get("authority") == launch["runner_authority"],
+        "binding_sha256": trajectory_lineage.get("containment_binding_sha256")
+        == launch["containment_binding_sha256"],
+        "postcondition": trajectory_lineage.get("containment_termination_postcondition")
+        == EXTERNAL_AGENT_CONTAINMENT_TERMINATION_POSTCONDITION,
+        "verified": trajectory_lineage.get("containment_absence_verified") is True,
+    }
+    containment_failure_codes = {
+        "authority": "containment_absence_authority_mismatch",
+        "binding_sha256": "containment_absence_binding_sha256_mismatch",
+        "postcondition": "containment_absence_postcondition_mismatch",
+        "verified": "containment_absence_not_verified",
+    }
+    lineage_failures.extend(
+        containment_failure_codes[field]
+        for field, matched in containment_absence_checks.items()
+        if not matched
+    )
+
+    expected_route = launch["expected_route"]
+    requested_route_matches = route_identity_matches(
+        requested_model=expected_route["model"],
+        requested_provider=expected_route["provider"],
+        observed_model=route["requested_model"],
+        observed_provider=route["requested_provider"],
+    )
+    route_checks = {
+        "schema_version": route.get("schema_version")
+        == BENCHMARK_MODEL_ROUTE_RECEIPT_V1_SCHEMA_VERSION,
+        "run_id": route.get("run_id") == launch["run_id"],
+        "arm_id": route.get("arm_id") == launch["arm_id"],
+        "launch_binding_digest": route.get("launch_binding_digest")
+        == launch["launch_binding_digest"],
+        "requested_route": requested_route_matches,
+        "runtime_verified": route.get("status") == "runtime_route_verified"
+        and route.get("matched") is True
+        and route.get("runtime_audited") is True,
+    }
+    lineage_failures.extend(
+        f"route_receipt_{field}_mismatch"
+        for field, matched in route_checks.items()
+        if not matched
+    )
+
+    launch_checks = {
+        "runner_authority": bound_attestation.get("authority")
+        == launch["runner_authority"],
+        "provider_authority": route.get("authority") == launch["provider_authority"],
+        "credential_isolation": bound_attestation.get("credential_isolation")
+        == launch["credential_isolation"],
+        "controller_isolation": bound_attestation.get("controller_isolation")
+        == launch["controller_isolation"],
+    }
+    lineage_failures.extend(
+        f"launch_{field}_mismatch"
+        for field, matched in launch_checks.items()
+        if not matched
+    )
+
+    lineage_failures = list(dict.fromkeys(lineage_failures))
+    receipt["blockers"] = [*receipt["blockers"], *lineage_failures]
+    if lineage_failures:
+        receipt["classification"] = "launch_lineage_not_qualified"
+        receipt["integrity_qualified"] = False
+        receipt["integrity_countable"] = False
+        receipt["score_claim_eligible"] = False
+    receipt["launch_lineage"] = {
+        "qualified": not lineage_failures,
+        "launch_binding_digest_recorded": False,
+        "runtime_attestation_bound": not any(
+            blocker.startswith("runtime_attestation_") for blocker in lineage_failures
+        ),
+        "route_receipt_bound": all(route_checks.values()),
+        "external_agent_result_bound": all(result_checks.values()),
+        "containment_absence_bound": all(containment_absence_checks.values()),
+        "trajectory_evidence_bound": all(trajectory_checks.values()),
+        "mechanism_evidence_bound": all(launch_checks.values())
+        and "integrity_policy_binding_mismatch" not in lineage_failures,
+    }
+    receipt["public_boundary"]["launch_binding_digest_recorded"] = False
+    receipt["schema_version"] = BENCHMARK_INTEGRITY_QUALIFICATION_V1_SCHEMA_VERSION
+    return normalize_benchmark_integrity_qualification_v1(receipt)

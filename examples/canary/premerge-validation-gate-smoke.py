@@ -53,13 +53,23 @@ def assert_control_plane_change_selects_state_machine_validation() -> None:
     summary = payload["validation_summary"]
     assert summary["schema_version"] == "premerge_validation_summary_v0", payload
     assert summary["selected_check_count"] >= len(catalog_commands), payload
-    assert "python3 examples/control_plane/interaction-contract-state-machine-smoke.py" in (
-        summary["selected_commands"]
+    assert (
+        "python3 examples/control_plane/interaction-contract-state-machine-smoke.py"
+        in (summary["selected_commands"])
     ), payload
-    assert any("interaction-contract-state-machine-smoke.py" in item for item in catalog_commands), payload
-    assert not any("control-plane-integrated-canary-smoke.py" in item for item in catalog_commands), payload
-    assert any("heartbeat-quota-flow-smoke.py" in item for item in catalog_commands), payload
-    assert any("bounded-context-namespace-smoke.py" in item for item in catalog_commands), payload
+    assert any(
+        "interaction-contract-state-machine-smoke.py" in item
+        for item in catalog_commands
+    ), payload
+    assert not any(
+        "control-plane-integrated-canary-smoke.py" in item for item in catalog_commands
+    ), payload
+    assert any("heartbeat-quota-flow-smoke.py" in item for item in catalog_commands), (
+        payload
+    )
+    assert any(
+        "bounded-context-namespace-smoke.py" in item for item in catalog_commands
+    ), payload
     assert risk_commands, payload
     assert payload["gate"]["status"] == "preview_only", payload
     assert payload["gate"]["merge_gate_passed"] is False, payload
@@ -85,7 +95,9 @@ def assert_quick_public_docs_change_skips_risk_profile_smokes() -> None:
         tier="quick",
         execute=False,
     )
-    assert payload["classification"]["risk_profiles"] == ["docs-project-content-ops"], payload
+    assert payload["classification"]["risk_profiles"] == ["docs-project-content-ops"], (
+        payload
+    )
     assert payload["risk_profile_run"] is None, payload
     assert payload["boundary_run"]["selected_check_count"] == 1, payload
     assert payload["catalog_run"]["selected_check_count"] <= 3, payload
@@ -133,15 +145,33 @@ def assert_agent_facing_cli_change_selects_output_qualification() -> None:
     assert expected in payload["validation_summary"]["selected_commands"], payload
 
 
-def assert_benchmark_sensitive_change_blocks_self_merge() -> None:
-    payload = build_premerge_validation_gate(
-        changed_files=["loopx/capabilities/benchmark_toolkit/integrity.py"],
+def assert_benchmark_sensitive_changes_block_self_merge_and_scan_boundary() -> None:
+    for changed_file in (
+        "loopx/capabilities/benchmark_toolkit/integrity.py",
+        "tests/capabilities/test_benchmark_toolkit.py",
+        "tests/fixtures/benchmark_integrity/case.json",
+    ):
+        payload = build_premerge_validation_gate(
+            changed_files=[changed_file],
+            execute=False,
+        )
+        classification = payload["classification"]
+        assert "benchmark_sensitive" in classification["surfaces"], payload
+        assert "public_boundary" in classification["surfaces"], payload
+        assert classification["manual_holds"], payload
+        assert classification["public_boundary_scan_recommended"] is True, payload
+        assert payload["boundary_run"]["selected_check_count"] == 1, payload
+        assert payload["gate"]["status"] == "manual_review_required", payload
+        assert payload["gate"]["self_merge_allowed"] is False, payload
+
+    unrelated = build_premerge_validation_gate(
+        changed_files=["tests/capabilities/test_change_quality.py"],
         execute=False,
     )
-    assert "benchmark_sensitive" in payload["classification"]["surfaces"], payload
-    assert payload["classification"]["manual_holds"], payload
-    assert payload["gate"]["status"] == "manual_review_required", payload
-    assert payload["gate"]["self_merge_allowed"] is False, payload
+    assert "benchmark_sensitive" not in unrelated["classification"]["surfaces"], (
+        unrelated
+    )
+    assert unrelated["classification"]["manual_holds"] == [], unrelated
 
 
 def assert_lark_kanban_change_keeps_surface_without_reviewer_hold() -> None:
@@ -191,8 +221,12 @@ def assert_dsh_plugin_change_selects_complete_package_validation() -> None:
         for check in payload["risk_profile_run"]["selected_checks"]
     ]
     assert "typecheck" in reasons[0] and "tests" in reasons[0], payload
-    assert "builds" in reasons[1] and "artifact" in reasons[1] and "profile" in reasons[1], payload
-    assert "loopback socket" in reasons[2] and "restricted sandboxes" in reasons[2], payload
+    assert (
+        "builds" in reasons[1] and "artifact" in reasons[1] and "profile" in reasons[1]
+    ), payload
+    assert "loopback socket" in reasons[2] and "restricted sandboxes" in reasons[2], (
+        payload
+    )
 
 
 def assert_cli_json_preview() -> None:
@@ -222,9 +256,12 @@ def assert_cli_json_preview() -> None:
     summary = payload["validation_summary"]
     assert summary["schema_version"] == "premerge_validation_summary_v0", payload
     assert summary["direct_check_count"] >= 4, payload
-    assert any("git diff --check" in command for command in summary["direct_commands"]), payload
-    assert "python3 examples/canary/premerge-validation-gate-smoke.py" in (
-        summary["selected_commands"]
+    assert any(
+        "git diff --check" in command for command in summary["direct_commands"]
+    ), payload
+    assert (
+        "python3 examples/canary/premerge-validation-gate-smoke.py"
+        in (summary["selected_commands"])
     ), payload
     assert len(summary["all_commands"]) >= len(summary["direct_commands"]) + len(
         summary["selected_commands"]
@@ -263,8 +300,12 @@ def assert_cli_premerge_reports_progress_by_default() -> None:
     assert payload["gate"]["status"] == "no_changes", payload
     assert payload["validation_summary"]["selected_check_count"] == 0, payload
     assert "[loopx canary] premerge start:" in completed.stderr, completed.stderr
-    assert "[loopx canary] start direct_checks 1/3:" in completed.stderr, completed.stderr
-    assert "[loopx canary] start catalog_canaries" not in completed.stderr, completed.stderr
+    assert "[loopx canary] start direct_checks 1/3:" in completed.stderr, (
+        completed.stderr
+    )
+    assert "[loopx canary] start catalog_canaries" not in completed.stderr, (
+        completed.stderr
+    )
     assert "[loopx canary] premerge done:" in completed.stderr, completed.stderr
 
     quiet = subprocess.run(
@@ -398,9 +439,13 @@ def assert_external_dirty_worktree_uses_caller_repo() -> None:
         )
         assert failed.returncode == 1, failed.stderr or failed.stdout
         failed_payload = json.loads(failed.stdout)
-        assert Path(failed_payload["repo_root"]).resolve() == external_repo.resolve(), failed_payload
+        assert Path(failed_payload["repo_root"]).resolve() == external_repo.resolve(), (
+            failed_payload
+        )
         selector = failed_payload["selector_sources"]["git_diff"]
-        assert Path(selector["repo_root"]).resolve() == external_repo.resolve(), failed_payload
+        assert Path(selector["repo_root"]).resolve() == external_repo.resolve(), (
+            failed_payload
+        )
         compile_check = next(
             check
             for check in failed_payload["direct_checks"]
@@ -440,7 +485,9 @@ def assert_external_dirty_worktree_uses_caller_repo() -> None:
         assert passed.returncode == 0, passed.stderr or passed.stdout
         passed_payload = json.loads(passed.stdout)
         assert passed_payload["gate"]["status"] == "passed", passed_payload
-        assert all(check["ok"] for check in passed_payload["direct_checks"]), passed_payload
+        assert all(check["ok"] for check in passed_payload["direct_checks"]), (
+            passed_payload
+        )
 
 
 def assert_inherited_maintainability_red_is_advisory_only() -> None:
@@ -466,7 +513,9 @@ def assert_inherited_maintainability_red_is_advisory_only() -> None:
     assert downgraded["ok"] is True, downgraded
     assert downgraded["failure_count"] == 0, downgraded
     assert downgraded["advisory_failure_count"] == 1, downgraded
-    assert downgraded["selected_checks"][0]["status"] == "advisory_inherited_failure", downgraded
+    assert downgraded["selected_checks"][0]["status"] == "advisory_inherited_failure", (
+        downgraded
+    )
 
     extensionless_path_run = {
         "ok": False,
@@ -519,7 +568,7 @@ def main() -> None:
     assert_public_boundary_scan_executes_in_process()
     assert_changed_python_gets_compile_check()
     assert_agent_facing_cli_change_selects_output_qualification()
-    assert_benchmark_sensitive_change_blocks_self_merge()
+    assert_benchmark_sensitive_changes_block_self_merge_and_scan_boundary()
     assert_lark_kanban_change_keeps_surface_without_reviewer_hold()
     assert_extension_change_selects_provider_lifecycle_validation()
     assert_dsh_plugin_change_selects_complete_package_validation()

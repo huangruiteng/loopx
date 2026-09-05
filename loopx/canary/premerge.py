@@ -49,9 +49,7 @@ EXTENSION_RUNTIME_TOKENS = (
     "examples/capability-extension",
     "examples/openviking-extension",
 )
-DSH_LOOPX_PLUGIN_TOKENS = (
-    "packages/dsh-loopx-plugin/",
-)
+DSH_LOOPX_PLUGIN_TOKENS = ("packages/dsh-loopx-plugin/",)
 DOC_CONTENT_TOKENS = (
     "docs/",
     "README",
@@ -86,9 +84,7 @@ CHANGE_QUALITY_TOKENS = (
     "tests/capabilities/test_change_quality.py",
     "examples/change-quality-qualification-smoke.py",
 )
-INHERITED_BASELINE_COMMANDS = (
-    "control-plane-maintainability-ratchet-smoke.py",
-)
+INHERITED_BASELINE_COMMANDS = ("control-plane-maintainability-ratchet-smoke.py",)
 
 
 def _synthetic_smoke_suite_run(
@@ -213,7 +209,9 @@ def _public_boundary_changed_files_run(
                     "stderr_tail": "\n".join(hits)[-800:] if hits else "",
                     "boundary": {
                         "scanned_files": boundary.get("scanned_files"),
-                        "skipped_private_state_files": boundary.get("skipped_private_state_files"),
+                        "skipped_private_state_files": boundary.get(
+                            "skipped_private_state_files"
+                        ),
                         "allowed_hits": boundary.get("allowed_hits"),
                         "hit_count": len(hits),
                     },
@@ -255,6 +253,16 @@ def _path_matches(path: str, tokens: tuple[str, ...]) -> bool:
     return False
 
 
+def _is_benchmark_sensitive_path(path: str) -> bool:
+    normalized = _norm_path(path).lower()
+    if _path_matches(normalized, BENCHMARK_SENSITIVE_TOKENS):
+        return True
+    if not normalized.startswith("tests/"):
+        return False
+    path_parts = normalized.split("/")
+    return any("benchmark" in part for part in path_parts[1:])
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: set[str] = set()
     deduped: list[str] = []
@@ -274,8 +282,7 @@ def classify_premerge_surfaces(
 ) -> dict[str, Any]:
     files = _dedupe(changed_files)
     python_files = [
-        path for path in files
-        if path.endswith(".py") and (repo_root / path).exists()
+        path for path in files if path.endswith(".py") and (repo_root / path).exists()
     ]
     surfaces: list[str] = []
     risk_profiles: list[str] = []
@@ -301,9 +308,13 @@ def classify_premerge_surfaces(
         mark("extension_runtime", "extension-runtime")
     if any(_path_matches(path, DOC_CONTENT_TOKENS) for path in files):
         mark("docs_project_content", "docs-project-content-ops")
-    if any(_path_matches(path, PUBLIC_BOUNDARY_TOKENS) for path in files):
+    benchmark_sensitive = any(_is_benchmark_sensitive_path(path) for path in files)
+    if (
+        any(_path_matches(path, PUBLIC_BOUNDARY_TOKENS) for path in files)
+        or benchmark_sensitive
+    ):
         mark("public_boundary")
-    if any(_path_matches(path, BENCHMARK_SENSITIVE_TOKENS) for path in files):
+    if benchmark_sensitive:
         mark("benchmark_sensitive")
         manual_holds.append(
             {
@@ -410,8 +421,12 @@ def _run_gate_check(
                 "status": "timed_out",
                 "returncode": None,
                 "duration_seconds": round(time.monotonic() - started, 3),
-                "stdout_tail": (exc.stdout or "")[-800:] if isinstance(exc.stdout, str) else "",
-                "stderr_tail": (exc.stderr or "")[-800:] if isinstance(exc.stderr, str) else "",
+                "stdout_tail": (exc.stdout or "")[-800:]
+                if isinstance(exc.stdout, str)
+                else "",
+                "stderr_tail": (exc.stderr or "")[-800:]
+                if isinstance(exc.stderr, str)
+                else "",
             }
         )
         if progress_callback:
@@ -535,6 +550,7 @@ def _gate_status(
     risk_profile_run: dict[str, Any] | None,
     boundary_run: dict[str, Any] | None,
     manual_holds: list[dict[str, str]],
+    explicit_selection_requested: bool = False,
 ) -> dict[str, Any]:
     direct_failures = [check for check in direct_checks if not check.get("ok")]
     run_failures = []
@@ -543,7 +559,7 @@ def _gate_status(
             run_failures.append(run)
     if direct_failures or run_failures:
         status = "failed"
-    elif not changed_files:
+    elif not changed_files and not explicit_selection_requested:
         status = "no_changes"
     elif manual_holds:
         status = "manual_review_required"
@@ -563,9 +579,7 @@ def _gate_status(
 
 def _check_command(check: dict[str, Any]) -> str:
     normalized = (
-        check.get("normalized")
-        if isinstance(check.get("normalized"), dict)
-        else {}
+        check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
     )
     display_argv = normalized.get("display_argv")
     if isinstance(display_argv, list) and display_argv:
@@ -577,18 +591,22 @@ def _run_summary(run: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(run, dict):
         return None
     selected_checks = [
-        check for check in run.get("selected_checks", [])
-        if isinstance(check, dict)
+        check for check in run.get("selected_checks", []) if isinstance(check, dict)
     ]
     executed_checks = [
-        check for check in selected_checks
+        check
+        for check in selected_checks
         if str(check.get("status") or "") not in {"", "ready", "skipped"}
     ]
     failures = [check for check in selected_checks if check.get("ok") is False]
     return {
         "ok": bool(run.get("ok")),
-        "selected_check_count": int(run.get("selected_check_count") or len(selected_checks)),
-        "executed_check_count": int(run.get("executed_check_count") or len(executed_checks)),
+        "selected_check_count": int(
+            run.get("selected_check_count") or len(selected_checks)
+        ),
+        "executed_check_count": int(
+            run.get("executed_check_count") or len(executed_checks)
+        ),
         "failure_count": int(run.get("failure_count") or len(failures)),
         "warning_count": int(run.get("warning_count") or 0),
         "advisory_failure_count": int(run.get("advisory_failure_count") or 0),
@@ -612,8 +630,7 @@ def build_validation_summary(
         "boundary_run": _run_summary(boundary_run),
     }
     active_run_summaries = [
-        summary for summary in run_summaries.values()
-        if isinstance(summary, dict)
+        summary for summary in run_summaries.values() if isinstance(summary, dict)
     ]
     selected_commands: list[str] = []
     failed_commands: list[str] = []
@@ -633,13 +650,17 @@ def build_validation_summary(
         ),
         "failure_count": len(direct_failures)
         + sum(int(summary["failure_count"]) for summary in active_run_summaries),
-        "warning_count": sum(int(summary["warning_count"]) for summary in active_run_summaries),
+        "warning_count": sum(
+            int(summary["warning_count"]) for summary in active_run_summaries
+        ),
         "advisory_failure_count": sum(
             int(summary["advisory_failure_count"]) for summary in active_run_summaries
         ),
         "direct_commands": [command for command in direct_commands if command],
         "selected_commands": selected_commands,
-        "all_commands": [command for command in [*direct_commands, *selected_commands] if command],
+        "all_commands": [
+            command for command in [*direct_commands, *selected_commands] if command
+        ],
         "failed_commands": [command for command in failed_commands if command],
         "runs": run_summaries,
     }
@@ -655,8 +676,7 @@ def apply_change_quality_verification(
         key: value for key, value in verification.items() if key != "receipt_path"
     }
     enforced_failure = bool(
-        verification.get("enforcement_applied")
-        and verification.get("ok") is False
+        verification.get("enforcement_applied") and verification.get("ok") is False
     )
     gate = payload.get("gate") if isinstance(payload.get("gate"), dict) else {}
     summary = (
@@ -687,17 +707,15 @@ def apply_change_quality_verification(
 
 def _recompute_smoke_run_status(run: dict[str, Any]) -> None:
     results = [
-        item for item in run.get("selected_checks", [])
+        item
+        for item in run.get("selected_checks", [])
         if isinstance(item, dict) and item.get("status")
     ]
     failures = [item for item in results if not item.get("ok")]
     run["failures"] = failures
     run["failure_count"] = len(failures)
     run["advisory_failure_count"] = len(
-        [
-            item for item in results
-            if item.get("status") == "advisory_inherited_failure"
-        ]
+        [item for item in results if item.get("status") == "advisory_inherited_failure"]
     )
     run["ok"] = not failures and not run.get("warning_count")
 
@@ -726,8 +744,7 @@ def downgrade_inherited_baseline_failures(
         if not any(token in command for token in INHERITED_BASELINE_COMMANDS):
             continue
         evidence = "\n".join(
-            str(check.get(key) or "")
-            for key in ("stdout_tail", "stderr_tail")
+            str(check.get(key) or "") for key in ("stdout_tail", "stderr_tail")
         )
         if any(needle and needle in evidence for needle in changed_mentions):
             continue
@@ -759,21 +776,35 @@ def _tier_limits(tier: str) -> dict[str, int | bool]:
 
 def build_premerge_validation_gate(
     *,
+    catalog_path: Path | None = None,
     changed_files: list[str] | None = None,
+    surfaces: list[str] | None = None,
+    families: list[str] | None = None,
+    profiles: list[str] | None = None,
     base_ref: str = "origin/main",
     tier: str = "standard",
     execute: bool = True,
     timeout_seconds: float = 120.0,
     fail_fast: bool = False,
     include_deep_checks: bool | None = None,
+    max_checks_per_family: int = 3,
+    max_checks_per_profile: int = 4,
     progress_callback: ProgressCallback | None = None,
     repo_root: Path | None = None,
 ) -> dict[str, Any]:
     target_repo_root = (repo_root or REPO_ROOT).resolve()
     files = _dedupe(list(changed_files or []))
+    selected_surfaces = _dedupe(list(surfaces or []))
+    selected_families = _dedupe(list(families or []))
+    selected_profiles = _dedupe(list(profiles or []))
+    explicit_selection_requested = bool(
+        selected_surfaces or selected_families or selected_profiles
+    )
     classification = classify_premerge_surfaces(files, repo_root=target_repo_root)
     limits = _tier_limits(tier)
-    include_deep = bool(limits["deep"] if include_deep_checks is None else include_deep_checks)
+    include_deep = bool(
+        limits["deep"] if include_deep_checks is None else include_deep_checks
+    )
     if progress_callback and execute:
         progress_callback(
             {
@@ -803,7 +834,7 @@ def build_premerge_validation_gate(
     if py_compile is not None:
         direct_checks.append(py_compile)
 
-    if files:
+    if files or explicit_selection_requested:
         catalog_progress = _section_progress_callback(
             progress_callback,
             section="catalog_canaries",
@@ -815,10 +846,14 @@ def build_premerge_validation_gate(
         )
         catalog_run = build_canary_smoke_suite_run(
             suite="catalog-plan",
+            catalog_path=catalog_path,
             changed_files=files,
+            surfaces=selected_surfaces,
+            families=selected_families,
+            profiles=selected_profiles,
             include_deep_checks=include_deep,
-            max_checks_per_family=3,
-            max_checks_per_profile=4,
+            max_checks_per_family=max(1, int(max_checks_per_family)),
+            max_checks_per_profile=max(1, int(max_checks_per_profile)),
             limit=int(limits["catalog_limit"]),
             execute=execute,
             timeout_seconds=timeout_seconds,
@@ -897,7 +932,9 @@ def build_premerge_validation_gate(
             progress_callback,
             section="public_boundary",
         )
-        _emit_section_progress(boundary_progress, event="section_started", selected_hint=1)
+        _emit_section_progress(
+            boundary_progress, event="section_started", selected_hint=1
+        )
         boundary_run = _public_boundary_changed_files_run(
             changed_files=files,
             execute=execute,
@@ -926,6 +963,7 @@ def build_premerge_validation_gate(
         risk_profile_run=risk_profile_run,
         boundary_run=boundary_run,
         manual_holds=list(classification["manual_holds"]),
+        explicit_selection_requested=explicit_selection_requested,
     )
     validation_summary = build_validation_summary(
         direct_checks=direct_checks,
@@ -934,7 +972,8 @@ def build_premerge_validation_gate(
         boundary_run=boundary_run,
     )
     ok = gate["status"] in {"passed", "no_changes"} or (
-        not execute and gate["status"] in {"preview_only", "manual_review_required", "no_changes"}
+        not execute
+        and gate["status"] in {"preview_only", "manual_review_required", "no_changes"}
     )
     payload = {
         "ok": ok,
@@ -1056,7 +1095,9 @@ def render_premerge_validation_gate_markdown(payload: dict[str, Any]) -> str:
             ]
         )
         if check.get("stderr_tail"):
-            lines.append(f"  stderr_tail: `{str(check.get('stderr_tail')).strip()[-240:]}`")
+            lines.append(
+                f"  stderr_tail: `{str(check.get('stderr_tail')).strip()[-240:]}`"
+            )
 
     def append_run(title: str, run: Any) -> None:
         if not isinstance(run, dict):
@@ -1081,8 +1122,12 @@ def render_premerge_validation_gate_markdown(payload: dict[str, Any]) -> str:
                 if isinstance(check.get("normalized"), dict)
                 else {}
             )
-            command = " ".join(str(part) for part in normalized.get("display_argv") or [])
-            lines.append(f"- `{check.get('status') or 'ready'}` {command or check.get('command')}")
+            command = " ".join(
+                str(part) for part in normalized.get("display_argv") or []
+            )
+            lines.append(
+                f"- `{check.get('status') or 'ready'}` {command or check.get('command')}"
+            )
             if check.get("advisory_reason"):
                 lines.append(f"  advisory_reason: {check.get('advisory_reason')}")
 

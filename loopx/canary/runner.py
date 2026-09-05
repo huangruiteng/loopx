@@ -131,9 +131,7 @@ def normalize_canary_command(command: str) -> dict[str, Any]:
         }
 
     injected_args = [
-        arg
-        for arg in NO_WRITE_ARGS_BY_SCRIPT.get(script.name, [])
-        if arg not in argv
+        arg for arg in NO_WRITE_ARGS_BY_SCRIPT.get(script.name, []) if arg not in argv
     ]
     if injected_args:
         argv.extend(injected_args)
@@ -178,7 +176,9 @@ def _tracked_change_paths() -> tuple[bool, list[str], str]:
             ok = False
             stderr_parts.append(f"git_diff_failed: {completed.stderr[-400:]}")
             continue
-        paths.update(line.strip() for line in completed.stdout.splitlines() if line.strip())
+        paths.update(
+            line.strip() for line in completed.stdout.splitlines() if line.strip()
+        )
     return ok, sorted(paths), "\n".join(part for part in stderr_parts if part)
 
 
@@ -230,7 +230,16 @@ def _restore_tracked_paths(paths: list[str]) -> dict[str, Any]:
     if not paths:
         return {"ok": True, "restored_paths": []}
     completed = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "restore", "--staged", "--worktree", "--", *paths],
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "restore",
+            "--staged",
+            "--worktree",
+            "--",
+            *paths,
+        ],
         check=False,
         text=True,
         stdout=subprocess.PIPE,
@@ -256,7 +265,9 @@ def _run_check(
     if check_index is not None and check_count is not None:
         result.update({"check_index": check_index, "check_count": check_count})
     if not normalized.get("ok"):
-        result.update({"status": "skipped", "ok": False, "reason": normalized.get("reason")})
+        result.update(
+            {"status": "skipped", "ok": False, "reason": normalized.get("reason")}
+        )
         return result
     git_required_skip = _git_required_skip(normalized)
     if git_required_skip:
@@ -281,8 +292,12 @@ def _run_check(
                 "ok": False,
                 "returncode": None,
                 "duration_seconds": round(time.monotonic() - started, 3),
-                "stdout_tail": (exc.stdout or "")[-800:] if isinstance(exc.stdout, str) else "",
-                "stderr_tail": (exc.stderr or "")[-800:] if isinstance(exc.stderr, str) else "",
+                "stdout_tail": (exc.stdout or "")[-800:]
+                if isinstance(exc.stdout, str)
+                else "",
+                "stderr_tail": (exc.stderr or "")[-800:]
+                if isinstance(exc.stderr, str)
+                else "",
             }
         )
         return result
@@ -354,7 +369,9 @@ def _matches_modules(script: Path, modules: list[str]) -> bool:
     examples_relative = script.relative_to(REPO_ROOT / "examples").as_posix().lower()
     haystack = f"{script.name.lower()} {examples_relative}"
     stem_tokens = {
-        token for token in re.split(r"[-_./]+", examples_relative.removesuffix(script.suffix)) if token
+        token
+        for token in re.split(r"[-_./]+", examples_relative.removesuffix(script.suffix))
+        if token
     }
     for module in modules:
         needle = module.strip().lower()
@@ -365,13 +382,10 @@ def _matches_modules(script: Path, modules: list[str]) -> bool:
             needle.replace("-", "_"),
             needle.replace("_", "-"),
         }
-        needle_tokens = {
-            token for token in re.split(r"[-_./]+", needle) if token
-        }
-        if (
-            any(variant in haystack or variant in stem_tokens for variant in needle_variants)
-            or (needle_tokens and needle_tokens.issubset(stem_tokens))
-        ):
+        needle_tokens = {token for token in re.split(r"[-_./]+", needle) if token}
+        if any(
+            variant in haystack or variant in stem_tokens for variant in needle_variants
+        ) or (needle_tokens and needle_tokens.issubset(stem_tokens)):
             return True
     return False
 
@@ -387,12 +401,17 @@ def _discover_smoke_suite_checks(
     modules = list(modules or [])
     exclude_modules = list(exclude_modules or [])
     requested_scripts = {
-        script for script in (_normalize_script_filter(item) for item in (scripts or [])) if script
+        script
+        for script in (_normalize_script_filter(item) for item in (scripts or []))
+        if script
     }
-    all_scripts = sorted(path for path in (REPO_ROOT / "examples").rglob("*-smoke.py") if path.is_file())
+    all_scripts = sorted(
+        path for path in (REPO_ROOT / "examples").rglob("*-smoke.py") if path.is_file()
+    )
     if normalized_suite == "default-public":
         all_scripts = [
-            script for script in all_scripts
+            script
+            for script in all_scripts
             if script.name not in EXPLICIT_GROUPED_SMOKES
         ]
     selected: list[Path] = []
@@ -484,6 +503,34 @@ def _progress_check_finished(
     )
 
 
+def _apply_check_limit(
+    checks: list[dict[str, Any]], *, soft_target: int
+) -> tuple[list[dict[str, Any]], bool]:
+    if soft_target <= 0:
+        return checks, False
+    limited = checks[:soft_target]
+    selected_commands = {str(check.get("command") or "") for check in limited}
+    mandatory_after_target = [
+        check
+        for check in checks[soft_target:]
+        if check.get("mandatory") is True
+        and str(check.get("command") or "") not in selected_commands
+    ]
+    if not mandatory_after_target:
+        return limited, False
+    mandatory_commands = {
+        str(check.get("command") or "") for check in mandatory_after_target
+    }
+    return (
+        [
+            check
+            for check in checks
+            if check in limited or str(check.get("command") or "") in mandatory_commands
+        ],
+        True,
+    )
+
+
 def build_canary_smoke_suite_run(
     *,
     suite: str = "default-public",
@@ -534,7 +581,9 @@ def build_canary_smoke_suite_run(
     smoke_profiles = list(profile_resolution["smoke_profiles"])
     catalog_profiles = list(profile_resolution["catalog_profiles"])
     profile_expansions = list(profile_resolution["profile_expansions"])
-    catalog_selector_requested = bool(families or catalog_profiles or changed_files or surfaces)
+    catalog_selector_requested = bool(
+        families or catalog_profiles or changed_files or surfaces
+    )
     suite_requested = normalized_suite != "catalog-plan"
     if (
         catalog_selector_requested
@@ -569,6 +618,11 @@ def build_canary_smoke_suite_run(
             max_checks_per_profile=max_checks_per_profile,
         )
         catalog_checks = flatten_catalog_canary_checks(plan)
+        warnings.extend(
+            error
+            for error in plan.get("selection_errors", [])
+            if isinstance(error, dict)
+        )
         if catalog_profiles:
             # Explicit catalog profiles are targeted validation, so do not let
             # a global limit get consumed first by broader named-suite matches.
@@ -581,10 +635,15 @@ def build_canary_smoke_suite_run(
     normalized_offset = max(0, int(offset or 0))
     if normalized_offset:
         selected = selected[normalized_offset:]
-    if limit and limit > 0:
-        selected = selected[:limit]
+    requested_limit = max(0, limit)
+    selected, limit_expanded_for_mandatory = _apply_check_limit(
+        selected, soft_target=requested_limit
+    )
     normalized = [
-        {**check, "normalized": normalize_canary_command(str(check.get("command") or ""))}
+        {
+            **check,
+            "normalized": normalize_canary_command(str(check.get("command") or "")),
+        }
         for check in selected
     ]
 
@@ -660,10 +719,9 @@ def build_canary_smoke_suite_run(
                         if clean_start:
                             restore = _restore_tracked_paths(side_effects)
                             result["tracked_side_effect_restore"] = restore
-                            side_effect_guard["auto_restored"] = (
-                                bool(side_effect_guard.get("auto_restored"))
-                                or bool(restore.get("ok"))
-                            )
+                            side_effect_guard["auto_restored"] = bool(
+                                side_effect_guard.get("auto_restored")
+                            ) or bool(restore.get("ok"))
                     if not after_ok and after_stderr:
                         result["tracked_side_effect_stderr_tail"] = after_stderr[-800:]
                 _progress_check_finished(
@@ -769,9 +827,9 @@ def build_canary_smoke_suite_run(
                 if clean_start:
                     restore = _restore_tracked_paths(side_effects)
                     guard_failure["tracked_side_effect_restore"] = restore
-                    side_effect_guard["auto_restored"] = (
-                        bool(side_effect_guard.get("auto_restored")) or bool(restore.get("ok"))
-                    )
+                    side_effect_guard["auto_restored"] = bool(
+                        side_effect_guard.get("auto_restored")
+                    ) or bool(restore.get("ok"))
                 suite_guard_failures.append(guard_failure)
 
     display_items = results if execute else normalized
@@ -786,7 +844,8 @@ def build_canary_smoke_suite_run(
     unsafe = [
         item
         for item in normalized
-        if not isinstance(item.get("normalized"), dict) or not item["normalized"].get("ok")
+        if not isinstance(item.get("normalized"), dict)
+        or not item["normalized"].get("ok")
     ]
     ok = not failures and (execute or not unsafe) and not warnings
     return {
@@ -805,7 +864,11 @@ def build_canary_smoke_suite_run(
         "serial_check_count": serial_check_count,
         "side_effect_guard": side_effect_guard,
         "offset": normalized_offset,
-        "limit": max(0, limit),
+        "limit": requested_limit,
+        "effective_limit": (
+            max(requested_limit, len(selected)) if requested_limit > 0 else 0
+        ),
+        "limit_expanded_for_mandatory": limit_expanded_for_mandatory,
         "matched_check_count": matched_check_count,
         "selected_check_count": len(selected),
         "executed_check_count": len(results),
@@ -830,7 +893,7 @@ def build_canary_smoke_suite_run(
             "profile_expansions": profile_expansions,
             "include_deep_checks": include_deep_checks,
             "max_checks_per_family": max_checks_per_family,
-            "max_checks_per_profile": max_checks_per_profile,
+            "check_soft_target_per_profile": max_checks_per_profile,
             "offset": normalized_offset,
             "limit": max(0, limit),
             "parallel_jobs": requested_parallel_jobs,
@@ -842,7 +905,9 @@ def build_canary_smoke_suite_run(
             "planned_check_count": len(flatten_catalog_canary_checks(plan)),
             "profiles": plan.get("profiles", []),
             "domain_profiles": plan.get("domain_profiles", []),
-        } if isinstance(plan, dict) else None,
+        }
+        if isinstance(plan, dict)
+        else None,
         "selected_checks": display_items,
         "failures": failures,
         "git_required_skips": git_required_skips,
@@ -882,9 +947,15 @@ def build_catalog_canary_run(
         max_checks_per_profile=max_checks_per_profile,
     )
     planned = flatten_catalog_canary_checks(plan)
-    selected = planned[: max(0, check_limit)]
+    requested_limit = max(0, check_limit)
+    selected, limit_expanded_for_mandatory = _apply_check_limit(
+        planned, soft_target=requested_limit
+    )
     normalized = [
-        {**check, "normalized": normalize_canary_command(str(check.get("command") or ""))}
+        {
+            **check,
+            "normalized": normalize_canary_command(str(check.get("command") or "")),
+        }
         for check in selected
     ]
     results = []
@@ -901,9 +972,13 @@ def build_catalog_canary_run(
     unsafe = [
         item
         for item in normalized
-        if not isinstance(item.get("normalized"), dict) or not item["normalized"].get("ok")
+        if not isinstance(item.get("normalized"), dict)
+        or not item["normalized"].get("ok")
     ]
-    ok = not failures and (execute or not unsafe)
+    selection_errors = [
+        error for error in plan.get("selection_errors", []) if isinstance(error, dict)
+    ]
+    ok = not failures and (execute or not unsafe) and not selection_errors
     return {
         "ok": ok,
         "schema_version": CANARY_RUN_SCHEMA_VERSION,
@@ -913,7 +988,11 @@ def build_catalog_canary_run(
         "executes_checks": execute,
         "writes_evidence": False,
         "creates_runtime_contract": False,
-        "check_limit": max(0, check_limit),
+        "check_limit": requested_limit,
+        "effective_check_limit": (
+            max(requested_limit, len(selected)) if requested_limit > 0 else 0
+        ),
+        "check_limit_expanded_for_mandatory": limit_expanded_for_mandatory,
         "timeout_seconds": max(1.0, timeout_seconds),
         "planned_check_count": len(planned),
         "selected_check_count": len(selected),
@@ -921,6 +1000,8 @@ def build_catalog_canary_run(
         "failure_count": len(failures),
         "git_required_skip_count": len(git_required_skips),
         "unsafe_command_count": len(unsafe),
+        "selection_error_count": len(selection_errors),
+        "selection_errors": selection_errors,
         "selection_inputs": plan.get("selection_inputs"),
         "profiles": plan.get("profiles", []),
         "domain_profiles": plan.get("domain_profiles", []),
@@ -955,7 +1036,9 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
     for check in payload.get("selected_checks", []):
         if not isinstance(check, dict):
             continue
-        normalized = check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+        normalized = (
+            check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+        )
         command = " ".join(str(part) for part in normalized.get("display_argv") or [])
         status = check.get("status") or ("ready" if normalized.get("ok") else "skipped")
         lines.extend(
@@ -970,7 +1053,12 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
         if check.get("injected_args") or normalized.get("injected_args"):
             lines.append(
                 "- injected_args: `"
-                + ", ".join(str(arg) for arg in normalized.get("injected_args") or check.get("injected_args") or [])
+                + ", ".join(
+                    str(arg)
+                    for arg in normalized.get("injected_args")
+                    or check.get("injected_args")
+                    or []
+                )
                 + "`"
             )
         if check.get("returncode") is not None:
@@ -978,7 +1066,9 @@ def render_catalog_canary_run_markdown(payload: dict[str, Any]) -> str:
         if check.get("skip_reason"):
             lines.append(f"- skip_reason: {check.get('skip_reason')}")
         if check.get("stderr_tail"):
-            lines.append(f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`")
+            lines.append(
+                f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`"
+            )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1017,13 +1107,17 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
     ]
     for warning in payload.get("warnings", []):
         if isinstance(warning, dict):
-            lines.append(f"- warning: `{warning.get('kind')}` {warning.get('script')}: {warning.get('message')}")
+            lines.append(
+                f"- warning: `{warning.get('kind')}` {warning.get('script')}: {warning.get('message')}"
+            )
     if payload.get("warnings"):
         lines.append("")
     for check in payload.get("selected_checks", []):
         if not isinstance(check, dict):
             continue
-        normalized = check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+        normalized = (
+            check.get("normalized") if isinstance(check.get("normalized"), dict) else {}
+        )
         command = " ".join(str(part) for part in normalized.get("display_argv") or [])
         status = check.get("status") or ("ready" if normalized.get("ok") else "skipped")
         title = check.get("profile_title") or check.get("profile_id") or "smoke"
@@ -1054,14 +1148,20 @@ def render_canary_smoke_suite_run_markdown(payload: dict[str, Any]) -> str:
         if check.get("tracked_side_effects"):
             lines.append(
                 "- tracked_side_effects: `"
-                + ", ".join(str(path) for path in check.get("tracked_side_effects") or [])
+                + ", ".join(
+                    str(path) for path in check.get("tracked_side_effects") or []
+                )
                 + "`"
             )
         restore = check.get("tracked_side_effect_restore")
         if isinstance(restore, dict):
-            lines.append(f"- tracked_side_effect_restore_ok: `{str(restore.get('ok')).lower()}`")
+            lines.append(
+                f"- tracked_side_effect_restore_ok: `{str(restore.get('ok')).lower()}`"
+            )
         if check.get("stderr_tail"):
-            lines.append(f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`")
+            lines.append(
+                f"- stderr_tail: `{str(check.get('stderr_tail')).strip()[-300:]}`"
+            )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

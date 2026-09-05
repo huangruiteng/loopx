@@ -28,8 +28,7 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
         "checks": [
             {
                 "command": (
-                    "python3 "
-                    "examples/lark-goal-channel-human-gate-delivery-smoke.py"
+                    "python3 examples/lark-goal-channel-human-gate-delivery-smoke.py"
                 ),
                 "tier": "default",
                 "reason": (
@@ -302,6 +301,87 @@ CONTROL_PLANE_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
                 "command": "python3 examples/control_plane/hot-path-interface-budget-smoke.py",
                 "tier": "deep",
                 "reason": "pairs emitted stdout qualification with compact in-memory hot-path budgets",
+            },
+        ],
+    },
+)
+
+
+BENCHMARK_TOOLKIT_DEEP_TEST_PATHS: tuple[str, ...] = (
+    "tests/capabilities/test_benchmark_launch_admission.py",
+    "tests/capabilities/test_benchmark_route_receipt.py",
+    "tests/capabilities/test_benchmark_external_agent.py",
+    "tests/capabilities/test_traex_benchmark_evidence.py",
+    "tests/capabilities/test_benchmark_strict_integrity.py",
+    "tests/capabilities/test_benchmark_toolkit.py",
+)
+BENCHMARK_TOOLKIT_DEEP_TEST_COMMAND = (
+    "python3 examples/benchmark-integrity-deep-pytest-gate.py"
+)
+
+BENCHMARK_QUALIFICATION_PROFILES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "benchmark-toolkit-boundary",
+        "title": "Benchmark toolkit boundary",
+        "quality_risk": "high",
+        "purpose": (
+            "Check provider-neutral permission, artifact, candidate-source, and "
+            "integrity boundaries without launching jobs."
+        ),
+        "catalog_families": [
+            "Evidence Lifecycle",
+            "State And Boundary",
+            "Work Routing",
+        ],
+        "trigger_hints": (
+            "benchmark",
+            "benchmark toolkit",
+            "benchmark research",
+            "benchmark integrity",
+            "launch lineage",
+            "loopx/capabilities/benchmark_toolkit",
+            "loopx/capabilities/benchmark_toolkit/launch_admission.py",
+            "loopx/capabilities/benchmark_toolkit/route_receipt.py",
+            "benchmark/",
+            "examples/benchmark",
+        ),
+        "checks": [
+            {
+                "command": "python3 examples/benchmark-integrity-launch-lineage-smoke.py",
+                "tier": "default",
+                "mandatory": True,
+                "reason": (
+                    "guards exact launch, route, runtime, result, policy, and "
+                    "trajectory lineage without a model, Docker, or benchmark job"
+                ),
+            },
+            {
+                "command": "python3 examples/benchmark-run-permission-policy-smoke.py",
+                "tier": "default",
+                "mandatory": True,
+                "reason": "guards explicit execution and publication permission policy",
+            },
+            {
+                "command": "python3 examples/benchmark-candidate-source-boundary-smoke.py",
+                "tier": "default",
+                "mandatory": True,
+                "reason": "guards candidate selection against raw and private sources",
+            },
+            {
+                "command": BENCHMARK_TOOLKIT_DEEP_TEST_COMMAND,
+                "tier": "deep",
+                "check_kind": "unit_gate",
+                "mandatory": True,
+                "reason": (
+                    "aggregates focused pytest unit and CLI contract regressions; "
+                    "this is a deep unit gate, not durable smoke evidence"
+                ),
+            },
+            {
+                "command": "python3 examples/benchmark-artifact-path-filter-smoke.py",
+                "tier": "default",
+                "mandatory": True,
+                "reason": "guards raw/private benchmark artifact path exclusion",
             },
         ],
     },

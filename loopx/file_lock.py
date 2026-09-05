@@ -10,10 +10,11 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import tempfile
 import time
 import importlib
-from typing import Any, Iterator, TextIO
+from typing import Any, Iterator, Literal, TextIO, overload
 from uuid import uuid4
 
 try:  # pragma: no cover - exercised on POSIX hosts in integration smokes.
@@ -174,7 +175,9 @@ def _holder_record(
 def _write_holder_record(lock_file: TextIO, record: dict[str, object]) -> None:
     lock_file.seek(0)
     lock_file.truncate()
-    json.dump(record, lock_file, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    json.dump(
+        record, lock_file, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
     lock_file.write("\n")
     lock_file.flush()
     os.fsync(lock_file.fileno())
@@ -189,7 +192,12 @@ def _write_holder_sidecar(holder_path: Path, record: dict[str, object]) -> None:
     )
     temporary_path = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as holder_file:
+        try:
+            holder_file = os.fdopen(descriptor, "w", encoding="utf-8")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with holder_file:
             json.dump(
                 record,
                 holder_file,
@@ -259,7 +267,9 @@ def _read_holder_record(lock_path: Path) -> dict[str, object]:
     return {key: payload[key] for key in allowed if key in payload}
 
 
-def _operator_action(holder: dict[str, object], *, retry_mode: str) -> dict[str, object]:
+def _operator_action(
+    holder: dict[str, object], *, retry_mode: str
+) -> dict[str, object]:
     return {
         "required": True,
         "action": "inspect_lock_holder",
@@ -282,14 +292,11 @@ def _append_incident(path: Path, record: dict[str, object]) -> bool:
         + "\n"
     ).encode("utf-8")
     try:
-        descriptor = os.open(
-            incident_path,
-            os.O_APPEND | os.O_CREAT | os.O_WRONLY,
-            0o600,
-        )
+        descriptor = _open_verified_incident_descriptor(incident_path)
         try:
             os.write(descriptor, encoded)
             os.fsync(descriptor)
+            _assert_live_incident_path_matches_descriptor(incident_path, descriptor)
         finally:
             os.close(descriptor)
     except OSError:
@@ -314,7 +321,11 @@ class LockAcquireTimeoutError(TimeoutError):
         holder: dict[str, object] = raw_holder if isinstance(raw_holder, dict) else {}
         super().__init__(
             "file lock acquisition timed out"
-            + (f" while waiting for holder pid {holder.get('pid')}" if holder.get("pid") else "")
+            + (
+                f" while waiting for holder pid {holder.get('pid')}"
+                if holder.get("pid")
+                else ""
+            )
         )
 
     def to_payload(self) -> dict[str, object]:
@@ -376,6 +387,156 @@ def _lock_is_busy(error: OSError) -> bool:
     }
 
 
+def _same_open_lock_identity(
+    path_info: os.stat_result, descriptor_info: os.stat_result
+) -> bool:
+    path_identity = (
+        int(getattr(path_info, "st_dev", 0)),
+        int(getattr(path_info, "st_ino", 0)),
+    )
+    descriptor_identity = (
+        int(getattr(descriptor_info, "st_dev", 0)),
+        int(getattr(descriptor_info, "st_ino", 0)),
+    )
+    if path_identity == (0, 0) or descriptor_identity == (0, 0):
+        return True
+    return path_identity == descriptor_identity
+
+
+def _open_verified_regular_descriptor(
+    path: Path,
+    *,
+    flags: int,
+    mode: int,
+    symlink_error: str,
+    nonregular_error: str,
+    hardlink_error: str,
+    replaced_error: str,
+) -> int:
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+    if os.name == "posix":
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, mode)
+    except OSError as error:
+        try:
+            current = path.lstat()
+        except OSError:
+            raise error
+        if stat.S_ISLNK(current.st_mode):
+            raise OSError(symlink_error) from error
+        raise
+    try:
+        descriptor_info = os.fstat(descriptor)
+        if not stat.S_ISREG(descriptor_info.st_mode):
+            raise OSError(nonregular_error)
+        if descriptor_info.st_nlink != 1:
+            raise OSError(hardlink_error)
+        try:
+            current = path.lstat()
+        except OSError as error:
+            raise OSError(replaced_error) from error
+        if stat.S_ISLNK(current.st_mode):
+            raise OSError(symlink_error)
+        if not stat.S_ISREG(current.st_mode):
+            raise OSError(nonregular_error)
+        if current.st_nlink != 1:
+            raise OSError(hardlink_error)
+        if not _same_open_lock_identity(current, descriptor_info):
+            raise OSError(replaced_error)
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _open_verified_lock_descriptor(lock_path: Path) -> int:
+    return _open_verified_regular_descriptor(
+        lock_path,
+        flags=os.O_CREAT | os.O_RDWR,
+        mode=0o600,
+        symlink_error="lock_file_symlink_rejected",
+        nonregular_error="lock_file_not_regular",
+        hardlink_error="lock_file_hardlink_rejected",
+        replaced_error="lock_file_replaced_during_open",
+    )
+
+
+def _open_verified_incident_descriptor(incident_path: Path) -> int:
+    return _open_verified_regular_descriptor(
+        incident_path,
+        flags=os.O_APPEND | os.O_CREAT | os.O_WRONLY,
+        mode=0o600,
+        symlink_error="lock_incident_symlink_rejected",
+        nonregular_error="lock_incident_not_regular",
+        hardlink_error="lock_incident_hardlink_rejected",
+        replaced_error="lock_incident_replaced_during_open",
+    )
+
+
+def _assert_live_lock_path_matches_descriptor(lock_path: Path, descriptor: int) -> None:
+    descriptor_info = os.fstat(descriptor)
+    if not stat.S_ISREG(descriptor_info.st_mode):
+        raise OSError("lock_file_not_regular")
+    if descriptor_info.st_nlink != 1:
+        raise OSError("lock_file_hardlink_rejected")
+    try:
+        current = lock_path.lstat()
+    except OSError as error:
+        raise OSError("lock_file_replaced_during_lock") from error
+    if stat.S_ISLNK(current.st_mode):
+        raise OSError("lock_file_symlink_rejected")
+    if not stat.S_ISREG(current.st_mode):
+        raise OSError("lock_file_not_regular")
+    if current.st_nlink != 1:
+        raise OSError("lock_file_hardlink_rejected")
+    if not _same_open_lock_identity(current, descriptor_info):
+        raise OSError("lock_file_replaced_during_lock")
+
+
+def _assert_live_incident_path_matches_descriptor(
+    incident_path: Path, descriptor: int
+) -> None:
+    descriptor_info = os.fstat(descriptor)
+    if not stat.S_ISREG(descriptor_info.st_mode):
+        raise OSError("lock_incident_not_regular")
+    if descriptor_info.st_nlink != 1:
+        raise OSError("lock_incident_hardlink_rejected")
+    try:
+        current = incident_path.lstat()
+    except OSError as error:
+        raise OSError("lock_incident_replaced_during_open") from error
+    if stat.S_ISLNK(current.st_mode):
+        raise OSError("lock_incident_symlink_rejected")
+    if not stat.S_ISREG(current.st_mode):
+        raise OSError("lock_incident_not_regular")
+    if current.st_nlink != 1:
+        raise OSError("lock_incident_hardlink_rejected")
+    if not _same_open_lock_identity(current, descriptor_info):
+        raise OSError("lock_incident_replaced_during_open")
+
+
+@dataclass(frozen=True, slots=True)
+class ExclusiveFileLockLease:
+    """A held kernel lock whose live pathname identity can be revalidated.
+
+    Most callers only need the context-manager boundary and continue to receive
+    a ``Path`` from :func:`exclusive_file_lock`. Multi-step transactions can
+    request this lease and call :meth:`check` immediately before and after each
+    mutation so a replaced lock pathname cannot silently admit another writer.
+    """
+
+    path: Path
+    _descriptor: int
+
+    def check(self) -> None:
+        _assert_live_lock_path_matches_descriptor(self.path, self._descriptor)
+
+    def exists(self) -> bool:
+        return self.path.exists()
+
+
+@overload
 @contextmanager
 def exclusive_file_lock(
     path: Path,
@@ -385,12 +546,44 @@ def exclusive_file_lock(
     poll_interval_seconds: float | None = None,
     agent_id: str | None = None,
     operation: str | None = None,
-) -> Iterator[Path]:
+    expose_lease: Literal[False] = False,
+) -> Iterator[Path]: ...
+
+
+@overload
+@contextmanager
+def exclusive_file_lock(
+    path: Path,
+    *,
+    policy: LockAcquisitionPolicy | str = LockAcquisitionPolicy.MUTATION,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+    agent_id: str | None = None,
+    operation: str | None = None,
+    expose_lease: Literal[True],
+) -> Iterator[ExclusiveFileLockLease]: ...
+
+
+@contextmanager
+def exclusive_file_lock(
+    path: Path,
+    *,
+    policy: LockAcquisitionPolicy | str = LockAcquisitionPolicy.MUTATION,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float | None = None,
+    agent_id: str | None = None,
+    operation: str | None = None,
+    expose_lease: bool = False,
+) -> Iterator[Path | ExclusiveFileLockLease]:
     """Hold a sibling lock file with a finite cross-platform deadline."""
 
     selected_policy = _policy(policy)
     defaults = LOCK_POLICIES[selected_policy]
-    timeout = defaults.timeout_seconds if timeout_seconds is None else max(0.0, timeout_seconds)
+    timeout = (
+        defaults.timeout_seconds
+        if timeout_seconds is None
+        else max(0.0, timeout_seconds)
+    )
     poll_interval = (
         defaults.poll_interval_seconds
         if poll_interval_seconds is None
@@ -399,8 +592,13 @@ def exclusive_file_lock(
     lock_path = _lock_path(path)
     holder_path = lock_holder_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
-    with os.fdopen(descriptor, "r+", encoding="utf-8") as lock_file:
+    descriptor = _open_verified_lock_descriptor(lock_path)
+    try:
+        lock_file = os.fdopen(descriptor, "r+", encoding="utf-8")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with lock_file:
         started = time.monotonic()
         started_at = _utc_now_iso()
         deadline = started + timeout
@@ -417,6 +615,7 @@ def exclusive_file_lock(
                     operation=operation,
                 ) from None
             time.sleep(min(poll_interval, max(0.0, deadline - now)))
+        _assert_live_lock_path_matches_descriptor(lock_path, lock_file.fileno())
         record = _holder_record(
             path,
             agent_id=agent_id,
@@ -430,7 +629,14 @@ def exclusive_file_lock(
                 holder_path=holder_path,
                 record=record,
             )
-            yield lock_path
+            lease = ExclusiveFileLockLease(
+                path=lock_path,
+                _descriptor=lock_file.fileno(),
+            )
+            try:
+                yield lease if expose_lease else lock_path
+            finally:
+                lease.check()
         finally:
             _mark_released(
                 lock_file,
@@ -457,11 +663,17 @@ def try_exclusive_file_lock(
     lock_path = _lock_path(path)
     holder_path = lock_holder_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
-    with os.fdopen(descriptor, "r+", encoding="utf-8") as lock_file:
+    descriptor = _open_verified_lock_descriptor(lock_path)
+    try:
+        lock_file = os.fdopen(descriptor, "r+", encoding="utf-8")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    with lock_file:
         if not _try_acquire_kernel_lock(lock_file):
             yield None
             return
+        _assert_live_lock_path_matches_descriptor(lock_path, lock_file.fileno())
         record = _holder_record(
             path,
             agent_id=agent_id,
@@ -475,7 +687,10 @@ def try_exclusive_file_lock(
                 holder_path=holder_path,
                 record=record,
             )
-            yield lock_path
+            try:
+                yield lock_path
+            finally:
+                _assert_live_lock_path_matches_descriptor(lock_path, lock_file.fileno())
         finally:
             _mark_released(
                 lock_file,
@@ -673,11 +888,7 @@ def _claim_effect_mutation_lock(
     path: Path,
     token: str,
 ) -> _EffectMutationClaim | None:
-    if (
-        not token
-        or len(token) > EFFECT_MUTATION_TOKEN_MAX_LENGTH
-        or not token.strip()
-    ):
+    if not token or len(token) > EFFECT_MUTATION_TOKEN_MAX_LENGTH or not token.strip():
         return None
     claim_path = _effect_mutation_claim_path(path, token)
     for _attempt in range(2):
@@ -831,7 +1042,9 @@ def _release_effect_mutation_lock(
             current = _read_effect_mutation_owner(path)
             if current is None or current.get("token") != token:
                 return False
-            if not _same_effect_file_identity(lock_identity, _effect_file_identity(path)):
+            if not _same_effect_file_identity(
+                lock_identity, _effect_file_identity(path)
+            ):
                 return False
             try:
                 path.replace(retired_path)

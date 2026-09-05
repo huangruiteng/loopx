@@ -19,8 +19,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .launch_admission import normalize_benchmark_launch_admission_receipt
+
 EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION = "external_agent_request_v1"
 EXTERNAL_AGENT_RESULT_SCHEMA_VERSION = "external_agent_result_v1"
+EXTERNAL_AGENT_REQUEST_V2_SCHEMA_VERSION = "external_agent_request_v2"
+EXTERNAL_AGENT_RESULT_V2_SCHEMA_VERSION = "external_agent_result_v2"
 EXTERNAL_AGENT_CONTAINMENT_SCHEMA_VERSION = "external_agent_containment_v1"
 EXTERNAL_AGENT_CONTAINMENT_VERIFICATION_SCHEMA_VERSION = (
     "external_agent_containment_verification_v1"
@@ -28,10 +32,16 @@ EXTERNAL_AGENT_CONTAINMENT_VERIFICATION_SCHEMA_VERSION = (
 LOOPX_EXTERNAL_AGENT_PHASE_RECEIPT_SCHEMA_VERSION = (
     "loopx_external_agent_phase_receipt_v1"
 )
+EXTERNAL_AGENT_PHASE_RECEIPT_V2_SCHEMA_VERSION = "external_agent_phase_receipt_v2"
 BENCHMARK_PUBLIC_PROGRESS_SCHEMA_VERSION = "benchmark_public_progress_v0"
 BENCHMARK_CONTINUATION_DECISION_SCHEMA_VERSION = "benchmark_continuation_decision_v0"
 _MAX_TIMEOUT_SECONDS = 86_400.0
 _RESULT_STATUSES = {"succeeded", "failed"}
+_TERMINAL_RESULT_CLASSIFICATIONS = {
+    "solver_completed",
+    "solver_exited_nonzero",
+    "solver_startup_failed",
+}
 _CONTAINMENT_KINDS = {
     "container",
     "cgroup_v2",
@@ -39,7 +49,10 @@ _CONTAINMENT_KINDS = {
     "virtual_machine",
     "windows_job_object",
 }
-_CONTAINMENT_POSTCONDITION = "drained_before_result_consumption"
+_LEGACY_CONTAINMENT_POSTCONDITION = "drained_before_result_consumption"
+EXTERNAL_AGENT_CONTAINMENT_TERMINATION_POSTCONDITION = (
+    "destroyed_before_result_consumption"
+)
 _OPAQUE_REF_PATTERN = re.compile(r"^[A-Za-z0-9._:@/-]{1,160}$")
 _SOLVER_ENVIRONMENT_ALLOWLIST = (
     "COMSPEC",
@@ -82,9 +95,33 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 def _validate_request(
     value: Mapping[str, Any],
-) -> tuple[str, Path, float, str, str]:
-    if value.get("schema_version") != EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION:
+) -> tuple[str, Path, float, str, str, str | None]:
+    schema_version = value.get("schema_version")
+    if schema_version not in {
+        EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION,
+        EXTERNAL_AGENT_REQUEST_V2_SCHEMA_VERSION,
+    }:
         raise ValueError("external_agent_request_schema_unsupported")
+    if schema_version == EXTERNAL_AGENT_REQUEST_V2_SCHEMA_VERSION:
+        if set(value) != {
+            "schema_version",
+            "instruction",
+            "workspace",
+            "timeout_seconds",
+            "containment",
+            "launch_admission",
+        }:
+            raise ValueError("external_agent_request_v2_fields_invalid")
+        launch_admission_value = value.get("launch_admission")
+        if not isinstance(launch_admission_value, Mapping):
+            raise ValueError("external_agent_launch_admission_invalid")
+        launch_admission = normalize_benchmark_launch_admission_receipt(
+            launch_admission_value
+        )
+        launch_binding_digest = str(launch_admission["launch_binding_digest"])
+    else:
+        launch_admission = None
+        launch_binding_digest = None
 
     instruction = value.get("instruction")
     if not isinstance(instruction, str) or not instruction.strip():
@@ -118,13 +155,16 @@ def _validate_request(
         "verification",
     }:
         raise ValueError("external_agent_containment_contract_invalid")
+    expected_postcondition = (
+        EXTERNAL_AGENT_CONTAINMENT_TERMINATION_POSTCONDITION
+        if schema_version == EXTERNAL_AGENT_REQUEST_V2_SCHEMA_VERSION
+        else _LEGACY_CONTAINMENT_POSTCONDITION
+    )
     if (
-        containment.get("schema_version")
-        != EXTERNAL_AGENT_CONTAINMENT_SCHEMA_VERSION
+        containment.get("schema_version") != EXTERNAL_AGENT_CONTAINMENT_SCHEMA_VERSION
         or containment.get("kind") not in _CONTAINMENT_KINDS
         or containment.get("timeout_owner") != "runner"
-        or containment.get("termination_postcondition")
-        != _CONTAINMENT_POSTCONDITION
+        or containment.get("termination_postcondition") != expected_postcondition
     ):
         raise ValueError("external_agent_containment_contract_invalid")
 
@@ -137,14 +177,24 @@ def _validate_request(
     }:
         raise ValueError("external_agent_containment_verification_invalid")
     receipt_ref = str(verification.get("receipt_ref") or "")
+    expected_verification_status = (
+        "pending"
+        if schema_version == EXTERNAL_AGENT_REQUEST_V2_SCHEMA_VERSION
+        else "verified"
+    )
     if (
         verification.get("schema_version")
         != EXTERNAL_AGENT_CONTAINMENT_VERIFICATION_SCHEMA_VERSION
-        or verification.get("status") != "verified"
+        or verification.get("status") != expected_verification_status
         or verification.get("authority") != "runner"
         or not _OPAQUE_REF_PATTERN.fullmatch(receipt_ref)
     ):
         raise ValueError("external_agent_containment_verification_invalid")
+    if launch_admission is not None:
+        if launch_admission["instruction_sha256"] != _sha256(instruction):
+            raise ValueError("external_agent_launch_instruction_digest_mismatch")
+        if launch_admission["containment_binding_sha256"] != _sha256(receipt_ref):
+            raise ValueError("external_agent_launch_containment_digest_mismatch")
 
     return (
         instruction,
@@ -152,6 +202,7 @@ def _validate_request(
         timeout_seconds,
         str(containment["kind"]),
         receipt_ref,
+        launch_binding_digest,
     )
 
 
@@ -332,6 +383,7 @@ def _result(
     classification: str,
     containment_kind: str | None = None,
     containment_verification_ref: str | None = None,
+    launch_binding_digest: str | None = None,
 ) -> dict[str, Any]:
     if status not in _RESULT_STATUSES:
         raise ValueError("external_agent_result_status_invalid")
@@ -347,26 +399,114 @@ def _result(
     if instruction is not None:
         receipt["instruction_sha256"] = _sha256(instruction)
         receipt["instruction_chars"] = len(instruction)
-    if containment_kind is not None:
+    # The v1 wire contract historically echoed the runner's pre-launch
+    # containment declaration. Keep that compatibility surface unchanged. A v2
+    # terminal result is emitted before its caller can destroy the containment,
+    # so it must not turn that declaration into a post-exit observation.
+    if containment_kind is not None and launch_binding_digest is None:
         receipt["containment_contract_validated"] = True
         receipt["containment_kind"] = containment_kind
         receipt["containment_verification_authority"] = "runner"
         receipt["containment_verification_status"] = "verified"
         receipt["containment_termination_postcondition"] = (
-            _CONTAINMENT_POSTCONDITION
+            _LEGACY_CONTAINMENT_POSTCONDITION
         )
         receipt["timeout_enforced_locally"] = False
         receipt["timeout_owner"] = "runner"
-    if containment_verification_ref is not None:
+    if containment_verification_ref is not None and launch_binding_digest is None:
         receipt["containment_verification_ref_sha256"] = _sha256(
             containment_verification_ref
         )
+    if launch_binding_digest is not None:
+        receipt["schema_version"] = EXTERNAL_AGENT_PHASE_RECEIPT_V2_SCHEMA_VERSION
+        receipt["launch_binding_digest"] = launch_binding_digest
     return {
-        "schema_version": EXTERNAL_AGENT_RESULT_SCHEMA_VERSION,
+        "schema_version": (
+            EXTERNAL_AGENT_RESULT_V2_SCHEMA_VERSION
+            if launch_binding_digest is not None
+            else EXTERNAL_AGENT_RESULT_SCHEMA_VERSION
+        ),
         "status": status,
         "exit_code": exit_code,
         "receipt": receipt,
     }
+
+
+def normalize_external_agent_result_v2(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate solver terminal facts without accepting lifecycle claims."""
+
+    if not isinstance(value, Mapping) or set(value) != {
+        "schema_version",
+        "status",
+        "exit_code",
+        "receipt",
+    }:
+        raise ValueError("external_agent_result_v2_fields_invalid")
+    if value.get("schema_version") != EXTERNAL_AGENT_RESULT_V2_SCHEMA_VERSION:
+        raise ValueError("external_agent_result_v2_schema_unsupported")
+    status = value.get("status")
+    if not isinstance(status, str) or status not in _RESULT_STATUSES:
+        raise ValueError("external_agent_result_status_invalid")
+    exit_code = value.get("exit_code")
+    if exit_code is not None and (
+        isinstance(exit_code, bool) or not isinstance(exit_code, int)
+    ):
+        raise ValueError("external_agent_result_exit_code_invalid")
+    receipt = value.get("receipt")
+    if not isinstance(receipt, Mapping):
+        raise ValueError("external_agent_result_v2_receipt_invalid")
+    required_receipt_fields = {
+        "schema_version",
+        "classification",
+        "command_recorded",
+        "command_argument_count",
+        "duration_ms",
+        "instruction_recorded",
+        "workspace_recorded",
+        "instruction_sha256",
+        "instruction_chars",
+        "launch_binding_digest",
+    }
+    if set(receipt) != required_receipt_fields:
+        raise ValueError("external_agent_result_v2_receipt_fields_invalid")
+    if receipt.get("schema_version") != EXTERNAL_AGENT_PHASE_RECEIPT_V2_SCHEMA_VERSION:
+        raise ValueError("external_agent_result_v2_receipt_schema_unsupported")
+    classification = receipt.get("classification")
+    if (
+        not isinstance(classification, str)
+        or classification not in _TERMINAL_RESULT_CLASSIFICATIONS
+    ):
+        raise ValueError("external_agent_result_classification_invalid")
+    terminal_state = (classification, status, exit_code)
+    if not (
+        terminal_state == ("solver_completed", "succeeded", 0)
+        or (
+            classification == "solver_exited_nonzero"
+            and status == "failed"
+            and isinstance(exit_code, int)
+            and not isinstance(exit_code, bool)
+            and exit_code != 0
+        )
+        or terminal_state == ("solver_startup_failed", "failed", None)
+    ):
+        raise ValueError("external_agent_result_v2_terminal_state_invalid")
+    for field in (
+        "launch_binding_digest",
+        "instruction_sha256",
+    ):
+        digest = receipt.get(field)
+        if not isinstance(digest, str) or _sha256_digest(digest, field=field) != digest:
+            raise ValueError(f"{field} must be a lowercase SHA-256 digest")
+    for field in ("command_argument_count", "instruction_chars"):
+        _positive_int(receipt.get(field), field=field)
+    _non_negative_int(receipt.get("duration_ms"), field="duration_ms")
+    if (
+        receipt.get("command_recorded") is not False
+        or receipt.get("instruction_recorded") is not False
+        or receipt.get("workspace_recorded") is not False
+    ):
+        raise ValueError("external_agent_result_v2_receipt_contract_invalid")
+    return dict(value)
 
 
 def run_external_agent_phase(
@@ -383,17 +523,18 @@ def run_external_agent_phase(
         timeout_seconds,
         containment_kind,
         containment_verification_ref,
+        launch_binding_digest,
     ) = _validate_request(request)
     command = _validate_solver_command(solver_command)
     environment = {
-        "LOOPX_EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION": (
-            EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION
-        ),
+        "LOOPX_EXTERNAL_AGENT_REQUEST_SCHEMA_VERSION": str(request["schema_version"]),
         "LOOPX_EXTERNAL_AGENT_INSTRUCTION_SHA256": _sha256(instruction),
         "LOOPX_EXTERNAL_AGENT_INSTRUCTION_CHARS": str(len(instruction)),
         "LOOPX_EXTERNAL_AGENT_WORKSPACE": str(workspace),
         "LOOPX_EXTERNAL_AGENT_TIMEOUT_SECONDS": str(timeout_seconds),
     }
+    if launch_binding_digest is not None:
+        environment["LOOPX_BENCHMARK_LAUNCH_BINDING_DIGEST"] = launch_binding_digest
     if request_path is not None:
         environment["LOOPX_EXTERNAL_AGENT_REQUEST"] = str(request_path)
     started = time.monotonic()
@@ -419,6 +560,7 @@ def run_external_agent_phase(
             classification="solver_startup_failed",
             containment_kind=containment_kind,
             containment_verification_ref=containment_verification_ref,
+            launch_binding_digest=launch_binding_digest,
         )
 
     return _result(
@@ -428,12 +570,11 @@ def run_external_agent_phase(
         instruction=instruction,
         command=command,
         classification=(
-            "solver_completed"
-            if exit_code == 0
-            else "solver_exited_nonzero"
+            "solver_completed" if exit_code == 0 else "solver_exited_nonzero"
         ),
         containment_kind=containment_kind,
         containment_verification_ref=containment_verification_ref,
+        launch_binding_digest=launch_binding_digest,
     )
 
 
@@ -467,6 +608,7 @@ def execute_external_agent_request(
             _timeout_seconds,
             containment_kind,
             containment_verification_ref,
+            launch_binding_digest,
         ) = _validate_request(request)
         result = (
             run_external_agent_phase(
@@ -495,5 +637,6 @@ def execute_external_agent_request(
             command=(),
             classification="agent_phase_input_invalid",
         )
-    write_external_agent_result(result_path, result)
+    if execute:
+        write_external_agent_result(result_path, result)
     return result
