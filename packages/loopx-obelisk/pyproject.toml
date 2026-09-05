@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loopx-obelisk"
+version = "0.1.0"
+description = "Obelisk advisory context provider for LoopX Decision Context"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+
+[project.scripts]
+loopx-obelisk = "loopx_obelisk.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

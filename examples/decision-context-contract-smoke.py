@@ -46,6 +46,9 @@ def main() -> int:
     assert architecture["provider_boundaries"]["provider_failure_policy"] == (
         "fail_open_to_current_authority"
     )
+    assert architecture["local_private_transient_schemas"] == [
+        "decision_context_ephemeral_recall_v0"
+    ]
     assert run_cli("decision-context", "architecture") == architecture
 
     source = DecisionSourceSpec(

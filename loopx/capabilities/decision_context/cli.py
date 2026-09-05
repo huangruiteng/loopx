@@ -17,6 +17,7 @@ from .review_settlement import settle_profile_decision_review
 from .runtime import (
     assemble_profile_decision_evidence,
     decision_evidence_records_from_mapping,
+    recall_profile_decision_context,
 )
 from .sources import build_decision_source_manifest
 
@@ -140,6 +141,23 @@ def register_decision_context_commands(
         type=float,
         help="Optional bounded provider timeout override.",
     )
+    recall = commands.add_parser(
+        "recall-context",
+        help=(
+            "Read one transient advisory scope without profile mutation, source "
+            "scans, cursors, or settlement."
+        ),
+    )
+    add_subcommand_format(recall)
+    recall.add_argument("--goal-id", required=True)
+    recall.add_argument("--agent-id", required=True)
+    recall.add_argument("--profile", required=True)
+    recall.add_argument("--context-scope-ref", required=True)
+    recall.add_argument("--query", required=True)
+    recall.add_argument("--query-summary", required=True)
+    recall.add_argument("--max-results", type=int)
+    recall.add_argument("--timeout-seconds", type=float)
+    recall.add_argument("--observed-at")
     prepare_review = commands.add_parser(
         "prepare-review",
         help=(
@@ -194,6 +212,7 @@ def register_decision_context_commands(
 def handle_decision_context_command(
     args: argparse.Namespace,
     *,
+    runtime_root: Path | None,
     output_format: FormatSelector,
     print_payload: PrintPayload,
 ) -> int | None:
@@ -201,6 +220,23 @@ def handle_decision_context_command(
         return None
     if args.decision_context_command == "architecture":
         payload = build_decision_context_architecture_packet()
+    elif args.decision_context_command == "recall-context":
+        observed_at = (
+            str(getattr(args, "observed_at", None) or "").strip()
+            or datetime.now(timezone.utc).isoformat()
+        )
+        payload = recall_profile_decision_context(
+            goal_id=args.goal_id,
+            agent_id=args.agent_id,
+            profile_path=Path(args.profile),
+            context_scope_ref=args.context_scope_ref,
+            query=args.query,
+            query_summary=args.query_summary,
+            observed_at=observed_at,
+            max_results=args.max_results,
+            timeout_seconds=args.timeout_seconds,
+            runtime_root=runtime_root,
+        )
     elif args.decision_context_command in {"prepare-evidence", "prepare-review"}:
         now = datetime.now(timezone.utc).isoformat()
         observed_at = str(getattr(args, "observed_at", None) or "").strip() or now
@@ -232,6 +268,7 @@ def handle_decision_context_command(
             ),
             rebase=lambda _collection: records,
             timeout_seconds=getattr(args, "timeout_seconds", None),
+            runtime_root=runtime_root,
         )
         settlement_required = bool(
             assembly is not None and assembly.proposed_cursors

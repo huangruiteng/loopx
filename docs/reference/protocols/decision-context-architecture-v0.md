@@ -205,6 +205,14 @@ semantic rebase: changed-source cursors remain at `preserve`, so merely scanning
 or reading a source can never mark it absorbed. Sources marked `on_demand` are
 excluded from automatic collection and require explicit source selection.
 
+An explicitly activated profile may also select only an advisory context
+provider. `decision-context recall-context` then accepts one provider-neutral
+scope for that call and returns local-private transient results plus a nested
+public-safe receipt. This path does not mutate the profile, scan authority
+sources, access cursors, create pending settlement, or authorize execution. It
+is the narrow entry point for a copied task locator; durable decision use still
+requires the normal evidence rebase and lifecycle owners.
+
 Private cursor commit remains a separate acceptance boundary. A review may
 cross agent turns, so `prepare-review --execute` stores one private pending
 settlement containing the public-safe assembly plus private cursor proposals;

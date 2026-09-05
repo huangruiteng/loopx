@@ -3,13 +3,14 @@
 - 状态：草案；维护者评审中
 - 跟踪 Issue：[#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - 日期：2026-09-02
+- 最后更新：2026-09-05
 - 范围：多个对等 Agent 围绕同一个共享 Goal 协作，同时保留 canonical
   intent、每个 Agent 的执行 frontier、claim/lease 所有权，以及可审计的
   replan/amendment 决策
 - 相关契约：
-  [Goal Vision 与 Replan](../../reference/protocols/goal-vision-replan-contract-v0.md)
-  和
-  [共享控制面 Authority 与可插拔状态 Provider](./shared-goal-authority-state-provider-v0.zh-CN.md)
+  [Goal Vision 与 Replan](../../reference/protocols/goal-vision-replan-contract-v0.md)、
+  [共享控制面 Authority 与可插拔状态 Provider](./shared-goal-authority-state-provider-v0.zh-CN.md)，
+  以及 [Decision Context](../../reference/protocols/decision-context-architecture-v0.zh-CN.md)
 - 语言说明：
   [英文版](./shared-goal-alignment-and-governed-amendment-v0.md)与本中文版是语义镜像；
   二者存在实质差异即为缺陷。
@@ -137,6 +138,56 @@ Proposal 是 advisory、durable input；receipt 证明 canonical transition。�
 互相替代。Pending 或 approved proposal 都不会生效，直到成功的 commit receipt
 明确记录新的 Goal revision。
 
+### 3.5 Host session locator 与 advisory context
+
+任务深度链接可以让 peer 精确进入本协议，而不成为第五类共享状态。对 Codex 而言，
+`codex://threads/<thread-id>` 标识一个本地聊天。LoopX 可以通过当前项目 registry
+解析该 locator，并把来源 session 绑定到现有 Agent 与 Goal identity。返回的
+provider-neutral `host-session:codex:<thread-id>` scope 随后可由显式启用的 Decision
+Context provider 用来选择该 session。
+
+它是可选、临时的 **advisory context input**，位于
+`shared_goal_intent_v0`、`goal_amendment_proposal_v0`、
+`goal_amendment_receipt_v0` 和 provider CAS head 之外。它帮助 peer：
+
+- 精确定位发现 gap 或 evidence pointer 的任务；
+- 审阅当前事实时召回一组有界的来源任务消息；
+- 把 amendment proposal 路由给独立 verifier 或受影响 peer；
+- commit 后回到相关任务读取 receipt 并完成 frontier reconciliation。
+
+```text
+host task deep link -> project-local binding -> normalized host-session scope
+        | explicitly configured, read-only ContextProvider
+        v
+local-private transient recall -> verify against current authority sources
+        | explicit promotion to durable typed evidence
+        | base Goal revision + intent digest
+        v
+governed amendment proposal -> authority decision -> canonical receipt
+```
+
+这个顺序是规范要求。深度链接不是 `evidence_ref`，召回消息不是 amendment
+decision，extension lifecycle revision 也不是 `base_goal_revision`、
+`authority_revision`、`provider_generation` 或 `lease_epoch`。Amendment 需要的任何
+session-derived conclusion，必须先对照当前 authority 检查，再显式提升到现有 Todo
+evidence、Agent evidence log 或 registered material owner；proposal 再引用这些
+durable typed reference，并独立绑定当前 Goal revision 与 intent digest。
+
+Locator 也不授予 read access、permission、claim、lease、lifecycle authority、
+verifier independence 或 amendment commit authority。如果链接无法解析、无权读取，
+或 extension 被禁用或不可用，只有可选的 context-enrichment 步骤 fail open；
+canonical Goal 和无关工作继续有效。Decision Context 记录 provider degradation，
+并继续使用仍可用的 authority sources。Receipt recovery 仍使用 `operation_id` 和
+`readReceipt`，因此 host session 丢失不能让已提交 amendment 变得不可恢复。
+Cross-Goal rendezvous 可以帮助两个 peer 协调，但每个 Goal 仍需要各自的 proposal、
+policy decision、CAS commit 和 receipt。
+
+Core 只解析一次 host-specific 深链语法，并只向 provider 暴露 normalized scope。
+可选的 `loopx-obelisk` extension 把该 scope 映射到 Obelisk 公开的只读 query
+接口；它不读取 Obelisk 存储 schema，不 build 或 attune 索引，也不打开、恢复或向
+live task 发消息。其他 harness 可以实现相同的 Decision Context provider 协议，无需
+把 host 语法或 transcript 存储引入 Goal authority。
+
 ## 4. Authority matrix
 
 ### 4.1 `GoalAmendmentAuthority` 到底是什么
@@ -198,9 +249,11 @@ committing --CAS success--> committed + receipt -> frontier reconciliation
 1. **Propose。** 任一有 proposal 权限的 actor 提交
    `goal_amendment_proposal_v0`，其中包含 base revision/digest、amendment
    class、retained/changed/stopped intent、evidence references、affected Todos
-   与关联的 replan obligation。
+   与关联的 replan obligation。可选的 host-session rendezvous 可以帮助发现或审阅
+   gap，但只有经过提升的 durable evidence 才能进入 proposal。
 2. **Admit。** LoopX 校验 schema、actor identity、有界 evidence pointer、
-   amendment class 与影响范围。Admission 不等于 approve 或 apply。
+   amendment class 与影响范围。Host locator 不能证明 actor identity，也不能充当
+   evidence。Admission 不等于 approve 或 apply。
 3. **Policy decision 与可选 verification。** LoopX 检查 deterministic invariant
    与预授权 amendment envelope。较高风险但仍在 envelope 内的 class 可调用独立
    verifier Agent，由其返回绑定精确 proposal digest 的 typed decision。Policy 可以
@@ -325,7 +378,8 @@ lease、Goal amendment、replan settlement 或 authority decision。
    peer-claimed、replan、并发 proposal 与 in-flight lease 场景。
 2. **Stage 1 — read-only alignment。** 增加 `shared_goal_alignment_v0`，包含
    canonical revision binding、per-Agent frontier basis、unclaimed work 与
-   drift/conflict facts；不改变 writer。
+   drift/conflict facts；可选 Decision Context extension 可以把精确 host-session scope
+   与有界 advisory recall 配对；不改变 writer。
 3. **Stage 2 — proposal only。** 校验并保留 `goal_amendment_proposal_v0`；
    proposal 不产生 canonical effect。
 4. **Stage 3 — 一个有界 commit class。** 实现保留 intent 的 shared work-graph
@@ -358,14 +412,23 @@ root intent 不能自动 commit，除非 Goal 创建时已经精确委托该 cla
 - 日常 in-envelope amendment 无需人审批即可完成，而 out-of-policy proposal 永不
   静默扩大 authority；
 - in-flight leased work 获得显式 disposition；
-- canonical revision 改变后，所有 Agent projection 都会 rotate 或 gate。
+- canonical revision 改变后，所有 Agent projection 都会 rotate 或 gate；
+- host-task locator 只能通过当前项目 binding 解析，且不授予 claim、lease、
+  lifecycle、verifier 或 amendment authority；
+- 禁用或移除 advisory provider 不会阻断 authority-source collection，而 amendment
+  submission 仍必须独立绑定当前 Goal revision 与 intent digest。
+
+Durable proposal、receipt recovery 与 cross-Goal commit isolation 仍由既有 Goal
+amendment 和 authority-store conformance tests 负责。可选 locator/provider 的测试
+不得重复这些状态机测试。
 
 ## 12. 非目标
 
 本版本不定义自动投票或共识、CRDT/offline multi-writer merge、omniscient planner、
 permanent leader、Agent 直写 storage provider、LoopX 状态的广泛迁移，也不允许自动
 越出 immutable root user intent。Human approval 不是正常 amendment lifecycle 的
-必需步骤。
+必需步骤。Host-session locator、深度链接和 transcript 也不属于 Goal aggregate 或
+durable evidence store。
 
 最小有用结果是一份清晰的只读 alignment projection，以及一份显式不具 authority
 的 proposal。只有这条边界在真实多 Agent 工作中证明有价值后，runtime commit 才

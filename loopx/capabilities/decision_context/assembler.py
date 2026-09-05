@@ -27,6 +27,9 @@ from .sources import (
 )
 
 DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION = "decision_context_assembly_v0"
+DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION = (
+    "decision_context_ephemeral_recall_v0"
+)
 DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION = "decision_cursor_checkpoint_v0"
 DECISION_SOURCE_COVERAGE_SCHEMA_VERSION = "decision_source_coverage_v0"
 DECISION_SEMANTIC_REBASE_RECEIPT_SCHEMA_VERSION = (
@@ -321,7 +324,7 @@ def _collect_source(
     return scan, tuple(exact_reads), exact_read_failed
 
 
-def _collect_recall(
+def collect_context_recall(
     *,
     provider: ContextProvider | None,
     namespace: str,
@@ -683,7 +686,7 @@ def assemble_decision_evidence(
             }
         )
 
-    retrieval = _collect_recall(
+    retrieval = collect_context_recall(
         provider=context_provider,
         namespace=context_namespace,
         scope_ref=context_scope_ref,

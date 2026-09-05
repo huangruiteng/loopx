@@ -131,6 +131,36 @@ loopx decision-context source-manifest \
   --format json
 ```
 
+一次性召回某个 task 或其他 provider scope，且不修改 profile、也不进入
+evidence settlement 流程：
+
+```bash
+loopx decision-context recall-context \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --profile <ignored-private-profile.json> \
+  --context-scope-ref 'host-session:codex:<thread-id>' \
+  --query '<发送给 provider 的具体私有查询>' \
+  --query-summary '<公开安全的查询意图摘要>' \
+  --format json
+```
+
+Profile 仍负责 Goal、Agent 与 provider activation gate，但本次 scope 不落盘。
+该命令不扫描 authority source、不读写 cursor、不创建 pending settlement，也不授予
+execution authority。顶层输出显式标记为 `local_private_transient`，因为其中包含供当前
+Agent 使用的召回原文；嵌套 retrieval receipt 保持 public-safe，只保留查询摘要、
+provider-safe 摘要、分数与哈希引用。每个召回 item 都标记为
+`untrusted_advisory`，不得当作指令执行。
+
+保持该 profile 启用，并不意味着 Obelisk 会变成 LoopX 的必需依赖。如果指定的
+extension 尚未安装、已禁用，或缺少当前有效的 doctor 证明，召回仍会正常退出，
+返回 `status=unavailable` 和类型化的 `provider_readiness` 回执，并且不会执行
+provider scan 或写入。恢复时无需删除或改写 profile：根据
+`provider_readiness.next_action` 安装 provider，执行
+`loopx extension enable <extension-id> --execute --format json`，或执行
+`loopx extension doctor <extension-id> --execute --format json`。下一次召回会重新解析
+extension lifecycle state，并在 provider ready 后自动恢复。
+
 执行有界 scan 和 exact read，但不提交私有 cursor：
 
 ```bash
@@ -141,6 +171,13 @@ loopx decision-context prepare-evidence \
   --decision-id <stable-decision-id> \
   --format json
 ```
+
+可选 extension 可以实现现有 advisory `ContextProvider` 端口。例如，
+`packages/loopx-obelisk` 接受 normalized
+`host-session:codex:<thread-id>` scope，并通过 Obelisk 的公开 CLI 有界检索历史任务
+消息。Profile 通过 `context_provider.provider=extension` 选择该路径；
+`config.extension_id` 可以指定精确 provider，否则必须恰好存在一个 enabled 且
+doctor-ready 的实现。Provider 失败继续 fail open，原始召回文本不会进入公开 packet。
 
 `prepare-evidence` 刻意保持只读。领域 adapter 可以提交严格的语义 rebase，并把
 尚未应用的 cursor proposal 写入私有 pending checkpoint：

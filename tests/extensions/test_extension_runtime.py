@@ -46,6 +46,7 @@ from loopx.extensions.runtime import (
     resolve_extension_activation,
     resolve_extension_binding,
     resolve_extension_runtime_binding,
+    resolve_optional_capability_binding,
     rollback_extension,
     run_standalone_extension,
 )
@@ -682,6 +683,37 @@ def test_capability_executor_reuses_bounded_json_runtime(tmp_path: Path) -> None
             binding,
             request={"payload": "x" * (MAX_EXTENSION_REQUEST_BYTES + 1)},
         )
+
+
+def test_capability_executor_preserves_fractional_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, float] = {}
+
+    def run_process(*_args: object, **kwargs: object) -> SimpleNamespace:
+        captured["timeout_seconds"] = float(kwargs["timeout_seconds"])
+        return SimpleNamespace(
+            failure_kind=None,
+            stdout=b'{"ok": true}',
+            returncode=0,
+        )
+
+    monkeypatch.setattr(
+        "loopx.extensions.runtime.run_capped_process",
+        run_process,
+    )
+
+    result = execute_extension_runtime_binding(
+        {
+            "schema_version": "loopx_extension_runtime_binding_v0",
+            "argv": ["provider"],
+            "timeout_seconds": 1.5,
+        },
+        request={"schema_version": "test_extension_request_v0"},
+    )
+
+    assert result == {"ok": True}
+    assert captured["timeout_seconds"] == 1.5
 
 
 def test_extension_run_rejects_capability_provider_bypass(tmp_path: Path) -> None:
@@ -1363,6 +1395,23 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     )
     assert catalog_provider["active_revision"] == capability_binding["revision"]
     assert catalog_provider["ready"] is True
+    optional = resolve_optional_capability_binding(
+        state_file=state_file,
+        extension_id="test-semantic-extension",
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )
+    assert optional.public_readiness() == {
+        "schema_version": "loopx_extension_provider_readiness_v0",
+        "status": "ready",
+        "extension_id": "test-semantic-extension",
+        "installed": True,
+        "enabled": True,
+        "doctor_verified": True,
+        "next_action": None,
+    }
+    assert optional.binding == capability_binding
     project = tmp_path / "project"
     project.mkdir()
     config = tmp_path / "semantic-preference.json"
@@ -1413,6 +1462,15 @@ def test_semantic_preference_resolves_enabled_extension(tmp_path: Path) -> None:
     )
     assert unavailable["status"] == "provider_unavailable"
     assert unavailable["failure_kind"] == "extension_binding_unavailable"
+    optional = resolve_optional_capability_binding(
+        state_file=state_file,
+        extension_id="test-semantic-extension",
+        capability_id="semantic-preference",
+        protocol="semantic_preference_provider_v0",
+        permission="semantic_preference.read",
+    )
+    assert optional.status == "extension_disabled"
+    assert optional.binding is None
 
     detail = build_capability_detail_packet(
         "semantic-preference",

@@ -257,6 +257,39 @@ def test_profile_rejects_unsafe_automation_modes(
         normalize_decision_context_profile(payload)
 
 
+def test_enabled_profile_may_configure_only_an_ephemeral_context_provider(
+    tmp_path: Path,
+) -> None:
+    payload = profile_payload(tmp_path / "authority.md")
+    payload["source_provider_bindings"] = []
+    payload["sources"] = []
+    payload["context_provider"] = {
+        "provider": "extension",
+        "namespace": "peer-session",
+        "max_results": 4,
+        "timeout_seconds": 10,
+        "config": {"extension_id": "loopx-obelisk"},
+    }
+
+    profile = normalize_decision_context_profile(payload)
+
+    assert profile.sources == ()
+    assert profile.provider_bindings == ()
+    assert profile.context_provider is not None
+    assert profile.context_provider["scope_ref"] is None
+
+
+def test_enabled_profile_still_requires_a_source_or_context_provider(
+    tmp_path: Path,
+) -> None:
+    payload = profile_payload(tmp_path / "authority.md")
+    payload["source_provider_bindings"] = []
+    payload["sources"] = []
+
+    with pytest.raises(ValueError, match="source or context provider"):
+        normalize_decision_context_profile(payload)
+
+
 def test_local_file_provider_supports_bounded_scan_exact_read_and_cursor(
     tmp_path: Path,
 ) -> None:
@@ -337,6 +370,7 @@ def test_catalog_routes_to_default_off_profile_inspection() -> None:
 
     assert "inspect-profile" in capability["entry_command"]
     assert {
+        "decision_context_ephemeral_recall_v0",
         "decision_context_profile_v0",
         "decision_context_activation_status_v0",
         "decision_review_receipt_v0",

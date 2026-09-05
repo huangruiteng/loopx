@@ -1,0 +1,11 @@
+{
+  "schema_version": "decision_context_advisory_retrieve_request_v0",
+  "operation": "retrieve",
+  "namespace": "peer-session",
+  "scope_ref": "host-session:codex:019fd0fe-42e0-7b21-accc-045333a7def9",
+  "query": "current implementation decisions and unresolved risks",
+  "query_summary": "peer task decisions and risks",
+  "max_results": 4,
+  "timeout_seconds": 10,
+  "observed_at": "2026-09-05T00:00:00+00:00"
+}

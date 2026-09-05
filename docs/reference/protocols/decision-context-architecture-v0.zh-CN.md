@@ -226,6 +226,13 @@ health、evidence 和 cursor checkpoint 记录。host API 通过领域 rebase ca
 `preserve`，避免把“扫描/读过”误记成“已吸收”。`on_demand` source 不进入自动
 扫描，只有显式选择后才会读取。
 
+显式激活的 profile 也可以只选择 advisory context provider。
+`decision-context recall-context` 接受一个仅用于本次调用的 provider-neutral scope，
+返回 local-private transient 结果及嵌套的 public-safe receipt。该路径不修改 profile、
+不扫描 authority source、不访问 cursor、不创建 pending settlement，也不授予执行
+权限。它是复制 task locator 的最窄入口；若召回结果需要进入 durable decision，仍须
+回到标准 evidence rebase 和既有 lifecycle owner。
+
 私有 cursor commit 仍是独立验收边界。Review 可能跨 Agent turn，所以
 `prepare-review --execute` 会保存一份私有 pending settlement：其中包含公开安全的
 assembly 和私有 cursor proposal，但绝不修改 active cursor。随后

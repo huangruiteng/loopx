@@ -797,6 +797,15 @@ capability_id = "semantic-preference"
 protocol = "semantic_preference_provider_v0"
 ```
 
+The optional `packages/loopx-obelisk` package follows the same placement rule.
+It implements the existing `decision-context` capability's advisory
+`ContextProvider` port; it does not register a second session-context
+capability. LoopX Core parses a copied Codex deep link into the normalized
+`host-session:codex:<thread-id>` scope, and the extension maps that scope to
+Obelisk's public read-only query CLI. See
+[`decision_context_advisory_provider_v0`](protocols/decision-context-advisory-provider-v0.md)
+and the package README for activation, validation, and removal.
+
 The bundled periodic-report archive uses the same ownership direction. It
 implements one existing capability port rather than registering a second
 "OpenViking report" product capability:

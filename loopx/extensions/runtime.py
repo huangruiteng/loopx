@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import nullcontext
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,12 +25,43 @@ from .readiness import (
 EXTENSION_STATE_SCHEMA_VERSION = "loopx_extension_state_v0"
 EXTENSION_OPERATION_SCHEMA_VERSION = "loopx_extension_operation_v0"
 EXTENSION_BINDING_SCHEMA_VERSION = "loopx_extension_runtime_binding_v0"
+EXTENSION_PROVIDER_READINESS_SCHEMA_VERSION = "loopx_extension_provider_readiness_v0"
 EXTENSION_ACTIVATION_SCHEMA_VERSION = "loopx_extension_activation_v0"
 EXTENSION_RUN_SCHEMA_VERSION = "loopx_extension_run_receipt_v0"
 EXTENSION_DOCTOR_BATCH_SCHEMA_VERSION = "loopx_extension_doctor_batch_v0"
 MAX_REVISIONS = 5
 MAX_EXTENSION_REQUEST_BYTES = 1_000_000
 MAX_EXTENSION_RESPONSE_BYTES = 1_000_000
+
+
+@dataclass(frozen=True)
+class ExtensionCapabilityResolution:
+    """One atomic lifecycle/readiness snapshot for an optional provider."""
+
+    status: str
+    extension_id: str | None
+    installed: bool | None
+    enabled: bool | None
+    doctor_verified: bool | None
+    next_action: str | None
+    binding: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if (self.status == "ready") != (self.binding is not None):
+            raise ValueError(
+                "a ready extension capability resolution requires exactly one binding"
+            )
+
+    def public_readiness(self) -> dict[str, Any]:
+        return {
+            "schema_version": EXTENSION_PROVIDER_READINESS_SCHEMA_VERSION,
+            "status": self.status,
+            "extension_id": self.extension_id,
+            "installed": self.installed,
+            "enabled": self.enabled,
+            "doctor_verified": self.doctor_verified,
+            "next_action": self.next_action,
+        }
 
 
 def default_extension_state_file(runtime_root: str | Path | None = None) -> Path:
@@ -591,14 +624,8 @@ def resolve_capability_extension_id(
         provider = entry.get("provider")
         if not isinstance(provider, Mapping) or not provider.get("ready"):
             continue
-        implementations = entry.get("implementations")
-        if not isinstance(implementations, list):
-            continue
-        if any(
-            isinstance(item, Mapping)
-            and item.get("capability_id") == capability_id
-            and item.get("protocol") == protocol
-            for item in implementations
+        if _matching_capability_implementations(
+            entry, capability_id=capability_id, protocol=protocol
         ):
             matching.append(str(entry["provider"]["id"]))
     if not matching:
@@ -685,10 +712,38 @@ def resolve_extension_binding(
     protocol: str,
     permission: str,
 ) -> dict[str, Any]:
-    active_revision, verified_entrypoint, manifest = _resolved_active_extension(
+    state = _read_state(Path(state_file).expanduser())
+    entry = state["extensions"].get(extension_id)
+    if not isinstance(entry, dict):
+        raise ValueError(f"extension `{extension_id}` is not installed")
+    return _capability_binding_from_entry(
         extension_id,
-        state_file=state_file,
+        entry=entry,
+        capability_id=capability_id,
+        protocol=protocol,
+        permission=permission,
     )
+
+
+def _capability_binding_from_entry(
+    extension_id: str,
+    *,
+    entry: Mapping[str, Any],
+    capability_id: str,
+    protocol: str,
+    permission: str,
+    verified_entrypoint: ResolvedRuntimeEntrypoint | None = None,
+) -> dict[str, Any]:
+    if not entry.get("enabled"):
+        raise ValueError(f"extension `{extension_id}` is disabled")
+    active_revision = str(entry.get("active_revision") or "")
+    verified_entrypoint = verified_entrypoint or _verified_entrypoint(entry)
+    if verified_entrypoint is None:
+        raise ValueError(
+            f"extension `{extension_id}` doctor readiness is stale; run "
+            f"`loopx extension doctor {extension_id} --execute`"
+        )
+    manifest = _active_manifest(entry)
     provider = manifest.get("provider")
     runtime = _runtime(manifest)
     implementations = manifest.get("implementations")
@@ -703,13 +758,9 @@ def resolve_extension_binding(
             f"extension `{extension_id}` runtime does not require permission "
             f"`{permission}`"
         )
-    matching = [
-        item
-        for item in implementations
-        if isinstance(item, Mapping)
-        and item.get("capability_id") == capability_id
-        and item.get("protocol") == protocol
-    ]
+    matching = _matching_capability_implementations(
+        manifest, capability_id=capability_id, protocol=protocol
+    )
     if len(matching) != 1 or runtime.get("protocol") != protocol:
         raise ValueError(
             f"extension `{extension_id}` does not implement `{capability_id}` "
@@ -729,6 +780,212 @@ def resolve_extension_binding(
         ],
         "timeout_seconds": runtime["timeout_seconds"],
     }
+
+
+def _optional_binding_resolution(
+    *,
+    status: str,
+    extension_id: str | None,
+    installed: bool | None,
+    enabled: bool | None,
+    doctor_verified: bool | None,
+    next_action: str | None,
+    binding: Mapping[str, Any] | None = None,
+) -> ExtensionCapabilityResolution:
+    return ExtensionCapabilityResolution(
+        status=status,
+        extension_id=extension_id,
+        installed=installed,
+        enabled=enabled,
+        doctor_verified=doctor_verified,
+        next_action=next_action,
+        binding=dict(binding) if binding is not None else None,
+    )
+
+
+def _matching_capability_implementations(
+    manifest: Mapping[str, Any],
+    *,
+    capability_id: str,
+    protocol: str,
+) -> list[Mapping[str, Any]]:
+    implementations = manifest.get("implementations")
+    if not isinstance(implementations, list):
+        return []
+    return [
+        item
+        for item in implementations
+        if isinstance(item, Mapping)
+        and item.get("capability_id") == capability_id
+        and item.get("protocol") == protocol
+    ]
+
+
+def _optional_binding_for_entry(
+    extension_id: str,
+    *,
+    entry: Mapping[str, Any],
+    capability_id: str,
+    protocol: str,
+    permission: str,
+) -> ExtensionCapabilityResolution:
+    manifest = _active_manifest(entry)
+    provider = manifest.get("provider")
+    verified_entrypoint = _verified_entrypoint(entry)
+    if (
+        not isinstance(provider, Mapping)
+        or not _matching_capability_implementations(
+            manifest, capability_id=capability_id, protocol=protocol
+        )
+    ):
+        return _optional_binding_resolution(
+            status="extension_incompatible",
+            extension_id=extension_id,
+            installed=True,
+            enabled=bool(entry.get("enabled")),
+            doctor_verified=verified_entrypoint is not None,
+            next_action="install_compatible_extension",
+        )
+    if not entry.get("enabled"):
+        return _optional_binding_resolution(
+            status="extension_disabled",
+            extension_id=extension_id,
+            installed=True,
+            enabled=False,
+            doctor_verified=False,
+            next_action="enable_extension",
+        )
+    if verified_entrypoint is None:
+        return _optional_binding_resolution(
+            status="extension_doctor_not_ready",
+            extension_id=extension_id,
+            installed=True,
+            enabled=True,
+            doctor_verified=False,
+            next_action="run_extension_doctor",
+        )
+    try:
+        binding = _capability_binding_from_entry(
+            extension_id,
+            entry=entry,
+            capability_id=capability_id,
+            protocol=protocol,
+            permission=permission,
+            verified_entrypoint=verified_entrypoint,
+        )
+    except ValueError:
+        return _optional_binding_resolution(
+            status="extension_incompatible",
+            extension_id=extension_id,
+            installed=True,
+            enabled=True,
+            doctor_verified=True,
+            next_action="install_compatible_extension",
+        )
+    return _optional_binding_resolution(
+        status="ready",
+        extension_id=extension_id,
+        installed=True,
+        enabled=True,
+        doctor_verified=True,
+        next_action=None,
+        binding=binding,
+    )
+
+
+def resolve_optional_capability_binding(
+    *,
+    state_file: str | Path,
+    capability_id: str,
+    protocol: str,
+    permission: str,
+    extension_id: str | None = None,
+) -> ExtensionCapabilityResolution:
+    """Resolve selection, lifecycle readiness, and binding from one state read."""
+
+    try:
+        state = _read_state(Path(state_file).expanduser())
+        entries = state["extensions"]
+        if extension_id is not None:
+            entry = entries.get(extension_id)
+            if not isinstance(entry, Mapping):
+                return _optional_binding_resolution(
+                    status="extension_not_installed",
+                    extension_id=extension_id,
+                    installed=False,
+                    enabled=False,
+                    doctor_verified=False,
+                    next_action="install_extension",
+                )
+            return _optional_binding_for_entry(
+                extension_id,
+                entry=entry,
+                capability_id=capability_id,
+                protocol=protocol,
+                permission=permission,
+            )
+
+        candidates: list[tuple[str, Mapping[str, Any]]] = []
+        for candidate_id, candidate_entry in entries.items():
+            if not isinstance(candidate_entry, Mapping):
+                raise ValueError(
+                    f"extension `{candidate_id}` runtime entry is invalid"
+                )
+            manifest = _active_manifest(candidate_entry)
+            if _matching_capability_implementations(
+                manifest, capability_id=capability_id, protocol=protocol
+            ):
+                candidates.append((str(candidate_id), candidate_entry))
+        resolutions = [
+            _optional_binding_for_entry(
+                candidate_id,
+                entry=candidate_entry,
+                capability_id=capability_id,
+                protocol=protocol,
+                permission=permission,
+            )
+            for candidate_id, candidate_entry in candidates
+        ]
+    except (OSError, ValueError):
+        return _optional_binding_resolution(
+            status="extension_state_unavailable",
+            extension_id=extension_id,
+            installed=None,
+            enabled=None,
+            doctor_verified=None,
+            next_action="repair_extension_state",
+        )
+
+    ready = [item for item in resolutions if item.status == "ready"]
+    if len(ready) == 1:
+        return ready[0]
+    if len(ready) > 1:
+        return _optional_binding_resolution(
+            status="extension_provider_ambiguous",
+            extension_id=None,
+            installed=True,
+            enabled=True,
+            doctor_verified=True,
+            next_action="select_extension_id",
+        )
+    if len(resolutions) == 1:
+        return resolutions[0]
+    return _optional_binding_resolution(
+        status=(
+            "extension_provider_not_installed"
+            if not resolutions
+            else "extension_provider_not_ready"
+        ),
+        extension_id=None,
+        installed=bool(resolutions),
+        enabled=any(item.enabled is True for item in resolutions),
+        doctor_verified=False,
+        next_action=(
+            "install_or_select_extension"
+            if not resolutions
+            else "select_or_repair_extension"
+        ),
+    )
 
 
 def resolve_extension_runtime_binding(
@@ -777,6 +1034,35 @@ def resolve_extension_runtime_binding(
     }
 
 
+def _serialize_extension_request(
+    request: Mapping[str, Any],
+    *,
+    operation: str,
+) -> bytes:
+    try:
+        request_bytes = json.dumps(
+            dict(request),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"extension {operation} request must be JSON serializable"
+        ) from exc
+    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
+        raise ValueError(
+            f"extension {operation} request exceeds the 1000000-byte limit"
+        )
+    return request_bytes
+
+
+def _parse_extension_response(response: bytes) -> tuple[bool, object]:
+    try:
+        return True, json.loads(response.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False, None
+
+
 def run_standalone_extension(
     extension_id: str,
     *,
@@ -820,16 +1106,7 @@ def run_standalone_extension(
             "policy checks and a request-bound execution envelope"
         )
 
-    try:
-        request_bytes = json.dumps(
-            dict(request),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise ValueError("extension run request must be JSON serializable") from exc
-    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
-        raise ValueError("extension run request exceeds the 1000000-byte limit")
+    request_bytes = _serialize_extension_request(request, operation="run")
 
     receipt: dict[str, Any] = {
         "ok": True,
@@ -880,11 +1157,8 @@ def run_standalone_extension(
             ),
         }
 
-    try:
-        provider_result = json.loads(completed.stdout.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        provider_result = None
-    if not isinstance(provider_result, dict):
+    parsed, provider_result = _parse_extension_response(completed.stdout)
+    if not parsed or not isinstance(provider_result, dict):
         return {
             **receipt,
             "ok": False,
@@ -925,14 +1199,9 @@ def resolve_capability_binding(
     )
 
 
-def execute_extension_runtime_binding(
+def _runtime_binding_invocation(
     binding: Mapping[str, Any],
-    *,
-    request: Mapping[str, Any],
-    environment: Mapping[str, str] | None = None,
-) -> dict[str, Any]:
-    """Execute a resolved binding after its capability authorizes the request."""
-
+) -> tuple[list[str], float]:
     if binding.get("schema_version") != EXTENSION_BINDING_SCHEMA_VERSION:
         raise ValueError(
             f"extension runtime binding must use {EXTENSION_BINDING_SCHEMA_VERSION}"
@@ -944,22 +1213,25 @@ def execute_extension_runtime_binding(
         or not all(isinstance(value, str) and value for value in argv)
     ):
         raise ValueError("extension runtime binding argv is invalid")
-    try:
-        timeout_seconds = int(binding.get("timeout_seconds"))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("extension runtime binding timeout is invalid") from exc
-    if not 1 <= timeout_seconds <= 120:
+    raw_timeout = binding.get("timeout_seconds")
+    if isinstance(raw_timeout, bool) or not isinstance(raw_timeout, (int, float)):
         raise ValueError("extension runtime binding timeout is invalid")
-    try:
-        request_bytes = json.dumps(
-            dict(request),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise ValueError("extension runtime request must be JSON serializable") from exc
-    if len(request_bytes) > MAX_EXTENSION_REQUEST_BYTES:
-        raise ValueError("extension runtime request exceeds the 1000000-byte limit")
+    timeout_seconds = float(raw_timeout)
+    if not math.isfinite(timeout_seconds) or not 1 <= timeout_seconds <= 120:
+        raise ValueError("extension runtime binding timeout is invalid")
+    return argv, timeout_seconds
+
+
+def execute_extension_runtime_binding(
+    binding: Mapping[str, Any],
+    *,
+    request: Mapping[str, Any],
+    environment: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Execute a resolved binding after its capability authorizes the request."""
+
+    argv, timeout_seconds = _runtime_binding_invocation(binding)
+    request_bytes = _serialize_extension_request(request, operation="runtime")
     try:
         completed = run_capped_process(
             argv,
@@ -974,10 +1246,9 @@ def execute_extension_runtime_binding(
         raise RuntimeError(
             f"extension provider execution failed: {completed.failure_kind}"
         )
-    try:
-        provider_result = json.loads(completed.stdout.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("extension provider returned invalid JSON") from exc
+    parsed, provider_result = _parse_extension_response(completed.stdout)
+    if not parsed:
+        raise RuntimeError("extension provider returned invalid JSON")
     if not isinstance(provider_result, dict):
         raise RuntimeError("extension provider returned a non-object")
     if completed.returncode != 0 or provider_result.get("ok") is False:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .control_plane.todos.contract import normalize_todo_claimed_by
 from .file_lock import exclusive_file_lock
@@ -13,10 +16,28 @@ from .registry import atomic_write_json, find_registry_goal, registry_goals
 THREAD_ID_MAX_LENGTH = 128
 THREAD_BINDING_SCHEMA_VERSION = "loopx_thread_agent_binding_v0"
 THREAD_BINDING_RESOLUTION_SCHEMA_VERSION = "loopx_thread_agent_binding_resolution_v0"
+HOST_SESSION_LOCATOR_SCHEMA_VERSION = "loopx_host_session_locator_v0"
+CODEX_THREAD_HOST_SURFACES = frozenset(
+    {
+        "codex-app",
+        "codex-app-ssh",
+        "codex-ide-plugin",
+        "codex-cli-tui",
+    }
+)
+_CODEX_THREAD_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class ThreadBindingRequestError(ValueError):
     """The caller supplied an invalid host-thread identity."""
+
+
+@dataclass(frozen=True)
+class _RegistryThreadBindingRequest:
+    host_surface: str | None
+    thread_id: str
+    session_locator: dict[str, str] | None
+    candidate_surfaces: tuple[str, ...]
 
 
 def normalize_thread_id(value: Any) -> str | None:
@@ -36,6 +57,41 @@ def normalize_thread_id(value: Any) -> str | None:
     if any(char in token for char in ("/", "\\", '"', "'")):
         raise ValueError("thread_id must not contain path or quoting characters")
     return token
+
+
+def codex_thread_deep_link_locator(value: Any) -> dict[str, str]:
+    """Parse one canonical Codex task link without treating it as authority."""
+
+    raw_link = str(value or "").strip()
+    try:
+        parsed = urlsplit(raw_link)
+    except ValueError as exc:
+        raise ValueError("thread_link must be a canonical Codex task deep link") from exc
+    if (
+        parsed.scheme.lower() != "codex"
+        or parsed.netloc.lower() != "threads"
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("thread_link must use codex://threads/<thread-id>")
+    path_parts = parsed.path.split("/")
+    if len(path_parts) != 2 or path_parts[0] or not path_parts[1] or "%" in path_parts[1]:
+        raise ValueError("thread_link must address exactly one Codex thread")
+    if path_parts[1].lower() == "new":
+        raise ValueError("thread_link must address an existing Codex thread")
+    thread_id = normalize_thread_id(path_parts[1])
+    if thread_id is None or _CODEX_THREAD_ID_RE.fullmatch(thread_id) is None:
+        raise ValueError("thread_link must include a Codex thread id")
+    return {
+        "schema_version": HOST_SESSION_LOCATOR_SCHEMA_VERSION,
+        "kind": "codex_deep_link",
+        "status": "parsed",
+        "host_family": "codex",
+        "thread_id": thread_id,
+        "deep_link": f"codex://threads/{thread_id}",
+        "context_scope_ref": f"host-session:codex:{thread_id}",
+        "authority": "locator_only",
+    }
 
 
 def _normalized_host_surface(value: Any) -> str:
@@ -112,72 +168,136 @@ def resolve_thread_agent_binding(
     return base
 
 
-def resolve_registry_thread_agent_binding(
+def _registry_thread_binding_request(
     *,
-    registry_path: Path,
-    host_surface: str,
-    thread_id: str,
-) -> dict[str, Any]:
-    """Resolve one exact host thread across every Goal in a project registry."""
-
-    try:
-        normalized_thread_id = normalize_thread_id(thread_id)
-        if normalized_thread_id is None:
-            raise ValueError("thread_id is required")
-        normalized_surface = _normalized_host_surface(host_surface)
-    except ValueError as exc:
-        raise ThreadBindingRequestError("thread binding request is invalid") from exc
-    payload = load_registry(registry_path)
-    matches: list[dict[str, str]] = []
-    for goal in registry_goals(payload):
-        raw_goal_id = goal.get("id")
+    host_surface: str | None,
+    thread_id: str | None,
+    thread_link: str | None,
+) -> _RegistryThreadBindingRequest:
+    if bool(thread_id) == bool(thread_link):
+        raise ValueError("provide exactly one thread reference")
+    normalized_surface = (
+        _normalized_host_surface(host_surface)
+        if host_surface is not None
+        else None
+    )
+    session_locator = None
+    if thread_link:
         if (
-            not isinstance(raw_goal_id, str)
-            or not raw_goal_id
-            or raw_goal_id.strip() != raw_goal_id
+            normalized_surface is not None
+            and normalized_surface not in CODEX_THREAD_HOST_SURFACES
         ):
-            continue
-        goal_id = raw_goal_id
+            raise ValueError("Codex task deep links require a Codex host surface")
+        session_locator = codex_thread_deep_link_locator(thread_link)
+        normalized_thread_id = session_locator["thread_id"]
+    else:
+        if normalized_surface is None:
+            raise ValueError("host_surface is required for a thread id")
+        normalized_thread_id = normalize_thread_id(thread_id)
+    if normalized_thread_id is None:
+        raise ValueError("thread_id is required")
+    candidate_surfaces = (
+        (normalized_surface,)
+        if normalized_surface is not None
+        else tuple(sorted(CODEX_THREAD_HOST_SURFACES))
+    )
+    return _RegistryThreadBindingRequest(
+        host_surface=normalized_surface,
+        thread_id=normalized_thread_id,
+        session_locator=session_locator,
+        candidate_surfaces=candidate_surfaces,
+    )
+
+
+def _goal_registry_binding_matches(
+    goal: dict[str, Any],
+    *,
+    thread_id: str,
+    candidate_surfaces: tuple[str, ...],
+) -> list[dict[str, str]]:
+    raw_goal_id = goal.get("id")
+    if (
+        not isinstance(raw_goal_id, str)
+        or not raw_goal_id
+        or raw_goal_id.strip() != raw_goal_id
+    ):
+        return []
+    matches: list[dict[str, str]] = []
+    for candidate_surface in candidate_surfaces:
         binding = resolve_thread_agent_binding(
             goal,
-            host_surface=normalized_surface,
-            thread_id=normalized_thread_id,
+            host_surface=candidate_surface,
+            thread_id=thread_id,
         )
         if binding["status"] == "conflict":
-            for item in binding["matches"]:
-                matches.append({"goal_id": goal_id, "agent_id": item["agent_id"]})
+            agent_ids = [item["agent_id"] for item in binding["matches"]]
         elif binding["status"] == "bound":
-            matches.append({"goal_id": goal_id, "agent_id": binding["agent_id"]})
+            agent_ids = [binding["agent_id"]]
+        else:
+            agent_ids = []
+        matches.extend(
+            {
+                "goal_id": raw_goal_id,
+                "agent_id": agent_id,
+                "host_surface": candidate_surface,
+            }
+            for agent_id in agent_ids
+        )
+    return matches
 
+
+def _registry_binding_resolution(
+    request: _RegistryThreadBindingRequest,
+    raw_matches: list[dict[str, str]],
+) -> dict[str, Any]:
     unique_matches = sorted(
-        {(
-            item["goal_id"],
-            item["agent_id"],
-        ) for item in matches}
+        {
+            (item["goal_id"], item["agent_id"], item["host_surface"])
+            for item in raw_matches
+        }
     )
-    compact_matches = [
-        {"goal_id": goal_id, "agent_id": agent_id}
-        for goal_id, agent_id in unique_matches
+    matches = [
+        {
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            **(
+                {"host_surface": matched_surface}
+                if request.session_locator is not None
+                else {}
+            ),
+        }
+        for goal_id, agent_id, matched_surface in unique_matches
     ]
+    identities = sorted({(item["goal_id"], item["agent_id"]) for item in matches})
     result: dict[str, Any] = {
         "ok": True,
         "schema_version": THREAD_BINDING_RESOLUTION_SCHEMA_VERSION,
-        "host_surface": normalized_surface,
-        "thread_id": normalized_thread_id,
+        "host_surface": request.host_surface,
+        "thread_id": request.thread_id,
         "status": "missing",
         "goal_id": None,
         "agent_id": None,
-        "matches": compact_matches,
+        "matches": matches,
     }
-    if len(compact_matches) == 1:
+    if request.session_locator is not None:
+        result["session_locator"] = request.session_locator
+        result["host_family"] = "codex"
+    if len(identities) == 1:
+        goal_id, agent_id = identities[0]
         result.update(
             {
                 "status": "bound",
-                "goal_id": compact_matches[0]["goal_id"],
-                "agent_id": compact_matches[0]["agent_id"],
+                "goal_id": goal_id,
+                "agent_id": agent_id,
             }
         )
-    elif len(compact_matches) > 1:
+        if request.session_locator is not None:
+            result["matched_host_surfaces"] = sorted(
+                item["host_surface"]
+                for item in matches
+                if item["goal_id"] == goal_id and item["agent_id"] == agent_id
+            )
+    elif len(identities) > 1:
         result.update(
             {
                 "ok": False,
@@ -187,6 +307,36 @@ def resolve_registry_thread_agent_binding(
             }
         )
     return result
+
+
+def resolve_registry_thread_agent_binding(
+    *,
+    registry_path: Path,
+    host_surface: str | None = None,
+    thread_id: str | None = None,
+    thread_link: str | None = None,
+) -> dict[str, Any]:
+    """Resolve one exact host thread across every Goal in a project registry."""
+
+    try:
+        request = _registry_thread_binding_request(
+            host_surface=host_surface,
+            thread_id=thread_id,
+            thread_link=thread_link,
+        )
+    except ValueError as exc:
+        raise ThreadBindingRequestError("thread binding request is invalid") from exc
+    payload = load_registry(registry_path)
+    raw_matches = [
+        match
+        for goal in registry_goals(payload)
+        for match in _goal_registry_binding_matches(
+            goal,
+            thread_id=request.thread_id,
+            candidate_surfaces=request.candidate_surfaces,
+        )
+    ]
+    return _registry_binding_resolution(request, raw_matches)
 
 
 def _merge_thread_binding_entries(

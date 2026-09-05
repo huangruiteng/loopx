@@ -3,13 +3,14 @@
 - Status: Draft; under maintainer review
 - Tracking issue: [#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - Date: 2026-09-02
+- Last updated: 2026-09-05
 - Scope: peer Agents collaborating around one shared Goal while preserving
   canonical intent, per-Agent execution frontiers, claim/lease ownership, and
   auditable replan/amendment decisions
 - Related contracts:
-  [Goal Vision and Replan](../../reference/protocols/goal-vision-replan-contract-v0.md)
-  and
-  [Shared Control-Plane Authority and Pluggable State Providers](./shared-goal-authority-state-provider-v0.md)
+  [Goal Vision and Replan](../../reference/protocols/goal-vision-replan-contract-v0.md),
+  [Shared Control-Plane Authority and Pluggable State Providers](./shared-goal-authority-state-provider-v0.md),
+  and [Decision Context](../../reference/protocols/decision-context-architecture-v0.md)
 - Language note: the
   [Chinese version](./shared-goal-alignment-and-governed-amendment-v0.zh-CN.md)
   and this English version are semantic mirrors. A difference between them is
@@ -149,6 +150,62 @@ Proposals are advisory, durable inputs. Receipts prove canonical transitions.
 Neither is a substitute for the other. A pending or approved proposal has no
 effect until a successful commit receipt names the new Goal revision.
 
+### 3.5 Host-session locators and advisory context
+
+A task deep link can make entry into this protocol precise without becoming a
+fifth kind of shared state. For Codex, `codex://threads/<thread-id>` identifies
+a local chat. LoopX may resolve that locator through the current project
+registry and bind the source session to an existing Agent and Goal identity.
+The returned provider-neutral `host-session:codex:<thread-id>` scope can then
+select that session in an explicitly enabled Decision Context provider.
+
+This is an optional, transient **advisory context input**. It remains outside
+`shared_goal_intent_v0`, `goal_amendment_proposal_v0`,
+`goal_amendment_receipt_v0`, and the provider CAS head. It helps peers:
+
+- identify the exact task in which a gap or evidence pointer was discovered;
+- recall a bounded set of source-task messages while reviewing current facts;
+- route an amendment proposal to an independent verifier or affected peer; and
+- return to the relevant task after commit for receipt readback and frontier
+  reconciliation.
+
+```text
+host task deep link -> project-local binding -> normalized host-session scope
+        | explicitly configured, read-only ContextProvider
+        v
+local-private transient recall -> verify against current authority sources
+        | explicit promotion to durable typed evidence
+        | base Goal revision + intent digest
+        v
+governed amendment proposal -> authority decision -> canonical receipt
+```
+
+The ordering is normative. A deep link is not an `evidence_ref`, a recalled
+message is not an amendment decision, and the extension lifecycle revision is
+not `base_goal_revision`, `authority_revision`, `provider_generation`, or
+`lease_epoch`. Any session-derived conclusion needed by the amendment must
+first be checked against current authority and promoted to the existing Todo
+evidence, Agent evidence log, or registered material owner. The proposal then
+cites those durable typed references and independently binds the current Goal
+revision and intent digest.
+
+The locator also grants no read access, permission, claim, lease, lifecycle
+authority, verifier independence, or amendment commit authority. If the link is
+unresolvable, inaccessible, or its extension is disabled or unavailable, only
+the optional context-enrichment step fails open; the canonical Goal and
+unrelated work remain valid. Decision Context records the provider degradation
+and continues from available authority sources. Receipt recovery uses `operation_id`
+and `readReceipt`, so losing a host session cannot make a committed amendment
+unrecoverable. A cross-Goal rendezvous may help two peers coordinate, but each
+Goal still requires its own proposal, policy decision, CAS commit, and receipt.
+
+Core parses host-specific deep-link syntax exactly once and exposes only the
+normalized scope to providers. The optional `loopx-obelisk` extension maps that
+scope to Obelisk's public read-only query interface. It does not read Obelisk's
+storage schema, build or attune the index, or open, resume, or message a live
+task. Other harnesses can implement the same Decision Context provider protocol
+without adding host syntax or transcript storage to the Goal authority.
+
 ## 4. Authority matrix
 
 ### 4.1 What `GoalAmendmentAuthority` means
@@ -215,9 +272,12 @@ The effective path is:
 1. **Propose.** Any authorized proposer submits
    `goal_amendment_proposal_v0`, including the base revision/digest, amendment
    class, retained/changed/stopped intent, evidence references, affected Todos,
-   and linked replan obligation.
+   and linked replan obligation. An optional host-session rendezvous may help
+   discover or review the gap, but only promoted durable evidence enters the
+   proposal.
 2. **Admit.** LoopX validates schema, actor identity, bounded evidence pointers,
-   amendment class, and impact scope. Admission does not approve or apply it.
+   amendment class, and impact scope. A host locator cannot prove actor identity
+   or count as evidence. Admission does not approve or apply the proposal.
 3. **Policy decision and optional verification.** LoopX evaluates deterministic
    invariants and the pre-authorized amendment envelope. A higher-risk but
    in-envelope class may invoke an independent verifier Agent that returns a
@@ -354,7 +414,8 @@ claim, lease, Goal amendment, replan settlement, or authority decision.
    peer-claimed, replan, concurrent proposal, and in-flight lease scenarios.
 2. **Stage 1 — read-only alignment.** Add `shared_goal_alignment_v0` with
    canonical revision binding, per-Agent frontier basis, unclaimed work, and
-   drift/conflict facts. No writer changes.
+   drift/conflict facts. An optional Decision Context extension may pair an
+   exact host-session scope with bounded advisory recall. No writer changes.
 3. **Stage 2 — proposal only.** Validate and retain
    `goal_amendment_proposal_v0`; proposals have no canonical effect.
 4. **Stage 3 — one bounded commit class.** Implement governed commit for a
@@ -388,7 +449,16 @@ At minimum, tests must prove:
 - routine in-envelope amendments complete without human approval, while an
   out-of-policy proposal never silently expands authority;
 - in-flight leased work receives an explicit disposition; and
-- all Agent projections rotate or gate after a canonical revision changes.
+- all Agent projections rotate or gate after a canonical revision changes;
+- a host-task locator resolves only through the current project binding and
+  grants no claim, lease, lifecycle, verifier, or amendment authority;
+- disabling or removing the advisory provider does not block authority-source
+  collection, while amendment submission still independently requires the
+  current Goal revision and intent digest.
+
+Existing Goal-amendment and authority-store conformance tests remain the owners
+of durable proposal, receipt recovery, and cross-Goal commit isolation. The
+optional locator/provider tests must not duplicate those state-machine suites.
 
 ## 12. Non-goals
 
@@ -396,7 +466,8 @@ This version does not define automatic voting or consensus, CRDT/offline
 multi-writer merge, an omniscient planner, a permanent leader, direct Agent
 writes to storage providers, broad migration of LoopX state, or autonomous
 escape from the immutable root user intent. Human approval is not a required
-step in the normal amendment lifecycle.
+step in the normal amendment lifecycle. Host-session locators, deep links, and
+transcripts are also not part of the Goal aggregate or a durable evidence store.
 
 The smallest useful outcome is a legible, read-only alignment projection and a
 proposal that is visibly non-authoritative. Runtime commit follows only after

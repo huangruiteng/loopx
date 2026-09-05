@@ -583,6 +583,13 @@ def main(argv: list[str] | None = None) -> int:
 
     decision_context_result = handle_decision_context_command(
         args,
+        runtime_root=(
+            effective_runtime_root(registry_path, args.runtime_root)
+            if args.command == "decision-context"
+            and args.decision_context_command
+            in {"recall-context", "prepare-evidence", "prepare-review"}
+            else None
+        ),
         output_format=output_format,
         print_payload=print_payload,
     )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Protocol, Sequence
+from typing import Mapping, Protocol, Sequence
 
 
 CONTEXT_PROVIDER_RETRIEVAL_SCHEMA_VERSION = "context_provider_retrieval_v0"
@@ -72,6 +72,36 @@ class ContextProviderRetrieval:
     provider_version: str | None = None
     latency_ms: int = 0
     requested_limit: int = 0
+    provider_readiness: Mapping[str, object] | None = None
+
+    def public_results(self) -> list[dict[str, object]]:
+        return [
+            {
+                "provider_ref": opaque_provider_ref(
+                    provider=self.provider,
+                    namespace=self.namespace,
+                    resource_ref=item.resource_ref,
+                ),
+                "summary": item.summary,
+                "score": item.score,
+            }
+            for item in self.items
+        ]
+
+    def transient_results(
+        self,
+        *,
+        content_trust: str,
+        content_may_instruct: bool,
+    ) -> list[dict[str, object]]:
+        return [
+            public | {
+                "content": item.content,
+                "content_trust": content_trust,
+                "content_may_instruct": content_may_instruct,
+            }
+            for public, item in zip(self.public_results(), self.items, strict=True)
+        ]
 
     def public_packet(self) -> dict[str, object]:
         return {
@@ -89,18 +119,7 @@ class ContextProviderRetrieval:
             "read_performed": self.read_performed,
             "requested_limit": self.requested_limit,
             "result_count": len(self.items),
-            "results": [
-                {
-                    "provider_ref": opaque_provider_ref(
-                        provider=self.provider,
-                        namespace=self.namespace,
-                        resource_ref=item.resource_ref,
-                    ),
-                    "summary": item.summary,
-                    "score": item.score,
-                }
-                for item in self.items
-            ],
+            "results": self.public_results(),
             "telemetry": {
                 "latency_ms": max(0, self.latency_ms),
                 "result_cap_applied": len(self.items) >= self.requested_limit > 0,

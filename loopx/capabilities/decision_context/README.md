@@ -149,6 +149,40 @@ loopx decision-context source-manifest \
   --format json
 ```
 
+Recall one task or other provider scope without modifying the profile or
+entering the evidence-settlement workflow:
+
+```bash
+loopx decision-context recall-context \
+  --goal-id <goal-id> \
+  --agent-id <agent-id> \
+  --profile <ignored-private-profile.json> \
+  --context-scope-ref 'host-session:codex:<thread-id>' \
+  --query '<specific private provider query>' \
+  --query-summary '<public-safe intent summary>' \
+  --format json
+```
+
+The profile still gates the Goal, Agent, and provider, but the one-off scope is
+not persisted. The command does not scan authority sources, read or write
+cursors, create pending settlement, or grant execution authority. Its top-level
+output is explicitly `local_private_transient` because it contains the recalled
+text for the current agent. The nested retrieval receipt is public-safe and
+retains only the query summary, provider-safe summaries, scores, and hashed
+references. Each recalled item is marked `untrusted_advisory` and must never be
+treated as an instruction.
+
+Keeping this profile enabled does not make Obelisk a required LoopX
+dependency. If the selected extension is not installed, is disabled, or no
+longer has a current doctor proof, recall exits normally with
+`status=unavailable`, a typed `provider_readiness` receipt, and no provider
+scan or write. Do not remove or rewrite the profile just to recover the
+provider: install it, run
+`loopx extension enable <extension-id> --execute --format json`, or run
+`loopx extension doctor <extension-id> --execute --format json` according to
+`provider_readiness.next_action`. The next recall re-resolves lifecycle state
+and resumes automatically when the provider is ready.
+
 Run bounded scans and exact reads without committing private cursors:
 
 ```bash
@@ -159,6 +193,15 @@ loopx decision-context prepare-evidence \
   --decision-id <stable-decision-id> \
   --format json
 ```
+
+An optional extension can implement the existing advisory `ContextProvider`
+port. For example, `packages/loopx-obelisk` accepts a normalized
+`host-session:codex:<thread-id>` scope and retrieves bounded historical task
+messages through Obelisk's public CLI. The profile selects it with
+`context_provider.provider=extension`; `config.extension_id` may name the exact
+provider, otherwise exactly one enabled, doctor-ready implementation must be
+available. Provider failure remains fail-open, and raw recalled text never
+enters the public packet.
 
 `prepare-evidence` is deliberately read only. A domain adapter can provide a
 strict semantic rebase and persist an unapplied private checkpoint:

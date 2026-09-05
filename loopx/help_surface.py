@@ -166,7 +166,10 @@ COMMAND_GROUPS: list[dict[str, object]] = [
             },
             {
                 "command": "loopx resolve-agent-thread",
-                "purpose": "Read one exact host thread binding across the current project without mutating authority.",
+                "purpose": (
+                    "Read one exact host thread binding from an opaque id or copied "
+                    "Codex task deep link without mutating authority."
+                ),
             },
             {
                 "command": "loopx unbind-agent-thread",

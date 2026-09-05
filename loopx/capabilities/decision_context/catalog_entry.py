@@ -68,6 +68,23 @@ DECISION_CONTEXT_CATALOG_ENTRY: dict[str, Any] = {
         },
         {
             "command": (
+                "loopx decision-context recall-context "
+                "--goal-id <goal-id> --agent-id <agent-id> "
+                "--profile <private-local-profile> "
+                "--context-scope-ref <one-off-scope> --query <private-query> "
+                "--query-summary <public-safe-summary> --format json"
+            ),
+            "purpose": (
+                "Return one bounded local-private advisory recall without "
+                "entering the evidence-settlement workflow."
+            ),
+            "write_boundary": (
+                "read-only provider access; no profile mutation, authority-source "
+                "scan, cursor access, settlement, Core mutation, or external write"
+            ),
+        },
+        {
+            "command": (
                 "loopx decision-context prepare-evidence "
                 "--goal-id <goal-id> --agent-id <agent-id> "
                 "--profile <private-local-profile> --decision-id <decision-id> "
@@ -127,6 +144,10 @@ DECISION_CONTEXT_CATALOG_ENTRY: dict[str, Any] = {
             "doc": "docs/reference/protocols/decision-context-architecture-v0.md",
         }
         for schema_version, module in (
+            (
+                "decision_context_ephemeral_recall_v0",
+                "loopx.capabilities.decision_context.assembler",
+            ),
             (
                 "decision_context_architecture_v0",
                 "loopx.capabilities.decision_context.architecture",
@@ -189,6 +210,7 @@ DECISION_CONTEXT_CATALOG_ENTRY: dict[str, Any] = {
     "boundaries": [
         "The capability is default-off and cannot create action authority or mutate Core state.",
         "Private locators, cursors, raw content, provider payloads, tool output, and credentials stay outside public packets.",
+        "Recall-context returns raw hits only in an explicit local-private transient packet and never persists its one-off scope.",
         "DecisionSourceProvider rebases current authority; ContextProvider supplies advisory recall only.",
         "Prepare-evidence is read-only; prepare-review writes only private unapplied state when explicitly executed.",
         "Cursor commit requires a canonical review receipt, exact gate or semantic no-change proof, lifecycle-event readback, private-state CAS, and atomic verified write; future outcome observation is separate.",

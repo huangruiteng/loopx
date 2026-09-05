@@ -169,6 +169,56 @@ fail-closed.
 Thread IDs are opaque public-safe tokens only; raw transcripts, credentials, and
 local paths are never persisted.
 
+### Deep-link task rendezvous
+
+LoopX accepts a task link copied from Codex App. The
+[Codex App command reference](https://learn.chatgpt.com/docs/reference/commands)
+documents `codex://threads/<thread-id>` as the canonical form for opening an
+existing local task.
+LoopX treats that link as a host-session locator for review, handoff, and
+coordination, not as a second agent identity or an authority grant. A receiving
+Codex task can confirm the target's existing project-local LoopX binding without
+changing it:
+
+```bash
+loopx resolve-agent-thread \
+  --thread-link 'codex://threads/<thread-id>'
+```
+
+A deep link does not encode the task's execution surface. Without an explicit
+`--host-surface`, LoopX searches only the Codex host family (`codex-app`,
+`codex-app-ssh`, `codex-ide-plugin`, and `codex-cli-tui`) and reports the
+matched surface. The caller may pass one of those surfaces to narrow lookup. A
+`bound` result names exactly one `goal_id` and `agent_id`. A `missing` result
+means only that the link parsed successfully; it does not authorize takeover or
+prove that the target task is connected to this LoopX project. `ambiguous` and
+invalid results fail closed. The command stores nothing and returns the parsed
+locator with `authority=locator_only`. The sender must still register and bind
+its own agent lane through the normal guided-start flow, and both tasks must
+state their responsibilities explicitly. The deep link does not share chat
+context, permissions, credentials, workspace access, leases, or write scope.
+Concurrent writers still need separate worktrees or equivalent isolation.
+After a unique binding is confirmed, a host that exposes read-only task
+inspection may use the parsed `thread_id` to inspect or cite that task. Tool
+availability and access are checked separately; if inspection is unavailable,
+the sender must relay the required context explicitly.
+
+中文：在目标 Codex 任务菜单中选择“复制 -> 复制深度链接”，把
+`codex://threads/<thread-id>` 连同双方分工发给另一个任务。接收方先运行
+上面的只读命令；只有返回 `bound` 且 `goal_id`、`agent_id` 与预期一致时，
+才把它视为已确认的 LoopX 会话绑定。`missing` 只表示链接格式有效但尚无本
+项目绑定。深度链接只负责定位，不同步权限、目录、对话上下文、lease 或写
+入范围；并行修改代码仍需独立 worktree。
+
+For same-project context sharing, the parsed locator also returns a
+provider-neutral `context_scope_ref`. An explicitly enabled Decision Context
+extension may use that scope as a one-off `recall-context` argument for bounded
+advisory recall without modifying its persistent profile. The bundled
+`loopx-obelisk` package is one optional provider; another harness adapter may
+implement the same protocol. Provider output remains transient and fail-open.
+Authoritative alignment outranks chat, and durable conclusions remain owned by
+Goal Todos, evidence events, registered material, or governed amendments.
+
 The packet may be rendered to the agent prompt, passed to a tool call, or used
 to run the CLI directly. It must not contain raw transcripts, credentials,
 private document bodies, or local absolute paths in user-visible output.

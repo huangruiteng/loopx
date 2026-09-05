@@ -286,9 +286,6 @@ def normalize_decision_context_profile(
             raise ValueError("every source must reference a declared provider binding")
         sources.append(spec)
         source_ids.add(spec.source_id)
-    if enabled and not sources:
-        raise ValueError("an enabled profile requires at least one source")
-
     context_provider: Mapping[str, Any] | None = None
     raw_context_provider = config.get("context_provider")
     if raw_context_provider is not None:
@@ -303,7 +300,7 @@ def normalize_decision_context_profile(
         context_provider = {
             "provider": _token(context.get("provider"), field_name="context provider"),
             "namespace": _token(context.get("namespace"), field_name="namespace"),
-            "scope_ref": str(context.get("scope_ref") or "").strip(),
+            "scope_ref": str(context.get("scope_ref") or "").strip() or None,
             "max_results": _positive_int(
                 context.get("max_results", 4),
                 field_name="max_results",
@@ -316,8 +313,11 @@ def normalize_decision_context_profile(
             ),
             "config": dict(private_config),
         }
-        if not context_provider["scope_ref"]:
-            raise ValueError("context provider scope_ref is required")
+
+    if enabled and not sources and context_provider is None:
+        raise ValueError(
+            "an enabled profile requires at least one source or context provider"
+        )
 
     automation = _strict_mapping(
         config.get("automation"),

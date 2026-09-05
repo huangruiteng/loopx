@@ -1,0 +1,16 @@
+schema_version = "loopx_extension_manifest_v0"
+id = "loopx-obelisk"
+version = "0.1.0"
+requires_loopx_api = ">=1,<2"
+permissions = ["decision_context.read"]
+
+[runtime]
+protocol = "decision_context_advisory_provider_v0"
+entrypoint = "loopx-obelisk"
+doctor_args = ["--doctor"]
+required_permissions = ["decision_context.read"]
+timeout_seconds = 30
+
+[[implements]]
+capability_id = "decision-context"
+protocol = "decision_context_advisory_provider_v0"

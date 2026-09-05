@@ -5,6 +5,7 @@ from __future__ import annotations
 from .assembler import (
     DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION,
     DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION,
+    DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION,
     DECISION_SEMANTIC_REBASE_RECEIPT_SCHEMA_VERSION,
 )
 from .packets import (
@@ -51,6 +52,9 @@ def build_decision_context_architecture_packet() -> dict[str, object]:
             DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION,
             DECISION_CURSOR_COMMIT_RECEIPT_SCHEMA_VERSION,
         ],
+        "local_private_transient_schemas": [
+            DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION,
+        ],
         "provider_boundaries": {
             "decision_source_provider": (
                 "bounded_authority_change_detection_and_exact_read"
@@ -74,6 +78,7 @@ def build_decision_context_architecture_packet() -> dict[str, object]:
             "incremental_cursors_advance_only_after_rebase_and_writeback",
             "cursor_commit_exact_reads_a_matching_lifecycle_event",
             "raw_provider_content_never_enters_public_packets",
+            "one_off_recall_scope_and_content_are_never_persisted",
             "proposals_require_existing_authority_confirmation",
             "review_settlement_precedes_cursor_commit",
             "outcome_observation_does_not_block_consumed_source_cursors",

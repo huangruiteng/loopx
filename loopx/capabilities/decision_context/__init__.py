@@ -2,6 +2,7 @@
 
 from .assembler import (
     DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION,
+    DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION,
     DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION,
     DecisionAuthorityEvidence,
     DecisionContextAssembly,
@@ -64,6 +65,7 @@ from .private_state import (
 from .runtime import (
     assemble_profile_decision_evidence,
     decision_evidence_records_from_mapping,
+    recall_profile_decision_context,
 )
 from .review_settlement import (
     DECISION_REVIEW_SETTLEMENT_SCHEMA_VERSION,
@@ -76,6 +78,7 @@ from .outcome_feedback import (
 
 __all__ = [
     "DECISION_CONTEXT_ASSEMBLY_SCHEMA_VERSION",
+    "DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION",
     "DECISION_CONTEXT_ARCHITECTURE_SCHEMA_VERSION",
     "DECISION_CONTEXT_ACTIVATION_STATUS_SCHEMA_VERSION",
     "DECISION_CURSOR_CHECKPOINT_SCHEMA_VERSION",
@@ -122,6 +125,7 @@ __all__ = [
     "load_private_pending_decision_settlement",
     "normalize_decision_context_profile",
     "register_decision_source_provider",
+    "recall_profile_decision_context",
     "resolve_decision_context_activation",
     "decision_evidence_records_from_mapping",
     "settle_profile_decision_review",

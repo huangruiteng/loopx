@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decision_context_advisory_retrieve_request_v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "operation", "namespace", "scope_ref", "query", "query_summary", "max_results", "timeout_seconds", "observed_at"],
+  "properties": {
+    "schema_version": {"const": "decision_context_advisory_retrieve_request_v0"},
+    "operation": {"const": "retrieve"},
+    "namespace": {"type": "string", "minLength": 1, "maxLength": 120},
+    "scope_ref": {"type": "string", "pattern": "^host-session:codex:[^\\s:/?#]+$", "maxLength": 2048},
+    "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "query_summary": {"type": "string", "minLength": 1, "maxLength": 220},
+    "max_results": {"type": "integer", "minimum": 1, "maximum": 8},
+    "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 120},
+    "observed_at": {"type": "string", "minLength": 1, "maxLength": 80}
+  }
+}

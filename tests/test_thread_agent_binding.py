@@ -10,7 +10,9 @@ import pytest
 from loopx.cli import main as cli_main
 from loopx.global_registry import global_registry_path
 from loopx.thread_agent_binding import (
+    ThreadBindingRequestError,
     bind_thread_agent_in_registry,
+    codex_thread_deep_link_locator,
     normalize_thread_id,
     resolve_registry_thread_agent_binding,
     resolve_thread_agent_binding,
@@ -46,6 +48,41 @@ def test_thread_id_is_bounded_and_opaque() -> None:
         normalize_thread_id("thread with spaces")
     with pytest.raises(ValueError):
         normalize_thread_id("x" * 129)
+
+
+def test_codex_deep_link_is_a_locator_not_authority() -> None:
+    assert codex_thread_deep_link_locator(
+        "codex://threads/019fd0fe-42e0-7b21-accc-045333a7def9"
+    ) == {
+        "schema_version": "loopx_host_session_locator_v0",
+        "kind": "codex_deep_link",
+        "status": "parsed",
+        "host_family": "codex",
+        "thread_id": "019fd0fe-42e0-7b21-accc-045333a7def9",
+        "deep_link": "codex://threads/019fd0fe-42e0-7b21-accc-045333a7def9",
+        "context_scope_ref": (
+            "host-session:codex:019fd0fe-42e0-7b21-accc-045333a7def9"
+        ),
+        "authority": "locator_only",
+    }
+
+
+@pytest.mark.parametrize(
+    "thread_link",
+    [
+        "https://example.com/threads/thread-a",
+        "codex://settings",
+        "codex://threads/new",
+        "codex://threads/thread-a/extra",
+        "codex://threads/thread-a?host=other",
+        "codex://threads/thread%2Fa",
+        "codex://threads/thread:a",
+        "codex://threads/线程-a",
+    ],
+)
+def test_codex_deep_link_rejects_noncanonical_addresses(thread_link: str) -> None:
+    with pytest.raises(ValueError):
+        codex_thread_deep_link_locator(thread_link)
 
 
 def test_binding_lookup_is_fail_closed_without_thread_id() -> None:
@@ -149,6 +186,28 @@ def test_resolve_agent_thread_cli_is_read_only_and_path_free(tmp_path: Path) -> 
     assert str(tmp_path) not in output.getvalue()
     assert path.read_bytes() == before
 
+    link_output = io.StringIO()
+    with contextlib.redirect_stdout(link_output):
+        link_exit = cli_main(
+            [
+                "--registry",
+                str(path),
+                "--format",
+                "json",
+                "resolve-agent-thread",
+                "--thread-link",
+                "codex://threads/dsh-session-1",
+            ]
+        )
+    assert link_exit == 0
+    linked = json.loads(link_output.getvalue())
+    assert linked["status"] == "missing"
+    assert linked["thread_id"] == "dsh-session-1"
+    assert linked["host_surface"] is None
+    assert linked["host_family"] == "codex"
+    assert linked["session_locator"]["authority"] == "locator_only"
+    assert path.read_bytes() == before
+
     markdown = io.StringIO()
     with contextlib.redirect_stdout(markdown):
         markdown_exit = cli_main(
@@ -165,6 +224,125 @@ def test_resolve_agent_thread_cli_is_read_only_and_path_free(tmp_path: Path) -> 
     assert markdown_exit == 0
     assert markdown.getvalue().startswith("# LoopX Host Thread Binding\n")
     assert "Agent Registration" not in markdown.getvalue()
+
+
+def test_resolve_codex_deep_link_confirms_exact_bound_goal_and_agent(
+    tmp_path: Path,
+) -> None:
+    path = _registry(tmp_path, ["agent-a"])
+    assert bind_thread_agent_in_registry(
+        registry_path=path,
+        goal_id="goal",
+        host_surface="codex-app",
+        thread_id="thread-a",
+        agent_id="agent-a",
+        execute=True,
+    )["ok"] is True
+
+    resolved = resolve_registry_thread_agent_binding(
+        registry_path=path,
+        host_surface="codex-app",
+        thread_link="codex://threads/thread-a",
+    )
+
+    assert resolved["status"] == "bound"
+    assert resolved["goal_id"] == "goal"
+    assert resolved["agent_id"] == "agent-a"
+    assert resolved["session_locator"] == {
+        "schema_version": "loopx_host_session_locator_v0",
+        "kind": "codex_deep_link",
+        "status": "parsed",
+        "host_family": "codex",
+        "thread_id": "thread-a",
+        "deep_link": "codex://threads/thread-a",
+        "context_scope_ref": "host-session:codex:thread-a",
+        "authority": "locator_only",
+    }
+
+    markdown = io.StringIO()
+    with contextlib.redirect_stdout(markdown):
+        markdown_exit = cli_main(
+            [
+                "--registry",
+                str(path),
+                "resolve-agent-thread",
+                "--thread-link",
+                "codex://threads/thread-a",
+            ]
+        )
+    assert markdown_exit == 0
+    assert "- locator_authority: `locator_only`" in markdown.getvalue()
+
+
+def test_resolve_codex_deep_link_searches_codex_host_family(
+    tmp_path: Path,
+) -> None:
+    path = _registry(tmp_path, ["agent-a"])
+    assert bind_thread_agent_in_registry(
+        registry_path=path,
+        goal_id="goal",
+        host_surface="codex-app-ssh",
+        thread_id="thread-a",
+        agent_id="agent-a",
+        execute=True,
+    )["ok"] is True
+
+    resolved = resolve_registry_thread_agent_binding(
+        registry_path=path,
+        thread_link="codex://threads/thread-a",
+    )
+
+    assert resolved["status"] == "bound"
+    assert resolved["host_surface"] is None
+    assert resolved["host_family"] == "codex"
+    assert resolved["matched_host_surfaces"] == ["codex-app-ssh"]
+    assert resolved["matches"] == [
+        {
+            "goal_id": "goal",
+            "agent_id": "agent-a",
+            "host_surface": "codex-app-ssh",
+        }
+    ]
+
+
+def test_resolve_codex_deep_link_fails_closed_for_other_host_surfaces(
+    tmp_path: Path,
+) -> None:
+    path = _registry(tmp_path, ["agent-a"])
+    with pytest.raises(ThreadBindingRequestError):
+        resolve_registry_thread_agent_binding(
+            registry_path=path,
+            host_surface="deepseek-harness-native",
+            thread_link="codex://threads/thread-a",
+        )
+
+
+def test_resolve_codex_deep_link_cli_rejects_invalid_link_without_echoing_it(
+    tmp_path: Path,
+) -> None:
+    path = _registry(tmp_path, ["agent-a"])
+    invalid_link = "codex://threads/thread-a?private=value"
+    output = io.StringIO()
+
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(path),
+                "--format",
+                "json",
+                "resolve-agent-thread",
+                "--thread-link",
+                invalid_link,
+            ]
+        )
+
+    assert exit_code == 1
+    payload = json.loads(output.getvalue())
+    assert payload["error_kind"] == "thread_agent_binding_invalid_request"
+    assert payload["session_locator"] is None
+    assert invalid_link not in output.getvalue()
+    assert "private=value" not in output.getvalue()
 
 
 def test_resolve_agent_thread_cli_failure_is_bounded_and_path_free(

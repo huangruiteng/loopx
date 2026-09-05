@@ -16,8 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from loopx.bootstrap_command_pack import build_start_goal_guided_packet
-from loopx.cli import main as cli_main
+from loopx.bootstrap_command_pack import (  # noqa: E402
+    build_start_goal_guided_packet,
+)
+from loopx.cli import main as cli_main  # noqa: E402
 
 
 def main() -> None:
@@ -124,6 +126,32 @@ def main() -> None:
         commands = reused["command_pack"]["commands"]
         assert "--agent-id codex-a" in commands["goal_start_quota_should_run"], commands
         assert "--agent-id codex-a" in commands["goal_start_refresh_state"], commands
+
+        deep_link_output = io.StringIO()
+        with contextlib.redirect_stdout(deep_link_output):
+            deep_link_exit = cli_main(
+                [
+                    "--registry",
+                    str(registry),
+                    "--format",
+                    "json",
+                    "resolve-agent-thread",
+                    "--thread-link",
+                    "codex://threads/thread-a",
+                ]
+            )
+        assert deep_link_exit == 0, deep_link_output.getvalue()
+        deep_link_resolution = json.loads(deep_link_output.getvalue())
+        assert deep_link_resolution["goal_id"] == "goal", deep_link_resolution
+        assert deep_link_resolution["agent_id"] == "codex-a", deep_link_resolution
+        assert deep_link_resolution["host_surface"] is None, deep_link_resolution
+        assert deep_link_resolution["host_family"] == "codex", deep_link_resolution
+        assert deep_link_resolution["matched_host_surfaces"] == ["codex-app"], (
+            deep_link_resolution
+        )
+        assert deep_link_resolution["session_locator"]["authority"] == "locator_only", (
+            deep_link_resolution
+        )
 
         unbound = build_start_goal_guided_packet(
             project=project,
@@ -266,9 +294,9 @@ def main() -> None:
             "host_surface": "codex-app",
             "agent_id": "codex-b",
         } in bindings_after, bindings_after
-        assert "codex-c" in source_after["goals"][0]["coordination"][
-            "registered_agents"
-        ], source_after
+        assert (
+            "codex-c" in source_after["goals"][0]["coordination"]["registered_agents"]
+        ), source_after
 
         fresh = build_start_goal_guided_packet(
             project=project,

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "decision_context_advisory_retrieve_response_v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ok", "status", "reason_code", "items"],
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "completed"}}},
+      "then": {"properties": {"reason_code": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "unavailable"}}},
+      "then": {
+        "properties": {
+          "reason_code": {"type": "string", "minLength": 1, "maxLength": 120, "pattern": "^\\S+$"},
+          "items": {"maxItems": 0}
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema_version": {"const": "decision_context_advisory_retrieve_response_v0"},
+    "ok": {"const": true},
+    "status": {"enum": ["completed", "unavailable"]},
+    "reason_code": {"type": ["string", "null"], "maxLength": 120},
+    "items": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource_ref", "summary", "content", "score"],
+        "properties": {
+          "resource_ref": {"type": "string", "minLength": 1, "maxLength": 512},
+          "summary": {"type": "string", "minLength": 1, "maxLength": 220},
+          "content": {"type": "string", "minLength": 1, "maxLength": 16000},
+          "score": {"type": ["number", "null"]}
+        }
+      }
+    }
+  }
+}

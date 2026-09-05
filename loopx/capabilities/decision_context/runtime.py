@@ -3,17 +3,24 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from ..context_providers import build_context_provider
 from ..context_providers.base import ContextProvider
+from ...control_plane.runtime.public_safety import public_safe_compact_text
+from .extension_provider import (
+    EXTENSION_CONTEXT_PROVIDER_ID,
+    build_extension_context_provider,
+)
 from .assembler import (
     DecisionContextAssembly,
+    DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION,
     DecisionEvidenceRebaser,
     DecisionEvidenceRecords,
     assemble_decision_evidence,
+    collect_context_recall,
 )
 from .private_state import load_private_decision_cursors, private_file_digest
 from .profile import (
@@ -31,6 +38,15 @@ _DECISION_EVIDENCE_RECORD_FIELDS = {
     "conflicts",
     "semantic_no_change",
 }
+
+
+@dataclass(frozen=True)
+class _TransientRecallRequest:
+    scope_ref: str
+    query: str
+    query_summary: str
+    max_results: int
+    timeout_seconds: float
 
 
 def decision_evidence_records_from_mapping(
@@ -171,6 +187,8 @@ def _selected_sources(
 
 def _build_advisory_context_provider(
     profile: DecisionContextProfile,
+    *,
+    runtime_root: str | Path | None = None,
 ) -> ContextProvider | None:
     if profile.context_provider is None:
         return None
@@ -180,9 +198,33 @@ def _build_advisory_context_provider(
         **(dict(private_config) if isinstance(private_config, Mapping) else {}),
     }
     try:
+        if binding["provider"] == EXTENSION_CONTEXT_PROVIDER_ID:
+            return build_extension_context_provider(
+                binding,
+                runtime_root=runtime_root,
+            )
         return build_context_provider(binding)
     except Exception:
         return _UnavailableContextProvider()
+
+
+def _private_profile_digest(profile_path: Path | None) -> str | None:
+    if profile_path is None:
+        return None
+    try:
+        return private_file_digest(profile_path)
+    except ValueError:
+        return None
+
+
+def _normalized_source_provider_overrides(
+    value: Mapping[str, DecisionSourceProvider] | None,
+) -> Mapping[str, DecisionSourceProvider]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError("source_provider_overrides must be a mapping")
+    return value
 
 
 def assemble_profile_decision_evidence(
@@ -197,8 +239,8 @@ def assemble_profile_decision_evidence(
     cursor_path: Path | None = None,
     source_ids: Collection[str] | None = None,
     recall_query: str = "current decision evidence",
-    recall_query_summary: str = "current decision evidence",
     timeout_seconds: float | None = None,
+    runtime_root: str | Path | None = None,
     source_provider_overrides: Mapping[str, DecisionSourceProvider] | None = None,
 ) -> tuple[dict[str, Any], DecisionContextAssembly | None]:
     """Resolve one enabled profile and assemble evidence without applying cursors.
@@ -210,18 +252,10 @@ def assemble_profile_decision_evidence(
     not apply them to active cursor state before validated lifecycle writeback.
     """
 
-    try:
-        profile_digest_before = (
-            private_file_digest(profile_path) if profile_path is not None else None
-        )
-    except ValueError:
-        profile_digest_before = None
-    if source_provider_overrides is None:
-        provider_overrides: Mapping[str, DecisionSourceProvider] = {}
-    elif not isinstance(source_provider_overrides, Mapping):
-        raise TypeError("source_provider_overrides must be a mapping")
-    else:
-        provider_overrides = source_provider_overrides
+    profile_digest_before = _private_profile_digest(profile_path)
+    provider_overrides = _normalized_source_provider_overrides(
+        source_provider_overrides
+    )
     activation, profile = resolve_decision_context_activation(
         goal_id=goal_id,
         agent_id=agent_id,
@@ -232,6 +266,11 @@ def assemble_profile_decision_evidence(
         return activation, None
 
     context_config = profile.context_provider or {}
+    if profile.context_provider is not None and not context_config.get("scope_ref"):
+        raise ValueError(
+            "context provider scope_ref is required for evidence assembly; "
+            "use recall-context for a one-off scope"
+        )
     configured_timeout = context_config.get("timeout_seconds", 10.0)
     effective_timeout = (
         float(timeout_seconds)
@@ -253,11 +292,14 @@ def assemble_profile_decision_evidence(
         ),
         cursors=cursors,
         rebase=rebase,
-        context_provider=_build_advisory_context_provider(profile),
+        context_provider=_build_advisory_context_provider(
+            profile,
+            runtime_root=runtime_root,
+        ),
         context_namespace=str(context_config.get("namespace") or "decision-context"),
         context_scope_ref=str(context_config.get("scope_ref") or "goal"),
         recall_query=recall_query,
-        recall_query_summary=recall_query_summary,
+        recall_query_summary="current decision evidence",
         recall_limit=int(context_config.get("max_results", 5)),
         timeout_seconds=effective_timeout,
     )
@@ -271,3 +313,196 @@ def assemble_profile_decision_evidence(
         profile_digest=profile_digest_after,
         runtime_bound_provider_ids=tuple(sorted(provider_overrides)),
     )
+
+
+def _ephemeral_recall_base(activation: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "schema_version": DECISION_CONTEXT_EPHEMERAL_RECALL_SCHEMA_VERSION,
+        "capability_id": "decision_context",
+        "operation": "ephemeral_recall",
+        "goal_id": activation["goal_id"],
+        "agent_id": activation["agent_id"],
+        "visibility": "local_private_transient",
+        "activation": activation,
+        "authority": "advisory_only",
+        "content_trust": "untrusted_advisory",
+        "content_may_instruct": False,
+        "source_scan_performed": False,
+        "cursor_state_read": False,
+        "cursor_state_mutated": False,
+        "pending_settlement_written": False,
+        "validated_writeback_required": False,
+        "profile_write_performed": False,
+        "private_locator_persisted": False,
+        "external_writes_performed": False,
+        "raw_provider_payload_captured": False,
+        "raw_content_returned": False,
+        "raw_content_persisted": False,
+        "execution_authorized": False,
+        "durable_promotion_required": True,
+        "provider_readiness": None,
+        "retrieval_receipt": None,
+        "results": [],
+    }
+
+
+def _ephemeral_recall_failure(
+    base: Mapping[str, Any],
+    *,
+    status: str,
+    reason_code: object,
+) -> dict[str, Any]:
+    return dict(base) | {
+        "ok": False,
+        "status": status,
+        "reason_code": reason_code,
+    }
+
+
+def _transient_recall_request(
+    context_config: Mapping[str, Any],
+    *,
+    context_scope_ref: str,
+    query: str,
+    query_summary: str,
+    max_results: int | None,
+    timeout_seconds: float | None,
+) -> _TransientRecallRequest:
+    bounded_scope_ref = str(context_scope_ref or "").strip()
+    if not bounded_scope_ref or len(bounded_scope_ref) > 2_048:
+        raise ValueError("context_scope_ref must be a bounded non-empty string")
+    bounded_query = str(query or "").strip()
+    if not bounded_query or len(bounded_query) > 1_000:
+        raise ValueError("query must be a bounded non-empty string")
+    safe_query_summary = public_safe_compact_text(query_summary, limit=220)
+    if safe_query_summary is None:
+        raise ValueError("query_summary must be public safe")
+    requested_limit = (
+        max_results
+        if max_results is not None
+        else int(context_config.get("max_results", 5))
+    )
+    if isinstance(requested_limit, bool) or not isinstance(requested_limit, int):
+        raise TypeError("max_results must be an integer")
+    if not 1 <= requested_limit <= 8:
+        raise ValueError("max_results must be between 1 and 8")
+    requested_timeout = (
+        float(timeout_seconds)
+        if timeout_seconds is not None
+        else float(context_config.get("timeout_seconds", 10.0))
+    )
+    if not 1 <= requested_timeout <= 60:
+        raise ValueError("timeout_seconds must be between 1 and 60")
+    return _TransientRecallRequest(
+        scope_ref=bounded_scope_ref,
+        query=bounded_query,
+        query_summary=safe_query_summary,
+        max_results=requested_limit,
+        timeout_seconds=requested_timeout,
+    )
+
+
+def recall_profile_decision_context(
+    *,
+    goal_id: str,
+    agent_id: str,
+    profile_path: Path | None,
+    context_scope_ref: str,
+    query: str,
+    query_summary: str,
+    observed_at: str,
+    max_results: int | None = None,
+    timeout_seconds: float | None = None,
+    runtime_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Recall one transient scope without scanning or mutating decision state.
+
+    The profile still owns Goal and Agent activation plus provider selection. The
+    caller-supplied scope is used only for this provider call and is intentionally
+    omitted from the returned packet. Raw result content is returned as explicit
+    local-private transient data; the nested retrieval receipt stays public-safe.
+    """
+
+    profile_digest_before = _private_profile_digest(profile_path)
+    activation, profile = resolve_decision_context_activation(
+        goal_id=goal_id,
+        agent_id=agent_id,
+        profile_path=profile_path,
+    )
+    base = _ephemeral_recall_base(activation)
+    if activation.get("available") is not True or profile is None:
+        return _ephemeral_recall_failure(
+            base,
+            status=str(activation.get("status") or "unavailable"),
+            reason_code=activation.get("reason_code"),
+        )
+    if profile_path is None or profile_digest_before is None:
+        return _ephemeral_recall_failure(
+            base,
+            status="profile_invalid",
+            reason_code="profile_unavailable_or_invalid",
+        )
+
+    context_config = profile.context_provider
+    if context_config is None:
+        return _ephemeral_recall_failure(
+            base,
+            status="unavailable",
+            reason_code="context_provider_not_configured",
+        )
+    request = _transient_recall_request(
+        context_config,
+        context_scope_ref=context_scope_ref,
+        query=query,
+        query_summary=query_summary,
+        max_results=max_results,
+        timeout_seconds=timeout_seconds,
+    )
+    provider = _build_advisory_context_provider(
+        profile,
+        runtime_root=runtime_root,
+    )
+    retrieval = collect_context_recall(
+        provider=provider,
+        namespace=str(context_config.get("namespace") or "decision-context"),
+        scope_ref=request.scope_ref,
+        query=request.query,
+        query_summary=request.query_summary,
+        max_results=request.max_results,
+        timeout_seconds=request.timeout_seconds,
+        observed_at=observed_at,
+    )
+    if retrieval is None:
+        return _ephemeral_recall_failure(
+            base,
+            status="unavailable",
+            reason_code="context_provider_not_configured",
+        )
+    profile_digest_after = _private_profile_digest(profile_path)
+    if profile_digest_before != profile_digest_after:
+        return _ephemeral_recall_failure(
+            base,
+            status="unavailable",
+            reason_code="profile_changed_during_recall",
+        )
+
+    receipt = retrieval.public_packet()
+    results = retrieval.transient_results(
+        content_trust="untrusted_advisory",
+        content_may_instruct=False,
+    )
+    return base | {
+        "ok": retrieval.status == "completed",
+        "status": retrieval.status,
+        "reason_code": retrieval.reason_code,
+        "provider": retrieval.provider,
+        "provider_version": retrieval.provider_version,
+        "query_summary": retrieval.query_summary,
+        "observed_at": retrieval.observed_at,
+        "requested_limit": retrieval.requested_limit,
+        "result_count": len(results),
+        "provider_readiness": retrieval.provider_readiness,
+        "retrieval_receipt": receipt,
+        "results": results,
+        "raw_content_returned": bool(results),
+    }
