@@ -77,6 +77,7 @@ import {
   writeSchedulerState,
 } from "./scheduler/state_store.ts";
 import { buildVisionCheckpoint } from "./goals/vision_checkpoint.ts";
+import { admitGoalAmendmentProposal } from "./goals/goal_amendment_proposal.ts";
 import { projectSharedGoalAlignment } from "./goals/shared_goal_alignment.ts";
 import {
   evaluateDeliveryRoute,
@@ -367,6 +368,7 @@ export function createEffectRuntimeHandlers(
     ["work_item.refresh_recommendation.resolve", resolveRefreshRecommendation],
     ["goal.vision_checkpoint.evaluate", buildVisionCheckpoint],
     ["goal.shared_goal_alignment.project", projectSharedGoalAlignment],
+    ["goal.amendment_proposal.admit", admitGoalAmendmentProposal],
     ["agent.delivery_workspace.evaluate", evaluateDeliveryWorkspace],
     [
       "quota.delivery_workspace_causality.evaluate",

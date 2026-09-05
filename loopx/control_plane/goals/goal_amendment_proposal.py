@@ -1,0 +1,956 @@
+"""Governed goal amendment proposal admission and retention (RFC Stage 2).
+
+This adapter implements RFC §5 steps 1–2 for
+``goal_amendment_proposal_v0``: a registered proposer submits a proposal,
+the TypeScript-owned reducer (``goal.amendment_proposal.admit``) validates
+schema completeness, actor identity, a closed ``amendment_class`` enum,
+bounded evidence pointers, the causal membership of the linked replan
+obligation and affected Todos (against authoritative typed inventories
+this adapter derives), and the relation between the proposal's
+``base_state_event_basis_sequence``/``base_source_basis_digest`` and the
+currently derived goal basis, and the resulting admission record is
+retained in an append-only journal.
+
+Stage 2 is proposal only: admission has **zero canonical effect**. No goal
+state is written, no frontier changes, and the state event log is never
+appended to. The journal lives beside ``task-leases`` under
+``runtime/goals/<goal_id>/amendment-proposals/`` so retention can never
+advance the basis head it reports against.
+
+There is no approval field, no ``approved`` status, and no commit path.
+Admission outcomes are fact tokens only: ``admitted`` (including the
+``base_source_basis_unverifiable`` fact when no event log exists) or
+``needs_rebase`` (a behind or digest-mismatched base stays admitted and
+retained, never silently dropped or merged — RFC §7). A schema violation
+or an invalid causal reference (a replan obligation or affected Todo that
+is not an open member of this Goal) fails closed as a request rejection,
+the equivalent ``rejected_schema`` outcome, and nothing is retained.
+Governed commit belongs to Stage 3+ behind the
+``GoalAmendmentAuthority``.
+
+The derived basis (``state_event_basis_sequence``, ``revision_basis``,
+``source_basis_digest``) comes from the Stage 1 read-only projection
+(``project_shared_goal_alignment``), which also fails closed on unknown
+goals and unregistered proposers. This is an event-log-derived source
+projection basis, not a canonical intent revision/digest: the RFC §3.1
+intent envelope has no typed storage yet, and the proposal binds to the
+basis under Stage 1's downgraded naming.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from ...agent_registry import registered_agent_ids_for_goal
+from ...event_sourced_state import now_utc_iso
+from ...file_lock import exclusive_file_lock
+from ...registry import resolve_state_file
+from ...runtime import validate_goal_id_path_segment
+from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
+from ..todos.contract import (
+    normalize_todo_bound_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_id,
+)
+from ..todos.projection import todo_item_is_actionable_open
+from ..work_items.autonomous_replan_obligation import (
+    ensure_replan_novelty_policy,
+)
+from .goal_frontier import (
+    AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+    autonomous_replan_is_required,
+    autonomous_replan_scope_decision,
+)
+from .shared_goal_alignment import (
+    DEFAULT_REGISTRY_RELATIVE_PATH,
+    _parsed_active_state,
+    _registered_goal,
+    project_shared_goal_alignment,
+)
+
+GOAL_AMENDMENT_PROPOSAL_EFFECT_METHOD = "goal.amendment_proposal.admit"
+GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION = "goal_amendment_proposal_request_v0"
+GOAL_AMENDMENT_PROPOSAL_ADMISSION_SCHEMA_VERSION = (
+    "goal_amendment_proposal_admission_v0"
+)
+GOAL_AMENDMENT_PROPOSAL_SCHEMA_VERSION = "goal_amendment_proposal_v0"
+GOAL_AMENDMENT_CLASSES = (
+    "lane_route",
+    "shared_work_graph",
+    "shared_acceptance",
+    "protected_authority",
+)
+GOAL_AMENDMENT_PROPOSAL_ADMISSIONS = ("admitted", "needs_rebase")
+GOAL_AMENDMENT_PROPOSAL_ADMISSION_FACTS = (
+    "base_state_event_basis_sequence_behind_derived_head",
+    "base_source_basis_digest_mismatch",
+    "base_source_basis_unverifiable",
+)
+AMENDMENT_PROPOSAL_JOURNAL_DIRNAME = "amendment-proposals"
+AMENDMENT_PROPOSAL_JOURNAL_BASENAME = "journal.jsonl"
+_SHA256_DIGEST_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION = (
+    "replan_obligation_authority_envelope_v0"
+)
+REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION = (
+    "replan_obligation_receipt_v0"
+)
+REPLAN_OBLIGATION_RECEIPT_DIRNAME = "replan-obligations"
+REPLAN_OBLIGATION_RECEIPT_BASENAME = "receipts.jsonl"
+
+
+def amendment_proposal_journal_path(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> Path:
+    """Return the append-only proposal journal path for one goal."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    return (
+        runtime_root
+        / "goals"
+        / safe_goal_id
+        / AMENDMENT_PROPOSAL_JOURNAL_DIRNAME
+        / AMENDMENT_PROPOSAL_JOURNAL_BASENAME
+    )
+
+
+def replan_obligation_receipt_journal_path(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> Path:
+    """Return the append-only replan obligation receipt journal path for one goal."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    return (
+        runtime_root
+        / "goals"
+        / safe_goal_id
+        / REPLAN_OBLIGATION_RECEIPT_DIRNAME
+        / REPLAN_OBLIGATION_RECEIPT_BASENAME
+    )
+
+
+def read_replan_obligation_receipt_journal(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    """Read every recorded replan obligation receipt from the durable journal."""
+
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    if not journal_path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    text = journal_path.read_text(encoding="utf-8")
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"invalid replan obligation receipt journal JSONL at line {line_number}: {exc}"
+            ) from None
+        if not isinstance(row, dict):
+            raise TypeError(
+                f"invalid replan obligation receipt journal row at line {line_number}"
+            )
+        rows.append(row)
+    return rows
+
+
+def read_latest_open_replan_obligation_envelope(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> dict[str, Any] | None:
+    """Return the latest open replan obligation envelope from the durable journal."""
+
+    rows = read_replan_obligation_receipt_journal(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+    )
+    latest_by_id: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        receipt = row.get("receipt")
+        if isinstance(receipt, dict):
+            rcpt_id = receipt.get("receipt_id")
+            if rcpt_id:
+                latest_by_id[str(rcpt_id)] = row
+    open_envelopes = [
+        row
+        for row in latest_by_id.values()
+        if (
+            str(row.get("status") or "open").lower() == "open"
+            and str(row.get("receipt", {}).get("status") or "open").lower() == "open"
+        )
+    ]
+    return open_envelopes[-1] if open_envelopes else None
+
+
+def _canonical_receipt_digest(payload: object) -> str:
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def compute_replan_obligation_receipt_digest(
+    *,
+    goal_id: str,
+    source_basis_digest: str | None,
+    state_event_basis_sequence: int | None,
+    obligations: Any,
+) -> str:
+    return _canonical_receipt_digest(
+        {
+            "goal_id": goal_id,
+            "obligations": obligations,
+            "source_basis_digest": source_basis_digest,
+            "state_event_basis_sequence": state_event_basis_sequence,
+        }
+    )
+
+
+def _extract_obligations_payload(
+    envelope_or_item: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "autonomous_replan_obligations_by_agent": envelope_or_item.get(
+            "autonomous_replan_obligations_by_agent"
+        ),
+        "autonomous_replan_obligation": envelope_or_item.get(
+            "autonomous_replan_obligation"
+        ),
+    }
+
+
+def record_replan_obligation_receipt(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    derived_basis: Mapping[str, Any],
+    obligations_by_agent: Mapping[str, Any] | None = None,
+    obligation: Mapping[str, Any] | None = None,
+    receipt_id: str | None = None,
+    projection_revision: int | None = None,
+    status: str = "open",
+    issued_at: str | None = None,
+) -> dict[str, Any]:
+    """Authoritative producer action: emit and append a durable replan obligation receipt."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    seq = derived_basis.get("state_event_basis_sequence")
+    digest = derived_basis.get("source_basis_digest")
+    obligations_payload = {
+        "autonomous_replan_obligations_by_agent": (
+            dict(obligations_by_agent)
+            if isinstance(obligations_by_agent, Mapping)
+            else None
+        ),
+        "autonomous_replan_obligation": (
+            dict(obligation) if isinstance(obligation, Mapping) else None
+        ),
+    }
+    receipt_digest = compute_replan_obligation_receipt_digest(
+        goal_id=safe_goal_id,
+        source_basis_digest=str(digest or ""),
+        state_event_basis_sequence=seq if isinstance(seq, int) else None,
+        obligations=obligations_payload,
+    )
+    actual_receipt_id = (
+        receipt_id
+        or f"rcpt_{hashlib.sha256(f'{safe_goal_id}:{seq}:{digest}:{receipt_digest}'.encode()).hexdigest()[:16]}"
+    )
+    timestamp = issued_at or now_utc_iso()
+    rev = (
+        projection_revision
+        if isinstance(projection_revision, int)
+        else (seq if isinstance(seq, int) else 0)
+    )
+    receipt = {
+        "schema_version": REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION,
+        "receipt_id": actual_receipt_id,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt_digest": receipt_digest,
+        "projection_revision": rev,
+        "status": status,
+        "issued_at": timestamp,
+    }
+    envelope: dict[str, Any] = {
+        "schema_version": REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt": receipt,
+        "status": status,
+        "recorded_at": timestamp,
+    }
+    if obligations_by_agent is not None:
+        envelope["autonomous_replan_obligations_by_agent"] = dict(
+            obligations_by_agent
+        )
+    if obligation is not None:
+        envelope["autonomous_replan_obligation"] = dict(obligation)
+
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(journal_path):
+        with journal_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(envelope, sort_keys=True, ensure_ascii=False) + "\n"
+            )
+    return envelope
+
+
+def close_or_rotate_replan_obligation_receipt(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    receipt_id: str,
+    status: str = "closed",
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Append a status change (closed or rotated) into the authority receipt journal."""
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    journal_path = replan_obligation_receipt_journal_path(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    rows = read_replan_obligation_receipt_journal(
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+    )
+    matching = [
+        r
+        for r in rows
+        if isinstance(r.get("receipt"), Mapping)
+        and r["receipt"].get("receipt_id") == receipt_id
+    ]
+    if not matching:
+        raise ValueError(
+            f"receipt_id {receipt_id!r} not found in authority journal for {safe_goal_id}"
+        )
+    last = matching[-1]
+    last_receipt = dict(last.get("receipt") or {})
+    timestamp = now_utc_iso()
+    updated_receipt = {
+        **last_receipt,
+        "status": status,
+        "updated_at": timestamp,
+    }
+    if reason:
+        updated_receipt["reason"] = reason
+    updated_envelope: dict[str, Any] = {
+        **dict(last),
+        "receipt": updated_receipt,
+        "status": status,
+        "recorded_at": timestamp,
+    }
+    journal_path.parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_file_lock(journal_path):
+        with journal_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(updated_envelope, sort_keys=True, ensure_ascii=False) + "\n"
+            )
+    return updated_envelope
+
+
+def build_replan_obligation_authority_envelope(
+    *,
+    goal_id: str,
+    derived_basis: Mapping[str, Any],
+    obligations_by_agent: Mapping[str, Any] | None = None,
+    obligation: Mapping[str, Any] | None = None,
+    receipt_id: str | None = None,
+    issued_at: str | None = None,
+    projection_revision: int | None = None,
+    status: str = "open",
+) -> dict[str, Any]:
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    seq = derived_basis.get("state_event_basis_sequence")
+    digest = derived_basis.get("source_basis_digest")
+    obligations_payload = {
+        "autonomous_replan_obligations_by_agent": (
+            dict(obligations_by_agent)
+            if isinstance(obligations_by_agent, Mapping)
+            else None
+        ),
+        "autonomous_replan_obligation": (
+            dict(obligation) if isinstance(obligation, Mapping) else None
+        ),
+    }
+    receipt_digest = compute_replan_obligation_receipt_digest(
+        goal_id=safe_goal_id,
+        source_basis_digest=str(digest or ""),
+        state_event_basis_sequence=seq if isinstance(seq, int) else None,
+        obligations=obligations_payload,
+    )
+    actual_receipt_id = (
+        receipt_id
+        or f"rcpt_{hashlib.sha256(f'{safe_goal_id}:{seq}:{digest}'.encode()).hexdigest()[:16]}"
+    )
+    timestamp = issued_at or now_utc_iso()
+    rev = (
+        projection_revision
+        if isinstance(projection_revision, int)
+        else (seq if isinstance(seq, int) else 0)
+    )
+    receipt = {
+        "schema_version": REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION,
+        "receipt_id": actual_receipt_id,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt_digest": receipt_digest,
+        "projection_revision": rev,
+        "status": status,
+        "issued_at": timestamp,
+    }
+    envelope: dict[str, Any] = {
+        "schema_version": REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION,
+        "goal_id": safe_goal_id,
+        "state_event_basis_sequence": seq,
+        "source_basis_digest": digest,
+        "receipt": receipt,
+        "status": status,
+    }
+    if obligations_by_agent is not None:
+        envelope["autonomous_replan_obligations_by_agent"] = dict(
+            obligations_by_agent
+        )
+    if obligation is not None:
+        envelope["autonomous_replan_obligation"] = dict(obligation)
+    return envelope
+
+
+def validate_replan_obligation_authority_envelope(
+    envelope: Any,
+    *,
+    goal_id: str,
+    derived_basis: Mapping[str, Any],
+    runtime_root: Path | None = None,
+) -> dict[str, Any]:
+    if not isinstance(envelope, Mapping):
+        raise TypeError("replan obligation authority envelope must be a JSON object")
+
+    schema_version = str(envelope.get("schema_version") or "").strip()
+    if schema_version != REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION:
+        raise ValueError(
+            "replan obligation authority payload must be a verified envelope "
+            f"({REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION}), got {schema_version!r}"
+        )
+
+    safe_goal_id = validate_goal_id_path_segment(goal_id)
+    envelope_goal_id = str(envelope.get("goal_id") or "").strip()
+    if not envelope_goal_id or envelope_goal_id != safe_goal_id:
+        raise ValueError(
+            f"obligation authority envelope goal_id mismatch: "
+            f"expected {safe_goal_id!r}, got {envelope_goal_id!r}"
+        )
+
+    receipt = envelope.get("receipt")
+    if not isinstance(receipt, Mapping):
+        raise TypeError(
+            "obligation authority envelope must contain a verified receipt object"
+        )
+    receipt_schema = str(receipt.get("schema_version") or "").strip()
+    if receipt_schema != REPLAN_OBLIGATION_RECEIPT_SCHEMA_VERSION:
+        raise ValueError(
+            f"invalid obligation authority receipt schema: {receipt_schema!r}"
+        )
+    receipt_goal_id = str(receipt.get("goal_id") or "").strip()
+    if receipt_goal_id != safe_goal_id:
+        raise ValueError(
+            f"obligation authority receipt goal_id mismatch: "
+            f"expected {safe_goal_id!r}, got {receipt_goal_id!r}"
+        )
+
+    receipt_id = str(receipt.get("receipt_id") or "").strip()
+    if not receipt_id:
+        raise ValueError("obligation authority receipt must carry a non-empty receipt_id")
+
+    envelope_seq = envelope.get("state_event_basis_sequence")
+    derived_seq = derived_basis.get("state_event_basis_sequence")
+    if envelope_seq != derived_seq:
+        raise ValueError(
+            f"obligation authority envelope is stale: sequence mismatch "
+            f"(envelope sequence={envelope_seq}, live sequence={derived_seq})"
+        )
+
+    receipt_seq = receipt.get("state_event_basis_sequence")
+    if receipt_seq != derived_seq:
+        raise ValueError(
+            f"obligation authority receipt is stale: sequence mismatch "
+            f"(receipt sequence={receipt_seq}, live sequence={derived_seq})"
+        )
+
+    envelope_digest = str(envelope.get("source_basis_digest") or "").strip()
+    derived_digest = str(derived_basis.get("source_basis_digest") or "").strip()
+    if envelope_digest != derived_digest:
+        raise ValueError(
+            f"obligation authority envelope is stale: source_basis_digest mismatch "
+            f"(envelope digest={envelope_digest!r}, live digest={derived_digest!r})"
+        )
+
+    receipt_digest_field = str(receipt.get("source_basis_digest") or "").strip()
+    if receipt_digest_field != derived_digest:
+        raise ValueError(
+            f"obligation authority receipt is stale: source_basis_digest mismatch "
+            f"(receipt digest={receipt_digest_field!r}, live digest={derived_digest!r})"
+        )
+
+    expected_digest = compute_replan_obligation_receipt_digest(
+        goal_id=safe_goal_id,
+        source_basis_digest=envelope_digest,
+        state_event_basis_sequence=(
+            envelope_seq if isinstance(envelope_seq, int) else None
+        ),
+        obligations=_extract_obligations_payload(envelope),
+    )
+    observed_digest = str(receipt.get("receipt_digest") or "").strip()
+    if not observed_digest or observed_digest != expected_digest:
+        raise ValueError(
+            "obligation authority receipt is fabricated or tampered "
+            f"(expected {expected_digest}, got {observed_digest})"
+        )
+
+    # Authority provenance readback check against durable authority store
+    if runtime_root is not None:
+        journal_rows = read_replan_obligation_receipt_journal(
+            runtime_root=runtime_root,
+            goal_id=safe_goal_id,
+        )
+        matching_rows = [
+            row
+            for row in journal_rows
+            if isinstance(row.get("receipt"), Mapping)
+            and row["receipt"].get("receipt_id") == receipt_id
+        ]
+        if not matching_rows:
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is not authoritative: "
+                f"receipt was not found in the authority receipt journal for goal {safe_goal_id!r}"
+            )
+        latest_record = matching_rows[-1]
+        stored_receipt = latest_record["receipt"]
+        if str(stored_receipt.get("receipt_digest") or "").strip() != observed_digest:
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is fabricated or tampered: "
+                "digest does not match authority record"
+            )
+        current_status = str(
+            latest_record.get("status") or stored_receipt.get("status") or "open"
+        ).strip().lower()
+        if current_status != "open":
+            raise ValueError(
+                f"obligation authority receipt {receipt_id!r} is stale: "
+                f"obligation is {current_status} (not open) in authority store"
+            )
+
+    return dict(envelope)
+
+
+def read_goal_amendment_proposal_journal(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+) -> list[dict[str, Any]]:
+    """Read retained proposal admission rows in journal (append) order."""
+
+    return _read_journal_rows(
+        amendment_proposal_journal_path(
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+        )
+    )
+
+
+def admit_goal_amendment_proposal(
+    *,
+    proposal: Mapping[str, Any],
+    project: Path,
+    registry_path: Path | None = None,
+    runtime_root: Path | None = None,
+    status_item: Mapping[str, Any] | None = None,
+    project_asset: Mapping[str, Any] | None = None,
+    obligation_envelope: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate one proposal, retain its admission, and return the row.
+
+    Admission also validates the proposal's causal membership (RFC §5
+    "impact scope"): ``replan_obligation_id`` must resolve to an open,
+    required replan obligation of the same Goal whose agent lane includes
+    the proposer, and every ``affected_todo_ids`` entry must resolve to an
+    actionable open Todo of the same Goal. The authoritative inventories
+    are derived here — obligations from ``status_item``/``project_asset``
+    (the LoopX quota/status projection payloads) or a verified
+    ``obligation_envelope``, Todos from the Goal's active state file — and
+    handed to the reducer as typed facts. When obligations are omitted the
+    obligation inventory is empty and any proposal referencing a replan
+    obligation fails closed: admission never trusts a causal chain on string
+    shape alone.
+
+    Raises ``TypeError`` when ``proposal`` or the registry/JTS payload is
+    not the expected object type, and ``ValueError`` for any other
+    admission-blocking defect (unknown goal, unregistered proposer,
+    schema violation, evidence over budget, an invalid replan obligation
+    / affected Todo reference, a base basis sequence ahead of the derived
+    head, or a conflicting replayed ``proposal_id``). Nothing is retained
+    when admission fails.
+    """
+
+    if not isinstance(proposal, Mapping):
+        raise TypeError("proposal must be a goal_amendment_proposal_v0 object")
+    proposal_goal_id_raw = str(proposal.get("goal_id") or "").strip()
+    if not proposal_goal_id_raw:
+        raise ValueError("proposal.goal_id must be a non-empty registered goal id")
+    proposal_goal_id = validate_goal_id_path_segment(proposal_goal_id_raw)
+    proposer_agent_id = normalize_todo_claimed_by(
+        proposal.get("proposer_agent_id")
+    )
+    if not proposer_agent_id:
+        raise ValueError("proposal.proposer_agent_id must be a public-safe agent id")
+
+    effective_registry_path = (
+        registry_path if registry_path is not None
+        else project / DEFAULT_REGISTRY_RELATIVE_PATH
+    )
+    try:
+        registry_payload = json.loads(
+            effective_registry_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        raise ValueError(
+            f"goal registry is unreadable: {effective_registry_path}"
+        ) from None
+    if not isinstance(registry_payload, dict):
+        raise TypeError("goal registry must contain a JSON object")
+
+    effective_runtime_root = (
+        runtime_root
+        if runtime_root is not None
+        else _runtime_root_from_registry(registry_payload)
+    )
+
+    # Stage 1 reuse: the read-only projection fails closed on unknown goals
+    # and unregistered proposers, and derives the source basis (state event
+    # log append sequence, or markdown fallback) the proposal's base binds
+    # against — both its sequence and its digest.
+    alignment = project_shared_goal_alignment(
+        goal_id=proposal_goal_id,
+        agent_id=proposer_agent_id,
+        project=project,
+        registry_path=effective_registry_path,
+        runtime_root=effective_runtime_root,
+        status_item=status_item or obligation_envelope,
+        project_asset=project_asset,
+    )
+    source_basis = alignment.get("source_basis")
+    if not isinstance(source_basis, Mapping):
+        raise TypeError("TypeScript shared goal alignment shape mismatch")
+    derived_basis = {
+        "state_event_basis_sequence": source_basis.get(
+            "state_event_basis_sequence"
+        ),
+        "revision_basis": source_basis.get("revision_basis"),
+        "source_basis_digest": source_basis.get("source_basis_digest"),
+    }
+
+    effective_status_item = status_item
+    if obligation_envelope is not None:
+        effective_status_item = validate_replan_obligation_authority_envelope(
+            obligation_envelope,
+            goal_id=proposal_goal_id,
+            derived_basis=derived_basis,
+            runtime_root=effective_runtime_root,
+        )
+    elif (
+        isinstance(status_item, Mapping)
+        and status_item.get("schema_version")
+        == REPLAN_OBLIGATION_AUTHORITY_ENVELOPE_SCHEMA_VERSION
+    ):
+        effective_status_item = validate_replan_obligation_authority_envelope(
+            status_item,
+            goal_id=proposal_goal_id,
+            derived_basis=derived_basis,
+            runtime_root=effective_runtime_root,
+        )
+
+    goal = _registered_goal(registry_payload, goal_id=proposal_goal_id)
+    state_path = resolve_state_file(project, goal.get("state_file"))
+    if state_path is None:
+        raise ValueError(
+            f"goal state file is missing for {proposal_goal_id}"
+        )
+    open_replan_obligations = _open_replan_obligation_inventory(
+        goal_id=proposal_goal_id,
+        registered_agents=registered_agent_ids_for_goal(goal),
+        status_item=effective_status_item,
+        project_asset=project_asset,
+    )
+    goal_todo_inventory = _goal_todo_inventory(
+        state_text=state_path.read_text(encoding="utf-8"),
+        goal=goal,
+        state_path=state_path,
+    )
+
+    request = {
+        "schema_version": GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION,
+        "proposal": dict(proposal),
+        "derived_basis": derived_basis,
+        "open_replan_obligations": open_replan_obligations,
+        "goal_todo_inventory": goal_todo_inventory,
+    }
+    try:
+        admission = effect_runtime_result(
+            GOAL_AMENDMENT_PROPOSAL_EFFECT_METHOD,
+            request,
+        )
+    except EffectRuntimeRejected as exc:
+        raise ValueError(str(exc)) from None
+    _check_admission_shape(admission, proposal=proposal)
+    if effective_runtime_root is None:
+        raise ValueError(
+            "proposal retention requires a runtime root "
+            "(registry common_runtime_root or an explicit runtime_root)"
+        )
+    return _retain_admission(
+        amendment_proposal_journal_path(
+            runtime_root=effective_runtime_root,
+            goal_id=proposal_goal_id,
+        ),
+        admission=dict(admission),
+    )
+
+
+def _open_replan_obligation_inventory(
+    *,
+    goal_id: str,
+    registered_agents: list[str],
+    status_item: Mapping[str, Any] | None,
+    project_asset: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Derive the goal's open, required replan obligations as typed facts.
+
+    Candidates come from every agent lane in ``autonomous_replan_
+    obligations_by_agent`` plus the goal-level ``autonomous_replan_
+    obligation`` on both authority sources (``status_item`` and
+    ``project_asset``). Each candidate is normalized by
+    ``ensure_replan_novelty_policy`` (which derives the deterministic
+    ``obligation_id``), closed/settled ones (``required`` false) are
+    dropped, and the scope semantics are folded into an explicit
+    ``bound_agent_ids`` list — agent-scoped obligations keep their owners,
+    unscoped ones keep their deterministic peer assignment — so the
+    TypeScript reducer only compares membership, never re-derives scope.
+    """
+
+    item = status_item if isinstance(status_item, Mapping) else {}
+    asset = project_asset if isinstance(project_asset, Mapping) else {}
+    candidates: list[dict[str, Any]] = []
+    for source in (item, asset):
+        by_agent = source.get("autonomous_replan_obligations_by_agent")
+        if isinstance(by_agent, Mapping):
+            candidates.extend(
+                dict(value)
+                for value in by_agent.values()
+                if isinstance(value, Mapping)
+            )
+        goal_level = source.get("autonomous_replan_obligation")
+        if isinstance(goal_level, Mapping):
+            candidates.append(dict(goal_level))
+
+    inventory: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        normalized = ensure_replan_novelty_policy(candidate)
+        if not autonomous_replan_is_required(normalized):
+            continue
+        obligation_id = normalized.get("obligation_id")
+        if not obligation_id or obligation_id in inventory:
+            continue
+        bound_agent_ids = [
+            agent_id
+            for agent_id in registered_agents
+            if autonomous_replan_scope_decision(
+                normalized,
+                agent_id=agent_id,
+                registered_agent_ids=registered_agents,
+            ).get("applies")
+        ]
+        inventory[str(obligation_id)] = {
+            "schema_version": AUTONOMOUS_REPLAN_OBLIGATION_SCHEMA_VERSION,
+            "obligation_id": str(obligation_id),
+            "goal_id": goal_id,
+            "required": True,
+            "bound_agent_ids": bound_agent_ids,
+        }
+    return list(inventory.values())
+
+
+def _goal_todo_inventory(
+    *,
+    state_text: str,
+    goal: Mapping[str, Any],
+    state_path: Path,
+) -> list[dict[str, Any]]:
+    """Derive the goal's actionable open Todos as typed facts.
+
+    ``claimed_by``/``bound_agent`` are diagnostic companions only:
+    admission checks existence, openness, and goal membership — shared
+    amendments legitimately affect peer-claimed work, and lease
+    disposition belongs to the Stage 3 commit step (RFC §5 step 4).
+    """
+
+    _, items = _parsed_active_state(
+        state_text,
+        goal=dict(goal),
+        state_path=state_path,
+    )
+    inventory: list[dict[str, Any]] = []
+    seen_todo_ids: set[str] = set()
+    for todo_item in items:
+        if not todo_item_is_actionable_open(todo_item):
+            continue
+        todo_id = normalize_todo_id(todo_item.get("todo_id"))
+        if not todo_id or todo_id in seen_todo_ids:
+            continue
+        seen_todo_ids.add(todo_id)
+        inventory.append(
+            {
+                "todo_id": todo_id,
+                "status": "open",
+                "task_class": (
+                    str(todo_item.get("task_class") or "").strip() or None
+                ),
+                "claimed_by": normalize_todo_claimed_by(
+                    todo_item.get("claimed_by")
+                ),
+                "bound_agent": normalize_todo_bound_agent(
+                    todo_item.get("bound_agent")
+                ),
+            }
+        )
+    return inventory
+
+
+def _check_admission_shape(
+    admission: object,
+    *,
+    proposal: Mapping[str, Any],
+) -> None:
+    """Fail closed on any reducer output that stops being the contract.
+
+    This mirrors the Stage 1 adapter's defensive shape check: the reducer
+    output must stay a non-authoritative admission record with
+    ``canonical_effect: none``, a closed admission/fact/class enum, a
+    ``sha256`` proposal digest, and the submitted identities echoed back.
+    """
+
+    if not isinstance(admission, Mapping):
+        raise TypeError("TypeScript goal amendment admission shape mismatch")
+    if (
+        admission.get("schema_version")
+        != GOAL_AMENDMENT_PROPOSAL_ADMISSION_SCHEMA_VERSION
+        or admission.get("canonical_effect") != "none"
+        or admission.get("admission") not in GOAL_AMENDMENT_PROPOSAL_ADMISSIONS
+        or admission.get("amendment_class") not in GOAL_AMENDMENT_CLASSES
+        or admission.get("goal_id") != str(proposal.get("goal_id") or "").strip()
+        or admission.get("proposer_agent_id")
+        != normalize_todo_claimed_by(proposal.get("proposer_agent_id"))
+        or admission.get("proposal_id")
+        != str(proposal.get("proposal_id") or "").strip().lower()
+        or not _SHA256_DIGEST_PATTERN.fullmatch(
+            str(admission.get("proposal_digest") or "")
+        )
+    ):
+        raise RuntimeError("TypeScript goal amendment admission shape mismatch")
+    facts = admission.get("admission_facts")
+    if not isinstance(facts, list) or any(
+        fact not in GOAL_AMENDMENT_PROPOSAL_ADMISSION_FACTS for fact in facts
+    ):
+        raise RuntimeError("TypeScript goal amendment admission shape mismatch")
+
+
+def _retain_admission(
+    journal_path: Path,
+    *,
+    admission: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Append one admission row; replaying identical content is idempotent."""
+
+    proposal_id = str(admission.get("proposal_id") or "")
+    proposal_digest = str(admission.get("proposal_digest") or "")
+    with exclusive_file_lock(journal_path):
+        rows = _read_journal_rows(journal_path)
+        for row in rows:
+            if row.get("proposal_id") != proposal_id:
+                continue
+            if row.get("proposal_digest") != proposal_digest:
+                raise ValueError(
+                    "conflicting proposal_id already retained with different "
+                    f"content: {proposal_id}"
+                )
+            return dict(row)
+        record = {
+            **dict(admission),
+            "recorded_at": now_utc_iso(),
+            "journal_append_sequence": len(rows) + 1,
+        }
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        with journal_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n"
+            )
+    return record
+
+
+def _read_journal_rows(journal_path: Path) -> list[dict[str, Any]]:
+    if not journal_path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    text = journal_path.read_text(encoding="utf-8")
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"invalid proposal journal JSONL at line {line_number}: {exc}"
+            ) from None
+        if not isinstance(row, dict):
+            raise TypeError(
+                f"invalid proposal journal row at line {line_number}"
+            )
+        rows.append(row)
+    return rows
+
+
+def _runtime_root_from_registry(
+    registry_payload: Mapping[str, Any],
+) -> Path | None:
+    raw = registry_payload.get("common_runtime_root")
+    text = str(raw or "").strip()
+    return Path(text).expanduser() if text else None

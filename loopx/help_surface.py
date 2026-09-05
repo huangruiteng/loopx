@@ -317,6 +317,8 @@ MANPAGE_COMMAND_HELP_ONLY = frozenset(
         "global-summary",
         "global-todos",
         "goal-alignment",
+        "amendment-proposal",
+        "goal-amendment-proposal",
         "handoff-mode",
         "heartbeat-prequota",
         "import-doc-registry-authority",

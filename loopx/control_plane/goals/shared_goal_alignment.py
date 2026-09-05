@@ -324,7 +324,7 @@ def project_shared_goal_alignment(
             f"goal registry is unreadable: {effective_registry_path}"
         ) from None
     if not isinstance(registry_payload, dict):
-        raise ValueError("goal registry must contain a JSON object")
+        raise TypeError("goal registry must contain a JSON object")
     goal = _registered_goal(registry_payload, goal_id=normalized_goal_id)
 
     registered_agents = registered_agent_ids_for_goal(goal)
