@@ -98,6 +98,26 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
         },
         {
             "command": (
+                "loopx benchmark continuation-agent-phase "
+                "--request <request.json> --result <result.json> "
+                "--solver-command-json <argv-json> "
+                "--progress-command-json <argv-json> "
+                "--expected-first-prompt-sha256 <sha256> "
+                "--expected-total-unit-count <n> --max-agent-segments <n> "
+                "--private-evidence-root <private-dir> --execute --format json"
+            ),
+            "purpose": (
+                "Run provider-neutral bounded agent segments from the continuation "
+                "decision while preserving the generic external-agent bridge."
+            ),
+            "write_boundary": (
+                "writes private per-segment events outside the task workspace and "
+                "one existing external_agent_result_v1; runner keeps containment, "
+                "progress-probe, verifier, scoring, and submission authority"
+            ),
+        },
+        {
+            "command": (
                 "loopx benchmark experiment-board-show --goal-id <goal-id> "
                 "[--four-arm-contract-json <compact-contract.json>] --format json"
             ),
@@ -860,6 +880,13 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
             "schema_version": "benchmark_treatment_continuation_receipt_v0",
             "module": "loopx.capabilities.benchmark_toolkit.treatment_continuation",
             "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_continuation_private_evidence_v0",
+            "purpose": (
+                "Keep prompt hashes, segment event filenames, public progress, and "
+                "decisions in an owner-only local artifact outside the workspace."
+            ),
         },
         {
             "schema_version": "benchmark_public_progress_v0",

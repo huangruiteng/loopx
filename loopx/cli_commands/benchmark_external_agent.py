@@ -14,8 +14,15 @@ from ..capabilities.benchmark_toolkit.external_agent import (
     build_benchmark_continuation_decision,
     execute_external_agent_request,
 )
+from ..capabilities.benchmark_toolkit.external_agent_continuation import (
+    execute_external_agent_continuation_request,
+)
 
-BENCHMARK_EXTERNAL_AGENT_COMMANDS = {"agent-phase", "continuation-decision"}
+BENCHMARK_EXTERNAL_AGENT_COMMANDS = {
+    "agent-phase",
+    "continuation-agent-phase",
+    "continuation-decision",
+}
 
 PrintPayload = Callable[..., None]
 OutputFormat = Callable[..., str]
@@ -112,6 +119,53 @@ def register_benchmark_external_agent_commands(
     )
     parser.set_defaults(benchmark_external_agent_parser=parser)
 
+    continuation_agent_parser = benchmark_subparsers.add_parser(
+        "continuation-agent-phase",
+        help=(
+            "Run bounded external-agent segments under one runner-owned "
+            "containment and total timeout."
+        ),
+    )
+    add_subcommand_format(continuation_agent_parser)
+    continuation_agent_parser.add_argument(
+        "--request",
+        default=os.environ.get("LOOPSBENCH_EXTERNAL_AGENT_REQUEST"),
+    )
+    continuation_agent_parser.add_argument(
+        "--result",
+        default=os.environ.get("LOOPSBENCH_EXTERNAL_AGENT_RESULT"),
+    )
+    continuation_agent_parser.add_argument(
+        "--solver-command-json",
+        default=os.environ.get("LOOPX_EXTERNAL_AGENT_SOLVER_COMMAND_JSON"),
+    )
+    continuation_agent_parser.add_argument(
+        "--progress-command-json",
+        default=os.environ.get("LOOPX_BENCHMARK_PROGRESS_COMMAND_JSON"),
+    )
+    continuation_agent_parser.add_argument(
+        "--expected-first-prompt-sha256",
+        default=os.environ.get("LOOPX_BENCHMARK_EXPECTED_FIRST_PROMPT_SHA256"),
+    )
+    continuation_agent_parser.add_argument(
+        "--expected-total-unit-count", required=True, type=int
+    )
+    continuation_agent_parser.add_argument(
+        "--max-agent-segments", required=True, type=int
+    )
+    continuation_agent_parser.add_argument(
+        "--private-evidence-root",
+        default=os.environ.get("LOOPX_BENCHMARK_PRIVATE_EVIDENCE_ROOT"),
+        help=(
+            "Fresh absolute directory outside the task workspace for private "
+            "per-segment stdout and continuation evidence."
+        ),
+    )
+    continuation_agent_parser.add_argument("--execute", action="store_true")
+    continuation_agent_parser.set_defaults(
+        benchmark_external_agent_parser=continuation_agent_parser
+    )
+
     continuation_parser = benchmark_subparsers.add_parser(
         "continuation-decision",
         help="Decide whether another benchmark agent segment fits a frozen envelope.",
@@ -163,6 +217,50 @@ def handle_benchmark_external_agent_command(
             payload = _invalid_continuation_decision()
         print_payload(payload, output_format(args), _render_continuation_decision)
         return 0 if payload.get("ok") else 1
+
+    if args.benchmark_command == "continuation-agent-phase":
+        required = {
+            "--request": args.request,
+            "--result": args.result,
+            "--solver-command-json": args.solver_command_json,
+            "--progress-command-json": args.progress_command_json,
+            "--expected-first-prompt-sha256": (args.expected_first_prompt_sha256),
+            "--private-evidence-root": args.private_evidence_root,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            parser.error("continuation-agent-phase requires " + ", ".join(missing))
+        try:
+            solver_command = json.loads(args.solver_command_json)
+            progress_command = json.loads(args.progress_command_json)
+        except json.JSONDecodeError:
+            parser.error(
+                "--solver-command-json and --progress-command-json must be JSON "
+                "argv arrays"
+            )
+        if not isinstance(solver_command, list) or not isinstance(
+            progress_command, list
+        ):
+            parser.error(
+                "--solver-command-json and --progress-command-json must be JSON "
+                "argv arrays"
+            )
+        try:
+            result = execute_external_agent_continuation_request(
+                request_path=Path(args.request),
+                result_path=Path(args.result),
+                solver_command=solver_command,
+                progress_command=progress_command,
+                expected_first_prompt_sha256=args.expected_first_prompt_sha256,
+                expected_total_unit_count=args.expected_total_unit_count,
+                max_agent_segments=args.max_agent_segments,
+                private_evidence_root=Path(args.private_evidence_root),
+                execute=args.execute,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        print_payload(result, output_format(args), _render_external_agent_result)
+        return 0 if result["status"] == "succeeded" else 1
 
     if not args.request or not args.result or not args.solver_command_json:
         parser.error(

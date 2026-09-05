@@ -62,6 +62,11 @@ from .external_agent import (
     build_benchmark_continuation_decision,
     normalize_benchmark_public_progress,
 )
+from .external_agent_continuation import (
+    BENCHMARK_CONTINUATION_PRIVATE_EVIDENCE_SCHEMA_VERSION,
+    execute_external_agent_continuation_request,
+    run_external_agent_continuation_phase,
+)
 from .factorial_contrast import (
     BENCHMARK_FACTORIAL_CONTRAST_SCHEMA_VERSION,
     build_benchmark_factorial_contrasts,
@@ -217,6 +222,7 @@ __all__ = [
     "BENCHMARK_CONCURRENCY_ENVELOPE_SCHEMA_VERSION",
     "BENCHMARK_CONCURRENCY_FEEDBACK_SCHEMA_VERSION",
     "BENCHMARK_CONTINUATION_DECISION_SCHEMA_VERSION",
+    "BENCHMARK_CONTINUATION_PRIVATE_EVIDENCE_SCHEMA_VERSION",
     "BENCHMARK_EXACT_CONTAINER_BINDING_SCHEMA_VERSION",
     "BENCHMARK_EXPERIMENT_BOARD_LEDGER_FILENAME",
     "BENCHMARK_EXPERIMENT_BOARD_ROW_SCHEMA_VERSION",
@@ -326,6 +332,7 @@ __all__ = [
     "default_benchmark_concurrency_envelope_path",
     "default_benchmark_experiment_board_path",
     "filter_public_benchmark_artifact_paths",
+    "execute_external_agent_continuation_request",
     "inspect_benchmark_source_revision_fence",
     "inspect_native_codex_profile",
     "install_native_codex_profile",
@@ -360,6 +367,7 @@ __all__ = [
     "run_native_goal_process_until_terminal",
     "run_native_goal_turn",
     "run_native_goal_until_terminal",
+    "run_external_agent_continuation_phase",
     "select_exact_docker_container",
     "serve_runner_owned_provider_gateway",
     "simulate_benchmark_upload",

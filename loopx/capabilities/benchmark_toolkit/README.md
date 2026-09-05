@@ -81,6 +81,41 @@ only public progress; they must not disclose verifier output or hidden evaluatio
 The runner remains responsible for invoking the next agent segment, measuring the
 shared total budget, preserving containment, and collecting evidence.
 
+After preregistering the segment limit and public progress command, that runner may
+delegate the bounded segment lifecycle to LoopX without changing its existing
+`external_agent_request_v1` or `external_agent_result_v1` bridge:
+
+```bash
+loopx benchmark continuation-agent-phase \
+  --request "$LOOPSBENCH_EXTERNAL_AGENT_REQUEST" \
+  --result "$LOOPSBENCH_EXTERNAL_AGENT_RESULT" \
+  --solver-command-json '["<provider-solver>"]' \
+  --progress-command-json '["<runner-progress-probe>"]' \
+  --expected-first-prompt-sha256 "$EXPECTED_PROMPT_SHA256" \
+  --expected-total-unit-count 5 \
+  --max-agent-segments 2 \
+  --private-evidence-root /agent-logs/continuation-private \
+  --execute --format json
+```
+
+The first solver segment receives the original instruction byte-for-byte. Each later
+segment receives the original instruction plus aggregate public progress, and each
+segment gets only its fair share of the remaining total timeout. The default runner
+enforces that timeout on the complete solver process group;
+`LOOPX_BENCHMARK_SEGMENT_TIMEOUT_MS` remains available to provider wrappers for
+their own bounded cleanup. The outer benchmark runner remains the hard timeout and
+containment owner. A timed-out segment is drained before LoopX probes public
+progress; a later segment may use the remaining shared budget when the continuation
+decision still admits it. Initial and post-segment progress probes use the lesser of
+their 30-second cap and the remaining shared budget; a probe timeout fails closed
+before another solver segment starts. LoopX rejects
+progress regression, task-shape drift, prompt mismatch, an empty segment event file,
+or a dirty evidence directory. Raw segment JSONL and the private lifecycle record are
+written with owner-only permissions outside the task workspace; the public result
+remains the unchanged `external_agent_result_v1` accepted by generic benchmark
+bridges. The progress probe must be runner-owned and must never read verifier-only
+evidence.
+
 ## Source revision admission
 
 A long-running campaign can keep launching from an old installed checkout after
