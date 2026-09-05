@@ -165,8 +165,100 @@ def test_raw_material_is_flagged_not_copied() -> None:
         "provide compact summaries without raw material before projection"
     ), payload
     assert "raw_transcript" in payload["boundary"]["raw_material_key_names"], payload
+    assert "credential_hint" in payload["boundary"]["raw_material_key_names"], payload
     assert "local_path" in payload["boundary"]["raw_material_key_names"], payload
+    assert payload["boundary"]["raw_material_categories"] == [
+        "credential",
+        "local_path",
+        "transcript",
+    ], payload
     assert_no_raw_values(payload)
+
+
+# Usage metrics and pointers whose words merely contain "token", "log", or
+# "trace" are compact input, never raw material.
+COMPACT_LOOKALIKE_KEYS = (
+    "token_count",
+    "tokens_used",
+    "max_tokens",
+    "input_tokens",
+    "output_tokens",
+    "trace_id",
+    "login_at",
+    "catalog_id",
+    "dialog_id",
+)
+# Keys with no matching word at all are reported, not flagged.
+UNCLASSIFIED_KEYS = ("logical_clock", "backlog", "changelog", "drawer")
+# Raw material the substring rule used to miss: body text, credentials, local
+# paths, and raw tool output in whole-word form.
+RAW_MATERIAL_KEYS = (
+    "messages",
+    "content",
+    "prompt",
+    "api_key",
+    "password",
+    "body",
+    "output_text",
+    "file_path",
+    "diff",
+    "patch",
+    "stdout_tail",
+    "stderr_tail",
+    "log_path",
+    "transcript_path",
+    "access_token",
+    "auth_token",
+    # Raw evidence outranks pointer-like suffixes unless the full key is an
+    # explicit public-safe collision such as ``trace_id``.
+    "secret_id",
+    "password_id",
+    "transcript_id",
+    "raw_id",
+    "stdout_id",
+    "api_key_id",
+    "access_token_ref",
+    "tool_result_ref",
+)
+
+
+def test_word_level_classification_does_not_block_compact_keys() -> None:
+    session = {
+        "session_id": "session-4",
+        "created_at": "2026-01-01T00:04:00Z",
+        "next_action": "continue compact projection",
+        **{key: 1 for key in COMPACT_LOOKALIKE_KEYS},
+        **{key: "opaque" for key in UNCLASSIFIED_KEYS},
+    }
+    payload = build_session_runtime_readonly_projection(goal_id="demo-goal", sessions=[session])
+    boundary = payload["boundary"]
+    assert boundary["raw_material_detected"] is False, boundary
+    assert boundary["raw_material_key_names"] == [], boundary
+    assert boundary["unclassified_key_names"] == sorted(UNCLASSIFIED_KEYS), boundary
+    assert payload["first_screen"]["agent_can_continue"] is True, payload
+    assert payload["work_lane_contract"]["must_attempt_work"] is True, payload
+    assert payload["first_screen"]["recommended_action"] == (
+        "continue compact projection"
+    ), payload
+
+
+def test_word_level_classification_flags_every_raw_material_key() -> None:
+    for key in RAW_MATERIAL_KEYS:
+        payload = build_session_runtime_readonly_projection(
+            goal_id="demo-goal",
+            sessions=[
+                {
+                    "session_id": "session-5",
+                    "next_action": "continue compact projection",
+                    key: "raw-value-must-not-copy",
+                }
+            ],
+        )
+        boundary = payload["boundary"]
+        assert boundary["raw_material_key_names"] == [key], (key, boundary)
+        assert boundary["unclassified_key_names"] == [], (key, boundary)
+        assert payload["first_screen"]["agent_can_continue"] is False, (key, payload)
+        assert "raw-value-must-not-copy" not in json.dumps(payload), (key, payload)
 
 
 def test_status_ingests_projection_first_screen() -> None:
@@ -268,6 +360,8 @@ def main() -> int:
     test_operator_gate_first_screen()
     test_agent_advancement_first_screen()
     test_raw_material_is_flagged_not_copied()
+    test_word_level_classification_does_not_block_compact_keys()
+    test_word_level_classification_flags_every_raw_material_key()
     test_status_ingests_projection_first_screen()
     print("session-runtime-readonly-projection-smoke: ok")
     return 0

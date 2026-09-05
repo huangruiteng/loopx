@@ -1,24 +1,48 @@
+"""Read-only session-runtime projection for the LoopX first screen.
+
+Raw-material classification is typed and word-level. Input keys are split into
+words on ``_``, ``-``, and camelCase, then matched against exact keys, whole
+words, or exact word sequences, never arbitrary substrings. The earlier
+substring denylist flagged ``token_count`` and ``catalog_id`` while missing
+``messages`` and ``api_key``.
+Every key lands in one of three states: known compact keys are allowed, known
+raw-material keys are flagged with a :class:`RawMaterialCategory`, and
+unrecognized keys are reported as ``unclassified_key_names`` so producers can
+see contract drift without being blocked by it.
+"""
+
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
-
+import re
+from collections.abc import Mapping, Sequence
+from enum import Enum
+from typing import Any, NamedTuple
 
 SESSION_RUNTIME_READONLY_PROJECTION_SCHEMA_VERSION = (
     "session_runtime_readonly_projection_v0"
 )
 
-RAW_MATERIAL_KEY_HINTS = (
-    "credential",
-    "local_path",
-    "log",
-    "raw",
-    "secret",
-    "stderr",
-    "stdout",
-    "token",
-    "trace",
-    "transcript",
-)
+UNCLASSIFIED_KEY_LIMIT = 24
+
+
+class KeyState(str, Enum):
+    COMPACT = "compact"
+    RAW_MATERIAL = "raw_material"
+    UNCLASSIFIED = "unclassified"
+
+
+class RawMaterialCategory(str, Enum):
+    CREDENTIAL = "credential"
+    TRANSCRIPT = "transcript"
+    LOG = "log"
+    LOCAL_PATH = "local_path"
+    RAW_OUTPUT = "raw_output"
+
+
+class KeyClassification(NamedTuple):
+    state: KeyState
+    category: RawMaterialCategory | None = None
+
 
 SOURCE_ID_KEYS = (
     "session_id",
@@ -31,6 +55,131 @@ SOURCE_ID_KEYS = (
     "run_id",
     "ref_id",
 )
+
+TIMESTAMP_KEYS = ("created_at", "event_at", "updated_at", "timestamp")
+
+# Public-safe pointers and aggregate counters whose leading word otherwise
+# carries raw-material meaning. Keep these exceptions explicit and reviewable.
+EXPLICIT_COMPACT_COLLISION_KEYS = frozenset(
+    {
+        "conversation_id",
+        "log_count",
+        "message_id",
+        "prompt_token_count",
+        "prompt_tokens",
+        "trace_id",
+    }
+)
+
+# Exact keys the projection itself reads, plus its input booleans.
+COMPACT_KEYS = frozenset(
+    {
+        *SOURCE_ID_KEYS,
+        *TIMESTAMP_KEYS,
+        *EXPLICIT_COMPACT_COLLISION_KEYS,
+        "kind",
+        "type",
+        "status",
+        "state",
+        "actor",
+        "required_actor",
+        "decision_actor",
+        "channel",
+        "requires_human_decision",
+        "action_required",
+        "advisory",
+        "blocking",
+        "question",
+        "requested_decision",
+        "title",
+        "summary",
+        "next_action",
+        "recommended_action",
+        "agent_next_action",
+        "handoff",
+        "validation_summary",
+        "validated",
+        "result",
+        "blocker",
+        "blocker_summary",
+    }
+)
+
+# A generic pointer/count suffix is compact only when no exact or word-level
+# raw-material evidence matched first.
+COMPACT_SUFFIX_WORDS = frozenset({"id", "ids", "ref", "refs", "count", "at"})
+# Usage metrics: ``tokens_used``, ``max_tokens``, ``input_tokens``.
+COMPACT_METRIC_WORDS = frozenset({"tokens"})
+
+# Exact keys that are raw material even though their words are individually
+# ambiguous (``key``, ``token``, ``content``, ``output``).
+RAW_MATERIAL_KEYS: Mapping[str, RawMaterialCategory] = {
+    "token": RawMaterialCategory.CREDENTIAL,
+    "access_token": RawMaterialCategory.CREDENTIAL,
+    "auth_token": RawMaterialCategory.CREDENTIAL,
+    "api_token": RawMaterialCategory.CREDENTIAL,
+    "bearer_token": RawMaterialCategory.CREDENTIAL,
+    "refresh_token": RawMaterialCategory.CREDENTIAL,
+    "id_token": RawMaterialCategory.CREDENTIAL,
+    "session_token": RawMaterialCategory.CREDENTIAL,
+    "api_key": RawMaterialCategory.CREDENTIAL,
+    "apikey": RawMaterialCategory.CREDENTIAL,
+    "private_key": RawMaterialCategory.CREDENTIAL,
+    "secret_key": RawMaterialCategory.CREDENTIAL,
+    "access_key": RawMaterialCategory.CREDENTIAL,
+    "authorization": RawMaterialCategory.CREDENTIAL,
+    "cookie": RawMaterialCategory.CREDENTIAL,
+    "cookies": RawMaterialCategory.CREDENTIAL,
+    "content": RawMaterialCategory.TRANSCRIPT,
+    "body": RawMaterialCategory.TRANSCRIPT,
+    "request_body": RawMaterialCategory.TRANSCRIPT,
+    "response_body": RawMaterialCategory.TRANSCRIPT,
+    "message": RawMaterialCategory.TRANSCRIPT,
+    "output": RawMaterialCategory.RAW_OUTPUT,
+    "output_text": RawMaterialCategory.RAW_OUTPUT,
+    "tool_output": RawMaterialCategory.RAW_OUTPUT,
+    "tool_result": RawMaterialCategory.RAW_OUTPUT,
+}
+
+# Whole words that mark raw material in any position. Category precedence is
+# the tuple order, so ``raw_transcript`` is a transcript and ``raw_log`` a log.
+RAW_MATERIAL_WORDS: tuple[tuple[RawMaterialCategory, frozenset[str]], ...] = (
+    (
+        RawMaterialCategory.CREDENTIAL,
+        frozenset({"credential", "credentials", "secret", "secrets", "password", "passwd", "passphrase"}),
+    ),
+    (
+        RawMaterialCategory.TRANSCRIPT,
+        frozenset({"transcript", "transcripts", "messages", "prompt", "prompts", "conversation"}),
+    ),
+    (
+        RawMaterialCategory.LOG,
+        frozenset({"log", "logs", "trace", "traces", "stacktrace", "traceback"}),
+    ),
+    (
+        RawMaterialCategory.LOCAL_PATH,
+        frozenset({"path", "paths", "cwd", "workdir", "filename", "filepath"}),
+    ),
+    (
+        RawMaterialCategory.RAW_OUTPUT,
+        frozenset({"raw", "stdout", "stderr", "diff", "patch", "dump"}),
+    ),
+)
+
+# Multi-word exact raw keys also remain raw when embedded in a larger key. This
+# catches forms such as ``api_key_id`` without treating the ambiguous word
+# ``key`` (or a harmless key such as ``monkey_id``) as raw material.
+RAW_MATERIAL_KEY_PHRASES: Mapping[RawMaterialCategory, tuple[tuple[str, ...], ...]] = {
+    category: tuple(
+        tuple(key.split("_"))
+        for key, key_category in RAW_MATERIAL_KEYS.items()
+        if key_category is category and "_" in key
+    )
+    for category, _raw_words in RAW_MATERIAL_WORDS
+}
+
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_WORD_SEPARATOR = re.compile(r"[^a-z0-9]+")
 
 OPEN_GATE_STATUSES = {
     "blocked",
@@ -163,15 +312,67 @@ def _source_refs(
     }
 
 
-def _raw_material_keys(*groups: Sequence[Mapping[str, Any]]) -> list[str]:
-    keys: set[str] = set()
+def _key_words(key: str) -> list[str]:
+    snake = _CAMEL_BOUNDARY.sub("_", str(key)).lower()
+    return [word for word in _WORD_SEPARATOR.split(snake) if word]
+
+
+def _contains_word_sequence(words: Sequence[str], phrase: tuple[str, ...]) -> bool:
+    width = len(phrase)
+    return any(
+        tuple(words[index : index + width]) == phrase
+        for index in range(len(words) - width + 1)
+    )
+
+
+def classify_session_runtime_key(key: str) -> KeyClassification:
+    """Classify one input key as compact, raw material, or unclassified.
+
+    Matching is exact-key, whole-word, or exact word-sequence only; substrings
+    never match. Raw evidence outranks generic pointer and metric shortcuts.
+    """
+
+    words = _key_words(key)
+    if not words:
+        return KeyClassification(KeyState.UNCLASSIFIED)
+    normalized = "_".join(words)
+    if normalized in COMPACT_KEYS:
+        return KeyClassification(KeyState.COMPACT)
+    category = RAW_MATERIAL_KEYS.get(normalized)
+    if category is not None:
+        return KeyClassification(KeyState.RAW_MATERIAL, category)
+    for category, raw_words in RAW_MATERIAL_WORDS:
+        if raw_words.intersection(words) or any(
+            _contains_word_sequence(words, phrase)
+            for phrase in RAW_MATERIAL_KEY_PHRASES[category]
+        ):
+            return KeyClassification(KeyState.RAW_MATERIAL, category)
+    if words[-1] in COMPACT_SUFFIX_WORDS:
+        return KeyClassification(KeyState.COMPACT)
+    if COMPACT_METRIC_WORDS.intersection(words):
+        return KeyClassification(KeyState.COMPACT)
+    return KeyClassification(KeyState.UNCLASSIFIED)
+
+
+def _classify_keys(
+    *groups: Sequence[Mapping[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    """Return sorted raw-material key names, their categories, and unclassified names."""
+
+    raw_keys: set[str] = set()
+    categories: set[str] = set()
+    unclassified: set[str] = set()
     for group in groups:
         for item in group:
             for key in item:
-                lowered = str(key).lower()
-                if any(hint in lowered for hint in RAW_MATERIAL_KEY_HINTS):
-                    keys.add(str(key))
-    return sorted(keys)
+                classification = classify_session_runtime_key(str(key))
+                if classification.state is KeyState.RAW_MATERIAL:
+                    raw_keys.add(str(key))
+                    if classification.category is not None:
+                        categories.add(classification.category.value)
+                elif classification.state is KeyState.UNCLASSIFIED:
+                    unclassified.add(str(key))
+    return sorted(raw_keys), sorted(categories), sorted(unclassified)[:UNCLASSIFIED_KEY_LIMIT]
 
 
 def _first_user_todo(gate: Mapping[str, Any] | None) -> str | None:
@@ -184,7 +385,6 @@ def _first_user_todo(gate: Mapping[str, Any] | None) -> str | None:
             "requested_decision",
             "title",
             "summary",
-            "message",
             "next_action",
         ),
     )
@@ -228,7 +428,7 @@ def _latest_validation(
         return None
     return _first_text(
         latest,
-        ("validation_summary", "validated", "result", "summary", "message"),
+        ("validation_summary", "validated", "result", "summary"),
     )
 
 
@@ -247,7 +447,7 @@ def _latest_blocker(
         return None
     return _first_text(
         latest,
-        ("blocker", "blocker_summary", "summary", "message", "title"),
+        ("blocker", "blocker_summary", "summary", "title"),
     )
 
 
@@ -296,8 +496,8 @@ def build_session_runtime_readonly_projection(
 
     This adapter is intentionally read-only. It consumes only compact summaries
     and source pointers, never raw transcripts, logs, credentials, or local
-    paths. If raw-looking keys are present, the projection records a boundary
-    violation without copying their values.
+    paths. Known raw-material keys are recorded as a boundary violation without
+    copying their values; unrecognized keys are reported but do not block.
     """
 
     session_items = _as_mappings(sessions)
@@ -327,7 +527,7 @@ def build_session_runtime_readonly_projection(
         blocker=blocker,
         first_agent_todo=agent_todo,
     )
-    raw_keys = _raw_material_keys(
+    raw_keys, raw_categories, unclassified_keys = _classify_keys(
         session_items,
         event_items,
         outcome_items,
@@ -381,6 +581,8 @@ def build_session_runtime_readonly_projection(
             "runtime_mutation_allowed": False,
             "raw_material_detected": bool(raw_keys),
             "raw_material_key_names": raw_keys,
+            "raw_material_categories": raw_categories,
+            "unclassified_key_names": unclassified_keys,
         },
         "first_screen": {
             "waiting_on": waiting,

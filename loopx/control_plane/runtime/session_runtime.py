@@ -125,9 +125,14 @@ def compact_session_runtime_boundary(
     ):
         if field in boundary:
             compact[field] = bool(boundary.get(field))
-    raw_keys = public_safe_compact_list(boundary.get("raw_material_key_names"), limit=8)
-    if raw_keys:
-        compact["raw_material_key_names"] = raw_keys
+    for field in (
+        "raw_material_key_names",
+        "raw_material_categories",
+        "unclassified_key_names",
+    ):
+        values = public_safe_compact_list(boundary.get(field), limit=8)
+        if values:
+            compact[field] = values
     return compact
 
 
