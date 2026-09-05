@@ -87,3 +87,108 @@ def load_loopx_turn_plan_from_journal(
     if envelope.get("goal_id") != goal_id or journal.get("goal_id") != goal_id:
         raise ValueError("LoopX Turn resume journal belongs to another goal")
     return dict(plan)
+
+
+def _journal_plan_turn_instance_id(plan: Mapping[str, Any]) -> str | None:
+    transaction = plan.get("transaction")
+    if isinstance(transaction, Mapping):
+        direct = str(transaction.get("turn_instance_id") or "").strip()
+        if direct:
+            return direct
+    settlement = (
+        transaction.get("settlement_plan")
+        if isinstance(transaction, Mapping)
+        else None
+    )
+    identity = (
+        settlement.get("identity") if isinstance(settlement, Mapping) else None
+    )
+    if isinstance(identity, Mapping):
+        nested = str(identity.get("turn_instance_id") or "").strip()
+        if nested:
+            return nested
+    return None
+
+
+def _envelope_observed_capabilities(envelope: Mapping[str, Any]) -> list[str]:
+    """Read the capability set this Turn's scheduler decision already froze.
+
+    Two durable sub-sources compose the validated set, mirroring what the
+    scheduler consumed: the journaled boundary declares goal/coordination
+    capabilities, and a journaled capability gate whose required capabilities
+    were not missing proves the scheduler observed them for this Turn.
+    Anything else stays absent so downstream gates fail closed.
+    """
+
+    observed: list[str] = []
+
+    def append(values: Any) -> None:
+        if not isinstance(values, list):
+            return
+        for capability in values:
+            rendered = str(capability or "").strip()
+            if rendered and rendered not in observed:
+                observed.append(rendered)
+
+    boundary = (
+        envelope.get("boundary")
+        if isinstance(envelope.get("boundary"), Mapping)
+        else {}
+    )
+    append(boundary.get("available_capabilities"))
+    gate = (
+        envelope.get("capability_gate")
+        if isinstance(envelope.get("capability_gate"), Mapping)
+        else {}
+    )
+    required = gate.get("required_capabilities")
+    missing = gate.get("missing_capabilities")
+    if isinstance(required, list) and required and missing in (None, []):
+        append(required)
+    return observed
+
+
+def turn_journal_observed_capabilities(
+    runtime_root: Path,
+    *,
+    goal_id: str,
+    turn_instance_id: str,
+) -> list[str] | None:
+    """Return capabilities the settled Turn durably observed, if any.
+
+    The Turn journal is the settlement-grade record: its envelope froze the
+    scheduler decision that already judged capability gates for this exact
+    turn_instance_id. Unreadable, missing, or unmatched journals return None
+    so callers fail closed instead of guessing from the current environment.
+    """
+
+    normalized_turn_instance_id = str(turn_instance_id or "").strip()
+    if not normalized_turn_instance_id:
+        return None
+    turns_dir = runtime_root / "goals" / goal_id / "turns"
+    if not turns_dir.is_dir():
+        return None
+    for path in sorted(turns_dir.glob("*.json")):
+        try:
+            journal = load_turn_journal(path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if journal is None:
+            continue
+        if journal.get("goal_id") != goal_id:
+            continue
+        plan = journal.get("plan")
+        if not isinstance(plan, Mapping):
+            continue
+        if (
+            _journal_plan_turn_instance_id(plan)
+            != normalized_turn_instance_id
+        ):
+            continue
+        envelope = (
+            plan.get("turn_envelope")
+            if isinstance(plan.get("turn_envelope"), Mapping)
+            else {}
+        )
+        return _envelope_observed_capabilities(envelope)
+    return None

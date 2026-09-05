@@ -463,13 +463,29 @@ def periodic_report_pending_intent_interaction_hook(
 
 
 def _progress_facts(
-    *, registry_path: Path, goal_id: str, agent_id: str, completed_at: str
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    goal_id: str,
+    agent_id: str,
+    completed_at: str,
+    available_capabilities: Any = None,
 ) -> list[dict[str, Any]]:
+    from ...control_plane.todos.todo_index import (
+        MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
+    )
+    from ...rollout_event_log import load_rollout_events, rollout_event_log_path
+
     snapshot = build_project_progress_snapshot(
         registry_path=registry_path,
         goal_id=goal_id,
         agent_id=agent_id,
         completed_at=completed_at,
+        available_capabilities=available_capabilities,
+        rollout_events=load_rollout_events(
+            rollout_event_log_path(runtime_root, goal_id),
+            limit=MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
+        ),
     )
     if not isinstance(snapshot, Mapping):
         raise ValueError("periodic-report has no public-safe progress items")
@@ -973,6 +989,9 @@ def consume_pending_periodic_report_intent(
     stage = payload["stage_completion"]
     completed_at = str(stage["completed_at"])
     project_progress = payload.get("project_progress")
+    fallback_capabilities = payload.get("available_capabilities")
+    if fallback_capabilities is None and isinstance(payload.get("turn"), Mapping):
+        fallback_capabilities = payload["turn"].get("available_capabilities")
     facts = (
         _progress_facts_from_snapshot(
             project_progress,
@@ -982,9 +1001,11 @@ def consume_pending_periodic_report_intent(
         if isinstance(project_progress, Mapping)
         else _progress_facts(
             registry_path=registry_path,
+            runtime_root=runtime_root,
             goal_id=goal_id,
             agent_id=agent_id,
             completed_at=completed_at,
+            available_capabilities=fallback_capabilities,
         )
     )
     actionable, rejection_revision = _next_attempt_revision(

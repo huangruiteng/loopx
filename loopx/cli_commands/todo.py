@@ -84,6 +84,12 @@ from .post_writeback import (
     PostWritebackProjectionBuilder,
     dispatch_committed_cli_post_writeback_hooks,
 )
+from ..control_plane.agents.capability_gate import (
+    runtime_capabilities_for_cli_projection,
+)
+from ..control_plane.turn_driver.journal_store import (
+    turn_journal_observed_capabilities,
+)
 
 
 def _fsync_parent_directory(path: Path) -> None:
@@ -1280,6 +1286,18 @@ def handle_todo_command(
         identity = settlement_identity.as_dict()
         committed_at = str(payload.get("updated_at") or "").strip()
         if committed_at:
+            # Capability evidence comes only from the validated Turn
+            # settlement context: the journaled envelope froze what this
+            # Turn's scheduler already observed. No journal means no
+            # evidence, and gated successors stay excluded (fail closed).
+            observed = turn_journal_observed_capabilities(
+                resolve_runtime_root(load_registry(registry_path), runtime_root_arg),
+                goal_id=args.goal_id,
+                turn_instance_id=str(identity.get("turn_instance_id") or ""),
+            )
+            projected = runtime_capabilities_for_cli_projection(observed)
+            if projected:
+                payload["available_capabilities"] = projected
             payload["post_writeback_hooks"] = (
                 dispatch_committed_cli_post_writeback_hooks(
                     payload=payload,

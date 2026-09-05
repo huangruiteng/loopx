@@ -405,12 +405,7 @@ def test_snapshot_applies_cursor_before_the_six_item_report_limit(
         )
     state = "# Goal\n\n## User Todo\n\n## Agent Todo\n\n" + "\n".join(state_items)
     first = build_project_progress_snapshot_from_state(
-        state_text=state,
-        goal={"id": GOAL_ID},
-        state_path=tmp_path / "goal.md",
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        completed_at="2026-08-01T08:00:00Z",
+        **_snapshot_call(tmp_path, state)
     )
     assert first is not None
     assert len(first["items"]) == 6
@@ -459,12 +454,7 @@ def test_snapshot_skips_done_items_without_valid_completion_timestamps(
         f"claimed_by={AGENT_ID} updated_at=2026-08-01T07:30:00 -->\n"
     )
     snapshot = build_project_progress_snapshot_from_state(
-        state_text=state,
-        goal={"id": GOAL_ID},
-        state_path=tmp_path / "goal.md",
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        completed_at="2026-08-01T08:00:00Z",
+        **_snapshot_call(tmp_path, state)
     )
 
     assert snapshot is not None
@@ -555,12 +545,7 @@ def test_snapshot_skips_done_items_completed_after_the_stage_boundary(
         " completed_at=2026-08-01T07:10:00Z -->\n"
     )
     snapshot = build_project_progress_snapshot_from_state(
-        state_text=state,
-        goal={"id": GOAL_ID},
-        state_path=tmp_path / "goal.md",
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        completed_at="2026-08-01T08:00:00Z",
+        **_snapshot_call(tmp_path, state)
     )
 
     assert snapshot is not None
@@ -594,12 +579,7 @@ def test_snapshot_falls_back_to_updated_at_and_skips_unusable_timestamps(
         " completed_at=2026-08-01T07:20:00Z -->\n"
     )
     snapshot = build_project_progress_snapshot_from_state(
-        state_text=state,
-        goal={"id": GOAL_ID},
-        state_path=tmp_path / "goal.md",
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        completed_at="2026-08-01T08:00:00Z",
+        **_snapshot_call(tmp_path, state)
     )
 
     assert snapshot is not None
@@ -655,12 +635,7 @@ def test_snapshot_keeps_valid_item_order_and_ids_when_invalid_items_are_skipped(
         f" claimed_by={AGENT_ID} updated_at=2026-08-01T07:10:00Z -->\n"
     )
     snapshot = build_project_progress_snapshot_from_state(
-        state_text=state,
-        goal={"id": GOAL_ID},
-        state_path=tmp_path / "goal.md",
-        goal_id=GOAL_ID,
-        agent_id=AGENT_ID,
-        completed_at="2026-08-01T08:00:00Z",
+        **_snapshot_call(tmp_path, state)
     )
 
     assert snapshot is not None
@@ -673,3 +648,312 @@ def test_snapshot_keeps_valid_item_order_and_ids_when_invalid_items_are_skipped(
         "completed_3",
     ]
     assert [item["value_rank"] for item in snapshot["items"]] == [10, 12]
+
+
+def _todo(marker_text: str, attributes: str) -> str:
+    return f"{marker_text}\n  <!-- loopx:todo {attributes} -->"
+
+
+def _agent_todo_state(todo_lines: list[str]) -> str:
+    return "# Goal\n\n## User Todo\n\n## Agent Todo\n\n" + "\n".join(todo_lines)
+
+
+def _next_action_refs(snapshot: dict[str, object]) -> list[str]:
+    return [
+        str(item["source_ref"])
+        for item in snapshot["items"]
+        if isinstance(item, dict) and item.get("content_kind") == "next_action"
+    ]
+
+
+def _snapshot_call(tmp_path: Path, state: str) -> dict[str, object]:
+    return {
+        "state_text": state,
+        "goal": {"id": GOAL_ID},
+        "state_path": tmp_path / "goal.md",
+        "goal_id": GOAL_ID,
+        "agent_id": AGENT_ID,
+        "completed_at": "2026-08-01T08:00:00Z",
+    }
+
+
+def test_snapshot_next_action_skips_resume_gated_open_todo(tmp_path: Path) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Resume the gated follow-up when network capacity returns.",
+                "todo_id=todo_gated status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=gated_work "
+                "resume_when=capacity_available:network",
+            ),
+            _todo(
+                "- [ ] Continue the ordinary advancement work.",
+                "todo_id=todo_plain status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=plain_work",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    next_actions = [
+        item for item in snapshot["items"] if item.get("content_kind") == "next_action"
+    ]
+    assert [item["source_ref"] for item in next_actions] == ["todo:todo_plain"]
+
+
+def test_snapshot_next_action_requires_an_actionable_open_todo(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Resume the gated follow-up when network capacity returns.",
+                "todo_id=todo_gated status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=gated_work "
+                "resume_when=capacity_available:network",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is None
+
+
+def test_snapshot_next_action_selects_capacity_gated_todo_with_turn_capabilities(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Resume the follow-up once network capacity returns.",
+                "todo_id=todo_capacity status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=gated_work "
+                "resume_when=capacity_available:network",
+            ),
+        ]
+    )
+    satisfied = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state),
+        available_capabilities=["network"],
+    )
+    assert satisfied is not None
+    assert _next_action_refs(satisfied) == ["todo:todo_capacity"]
+
+    without_evidence = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert without_evidence is None
+
+
+def test_snapshot_next_action_selects_pr_merged_todo_with_rollout_evidence(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Resume the follow-up once the pull request merges.",
+                "todo_id=todo_prwait status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=pr_followup_work "
+                "resume_when=pr_merged:owner/repo#42",
+            ),
+        ]
+    )
+    satisfied = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state),
+        rollout_events=[
+            {
+                "event_id": "merge-42",
+                "event_kind": "pr_merged",
+                "recorded_at": "2026-08-01T07:00:00Z",
+                "code_refs": {"pr_ref": "owner/repo#42"},
+            }
+        ],
+    )
+    assert satisfied is not None
+    assert _next_action_refs(satisfied) == ["todo:todo_prwait"]
+
+    without_evidence = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert without_evidence is None
+
+
+def test_snapshot_next_action_selects_a_resume_ready_gated_todo(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [x] Finish the prerequisite step.",
+                "todo_id=todo_prereq status=done task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=prereq_work "
+                "updated_at=2026-08-01T07:00:00Z",
+            ),
+            _todo(
+                "- [ ] Resume the follow-up once the prerequisite is done.",
+                "todo_id=todo_waiting status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=waiting_work "
+                "resume_when=todo_done:todo_prereq",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == ["todo:todo_waiting"]
+    assert [str(item.get("content_kind")) for item in snapshot["items"]] == [
+        "outcome",
+        "next_action",
+    ]
+
+
+def test_snapshot_next_action_skips_blocked_and_deferred_status_todos(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Continue while the dependency is blocked.",
+                "todo_id=todo_blocked status=blocked task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=blocked_work",
+            ),
+            _todo(
+                "- [ ] Continue the deferred cleanup later.",
+                "todo_id=todo_deferred status=deferred task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=deferred_work",
+            ),
+            _todo(
+                "- [ ] Keep advancing the ordinary work item.",
+                "todo_id=todo_plain status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=plain_work",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == ["todo:todo_plain"]
+
+
+def test_snapshot_next_action_ignores_done_markers_and_report_meta_kinds(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [x] Finish the reported stage work.",
+                "todo_id=todo_reported status=done task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=reported_work "
+                "updated_at=2026-08-01T07:00:00Z",
+            ),
+            _todo(
+                "- [ ] Consume the periodic report intent.",
+                "todo_id=todo_consume status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=consume_periodic_report_intent",
+            ),
+            _todo(
+                "- [ ] Repair the consumed report intent.",
+                "todo_id=todo_repair status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} "
+                "action_kind=repair_periodic_report_intent_consumption",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == []
+    assert [str(item.get("source_ref")) for item in snapshot["items"]] == [
+        "todo:todo_reported"
+    ]
+
+
+def test_snapshot_next_action_scopes_to_the_reporting_agent_and_stage_window(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Continue the other agent's work.",
+                "todo_id=todo_other status=open task_class=advancement_task "
+                "claimed_by=other-agent action_kind=other_work",
+            ),
+            _todo(
+                "- [ ] Continue the work updated after the stage.",
+                "todo_id=todo_future status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=future_work "
+                "updated_at=2026-08-01T09:00:00Z",
+            ),
+            _todo(
+                "- [ ] Continue the work with a malformed timestamp.",
+                "todo_id=todo_malformed status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=malformed_work "
+                "updated_at=not-a-timestamp",
+            ),
+            _todo(
+                "- [ ] Continue the work updated exactly at the stage.",
+                "todo_id=todo_boundary status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=boundary_work "
+                "updated_at=2026-08-01T08:00:00Z",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == ["todo:todo_boundary"]
+
+
+def test_snapshot_next_action_prefers_the_first_actionable_todo(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Continue the first advancement work.",
+                "todo_id=todo_first status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=first_work",
+            ),
+            _todo(
+                "- [ ] Continue the second advancement work.",
+                "todo_id=todo_second status=open task_class=advancement_task "
+                f"claimed_by={AGENT_ID} action_kind=second_work",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == ["todo:todo_first"]
+
+
+def test_snapshot_next_action_excludes_continuous_monitor_but_keeps_blocker_class(
+    tmp_path: Path,
+) -> None:
+    state = _agent_todo_state(
+        [
+            _todo(
+                "- [ ] Keep watching the monitored dependency.",
+                "todo_id=todo_watch status=open task_class=continuous_monitor "
+                f"claimed_by={AGENT_ID} action_kind=watch_work",
+            ),
+            _todo(
+                "- [ ] Clear the blocker blocking the advancement lane.",
+                f"todo_id=todo_blocker status=open task_class=blocker claimed_by={AGENT_ID} "
+                "action_kind=blocker_work",
+            ),
+        ]
+    )
+    snapshot = build_project_progress_snapshot_from_state(
+        **_snapshot_call(tmp_path, state)
+    )
+    assert snapshot is not None
+    assert _next_action_refs(snapshot) == ["todo:todo_blocker"]

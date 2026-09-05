@@ -35,6 +35,98 @@ from loopx.capabilities.periodic_report.post_writeback_hook import (
 )
 
 
+def _projection_goal_fixture(
+    tmp_path: Path,
+    *,
+    state_text: str,
+    runs: list[dict[str, object]],
+) -> tuple[Path, Path]:
+    state_path = tmp_path / "goal.md"
+    state_path.write_text(state_text, encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "goals": [
+                    {
+                        "id": "goal-1",
+                        "repo": str(tmp_path),
+                        "state_file": "goal.md",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    runs_dir = tmp_path / "runtime" / "goals" / "goal-1" / "runs"
+    runs_dir.mkdir(parents=True)
+    (runs_dir / "index.jsonl").write_text(
+        "".join(json.dumps(run) + "\n" for run in runs),
+        encoding="utf-8",
+    )
+    return tmp_path / "runtime", registry_path
+
+
+def _successor_ack_run(
+    *,
+    vision_agent_id: str = "agent-1",
+    ack_agent_id: str | None = None,
+    frontier: str = "frontier-2",
+    obligation: str = "replan-2",
+) -> dict[str, object]:
+    ack: dict[str, object] = {
+        "recorded": True,
+        "frontier_identity": frontier,
+        "semantic_delta": {
+            "accepted": True,
+            "outcomes": ["fresh_vision_path_outcome"],
+            "trigger_kinds": ["vision_successor_required"],
+            "obligation_id": obligation,
+        },
+    }
+    if ack_agent_id is not None:
+        ack["agent_id"] = ack_agent_id
+    return {
+        "generated_at": "2026-08-30T11:00:00Z",
+        "goal_id": "goal-1",
+        "agent_vision": {
+            "schema_version": "goal_vision_replan_contract_v0",
+            "agent_id": vision_agent_id,
+            "state": "active",
+            "vision_patch": {"acceptance_summary": "Next family is bounded."},
+        },
+        "autonomous_replan_ack": ack,
+    }
+
+
+def _closed_vision_run(
+    *,
+    agent_id: str = "agent-1",
+    summary: str = "First family accepted.",
+) -> dict[str, object]:
+    return {
+        "generated_at": "2026-08-30T10:00:00Z",
+        "goal_id": "goal-1",
+        "agent_vision": {
+            "schema_version": "goal_vision_replan_contract_v0",
+            "agent_id": agent_id,
+            "state": "vision_closed",
+            "vision_patch": {"acceptance_summary": summary},
+        },
+        "vision_checkpoint": {
+            "schema_version": "vision_checkpoint_v0",
+            "satisfied": True,
+            "decision": "patched",
+            "triggers": [
+                {
+                    "kind": "material_delivery_outcome",
+                    "delivery_outcome": "outcome_progress",
+                }
+            ],
+        },
+    }
+
+
 def _input() -> dict[str, object]:
     return {
         "schema_version": POST_WRITEBACK_HOOK_INPUT_SCHEMA_VERSION,
@@ -1093,10 +1185,9 @@ def test_todo_complete_survives_unreadable_periodic_report_machine_store(
 def test_periodic_report_projection_reduces_durable_successor_transition(
     tmp_path,
 ) -> None:
-    runtime_root = tmp_path / "runtime"
-    state_path = tmp_path / "goal.md"
-    state_path.write_text(
-        """# Goal
+    runtime_root, registry_path = _projection_goal_fixture(
+        tmp_path,
+        state_text="""# Goal
 
 ## User Todo
 
@@ -1105,75 +1196,14 @@ def test_periodic_report_projection_reduces_durable_successor_transition(
 - [ ] Analyze the next bounded family.
   <!-- loopx:todo todo_id=todo-next status=open task_class=advancement_task claimed_by=agent-1 -->
 """,
-        encoding="utf-8",
-    )
-    registry_path = tmp_path / "registry.json"
-    registry_path.write_text(
-        json.dumps(
-            {
-                "goals": [
-                    {
-                        "id": "goal-1",
-                        "repo": str(tmp_path),
-                        "state_file": "goal.md",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    runs_dir = runtime_root / "goals" / "goal-1" / "runs"
-    runs_dir.mkdir(parents=True)
-    runs = [
-        {
-            "generated_at": "2026-08-30T11:00:00Z",
-            "goal_id": "goal-1",
-            "agent_vision": {
-                "schema_version": "goal_vision_replan_contract_v0",
-                "agent_id": "agent-1",
-                "state": "active",
-                "vision_patch": {"acceptance_summary": "Next family is bounded."},
-            },
-            "autonomous_replan_ack": {
-                "recorded": True,
-                "frontier_identity": "frontier-2",
-                "semantic_delta": {
-                    "accepted": True,
-                    "outcomes": ["fresh_vision_path_outcome"],
-                    "trigger_kinds": ["vision_successor_required"],
-                    "obligation_id": "replan-2",
-                },
-            },
-        },
-        {
-            "generated_at": "2026-08-30T10:00:00Z",
-            "goal_id": "goal-1",
-            "agent_vision": {
-                "schema_version": "goal_vision_replan_contract_v0",
-                "agent_id": "agent-1",
-                "state": "vision_closed",
-                "vision_patch": {"acceptance_summary": "First family accepted."},
-            },
-            "vision_checkpoint": {
-                "schema_version": "vision_checkpoint_v0",
-                "satisfied": True,
-                "decision": "patched",
-                "triggers": [
-                    {
-                        "kind": "material_delivery_outcome",
-                        "delivery_outcome": "outcome_progress",
-                    }
-                ],
-            },
-        },
-    ]
-    (runs_dir / "index.jsonl").write_text(
-        "".join(json.dumps(run) + "\n" for run in runs),
-        encoding="utf-8",
+        runs=[
+            _successor_ack_run(),
+            _closed_vision_run(),
+        ],
     )
 
     projection = build_periodic_report_post_writeback_projection(
-        payload={"state": {"path": str(state_path)}},
+        payload={"state": {"path": str(tmp_path / "goal.md")}},
         registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id="goal-1",
@@ -1189,10 +1219,9 @@ def test_periodic_report_projection_reduces_durable_successor_transition(
 def test_periodic_report_projection_reduces_terminal_after_todo_completion(
     tmp_path,
 ) -> None:
-    runtime_root = tmp_path / "runtime"
-    state_path = tmp_path / "goal.md"
-    state_path.write_text(
-        """# Goal
+    runtime_root, registry_path = _projection_goal_fixture(
+        tmp_path,
+        state_text="""# Goal
 
 ## User Todo
 
@@ -1203,54 +1232,34 @@ def test_periodic_report_projection_reduces_terminal_after_todo_completion(
 - [ ] Watch for later external changes.
   <!-- loopx:todo todo_id=todo_watch status=open task_class=continuous_monitor claimed_by=agent-1 watch_only=true next_due_at=2026-09-06T10:30:00Z -->
 """,
-        encoding="utf-8",
-    )
-    registry_path = tmp_path / "registry.json"
-    registry_path.write_text(
-        json.dumps(
+        runs=[
             {
-                "goals": [
-                    {
-                        "id": "goal-1",
-                        "repo": str(tmp_path),
-                        "state_file": "goal.md",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    runs_dir = runtime_root / "goals" / "goal-1" / "runs"
-    runs_dir.mkdir(parents=True)
-    closed_run = {
-        "generated_at": "2026-08-30T10:00:00Z",
-        "goal_id": "goal-1",
-        "agent_id": "agent-1",
-        "agent_vision": {
-            "schema_version": "goal_vision_replan_contract_v0",
-            "agent_id": "agent-1",
-            "state": "vision_closed",
-            "vision_patch": {"acceptance_summary": "Analysis accepted."},
-        },
-        "vision_checkpoint": {
-            "schema_version": "vision_checkpoint_v0",
-            "satisfied": True,
-            "decision": "patched",
-            "triggers": [
-                {
-                    "kind": "material_delivery_outcome",
-                    "delivery_outcome": "primary_goal_outcome",
-                }
-            ],
-        },
-    }
-    (runs_dir / "index.jsonl").write_text(
-        json.dumps(closed_run) + "\n",
-        encoding="utf-8",
+                "generated_at": "2026-08-30T10:00:00Z",
+                "goal_id": "goal-1",
+                "agent_id": "agent-1",
+                "agent_vision": {
+                    "schema_version": "goal_vision_replan_contract_v0",
+                    "agent_id": "agent-1",
+                    "state": "vision_closed",
+                    "vision_patch": {"acceptance_summary": "Analysis accepted."},
+                },
+                "vision_checkpoint": {
+                    "schema_version": "vision_checkpoint_v0",
+                    "satisfied": True,
+                    "decision": "patched",
+                    "triggers": [
+                        {
+                            "kind": "material_delivery_outcome",
+                            "delivery_outcome": "primary_goal_outcome",
+                        }
+                    ],
+                },
+            },
+        ],
     )
 
     projection = build_periodic_report_post_writeback_projection(
-        payload={"state_file": str(state_path)},
+        payload={"state_file": str(tmp_path / "goal.md")},
         registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id="goal-1",
@@ -1261,6 +1270,61 @@ def test_periodic_report_projection_reduces_terminal_after_todo_completion(
     assert receipt["transition"] == "goal_terminal"
     assert receipt["frontier_identity"] == "validated-goal-terminal"
 
+
+def test_periodic_report_projection_evaluates_turn_capabilities_absent_and_present(
+    tmp_path: Path,
+) -> None:
+    runtime_root, registry_path = _projection_goal_fixture(
+        tmp_path,
+        state_text="""# Goal
+
+## User Todo
+
+## Agent Todo
+
+- [ ] Resume the follow-up once network capacity returns.
+  <!-- loopx:todo todo_id=todo_capacity status=open task_class=advancement_task claimed_by=agent-1 action_kind=gated_work resume_when=capacity_available:network -->
+- [ ] Analyze the next bounded family.
+  <!-- loopx:todo todo_id=todo_next status=open task_class=advancement_task claimed_by=agent-1 -->
+""",
+        runs=[
+            _successor_ack_run(),
+            _closed_vision_run(),
+        ],
+    )
+
+    projection_absent = build_periodic_report_post_writeback_projection(
+        payload={"state_file": str(tmp_path / "goal.md")},
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id="goal-1",
+        agent_id="agent-1",
+    )
+    assert projection_absent.get("stage_completion") is not None
+    next_actions_absent = [
+        item["source_ref"]
+        for item in projection_absent["project_progress"]["items"]
+        if item.get("content_kind") == "next_action"
+    ]
+    assert next_actions_absent == ["todo:todo_next"]
+
+    projection_present = build_periodic_report_post_writeback_projection(
+        payload={
+            "state_file": str(tmp_path / "goal.md"),
+            "available_capabilities": ["network"],
+        },
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id="goal-1",
+        agent_id="agent-1",
+    )
+    assert projection_present.get("stage_completion") is not None
+    next_actions_present = [
+        item["source_ref"]
+        for item in projection_present["project_progress"]["items"]
+        if item.get("content_kind") == "next_action"
+    ]
+    assert next_actions_present == ["todo:todo_capacity"]
 
 def _published_report_goal_fixtures(
     tmp_path,
@@ -1932,10 +1996,9 @@ def test_post_writeback_ts_cas_lock_timeout_preserves_free_sibling_result(
 def test_periodic_report_projection_isolates_other_agent_ack_and_claimed_todos(
     tmp_path,
 ) -> None:
-    runtime_root = tmp_path / "runtime"
-    state_path = tmp_path / "goal.md"
-    state_path.write_text(
-        """# Goal
+    runtime_root, registry_path = _projection_goal_fixture(
+        tmp_path,
+        state_text="""# Goal
 
 ## User Todo
 
@@ -1944,73 +2007,17 @@ def test_periodic_report_projection_isolates_other_agent_ack_and_claimed_todos(
 - [ ] Analyze the next bounded family for Agent B.
   <!-- loopx:todo todo_id=todo-b status=open task_class=advancement_task claimed_by=agent-b -->
 """,
-        encoding="utf-8",
+        runs=[
+            _successor_ack_run(
+                vision_agent_id="agent-a",
+                ack_agent_id="agent-b",
+                frontier="frontier-b",
+                obligation="replan-b",
+            ),
+            _closed_vision_run(agent_id="agent-a", summary="Agent A first vision."),
+        ],
     )
-    registry_path = tmp_path / "registry.json"
-    registry_path.write_text(
-        json.dumps(
-            {
-                "goals": [
-                    {
-                        "id": "goal-1",
-                        "repo": str(tmp_path),
-                        "state_file": "goal.md",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    runs_dir = runtime_root / "goals" / "goal-1" / "runs"
-    runs_dir.mkdir(parents=True)
-    runs = [
-        {
-            "generated_at": "2026-08-30T11:00:00Z",
-            "goal_id": "goal-1",
-            "agent_vision": {
-                "schema_version": "goal_vision_replan_contract_v0",
-                "agent_id": "agent-a",
-                "state": "active",
-                "vision_patch": {"acceptance_summary": "Agent A next vision."},
-            },
-            "autonomous_replan_ack": {
-                "recorded": True,
-                "agent_id": "agent-b",
-                "frontier_identity": "frontier-b",
-                "semantic_delta": {
-                    "accepted": True,
-                    "outcomes": ["fresh_vision_path_outcome"],
-                    "trigger_kinds": ["vision_successor_required"],
-                    "obligation_id": "replan-b",
-                },
-            },
-        },
-        {
-            "generated_at": "2026-08-30T10:00:00Z",
-            "goal_id": "goal-1",
-            "agent_vision": {
-                "schema_version": "goal_vision_replan_contract_v0",
-                "agent_id": "agent-a",
-                "state": "vision_closed",
-                "vision_patch": {"acceptance_summary": "Agent A first vision."},
-            },
-            "vision_checkpoint": {
-                "schema_version": "vision_checkpoint_v0",
-                "satisfied": True,
-                "decision": "patched",
-                "triggers": [
-                    {
-                        "kind": "material_delivery_outcome",
-                        "delivery_outcome": "outcome_progress",
-                    }
-                ],
-            },
-        },
-    ]
-    (runs_dir / "index.jsonl").write_text(
-        "".join(json.dumps(run) + "\n" for run in runs),
-        encoding="utf-8",
-    )
+    state_path = tmp_path / "goal.md"
 
     # Agent B's ACK and Agent B's claimed Todo must NOT settle Agent A's stage.
     projection_a = build_periodic_report_post_writeback_projection(
@@ -2023,32 +2030,22 @@ def test_periodic_report_projection_isolates_other_agent_ack_and_claimed_todos(
     assert "stage_completion" not in projection_a
 
     # Now make the Todo unclaimed and provide Agent A's own ACK in run history
-    runs.insert(
-        0,
-        {
-            "generated_at": "2026-08-30T11:30:00Z",
-            "goal_id": "goal-1",
-            "agent_vision": {
-                "schema_version": "goal_vision_replan_contract_v0",
-                "agent_id": "agent-a",
-                "state": "active",
-                "vision_patch": {"acceptance_summary": "Agent A next vision."},
-            },
-            "autonomous_replan_ack": {
-                "recorded": True,
-                "agent_id": "agent-a",
-                "frontier_identity": "frontier-a",
-                "semantic_delta": {
-                    "accepted": True,
-                    "outcomes": ["fresh_vision_path_outcome"],
-                    "trigger_kinds": ["vision_successor_required"],
-                    "obligation_id": "replan-a",
-                },
-            },
-        },
-    )
+    agent_a_ack = {
+        **_successor_ack_run(
+            vision_agent_id="agent-a",
+            ack_agent_id="agent-a",
+            frontier="frontier-a",
+            obligation="replan-a",
+        ),
+        "generated_at": "2026-08-30T11:30:00Z",
+    }
+    runs_dir = runtime_root / "goals" / "goal-1" / "runs"
+    prior_runs = [
+        json.loads(row)
+        for row in (runs_dir / "index.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     (runs_dir / "index.jsonl").write_text(
-        "".join(json.dumps(run) + "\n" for run in runs),
+        "".join(json.dumps(run) + "\n" for run in [agent_a_ack, *prior_runs]),
         encoding="utf-8",
     )
     state_path.write_text(
