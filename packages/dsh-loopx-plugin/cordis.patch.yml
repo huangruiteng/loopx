@@ -10,6 +10,11 @@
     - id: loopx-driver
       name: dsh-loopx-plugin/driver
 
+    # Loaded as its own default-off Cordis row. It has no Driver or Agent
+    # injection and registers only session publication hooks when fully pinned.
+    - id: loopx-shadow-observer
+      name: dsh-loopx-plugin/observer
+
 # The browser must not advertise readiness while first-run skill bootstrap is
 # still in flight. A safe bootstrap failure also publishes the service, so DSH
 # remains usable and /loopx-init can repair it.

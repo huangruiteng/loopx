@@ -524,6 +524,16 @@ source. Prove the no-outbound-control invariant and bounded failure behavior.
 **Exit:** C0 adapter fidelity plus an eligible C1 observer run; public/private
 boundary and overhead are reported; no production authority exists.
 
+**Checkpoint (2026-09):** the contract half of P0 exists as the default-off
+built-in capability `reliability-diagnostics` with the extension provider
+`dsh-session-events` in `packages/dsh-loopx-plugin`: provider-neutral
+envelope and stats records, integrity receipt, read-only diagnostic
+projection, a deterministic DSH-shaped fixture, and producer-side
+public-safety rejection before the first ledger append. Still open before P0
+exit: an eligible C1 observer run on a real `dsh` session, the reported
+overhead measurement, and the ledger retention and deletion profile from
+decision 4 below.
+
 ### P1 — Benchmark-qualified diagnostic pilot
 
 Run matched native and L1 arms on at least one suitable benchmark family and
@@ -594,6 +604,13 @@ required before making a stronger commercial claim.
    pilot: software delivery, security/SRE, or research/AI4S?
 2. Which event source and harness should define the P0 shadow-observer
    conformance fixture?
+   **Decided (2026-09): DeepSeek Harness (`dsh`) session events.** LoopX
+   already ships a typed `dsh` Turn host and a same-session plugin whose
+   read-only `session/event`, `agent/status`, `agent/error`, and
+   `session/disposed` hooks let the observer be proven non-interfering inside
+   an existing packaged boundary. Pi remains the comparison candidate; the
+   harness-selection evaluation shared with the Desktop Execution Frontends
+   RFC is a follow-up deliverable and will be recorded here.
 3. Should the first two-to-four-week offer stop at L1 diagnostics by default,
    or include an optional L2 advisory week before any L3 seam?
 4. Which data-retention, deletion, and support profiles belong in the first
@@ -613,6 +630,12 @@ required before making a stronger commercial claim.
   owns benchmark truth, matched arms, C0–C4 evidence, and research integrity.
 - [Agent Management Observability MVP](../../product/surfaces/agent-management-observability-mvp.md)
   defines the read-only projection posture reused by L1/L2 operator surfaces.
+- [Desktop Execution Frontends](./desktop-execution-frontends-v0.md) defines
+  Mode B, the Managed Agent Runtime in which LoopX Desktop launches and
+  supervises Pi or `dsh`. The L1 shadow observer is the passive diagnostic
+  layer under that mode's Desktop-owned runtime supervisor: its integrity
+  receipt and read-only projection are inputs the supervisor may project, and
+  the observer acquires none of the supervisor's authority.
 - [Shared Goal Authority and State Provider](./shared-goal-authority-state-provider-v0.md)
   defines the authority/provider boundary required only when L3/L4 uses shared
   coordination.

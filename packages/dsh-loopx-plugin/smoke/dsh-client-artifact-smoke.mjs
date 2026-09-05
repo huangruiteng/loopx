@@ -16,6 +16,7 @@ const rows = [
   ['loopx-goalbar', packageId],
   ['loopx-init-command', `${packageId}/init-command`],
   ['loopx-driver', `${packageId}/driver`],
+  ['loopx-shadow-observer', `${packageId}/observer`],
 ]
 const clientInject = [
   '@deepseek-ai/dsh-client-connection',
@@ -42,6 +43,7 @@ const packedStaticEntries = new Set([
   'package/lib/driver.js',
   'package/lib/index.js',
   'package/lib/init-command.js',
+  'package/lib/observer.js',
   'package/lib/types/cli.d.ts',
   'package/lib/types/client/LoopXGoalBar.d.ts',
   'package/lib/types/client/index.d.ts',
@@ -57,6 +59,7 @@ const packedStaticEntries = new Set([
   'package/lib/types/index.d.ts',
   'package/lib/types/init-command.d.ts',
   'package/lib/types/managed-runtime.d.ts',
+  'package/lib/types/observer.d.ts',
   'package/package.json',
 ])
 const packedHashedEntries = [
@@ -134,6 +137,10 @@ async function assertManifest(root) {
   assert.deepEqual(manifest.exports?.['./client'], {
     types: './lib/types/client/index.d.ts',
     default: './lib/client.js',
+  })
+  assert.deepEqual(manifest.exports?.['./observer'], {
+    types: './lib/types/observer.d.ts',
+    default: './lib/observer.js',
   })
   assert.deepEqual(manifest.dsh?.client, {
     inject: clientInject,
@@ -419,13 +426,15 @@ async function assertHostExports(root) {
     root: requireFromPlugin.resolve(packageId),
     init: requireFromPlugin.resolve(`${packageId}/init-command`),
     driver: requireFromPlugin.resolve(`${packageId}/driver`),
+    observer: requireFromPlugin.resolve(`${packageId}/observer`),
     client: requireFromPlugin.resolve(`${packageId}/client`),
   }
   assert.equal(resolutions.client, join(root, 'lib', 'client.js'))
-  const [host, init, driver] = await Promise.all([
+  const [host, init, driver, observer] = await Promise.all([
     import(pathToFileURL(resolutions.root).href),
     import(pathToFileURL(resolutions.init).href),
     import(pathToFileURL(resolutions.driver).href),
+    import(pathToFileURL(resolutions.observer).href),
   ])
   assert.equal(typeof host.apply, 'function')
   assert.equal(host.name, packageId)
@@ -474,6 +483,23 @@ async function assertHostExports(root) {
   assert.equal(typeof host.initializeLoopX, 'function')
   assert.equal(typeof init.apply, 'function')
   assert.equal(typeof driver.apply, 'function')
+  assert.equal(observer.name, 'dsh-loopx-shadow-observer')
+  assert.deepEqual(observer.inject, [])
+  assert.equal(typeof observer.apply, 'function')
+  assert.equal(host.ShadowObserver, undefined)
+
+  const [rootSource, driverSource, observerSource] = await Promise.all([
+    readFile(resolutions.root, 'utf8'),
+    readFile(resolutions.driver, 'utf8'),
+    readFile(resolutions.observer, 'utf8'),
+  ])
+  for (const source of [rootSource, driverSource]) {
+    assert(!source.includes('LOOPX_DSH_SHADOW_OBSERVER_GOAL_ID'))
+    assert(!source.includes('reliability_observer_envelope_v0'))
+  }
+  assert(observerSource.includes('LOOPX_DSH_SHADOW_OBSERVER_GOAL_ID'))
+  assert(!observerSource.includes('.send('))
+  assert(!observerSource.includes('agent/pre-step'))
 }
 
 async function exerciseInstalled(installed) {

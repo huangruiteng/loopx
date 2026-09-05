@@ -6,6 +6,7 @@ export default defineConfig({
     index: 'build-temp/host/index.js',
     'init-command': 'build-temp/host/init-command.js',
     driver: 'build-temp/host/driver.js',
+    observer: 'build-temp/host/observer.js',
   },
   outDir: 'lib',
   format: ['esm'],

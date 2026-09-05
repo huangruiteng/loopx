@@ -447,6 +447,13 @@ to pay 的证明。
 **Exit：** C0 adapter fidelity 加一条 eligible C1 observer run；报告 public/private boundary 与
 overhead；不存在 production authority。
 
+**Checkpoint（2026-09）：** P0 的 contract 部分已以默认关闭的 built-in capability
+`reliability-diagnostics` 与 extension provider `dsh-session-events`（位于
+`packages/dsh-loopx-plugin`）落地：provider-neutral envelope 与 stats record、integrity receipt、
+read-only diagnostic projection、deterministic DSH-shaped fixture，以及首次写入 ledger 之前的
+producer 侧 public-safety 拒绝。P0 exit 之前仍未完成：在真实 `dsh` session 上的 eligible C1
+observer run、overhead 测量报告，以及下文 decision 4 的 ledger retention 与 deletion profile。
+
 ### P1 — Benchmark-qualified diagnostic pilot
 
 在至少一个合适 benchmark family 和一个 non-benchmark rehearsal 上运行 matched native/L1 arm。
@@ -506,6 +513,10 @@ advantage 与 sustainable delivery evidence。
 1. 首个产品 pilot 应选择哪个 initial ICP 与 reference workflow：software delivery、security/SRE，
    还是 research/AI4S？
 2. 哪个 event source 与 harness 应定义 P0 shadow-observer conformance fixture？
+   **已决定（2026-09）：DeepSeek Harness（`dsh`）session events。** LoopX 已有 typed `dsh`
+   Turn host 与 same-session plugin，其只读 `session/event`、`agent/status`、`agent/error`、
+   `session/disposed` hook 让 observer 能在既有打包边界内被证明 non-interfering。Pi 仍是
+   对比候选；与 Desktop Execution Frontends RFC 共享的 harness 选型评估是后续交付物，结论将记录在此。
 3. 第一份两到四周 offer 默认应停在 L1 diagnostic，还是在进入任何 L3 seam 前增加可选 L2 advisory week？
 4. 第一份 local/private/BYOC deployment pack 应包含哪些 data-retention、deletion 与 support profile？
 5. 第一份 promotion packet 必须使用哪个 benchmark family 与 non-benchmark canary？
@@ -520,6 +531,10 @@ advantage 与 sustainable delivery evidence。
   拥有 benchmark truth、matched arm、C0–C4 evidence 与 research integrity。
 - [Agent Management Observability MVP](../../product/surfaces/agent-management-observability-mvp.md)
   定义 L1/L2 operator surface 复用的 read-only projection posture。
+- [Desktop Execution Frontends](./desktop-execution-frontends-v0.zh-CN.md) 定义 Mode B，即由 LoopX
+  Desktop 启动并监督 Pi 或 `dsh` 的 Managed Agent Runtime。L1 shadow observer 是该模式下
+  Desktop-owned runtime supervisor 之下的被动诊断层：其 integrity receipt 与 read-only projection
+  是 supervisor 可以投影的输入，observer 本身不获得 supervisor 的任何 authority。
 - [Shared Goal Authority 与 State Provider](./shared-goal-authority-state-provider-v0.zh-CN.md)
   定义只有在 L3/L4 使用 shared coordination 时才需要的 authority/provider boundary。
 - [TypeScript Control-Plane Migration](./typescript-control-plane-migration-v0.zh-CN.md)

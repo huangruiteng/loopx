@@ -42,6 +42,7 @@ BUILTIN_IDS = [
     "deep-research",
     "public-safe-outbound",
     "connector-registry",
+    "reliability-diagnostics",
 ]
 
 
@@ -156,7 +157,15 @@ def test_builtin_catalog_preserves_order_and_marks_provider() -> None:
             "installed": True,
             "enabled": True,
             "ready": True,
-        }
+        },
+        {
+            "id": "dsh-session-events",
+            "origin": "extension",
+            "declared": True,
+            "installed": False,
+            "enabled": False,
+            "ready": False,
+        },
     ]
 
 

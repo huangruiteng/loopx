@@ -74,6 +74,7 @@ availability and maturity in the installed release.
 | Turn public/private content signals into reviewable source, angle, draft, feedback, and publish-gate packets | [Content Operations](content_ops/README.md) |
 | Inventory, archive, migrate, and rerank a material store without losing raw source authority | [Material Lifecycle](material_lifecycle/README.md) ([中文](material_lifecycle/README.zh-CN.md)) |
 | Inspect compatibility routes for public-safe external-value intake while callers migrate to outcome-owned capabilities | [Value Connectors](value_connectors/README.md) |
+| Observe a long-running harness session one-way and read back an integrity receipt and stall/repetition/recovery projection with no runtime authority | [Reliability Diagnostics](reliability_diagnostics/README.md) ([中文](reliability_diagnostics/README.zh-CN.md)) |
 
 ## Contributor Navigation And Ownership
 

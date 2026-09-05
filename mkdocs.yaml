@@ -125,6 +125,7 @@ nav:
       - Periodic Report: capabilities/periodic-report/README.md
       - Content Operations: capabilities/content-ops/README.md
       - Value Connectors: capabilities/value-connectors/README.md
+      - Reliability Diagnostics: capabilities/reliability-diagnostics/README.md
   - Integrations:
       - integrations/README.md
       - Integration Guide: integration.md

@@ -18,6 +18,10 @@
       "types": "./lib/types/driver.d.ts",
       "default": "./lib/driver.js"
     },
+    "./observer": {
+      "types": "./lib/types/observer.d.ts",
+      "default": "./lib/observer.js"
+    },
     "./client": {
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
