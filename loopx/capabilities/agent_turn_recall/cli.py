@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import datetime, timezone
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -328,7 +329,7 @@ def handle_agent_turn_recall_command(
                 payload = run_agent_turn_recall(
                     config,
                     situation,
-                    observed_at=args.turn_instance_id,
+                    observed_at=datetime.now(timezone.utc).isoformat(),
                     read_authority_checkpoints=_read_authority_checkpoints(
                         config, args.goal_id
                     ),

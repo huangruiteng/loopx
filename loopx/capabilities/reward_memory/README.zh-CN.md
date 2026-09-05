@@ -521,3 +521,9 @@ Edit 生成一个引用旧 active record 的 replacement
 candidate，retire 生成 retired decision。两个命令都不写 provider state；真正的 write 与
 精确 readback 仍由声明的 corpus owner 执行，因此 operator control 不会悄悄扩大成
 publish、production 或跨项目 authority。
+
+## 外发消息
+
+可选的[外发指导召回](OUTBOUND.zh-CN.md)会在真正绑定 Goal/Agent 的 Lark
+inbox send/reply 边界召回已经审阅过的偏好。它把指导交给 Agent 审视，但不会
+授予发送权限。

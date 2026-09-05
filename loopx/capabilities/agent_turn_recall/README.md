@@ -23,6 +23,10 @@ host-provided `turn_instance_id` produces a `turn_recall_id`.
 
 This gives two useful identities:
 
+Turn ids are opaque host identities, not timestamps. Execution uses the current
+UTC observation time for memory freshness while preserving the original turn
+identity for validation and deduplication.
+
 - a changed Todo, target, phase, or intent changes the situation fingerprint;
 - a new turn changes the recall id and recalls again, even when the situation
   is otherwise unchanged.

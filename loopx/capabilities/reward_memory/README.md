@@ -619,3 +619,9 @@ candidate linked to the active record. Retire produces a retired decision.
 Neither command writes provider state. The declared corpus owner still performs
 the write and exact readback, so operator control cannot silently become a
 publish, production, or cross-project authority expansion.
+
+## Outbound communication
+
+The opt-in [outbound guidance integration](OUTBOUND.md) ([中文](OUTBOUND.zh-CN.md)) recalls reviewed
+preferences at the actual goal/agent-bound Lark inbox send and reply boundary.
+It returns guidance for agent review without granting send authority.

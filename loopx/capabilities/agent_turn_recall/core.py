@@ -277,6 +277,7 @@ def run_agent_turn_recall(
         "ok": result.get("ok") is True,
         "schema_version": AGENT_TURN_RECALL_SCHEMA_VERSION,
         "status": result.get("status"),
+        "reason_code": result.get("reason_code"),
         "surface_id": AGENT_TURN_RECALL_SURFACE_ID,
         "turn_recall_id": situation.get("turn_recall_id"),
         "situation_fingerprint": situation.get("situation_fingerprint"),

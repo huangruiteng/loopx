@@ -147,6 +147,7 @@ def _deliver_lark_inbox_outbound(
     execute: bool = False,
     provider_preflight: bool = False,
     runner: CommandRunner = _default_runner,
+    before_send: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Deliver through one inbox-configured bot with exact provider readback."""
 
@@ -371,6 +372,32 @@ def _deliver_lark_inbox_outbound(
             format_preflight_passed=True,
             provider_preview_performed=True,
         )
+    guidance = None
+    if before_send is not None:
+        # Bind review to destination/profile as well as content and placement.
+        # None of these private values are supplied to the memory provider.
+        intent_digest = (
+            "sha256:"
+            + hashlib.sha256(
+                json.dumps([profile, chat_id, receipt]).encode("utf-8")
+            ).hexdigest()
+        )
+        guidance = before_send(intent_digest)
+        if guidance.get("continue_delivery") is not True or not execute:
+            return _result(
+                status="agent_review_required"
+                if guidance.get("agent_review_required")
+                else "preview_ready",
+                ok=True,
+                execute=execute,
+                receipt=receipt,
+                identity_verified=True,
+                membership_verified=True,
+                placement=placement,
+                format_preflight_passed=True,
+                provider_preview_performed=True,
+                provider_preview_verified=True,
+            ) | {"outbound_guidance": dict(guidance)}
     if not execute:
         return _result(
             status="preview_ready",
@@ -462,7 +489,7 @@ def _deliver_lark_inbox_outbound(
         reaction_cleanup is not None and reaction_cleanup.get("ok") is True
     )
     completed = bool(verified and reaction_cleanup_verified)
-    return _result(
+    result = _result(
         status=(
             "sent_verified"
             if completed
@@ -491,6 +518,9 @@ def _deliver_lark_inbox_outbound(
         provider_preview_performed=True,
         provider_preview_verified=True,
     )
+    if guidance is not None:
+        result["outbound_guidance"] = dict(guidance)
+    return result
 
 
 def reply_lark_event_inbox(
@@ -502,6 +532,7 @@ def reply_lark_event_inbox(
     execute: bool = False,
     provider_preflight: bool = False,
     runner: CommandRunner = _default_runner,
+    before_send: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Reply with the explicit inbox-configured bot and placement policy."""
 
@@ -513,6 +544,7 @@ def reply_lark_event_inbox(
         execute=execute,
         provider_preflight=provider_preflight,
         runner=runner,
+        before_send=before_send,
     )
 
 
@@ -524,6 +556,7 @@ def send_lark_inbox_message(
     execute: bool = False,
     provider_preflight: bool = False,
     runner: CommandRunner = _default_runner,
+    before_send: Callable[[str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Send one verified chat-root message through the configured inbox bot."""
 
@@ -535,6 +568,7 @@ def send_lark_inbox_message(
         execute=execute,
         provider_preflight=provider_preflight,
         runner=runner,
+        before_send=before_send,
     )
     result["schema_version"] = "lark_outbound_message_v0"
     blocker = result.get("blocker")
