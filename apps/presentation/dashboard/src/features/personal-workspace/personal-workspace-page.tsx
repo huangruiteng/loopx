@@ -727,6 +727,7 @@ export function PersonalWorkspacePage({
   const [goalContexts, setGoalContexts] = useState<Record<string, GoalRepositoryContext>>({});
   const [larkConnections, setLarkConnections] = useState<LarkGoalConnection[]>([]);
   const digestInitRef = useRef(false);
+  const digestSinceRef = useRef(Number.NaN);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const channelScrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -946,27 +947,30 @@ export function PersonalWorkspacePage({
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [mobileSidebarOpen]);
 
-  // Morning digest: computed once per manager-home visit, measured against the previous visit.
   useEffect(() => {
-    if (digestInitRef.current || selectedGoalId || !items.length) return;
-    digestInitRef.current = true;
-    let since = Number.NaN;
-    try {
-      since = Date.parse(window.localStorage.getItem("loopx-pw-last-visit") ?? "");
-      window.localStorage.setItem("loopx-pw-last-visit", new Date().toISOString());
-    } catch {
-      // Storage unavailable: show current attention count only, without a time baseline.
+    if (selectedGoalId || !items.length) return;
+    if (!digestInitRef.current) {
+      digestInitRef.current = true;
+      try {
+        digestSinceRef.current = Date.parse(window.localStorage.getItem("loopx-pw-last-visit") ?? "");
+        window.localStorage.setItem("loopx-pw-last-visit", new Date().toISOString());
+      } catch {
+        digestSinceRef.current = Number.NaN;
+      }
     }
+    const since = digestSinceRef.current;
     const runs = items.filter((item): item is Extract<WorkspaceTimelineItem, { kind: "run" }> => item.kind === "run").map((item) => item.run);
     const isFresh = (time?: string) => {
       const parsed = Date.parse(time ?? "");
       return !Number.isNaN(since) && !Number.isNaN(parsed) && parsed > since;
     };
-    setDigest({
+    const nextDigest = {
       attention: managerNeedsYouCount,
       done: runs.filter((run) => run.status === "completed" && isFresh(run.latestActivity)).length,
       failed: runs.filter((run) => (run.status === "failed" || run.status === "interrupted") && isFresh(run.latestActivity)).length,
-    });
+    };
+    setDigest((current) => current?.attention === nextDigest.attention
+      && current.done === nextDigest.done && current.failed === nextDigest.failed ? current : nextDigest);
   }, [items, managerNeedsYouCount, selectedGoalId]);
 
   useEffect(() => {
@@ -1755,6 +1759,7 @@ export function PersonalWorkspacePage({
             ) : null}
             {selectedGoal && selectedGoalTab === "tasks" ? (
               <GoalTasksView
+                canLoadCompleted={!readOnly}
                 goal={selectedGoal}
                 items={items}
                 onDraftTaskFromMessage={readOnly ? undefined : (reply) => {

@@ -117,14 +117,19 @@ loopx goal-lifecycle --goal-id <goal-id> --operation resume --execute
 
 在侧边栏点击具体的 Goal（例如 `Apollo Spacecraft Telemetry Pipeline`），进入该 Goal 的独立工作台。
 
-### 4.1 Tasks 任务看板视图
+### 4.1 Tasks 列表与看板视图
 ![Goal Tasks 4 列看板](../assets/personal-workspace/guide_goal_tasks_board.png)
 
-- **4 列看板流转**：
+- 默认显示四列看板；可切换到分组列表，列表中空分组隐藏、已完成分组默认折叠。
+- 已完成摘要可能只携带近期明细。连接本机服务时，展开后点击“查看当前全部已完成”，按需读取当前完成的工作任务；超过一页时可“加载更多”。该查询不包含历史归档和持续监控任务，不改变任务状态。只读远端来源不调用本机查询。
+- 初次连接先显示加载状态，不把示例任务当作实时数据。执行会话连接失败时显示重连提示并退避轮询，隐藏页面暂停新的会话查询。
+- Files 的“前往会话”进入 Goal 会话；“导出摘要”导出安全摘要 Markdown，不下载原始文件。
+
+- **分组含义**：
   - **待确认（Attention Required）**：需用户决策或授权的卡片（黄色/红色标红，显示等待时间）；
   - **待执行 / 进行中（In Progress）**：按 P0 / P1 优先级排列的 Agent 待办事项；
   - **定时与持续（Scheduled & Continuous）**：绑定的周期性检查与监控；
-  - **已完成（Completed）**：最近已交付的待办归档。
+  - **已完成（Completed）**：已标记完成的工作任务；摘要总数与当前可查询明细的范围分别展示。
 
 - **💬 对话建议一键「转为 Task」**：
   - 看板顶部横幅会展示 Agent 最新的进度报告与下一步建议；

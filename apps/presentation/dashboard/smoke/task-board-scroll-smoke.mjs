@@ -27,7 +27,7 @@ assert.match(
 );
 assert.match(
   tasks,
-  /resizeObserverRef\.current = observer[\s\S]*\}, \[syncOverflow\]\);/,
+  /resizeObserverRef\.current = observer[\s\S]*\}, \[listView, syncOverflow\]\);/,
   "The lane ResizeObserver lifecycle stays stable across card renders",
 );
 assert.match(

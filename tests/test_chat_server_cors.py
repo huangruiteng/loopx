@@ -30,6 +30,93 @@ def _start_server() -> tuple[ChatHTTPServer, threading.Thread]:
     return server, thread
 
 
+def test_completed_todos_are_scoped_paginated_and_redacted(monkeypatch) -> None:
+    def read_todos(**kwargs):
+        assert kwargs["goal_id"] == "test-goal"
+        assert kwargs["status"] == "done"
+        assert kwargs["role"] == "agent"
+        assert kwargs["agent_id"] == "worker"
+        return {
+            "project": "/private/project",
+            "state_file": "/private/project/state.md",
+            "todos": [
+                {"todo_id": f"todo_{index}", "text": "Read /private/project/state.md", "done": True,
+                 "status": "done", "task_class": "advancement_task", "archive_state": "active",
+                 "claimed_by": "worker", "evidence": "private evidence"}
+                for index in range(3)
+            ] + [
+                {"todo_id": "todo_monitor", "done": True, "task_class": "continuous_monitor"},
+                {"text": "no identity", "done": True, "task_class": "advancement_task", "archive_state": "active"},
+                {"todo_id": "todo_archive", "done": True, "task_class": "advancement_task", "archive_state": "archive"},
+                {"todo_id": "todo_open", "done": False, "task_class": "advancement_task"},
+            ],
+        }
+
+    monkeypatch.setattr("loopx.chat_completed_todos_api.list_goal_todos", read_todos)
+    server, thread = _start_server()
+    try:
+        response = _request(server.server_address[1], method="GET", origin=None,
+                            path="/api/chat/todos/completed?goal_id=test-goal&agent_id=worker&limit=2")
+        payload = json.loads(response.read())
+        assert response.status == 200
+        assert payload["total"] == 3
+        assert payload["next_offset"] == 2
+        assert [item["todo_id"] for item in payload["items"]] == ["todo_2", "todo_1"]
+        assert "/private/project" not in json.dumps(payload)
+        assert "evidence" not in payload["items"][0]
+        response = _request(server.server_address[1], method="GET", origin=None,
+                            path="/api/chat/todos/completed?goal_id=test-goal&agent_id=worker&offset=2&limit=2")
+        payload = json.loads(response.read())
+        assert [item["todo_id"] for item in payload["items"]] == ["todo_0"]
+        assert payload["next_offset"] is None
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_completed_todos_report_unknown_goal_as_not_found(monkeypatch) -> None:
+    def unknown_goal(**kwargs):
+        raise ValueError("unknown goal")
+
+    monkeypatch.setattr("loopx.chat_completed_todos_api.list_goal_todos", unknown_goal)
+    server, thread = _start_server()
+    try:
+        response = _request(server.server_address[1], method="GET", origin=None,
+                            path="/api/chat/todos/completed?goal_id=missing")
+        response.read()
+        assert response.status == 404
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_completed_todos_reject_invalid_queries_before_reading(monkeypatch) -> None:
+    def unexpected_read(**kwargs):
+        raise AssertionError("must not read task state")
+
+    monkeypatch.setattr("loopx.chat_completed_todos_api.list_goal_todos", unexpected_read)
+    server, thread = _start_server()
+    try:
+        for query in ("", "goal_id=", "goal_id=test&limit=0", "goal_id=test&offset=-1",
+                      "goal_id=test&limit=101", "goal_id=test&limit=no", "goal_id=test&state_file=secret",
+                      "goal_id=test&goal_id=other"):
+            response = _request(server.server_address[1], method="GET", origin=None,
+                                path=f"/api/chat/todos/completed?{query}")
+            response.read()
+            assert response.status == 400
+        server.selected_goal_id = "allowed"
+        response = _request(server.server_address[1], method="GET", origin=None,
+                            path="/api/chat/todos/completed?goal_id=other")
+        response.read()
+        assert response.status == 403
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 class _RuntimeController:
     def capabilities(self) -> list[dict[str, object]]:
         return []

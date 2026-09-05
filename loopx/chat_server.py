@@ -28,6 +28,7 @@ from .chat_goal_subagent_api import (
     add_goal_subagent_capability,
     add_goal_subagent_routes,
 )
+from .chat_completed_todos_api import CHAT_COMPLETED_TODOS_PATH, ChatCompletedTodosRequestMixin
 from .chat_status_api import ChatStatusRequestMixin
 from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
 from .chat_ssh_source_api import SSH_SOURCE_ENSURE_PATH, SshSourceRequestMixin
@@ -442,6 +443,7 @@ class ChatRequestHandler(
     LarkChatRequestMixin,
     config_api.ChatConfigurationRequestMixin,
     ChatStatusRequestMixin,
+    ChatCompletedTodosRequestMixin,
     BaseHTTPRequestHandler,
 ):
     server: ChatHTTPServer
@@ -760,6 +762,9 @@ class ChatRequestHandler(
             self._send_json(self.server.chat_store.session_snapshot(session_id))
         except KeyError:
             self._send_error("chat session was not found", status=404)
+
+    def _compact_todo_record(self, item: dict[str, object], *, protected_paths: list[Path]) -> dict[str, object]:
+        return _compact_todo(item, protected_paths=protected_paths)
 
     def _list_sessions(self) -> None:
         query = parse_qs(urlparse(self.path).query)
@@ -1299,6 +1304,7 @@ class ChatRequestHandler(
                 }
             )
         get_dispatch = {
+            CHAT_COMPLETED_TODOS_PATH: self._completed_todos,
             CHAT_SESSIONS_PATH: self._list_sessions,
             CHAT_ACTIONS_PATH: self._action_list,
             CHAT_GOAL_CONTEXTS_PATH: self._goal_contexts,

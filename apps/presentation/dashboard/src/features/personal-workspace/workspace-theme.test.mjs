@@ -39,7 +39,8 @@ assert.match(styles, /personal-select-option[\s\S]*min-height: 32px[\s\S]*font-s
 assert.ok(styles.includes('.personal-goal-tabs button[aria-current="page"]::after'), "Goal views use a restrained active underline");
 assert.match(styles, /personal-message.is-user[\s\S]*background: #f2f2f2/, "LoopX Chat uses a neutral owner message");
 assert.match(styles, /personal-task-kanban { gap: 0; border-block: 1px solid #ebebeb/, "LoopX Tasks uses continuous lane dividers");
-assert.match(styles, /personal-task-card > button > strong { font-size: 13px; font-weight: 600; line-height: 18px/, "LoopX task cards keep compact typography");
+assert.match(styles, /personal-task-card > button > strong { font-size: 14px; font-weight: 500; line-height: 20px/, "LoopX task titles use the Body M scale in every lane");
+assert.match(styles, /personal-task-lane-scroll > button, \.personal-task-card { flex: 0 0 auto;/, "Task cards do not shrink below their content height");
 assert.match(styles, /personal-files-list { border-radius: 12px/, "LoopX Files uses the standard card radius");
 assert.match(styles, /personal-icon-button {[^}]*flex: 0 0 36px;[^}]*min-width: 36px;[^}]*min-height: 36px;/, "Header icon buttons keep a stable square footprint");
 assert.match(styles, /personal-live-indicator {[^}]*flex: 0 0 auto;[^}]*white-space: nowrap;/, "Live status stays on one line when the header narrows");

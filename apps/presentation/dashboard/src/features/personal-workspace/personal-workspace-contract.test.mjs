@@ -340,8 +340,8 @@ assert.match(i18n, /当前本地工作区（未绑定 Repository）/, "Chinese w
 assert.doesNotMatch(model, /kind: "agent"/, "The drawer model omits the read-only Agent settings variant");
 assert.match(
   dashboard,
-  /statusRequestActive = source\.kind === "example"[\s\S]*?&& Boolean\(activeStatusRequestUrl\)[\s\S]*?&& Boolean\(loadError && requestedStatusUrl\)/,
-  "Initial load and refresh keep the workspace shell visible, while failed authoritative status requests surface recovery",
+  /statusRequestActive = source\.kind === "example"\s*&& !exampleModeRequested;/,
+  "Initial real-status loading must not display bundled example tasks; explicit example mode remains available",
 );
 
 assert.match(page, /if \(settingsOpen\)[\s\S]*<WorkspaceSettingsPage/, "Settings replace the whole workspace shell");

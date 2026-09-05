@@ -897,8 +897,8 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
             ) : null}
             {selection.item.safePreview ? <pre aria-label={t("drawer.outputSafePreview")} className="personal-safe-preview">{selection.item.safePreview}</pre> : <p className="personal-preview-unavailable">{t("drawer.previewUnavailable")}</p>}
             <div className="personal-drawer-action-grid">
-              <button className="personal-primary-action" onClick={() => { callbacks.onOpenOutput?.(selection.item); onClose(); }} type="button"><ExternalLink size={16} />{t("common.open")}</button>
-              <button className="personal-secondary-action" disabled={!callbacks.onExportOutput} onClick={() => void callbacks.onExportOutput?.(selection.item)} type="button"><Download size={16} />{t("common.export")}</button>
+              <button className="personal-primary-action" disabled={!callbacks.onOpenOutput} onClick={() => { callbacks.onOpenOutput?.(selection.item); onClose(); }} type="button"><ExternalLink size={16} />{t("files.openConversation")}</button>
+              <button className="personal-secondary-action" disabled={!callbacks.onExportOutput} onClick={() => void callbacks.onExportOutput?.(selection.item)} type="button"><Download size={16} />{t("files.exportSummary")}</button>
             </div>
           </>
         ) : null}

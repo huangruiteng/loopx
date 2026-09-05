@@ -70,6 +70,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { PersonalWorkspacePage } from "../features/personal-workspace/personal-workspace-page";
+import { useWorkspaceI18n } from "../features/personal-workspace/i18n";
 import {
   normalizePersonalHomeModel,
   type WorkspaceAgentOption,
@@ -1332,6 +1333,7 @@ function PersonalGoalHome({
   toggleTheme: () => void;
 }) {
   const readOnly = statusSourceControl.activeSource.readOnly;
+  const { t } = useWorkspaceI18n();
   const [runtimeAgents, setRuntimeAgents] = useState<Array<{
     adapter_kind: string;
     agent_id: string;
@@ -1419,6 +1421,7 @@ function PersonalGoalHome({
   const [sendingContextId, setSendingContextId] = useState<string | null>(null);
   const [runtimeBindings, setRuntimeBindings] = useState<Record<string, PersonalRuntimeBinding>>({});
   const [executionSessions, setExecutionSessions] = useState<ChatSessionSummary[]>([]);
+  const [executionDiscoveryError, setExecutionDiscoveryError] = useState<"partial" | "offline" | null>(null);
   const [executionSessionSnapshots, setExecutionSessionSnapshots] = useState<Record<string, ChatSessionSnapshot>>({});
   const managerMessageId = useRef(1);
   const proposalId = useRef(1);
@@ -1772,6 +1775,7 @@ function PersonalGoalHome({
   }, [readOnly, sessionDiscoveryKey, selectedGoal?.goalId]);
 
   useEffect(() => {
+    setExecutionDiscoveryError(null);
     if (readOnly) {
       setExecutionSessions([]);
       setExecutionSessionSnapshots({});
@@ -1784,7 +1788,15 @@ function PersonalGoalHome({
     }
     let cancelled = false;
     let timer = 0;
+    let failures = 0;
+    setExecutionSessions([]);
+    setExecutionSessionSnapshots({});
     const discover = async () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        timer = window.setTimeout(() => void discover(), 10_000);
+        return;
+      }
       try {
         const listed = await fetchChatSessions({ goalId: selectedGoal.goalId });
         if (!cancelled) {
@@ -1792,6 +1804,9 @@ function PersonalGoalHome({
           setExecutionSessions(taskSessions);
           const snapshots = await Promise.allSettled(taskSessions.map((session) => fetchChatSession(session.session_id)));
           if (!cancelled) {
+            const partialFailure = snapshots.some((result) => result.status === "rejected");
+            failures = partialFailure ? failures + 1 : 0;
+            setExecutionDiscoveryError(partialFailure ? "partial" : null);
             setExecutionSessionSnapshots(Object.fromEntries(snapshots.flatMap((result, index) => {
               if (result.status !== "fulfilled") return [];
               return [[taskSessions[index].session_id, result.value]];
@@ -1799,9 +1814,10 @@ function PersonalGoalHome({
           }
         }
       } catch {
-        // Durable Todos remain visible while the local execution runtime reconnects.
+        failures += 1;
+        if (!cancelled) setExecutionDiscoveryError("offline");
       }
-      if (!cancelled) timer = window.setTimeout(() => void discover(), 2_000);
+      if (!cancelled) timer = window.setTimeout(() => void discover(), Math.min(30_000, 2_000 * 2 ** Math.min(failures, 4)));
     };
     void discover();
     return () => {
@@ -2479,6 +2495,7 @@ function PersonalGoalHome({
   };
   return (
     <div className={theme === "dark" ? "dark" : ""} data-testid="personal-goal-home">
+      {executionDiscoveryError ? <p role="status" className="m-0 bg-amber-50 px-4 py-2 text-sm text-amber-900">{t(executionDiscoveryError === "partial" ? "runs.discoveryPartial" : "runs.discoveryOffline")}</p> : null}
       <PersonalWorkspacePage
         agents={agentOptions.map((agent) => ({
           adapterKind: agent.adapterKind,
@@ -2774,8 +2791,7 @@ export function DashboardPage() {
   );
 
   const statusRequestActive = source.kind === "example"
-    && Boolean(activeStatusRequestUrl)
-    && Boolean(loadError && requestedStatusUrl);
+    && !exampleModeRequested;
   const queue = payload.attention_queue;
   const runHistory = payload.run_history;
   const goalRows = useMemo(
@@ -3048,8 +3064,8 @@ export function DashboardPage() {
         error={loadError}
         isLoading={isLoading}
         onReset={resetToExample}
-        onRetry={() => void loadFromUrl(activeStatusRequestUrl)}
-        requestedUrl={activeStatusRequestUrl}
+        onRetry={() => void loadFromUrl(activeStatusRequestUrl || defaultGlobalStatusUrl)}
+        requestedUrl={activeStatusRequestUrl || defaultGlobalStatusUrl}
         theme={theme}
         toggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
       />

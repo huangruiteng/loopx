@@ -938,6 +938,25 @@ export async function applyGoalSubagentConfiguration(
   return verifyGoalSubagentConfigurationResult(result, request);
 }
 
+export async function fetchCompletedTodos(goalId: string, agentId?: string, offset = 0) {
+  const query = new URLSearchParams({ goal_id: goalId, offset: String(offset), limit: "50" });
+  if (agentId) query.set("agent_id", agentId);
+  const result = z.object({
+    ok: z.literal(true),
+    goal_id: z.string(),
+    scope: z.literal("active_completed_advancement"),
+    total: z.number().int().nonnegative(),
+    next_offset: z.number().int().nonnegative().nullable(),
+    items: z.array(z.object({
+      todo_id: z.string(), text: z.string(), status: z.string(),
+      priority: z.string().nullable(), claimed_by: z.string().nullable(),
+      task_class: z.literal("advancement_task"),
+    })),
+  }).parse(await requestJson<unknown>(`/api/chat/todos/completed?${query}`));
+  if (result.goal_id !== goalId) throw new Error("Completed task response does not match the selected Goal");
+  return result;
+}
+
 export async function previewTodo(goalId: string, text: string) {
   const preview = todoPreviewSchema.parse(
     await requestJson<unknown>("/api/chat/todo/dry-run", {
