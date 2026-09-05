@@ -367,6 +367,279 @@ def test_managed_close_rejects_active_turn_before_closing_adapter(
     assert runtime.close_session(session_id) is True
 
 
+def test_interrupt_does_not_overwrite_a_completed_turn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="goal-one",
+        agent_id="codex",
+        executor_endpoint_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="thread-one",
+        upstream_mode="chat",
+    )
+    session_id = str(session["session_id"])
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    adapter = _BlockingChatAdapter()
+    runtime.adapters[session_id] = adapter  # type: ignore[assignment]
+    turn, created = runtime.submit_turn(
+        session_id=session_id,
+        client_turn_id="interrupt-completion-race",
+        message="finish before interruption commits",
+        work_dir=tmp_path,
+        objective="sample objective",
+    )
+    turn_id = str(turn["turn_id"])
+    assert created is True
+    assert adapter.started.wait(timeout=2)
+
+    original_load_turn = store.load_turn
+    interrupt_read = threading.Event()
+    resume_interrupt = threading.Event()
+
+    def pause_after_interrupt_read(
+        requested_session_id: str,
+        requested_turn_id: str,
+    ) -> dict[str, object] | None:
+        loaded = original_load_turn(requested_session_id, requested_turn_id)
+        if threading.current_thread().name == "interrupt-turn":
+            interrupt_read.set()
+            resume_interrupt.wait(timeout=2)
+        return loaded
+
+    monkeypatch.setattr(store, "load_turn", pause_after_interrupt_read)
+    interrupted: list[dict[str, object]] = []
+    interrupt_thread = threading.Thread(
+        target=lambda: interrupted.append(
+            runtime.interrupt_turn(session_id=session_id, turn_id=turn_id)
+        ),
+        name="interrupt-turn",
+        daemon=True,
+    )
+    interrupt_thread.start()
+    assert interrupt_read.wait(timeout=2)
+
+    adapter.release.set()
+    assert runtime.wait_for_turn(
+        session_id=session_id,
+        turn_id=turn_id,
+        timeout_sec=2,
+    )["status"] == "completed"
+    resume_interrupt.set()
+    interrupt_thread.join(timeout=2)
+
+    assert not interrupt_thread.is_alive()
+    assert interrupted[0]["status"] == "completed"
+    completed = store.load_turn(session_id, turn_id)
+    assert completed is not None
+    assert completed["status"] == "completed"
+    assert completed["response"] == {"message": "late response"}
+    assert [
+        event["kind"] for event in store.events_after(session_id, turn_id, None)
+    ] == ["turn.queued", "turn.completed"]
+    assert [
+        message["text"]
+        for message in store.messages(session_id)
+        if message["role"] == "agent"
+    ] == ["late response"]
+    assert (session_id, turn_id) not in runtime.cancelled_turns
+
+
+def test_interrupting_a_queued_turn_does_not_touch_the_active_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="goal-one",
+        agent_id="codex",
+        executor_endpoint_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="thread-one",
+        upstream_mode="chat",
+    )
+    session_id = str(session["session_id"])
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    adapter = _BlockingChatAdapter()
+    interrupt_calls: list[str | None] = []
+    monkeypatch.setattr(adapter, "interrupt_turn", interrupt_calls.append)
+    runtime.adapters[session_id] = adapter  # type: ignore[assignment]
+    active, created = runtime.submit_turn(
+        session_id=session_id,
+        client_turn_id="active-turn",
+        message="keep running",
+        work_dir=tmp_path,
+        objective="sample objective",
+    )
+    assert created is True
+    assert adapter.started.wait(timeout=2)
+    queued, created = store.create_queued_turn(
+        session_id,
+        client_turn_id="queued-turn",
+        message="cancel only this queued turn",
+    )
+    assert created is True
+
+    interrupted = runtime.interrupt_turn(
+        session_id=session_id,
+        turn_id=str(queued["turn_id"]),
+    )
+
+    assert interrupted["status"] == "interrupted"
+    assert interrupt_calls == []
+    current = store.load_session(session_id)
+    assert current is not None
+    assert current["active_turn_id"] == active["turn_id"]
+    assert store.load_turn(session_id, str(active["turn_id"]))["status"] in {  # type: ignore[index]
+        "starting",
+        "running",
+    }
+    adapter.release.set()
+    assert runtime.wait_for_turn(
+        session_id=session_id,
+        turn_id=str(active["turn_id"]),
+        timeout_sec=2,
+    )["status"] == "completed"
+
+
+def test_completed_turn_is_visible_only_after_its_side_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="goal-one",
+        agent_id="codex",
+        executor_endpoint_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="thread-one",
+        upstream_mode="chat",
+    )
+    session_id = str(session["session_id"])
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    adapter = _BlockingChatAdapter()
+    runtime.adapters[session_id] = adapter  # type: ignore[assignment]
+    turn, created = runtime.submit_turn(
+        session_id=session_id,
+        client_turn_id="completion-publication-order",
+        message="publish only after closeout",
+        work_dir=tmp_path,
+        objective="sample objective",
+    )
+    turn_id = str(turn["turn_id"])
+    assert created is True
+    assert adapter.started.wait(timeout=2)
+
+    original_append_message = store.append_message
+    completion_closeout_started = threading.Event()
+    resume_completion = threading.Event()
+
+    def pause_agent_message(*args: object, **kwargs: object) -> dict[str, object]:
+        if kwargs.get("role") == "agent" and kwargs.get("turn_id") == turn_id:
+            completion_closeout_started.set()
+            resume_completion.wait(timeout=2)
+        return original_append_message(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(store, "append_message", pause_agent_message)
+    adapter.release.set()
+    assert completion_closeout_started.wait(timeout=2)
+
+    visible = store.load_turn(session_id, turn_id)
+    assert visible is not None
+    assert visible["status"] == "completing"
+    with pytest.raises(TimeoutError):
+        runtime.wait_for_turn(session_id=session_id, turn_id=turn_id, timeout_sec=0.05)
+    current = store.load_session(session_id)
+    assert current is not None
+    assert current["status"] == "busy"
+    assert current["active_turn_id"] == turn_id
+    assert [event["kind"] for event in store.events_after(session_id, turn_id, None)] == [
+        "turn.queued"
+    ]
+
+    resume_completion.set()
+    completed = runtime.wait_for_turn(
+        session_id=session_id,
+        turn_id=turn_id,
+        timeout_sec=2,
+    )
+    assert completed["status"] == "completed"
+    current = store.load_session(session_id)
+    assert current is not None
+    assert current["status"] == "ready"
+    assert current["active_turn_id"] is None
+    assert [
+        message["text"]
+        for message in store.messages(session_id)
+        if message["role"] == "agent"
+    ] == ["late response"]
+    assert [
+        event["kind"] for event in store.events_after(session_id, turn_id, None)
+    ] == ["turn.queued", "turn.completed"]
+
+
+def test_completing_turn_replays_closeout_after_restart(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="goal-one",
+        agent_id="codex",
+        executor_endpoint_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="thread-one",
+        upstream_mode="chat",
+    )
+    session_id = str(session["session_id"])
+    turn, created = store.create_turn(
+        session_id,
+        client_turn_id="restart-completion-closeout",
+        message="recover this completion",
+    )
+    turn_id = str(turn["turn_id"])
+    assert created is True
+    store.update_turn(session_id, turn_id, status="starting")
+    store.update_turn(
+        session_id,
+        turn_id,
+        expected_statuses={"starting"},
+        status="completing",
+        response={"message": "durable response"},
+        completed_at="2026-09-05T00:00:00Z",
+        last_activity_at="2026-09-05T00:00:00Z",
+    )
+    monkeypatch.setattr(
+        store,
+        "release_active_turn",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("crash")),
+    )
+
+    with pytest.raises(RuntimeError, match="crash"):
+        store.finalize_managed_turn_completion(session_id, turn_id)
+    assert store.load_turn(session_id, turn_id)["status"] == "completing"  # type: ignore[index]
+
+    restarted = ChatSessionStore(tmp_path)
+
+    completed = restarted.load_turn(session_id, turn_id)
+    assert completed is not None
+    assert completed["status"] == "completed"
+    assert [
+        message["text"]
+        for message in restarted.messages(session_id)
+        if message["role"] == "agent"
+    ] == ["durable response"]
+    assert [
+        event["kind"] for event in restarted.events_after(session_id, turn_id, None)
+    ] == ["turn.queued", "turn.completed"]
+    current = restarted.load_session(session_id)
+    assert current is not None
+    assert current["status"] == "ready"
+    assert current["active_turn_id"] is None
+
+
 def test_resume_with_healthy_adapter_restores_persisted_ready_state(
     tmp_path: Path,
 ) -> None:

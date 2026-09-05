@@ -152,7 +152,12 @@ class _TurnEventBuffer:
         changes = dict(self.progress)
         if not changes.get("first_event_at"):
             changes.pop("first_event_at", None)
-        self.store.update_turn(self.session_id, self.turn_id, **changes)
+        self.store.update_turn(
+            self.session_id,
+            self.turn_id,
+            expected_statuses={"starting", "running"} if "status" in changes else None,
+            **changes,
+        )
         self.store.update_session(
             self.session_id,
             last_activity_at=str(changes["last_activity_at"]),
@@ -448,20 +453,22 @@ class ChatRuntimeController:
         if active_turn_id:
             active = self.store.load_turn(session_id, str(active_turn_id))
             if active and active.get("status") not in TERMINAL_TURN_STATES:
-                self.store.update_turn(
+                failed = self.store.update_turn(
                     session_id,
                     str(active_turn_id),
+                    expected_statuses={"queued", "starting", "running", "interrupting"},
                     status="failed",
                     error_code="server_restarted",
                     error="LoopX Chat restarted before this turn completed.",
                     completed_at=utc_now(),
                 )
-                self.store.append_event(
-                    session_id,
-                    str(active_turn_id),
-                    kind="turn.failed",
-                    payload={"error_code": "server_restarted"},
-                )
+                if failed is not None:
+                    self.store.append_event(
+                        session_id,
+                        str(active_turn_id),
+                        kind="turn.failed",
+                        payload={"error_code": "server_restarted"},
+                    )
         try:
             stored_messages = self.store.messages(session_id)
             history = [
@@ -821,7 +828,20 @@ class ChatRuntimeController:
         adapter: ChatRuntimeAdapter,
     ) -> None:
         started = utc_now()
-        self.store.update_turn(session_id, turn_id, status="starting", started_at=started)
+        started_turn = self.store.update_turn(
+            session_id,
+            turn_id,
+            expected_statuses={"queued"},
+            status="starting",
+            started_at=started,
+        )
+        if started_turn is None:
+            with self.lock:
+                self.cancelled_turns.discard((session_id, turn_id))
+                done_event = self.turn_done_events.pop((session_id, turn_id), None)
+            if done_event is not None:
+                done_event.set()
+            return
         event_buffer = _TurnEventBuffer(
             store=self.store,
             session_id=session_id,
@@ -854,34 +874,24 @@ class ChatRuntimeController:
             event_buffer.close()
             if consume_interrupted():
                 return
-            if response.get("message"):
-                self.store.append_message(
-                    session_id,
-                    role="agent",
-                    text=str(response["message"]),
-                    turn_id=turn_id,
-                )
-            if adapter.upstream_thread_id != str((self.store.load_session(session_id) or {}).get("upstream_thread_id") or ""):
-                self.store.update_session(session_id, upstream_thread_id=adapter.upstream_thread_id)
             completed = utc_now()
-            self.store.update_turn(
+            completed_turn = self.store.update_turn(
                 session_id,
                 turn_id,
-                status="completed",
+                expected_statuses={"starting", "running"},
+                status="completing",
                 response=response,
                 completed_at=completed,
                 last_activity_at=completed,
             )
-            self.store.append_completed_response_events(
+            if completed_turn is None:
+                consume_interrupted()
+                return
+            if adapter.upstream_thread_id != str((self.store.load_session(session_id) or {}).get("upstream_thread_id") or ""):
+                self.store.update_session(session_id, upstream_thread_id=adapter.upstream_thread_id)
+            self.store.finalize_managed_turn_completion(
                 session_id,
                 turn_id,
-                response=response,
-            )
-            self.store.release_active_turn(
-                session_id,
-                turn_id,
-                last_activity_at=completed,
-                last_error_code=None,
             )
         except CodexChatTimeoutError as exc:
             event_buffer.close()
@@ -925,15 +935,18 @@ class ChatRuntimeController:
         gate: dict[str, Any] | None = None,
     ) -> None:
         completed = utc_now()
-        self.store.update_turn(
+        failed = self.store.update_turn(
             session_id,
             turn_id,
+            expected_statuses={"starting", "running"},
             status=status,
             error_code=error_code,
             error=message,
             completed_at=completed,
             last_activity_at=completed,
         )
+        if failed is None:
+            return
         payload: dict[str, Any] = {"error_code": error_code, "message": message}
         if gate:
             payload["gate"] = gate
@@ -952,14 +965,30 @@ class ChatRuntimeController:
             raise KeyError("chat turn was not found")
         if turn.get("status") in TERMINAL_TURN_STATES:
             return turn
+        interrupting = self.store.update_turn(
+            session_id,
+            turn_id,
+            expected_statuses={"queued", "starting", "running"},
+            status="interrupting",
+        )
+        if interrupting is None:
+            current = self.store.load_turn(session_id, turn_id)
+            if current is None:
+                raise KeyError("chat turn was not found")
+            if current.get("status") == "completing":
+                return self.store.finalize_managed_turn_completion(
+                    session_id,
+                    turn_id,
+                ) or current
+            return current
+        session = self.store.load_session(session_id)
+        target_is_active = bool(session and session.get("active_turn_id") == turn_id)
         with self.lock:
             adapter = self.adapters.get(session_id)
             event_buffer = self.turn_event_buffers.get((session_id, turn_id))
             done_event = self.turn_done_events.get((session_id, turn_id))
-        self.store.update_turn(session_id, turn_id, status="interrupting")
-        with self.lock:
             self.cancelled_turns.add((session_id, turn_id))
-        if adapter is not None:
+        if adapter is not None and target_is_active:
             try:
                 adapter.interrupt_turn(str(turn.get("upstream_turn_id") or "") or None)
             except Exception:
@@ -971,23 +1000,31 @@ class ChatRuntimeController:
             # is unhealthy. Stop that transport before making the Session ready;
             # the next Turn will resume the persisted upstream thread on a fresh
             # adapter instead of racing two readers on one event stream.
-            if adapter is not None:
+            if adapter is not None and target_is_active:
                 try:
                     adapter.close_session()
                 except Exception:
                     pass
             with self.lock:
-                if self.adapters.get(session_id) is adapter:
+                if target_is_active and self.adapters.get(session_id) is adapter:
                     self.adapters.pop(session_id, None)
             done_event.wait(timeout=1.0)
         completed = utc_now()
         updated = self.store.update_turn(
             session_id,
             turn_id,
+            expected_statuses={"interrupting"},
             status="interrupted",
             completed_at=completed,
             last_activity_at=completed,
         )
+        with self.lock:
+            self.cancelled_turns.discard((session_id, turn_id))
+        if updated is None:
+            current = self.store.load_turn(session_id, turn_id)
+            if current is None:
+                raise KeyError("chat turn was not found")
+            return current
         self.store.append_event(session_id, turn_id, kind="turn.interrupted", payload={})
         self.store.append_message(
             session_id,
@@ -995,12 +1032,13 @@ class ChatRuntimeController:
             text="已中断。你可以在当前会话继续发送消息。",
             turn_id=turn_id,
         )
-        self.store.release_active_turn(
-            session_id,
-            turn_id,
-            last_activity_at=completed,
-            last_error_code=None,
-        )
+        if target_is_active:
+            self.store.release_active_turn(
+                session_id,
+                turn_id,
+                last_activity_at=completed,
+                last_error_code=None,
+            )
         return updated
 
     def wait_for_turn(self, *, session_id: str, turn_id: str, timeout_sec: float = 920.0) -> dict[str, Any]:
