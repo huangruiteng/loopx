@@ -129,8 +129,67 @@ def test_workspace_index_excludes_generation_without_publication_cursor(
     assert collect_periodic_report_workspace_index(runtime_root=tmp_path) == {
         "schema_version": "periodic_report_workspace_index_v0",
         "count": 0,
+        "returned_count": 0,
+        "total_count": 0,
+        "limit": 100,
+        "offset": 0,
+        "truncated": False,
         "items": [],
     }
+
+
+def test_workspace_index_bounds_latest_items_and_supports_offset(
+    tmp_path: Path,
+) -> None:
+    projection, _cursor = _published(tmp_path)
+    for index in range(4):
+        agent_id = f"synthetic-agent-{index}"
+        candidate = build_periodic_report_publication_candidate(
+            goal_id="synthetic-goal",
+            agent_id=agent_id,
+            generation_id=f"report_generation_{index}",
+            trigger_receipt={"coalesced_trigger_ids": [f"trigger_{index}"]},
+            facts=[
+                {
+                    **fact,
+                    "fact_fingerprint": "sha256:" + str(index + 1) * 64,
+                }
+                for fact in _facts()
+            ],
+            baseline=None,
+            workspace_projection_sha256=str(projection["content_sha256"]),
+        )
+        commit_periodic_report_publication_cursor(
+            runtime_root=tmp_path,
+            candidate=candidate,
+            publication_id=f"publication_{index}",
+            delivered_at=f"2026-01-{index + 1:02d}T12:05:00Z",
+            covered_until=f"2026-01-{index + 1:02d}T12:00:00Z",
+        )
+
+    latest = collect_periodic_report_workspace_index(
+        runtime_root=tmp_path,
+        goal_id="synthetic-goal",
+        limit=2,
+    )
+    page = collect_periodic_report_workspace_index(
+        runtime_root=tmp_path,
+        goal_id="synthetic-goal",
+        limit=2,
+        offset=2,
+    )
+
+    assert latest["count"] == 2
+    assert latest["returned_count"] == 2
+    assert latest["total_count"] == 5
+    assert latest["limit"] == 2
+    assert latest["offset"] == 0
+    assert latest["truncated"] is True
+    assert page["count"] == 2
+    assert page["returned_count"] == 2
+    assert page["offset"] == 2
+    assert page["items"][0]["delivered_at"] < latest["items"][-1]["delivered_at"]
+    assert page["items"][-1]["delivered_at"] == "2026-01-02T12:05:00Z"
 
 
 def test_published_workspace_projection_preserves_delta_and_lineage(

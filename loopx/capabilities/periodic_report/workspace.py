@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -15,6 +16,9 @@ from .incremental import normalize_periodic_report_publication_cursor
 
 PROJECTION_SCHEMA = "periodic_report_workspace_projection_v0"
 INDEX_SCHEMA = "periodic_report_workspace_index_v0"
+DEFAULT_WORKSPACE_INDEX_LIMIT = 100
+MAX_WORKSPACE_INDEX_LIMIT = 200
+MAX_WORKSPACE_INDEX_OFFSET = 10_000
 _PROJECTION_FILENAME = "workspace-projection.json"
 
 
@@ -237,12 +241,20 @@ def read_published_periodic_report_workspace_projection(
 
 
 def collect_periodic_report_workspace_index(
-    *, runtime_root: Path, goal_id: str | None = None
+    *,
+    runtime_root: Path,
+    goal_id: str | None = None,
+    limit: int = DEFAULT_WORKSPACE_INDEX_LIMIT,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Project a bounded latest-published report index without report prose."""
 
+    normalized_limit = min(max(0, int(limit)), MAX_WORKSPACE_INDEX_LIMIT)
+    normalized_offset = min(max(0, int(offset)), MAX_WORKSPACE_INDEX_OFFSET)
     root = runtime_root.expanduser().resolve() / "goals"
-    items: list[dict[str, Any]] = []
+    total_count = 0
+    selected: list[tuple[str, str, dict[str, Any]]] = []
+    selection_size = normalized_offset + normalized_limit
     pattern = (
         f"{goal_id}/periodic_reports/publication-cursors/*.json"
         if goal_id
@@ -256,26 +268,42 @@ def collect_periodic_report_workspace_index(
         digest = str(cursor.get("workspace_projection_sha256") or "")
         if not digest:
             continue
-        items.append(
-            {
+        total_count += 1
+        item = {
+            "goal_id": cursor["goal_id"],
+            "agent_id": cursor["agent_id"],
+            "generation_id": cursor["generation_id"],
+            "publication_id": cursor["publication_id"],
+            "delivered_at": cursor["delivered_at"],
+            "predecessor_publication_id": cursor.get("predecessor_publication_id"),
+            "detail_ref": {
                 "goal_id": cursor["goal_id"],
                 "agent_id": cursor["agent_id"],
                 "generation_id": cursor["generation_id"],
-                "publication_id": cursor["publication_id"],
-                "delivered_at": cursor["delivered_at"],
-                "predecessor_publication_id": cursor.get("predecessor_publication_id"),
-                "detail_ref": {
-                    "goal_id": cursor["goal_id"],
-                    "agent_id": cursor["agent_id"],
-                    "generation_id": cursor["generation_id"],
-                    "content_sha256": digest,
-                },
-            }
-        )
-    items.sort(key=lambda item: item["delivered_at"], reverse=True)
+                "content_sha256": digest,
+            },
+        }
+        if selection_size:
+            candidate = (str(item["delivered_at"]), str(path), item)
+            if len(selected) < selection_size:
+                heapq.heappush(selected, candidate)
+            elif candidate[:2] > selected[0][:2]:
+                heapq.heapreplace(selected, candidate)
+    selected.sort(key=lambda candidate: candidate[:2], reverse=True)
+    items = [
+        item
+        for _, _, item in selected[
+            normalized_offset : normalized_offset + normalized_limit
+        ]
+    ]
     return {
         "schema_version": INDEX_SCHEMA,
         "count": len(items),
+        "returned_count": len(items),
+        "total_count": total_count,
+        "limit": normalized_limit,
+        "offset": normalized_offset,
+        "truncated": normalized_offset + len(items) < total_count,
         "items": items,
     }
 
@@ -283,6 +311,9 @@ def collect_periodic_report_workspace_index(
 __all__ = [
     "INDEX_SCHEMA",
     "PROJECTION_SCHEMA",
+    "DEFAULT_WORKSPACE_INDEX_LIMIT",
+    "MAX_WORKSPACE_INDEX_LIMIT",
+    "MAX_WORKSPACE_INDEX_OFFSET",
     "build_periodic_report_workspace_projection",
     "collect_periodic_report_workspace_index",
     "normalize_periodic_report_workspace_projection",

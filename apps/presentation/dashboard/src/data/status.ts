@@ -855,6 +855,11 @@ export const periodicReportIndexResponseSchema = z.object({
   periodic_reports: z.object({
     schema_version: z.literal("periodic_report_workspace_index_v0"),
     count: z.number().int().nonnegative(),
+    returned_count: z.number().int().nonnegative(),
+    total_count: z.number().int().nonnegative(),
+    limit: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+    truncated: z.boolean(),
     items: z.array(periodicReportIndexItemSchema),
   }).strict(),
 }).strict();

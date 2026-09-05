@@ -170,7 +170,10 @@ binds its exact SHA-256, and the Goal Channel sink may advance that binding into
 publication cursor only after delivery readback succeeds. The compact
 `periodic_report_workspace_index_v0` hot path contains identity, delivery time,
 predecessor lineage, and an exact content-addressed detail reference, but no
-report prose. The full projection is a loopback-only cold read and must match
+report prose. It returns the newest 100 items by default, accepts a bounded
+`limit` (0..200) and non-negative `offset`, and reports `total_count` and
+`truncated` so callers can page without receiving an unbounded response. The
+full projection is a loopback-only cold read and must match
 the current publication cursor. Approval-pending, generation-only, stale, or
 digest-mismatched projections therefore fail closed instead of appearing as
 published.

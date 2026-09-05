@@ -154,6 +154,9 @@ def test_status_server_serves_only_exact_published_report_ref(tmp_path: Path) ->
         assert status == 200
         index = index_response["periodic_reports"]
         assert isinstance(index, dict)
+        assert index["limit"] == 100
+        assert index["offset"] == 0
+        assert index["truncated"] is False
         ref = index["items"][0]["detail_ref"]
         status, detail = _request(
             f"{base}{DEFAULT_PERIODIC_REPORT_PROJECTION_PATH}?"
@@ -191,3 +194,16 @@ def test_status_server_rejects_public_origin_and_mismatched_digest(
     assert status == 400
     assert "not the current publication" in str(payload["error"])
     assert projection["content_sha256"] not in str(payload)
+
+
+def test_status_server_bounds_periodic_report_index_window(
+    tmp_path: Path,
+) -> None:
+    with _server(tmp_path) as (base, _projection):
+        status, payload = _request(
+            f"{base}{DEFAULT_PERIODIC_REPORT_INDEX_PATH}?limit=201",
+            origin="http://127.0.0.1:5173",
+        )
+
+    assert status == 400
+    assert "limit must be between 0 and 200" in str(payload["error"])

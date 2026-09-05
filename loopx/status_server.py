@@ -11,6 +11,9 @@ from .control_plane.goals.configure_goal_service import (
     configure_goal_with_global_sync,
 )
 from .capabilities.periodic_report.workspace import (
+    DEFAULT_WORKSPACE_INDEX_LIMIT,
+    MAX_WORKSPACE_INDEX_LIMIT,
+    MAX_WORKSPACE_INDEX_OFFSET,
     collect_periodic_report_workspace_index,
     read_published_periodic_report_workspace_projection,
 )
@@ -812,8 +815,25 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
                 registry_path=self.server.registry_path,
             )
             goal_id = (query.get("goal_id") or [""])[0].strip() or None
+            limit_text = (query.get("limit") or [""])[0].strip()
+            offset_text = (query.get("offset") or [""])[0].strip()
+            limit = DEFAULT_WORKSPACE_INDEX_LIMIT if not limit_text else int(limit_text)
+            offset = 0 if not offset_text else int(offset_text)
+            if limit < 0 or limit > MAX_WORKSPACE_INDEX_LIMIT:
+                raise ValueError(
+                    "periodic report index limit must be between 0 and "
+                    f"{MAX_WORKSPACE_INDEX_LIMIT}"
+                )
+            if offset < 0 or offset > MAX_WORKSPACE_INDEX_OFFSET:
+                raise ValueError(
+                    "periodic report index offset must be between 0 and "
+                    f"{MAX_WORKSPACE_INDEX_OFFSET}"
+                )
             index = collect_periodic_report_workspace_index(
-                runtime_root=runtime_root, goal_id=goal_id
+                runtime_root=runtime_root,
+                goal_id=goal_id,
+                limit=limit,
+                offset=offset,
             )
         except Exception as exc:  # noqa: BLE001 - local UI needs the read failure.
             self._send_json({"ok": False, "error": str(exc)}, status=400)
