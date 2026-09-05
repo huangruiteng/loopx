@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -177,27 +178,7 @@ def codex_home() -> Path:
 
 
 def parse_automation_toml(path: Path) -> dict[str, Any]:
-    values: dict[str, Any] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, raw_value = line.split("=", 1)
-        key = key.strip()
-        value = raw_value.strip()
-        if value.startswith('"') and value.endswith('"'):
-            try:
-                values[key] = json.loads(value)
-            except json.JSONDecodeError:
-                values[key] = value[1:-1]
-        elif value in {"true", "false"}:
-            values[key] = value == "true"
-        else:
-            try:
-                values[key] = int(value)
-            except ValueError:
-                values[key] = value
-    return values
+    return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
 def infer_goal_id_from_prompt(prompt: str) -> str | None:
@@ -258,7 +239,7 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
     for path in sorted(automations_root.glob("*/automation.toml")):
         try:
             automation = parse_automation_toml(path)
-        except OSError:
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError):
             continue
         if automation.get("kind") != "heartbeat":
             continue
