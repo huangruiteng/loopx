@@ -97,7 +97,10 @@ document.querySelector("#copy-diagnostics").onclick = async () => {
 };
 async function run(action) {
   if (working) return;
-  render({phase: action === "check" ? "checking" : action === "repair" ? "installing_runtime" : "downloading"});
+  // Match the phase the backend publishes for each action (rollback restores
+  // the previous app; restart keeps the required-restart state) instead of
+  // previewing a download that is not happening.
+  render({phase: action === "check" ? "checking" : action === "repair" ? "installing_runtime" : action === "rollback" ? "installing_app" : action === "restart" ? "restart_required" : "downloading"});
   try { render(await window.__TAURI__.core.invoke("desktop_update", {action,channel:channel.value})); }
   catch (error) { render({phase:"error", details:{code: safeCode(error)}}); }
 }
