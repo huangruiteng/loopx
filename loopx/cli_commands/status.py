@@ -11,6 +11,9 @@ from ..control_plane.runtime.status_projection_cache import (
     resolve_status_projection_cache_runtime_root,
     write_status_projection_cache,
 )
+from ..control_plane.post_writeback_composition_retry import (
+    collect_pending_composition_retry_projection,
+)
 from ..control_plane.status.agent_lane_projection import (
     compact_agent_lane_status_payload_for_display,
 )
@@ -232,6 +235,13 @@ def handle_status_command(
                 agent_id=args.agent_id,
             )
             compact_agent_lane_todo_index_for_status_display(payload)
+        pending_composition_retries = collect_pending_composition_retry_projection(
+            runtime_root, args.goal_id, agent_id=args.agent_id
+        )
+        if pending_composition_retries is not None:
+            payload["pending_composition_retry_receipts"] = (
+                pending_composition_retries
+            )
     except Exception as exc:
         payload = {
             "ok": False,
