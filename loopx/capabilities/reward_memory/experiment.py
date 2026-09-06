@@ -8,7 +8,7 @@ from typing import Any
 from ...agent_registry import normalize_registered_agents
 from ...control_plane.reward_memory import reward_memory_goal_policy
 from ...control_plane.todos.contract import normalize_todo_claimed_by
-from .application import normalize_reward_memory_provider_binding
+from .application import TOKEN_RE, normalize_reward_memory_provider_binding
 from .ingestion import normalize_reward_memory_standing_policy
 from .registry import MAX_CORPORA, normalize_reward_memory_corpus
 from .scoped_feedback import SCOPED_FEEDBACK_ADAPTER
@@ -363,12 +363,18 @@ def _normalize_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
                         or not ref.startswith("candidate:")
                         or len(ref) > 100
                         or any(c.isspace() for c in ref)
+                        # A ref outside the application token charset can never
+                        # match an emitted candidate_ref, so requiring it would
+                        # permanently block every message for this destination.
+                        or TOKEN_RE.fullmatch(ref) is None
                         for ref in refs
                     )
                     or len(set(refs)) != len(refs)
                 ):
                     raise ValueError(
-                        "required_candidate_refs must contain up to three unique candidate refs"
+                        "required_candidate_refs must contain up to three unique "
+                        "public-safe candidate refs matching the application token "
+                        "charset"
                     )
                 destinations[digest] = {
                     "query_label": label,

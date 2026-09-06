@@ -394,6 +394,17 @@ def test_required_guidance_has_separate_lookup_and_review(tmp_path, monkeypatch)
             "destination_digest": "a" * 64,
             "required_candidate_refs": ["candidate:x"] * 2,
         },
+        # Refs outside the application token charset can never match an
+        # emitted candidate_ref, so requiring them would permanently block
+        # the destination.
+        {
+            "destination_digest": "a" * 64,
+            "required_candidate_refs": ["candidate:中文规则"],
+        },
+        {
+            "destination_digest": "a" * 64,
+            "required_candidate_refs": ["candidate:a$b"],
+        },
     ],
 )
 def test_destination_config_rejects_ambiguous_identity(tmp_path, invalid):

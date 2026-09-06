@@ -550,12 +550,23 @@ def _render(payload: dict[str, object]) -> str:
         for item in guidance.get("guidance") or []:
             lines.append(f"- guidance: {item.get('content_summary')}")
         if guidance.get("agent_review_required"):
-            lines.append(
-                "Agent: assess this guidance against current evidence and safe alternatives; "
-                "only if sending is still appropriate, rerun with --reviewed-guidance-digest "
-                + str(guidance.get("review_digest"))
-                + ". This is not a request for user approval."
-            )
+            review_digest = guidance.get("review_digest")
+            if isinstance(review_digest, str) and review_digest:
+                lines.append(
+                    "Agent: assess this guidance against current evidence and safe alternatives; "
+                    "only if sending is still appropriate, rerun with --reviewed-guidance-digest "
+                    + review_digest
+                    + ". This is not a request for user approval."
+                )
+            else:
+                # configuration_error blocks carry no digest (review cannot
+                # waive them); surface the repair hint instead of a None
+                # placeholder that would send the agent into a retry loop.
+                action = guidance.get("recommended_action")
+                lines.append(
+                    "Agent: guidance review is required but no digest was produced"
+                    + (f"; {action}" if isinstance(action, str) and action else ".")
+                )
     feedback = payload.get("reward_memory_feedback_review")
     if isinstance(feedback, dict):
         lines.append(f"- Reward Memory (advisory): {feedback['instruction']}")
