@@ -52,6 +52,11 @@ POST_WRITEBACK_HOOK_DISPATCH_SCHEMA_VERSION = (
 POST_WRITEBACK_HOOK_RECEIPT_SCHEMA_VERSION = (
     CAPABILITY_HOOK_POST_WRITEBACK_RECEIPT_SCHEMA
 )
+# Diagnostic code the TypeScript source decoder stamps on every source
+# input-construction rejection. The decoder owns the field rules; this
+# adapter only maps the typed category back to the legacy composition
+# failure boundary and never re-validates the fields itself.
+POST_WRITEBACK_SOURCE_REJECTION_DIAGNOSTIC_CODE = "post_writeback_source_invalid"
 _LEGACY_LOCK_SAFE_SEGMENT_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 _POST_WRITEBACK_DISPATCH_ID_RE = re.compile(r"pwh_[0-9a-f]{64}")
 _POST_WRITEBACK_RECEIPT_SNAPSHOT_RE = re.compile(r"(?:missing|sha256:[0-9a-f]{64})")
@@ -752,7 +757,24 @@ def dispatch_post_writeback_hooks(
             ):
                 raise ValueError("post-writeback transaction result is invalid")
             return dict(finalized["dispatch"])
-    except (EffectRuntimeRejected, OSError, RuntimeError, TypeError, ValueError):
+    except EffectRuntimeRejected as rejection:
+        if rejection.diagnostic_code == POST_WRITEBACK_SOURCE_REJECTION_DIAGNOSTIC_CODE:
+            # The TypeScript decoder owns source legality. Its typed
+            # input-construction rejection crosses this boundary as the
+            # legacy composition ValueError, so callers keep reporting one
+            # source_projection_failed failure instead of per-hook
+            # runtime_result_invalid noise; every other rejection stays a
+            # runtime failure without string matching or field copies.
+            raise ValueError(
+                "post-writeback hooks require committed "
+                "goal/agent/todo/turn/effect identity"
+            ) from rejection
+        return _post_writeback_failure_dispatch(
+            ordered_registrations,
+            error_code="runtime_result_invalid",
+            invoked_count=invoked_count,
+        )
+    except (OSError, RuntimeError, TypeError, ValueError):
         return _post_writeback_failure_dispatch(
             ordered_registrations,
             error_code="runtime_result_invalid",

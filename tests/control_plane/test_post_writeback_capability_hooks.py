@@ -15,6 +15,9 @@ from unittest.mock import Mock
 import pytest
 
 import loopx.control_plane.capability_hooks as capability_hooks
+from loopx.cli_commands.post_writeback import (
+    dispatch_committed_cli_post_writeback_hooks,
+)
 from loopx.control_plane.capability_hooks import (
     POST_WRITEBACK_HOOK_INPUT_SCHEMA_VERSION,
     POST_WRITEBACK_HOOK_RECEIPT_SCHEMA_VERSION,
@@ -179,8 +182,169 @@ def _source() -> dict[str, object]:
     }
 
 
-def _hook(*, key: str = "periodic-report:stage-123") -> PostWritebackHookRegistration:
+def _mutated_source(mutation: str) -> dict[str, object]:
+    """Apply one bounded input-construction defect to a valid source."""
+
+    source = dict(_source())
+    identity = dict(source["identity"])  # type: ignore[typeddict-item]
+    source["identity"] = identity
+    if mutation in {
+        "goal_id",
+        "agent_id",
+        "todo_id",
+        "turn_instance_id",
+        "effect_id",
+    }:
+        identity[mutation] = ""  # type: ignore[typeddict-item]
+    elif mutation in {"event_kind", "state_version", "committed_at"}:
+        source[mutation] = ""
+    elif mutation == "todo_id_not_a_string":
+        identity["todo_id"] = 123  # type: ignore[typeddict-item]
+    elif mutation == "identity_not_an_object":
+        source["identity"] = 123
+    elif mutation == "durable_not_a_boolean":
+        source["durable"] = "committed"
+    elif mutation == "unknown_source_field":
+        source["extra_field"] = True
+    elif mutation == "empty_agent_id_and_state_version":
+        identity["agent_id"] = ""  # type: ignore[typeddict-item]
+        source["state_version"] = ""
+    else:  # pragma: no cover - guards against typo'd mutation ids.
+        raise AssertionError(f"unknown source mutation: {mutation}")
+    return source
+
+
+# The TypeScript source decoder owns every field rule; these parameters are
+# the full legacy caller inventory of input-construction defects (the five
+# identity fields plus event_kind/state_version/committed_at all lived in
+# one composition rejection before #3847). An empty todo_id is currently a
+# rejection too: if the typed owner later adopts nullable-Todo semantics,
+# that verdict flips in the decoder and in this table first, never in a
+# second Python validator.
+_SOURCE_REJECTION_MUTATIONS = [
+    "goal_id",
+    "agent_id",
+    "todo_id",
+    "turn_instance_id",
+    "effect_id",
+    "event_kind",
+    "state_version",
+    "committed_at",
+    "todo_id_not_a_string",
+    "identity_not_an_object",
+    "durable_not_a_boolean",
+    "unknown_source_field",
+    "empty_agent_id_and_state_version",
+]
+
+
+@pytest.mark.parametrize("mutation", _SOURCE_REJECTION_MUTATIONS)
+def test_incomplete_source_is_one_typed_composition_rejection(
+    tmp_path: Path, mutation: str
+) -> None:
+    """Every decode-boundary rejection maps to the legacy ValueError."""
+
+    producer_calls: list[int] = []
+    with pytest.raises(ValueError, match="require committed"):
+        dispatch_post_writeback_hooks(
+            [_hook(producer_calls=producer_calls)],
+            source=_mutated_source(mutation),  # type: ignore[arg-type]
+            runtime_root=tmp_path,
+        )
+    assert producer_calls == []
+    receipt_dir = tmp_path / "goals" / "goal-1" / "post_writeback_hooks"
+    assert not receipt_dir.is_dir() or not list(receipt_dir.glob("*.json"))
+
+
+def test_valid_source_dispatches_the_provider_and_writes_a_receipt(
+    tmp_path: Path,
+) -> None:
+    producer_calls: list[int] = []
+    dispatch = dispatch_post_writeback_hooks(
+        [_hook(producer_calls=producer_calls)],
+        source=_source(),  # type: ignore[arg-type]
+        runtime_root=tmp_path,
+    )
+    assert dispatch["failures"] == []
+    assert dispatch["intent_count"] == 1
+    assert producer_calls == [1]
+    receipt_dir = tmp_path / "goals" / "goal-1" / "post_writeback_hooks"
+    assert list(receipt_dir.glob("*.json"))
+
+
+def test_zero_registrations_never_reaches_the_runtime() -> None:
+    """Zero hooks dispatch vacuously without touching the decoder."""
+
+    dispatch = dispatch_post_writeback_hooks(
+        [],
+        source=_mutated_source("agent_id"),  # type: ignore[arg-type]
+    )
+    assert dispatch["failures"] == []
+    assert dispatch["invoked_count"] == 0
+    assert dispatch["intent_count"] == 0
+    assert dispatch["primary_writeback_preserved"] is True
+
+
+def test_bridge_projects_source_rejection_as_one_composition_failure(
+    tmp_path: Path,
+) -> None:
+    """The CLI bridge keeps the legacy single-failure projection."""
+
+    runtime_root = tmp_path / "runtime"
+    runtime_root.mkdir()
+    registry_path = tmp_path / "registry.global.json"
+    registry_path.write_text(
+        json.dumps(
+            {"common_runtime_root": str(runtime_root), "goals": [{"id": "goal-1"}]}
+        ),
+        encoding="utf-8",
+    )
+    producer_calls: list[int] = []
+    dispatch = dispatch_committed_cli_post_writeback_hooks(
+        payload={"ok": True, "completed": True},
+        registry_path=registry_path,
+        runtime_root_arg=None,
+        goal_id="goal-1",
+        event_kind="refresh_state",
+        identity={
+            "agent_id": "",
+            "todo_id": "todo-1",
+            "turn_instance_id": "turn-1",
+            "effect_id": "goal-1:agent-1:todo-1:turn-1",
+        },
+        state_version="2026-09-06T00:00:00Z",
+        committed_at="2026-09-06T00:00:00Z",
+        hooks=(
+            _hook(key="periodic-report:stage-123", producer_calls=producer_calls),
+            _hook(key="periodic-report:stage-456", producer_calls=producer_calls),
+        ),
+        projection_builder=lambda **_kwargs: {
+            "stage_completion": {
+                "schema_version": "periodic_report_stage_completion_receipt_v0",
+                "stage_identity": "stage-123",
+            }
+        },
+    )
+    assert dispatch["failures"] == [
+        {
+            "hook_id": "composition",
+            "capability_id": "unknown",
+            "error_code": "source_projection_failed",
+        }
+    ]
+    assert dispatch["primary_writeback_preserved"] is True
+    assert dispatch["external_writes_performed"] is False
+    assert producer_calls == []
+    receipt_dir = runtime_root / "goals" / "goal-1" / "post_writeback_hooks"
+    assert not receipt_dir.is_dir() or not list(receipt_dir.glob("*.json"))
+
+
+def _hook(
+    *, key: str = "periodic-report:stage-123", producer_calls: list[int] | None = None
+) -> PostWritebackHookRegistration:
     def producer(value: object) -> dict[str, object]:
+        if producer_calls is not None:
+            producer_calls.append(1)
         assert isinstance(value, dict)
         receipt = value["receipt"]
         assert isinstance(receipt, dict)
@@ -1326,6 +1490,7 @@ def test_periodic_report_projection_evaluates_turn_capabilities_absent_and_prese
     ]
     assert next_actions_present == ["todo:todo_capacity"]
 
+
 def _published_report_goal_fixtures(
     tmp_path,
     *,
@@ -1348,7 +1513,11 @@ def _published_report_goal_fixtures(
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(
         json.dumps(
-            {"goals": [{"id": "goal-1", "repo": str(tmp_path), "state_file": "goal.md"}]}
+            {
+                "goals": [
+                    {"id": "goal-1", "repo": str(tmp_path), "state_file": "goal.md"}
+                ]
+            }
         ),
         encoding="utf-8",
     )
@@ -1388,7 +1557,9 @@ def test_periodic_report_hook_accepts_projection_after_a_published_report(
                 "schema_version": "goal_vision_replan_contract_v0",
                 "agent_id": "agent-1",
                 "state": "vision_closed",
-                "vision_patch": {"acceptance_summary": "Initial slice accepted and reported."},
+                "vision_patch": {
+                    "acceptance_summary": "Initial slice accepted and reported."
+                },
             },
             "vision_checkpoint": {
                 "schema_version": "vision_checkpoint_v0",
@@ -1812,7 +1983,9 @@ def test_post_writeback_legacy_lock_timeout_isolates_other_hooks(
     assert len(receipts) == 1
 
 
-@pytest.mark.parametrize("controlled_clock", [False, True], ids=["real-clock", "budget"])
+@pytest.mark.parametrize(
+    "controlled_clock", [False, True], ids=["real-clock", "budget"]
+)
 def test_post_writeback_legacy_locks_share_one_batch_deadline(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

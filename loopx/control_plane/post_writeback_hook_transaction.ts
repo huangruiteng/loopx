@@ -29,6 +29,12 @@ import {
 
 export const POST_WRITEBACK_HOOK_SOURCE_SCHEMA_VERSION =
   "loopx_post_writeback_hook_source_v0";
+// Source decoding rejections are one bounded input-construction category,
+// distinguishable from every other runtime/transport fault so the Python
+// adapter can project them as composition failures without re-owning the
+// source field rules, which stay owned by this decoder alone.
+export const POST_WRITEBACK_SOURCE_REJECTION_CODE =
+  "post_writeback_source_invalid";
 export const POST_WRITEBACK_HOOK_TRANSACTION_REQUEST_SCHEMA_VERSION =
   "loopx_post_writeback_hook_transaction_request_v0";
 export const POST_WRITEBACK_HOOK_TRANSACTION_RESULT_SCHEMA_VERSION =
@@ -344,7 +350,7 @@ function exactObjectFields(
   }
 }
 
-function decodeSource(value: unknown): PostWritebackSource {
+function decodeSourceFields(value: unknown): PostWritebackSource {
   const source = requireJsonObject(value, "source");
   exactObjectFields(
     source,
@@ -401,6 +407,22 @@ function decodeSource(value: unknown): PostWritebackSource {
     ),
     projection: requireJsonObject(source.projection, "source.projection"),
   };
+}
+
+function decodeSource(value: unknown): PostWritebackSource {
+  try {
+    return decodeSourceFields(value);
+  } catch (error) {
+    if (error instanceof EffectRuntimeRequestError) {
+      // Every field/type/emptiness rejection from the source decoder carries
+      // one dedicated code; message text stays free to evolve.
+      throw new EffectRuntimeRequestError(
+        error.message,
+        POST_WRITEBACK_SOURCE_REJECTION_CODE,
+      );
+    }
+    throw error;
+  }
 }
 
 function decodeRuntimeRoot(value: unknown): string | null {
