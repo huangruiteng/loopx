@@ -635,6 +635,26 @@ def dispatch_post_writeback_hooks(
             ordered_registrations,
             error_code="registration_or_input_rejected",
         )
+    if source is not None:
+        source_identity = source.get("identity") or {}
+        if any(
+            not str(source_identity.get(field) or "").strip()
+            for field in (
+                "goal_id",
+                "agent_id",
+                "todo_id",
+                "turn_instance_id",
+                "effect_id",
+            )
+        ):
+            # Keep the pre-transaction caller contract: missing writeback
+            # identity is a composition failure (the caller reports it as one
+            # source_projection_failed failure), not per-hook
+            # runtime_result_invalid noise from the TypeScript decoder.
+            raise ValueError(
+                "post-writeback hooks require committed "
+                "goal/agent/todo/turn/effect identity"
+            )
     invoked_count = 0
     try:
         source_packet = dict(source) if source is not None else None

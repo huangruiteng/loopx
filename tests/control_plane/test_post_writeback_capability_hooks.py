@@ -179,6 +179,17 @@ def _source() -> dict[str, object]:
     }
 
 
+def test_post_writeback_empty_source_identity_raises_composition_error() -> None:
+    source = _source()
+    source["identity"] = dict(source["identity"])  # type: ignore[typeddict-item]
+    source["identity"]["agent_id"] = ""  # type: ignore[typeddict-item]
+    with pytest.raises(ValueError, match="require committed"):
+        dispatch_post_writeback_hooks(
+            [_hook()],
+            source=source,  # type: ignore[arg-type]
+        )
+
+
 def _hook(*, key: str = "periodic-report:stage-123") -> PostWritebackHookRegistration:
     def producer(value: object) -> dict[str, object]:
         assert isinstance(value, dict)
@@ -1326,6 +1337,7 @@ def test_periodic_report_projection_evaluates_turn_capabilities_absent_and_prese
     ]
     assert next_actions_present == ["todo:todo_capacity"]
 
+
 def _published_report_goal_fixtures(
     tmp_path,
     *,
@@ -1348,7 +1360,11 @@ def _published_report_goal_fixtures(
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(
         json.dumps(
-            {"goals": [{"id": "goal-1", "repo": str(tmp_path), "state_file": "goal.md"}]}
+            {
+                "goals": [
+                    {"id": "goal-1", "repo": str(tmp_path), "state_file": "goal.md"}
+                ]
+            }
         ),
         encoding="utf-8",
     )
@@ -1388,7 +1404,9 @@ def test_periodic_report_hook_accepts_projection_after_a_published_report(
                 "schema_version": "goal_vision_replan_contract_v0",
                 "agent_id": "agent-1",
                 "state": "vision_closed",
-                "vision_patch": {"acceptance_summary": "Initial slice accepted and reported."},
+                "vision_patch": {
+                    "acceptance_summary": "Initial slice accepted and reported."
+                },
             },
             "vision_checkpoint": {
                 "schema_version": "vision_checkpoint_v0",
@@ -1812,7 +1830,9 @@ def test_post_writeback_legacy_lock_timeout_isolates_other_hooks(
     assert len(receipts) == 1
 
 
-@pytest.mark.parametrize("controlled_clock", [False, True], ids=["real-clock", "budget"])
+@pytest.mark.parametrize(
+    "controlled_clock", [False, True], ids=["real-clock", "budget"]
+)
 def test_post_writeback_legacy_locks_share_one_batch_deadline(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
