@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -568,12 +568,8 @@ def make_state_event(
 @dataclass
 class AppendOnlyStateEventStore:
     path: Path
-    _events: list[dict[str, Any]] = field(default_factory=list)
-    _loaded: bool = False
 
     def load(self) -> list[dict[str, Any]]:
-        if self._loaded:
-            return list(self._events)
         events: list[dict[str, Any]] = []
         if self.path.exists():
             for line_number, line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -584,13 +580,10 @@ class AppendOnlyStateEventStore:
                 except json.JSONDecodeError as exc:
                     raise StateEventError(f"invalid JSONL at line {line_number}: {exc}") from exc
                 events.append(normalize_state_event(raw))
-        self._events = _dedupe_events(events)
-        self._loaded = True
-        return list(self._events)
+        return _dedupe_events(events)
 
     def append(self, event: dict[str, Any]) -> dict[str, Any]:
         with exclusive_file_lock(self.path):
-            self._loaded = False
             events = self.load()
             existing = {item["event_id"]: item for item in events}
             next_sequence = max((int(item["append_sequence"]) for item in events), default=0) + 1
@@ -604,7 +597,6 @@ class AppendOnlyStateEventStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps(normalized, sort_keys=True, ensure_ascii=False) + "\n")
-            self._events.append(normalized)
             return normalized
 
     def append_many(self, events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
