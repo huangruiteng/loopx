@@ -72,7 +72,7 @@ interface PostWritebackSource extends JsonObject {
   event_kind: string;
   status: string;
   durable: boolean;
-  identity: JsonObject & { goal_id: string };
+  identity: JsonObject & { goal_id: string; todo_id: string | null };
   state_version: string;
   committed_at: string;
   projection: JsonObject;
@@ -265,6 +265,14 @@ function pythonStrippedString(value: unknown, label: string): string {
   return stripped;
 }
 
+function optionalPythonStrippedString(
+  value: unknown,
+  label: string,
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return pythonStrippedString(value, label);
+}
+
 function boundedTransactionResult(result: JsonObject): JsonObject {
   if (
     new TextEncoder().encode(JSON.stringify(result)).byteLength >
@@ -369,10 +377,16 @@ function decodeSource(value: unknown): PostWritebackSource {
     ["goal_id", "agent_id", "todo_id", "turn_instance_id", "effect_id"],
     "source.identity",
   );
-  const normalizedIdentity: JsonObject & { goal_id: string } = {
+  const normalizedIdentity: JsonObject & {
+    goal_id: string;
+    todo_id: string | null;
+  } = {
     goal_id: pythonStrippedString(identity.goal_id, "source.identity.goal_id"),
     agent_id: pythonStrippedString(identity.agent_id, "source.identity.agent_id"),
-    todo_id: pythonStrippedString(identity.todo_id, "source.identity.todo_id"),
+    todo_id: optionalPythonStrippedString(
+      identity.todo_id,
+      "source.identity.todo_id",
+    ),
     turn_instance_id: pythonStrippedString(
       identity.turn_instance_id,
       "source.identity.turn_instance_id",

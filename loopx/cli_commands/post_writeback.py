@@ -62,7 +62,11 @@ def dispatch_committed_cli_post_writeback_hooks(
                 "identity": {
                     "goal_id": goal_id,
                     "agent_id": str(identity.get("agent_id") or ""),
-                    "todo_id": str(identity.get("todo_id") or ""),
+                    "todo_id": (
+                        str(identity["todo_id"])
+                        if identity.get("todo_id")
+                        else None
+                    ),
                     "turn_instance_id": str(
                         identity.get("turn_instance_id") or ""
                     ),

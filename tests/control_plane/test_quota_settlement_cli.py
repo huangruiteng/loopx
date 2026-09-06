@@ -2439,6 +2439,18 @@ def test_todoless_autonomous_replan_settles_quota_refresh_spend_chain(
 ) -> None:
     project, runtime, registry_path = _write_fixture(tmp_path)
     _configure_autonomous_replan_fixture(project, runtime, registry_path)
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["goals"][0]["control_plane"] = {
+        "periodic_report": {
+            "enabled": True,
+            "profile_preset": "weekly",
+            "route_ref": "project-room",
+        }
+    }
+    registry_path.write_text(
+        json.dumps(registry, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     turn_instance_id = "turn-autonomous-replan-settlement-1"
 
     guard_rc, guard = _run_cli(
@@ -2512,6 +2524,9 @@ def test_todoless_autonomous_replan_settles_quota_refresh_spend_chain(
     assert [
         receipt["step_kind"] for receipt in refresh["settlement_result"]["receipts"]
     ] == ["validation", "durable_writeback"]
+    assert refresh["post_writeback_hooks"]["invoked_count"] == 1
+    assert refresh["post_writeback_hooks"]["intent_count"] == 0
+    assert refresh["post_writeback_hooks"]["failures"] == []
 
     spend_args = _projected_cli_args(
         spend_command,

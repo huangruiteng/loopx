@@ -16,7 +16,12 @@ from ..file_lock import (
     LockAcquireTimeoutError,
     exclusive_file_lock,
 )
-from .effect_runtime import EffectRuntimeRejected, effect_runtime_result
+from .effect_runtime import (
+    EffectRuntimeRejected,
+    EffectRuntimeRemoteError,
+    EffectRuntimeStartupError,
+    effect_runtime_result,
+)
 from .coordination.coordination_state_contract_generated import (
     CAPABILITY_HOOK_INTERACTION_RESULT_SCHEMA,
     CAPABILITY_HOOK_POST_WRITEBACK_INPUT_SCHEMA,
@@ -301,8 +306,9 @@ def _post_writeback_failure_dispatch(
     *,
     error_code: str,
     invoked_count: int = 0,
+    runtime_failure: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    return {
+    dispatch: dict[str, Any] = {
         "schema_version": POST_WRITEBACK_HOOK_DISPATCH_SCHEMA_VERSION,
         "phase": "post_writeback",
         "registered_count": len(registrations),
@@ -317,6 +323,34 @@ def _post_writeback_failure_dispatch(
         ],
         "primary_writeback_preserved": True,
         "external_writes_performed": False,
+    }
+    if runtime_failure is not None:
+        dispatch["runtime_failure"] = dict(runtime_failure)
+    return dispatch
+
+
+def _post_writeback_runtime_failure(
+    error: BaseException,
+    *,
+    phase: str,
+) -> dict[str, str]:
+    if isinstance(error, EffectRuntimeRemoteError):
+        error_kind = error.error_kind
+        diagnostic_code = error.diagnostic_code
+    elif isinstance(error, EffectRuntimeStartupError):
+        error_kind = "startup_failed"
+        diagnostic_code = error.diagnostic_code
+    elif isinstance(error, OSError):
+        error_kind = "local_io_failed"
+        diagnostic_code = "runtime_transport_io_failed"
+    else:
+        error_kind = "local_contract_invalid"
+        diagnostic_code = "runtime_result_shape_invalid"
+    return {
+        "schema_version": "loopx_post_writeback_runtime_failure_v0",
+        "phase": phase,
+        "error_kind": error_kind,
+        "diagnostic_code": diagnostic_code,
     }
 
 
@@ -636,6 +670,7 @@ def dispatch_post_writeback_hooks(
             error_code="registration_or_input_rejected",
         )
     invoked_count = 0
+    runtime_phase = "preflight"
     try:
         source_packet = dict(source) if source is not None else None
         legacy_hook_input = dict(hook_input) if hook_input is not None else None
@@ -701,6 +736,7 @@ def dispatch_post_writeback_hooks(
             outcomes=sizing_outcomes,
         )
 
+        runtime_phase = "provider"
         compatibility_timeout = (
             LOCK_POLICIES[LockAcquisitionPolicy.MUTATION].timeout_seconds
             if lease_timeout_seconds is None
@@ -714,7 +750,7 @@ def dispatch_post_writeback_hooks(
                     str(raw_plan.get("hook_id") or ""),
                     str(raw_plan.get("capability_id") or ""),
                 )
-                registration = providers.get(key)
+                provider_registration = providers.get(key)
                 unavailable_status = (
                     _enter_legacy_post_writeback_guard(
                         legacy_writer_guards,
@@ -729,7 +765,7 @@ def dispatch_post_writeback_hooks(
                 )
                 outcome, invoked = _post_writeback_provider_outcome(
                     raw_plan,
-                    registration=registration,
+                    registration=provider_registration,
                     unavailable_status=unavailable_status,
                 )
                 invoked_count += int(invoked)
@@ -739,6 +775,7 @@ def dispatch_post_writeback_hooks(
                 transaction_id=transaction_id,
                 outcomes=outcomes,
             )
+            runtime_phase = "finalize"
             finalized = effect_runtime_result(
                 "capability_hook.post_writeback.transaction",
                 _post_writeback_finalize_params(
@@ -752,11 +789,15 @@ def dispatch_post_writeback_hooks(
             ):
                 raise ValueError("post-writeback transaction result is invalid")
             return dict(finalized["dispatch"])
-    except (EffectRuntimeRejected, OSError, RuntimeError, TypeError, ValueError):
+    except (EffectRuntimeRejected, OSError, RuntimeError, TypeError, ValueError) as exc:
         return _post_writeback_failure_dispatch(
             ordered_registrations,
             error_code="runtime_result_invalid",
             invoked_count=invoked_count,
+            runtime_failure=_post_writeback_runtime_failure(
+                exc,
+                phase=runtime_phase,
+            ),
         )
 
 

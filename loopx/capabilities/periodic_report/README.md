@@ -177,7 +177,7 @@ composition boundary:
 ```
 
 After a committed `refresh-state` writeback with complete
-Goal/Agent/Todo/Turn/effect identity, core dispatches the TypeScript-validated
+Goal/Agent/Turn/effect identity, core dispatches the TypeScript-validated
 `post_writeback` hook outside the primary transaction. The capability receives
 only a bounded stage-completion projection and its public-safe progress
 snapshot, both captured at the writeback boundary. It may propose one
@@ -185,9 +185,15 @@ idempotent `periodic_report.trigger_evaluation` intent. Core checkpoints that
 proposal in a replay-safe sidecar. A transient failure is durably recorded as
 `retryable_failure`; the next exact replay advances its attempt and may replace
 it with `intent_recorded` or `not_applicable`, while terminal replay returns the
-original receipt without invoking the provider again. Disabled profiles,
-incomplete settlement identity, ordinary
-Todo completion, and generic replan produce no provider invocation or intent.
+original receipt without invoking the provider again. Todo-bound settlements
+carry a non-empty Todo id, while Todo-less autonomous replans carry an explicit
+`null` Todo id. Disabled profiles, incomplete settlement identity, ordinary
+Todo completion, and generic replan produce no trigger intent.
+
+If the Python bridge cannot complete the TypeScript hook transaction, the
+isolated failure includes only a typed runtime phase, error kind, and diagnostic
+code. It does not expose raw provider output or private state, and it does not
+change the committed primary writeback.
 
 The intent is not a report and grants no generation, publication, connector,
 network, credential, or sink authority. A separate governed executor may

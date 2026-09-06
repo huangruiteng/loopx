@@ -690,6 +690,12 @@ export function validatePostWritebackHookInput(input: {
   const identity = requiredObject(hookInput.identity, "post-writeback identity");
   requireExactFields(identity, POST_WRITEBACK_IDENTITY_FIELDS, "post-writeback identity");
   for (const field of POST_WRITEBACK_IDENTITY_FIELDS) {
+    if (field === "todo_id") {
+      if (identity[field] !== null) {
+        requiredString(identity[field], `post-writeback identity ${field}`);
+      }
+      continue;
+    }
     requiredString(identity[field], `post-writeback identity ${field}`);
   }
   requiredString(hookInput.state_version, "post-writeback state_version");

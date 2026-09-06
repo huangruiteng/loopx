@@ -345,8 +345,10 @@ The optional automatic path uses the provider-neutral TypeScript
 `periodic_report.runtime_trigger` only when the Goal's local control-plane
 configuration explicitly enables a periodic-report profile. Core dispatches
 only after the primary `refresh-state` durable writeback and exact settlement
-readback have succeeded with complete Goal, Agent, Todo, Turn, and effect
-identity. The best-effort rollout-event log is not dispatch authority.
+readback have succeeded with complete Goal, Agent, Turn, and effect identity.
+Todo-bound settlements carry a non-empty Todo id; Todo-less autonomous replans
+carry an explicit `null` Todo id rather than inventing a Todo identity. The
+best-effort rollout-event log is not dispatch authority.
 
 The hook input contains only the committed receipt identity, stable state
 revision, and derived `periodic_report_stage_completion_receipt_v0`. Its result
@@ -358,7 +360,9 @@ or result-contract failure persists a `retryable_failure` receipt with a stable
 dispatch reference and monotonic attempt count; exact replay may atomically
 advance that receipt to `intent_recorded` or `not_applicable`. Conflicts and
 optional hook failures remain isolated and cannot roll back the primary
-writeback or alter quota-spend eligibility.
+writeback or alter quota-spend eligibility. A Python-to-TypeScript runtime
+failure additionally projects a bounded typed phase, error kind, and diagnostic
+code; it never includes raw provider or private state.
 
 Recorded trigger intent means neither report generation nor publication. A
 later governed executor must evaluate the intent. Composition, rendering, and

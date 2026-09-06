@@ -267,6 +267,25 @@ test("source and dispatch identities replay the retired Python canonical bytes",
   );
 });
 
+test("todoless autonomous replan source preserves an explicit null Todo identity", async () => {
+  const value = source();
+  const identity = value.identity as Record<string, unknown>;
+  identity.todo_id = null;
+
+  const preflight = await evaluatePostWritebackHookTransaction(
+    request(null, { source: value }),
+  );
+  const plan = (preflight.provider_plan as Record<string, unknown>[])[0];
+  const hookInput = plan.hook_input as Record<string, unknown>;
+  const admittedIdentity = hookInput.identity as Record<string, unknown>;
+
+  assert.equal(admittedIdentity.todo_id, null);
+  assert.equal(admittedIdentity.goal_id, "goal-1");
+  assert.equal(admittedIdentity.agent_id, "agent-1");
+  assert.equal(admittedIdentity.turn_instance_id, "turn-1");
+  assert.equal(admittedIdentity.effect_id, "effect-1");
+});
+
 test("legacy hook input is exact-validated and preserves its durable event identity", async () => {
   const preflight = await evaluatePostWritebackHookTransaction(
     request(null, {

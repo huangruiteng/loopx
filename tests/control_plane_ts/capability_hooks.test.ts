@@ -176,9 +176,17 @@ test("post-writeback hook binds intent to the exact durable receipt", () => {
   );
 });
 
-test("post-writeback hook requires the complete settlement identity", () => {
+test("post-writeback hook accepts Todo-less identity but rejects an empty Todo id", () => {
+  const todoLess = postWritebackInput();
+  (todoLess.identity as Record<string, unknown>).todo_id = null;
+  const admitted = validatePostWritebackHookInput({
+    registration: postWritebackRegistration(),
+    hook_input: todoLess,
+  });
+  assert.equal((admitted.identity as Record<string, unknown>).todo_id, null);
+
   const incomplete = postWritebackInput();
-  (incomplete.identity as Record<string, unknown>).todo_id = null;
+  (incomplete.identity as Record<string, unknown>).todo_id = "";
   assert.throws(
     () => validatePostWritebackHookInput({
       registration: postWritebackRegistration(),

@@ -260,6 +260,37 @@ def test_post_writeback_dispatch_returns_one_effect_free_intent() -> None:
     assert dispatch["external_writes_performed"] is False
 
 
+def test_post_writeback_dispatch_accepts_todoless_replan_identity() -> None:
+    source = _source()
+    identity = source["identity"]
+    assert isinstance(identity, dict)
+    identity["todo_id"] = None
+
+    dispatch = dispatch_post_writeback_hooks([_hook()], source=source)
+
+    assert dispatch["invoked_count"] == 1
+    assert dispatch["intent_count"] == 1
+    assert dispatch["failures"] == []
+
+
+def test_post_writeback_runtime_failure_identifies_rejected_preflight() -> None:
+    source = _source()
+    identity = source["identity"]
+    assert isinstance(identity, dict)
+    identity["todo_id"] = 7
+
+    dispatch = dispatch_post_writeback_hooks([_hook()], source=source)
+
+    assert dispatch["invoked_count"] == 0
+    assert dispatch["failures"][0]["error_code"] == "runtime_result_invalid"
+    assert dispatch["runtime_failure"] == {
+        "schema_version": "loopx_post_writeback_runtime_failure_v0",
+        "phase": "preflight",
+        "error_kind": "request_rejected",
+        "diagnostic_code": "invalid_request",
+    }
+
+
 def test_post_writeback_legacy_lock_uses_the_admitted_goal_path(tmp_path: Path) -> None:
     hook_input = _input()
     identity = hook_input["identity"]
