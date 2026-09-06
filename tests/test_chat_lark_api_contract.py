@@ -464,6 +464,65 @@ def test_connect_refreshes_the_app_level_event_consumer(
     assert refreshed == [True]
 
 
+def test_connect_batch_preserves_each_explicit_agent_app_pair(
+    monkeypatch: Any, tmp_path: Path
+) -> None:
+    import loopx.chat_lark_api as api
+
+    batch_calls: list[dict[str, Any]] = []
+    responses: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        api,
+        "connect_lark_goal_topics",
+        lambda **kwargs: (
+            batch_calls.append(kwargs) or {"ok": True, "status": "connected"}
+        ),
+    )
+
+    class Handler(LarkChatRequestMixin):
+        path = "/api/chat/lark/connections"
+        server = SimpleNamespace(
+            lark_goal_topic_runtime=SimpleNamespace(refresh=lambda: None)
+        )
+
+        def _read_json(self) -> dict[str, Any]:
+            return {
+                "goal_id": "goal-alpha",
+                "agent_bindings": [
+                    {"agent_id": "agent-alpha", "app_ref": "mew-alpha"},
+                    {"agent_id": "agent-beta", "app_ref": "mew-beta"},
+                ],
+                "chat_id": "oc_public_fixture",
+                "chat_name": "Product",
+                "ingress_mode": "async_inbox",
+                "execute": True,
+            }
+
+        def _goal_channel_context(self, _goal_id: str):
+            return ({"goals": [{"id": "goal-alpha"}]}, tmp_path / "goal-channel.json")
+
+        def _goal_channel_target_path(self) -> Path:
+            return tmp_path / "goal-channel-targets.json"
+
+        def _lark_runner(self):
+            return lambda *_args: {"returncode": 0, "stdout": "{}", "stderr": ""}
+
+        def _send_json(self, payload: dict[str, Any], *, status: int = 200) -> None:
+            responses.append({**payload, "http_status": status})
+
+        def _send_error(self, message: str, **_kwargs: Any) -> None:
+            raise AssertionError(message)
+
+    Handler()._lark_connect()
+
+    assert batch_calls[0]["app_refs_by_agent"] == {
+        "agent-alpha": "mew-alpha",
+        "agent-beta": "mew-beta",
+    }
+    assert batch_calls[0]["session_ids_by_agent"] == {}
+    assert responses == [{"ok": True, "status": "connected", "http_status": 200}]
+
+
 def test_session_ingress_resolves_the_exact_goal_agent_session(
     monkeypatch: Any,
     tmp_path: Path,

@@ -397,7 +397,7 @@ export function LarkSettingsPage({
     setConnectError(null);
     try {
       const input = {
-        appRef,
+        agentBindings: targetAgentIds.map((targetAgentId) => ({ agentId: targetAgentId, appRef })),
         captureScope,
         chatId: selectedChat.chat_id,
         chatName: selectedChat.chat_name,
@@ -406,14 +406,10 @@ export function LarkSettingsPage({
         ingressMode,
         replyMode,
       } as const;
-      for (const targetAgentId of targetAgentIds) {
-        const preview = await connectLarkGoalTopic({ ...input, agentId: targetAgentId, execute: false });
-        if (!preview.ok) throw new ChatApiError(preview.public_summary ?? preview.blocker ?? t("lark.error.bindPreview"), { error_code: preview.blocker ?? "provider_api_failed" });
-      }
-      for (const targetAgentId of targetAgentIds) {
-        const result = await connectLarkGoalTopic({ ...input, agentId: targetAgentId, execute: true });
-        if (!result.ok) throw new ChatApiError(result.public_summary ?? result.blocker ?? t("lark.error.bind"), { error_code: result.blocker ?? "provider_api_failed" });
-      }
+      const preview = await connectLarkGoalTopic({ ...input, execute: false });
+      if (!preview.ok) throw new ChatApiError(preview.public_summary ?? preview.blocker ?? t("lark.error.bindPreview"), { error_code: preview.blocker ?? "provider_api_failed" });
+      const result = await connectLarkGoalTopic({ ...input, execute: true });
+      if (!result.ok) throw new ChatApiError(result.public_summary ?? result.blocker ?? t("lark.error.bind"), { error_code: result.blocker ?? "provider_api_failed" });
       setModalOpen(false);
       await refresh();
       onChanged?.();

@@ -455,7 +455,7 @@ assert.match(larkSettings, /lark\.health\.notAddressed/, "Ignored unaddressed me
 assert.match(larkSettings, /lark\.health\.routeMismatch/, "Route mismatches receive an actionable connection repair hint");
 assert.match(larkSettings, /connectLarkGoalTopic\([^)]*execute:\s*false/s, "Connect flow previews before execution");
 assert.match(larkSettings, /connectLarkGoalTopic\([^)]*execute:\s*true/s, "Connect flow performs the approved external write");
-assert.match(larkSettings, /connectAllAgents[\s\S]*targetAgentIds[\s\S]*for \(const targetAgentId of targetAgentIds\)/, "One guided action can connect every registered Agent through isolated routes");
+assert.match(larkSettings, /connectAllAgents[\s\S]*agentBindings:\s*targetAgentIds\.map/, "One guided action submits every registered Agent as one resumable batch");
 assert.match(i18n, /Connect every registered Agent/, "Multi-Agent Goal Channel onboarding is explicit");
 assert.match(i18n, /Register another Lark App/, "App chooser exposes localized Feishu registration");
 assert.match(larkSettings, /startLarkAppSetup/, "Registration starts through the local setup API");
