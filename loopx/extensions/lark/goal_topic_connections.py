@@ -499,7 +499,7 @@ def connect_lark_goal_topic(
         chat_id=safe_chat_id,
         app_id=str(identity["app_id"]),
     )
-    membership_added = membership_result is BotChatMembershipResult.ADDED_VERIFIED
+    membership_added = membership_result.external_write_performed
     if membership_result is BotChatMembershipResult.ADD_FAILED:
         return operation_packet(
             ok=False,
@@ -510,7 +510,10 @@ def connect_lark_goal_topic(
             blocker="provider_api_failed",
             public_summary="the selected Lark App could not be added to the group",
         )
-    if membership_result is BotChatMembershipResult.ADDED_UNVERIFIED:
+    if membership_result in {
+        BotChatMembershipResult.ALREADY_UNVERIFIED,
+        BotChatMembershipResult.ADDED_UNVERIFIED,
+    }:
         return operation_packet(
             ok=False,
             goal_id=goal_id,
@@ -519,7 +522,7 @@ def connect_lark_goal_topic(
             status="blocked",
             blocker="channel_membership_unverified",
             public_summary="the selected Lark App is not a verified group member",
-            external_write_performed=True,
+            external_write_performed=membership_result.external_write_performed,
         )
 
     if inbox_config is not None:

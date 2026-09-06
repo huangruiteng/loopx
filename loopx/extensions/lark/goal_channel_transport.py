@@ -24,9 +24,17 @@ BOT_GROUP_HISTORY_API_PATH = "/document/server-docs/im-v1/message/list"
 
 class BotChatMembershipResult(str, Enum):
     ALREADY_VERIFIED = "already_verified"
+    ALREADY_UNVERIFIED = "already_unverified"
     ADDED_VERIFIED = "added_verified"
     ADD_FAILED = "add_failed"
     ADDED_UNVERIFIED = "added_unverified"
+
+    @property
+    def external_write_performed(self) -> bool:
+        return self in {
+            BotChatMembershipResult.ADDED_VERIFIED,
+            BotChatMembershipResult.ADDED_UNVERIFIED,
+        }
 
 
 def bot_group_history_permission_guidance(app_id: str) -> dict[str, Any] | None:
@@ -392,7 +400,11 @@ def ensure_bot_chat_membership(
         chat_id=chat_id,
     )
     if not verified:
-        return BotChatMembershipResult.ADDED_UNVERIFIED
+        return (
+            BotChatMembershipResult.ALREADY_UNVERIFIED
+            if already_member
+            else BotChatMembershipResult.ADDED_UNVERIFIED
+        )
     return (
         BotChatMembershipResult.ALREADY_VERIFIED
         if already_member

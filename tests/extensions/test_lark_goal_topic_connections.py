@@ -1007,6 +1007,44 @@ def test_connect_uses_bot_chat_access_when_member_listing_is_unavailable(
     assert all(call[call.index("--as") + 1] == "bot" for call in bot_chat_checks)
 
 
+def test_existing_member_readback_failure_does_not_claim_external_write(
+    tmp_path: Path,
+) -> None:
+    state: dict[str, Any] = {}
+    base_runner = _runner(state)
+
+    def runner(args: list[str], cwd: object, timeout: object) -> dict[str, Any]:
+        if "chats" in args and "get" in args and "--as" in args:
+            if args[args.index("--as") + 1] == "bot":
+                state.setdefault("calls", []).append(list(args))
+                return {
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": "temporary readback failure",
+                }
+        return base_runner(args, cwd, timeout)
+
+    result = connect_lark_goal_topic(
+        registry=_registry(tmp_path),
+        goal_id="goal-alpha",
+        target_path=tmp_path / "goal-channel-targets.json",
+        binding_path=tmp_path / "goal-channel.json",
+        app_ref="mew",
+        chat_id=CHAT_ID,
+        chat_name="Product group",
+        incoming_mode="mentions",
+        runner=runner,
+        cli_bin="fake-lark",
+    )
+
+    assert result["ok"] is False
+    assert result["blocker"] == "channel_membership_unverified"
+    assert result["external_write_performed"] is False
+    assert not any(
+        "chat.members" in call and "create" in call for call in state["calls"]
+    )
+
+
 def test_connect_adds_a_missing_bot_and_retry_does_not_add_it_twice(
     tmp_path: Path,
 ) -> None:

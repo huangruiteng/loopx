@@ -482,9 +482,12 @@ def setup_lark_goal_channel(
                 public_summary="the Lark bot could not be added to the Goal Channel",
                 external_write_performed=bool(external_writes),
             )
-        if membership_result is BotChatMembershipResult.ADDED_VERIFIED:
+        if membership_result.external_write_performed:
             external_writes += 1
-        if membership_result is BotChatMembershipResult.ADDED_UNVERIFIED:
+        if membership_result in {
+            BotChatMembershipResult.ALREADY_UNVERIFIED,
+            BotChatMembershipResult.ADDED_UNVERIFIED,
+        }:
             return operation_packet(
                 ok=False,
                 goal_id=goal_id,
@@ -493,7 +496,7 @@ def setup_lark_goal_channel(
                 status="gate_required",
                 blocker="channel_membership_unverified",
                 public_summary="the configured Lark bot is not a verified channel member",
-                external_write_performed=bool(external_writes + 1),
+                external_write_performed=bool(external_writes),
             )
 
     existing_kanban = _mapping(raw_existing.get("kanban"))
