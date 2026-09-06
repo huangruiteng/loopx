@@ -331,3 +331,33 @@ def test_configure_goal_rejects_negative_compute(tmp_path: Path) -> None:
             quota_compute=-0.1,
             execute=False,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("quota_compute", True),
+        ("quota_compute", float("nan")),
+        ("quota_window_hours", float("inf")),
+        ("max_children", True),
+        ("max_children", 1.5),
+    ],
+)
+def test_configure_goal_rejects_invalid_numeric_values(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps({"goals": [{"id": GOAL_ID, "repo": str(tmp_path)}]}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=field):
+        configure_goal(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            execute=False,
+            **{field: value},
+        )

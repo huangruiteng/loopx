@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shlex
 import shutil
 from collections.abc import Mapping
@@ -171,25 +172,25 @@ def _now_iso() -> str:
 def _positive_number(value: float | None, *, field: str) -> float | None:
     if value is None:
         return None
-    if value <= 0:
-        raise ValueError(f"{field} must be greater than 0")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{field} must be a finite number greater than 0")
     return float(value)
 
 
 def _non_negative_number(value: float | None, *, field: str) -> float | None:
     if value is None:
         return None
-    if value < 0:
-        raise ValueError(f"{field} must be greater than or equal to 0")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        raise ValueError(f"{field} must be a finite number greater than or equal to 0")
     return float(value)
 
 
 def _non_negative_int(value: int | None, *, field: str) -> int | None:
     if value is None:
         return None
-    if value < 0:
-        raise ValueError(f"{field} must be greater than or equal to 0")
-    return int(value)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} must be a non-negative integer")
+    return value
 
 
 def _clean_domains(values: list[str] | None) -> list[str] | None:
