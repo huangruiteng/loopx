@@ -246,4 +246,30 @@ mod tests {
         assert!(extract(&bytes, dir.path()).is_err());
         assert!(!dir.path().join("escape").exists());
     }
+    #[test]
+    fn long_path_metadata_headers_install_as_plain_files() {
+        // `git archive` emits a PAX local header ('x') for paths beyond ustar
+        // capacity; GNU writers emit longname records ('L') instead. This
+        // non-raw iterator folds both into the entry that follows, so such
+        // snapshots are exactly what the App installs: this test is the
+        // extractor half of the acceptance matrix the build-side gate in
+        // scripts/desktop_runtime_bundle.py mirrors. An ustar header makes
+        // the builder fall back to a PAX record; a GNU header to longname.
+        use flate2::{write::GzEncoder, Compression};
+        for new_header in [tar::Header::new_ustar, tar::Header::new_gnu] {
+            let deep = format!("docs/{}long-path.md", "very/deep/".repeat(16));
+            let compressed = GzEncoder::new(Vec::new(), Compression::default());
+            let mut archive = tar::Builder::new(compressed);
+            let mut header = new_header();
+            header.set_size(6);
+            header.set_mode(0o644);
+            archive
+                .append_data(&mut header, &deep, &b"hello!"[..])
+                .unwrap();
+            let bytes = archive.into_inner().unwrap().finish().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            assert!(extract(&bytes, dir.path()).is_ok(), "{deep}");
+            assert_eq!(fs::read(dir.path().join(&deep)).unwrap(), b"hello!");
+        }
+    }
 }
