@@ -70,7 +70,12 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { PersonalWorkspacePage } from "../features/personal-workspace/personal-workspace-page";
-import { useWorkspaceI18n } from "../features/personal-workspace/i18n";
+import { useWorkspaceI18n, type WorkspaceTranslate } from "../features/personal-workspace/i18n";
+import {
+  agentStatusSentence,
+  projectionSentence,
+  runEvidenceCopy,
+} from "../features/personal-workspace/projection-localization";
 import {
   normalizePersonalHomeModel,
   type WorkspaceAgentOption,
@@ -609,26 +614,6 @@ function isAgentResultMessage(role: string, text: string) {
   return ["agent", "assistant"].includes(role.trim().toLowerCase()) && text.trim().length > 0;
 }
 
-function personalProjectionSentence(value: string | null | undefined, fallback = "") {
-  const cleaned = cleanShareText(value);
-  if (!cleaned || cleaned === "暂无") {
-    return fallback;
-  }
-  if (/refresh-state|latest_run|latest run-derived/i.test(cleaned)) {
-    return "刷新 LoopX 状态，确认当前进度仍然有效";
-  }
-  if (/first read-only adapter tick|read-only adapter/i.test(cleaned)) {
-    return "执行首次只读适配检查并保存进度";
-  }
-  if (/todo update recorded for/i.test(cleaned)) {
-    return "Todo 状态已经更新，正在确认下一步";
-  }
-  if (/^(loopx|python3|npm|git|run)\s|\s--[a-z0-9-]+|\b[a-z]+_[a-z_]+\b/i.test(cleaned)) {
-    return fallback || "Agent 正在整理下一步";
-  }
-  return compactShareText(cleaned, 120);
-}
-
 function personalAgentLabel(agentId: string) {
   const normalized = agentId.toLowerCase();
   if (normalized.includes("codex")) {
@@ -826,15 +811,15 @@ function personalAgentTodoFacts(row: GoalDirectoryRow): {
   return { doneTodoCount, nextTodoText, recentCompleted };
 }
 
-function personalValidationSentence(value: string | null | undefined) {
+function personalValidationSentence(value: string | null | undefined, t: WorkspaceTranslate) {
   const cleaned = cleanShareText(value);
   if (!cleaned) {
     return "";
   }
   if (/\b(state_file|registry_goal|authority_sources|source_registry)\b|\b[a-z_]+\s+\d+\/\d+/i.test(cleaned)) {
-    return "Goal 状态、Todo 与注册信息已验证";
+    return t("projection.goalVerified");
   }
-  return personalProjectionSentence(cleaned, "最近验证已经记录");
+  return projectionSentence(cleaned, t, "projection.validationRecorded");
 }
 
 function personalVisiblePlanTodos(todos: PersonalAgentTodoItem[], limit = 4) {
@@ -849,7 +834,7 @@ function personalVisiblePlanTodos(todos: PersonalAgentTodoItem[], limit = 4) {
   return todos.slice(start, start + limit);
 }
 
-function personalRunEvidence(payload: StatusPayload, row: GoalDirectoryRow): PersonalRunEvidence | null {
+function personalRunEvidence(payload: StatusPayload, row: GoalDirectoryRow, t: WorkspaceTranslate): PersonalRunEvidence | null {
   const latestValidation = row.queueItem?.project_asset?.latest_validation;
   const latestRun = row.latestRun;
   const eventSummary = payload.event_ledger_summary?.goals.find((goal) => goal.goal_id === row.goal.id);
@@ -857,24 +842,24 @@ function personalRunEvidence(payload: StatusPayload, row: GoalDirectoryRow): Per
     return null;
   }
   const summary = [
-    personalValidationSentence(latestValidation?.summary),
-    personalProjectionSentence(latestRun?.health_check),
-    personalProjectionSentence(latestRun?.recommended_action),
+    personalValidationSentence(latestValidation?.summary, t),
+    projectionSentence(latestRun?.health_check, t),
+    projectionSentence(latestRun?.recommended_action, t),
   ]
     .find((value) => value !== "" && value !== "暂无")
-    ?? "最近一次 LoopX 运行已经记录";
+    ?? t("projection.runRecorded");
   const eventCount = eventSummary?.events_24h ?? 0;
-  const metadata = eventCount > 0
-    ? `24 小时内 ${eventCount} 个事件`
-    : latestRun?.json_exists || latestRun?.markdown_exists
-      ? "存在可查看的运行证据"
-      : "公开安全状态投影";
+  const copy = runEvidenceCopy({
+    eventCount,
+    hasArtifact: Boolean(latestRun?.json_exists || latestRun?.markdown_exists),
+    hasLatestValidation: Boolean(latestValidation),
+  }, t);
   return {
     generatedAt: latestValidation?.generated_at ?? latestRun?.generated_at ?? eventSummary?.latest_event_at ?? "",
-    label: latestValidation ? "最近验证" : "最近运行",
-    metadata,
+    label: copy.label,
+    metadata: copy.metadata,
     runId: latestRun ? `${row.goal.id}:${latestRun.generated_at}` : null,
-    safePreview: [summary, metadata].filter(Boolean).join("\n"),
+    safePreview: [summary, copy.metadata].filter(Boolean).join("\n"),
     summary,
     todoId: row.queueItem?.project_asset?.agent_todos?.items.find((todo) => !todo.done)?.todo_id ?? null,
   };
@@ -938,7 +923,7 @@ function personalRepairText(payload: StatusPayload, row: GoalDirectoryRow) {
     ?? healthFinding?.message
     ?? row.queueItem?.recommended_action
     ?? row.latestRun?.recommended_action
-    ?? "LoopX 状态异常，请进入管理页检查";
+    ?? null;
 }
 
 function personalGoalHasPendingOperatorGate(row: GoalDirectoryRow) {
@@ -955,15 +940,16 @@ function personalGoalHasPendingOperatorGate(row: GoalDirectoryRow) {
     || explicitUserWait;
 }
 
-function personalPendingOperatorGateText(row: GoalDirectoryRow) {
+function personalPendingOperatorGateText(row: GoalDirectoryRow, t: WorkspaceTranslate) {
   const gate = row.latestRun?.operator_gate;
-  return personalProjectionSentence(
+  return projectionSentence(
     gate?.operator_question
       ?? gate?.reason_summary
       ?? gate?.follow_up
       ?? row.queueItem?.recommended_action
       ?? row.latestRun?.recommended_action,
-    "请确认 Agent 下一步需要的权限或决策",
+    t,
+    "projection.confirmAgentDecision",
   );
 }
 
@@ -993,15 +979,15 @@ function personalGoalState(payload: StatusPayload, row: GoalDirectoryRow): Perso
   return "安静运行";
 }
 
-function personalAgentSentence(payload: StatusPayload, row: GoalDirectoryRow, state: PersonalGoalState) {
+function personalAgentSentence(payload: StatusPayload, row: GoalDirectoryRow, state: PersonalGoalState, t: WorkspaceTranslate) {
   if (state === "已停止") {
-    return "已由你停止；历史、Todo 和证据仍保留";
+    return agentStatusSentence("stopped", t);
   }
   if (state === "需修复") {
-    return personalProjectionSentence(personalRepairText(payload, row), "LoopX 状态需要刷新");
+    return projectionSentence(personalRepairText(payload, row), t, "projection.statusRefreshNeeded");
   }
   if (state === "等你") {
-    return "Agent 等待你的决定";
+    return agentStatusSentence("needs_you", t);
   }
   if (state === "推进中") {
     const todoText = (getShareTodos(row, "agent")?.items ?? [])
@@ -1015,12 +1001,14 @@ function personalAgentSentence(payload: StatusPayload, row: GoalDirectoryRow, st
       row.latestRun?.recommended_action,
     ].map((value) => cleanShareText(value))
       .find((value) => value !== "" && value !== "暂无");
-    return progressText ? personalProjectionSentence(progressText, "Agent 正在推进当前 Goal") : "Agent 正在推进当前 Goal";
+    return progressText
+      ? projectionSentence(progressText, t, "projection.agentAdvancingGoal")
+      : agentStatusSentence("advancing", t);
   }
   if (state === "等待条件") {
-    return "正在等待外部条件";
+    return agentStatusSentence("waiting_external", t);
   }
-  return "暂无需要你处理";
+  return agentStatusSentence("idle", t);
 }
 
 function personalManagerMatches(question: string, keywords: string[]) {
@@ -1138,6 +1126,7 @@ function answerPersonalManagerQuestion(
 function buildPersonalHomeModel(
   payload: StatusPayload,
   rows: GoalDirectoryRow[],
+  t: WorkspaceTranslate,
   goalSubagentConfigurationEnabled = false,
 ): PersonalHomeModel {
   const rowById = new Map(rows.map((row) => [row.goal.id, row]));
@@ -1174,7 +1163,7 @@ function buildPersonalHomeModel(
       goalId: row.goal.id,
       sourceOrder: payload.attention_queue.items.length + rowOrder,
       taskClass: "user_gate",
-      text: personalPendingOperatorGateText(row),
+      text: personalPendingOperatorGateText(row, t),
       todoId: `${row.goal.id}:operator-gate`,
       todoOrder: 0,
       updatedAt: row.latestRun?.operator_gate?.recorded_at ?? row.latestRun?.generated_at ?? null,
@@ -1226,16 +1215,16 @@ function buildPersonalHomeModel(
       agentTodoFacts.nextTodoText,
       row.queueItem?.recommended_action,
       row.latestRun?.recommended_action,
-      personalAgentSentence(payload, row, state),
-    ].map((value) => personalProjectionSentence(value))
-      .find((value) => value !== "" && value !== "暂无") ?? "等待 LoopX 更新下一步";
+      personalAgentSentence(payload, row, state, t),
+    ].map((value) => projectionSentence(value, t))
+      .find((value) => value !== "" && value !== "暂无") ?? t("projection.nextUpdatePending");
     return [{
       activationState: goal.activation_state,
       agentId: agentRow?.agentId ?? registeredAgentIds[0] ?? "codex",
       agentLaneCount: goalAgentLanes.length,
       agentLanes: goalAgentLanes,
       agentLabel: agentRow?.agentId,
-      agentSentence: personalAgentSentence(payload, row, state),
+      agentSentence: personalAgentSentence(payload, row, state, t),
       agentTodos: [...goalAgentTodos, ...agentTodoFacts.recentCompleted],
       doneTodoCount: agentTodoFacts.doneTodoCount,
       goalId: goal.id,
@@ -1246,7 +1235,7 @@ function buildPersonalHomeModel(
       needsYouTaskClass: needsYouTodo?.taskClass ?? null,
       needsYouTodoId: needsYouTodo?.todoId ?? null,
       nextSentence,
-      runEvidence: personalRunEvidence(payload, row),
+      runEvidence: personalRunEvidence(payload, row, t),
       state,
       ...(goalSubagentConfigurationEnabled ? {
         subagentExecution: {
@@ -1382,10 +1371,11 @@ function PersonalGoalHome({
   }>>([]);
   const [goalSubagentConfigurationEnabled, setGoalSubagentConfigurationEnabled] = useState(false);
   const model = useMemo(() => {
-    const base = buildPersonalHomeModel(payload, rows, goalSubagentConfigurationEnabled);
+    const base = buildPersonalHomeModel(payload, rows, t, goalSubagentConfigurationEnabled);
     if (!progress) return base;
     const models = Object.values(progress.snapshots).map((snapshot) => buildPersonalHomeModel(
       snapshot, buildGoalDirectoryRows(snapshot.run_history.goals, snapshot.attention_queue.items),
+      t,
       goalSubagentConfigurationEnabled,
     ));
     const loadedGoals = new Map(models.flatMap((item) => item.goals).map((goal) => [goal.goalId, goal]));
@@ -1407,7 +1397,7 @@ function PersonalGoalHome({
         freshnessWarning: models.map((item) => item.systemHealth?.freshnessWarning).filter(Boolean).join("；") || null,
       },
     };
-  }, [payload, rows, progress, goalSubagentConfigurationEnabled]);
+  }, [payload, rows, progress, goalSubagentConfigurationEnabled, t]);
   const selectedGoal = model.goals.find((goal) => goal.goalId === selectedGoalId) ?? null;
   const selectedPayload = progress?.snapshots[selectedGoalId] ?? payload;
   const [periodicReport, setPeriodicReport] = useState<PeriodicReportProjection | null>(null);

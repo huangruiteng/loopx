@@ -1627,13 +1627,24 @@ async function main() {
     await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
     await page.getByText("LoopX Manager", { exact: true }).first().waitFor({ state: "visible" });
     if (await page.locator("html").getAttribute("lang") !== "en") throw new Error("English locale did not survive reload");
-    await page.locator(".personal-goal-link").first().click();
+    await page.locator(".personal-goal-link", { hasText: /loopx meta/i }).click();
     await page.getByRole("button", { name: "Open Goal details or capability settings" }).click();
     await page.getByRole("group", { name: "Goal settings" }).getByRole("button", { name: /Goal details/ }).click();
     await page.getByText("Repository", { exact: true }).waitFor({ state: "visible" });
     await page.getByText("Execution Session", { exact: true }).waitFor({ state: "visible" });
     await page.getByText("Read only", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: /Close details/ }).click();
+    const englishGoalNavigation = page.getByRole("navigation", { name: "Goal view" });
+    await englishGoalNavigation.getByRole("button", { name: "Chat", exact: true }).click();
+    await page.getByText("Agent is waiting for your decision", { exact: true }).first().waitFor({ state: "visible" });
+    await englishGoalNavigation.getByRole("button", { name: "Files", exact: true }).click();
+    const latestRunOutput = page.locator('[data-output-kind="evidence"]', { hasText: "Latest run" }).first();
+    await latestRunOutput.waitFor({ state: "visible" });
+    const englishProjectionText = await page.locator(".personal-workspace-main").innerText();
+    for (const forbidden of ["最近运行", "最近验证", "Agent 正在整理下一步", "Agent 正在推进当前 Goal", "Agent 等待你的决定"]) {
+      if (englishProjectionText.includes(forbidden)) throw new Error(`English projection exposed Chinese UI copy ${forbidden}: ${englishProjectionText}`);
+    }
+    await page.screenshot({ path: resolve(outputDir, "desktop-english-projection-copy.png"), fullPage: false, animations: "disabled" });
 
     const writesBeforeEnglishPreviews = api.durableWriteCount;
     await page.locator(".personal-manager-link").first().click();
