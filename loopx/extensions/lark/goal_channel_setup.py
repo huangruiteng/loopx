@@ -30,10 +30,11 @@ from .goal_channel_transport import (
     APP_ID_PATTERN,
     CHAT_ID_PATTERN,
     MESSAGE_ID_PATTERN,
+    BotChatMembershipResult,
     auth_verified,
-    bot_membership_verified,
     call,
     chat_verified,
+    ensure_bot_chat_membership,
     find_first_string,
     json_payload,
     lark_args,
@@ -461,38 +462,16 @@ def setup_lark_goal_channel(
                 public_summary="the configured Lark channel is not reachable by the user",
             )
 
-    if execute and not bot_membership_verified(
-        runner=runner,
-        cli_bin=effective_cli_bin,
-        profile=None,
-        chat_id=effective_chat_id,
-        app_id=str(effective_app_id),
-    ):
-        add_bot = call(
-            runner,
-            lark_args(
-                cli_bin=effective_cli_bin,
-                profile=None,
-                tail=[
-                    "im",
-                    "chat.members",
-                    "create",
-                    "--chat-id",
-                    effective_chat_id,
-                    "--member-id-type",
-                    "app_id",
-                    "--succeed-type",
-                    "2",
-                    "--data",
-                    json.dumps({"id_list": [effective_app_id]}),
-                    "--as",
-                    "user",
-                    "--format",
-                    "json",
-                ],
-            ),
+    if execute:
+        membership_result = ensure_bot_chat_membership(
+            runner=runner,
+            cli_bin=effective_cli_bin,
+            membership_profile=None,
+            bot_profile=effective_profile or None,
+            chat_id=effective_chat_id,
+            app_id=str(effective_app_id),
         )
-        if add_bot.get("returncode") != 0:
+        if membership_result is BotChatMembershipResult.ADD_FAILED:
             return operation_packet(
                 ok=False,
                 goal_id=goal_id,
@@ -503,33 +482,19 @@ def setup_lark_goal_channel(
                 public_summary="the Lark bot could not be added to the Goal Channel",
                 external_write_performed=bool(external_writes),
             )
-        external_writes += 1
-    if execute and (
-        not bot_membership_verified(
-            runner=runner,
-            cli_bin=effective_cli_bin,
-            profile=None,
-            chat_id=effective_chat_id,
-            app_id=str(effective_app_id),
-        )
-        or not chat_verified(
-            runner=runner,
-            cli_bin=effective_cli_bin,
-            profile=effective_profile or None,
-            identity="bot",
-            chat_id=effective_chat_id,
-        )
-    ):
-        return operation_packet(
-            ok=False,
-            goal_id=goal_id,
-            operation="setup",
-            execute=True,
-            status="gate_required",
-            blocker="channel_membership_unverified",
-            public_summary="the configured Lark bot is not a verified channel member",
-            external_write_performed=bool(external_writes),
-        )
+        if membership_result is BotChatMembershipResult.ADDED_VERIFIED:
+            external_writes += 1
+        if membership_result is BotChatMembershipResult.ADDED_UNVERIFIED:
+            return operation_packet(
+                ok=False,
+                goal_id=goal_id,
+                operation="setup",
+                execute=True,
+                status="gate_required",
+                blocker="channel_membership_unverified",
+                public_summary="the configured Lark bot is not a verified channel member",
+                external_write_performed=bool(external_writes + 1),
+            )
 
     existing_kanban = _mapping(raw_existing.get("kanban"))
     existing_kanban_path = str(existing_kanban.get("config_path") or "")
