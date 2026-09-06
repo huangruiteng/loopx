@@ -191,7 +191,13 @@ function stripPythonWhitespace(value: string): string {
   return value.slice(start, end);
 }
 
-/** Match Python json.dumps(sort_keys=True, separators=(",", ":")) identity bytes. */
+/**
+ * Match Python json.dumps(sort_keys=True, separators=(",", ":")) identity
+ * bytes for the string, boolean, and null shapes this contract carries.
+ * Floats and integers beyond Number.MAX_SAFE_INTEGER differ from CPython's
+ * repr (exponent zero-padding and format thresholds), so cross-language
+ * digest equality must not rely on those shapes.
+ */
 function pythonCanonicalJson(value: unknown): string {
   const chunks: string[] = [];
   const tasks: CanonicalJsonTask[] = [{ kind: "value", value }];
