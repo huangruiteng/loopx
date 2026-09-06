@@ -104,6 +104,21 @@ runtime regressions must still test actual behavior.
 不能盲目追求字节一致。复审重查完整兼容清单，不沿着上一条发现自动走向批准。缺少
 对照证据就不能宣称等价；packet 测试只证明要求被投影，不证明 agent 已执行或产品无缺陷。
 
+The evidence must be executable, not merely descriptive. Record a replayable
+command or bounded script invocation for baseline, exact head, and the
+sensitivity case, together with the real affected backend, immutable fixture
+fingerprint, exit status, and normalized observation fingerprint. Baseline and
+head use the same harness and fixture unless an intentional delta is declared.
+The mutation run must traverse the same public entrypoint and make an
+independent oracle fail; helper-only unit coverage or conformance among
+providers that all share the candidate rule cannot satisfy this gate.
+
+证据必须可执行，不只是文字描述。基线、精确 head 和敏感性用例都要记录可重放命令
+或有界脚本调用，以及真实受影响 backend、不可变 fixture 指纹、退出状态和归一化观测
+指纹。除非声明并证明有意差异，baseline 与 head 必须使用同一 harness 和 fixture。
+Mutation 运行必须经过同一 public entrypoint，并让独立 oracle 失败；只测 helper，或让共享
+候选规则的多个 provider 互相 conformance，不能通过该门禁。
+
 Refactors must exercise the affected production entrypoint and real backend
 before delivery. Unit tests, mocks, and in-memory conformance remain useful,
 but cannot replace that proof. For changes affecting PostgreSQL authority,

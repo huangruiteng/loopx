@@ -673,6 +673,43 @@ not authorize a generic schema framework.
 - Wheel and sdist are installed into fresh environments and execute deep
   semantic probes from packaged files.
 
+#### Caller-observable semantic parity is a promotion gate
+
+Every Python-to-TypeScript cutover inventories the behavior of every production
+caller branch before implementation. The inventory covers accepted input and
+default normalization; supplied, omitted, empty, and explicit-clear arguments;
+eligibility and overlapping-rejection precedence; complete diagnostics and
+remediation; dispatch-to-persistence readback; authority, ownership, receipt,
+and no-effect outcomes; and replay or concurrent updates when the transaction
+supports them. Equal reason codes or successful provider conformance do not
+establish parity.
+
+The cutover PR records machine-replayable execution receipts for an immutable
+baseline revision and the exact reviewed head. Both runs use the same bounded
+script, synthetic fixture fingerprint, public production entrypoint, and real
+affected backend unless an intentional delta is declared and independently
+approved. Each receipt names the revision, command, backend, exit status,
+normalized observation fingerprint, and public-safe evidence pointer or inline
+observation. Normalization may remove documented nondeterminism such as a
+temporary path or timestamp, but never diagnostics, field presence, precedence,
+persisted state, identity, ownership, or effects.
+
+The same harness must demonstrate regression sensitivity: it fails an
+independently stated invariant on the historical defect or a deliberate
+semantic mutation, such as dropping a field or diagnostic detail or adding a
+stronger precondition, and passes on the fixed head. A unit test that bypasses
+the production entrypoint, or a suite in which every provider already shares
+the candidate rule, is supporting coverage rather than baseline/head proof. If
+the real backend or immutable baseline cannot be exercised safely, promotion is
+held as `not_yet_proven`; prose cannot waive the gap.
+
+This qualification is offline evidence, not a second authority. Production
+does not dual-run Python and TypeScript, derive expected results from the
+candidate, or retain the legacy rule after cutover. Intentional behavior changes
+are separated from parity rows, justified against the public contract, and
+approved explicitly. After promotion, only fixtures that express durable public
+or persisted semantics remain.
+
 Characterization output is evidence, not specification. If a pinned behavior
 contradicts an independently reviewed invariant, the PR must disclose and
 separately approve the behavior change. Once the old authority is removed,

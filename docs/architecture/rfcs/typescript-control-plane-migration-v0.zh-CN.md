@@ -566,6 +566,32 @@ happy path 及其 retry/recovery path 上实测，不能由 handler 数量推断
 - 进程 crash 与 retry 不得重复已经提交的内部 effect。
 - wheel 与 sdist 安装到全新环境后，从打包文件执行 deep semantic probe。
 
+#### Caller 可观测语义是 promotion 门禁
+
+每笔 Python 到 TypeScript cutover 在实现前都要盘点所有生产 caller 分支的行为。盘点
+包括：可接受输入与默认归一化；已传入、未传入、空值与显式清除参数；资格与重叠拒绝
+的优先级；完整诊断与修复建议；从 dispatch 到持久化后独立 readback；authority、
+ownership、receipt 与 no-effect 结果；以及 transaction 支持时的 replay 或并发更新。
+只有相同 reason code，或 provider conformance 通过，不足以证明 parity。
+
+Cutover PR 必须分别为不可变基线 revision 和精确审查 head 记录机器可重放的执行
+receipt。除非声明且独立批准有意差异，两次运行必须使用同一有界脚本、合成 fixture
+指纹、公开生产入口与真实受影响 backend。每个 receipt 都要写明 revision、命令、
+backend、退出状态、归一化观测指纹，以及公开安全的证据指针或内联观测。归一化可以
+消除临时路径、时间戳等已记录的非确定性，但不得消除诊断、字段存在性、优先级、
+持久状态、identity、ownership 或 effect 差异。
+
+同一 harness 还必须证明回归敏感性：它要在历史缺陷或一个故意注入的语义 mutation
+上使独立定义的 invariant 失败，并在修复 head 上通过。Mutation 例如丢弃字段或诊断
+细节，或引入更强前置条件。绕过生产入口的单测，或所有 provider 都已共享候选规则
+的测试集，只能算辅助覆盖，不是 baseline/head 证明。如果无法安全运行真实 backend
+或不可变基线，promotion 必须以 `not_yet_proven` 暂停；文字说明不能豁免该缺口。
+
+这项验证是离线证据，不是第二份 authority。生产环境不同时运行 Python 与 TypeScript，
+不从候选实现推导期望结果，cutover 后不保留 legacy rule。有意行为变更必须与 parity row
+分开，根据公开 contract 说明理由并显式批准。Promotion 后只保留表达持久公开或
+持久化语义的 fixture。
+
 Characterization output 是证据，不是 specification。Pinned 行为若与独立 review 的
 invariant 冲突，PR 必须披露，并把行为变更单独批准。旧 authority 删除后，promotion
 还要求删除只服务这次实现对比的 characterization machinery；当 fixture 表达 public

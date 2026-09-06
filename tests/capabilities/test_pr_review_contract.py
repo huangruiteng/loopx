@@ -389,6 +389,8 @@ def test_observable_semantics_covers_diagnostics_and_claim_neutral_note_paths() 
         "reviewed_head",
         "caller_branch_inventory",
         "comparison_rows",
+        "execution_receipts",
+        "normalization_rules",
         "intentional_deltas",
         "regression_sensitivity",
         "unverified_dimensions",
@@ -410,6 +412,24 @@ def test_observable_semantics_covers_diagnostics_and_claim_neutral_note_paths() 
         "expected_invariant_source",
         "validation_evidence",
     } <= set(parity["row_fields"])
+    assert {
+        "revision",
+        "command",
+        "public_entrypoint",
+        "backend",
+        "fixture_fingerprint",
+        "exit_status",
+        "observation_fingerprint",
+        "public_safe_artifact_reference_or_inline_observation",
+    } <= set(parity["execution_receipt_fields"])
+    assert {
+        "invariant",
+        "historical_defect_or_deliberate_mutation",
+        "command",
+        "expected_failure",
+        "observed_failure",
+        "passing_head_receipt",
+    } <= set(parity["regression_sensitivity_fields"])
     assert parity["verdict_values"] == [
         "equivalent",
         "intentional_change_validated",
@@ -417,6 +437,9 @@ def test_observable_semantics_covers_diagnostics_and_claim_neutral_note_paths() 
         "not_yet_proven",
     ]
     assert "reviewer-executed" in parity["rule"]
+    assert "replayable command" in parity["rule"]
+    assert "real affected backend" in parity["rule"]
+    assert "independent oracle fail" in parity["rule"]
     assert (
         "observable_semantics"
         in contract["verdict_policy"]["open_pr_unresolved_semantics"]

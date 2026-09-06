@@ -186,6 +186,17 @@ typed evidence groups before a verdict:
   with evidence, not green CI or conflict-free coexistence. For alternative
   views of one resource, validate consumer switching and concurrent updates
   where relevant. Repeat the comparison after base integration or head changes;
+- caller-observable semantic parity for every behavior-bearing change, whether
+  or not its title says refactor or migration. Inventory legacy caller branches,
+  then run the same synthetic fixture through the public entrypoint and affected
+  backend at an immutable baseline and the exact head. Record replayable
+  commands, revisions, fixture and observation fingerprints, exit status, full
+  diagnostics, persisted readback, authority/effect outcomes, and only the
+  normalization rules needed for documented nondeterminism. The sensitivity
+  case must make the real path fail on the historical defect or a deliberate
+  dropped-field/detail or stronger-precondition mutation, then pass at the fixed
+  head. New-rule provider conformance and prose-only claims do not establish
+  before/after compatibility;
 - exact changed-line classification across production, tests/fixtures, docs,
   generated output, and mechanical moves;
 - a 2-5 item exact-head symbol map for code-changing PRs, including caller,

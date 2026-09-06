@@ -193,6 +193,8 @@ def build_review_execution_contract() -> dict[str, Any]:
                     "reviewed_head",
                     "caller_branch_inventory",
                     "comparison_rows",
+                    "execution_receipts",
+                    "normalization_rules",
                     "intentional_deltas",
                     "regression_sensitivity",
                     "unverified_dimensions",
@@ -214,6 +216,24 @@ def build_review_execution_contract() -> dict[str, Any]:
                     "expected_invariant_source",
                     "validation_evidence",
                 ],
+                "execution_receipt_fields": [
+                    "revision",
+                    "command",
+                    "public_entrypoint",
+                    "backend",
+                    "fixture_fingerprint",
+                    "exit_status",
+                    "observation_fingerprint",
+                    "public_safe_artifact_reference_or_inline_observation",
+                ],
+                "regression_sensitivity_fields": [
+                    "invariant",
+                    "historical_defect_or_deliberate_mutation",
+                    "command",
+                    "expected_failure",
+                    "observed_failure",
+                    "passing_head_receipt",
+                ],
                 "rule": (
                     "Inventory changed and bypassed caller branches from the immutable "
                     "pre-change baseline, not just the new helper or PR title. Compare "
@@ -234,7 +254,16 @@ def build_review_execution_contract() -> dict[str, Any]:
                     "baseline bugs require explicitly disclosed, justified changes rather "
                     "than blind byte parity. Show a regression failing on the old defect "
                     "or a deliberate semantic mutation (dropped argument/detail, stronger "
-                    "precondition), then passing on the fix. Normalize only documented "
+                    "precondition), then passing on the fix. Each baseline/head execution "
+                    "receipt must record a replayable command or bounded script invocation, "
+                    "the public entrypoint, real affected backend, immutable fixture "
+                    "fingerprint, exit status, and normalized observation fingerprint. Use "
+                    "the same harness and fixture at both revisions unless an intentional "
+                    "delta explains the difference. Mutation evidence must execute that "
+                    "public path and make an independent oracle fail before the fixed-head "
+                    "receipt passes; prose, helper-only unit coverage, parser acceptance, or "
+                    "provider conformance against only the new rule is insufficient. "
+                    "Normalize only documented "
                     "nondeterminism, never away a semantic delta. Re-review the full "
                     "inventory after fixes, not only the last finding. Missing baseline "
                     "or real-path evidence is not_yet_proven, not equivalent. This is a "
