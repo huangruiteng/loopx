@@ -114,6 +114,19 @@ def parse_goal_activation_filter(query: dict[str, list[str]]) -> str | None:
     return values[0] if values else None
 
 
+def _json_boolean(body: dict[str, Any], field: str, *, default: bool = False) -> bool:
+    if field not in body:
+        return default
+    value = body[field]
+    if type(value) is not bool:
+        raise ValueError(f"{field} must be a JSON boolean")
+    return value
+
+
+def _optional_json_boolean(body: dict[str, Any], field: str) -> bool | None:
+    return _json_boolean(body, field) if field in body else None
+
+
 def is_loopback_host(host: str) -> bool:
     hostname = host.strip().lower()
     return hostname in {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -299,7 +312,11 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             run_generated_at=run_generated_at,
             reward=reward,
             dry_run=True,
-            write_active_state_summary=bool(body.get("write_active_state_summary")) if append else False,
+            write_active_state_summary=(
+                _json_boolean(body, "write_active_state_summary", default=True)
+                if append
+                else False
+            ),
         )
 
     def _handle_reward_dry_run(self) -> None:
@@ -375,7 +392,9 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
                 run_generated_at=run_generated_at,
                 reward=reward,
                 dry_run=False,
-                write_active_state_summary=bool(body.get("write_active_state_summary", True)),
+                write_active_state_summary=_json_boolean(
+                    body, "write_active_state_summary", default=True
+                ),
             )
         except Exception as exc:  # noqa: BLE001 - preserve validation diagnostics for the local UI.
             self._send_json(
@@ -449,20 +468,22 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "goal_id": goal_id,
             "quota_compute": body.get("quota_compute"),
             "quota_window_hours": body.get("quota_window_hours"),
-            "self_repair_enabled": body.get("self_repair_enabled"),
-            "self_repair_health": body.get("self_repair_health"),
-            "self_repair_waiting_projection": body.get("self_repair_waiting_projection"),
+            "self_repair_enabled": _optional_json_boolean(body, "self_repair_enabled"),
+            "self_repair_health": _optional_json_boolean(body, "self_repair_health"),
+            "self_repair_waiting_projection": _optional_json_boolean(
+                body, "self_repair_waiting_projection"
+            ),
             "multi_subagent_feature": body.get("multi_subagent_feature"),
             "orchestration_mode": body.get("orchestration_mode"),
-            "spawn_allowed": body.get("spawn_allowed"),
+            "spawn_allowed": _optional_json_boolean(body, "spawn_allowed"),
             "max_children": body.get("max_children"),
             "allowed_domains": [str(item) for item in allowed_domains] if allowed_domains is not None else None,
-            "clear_allowed_domains": bool(body.get("clear_allowed_domains", False)),
+            "clear_allowed_domains": _json_boolean(body, "clear_allowed_domains"),
             "registered_agents": [str(item) for item in registered_agents] if registered_agents is not None else None,
-            "clear_registered_agents": bool(body.get("clear_registered_agents", False)),
+            "clear_registered_agents": _json_boolean(body, "clear_registered_agents"),
             "peer_task_coordinator": body.get("peer_task_coordinator"),
-            "clear_peer_task_coordinator": bool(
-                body.get("clear_peer_task_coordinator", False)
+            "clear_peer_task_coordinator": _json_boolean(
+                body, "clear_peer_task_coordinator"
             ),
             "agent_profiles": agent_profiles,
             "clear_agent_profiles": (
@@ -489,10 +510,10 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
                 if supervised_agents is not None
                 else None
             ),
-            "clear_supervisor": bool(body.get("clear_supervisor", False)),
+            "clear_supervisor": _json_boolean(body, "clear_supervisor"),
             "write_scope": [str(item) for item in write_scope] if write_scope is not None else None,
-            "replace_write_scope": bool(body.get("replace_write_scope", False)),
-            "clear_write_scope": bool(body.get("clear_write_scope", False)),
+            "replace_write_scope": _json_boolean(body, "replace_write_scope"),
+            "clear_write_scope": _json_boolean(body, "clear_write_scope"),
             "boundary_authority_scopes": (
                 [str(item) for item in boundary_authority_scopes]
                 if boundary_authority_scopes is not None
@@ -502,7 +523,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             "boundary_authority_decision_id": body.get("boundary_authority_decision_id"),
             "boundary_authority_recorded_at": body.get("boundary_authority_recorded_at"),
             "boundary_authority_expires_at": body.get("boundary_authority_expires_at"),
-            "clear_boundary_authority": bool(body.get("clear_boundary_authority", False)),
+            "clear_boundary_authority": _json_boolean(body, "clear_boundary_authority"),
         }
 
     def _configure_goal_payload(self, body: dict[str, Any], *, apply: bool, execute: bool) -> dict[str, Any]:
