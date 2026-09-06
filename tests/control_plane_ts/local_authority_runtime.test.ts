@@ -512,6 +512,52 @@ test("provider-first Todo claim preserves the complete record and is replay-safe
   assert.equal(repeated.changed, false);
 });
 
+test("agent id normalization folds any whitespace run like the Python kernel", async () => {
+  // Parity with loopx/control_plane/todos/contract.py normalize_todo_claimed_by:
+  // compact_todo_text collapses every whitespace run (tabs included) into one
+  // space before mapping it to "-", so the same claim command keeps working
+  // before and after promotion.
+  const root = await mkdtemp(join(tmpdir(), "loopx-local-authority-claim-tab-"));
+  const store = new FileAuthorityStore(join(root, "authority", "file-v0"), "goal-a");
+  const seeded = await store.commitAuthority({
+    expected_provider_revision: null,
+    operation_id: "promote:claim-tab-test",
+    events: [{ schema_version: "promotion_v0" }],
+    next_projection: withTodoReadModel({
+      goal_id: "goal-a",
+      handoff_mode: "soft_claim",
+      todos: [todoRecord()],
+      leases: [],
+    }),
+    receipts: [],
+  });
+  assert.equal(seeded.status, "applied");
+
+  const applied = await claimLocalCoordinationTodo({
+    schema_version: LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA,
+    runtime_root: root,
+    goal_id: "goal-a",
+    todo_id: "todo_a",
+    role: "agent",
+    claimed_by: "Agent\tA",
+    actor_agent_id: "Agent \t A",
+    registered_agents: ["agent-a"],
+    operation_id: "todo-claim:goal-a:todo_a:tab",
+    observed_at: "2026-09-05T04:30:00Z",
+    dry_run: false,
+  });
+  assert.equal(applied.status, "applied", JSON.stringify(applied));
+
+  const read = await readLocalCoordinationTodo({
+    schema_version: LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA,
+    runtime_root: root,
+    goal_id: "goal-a",
+    todo_id: "todo_a",
+  });
+  assert.equal(read.status, "found");
+  assert.equal((read.todo as Record<string, unknown>).claimed_by, "agent-a");
+});
+
 test("one TypeScript decision owns promoted and legacy Todo claims", () => {
   const input = {
     goal_id: "goal-a",

@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from loopx.control_plane.coordination.local_authority import (
+    LocalCoordinationAuthorityRejection,
     LocalCoordinationAuthorityUnavailable,
     claim_canonical_todo_if_promoted,
     read_canonical_todos_if_promoted,
@@ -248,6 +249,228 @@ def test_engaged_fence_never_falls_back_when_provider_is_missing(
     with pytest.raises(LocalCoordinationAuthorityUnavailable) as exc_info:
         read_canonical_todos_if_promoted(runtime_root=tmp_path, goal_id="goal-a")
     assert exc_info.value.code == "local_authority_todo_list_unavailable"
+
+
+def _claim_registry(tmp_path: Path) -> Path:
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "goals": [
+                    {
+                        "id": "goal-a",
+                        "coordination": {"registered_agents": ["agent-a"]},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return registry
+
+
+def _seed_promoted_store(runtime_root: Path) -> None:
+    """Promote one open agent Todo through the real TypeScript runtime."""
+
+    projection = build_todo_runtime_shadow_projection(
+        goal_id="goal-a",
+        todos=[
+            {
+                "schema_version": "todo_item_v0",
+                "index": 1,
+                "done": False,
+                "text": "Claim through the promoted provider head",
+                "todo_id": "todo_a",
+                "role": "agent",
+                "status": "open",
+                "archive_state": "active",
+                "source_section": TODO_SECTION_HEADINGS["agent"],
+            }
+        ],
+    )
+    canonical_bytes = json.dumps(
+        projection,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    projection_sha256 = hashlib.sha256(canonical_bytes).hexdigest()
+    bootstrap = effect_runtime_result(
+        "coordination.runtime_shadow.bootstrap",
+        {
+            "schema_version": "loopx_coordination_runtime_shadow_bootstrap_v0",
+            "runtime_root": str(runtime_root),
+            "goal_id": "goal-a",
+            "operation_id": "bootstrap:goal-a:f34",
+            "source_version": "state:f34:0",
+            "projection": projection,
+        },
+    )
+    assert bootstrap["status"] == "applied"
+    mirrored = effect_runtime_result(
+        "coordination.runtime_shadow.commit",
+        {
+            "schema_version": "loopx_coordination_runtime_shadow_commit_v0",
+            "runtime_root": str(runtime_root),
+            "goal_id": "goal-a",
+            "operation_id": "todo:goal-a:f34:qualify",
+            "event_kind": "todo_update",
+            "source_version": "state:f34:1",
+            "projection": projection,
+        },
+    )
+    assert mirrored["status"] == "applied"
+    provider_revision = str(mirrored["provider_revision"])
+    fence = {
+        "schema_version": "loopx_legacy_coordination_writer_fence_v0",
+        "state": "engaged",
+        "goal_id": "goal-a",
+        "fence_id": "legacy-writer-fence:goal-a:f34",
+        "source_version": "state:f34:1",
+        "source_projection_sha256": projection_sha256,
+        "expected_shadow_provider_revision": provider_revision,
+    }
+    engaged = effect_runtime_result(
+        "coordination.local_authority.legacy_writer_fence.engage",
+        {
+            "schema_version": "loopx_legacy_coordination_writer_fence_engage_request_v0",
+            "runtime_root": str(runtime_root),
+            "goal_id": "goal-a",
+            "fence": fence,
+        },
+    )
+    assert engaged["status"] == "applied"
+    promoted = effect_runtime_result(
+        "coordination.local_authority.promote",
+        {
+            "schema_version": "loopx_local_coordination_promotion_request_v0",
+            "runtime_root": str(runtime_root),
+            "goal_id": "goal-a",
+            "operation_id": "promote:goal-a:f34",
+            "expected_shadow_provider_revision": provider_revision,
+            "expected_shadow_projection_sha256": projection_sha256,
+            "minimum_operations": 1,
+            "required_event_kinds": ["todo_update"],
+            "writer_fence": fence,
+        },
+    )
+    assert promoted["status"] == "applied"
+
+
+def test_promoted_claim_rejection_preserves_legacy_valueerror_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Promoted claim rejections must stay catchable via ``except ValueError``.
+
+    The legacy kernel raised ValueError for decision rejections such as
+    todo_not_open; external Python API callers rely on that contract.
+    """
+    _engage_fence(tmp_path)
+    monkeypatch.setattr(
+        "loopx.control_plane.coordination.local_authority.effect_runtime_result",
+        lambda method, params: {
+            "status": "failed",
+            "reason_code": "todo_not_open",
+            "reason": "todo claim requires status=open",
+            "source_authority": "file_v0",
+            "decision_read_from_provider": True,
+            "legacy_fallback_used": False,
+        },
+    )
+    with pytest.raises(ValueError) as exc_info:
+        claim_canonical_todo_if_promoted(
+            registry_path=_claim_registry(tmp_path),
+            runtime_root=tmp_path,
+            goal_id="goal-a",
+            todo_id="todo_a",
+            role="agent",
+            claimed_by="agent-a",
+            actor_agent_id="agent-a",
+            dry_run=False,
+        )
+    rejection = exc_info.value
+    assert isinstance(rejection, LocalCoordinationAuthorityRejection)
+    # Callers that already migrated to the authority-unavailable handling of
+    # promoted claims keep working: the rejection is still its subclass.
+    assert isinstance(rejection, LocalCoordinationAuthorityUnavailable)
+    assert rejection.code == "todo_not_open"
+    assert str(rejection) == "todo claim requires status=open"
+
+
+def test_promoted_claim_protocol_failure_stays_infrastructure_outage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Protocol-level request failures must not masquerade as ValueErrors."""
+    _engage_fence(tmp_path)
+    monkeypatch.setattr(
+        "loopx.control_plane.coordination.local_authority.effect_runtime_result",
+        lambda method, params: {
+            "status": "failed",
+            "reason_code": "invalid_local_coordination_todo_claim_request",
+            "reason": "registered_agents must be a JSON array",
+            "source_authority": "file_v0",
+            "decision_read_from_provider": True,
+            "legacy_fallback_used": False,
+        },
+    )
+    with pytest.raises(LocalCoordinationAuthorityUnavailable) as exc_info:
+        claim_canonical_todo_if_promoted(
+            registry_path=_claim_registry(tmp_path),
+            runtime_root=tmp_path,
+            goal_id="goal-a",
+            todo_id="todo_a",
+            role="agent",
+            claimed_by="agent-a",
+            actor_agent_id="agent-a",
+            dry_run=False,
+        )
+    assert exc_info.value.code == "invalid_local_coordination_todo_claim_request"
+    assert not isinstance(exc_info.value, ValueError)
+    assert not isinstance(exc_info.value, LocalCoordinationAuthorityRejection)
+
+
+def test_promoted_claim_folds_agent_id_whitespace_like_legacy(tmp_path: Path) -> None:
+    """Tabs in claimed_by must fold to "-" before and after promotion alike.
+
+    Legacy normalize_todo_claimed_by collapses any whitespace run (Python
+    compact_todo_text) to a single "-"; the TypeScript owner now folds the
+    same way, so the identical claim command keeps succeeding post-cutover.
+    """
+    _seed_promoted_store(tmp_path)
+    result = claim_canonical_todo_if_promoted(
+        registry_path=_claim_registry(tmp_path),
+        runtime_root=tmp_path,
+        goal_id="goal-a",
+        todo_id="todo_a",
+        role="agent",
+        claimed_by="Agent\tA",
+        actor_agent_id=None,
+        dry_run=False,
+    )
+    assert result is not None and result["ok"] is True
+    assert result["status"] == "applied"
+    assert result["claimed_by"] == "agent-a"
+
+
+def test_promoted_claim_missing_todo_rejection_is_valueerror(tmp_path: Path) -> None:
+    """End-to-end: a real TypeScript decision rejection raises ValueError."""
+    _seed_promoted_store(tmp_path)
+    with pytest.raises(ValueError) as exc_info:
+        claim_canonical_todo_if_promoted(
+            registry_path=_claim_registry(tmp_path),
+            runtime_root=tmp_path,
+            goal_id="goal-a",
+            todo_id="todo_missing",
+            role="agent",
+            claimed_by="agent-a",
+            actor_agent_id="agent-a",
+            dry_run=False,
+        )
+    assert isinstance(exc_info.value, LocalCoordinationAuthorityRejection)
+    assert exc_info.value.code == "todo_not_found"
 
 
 def test_todo_list_uses_provider_after_cutover_even_when_markdown_disagrees(

@@ -43,6 +43,23 @@ class LocalCoordinationAuthorityUnavailable(RuntimeError):
         self.payload = dict(payload)
 
 
+class LocalCoordinationAuthorityRejection(LocalCoordinationAuthorityUnavailable, ValueError):
+    """The TypeScript coordination owner definitively rejected a claim.
+
+    The legacy Python kernel raised ``ValueError`` for every claim rejection
+    (todo_not_open, claim_owner_mismatch, unregistered actor, ...).  After
+    promotion those rejections surface as ``status="failed"`` results from the
+    TypeScript transaction owner; re-raising them through this class keeps the
+    legacy ``except ValueError`` contract intact for Python API callers while
+    remaining catchable as an authority outage.  Infrastructure and protocol
+    failures keep raising :class:`LocalCoordinationAuthorityUnavailable`, which
+    is not a ``ValueError``.
+    """
+
+    def __init__(self, message: str, *, code: str, payload: Mapping[str, Any]) -> None:
+        super().__init__(message, code=code, payload=payload)
+
+
 def local_authority_is_promoted(*, runtime_root: Path, goal_id: str) -> bool:
     fence_path = legacy_coordination_writer_fence_path(
         runtime_root=runtime_root,
@@ -103,6 +120,19 @@ def claim_canonical_todo_if_promoted(
         )
     payload = dict(result)
     accepted = {"applied", "recovered", "replayed", "no_change", "planned"}
+    if (
+        payload.get("status") == "failed"
+        and payload.get("reason_code") != "invalid_local_coordination_todo_claim_request"
+    ):
+        # The TypeScript owner returned a definitive decision rejection. The
+        # legacy kernel raised ValueError for the same rejections, so keep that
+        # caller-observable contract; the wrapper error code is a protocol
+        # failure and stays an infrastructure outage instead.
+        raise LocalCoordinationAuthorityRejection(
+            str(payload.get("reason") or "canonical Todo claim was rejected"),
+            code=str(payload.get("reason_code") or "claim_rejected"),
+            payload=payload,
+        )
     if (
         payload.get("status") not in accepted
         or payload.get("source_authority") != "file_v0"
