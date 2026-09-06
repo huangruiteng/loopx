@@ -1855,9 +1855,12 @@ integrity chain、确定性 scan 与 recovery readback。物理 profile 可以�
   提交到既有 `coordination.runtime_shadow` file-v0 lineage，不再创建第二套 local-shadow
   candidate。晋升前仍需补持续 mixed-writer parity、event-only Todo 覆盖和所选 provider
   profile 的 recovery/capacity 证据。
-- provider-neutral authority binding、兼容投影 outbox，以及 file、NoKV、PostgreSQL
-  的 conformance row。三个 provider 不必同时晋升，但每个 profile 都必须先通过同一
-  合同才具备资格。
+- 补齐兼容投影 outbox 与 file、NoKV、PostgreSQL 的 conformance row。首个
+  provider-first 切片已把 committed authority journal 复用为 native Todo create、
+  claim 和窄 update 的持久 intent，再以幂等 replay 把 native active/archive record
+  渲染到机器所有的 Markdown region。其余 native Todo mutation、lease-file 投影、
+  backlog/status 回读和 provider-neutral authority binding 仍需落实同一合同。三个
+  provider 不必同时晋升，但每个 profile 都必须先通过该合同才具备资格。
 - 首个晋升 profile 的 retention、fast path 与实测 capacity；参考执行器的删除与
   status flip（问题 13）。
 - 晋升后的 rollback：已交付的 rollback 隔离的是晋升前 lineage。首次权威写

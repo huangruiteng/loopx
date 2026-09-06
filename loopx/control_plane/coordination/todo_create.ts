@@ -77,6 +77,8 @@ function replayCreate(
     provider_revision: receipt.provider_revision,
     cursor: receipt.cursor,
     original_receipt: original,
+    projection_delivery: "pending",
+    projection_source: "committed_authority_journal",
   };
 }
 

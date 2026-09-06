@@ -177,7 +177,7 @@ records for that role. The marker is lineage evidence, not a write API.
 The command proves that the rendered records came from the exact provider head
 observed at read time. It does not claim that the revision remains the current
 head after that read; a later canonical mutation makes the Markdown projection
-stale and requires another explicit projection. Consumers must always read the
+stale until the journal-backed delivery replays. Consumers must always read the
 provider, never the Markdown marker, when they need current authority state.
 
 Rollback is intentionally asymmetric. Before promotion, the existing shadow
@@ -188,14 +188,22 @@ Todo sections, but must not promote stale Markdown back to canonical truth.
 
 ## Migration Path
 
-The explicit projector currently accepts only complete legacy v0 records for
-the two active Todo sections. Native `TodoDomainRecord` manifests and archived
-records remain fail-closed inputs; this command must not invent missing
-Markdown provenance or claim native/archive export qualification. A later
-adapter slice must prove native domain parity, legacy ordering preservation,
-and archive ownership before expanding that boundary. It is a manual
-read-time projection, not the transaction-bound projection outbox needed for
-automatic synchronization.
+The projector accepts complete legacy records and native `TodoDomainRecord`
+manifests. Native records receive display-only section/index provenance; that
+provenance never enters the canonical record. Archived records render only
+inside an existing machine-owned `Completed Work Archive` region and retain
+their original `role`. Unknown canonical fields, missing sections, and unsafe
+region ownership continue to fail closed.
+
+For promoted provider-first Todo create, claim, and narrow text/note update,
+the committed authority journal is the transaction-bound projection outbox:
+the canonical mutation, complete head, cursor, revision, and receipt land in
+one provider transaction. After that commit, the Python compatibility adapter
+renders the latest head under the Markdown lock and durably reads it back. A
+missing target or renderer/write failure leaves typed `pending` delivery
+evidence without reversing or hiding the canonical commit. A later successful
+mutation or `todo project-markdown --execute` replays the current head
+idempotently. This is projection recovery, not a second authority path.
 
 1. Emit this projection from active-state Markdown.
 2. Add parity smokes comparing it with existing status todo summaries.
@@ -203,7 +211,10 @@ automatic synchronization.
    the same projection fields.
 4. Promote one complete provider-backed mutation at a time behind the durable
    writer fence; keep the default Markdown mode unchanged.
-5. Regenerate only machine-owned sections from one exact canonical provider
-   revision, preserving human narrative and validating parse/render parity.
-6. Promote a provider projection only after rollback and idempotency checks are
+5. Regenerate only machine-owned active/archive sections from one exact
+   canonical provider revision, preserving human narrative and validating
+   parse/render parity.
+6. Extend the same journal-backed delivery contract to each remaining native
+   Todo mutation before claiming full promotion coverage.
+7. Promote a provider projection only after rollback and idempotency checks are
    in place.

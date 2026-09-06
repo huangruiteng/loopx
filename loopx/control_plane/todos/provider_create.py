@@ -19,12 +19,14 @@ from .contract import (
     normalize_todo_task_class,
     todo_done_for_status,
 )
+from .provider_projection import settle_canonical_todo_projection
 
 
 def create_canonical_todo_if_promoted(
     *, registry_path: Path, runtime_root: Path, goal_id: str, role: str,
     text: str, status: str, actor_agent_id: str | None,
     claimed_by: str | None, metadata: dict[str, Any], dry_run: bool,
+    project: Path | None = None, state_file: Path | None = None,
 ) -> dict[str, Any] | None:
     canonical = read_canonical_todos_if_promoted(
         runtime_root=runtime_root, goal_id=goal_id
@@ -80,7 +82,7 @@ def create_canonical_todo_if_promoted(
             code=str(payload.get("reason_code") or payload.get("conflict_kind")
                      or "todo_create_failed"), payload=payload,
         )
-    return {
+    return settle_canonical_todo_projection({
         "ok": True,
         "goal_id": goal_id,
         "role": role,
@@ -90,4 +92,5 @@ def create_canonical_todo_if_promoted(
         "added": result.get("status") not in {"replayed", "no_change"},
         "already_exists": result.get("status") in {"replayed", "no_change"},
         **result,
-    }
+    }, registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
+        project=project, state_file=state_file)

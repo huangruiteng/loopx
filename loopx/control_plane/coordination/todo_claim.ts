@@ -395,6 +395,8 @@ export async function executeCoordinationTodoClaim(
       provider_revision: receipt.provider_revision,
       cursor: receipt.cursor,
       original_receipt: original,
+      projection_delivery: result.changed === false ? "not_required" : "pending",
+      projection_source: "committed_authority_journal",
     };
   };
   const existing = replay(await store.readReceipt(input.operation_id), "replayed");

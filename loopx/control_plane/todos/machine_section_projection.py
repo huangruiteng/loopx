@@ -18,9 +18,18 @@ from typing import Any
 from ..coordination.coordination_state_contract import (
     TODO_CANONICAL_READ_RECORD_FIELDS,
     TODO_CANONICAL_REQUIRED_READ_FIELDS,
+    TODO_DOMAIN_ITEM_SCHEMA_VERSION,
+    TODO_DOMAIN_RECORD_FIELDS,
+    TODO_DOMAIN_REQUIRED_FIELDS,
+    TODO_ITEM_SCHEMA_VERSION,
     canonical_record_fields,
 )
-from .active_state_editing import TODO_SECTION_HEADINGS
+from .active_state_editing import (
+    COMPLETED_WORK_ARCHIVE_HEADING,
+    TODO_SECTION_HEADINGS,
+    archive_section_bounds,
+    todo_blocks,
+)
 from .machine_region import find_todo_regions, todo_region_marker
 from .active_state_todo_parser import parse_active_state_todos
 from .contract import (
@@ -36,7 +45,7 @@ from .todo_summary import canonical_todo_read_record
 TODO_SECTION_PROJECTION_SCHEMA_VERSION = "loopx_todo_section_projection_v0"
 _MARKER_PATTERN = re.compile(
     r"(?m)^<!-- loopx:todo-section-projection-v0 "
-    r"role=(?P<role>user|agent) "
+    r"role=(?P<role>user|agent|archive) "
     r"provider_revision=(?P<revision>[A-Za-z0-9_.:-]+) "
     r"records_sha256=(?P<digest>[a-f0-9]{64}) -->\r?$"
 )
@@ -77,10 +86,19 @@ def _canonical_records(records: Sequence[Mapping[str, object]]) -> list[dict[str
     canonical: list[dict[str, object]] = []
     seen: set[str] = set()
     for index, value in enumerate(records):
+        native = value.get("schema_version") == TODO_DOMAIN_ITEM_SCHEMA_VERSION
         record = canonical_record_fields(
             value,
-            fields=TODO_CANONICAL_READ_RECORD_FIELDS,
-            required_fields=TODO_CANONICAL_REQUIRED_READ_FIELDS,
+            fields=(
+                TODO_DOMAIN_RECORD_FIELDS
+                if native
+                else TODO_CANONICAL_READ_RECORD_FIELDS
+            ),
+            required_fields=(
+                TODO_DOMAIN_REQUIRED_FIELDS
+                if native
+                else TODO_CANONICAL_REQUIRED_READ_FIELDS
+            ),
             label=f"canonical Todo projection record {index}",
             reject_unknown=True,
         )
@@ -90,11 +108,23 @@ def _canonical_records(records: Sequence[Mapping[str, object]]) -> list[dict[str
         seen.add(todo_id)
         if record.get("role") not in TODO_SECTION_HEADINGS:
             raise TodoSectionProjectionError(f"Todo {todo_id!r} has invalid role")
-        if record.get("archive_state") != "active":
+        if record.get("archive_state") not in {"active", "archive"}:
             raise TodoSectionProjectionError(
-                f"Todo {todo_id!r} is not part of an active Markdown Todo section"
+                f"Todo {todo_id!r} has an unsupported archive state"
             )
-        canonical_todo_read_record(record, reject_unknown=True)
+        canonical_todo_read_record(
+            {
+                **record,
+                "schema_version": TODO_ITEM_SCHEMA_VERSION,
+                "source_section": (
+                    COMPLETED_WORK_ARCHIVE_HEADING
+                    if record.get("archive_state") == "archive"
+                    else TODO_SECTION_HEADINGS[str(record["role"])]
+                ),
+                "index": record.get("index", index + 1),
+            },
+            reject_unknown=True,
+        )
         canonical.append(record)
     return canonical
 
@@ -134,7 +164,11 @@ def _narrative_segments(markdown: str) -> list[str]:
     return parts
 
 
-def _render_record(record: Mapping[str, object]) -> list[str]:
+def _render_record(
+    record: Mapping[str, object],
+    *,
+    include_role: bool = False,
+) -> list[str]:
     status = normalize_todo_status(record.get("status")) or TODO_STATUS_OPEN
     text = " ".join(str(record.get("text") or "").strip().split())
     if not text:
@@ -146,6 +180,8 @@ def _render_record(record: Mapping[str, object]) -> list[str]:
         for field in TODO_METADATA_FIELDS
         if field in record and record[field] is not None
     }
+    if not include_role:
+        metadata_values.pop("role", None)
     metadata = format_todo_metadata_line(**metadata_values)
     return [
         f"- [{todo_marker_for_status(status)}] {text}",
@@ -161,15 +197,20 @@ def _render_section(
     newline: str,
 ) -> tuple[str, str]:
     digest = _sha256_text(_canonical_json(records))
+    heading = (
+        COMPLETED_WORK_ARCHIVE_HEADING
+        if role == "archive"
+        else TODO_SECTION_HEADINGS[role]
+    )
     lines = [
-        f"## {TODO_SECTION_HEADINGS[role]}",
+        f"## {heading}",
         todo_region_marker(role, "begin"),
         f"<!-- loopx:todo-section-projection-v0 role={role} "
         f"provider_revision={provider_revision} records_sha256={digest} -->",
         "",
     ]
     for record in records:
-        lines.extend(_render_record(record))
+        lines.extend(_render_record(record, include_role=role == "archive"))
     lines.append(todo_region_marker(role, "end"))
     lines.append("")
     return newline.join(lines), digest
@@ -198,6 +239,56 @@ def _parsed_active_records(markdown: str) -> list[dict[str, Any]]:
             if isinstance(item, dict) and item.get("archive_state") == "active":
                 records.append(canonical_todo_read_record(item, reject_unknown=False))
     return records
+
+
+def _parsed_archive_records(markdown: str) -> list[dict[str, Any]]:
+    lines = markdown.splitlines()
+    bounds = archive_section_bounds(lines)
+    if bounds is None:
+        return []
+    records: list[dict[str, Any]] = []
+    for item in todo_blocks(
+        lines,
+        bounds[0],
+        bounds[1],
+        source_section=COMPLETED_WORK_ARCHIVE_HEADING,
+    ):
+        if item.get("role") not in TODO_SECTION_HEADINGS:
+            raise TodoSectionProjectionError(
+                f"archived Todo {item.get('todo_id')!r} omits its source role"
+            )
+        records.append(
+            canonical_todo_read_record(
+                {
+                    **item,
+                    "schema_version": TODO_ITEM_SCHEMA_VERSION,
+                    "archive_state": "archive",
+                    "source_section": COMPLETED_WORK_ARCHIVE_HEADING,
+                },
+                reject_unknown=False,
+            )
+        )
+    return records
+
+
+def _projection_record(
+    record: Mapping[str, object],
+    *,
+    display_index: int,
+) -> dict[str, object]:
+    return dict(canonical_todo_read_record(
+        {
+            **record,
+            "schema_version": TODO_ITEM_SCHEMA_VERSION,
+            "source_section": (
+                COMPLETED_WORK_ARCHIVE_HEADING
+                if record.get("archive_state") == "archive"
+                else TODO_SECTION_HEADINGS[str(record["role"])]
+            ),
+            "index": record.get("index", display_index),
+        },
+        reject_unknown=True,
+    ))
 
 
 _DERIVED_READ_MODEL_FIELDS = {
@@ -238,26 +329,26 @@ def render_canonical_todo_sections(
         raise TodoSectionProjectionError(
             "active Markdown omits required Todo sections: " + ", ".join(missing_roles)
         )
-    lossy_fields = sorted(
-        {
-            field
-            for record in canonical
-            for field in _DERIVED_READ_MODEL_FIELDS
-            if field in record and record[field] not in (None, False, "", [], {})
-        }
-    )
-    if lossy_fields:
-        raise TodoSectionProjectionError(
-            "canonical Todo fields are not representable in Markdown: "
-            + ", ".join(lossy_fields)
-        )
     by_role = {
         role: sorted(
-            [record for record in canonical if record.get("role") == role],
+            [
+                record
+                for record in canonical
+                if record.get("role") == role
+                and record.get("archive_state") == "active"
+            ],
             key=_record_sort_key,
         )
         for role in TODO_SECTION_HEADINGS
     }
+    archived = sorted(
+        [record for record in canonical if record.get("archive_state") == "archive"],
+        key=_record_sort_key,
+    )
+    if archived and "archive" not in source_spans:
+        raise TodoSectionProjectionError(
+            "active Markdown omits required Completed Work Archive section"
+        )
     newline = "\r\n" if "\r\n" in markdown else "\n"
     rendered_sections: dict[str, str] = {}
     section_digests: dict[str, str] = {}
@@ -265,6 +356,13 @@ def render_canonical_todo_sections(
         rendered_sections[role], section_digests[role] = _render_section(
             role=role,
             records=by_role[role],
+            provider_revision=provider_revision,
+            newline=newline,
+        )
+    if "archive" in source_spans:
+        rendered_sections["archive"], section_digests["archive"] = _render_section(
+            role="archive",
+            records=archived,
             provider_revision=provider_revision,
             newline=newline,
         )
@@ -278,11 +376,20 @@ def render_canonical_todo_sections(
     if before_narrative != after_narrative:
         raise TodoSectionProjectionError("render changed Markdown outside Todo sections")
 
-    expected = _parity_records(
-        [*by_role["user"], *by_role["agent"]]
-    )
+    expected_records = [
+        _projection_record(record, display_index=index)
+        for records_for_section in (by_role["user"], by_role["agent"], archived)
+        for index, record in enumerate(records_for_section, 1)
+    ]
+    expected = _parity_records(expected_records)
     # Validate the generated payload, independently of unrelated document text.
-    actual = _parity_records(_parsed_active_records("\n".join(rendered_sections.values())))
+    rendered_payload = "\n".join(rendered_sections.values())
+    actual = _parity_records(
+        [
+            *_parsed_active_records(rendered_payload),
+            *_parsed_archive_records(rendered_payload),
+        ]
+    )
     if _canonical_json(actual) != _canonical_json(expected):
         raise TodoSectionProjectionError("Todo section parse/render parity mismatch")
     second = _replace_existing_sections(rendered, rendered_sections=rendered_sections)

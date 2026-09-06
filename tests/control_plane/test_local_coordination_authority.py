@@ -17,8 +17,13 @@ from loopx.control_plane.coordination.local_authority import (
 from loopx.control_plane.coordination.runtime_shadow import (
     build_todo_runtime_shadow_projection,
 )
+from loopx.control_plane.coordination.coordination_state_contract import (
+    TODO_DOMAIN_READ_RECORD_SCHEMA_VERSION,
+    TODO_DOMAIN_RECORD_FIELDS,
+)
 from loopx.control_plane.effect_runtime import effect_runtime_result
 from loopx.control_plane.todos.active_state_editing import TODO_SECTION_HEADINGS
+from loopx.control_plane.todos import provider_projection
 from loopx.control_plane.coordination.legacy_writer_fence import (
     legacy_coordination_writer_fence_path,
 )
@@ -315,6 +320,98 @@ def test_promoted_add_delegates_semantic_duplicate_to_typescript(
     assert result["already_exists"] is True
     assert result["todo_id"] == "todo_existing"
     assert calls[0][0] == "coordination.local_authority.todo_create"
+
+
+def test_promoted_native_create_recovers_markdown_after_delivery_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    state_file = project / ".codex/goals/goal-a/ACTIVE_GOAL_STATE.md"
+    state_file.parent.mkdir(parents=True)
+    source = """# Goal
+
+Human context.
+
+## User Todo / Owner Review Reading Queue
+
+## Agent Todo
+
+## Completed Work Archive
+
+## Next Action
+
+Continue.
+"""
+    state_file.write_text(source, encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps({
+        "schema_version": 1,
+        "common_runtime_root": str(runtime_root),
+        "goals": [{
+            "id": "goal-a", "status": "active", "repo": str(project),
+            "state_file": ".codex/goals/goal-a/ACTIVE_GOAL_STATE.md",
+            "coordination": {"registered_agents": ["agent-a", "agent-b"]},
+        }],
+    }), encoding="utf-8")
+    projection = build_todo_runtime_shadow_projection(goal_id="goal-a", todos=[])
+    projection["todo_read_model"] = {
+        **projection["todo_read_model"],
+        "schema_version": TODO_DOMAIN_READ_RECORD_SCHEMA_VERSION,
+        "contract_fields": list(TODO_DOMAIN_RECORD_FIELDS),
+    }
+    _promote_local_projection(
+        runtime_root=runtime_root,
+        goal_id="goal-a",
+        projection=projection,
+        operation_suffix="native-projection-recovery",
+    )
+
+    real_write = provider_projection._atomic_write_text
+
+    def crash(*_args: object, **_kwargs: object) -> None:
+        raise OSError("injected projection crash")
+
+    monkeypatch.setattr(provider_projection, "_atomic_write_text", crash)
+    applied = add_goal_todo(
+        registry_path=registry_path,
+        goal_id="goal-a",
+        role="agent",
+        text="Recover the native compatibility projection",
+        task_class="advancement_task",
+        action_kind="implement",
+        claimed_by="agent-a",
+        agent_id="agent-a",
+    )
+
+    assert applied["status"] == "applied"
+    assert applied["projection_delivery"] == "pending"
+    canonical = read_canonical_todos_if_promoted(
+        runtime_root=runtime_root,
+        goal_id="goal-a",
+    )
+    assert canonical is not None
+    assert canonical["todos"][0]["schema_version"] == "todo_domain_record_v0"
+    assert state_file.read_text(encoding="utf-8") == source
+
+    monkeypatch.setattr(provider_projection, "_atomic_write_text", real_write)
+    replay = add_goal_todo(
+        registry_path=registry_path,
+        goal_id="goal-a",
+        role="agent",
+        text="Recover the native compatibility projection",
+        task_class="advancement_task",
+        action_kind="implement",
+        claimed_by="agent-a",
+        agent_id="agent-a",
+    )
+    assert replay["status"] == "no_change"
+    assert replay["projection_delivery"] == "delivered"
+    rendered = state_file.read_text(encoding="utf-8")
+    assert "Recover the native compatibility projection" in rendered
+    assert "Human context." in rendered
+    assert "Continue." in rendered
 
 
 def test_engaged_fence_never_falls_back_when_provider_is_missing(

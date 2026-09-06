@@ -743,6 +743,11 @@ def normalize_todo_status(value: Any) -> str | None:
     return None
 
 
+def normalize_todo_role(value: Any) -> str | None:
+    candidate = str(value or "").strip().lower()
+    return candidate if candidate in {"user", "agent"} else None
+
+
 def todo_done_for_status(status: Any) -> bool:
     return normalize_todo_status(status) in TODO_TERMINAL_STATUS_VALUES
 
@@ -874,6 +879,11 @@ _TODO_METADATA_FIELD_SCHEMA = (
         invalid_message=(
             "todo status must be one of: " + ", ".join(sorted(TODO_STATUS_VALUES))
         ),
+    ),
+    _TodoMetadataField(
+        "role",
+        normalize_todo_role,
+        invalid_message="todo role must be one of: agent, user",
     ),
     _TodoMetadataField(
         "task_class",
@@ -1229,6 +1239,7 @@ def format_todo_metadata_line(
     *,
     todo_id: str | None = None,
     status: str | None = None,
+    role: str | None = None,
     task_class: str | None = None,
     action_kind: str | None = None,
     task_domain: str | None = None,

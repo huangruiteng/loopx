@@ -2338,10 +2338,14 @@ write that cannot preserve the contract.
   lineage; it does not create the former second local-shadow candidate. Before
   promotion, add sustained mixed-writer parity runs, event-only Todo coverage,
   and the selected provider profile's recovery/capacity evidence.
-- The provider-neutral authority binding, compatibility projection outbox,
-  and conformance rows for file, NoKV, and PostgreSQL. This does not require all
-  providers to promote together; each profile must pass the same contract
-  before it is eligible.
+- Completion of the compatibility projection outbox and conformance rows for
+  file, NoKV, and PostgreSQL. The first provider-first slice now reuses the
+  committed authority journal as the durable intent for native Todo create,
+  claim, and narrow update, then renders native active/archive records into
+  machine-owned Markdown regions with idempotent replay. Remaining native Todo
+  mutations, lease-file projection, backlog/status readback, and provider-
+  neutral authority binding still need the same contract. Providers do not
+  promote together; each profile must pass it before it is eligible.
 - Retention, fast path, and measured capacity for the selected first-promotion
   profile; the reference executor's removal and status flips (question 13).
 - Post-promotion rollback: the shipped rollback quarantines a pre-promotion

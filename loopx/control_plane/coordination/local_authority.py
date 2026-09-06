@@ -74,6 +74,8 @@ def claim_canonical_todo_if_promoted(
     operation_id: str | None = None,
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
+    project: Path | None = None,
+    state_file: Path | None = None,
 ) -> dict[str, Any] | None:
     """Route a post-cutover claim to the TypeScript transaction owner."""
 
@@ -125,7 +127,9 @@ def claim_canonical_todo_if_promoted(
             code=str(payload.get("reason_code") or "local_authority_todo_claim_failed"),
             payload=payload,
         )
-    return {
+    from ..todos.provider_projection import settle_canonical_todo_projection
+
+    return settle_canonical_todo_projection({
         "ok": True,
         "dry_run": dry_run,
         "goal_id": goal_id,
@@ -133,7 +137,8 @@ def claim_canonical_todo_if_promoted(
         "section": "Agent Todo",
         "todo_id": todo_id,
         **payload,
-    }
+    }, registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
+        project=project, state_file=state_file)
 
 
 def read_canonical_todos_if_promoted(

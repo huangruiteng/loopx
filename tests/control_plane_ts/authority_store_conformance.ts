@@ -270,7 +270,11 @@ export function registerAuthorityStoreConformance(
       const replayRequest = first.status === "applied" ? request : {...request,
         operation_id: "create-todo-contender", todo: {...todo, text: "Competing create"}};
       assert.equal(applied.todo_id, todo.todo_id);
-      assert.equal((await executeCoordinationTodoCreate(store, replayRequest)).status, "replayed");
+      assert.equal(applied.projection_delivery, "pending");
+      assert.equal(applied.projection_source, "committed_authority_journal");
+      const replayedCreate = await executeCoordinationTodoCreate(store, replayRequest);
+      assert.equal(replayedCreate.status, "replayed");
+      assert.equal(replayedCreate.projection_delivery, "pending");
       assert.equal((await executeCoordinationTodoCreate(store, {...replayRequest,
         todo: {...replayRequest.todo, note: "different intent"}})).status, "failed");
       assert.equal((await executeCoordinationTodoCreate(store, {...replayRequest,
@@ -741,6 +745,8 @@ export function registerAuthorityStoreConformance(
       };
       const claimed = await executeCoordinationTodoClaim(store, request);
       assert.equal(claimed.status, "applied", JSON.stringify(claimed));
+      assert.equal(claimed.projection_delivery, "pending");
+      assert.equal(claimed.projection_source, "committed_authority_journal");
 
       const loaded = await store.loadAuthority();
       assert.equal(loaded.status, "loaded");

@@ -890,6 +890,8 @@ def add_goal_todo(
             "note": note,
             "updated_at": updated_at,
         },
+        project=project,
+        state_file=state_file,
         dry_run=dry_run,
     )
     if canonical_create is not None:
@@ -1158,6 +1160,8 @@ def update_goal_todo(
             operation_id=claim_operation_id,
             task_lease_idempotency_key=task_lease_idempotency_key,
             task_lease_expected_version=task_lease_expected_version,
+            project=project,
+            state_file=state_file,
         )
         if canonical_claim is not None:
             return canonical_claim
@@ -1179,6 +1183,7 @@ def update_goal_todo(
             registry_path=registry_path, runtime_root=shadow_runtime_root,
             goal_id=goal_id, todo_id=normalize_todo_id(todo_id) or todo_id,
             actor_agent_id=agent_id, role=role, text=text, note=note, dry_run=dry_run,
+            project=project, state_file=state_file,
         )
         if canonical_edit is not None:
             return canonical_edit

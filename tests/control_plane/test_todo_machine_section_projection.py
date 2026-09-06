@@ -17,6 +17,7 @@ from loopx.control_plane.todos.machine_section_projection import (
 )
 from loopx.cli import build_parser
 from loopx.cli_commands import todo as todo_command
+from loopx.control_plane.todos import provider_projection
 from loopx.control_plane.coordination.local_authority import read_canonical_todos_if_promoted
 from loopx.control_plane.coordination.runtime_shadow import build_todo_runtime_shadow_projection
 from loopx.control_plane.effect_runtime import effect_runtime_result
@@ -131,18 +132,26 @@ def test_projection_rejects_missing_role_section() -> None:
         )
 
 
-def test_projection_does_not_invent_native_markdown_provenance() -> None:
+def test_projection_assigns_display_only_provenance_to_native_records() -> None:
     records = _records()
     for record in records:
         record["schema_version"] = "todo_domain_record_v0"
         del record["source_section"]
         del record["index"]
-    with pytest.raises(ValueError, match="omits required fields: source_section"):
-        render_canonical_todo_sections(SOURCE, records, provider_revision="rev-native")
+    projected = render_canonical_todo_sections(
+        SOURCE,
+        records,
+        provider_revision="rev-native",
+    )
+    assert projected.changed is True
+    assert projected.todo_count == 2
+    assert {item["revision"] for item in inspect_todo_section_projection(
+        projected.markdown
+    )["sections"]} == {"rev-native"}
     assert all("source_section" not in record and "index" not in record for record in records)
 
 
-def test_projection_rejects_unknown_or_derived_field_loss() -> None:
+def test_projection_rejects_unknown_fields_but_allows_known_read_model_fields() -> None:
     unknown = deepcopy(_records())
     unknown[0]["future_field"] = "must-not-disappear"
     with pytest.raises(ValueError, match="unversioned fields: future_field"):
@@ -150,8 +159,76 @@ def test_projection_rejects_unknown_or_derived_field_loss() -> None:
 
     derived = deepcopy(_records())
     derived[0]["resume_ready"] = True
-    with pytest.raises(TodoSectionProjectionError, match="resume_ready"):
-        render_canonical_todo_sections(SOURCE, derived, provider_revision="rev-1")
+    projected = render_canonical_todo_sections(
+        SOURCE,
+        derived,
+        provider_revision="rev-1",
+    )
+    assert projected.changed is True
+    assert "resume_ready" not in projected.markdown
+
+
+def test_projection_renders_native_archive_with_role_and_replays() -> None:
+    source = SOURCE + "\n## Completed Work Archive\n\n- [x] stale archive\n"
+    records = _records()
+    for record in records:
+        record["schema_version"] = "todo_domain_record_v0"
+        record.pop("source_section")
+        record.pop("index")
+    records.append(
+        {
+            "schema_version": "todo_domain_record_v0",
+            "todo_id": "todo_archived",
+            "role": "agent",
+            "status": "done",
+            "done": True,
+            "text": "Completed provider-owned work.",
+            "archive_state": "archive",
+            "task_class": "advancement_task",
+            "created_by": "codex-worker",
+            "last_actor_agent_id": "codex-worker",
+        }
+    )
+
+    projected = render_canonical_todo_sections(
+        source,
+        records,
+        provider_revision="rev-archive",
+    )
+
+    assert "stale archive" not in projected.markdown
+    assert "Completed provider-owned work." in projected.markdown
+    assert "role=agent" in projected.markdown
+    markers = inspect_todo_section_projection(projected.markdown)
+    assert {item["role"] for item in markers["sections"]} == {
+        "user",
+        "agent",
+        "archive",
+    }
+    replay = render_canonical_todo_sections(
+        projected.markdown,
+        records,
+        provider_revision="rev-archive",
+    )
+    assert replay.changed is False
+
+
+def test_projection_requires_archive_region_for_archived_records() -> None:
+    archived = {
+        "schema_version": "todo_domain_record_v0",
+        "todo_id": "todo_archived",
+        "role": "agent",
+        "status": "done",
+        "done": True,
+        "text": "Completed provider-owned work.",
+        "archive_state": "archive",
+    }
+    with pytest.raises(TodoSectionProjectionError, match="Completed Work Archive"):
+        render_canonical_todo_sections(
+            SOURCE,
+            [archived],
+            provider_revision="rev-archive",
+        )
 
 
 def test_projection_rejects_duplicate_sections_and_unsafe_revision() -> None:
@@ -180,14 +257,14 @@ def test_project_markdown_cli_requires_promoted_exact_revision(
             lambda _path: {"common_runtime_root": str(tmp_path / "runtime")},
         )
         monkeypatch.setattr(
-            todo_command,
+            provider_projection,
             "read_canonical_todos_if_promoted",
             lambda **_kwargs: payload,
         )
         monkeypatch.setattr(
-            todo_command,
-            "resolve_todo_state_path",
-            lambda **_kwargs: (tmp_path, state_path),
+            provider_projection,
+            "resolve_goal_state",
+            lambda **_kwargs: (object(), tmp_path, state_path),
         )
         result = todo_command.handle_todo_command(
             parser.parse_args(
@@ -252,7 +329,7 @@ def test_project_markdown_cli_uses_raw_provider_records(
         lambda _path: {"common_runtime_root": str(tmp_path / "runtime")},
     )
     monkeypatch.setattr(
-        todo_command,
+        provider_projection,
         "read_canonical_todos_if_promoted",
         lambda **_kwargs: {
             "todos": raw_records,
@@ -266,9 +343,9 @@ def test_project_markdown_cli_uses_raw_provider_records(
         lambda **_kwargs: pytest.fail("projection must not consume the enriched list view"),
     )
     monkeypatch.setattr(
-        todo_command,
-        "resolve_todo_state_path",
-        lambda **_kwargs: (tmp_path, state_path),
+        provider_projection,
+        "resolve_goal_state",
+        lambda **_kwargs: (object(), tmp_path, state_path),
     )
     captured: dict[str, object] = {}
 
@@ -303,7 +380,7 @@ def test_project_markdown_cli_publishes_with_atomic_replace(
     original_mode = stat.S_IMODE(state_path.stat().st_mode)
     parent_syncs: list[object] = []
     monkeypatch.setattr(
-        todo_command,
+        provider_projection,
         "_fsync_parent_directory",
         lambda path: parent_syncs.append(path),
     )
@@ -313,7 +390,7 @@ def test_project_markdown_cli_publishes_with_atomic_replace(
         lambda _path: {"common_runtime_root": str(tmp_path / "runtime")},
     )
     monkeypatch.setattr(
-        todo_command,
+        provider_projection,
         "read_canonical_todos_if_promoted",
         lambda **_kwargs: {
             "todos": _records(),
@@ -322,18 +399,18 @@ def test_project_markdown_cli_publishes_with_atomic_replace(
         },
     )
     monkeypatch.setattr(
-        todo_command,
-        "resolve_todo_state_path",
-        lambda **_kwargs: (tmp_path, state_path),
+        provider_projection,
+        "resolve_goal_state",
+        lambda **_kwargs: (object(), tmp_path, state_path),
     )
     replacements: list[tuple[object, object]] = []
-    real_replace = todo_command.os.replace
+    real_replace = provider_projection.os.replace
 
     def record_replace(source, target) -> None:
         replacements.append((source, target))
         real_replace(source, target)
 
-    monkeypatch.setattr(todo_command.os, "replace", record_replace)
+    monkeypatch.setattr(provider_projection.os, "replace", record_replace)
 
     result = todo_command.handle_todo_command(
         build_parser().parse_args(
@@ -368,7 +445,7 @@ def test_atomic_projection_failure_preserves_original(monkeypatch, tmp_path, ope
     state_path = tmp_path / "ACTIVE_GOAL_STATE.md"
     state_path.write_bytes(b"original\r\n")
     opened = []
-    real_fdopen = todo_command.os.fdopen
+    real_fdopen = provider_projection.os.fdopen
 
     def capture_handle(*args, **kwargs):
         handle = real_fdopen(*args, **kwargs)
@@ -378,10 +455,10 @@ def test_atomic_projection_failure_preserves_original(monkeypatch, tmp_path, ope
     def fail(*_args, **_kwargs):
         raise OSError("injected pre-publication failure")
 
-    monkeypatch.setattr(todo_command.os, "fdopen", capture_handle)
-    monkeypatch.setattr(todo_command.os, operation, fail)
+    monkeypatch.setattr(provider_projection.os, "fdopen", capture_handle)
+    monkeypatch.setattr(provider_projection.os, operation, fail)
     with pytest.raises(OSError, match="injected pre-publication failure"):
-        todo_command._atomic_write_text(state_path, "replacement\n")
+        provider_projection._atomic_write_text(state_path, "replacement\n")
     assert state_path.read_bytes() == b"original\r\n"
     assert opened and all(handle.closed for handle in opened)
     assert list(tmp_path.iterdir()) == [state_path]
@@ -408,7 +485,7 @@ def test_project_markdown_cli_preserves_narrative_boundaries(
         lambda _path: {"common_runtime_root": str(tmp_path / "runtime")},
     )
     monkeypatch.setattr(
-        todo_command,
+        provider_projection,
         "read_canonical_todos_if_promoted",
         lambda **_kwargs: {
             "todos": _records(),
@@ -417,9 +494,9 @@ def test_project_markdown_cli_preserves_narrative_boundaries(
         },
     )
     monkeypatch.setattr(
-        todo_command,
-        "resolve_todo_state_path",
-        lambda **_kwargs: (tmp_path, state_path),
+        provider_projection,
+        "resolve_goal_state",
+        lambda **_kwargs: (object(), tmp_path, state_path),
     )
 
     captured: dict[str, object] = {}

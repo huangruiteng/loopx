@@ -21,12 +21,14 @@ from ..effect_runtime import effect_runtime_result
 from .active_state_editing import find_todo_block, set_todo_text
 from .contract import format_todo_metadata_line, metadata_line_for_todo_block
 from .line_update import upsert_todo_metadata
+from .provider_projection import settle_canonical_todo_projection
 
 
 def edit_canonical_todo_if_promoted(
     *, registry_path: Path, runtime_root: Path, goal_id: str, todo_id: str,
     actor_agent_id: str | None, role: str | None, text: str | None,
     note: str | None, dry_run: bool,
+    project: Path | None = None, state_file: Path | None = None,
 ) -> dict[str, Any] | None:
     canonical = read_canonical_todos_if_promoted(runtime_root=runtime_root, goal_id=goal_id)
     if canonical is None:
@@ -74,5 +76,9 @@ def edit_canonical_todo_if_promoted(
             code=str(payload.get("reason_code") or payload.get("conflict_kind")
                      or "compatibility_edit_failed"), payload=payload,
         )
-    return {"ok": True, "goal_id": goal_id, "todo_id": todo_id,
-            "role": todo["role"], "dry_run": dry_run, **result}
+    return settle_canonical_todo_projection(
+        {"ok": True, "goal_id": goal_id, "todo_id": todo_id,
+         "role": todo["role"], "dry_run": dry_run, **result},
+        registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
+        project=project, state_file=state_file,
+    )

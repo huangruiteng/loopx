@@ -23,6 +23,7 @@ _ROLE_HEADINGS = {
     "agent todo": "agent",
     "codex todo": "agent",
     "project agent todo": "agent",
+    "completed work archive": "archive",
 }
 
 
@@ -37,7 +38,7 @@ class TodoRegion:
 
 
 def todo_region_marker(role: str, edge: str) -> str:
-    if role not in {"user", "agent"} or edge not in {"begin", "end"}:
+    if role not in {"user", "agent", "archive"} or edge not in {"begin", "end"}:
         raise ValueError("invalid Todo region marker")
     return f"{TODO_REGION_PREFIX}role={role} {edge} -->"
 
