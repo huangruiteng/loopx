@@ -4,10 +4,12 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
+from loopx.chat_lark_api import LarkChatRequestMixin
 from loopx.control_plane.quota.goal_boundary import goal_boundary
 from loopx.extensions.lark.goal_channel_contracts import (
     GOAL_CHANNEL_BINDING_SCHEMA_VERSION,
@@ -34,6 +36,7 @@ from loopx.extensions.lark.goal_topic_connections import (
     route_lark_topic_event,
 )
 from loopx.extensions.lark.goal_topic_batch import connect_lark_goal_topics
+from loopx.extensions.lark.goal_topic_runtime import LarkGoalTopicRuntimeService
 from loopx.file_lock import LockAcquireTimeoutError
 from loopx.registry import atomic_write_json
 
@@ -272,6 +275,102 @@ def test_batch_retry_resumes_after_partial_provider_failure(tmp_path: Path) -> N
         "agent-beta",
     ]
     assert send_count == 3
+
+
+def test_batch_api_partial_success_starts_committed_app_worker(tmp_path: Path) -> None:
+    registry = _registry(tmp_path)
+    registry["goals"][0]["coordination"] = {
+        "registered_agents": ["agent-alpha", "agent-beta"]
+    }
+    target_path = tmp_path / "targets.json"
+    binding_path = tmp_path / "binding.json"
+    state: dict[str, Any] = {}
+    base_runner = _runner(state)
+    send_count = 0
+
+    def runner(args: list[str], cwd: object, timeout: object) -> dict[str, Any]:
+        nonlocal send_count
+        if "+messages-send" in args:
+            send_count += 1
+            if send_count == 2:
+                state.setdefault("calls", []).append(list(args))
+                return {"returncode": 1, "stdout": "", "stderr": "temporary"}
+        return base_runner(args, cwd, timeout)
+
+    started = Event()
+
+    def profile_poller(_profile: str, stop: Event) -> None:
+        started.set()
+        stop.wait(3)
+
+    def snapshot() -> dict[str, Any]:
+        return {
+            "target_payload": read_goal_channel_targets(target_path),
+            "binding_payloads": {
+                "goal-alpha": read_goal_channel_binding(binding_path)
+            },
+            "goal_contexts": {
+                "goal-alpha": {
+                    "work_dir": str(tmp_path),
+                    "objective": "Alpha delivery",
+                }
+            },
+        }
+
+    runtime = LarkGoalTopicRuntimeService(
+        snapshot_provider=snapshot,
+        runtime_root=tmp_path,
+        runtime_controller=SimpleNamespace(),
+        profile_poller=profile_poller,
+    )
+    responses: list[dict[str, Any]] = []
+
+    class Handler(LarkChatRequestMixin):
+        path = "/api/chat/lark/connections"
+        server = SimpleNamespace(lark_goal_topic_runtime=runtime)
+
+        def _read_json(self) -> dict[str, Any]:
+            return {
+                "goal_id": "goal-alpha",
+                "agent_bindings": [
+                    {"agent_id": "agent-alpha", "app_ref": "mew"},
+                    {"agent_id": "agent-beta", "app_ref": "mew"},
+                ],
+                "chat_id": CHAT_ID,
+                "chat_name": "Product group",
+                "ingress_mode": "direct_session",
+                "execute": True,
+            }
+
+        def _goal_channel_context(self, _goal_id: str):
+            return registry, binding_path
+
+        def _goal_channel_target_path(self) -> Path:
+            return target_path
+
+        def _lark_runner(self):
+            return runner
+
+        def _send_json(self, payload: dict[str, Any], *, status: int = 200) -> None:
+            responses.append({**payload, "http_status": status})
+
+        def _send_error(self, message: str, **_kwargs: Any) -> None:
+            raise AssertionError(message)
+
+    try:
+        Handler()._lark_connect()
+
+        assert responses[0]["status"] == "partially_connected"
+        assert responses[0]["http_status"] == 400
+        assert started.wait(1)
+        assert runtime.active_profiles() == ["mew"]
+        assert runtime.health_snapshot()["mew"]["status"] == "starting"
+        payload = read_goal_channel_binding(binding_path)
+        assert [
+            item["agent_id"] for item in bindings_for_goal(payload, "goal-alpha")
+        ] == ["agent-alpha"]
+    finally:
+        runtime.close()
 
 
 def test_concurrent_peer_connections_preserve_both_recipients(tmp_path: Path) -> None:

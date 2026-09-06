@@ -896,24 +896,29 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
     }
     if (url.pathname === "/api/chat/lark/connections" && request.method() === "POST") {
       const body = request.postDataJSON();
-      const connectionId = `lark-${body.goal_id}-${body.agent_id ?? "default"}`;
+      const bindings = Array.isArray(body.agent_bindings)
+        ? body.agent_bindings
+        : [{ agent_id: body.agent_id ?? null, app_ref: body.app_ref }];
       if (body.execute) {
         const fixture = require(resolve(repoRoot, "examples/status.example.json"));
         const goal = (fixture.run_history?.goals ?? []).find((item) => item.id === body.goal_id);
-        runtime.larkConnections = runtime.larkConnections.filter((item) => item.connection_id !== connectionId);
-        runtime.larkConnections.push({
-          agent_id: body.agent_id ?? null,
-          connection_id: connectionId,
-          app_label: "LoopX Mew", app_ref: body.app_ref, chat_name: body.chat_name, enabled: true,
-          capture_scope: body.capture_scope,
-          event_count: 0, health_error_code: "lark_event_delivery_unverified",
-          goal_id: body.goal_id, goal_title: goal?.id ?? body.goal_id, incoming_mode: body.incoming_mode,
-          ingress_mode: body.ingress_mode,
-          last_event_reason: null, last_event_status: null, listener_error_code: null, listener_status: "listening", replied_count: 0,
-          reply_mode: "topic_reply", target_ref: "product-group", topic_name: goal?.id ?? body.goal_id,
-          topic_setup_required: false, reply_ready: false,
-        });
-        state.larkWrites.push({ ...body });
+        for (const binding of bindings) {
+          const connectionId = `lark-${body.goal_id}-${binding.agent_id ?? "default"}`;
+          runtime.larkConnections = runtime.larkConnections.filter((item) => item.connection_id !== connectionId);
+          runtime.larkConnections.push({
+            agent_id: binding.agent_id ?? null,
+            connection_id: connectionId,
+            app_label: "LoopX Mew", app_ref: binding.app_ref, chat_name: body.chat_name, enabled: true,
+            capture_scope: body.capture_scope,
+            event_count: 0, health_error_code: "lark_event_delivery_unverified",
+            goal_id: body.goal_id, goal_title: goal?.id ?? body.goal_id, incoming_mode: body.incoming_mode,
+            ingress_mode: body.ingress_mode,
+            last_event_reason: null, last_event_status: null, listener_error_code: null, listener_status: "listening", replied_count: 0,
+            reply_mode: "topic_reply", target_ref: "product-group", topic_name: goal?.id ?? body.goal_id,
+            topic_setup_required: false, reply_ready: false,
+          });
+          state.larkWrites.push({ ...body, agent_id: binding.agent_id, app_ref: binding.app_ref });
+        }
       }
       await route.fulfill({ contentType: "application/json", json: {
         ok: true,

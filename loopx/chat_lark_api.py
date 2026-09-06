@@ -64,6 +64,18 @@ def _parse_lark_agent_bindings(
     return bindings
 
 
+def _connection_packet_has_committed_binding(packet: Mapping[str, Any]) -> bool:
+    """Return whether an executed connection packet committed any binding."""
+
+    if packet.get("ok") is True:
+        return True
+    details = packet.get("details")
+    if not isinstance(details, Mapping):
+        return False
+    completed = details.get("completed_agent_ids")
+    return isinstance(completed, list) and bool(completed)
+
+
 def _default_git_runner(args: list[str]) -> dict[str, Any]:
     try:
         completed = subprocess.run(
@@ -509,7 +521,10 @@ class LarkChatRequestMixin:
                 or packet.get("blocker")
                 or "Lark connection failed"
             )
-        elif body.get("execute") is True:
+        if (
+            body.get("execute") is True
+            and _connection_packet_has_committed_binding(packet)
+        ):
             self._refresh_lark_goal_topic_runtime()
         self._send_json(packet, status=200 if packet.get("ok") else 400)
 
