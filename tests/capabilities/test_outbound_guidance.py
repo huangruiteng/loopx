@@ -305,6 +305,31 @@ def test_agent_id_normalization_preserves_valid_scope(tmp_path, monkeypatch):
         assert hook("sha256:intent")["status"] == "applied"
 
 
+def test_destination_match_is_observable_when_digest_drifts(tmp_path, monkeypatch):
+    config, provider = configure(tmp_path, monkeypatch)
+    chat = "oc_example_group"
+    digest = hashlib.sha256(chat.encode()).hexdigest()
+    config["surfaces"][outbound.SURFACE]["destinations"] = {
+        digest: {
+            "query_label": "Example Team",
+            "required_candidate_refs": ["candidate:rule"],
+        }
+    }
+    hook = outbound.outbound_guidance_hook(
+        registry_path=tmp_path / "registry.json", goal_id="goal", agent_id="pilot"
+    )
+    # The bound chat resolves its configured destination.
+    matched = hook.for_destination(chat)("intent")
+    assert matched["destination_configured"] is True
+    # A digest that matches no configured destination (for example, the
+    # display name was hashed instead of the chat id) must not masquerade as
+    # a satisfied required-read check.
+    drifted = hook.for_destination("oc_other_group")("intent")
+    assert drifted["destination_configured"] is False
+    assert drifted["required_guidance_complete"] is True
+    assert drifted["missing_required_candidate_refs"] == []
+
+
 def test_destination_and_purpose_queries_merge_without_private_id(
     tmp_path, monkeypatch
 ):

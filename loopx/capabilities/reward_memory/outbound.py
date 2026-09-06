@@ -104,6 +104,10 @@ def outbound_guidance_hook(
             .get("destinations", {})
             .get(destination_digest, {})
         )
+        # A configured-but-mismatched digest silently degrades to no required
+        # refs; surface the match so configuration drift stays observable in
+        # the receipt instead of masquerading as a satisfied check.
+        destination_configured = bool(destination)
         required_refs = destination.get("required_candidate_refs", [])
         queries = []
         # Required records have their own bounded lookup and are checked after
@@ -204,6 +208,7 @@ def outbound_guidance_hook(
             "grants_new_action_authority": False,
             "required_guidance_complete": not missing_required,
             "missing_required_candidate_refs": missing_required,
+            "destination_configured": destination_configured,
             "application": result.get("application"),
             "applications": [r.get("application") for r in results],
             "telemetry": telemetry,
