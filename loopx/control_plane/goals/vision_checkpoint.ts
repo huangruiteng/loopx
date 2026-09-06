@@ -58,6 +58,14 @@ const GOAL_PATH_DELTA_LIST_LIMITS = {
   unresolved_questions: [2, 140],
   evidence_refs: [4, 140],
 } as const;
+// Bounded typed fallback declarations survive prepare unchanged so the
+// declared direction cannot disappear behind later read-model compaction.
+const VISION_FALLBACK_DECLARATION_ENTRY_LIMIT = 4;
+const VISION_FALLBACK_DECLARATION_ID_LIMIT = 120;
+const VISION_FALLBACK_DECLARATION_FIELDS = [
+  "target_todo_id",
+  "successor_todo_id",
+] as const;
 const GOAL_VISION_STATE_ALIASES: Readonly<Record<string, string>> = {
   closed: "vision_closed",
   satisfied: "vision_closed",
@@ -359,6 +367,63 @@ function normalizeGoalPathDelta(
   return [normalized, fieldUsage];
 }
 
+function normalizeFallbackDeclarations(
+  value: unknown,
+): [JsonObject[], Record<string, number>] | null {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value)) {
+    throw new EffectRuntimeRequestError(
+      "agent_vision.fallback_declarations must be a JSON array",
+    );
+  }
+  if (value.length === 0) return null;
+  if (value.length > VISION_FALLBACK_DECLARATION_ENTRY_LIMIT) {
+    throw new EffectRuntimeRequestError(
+      `agent_vision.fallback_declarations has ${value.length} items; limit is ${VISION_FALLBACK_DECLARATION_ENTRY_LIMIT}`,
+    );
+  }
+  const declarations: JsonObject[] = [];
+  const seenIds = new Set<string>();
+  const fieldUsage: Record<string, number> = {};
+  value.forEach((raw, index) => {
+    const entry = requiredObject(
+      raw,
+      `agent_vision.fallback_declarations[${index}]`,
+    );
+    const declarationId = boundedPublicText(
+      `fallback_declarations[${index}].declaration_id`,
+      entry.declaration_id ?? null,
+      VISION_FALLBACK_DECLARATION_ID_LIMIT,
+    );
+    if (!declarationId) {
+      throw new EffectRuntimeRequestError(
+        `agent_vision.fallback_declarations[${index}] requires a non-empty declaration_id`,
+      );
+    }
+    if (seenIds.has(declarationId)) {
+      throw new EffectRuntimeRequestError(
+        `agent_vision.fallback_declarations repeats declaration_id ${JSON.stringify(declarationId)}`,
+      );
+    }
+    seenIds.add(declarationId);
+    const declaration: JsonObject = { declaration_id: declarationId };
+    fieldUsage[`fallback_declarations[${index}].declaration_id`] =
+      declarationId.length;
+    for (const field of VISION_FALLBACK_DECLARATION_FIELDS) {
+      const text = boundedPublicText(
+        `fallback_declarations[${index}].${field}`,
+        entry[field],
+        VISION_FALLBACK_DECLARATION_ID_LIMIT,
+      );
+      if (!text) continue;
+      declaration[field] = text;
+      fieldUsage[`fallback_declarations[${index}].${field}`] = text.length;
+    }
+    declarations.push(declaration);
+  });
+  return [declarations, fieldUsage];
+}
+
 function decodePrepareRequest(request: JsonObject): VisionRefreshPrepareRequest {
   return {
     phase: "prepare",
@@ -438,6 +503,10 @@ function prepareVisionRefresh(request: VisionRefreshPrepareRequest): JsonObject 
 
   const [pathDelta, pathDeltaUsage] = normalizeGoalPathDelta(updatePacket.path_delta);
   Object.assign(fieldUsage, pathDeltaUsage);
+  const [fallbackDeclarations, fallbackUsage] = normalizeFallbackDeclarations(
+    updatePacket.fallback_declarations,
+  ) ?? [null, {}];
+  Object.assign(fieldUsage, fallbackUsage);
   const totalUsage = Object.values(fieldUsage).reduce((total, used) => total + used, 0);
   if (totalUsage > GOAL_VISION_TOTAL_LIMIT) {
     throw visionBudgetError(
@@ -475,6 +544,8 @@ function prepareVisionRefresh(request: VisionRefreshPrepareRequest): JsonObject 
   for (const [field, [, itemLimit]] of Object.entries(GOAL_PATH_DELTA_LIST_LIMITS)) {
     fieldLimits[`path_delta.${field}[]`] = itemLimit;
   }
+  fieldLimits["fallback_declarations"] = VISION_FALLBACK_DECLARATION_ENTRY_LIMIT;
+  fieldLimits["fallback_declarations[]"] = VISION_FALLBACK_DECLARATION_ID_LIMIT;
 
   const agentVision: JsonObject = {
     schema_version: GOAL_VISION_REPLAN_SCHEMA_VERSION,
@@ -494,6 +565,9 @@ function prepareVisionRefresh(request: VisionRefreshPrepareRequest): JsonObject 
     validation,
   };
   if (pathDelta !== null) agentVision.path_delta = pathDelta;
+  if (fallbackDeclarations !== null) {
+    agentVision.fallback_declarations = fallbackDeclarations;
+  }
 
   if (
     request.require_path_delta_for_durable_change &&

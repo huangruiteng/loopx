@@ -44,6 +44,11 @@ GOAL_VISION_BUDGET_COMPACT_FIELDS = (
     "total_limit",
     "total_usage",
 )
+# Mirrors the TS-owned prepare contract for bounded typed fallback
+# declarations so compaction cannot drop a declared fallback direction.
+GOAL_VISION_FALLBACK_DECLARATION_ENTRY_LIMIT = 4
+GOAL_VISION_FALLBACK_DECLARATION_ID_LIMIT = 120
+GOAL_VISION_FALLBACK_DECLARATION_FIELDS = ("target_todo_id", "successor_todo_id")
 
 
 def _compact_public_text(value: Any, *, limit: int) -> str | None:
@@ -82,6 +87,33 @@ def _compact_goal_path_delta(value: Any) -> dict[str, Any] | None:
     return compact if len(compact) > 1 else None
 
 
+def _compact_fallback_declarations(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    declarations: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw in value[:GOAL_VISION_FALLBACK_DECLARATION_ENTRY_LIMIT]:
+        if not isinstance(raw, dict):
+            continue
+        declaration_id = _compact_public_text(
+            raw.get("declaration_id"),
+            limit=GOAL_VISION_FALLBACK_DECLARATION_ID_LIMIT,
+        )
+        if not declaration_id or declaration_id in seen:
+            continue
+        seen.add(declaration_id)
+        entry = {"declaration_id": declaration_id}
+        for field in GOAL_VISION_FALLBACK_DECLARATION_FIELDS:
+            text = _compact_public_text(
+                raw.get(field),
+                limit=GOAL_VISION_FALLBACK_DECLARATION_ID_LIMIT,
+            )
+            if text:
+                entry[field] = text
+        declarations.append(entry)
+    return declarations
+
+
 def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
     """Return the public read-path shape of an agent goal-vision packet."""
 
@@ -93,7 +125,9 @@ def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
         if text:
             compact[field] = text
 
-    patch = value.get("vision_patch") if isinstance(value.get("vision_patch"), dict) else {}
+    patch = (
+        value.get("vision_patch") if isinstance(value.get("vision_patch"), dict) else {}
+    )
     compact_patch: dict[str, str] = {}
     for field, limit in GOAL_VISION_FIELD_LIMITS.items():
         text = _compact_public_text(patch.get(field), limit=limit)
@@ -116,7 +150,15 @@ def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
     if todo_delta:
         compact["todo_delta"] = todo_delta
 
-    budget = value.get("vision_budget") if isinstance(value.get("vision_budget"), dict) else {}
+    declarations = _compact_fallback_declarations(value.get("fallback_declarations"))
+    if declarations:
+        compact["fallback_declarations"] = declarations
+
+    budget = (
+        value.get("vision_budget")
+        if isinstance(value.get("vision_budget"), dict)
+        else {}
+    )
     compact_budget = {
         field: budget[field]
         for field in GOAL_VISION_BUDGET_COMPACT_FIELDS
@@ -125,7 +167,9 @@ def compact_goal_vision_packet(value: Any) -> dict[str, Any] | None:
     if compact_budget:
         compact["vision_budget"] = compact_budget
 
-    validation = value.get("validation") if isinstance(value.get("validation"), dict) else {}
+    validation = (
+        value.get("validation") if isinstance(value.get("validation"), dict) else {}
+    )
     compact_validation = {
         field: validation[field]
         for field in ("budget_checked", "budget_status", "write_correctness_checked")

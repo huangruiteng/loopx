@@ -224,6 +224,121 @@ test("prepare rejects incomplete and over-wide path deltas", () => {
   );
 });
 
+test("prepare validates and carries bounded unique fallback declarations", () => {
+  const result = buildVisionCheckpoint(prepareRequest({
+    agent_vision_packet: {
+      vision_summary: "Ship one bounded route.",
+      fallback_declarations: [
+        {
+          declaration_id: " declared_fallback_direction ",
+          target_todo_id: "todo_declared_fallback",
+          successor_todo_id: null,
+        },
+        { declaration_id: "typed_successor", successor_todo_id: "todo_successor" },
+      ],
+    },
+  }));
+
+  const vision = result.agent_vision as Record<string, unknown>;
+  assert.deepEqual(vision.fallback_declarations, [
+    {
+      declaration_id: "declared_fallback_direction",
+      target_todo_id: "todo_declared_fallback",
+    },
+    { declaration_id: "typed_successor", successor_todo_id: "todo_successor" },
+  ]);
+  const budget = vision.vision_budget as Record<string, unknown>;
+  const fieldLimits = budget.field_limits as Record<string, number>;
+  const fieldUsage = budget.field_usage as Record<string, number>;
+  assert.equal(fieldLimits["fallback_declarations"], 4);
+  assert.equal(fieldLimits["fallback_declarations[]"], 120);
+  assert.equal(
+    fieldUsage["fallback_declarations[0].declaration_id"],
+    "declared_fallback_direction".length,
+  );
+
+  const empty = buildVisionCheckpoint(prepareRequest({
+    agent_vision_packet: {
+      vision_summary: "Ship one bounded route.",
+      fallback_declarations: [],
+    },
+  })) as Record<string, unknown>;
+  assert.equal(
+    (empty.agent_vision as Record<string, unknown>).fallback_declarations,
+    undefined,
+  );
+});
+
+test("prepare rejects unbounded, duplicated, and unsafe fallback declarations", () => {
+  const declaration = (id: string) => ({ declaration_id: id });
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: "declared_fallback_direction",
+      },
+    })),
+    /fallback_declarations must be a JSON array/,
+  );
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: [1, 2, 3, 4, 5].map(() => declaration("one")),
+      },
+    })),
+    /fallback_declarations has 5 items; limit is 4/,
+  );
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: [
+          declaration("declared_fallback_direction"),
+          declaration("declared_fallback_direction"),
+        ],
+      },
+    })),
+    /repeats declaration_id "declared_fallback_direction"/,
+  );
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: [{ target_todo_id: "todo_declared_fallback" }],
+      },
+    })),
+    /requires a non-empty declaration_id/,
+  );
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: [
+          { declaration_id: "route", target_todo_id: "todo_with_fallback" },
+          { declaration_id: "token = leaked", successor_todo_id: "todo_x" },
+        ],
+      },
+    })),
+    /contains a private-looking value/,
+  );
+  assert.throws(
+    () => buildVisionCheckpoint(prepareRequest({
+      agent_vision_packet: {
+        vision_summary: "Ship one bounded route.",
+        fallback_declarations: [
+          { declaration_id: "x".repeat(121) },
+        ],
+      },
+    })),
+    (error: unknown) => {
+      const rejection = error as { code?: string; message?: string };
+      assert.equal(rejection.code, "vision_budget_exceeded");
+      return true;
+    },
+  );
+});
+
 test("pure prepare and finalize reductions replay deterministically", () => {
   const prepare = prepareRequest();
   assert.deepEqual(
