@@ -38,12 +38,12 @@ export type WorkspaceTodo = WorkspaceAgentTodo & {
 };
 
 export type WorkspaceGoalUsage = {
-  costUsd7d: number;
-  costUsd24h: number;
-  durationMs7d: number;
-  durationMs24h: number;
-  tokens7d: number;
-  tokens24h: number;
+  costUsd7d?: number;
+  costUsd24h?: number;
+  durationMs7d?: number;
+  durationMs24h?: number;
+  tokens7d?: number;
+  tokens24h?: number;
 };
 
 export type WorkspaceRepositoryContext = {
@@ -448,34 +448,66 @@ export function attentionAgeLabel(updatedAt?: string | null): string | null {
   return `${Math.floor(diff / 3_600_000)} 小时`;
 }
 
-export function formatTokenCount(value?: number | null): string {
-  const n = value ?? 0;
+export function formatTokenCount(value: number): string {
+  const n = value;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
 }
 
-export function formatCostUsd(value?: number | null): string {
-  return `$${(value ?? 0).toFixed(2)}`;
+export function formatCostUsd(value: number): string {
+  return `$${value.toFixed(2)}`;
 }
 
-export function formatDurationMs(value?: number | null): string {
-  const ms = value ?? 0;
+export function formatDurationMs(value: number): string {
+  const ms = value;
   if (ms >= 3_600_000) return `${(ms / 3_600_000).toFixed(1)}h`;
   if (ms >= 60_000) return `${(ms / 60_000).toFixed(1)}m`;
   if (ms >= 1_000) return `${Math.round(ms / 1_000)}s`;
   return `${ms}ms`;
 }
 
-/** True only when a goal has actually reported usage; zeros mean ingestion has not landed yet. */
-export function hasGoalUsage(usage?: WorkspaceGoalUsage | null): usage is WorkspaceGoalUsage {
-  return Boolean(usage && (usage.tokens24h + usage.tokens7d + usage.costUsd24h + usage.costUsd7d + usage.durationMs24h + usage.durationMs7d) > 0);
+export function formatUsageValue(
+  value: number | null | undefined,
+  notMeasured: string,
+  format: (value: number) => string,
+): string {
+  return value === undefined || value === null ? notMeasured : format(value);
 }
 
-/** Compact header chip, e.g. "7d 45.6k tokens · $0.42"; null when nothing reported. */
-export function goalUsageLabel(usage?: WorkspaceGoalUsage | null): string | null {
+/** True when a goal has at least one observed usage metric. A measured zero is still usage data. */
+export function hasGoalUsage(usage?: WorkspaceGoalUsage | null): usage is WorkspaceGoalUsage {
+  return Boolean(usage && [
+    usage.tokens24h,
+    usage.tokens7d,
+    usage.costUsd24h,
+    usage.costUsd7d,
+    usage.durationMs24h,
+    usage.durationMs7d,
+  ].some((value) => value !== undefined && value !== null));
+}
+
+/** Compact header chip; null when no metric has been observed. */
+export function goalUsageLabel(
+  usage: WorkspaceGoalUsage | null | undefined,
+  labels: { cost: string; duration: string; period24h: string; period7d: string; tokens: string },
+): string | null {
   if (!hasGoalUsage(usage)) return null;
-  return `7d ${formatTokenCount(usage.tokens7d)} tokens · ${formatCostUsd(usage.costUsd7d)}`;
+  const windowLabel = (
+    period: string,
+    tokens: number | null | undefined,
+    cost: number | null | undefined,
+    duration: number | null | undefined,
+  ) => {
+    const measurements = [
+      tokens === undefined || tokens === null ? null : `${formatTokenCount(tokens)} ${labels.tokens}`,
+      cost === undefined || cost === null ? null : `${labels.cost}: ${formatCostUsd(cost)}`,
+      duration === undefined || duration === null ? null : `${labels.duration}: ${formatDurationMs(duration)}`,
+    ].filter((value): value is string => value !== null);
+    return measurements.length ? `${period} ${measurements.join(" · ")}` : null;
+  };
+  return windowLabel(labels.period7d, usage.tokens7d, usage.costUsd7d, usage.durationMs7d)
+    ?? windowLabel(labels.period24h, usage.tokens24h, usage.costUsd24h, usage.durationMs24h);
 }
 
 export function workerStateLabel(state?: string | null): string {

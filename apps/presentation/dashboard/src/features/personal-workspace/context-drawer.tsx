@@ -36,7 +36,7 @@ import type {
 } from "./personal-workspace-model";
 import type { LarkGoalConnection } from "../../data/chat";
 import { localizedAttentionAge, localizedGoalState, localizedSessionStatus, useWorkspaceI18n } from "./i18n";
-import { formatCostUsd, formatDurationMs, formatTokenCount, hasGoalUsage } from "./personal-workspace-model";
+import { formatCostUsd, formatDurationMs, formatTokenCount, formatUsageValue } from "./personal-workspace-model";
 import { todoResumeWhenFromMessage } from "./personal-workspace-router";
 
 const focusableSelector = [
@@ -573,13 +573,11 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
               <small>{localizedGoalState(selection.item.state, locale)}</small>
               <h3>{selection.item.title}</h3>
               <p>{selection.item.agentSentence}</p>
-              {hasGoalUsage(selection.item.usage) ? (
-                <dl>
-                  <div><dt>Tokens 24h / 7d</dt><dd>{formatTokenCount(selection.item.usage.tokens24h)} / {formatTokenCount(selection.item.usage.tokens7d)}</dd></div>
-                  <div><dt>{t("drawer.cost")}</dt><dd>{formatCostUsd(selection.item.usage.costUsd24h)} / {formatCostUsd(selection.item.usage.costUsd7d)}</dd></div>
-                  <div><dt>{t("drawer.duration")}</dt><dd>{formatDurationMs(selection.item.usage.durationMs24h)} / {formatDurationMs(selection.item.usage.durationMs7d)}</dd></div>
-                </dl>
-              ) : null}
+              <dl>
+                <div><dt>{t("drawer.tokens")}</dt><dd>{formatUsageValue(selection.item.usage?.tokens24h, t("drawer.usageNotMeasured"), formatTokenCount)} / {formatUsageValue(selection.item.usage?.tokens7d, t("drawer.usageNotMeasured"), formatTokenCount)}</dd></div>
+                <div><dt>{t("drawer.cost")}</dt><dd>{formatUsageValue(selection.item.usage?.costUsd24h, t("drawer.usageNotMeasured"), formatCostUsd)} / {formatUsageValue(selection.item.usage?.costUsd7d, t("drawer.usageNotMeasured"), formatCostUsd)}</dd></div>
+                <div><dt>{t("drawer.duration")}</dt><dd>{formatUsageValue(selection.item.usage?.durationMs24h, t("drawer.usageNotMeasured"), formatDurationMs)} / {formatUsageValue(selection.item.usage?.durationMs7d, t("drawer.usageNotMeasured"), formatDurationMs)}</dd></div>
+              </dl>
             </section>
             {(() => {
               const notification = goalNotifications.find((row) => row.goalId === selection.item.goalId);

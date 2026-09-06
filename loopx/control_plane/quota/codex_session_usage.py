@@ -84,6 +84,7 @@ def read_codex_session_usage(rollout_path: Path) -> dict[str, Any]:
     model = ""
     last_totals: Mapping[str, Any] | None = None
     last_totals_at = ""
+    last_totals_model = ""
     lines = [
         (number, text)
         for number, text in enumerate(raw_text.splitlines(), start=1)
@@ -105,7 +106,8 @@ def read_codex_session_usage(rollout_path: Path) -> dict[str, Any]:
         if not isinstance(item, dict):
             continue
         kind = str(item.get("type") or "")
-        payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+        raw_payload = item.get("payload")
+        payload = raw_payload if isinstance(raw_payload, dict) else {}
         if kind == "session_meta":
             session_id = str(
                 payload.get("session_id") or payload.get("id") or ""
@@ -118,11 +120,16 @@ def read_codex_session_usage(rollout_path: Path) -> dict[str, Any]:
             if model_text:
                 model = model_text
         elif kind == "event_msg" and str(payload.get("type") or "") == "token_count":
-            info = payload.get("info") if isinstance(payload.get("info"), dict) else {}
+            raw_info = payload.get("info")
+            info = raw_info if isinstance(raw_info, dict) else {}
             totals = info.get("total_token_usage")
             if isinstance(totals, Mapping):
                 last_totals = totals
                 last_totals_at = str(item.get("timestamp") or "").strip()
+                # The model labels this cumulative snapshot only if it was
+                # observed before the token_count event. A later turn_context
+                # must not relabel an unchanged snapshot on replay.
+                last_totals_model = model
 
     if not session_id:
         raise CodexSessionUsageError(
@@ -132,7 +139,7 @@ def read_codex_session_usage(rollout_path: Path) -> dict[str, Any]:
         raise CodexSessionUsageError(
             f"codex session rollout has no token_count usage events: {path}"
         )
-    if not model:
+    if not last_totals_model:
         raise CodexSessionUsageError(
             f"codex session rollout has no turn_context model id: {path}"
         )
@@ -149,7 +156,7 @@ def read_codex_session_usage(rollout_path: Path) -> dict[str, Any]:
         "output_tokens": last_totals.get("output_tokens"),
         "cache_tokens": last_totals.get("cached_input_tokens"),
         "provider": CODEX_USAGE_PROVIDER,
-        "model": model,
+        "model": last_totals_model,
         "session_id": session_id,
         "source_snapshot_id": f"codex:{session_id}:{last_totals_at or 'unanchored'}",
         "measurement_kind": "absolute",

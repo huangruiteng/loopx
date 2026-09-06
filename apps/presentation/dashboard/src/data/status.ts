@@ -552,16 +552,18 @@ export const usageTotalsSchema = z.object({
   automation_run_count_7d: z.number().optional().default(0),
   progress_signal_run_count_24h: z.number().optional().default(0),
   progress_signal_run_count_7d: z.number().optional().default(0),
-  input_tokens_24h: z.number().optional().default(0),
-  input_tokens_7d: z.number().optional().default(0),
-  output_tokens_24h: z.number().optional().default(0),
-  output_tokens_7d: z.number().optional().default(0),
-  cache_tokens_24h: z.number().optional().default(0),
-  cache_tokens_7d: z.number().optional().default(0),
-  cost_usd_24h: z.number().optional().default(0),
-  cost_usd_7d: z.number().optional().default(0),
-  duration_ms_24h: z.number().optional().default(0),
-  duration_ms_7d: z.number().optional().default(0),
+  // Measurement fields are absent when no sampled run reported them. A zero is
+  // meaningful only after a runtime has actually measured that metric.
+  input_tokens_24h: z.number().optional(),
+  input_tokens_7d: z.number().optional(),
+  output_tokens_24h: z.number().optional(),
+  output_tokens_7d: z.number().optional(),
+  cache_tokens_24h: z.number().optional(),
+  cache_tokens_7d: z.number().optional(),
+  cost_usd_24h: z.number().optional(),
+  cost_usd_7d: z.number().optional(),
+  duration_ms_24h: z.number().optional(),
+  duration_ms_7d: z.number().optional(),
 });
 
 export const usageGoalSchema = usageTotalsSchema.extend({
@@ -578,16 +580,6 @@ const defaultUsageTotals = {
   automation_run_count_7d: 0,
   progress_signal_run_count_24h: 0,
   progress_signal_run_count_7d: 0,
-  input_tokens_24h: 0,
-  input_tokens_7d: 0,
-  output_tokens_24h: 0,
-  output_tokens_7d: 0,
-  cache_tokens_24h: 0,
-  cache_tokens_7d: 0,
-  cost_usd_24h: 0,
-  cost_usd_7d: 0,
-  duration_ms_24h: 0,
-  duration_ms_7d: 0,
 };
 
 export const usageSummarySchema = z.object({

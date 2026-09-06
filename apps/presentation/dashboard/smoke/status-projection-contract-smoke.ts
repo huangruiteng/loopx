@@ -388,7 +388,56 @@ equal(
   "a scoped server without revision remains compatible",
 );
 
-// 6) fence: overlapping same-source background requests must be latest-wins.
+// 6) usage metrics omitted by the producer remain unknown instead of being
+// normalized into measured zeroes. Run and quota counters retain their existing
+// zero semantics because they describe the sampled history, not measurement.
+const usageWithNoMeasurements = basePayload({
+  usage_summary: {
+    totals: { runs_24h: 0, runs_7d: 0, quota_spend_slots_24h: 0, quota_spend_slots_7d: 0 },
+    goals: [],
+  },
+});
+equal(usageWithNoMeasurements.usage_summary?.totals.input_tokens_24h, undefined, "missing token count stays unknown");
+equal(usageWithNoMeasurements.usage_summary?.totals.cost_usd_24h, undefined, "missing cost stays unknown");
+equal(usageWithNoMeasurements.usage_summary?.totals.runs_24h, 0, "missing run count remains a measured zero");
+
+const activeUsageWithoutTokens = basePayload({
+  goal_projection: {
+    schema_version: "loopx_goal_projection_scope_v0",
+    scope: "active",
+    complete: false,
+    projected_goal_count: 1,
+    registry_goal_count: 2,
+    registry_revision: "registry_activation_v1:usage-rev",
+  },
+  run_history: { available: true, goal_count: 1, run_count: 1, goals: [goal("alpha", "active")], recent_runs: [] },
+  usage_summary: {
+    totals: { runs_24h: 1, runs_7d: 1, quota_spend_slots_24h: 0, quota_spend_slots_7d: 0 },
+    goals: [{ goal_id: "alpha", runs_24h: 1, runs_7d: 1, quota_spend_slots_24h: 0, quota_spend_slots_7d: 0 }],
+  },
+});
+const stoppedUsageWithTokens = basePayload({
+  goal_projection: {
+    schema_version: "loopx_goal_projection_scope_v0",
+    scope: "stopped",
+    complete: false,
+    projected_goal_count: 1,
+    registry_goal_count: 2,
+    registry_revision: "registry_activation_v1:usage-rev",
+  },
+  run_history: { available: true, goal_count: 1, run_count: 1, goals: [goal("gamma", "stopped")], recent_runs: [] },
+  usage_summary: {
+    totals: { runs_24h: 1, runs_7d: 1, quota_spend_slots_24h: 0, quota_spend_slots_7d: 0, input_tokens_24h: 10, input_tokens_7d: 10, cache_tokens_24h: 0 },
+    goals: [{ goal_id: "gamma", runs_24h: 1, runs_7d: 1, quota_spend_slots_24h: 0, quota_spend_slots_7d: 0, input_tokens_24h: 10, input_tokens_7d: 10, cache_tokens_24h: 0 }],
+  },
+});
+const mergedObservedUsage = mergeScopedStatusProjections(activeUsageWithoutTokens, stoppedUsageWithTokens);
+equal(mergedObservedUsage.usage_summary?.totals.input_tokens_24h, 10, "merge sums available token measurements");
+equal(mergedObservedUsage.usage_summary?.totals.cache_tokens_24h, 0, "merge preserves an observed zero measurement");
+equal(mergedObservedUsage.usage_summary?.totals.cost_usd_24h, undefined, "merge retains unknown when neither scope measured cost");
+equal(mergedObservedUsage.usage_summary?.totals.runs_24h, 2, "merge retains run counter semantics");
+
+// 7) fence: overlapping same-source background requests must be latest-wins.
 const url = "/status.json";
 const fence = createStatusRequestFence(null);
 fence.loadedUrl = url;

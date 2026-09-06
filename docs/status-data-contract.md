@@ -2250,10 +2250,14 @@ into `write_reserved_run_artifacts` and into the `refresh-state` run-write
 path. The first shipped measurement source is the Codex CLI session rollout:
 `loopx refresh-state --usage-codex-session <rollout.jsonl>` reads only the
 newest aggregate `token_count` totals, the model id, the session id, and event
-timestamps — never prompts, completions, or tool output. The session must be
-bound explicitly; there is no automatic session discovery, because guessing a
-concurrent session risks attributing one session's spend to another run. A
-host that measures usage itself can instead pass one finished per-run
+timestamps — never prompts, completions, or tool output. The model label is
+bound to the context observed before the selected token snapshot; a later
+context without new usage cannot relabel that snapshot. A snapshot without a
+preceding model context is rejected. This binding does not allocate cumulative
+session usage across models. The session must be bound explicitly; there is no
+automatic session discovery, because guessing a concurrent session risks
+attributing one session's spend to another run. A host that measures usage
+itself can instead pass one finished per-run
 measurement with `--usage-json`. Without either flag, usage stays unknown.
 
 Cumulative host snapshots are converted to non-negative deltas at that
@@ -2318,6 +2322,12 @@ The summary currently reports:
   measured.
 - `project_share_24h`: per-goal share of observed 24h runs, rounded to three
   decimals.
+
+The Personal Workspace preserves absent measurements through parsing and
+active/stopped Goal merging. Goal details show “Not measured” / “未采集” for
+an absent metric; an observed zero remains `0`, `$0.00`, or `0ms`. Token totals
+require both measured input and output counts. The compact Goal header shows
+only observed metrics, without inferring a cost from token counts.
 
 Because `status --limit` can bound the recent run sample, consumers should
 display `sample_run_count` and treat these values as operational signals for

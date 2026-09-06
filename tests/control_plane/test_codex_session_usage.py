@@ -88,6 +88,16 @@ def _rollout_header(session_id: str = SESSION_ID) -> list[str]:
     ]
 
 
+def _rollout_model_context(model: str, *, turn_id: str = "turn-2") -> str:
+    return json.dumps(
+        {
+            "timestamp": "2026-08-26T01:06:00.000Z",
+            "type": "turn_context",
+            "payload": {"turn_id": turn_id, "model": model},
+        }
+    )
+
+
 def _write_rollout(path: Path, lines: list[str]) -> Path:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -120,6 +130,82 @@ def test_read_codex_session_usage_extracts_cumulative_totals(tmp_path: Path) -> 
     assert observation["measurement_kind"] == "absolute"
     assert observation["duration_ms"] == 300_000
     assert "cost_usd" not in observation  # unmeasured stays unknown, not zero
+
+
+def test_read_codex_session_usage_binds_model_when_token_snapshot_is_observed(
+    tmp_path: Path,
+) -> None:
+    lines = [
+        *_rollout_header(),
+        _rollout_event(
+            "2026-08-26T01:05:00.000Z",
+            input_tokens=1200,
+            cached_input_tokens=200,
+            output_tokens=300,
+        ),
+        _rollout_model_context("gpt-fixture-2"),
+    ]
+    rollout = _write_rollout(tmp_path / "rollout-model-switch.jsonl", lines)
+
+    first = read_codex_session_usage(rollout)
+    second = read_codex_session_usage(rollout)
+
+    assert first["model"] == MODEL
+    assert second == first
+
+
+def test_read_codex_session_usage_updates_model_with_new_token_snapshot(
+    tmp_path: Path,
+) -> None:
+    lines = [
+        *_rollout_header(),
+        _rollout_event(
+            "2026-08-26T01:05:00.000Z",
+            input_tokens=1200,
+            cached_input_tokens=200,
+            output_tokens=300,
+        ),
+        _rollout_model_context("gpt-fixture-2"),
+        _rollout_event(
+            "2026-08-26T01:10:00.000Z",
+            input_tokens=2000,
+            cached_input_tokens=350,
+            output_tokens=450,
+        ),
+    ]
+    rollout = _write_rollout(
+        tmp_path / "rollout-model-switch-new-usage.jsonl", lines
+    )
+
+    observation = read_codex_session_usage(rollout)
+
+    assert observation["model"] == "gpt-fixture-2"
+    assert observation["input_tokens"] == 2000
+
+
+def test_read_codex_session_usage_requires_model_before_token_snapshot(
+    tmp_path: Path,
+) -> None:
+    lines = [
+        json.dumps(
+            {
+                "timestamp": "2026-08-26T01:00:00.000Z",
+                "type": "session_meta",
+                "payload": {"session_id": SESSION_ID},
+            }
+        ),
+        _rollout_event(
+            "2026-08-26T01:05:00.000Z",
+            input_tokens=1200,
+            cached_input_tokens=200,
+            output_tokens=300,
+        ),
+        _rollout_model_context("gpt-fixture-2"),
+    ]
+    rollout = _write_rollout(tmp_path / "rollout-late-model.jsonl", lines)
+
+    with pytest.raises(CodexSessionUsageError, match="no turn_context model"):
+        read_codex_session_usage(rollout)
 
 
 def test_read_codex_session_usage_tolerates_torn_trailing_line(tmp_path: Path) -> None:
@@ -478,6 +564,75 @@ def test_refresh_state_replaying_same_snapshot_does_not_double_count(
     # second snapshot state file that a crash between writes could leave stale.
     runs_dir = runtime_root / "goals" / GOAL_ID / "runs"
     assert not (runs_dir / "usage_snapshot.json").exists()
+
+
+def test_refresh_state_replays_snapshot_after_model_context_change(
+    tmp_path: Path,
+) -> None:
+    registry_path, project, runtime_root = _goal_fixture(tmp_path)
+    rollout = _fixture_rollout(tmp_path)
+    _refresh(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        project=project,
+        usage_codex_session=rollout,
+    )
+    with rollout.open("a", encoding="utf-8") as handle:
+        handle.write(_rollout_model_context("gpt-fixture-2") + "\n")
+
+    payload = _refresh(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        project=project,
+        usage_codex_session=rollout,
+    )
+
+    assert payload["usage"]["model"] == MODEL
+    runs = _index_runs(runtime_root)
+    assert runs[1]["usage"]["measurement_kind"] == "delta"
+    assert runs[1]["usage"]["input_tokens"] == 0
+    assert runs[1]["usage"]["model"] == MODEL
+
+    with rollout.open("a", encoding="utf-8") as handle:
+        handle.write(
+            _rollout_event(
+                "2026-08-26T01:10:00.000Z",
+                input_tokens=2000,
+                cached_input_tokens=350,
+                output_tokens=450,
+            )
+            + "\n"
+        )
+    payload = _refresh(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        project=project,
+        usage_codex_session=rollout,
+    )
+
+    assert payload["usage"]["model"] == "gpt-fixture-2"
+    runs = _index_runs(runtime_root)
+    increment = runs[2]["usage"]
+    assert increment["measurement_kind"] == "delta"
+    assert increment["input_tokens"] == 800
+    assert increment["output_tokens"] == 150
+    assert increment["cache_tokens"] == 150
+    assert increment["model"] == "gpt-fixture-2"
+
+    payload = _refresh(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        project=project,
+        usage_codex_session=rollout,
+    )
+
+    assert payload["usage"]["model"] == "gpt-fixture-2"
+    runs = _index_runs(runtime_root)
+    replay = runs[3]["usage"]
+    assert replay["measurement_kind"] == "delta"
+    assert replay["input_tokens"] == 0
+    assert replay["output_tokens"] == 0
+    assert replay["model"] == "gpt-fixture-2"
 
 
 def test_refresh_state_books_only_the_cumulative_increment(tmp_path: Path) -> None:

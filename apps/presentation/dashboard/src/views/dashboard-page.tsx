@@ -313,6 +313,10 @@ function shareUsageById(usage?: UsageSummary | null) {
   return map;
 }
 
+function sumMeasuredUsage(left?: number, right?: number): number | undefined {
+  return left === undefined || right === undefined ? undefined : left + right;
+}
+
 function getShareTodos(row: GoalDirectoryRow | undefined, role: "user" | "agent") {
   if (!row) {
     return null;
@@ -1266,8 +1270,8 @@ function buildPersonalHomeModel(
           costUsd7d: goalUsage.cost_usd_7d,
           durationMs24h: goalUsage.duration_ms_24h,
           durationMs7d: goalUsage.duration_ms_7d,
-          tokens24h: goalUsage.input_tokens_24h + goalUsage.output_tokens_24h,
-          tokens7d: goalUsage.input_tokens_7d + goalUsage.output_tokens_7d,
+          tokens24h: sumMeasuredUsage(goalUsage.input_tokens_24h, goalUsage.output_tokens_24h),
+          tokens7d: sumMeasuredUsage(goalUsage.input_tokens_7d, goalUsage.output_tokens_7d),
         } : null;
       })(),
     }];

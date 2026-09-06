@@ -1,5 +1,12 @@
 // @ts-expect-error The smoke compiler intentionally runs without @types/node.
 import { readFileSync } from "node:fs";
+import {
+  formatCostUsd,
+  formatTokenCount,
+  formatUsageValue,
+  goalUsageLabel,
+  hasGoalUsage,
+} from "../src/features/personal-workspace/personal-workspace-model.js";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -17,6 +24,8 @@ function excludes(source: string, snippet: string, label: string) {
 
 const statusSource = readFileSync("src/data/status.ts", "utf8");
 const dashboardSource = readFileSync("src/views/dashboard-page.tsx", "utf8");
+const drawerSource = readFileSync("src/features/personal-workspace/context-drawer.tsx", "utf8");
+const workspaceI18nSource = readFileSync("src/features/personal-workspace/i18n.tsx", "utf8");
 const packageSource = readFileSync("package.json", "utf8");
 const exampleStatus = readFileSync("../../../examples/status.example.json", "utf8");
 const promotionGateWarningFixture = readFileSync("../../../examples/dashboard-promotion-gate-warning-status.json", "utf8");
@@ -109,12 +118,62 @@ excludes(
 );
 
 for (const [snippet, label] of [
-  ["buildPersonalHomeModel(payload, rows)", "personal workspace model assembly"],
+  ["function buildPersonalHomeModel(", "personal workspace model assembly"],
   ["shareUsageById(payload.usage_summary)", "goal usage projection"],
   ["systemHealth", "system health projection"],
   ["payload.decision_freshness_summary", "decision freshness check"],
 ] as const) {
   includes(dashboardSource, snippet, label);
+}
+
+for (const field of [
+  "input_tokens_24h",
+  "input_tokens_7d",
+  "output_tokens_24h",
+  "output_tokens_7d",
+  "cost_usd_24h",
+  "cost_usd_7d",
+  "duration_ms_24h",
+  "duration_ms_7d",
+] as const) {
+  excludes(statusSource, `${field}: z.number().optional().default(0)`, `${field} must preserve an absent measurement`);
+}
+
+for (const [snippet, label] of [
+  ["tokens24h: sumMeasuredUsage(goalUsage.input_tokens_24h, goalUsage.output_tokens_24h)", "24h token aggregation"],
+  ["tokens7d: sumMeasuredUsage(goalUsage.input_tokens_7d, goalUsage.output_tokens_7d)", "7d token aggregation"],
+] as const) {
+  includes(dashboardSource, snippet, label);
+}
+
+assert(hasGoalUsage({ tokens24h: 0 }), "a measured zero must remain visible");
+assert(!hasGoalUsage({}), "an entirely absent usage record is unknown");
+assert(formatUsageValue(undefined, "Not measured", formatCostUsd) === "Not measured", "missing cost must not display as $0.00");
+assert(formatUsageValue(0, "Not measured", formatTokenCount) === "0", "a measured zero token count must display as zero");
+assert(
+  goalUsageLabel({ costUsd7d: 0 }, { cost: "Cost", duration: "Duration", period24h: "24h", period7d: "7d", tokens: "tokens" })
+    === "7d Cost: $0.00",
+  "the compact label must distinguish observed zero cost without inventing tokens",
+);
+assert(
+  goalUsageLabel({ durationMs24h: 0 }, { cost: "Cost", duration: "Duration", period24h: "24h", period7d: "7d", tokens: "tokens" })
+    === "24h Duration: 0ms",
+  "the compact label must use the observed 24h window when 7d is unknown",
+);
+
+for (const [snippet, label] of [
+  ["drawer.tokens", "localized token label"],
+  ["drawer.usageNotMeasured", "localized unknown usage value"],
+] as const) {
+  includes(workspaceI18nSource, snippet, label);
+}
+
+for (const [snippet, label] of [
+  ["formatUsageValue(selection.item.usage?.tokens24h", "drawer unknown token value"],
+  ["formatUsageValue(selection.item.usage?.costUsd24h", "drawer unknown cost value"],
+  ["formatUsageValue(selection.item.usage?.durationMs24h", "drawer unknown duration value"],
+] as const) {
+  includes(drawerSource, snippet, label);
 }
 
 console.log("usage-progress smoke ok");

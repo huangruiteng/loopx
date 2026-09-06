@@ -67,7 +67,7 @@ function mergeByKey<T>(
   return merged;
 }
 
-const USAGE_TOTAL_KEYS = [
+const USAGE_COUNTER_KEYS = [
   "runs_24h",
   "runs_7d",
   "quota_spend_slots_24h",
@@ -76,6 +76,9 @@ const USAGE_TOTAL_KEYS = [
   "automation_run_count_7d",
   "progress_signal_run_count_24h",
   "progress_signal_run_count_7d",
+] as const;
+
+const USAGE_MEASUREMENT_KEYS = [
   "input_tokens_24h",
   "input_tokens_7d",
   "output_tokens_24h",
@@ -111,22 +114,16 @@ const emptyUsageTotals: UsageTotals = {
   automation_run_count_7d: 0,
   progress_signal_run_count_24h: 0,
   progress_signal_run_count_7d: 0,
-  input_tokens_24h: 0,
-  input_tokens_7d: 0,
-  output_tokens_24h: 0,
-  output_tokens_7d: 0,
-  cache_tokens_24h: 0,
-  cache_tokens_7d: 0,
-  cost_usd_24h: 0,
-  cost_usd_7d: 0,
-  duration_ms_24h: 0,
-  duration_ms_7d: 0,
 };
 
 function addUsageTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
   const merged = { ...left };
-  for (const key of USAGE_TOTAL_KEYS) {
+  for (const key of USAGE_COUNTER_KEYS) {
     merged[key] = (Number(left[key]) || 0) + (Number(right[key]) || 0);
+  }
+  for (const key of USAGE_MEASUREMENT_KEYS) {
+    if (left[key] === undefined && right[key] === undefined) continue;
+    merged[key] = (left[key] ?? 0) + (right[key] ?? 0);
   }
   return merged;
 }
@@ -290,8 +287,12 @@ function todoIndexKey(item: TodoIndexItem): string {
 function usageTotalsForGoals(goals: readonly UsageGoal[]): UsageTotals {
   const totals = { ...emptyUsageTotals };
   for (const goal of goals) {
-    for (const key of USAGE_TOTAL_KEYS) {
+    for (const key of USAGE_COUNTER_KEYS) {
       totals[key] += Number(goal[key]) || 0;
+    }
+    for (const key of USAGE_MEASUREMENT_KEYS) {
+      if (goal[key] === undefined) continue;
+      totals[key] = (totals[key] ?? 0) + goal[key];
     }
   }
   return totals;
