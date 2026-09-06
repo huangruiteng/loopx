@@ -156,6 +156,10 @@ from .cli_commands.shared_goal_alignment import (
     handle_shared_goal_alignment_command,
     register_shared_goal_alignment_command,
 )
+from .cli_commands.goal_amendment_proposal import (
+    handle_goal_amendment_proposal_command,
+    register_goal_amendment_proposal_command,
+)
 from .cli_commands.reliability_diagnostics import (
     handle_reliability_diagnostics_command,
     register_reliability_diagnostics_commands,
@@ -336,6 +340,7 @@ def build_parser() -> LoopXArgumentParser:
     register_authority_shadow_command(sub, add_subcommand_format)
     register_handoff_mode_command(sub, add_subcommand_format)
     register_shared_goal_alignment_command(sub, add_subcommand_format)
+    register_goal_amendment_proposal_command(sub, add_subcommand_format)
     register_quota_command(sub)
 
     return parser
@@ -869,6 +874,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     if shared_goal_alignment_result is not None:
         return shared_goal_alignment_result
+
+    goal_amendment_proposal_result = handle_goal_amendment_proposal_command(
+        args,
+        registry_path=registry_path,
+        runtime_root_arg=args.runtime_root,
+        output_format=output_format,
+        print_payload=print_payload,
+    )
+    if goal_amendment_proposal_result is not None:
+        return goal_amendment_proposal_result
 
     if args.command == "auto-research":
         try:
