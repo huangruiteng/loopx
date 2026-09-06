@@ -1,0 +1,169 @@
+"""Resumable multi-Agent orchestration for Lark Goal Topic connections."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from ...control_plane.todos.contract import normalize_todo_claimed_by
+from .goal_channel_contracts import operation_packet
+from .goal_topic_connections import connect_lark_goal_topic
+from .presentation.kanban import (
+    DEFAULT_CLI_BIN,
+    CommandRunner,
+    default_subprocess_runner,
+)
+
+
+def connect_lark_goal_topics(
+    *,
+    registry: Mapping[str, Any],
+    goal_id: str,
+    target_path: Path,
+    binding_path: Path,
+    app_refs_by_agent: Mapping[str, str],
+    chat_id: str,
+    chat_name: str,
+    incoming_mode: str = "mentions",
+    session_ids_by_agent: Mapping[str, str] | None = None,
+    capture_scope: str | None = None,
+    ingress_mode: str = "async_inbox",
+    reply_mode: str = "topic_reply",
+    registry_path: Path | None = None,
+    execute: bool = True,
+    runner: CommandRunner = default_subprocess_runner,
+    cli_bin: str = DEFAULT_CLI_BIN,
+) -> dict[str, Any]:
+    """Preview every Agent before running one idempotent connection at a time."""
+
+    if not app_refs_by_agent:
+        raise ValueError("app_refs_by_agent must contain at least one Agent")
+    if len(app_refs_by_agent) > 16:
+        raise ValueError("app_refs_by_agent supports at most 16 Agents")
+
+    requested: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw_agent_id, raw_app_ref in app_refs_by_agent.items():
+        agent_id = normalize_todo_claimed_by(raw_agent_id)
+        if not agent_id:
+            raise ValueError("each batch item must name a public-safe Agent id")
+        if agent_id in seen:
+            raise ValueError("each Agent may appear only once in a batch")
+        seen.add(agent_id)
+        requested.append((agent_id, str(raw_app_ref or "").strip()))
+
+    sessions = session_ids_by_agent or {}
+    common = {
+        "registry": registry,
+        "goal_id": goal_id,
+        "target_path": target_path,
+        "binding_path": binding_path,
+        "chat_id": chat_id,
+        "chat_name": chat_name,
+        "incoming_mode": incoming_mode,
+        "capture_scope": capture_scope,
+        "ingress_mode": ingress_mode,
+        "reply_mode": reply_mode,
+        "registry_path": registry_path,
+        "runner": runner,
+        "cli_bin": cli_bin,
+    }
+    previews: list[dict[str, Any]] = []
+    normalized: list[tuple[str, str]] = []
+    for agent_id, app_ref in requested:
+        preview = connect_lark_goal_topic(
+            **common,
+            agent_id=agent_id,
+            app_ref=app_ref,
+            session_id=str(sessions.get(agent_id) or "").strip() or None,
+            execute=False,
+        )
+        validated_app_ref = str(
+            (preview.get("details") or {}).get("app_ref") or app_ref
+        )
+        normalized.append((agent_id, validated_app_ref))
+        previews.append(
+            {
+                "agent_id": agent_id,
+                "app_ref": validated_app_ref,
+                "status": str(preview.get("status") or "blocked"),
+            }
+        )
+        if not preview.get("ok"):
+            return operation_packet(
+                ok=False,
+                goal_id=goal_id,
+                operation="connect_topics",
+                execute=execute,
+                status="blocked",
+                blocker=str(preview.get("blocker") or "batch_preflight_failed"),
+                public_summary="one Agent connection did not pass batch preflight",
+                details={
+                    "connections": previews,
+                    "failed_agent_id": agent_id,
+                    "completed_agent_ids": [],
+                },
+            )
+
+    if not execute:
+        return operation_packet(
+            ok=True,
+            goal_id=goal_id,
+            operation="connect_topics",
+            execute=False,
+            status="preview_ready",
+            public_summary=f"previewed {len(normalized)} Agent connections",
+            details={"connections": previews, "completed_agent_ids": []},
+        )
+
+    results: list[dict[str, Any]] = []
+    completed: list[str] = []
+    external_write_performed = False
+    for agent_id, app_ref in normalized:
+        result = connect_lark_goal_topic(
+            **common,
+            agent_id=agent_id,
+            app_ref=app_ref,
+            session_id=str(sessions.get(agent_id) or "").strip() or None,
+            execute=True,
+        )
+        external_write_performed = external_write_performed or bool(
+            result.get("external_write_performed")
+        )
+        results.append(
+            {
+                "agent_id": agent_id,
+                "app_ref": app_ref,
+                "status": str(result.get("status") or "failed"),
+            }
+        )
+        if not result.get("ok"):
+            return operation_packet(
+                ok=False,
+                goal_id=goal_id,
+                operation="connect_topics",
+                execute=True,
+                status="partially_connected" if completed else "failed",
+                blocker=str(result.get("blocker") or "provider_api_failed"),
+                public_summary="the Agent connection batch can be resumed safely",
+                external_write_performed=external_write_performed,
+                details={
+                    "connections": results,
+                    "failed_agent_id": agent_id,
+                    "completed_agent_ids": completed,
+                },
+            )
+        completed.append(agent_id)
+
+    return operation_packet(
+        ok=True,
+        goal_id=goal_id,
+        operation="connect_topics",
+        execute=True,
+        status="connected",
+        public_summary=f"connected {len(completed)} Agents to dedicated Lark topics",
+        external_write_performed=external_write_performed,
+        readback_verified=True,
+        details={"connections": results, "completed_agent_ids": completed},
+    )

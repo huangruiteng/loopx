@@ -56,14 +56,14 @@ from .goal_channel_targets import (
 )
 from .goal_channel_transport import (
     APP_ID_PATTERN,
+    BotChatMembershipResult,
     CHAT_ID_PATTERN,
     MESSAGE_ID_PATTERN,
     OPEN_ID_PATTERN,
     SAFE_PROFILE_PATTERN,
     bot_group_history_permission_guidance,
-    bot_membership_verified,
     call,
-    chat_verified,
+    ensure_bot_chat_membership,
     find_first_string,
     json_payload,
     lark_provider_mention_identities,
@@ -491,6 +491,40 @@ def connect_lark_goal_topic(
                 "connection_id": connection_id,
             },
         )
+    membership_result = ensure_bot_chat_membership(
+        runner=runner,
+        cli_bin=effective_cli_bin,
+        membership_profile=profile,
+        bot_profile=profile,
+        chat_id=safe_chat_id,
+        app_id=str(identity["app_id"]),
+    )
+    membership_added = membership_result.external_write_performed
+    if membership_result is BotChatMembershipResult.ADD_FAILED:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="connect_topic",
+            execute=True,
+            status="failed",
+            blocker="provider_api_failed",
+            public_summary="the selected Lark App could not be added to the group",
+        )
+    if membership_result in {
+        BotChatMembershipResult.ALREADY_UNVERIFIED,
+        BotChatMembershipResult.ADDED_UNVERIFIED,
+    }:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="connect_topic",
+            execute=True,
+            status="blocked",
+            blocker="channel_membership_unverified",
+            public_summary="the selected Lark App is not a verified group member",
+            external_write_performed=membership_result.external_write_performed,
+        )
+
     if inbox_config is not None:
         config_path, preflight_config_ref, inbox_payload = inbox_config
         reply = inbox_payload.get("reply")
@@ -503,38 +537,6 @@ def connect_lark_goal_topic(
             config_path=config_path,
             config_ref=preflight_config_ref,
             payload=inbox_payload,
-        )
-    if not chat_verified(
-        runner=runner,
-        cli_bin=effective_cli_bin,
-        profile=profile,
-        identity="bot",
-        chat_id=safe_chat_id,
-    ):
-        return operation_packet(
-            ok=False,
-            goal_id=goal_id,
-            operation="connect_topic",
-            execute=True,
-            status="blocked",
-            blocker="channel_membership_unverified",
-            public_summary="the selected Lark App cannot access this group",
-        )
-    if not bot_membership_verified(
-        runner=runner,
-        cli_bin=effective_cli_bin,
-        profile=profile,
-        chat_id=safe_chat_id,
-        app_id=str(identity["app_id"]),
-    ):
-        return operation_packet(
-            ok=False,
-            goal_id=goal_id,
-            operation="connect_topic",
-            execute=True,
-            status="blocked",
-            blocker="bot_not_in_chat",
-            public_summary="invite the selected Lark App to the group and retry",
         )
 
     target_name = (
@@ -619,6 +621,7 @@ def connect_lark_goal_topic(
                 status="failed",
                 blocker="provider_api_failed",
                 public_summary="the Goal Topic root message could not be sent",
+                external_write_performed=membership_added,
             )
     if not message_readback_verified(
         runner=runner,
@@ -637,7 +640,7 @@ def connect_lark_goal_topic(
             status="blocked" if reusable_root else "sent_unverified",
             blocker="readback_mismatch",
             public_summary="the Goal Topic could not be verified; binding preserved",
-            external_write_performed=not bool(reusable_root),
+            external_write_performed=membership_added or not bool(reusable_root),
         )
 
     connector_binding: dict[str, Any] | None = None
@@ -698,7 +701,7 @@ def connect_lark_goal_topic(
                 status="sent_verified_registration_failed",
                 blocker="agent_inbox_registration_failed",
                 public_summary="the Agent-scoped inbox could not be registered",
-                external_write_performed=not bool(reusable_root),
+                external_write_performed=membership_added or not bool(reusable_root),
                 readback_verified=True,
             )
 
@@ -747,7 +750,7 @@ def connect_lark_goal_topic(
         execute=True,
         status="connected",
         public_summary="connected one Goal to a dedicated Lark topic",
-        external_write_performed=not bool(reusable_root),
+        external_write_performed=membership_added or not bool(reusable_root),
         readback_verified=True,
         idempotency_key=key,
         details={

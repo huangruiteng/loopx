@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 from collections.abc import Mapping
+from enum import Enum
 from typing import Any
 
 from .presentation.kanban import CommandRunner
@@ -19,6 +20,21 @@ REQUIRED_BOT_GROUP_HISTORY_SCOPES = (
     "im:message.group_msg.include_bot:read",
 )
 BOT_GROUP_HISTORY_API_PATH = "/document/server-docs/im-v1/message/list"
+
+
+class BotChatMembershipResult(str, Enum):
+    ALREADY_VERIFIED = "already_verified"
+    ALREADY_UNVERIFIED = "already_unverified"
+    ADDED_VERIFIED = "added_verified"
+    ADD_FAILED = "add_failed"
+    ADDED_UNVERIFIED = "added_unverified"
+
+    @property
+    def external_write_performed(self) -> bool:
+        return self in {
+            BotChatMembershipResult.ADDED_VERIFIED,
+            BotChatMembershipResult.ADDED_UNVERIFIED,
+        }
 
 
 def bot_group_history_permission_guidance(app_id: str) -> dict[str, Any] | None:
@@ -306,6 +322,93 @@ def bot_membership_verified(
         profile=profile,
         identity="bot",
         chat_id=chat_id,
+    )
+
+
+def add_bot_to_chat(
+    *,
+    runner: CommandRunner,
+    cli_bin: str,
+    chat_id: str,
+    app_id: str,
+) -> bool:
+    """Ask the local user identity to add one exact App to one exact chat."""
+
+    result = call(
+        runner,
+        lark_args(
+            cli_bin=cli_bin,
+            profile=None,
+            tail=[
+                "im",
+                "chat.members",
+                "create",
+                "--chat-id",
+                chat_id,
+                "--member-id-type",
+                "app_id",
+                "--succeed-type",
+                "2",
+                "--data",
+                json.dumps({"id_list": [app_id]}),
+                "--as",
+                "user",
+                "--format",
+                "json",
+            ],
+        ),
+    )
+    return result.get("returncode") == 0
+
+
+def ensure_bot_chat_membership(
+    *,
+    runner: CommandRunner,
+    cli_bin: str,
+    membership_profile: str | None,
+    bot_profile: str | None,
+    chat_id: str,
+    app_id: str,
+) -> BotChatMembershipResult:
+    """Add one App when needed and verify the exact bot-to-chat relationship."""
+
+    already_member = bot_membership_verified(
+        runner=runner,
+        cli_bin=cli_bin,
+        profile=membership_profile,
+        chat_id=chat_id,
+        app_id=app_id,
+    )
+    if not already_member and not add_bot_to_chat(
+        runner=runner,
+        cli_bin=cli_bin,
+        chat_id=chat_id,
+        app_id=app_id,
+    ):
+        return BotChatMembershipResult.ADD_FAILED
+    verified = bot_membership_verified(
+        runner=runner,
+        cli_bin=cli_bin,
+        profile=membership_profile,
+        chat_id=chat_id,
+        app_id=app_id,
+    ) and chat_verified(
+        runner=runner,
+        cli_bin=cli_bin,
+        profile=bot_profile,
+        identity="bot",
+        chat_id=chat_id,
+    )
+    if not verified:
+        return (
+            BotChatMembershipResult.ALREADY_UNVERIFIED
+            if already_member
+            else BotChatMembershipResult.ADDED_UNVERIFIED
+        )
+    return (
+        BotChatMembershipResult.ALREADY_VERIFIED
+        if already_member
+        else BotChatMembershipResult.ADDED_VERIFIED
     )
 
 

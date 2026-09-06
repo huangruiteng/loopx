@@ -1601,8 +1601,9 @@ export async function fetchLarkConnections() {
 }
 
 export async function connectLarkGoalTopic(options: {
+  agentBindings?: Array<{ agentId: string; appRef: string }>;
   agentId?: string;
-  appRef: string;
+  appRef?: string;
   captureScope: LarkCaptureScope;
   chatId: string;
   chatName: string;
@@ -1616,8 +1617,14 @@ export async function connectLarkGoalTopic(options: {
     await requestJson<unknown>("/api/chat/lark/connections", {
       method: "POST",
       body: JSON.stringify({
+        ...(options.agentBindings ? {
+          agent_bindings: options.agentBindings.map((binding) => ({
+            agent_id: binding.agentId,
+            app_ref: binding.appRef,
+          })),
+        } : {}),
         ...(options.agentId ? { agent_id: options.agentId } : {}),
-        app_ref: options.appRef,
+        ...(options.appRef ? { app_ref: options.appRef } : {}),
         capture_scope: options.captureScope,
         chat_id: options.chatId,
         chat_name: options.chatName,
