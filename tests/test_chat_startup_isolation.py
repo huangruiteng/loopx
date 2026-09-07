@@ -18,11 +18,16 @@ def test_real_chat_entrypoint_serves_while_binding_discovery_is_blocked(
     entered = threading.Event()
     release = threading.Event()
     servers: list[chat.ChatHTTPServer] = []
-    registry = tmp_path / "registry.json"
+    home = tmp_path / "home"
+    registry = home / ".loopx" / "registry.json"
+    registry.parent.mkdir(parents=True)
     registry.write_text(json.dumps({"goals": []}))
     assets = tmp_path / "web"
     assets.mkdir()
     (assets / "index.html").write_text("<html>workspace fixture</html>")
+
+    monkeypatch.setattr(Path, "home", classmethod(lambda _cls: home))
+    monkeypatch.chdir(tmp_path)
 
     class Server(chat.ChatHTTPServer):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -48,9 +53,7 @@ def test_real_chat_entrypoint_serves_while_binding_discovery_is_blocked(
     worker = threading.Thread(
         target=chat.serve_chat,
         kwargs={
-            "registry_path": registry,
             "runtime_root_override": tmp_path / "runtime",
-            "scan_roots": [],
             "port": 0,
             "assets_dir": assets,
             "codex_bin": "nonexistent-loopx-test-codex",
@@ -61,6 +64,8 @@ def test_real_chat_entrypoint_serves_while_binding_discovery_is_blocked(
     worker.start()
     try:
         assert entered.wait(5)
+        assert servers[0].action_service.registry_path == registry.resolve()
+        assert servers[0].action_service.workspace_roots == (tmp_path.resolve(),)
         base = f"http://127.0.0.1:{servers[0].server_port}"
         for route in ("/healthz", "/api/chat/capabilities"):
             with urlopen(base + route, timeout=2) as response:
