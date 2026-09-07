@@ -11,6 +11,7 @@ not become shipped behavior merely by being published.
 
 - [RFC index](rfcs/README.md)
 - [Agent IM, LoopX, and OpenViking collaboration v0](rfcs/agent-im-openviking-collaboration-v0.md)
+- [TypeScript migration compatibility notes](typescript-migration-compatibility-notes.md)
 
 Implementation-facing schemas belong under
 [`docs/reference/protocols/`](../reference/protocols/README.md). Product
