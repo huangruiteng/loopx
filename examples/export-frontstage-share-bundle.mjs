@@ -16,6 +16,7 @@ const manifestFileName = "frontstage-share-manifest.json";
 const showcaseCatalogPath = "docs/showcases/showcase-catalog.json";
 const projectionFixturePath = "examples/goal-channel-frontstage-fixture.py";
 const installerScriptPath = "scripts/install-from-github.sh";
+const deepSweBehaviorArticlePath = "benchmark/deepswe/behavior-discovery/index.html";
 const homepageEvidenceAssets = [
   "docs/assets/long-running-loop-openviking-trajectory.png",
   "docs/assets/long-running-loop-ml-experiment-trajectory.png",
@@ -115,6 +116,15 @@ async function copyPublicSiteRoutes(siteDir) {
     await mkdir(routeDir, { recursive: true });
     await copyFile(homepage, resolve(routeDir, "index.html"));
   }
+  const deepSweRouteDir = resolve(
+    siteDir,
+    "benchmarks/deepswe/behavior-discovery",
+  );
+  await mkdir(deepSweRouteDir, { recursive: true });
+  await copyFile(
+    resolve(repoRoot, deepSweBehaviorArticlePath),
+    resolve(deepSweRouteDir, "index.html"),
+  );
 }
 
 function validateShowcaseHtmlPath(path) {
@@ -223,6 +233,7 @@ async function writeShareReadme(outDir, base, interactivePages) {
   const homepageUrl = base;
   const frontstageUrl = `${base}frontstage/`;
   const sweMarathonBriefUrl = `${base}benchmarks/swe-marathon/`;
+  const deepSweBehaviorArticleUrl = `${base}benchmarks/deepswe/behavior-discovery/`;
   const previewBlock = base === "/"
     ? `## Try It Locally
 
@@ -237,6 +248,7 @@ Then open the homepage or showcase:
 http://127.0.0.1:8080${homepageUrl}
 http://127.0.0.1:8080${frontstageUrl}
 http://127.0.0.1:8080${sweMarathonBriefUrl}
+http://127.0.0.1:8080${deepSweBehaviorArticleUrl}
 \`\`\`
 `
     : `## Try It Locally
@@ -251,6 +263,7 @@ Hosted entries:
 ${homepageUrl}
 ${frontstageUrl}
 ${sweMarathonBriefUrl}
+${deepSweBehaviorArticleUrl}
 \`\`\`
 `;
   const readme = `# LoopX Public Website Bundle
@@ -274,6 +287,7 @@ ${previewBlock}
   catalog-declared interactive case pages.
 - Homepage source: \`apps/presentation/site\`.
 - SWE-Marathon research brief: \`${sweMarathonBriefUrl}\`, built from the pinned public-safe aggregate and case-insight projection under \`benchmark/swe-marathon/\`.
+- DeepSWE behavior discoveries: \`${deepSweBehaviorArticleUrl}\`, copied byte-for-byte from the reviewed standalone article at \`${deepSweBehaviorArticlePath}\`.
 - Homepage evidence assets: ${homepageEvidenceAssets.map((path) => `\`${path}\``).join(", ")}.
 - Primary case source: \`${showcaseCatalogPath}\`.
 - Interactive case pages: ${interactivePages.length ? interactivePages.map((path) => `\`${path}\``).join(", ") : "none"}.
@@ -292,11 +306,13 @@ async function writeManifest(outDir, base, interactivePages) {
     status_fixture: `site/${statusFileName}`,
     homepage_entry: "site/index.html",
     swe_marathon_brief_entry: "site/benchmarks/swe-marathon/index.html",
+    deepswe_behavior_article_entry: "site/benchmarks/deepswe/behavior-discovery/index.html",
     installer_entry: "site/install.sh",
     frontstage_entry: "site/frontstage/index.html",
     content_sources: {
       public_homepage: "apps/presentation/site",
       swe_marathon_brief: "benchmark/swe-marathon",
+      deepswe_behavior_article: deepSweBehaviorArticlePath,
       installer_script: installerScriptPath,
       homepage_evidence_assets: homepageEvidenceAssets,
       primary_public_story: showcaseCatalogPath,
@@ -409,6 +425,7 @@ async function main() {
     site_dir: siteDir,
     homepage_url: args.base,
     swe_marathon_brief_url: `${args.base}benchmarks/swe-marathon/`,
+    deepswe_behavior_article_url: `${args.base}benchmarks/deepswe/behavior-discovery/`,
     frontstage_url: `${args.base}frontstage/`,
     status_fixture: `site/${statusFileName}`,
   }, null, 2));

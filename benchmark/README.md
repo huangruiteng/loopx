@@ -44,6 +44,13 @@ by itself establish a C2 uplift claim.
 
 ## Current work
 
+- [`swe-marathon/README.md`](swe-marathon/README.md) links the published
+  [SWE-Marathon research brief](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/).
+- [`deepswe/behavior-discovery/README.md`](deepswe/behavior-discovery/README.md)
+  links the standalone
+  [DeepSWE behavior-discovery article](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/).
+  It publishes scoped exploratory findings and permitted duration comparisons,
+  not the complete study outcome table.
 - [`deepswe/README.md`](deepswe/README.md) records the current public-safe
   DeepSWE method: frozen selection, matched-arm authority, native Goal proof,
   independent verification, invalid-run replacement, and compact evidence.

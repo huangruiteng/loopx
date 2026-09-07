@@ -1,8 +1,9 @@
 # DeepSWE behavior discoveries / DeepSWE 行为发现
 
-[Download the standalone article](index.html) and open it in a browser. CSS and
-the scoped JSON downloads are inline; the page uses system fonts, needs no build
-or network access, and includes no raw trajectories. GitHub may show HTML source;
+[Open the published standalone article](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/),
+or [download this source file](index.html) and open it in a browser. CSS and the
+scoped JSON downloads are inline; the page uses system fonts, needs no build or
+network access, and includes no raw trajectories. GitHub may show HTML source;
 download the raw file to view the article.
 
 ## Scope / 阅读范围

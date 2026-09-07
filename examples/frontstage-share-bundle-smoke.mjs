@@ -102,6 +102,7 @@ const siteDir = resolve(outDir, "site");
 assertExists(resolve(siteDir, "index.html"));
 assertExists(resolve(siteDir, "frontstage/index.html"));
 assertExists(resolve(siteDir, "benchmarks/swe-marathon/index.html"));
+assertExists(resolve(siteDir, "benchmarks/deepswe/behavior-discovery/index.html"));
 // Editorial pages must ship their text and locale navigation without an SPA
 // fallback or client-side execution, including on repository-base hosting.
 const blogArticle = "from-one-shot-agents-to-long-horizon-control/";
@@ -175,6 +176,17 @@ const homepageStyles = await readFile(resolve(repoRoot, "apps/presentation/site/
 const benchmarkHtml = await readFile(resolve(siteDir, "benchmarks/swe-marathon/index.html"), "utf8");
 if (benchmarkHtml !== homepageHtml) {
   throw new Error("SWE-Marathon static route must reuse the compiled public-site entry");
+}
+const deepSweBehaviorHtml = await readFile(
+  resolve(siteDir, "benchmarks/deepswe/behavior-discovery/index.html"),
+  "utf8",
+);
+const canonicalDeepSweBehaviorHtml = await readFile(
+  resolve(repoRoot, "benchmark/deepswe/behavior-discovery/index.html"),
+  "utf8",
+);
+if (deepSweBehaviorHtml !== canonicalDeepSweBehaviorHtml) {
+  throw new Error("DeepSWE behavior article route must be byte-identical to the reviewed standalone source");
 }
 for (const sourceContract of [
   "Your agents keep",
@@ -290,6 +302,7 @@ if (manifest.base !== "/loopx/") {
 if (
   manifest.homepage_entry !== "site/index.html" ||
   manifest.swe_marathon_brief_entry !== "site/benchmarks/swe-marathon/index.html" ||
+  manifest.deepswe_behavior_article_entry !== "site/benchmarks/deepswe/behavior-discovery/index.html" ||
   manifest.frontstage_entry !== "site/frontstage/index.html" ||
   manifest.installer_entry !== "site/install.sh"
 ) {
@@ -300,6 +313,12 @@ if (manifest.content_sources?.public_homepage !== "apps/presentation/site") {
 }
 if (manifest.content_sources?.swe_marathon_brief !== "benchmark/swe-marathon") {
   throw new Error(`manifest benchmark brief source mismatch: ${JSON.stringify(manifest.content_sources)}`);
+}
+if (
+  manifest.content_sources?.deepswe_behavior_article !==
+  "benchmark/deepswe/behavior-discovery/index.html"
+) {
+  throw new Error(`manifest DeepSWE behavior source mismatch: ${JSON.stringify(manifest.content_sources)}`);
 }
 if (manifest.content_sources?.installer_script !== "scripts/install-from-github.sh") {
   throw new Error(`manifest installer source mismatch: ${JSON.stringify(manifest.content_sources)}`);
@@ -373,6 +392,9 @@ if (!readmeText.includes("frontstage/")) {
 }
 if (!readmeText.includes("benchmarks/swe-marathon/")) {
   throw new Error("share bundle README must publish the SWE-Marathon research brief entry");
+}
+if (!readmeText.includes("benchmarks/deepswe/behavior-discovery/")) {
+  throw new Error("share bundle README must publish the DeepSWE behavior article entry");
 }
 
 console.log("frontstage-share-bundle-smoke: ok");
