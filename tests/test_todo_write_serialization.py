@@ -102,7 +102,7 @@ def test_concurrent_add_and_update_share_the_goal_todo_write_lock(
 
     monkeypatch.setattr(
         legacy_writer_fence,
-        "exclusive_file_lock",
+        "exclusive_cross_runtime_file_lock",
         deterministic_lock,
     )
 
