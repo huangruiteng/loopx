@@ -626,6 +626,9 @@ function personalAgentLabel(agentId: string) {
   if (normalized.includes("claude")) {
     return "Claude Code";
   }
+  if (normalized.includes("kiro")) {
+    return "Kiro CLI";
+  }
   if (normalized.includes("trae")) {
     return "Trae CLI Agent";
   }
@@ -645,6 +648,9 @@ function personalAgentCapability(agentId: string) {
   }
   if (normalized.includes("openai") || normalized.includes("anthropic")) {
     return "管家问答 · 无工具";
+  }
+  if (normalized.includes("kiro")) {
+    return "终端编码 · 原生 /goal 循环";
   }
   if (normalized.includes("trae")) {
     return "前端与交互实现";

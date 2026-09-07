@@ -8,6 +8,7 @@ KIRO_CLI_AGENT_TYPE = "kiro-cli"
 DEFAULT_KIRO_CLI_HOME = ".kiro"
 SKILLS_SUBDIR = "skills"
 SKILLS_ROOT_LABEL = "~/.kiro/skills"
+KIRO_CLI_BIN = "kiro-cli"
 KIRO_CLI_ACCEPTED_INPUTS = (
     "kiro-cli",
     "kiro_cli",
@@ -17,6 +18,21 @@ KIRO_CLI_ACCEPTED_INPUTS = (
     "kiro-cli-tui",
     "kiro tui",
 )
+
+# `kiro-cli acp` starts the host as an Agent Client Protocol agent over stdio.
+# Probed on 2.21.1: it answers `initialize` with protocolVersion 1 and
+# `loadSession: true`, and `session/new` returns a session id — exactly the
+# shape `loopx.chat_acp.ACPStdioAdapter` already speaks, so LoopX Chat and the
+# dashboard reach Kiro CLI through that adapter instead of a second transport.
+#
+# The argv carries no `--trust-all-tools`: LoopX Chat answers every ACP
+# `session/request_permission` with `cancelled`, so a tool that needs approval
+# is refused rather than auto-approved. Passing the trust flag here would move
+# that decision out of the owner's hands.
+KIRO_CLI_CHAT_AGENT_ID = "kiro-cli"
+KIRO_CLI_CHAT_DISPLAY_NAME = "Kiro CLI"
+KIRO_CLI_CHAT_ACP_SUBCOMMAND = "acp"
+KIRO_CLI_CHAT_ADAPTER_KIND = "acp"
 
 # Native goal primitive built into the kiro-cli binary. Probed on
 # `kiro-cli-chat 2.21.1` (app bundle 20260904.123104; both `kiro-cli` and
@@ -158,6 +174,18 @@ def kiro_cli_activation_extras() -> dict[str, Any]:
             "guidance in the facade, not a host-enforced gate."
         ),
     }
+
+
+def kiro_cli_chat_command(bin_name: str | None = None) -> tuple[str, ...]:
+    """Argv that starts Kiro CLI as an ACP stdio agent for LoopX Chat.
+
+    ``bin_name`` is an injection point for tests and for an owner whose host
+    binary is not on ``PATH`` under the documented name; the default is the
+    documented executable. No trust flag is added: LoopX Chat cancels every ACP
+    permission request, and auto-approving tools from a dashboard-launched
+    session is the owner's decision, not this adapter's.
+    """
+    return (bin_name or KIRO_CLI_BIN, KIRO_CLI_CHAT_ACP_SUBCOMMAND)
 
 
 def kiro_home(value: str | None = None) -> Path:

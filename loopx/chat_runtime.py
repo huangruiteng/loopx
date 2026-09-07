@@ -13,6 +13,13 @@ from typing import Any, Callable, Protocol
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError
 from .chat_endpoints import AgentEndpointRegistry
+from .kiro_cli_goal_mode import (
+    KIRO_CLI_BIN,
+    KIRO_CLI_CHAT_ADAPTER_KIND,
+    KIRO_CLI_CHAT_AGENT_ID,
+    KIRO_CLI_CHAT_DISPLAY_NAME,
+    kiro_cli_chat_command,
+)
 from .chat_store import (
     CHAT_SESSION_MODE_ATTACHED,
     TERMINAL_TURN_STATES,
@@ -207,6 +214,7 @@ class ChatRuntimeController:
         store: ChatSessionStore,
         codex_bin: str,
         claude_bin: str = "claude",
+        kiro_cli_bin: str = KIRO_CLI_BIN,
         startup_timeout_sec: float = 30.0,
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
@@ -215,6 +223,7 @@ class ChatRuntimeController:
         self.store = store
         self.codex_bin = codex_bin
         self.claude_bin = claude_bin
+        self.kiro_cli_bin = kiro_cli_bin
         self.startup_timeout_sec = startup_timeout_sec
         self.idle_timeout_sec = idle_timeout_sec
         self.hard_timeout_sec = hard_timeout_sec
@@ -249,6 +258,25 @@ class ChatRuntimeController:
                 "display_name": "Claude Code",
                 "adapter_kind": "claude_code_cli",
                 "available": bool(shutil.which(self.claude_bin)),
+                "streaming": True,
+                "resume": True,
+                "interrupt": True,
+                "tool_calls": True,
+                "trust_scope": "read_only",
+                "source": "builtin",
+            },
+            {
+                # Kiro CLI ships an ACP stdio agent (`kiro-cli acp`), so it is
+                # reachable through the existing ACP adapter without a new
+                # transport. It is a built-in row rather than something the
+                # owner must hand-register, because LoopX already owns the
+                # host's facts; `available` stays a live PATH probe so an
+                # uninstalled host renders as needing configuration instead of
+                # failing at session open.
+                "agent_id": KIRO_CLI_CHAT_AGENT_ID,
+                "display_name": KIRO_CLI_CHAT_DISPLAY_NAME,
+                "adapter_kind": KIRO_CLI_CHAT_ADAPTER_KIND,
+                "available": bool(shutil.which(self.kiro_cli_bin)),
                 "streaming": True,
                 "resume": True,
                 "interrupt": True,
@@ -337,6 +365,15 @@ class ChatRuntimeController:
                 work_dir=work_dir,
                 session_id=resume_thread_id,
                 history=history,
+            )
+        if agent_id == KIRO_CLI_CHAT_AGENT_ID:
+            return ACPStdioAdapter.start(
+                command=kiro_cli_chat_command(self.kiro_cli_bin),
+                work_dir=work_dir,
+                resume_thread_id=resume_thread_id,
+                startup_timeout_sec=self.startup_timeout_sec,
+                idle_timeout_sec=self.idle_timeout_sec,
+                hard_timeout_sec=self.hard_timeout_sec,
             )
         endpoint = self.endpoint_registry.get(agent_id)
         if endpoint is not None:

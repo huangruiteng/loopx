@@ -109,8 +109,38 @@ what LoopX recorded.
 Kiro CLI exports `KIRO_SESSION_ID` for every session; it is the stable value a
 LoopX thread binding should key on instead of prose.
 
+## Dashboard and Chat agent
+
+Kiro CLI also ships an ACP agent (`kiro-cli acp`), so `loopx dashboard` and
+`loopx chat` list **Kiro CLI** as a built-in Agent alongside Codex and Claude
+Code. It reuses `loopx.chat_acp.ACPStdioAdapter` rather than a second
+transport: probed on 2.21.1, the host answers `initialize` with
+`protocolVersion: 1` and `loadSession: true`, and `session/new` returns a
+session id, which is exactly what that adapter expects.
+
+```bash
+loopx dashboard                                  # Kiro CLI appears when it is on PATH
+loopx dashboard --kiro-cli-bin /path/to/kiro-cli # explicit executable
+```
+
+Two boundaries this does **not** cross:
+
+- **Read-only by refusal.** LoopX Chat answers every ACP
+  `session/request_permission` with `cancelled` and exposes no client host
+  tools, so a Kiro tool call that needs approval is refused rather than
+  auto-approved. The launch argv carries no `--trust-all-tools`; adding it
+  would move that decision out of the owner's hands.
+- **Not the governed loop.** A dashboard Chat session is one bounded
+  conversation. The `/goal` loop above is entered from a Kiro CLI session
+  through the installed skill facade; the two surfaces share the host, not the
+  loop.
+
+The built-in id `kiro-cli` is reserved in the owner-local endpoint registry so
+a hand-registered endpoint cannot silently shadow it.
+
 ## Layout
 
 - `__init__.py` — host facts: install surface id, fixed skills root resolution,
-  the agent-type catalog entry, and the activation extras (native goal command,
-  host iteration budget, completion tool, advisory quota boundary).
+  the agent-type catalog entry, the activation extras (native goal command,
+  host iteration budget, completion tool, advisory quota boundary), and the
+  Chat/ACP launch facts the dashboard's built-in Agent row is built from.

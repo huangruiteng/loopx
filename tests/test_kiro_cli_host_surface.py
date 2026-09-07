@@ -21,6 +21,9 @@ from host_surface_cli_probes import (
 )
 
 from loopx.agent_onboarding import _start_instruction, _surface_install_command
+from loopx.chat_endpoints import RESERVED_AGENT_IDS, AgentEndpointRegistry
+from loopx.chat_runtime import ChatRuntimeController
+from loopx.chat_store import ChatSessionStore
 from loopx.host_loop_activation import (
     _heartbeat_commands,
     build_agent_type_catalog,
@@ -29,6 +32,7 @@ from loopx.host_loop_activation import (
     scheduler_command_binding_for_agent_type,
 )
 from loopx.kiro_cli_goal_mode import (
+    KIRO_CLI_CHAT_AGENT_ID,
     KIRO_CLI_GOAL_AGENT_FLAG,
     KIRO_CLI_GOAL_CLEAR_COMMAND,
     KIRO_CLI_GOAL_COMMAND,
@@ -40,11 +44,19 @@ from loopx.kiro_cli_goal_mode import (
     KIRO_CLI_HOOK_TRIGGERS,
     KIRO_CLI_NATIVE_GOAL_FACTS,
     KIRO_CLI_SESSION_ID_ENV,
+    kiro_cli_chat_command,
     kiro_home,
 )
 from loopx.slash_command_install import install_slash_commands
 
 HOST_SURFACE = "kiro-cli"
+
+
+def _executable_stub(path: Path) -> Path:
+    """A file that only has to satisfy the runtime's PATH availability probe."""
+    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
 
 def test_start_goal_accepts_the_kiro_cli_host_surface(tmp_path: Path) -> None:
@@ -307,6 +319,66 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert "gated" not in hb["heartbeat_prompt_json"].lower()
     assert "advisory" in hb["heartbeat_prompt"].lower()
     assert "advisory" in hb["heartbeat_prompt_json"].lower()
+
+
+def test_dashboard_lists_kiro_cli_as_a_builtin_chat_agent(tmp_path: Path) -> None:
+    """`loopx dashboard` renders its Agent picker from the running process's
+    capability rows, so a host is only reachable there if it appears as a row
+    with an adapter the runtime can actually start. Kiro CLI ships an ACP agent,
+    so the row must be built-in, ACP-shaped, and read-only — and its id must be
+    reserved, or an owner-local endpoint could shadow the built-in adapter."""
+    controller = ChatRuntimeController(
+        store=ChatSessionStore(tmp_path / "runtime"),
+        codex_bin="loopx-missing-codex-for-test",
+        kiro_cli_bin=str(_executable_stub(tmp_path / "kiro-cli")),
+    )
+    try:
+        rows = controller.capabilities()
+        row = next(
+            item for item in rows if item["agent_id"] == KIRO_CLI_CHAT_AGENT_ID
+        )
+        assert row["source"] == "builtin"
+        assert row["adapter_kind"] == "acp"
+        assert row["display_name"] == "Kiro CLI"
+        assert row["trust_scope"] == "read_only"
+        assert row["available"] is True
+    finally:
+        controller.close()
+
+    # The launch argv must not auto-approve tools: LoopX Chat cancels every ACP
+    # permission request, and a trust flag here would bypass that decision.
+    command = kiro_cli_chat_command("kiro-cli")
+    assert command == ("kiro-cli", "acp")
+    assert not any("trust" in argument for argument in command)
+
+    assert KIRO_CLI_CHAT_AGENT_ID in RESERVED_AGENT_IDS
+    with pytest.raises(ValueError, match="reserved"):
+        AgentEndpointRegistry(tmp_path / "endpoints").upsert(
+            {
+                "agent_id": KIRO_CLI_CHAT_AGENT_ID,
+                "display_name": "Shadow Kiro",
+                "command": ["kiro-cli", "acp"],
+            }
+        )
+
+
+def test_missing_kiro_cli_renders_as_needing_configuration(tmp_path: Path) -> None:
+    """An uninstalled host must render as unavailable rather than failing when a
+    session opens; `available` is a live probe, not a static claim."""
+    controller = ChatRuntimeController(
+        store=ChatSessionStore(tmp_path / "runtime"),
+        codex_bin="loopx-missing-codex-for-test",
+        kiro_cli_bin="loopx-missing-kiro-cli-for-test",
+    )
+    try:
+        row = next(
+            item
+            for item in controller.capabilities()
+            if item["agent_id"] == KIRO_CLI_CHAT_AGENT_ID
+        )
+        assert row["available"] is False
+    finally:
+        controller.close()
 
 
 def test_native_goal_facts_match_the_probed_host() -> None:
