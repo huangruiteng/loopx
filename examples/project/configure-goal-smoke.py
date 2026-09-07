@@ -208,6 +208,7 @@ def main() -> int:
         assert catalog["disclosure_policy"]["first_run_configuration_required"] is False
         features = {item["feature_id"]: item for item in catalog["features"]}
         assert set(features) == {
+            "todo_replan_cadence",
             "local_authority_shadow",
             "multi_subagent",
             "peer_task_coordination",
@@ -219,6 +220,16 @@ def main() -> int:
             "lark_kanban_heartbeat_sync",
             "periodic_report",
         }
+        assert features["todo_replan_cadence"]["availability"] == "supported_opt_in"
+        assert features["todo_replan_cadence"]["default"] == {"completed_todos": 5}
+        assert features["todo_replan_cadence"]["current"] == {"completed_todos": 5}
+        replan_commands = features["todo_replan_cadence"]["commands"]
+        assert "--execution-replan-after-todos 3" in replan_commands["preview_enable"]
+        assert "--execute" not in replan_commands["preview_enable"]
+        assert "--execute" in replan_commands["apply_enable"]
+        assert "--execution-replan-after-todos 5" in replan_commands["preview_disable"]
+        assert "--execute" not in replan_commands["preview_disable"]
+        assert "--execute" in replan_commands["apply_disable"]
         assert features["local_authority_shadow"]["availability"] == "experimental_opt_in"
         assert features["local_authority_shadow"]["default"] == {"enabled": False}
         assert features["local_authority_shadow"]["current"] == {

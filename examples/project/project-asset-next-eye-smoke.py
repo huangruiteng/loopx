@@ -251,7 +251,7 @@ def assert_dashboard_first_screen_render_contract() -> None:
         "todosFromProjectAssetSummary(projectAsset?.agent_todos",
         "row.queueItem?.project_asset?.latest_validation",
         "row.queueItem?.recommended_action",
-        "personalRunEvidence(payload, row)",
+        "personalRunEvidence(payload, row, t)",
     ):
         assert marker in dashboard, marker
     for marker in (
