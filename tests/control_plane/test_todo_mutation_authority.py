@@ -117,6 +117,7 @@ def _agent_todo(state: Path, todo_id: str) -> dict:
 def _add_agent_todo(
     registry: Path,
     *,
+    text: str = "Deliver one bounded control-plane change.",
     claimed_by: str | None = AUTHOR_AGENT,
     excluded_agents: list[str] | None = None,
 ) -> dict:
@@ -124,7 +125,7 @@ def _add_agent_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
         role="agent",
-        text="Deliver one bounded control-plane change.",
+        text=text,
         task_class="advancement_task",
         claimed_by=claimed_by,
         excluded_agents=excluded_agents,
@@ -336,6 +337,113 @@ def test_non_owner_cannot_mutate_claimed_todo(
                 reason="unauthorized",
             )
 
+    assert state.read_text(encoding="utf-8") == before
+
+
+def test_completion_policy_unicode_parity_through_public_facade(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = _add_agent_todo(registry, text="Continue with Python whitespace parity.")
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=todo["todo_id"],
+        agent_id=AUTHOR_AGENT,
+        claimed_by=AUTHOR_AGENT,
+        evidence="validated parity",
+        next_agent_todo="Run the next bounded parity check.",
+        next_continuation_policy="\u0085same_agent_non_delivery\u0085",
+    )
+
+    successor = _agent_todo(state, result["next_todos"][0]["todo_id"])
+    assert successor["claimed_by"] == AUTHOR_AGENT
+
+    blank_evidence = _add_agent_todo(
+        registry,
+        text="Reject Python-blank self-merge evidence.",
+    )
+    before = state.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="--self-merged requires --evidence"):
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=blank_evidence["todo_id"],
+            agent_id=AUTHOR_AGENT,
+            self_merged=True,
+            evidence="\u0085",
+            no_followup=True,
+        )
+    assert state.read_text(encoding="utf-8") == before
+
+    bom_evidence = _add_agent_todo(
+        registry,
+        text="Accept evidence retained by Python strip.",
+    )
+    accepted = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=bom_evidence["todo_id"],
+        agent_id=AUTHOR_AGENT,
+        self_merged=True,
+        evidence="\ufeff",
+        no_followup=True,
+    )
+    assert accepted["self_merged"] is True
+
+
+def test_completion_policy_errors_do_not_preempt_actor_or_lease_fences(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    claimed_by_other = _add_agent_todo(
+        registry,
+        text="Keep actor authority ahead of policy diagnostics.",
+        claimed_by=REVIEW_AGENT,
+    )
+    before = state.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="claimed_by='codex-review'"):
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=claimed_by_other["todo_id"],
+            agent_id=AUTHOR_AGENT,
+            self_merged=True,
+            evidence="\u0085",
+            no_followup=True,
+        )
+    assert state.read_text(encoding="utf-8") == before
+
+    leased = _add_agent_todo(
+        registry,
+        text="Keep the task lease ahead of policy diagnostics.",
+    )
+    lease_key = "policy-priority-instance"
+    acquire_task_lease(
+        registry_path=registry,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        todo_id=leased["todo_id"],
+        owner=AUTHOR_AGENT,
+        idempotency_key=lease_key,
+        ttl_seconds=600,
+    )
+    before = state.read_text(encoding="utf-8")
+    with pytest.raises(TaskLeaseError) as stale_lease:
+        complete_goal_todo(
+            registry_path=registry,
+            goal_id=GOAL_ID,
+            todo_id=leased["todo_id"],
+            agent_id=AUTHOR_AGENT,
+            task_lease_idempotency_key=lease_key,
+            task_lease_expected_version=0,
+            self_merged=True,
+            evidence="\u0085",
+            no_followup=True,
+        )
+    assert stale_lease.value.code == "version_mismatch"
     assert state.read_text(encoding="utf-8") == before
 
 

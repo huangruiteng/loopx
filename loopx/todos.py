@@ -62,6 +62,7 @@ from .control_plane.todos.active_state_editing import (
 from .control_plane.todos.addition import matching_todo_block, require_replan_successor_rebinding, require_replan_successor_scope
 from .control_plane.todos.completed_archive import archive_completed_todo_lines
 from .control_plane.todos.completion_policy import (
+    bind_completion_policy_to_transaction,
     completion_policy_from_transaction,
 )
 from .control_plane.todos.completion_transaction import (
@@ -1735,7 +1736,6 @@ def complete_goal_todo(
             decision_target=decision_target,
         )
         completion_handoff = resolve_todo_completion_handoff(state_text=original, mutation_authority=mutation_authority)
-        completion_fence = completion_transaction["fence"]
         terminal_replay = materialized_todo_completion_replay(
             transaction=completion_transaction,
             todo=completion_todo,
@@ -1768,10 +1768,12 @@ def complete_goal_todo(
                 runtime_root=shadow_runtime_root,
             )
         )
-        completion_state = completion_transaction.get("completion_state")
-        completion_policy = completion_policy_from_transaction(
-            completion_transaction
+        completion_transaction = bind_completion_policy_to_transaction(
+            completion_transaction, locked_completion_policy_source
         )
+        completion_fence = completion_transaction["fence"]
+        completion_state = completion_transaction.get("completion_state")
+        completion_policy = completion_policy_from_transaction(completion_transaction)
         effective_claimed_by = completion_policy.effective_claimed_by
         registered_agents = completion_policy.registered_agents
         effective_next_claimed_by = completion_policy.effective_next_claimed_by

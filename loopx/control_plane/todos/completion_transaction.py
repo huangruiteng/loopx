@@ -335,85 +335,76 @@ def _valid_completion_policy(value: Any) -> bool:
     )
 
 
-def _valid_result(
+def _valid_execute_validation_result(result: Mapping[str, Any]) -> bool:
+    effect = result.get("validation_effect")
+    return (
+        isinstance(effect, Mapping)
+        and effect.get("kind") == "caller_validation"
+        and (
+            effect.get("validation_command") is None
+            or isinstance(effect.get("validation_command"), str)
+        )
+        and (
+            effect.get("validation_argv") is None
+            or (
+                isinstance(effect.get("validation_argv"), list)
+                and bool(effect.get("validation_argv"))
+                and all(
+                    isinstance(item, str) and item
+                    for item in effect.get("validation_argv") or []
+                )
+            )
+        )
+        and (
+            (effect.get("validation_command") is None)
+            != (effect.get("validation_argv") is None)
+        )
+        and (
+            effect.get("validation_label") is None
+            or isinstance(effect.get("validation_label"), str)
+        )
+        and (
+            effect.get("validation_timeout_seconds") is None
+            or (
+                isinstance(effect.get("validation_timeout_seconds"), int)
+                and not isinstance(effect.get("validation_timeout_seconds"), bool)
+                and 1 <= int(effect["validation_timeout_seconds"]) <= 29
+            )
+        )
+    )
+
+
+def _valid_commit_result(
     result: Mapping[str, Any],
     *,
     completion_policy_required: bool,
 ) -> bool:
-    if not _valid_common(result):
-        return False
-    decision = result.get("decision")
-    if decision == "execute_validation":
-        effect = result.get("validation_effect")
-        return (
-            isinstance(effect, Mapping)
-            and effect.get("kind") == "caller_validation"
-            and (
-                effect.get("validation_command") is None
-                or isinstance(effect.get("validation_command"), str)
-            )
-            and (
-                effect.get("validation_argv") is None
-                or (
-                    isinstance(effect.get("validation_argv"), list)
-                    and bool(effect.get("validation_argv"))
-                    and all(
-                        isinstance(item, str) and item
-                        for item in effect.get("validation_argv") or []
-                    )
-                )
-            )
-            and (
-                (effect.get("validation_command") is None)
-                != (effect.get("validation_argv") is None)
-            )
-            and (
-                effect.get("validation_label") is None
-                or isinstance(effect.get("validation_label"), str)
-            )
-            and (
-                effect.get("validation_timeout_seconds") is None
-                or (
-                    isinstance(effect.get("validation_timeout_seconds"), int)
-                    and not isinstance(
-                        effect.get("validation_timeout_seconds"), bool
-                    )
-                    and 1
-                    <= int(effect["validation_timeout_seconds"])
-                    <= 29
-                )
-            )
+    state = result.get("completion_state")
+    updates = result.get("metadata_updates")
+    receipt = result.get("validation_receipt")
+    policy = result.get("completion_policy")
+    return (
+        isinstance(state, Mapping)
+        and state.get("continuation") in _CONTINUATIONS
+        and (state.get("recovery") is None or state.get("recovery") in _RECOVERIES)
+        and isinstance(updates, Mapping)
+        and all(
+            key in {"completion_continuation", "completion_recovery"}
+            and isinstance(value, str)
+            for key, value in updates.items()
         )
-    if decision == "commit":
-        state = result.get("completion_state")
-        updates = result.get("metadata_updates")
-        receipt = result.get("validation_receipt")
-        policy = result.get("completion_policy")
-        return (
-            isinstance(state, Mapping)
-            and state.get("continuation") in _CONTINUATIONS
-            and (
-                state.get("recovery") is None
-                or state.get("recovery") in _RECOVERIES
-            )
-            and isinstance(updates, Mapping)
-            and all(
-                key in {"completion_continuation", "completion_recovery"}
-                and isinstance(value, str)
-                for key, value in updates.items()
-            )
-            and updates.get("completion_continuation")
-            == state.get("continuation")
-            and updates.get("completion_recovery") == state.get("recovery")
-            and (receipt is None or _valid_receipt(receipt))
-            and (
-                _valid_completion_policy(policy)
-                if completion_policy_required or policy is not None
-                else True
-            )
+        and updates.get("completion_continuation") == state.get("continuation")
+        and updates.get("completion_recovery") == state.get("recovery")
+        and (receipt is None or _valid_receipt(receipt))
+        and (
+            _valid_completion_policy(policy)
+            if completion_policy_required or policy is not None
+            else True
         )
-    if decision == "replay":
-        return result["fence"].get("outcome") == "replay"
+    )
+
+
+def _valid_reject_result(result: Mapping[str, Any]) -> bool:
     failure = result.get("failure")
     return (
         isinstance(failure, Mapping)
@@ -423,6 +414,26 @@ def _valid_result(
         and _valid_receipt(failure.get("validation_receipt"))
         and failure["validation_receipt"].get("passed") is False
     )
+
+
+def _valid_result(
+    result: Mapping[str, Any],
+    *,
+    completion_policy_required: bool,
+) -> bool:
+    if not _valid_common(result):
+        return False
+    decision = result.get("decision")
+    if decision == "execute_validation":
+        return _valid_execute_validation_result(result)
+    if decision == "commit":
+        return _valid_commit_result(
+            result,
+            completion_policy_required=completion_policy_required,
+        )
+    if decision == "replay":
+        return result["fence"].get("outcome") == "replay"
+    return _valid_reject_result(result)
 
 
 def reduce_todo_completion_transaction(

@@ -2,8 +2,10 @@ import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { AuthorityStoreProtocolError } from "../coordination/authority_store_codec.ts";
 import {
+  hasPythonNonWhitespaceText,
   normalizeRegisteredTodoAgents,
   normalizeTodoAgent,
+  stripPythonWhitespace,
 } from "../coordination/todo_agents.ts";
 import {
   requireBoolean,
@@ -176,7 +178,9 @@ function requireExcludedAgents(
     normalized.add(agentId);
   }
   return [...normalized]
-    .sort()
+    // Agent ids are closed to public-safe ASCII. Code-point ordering therefore
+    // matches Python exactly and avoids locale-dependent collation drift.
+    .sort((left, right) => left < right ? -1 : left > right ? 1 : 0)
     .map((agentId) =>
       requireRegisteredAgent(agentId, "next_excluded_agents", request)
     );
@@ -185,8 +189,10 @@ function requireExcludedAgents(
 function continuationPolicy(
   value: string | null,
 ): typeof CONTINUATION_POLICIES[number] {
-  const candidate = String(value ?? "").trim().toLowerCase();
-  return CONTINUATION_POLICIES.some((policy) => policy === candidate)
+  const candidate = stripPythonWhitespace(String(value ?? "")).toLowerCase();
+  return CONTINUATION_POLICIES.includes(
+      candidate as typeof CONTINUATION_POLICIES[number],
+    )
     ? candidate as typeof CONTINUATION_POLICIES[number]
     : "independent_handoff";
 }
@@ -202,14 +208,14 @@ function firstOpenAgentSuccessor(
   )?.todo_id ?? null;
 }
 
-/** Resolve successor ownership inside the coarse Todo completion transaction. */
+/** Resolve successor ownership inside the coarse work-item completion transaction. */
 export function resolveTodoCompletionPolicy(
   value: unknown,
 ): TodoCompletionPolicyResult {
   const request = decodeRequest(value);
   // Preserve Python bool(str) compatibility: null and the empty string mean
   // "not supplied", while a non-empty (including whitespace-only) string is a
-  // caller-supplied Todo. This matters for same-agent ownership and dependent
+  // caller-supplied work item. This matters for same-agent ownership and dependent
   // --next-* validation.
   const hasNextAgentTodo = request.next_agent_todo !== null &&
     request.next_agent_todo !== "";
@@ -238,7 +244,10 @@ export function resolveTodoCompletionPolicy(
     request.next_excluded_agents,
     request,
   );
-  if (request.self_merged && !String(request.evidence ?? "").trim()) {
+  if (
+    request.self_merged &&
+    !hasPythonNonWhitespaceText(String(request.evidence ?? ""))
+  ) {
     throw new EffectRuntimeRequestError(
       "--self-merged requires --evidence with the merge, commit, and " +
         "validation summary",

@@ -196,6 +196,52 @@ def test_python_adapter_and_typescript_runtime_share_agent_identity_semantics() 
         effective_next_excluded_agents=["agent-a"],
     )
 
+    continuation_result = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=True,
+        dry_run=False,
+        completion_policy_request={
+            **policy_request,
+            "next_claimed_by": None,
+            "next_continuation_policy": "\u0085same_agent_non_delivery\u0085",
+            "next_excluded_agents": [],
+            "self_merged": True,
+            "evidence": "\ufeff",
+        },
+    )
+    assert continuation_result["completion_policy"] == _completion_policy_result(
+        registered_agents=["agent-a", "agent-b"],
+        effective_next_claimed_by="agent-a",
+        self_merged=True,
+    )
+
+    with pytest.raises(ValueError, match="--self-merged requires --evidence"):
+        completion_transaction.reduce_todo_completion_transaction(
+            todo={"status": "open"},
+            projection_source="materialized",
+            goal_id="goal-example",
+            todo_id="todo_example001",
+            completion_turn_key=None,
+            completion_identity_source=None,
+            no_followup=False,
+            requested_has_successor=False,
+            dry_run=False,
+            completion_policy_request={
+                **policy_request,
+                "next_claimed_by": None,
+                "next_agent_todo": None,
+                "next_excluded_agents": [],
+                "self_merged": True,
+                "evidence": "\u0085",
+            },
+        )
+
     with pytest.raises(ValueError, match="public-safe registered agent id"):
         completion_transaction.reduce_todo_completion_transaction(
             todo={"status": "open"},

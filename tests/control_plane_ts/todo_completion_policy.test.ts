@@ -140,6 +140,22 @@ test("agent identity normalization matches the Python Unicode contract", () => {
     assert.deepEqual(result.registered_agents, ["agent-a", "agent-b"]);
     assert.equal(result.effective_next_claimed_by, "agent-b");
     assert.deepEqual(result.effective_next_excluded_agents, ["agent-a"]);
+
+    const continuation = resolveTodoCompletionPolicy(
+      request({
+        next_agent_todo: "Continue.",
+        next_continuation_policy:
+          `${separator}same_agent_non_delivery${separator}`,
+      }),
+    );
+    assert.equal(continuation.effective_next_claimed_by, "agent-a");
+    assert.throws(
+      () =>
+        resolveTodoCompletionPolicy(
+          request({ self_merged: true, evidence: separator }),
+        ),
+      /--self-merged requires --evidence/,
+    );
   }
 
   for (const field of [
@@ -153,4 +169,16 @@ test("agent identity normalization matches the Python Unicode contract", () => {
       /must be a public-safe (?:registered )?agent id|must contain public-safe agent tokens/,
     );
   }
+
+  const bomContinuation = resolveTodoCompletionPolicy(
+    request({
+      next_agent_todo: "Continue.",
+      next_continuation_policy: "\ufeffsame_agent_non_delivery\ufeff",
+    }),
+  );
+  assert.equal(bomContinuation.effective_next_claimed_by, null);
+  const bomEvidence = resolveTodoCompletionPolicy(
+    request({ self_merged: true, evidence: "\ufeff" }),
+  );
+  assert.equal(bomEvidence.self_merged, true);
 });
