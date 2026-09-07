@@ -15,10 +15,11 @@ hypotheses and keeps relevant counterexamples and limitations visible.
 
 - Selected case comparisons illustrate requirement retention, handling of failing
   probes, and validation that can overturn an implementation assumption.
-- A post-hoc slice uses one fixed Goal-plain duration per task to select the same
-  39 tasks taking at least eight hours. Both compared arms receive SWE hint.
-  Baseline-duration selection can introduce regression-to-the-mean bias; this is
-  not an independent measure of intrinsic task complexity.
+- A post-hoc slice ranks tasks by the mean raw wall-clock across all four arms
+  and uses the highest-duration quartile (29 tasks). Both compared arms receive
+  SWE hint. This symmetric rule prevents one Base or Test arm from deciding
+  cohort membership, but runtime is still a post-treatment observation rather
+  than an independent measure of intrinsic task complexity.
 - Duration comparisons are descriptive raw wall-clock, including successful and
   failed runs. Exact bug-adjusted time is separately labeled. Lower duration
   alone does not establish equal-quality acceleration or token savings.

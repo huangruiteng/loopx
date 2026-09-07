@@ -36,7 +36,7 @@
     ],
     "limitations": [
       "案例为事后定向选取、独立解题样本，用于提出机制假设。",
-      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "长时分层使用四臂平均实测wall-clock，避免由单一Base或Test决定入组；但仍是实验后观测量，不等同任务内在复杂度。",
       "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
     ],
     "counterevidence": "Case113中晚期refine引入回归；明确的验证流程仍需正确、独立的预期。",
@@ -49,37 +49,55 @@
     "benchmark_id": "deepswe",
     "study_id": "behavior-sharing-v2",
     "finding_id": "long-slice",
-    "title": "长时子集的局部信号",
+    "title": "观察性长时任务的局部信号",
     "claim_scope": "exploratory_behavior",
     "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
     "selection": {
       "basis": "post_hoc",
-      "rule": "固定Goal plain耗时≥8h；同一39题，两组均有SWE hint。",
+      "rule": "113题按每题四臂原始wall-clock均值排序；最高四分位（入组边界约9.24h）29题作为观察性长时任务，两组均有SWE hint。",
       "unit": "case",
       "population_count": 113,
-      "sample_count": 39,
-      "cohort_digest": "6623ddcd9ccf5fcf4d7cae43fd30aac2ad021d1bddc13f997cc9d780b502e90b"
+      "sample_count": 29,
+      "cohort_digest": "71c9b8647de22a675227ac79a694d350573b2e70bec10cc03aff39bdd4829300"
     },
-    "observation": "该子集中Goal成功14题、LoopX成功21题；10题转正、3题转负。",
-    "interpretation": "Case23提示需求级义务在较长运行中的保留可能有用；切片统计与案例机制都需独立复验。",
+    "observation": "该观察性长时子集中Goal成功12题、LoopX成功14题；7题转正、5题转负。",
+    "interpretation": "Case23提示需求级义务在运行时间位于长尾的任务中可能有用；切片统计与案例机制都需独立复验。",
     "measures": [
       {
-        "name": "所选长时子集成功题数",
+        "name": "四臂平均时长最高四分位 · 成功题数",
         "unit": "case",
         "aggregation": "count",
         "groups": [
           {
             "label": "Goal + SWE hint",
-            "value": 14.0,
-            "n": 39
+            "value": 12.0,
+            "n": 29
           },
           {
             "label": "LoopX + SWE hint",
-            "value": 21.0,
-            "n": 39
+            "value": 14.0,
+            "n": 29
           }
         ],
         "caveat": "仅描述所标记样本；不作为总体效果估计。"
+      },
+      {
+        "name": "同一观察性长时子集 · 原始wall-clock",
+        "unit": "hours",
+        "aggregation": "sum",
+        "groups": [
+          {
+            "label": "Goal + SWE hint",
+            "value": 373.26192444444445,
+            "n": 29
+          },
+          {
+            "label": "LoopX + SWE hint",
+            "value": 311.87379111111113,
+            "n": 29
+          }
+        ],
+        "caveat": "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
       }
     ],
     "evidence": [
@@ -93,10 +111,10 @@
     ],
     "limitations": [
       "案例为事后定向选取、独立解题样本，用于提出机制假设。",
-      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "长时分层使用四臂平均实测wall-clock，避免由单一Base或Test决定入组；但仍是实验后观测量，不等同任务内在复杂度。",
       "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
     ],
-    "counterevidence": "该子集仍有3题从成功转失败；收益不能外推到其他时长、无hint条件或其他模型。",
+    "counterevidence": "该子集仍有5题从成功转失败，其他过程与结果指标方向也不完全一致；收益不能外推到其他时长、无hint条件或其他模型。",
     "next_probe": "固定runtime、hint、任务与预算，检验需求保留、反例处置、技术修复与回归；再扩展模型和任务跨度。",
     "privacy_classification": "public_safe",
     "producer_redaction_attested": true
@@ -175,7 +193,7 @@
     ],
     "limitations": [
       "案例为事后定向选取、独立解题样本，用于提出机制假设。",
-      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "长时分层使用四臂平均实测wall-clock，避免由单一Base或Test决定入组；但仍是实验后观测量，不等同任务内在复杂度。",
       "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
     ],
     "counterevidence": "更短时间可能同时受早停、环境负载及采样影响。需要在固定质量目标下单独验证效率。",
