@@ -9,6 +9,7 @@ the facade dead-ends at argparse and the surface is decorative.
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
 
@@ -21,9 +22,18 @@ from host_surface_cli_probes import (
 )
 
 from loopx.agent_onboarding import _start_instruction, _surface_install_command
+from loopx.capabilities.project_skill_delivery import (
+    PROJECT_SKILL_SURFACE_ROOTS,
+    PROJECT_SKILL_SURFACES,
+)
+from loopx.chat_actions import ChatActionService
 from loopx.chat_endpoints import RESERVED_AGENT_IDS, AgentEndpointRegistry
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_store import ChatSessionStore
+from loopx.cli_commands._host_thread import (
+    HOST_THREAD_ID_ENV,
+    current_host_thread_id,
+)
 from loopx.host_loop_activation import (
     _heartbeat_commands,
     build_agent_type_catalog,
@@ -379,6 +389,47 @@ def test_missing_kiro_cli_renders_as_needing_configuration(tmp_path: Path) -> No
         assert row["available"] is False
     finally:
         controller.close()
+
+
+def test_kiro_cli_is_recognized_across_the_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serving an Agent row is not the same as being reachable. Three separate
+    surfaces resolve a host by identity, and each one silently degraded for Kiro
+    CLI: the Endpoint could not bind to a registered Goal agent, the session id
+    the adapter documents was never read, and project skills had no delivery
+    root. All three are table lookups; a host that owns a built-in Endpoint must
+    appear in every table."""
+    # A durable Goal agent id is operator-chosen, so the Endpoint must resolve
+    # through its host family, exactly as `codex` resolves `codex-main-control`.
+    assert ChatActionService._agent_family("kiro-cli") == KIRO_CLI_CHAT_AGENT_ID
+    assert ChatActionService._agent_family("kiro-worker-1") == KIRO_CLI_CHAT_AGENT_ID
+    assert ChatActionService._agent_family("Kiro_CLI") == KIRO_CLI_CHAT_AGENT_ID
+    # Existing families keep their behavior, and an unknown host still resolves
+    # to its own id rather than being absorbed into a neighbour.
+    assert ChatActionService._agent_family("codex-main-control") == "codex"
+    assert ChatActionService._agent_family("claude-impl") == "claude-code"
+    assert ChatActionService._agent_family("trae-cli-1") == "trae-cli-1"
+
+    # The adapter records KIRO_SESSION_ID as the stable thread key; reading it is
+    # what makes that a binding instead of a note.
+    assert HOST_THREAD_ID_ENV[HOST_SURFACE] == KIRO_CLI_SESSION_ID_ENV
+    monkeypatch.setenv(KIRO_CLI_SESSION_ID_ENV, "kiro-session-1")
+    args = argparse.Namespace(host_surface=HOST_SURFACE, thread_id=None)
+    assert current_host_thread_id(args) == "kiro-session-1"
+    # An explicit flag still wins, and a host that exports no id stays unbound
+    # instead of inheriting another host's variable.
+    assert current_host_thread_id(
+        argparse.Namespace(host_surface=HOST_SURFACE, thread_id="explicit")
+    ) == "explicit"
+    assert current_host_thread_id(
+        argparse.Namespace(host_surface="agy", thread_id=None)
+    ) is None
+
+    # Kiro reads workspace skills from .kiro/skills, so project-level delivery
+    # has a real target root.
+    assert HOST_SURFACE in PROJECT_SKILL_SURFACES
+    assert PROJECT_SKILL_SURFACE_ROOTS[HOST_SURFACE] == Path(".kiro") / "skills"
 
 
 def test_native_goal_facts_match_the_probed_host() -> None:

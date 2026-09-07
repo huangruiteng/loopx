@@ -14,6 +14,7 @@ from loopx.capabilities.material_lifecycle.project_skill import (
     uninstall_project_material_skill,
 )
 from loopx.capabilities.project_skill_delivery import (
+    PROJECT_SKILL_SURFACES,
     install_project_skill,
     inspect_project_skill,
     project_skill_target,
@@ -173,12 +174,16 @@ def test_project_skill_uninstall_is_preview_first_and_fails_closed(
     assert not target.exists()
 
 
-def test_generic_delivery_supports_codex_claude_code_opencode_and_pi(
+def test_generic_delivery_supports_every_registered_surface(
     tmp_path: Path,
 ) -> None:
+    """The old name pinned four surfaces as the supported set; Kiro CLI's
+    workspace skills root joined it, so the assertion is now the registry itself
+    rather than a hand-listed subset that silently misses a new host."""
     source = _source(tmp_path)
     project = _project(tmp_path)
-    surfaces = ("codex", "claude-code", "opencode", "pi")
+    surfaces = PROJECT_SKILL_SURFACES
+    assert "kiro-cli" in surfaces
 
     preview = install_project_skill(
         project,

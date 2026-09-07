@@ -1553,7 +1553,7 @@ export function PersonalWorkspacePage({
           return;
         }
         const assignedAgentId = requestedAgent?.agentId
-          ?? (/(交给|分配给|让).{0,24}(agent|codex|claude|kimi)/iu.test(message) ? selectedAgentId : null);
+          ?? (/(交给|分配给|让).{0,24}(agent|codex|claude|kiro|kimi)/iu.test(message) ? selectedAgentId : null);
         await createPreview({
           actionKind: "todo.create",
           context: { kind: "goal", goal_id: selectedGoalId, natural_language: message },

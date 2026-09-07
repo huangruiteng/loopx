@@ -138,6 +138,22 @@ Two boundaries this does **not** cross:
 The built-in id `kiro-cli` is reserved in the owner-local endpoint registry so
 a hand-registered endpoint cannot silently shadow it.
 
+## Control-plane identity
+
+Serving an Agent row is not the same as being reachable. Three surfaces resolve
+a host by identity, and each one needs Kiro CLI in its table:
+
+- **Endpoint to Goal agent.** A durable Goal agent id is operator-chosen, so
+  `chat_actions` collapses both onto a host family: Endpoint `kiro-cli`
+  resolves a registered `kiro-worker-1`, the same way `codex` resolves
+  `codex-main-control`. Without the row, selecting Kiro CLI in the workspace
+  raised `agent_binding_required` for an agent the user did register.
+- **Host thread binding.** `KIRO_SESSION_ID` is read for the `kiro-cli` host
+  surface, so `start-goal` binds the live session instead of leaving the thread
+  unbound.
+- **Project skills.** `loopx project-skill --surface kiro-cli` delivers into
+  `.kiro/skills`, the workspace skills root Kiro discovers per project.
+
 ## Layout
 
 - `__init__.py` — host facts: install surface id, fixed skills root resolution,
