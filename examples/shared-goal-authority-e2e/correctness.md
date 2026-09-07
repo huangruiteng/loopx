@@ -246,7 +246,7 @@ separately without skip or relaxation flags:
 ```bash
 python -m pip install -e '.[test]' 'build==1.6.0'
 npm ci --ignore-scripts
-python -m pytest -q -m stage2c_e2e --junitxml=stage2c-e2e.xml
+python -m pytest -q -n 2 --dist loadfile -m stage2c_e2e --durations=20 --junitxml=stage2c-e2e.xml
 python examples/shared-goal-authority-e2e/mutants.py --output .local/stage2c-mutants
 python -m build
 python examples/shared-goal-authority-e2e/installed.py --artifact dist/*.whl --report-json .local/installed-wheel.json
@@ -261,11 +261,20 @@ python examples/control_plane/cli-output-budget-regression-smoke.py
 loopx --format json canary premerge --from-git-diff
 ```
 
-The Linux/Python 3.11 CI job uses the exact dependency versions and hashes in
+The Linux/Python 3.11 CI lanes use the exact dependency versions and hashes in
 `tests/requirements-stage2c-linux-py311.txt`, including pytest 9.1.1. It builds
 the checked-out source wheel, verifies its hash during installation, and removes
 its generated build tree before normal pytest discovery. The workflow records
 the complete installation sequence and retains normal source discovery.
+
+E2E, deliberate mutants, and independently installed wheel/sdist qualification
+run in separate jobs; the stable `stage2c-correctness-e2e` check requires all three
+to succeed. No path-based skipping or reduced case selection is used. E2E uses
+two file-grouped workers so a module's shared workspaces and ordered parity rows
+stay together. Each lane has a distinct evidence artifact. Mutants remain serial
+inside their isolated source copy: parallel edits to that copy would invalidate
+the control/mutant comparison. Single-row fence probes initialize only the
+workspace they use, without removing any baseline or mutant assertion.
 
 The full TS suite's PostgreSQL conformance requires `LOOPX_TEST_POSTGRES_URL`
 pointing to a disposable test database. Source smoke success does not replace

@@ -16,6 +16,74 @@ WORKFLOW = (
 ).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("result", ["success", "failure", "cancelled", "skipped", ""])
+def test_stage2c_gate_requires_all_lanes(result: str) -> None:
+    gate = WORKFLOW.split("  stage2c-correctness-e2e:", 1)[1].split("  windows-powershell:", 1)[0]
+    assert "if: always()" in gate
+    assert "needs: [stage2c-suite]" in gate
+    assert "STAGE2C_RESULT: ${{ needs.stage2c-suite.result }}" in gate
+    script = gate.split("run: ", 1)[1].strip()
+    actual = subprocess.run(
+        ["bash", "-e", "-c", script],
+        env={**os.environ, "STAGE2C_RESULT": result}, check=False,
+    )
+    assert (actual.returncode == 0) == (result == "success")
+    suite = WORKFLOW.split("  stage2c-suite:", 1)[1].split("  stage2c-correctness-e2e:", 1)[0]
+    assert "fail-fast: false" in suite
+    assert "suite: [e2e, mutants, installed]" in suite
+    assert "    if:" not in suite.split("    steps:", 1)[0]
+    steps = {step.splitlines()[0]: step for step in suite.split("      - name: ")[1:]}
+    for name, lane in [
+        ("Qualify real CLI, mixed writers, process death, and recovery", "e2e"),
+        ("Reject deliberate correctness regressions", "mutants"),
+        ("Build independently installed distributions", "installed"),
+        ("Qualify wheel outside the repository", "installed"),
+        ("Qualify sdist outside the repository", "installed"),
+    ]:
+        assert f"if: matrix.suite == '{lane}'" in steps[name]
+    assert "--case" not in steps["Reject deliberate correctness regressions"]
+    artifact = steps["Retain bounded acceptance evidence"]
+    assert "if: always()" in artifact
+    assert "name: stage2c-correctness-evidence-${{ matrix.suite }}" in artifact
+    assert "if-no-files-found: error" in artifact
+
+
+def test_stage2c_workers_preserve_module_state_and_execute_every_row(tmp_path: Path) -> None:
+    step = WORKFLOW.split("name: Qualify real CLI, mixed writers, process death, and recovery", 1)[1]
+    command = step.split("run: ", 1)[1].splitlines()[0]
+    args = shlex.split(command)
+    args[0] = sys.executable
+    # Actual workflow command against two modules with order-sensitive shared state.
+    # Per-test distribution would break the module fixture's accumulated state.
+    for name in ("first", "second"):
+        (tmp_path / f"test_{name}.py").write_text(
+            "import os\nfrom pathlib import Path\nimport pytest\n"
+            "pytestmark = pytest.mark.stage2c_e2e\n"
+            "@pytest.fixture(scope='module')\ndef state():\n    return []\n"
+            "@pytest.mark.parametrize('row', range(4))\n"
+            "def test_order(state, row):\n"
+            "    assert state == list(range(row))\n    state.append(row)\n"
+            f"    with Path('{name}.visits').open('a') as stream:\n"
+            "        stream.write(f'{os.getpid()}:{row}\\n')\n",
+            encoding="utf-8",
+        )
+    (tmp_path / "pytest.ini").write_text("[pytest]\nmarkers = stage2c_e2e\n")
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("PYTEST", "COVERAGE", "COV_CORE"))}
+    actual = subprocess.run(args, cwd=tmp_path, env=env, capture_output=True,
+                            text=True, timeout=60, check=False)
+    assert actual.returncode == 0, actual.stdout + actual.stderr
+    cases = ET.parse(tmp_path / "stage2c-e2e.xml").findall(".//testcase")
+    assert len(cases) == 8
+    workers = set()
+    for name in ("first", "second"):
+        rows = [line.split(":") for line in (tmp_path / f"{name}.visits").read_text().splitlines()]
+        assert [row for _, row in rows] == ["0", "1", "2", "3"]
+        assert len({pid for pid, _ in rows}) == 1
+        workers.add(rows[0][0])
+    assert len(workers) == 2
+
+
 @pytest.mark.parametrize("checks", ["success", "failure", "cancelled", "skipped"])
 @pytest.mark.parametrize("shards", ["success", "failure", "cancelled", "skipped"])
 def test_required_pytest_check_rejects_incomplete_upstream_jobs(

@@ -8,6 +8,7 @@ Nothing is mocked; the fence is engaged by the real TypeScript owner.
 """
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 import json
 from pathlib import Path
 import shutil
@@ -198,11 +199,17 @@ def load_rows() -> list[dict]:
 
 
 @pytest.fixture(scope="module")
-def workspaces(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Workspace]:
+def workspaces(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Callable[[str], Workspace]]:
     built: dict[str, Workspace] = {}
-    for key, build in WORKSPACES.items():
-        built[key] = build(tmp_path_factory.mktemp(key))
-    yield built
+
+    def get(key: str) -> Workspace:
+        # Single-row mutation probes need only this row's workspace. Keep reuse
+        # and ordered mutations within a module, never across worker processes.
+        if key not in built:
+            built[key] = WORKSPACES[key](tmp_path_factory.mktemp(key))
+        return built[key]
+
+    yield get
     for ws in built.values():
         shutil.rmtree(ws.w.path, ignore_errors=True)
 
@@ -214,10 +221,10 @@ def observe_row(ws: Workspace, row: dict) -> dict:
 
 
 @pytest.mark.parametrize("row", load_rows(), ids=[row["id"] for row in load_rows()])
-def test_fence_caller_parity(workspaces: dict[str, Workspace], row: dict) -> None:
+def test_fence_caller_parity(workspaces: Callable[[str], Workspace], row: dict) -> None:
     if row["id"] == "fixture-missing":
         pytest.fail(f"parity fixture is missing: {FIXTURE}")
-    observed = observe_row(workspaces[row["workspace"]], row)
+    observed = observe_row(workspaces(row["workspace"]), row)
     assert observed["exit"] == row["exit"], observed
     if row.get("match") == "subset":
         assert {key: observed["envelope"].get(key) for key in row["expect"]} == row["expect"], observed

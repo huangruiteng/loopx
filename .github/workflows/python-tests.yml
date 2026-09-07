@@ -176,9 +176,14 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  stage2c-correctness-e2e:
+  stage2c-suite:
+    name: stage2c (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [e2e, mutants, installed]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -216,29 +221,48 @@ jobs:
           # Remove the generated source copy before pytest's normal discovery.
           python -c "import shutil; shutil.rmtree('build')"
       - name: Qualify real CLI, mixed writers, process death, and recovery
+        if: matrix.suite == 'e2e'
         env:
           LOOPX_SHADOW_COMPARISON_OUTPUT: .local/stage2c-observables
-        run: python -m pytest -q -m stage2c_e2e --junitxml=stage2c-e2e.xml
+        # Keep each module's shared workspace and ordered parity rows on one worker.
+        run: python -m pytest -q -n 2 --dist loadfile -m stage2c_e2e --durations=20 --junitxml=stage2c-e2e.xml
       - name: Reject deliberate correctness regressions
+        if: matrix.suite == 'mutants'
         run: python examples/shared-goal-authority-e2e/mutants.py --output .local/stage2c-mutants
       - name: Build independently installed distributions
+        if: matrix.suite == 'installed'
         run: python -m build --no-isolation
       - name: Qualify wheel outside the repository
+        if: matrix.suite == 'installed'
         run: python examples/shared-goal-authority-e2e/installed.py --artifact dist/*.whl --report-json installed-wheel.json
       - name: Qualify sdist outside the repository
+        if: matrix.suite == 'installed'
         run: python examples/shared-goal-authority-e2e/installed.py --artifact dist/*.tar.gz --report-json installed-sdist.json
       - name: Retain bounded acceptance evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stage2c-correctness-evidence
+          name: stage2c-correctness-evidence-${{ matrix.suite }}
           include-hidden-files: true
+          if-no-files-found: error
           path: |
             stage2c-e2e.xml
             .local/stage2c-observables/
             installed-wheel.json
             installed-sdist.json
             .local/stage2c-mutants/
+
+  stage2c-correctness-e2e:
+    # Preserve the public check name and reject failed, cancelled or skipped lanes.
+    if: always()
+    needs: [stage2c-suite]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every Stage 2C lane
+        env:
+          STAGE2C_RESULT: ${{ needs.stage2c-suite.result }}
+        run: test "$STAGE2C_RESULT" = success
 
   windows-powershell:
     runs-on: windows-latest
