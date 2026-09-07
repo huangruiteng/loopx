@@ -209,6 +209,11 @@ enough to support the stated claim level.
 
 ### Public trajectory lifecycle summary
 
+For exploratory observations rather than a complete score release, see
+[DeepSWE behavior discoveries](behavior-discovery/README.md): a standalone article
+and bounded `behavior_finding` records. The note describes selected cases and
+explicitly scoped duration comparisons, not a benchmark-wide outcome conclusion.
+
 The runnable native Goal adapter now emits a nested
 `public_trajectory_summary_v0` beside its existing compact receipt. The summary
 is derived only from the receipt's typed Goal lifecycle counters: notification

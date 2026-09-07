@@ -1,0 +1,186 @@
+[
+  {
+    "schema_version": "benchmark_behavior_finding_v0",
+    "benchmark_id": "deepswe",
+    "study_id": "behavior-sharing-v2",
+    "finding_id": "hint-action",
+    "title": "Hint如何进入验证行为",
+    "claim_scope": "exploratory_behavior",
+    "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
+    "selection": {
+      "basis": "post_hoc",
+      "rule": "事后选择case101、112，两组均收到SWE hint。",
+      "unit": "case",
+      "population_count": 113,
+      "sample_count": 2,
+      "cohort_digest": "c62b26f391c9efe34f2d1b726e8514e31e12f4c18261b2ef2491faf4b5d4fc82"
+    },
+    "observation": "选定案例中，LoopX保留需求级反例并修改实现。",
+    "interpretation": "将hint落实为可检查责任，可能帮助模型认真处理外部反例；案例不足以推导普遍的hint交互增益。",
+    "measures": [],
+    "evidence": [
+      {
+        "kind": "case_insight",
+        "digest": "371d0a243562d6dda44a12dc424cd856e53fa66f763d84ae4616602b6a245fb8",
+        "label": "Case 101",
+        "relation": "supports",
+        "summary": "Goal + SWE hint：已到达正确的外部反例，却将异常表现合理化，缺口没有被修复。 LoopX + SWE hint：保留expanded-width需求与返回渲染值之间的约束，补上赋值和重新渲染行为。"
+      },
+      {
+        "kind": "case_insight",
+        "digest": "f9c32bb990ecc5354fdab46c1af704b7413cd6e8a94aa87e6d0ccf3516d8a589",
+        "label": "Case 112",
+        "relation": "supports",
+        "summary": "Goal + SWE hint：验证受早期架构解释影响，未覆盖题目要求的最小本地transaction。 LoopX + SWE hint：先固定字面操作矩阵，再让外部反例推翻decoder与内部表示假设。"
+      }
+    ],
+    "limitations": [
+      "案例为事后定向选取、独立解题样本，用于提出机制假设。",
+      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+    ],
+    "counterevidence": "Case113中晚期refine引入回归；明确的验证流程仍需正确、独立的预期。",
+    "next_probe": "固定runtime、hint、任务与预算，检验需求保留、反例处置、技术修复与回归；再扩展模型和任务跨度。",
+    "privacy_classification": "public_safe",
+    "producer_redaction_attested": true
+  },
+  {
+    "schema_version": "benchmark_behavior_finding_v0",
+    "benchmark_id": "deepswe",
+    "study_id": "behavior-sharing-v2",
+    "finding_id": "long-slice",
+    "title": "长时子集的局部信号",
+    "claim_scope": "exploratory_behavior",
+    "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
+    "selection": {
+      "basis": "post_hoc",
+      "rule": "固定Goal plain耗时≥8h；同一39题，两组均有SWE hint。",
+      "unit": "case",
+      "population_count": 113,
+      "sample_count": 39,
+      "cohort_digest": "6623ddcd9ccf5fcf4d7cae43fd30aac2ad021d1bddc13f997cc9d780b502e90b"
+    },
+    "observation": "该子集中Goal成功14题、LoopX成功21题；10题转正、3题转负。",
+    "interpretation": "Case23提示需求级义务在较长运行中的保留可能有用；切片统计与案例机制都需独立复验。",
+    "measures": [
+      {
+        "name": "所选长时子集成功题数",
+        "unit": "case",
+        "aggregation": "count",
+        "groups": [
+          {
+            "label": "Goal + SWE hint",
+            "value": 14.0,
+            "n": 39
+          },
+          {
+            "label": "LoopX + SWE hint",
+            "value": 21.0,
+            "n": 39
+          }
+        ],
+        "caveat": "仅描述所标记样本；不作为总体效果估计。"
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "case_insight",
+        "digest": "314fd0c1bef4d2b698dd0379491efbe769943210bf437c6861640129658e1499",
+        "label": "Case 23",
+        "relation": "supports",
+        "summary": "Goal + SWE hint：做了广泛验证，但把所选实现表示转成probe的预期。 LoopX + SWE hint：保留JSON Schema需求级义务，选择在多条规则同时作用时仍正确的组合语义。"
+      }
+    ],
+    "limitations": [
+      "案例为事后定向选取、独立解题样本，用于提出机制假设。",
+      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+    ],
+    "counterevidence": "该子集仍有3题从成功转失败；收益不能外推到其他时长、无hint条件或其他模型。",
+    "next_probe": "固定runtime、hint、任务与预算，检验需求保留、反例处置、技术修复与回归；再扩展模型和任务跨度。",
+    "privacy_classification": "public_safe",
+    "producer_redaction_attested": true
+  },
+  {
+    "schema_version": "benchmark_behavior_finding_v0",
+    "benchmark_id": "deepswe",
+    "study_id": "behavior-sharing-v2",
+    "finding_id": "duration",
+    "title": "原始耗时与针对性验证",
+    "claim_scope": "exploratory_behavior",
+    "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
+    "selection": {
+      "basis": "post_hoc",
+      "rule": "固定每臂113个run；仅披露耗时。机制案例定向选择case75、59。",
+      "unit": "case",
+      "population_count": 113,
+      "sample_count": 113,
+      "cohort_digest": "559579110dab5dfae25548d4ce56f7cc23c2796ec919fe0bf49577305ae68bb1"
+    },
+    "observation": "两种hint条件下，LoopX累计原始wall-clock均较少。",
+    "interpretation": "Case75和59显示更有针对性的验证可能减少绕路；全样本时间本身不能证明因果效率。",
+    "measures": [
+      {
+        "name": "无hint条件",
+        "unit": "hours",
+        "aggregation": "sum",
+        "groups": [
+          {
+            "label": "Goal · 无 hint",
+            "value": 884.8971080555556,
+            "n": 113
+          },
+          {
+            "label": "LoopX · 无 hint",
+            "value": 697.8202372222222,
+            "n": 113
+          }
+        ],
+        "caveat": "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+      },
+      {
+        "name": "两组都有SWE hint",
+        "unit": "hours",
+        "aggregation": "sum",
+        "groups": [
+          {
+            "label": "Goal + SWE hint",
+            "value": 899.0597827777777,
+            "n": 113
+          },
+          {
+            "label": "LoopX + SWE hint",
+            "value": 774.9150522222222,
+            "n": 113
+          }
+        ],
+        "caveat": "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "case_insight",
+        "digest": "ed22950925a1ad294dcacc8a1dca53de11012957a59dc8fc29708d5253fe2ee9",
+        "label": "Case 75",
+        "relation": "supports",
+        "summary": "Goal · 无 hint：手工重建selector前缀；snapshot未推翻复合与多跳关系假设。 LoopX · 无 hint：保留parser的compound/combinator结构，用最小语义对照覆盖关系深度。"
+      },
+      {
+        "kind": "case_insight",
+        "digest": "0cc541fb386a07af972eabd868a3fedc0e93c534e8481d172fc1205e9a4f869c",
+        "label": "Case 59",
+        "relation": "supports",
+        "summary": "Goal · 无 hint：该样本未通过新增feature评测。本例的机制证据主要来自LoopX验证方式。 LoopX · 无 hint：使用外部类型与SQL对照，实例化可变参数语法，并区分single-bound与BETWEEN。"
+      }
+    ],
+    "limitations": [
+      "案例为事后定向选取、独立解题样本，用于提出机制假设。",
+      "≥8h按baseline实测时长选样；可能有回归均值偏差，不等同任务内在长程复杂度。",
+      "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+    ],
+    "counterevidence": "更短时间可能同时受早停、环境负载及采样影响。需要在固定质量目标下单独验证效率。",
+    "next_probe": "固定runtime、hint、任务与预算，检验需求保留、反例处置、技术修复与回归；再扩展模型和任务跨度。",
+    "privacy_classification": "public_safe",
+    "producer_redaction_attested": true
+  }
+]
