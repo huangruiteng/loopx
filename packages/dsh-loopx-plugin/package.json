@@ -111,6 +111,11 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huangruiteng/loopx.git",
+    "directory": "packages/dsh-loopx-plugin"
+  },
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
