@@ -150,6 +150,49 @@ def test_reject_invalid_sampling_numeric_and_evidence_contract(change):
         normalize_benchmark_behavior_finding(p)
 
 
+def test_all_available_requires_the_complete_declared_population():
+    p = finding()
+    p["selection"]["basis"] = "all_available"
+    with pytest.raises(ValueError, match="sample_count == population_count"):
+        normalize_benchmark_behavior_finding(p)
+
+    p["selection"]["sample_count"] = p["selection"]["population_count"]
+    assert normalize_benchmark_behavior_finding(p)["selection"]["basis"] == "all_available"
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("benchmark_id",), 7),
+        (("study_id",), True),
+        (("finding_id",), {"not": "a token"}),
+        (("title",), {"not": "text"}),
+        (("settings",), 7),
+        (("selection", "rule"), False),
+        (("selection", "unit"), 7),
+        (("observation",), {"not": "text"}),
+        (("interpretation",), 7),
+        (("measures", 0, "name"), False),
+        (("measures", 0, "unit"), {"not": "a token"}),
+        (("measures", 0, "groups", 0, "label"), 7),
+        (("measures", 0, "caveat"), False),
+        (("evidence", 0, "label"), {"not": "text"}),
+        (("evidence", 0, "summary"), 7),
+        (("limitations", 0), {"not": "text"}),
+        (("counterevidence",), False),
+        (("next_probe",), 7),
+    ],
+)
+def test_text_and_token_fields_reject_non_string_json(path, value):
+    p = finding()
+    target = p
+    for segment in path[:-1]:
+        target = target[segment]
+    target[path[-1]] = value
+    with pytest.raises(TypeError, match="must be a string"):
+        normalize_benchmark_behavior_finding(p)
+
+
 def test_revision_requires_explicit_supersession_preserving_finding(tmp_path):
     store = tmp_path / "records.jsonl"
     first = envelope()

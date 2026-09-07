@@ -20,6 +20,7 @@ Use `benchmark_behavior_finding_v0`. Required fields:
 - `selection`: `basis` (`post_hoc`, `predeclared`, `all_available`), `rule`,
   counting `unit`, positive `population_count` and `sample_count`, and
   `cohort_digest` (SHA-256 of the producer's fixed selection record).
+  `all_available` is valid only when `sample_count == population_count`.
 - Separate `observation` from `interpretation`.
 - `measures`: up to 16 optional numerical summaries; each has `name`, `unit`,
   `aggregation` (`count`, `sum`, `mean`, `median`, `rate`, `difference`),
@@ -40,6 +41,8 @@ Use `benchmark_behavior_finding_v0`. Required fields:
   `producer_redaction_attested: true`. No raw log, trajectory, task text or score
   eligibility field is accepted. Bounded prose still requires human/producer
   privacy review; schema validation is not a secret scanner.
+- Fields declared as text or tokens must be JSON strings. Objects, arrays,
+  numbers and booleans are rejected rather than implicitly stringified.
 
 ## Local workflow
 

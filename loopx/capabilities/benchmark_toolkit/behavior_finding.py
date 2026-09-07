@@ -37,6 +37,20 @@ def _choice(value: Any, choices: set[str], name: str) -> str:
     return value
 
 
+def _text(value: Any, name: str, *, limit: int = 1000) -> str:
+    """Keep this schema's JSON string contract strict at its owning boundary."""
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    return _bounded_text(value, field=name, limit=limit)
+
+
+def _string_token(value: Any, name: str) -> str:
+    """Reject implicit object/number coercion without changing shared helpers."""
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be a string")
+    return _token(value, field=name)
+
+
 def _count(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
@@ -96,6 +110,13 @@ def normalize_benchmark_behavior_finding(payload: Mapping[str, Any]) -> dict[str
     sample = _count(selection["sample_count"], "sample_count")
     if sample > population:
         raise ValueError("sample_count cannot exceed population_count")
+    basis = _choice(
+        selection["basis"],
+        {"post_hoc", "predeclared", "all_available"},
+        "selection.basis",
+    )
+    if basis == "all_available" and sample != population:
+        raise ValueError("all_available requires sample_count == population_count")
     digest = selection["cohort_digest"]
     if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):
         raise ValueError("cohort_digest must be SHA-256")
@@ -112,7 +133,7 @@ def normalize_benchmark_behavior_finding(payload: Mapping[str, Any]) -> dict[str
                 raise ValueError("group.n cannot exceed sample_count")
             groups.append(
                 {
-                    "label": _bounded_text(g["label"], field="label", limit=100),
+                    "label": _text(g["label"], "label", limit=100),
                     "value": _finite_number(g["value"], field="value"),
                     "n": n,
                 }
@@ -128,15 +149,15 @@ def normalize_benchmark_behavior_finding(payload: Mapping[str, Any]) -> dict[str
             raise ValueError("rate must be a fraction between zero and one")
         measures.append(
             {
-                "name": _bounded_text(m["name"], field="measure.name", limit=120),
-                "unit": _token(m["unit"], field="unit"),
+                "name": _text(m["name"], "measure.name", limit=120),
+                "unit": _string_token(m["unit"], "unit"),
                 "aggregation": _choice(
                     m["aggregation"],
                     {"count", "sum", "mean", "median", "rate", "difference"},
                     "aggregation",
                 ),
                 "groups": groups,
-                "caveat": _bounded_text(m["caveat"], field="caveat"),
+                "caveat": _text(m["caveat"], "caveat"),
             }
         )
     evidence = []
@@ -154,41 +175,36 @@ def normalize_benchmark_behavior_finding(payload: Mapping[str, Any]) -> dict[str
                     "evidence.kind",
                 ),
                 "digest": e["digest"],
-                "label": _bounded_text(e["label"], field="label", limit=160),
+                "label": _text(e["label"], "label", limit=160),
                 "relation": _choice(
                     e["relation"], {"supports", "contradicts", "context"}, "relation"
                 ),
-                "summary": _bounded_text(e["summary"], field="summary"),
+                "summary": _text(e["summary"], "summary"),
             }
         )
     return {
         "schema_version": BENCHMARK_BEHAVIOR_FINDING_SCHEMA_VERSION,
         **{
-            k: _token(p[k], field=k) for k in ("benchmark_id", "study_id", "finding_id")
+            k: _string_token(p[k], k)
+            for k in ("benchmark_id", "study_id", "finding_id")
         },
-        "title": _bounded_text(p["title"], field="title", limit=160),
+        "title": _text(p["title"], "title", limit=160),
         "claim_scope": "exploratory_behavior",
-        "settings": _bounded_text(p["settings"], field="settings", limit=2000),
+        "settings": _text(p["settings"], "settings", limit=2000),
         "selection": {
-            "basis": _choice(
-                selection["basis"],
-                {"post_hoc", "predeclared", "all_available"},
-                "selection.basis",
-            ),
-            "rule": _bounded_text(
-                selection["rule"], field="selection.rule", limit=1200
-            ),
-            "unit": _token(selection["unit"], field="selection.unit"),
+            "basis": basis,
+            "rule": _text(selection["rule"], "selection.rule", limit=1200),
+            "unit": _string_token(selection["unit"], "selection.unit"),
             "population_count": population,
             "sample_count": sample,
             "cohort_digest": digest,
         },
         **{
-            k: _bounded_text(p[k], field=k, limit=2000)
+            k: _text(p[k], k, limit=2000)
             for k in ("observation", "interpretation", "counterevidence", "next_probe")
         },
         "limitations": [
-            _bounded_text(v, field="limitation")
+            _text(v, "limitation")
             for v in _items(p["limitations"], "limitations")
         ],
         "measures": measures,
