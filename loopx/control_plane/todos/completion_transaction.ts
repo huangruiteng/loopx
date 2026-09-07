@@ -1,5 +1,8 @@
 import type { JsonObject } from "../effect_program.ts";
-import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
+import {
+  effectRuntimeErrorPayload,
+  EffectRuntimeRequestError,
+} from "../effect_runtime_errors.ts";
 import {
   optionalNonEmptyString,
   requireBoolean,
@@ -38,6 +41,8 @@ export const TODO_COMPLETION_TRANSACTION_REQUEST_SCHEMA =
   "loopx_todo_completion_transaction_v0";
 export const TODO_COMPLETION_TRANSACTION_RESULT_SCHEMA =
   "loopx_todo_completion_transaction_result_v0";
+export const TODO_COMPLETION_POLICY_FAILURE_SCHEMA =
+  "loopx_todo_completion_policy_failure_v0";
 const CALLER_VALIDATION_RECEIPT_SCHEMA = "issue_fix_validation_command_v0";
 
 const PROJECTION_SOURCES = ["materialized", "event_log"] as const;
@@ -85,12 +90,27 @@ export interface TodoCompletionExecuteValidation
   validation_effect: TodoCompletionValidationEffect;
 }
 
-export interface TodoCompletionCommit extends CompletionTransactionBase {
-  decision: "commit";
+interface TodoCompletionSettlement extends CompletionTransactionBase {
   completion_state: CompletionStateProjection;
   metadata_updates: JsonObject;
   validation_receipt: CallerValidationReceipt | null;
+}
+
+export interface TodoCompletionCommit extends TodoCompletionSettlement {
+  decision: "commit";
   completion_policy?: TodoCompletionPolicyResult;
+}
+
+export interface TodoCompletionPolicyFailure extends JsonObject {
+  schema_version: typeof TODO_COMPLETION_POLICY_FAILURE_SCHEMA;
+  kind: "completion_policy_rejected";
+  diagnostic_code: string;
+  summary: string;
+}
+
+export interface TodoCompletionPolicyReject extends TodoCompletionSettlement {
+  decision: "policy_reject";
+  completion_policy_failure: TodoCompletionPolicyFailure;
 }
 
 export interface TodoCompletionReplay extends CompletionTransactionBase {
@@ -109,6 +129,7 @@ export interface TodoCompletionReject extends CompletionTransactionBase {
 export type TodoCompletionTransactionResult =
   | TodoCompletionExecuteValidation
   | TodoCompletionCommit
+  | TodoCompletionPolicyReject
   | TodoCompletionReplay
   | TodoCompletionReject;
 
@@ -294,6 +315,33 @@ function baseResult(
   };
 }
 
+function evaluateCompletionPolicy(
+  request: JsonObject | null,
+):
+  | { outcome: "not_requested" }
+  | { outcome: "accepted"; policy: TodoCompletionPolicyResult }
+  | { outcome: "rejected"; failure: TodoCompletionPolicyFailure } {
+  if (request === null) return { outcome: "not_requested" };
+  try {
+    return {
+      outcome: "accepted",
+      policy: resolveTodoCompletionPolicy(request),
+    };
+  } catch (error) {
+    if (!(error instanceof EffectRuntimeRequestError)) throw error;
+    const failure = effectRuntimeErrorPayload(error);
+    return {
+      outcome: "rejected",
+      failure: {
+        schema_version: TODO_COMPLETION_POLICY_FAILURE_SCHEMA,
+        kind: "completion_policy_rejected",
+        diagnostic_code: failure.code,
+        summary: failure.message,
+      },
+    };
+  }
+}
+
 /**
  * Reduce one Todo completion admission/settlement transaction.
  *
@@ -414,20 +462,30 @@ export function reduceTodoCompletionTransaction(
     metadataResult.updates,
     "completion metadata updates",
   );
-  const completionPolicy = request.completion_policy_request === null
-    ? null
-    : resolveTodoCompletionPolicy(request.completion_policy_request);
-  return {
+  const completionPolicy = evaluateCompletionPolicy(
+    request.completion_policy_request,
+  );
+  const settlement = {
     ...base,
-    decision: "commit",
     completion_state: {
       continuation: completionStateResult.continuation,
       recovery: completionStateResult.recovery,
     },
     metadata_updates: updates,
     validation_receipt: request.validation_receipt,
-    ...(completionPolicy === null
+  };
+  if (completionPolicy.outcome === "rejected") {
+    return {
+      ...settlement,
+      decision: "policy_reject",
+      completion_policy_failure: completionPolicy.failure,
+    };
+  }
+  return {
+    ...settlement,
+    decision: "commit",
+    ...(completionPolicy.outcome === "not_requested"
       ? {}
-      : { completion_policy: completionPolicy }),
+      : { completion_policy: completionPolicy.policy }),
   };
 }

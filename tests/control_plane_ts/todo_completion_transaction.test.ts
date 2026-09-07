@@ -176,6 +176,24 @@ test("completion policy joins the coarse transaction only at commit", () => {
     self_merged: false,
     linked_successor_id: null,
   });
+
+  const policyRejected = reduceTodoCompletionTransaction(
+    request({
+      completion_policy_request: {
+        ...completionPolicyRequest,
+        claimed_by: "not registered",
+      },
+    }),
+  );
+  assert.equal(policyRejected.decision, "policy_reject");
+  assert.deepEqual(policyRejected.completion_policy_failure, {
+    schema_version: "loopx_todo_completion_policy_failure_v0",
+    kind: "completion_policy_rejected",
+    diagnostic_code: "invalid_request",
+    summary:
+      "claimed_by='not-registered' is not registered for goal " +
+      "'goal-example'; registered_agents=agent-a",
+  });
 });
 
 test("terminal replay bypasses a stale validation declaration", () => {

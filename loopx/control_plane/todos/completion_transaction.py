@@ -14,7 +14,7 @@ TODO_COMPLETION_TRANSACTION_RESULT_SCHEMA = (
     "loopx_todo_completion_transaction_result_v0"
 )
 
-_DECISIONS = {"execute_validation", "commit", "replay", "reject"}
+_DECISIONS = {"execute_validation", "commit", "policy_reject", "replay", "reject"}
 _IDENTITY_SOURCES = {
     "turn_settlement",
     "unscoped_completion",
@@ -37,6 +37,7 @@ _SOURCE_FIELDS = (
     "validation_timeout_seconds",
 )
 _COMPLETION_POLICY_RESULT_SCHEMA = "loopx_todo_completion_policy_result_v0"
+_COMPLETION_POLICY_FAILURE_SCHEMA = "loopx_todo_completion_policy_failure_v0"
 
 
 def _json_sequence(value: Any) -> Any:
@@ -335,6 +336,18 @@ def _valid_completion_policy(value: Any) -> bool:
     )
 
 
+def _valid_completion_policy_failure(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and value.get("schema_version") == _COMPLETION_POLICY_FAILURE_SCHEMA
+        and value.get("kind") == "completion_policy_rejected"
+        and isinstance(value.get("diagnostic_code"), str)
+        and bool(value.get("diagnostic_code"))
+        and isinstance(value.get("summary"), str)
+        and bool(value.get("summary"))
+    )
+
+
 def _valid_execute_validation_result(result: Mapping[str, Any]) -> bool:
     effect = result.get("validation_effect")
     return (
@@ -374,15 +387,10 @@ def _valid_execute_validation_result(result: Mapping[str, Any]) -> bool:
     )
 
 
-def _valid_commit_result(
-    result: Mapping[str, Any],
-    *,
-    completion_policy_required: bool,
-) -> bool:
+def _valid_completion_settlement(result: Mapping[str, Any]) -> bool:
     state = result.get("completion_state")
     updates = result.get("metadata_updates")
     receipt = result.get("validation_receipt")
-    policy = result.get("completion_policy")
     return (
         isinstance(state, Mapping)
         and state.get("continuation") in _CONTINUATIONS
@@ -396,10 +404,38 @@ def _valid_commit_result(
         and updates.get("completion_continuation") == state.get("continuation")
         and updates.get("completion_recovery") == state.get("recovery")
         and (receipt is None or _valid_receipt(receipt))
+    )
+
+
+def _valid_commit_result(
+    result: Mapping[str, Any],
+    *,
+    completion_policy_required: bool,
+) -> bool:
+    policy = result.get("completion_policy")
+    return (
+        _valid_completion_settlement(result)
+        and result.get("completion_policy_failure") is None
         and (
             _valid_completion_policy(policy)
-            if completion_policy_required or policy is not None
-            else True
+            if completion_policy_required
+            else policy is None
+        )
+    )
+
+
+def _valid_policy_reject_result(
+    result: Mapping[str, Any],
+    *,
+    completion_policy_required: bool,
+) -> bool:
+    if not completion_policy_required:
+        return False
+    return (
+        _valid_completion_settlement(result)
+        and result.get("completion_policy") is None
+        and _valid_completion_policy_failure(
+            result.get("completion_policy_failure")
         )
     )
 
@@ -428,6 +464,11 @@ def _valid_result(
         return _valid_execute_validation_result(result)
     if decision == "commit":
         return _valid_commit_result(
+            result,
+            completion_policy_required=completion_policy_required,
+        )
+    if decision == "policy_reject":
+        return _valid_policy_reject_result(
             result,
             completion_policy_required=completion_policy_required,
         )
@@ -482,7 +523,8 @@ def reduce_todo_completion_transaction(
     if not _valid_result(
         result,
         completion_policy_required=(
-            completion_policy_request is not None and result.get("decision") == "commit"
+            completion_policy_request is not None
+            and result.get("decision") in {"commit", "policy_reject"}
         ),
     ):
         raise RuntimeError(

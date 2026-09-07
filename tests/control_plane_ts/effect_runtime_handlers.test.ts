@@ -145,3 +145,14 @@ test("runtime boundary registers the quota monitor-poll transaction", async () =
     /Quota monitor-poll commit request schema mismatch/,
   );
 });
+
+test("completion policy has no standalone runtime handler", async () => {
+  await assert.rejects(
+    dispatchEffectRuntimeMethod(
+      handlers,
+      "todo.completion_policy.resolve",
+      {},
+    ),
+    /unsupported Effect runtime method/,
+  );
+});

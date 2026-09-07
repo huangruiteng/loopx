@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
+import loopx.control_plane.effect_runtime as effect_runtime_module
 import loopx.control_plane.todos.completion_validation as completion_validation_module
-import loopx.control_plane.todos.completion_transaction as completion_transaction_module
 from loopx.control_plane.todos.completion_validation_projection import (
     project_completion_validation_authority,
 )
@@ -111,6 +111,22 @@ def _add_todo(
     )
 
 
+def _record_completion_runtime_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[str]:
+    calls: list[str] = []
+    original_request = effect_runtime_module._request_with_info
+
+    def recording_request(*args, **kwargs):  # type: ignore[no-untyped-def]
+        method = kwargs.get("method")
+        if isinstance(method, str) and method.startswith("todo.completion"):
+            calls.append(method)
+        return original_request(*args, **kwargs)
+
+    monkeypatch.setattr(effect_runtime_module, "_request_with_info", recording_request)
+    return calls
+
+
 def test_validation_command_declared_and_passing_commits_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -130,19 +146,7 @@ def test_validation_command_declared_and_passing_commits_completion(
         return original_runner(*args, **kwargs)
 
     monkeypatch.setattr(completion_validation_module, "run_caller_validation", counting_runner)
-    original_effect_call = completion_transaction_module.effect_runtime_result
-    transaction_calls: list[str] = []
-
-    def counting_effect_call(method, params):  # type: ignore[no-untyped-def]
-        if method == "todo.completion.reduce":
-            transaction_calls.append(method)
-        return original_effect_call(method, params)
-
-    monkeypatch.setattr(
-        completion_transaction_module,
-        "effect_runtime_result",
-        counting_effect_call,
-    )
+    transaction_calls = _record_completion_runtime_calls(monkeypatch)
 
     result = complete_goal_todo(
         registry_path=registry,
@@ -152,10 +156,14 @@ def test_validation_command_declared_and_passing_commits_completion(
         evidence="validated completion",
     )
     assert calls["count"] == 1  # the gate actually ran the declared command
-    assert transaction_calls == [
+    assert [
+        method for method in transaction_calls
+        if method == "todo.completion.reduce"
+    ] == [
         "todo.completion.reduce",
         "todo.completion.reduce",
     ]
+    assert "todo.completion_policy.resolve" not in transaction_calls
     assert result["ok"] is True
     assert result["changed"] is True
     assert "validation_blocked_completion" not in result
@@ -242,31 +250,27 @@ def test_no_validation_command_keeps_fast_path_unchanged(
 ) -> None:
     registry, state = _write_fixture(tmp_path)
     todo = _add_todo(registry)  # no validation_command declared
-    original_effect_call = completion_transaction_module.effect_runtime_result
-    transaction_calls: list[str] = []
-
-    def counting_effect_call(method, params):  # type: ignore[no-untyped-def]
-        if method == "todo.completion.reduce":
-            transaction_calls.append(method)
-        return original_effect_call(method, params)
-
-    monkeypatch.setattr(
-        completion_transaction_module,
-        "effect_runtime_result",
-        counting_effect_call,
-    )
+    transaction_calls = _record_completion_runtime_calls(monkeypatch)
+    note = "post-merge note parity"
     result = complete_goal_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
         todo_id=str(todo["todo_id"]),
         agent_id=AGENT,
         evidence="plain completion",
+        note=note,
     )
     assert result["ok"] is True
     assert result["changed"] is True
-    assert transaction_calls == ["todo.completion.reduce"]
+    assert [
+        method for method in transaction_calls
+        if method == "todo.completion.reduce"
+    ] == ["todo.completion.reduce"]
+    assert "todo.completion_policy.resolve" not in transaction_calls
     assert "validation_blocked_completion" not in result
-    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "done"
+    persisted = _agent_todo(state, str(todo["todo_id"]))
+    assert persisted["status"] == "done"
+    assert persisted["note"] == note
 
 
 def test_validation_receipt_cannot_commit_a_changed_completion_source(
