@@ -294,6 +294,13 @@ Every proposal records a Goal revision or equivalent state fingerprint.
 Applying a stale proposal writes nothing and asks the owner to regenerate the
 preview.
 
+Goal creation must also resolve continuation intent before LoopX builds that
+preview. A request with no continuation choice asks whether the Goal is a
+one-shot run or should use Heartbeat. `without Heartbeat` selects one-shot
+execution; an explicit cadence such as `with a daily Heartbeat` selects
+automatic continuation. LoopX must not silently disable Heartbeat because the
+request omitted it.
+
 ## Goal Creation Flow
 
 The owner can say:

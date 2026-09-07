@@ -82,6 +82,11 @@ graph TD
    - `[汇总所有 Goal 进展 (立即发送)]`：带有蓝色高亮标识，点击后**立即发送**并在右下角弹出托盘展示全局总结；
    - `[创建新 Goal (草稿)]`：快速填入目标模板草稿。
 
+创建 Goal 时必须明确继续方式。一次性运行请写「不开启 Heartbeat」或
+`without Heartbeat`；需要自动推进时请写明频率，例如「每天 Heartbeat」或
+`with a daily Heartbeat`。如果请求没有包含这个选择，控制台会先要求补充，而不会
+把缺省值静默解释为关闭 Heartbeat。
+
 ### 3.1 停止暂时不活跃的 Goal
 
 当 Goal 较多时，主列表只展示仍处于 active 状态的 Goal。点击 Goal 右侧的暂停按钮后，LoopX 会先展示 Typed Action 预览；只有你明确确认，Goal 才会进入 **「已停止」** 折叠区。
@@ -220,7 +225,10 @@ loopx configure-goal \
 
 这个开关只给运行时增加有界的临时子代理容量，不会强制并行，不会创建持久 Agent
 层级，也不会绕过 Todo 归属、quota、能力、Gate 或写入范围。SSH 状态来源保持只读，
-必须在 Goal 所在主机上修改。所选 `allowed_domains` 会进入 Goal 配置，不要填写凭证、
+必须在 Goal 所在主机上修改。只读来源的「需要你」详情会显示来源名称和完整的
+`loopx todo complete ... --decision-outcome approve --execute` 命令；请在该来源的 Goal
+工作区运行并刷新页面。这个提示不会给远端浏览器新增写权限。所选 `allowed_domains`
+会进入 Goal 配置，不要填写凭证、
 客户名或其他私密信息。完整执行语义见
 [Codex sub-agent orchestration](../integrations/codex-subagent-orchestration.md)。
 
