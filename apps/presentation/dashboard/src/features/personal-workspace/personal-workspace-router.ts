@@ -43,6 +43,12 @@ function managerProjectionIntent(message: string) {
   return /(我现在该做什么|下一步|哪些\s*Goal\s*在等我|需要我|谁在等我|Agent\s*在做什么|当前进度|总结(?:今天)?进展)/iu.test(message);
 }
 
+function heartbeatPreference(message: string): boolean | null {
+  if (negates(message, /heartbeat|心跳/iu)) return false;
+  if (/(heartbeat|心跳|每天推进|持续推进|daily progress)/iu.test(message)) return true;
+  return null;
+}
+
 function executionIntent(message: string) {
   const asksForAdvice = /(怎么|如何|为什么|给.*建议|分析一下|解释|只读)/u.test(message);
   const asksForMutation = /(解决一下|修复一下|处理一下|执行一下|改一下|跑(?:一下)?测试|rebase|push|提交|推送)/iu.test(message);
@@ -69,16 +75,24 @@ export function routeWorkspaceInput(rawMessage: string, context: WorkspaceRouter
   const todo = context.todos.find((candidate) => message.includes(candidate.todoId) || message.includes(candidate.text));
   const todoSubject = "todo|待办|任务";
   const referencesExistingTodo = /(刚刚|已经|已)(?:经)?\s*(新增|创建|添加)(?:的)?\s*(todo|待办|任务)/iu.test(message);
-  const requestsHeartbeat = Boolean(context.goalId)
-    && !negates(message, /heartbeat|心跳/iu)
-    && /(heartbeat|心跳|每天推进|持续推进|daily progress)/iu.test(message);
+  const requestedHeartbeat = heartbeatPreference(message);
+  const requestsHeartbeat = Boolean(context.goalId) && requestedHeartbeat === true;
 
   if (!context.goalId && !negates(message, /goal|目标/iu) && /(创建|新建|设置|create|start|set up).{0,24}(goal|目标)/iu.test(message)) {
+    if (requestedHeartbeat === null) {
+      return {
+        actionKind: "goal.create",
+        confidence: 0.97,
+        missingFields: ["continuation_mode"],
+        normalizedParameters: {},
+        route: "clarify",
+      };
+    }
     candidates.push({
       actionKind: "goal.create",
       confidence: 0.97,
       normalizedParameters: {
-        heartbeat_enabled: !negates(message, /heartbeat|心跳/iu) && /(heartbeat|心跳|每天推进|持续推进|daily progress)/iu.test(message),
+        heartbeat_enabled: requestedHeartbeat,
       },
     });
   }

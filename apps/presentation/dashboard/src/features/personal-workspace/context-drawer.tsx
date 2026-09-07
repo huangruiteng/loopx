@@ -71,6 +71,11 @@ const decisionTransitions = [
 
 const subagentChildLimits = Array.from({ length: 32 }, (_, index) => index + 1);
 const subagentDomainPattern = /^[a-z][a-z0-9_.-]{0,63}$/u;
+const gateApprovalDecision = "--decision-outcome approve --execute";
+
+function gateApprovalCommand(goalId: string, todoId: string) {
+  return `loopx todo complete --goal-id ${goalId} --todo-id ${todoId} ${gateApprovalDecision}`;
+}
 
 function normalizeSubagentDomain(value: string | null | undefined) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -89,7 +94,7 @@ function subagentConfigurationsMatch(
 
 type ContextDrawerSelection = Exclude<WorkspaceDrawerSelection, { kind: "settings" }>;
 
-export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals = [], inspectorExpanded = false, larkConnections = [], onClose, onToggleInspectorSize, readOnly = false, runs = [], selection }: {
+export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals = [], inspectorExpanded = false, larkConnections = [], onClose, onToggleInspectorSize, readOnly = false, readOnlySourceLabel, runs = [], selection }: {
   agents: WorkspaceAgentOption[];
   callbacks: PersonalWorkspaceCallbacks;
   goalNotifications?: WorkspaceGoalNotification[];
@@ -99,6 +104,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
   onClose: () => void;
   onToggleInspectorSize?: () => void;
   readOnly?: boolean;
+  readOnlySourceLabel?: string;
   runs?: WorkspaceRun[];
   selection: ContextDrawerSelection;
 }) {
@@ -486,6 +492,14 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
                 <div><dt>{t("drawer.evidence")}</dt><dd>{selection.item.evidence ?? t("drawer.decisionDefaultEvidence")}</dd></div>
               </dl>
             </section>
+            {readOnly ? (
+              <section className="personal-detail-card personal-gate-cli-hint">
+                <small>{t("drawer.readOnlyGateTitle", { source: readOnlySourceLabel ?? t("source.readOnly") })}</small>
+                <p>{t("drawer.readOnlyGateDescription")}</p>
+                <code>{gateApprovalCommand(selection.item.goalId, selection.item.todoId)}</code>
+                <small>{t("drawer.gateRejectHint")}</small>
+              </section>
+            ) : null}
             {!readOnly ? <>
               <button className="personal-primary-action" onClick={() => void previewDecision(selection.item, "approve", t("common.confirm"))} type="button"><Check size={17} />{t("drawer.decisionReview")}</button>
               <details className="personal-compact-menu">
@@ -926,7 +940,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
               return (
                 <section className="personal-detail-card personal-gate-cli-hint">
                   <small>{t("drawer.gateApproveHint")}</small>
-                  <code>loopx todo complete --goal-id {gateGoalId} --todo-id {gateTodoId} --decision-outcome approve</code>
+                  <code>{gateApprovalCommand(gateGoalId, gateTodoId)}</code>
                   <small>{t("drawer.gateRejectHint")}</small>
                 </section>
               );

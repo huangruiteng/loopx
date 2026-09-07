@@ -57,13 +57,20 @@ equal(routeWorkspaceInput("发布完成后请只回复结果", goalContext).rout
 equal(routeWorkspaceInput("整理验收材料还没有完成，不要关闭", goalContext).route, "agent_chat", "negated complete does not update todo");
 
 const createGoal = routeWorkspaceInput("创建 Goal：整理每周复盘", { ...goalContext, goalId: null });
-equal(createGoal.route, "typed_action", "goal route");
-equal(createGoal.actionKind, "goal.create", "goal action");
-ok(createGoal.confidence >= 0.9, "goal confidence");
+equal(createGoal.route, "clarify", "Goal creation asks for an explicit continuation mode");
+equal(createGoal.missingFields.join(","), "continuation_mode", "Goal clarification names the missing continuation mode");
 const createEnglishGoal = routeWorkspaceInput("Create a long-term Goal: prepare my weekly review", { ...goalContext, goalId: null });
-equal(createEnglishGoal.route, "typed_action", "English goal route");
-equal(createEnglishGoal.actionKind, "goal.create", "English goal action");
+equal(createEnglishGoal.route, "clarify", "English Goal creation asks for an explicit continuation mode");
+equal(createEnglishGoal.missingFields.join(","), "continuation_mode", "English Goal clarification names the missing continuation mode");
 equal(routeWorkspaceInput("Create a Goal: off track delivery recovery", { ...goalContext, goalId: null }).actionKind, "goal.create", "off track is not a Goal-disable command");
-equal(routeWorkspaceInput("Create a Goal without Heartbeat", { ...goalContext, goalId: null }).normalizedParameters.heartbeat_enabled, false, "English Goal can explicitly omit Heartbeat");
+const oneShotGoal = routeWorkspaceInput("Create a Goal without Heartbeat", { ...goalContext, goalId: null });
+equal(oneShotGoal.route, "typed_action", "an explicit one-shot Goal remains actionable");
+equal(oneShotGoal.actionKind, "goal.create", "an explicit one-shot Goal keeps the Goal action");
+equal(oneShotGoal.normalizedParameters.heartbeat_enabled, false, "English Goal can explicitly omit Heartbeat");
+const continuousGoal = routeWorkspaceInput("Create a Goal with a daily Heartbeat", { ...goalContext, goalId: null });
+equal(continuousGoal.route, "typed_action", "an explicit continuous Goal remains actionable");
+equal(continuousGoal.actionKind, "goal.create", "an explicit continuous Goal keeps the Goal action");
+equal(continuousGoal.normalizedParameters.heartbeat_enabled, true, "an explicit continuous Goal enables Heartbeat");
+ok(continuousGoal.confidence >= 0.9, "explicit Goal confidence");
 
 console.log("personal workspace router smoke passed");
