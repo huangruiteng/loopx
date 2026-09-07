@@ -1,0 +1,55 @@
+{
+  "schema_version": "benchmark_behavior_finding_v0",
+  "benchmark_id": "fixture-bench",
+  "study_id": "exploration",
+  "finding_id": "validation-feedback",
+  "title": "Retaining a counterexample",
+  "claim_scope": "exploratory_behavior",
+  "settings": "Fixed model and tool budget.",
+  "selection": {
+    "basis": "post_hoc",
+    "rule": "Cases with reviewed counterexamples.",
+    "unit": "case",
+    "population_count": 8,
+    "sample_count": 2,
+    "cohort_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "observation": "A retained failing probe preceded a repair.",
+  "interpretation": "Persisting evidence may support revisiting assumptions.",
+  "measures": [
+    {
+      "name": "Successful tasks",
+      "unit": "case",
+      "aggregation": "count",
+      "groups": [
+        {
+          "label": "reference",
+          "value": 1,
+          "n": 2
+        },
+        {
+          "label": "candidate",
+          "value": 2,
+          "n": 2
+        }
+      ],
+      "caveat": "Selected sample; no population estimate."
+    }
+  ],
+  "evidence": [
+    {
+      "kind": "case_insight",
+      "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "Reviewed example",
+      "relation": "supports",
+      "summary": "The same probe failed, prompted an edit, and passed."
+    }
+  ],
+  "limitations": [
+    "Selected cases do not establish a general effect."
+  ],
+  "counterevidence": "Another task repeatedly tested an incorrect oracle.",
+  "next_probe": "Fix the sample before varying the validation policy.",
+  "privacy_classification": "public_safe",
+  "producer_redaction_attested": true
+}

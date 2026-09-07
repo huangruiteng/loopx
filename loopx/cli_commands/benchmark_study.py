@@ -16,6 +16,9 @@ from ..capabilities.benchmark_toolkit import (
     read_benchmark_upload_receipt,
     simulate_benchmark_upload,
 )
+from ..capabilities.benchmark_toolkit.behavior_finding import (
+    build_benchmark_behavior_report,
+)
 
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]], None
@@ -28,6 +31,7 @@ BENCHMARK_STUDY_COMMANDS = {
     "upload-local",
     "upload-readback",
     "study-dashboard",
+    "behavior-report",
 }
 
 
@@ -84,6 +88,7 @@ def register_benchmark_study_commands(
             "experiment_board_row",
             "case_insight_projection",
             "runtime_observation",
+            "behavior_finding",
         ],
         required=True,
     )
@@ -132,6 +137,16 @@ def register_benchmark_study_commands(
     )
     dashboard.set_defaults(benchmark_study_parser=dashboard)
 
+    behavior = subparsers.add_parser(
+        "behavior-report",
+        help="Project exploratory findings without a full result upload.",
+    )
+    add_format(behavior)
+    behavior.add_argument("--store", required=True)
+    behavior.add_argument("--benchmark-id", required=True)
+    behavior.add_argument("--study-id", required=True)
+    behavior.set_defaults(benchmark_study_parser=behavior)
+
 
 def handle_benchmark_study_command(
     args: argparse.Namespace,
@@ -170,6 +185,12 @@ def handle_benchmark_study_command(
         elif args.benchmark_command == "upload-readback":
             payload = read_benchmark_upload_receipt(
                 args.store, record_id=args.record_id
+            )
+        elif args.benchmark_command == "behavior-report":
+            payload = build_benchmark_behavior_report(
+                read_benchmark_local_upload_records(args.store),
+                benchmark_id=args.benchmark_id,
+                study_id=args.study_id,
             )
         else:
             manifest = normalize_benchmark_study_manifest(

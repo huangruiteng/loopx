@@ -49,6 +49,7 @@ _RECORD_KINDS = {
     "experiment_board_row",
     "case_insight_projection",
     "runtime_observation",
+    "behavior_finding",
 }
 _CONFIDENCE_LEVELS = {"low", "medium", "high"}
 _EXPECTEDNESS = {"expected", "unexpected", "mixed", "unknown"}
@@ -470,6 +471,10 @@ def _normalize_record_payload(record_kind: str, payload: Any) -> dict[str, Any]:
         return normalize_benchmark_case_insight_projection(payload)
     if record_kind == "runtime_observation":
         return _normalize_runtime_observation(payload)
+    if record_kind == "behavior_finding":
+        from .behavior_finding import normalize_benchmark_behavior_finding
+
+        return normalize_benchmark_behavior_finding(payload)
     raise ValueError("upload record kind is unsupported")
 
 
@@ -714,6 +719,20 @@ def _validate_supersession(
                     raise ValueError(
                         "case-insight supersession must preserve case and run identity"
                     )
+        elif envelope["record_kind"] == "behavior_finding":
+            if old["payload"]["finding_id"] != envelope["payload"]["finding_id"]:
+                raise ValueError("finding supersession must preserve finding identity")
+
+    if envelope["record_kind"] == "behavior_finding":
+        related = [
+            e for e in _active_envelopes(records)
+            if e["record_kind"] == "behavior_finding"
+            and e["benchmark_id"] == envelope["benchmark_id"]
+            and e["study_id"] == envelope["study_id"]
+            and e["payload"]["finding_id"] == envelope["payload"]["finding_id"]
+        ]
+        if related and supersedes not in {e["record_id"] for e in related}:
+            raise ValueError("changed finding upload requires explicit supersession")
 
     if envelope["record_kind"] == "experiment_board_row":
         related = [

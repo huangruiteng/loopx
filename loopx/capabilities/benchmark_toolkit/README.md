@@ -1304,6 +1304,15 @@ logs, hidden evaluator material, verifier tails, credentials, and local paths ha
 no upload schema slot; producers must reduce post-run analysis to the redacted
 insight contract.
 
+### Exploratory behavior findings
+
+Share a selected pattern with settings, sample selection, observations, evidence
+digests, limitations and counterexamples using `--record-kind behavior_finding`.
+It requires no complete study or run-row upload and has no score authority.
+`loopx benchmark behavior-report` projects active findings through the existing
+local provider. See [the bilingual contract and workflow](../../../docs/reference/benchmark-behavior-findings.md)
+for the required fields, evidence boundary and revision commands.
+
 ## Related commands
 
 ```bash

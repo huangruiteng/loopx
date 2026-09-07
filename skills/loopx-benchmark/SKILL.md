@@ -47,6 +47,22 @@ publication, credentials, retention, or benchmark submission authority. Adapters
 keep their native metric names and reduce private post-run evidence before envelope
 construction.
 
+## Share exploratory behavior findings
+
+When the owner authorizes selected behavioral observations but not a complete
+study release, use `behavior_finding` records and `benchmark behavior-report`.
+See `docs/reference/benchmark-behavior-findings.md` for the contract. These records
+require selection rules, sample denominators, observations, interpretations,
+limitations, counterevidence, and evidence digests; they require neither a run-row
+upload nor a full study manifest and have no score authority.
+
+Freeze the authorized disclosure projection before rendering. Review the same
+scope in visible text, foldouts, embedded data, downloads, and PR attachments.
+Permission to share duration does not grant permission to share outcome totals
+or deltas. Schema validity and a producer redaction attestation are not publication
+approval or verification of unshared evidence. Keep selected-case observations
+explicitly exploratory and retain the relevant limitations and counterexamples.
+
 ## Select the operating lane
 
 - **Inspect or explain:** use `capability show` and `benchmark --help`; remain

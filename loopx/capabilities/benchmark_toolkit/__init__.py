@@ -18,6 +18,11 @@ from .artifacts import (
     filter_public_benchmark_artifact_paths,
     materialize_public_benchmark_artifacts,
 )
+from .behavior_finding import (
+    BENCHMARK_BEHAVIOR_FINDING_SCHEMA_VERSION,
+    build_benchmark_behavior_report,
+    normalize_benchmark_behavior_finding,
+)
 from .concurrency_envelope import (
     BENCHMARK_CONCURRENCY_ENVELOPE_FILENAME,
     BENCHMARK_CONCURRENCY_ENVELOPE_SCHEMA_VERSION,
@@ -211,6 +216,7 @@ __all__ = [
     "ATIF_SCHEMA_VERSION",
     "BENCHMARK_ADAPTIVE_CONCURRENCY_DECISION_SCHEMA_VERSION",
     "BENCHMARK_ADAPTIVE_CONCURRENCY_POLICY_SCHEMA_VERSION",
+    "BENCHMARK_BEHAVIOR_FINDING_SCHEMA_VERSION",
     "BENCHMARK_CANDIDATE_SOURCE_BOUNDARY_SCHEMA_VERSION",
     "BENCHMARK_CASE_INSIGHT_PROJECTION_SCHEMA_VERSION",
     "BENCHMARK_CONCURRENCY_ENVELOPE_FILENAME",
@@ -293,6 +299,7 @@ __all__ = [
     "benchmark_experiment_board_row_key",
     "build_benchmark_adaptive_concurrency_decision",
     "build_benchmark_adaptive_concurrency_policy",
+    "build_benchmark_behavior_report",
     "build_benchmark_candidate_source_boundary",
     "build_benchmark_concurrency_config",
     "build_benchmark_concurrency_status",
@@ -333,10 +340,11 @@ __all__ = [
     "native_codex_app_server_shell_policy_args",
     "native_codex_profile_environment",
     "normalize_benchmark_adaptive_concurrency_policy",
+    "normalize_benchmark_behavior_finding",
+    "normalize_benchmark_case_insight_projection",
     "normalize_benchmark_concurrency_config",
     "normalize_benchmark_concurrency_envelope",
     "normalize_benchmark_concurrency_feedback",
-    "normalize_benchmark_case_insight_projection",
     "normalize_benchmark_experiment_board_row",
     "normalize_benchmark_public_progress",
     "normalize_benchmark_resource_headroom_receipt",

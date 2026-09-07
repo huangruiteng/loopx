@@ -865,3 +865,19 @@ def test_cli_local_simulation_flow(tmp_path: Path) -> None:
     assert packet["campaign"]["selected_score_countable_cell_count"] == 1
     assert packet["runs"][0]["redacted_insight"]["confidence"] == "high"
     assert packet["network_access_performed"] is False
+
+
+def test_behavior_findings_do_not_change_study_score_projection():
+    manifest = _manifest()
+    run = _envelope(
+        _row(arm_id="goal_plain", arm_role="baseline", feature=5, reward=0),
+        record_kind="experiment_board_row", key="baseline",
+    )
+    observation = json.loads(
+        (REPO_ROOT / "examples/benchmark-behavior-finding.json").read_text()
+    )
+    observation.update(benchmark_id=manifest["benchmark_id"], study_id=manifest["study_id"])
+    finding = _envelope(observation, record_kind="behavior_finding", key="finding")
+    before = build_benchmark_study_dashboard(manifest, [run])
+    after = build_benchmark_study_dashboard(manifest, [run, finding])
+    assert before == after
