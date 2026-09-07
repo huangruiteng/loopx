@@ -60,7 +60,7 @@ from .experiment_board import (
     render_benchmark_experiment_board_markdown,
     upsert_benchmark_experiment_board_row,
 )
-from .external_agent import (
+from .continuation import (
     BENCHMARK_CONTINUATION_DECISION_SCHEMA_VERSION,
     BENCHMARK_PUBLIC_PROGRESS_SCHEMA_VERSION,
     BenchmarkContinuationDecision,

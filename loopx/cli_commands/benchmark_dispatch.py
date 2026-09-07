@@ -21,10 +21,10 @@ from .benchmark_experiment_board import (
     handle_benchmark_experiment_board_command,
     register_benchmark_experiment_board_commands,
 )
-from .benchmark_external_agent import (
-    BENCHMARK_EXTERNAL_AGENT_COMMANDS,
-    handle_benchmark_external_agent_command,
-    register_benchmark_external_agent_commands,
+from .benchmark_continuation import (
+    BENCHMARK_CONTINUATION_COMMANDS,
+    handle_benchmark_continuation_command,
+    register_benchmark_continuation_commands,
 )
 from .benchmark_study import (
     handle_benchmark_study_command,
@@ -81,8 +81,8 @@ def _resolve_benchmark_project(
 
 
 def _benchmark_project_parser(args: argparse.Namespace) -> argparse.ArgumentParser:
-    if args.benchmark_command in BENCHMARK_EXTERNAL_AGENT_COMMANDS:
-        return args.benchmark_external_agent_parser
+    if args.benchmark_command in BENCHMARK_CONTINUATION_COMMANDS:
+        return args.benchmark_continuation_parser
     if args.benchmark_command in BENCHMARK_CONCURRENCY_COMMANDS:
         return args.benchmark_concurrency_parser
     return args.benchmark_experiment_board_parser
@@ -101,7 +101,7 @@ def register_benchmark_command_group(
         required=True,
     )
     register_benchmark_boundary_commands(benchmark_sub, add_subcommand_format)
-    register_benchmark_external_agent_commands(benchmark_sub, add_subcommand_format)
+    register_benchmark_continuation_commands(benchmark_sub, add_subcommand_format)
     register_benchmark_concurrency_commands(benchmark_sub, add_subcommand_format)
     register_benchmark_experiment_board_commands(
         benchmark_sub,
@@ -119,7 +119,7 @@ def handle_benchmark_command(
 ) -> int | None:
     if args.command != "benchmark":
         return None
-    handled = handle_benchmark_external_agent_command(
+    handled = handle_benchmark_continuation_command(
         args,
         print_payload=print_payload,
         output_format=output_format,

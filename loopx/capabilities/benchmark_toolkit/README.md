@@ -5,52 +5,36 @@ admission, permission, artifact, integrity, and reusable agent-runtime boundarie
 around benchmark experiments. It does not own benchmark-family runners, result
 ledgers, or scoring adapters.
 
-## External-agent phase
+## Runner execution boundary
 
-A benchmark harness may own the task container and verifier while delegating only
-the agent phase to a preinstalled command. The harness writes an
-`external_agent_request_v1` JSON file containing the task instruction,
-task-visible workspace, and timeout, then invokes:
+The former `loopx benchmark agent-phase` command and its external-agent v1
+request/result implementation have been removed. There is no replacement
+benchmark-specific subprocess launcher, containment declaration, or environment
+variable interface in this toolkit.
 
-```bash
-loopx benchmark agent-phase \
-  --request "$LOOPSBENCH_EXTERNAL_AGENT_REQUEST" \
-  --result "$LOOPSBENCH_EXTERNAL_AGENT_RESULT" \
-  --solver-command-json '["<solver>", "<arg>"]' \
-  --execute
-```
+- For ordinary benchmark execution, let the existing runner invoke its solver
+  directly. The runner still owns workspace provisioning, credentials,
+  containment, hard timeout, descendant cleanup, verification, and scoring.
+- For LoopX-governed execution, use the existing
+  [Turn contract](../../../docs/reference/protocols/loopx-turn-v0.md):
+  inspect `loopx turn plan`, then explicitly execute
+  `loopx turn run-once --execute` with a supported host or typed host adapter
+  and independent validator. Turn is not an argv-compatible alias for
+  `agent-phase`, and does not replace benchmark isolation or scoring.
 
-The command writes one `external_agent_result_v1` result with hashes and
-bounded lifecycle fields only. It does not provision a task, start Docker,
-access a verifier, calculate a score, upload a result, or grant model or
-credential authority. The solver command is runner-owned and executes in the
-runner-selected current directory; the request workspace must match that
-directory exactly. The solver receives the validated instruction on stdin plus
-only platform lookup, locale, temporary-directory, and phase-specific
-environment variables; ambient credentials are not inherited. This permits a
-direct headless command such as `traex exec --sandbox workspace-write -`
-without a benchmark-specific driver. A provider that needs credentials must
-define a separate explicit authorization contract rather than widening this
-generic boundary.
+Integrations using `LOOPSBENCH_EXTERNAL_AGENT_REQUEST`,
+`LOOPSBENCH_EXTERNAL_AGENT_RESULT`, or
+`LOOPX_EXTERNAL_AGENT_SOLVER_COMMAND_JSON` must remove that bridge before
+upgrading. Existing result files are not rewritten or deleted, but this toolkit
+no longer emits `external_agent_result_v1`. Execution functions under
+`benchmark_toolkit.external_agent` are removed; callers of the retained
+read-only helpers should use the existing `benchmark_toolkit` package exports
+or `benchmark_toolkit.continuation`.
 
-Execution also requires an `external_agent_containment_v1` request object.
-The runner must own a non-escapable containment such as a container, cgroup v2,
-PID namespace, virtual machine, or Windows Job Object, and declare
-`timeout_owner=runner` plus
-`termination_postcondition=drained_before_result_consumption`. The request must
-also carry a runner-owned `external_agent_containment_verification_v1` receipt
-reference with `status=verified`; an unverified prose declaration is rejected.
-A POSIX process group is not sufficient because the solver can create a new
-session. LoopX validates this contract before launch but does not claim to
-create or inspect the containment, does not enforce the timeout itself, and
-never writes a `solver_timeout` result. On timeout, the runner must destroy its
-containment and read back that it is empty before recording the timeout. After
-any solver result, the runner must likewise drain the containment before
-consuming the result or starting a verifier, because the solver may exit while
-leaving detached descendants behind. A runner without that lifecycle must fail
-closed before invoking `agent-phase`.
+Experiment-board records, integrity qualification, public progress and the
+continuation-decision CLI remain unchanged. No run is launched by this migration.
 
-### Bounded continuation decision
+## Bounded continuation decision
 
 When a benchmark treatment deliberately adds LoopX-governed continuation, keep
 process launch and progress observation in the runner and ask LoopX only for the

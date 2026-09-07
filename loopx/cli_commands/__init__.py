@@ -36,9 +36,9 @@ def _load_exports() -> None:
         handle_benchmark_command,
         register_benchmark_command_group,
     )
-    from .benchmark_external_agent import (
-        handle_benchmark_external_agent_command,
-        register_benchmark_external_agent_commands,
+    from .benchmark_continuation import (
+        handle_benchmark_continuation_command,
+        register_benchmark_continuation_commands,
     )
     from .bootstrap_connect import (
         handle_bootstrap_connect_command,
@@ -165,7 +165,7 @@ __all__ = [
     "handle_host_mode_plan_command",
     "handle_benchmark_boundary_command",
     "handle_benchmark_command",
-    "handle_benchmark_external_agent_command",
+    "handle_benchmark_continuation_command",
     "handle_bootstrap_connect_command",
     "handle_canary_command",
     "handle_coordination_shadow_command",
@@ -236,7 +236,7 @@ __all__ = [
     "register_host_mode_plan_command",
     "register_benchmark_boundary_commands",
     "register_benchmark_command_group",
-    "register_benchmark_external_agent_commands",
+    "register_benchmark_continuation_commands",
     "register_bootstrap_connect_command",
     "register_canary_commands",
     "register_coordination_shadow_command",
