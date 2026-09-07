@@ -81,6 +81,12 @@ def _digest(payload: Any) -> str:
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
 
 
+def _is_git_workspace(path: Path) -> bool:
+    return path.is_dir() and any(
+        (candidate / ".git").exists() for candidate in (path, *path.parents)
+    )
+
+
 def _normalize_cadence(value: Any) -> str:
     candidate = str(value or "").strip().lower().replace("-", "_")
     aliases = {
@@ -712,7 +718,7 @@ class ChatActionService(
         if source_goal is None and workspace_ref == "current":
             workspace_candidates = [
                 root for root in self.workspace_roots
-                if root.is_dir() and (root / ".git").exists()
+                if _is_git_workspace(root)
             ]
             if len(workspace_candidates) == 1:
                 return workspace_candidates[0], {
@@ -736,7 +742,7 @@ class ChatActionService(
         elif source_goal is None and workspace_ref.startswith("workspace-"):
             workspace_candidates = [
                 root for root in self.workspace_roots
-                if root.is_dir() and (root / ".git").exists()
+                if _is_git_workspace(root)
             ]
             selected = next(
                 (
@@ -763,7 +769,7 @@ class ChatActionService(
                 for index, root in enumerate(
                     (
                         root for root in self.workspace_roots
-                        if root.is_dir() and (root / ".git").exists()
+                        if _is_git_workspace(root)
                     ),
                     start=1,
                 )

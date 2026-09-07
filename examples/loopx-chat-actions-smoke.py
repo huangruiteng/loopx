@@ -1082,6 +1082,22 @@ def assert_zero_goal_workspace_selection(root: Path) -> None:
     assert source_goal["id"] == ""
     assert source_goal["adapter"]["kind"] == "generic_project_goal_v0"
 
+    monorepo = root / "monorepo"
+    (monorepo / ".git").mkdir(parents=True)
+    nested_project = monorepo / "zoolander"
+    nested_project.mkdir()
+    nested_service = ChatActionService(
+        store=ChatActionStore(root / "nested-action-store"),
+        registry_path=registry_path,
+        workspace_roots=[nested_project],
+    )
+    nested_selected, nested_source_goal = nested_service._project_for_goal_create({
+        "normalized_parameters": {"workspace_ref": "current"},
+        "context": {"kind": "manager", "goal_id": None},
+    })
+    assert nested_selected == nested_project.resolve()
+    assert nested_source_goal["repo"] == str(nested_project.resolve())
+
     second = root / "second-empty-workspace"
     (second / ".git").mkdir(parents=True)
     multi = ChatActionService(
