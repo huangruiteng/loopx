@@ -518,6 +518,45 @@ absolute paths, private source bodies, or hidden CI artifacts.
 
 ## Review Flow
 
+Follow `review_execution_contract.decision_procedure` before writing the review:
+challenge whether the design should ship, falsify its strongest material claim,
+inspect the whole implementation, then reconcile the verdict. The goal is justified
+acceptance, not more rejections. Read the target repository's architecture rules;
+do not export LoopX-specific kernel/provider or TypeScript placement to other repos.
+
+A re-review has two scopes: the latest corrective diff and the complete base-to-head
+PR. Reuse observations only after checking their revisions and assumptions against
+changed callers, platforms, dependencies and promises. Prior approval is not reusable
+evidence. In particular, replacing an OS test with a deterministic mock must not erase
+the real lifecycle invariant the test was meant to prove.
+
+After filling the existing result template, run:
+
+```bash
+loopx --format json pr-review --check-result review-result.json --packet review-packet.json
+```
+
+This opt-in local check performs no network reads, GitHub writes, state changes or
+merge operations. It rebuilds requirements from the installed capability, matches
+the saved exact head, and rejects an APPROVE inconsistent with required evidence or
+blocking findings. A successful check is **not** proof of factual evidence, review
+quality, current remote head, or merge permission. Re-read the head and publish the
+human-readable evidence separately. Existing queue/monitor behavior is unchanged;
+omit these two flags to use normal queue discovery. An older saved packet may need
+fresh review evidence when the installed contract has advanced.
+
+Behavioral qualification lives in `tests/capabilities/test_pr_review_behavior.py`:
+paired synthetic cases include valid designs as well as counterexamples. The optional
+live no-tools test uses the existing Doubao transport with a runtime-injected key:
+
+```bash
+LOOPX_REVIEW_LIVE_TEST=1 python -m pytest -q tests/capabilities/test_pr_review_behavior.py -k live
+```
+
+It sends only public synthetic cases, never repository contents or credentials in
+the prompt. Ordinary tests never contact the provider. These bounded decision tests
+do not establish model-wide reliability or replace a real repository review.
+
 The packet should let a reviewer move through PRs in order:
 
 1. Start from `review_groups.unmerged` for PRs that can still affect merge

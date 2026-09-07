@@ -10,6 +10,7 @@ from pathlib import Path
 from ..capabilities.pr_review_queue import (
     build_pull_request_review_queue_observation,
 )
+from ..capabilities.pr_review_queue.result_check import check_review_result
 from ..file_lock import exclusive_file_lock
 from ..pr_review import (
     build_pr_review_packet,
@@ -84,6 +85,14 @@ def register_pr_review_command(
     )
     add_subcommand_format(parser)
     parser.add_argument(
+        "--check-result",
+        help="Check a saved review result for verdict/evidence consistency; no GitHub writes.",
+    )
+    parser.add_argument(
+        "--packet",
+        help="Saved pr-review packet required with --check-result; remote freshness is checked separately.",
+    )
+    parser.add_argument(
         "--repo",
         help="GitHub owner/repo to review. Defaults to the current project's gh repository context.",
     )
@@ -155,6 +164,38 @@ def handle_pr_review_command(
         return None
     checkpoint_path: Path | None = None
     try:
+        if args.check_result or args.packet:
+            if not (args.check_result and args.packet):
+                raise ValueError("--check-result and --packet must be used together")
+            if (
+                args.autonomous_observation
+                or args.observation_state_file
+                or args.previous_observation_json
+                or args.handled_exact_head
+                or args.projected_exact_head
+                or args.fixture
+                or args.repo
+                or args.since
+            ):
+                raise ValueError(
+                    "result checking cannot be combined with scan or observation options"
+                )
+            try:
+                saved_packet = _read_json_object(
+                    Path(args.packet), label="review packet"
+                )
+                saved_result = _read_json_object(
+                    Path(args.check_result), label="review result"
+                )
+            except OSError:
+                raise ValueError(
+                    "review packet or result is unreadable; check the supplied files"
+                ) from None
+            payload = check_review_result(saved_packet, saved_result)
+            print_payload(
+                payload, output_format(args), lambda value: json.dumps(value, indent=2)
+            )
+            return 0 if payload["ok"] else 1
         if args.previous_observation_json and not args.autonomous_observation:
             raise ValueError(
                 "--previous-observation-json requires --autonomous-observation"

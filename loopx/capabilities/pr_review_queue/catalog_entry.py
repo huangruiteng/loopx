@@ -32,6 +32,11 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
     ),
     "commands": [
         {
+            "command": "loopx pr-review --check-result <result.json> --packet <packet.json> --format json",
+            "purpose": "Reject a declared approval inconsistent with the saved exact head and required evidence.",
+            "write_boundary": "local read-only consistency check; does not verify evidence truth, remote freshness or grant publication/merge authority",
+        },
+        {
             "command": (
                 "loopx pr-review --repo <owner/repo> --state open "
                 "--autonomous-observation --format json"
@@ -63,6 +68,11 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         },
     ],
     "implemented_protocols": [
+        {
+            "schema_version": "pull_request_review_result_check_v0",
+            "module": "loopx.capabilities.pr_review_queue.result_check",
+            "doc": "loopx/capabilities/pr_review_queue/README.md",
+        },
         {
             "schema_version": "pull_request_review_execution_contract_v2",
             "module": "loopx.capabilities.pr_review_queue.review_contract",

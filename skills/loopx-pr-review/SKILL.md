@@ -55,30 +55,31 @@ reviewing.
 Review `review_groups.unmerged` first, then `review_groups.merged`. For every
 selected PR:
 
-1. Record the packet's exact head and run its `evidence_commands`, plus focused
-   repository-native validation when applicable.
+1. Record the packet's exact head. Start with the capability's
+   `review_execution_contract.decision_procedure`, including on re-review;
+   then run `evidence_commands` and relevant repository-native validation.
 2. Fill `review_plan.result_template` from the shared execution contract;
-   preserve missing evidence as `unverified`. For `default_off_isolation`, run
-   its paired counterfactual across every shared and automatically loaded
-   surface, including skills, agent instructions, prompt templates, help,
-   schemas, install bundles, and provider guidance. Treat installation,
-   discovery, provider readiness, accepted input, and resolver success as
-   availability rather than activation; a runtime default-off flag cannot
-   compensate for capability behavior already projected through a baseline
-   instruction surface. For scoped activation, verify the intended scope and
-   every required subject before capability-specific guidance or effects. For
-   `authority_semantics`, match names to actor authority. Never infer
-   `verified` from metadata or CI.
-3. Apply `completion_gate` literally. If an applicable requirement is missing,
-   do not manufacture a detailed verdict; name the evidence gap.
+   preserve missing evidence as `unverified`. Execute its repository-reuse,
+   default-off, authority and real-path counterfactual requirements rather than
+   repeating them as prose. Never infer `verified` from metadata or CI.
+3. Apply `completion_gate` literally. Save the filled result and check it before
+   publication:
+
+   ```bash
+   loopx --format json pr-review --check-result review-result.json --packet review-packet.json
+   ```
+
+   Fix contradictory verdicts, not evidence labels to obtain a pass. This local
+   check cannot verify evidence truth, architecture judgment, or remote freshness.
+   Missing material evidence needs a concrete hold/request-changes explanation,
+   not an invented bug or approval inherited from the previous round.
 4. Render the verified result through `review_template`. The five sections are
    output structure, while the execution contract is the evidence authority.
 5. Re-read the remote head immediately before verdict and publication. Restart
    the evidence pass if it changed.
 
-Each PR gets an independent evidence pass and standalone card. A queue table is
-only a preface. For large queues, finish fewer complete cards and name the
-remainder instead of compressing every review into metadata prose.
+Each PR gets an independent evidence pass and standalone card; a queue table is
+only a preface. Finish fewer complete cards rather than metadata-only reviews.
 
 ## Publish And Read Back
 
