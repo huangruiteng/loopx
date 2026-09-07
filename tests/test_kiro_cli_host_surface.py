@@ -29,11 +29,14 @@ from loopx.host_loop_activation import (
     scheduler_command_binding_for_agent_type,
 )
 from loopx.kiro_cli_goal_mode import (
+    KIRO_CLI_GOAL_AGENT_FLAG,
     KIRO_CLI_GOAL_CLEAR_COMMAND,
     KIRO_CLI_GOAL_COMMAND,
     KIRO_CLI_GOAL_COMPLETION_TOOL,
     KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS,
     KIRO_CLI_GOAL_MAX_ITERATION_CEILING,
+    KIRO_CLI_GOAL_STATUS_COMMAND,
+    KIRO_CLI_GOAL_VALIDATE_FLAG,
     KIRO_CLI_HOOK_TRIGGERS,
     KIRO_CLI_NATIVE_GOAL_FACTS,
     KIRO_CLI_SESSION_ID_ENV,
@@ -248,6 +251,8 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert mutation["quota_gate_enforcement"] == "advisory_only"
     assert mutation["native_goal_command"] == KIRO_CLI_GOAL_COMMAND
     assert mutation["native_goal_cancel_command"] == KIRO_CLI_GOAL_CLEAR_COMMAND
+    assert mutation["native_goal_status_command"] == KIRO_CLI_GOAL_STATUS_COMMAND
+    assert mutation["native_goal_validate_flag"] == KIRO_CLI_GOAL_VALIDATE_FLAG
     assert (
         mutation["native_goal_max_iteration_ceiling"]
         == KIRO_CLI_GOAL_MAX_ITERATION_CEILING
@@ -276,6 +281,10 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert "quota should-run" in steps
     assert KIRO_CLI_GOAL_COMPLETION_TOOL in steps
     assert "no host scheduler to fall back on" not in steps
+    # The host judges each iteration against --validate criteria; binding the
+    # goal without them leaves the host checking nothing LoopX will accept.
+    assert KIRO_CLI_GOAL_VALIDATE_FLAG in steps
+    assert KIRO_CLI_GOAL_STATUS_COMMAND in steps
 
     assert packet["setup_command"] == _surface_install_command(
         HOST_SURFACE, "loopx", "."
@@ -306,6 +315,9 @@ def test_native_goal_facts_match_the_probed_host() -> None:
     actually documents and what the probed binary exposes."""
     assert KIRO_CLI_GOAL_COMMAND == "/goal"
     assert KIRO_CLI_GOAL_CLEAR_COMMAND == "/goal clear"
+    assert KIRO_CLI_GOAL_STATUS_COMMAND == "/goal status"
+    assert KIRO_CLI_GOAL_VALIDATE_FLAG == "--validate"
+    assert KIRO_CLI_GOAL_AGENT_FLAG == "--agent"
     assert KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS == 5
     assert KIRO_CLI_GOAL_MAX_ITERATION_CEILING == 50
     assert KIRO_CLI_GOAL_COMPLETION_TOOL == "goal"
@@ -322,3 +334,8 @@ def test_native_goal_facts_match_the_probed_host() -> None:
     assert "ceiling 50" in facts
     assert "completion contract" in facts
     assert "exit code 2" in facts
+    # The host's own hint names --validate and --agent; an adapter that only
+    # documents --max understates the primitive it binds.
+    assert KIRO_CLI_GOAL_VALIDATE_FLAG in facts
+    assert KIRO_CLI_GOAL_AGENT_FLAG in facts
+    assert KIRO_CLI_GOAL_STATUS_COMMAND in facts

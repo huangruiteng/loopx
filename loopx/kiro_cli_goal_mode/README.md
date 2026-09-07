@@ -8,24 +8,39 @@ to the host's own loop instead of pretending the agent merely drives itself.
 
 ## Native goal primitive
 
-`/goal <description> [--max N]` — built-in command. The host re-dispatches
-turns toward the stated objective, and the model must prove completion through
-the built-in `goal` tool before the loop ends.
+`/goal [description --validate criteria --agent name --max N] | clear` — the
+built-in command, exactly as the host's own hint states it. The host
+re-dispatches turns toward the stated objective, judges each iteration against
+the validation criteria, and the model must prove completion through the
+built-in `goal` tool before the loop ends.
 
 - Iteration budget is host-enforced: default `5`, ceiling `50`. This is the
   one part of the loop LoopX does not have to trust the model for.
-- `/goal clear` cancels the active goal. The loop also stops in `Exhausted`
-  (budget spent without completion) and pauses after 3 consecutive dispatch
-  failures.
+- `--validate <criteria>` states what the host checks each iteration; its
+  per-iteration result carries `passed` plus `feedback`, so LoopX passes the
+  validation it already owns instead of leaving the criteria implicit.
+- `--agent <name>` picks which agent config runs the goal. LoopX does not set
+  it: the LoopX skill facade must stay reachable from whichever agent the user
+  chose.
+- `/goal clear` cancels the active goal and `/goal status` reads the current
+  one back. The loop also stops in `Exhausted` (budget spent without
+  completion) and pauses after 3 consecutive dispatch failures.
 - The `goal` tool's `complete` command enforces a completion contract: each
   success criterion needs cited tool output, and belief or narrative
   confidence is explicitly not evidence — the same standard LoopX writeback
   wants.
 
-Verified against `kiro-cli 1.0.437` (TUI shell `2.21.1`): `/goal` is present
-in the binary's slash-command registry, and the host's own `/goal` and `goal`
-tool references document the iteration budget, terminal states, and completion
-contract.
+Probed on `kiro-cli-chat 2.21.1` (app bundle `20260904.123104`; `kiro-cli` and
+`kiro-cli-chat` both report `2.21.1`). The command hint, `--validate`/`--agent`/
+`--max` flags, the iteration-ceiling rejection message, the `Completed` and
+`Exhausted` terminal states, the 3-failure pause, and the per-iteration
+`passed`/`feedback` result all come from the shipped binary rather than from
+host marketing copy. Re-probe with:
+
+```bash
+strings -a "$(readlink -f "$(command -v kiro-cli-chat)")" \
+  | grep -ao "/goal \[[^]]*\]"
+```
 
 ## Native hook seam
 
@@ -83,10 +98,13 @@ loopx start-goal --guided --project . --slash-command-arguments="<task>" --host-
 
 After todo writeback, bind the generated heartbeat task body with
 `/goal <task_body> --max <N>` — with `N` taken from the remaining quota slots
-and never above the host ceiling of 50 — start every turn and native goal
-iteration with `quota should-run` (advisory guidance; LoopX does not intercept
-native host iterations), and settle through the built-in `goal` tool only after
-LoopX writeback so the cited evidence matches what LoopX recorded.
+and never above the host ceiling of 50 — pass the validation the todo already
+names as `--validate <criteria>` so the host judges each iteration against the
+check LoopX will accept, read the loop back with `/goal status`, start every
+turn and native goal iteration with `quota should-run` (advisory guidance;
+LoopX does not intercept native host iterations), and settle through the
+built-in `goal` tool only after LoopX writeback so the cited evidence matches
+what LoopX recorded.
 
 Kiro CLI exports `KIRO_SESSION_ID` for every session; it is the stable value a
 LoopX thread binding should key on instead of prose.

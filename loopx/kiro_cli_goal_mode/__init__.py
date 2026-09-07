@@ -18,14 +18,20 @@ KIRO_CLI_ACCEPTED_INPUTS = (
     "kiro tui",
 )
 
-# Native goal primitive built into the kiro-cli binary (probed live on
-# kiro-cli 1.0.437 / TUI shell 2.21.1: `/goal` is present in the binary's
-# slash-command registry and documented by the host's own `/goal` reference).
+# Native goal primitive built into the kiro-cli binary. Probed on
+# `kiro-cli-chat 2.21.1` (app bundle 20260904.123104; both `kiro-cli` and
+# `kiro-cli-chat` report 2.21.1): the binary carries the hint
+# `/goal [description --validate criteria --agent name --max N] | clear`, the
+# iteration-ceiling rejection message, the `Completed`/`Exhausted` terminal
+# states and the per-iteration `passed`/`feedback` result.
 # The host owns the iteration loop: it re-dispatches the turn until the model
 # proves completion through the `goal` tool or the iteration budget runs out.
 KIRO_CLI_GOAL_COMMAND = "/goal"
 KIRO_CLI_GOAL_CLEAR_COMMAND = "/goal clear"
+KIRO_CLI_GOAL_STATUS_COMMAND = "/goal status"
 KIRO_CLI_GOAL_MAX_FLAG = "--max"
+KIRO_CLI_GOAL_VALIDATE_FLAG = "--validate"
+KIRO_CLI_GOAL_AGENT_FLAG = "--agent"
 KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS = 5
 KIRO_CLI_GOAL_MAX_ITERATION_CEILING = 50
 KIRO_CLI_GOAL_COMPLETION_TOOL = "goal"
@@ -49,14 +55,16 @@ KIRO_CLI_HOOK_TRIGGERS = (
 KIRO_CLI_HOOK_CONFIG_LABEL = "~/.kiro/agents/<name>.json (or .kiro/agents/<name>.json)"
 
 KIRO_CLI_NATIVE_GOAL_FACTS = (
-    "native `/goal <description> [--max N]` command: the host re-dispatches "
-    "turns toward one objective until completion is proven or the iteration "
-    "budget is spent (default 5, ceiling 50)",
+    "native `/goal [description --validate criteria --agent name --max N] | "
+    "clear` command: the host re-dispatches turns toward one objective, judges "
+    "each iteration against the validation criteria, and stops when completion "
+    "is proven or the iteration budget is spent (default 5, ceiling 50)",
     "the built-in `goal` tool's `complete` command enforces a completion "
     "contract: every success criterion needs cited tool output, not narrative "
     "confidence",
-    "`/goal clear` cancels the active goal; the loop also stops on Exhausted "
-    "and pauses after 3 consecutive dispatch failures",
+    "`/goal clear` cancels the active goal and `/goal status` reads it back; "
+    "the loop also stops on Exhausted and pauses after 3 consecutive dispatch "
+    "failures",
     "`hooks` in the agent config expose agentSpawn/userPromptSubmit/"
     "preToolUse/postToolUse/stop, and preToolUse can block a tool call with "
     "exit code 2",
@@ -79,12 +87,13 @@ def kiro_cli_activation_extras() -> dict[str, Any]:
     Keeps the Kiro CLI host facts (goal command, iteration budget, completion
     tool, gate text, activation steps) in this package instead of growing
     ``host_loop_activation.py`` past its module metric budget. Kiro CLI ships
-    both halves of a goal-mode host: a native goal primitive — ``/goal <task>
-    [--max N]`` whose host-side loop re-dispatches turns until the model
-    proves completion through the ``goal`` tool — and a bounded iteration
-    budget the host itself enforces (default 5, ceiling 50). What it does not
-    ship is a cross-session daemon, and LoopX installs no hook, so quota
-    pacing is instructed rather than enforced.
+    both halves of a goal-mode host: a native goal primitive — ``/goal
+    [description --validate criteria --agent name --max N] | clear`` whose
+    host-side loop re-dispatches turns until the ``goal`` tool proves
+    completion — and a bounded iteration budget the host itself enforces
+    (default 5, ceiling 50). What it does not ship is a cross-session daemon,
+    and LoopX installs no hook, so quota pacing is instructed rather than
+    enforced.
     """
     return {
         "activation_method": "bind_native_goal_with_advisory_quota_entry",
@@ -94,7 +103,9 @@ def kiro_cli_activation_extras() -> dict[str, Any]:
             "quota_gate_enforcement": "advisory_only",
             "native_goal_command": KIRO_CLI_GOAL_COMMAND,
             "native_goal_cancel_command": KIRO_CLI_GOAL_CLEAR_COMMAND,
+            "native_goal_status_command": KIRO_CLI_GOAL_STATUS_COMMAND,
             "native_goal_max_flag": KIRO_CLI_GOAL_MAX_FLAG,
+            "native_goal_validate_flag": KIRO_CLI_GOAL_VALIDATE_FLAG,
             "native_goal_default_max_iterations": (
                 KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS
             ),
@@ -124,6 +135,11 @@ def kiro_cli_activation_extras() -> dict[str, Any]:
             f"{KIRO_CLI_GOAL_MAX_ITERATION_CEILING} "
             f"(host default is {KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS}); "
             f"`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels it.",
+            "Pass the validation the LoopX todo already names as "
+            f"`{KIRO_CLI_GOAL_VALIDATE_FLAG} <criteria>` so the host judges "
+            "each iteration against the same check LoopX will accept as "
+            f"writeback, and read the loop back with "
+            f"`{KIRO_CLI_GOAL_STATUS_COMMAND}` instead of guessing its state.",
             "Start every turn and native goal iteration with `quota "
             "should-run` and honor a stop/throttle decision before any "
             "delivery work — instructed pacing, not a host-enforced gate.",
