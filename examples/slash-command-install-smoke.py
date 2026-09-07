@@ -112,7 +112,8 @@ def main() -> int:
 
         codex_skill = codex_home / "skills" / "loopx" / "SKILL.md"
         codex_skill_text = codex_skill.read_text(encoding="utf-8")
-        assert 'name: "loopx"' in codex_skill_text
+        assert "name: loopx\n" in codex_skill_text
+        assert 'name: "loopx"' not in codex_skill_text
         assert "surface=codex-skills" in codex_skill_text
         assert "LoopX `/loopx`" in codex_skill_text
         assert "start-goal --guided --project . --slash-command-arguments=" in codex_skill_text
@@ -127,7 +128,7 @@ def main() -> int:
 
         claude_skill = claude_home / "skills" / "loopx-global-summary" / "SKILL.md"
         claude_skill_text = claude_skill.read_text(encoding="utf-8")
-        assert "name: \"loopx-global-summary\"" in claude_skill_text
+        assert "name: loopx-global-summary\n" in claude_skill_text
         assert "surface=claude-skills" in claude_skill_text
         assert "global-summary" in claude_skill_text
 

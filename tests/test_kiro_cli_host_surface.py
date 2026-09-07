@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 import pytest
+import yaml
 from host_surface_cli_probes import (
     onboarding_setup_command_installs,
     selection_gate_offers_surface,
@@ -118,6 +119,39 @@ def test_installed_skills_are_invocable_as_kiro_slash_commands(
         == str(tmp_path / "kiro-home" / "skills")
     )
     assert (tmp_path / "kiro-home" / "skills" / "loopx" / "SKILL.md").is_file()
+
+
+def test_installed_skill_front_matter_keeps_names_unquoted(tmp_path: Path) -> None:
+    """Kiro derives the slash command from the front-matter `name`, and its
+    reader keeps quote characters verbatim: `name: "loopx"` becomes the command
+    `/"loopx"`. So the name must be a plain YAML scalar. Values YAML genuinely
+    needs quoted (a leading `[`, an embedded `": "`) must stay quoted, or a
+    strict reader rejects the whole front matter."""
+    install_slash_commands(
+        execute=True,
+        surfaces=[HOST_SURFACE],
+        kiro_home=str(tmp_path / "kiro-home"),
+    )
+    skills = sorted((tmp_path / "kiro-home" / "skills").glob("*/SKILL.md"))
+    assert skills, "installer wrote no skills"
+    for skill in skills:
+        text = skill.read_text(encoding="utf-8")
+        front_matter = text.split("---", 2)[1]
+        fields = yaml.safe_load(front_matter)
+        assert fields["name"] == skill.parent.name
+        assert '"' not in fields["name"]
+        assert f"name: {skill.parent.name}\n" in text
+
+    # The values that must stay quoted, proven on the shipped specs rather than
+    # asserted in the abstract.
+    entry = (tmp_path / "kiro-home" / "skills" / "loopx" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert 'argument-hint: "[' in entry  # a bare [ would parse as a flow sequence
+    research = (
+        tmp_path / "kiro-home" / "skills" / "loopx-deepresearch" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert 'description: "' in research  # contains ": ", illegal unquoted
 
 
 def test_installer_preserves_user_owned_kiro_skill(tmp_path: Path) -> None:
