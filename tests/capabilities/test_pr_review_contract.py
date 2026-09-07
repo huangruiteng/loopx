@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
+from loopx.cli import main as cli_main
 from loopx.capabilities.pr_review_queue import (
     build_agent_response_contract,
     build_review_plan,
@@ -343,6 +347,77 @@ def test_reuse_evidence_compares_semantics_beyond_the_diff() -> None:
     assert "coexistence" in reuse["rule"]
     assert "not an automatic similarity detector" in reuse["rule"]
     assert "repository_reuse" in contract["verdict_policy"]["open_pr_unresolved_reuse"]
+
+
+def test_reuse_requires_state_derivation_and_real_authoring_evidence() -> None:
+    """A typed reader plus a generic JSON writer is not a product producer."""
+    contract = build_agent_response_contract()["review_execution_contract"]
+    reuse = next(
+        row for row in contract["evidence_requirements"]
+        if row["evidence_id"] == "repository_reuse"
+    )
+    assert "state_model_assessment" in reuse["fields"]
+    assessment = reuse["state_model_assessment"]
+    assert assessment["classification_values"] == [
+        "authoritative_fact", "irreducible_intent", "derived_projection", "diagnostic_hint"
+    ]
+    assert {
+        "field_or_relation", "classification", "existing_canonical_sources",
+        "derivation_or_irreducibility_evidence", "producer_and_trigger",
+        "authoring_discovery_path", "update_retire_and_replay_owner",
+        "missing_stale_or_conflicting_value_behavior", "source_completeness",
+        "counterfactual_validation", "decision",
+    } <= set(assessment["item_fields"])
+    assert "generic JSON" in assessment["rule"]
+    assert "cannot infer" in assessment["rule"]
+    assert "not_yet_proven" in assessment["rule"]
+    # This extends the existing reuse gate, rather than creating an independent
+    # automatic classifier that treats every user-authored intent as redundant.
+    assert contract["completion_gate"]["blocking_evidence_verdicts"]["repository_reuse"] == [
+        "unjustified_duplication", "not_yet_proven"
+    ]
+
+
+def test_public_cli_delivers_state_review_without_claiming_it_was_performed(capsys) -> None:
+    fixture = Path(__file__).resolve().parents[2] / "examples/fixtures/pr-review.public.json"
+    assert cli_main(["--format", "json", "pr-review", "--fixture", str(fixture)]) == 0
+    packet = json.loads(capsys.readouterr().out)
+    contract = packet["agent_response_contract"]["review_execution_contract"]
+    requirements = {row["evidence_id"]: row for row in contract["evidence_requirements"]}
+    assert requirements["repository_reuse"]["state_model_assessment"]["required_when"] == (
+        "introduced_or_newly_enforced_state"
+    )
+    assert requirements["observable_semantics"]["state_projection_counterfactuals"]["cases"]
+    assert packet["pull_requests"]
+    reviewed_code = False
+    for item in packet["pull_requests"]:
+        evidence = item["review_plan"]["result_template"]["evidence"]
+        if "repository_reuse" in item["review_plan"]["required_evidence_ids"]:
+            reviewed_code = True
+            assert evidence["repository_reuse"] == {"status": "unverified"}
+            assert evidence["observable_semantics"] == {"status": "unverified"}
+    assert reviewed_code
+
+
+def test_semantic_review_requires_compaction_and_annotation_counterfactuals() -> None:
+    contract = build_agent_response_contract()["review_execution_contract"]
+    parity = next(
+        row for row in contract["evidence_requirements"]
+        if row["evidence_id"] == "observable_semantics"
+    )
+    assert "state_projection_counterfactuals" in parity["fields"]
+    cases = parity["state_projection_counterfactuals"]
+    assert cases["required_when"] == "state_or_projection_drives_behavior"
+    assert {
+        "same_canonical_state_without_redundant_annotation",
+        "unrelated_items_beyond_display_limit",
+        "equivalent_pagination_or_display_order",
+        "completed_superseded_or_archived_reference",
+        "incomplete_source_is_not_proven_absence",
+    } <= set(cases["cases"])
+    assert "independent invariant" in cases["rule"]
+    assert "user intent" in cases["rule"]
+    assert "real public caller" in cases["rule"]
 
 
 @pytest.mark.parametrize(

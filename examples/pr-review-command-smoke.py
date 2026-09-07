@@ -691,6 +691,7 @@ def main() -> int:
         "problem_context",
         "architecture_flow",
         "repository_reuse",
+        "observable_semantics",
         "changed_line_classification",
         "scope_fit",
         "symbol_map",
@@ -758,6 +759,7 @@ def main() -> int:
     assert execution["completion_gate"]["stale_head_verdict_allowed"] is False
     assert execution["completion_gate"]["blocking_evidence_verdicts"] == {
         "repository_reuse": ["unjustified_duplication", "not_yet_proven"],
+        "observable_semantics": ["unintended_drift", "not_yet_proven"],
         "change_proportionality": ["disproportionate", "not_yet_proven"],
         "default_off_isolation": ["not_isolated", "not_yet_proven"],
         "authority_semantics": ["misleading", "not_yet_proven"],

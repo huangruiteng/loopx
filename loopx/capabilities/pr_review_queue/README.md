@@ -185,7 +185,15 @@ typed evidence groups before a verdict:
   ownership. Prefer the nearest existing owner; justify independent boundaries
   with evidence, not green CI or conflict-free coexistence. For alternative
   views of one resource, validate consumer switching and concurrent updates
-  where relevant. Repeat the comparison after base integration or head changes;
+  where relevant. Before accepting introduced or newly enforced state, classify
+  it as an authoritative fact, irreducible intent, derived projection or
+  diagnostic hint. Trace whether existing canonical state can derive the
+  outcome before adding another declaration to maintain. Require the actual
+  producer, triggering workflow, authoring discovery and update/retirement
+  owner; a generic JSON writer plus a hand-filled fixture proves transport,
+  not an ordinary workflow. Intent such as consent or an alternative relation
+  cannot be invented from unrelated records. Repeat the comparison after base
+  integration or head changes;
 - caller-observable semantic parity for every behavior-bearing change, whether
   or not its title says refactor or migration. Inventory legacy caller branches,
   then run the same synthetic fixture through the public entrypoint and affected
@@ -196,7 +204,13 @@ typed evidence groups before a verdict:
   case must make the real path fail on the historical defect or a deliberate
   dropped-field/detail or stronger-precondition mutation, then pass at the fixed
   head. New-rule provider conformance and prose-only claims do not establish
-  before/after compatibility;
+  before/after compatibility. When state/projections drive behavior, vary only
+  redundant annotations, display order/pagination and unrelated-item count
+  beyond display caps, holding authoritative facts fixed. Admission must not
+  change merely because a record falls off a diagnostic page. Check completed,
+  superseded and archived references against the actual acceptance/lifecycle
+  contract; source incompleteness is not proven absence. Do not confuse a real
+  intent or priority change with a presentation-only counterfactual;
 - exact changed-line classification across production, tests/fixtures, docs,
   generated output, and mechanical moves;
 - a 2-5 item exact-head symbol map for code-changing PRs, including caller,
@@ -245,8 +259,10 @@ are `reused`, `separation_justified`, `no_existing_candidate`,
 `unjustified_duplication`, or `not_yet_proven`. A negative search must name its
 scope and limitations; an empty candidate list is not proof of absence.
 Unjustified duplication or missing evidence requires a request-changes
-conclusion. Similar-looking code with distinct invariants or compatibility
-needs may legitimately remain separate. Ordinary docs retain their existing
+conclusion, including missing state derivation, producer/trigger or completeness
+proof in `state_model_assessment`. The same existing gate applies; there is no
+second semantic classifier. Similar-looking code with distinct invariants or
+compatibility needs may legitimately remain separate. Ordinary docs retain their existing
 review path; smoke-only changes retain `durable_smoke_value` coverage review.
 This is a reviewer-executed contract projected by the packet, not an automatic
 repository search or a semantic validator of published prose. Tests establish
