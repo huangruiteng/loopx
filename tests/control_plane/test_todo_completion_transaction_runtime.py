@@ -161,6 +161,59 @@ def test_python_adapter_requires_requested_completion_policy_projection(
         )
 
 
+def test_python_adapter_and_typescript_runtime_share_agent_identity_semantics() -> None:
+    policy_request = {
+        "schema_version": "loopx_todo_completion_policy_request_v0",
+        "goal_id": "goal-example",
+        "agent_model": "peer_v1",
+        "claimed_by": "agent\u0085a",
+        "registered_agents": ["agent\u0085a", "agent-b"],
+        "next_claimed_by": "agent\u0085b",
+        "next_agent_todo": "Continue the bounded migration.",
+        "next_continuation_policy": None,
+        "next_excluded_agents": ["agent\u0085a"],
+        "self_merged": False,
+        "evidence": None,
+        "linked_successors": [],
+    }
+
+    result = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=True,
+        dry_run=False,
+        completion_policy_request=policy_request,
+    )
+
+    assert result["completion_policy"] == _completion_policy_result(
+        registered_agents=["agent-a", "agent-b"],
+        effective_next_claimed_by="agent-b",
+        effective_next_excluded_agents=["agent-a"],
+    )
+
+    with pytest.raises(ValueError, match="public-safe registered agent id"):
+        completion_transaction.reduce_todo_completion_transaction(
+            todo={"status": "open"},
+            projection_source="materialized",
+            goal_id="goal-example",
+            todo_id="todo_example001",
+            completion_turn_key=None,
+            completion_identity_source=None,
+            no_followup=False,
+            requested_has_successor=True,
+            dry_run=False,
+            completion_policy_request={
+                **policy_request,
+                "claimed_by": "\ufeffagent-a",
+            },
+        )
+
+
 @pytest.mark.parametrize(
     "malformed",
     [

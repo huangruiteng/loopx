@@ -1,5 +1,10 @@
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
+import { AuthorityStoreProtocolError } from "../coordination/authority_store_codec.ts";
+import {
+  normalizeRegisteredTodoAgents,
+  normalizeTodoAgent,
+} from "../coordination/todo_agents.ts";
 import {
   requireBoolean,
   requireJsonObject,
@@ -12,7 +17,6 @@ export const TODO_COMPLETION_POLICY_REQUEST_SCHEMA =
 export const TODO_COMPLETION_POLICY_RESULT_SCHEMA =
   "loopx_todo_completion_policy_result_v0";
 
-const AGENT_ID_PATTERN = /^[a-z][a-z0-9_.:@-]{0,79}$/u;
 const CONTINUATION_POLICIES = [
   "independent_handoff",
   "same_agent_non_delivery",
@@ -57,9 +61,24 @@ function optionalString(value: unknown, label: string): string | null {
 }
 
 function normalizeAgentId(value: unknown): string | null {
-  const compact = String(value ?? "").trim().split(/\s+/u).join(" ");
-  const candidate = compact.toLowerCase().replaceAll(" ", "-");
-  return candidate && AGENT_ID_PATTERN.test(candidate) ? candidate : null;
+  try {
+    return normalizeTodoAgent(value, "agent_id");
+  } catch (error) {
+    if (error instanceof AuthorityStoreProtocolError) return null;
+    throw error;
+  }
+}
+
+function requireRegisteredAgents(value: unknown): string[] {
+  const agents = requireStringArray(value, "registered_agents");
+  try {
+    return normalizeRegisteredTodoAgents(agents);
+  } catch (error) {
+    if (error instanceof AuthorityStoreProtocolError) {
+      throw new EffectRuntimeRequestError(error.message);
+    }
+    throw error;
+  }
 }
 
 function requireRegisteredAgent(
@@ -117,10 +136,7 @@ function decodeRequest(value: unknown): CompletionPolicyRequest {
       "Todo completion policy request schema mismatch",
     );
   }
-  const registeredAgents = requireStringArray(
-    request.registered_agents,
-    "registered_agents",
-  );
+  const registeredAgents = requireRegisteredAgents(request.registered_agents);
   if (!Array.isArray(request.next_excluded_agents)) {
     throw new EffectRuntimeRequestError(
       "next_excluded_agents must be an array",
@@ -191,6 +207,12 @@ export function resolveTodoCompletionPolicy(
   value: unknown,
 ): TodoCompletionPolicyResult {
   const request = decodeRequest(value);
+  // Preserve Python bool(str) compatibility: null and the empty string mean
+  // "not supplied", while a non-empty (including whitespace-only) string is a
+  // caller-supplied Todo. This matters for same-agent ownership and dependent
+  // --next-* validation.
+  const hasNextAgentTodo = request.next_agent_todo !== null &&
+    request.next_agent_todo !== "";
   const effectiveClaimedBy = request.claimed_by === null ||
       request.claimed_by === undefined || request.claimed_by === ""
     ? null
@@ -223,7 +245,7 @@ export function resolveTodoCompletionPolicy(
     );
   }
   if (
-    request.next_agent_todo !== null && effectiveNextClaimedBy === null &&
+    hasNextAgentTodo && effectiveNextClaimedBy === null &&
     continuationPolicy(request.next_continuation_policy) ===
       "same_agent_non_delivery"
   ) {
@@ -238,13 +260,13 @@ export function resolveTodoCompletionPolicy(
         "next_excluded_agents",
     );
   }
-  if (effectiveNextClaimedBy !== null && request.next_agent_todo === null) {
+  if (effectiveNextClaimedBy !== null && !hasNextAgentTodo) {
     throw new EffectRuntimeRequestError(
       "--next-claimed-by requires --next-agent-todo",
     );
   }
   if (
-    effectiveNextExcludedAgents.length > 0 && request.next_agent_todo === null
+    effectiveNextExcludedAgents.length > 0 && !hasNextAgentTodo
   ) {
     throw new EffectRuntimeRequestError(
       "--next-excluded-agent requires --next-agent-todo",
