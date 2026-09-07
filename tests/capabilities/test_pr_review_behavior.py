@@ -107,7 +107,9 @@ def test_corpus_has_positive_controls_and_does_not_send_its_oracle():
 @pytest.mark.parametrize("scenario,expected,concern", CASES)
 def test_live_review_decision(scenario, expected, concern):
     from loopx.control_plane.testing.doubao_model_behavior_actor import (
-        DOUBAO_2_1_PRO_MODEL,
+        ALLOWED_MODEL_BEHAVIOR_MODELS,
+        DOUBAO_MODEL_ENV,
+        DOUBAO_SEED_EVOLVING_MODEL,
         _direct_ark_transport,
         _invoke_provider_decision,
     )
@@ -115,10 +117,13 @@ def test_live_review_decision(scenario, expected, concern):
     key = os.environ.get("ARK_API_KEY", "")
     if not key:
         pytest.fail("live qualification requested without runtime-injected ARK_API_KEY")
+    model = os.environ.get(DOUBAO_MODEL_ENV, DOUBAO_SEED_EVOLVING_MODEL)
+    if model not in ALLOWED_MODEL_BEHAVIOR_MODELS:
+        pytest.fail("live qualification model must be explicitly allowlisted")
     contract = build_agent_response_contract()["review_execution_contract"]
     decision = _invoke_provider_decision(
         api_key=key,
-        model=DOUBAO_2_1_PRO_MODEL,
+        model=model,
         timeout_seconds=60,
         transport=_direct_ark_transport,
         system_instruction=(

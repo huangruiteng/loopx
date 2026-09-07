@@ -553,6 +553,9 @@ live no-tools test uses the existing Doubao transport with a runtime-injected ke
 LOOPX_REVIEW_LIVE_TEST=1 python -m pytest -q tests/capabilities/test_pr_review_behavior.py -k live
 ```
 
+The default model is `doubao-seed-evolving`; `LOOPX_MODEL_BEHAVIOR_MODEL` can
+explicitly select another allowlisted model for comparative qualification.
+
 It sends only public synthetic cases, never repository contents or credentials in
 the prompt. Ordinary tests never contact the provider. These bounded decision tests
 do not establish model-wide reliability or replace a real repository review.
