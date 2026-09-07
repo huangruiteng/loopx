@@ -49,7 +49,7 @@ AGY_GOAL_CANCELLED_TOKEN = "<!-- GOAL_CANCELLED -->"
 
 
 def agy_activation_extras() -> dict[str, Any]:
-    """Keyword overrides for ``_agy_cli_activation``'s facade call.
+    """Keyword overrides for ``agy_cli_activation``'s facade call.
 
     Keeps the agy host facts (goal command, tokens, wake tools, gate text,
     activation steps) in the agy package instead of growing

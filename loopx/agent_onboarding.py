@@ -52,6 +52,8 @@ def _surface_install_command(agent_type: str, cli_bin: str, project: str) -> str
         return f"{shell_arg(cli_bin)} slash-commands --install --surface zcode"
     if agent_type == "agy":
         return f"{shell_arg(cli_bin)} slash-commands --install --surface agy"
+    if agent_type == "kiro-cli":
+        return f"{shell_arg(cli_bin)} slash-commands --install --surface kiro-cli"
     if agent_type == "pi":
         # The slash-commands installer resolves the Pi extension target through
         # --pi-project; pass the resolved project so the command stays correct
@@ -282,6 +284,7 @@ def _bootstrap_pack_command(
         "cursor-agent": "cursor-agent",
         "zcode": "zcode",
         "agy": "agy",
+        "kiro-cli": "kiro-cli",
         "deepseek-harness": "deepseek-harness",
         "deepseek-harness-native": "deepseek-harness-native",
         "ark-managed-agent": "ark-managed-agent",
@@ -354,6 +357,16 @@ def _start_instruction(agent_type: str) -> str:
             "bounded wake with the native `schedule` tool (DurationSeconds + "
             "wake Prompt; recurring via MaxIterations) when quota allows more "
             "work."
+        )
+    if agent_type == "kiro-cli":
+        return (
+            "Run `/loopx <task>` (the LoopX skill installed in `~/.kiro/skills`); "
+            "after todo writeback, bind the objective with the native "
+            "`/goal <task_body> --max <N>` command, taking N from the remaining "
+            "quota slots and never above the host ceiling of 50 (`/goal clear` "
+            "cancels). Start every turn and native goal iteration with `quota "
+            "should-run`, and settle through the built-in `goal` tool only after "
+            "LoopX writeback so its completion contract cites the same evidence."
         )
     if agent_type == "deepseek-harness":
         return (
