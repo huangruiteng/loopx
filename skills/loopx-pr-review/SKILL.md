@@ -50,6 +50,12 @@ Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
+Require execution `policy_revision >= 1`; a schema name alone is insufficient.
+If missing/older, stop publication and regenerate with current installed LoopX.
+Do not retain expired temporary worktree overrides. Honor explicit runtime pins,
+but report incompatible policy instead of silently downgrading the review.
+This establishes compatibility, not latest-release freshness.
+
 ## Execute One Review Plan
 
 Review `review_groups.unmerged` first, then `review_groups.merged`. For every
@@ -71,6 +77,9 @@ selected PR:
 
    Fix contradictory verdicts, not evidence labels to obtain a pass. This local
    check cannot verify evidence truth, architecture judgment, or remote freshness.
+   Preserve the template's `review_policy_revision`; do not relabel an old result
+   without executing the current evidence plan. Verified rows must fill their
+   declared fields; a single generic “reviewed” note is insufficient.
    Missing material evidence needs a concrete hold/request-changes explanation,
    not an invented bug or approval inherited from the previous round.
 4. Render the verified result through `review_template`. The five sections are
@@ -123,17 +132,6 @@ Publish two artifacts:
 
 Do not publish before the Chinese section covers the entire PR. Read both
 artifacts back.
-
-## Full PR Interpretation Depth
-
-Use the packet's `repository_reuse`, `symbol_map`, `walkthroughs`, and
-`validation_matrix` evidence across the whole PR, including unchanged callers
-and sibling implementations. Walk one positive path to the observable result.
-Walk one negative path and explain its failure owner. Render the verified
-evidence in the five sections; do not maintain a second checklist here.
-
-A review that only repeats the PR body, only discusses one blocker, or omits
-whole files/modules is incomplete and must be reworked.
 
 ## Example / Walkthrough / Smoke-Only PRs
 

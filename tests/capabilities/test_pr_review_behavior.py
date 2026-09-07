@@ -19,6 +19,30 @@ from loopx.capabilities.pr_review_queue.review_contract import (
 CASES = [
     (
         {
+            "request": "Review a staged storage migration after its decoder fix.",
+            "problem": "Documents must remain writable before promotion; new SQL storage needs atomic archiving.",
+            "repository_rule": "Retention policy has one owner; storage adapters may coexist during migration.",
+            "code": "legacy.archive: parse_document(); done = filter_done(); keep = standing_decisions(done); move = oldest(done - keep, limit); write_document(move)\n"
+                    "native.archive: read_head(); done = filter_done(); keep = standing_decisions(done); move = oldest(done - keep, limit); cas_commit(move)",
+            "evidence": "Both routes have active callers. Native File and SQL tests pass; sampled old/new outputs match. Independent selectors remain in unchanged legacy and new native code. Python grows 600 lines for private effects and compatibility. Author says legacy storage explains all retained rules. Input validation and CI pass.",
+        },
+        "REQUEST_CHANGES",
+        "architecture",
+    ),
+    (
+        {
+            "request": "Review a staged storage migration.",
+            "problem": "Documents must remain writable before promotion; new SQL storage needs atomic archiving.",
+            "repository_rule": "Retention policy has one owner; storage adapters may coexist during migration.",
+            "code": "legacy.archive: facts = parse_document(); ids = shared_selector(facts, limit); write_document(ids)\n"
+                    "native.archive: facts = read_head(); ids = shared_selector(facts, limit); cas_commit(ids)",
+            "evidence": "Replaced legacy rules are deleted. Extra Python is private validation execution and required document I/O with real callers and an exit condition; product still grows 600 lines. Real CLI pre/post promotion preserves retention and order; a selector mutation fails the independent oracle. Real File/SQL integration, recovery and installed routes pass; round trips are bounded. Other applicable evidence is verified.",
+        },
+        "APPROVE",
+        "none",
+    ),
+    (
+        {
             "request": "Re-review the whole PR after its latest test fix.",
             "problem": "Sequential worker segments share one workspace. No old segment may write after the next starts.",
             "code": "on_timeout: killpg(TERM); wait(parent, 1s); if parent_wait_timed_out: killpg(KILL); return timed_out\ncaller: on timed_out: probe_progress(); start_next_segment()",
@@ -93,7 +117,7 @@ def test_decision_procedure_is_in_the_real_packet_before_prose():
 
 def test_corpus_has_positive_controls_and_does_not_send_its_oracle():
     assert {verdict for _, verdict, _ in CASES} == {"APPROVE", "REQUEST_CHANGES"}
-    assert sum(verdict == "APPROVE" for _, verdict, _ in CASES) == 3
+    assert sum(verdict == "APPROVE" for _, verdict, _ in CASES) == len(CASES) // 2
     for scenario, _, _ in CASES:
         assert (
             not {"expected", "expected_verdict", "concern", "case_id"} & scenario.keys()

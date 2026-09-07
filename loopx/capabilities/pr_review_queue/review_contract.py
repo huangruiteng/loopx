@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+# Increment when review requirements change without changing the packet shape.
+REVIEW_POLICY_REVISION = 1
+
 REQUIRED_FINAL_SECTIONS = [
     "动机",
     "改动思路",
@@ -105,6 +108,7 @@ def build_review_template(item: Mapping[str, Any]) -> dict[str, Any]:
 def build_review_execution_contract() -> dict[str, Any]:
     return {
         "schema_version": "pull_request_review_execution_contract_v2",
+        "policy_revision": REVIEW_POLICY_REVISION,
         "purpose": (
             "Define the evidence that must exist before a detailed review verdict; "
             "host skills route this contract but must not reimplement it."
@@ -188,13 +192,36 @@ def build_review_execution_contract() -> dict[str, Any]:
                 "fields": [
                     "searched_revisions", "queries_and_paths", "existing_candidates",
                     "semantic_comparison", "reuse_or_separation_reason",
-                    "state_model_assessment", "validation_evidence", "verdict",
+                    "state_model_assessment", "rule_ownership", "validation_evidence", "verdict",
                 ],
                 "comparison_dimensions": [
                     "resource_and_caller", "data_scope_and_filters",
                     "ordering_and_pagination", "authority_and_sanitization",
                     "state_retry_and_failure_owner",
                 ],
+                "rule_ownership": {
+                    "required_when": "retained_or_parallel_implementations",
+                    "row_fields": [
+                        "business_rule", "baseline_owner", "head_owner",
+                        "retained_path_and_caller", "retention_reason",
+                        "deleted_rule_or_exit_condition", "validation",
+                    ],
+                    "rule": (
+                        "For migrations, fallback paths, dual providers or old/new entrypoints, "
+                        "map each touched business rule across BOTH reachable paths, including "
+                        "unchanged files. Separate storage parsing/writing and host effects from "
+                        "eligibility, ordering, retention and successor derivation. A required "
+                        "legacy writer does not justify a second decision owner. Ask where the "
+                        "next policy change must be edited: tests comparing two new providers "
+                        "do not prove the old path shares their rule. Name a bounded shared "
+                        "owner and actual deletion where appropriate; justify deliberate "
+                        "independent semantics instead of forcing abstraction. Record no "
+                        "parallel path with caller-search evidence when not applicable. "
+                        "Moved lines are not retired knowledge, and net-negative LOC is not "
+                        "an acceptance quota. Missing analysis is not_yet_proven; an unjustified "
+                        "duplicate rule is unjustified_duplication under repository_reuse."
+                    ),
+                },
                 "state_model_assessment": {
                     "required_when": "introduced_or_newly_enforced_state",
                     "classification_values": [
@@ -896,6 +923,7 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
         "required_evidence_ids": required_evidence,
         "result_template": {
             "schema_version": "pull_request_review_result_v1",
+            "review_policy_revision": REVIEW_POLICY_REVISION,
             "target_exact_head": target_key,
             "evidence": {
                 evidence_id: {"status": "unverified"}
