@@ -1546,7 +1546,7 @@ LoopX 已经提供的通用机制包括：
 | Agent-facing packet | `loopx/control_plane/work_items/interaction_contract.py::build_interaction_contract` | selected work、gate、replan、terminal 是否完整投影 |
 | Goal frontier replan | `loopx/control_plane/goals/goal_frontier/replan_rules.py::select_goal_frontier_replan_rule` | runnable、gate、succession gap、monitor exhaustion 的优先级 |
 | Vision checkpoint | `loopx/state_refresh.py::build_vision_checkpoint` | material closeout 后如何防止局部目标替代长期方向 |
-| Todo succession | `loopx/control_plane/todos/succession_warning.py::build_open_parent_successor_advisory`、`loopx/control_plane/todos/completion_policy.py::resolve_completion_policy` | successor 为什么只记录 lineage，open parent 为什么仍需显式 complete/defer |
+| Todo succession | `loopx/control_plane/todos/succession_warning.py::build_open_parent_successor_advisory`、`loopx/control_plane/todos/completion_policy.ts::resolveTodoCompletionPolicy` | successor 为什么只记录 lineage，open parent 为什么仍需显式 complete/defer |
 | Turn transaction | `loopx/control_plane/turn_driver/executor.py::run_loopx_turn_once` | phase failure 怎样恢复，何时允许 commit |
 | Domain State seam | `loopx/domain_state.py::default_domain_state_file_path`、`upsert_domain_state_jsonl` | goal/pack 分区、稳定 key、原子 upsert 和 unchanged observation |
 | Issue lifecycle | `loopx/capabilities/issue_fix/pr_lifecycle.py::build_issue_fix_pr_lifecycle_monitor_packet` | 外部 PR observation 怎样变成有限 proposal |

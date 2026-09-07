@@ -29,6 +29,10 @@ import {
   type TodoCompletionValidationPlanResult,
   TODO_COMPLETION_VALIDATION_PLAN_REQUEST_SCHEMA,
 } from "./completion_validation_plan.ts";
+import {
+  resolveTodoCompletionPolicy,
+  type TodoCompletionPolicyResult,
+} from "./completion_policy.ts";
 
 export const TODO_COMPLETION_TRANSACTION_REQUEST_SCHEMA =
   "loopx_todo_completion_transaction_v0";
@@ -86,6 +90,7 @@ export interface TodoCompletionCommit extends CompletionTransactionBase {
   completion_state: CompletionStateProjection;
   metadata_updates: JsonObject;
   validation_receipt: CallerValidationReceipt | null;
+  completion_policy?: TodoCompletionPolicyResult;
 }
 
 export interface TodoCompletionReplay extends CompletionTransactionBase {
@@ -118,6 +123,7 @@ interface DecodedTransactionRequest {
   requested_has_successor: boolean;
   dry_run: boolean;
   validation_receipt: CallerValidationReceipt | null;
+  completion_policy_request: JsonObject | null;
 }
 
 function optionalIdentitySource(
@@ -232,6 +238,14 @@ function decodeRequest(value: unknown): DecodedTransactionRequest {
     ),
     dry_run: requireBoolean(request.dry_run, "dry_run"),
     validation_receipt: decodeValidationReceipt(request.validation_receipt),
+    completion_policy_request:
+      request.completion_policy_request === null ||
+        request.completion_policy_request === undefined
+        ? null
+        : requireJsonObject(
+          request.completion_policy_request,
+          "completion_policy_request",
+        ),
   };
 }
 
@@ -400,6 +414,9 @@ export function reduceTodoCompletionTransaction(
     metadataResult.updates,
     "completion metadata updates",
   );
+  const completionPolicy = request.completion_policy_request === null
+    ? null
+    : resolveTodoCompletionPolicy(request.completion_policy_request);
   return {
     ...base,
     decision: "commit",
@@ -409,5 +426,8 @@ export function reduceTodoCompletionTransaction(
     },
     metadata_updates: updates,
     validation_receipt: request.validation_receipt,
+    ...(completionPolicy === null
+      ? {}
+      : { completion_policy: completionPolicy }),
   };
 }

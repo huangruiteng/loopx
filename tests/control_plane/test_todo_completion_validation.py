@@ -315,6 +315,49 @@ def test_validation_receipt_cannot_commit_a_changed_completion_source(
     assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
 
 
+def test_validation_receipt_cannot_commit_changed_completion_policy_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = _add_todo(
+        registry,
+        validation_command=_PASS_COMMAND,
+        validation_label="caller-declared smoke",
+    )
+    original_validation = (
+        completion_validation_module._run_declared_completion_validation
+    )
+
+    def validate_then_change_registry(**kwargs):  # type: ignore[no-untyped-def]
+        receipt = original_validation(**kwargs)
+        payload = json.loads(registry.read_text(encoding="utf-8"))
+        payload["goals"][0]["coordination"]["registered_agents"].append(
+            "codex-new-peer"
+        )
+        registry.write_text(json.dumps(payload), encoding="utf-8")
+        return receipt
+
+    monkeypatch.setattr(
+        completion_validation_module,
+        "_run_declared_completion_validation",
+        validate_then_change_registry,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="stale registry projection",
+    )
+
+    assert result["ok"] is False
+    assert result["completion_source_drift"] is True
+    assert result["changed"] is False
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
+
+
 def test_validation_timeout_blocks_completion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -62,8 +62,7 @@ from .control_plane.todos.active_state_editing import (
 from .control_plane.todos.addition import matching_todo_block, require_replan_successor_rebinding, require_replan_successor_scope
 from .control_plane.todos.completed_archive import archive_completed_todo_lines
 from .control_plane.todos.completion_policy import (
-    linked_successors_from_state,
-    resolve_completion_policy,
+    completion_policy_from_transaction,
 )
 from .control_plane.todos.completion_transaction import (
     locked_todo_completion_transaction,
@@ -1628,6 +1627,13 @@ def complete_goal_todo(
         next_user_todo,
         next_user_task_class,
     )
+    completion_policy_facts = {
+        "claimed_by": claimed_by, "next_claimed_by": next_claimed_by,
+        "next_agent_todo": next_agent_todo, "next_action_kind": next_action_kind,
+        "next_continuation_policy": next_continuation_policy,
+        "next_excluded_agents": next_excluded_agents or [],
+        "self_merged": self_merged, "evidence": evidence,
+    }
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -1649,6 +1655,8 @@ def complete_goal_todo(
         requested_has_successor=bool(
             normalized_successor_todo_ids or next_agent_todo or next_user_todo
         ),
+        completion_policy_facts=completion_policy_facts,
+        requested_successor_todo_ids=normalized_successor_todo_ids,
     )
     validation_failure = validation_gate.get("failure")
     if validation_failure is not None:
@@ -1686,6 +1694,16 @@ def complete_goal_todo(
             raise ValueError(
                 f"todo_id {normalized_todo_id!r} was not found in active user or agent todos"
             )
+        locked_completion_policy_source = (
+            completion_validation_module.completion_policy_source_from_state(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                lines=lines,
+                successor_todo_ids=normalized_successor_todo_ids,
+                event_fields=event_context.get("fields") if event_context else None,
+                facts=completion_policy_facts,
+            )
+        )
         locked_completion = locked_todo_completion_transaction(
             validation_gate=validation_gate,
             todo=completion_todo,
@@ -1694,6 +1712,7 @@ def complete_goal_todo(
             dry_run=dry_run,
             require_source_match=bool(completion_match),
             missing_is_drift=True,
+            current_completion_policy_source=locked_completion_policy_source,
         )
         if locked_completion["failure"] is not None:
             return locked_completion["failure"]
@@ -1750,25 +1769,8 @@ def complete_goal_todo(
             )
         )
         completion_state = completion_transaction.get("completion_state")
-        linked_successors = linked_successors_from_state(
-            lines=lines,
-            successor_todo_ids=normalized_successor_todo_ids,
-            event_fields=event_context.get("fields") if event_context else None,
-        )
-        completion_policy = resolve_completion_policy(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            claimed_by=claimed_by,
-            next_claimed_by=next_claimed_by,
-            next_agent_todo=next_agent_todo,
-            next_action_kind=next_action_kind,
-            next_continuation_policy=next_continuation_policy,
-            next_excluded_agents=next_excluded_agents or [],
-            self_merged=self_merged,
-            evidence=evidence,
-            no_followup=no_followup,
-            linked_successors=linked_successors,
-            completion_todo=completion_todo,
+        completion_policy = completion_policy_from_transaction(
+            completion_transaction
         )
         effective_claimed_by = completion_policy.effective_claimed_by
         registered_agents = completion_policy.registered_agents

@@ -438,12 +438,15 @@ shipped Stage 2B cutovers are in place:
   zero.
 - Todo completion: TypeScript owns completion identity, terminal replay fence,
   validation declaration/effect planning, validation-receipt reduction,
-  continuation/recovery, and completion metadata in one transaction. A Todo
-  without declared validation, including a replay, uses one reduction. A real
-  caller-approved validation command remains an explicit Python provider
-  between two reductions. A source snapshot is compared after the mutation
-  lock so a receipt for one declaration cannot authorize a changed Todo.
-  Materialized and event-projected writes consume the same typed result.
+  continuation/recovery, completion metadata, registered-agent admission,
+  successor ownership/exclusion, and existing-successor selection in one
+  transaction. Python projects registry and Todo-source facts without deciding
+  policy. A Todo without declared validation, including a replay, uses one
+  reduction. A real caller-approved validation command remains an explicit
+  Python provider between two reductions. Todo and policy-source snapshots are
+  compared after the mutation lock so a receipt for one declaration or agent
+  registry cannot authorize changed facts. Materialized and event-projected
+  writes consume the same typed result.
 - Scheduler heartbeat/state: TypeScript owns receipt freshness, ACK and
   host-failure validation, identity-aware progression, failure-cache
   retention/counting, replay and CAS fencing, preview reduction, the locked
@@ -519,11 +522,12 @@ Until then Python supplies compact projection facts, clock/effect identity,
 result validation, and the shared legacy index lock. The Todo cutover removes
 the Python state-evaluation dataclass, local identity
 projection, replay helper, and public runtime handlers for those implementation
-leaves. The remaining Python Todo facade owns transport, external command
-execution, source compare-and-swap, legacy response projection, and the actual
-Markdown/event write. It exits when those writers and the CLI move into the
-native TS transaction. The remaining fine-grained Turn facade exits after
-quota and host-adapter callers move to their own coarse transactions. The
+leaves. The remaining Python Todo facade owns fact projection, transport,
+external command execution, source compare-and-swap, legacy response
+projection, and the actual Markdown/event write. It exits when those writers
+and the CLI move into the native TS transaction. The remaining fine-grained
+Turn facade exits after quota and host-adapter callers move to their own coarse
+transactions. The
 task-lease semantic facade, atomic Python providers, settlement bridge
 operation, and lifecycle rule engine are deleted. Python retains compact source
 projection, one process transport, context-manager plumbing that carries the

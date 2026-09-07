@@ -30,6 +30,19 @@ def _commit_result(**overrides: object) -> dict[str, object]:
     }
 
 
+def _completion_policy_result(**overrides: object) -> dict[str, object]:
+    return {
+        "schema_version": "loopx_todo_completion_policy_result_v0",
+        "effective_claimed_by": "agent-a",
+        "registered_agents": ["agent-a"],
+        "effective_next_claimed_by": "agent-a",
+        "effective_next_excluded_agents": [],
+        "self_merged": False,
+        "linked_successor_id": None,
+        **overrides,
+    }
+
+
 def test_python_adapter_sends_one_coarse_transaction(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -95,6 +108,57 @@ def test_source_snapshot_detects_completion_authority_drift() -> None:
         snapshot,
         {**todo, "validation_command": "python -m pytest -q"},
     )
+
+
+def test_python_adapter_requires_requested_completion_policy_projection(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    policy_request = {
+        "schema_version": "loopx_todo_completion_policy_request_v0",
+        "goal_id": "goal-example",
+    }
+
+    def call(method: str, params: dict[str, object]) -> dict[str, object]:
+        captured["method"] = method
+        captured["params"] = params
+        return _commit_result(completion_policy=_completion_policy_result())
+
+    monkeypatch.setattr(completion_transaction, "effect_runtime_result", call)
+    result = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=True,
+        dry_run=False,
+        completion_policy_request=policy_request,
+    )
+
+    assert result["completion_policy"] == _completion_policy_result()
+    assert captured["params"]["completion_policy_request"] == policy_request
+
+    monkeypatch.setattr(
+        completion_transaction,
+        "effect_runtime_result",
+        lambda _method, _params: _commit_result(),
+    )
+    with pytest.raises(RuntimeError, match="result shape mismatch"):
+        completion_transaction.reduce_todo_completion_transaction(
+            todo={"status": "open"},
+            projection_source="materialized",
+            goal_id="goal-example",
+            todo_id="todo_example001",
+            completion_turn_key=None,
+            completion_identity_source=None,
+            no_followup=False,
+            requested_has_successor=True,
+            dry_run=False,
+            completion_policy_request=policy_request,
+        )
 
 
 @pytest.mark.parametrize(

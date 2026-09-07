@@ -35,6 +35,21 @@ function request(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const completionPolicyRequest = {
+  schema_version: "loopx_todo_completion_policy_request_v0",
+  goal_id: "goal-example",
+  agent_model: "peer_v1",
+  claimed_by: "agent-a",
+  registered_agents: ["agent-a"],
+  next_claimed_by: null,
+  next_agent_todo: "Continue the bounded migration.",
+  next_continuation_policy: "same_agent_non_delivery",
+  next_excluded_agents: [],
+  self_merged: false,
+  evidence: "focused validation passed",
+  linked_successors: [],
+};
+
 test("open completion commits in one reduction with a stable local identity", () => {
   const result = reduceTodoCompletionTransaction(request());
 
@@ -130,6 +145,37 @@ test("declared validation is one external effect between two reductions", () => 
   assert.equal(rejected.decision, "reject");
   assert.equal(rejected.failure.kind, "validation_failed");
   assert.equal(rejected.failure.validation_receipt.passed, false);
+});
+
+test("completion policy joins the coarse transaction only at commit", () => {
+  const pending = reduceTodoCompletionTransaction(
+    request({
+      todo: {
+        ...baseTodo,
+        validation_command: "true",
+      },
+      completion_policy_request: {
+        ...completionPolicyRequest,
+        claimed_by: "not registered",
+      },
+    }),
+  );
+  assert.equal(pending.decision, "execute_validation");
+  assert.equal("completion_policy" in pending, false);
+
+  const committed = reduceTodoCompletionTransaction(
+    request({ completion_policy_request: completionPolicyRequest }),
+  );
+  assert.equal(committed.decision, "commit");
+  assert.deepEqual(committed.completion_policy, {
+    schema_version: "loopx_todo_completion_policy_result_v0",
+    effective_claimed_by: "agent-a",
+    registered_agents: ["agent-a"],
+    effective_next_claimed_by: "agent-a",
+    effective_next_excluded_agents: [],
+    self_merged: false,
+    linked_successor_id: null,
+  });
 });
 
 test("terminal replay bypasses a stale validation declaration", () => {

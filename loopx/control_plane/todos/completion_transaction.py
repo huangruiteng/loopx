@@ -36,6 +36,7 @@ _SOURCE_FIELDS = (
     "validation_label",
     "validation_timeout_seconds",
 )
+_COMPLETION_POLICY_RESULT_SCHEMA = "loopx_todo_completion_policy_result_v0"
 
 
 def _json_sequence(value: Any) -> Any:
@@ -99,6 +100,7 @@ def locked_todo_completion_transaction(
     dry_run: bool,
     require_source_match: bool,
     missing_is_drift: bool,
+    current_completion_policy_source: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bind a pre-lock transaction to the Todo observed under the write lock."""
 
@@ -135,6 +137,25 @@ def locked_todo_completion_transaction(
                 ),
             ),
         }
+    expected_policy_source = validation_gate.get("completion_policy_source")
+    if current_completion_policy_source is not None or expected_policy_source is not None:
+        if (
+            not isinstance(expected_policy_source, Mapping)
+            or current_completion_policy_source is None
+            or dict(expected_policy_source) != dict(current_completion_policy_source)
+        ):
+            return {
+                "transaction": None,
+                "failure": todo_completion_source_drift_failure(
+                    goal_id=goal_id,
+                    todo_id=todo_id,
+                    dry_run=dry_run,
+                    reason=(
+                        "Todo completion policy source changed after validation "
+                        "planning; retry against the current source"
+                    ),
+                ),
+            }
     return {"transaction": dict(transaction), "failure": None}
 
 
@@ -280,7 +301,45 @@ def _valid_common(result: Mapping[str, Any]) -> bool:
     )
 
 
-def _valid_result(result: Mapping[str, Any]) -> bool:
+def _valid_completion_policy(value: Any) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    required_fields = {
+        "schema_version",
+        "effective_claimed_by",
+        "registered_agents",
+        "effective_next_claimed_by",
+        "effective_next_excluded_agents",
+        "self_merged",
+        "linked_successor_id",
+    }
+    return (
+        required_fields.issubset(value)
+        and value.get("schema_version") == _COMPLETION_POLICY_RESULT_SCHEMA
+        and isinstance(value.get("registered_agents"), list)
+        and all(isinstance(item, str) for item in value.get("registered_agents") or [])
+        and isinstance(value.get("effective_next_excluded_agents"), list)
+        and all(
+            isinstance(item, str)
+            for item in value.get("effective_next_excluded_agents") or []
+        )
+        and all(
+            item is None or isinstance(item, str)
+            for item in (
+                value.get("effective_claimed_by"),
+                value.get("effective_next_claimed_by"),
+                value.get("linked_successor_id"),
+            )
+        )
+        and isinstance(value.get("self_merged"), bool)
+    )
+
+
+def _valid_result(
+    result: Mapping[str, Any],
+    *,
+    completion_policy_required: bool,
+) -> bool:
     if not _valid_common(result):
         return False
     decision = result.get("decision")
@@ -329,6 +388,7 @@ def _valid_result(result: Mapping[str, Any]) -> bool:
         state = result.get("completion_state")
         updates = result.get("metadata_updates")
         receipt = result.get("validation_receipt")
+        policy = result.get("completion_policy")
         return (
             isinstance(state, Mapping)
             and state.get("continuation") in _CONTINUATIONS
@@ -346,6 +406,11 @@ def _valid_result(result: Mapping[str, Any]) -> bool:
             == state.get("continuation")
             and updates.get("completion_recovery") == state.get("recovery")
             and (receipt is None or _valid_receipt(receipt))
+            and (
+                _valid_completion_policy(policy)
+                if completion_policy_required or policy is not None
+                else True
+            )
         )
     if decision == "replay":
         return result["fence"].get("outcome") == "replay"
@@ -372,34 +437,44 @@ def reduce_todo_completion_transaction(
     requested_has_successor: bool,
     dry_run: bool,
     validation_receipt: Mapping[str, Any] | None = None,
+    completion_policy_request: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Reduce one coarse completion request through the TS authority."""
 
     try:
-        result = effect_runtime_result(
-            "todo.completion.reduce",
-            {
-                "schema_version": TODO_COMPLETION_TRANSACTION_REQUEST_SCHEMA,
-                "goal_id": goal_id,
-                "todo_id": todo_id,
-                "projection_source": projection_source,
-                "todo": todo_completion_source_snapshot(todo),
-                "requested_no_followup": no_followup,
-                "requested_completion_turn_key": completion_turn_key,
-                "requested_completion_identity_source": completion_identity_source,
-                "requested_has_successor": requested_has_successor,
-                "dry_run": dry_run,
-                "validation_receipt": (
-                    dict(validation_receipt)
-                    if isinstance(validation_receipt, Mapping)
-                    else None
-                ),
-            },
-        )
+        params: dict[str, Any] = {
+            "schema_version": TODO_COMPLETION_TRANSACTION_REQUEST_SCHEMA,
+            "goal_id": goal_id,
+            "todo_id": todo_id,
+            "projection_source": projection_source,
+            "todo": todo_completion_source_snapshot(todo),
+            "requested_no_followup": no_followup,
+            "requested_completion_turn_key": completion_turn_key,
+            "requested_completion_identity_source": completion_identity_source,
+            "requested_has_successor": requested_has_successor,
+            "dry_run": dry_run,
+            "validation_receipt": (
+                dict(validation_receipt)
+                if isinstance(validation_receipt, Mapping)
+                else None
+            ),
+        }
+        if completion_policy_request is not None:
+            params["completion_policy_request"] = dict(completion_policy_request)
+        result = effect_runtime_result("todo.completion.reduce", params)
     except EffectRuntimeRejected as exc:
         raise ValueError(str(exc)) from None
     if not isinstance(result, Mapping):
-        raise RuntimeError("TypeScript Todo completion transaction result must be an object")
-    if not _valid_result(result):
-        raise RuntimeError("TypeScript Todo completion transaction result shape mismatch")
+        raise RuntimeError(
+            "TypeScript Todo completion transaction result must be an object"
+        )
+    if not _valid_result(
+        result,
+        completion_policy_required=(
+            completion_policy_request is not None and result.get("decision") == "commit"
+        ),
+    ):
+        raise RuntimeError(
+            "TypeScript Todo completion transaction result shape mismatch"
+        )
     return dict(result)

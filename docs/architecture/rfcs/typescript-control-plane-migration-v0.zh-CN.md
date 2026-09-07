@@ -363,10 +363,12 @@ window 仍需 differential proof 时才保留 characterization corpus；引入�
   一次；空 candidate 的 short circuit 仍为零次。
 - Todo completion：TypeScript 在一笔 transaction 中拥有 completion identity、
   terminal replay fence、validation declaration/effect planning、validation receipt
-  reduction、continuation/recovery 与 completion metadata。没有声明 validation 的
-  Todo（包括 replay）使用一次 reduction；真实 caller-approved validation command
-  作为显式 Python provider，位于两次 reduction 之间。取得 mutation lock 后会比较
-  source snapshot，确保一份 declaration 的 receipt 不能授权已经变化的 Todo。
+  reduction、continuation/recovery、completion metadata、registered-agent admission、
+  successor ownership/exclusion 与 existing-successor selection。Python 只投影 registry
+  和 Todo source facts，不再决定 policy。没有声明 validation 的 Todo（包括 replay）使用
+  一次 reduction；真实 caller-approved validation command 作为显式 Python provider，
+  位于两次 reduction 之间。取得 mutation lock 后会同时比较 Todo 与 policy-source
+  snapshot，确保一份 declaration 或 agent registry 的 receipt 不能授权已经变化的事实。
   Materialized 与 event-projected 写入消费同一 typed result。
 - Scheduler heartbeat/state 由 TypeScript 拥有 receipt freshness、ACK 与
   host-failure validation、带 identity 的 progression、failure-cache
@@ -428,10 +430,10 @@ facade 即可退出。在此之前，Python 只提供 compact projection facts�
 identity、result validation 与共享 legacy index lock。Todo cutover 删除了 Python
 state-evaluation dataclass、local identity projection、
 replay helper，以及这些 implementation leaf 的 public runtime handler。剩余 Python
-Todo facade 只拥有 transport、external command execution、source compare-and-swap、
-legacy response projection 与实际 Markdown/event write；当 writer 与 CLI 进入 native
-TS transaction 后即可退出。剩余细粒度 Turn facade 则在 quota 与 host-adapter
-caller 进入各自 coarse transaction 后退出。Task-lease semantic facade、Python atomic
+Todo facade 只拥有 fact projection、transport、external command execution、source
+compare-and-swap、legacy response projection 与实际 Markdown/event write；当 writer 与
+CLI 进入 native TS transaction 后即可退出。剩余细粒度 Turn facade 则在 quota 与
+host-adapter caller 进入各自 coarse transaction 后退出。Task-lease semantic facade、Python atomic
 provider、settlement bridge operation 与 lifecycle rule engine 已经删除。Python 只保留
 compact source projection、一次 process transport、携带 opaque fence token/receipt id
 的 context-manager plumbing、legacy response projection，以及现有 Python caller 所需的

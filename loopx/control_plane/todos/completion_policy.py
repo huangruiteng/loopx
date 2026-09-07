@@ -6,19 +6,18 @@ from typing import Any, Iterable, Mapping
 
 from ...agent_registry import (
     load_goal_from_registry,
-    registered_agent_ids_from_registry,
-    require_registered_agent_id,
+    registered_agent_ids_for_goal,
 )
-from ..agents.runtime_model import agent_runtime_model_for_goal
 from .active_state_editing import find_todo_block
 from .contract import (
-    TodoContinuationPolicy,
     normalize_todo_claimed_by,
     normalize_todo_continuation_policy,
     normalize_todo_id,
-    require_todo_excluded_agents,
-    resolve_todo_continuation_policy,
 )
+
+
+TODO_COMPLETION_POLICY_REQUEST_SCHEMA = "loopx_todo_completion_policy_request_v0"
+TODO_COMPLETION_POLICY_RESULT_SCHEMA = "loopx_todo_completion_policy_result_v0"
 
 
 @dataclass(frozen=True)
@@ -89,22 +88,7 @@ def linked_successors_from_state(
     return successors
 
 
-def _first_open_agent_successor(
-    successors: Iterable[LinkedSuccessor],
-) -> str | None:
-    return next(
-        (
-            successor.todo_id
-            for successor in successors
-            if successor.role == "agent"
-            and successor.todo_id
-            and (not successor.status or successor.status == "open")
-        ),
-        None,
-    )
-
-
-def resolve_completion_policy(
+def build_completion_policy_request(
     *,
     registry_path: Path,
     goal_id: str,
@@ -116,73 +100,81 @@ def resolve_completion_policy(
     next_excluded_agents: Iterable[str] = (),
     self_merged: bool = False,
     evidence: str | None = None,
-    no_followup: bool = False,
     linked_successors: Iterable[LinkedSuccessor] = (),
-    completion_todo: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Project registry and source facts without deciding successor authority."""
+
+    del next_action_kind
+    goal = load_goal_from_registry(registry_path, goal_id)
+    coordination = goal.get("coordination") if isinstance(goal, Mapping) else None
+    agent_model = (
+        coordination.get("agent_model") if isinstance(coordination, Mapping) else None
+    )
+    if not agent_model and isinstance(goal, Mapping):
+        agent_model = goal.get("agent_model")
+    successor_rows = [
+        {
+            "todo_id": successor.todo_id,
+            "role": successor.role,
+            "status": successor.status,
+        }
+        for successor in linked_successors
+    ]
+    return {
+        "schema_version": TODO_COMPLETION_POLICY_REQUEST_SCHEMA,
+        "goal_id": goal_id,
+        "agent_model": agent_model,
+        "claimed_by": claimed_by,
+        "registered_agents": registered_agent_ids_for_goal(
+            dict(goal) if isinstance(goal, Mapping) else None
+        ),
+        "next_claimed_by": next_claimed_by,
+        "next_agent_todo": next_agent_todo,
+        "next_continuation_policy": next_continuation_policy,
+        "next_excluded_agents": list(next_excluded_agents),
+        "self_merged": bool(self_merged),
+        "evidence": evidence,
+        "linked_successors": successor_rows,
+    }
+
+
+def completion_policy_from_transaction(
+    transaction: Mapping[str, Any],
 ) -> CompletionPolicy:
-    del no_followup, completion_todo
-    effective_claimed_by = (
-        require_registered_agent_id(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            agent_id=claimed_by,
-        )
-        if claimed_by
-        else None
-    )
-    registered_agents = registered_agent_ids_from_registry(registry_path, goal_id)
-    agent_runtime_model_for_goal(load_goal_from_registry(registry_path, goal_id))
-    effective_next_claimed_by = (
-        require_registered_agent_id(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            agent_id=next_claimed_by,
-            field="next_claimed_by",
-        )
-        if next_claimed_by
-        else None
-    )
-    effective_next_excluded_agents = sorted(
-        require_registered_agent_id(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            agent_id=agent_id,
-            field="next_excluded_agents",
-        )
-        for agent_id in require_todo_excluded_agents(
-            next_excluded_agents,
-            field="next_excluded_agents",
-        )
-    )
-    if self_merged and not str(evidence or "").strip():
-        raise ValueError(
-            "--self-merged requires --evidence with the merge, commit, and "
-            "validation summary"
-        )
-    next_policy = resolve_todo_continuation_policy(
-        next_continuation_policy,
-        action_kind=next_action_kind,
+    """Adapt the TypeScript-owned completion policy into legacy Python fields."""
+
+    if transaction.get("decision") == "replay":
+        # These fields are dead on the event-projected replay path; the TS
+        # completion fence has already prohibited every write.
+        return CompletionPolicy(None, [], None, [], False)
+    policy = transaction.get("completion_policy")
+    if not isinstance(policy, Mapping) or (
+        policy.get("schema_version") != TODO_COMPLETION_POLICY_RESULT_SCHEMA
+    ):
+        raise RuntimeError("TypeScript Todo completion policy result shape mismatch")
+    registered_agents = policy.get("registered_agents")
+    excluded_agents = policy.get("effective_next_excluded_agents")
+    claimed_by = policy.get("effective_claimed_by")
+    next_claimed_by = policy.get("effective_next_claimed_by")
+    linked_successor_id = policy.get("linked_successor_id")
+    scalar_shape_is_valid = all(
+        value is None or isinstance(value, str)
+        for value in (claimed_by, next_claimed_by, linked_successor_id)
     )
     if (
-        next_agent_todo
-        and not effective_next_claimed_by
-        and next_policy == TodoContinuationPolicy.SAME_AGENT_NON_DELIVERY
+        not isinstance(registered_agents, list)
+        or not all(isinstance(value, str) for value in registered_agents)
+        or not isinstance(excluded_agents, list)
+        or not all(isinstance(value, str) for value in excluded_agents)
+        or not scalar_shape_is_valid
+        or not isinstance(policy.get("self_merged"), bool)
     ):
-        effective_next_claimed_by = effective_claimed_by
-    if effective_next_claimed_by in effective_next_excluded_agents:
-        raise ValueError(
-            f"next_claimed_by={effective_next_claimed_by!r} cannot also appear in "
-            "next_excluded_agents"
-        )
-    if effective_next_claimed_by and not next_agent_todo:
-        raise ValueError("--next-claimed-by requires --next-agent-todo")
-    if effective_next_excluded_agents and not next_agent_todo:
-        raise ValueError("--next-excluded-agent requires --next-agent-todo")
+        raise RuntimeError("TypeScript Todo completion policy result shape mismatch")
     return CompletionPolicy(
-        effective_claimed_by=effective_claimed_by,
-        registered_agents=registered_agents,
-        effective_next_claimed_by=effective_next_claimed_by,
-        effective_next_excluded_agents=effective_next_excluded_agents,
-        self_merged=bool(self_merged),
-        linked_successor_id=_first_open_agent_successor(linked_successors),
+        effective_claimed_by=claimed_by,
+        registered_agents=list(registered_agents),
+        effective_next_claimed_by=next_claimed_by,
+        effective_next_excluded_agents=list(excluded_agents),
+        self_merged=bool(policy["self_merged"]),
+        linked_successor_id=linked_successor_id,
     )

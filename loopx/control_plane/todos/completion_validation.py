@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from json import loads as json_loads
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ...history import load_registry
 from ...materials import find_registry_goal, goal_repo
@@ -17,6 +17,10 @@ from .event_writeback import event_projection_source_authority, event_projection
 from .completion_transaction import (
     reduce_todo_completion_transaction,
     todo_completion_source_snapshot,
+)
+from .completion_policy import (
+    build_completion_policy_request,
+    linked_successors_from_state,
 )
 
 
@@ -188,6 +192,8 @@ def run_completion_validation_gate_with_source(
     completion_turn_key: str | None = None,
     completion_identity_source: str | None = None,
     requested_has_successor: bool = False,
+    completion_policy_facts: Mapping[str, Any] | None = None,
+    requested_successor_todo_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run the caller-approved completion validation gate, OUTSIDE the mutation lock.
 
@@ -201,6 +207,7 @@ def run_completion_validation_gate_with_source(
     """
     projection_source = "materialized"
     source_authority: dict[str, Any] | None = None
+    event_context: dict[str, Any] | None = None
     todo = _materialized_todo_item(state_file=state_file, todo_id=todo_id, role=role)
     if todo is None:
         event_context = event_projection_todo_context(
@@ -222,6 +229,22 @@ def run_completion_validation_gate_with_source(
         todo["role"] = event_context["role"]
         source_authority = event_projection_source_authority(event_context)
     source_snapshot = todo_completion_source_snapshot(todo)
+    completion_policy_source = None
+    if completion_policy_facts is not None:
+        try:
+            lines = state_file.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            lines = []
+        completion_policy_source = completion_policy_source_from_state(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            lines=lines,
+            successor_todo_ids=requested_successor_todo_ids or [],
+            event_fields=(
+                event_context.get("fields") if event_context is not None else None
+            ),
+            facts=completion_policy_facts,
+        )
     transaction = reduce_todo_completion_transaction(
         todo=todo,
         projection_source=projection_source,
@@ -233,6 +256,7 @@ def run_completion_validation_gate_with_source(
         todo_id=todo_id,
         requested_has_successor=requested_has_successor,
         validation_receipt=None,
+        completion_policy_request=completion_policy_source,
     )
     completion_validation = None
     if transaction["decision"] == "execute_validation":
@@ -275,12 +299,14 @@ def run_completion_validation_gate_with_source(
             todo_id=todo_id,
             requested_has_successor=requested_has_successor,
             validation_receipt=completion_validation,
+            completion_policy_request=completion_policy_source,
         )
     if transaction["decision"] != "reject":
         return {
             "failure": None,
             "source_authority": source_authority,
             "source_snapshot": source_snapshot,
+            "completion_policy_source": completion_policy_source,
             "transaction": transaction,
         }
     failure_payload = transaction["failure"]
@@ -299,10 +325,39 @@ def run_completion_validation_gate_with_source(
         "failure": failure,
         "source_authority": source_authority,
         "source_snapshot": source_snapshot,
+        "completion_policy_source": completion_policy_source,
         "transaction": transaction,
     }
 
 
+def completion_policy_source_from_state(
+    *,
+    registry_path: Path,
+    goal_id: str,
+    lines: list[str],
+    successor_todo_ids: list[str],
+    event_fields: Mapping[str, Any] | None,
+    facts: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project lock-comparable facts for the TS completion policy."""
+
+    return build_completion_policy_request(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        claimed_by=facts.get("claimed_by"),
+        next_claimed_by=facts.get("next_claimed_by"),
+        next_agent_todo=facts.get("next_agent_todo"),
+        next_action_kind=facts.get("next_action_kind"),
+        next_continuation_policy=facts.get("next_continuation_policy"),
+        next_excluded_agents=facts.get("next_excluded_agents") or [],
+        self_merged=bool(facts.get("self_merged")),
+        evidence=facts.get("evidence"),
+        linked_successors=linked_successors_from_state(
+            lines=lines,
+            successor_todo_ids=successor_todo_ids,
+            event_fields=event_fields,
+        ),
+    )
 def prepare_user_todo_update_completion(
     *,
     status: str | None,
