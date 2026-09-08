@@ -27,6 +27,7 @@ deepseek-harness = [
 test = [
   "jsonschema>=4.23,<5",
   "mcp==1.28.1",
+  "pyyaml>=6,<7",
   "types-jsonschema>=4.23,<5",
   "pytest>=9.0.3,<10",
   "pytest-cov>=5,<7",
