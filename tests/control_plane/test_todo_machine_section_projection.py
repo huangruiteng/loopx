@@ -253,6 +253,30 @@ def test_projection_creates_archive_region_for_archived_records() -> None:
     assert replay.changed is False
 
 
+@pytest.mark.parametrize("corrupt_scope", [False, True])
+def test_optional_scope_version_is_display_only_not_permission_to_change_scope(monkeypatch, corrupt_scope):
+    from loopx.control_plane.todos import machine_section_projection as module
+
+    records = _records()
+    records[1]["decision_scope"].pop("schema_version")
+    before = deepcopy(records)
+    original = module._render_record
+
+    def render(record, **kwargs):
+        if corrupt_scope and record.get("decision_scope"):
+            record = {**record, "decision_scope": {**record["decision_scope"], "scope_key": "different_scope"}}
+        return original(record, **kwargs)
+
+    monkeypatch.setattr(module, "_render_record", render)
+    if corrupt_scope:
+        with pytest.raises(TodoSectionProjectionError, match="parity mismatch"):
+            render_canonical_todo_sections(SOURCE, records, provider_revision="scope-version")
+    else:
+        rendered = render_canonical_todo_sections(SOURCE, records, provider_revision="scope-version")
+        assert "direction:action:authority_cutover" in rendered.markdown
+    assert records == before
+
+
 def test_projection_rejects_duplicate_sections_and_unsafe_revision() -> None:
     duplicate = SOURCE + "\n## Agent Todo\n\n- [ ] duplicate\n"
     with pytest.raises(TodoSectionProjectionError, match="multiple agent"):
