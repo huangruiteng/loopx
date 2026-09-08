@@ -577,6 +577,120 @@ document content remain owner-local. LoopX durable state keeps only public-safe
 capability and operation identity, provider revision and profile digests,
 bounded evidence references, and admitted receipts.
 
+## Optional computer use in the Manager workspace
+
+Implementation tracker: [#4114](https://github.com/huangruiteng/loopx/issues/4114).
+
+### Product decision and ownership
+
+Add an opt-in desktop-operation entry to the existing Manager workspace for
+bounded work that lacks a suitable API or CLI. Prefer a declared API/CLI when
+it can perform and verify the same authorized effect. A first useful task is
+preparing a draft in an approved application and stopping before submission.
+The entry must resolve an explicit Goal, Todo, Agent, and existing working
+session before dispatch. It neither inserts a relay manager Agent nor starts
+a third execution mode. Attached sessions use only host-advertised tools;
+managed sessions may explicitly enable an optional provider.
+
+Placement: the first outcome owner is `content-ops` for draft preparation;
+computer use remains a provider execution surface under
+[`computer_use_runtime_v0`](../../reference/protocols/computer-use-runtime-v0.md),
+not a new built-in capability. A candidate provider id is `maka-cu`, delivered
+as an optional extension/package if selected. Its install, doctor, disable,
+and compatibility belong to the provider; the existing Desktop broker owns
+presentation. The capability interprets receipts and proposes transitions;
+the Kernel retains Todo, gate, evidence, and quota authority. Existing schemas
+and the contract validator are the starting point, not another builder layer.
+
+### Implementation evidence and adoption boundary
+
+The reference is Apache Maka at commit
+[`87797378`](https://github.com/apache/maka/tree/87797378cec89e2a31351f64656dc8d26a10e73d).
+This is a source inspection, not a LoopX live qualification:
+
+- Its [model tool](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/packages/runtime/src/computer-use-tools.ts)
+  exposes application discovery, observation, semantic element actions,
+  keyboard input, and window operations. Observation defaults to an element
+  tree; screenshots are explicit. Raw coordinate input is excluded from the
+  production model action space. Ordered element sequences re-observe per step.
+- The [host adapter](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/packages/computer-use/README.md)
+  connects Runtime to a supervised native child through `maka.cu/2` JSON-RPC
+  over stdio, with digest verification, handshake, cancellation, and generation
+  invalidation. Desktop cursor/PiP is downstream presentation, not authority.
+- The [pinned executor manifest](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/apps/desktop/bundled-tools.json)
+  names native commit `4a9787d2`, ad-hoc signing, missing notarization, and
+  `distributionReady: false`. The product selector enables only macOS with a
+  supplied executable and digest. A downloadable Desktop does not prove CU
+  executor availability or cross-platform readiness.
+- [Host-event limitations](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-host-events-contract.md)
+  distinguish typed intervention from UI content changes and explicitly leave
+  global physical-input attribution and stronger process-instance identity
+  incomplete. [Evidence classes](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-evidence-classes.md)
+  separate real-runtime qualification, injected failures, protocol tests, and
+  static checks; none substitutes for the others.
+
+Adopt the observation/action/readback and takeover design. Keep provider
+selection open until an isolated live slice proves it. The
+[native implementation](https://github.com/maka-agent/maka-cu/tree/4a9787d2c7f2fbc6a29b33d691916c6b84543661/packages/OpenComputerUseKit/Sources/OpenComputerUseKit)
+uses Swift, macOS Accessibility, and private SkyLight input paths. Its
+[provenance record](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-provenance.md)
+distinguishes MIT-derived code from proprietary-binary observations. Any
+redistribution needs its own provenance, notice, signing, and compatibility
+review; this RFC does not select the entire Maka runtime or copy its cursor.
+
+### Required behavior
+
+1. **Visible scope.** Show the chosen application/window, bounded objective,
+   permitted effect, stop condition, provider readiness, and screenshot/model
+   routing before activation. Enablement grants neither logged-in account
+   access nor new external-write authority. Reuse valid scoped authorization;
+   installation and OS permissions alone are insufficient.
+2. **Fresh target binding.** Bind each action to the current observation and
+   target process/window generation. Reject stale or ambiguous targets; never
+   fall back to foreground/global input. Re-observe after actions and require
+   effect-specific readback before claiming completion. Transport success alone
+   cannot complete a Todo.
+3. **Human control.** Show compact progress and an immediate Stop/Take over
+   control in the existing workspace and Goal Chat. Stop revokes pending input
+   authority; already-dispatched unknown effects require reconciliation.
+   Lock, disconnect, target restart, or attributable intervention invalidate
+   observations. Resume requires fresh observation and current scope. Unknown
+   modals and new permission decisions return a concrete human gate.
+4. **Bounded execution.** Serialize competing operations on the same target
+   across Agents, bound action/time/retry budgets, and never blindly replay a
+   mutation after service loss. Provider detail remains typed and local; map
+   receipts to the existing closed stop-reason enum without adding ad hoc
+   strings. Persist uncertain outcome facts for reconciliation, not retry
+   instructions inferred from prose.
+5. **Private evidence.** Keep screenshots, AX text, typed values, titles, and
+   replay data in the host-owned private boundary. Model transmission requires
+   the selected provider's consent and modality policy. Shared projections use
+   redacted facts/handles; viewing private evidence requires owner access.
+6. **Default-off isolation.** Disabled or unavailable providers expose no CU
+   tools, launch no executor, and request no OS permissions. Disable revokes
+   sessions and stops the child; uninstall removes its managed package and
+   documents OS-permission revocation. Neither operation alters Goal state.
+
+### First delivery slice and acceptance
+
+Implement one `content-ops` draft-until-review flow through an optional
+provider and the existing working session, then project its receipt and
+human gate in Manager/Goal Chat. Do not add shared session/handoff protocols
+until a second real consumer demonstrates the need. This is a proposed slice,
+not a claim of shipped commands or a commitment to Maka as the runtime.
+
+Acceptance requires the production entrypoint, a real model and native
+executor, and an isolated synthetic application with independently checked
+field values and an untouched Submit control. Also cover a decoy window,
+stale observation, app restart, concurrent target claims, user takeover,
+screen lock, uncertain dispatch, and disable/re-enable. Distinguish actual
+host events from injected failures. Record exact provider/model/executor
+versions, completion, latency, action count, interventions, forbidden effects,
+and privacy checks; a recorded fixture or schema-only smoke is insufficient.
+Prove feature-off parity in both frontend modes, including tool exposure,
+process startup, ingress, projection, and writeback. Preview any visible UI
+change for owner approval before committing its implementation.
+
 ## State and identity boundaries
 
 The frontend stores one Agent-scoped working-session binding whose public

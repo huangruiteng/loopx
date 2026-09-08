@@ -487,6 +487,90 @@ provider 直接变更 Goal 或 Todo 状态。
 owner-local。LoopX 持久状态只保存 public-safe 的 capability 与 operation
 身份、provider revision 与 profile digest、有界证据引用和已准入回执。
 
+## 管家工作区中的可选 Computer Use
+
+实施跟踪：[#4114](https://github.com/huangruiteng/loopx/issues/4114)。
+
+### 产品决策与归属
+
+在现有管家工作区增加显式启用的桌面操作入口，处理缺少合适 API 或 CLI 的有界任务。
+当声明过的 API/CLI 可以完成并验证同一授权效果时，优先使用它。首个场景是：在指定应用
+准备草稿，停在提交前。派发前必须确定 Goal、Todo、Agent 和已有工作会话；不增加中转
+管家 Agent，也不增加第三种执行模式。挂接模式只使用宿主声明的工具；托管模式可以
+显式启用可选 provider。
+
+归属：首个草稿场景由 `content-ops` 拥有；Computer Use 沿用
+[`computer_use_runtime_v0`](../../reference/protocols/computer-use-runtime-v0.md)
+的 provider 执行面定位，不新增内置 capability。候选 provider id 为 `maka-cu`，若被
+选用则通过可选 extension/package 交付，负责安装、doctor、禁用和兼容性；现有 Desktop
+broker 负责呈现。Capability 解释回执并提出状态迁移，Kernel 保留 Todo、gate、evidence
+和 quota 权威。复用现有 schema 和契约校验器，不再平行增加一套 builder。
+
+### 实现证据与采用边界
+
+参考 Apache Maka 的固定提交
+[`87797378`](https://github.com/apache/maka/tree/87797378cec89e2a31351f64656dc8d26a10e73d)。
+以下是源码核查结果，不代表已通过 LoopX 真机资格验证：
+
+- [模型工具](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/packages/runtime/src/computer-use-tools.ts)
+  提供应用发现、观察、语义元素操作、键盘输入和窗口操作。观察默认返回元素树，截图显式
+  请求；生产模型动作面排除裸坐标输入，有序元素操作在每一步重新观察。
+- [宿主适配层](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/packages/computer-use/README.md)
+  通过 stdio 上的 `maka.cu/2` JSON-RPC 连接 Runtime 与受监督的 native 子进程，包含
+  摘要校验、握手、取消和 generation 失效处理。Desktop 的光标/PiP 是下游呈现，不拥有
+  动作权威。
+- [执行器清单](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/apps/desktop/bundled-tools.json)
+  固定 native 提交 `4a9787d2`，标记 ad-hoc 签名、缺少 notarization、
+  `distributionReady: false`。产品选择器仅在 macOS 且提供执行器与摘要时启用。
+  Desktop 可下载，不等于 CU 执行器可用或已支持跨平台。
+- [宿主事件边界](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-host-events-contract.md)
+  区分 typed intervention 与 UI 内容变化，并明确全局物理输入归因、更强的进程实例身份
+  仍有缺口。[证据分级](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-evidence-classes.md)
+  区分 real-runtime、故障注入、协议测试和静态检查，各类证据不能互相替代。
+
+采用其观察、动作、回读与接管设计；provider 选型待隔离真机切片验证。
+[原生实现](https://github.com/maka-agent/maka-cu/tree/4a9787d2c7f2fbc6a29b33d691916c6b84543661/packages/OpenComputerUseKit/Sources/OpenComputerUseKit)
+使用 Swift、macOS Accessibility 和私有 SkyLight 输入路径。
+[来源记录](https://github.com/apache/maka/blob/87797378cec89e2a31351f64656dc8d26a10e73d/docs/computer-use-provenance.md)
+区分 MIT 派生代码与专有二进制行为观察。若分发执行器，需要单独完成来源、notice、签名
+和兼容性审查；本 RFC 不选用整套 Maka runtime，也不复制其光标实现。
+
+### 必需行为
+
+1. **范围可见。** 启用前展示目标应用/窗口、有界目标、允许的效果、停止条件、provider
+   就绪状态和截图/model 路由。启用不授予登录账户访问或新的外部写权限；复用有效的
+   范围授权，安装和 OS 权限本身不构成任务授权。
+2. **目标新鲜度。** 每次动作绑定当前 observation 和目标进程/窗口 generation，拒绝
+   过期或歧义目标，不回退到前台或全局输入。动作后重新观察，完成声明必须有对应效果
+   的回读；传输成功不能直接完成 Todo。
+3. **人可接管。** 在现有工作区与 Goal Chat 展示简洁进度和即时 Stop/Take over 入口。
+   停止撤销待执行输入的权限；已派发但效果未知的动作需要核对结果。锁屏、断连、目标
+   重启或可归因的用户介入使旧观察失效，恢复前重新观察并核对范围。未知弹窗与新权限
+   决策进入具体的人类 gate。
+4. **执行有界。** 对不同 Agent 竞争同一目标的操作串行化，限制动作数、时间和重试预算，
+   服务丢失后不盲目重放写动作。Provider 细节保留为本地 typed 状态，回执映射到现有
+   封闭 stop-reason 枚举，不随意扩展字符串。持久化未知效果的事实用于恢复核对，不从
+   自然语言推断重试指令。
+5. **证据私有。** 截图、AX 文本、输入值、窗口标题和 replay 数据留在宿主私有边界。
+   发给模型须满足所选 provider 的用户同意与模态策略。共享投影仅包含脱敏事实/句柄，
+   查看私有证据仍需要 owner 访问权限。
+6. **默认关闭隔离。** 禁用或不可用时不暴露 CU 工具、不启动执行器、不请求 OS 权限。
+   禁用撤销会话并停止子进程；卸载移除受管包并说明如何撤销 OS 权限。两者均不改变
+   Goal 状态。
+
+### 首个交付切片与验收
+
+通过可选 provider 和已有工作会话完成一个 `content-ops` 草稿至复核流程，将回执与
+人类 gate 投影到管家/Goal Chat。第二个真实消费者证明需求前，不增加共享 session/handoff
+协议。这是待实现切片，不代表已有可运行命令，也不承诺将 Maka 作为 runtime。
+
+验收必须经过生产入口、真实模型与 native executor，操作隔离的合成应用，独立检查字段值
+与 Submit 控件未被触发。另须覆盖干扰窗口、过期观察、应用重启、并发目标占用、用户接管、
+锁屏、派发结果未知、禁用再启用；真实宿主事件与故障注入分别记账。记录 provider/model/
+executor 精确版本、完成情况、延迟、动作数、人工介入、禁止效果和隐私检查。录制 fixture
+或 schema smoke 不足以证明通过。两种前端模式均须证明关闭时的工具暴露、进程启动、入口
+路由、投影和 writeback 对等；实现可见 UI 变化时，先提供预览并取得 owner 批准再提交。
+
 ## 状态与身份边界
 
 前端存储一个 Agent 级的工作会话绑定，其公开投影足以重连并解释所有权。传输
