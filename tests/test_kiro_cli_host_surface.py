@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -52,10 +53,12 @@ from loopx.kiro_cli_goal_mode import (
     KIRO_CLI_GOAL_STATUS_COMMAND,
     KIRO_CLI_GOAL_VALIDATE_FLAG,
     KIRO_CLI_HOME_ENV,
+    KIRO_CLI_AGENT_TYPE_CATALOG_ENTRY,
     KIRO_CLI_HOOK_TRIGGERS,
     SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
     KIRO_CLI_NATIVE_GOAL_FACTS,
     KIRO_CLI_SESSION_ID_ENV,
+    kiro_cli_activation_extras,
     kiro_cli_chat_command,
     kiro_cli_goal_invocation,
     kiro_home,
@@ -107,6 +110,103 @@ def test_agent_onboarding_setup_command_installs_the_kiro_cli_surface(
         env,
         expected_skill=(tmp_path / "home" / ".kiro" / "skills" / "loopx" / "SKILL.md"),
     )
+
+
+def _copyable_goal_commands(value: object) -> list[str]:
+    """Every backticked native goal command carrying a task placeholder.
+
+    These are the strings a reader or agent copies and runs. A command is only
+    counted when it names a task placeholder, so prose that merely mentions
+    `/goal status` or `/goal clear` is not treated as an activation command.
+    """
+    found: list[str] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, str):
+            for candidate in re.findall(r"`([^`]*?/goal[^`]*?)`", node):
+                if "<task" in candidate or "<任务>" in candidate:
+                    found.append(candidate)
+        elif isinstance(node, dict):
+            for item in node.values():
+                walk(item)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(value)
+    return found
+
+
+def assert_no_incomplete_goal_command(
+    label: str,
+    value: object,
+    *,
+    require_command: bool = False,
+) -> None:
+    """Assert every copyable goal command is complete on its own.
+
+    Presence is a separate question: some surfaces legitimately expose only the
+    `/loopx` skill entry. Only the surfaces whose job is to hand over the
+    activation command are required to contain one.
+    """
+    commands = _copyable_goal_commands(value)
+    if require_command:
+        assert commands, f"{label} exposes no copyable native goal command"
+    incomplete = [
+        command
+        for command in commands
+        if KIRO_CLI_GOAL_VALIDATE_FLAG not in command
+    ]
+    assert not incomplete, (
+        f"{label} exposes a copyable goal command without "
+        f"{KIRO_CLI_GOAL_VALIDATE_FLAG}: {incomplete}"
+    )
+
+
+def test_every_actionable_consumer_renders_the_complete_goal_command() -> None:
+    """One assertion per final consumer, sensitive to a dropped argument.
+
+    The canonical composer existed already, but the activation step and the
+    public README rows still carried hand-written commands. Searching for
+    `--validate` anywhere in concatenated prose hid that, because the flag was
+    present in a neighbouring sentence while the copyable command was not. Each
+    consumer is therefore checked on its own, and every copyable command it
+    exposes must be complete.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+
+    # These hand over the activation command, so they must expose one.
+    for label, value in {
+        "activation packet": build_host_loop_activation_packet(
+            agent_type=HOST_SURFACE, goal_id="consumer-probe"
+        ),
+        "activation extras": kiro_cli_activation_extras(),
+        "onboarding recommended start": _start_instruction(HOST_SURFACE),
+    }.items():
+        assert_no_incomplete_goal_command(label, value, require_command=True)
+
+    # These may describe the host without handing over a command, but anything
+    # they do render must still be complete.
+    for label, value in {
+        "agent type catalog entry": KIRO_CLI_AGENT_TYPE_CATALOG_ENTRY,
+        "native goal facts": KIRO_CLI_NATIVE_GOAL_FACTS,
+    }.items():
+        assert_no_incomplete_goal_command(label, value)
+
+    # Public docs are consumers too: a reader copies the row, not the module.
+    for doc in (
+        "loopx/kiro_cli_goal_mode/README.md",
+        "README.md",
+        "README.zh-CN.md",
+    ):
+        text = (repo_root / doc).read_text(encoding="utf-8")
+        kiro_lines = [
+            line
+            for line in text.splitlines()
+            if "/goal" in line and "kiro" in line.lower()
+        ]
+        assert kiro_lines, f"{doc} no longer documents the Kiro goal command"
+        assert_no_incomplete_goal_command(doc, kiro_lines)
 
 
 def test_public_outputs_agree_with_the_canonical_host_facts(
@@ -392,15 +492,20 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert "installs no Kiro hook" in gate
 
     steps = " ".join(packet["activation_steps"])
-    assert "`/goal <task_body> --max <N>`" in steps
+    # The command must be rendered from the canonical composer, not a hand-kept
+    # literal. Asserting a literal is what let the activation step drift: it
+    # pinned an incomplete command while --validate was only mentioned in a
+    # separate prose step, so an agent copying the command bound a goal the host
+    # judged by its own default instead of the Todo's criteria.
+    assert kiro_cli_goal_invocation() in steps
     assert str(KIRO_CLI_GOAL_MAX_ITERATION_CEILING) in steps
     assert "quota should-run" in steps
     assert KIRO_CLI_GOAL_COMPLETION_TOOL in steps
     assert "no host scheduler to fall back on" not in steps
-    # The host judges each iteration against --validate criteria; binding the
-    # goal without them leaves the host checking nothing LoopX will accept.
-    assert KIRO_CLI_GOAL_VALIDATE_FLAG in steps
     assert KIRO_CLI_GOAL_STATUS_COMMAND in steps
+    # Every copyable command in the packet must be complete on its own. Prose
+    # elsewhere cannot repair a command a reader has already executed.
+    assert_no_incomplete_goal_command("activation packet", packet)
 
     assert packet["setup_command"] == _surface_install_command(
         HOST_SURFACE, "loopx", "."
