@@ -33,7 +33,7 @@ import {
 import {
   evaluateCoordinationTodoTerminalDecision,
   type CoordinationTodoTerminalDecisionResult,
-} from "./todo_terminal_decision.ts";
+} from "./todo_lifecycle_decision.ts";
 import {
   reduceTodoCompletionTransaction,
   TODO_COMPLETION_TRANSACTION_REQUEST_SCHEMA,
