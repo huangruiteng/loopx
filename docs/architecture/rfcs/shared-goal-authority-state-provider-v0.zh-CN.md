@@ -1986,9 +1986,11 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
    journal/outbox。保留非托管的人工叙述，从已知 canonical revision 渲染托管 section，
    提供幂等修复与 freshness/readback 证据。投影 pending 独立于业务 commit/replay。
    直接编辑 Markdown 不能自动导入 authority；显式验证的 edit/import 工具另提方案，
-   不能藏在 renderer 内成为第二个 writer。当前文件缺失仍保持 pending，不静默重建；
-   后续显式 rebuild 要区分可恢复 Todo section 与已丢失人工叙述。验证陈旧/缺失/非法
-   展示、crash/retry、revision race、叙述保留与私有字段边界。
+   不能藏在 renderer 内成为第二个 writer。缺失 display 现已在正常投影交付时自动从
+   canonical state 恢复 Todo-only section（[#4097](https://github.com/huangruiteng/loopx/pull/4097)）；
+   恢复结果声明 `recovery_scope=todo_sections_only`，不恢复丢失的完整 Goal 叙述。
+   已交付边界以 [active-state projection contract](../../reference/protocols/active-state-structured-projection-v0.md)
+   为准。验证陈旧/缺失/非法展示、crash/retry、revision race、叙述保留与私有字段边界。
 3. **一个已资格化的本地 profile 与 fenced cutover。** 第 7.2 节嵌入式候选证明
    head/index 增长有界、历史 receipt、crash recovery、真实 CLI readback、容量和
    >=10 天 soak；file-v0 conformance 不能代替这些证据。绑定精确 lineage/revision/
