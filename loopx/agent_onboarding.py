@@ -15,6 +15,14 @@ from .host_loop_activation import (
     scheduler_command_binding_for_agent_type,
 )
 from .install_contract import NO_CLONE_INSTALL_URL
+from .kiro_cli_goal_mode import (
+    KIRO_CLI_GOAL_CLEAR_COMMAND,
+    KIRO_CLI_GOAL_COMPLETION_TOOL,
+    KIRO_CLI_GOAL_MAX_ITERATION_CEILING,
+    KIRO_CLI_GOAL_STATUS_COMMAND,
+    SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
+    kiro_cli_goal_invocation,
+)
 from .project_prompt import (
     render_available_capability_args,
     render_codex_cli_install_preflight,
@@ -360,13 +368,17 @@ def _start_instruction(agent_type: str) -> str:
         )
     if agent_type == "kiro-cli":
         return (
-            "Run `/loopx <task>` (the LoopX skill installed in `~/.kiro/skills`); "
-            "after todo writeback, bind the objective with the native "
-            "`/goal <task_body> --max <N>` command, taking N from the remaining "
-            "quota slots and never above the host ceiling of 50 (`/goal clear` "
-            "cancels). Start every turn and native goal iteration with `quota "
-            "should-run`, and settle through the built-in `goal` tool only after "
-            "LoopX writeback so its completion contract cites the same evidence."
+            f"Run `/loopx <task>` (the LoopX skill installed in "
+            f"`{KIRO_CLI_SKILLS_ROOT_LABEL}`); after todo writeback, bind the "
+            f"objective with the native `{kiro_cli_goal_invocation()}` command, "
+            f"taking N from the remaining quota slots and never above the host "
+            f"ceiling of {KIRO_CLI_GOAL_MAX_ITERATION_CEILING} "
+            f"(`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels, "
+            f"`{KIRO_CLI_GOAL_STATUS_COMMAND}` reads the bound goal back). "
+            f"Start every turn and native goal iteration with `quota "
+            f"should-run`, and settle through the built-in "
+            f"`{KIRO_CLI_GOAL_COMPLETION_TOOL}` tool only after LoopX writeback "
+            f"so its completion contract cites the same evidence."
         )
     if agent_type == "deepseek-harness":
         return (

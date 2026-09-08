@@ -9,7 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .agy_goal_mode import agy_home as _agy_home
-from .kiro_cli_goal_mode import kiro_home as _kiro_home
+from .kiro_cli_goal_mode import (
+    SKILLS_ROOT_LABEL as _KIRO_SKILLS_ROOT_LABEL,
+    kiro_home as _kiro_home,
+)
 from .opencode_goal_mode import plugin_source, runtime_source
 from .pi_goal_mode import extension_source as pi_extension_source
 from .pi_goal_mode import runtime_source as pi_runtime_source
@@ -1387,7 +1390,7 @@ def install_slash_commands(
             "Cursor discovers skills from CURSOR_HOME/skills and has no user-defined slash commands, so the cursor surface installs the skill facade and registers the LoopX MCP server in CURSOR_HOME/mcp.json; run `cursor-agent mcp enable loopx` once to approve it.",
             "ZCode discovers user skills from ZCODE_HOME/skills (default ~/.zcode/skills) and exposes each skill for invocation via `$skill-name` or Settings -> Skills.",
             "Antigravity CLI discovers global skills from the fixed ~/.gemini/antigravity-cli/skills root using the documented flat layout (one <name>.md per skill); the agy surface is opt-in and offers no home override because the host documents none.",
-            "Kiro CLI discovers global skills from ~/.kiro/skills/<name>/SKILL.md and exposes each as a `/<skill-name>` slash command; the kiro-cli surface is opt-in and offers no home override because the host documents none for that root. Kiro resolves .kiro/prompts and ~/.kiro/prompts before skills, so a same-named user prompt shadows the managed skill.",
+            f"Kiro CLI discovers global skills from {_KIRO_SKILLS_ROOT_LABEL}/<name>/SKILL.md (default ~/.kiro/skills) and exposes each as a `/<skill-name>` slash command; the kiro-cli surface is opt-in and resolves KIRO_HOME so install and uninstall target the profile the running host reads. Kiro resolves .kiro/prompts and KIRO_HOME/prompts before skills, so a same-named user prompt shadows the managed skill.",
             "OpenCode discovers global skills from OPENCODE_CONFIG_DIR/skills in addition to the static command facade; a command is typed by the user, a skill can be reached by the model itself.",
             "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
             "The Pi surface is opt-in and installs the self-contained goal extension and its loop runtime into the project's .pi/extensions/; it is not part of the default all surface.",

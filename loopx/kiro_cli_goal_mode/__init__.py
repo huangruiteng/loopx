@@ -73,7 +73,6 @@ KIRO_CLI_HOOK_TRIGGERS = (
     "postToolUse",
     "stop",
 )
-KIRO_CLI_HOOK_CONFIG_LABEL = "~/.kiro/agents/<name>.json (or .kiro/agents/<name>.json)"
 
 KIRO_CLI_NATIVE_GOAL_FACTS = (
     "native `/goal [description --validate criteria --agent name --max N] | "
@@ -100,6 +99,28 @@ KIRO_CLI_AGENT_TYPE_CATALOG_ENTRY: dict[str, Any] = {
     "entry": f"/loopx <task> from the LoopX skill installed in {SKILLS_ROOT_LABEL}",
     "accepted_inputs": list(KIRO_CLI_ACCEPTED_INPUTS),
 }
+
+
+def kiro_cli_goal_invocation(
+    *,
+    task: str = "<task_body>",
+    criteria: str = "<criteria>",
+    max_iterations: str = "<N>",
+) -> str:
+    """The canonical native goal invocation, in the host's own argument order.
+
+    Every public projection — onboarding instructions, activation packets,
+    installer notes — must render the command from here. Dropping
+    ``--validate`` makes the host judge completion by its own reading instead
+    of the LoopX Todo's acceptance criteria, and a hand-copied string in a
+    second consumer is exactly how that flag went missing before.
+    """
+
+    return (
+        f"{KIRO_CLI_GOAL_COMMAND} {task} "
+        f"{KIRO_CLI_GOAL_VALIDATE_FLAG} {criteria} "
+        f"--max {max_iterations}"
+    )
 
 
 def kiro_cli_activation_extras() -> dict[str, Any]:
