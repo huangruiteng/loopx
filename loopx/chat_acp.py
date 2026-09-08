@@ -62,6 +62,9 @@ class ACPStdioAdapter:
     startup_timeout_sec: float = 30.0
     idle_timeout_sec: float = 180.0
     hard_timeout_sec: float = 900.0
+    # Grace window for the agent to exit on stdin EOF and release any
+    # per-session lock before LoopX signals the process.
+    _graceful_exit_timeout_sec: float = 5.0
     next_request_id: int = 3
     current_request_id: int | None = None
     _write_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
@@ -440,6 +443,23 @@ class ACPStdioAdapter:
     def _terminate(self) -> None:
         if self.process.poll() is not None:
             return
+        # Close stdin first so the agent sees EOF and shuts down on its own.
+        # An ACP agent that persists sessions holds a per-session lock while it
+        # runs; signalling it instead leaves that lock behind, and the next
+        # `session/load` from a new process is rejected because the session
+        # still looks active. Verified against a real host: after stdin EOF the
+        # agent exits 0 and the same session id resumes, while a straight
+        # terminate produced "Session is active in another process".
+        try:
+            if self.process.stdin is not None and not self.process.stdin.closed:
+                self.process.stdin.close()
+        except Exception:
+            pass
+        try:
+            self.process.wait(timeout=self._graceful_exit_timeout_sec)
+            return
+        except subprocess.TimeoutExpired:
+            pass
         self.process.terminate()
         try:
             self.process.wait(timeout=2)

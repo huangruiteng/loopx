@@ -316,6 +316,34 @@ def main() -> None:
         assert missing_row["available"] is False, missing_row
         unavailable.close()
 
+        # Closing a session must release the agent, not just signal it. An ACP
+        # agent that persists sessions holds a per-session lock while it runs,
+        # so a signalled exit leaves the session looking active and the next
+        # `session/load` from a new process is refused. Hosts that advertise no
+        # `sessionCapabilities.close` are exactly the ones this affects, since
+        # LoopX has no close request to send them.
+        no_close = root / "acp-no-close.py"
+        no_close.write_text(
+            FAKE_ACP.replace('"sessionCapabilities": {"close": {}},', ""),
+            encoding="utf-8",
+        )
+        no_close.chmod(no_close.stat().st_mode | stat.S_IXUSR)
+        adapter = ACPStdioAdapter.start(
+            command=(sys.executable, str(no_close)),
+            work_dir=root,
+            startup_timeout_sec=10.0,
+            idle_timeout_sec=10.0,
+            hard_timeout_sec=20.0,
+        )
+        assert not adapter.agent_capabilities.get("sessionCapabilities"), (
+            "fixture must reproduce a host with no session close capability"
+        )
+        adapter.close_session()
+        assert adapter.process.returncode == 0, (
+            "close_session must let the agent exit on its own so it can release "
+            f"the session; got returncode {adapter.process.returncode}"
+        )
+
     print("loopx-chat-acp-adapter-smoke: ok")
 
 
