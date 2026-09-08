@@ -9,6 +9,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+from .control_plane.coordination.local_authority import read_canonical_todo_fields_if_promoted
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_CHOICES as DELIVERY_BATCH_SCALE_CHOICES,
@@ -973,13 +974,18 @@ def refresh_state_run(
         project_override=project,
         state_file_override=state_file,
     )
-    if not resolved_state_file.exists():
+    planning_events = load_rollout_events(rollout_event_log_path(runtime_root, safe_goal_id))
+    todo_fields = read_canonical_todo_fields_if_promoted(
+        runtime_root=runtime_root, goal_id=safe_goal_id, rollout_events=planning_events,
+    )
+    if not resolved_state_file.exists() and (todo_fields is None or next_action):
         raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
-    state_text = resolved_state_file.read_text(encoding="utf-8")
+    state_text = resolved_state_file.read_text(encoding="utf-8") if resolved_state_file.exists() else ""
     expected_write_state_text = state_text
     if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
         require_accountable_completion_validation(
             state_text,
+            todo_fields=todo_fields,
             todo_id=(settlement_identity.todo_id if settlement_identity else None),
             agent_id=normalized_agent_id or None,
         )
@@ -1078,6 +1084,7 @@ def refresh_state_run(
 
     recommendation_resolution = resolve_refresh_recommendation(
         state_text,
+        todo_fields=todo_fields,
         explicit_action=recommended_action,
         agent_id=normalized_agent_id or None,
         settlement_identity=(
@@ -1086,7 +1093,7 @@ def refresh_state_run(
         registry_goal=registry_goal,
         state_path=resolved_state_file,
         rollout_events=(
-            load_rollout_events(rollout_event_log_path(runtime_root, safe_goal_id))
+            planning_events
             if not recommended_action
             and (normalized_agent_id or settlement_identity is not None)
             else None
@@ -1104,6 +1111,7 @@ def refresh_state_run(
         else {}
     )
     replan_qualification = qualify_refresh_replan_writeback(
+        todo_fields=todo_fields,
         autonomous_replan_recorded=autonomous_replan_recorded,
         requested_delta_kinds=normalized_repair_delta_kinds,
         active_state_next_action_update=active_state_next_action_update,

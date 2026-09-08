@@ -1527,6 +1527,7 @@ def build_start_goal_guided_packet(
             project_connection,
             resolved_goal_id=str(command_pack.get("goal_id") or ""),
             effective_agent_id=str(command_pack.get("agent_id") or "") or None,
+            runtime_root_arg=runtime_root_arg,
         )
         if isinstance(project_connection, dict)
         and not isinstance(identity_selection_gate, dict)

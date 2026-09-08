@@ -41,9 +41,10 @@ def _agent_todo_summary(
     state_path: Path | None,
     settlement_todo_id: str | None,
     rollout_events: list[dict[str, Any]] | None,
+    todo_fields: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     preferred = {settlement_todo_id} if settlement_todo_id else None
-    parsed = parse_active_state_todos(
+    parsed = todo_fields if todo_fields is not None else parse_active_state_todos(
         state_text,
         goal=registry_goal,
         state_path=state_path,
@@ -95,6 +96,7 @@ def resolve_refresh_recommendation(
     registry_goal: dict[str, Any] | None = None,
     state_path: Path | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    todo_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Adapt canonical Todo facts into the TS-owned refresh read reducer."""
 
@@ -121,6 +123,7 @@ def resolve_refresh_recommendation(
             state_path=state_path,
             settlement_todo_id=settlement_todo_id,
             rollout_events=rollout_events,
+            todo_fields=todo_fields,
         )
         lane_candidate = build_agent_lane_next_action(
             agent_identity={"agent_id": agent_id} if agent_id else None,
