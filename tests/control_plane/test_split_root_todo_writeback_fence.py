@@ -258,6 +258,11 @@ def test_quota_monitor_poll_cli_preserves_fence_rejection(
     _fence_check_blocks(monkeypatch)
     before = state.read_bytes()
 
+    def unexpected_collection(**_kwargs: Any) -> dict[str, Any]:
+        pytest.fail("fenced monitor write must be rejected before status collection")
+
+    monkeypatch.setattr("loopx.cli_commands.quota.collect_status", unexpected_collection)
+
     exit_code = main(
         [
             "--registry",
@@ -298,6 +303,35 @@ def test_quota_monitor_poll_cli_preserves_fence_rejection(
         "authority_mode": "file_v0",
     }
     assert state.read_bytes() == before
+
+
+@pytest.mark.parametrize("command", ["should-run", "monitor-poll"])
+def test_read_only_quota_still_collects_promoted_state(
+    command: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    from loopx.cli import build_parser
+    from loopx.cli_commands.quota_context import prepare_quota_command_context
+
+    registry, _state, _registered_root, runtime_override = _write_split_root_goal(tmp_path)
+    _engage_fence_at(runtime_override)
+    _fence_check_blocks(monkeypatch)
+    args = build_parser().parse_args([
+        "quota", command, "--goal-id", GOAL_ID, "--agent-id", AGENT_ID,
+        *(["--todo-id", MONITOR_ID] if command == "monitor-poll" else []),
+    ])
+    collected: list[object] = []
+
+    def collector(**kwargs: Any) -> dict[str, object]:
+        collected.append(kwargs["runtime_root_override"])
+        return {"runtime_root": str(runtime_override)}
+
+    context = prepare_quota_command_context(
+        args, registry_path=registry, runtime_root_arg=str(runtime_override),
+        status_collector=collector,
+        operator_inbox_urgency_projector_factory=lambda **_: lambda **__: {},
+    )
+    assert collected == [str(runtime_override)]
+    assert context.status_payload["runtime_root"] == str(runtime_override)
 
 
 def test_turn_repair_update_blocked_when_override_root_is_fenced(
