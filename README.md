@@ -220,6 +220,18 @@ These are the three strongest current cases, not the full inventory. Browse the
 [complete Showcase catalog](docs/showcases/README.md) for contributor cases,
 creator dogfooding, reproducible demos, and explicit evidence-strength labels.
 
+### Exploratory Benchmark Studies
+
+- **[SWE-Marathon](https://huangruiteng.github.io/loopx/benchmarks/swe-marathon/):**
+  Five execution modes on 15 matched tasks compare self-verification, scores,
+  and cost. More self-verification did not consistently yield higher scores.
+- **[DeepSWE behavior analysis](https://huangruiteng.github.io/loopx/benchmarks/deepswe/behavior-discovery/)** (Chinese):
+  Selected cases examine how domain hints relate to requirement retention and
+  verification choices, offering mechanism hypotheses for further testing.
+
+SWE-Marathon has one trial per task and mode; DeepSWE uses selected cases and
+post-hoc analysis. Neither establishes a general performance gain.
+
 More inspectable surfaces:
 
 - the [public homepage](https://huangruiteng.github.io/loopx/) for the product

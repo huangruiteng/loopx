@@ -2506,11 +2506,15 @@ The next complete stage packages are:
    idempotent repair and freshness/readback evidence. Pending projection delivery
    is independent of business commit/replay. Direct Markdown edits must never
    import themselves into authority. Explicit validated edit/import tooling is
-   a separate proposal, not a second writer hidden inside rendering. Current
-   missing-file behavior remains pending, not silent recreation: a future
-   explicit rebuild must distinguish recoverable Todo sections from lost human
-   narrative. Validate stale/missing/malformed display, crash/retry, revision
-   races, narrative preservation and private-field boundaries.
+   a separate proposal, not a second writer hidden inside rendering. Missing
+   displays now automatically recover Todo-only sections from canonical state
+   during normal projection delivery
+   ([#4097](https://github.com/huangruiteng/loopx/pull/4097)); recovery reports
+   `recovery_scope=todo_sections_only` and does not restore lost Goal narrative.
+   The [active-state projection contract](../../reference/protocols/active-state-structured-projection-v0.md)
+   defines the shipped recovery boundary. Validate stale/missing/malformed
+   display, crash/retry, revision races, narrative preservation and private-field
+   boundaries.
 3. **One qualified local profile and fenced cutover.** Section 7.2's embedded
    candidate must prove bounded head/index growth, historical receipts, crash
    recovery, real CLI readback, capacity and >=10-day soak. File-v0 conformance
