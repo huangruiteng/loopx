@@ -265,7 +265,7 @@ loopx start-goal --guided --project . --goal-text "你的长程目标"
 | Pi | 用 `loopx slash-commands --install --surface pi` 安装 opt-in goal extension，然后在受信任的 Pi 会话里用 `/loopx <任务>`。 | 由 LoopX quota gate 的可见 Pi goal extension（`loopx_goal_activate` + `agent_settled` 续跑） |
 | ZCode | 用 `loopx slash-commands --install --surface zcode` 安装 skill facade，然后在项目里的 ZCode 会话中调用 `$loopx` skill（或 `/loopx <复杂任务>`）。 | ZCode 会话自身的 turn loop；每次续跑都从 `quota should-run` 进入 |
 | Antigravity CLI（agy） | 用 `loopx slash-commands --install --surface agy` 安装 skill facade，然后在项目里的 `agy` 会话中调用 `loopx` skill（或 `/loopx <复杂任务>`）。 | 会话原生 `/goal` 循环（审计至 `<!-- GOAL_COMPLETE -->`）加 `schedule` 自唤醒，随会话存活；facade 指示每次 turn/唤醒都先过 `quota should-run`——advisory 节流，非宿主强制 gate |
-| Kiro CLI | 用 `loopx slash-commands --install --surface kiro-cli` 安装 skill facade，然后在项目里的 `kiro-cli` 会话中执行 `/loopx <复杂任务>`。 | 会话原生 `/goal <任务> --max <N>` 循环，由宿主自己的迭代预算兜底（默认 5，上限 50），并通过内置 `goal` 完成契约收口；facade 指示每次 turn 与迭代都先过 `quota should-run`——advisory 节流，非宿主强制 gate |
+| Kiro CLI | 用 `loopx slash-commands --install --surface kiro-cli` 安装 skill facade，然后在项目里的 `kiro-cli` 会话中执行 `/loopx <复杂任务>`。 | 会话原生 `/goal <任务> --validate <验收条件> --max <N>` 循环，由宿主自己的迭代预算兜底（默认 5，上限 50），并通过内置 `goal` 完成契约收口；facade 指示每次 turn 与迭代都先过 `quota should-run`——advisory 节流，非宿主强制 gate |
 | DeepSeek Harness（dsh） | 安装 [DSH 原生 Plugin](packages/dsh-loopx-plugin/README.md)，在技能选择器中点 `loopx`，然后直接描述任务；[dsh goal-mode adapter](loopx/dsh_goal_mode/README.md) 继续支持 headless turn。 | 原生同会话续跑与 GoalBar，或 headless dsh 工作段；两条路径都遵守 LoopX authority |
 | Cursor、shell、自有 runner | 使用同一 installer 和 `loopx doctor`，再手动连接或由 runner 调用。 | 你的 shell、scheduler 或 runner |
 

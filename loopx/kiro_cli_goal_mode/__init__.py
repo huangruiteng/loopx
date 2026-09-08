@@ -171,16 +171,15 @@ def kiro_cli_activation_extras() -> dict[str, Any]:
         },
         "extra_activation_steps": [
             "Bind the objective with the native goal command: "
-            f"`{KIRO_CLI_GOAL_COMMAND} <task_body> {KIRO_CLI_GOAL_MAX_FLAG} <N>` "
-            "— choose N from the remaining quota slots, not from ambition, and "
+            f"`{kiro_cli_goal_invocation()}` — substitute the validation the "
+            "LoopX todo already names for `<criteria>` so the host judges each "
+            "iteration against the same check LoopX will accept as writeback, "
+            "and choose N from the remaining quota slots, not from ambition, "
             f"never above the host ceiling of "
             f"{KIRO_CLI_GOAL_MAX_ITERATION_CEILING} "
             f"(host default is {KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS}); "
             f"`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels it.",
-            "Pass the validation the LoopX todo already names as "
-            f"`{KIRO_CLI_GOAL_VALIDATE_FLAG} <criteria>` so the host judges "
-            "each iteration against the same check LoopX will accept as "
-            f"writeback, and read the loop back with "
+            "Read the loop back with "
             f"`{KIRO_CLI_GOAL_STATUS_COMMAND}` instead of guessing its state.",
             "Start every turn and native goal iteration with `quota "
             "should-run` and honor a stop/throttle decision before any "

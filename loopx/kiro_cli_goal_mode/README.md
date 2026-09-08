@@ -60,7 +60,8 @@ Kiro CLI discovers global skills from `<KIRO_HOME>/skills/<name>/SKILL.md`
 both as `skill://` resources, and every discovered skill is invocable as a
 `/<skill-name>` slash command with `$ARGUMENTS` expansion. LoopX reaches a
 Kiro CLI session through the generated `/loopx` skill facade, and the
-activation binds the objective with the native `/goal <task_body> --max <N>`.
+activation binds the objective with the native
+`/goal <task_body> --validate <criteria> --max <N>`.
 
 Three honest limits, stated in the activation packet:
 
@@ -98,10 +99,11 @@ loopx start-goal --guided --project . --slash-command-arguments="<task>" --host-
 ```
 
 After todo writeback, bind the generated heartbeat task body with
-`/goal <task_body> --max <N>` — with `N` taken from the remaining quota slots
-and never above the host ceiling of 50 — pass the validation the todo already
-names as `--validate <criteria>` so the host judges each iteration against the
-check LoopX will accept, read the loop back with `/goal status`, start every
+`/goal <task_body> --validate <criteria> --max <N>` — substituting the
+validation the todo already names for `<criteria>` so the host judges each
+iteration against the check LoopX will accept, and `N` taken from the remaining
+quota slots and never above the host ceiling of 50 — read the loop back with
+`/goal status`, start every
 turn and native goal iteration with `quota should-run` (advisory guidance;
 LoopX does not intercept native host iterations), and settle through the
 built-in `goal` tool only after LoopX writeback so the cited evidence matches
