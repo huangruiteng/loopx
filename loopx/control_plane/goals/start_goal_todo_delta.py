@@ -95,19 +95,12 @@ def existing_runnable_agent_frontier(
         and todo_item_is_actionable_open(item)
         and item.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
     ]
-    if effective_agent_id:
-        runnable = [
-            item
-            for item in runnable
-            if not item.get("claimed_by")
-            or str(item.get("claimed_by")) == effective_agent_id
-        ]
-    else:
-        runnable = [
-            item
-            for item in runnable
-            if not item.get("claimed_by")
-        ]
+    runnable = [
+        item
+        for item in runnable
+        if not item.get("claimed_by")
+        or (effective_agent_id and str(item.get("claimed_by")) == effective_agent_id)
+    ]
     return runnable or None
 
 

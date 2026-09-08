@@ -325,6 +325,27 @@ def test_public_refresh_retains_legacy_parity_and_uses_one_provider_read(
 
 
 @pytest.mark.parametrize("promoted", [False, True])
+def test_refresh_todo_text_is_record_content_not_an_artifact_path(
+    tmp_path: Path, promoted: bool,
+) -> None:
+    text = "../../escape.json"
+    registry, path, goal = _fixture(tmp_path, state=_state(text=text))
+    if promoted:
+        _promote(registry, path, goal)
+    before = path.read_bytes()
+    result = _refresh(registry, dry_run=False)
+    runs = tmp_path / "runtime/goals/goal-a/runs"
+    for key in ("json_path", "markdown_path", "index_path"):
+        artifact = Path(result[key])
+        assert artifact.parent == runs
+        assert artifact.is_file()
+    record = json.loads(Path(result["json_path"]).read_text())
+    assert text in json.dumps(record)
+    assert not list(tmp_path.rglob("escape.json"))
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("promoted", [False, True])
 def test_public_refresh_missing_projection_is_readable_not_implicitly_rebuilt(
     tmp_path: Path, promoted: bool,
 ) -> None:
@@ -432,7 +453,8 @@ def test_production_scale_snapshot_reaches_all_planning_consumers(
             resolved_goal_id="goal-a",
             effective_agent_id=agent,
         )
-        assert frontier and selected_id in {item["todo_id"] for item in frontier}
+        assert frontier
+        assert selected_id in {item["todo_id"] for item in frontier}
         assert all(
             item.get("claimed_by") in (None, agent)
             and item["status"] == "open"
