@@ -324,14 +324,20 @@ def test_public_refresh_retains_legacy_parity_and_uses_one_provider_read(
     assert (reads[0] is not None) == promoted
 
 
+@pytest.mark.parametrize("promoted", [False, True])
 def test_public_refresh_missing_projection_is_readable_not_implicitly_rebuilt(
-    tmp_path: Path,
+    tmp_path: Path, promoted: bool,
 ) -> None:
     registry, path, goal = _fixture(tmp_path)
-    _promote(registry, path, goal)
+    if promoted:
+        _promote(registry, path, goal)
     path.unlink()
-    result = _refresh(registry)
-    assert "Canonical work" in json.dumps(result)
+    if promoted:
+        result = _refresh(registry)
+        assert "Canonical work" in json.dumps(result)
+    else:
+        with pytest.raises(FileNotFoundError):
+            _refresh(registry)
     assert not path.exists()
     with pytest.raises(FileNotFoundError):
         _refresh(registry, next_action="Replace the missing narrative", progress_scope="goal")

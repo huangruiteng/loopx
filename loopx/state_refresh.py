@@ -9,7 +9,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
-from .control_plane.coordination.local_authority import read_canonical_todo_fields_if_promoted
 from .control_plane.runtime.time import now_local_iso
 from .control_plane.work_items.delivery_batch_scale import (
     DELIVERY_BATCH_SCALE_CHOICES as DELIVERY_BATCH_SCALE_CHOICES,
@@ -58,6 +57,7 @@ from .control_plane.work_items.refresh_recommendation import (
     RECOMMENDED_ACTION_SOURCE_SETTLEMENT_BOUND_TODO as RECOMMENDED_ACTION_SOURCE_SETTLEMENT_BOUND_TODO,
     derive_recommended_action as derive_recommended_action,
     derive_recommended_action_with_source as derive_recommended_action_with_source,
+    load_refresh_planning_source,
     resolve_refresh_recommendation,
 )
 from .control_plane.runtime.shared_runtime_refresh_projection import (
@@ -99,7 +99,6 @@ from .control_plane.todos.contract import (
 from .control_plane.todos.completion_validation_accountability import (
     require_accountable_completion_validation,
 )
-from .rollout_event_log import load_rollout_events, rollout_event_log_path
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 GOAL_PROGRESS_SCOPE = "goal"
@@ -974,13 +973,9 @@ def refresh_state_run(
         project_override=project,
         state_file_override=state_file,
     )
-    planning_events = load_rollout_events(rollout_event_log_path(runtime_root, safe_goal_id))
-    todo_fields = read_canonical_todo_fields_if_promoted(
-        runtime_root=runtime_root, goal_id=safe_goal_id, rollout_events=planning_events,
+    state_text, planning_events, todo_fields = load_refresh_planning_source(
+        runtime_root, safe_goal_id, resolved_state_file, require_display=bool(next_action)
     )
-    if not resolved_state_file.exists() and (todo_fields is None or next_action):
-        raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
-    state_text = resolved_state_file.read_text(encoding="utf-8") if resolved_state_file.exists() else ""
     expected_write_state_text = state_text
     if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
         require_accountable_completion_validation(
@@ -1093,10 +1088,7 @@ def refresh_state_run(
         registry_goal=registry_goal,
         state_path=resolved_state_file,
         rollout_events=(
-            planning_events
-            if not recommended_action
-            and (normalized_agent_id or settlement_identity is not None)
-            else None
+            planning_events if normalized_agent_id or settlement_identity is not None else None
         ),
     )
     action = str(recommendation_resolution["recommended_action"])
