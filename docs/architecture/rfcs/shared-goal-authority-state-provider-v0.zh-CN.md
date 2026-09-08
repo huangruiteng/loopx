@@ -1952,6 +1952,14 @@ fence。它不能替代只读三臂演练，因为所有 provider 共享新的 s
 声明 fixture 影响、覆盖所有受影响的 provider arm，并把只读三臂演练保留为独立的
 promotion gate。
 
+Legacy lifecycle 的字段组装现在调用唯一 TS field planner，详见
+[TS 退役检查点](typescript-control-plane-migration-v0.zh-CN.md#legacy-字段规则退役检查点)。
+它删除 Python decision，但不改变逐 goal 的 authority 阶段：未 promotion 的 goal
+仍由持锁 Markdown writer 提交，promoted goal 仍使用既有 provider transaction 与
+unsupported-field fence。planner 不读取 provider，也不授予 lease、CAS receipt 或
+写权限。该检查点闭合的是一个规则 owner，不是剩余 mutation inventory 或本地
+store／promotion 资格化。
+
 ### 下一步交付与并行 provider 工作
 
 Markdown 是**长期保留的一等可读投影**。退役的是它的数据库及业务 writer 权威，

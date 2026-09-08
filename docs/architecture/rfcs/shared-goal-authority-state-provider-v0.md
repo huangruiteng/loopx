@@ -2461,6 +2461,15 @@ Every pull request that claims progress against this RFC follows the
 It declares fixture impact, exercises every affected provider arm, and keeps
 the read-only three-arm rehearsal as a separate promotion gate.
 
+Legacy lifecycle field assembly now calls the single TS field planner described
+in the [TS retirement checkpoint](typescript-control-plane-migration-v0.md#legacy-field-rule-retirement-checkpoint).
+This removes Python decisions without changing the per-goal authority phase:
+unpromoted goals still commit through the locked Markdown writer, while promoted
+goals retain their existing provider transactions and unsupported-field fences.
+The planner neither reads a provider nor grants a lease, CAS receipt, or write
+permission. This checkpoint closes one rule owner, not the remaining mutation
+inventory or local-store/promotion qualification.
+
 ### Next delivery and parallel provider work
 
 Markdown is a **permanent first-class readable projection**. Retire its database

@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-07
+- Last revised：2026-09-09
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -151,6 +151,28 @@ Python decision，保留独立审阅的 typed case，并通过真实 CLI 验证�
 旧推断本身错误，因此只有传输 golden parity 不够。另行盘点仍缺少 material-result
 字段的 writer，并用明确兼容计划退役旧 marker/hint 配置。本批不迁移精确的旧
 lifecycle classification code 或其他 cadence policy，不能宣称全局已无文本规则。
+
+### Legacy 字段规则退役检查点
+
+`todos/field_update.ts` 现在持有 legacy `update`、`claim`、`complete`、`supersede`
+line writer 共用的完整 metadata intent 组装：status 与 completion 时间、未传与显式
+清空、binding 优先级、已移除 policy 的修复、resume-generation 配对及 completion
+metadata。它直接组合已有 TS completion rule。被替代的 Python decision 分支，以及
+失去最后调用者的 `todo.completion_state.metadata_updates` RPC/facade 一起删除，
+不保留为 fallback。
+
+这是一份纯 plan，不是 admission 或 provider commit。Python 仍保留 Markdown 定位／
+编码、字节级 no-op 检查、锁与外部 effect；本批不宣称迁完公共 role/binding admission
+或 event writer。Promoted update 仍只支持 text/note：不扩权、不 promotion goal、
+不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
+事务在拒绝时原本就不会提交。
+
+每次 legacy line write 有一次 field-plan crossing：普通编辑替代原 metadata RPC；
+已经 finalization、携带 override 的 completion 会增加一次 planning crossing。
+带缓存的 codec normalization 调用仍在。这兑现的是语义代码删除，不宣称每个命令
+都减少 round trip。完整 goal cutover 后随最后 legacy lifecycle caller 删除 adapter，
+或者迁移该 caller 时将 plan 折叠进其粗粒度事务；不得继续扩张逐字段 RPC。
+Markdown renderer 长期保留。
 
 ### 下一步交付顺序
 
