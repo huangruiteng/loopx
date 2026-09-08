@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 KIRO_CLI_INSTALL_SURFACE = "kiro-cli"
 KIRO_CLI_AGENT_TYPE = "kiro-cli"
 DEFAULT_KIRO_CLI_HOME = ".kiro"
+# The host's own override for its global root. Kiro CLI relocates global
+# agents, prompts, skills, settings, and sessions when this is set, so it is
+# authoritative over the default for anything LoopX installs or removes.
+KIRO_CLI_HOME_ENV = "KIRO_HOME"
 SKILLS_SUBDIR = "skills"
-SKILLS_ROOT_LABEL = "~/.kiro/skills"
+SKILLS_ROOT_LABEL = "KIRO_HOME/skills"
 KIRO_CLI_BIN = "kiro-cli"
 KIRO_CLI_ACCEPTED_INPUTS = (
     "kiro-cli",
@@ -189,15 +194,21 @@ def kiro_cli_chat_command(bin_name: str | None = None) -> tuple[str, ...]:
 
 
 def kiro_home(value: str | None = None) -> Path:
-    """The fixed Kiro CLI home: ``~/.kiro``.
+    """The Kiro CLI home: ``KIRO_HOME`` when set, else ``~/.kiro``.
 
-    Kiro CLI discovers global skills from ``~/.kiro/skills/<name>/SKILL.md``
-    and workspace skills from ``.kiro/skills/<name>/SKILL.md``; the default
-    agent carries both as ``skill://`` resources. The host documents no home
-    override for this root (``KIRO_AGENT_CONFIG_DIR`` relocates agent configs
-    only, not skills), so LoopX exposes none either: installs target exactly
-    this path, HOME-relative so tests stay hermetic. ``value`` is an internal
-    injection point for tests, not a public override.
+    Kiro CLI discovers global skills from ``<home>/skills/<name>/SKILL.md`` and
+    workspace skills from ``.kiro/skills/<name>/SKILL.md``; the default agent
+    carries both as ``skill://`` resources. ``KIRO_HOME`` is the host's own
+    override for that global root, so LoopX must resolve it: writing to
+    ``~/.kiro`` while the active profile lives elsewhere would report a
+    successful install that the running host never discovers. Resolution order
+    matches every other host in this repository: explicit injected ``value``,
+    then the host environment override, then the default. Install and uninstall
+    share this one resolver, so they cannot target different roots.
     """
-    raw = value or str(Path.home() / DEFAULT_KIRO_CLI_HOME)
+    raw = (
+        value
+        or os.environ.get(KIRO_CLI_HOME_ENV)
+        or str(Path.home() / DEFAULT_KIRO_CLI_HOME)
+    )
     return Path(raw).expanduser()

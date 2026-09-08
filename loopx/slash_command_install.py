@@ -1005,13 +1005,14 @@ def install_slash_commands(
         )
 
     if "kiro-cli" in effective_surfaces:
-        # Kiro CLI discovers global skills from ~/.kiro/skills/<name>/SKILL.md
+        # Kiro CLI discovers global skills from <KIRO_HOME>/skills/<name>/SKILL.md
         # (workspace skills live in .kiro/skills), and exposes every discovered
-        # skill as a `/<skill-name>` slash command. The host documents no home
-        # override for that root — KIRO_AGENT_CONFIG_DIR relocates agent
-        # configs only — so LoopX offers none either. A same-named user prompt
-        # in .kiro/prompts wins over a skill by Kiro's own resolution order;
-        # the installer never touches the prompt directories.
+        # skill as a `/<skill-name>` slash command. KIRO_HOME is the host's own
+        # override for that global root, so the resolver honours it: installing
+        # into ~/.kiro while the active profile lives elsewhere would report a
+        # success the running host never discovers. A same-named user prompt in
+        # .kiro/prompts wins over a skill by Kiro's own resolution order; the
+        # installer never touches the prompt directories.
         _install_skill_facade(
             specs=specs,
             installed=installed,

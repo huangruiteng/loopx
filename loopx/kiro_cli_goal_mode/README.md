@@ -54,8 +54,9 @@ start from rather than rediscovering it from host docs.
 
 ## What this surface is
 
-Kiro CLI discovers global skills from `~/.kiro/skills/<name>/SKILL.md` and
-workspace skills from `.kiro/skills/<name>/SKILL.md`; the default agent carries
+Kiro CLI discovers global skills from `<KIRO_HOME>/skills/<name>/SKILL.md`
+(`~/.kiro` when `KIRO_HOME` is unset) and workspace skills from
+`.kiro/skills/<name>/SKILL.md`; the default agent carries
 both as `skill://` resources, and every discovered skill is invocable as a
 `/<skill-name>` slash command with `$ARGUMENTS` expansion. LoopX reaches a
 Kiro CLI session through the generated `/loopx` skill facade, and the
@@ -80,10 +81,10 @@ loopx slash-commands --install --surface kiro-cli
 ```
 
 Writes the managed LoopX skill facades (`loopx/SKILL.md`,
-`loopx-global-*/SKILL.md`, …) into `~/.kiro/skills/` using Kiro's per-skill
-directory layout. The host documents no home override for this root
-(`KIRO_AGENT_CONFIG_DIR` relocates agent configs only, not skills), so LoopX
-offers none either: installs target exactly that path. Managed files carry the
+`loopx-global-*/SKILL.md`, …) into `<KIRO_HOME>/skills/` using Kiro's per-skill
+directory layout. `KIRO_HOME` is the host's own override for that global root,
+so LoopX resolves it and falls back to `~/.kiro` when it is unset; install and
+uninstall always target the same resolved root. Managed files carry the
 `loopx-managed-slash-command` marker and are refreshed by rerunning the
 installer; user-owned files are never overwritten.
 
