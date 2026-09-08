@@ -2489,9 +2489,19 @@ The next complete stage packages are:
    and reads against actual callers. Status/attention now joins `todo list` in
    reading canonical Todo summaries after promotion, without requiring the
    Markdown file. Missing providers fail closed and empty canonical collections
-   never revive legacy Todos. This is consumer progress, not promotion proof:
-   Turn, quota, planning, standing decisions, leases and monitor writeback still
-   need their own parity inventory. Read authority does not grant writeback.
+   never revive legacy Todos. Refresh recommendation, repair/replan qualification,
+   completion-validation accountability, Todo-add replan binding and guided-start
+   frontier now share that canonical source. A refresh reads one snapshot and
+   passes it through its decisions rather than rereading a changing provider or
+   Markdown at each gate. Provider failure aborts; an empty snapshot is not a
+   fallback signal. This is consumer progress, not promotion proof: Turn/quota,
+   standing decisions, leases, monitor writeback, shared-goal alignment and
+   amendment revision bases still need their own parity inventory. Read authority
+   does not grant writeback. Source/display independence is tested with the
+   shared production-scale fixture and real FileAuthorityStore; these reads do
+   not establish freshness/CAS for a later business commit or change provider
+   defaults. Next Action narrative remains independent of Todo authority.
+
    Lifecycle admission and the preauthorized terminal fence now share the TS
    owner across legacy writers and native terminal transactions; the replaced
    Python rules are removed without changing provider defaults or promotion.

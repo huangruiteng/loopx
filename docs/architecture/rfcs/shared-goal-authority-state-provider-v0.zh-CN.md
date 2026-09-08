@@ -1975,8 +1975,15 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
    terminal/successor/archive 路径。按实际 caller 盘点剩余公开 mutation 和 read。
    status/attention 现在与 `todo list` 一样，在 promotion 后读 canonical Todo summary，
    不要求 Markdown 文件存在；provider 缺失 fail closed，canonical 空集合不能复活旧
-   Todo。这是 consumer 进展，不是 promotion 证明：Turn、quota、planning、standing
-   decision、lease、monitor writeback 仍需各自的 parity 清单。读权威不授予写回能力。
+   Todo。Refresh 推荐、repair/replan 验收、completion-validation 问责、Todo-add replan
+   绑定和 guided-start frontier 现已复用该 canonical 来源。一次 refresh 读取一份快照，
+   传给各项决策，不在每个门禁重新读取变化中的 provider 或 Markdown；provider 故障
+   直接中止，空快照不是 fallback 信号。这是 consumer 进展，不是 promotion 证明：
+   Turn/quota、standing decision、lease、monitor writeback、shared-goal alignment 与
+   amendment revision basis 仍需各自 parity 清单。读权威不授予写回能力。共用的复杂
+   fixture 和真实 FileAuthorityStore 验证 source/display 独立性，但不证明后续业务
+   commit 的 freshness/CAS，也不改变 provider 默认值。Next Action 正文仍独立于 Todo 权威。
+
    Lifecycle 准入及预授权 terminal fence 现由 legacy writer 与 native terminal
    transaction 共用 TS owner；删除对应 Python 规则，不改变 provider 默认或 promotion。
    这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume

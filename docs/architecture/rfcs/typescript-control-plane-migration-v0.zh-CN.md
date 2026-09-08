@@ -174,8 +174,14 @@ crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加�
    字段编辑、monitor、lease、event caller，把规则迁入既有 TS owner，并在同一切片
    删除被替代的 decision。读取复用 canonical Todo summary：promotion 后，`todo list`
    和 status/attention 不得选择陈旧 Markdown/event Todo；投影缺失、canonical 集合为空
-   也不例外。另行审计 Turn、quota、planning、Dashboard、standing-decision consumer；
-   修好一条不等于全部合格。通过真实入口验证 parity 和 provider 故障拒绝，不能只比传输快照。
+   也不例外。Refresh 现在只读一次无截断 canonical Todo 快照，供推荐、repair/replan
+   验收和 completion-validation 问责共同使用；Todo-add 的 replan 绑定和 guided-start
+   的既有 frontier 也复用同一来源适配器。既有 decision reducer 仍是规则 owner，不增加
+   第二份 planning store 或权限规则；旧模式保留原 parser 合同。Turn/quota、Dashboard、
+   standing decision、shared-goal alignment 与 amendment revision basis 另行审计，
+   不能将这些具名调用链的闭合等同于全部 consumer 合格。通过真实入口验证 parity 和
+   provider 故障拒绝。独立维护的 Next Action 仍是正文，不导入 Todo；展示缺失不授权
+   重建丢失正文，也不能削弱完成验收门禁。
 2. **把展示闭合为可恢复的单向投影。** 复用 canonical journal/outbox 与 Todo-section
    renderer，保留人工叙述、来源 revision、幂等交付和可操作的 pending repair。
    渲染失败不能撤销已提交事务，也不能授权 Markdown fallback；恢复投影不能重跑业务操作。

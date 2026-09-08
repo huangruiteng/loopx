@@ -225,10 +225,18 @@ than extending these adapters field by field.
    TS owner and delete the replaced decisions in the same slice. Reuse the
    canonical Todo summary for reads: `todo list` and status/attention must not
    select stale Markdown or event Todos after promotion, even when the display
-   is missing or the canonical collection is empty. Audit Turn, quota, planning,
-   Dashboard and standing-decision consumers separately; fixing one does not
-   qualify all consumers. Prove real-entrypoint parity and unavailable-provider
-   rejection, not just transport snapshots.
+   is missing or the canonical collection is empty. Refresh now loads one
+   unbounded canonical Todo snapshot for recommendation, repair/replan
+   qualification and completion-validation accountability; Todo-add's replan
+   binding and guided-start's existing frontier use the same source adapter.
+   Their existing decision reducers remain owners: no second planning store or
+   permission rule is introduced. Legacy callers retain their parser contracts.
+   Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
+   amendment revision bases separately; this closes the named planning callers,
+   not every consumer. Prove real-entrypoint parity and unavailable-provider
+   rejection, not just transport snapshots. Independently authored Next Action
+   remains narrative, not a Todo import. Missing display does not authorize
+   reconstructing narrative or weaken an accountable completion fence.
 2. **Make the display a recoverable one-way projection.** Reuse the canonical
    journal/outbox and Todo-section renderer. Keep human narrative, source
    revision, idempotent delivery and actionable pending repair. A failed render
