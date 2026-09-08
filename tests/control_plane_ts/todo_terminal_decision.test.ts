@@ -115,6 +115,35 @@ test("mutation protocol cannot masquerade as completion or smuggle boolean strin
     authority_action: "claim", requested_claimed_by: "agent-b" })).code, "claim_actor_mismatch");
 });
 
+test("executor reclaim remains internal and preserves actor rejection precedence", () => {
+  const reclaim = (actor: string) => mutation({
+    actor_agent_id: actor, authority_action: "reclaim", ownership_mutation: true,
+    clear_claim: true, handoff_mode: "hard_lease",
+    lifecycle_grants: [{ agent_id: actor, actions: ["reclaim"], requires_reason: false }],
+  });
+  const accepted = evaluateCoordinationTodoMutationDecision(reclaim("agent-b"));
+  assert.equal(accepted.outcome, "apply");
+  assert.equal(accepted.ownership_gate, "delegated_override");
+  assert.equal(accepted.next_todo_claimed_by, null);
+  assert.equal(accepted.next_lease, null);
+  assert.equal(evaluateCoordinationTodoMutationDecision(reclaim("agent-z")).code,
+    "actor_not_registered");
+  assert.equal(evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"),
+    todo: { ...request().todo as object, excluded_agents: ["agent-b"] },
+  }).code, "actor_excluded");
+  for (const change of [
+    { command: "claim" }, { clear_claim: false }, { ownership_mutation: false },
+    { requested_claimed_by: "agent-b" },
+    { lifecycle_grants: [{ agent_id: "agent-a", actions: ["reclaim"], requires_reason: false }] },
+    { lifecycle_grants: [{ agent_id: "agent-b", actions: ["update", "reclaim"], requires_reason: false }] },
+  ]) assert.throws(() => evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"), ...change }));
+  // The public grant decoder and terminal wire must not gain reclaim authority.
+  assert.throws(() => evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"), authority_action: "update" }));
+  assert.throws(() => evaluateCoordinationTodoTerminalDecision(request({
+    lifecycle_grants: reclaim("agent-b").lifecycle_grants,
+  })));
+});
+
 test("standalone fence is preauthorized and never completes or attributes a Todo", () => {
   const base = request({ schema_version: COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
     actor_agent_id: null, delegated_authority: false, require_active_when_fence_supplied: false,

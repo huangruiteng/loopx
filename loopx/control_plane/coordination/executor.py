@@ -21,6 +21,7 @@ import hashlib
 import json
 import math
 import re
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -957,7 +958,10 @@ class CoordinationAuthorityExecutor:
             return _classified(clear_plan)
         assert clear_plan.next_snapshot is not None
         core_lease = self._acquire_and_claim(
-            clear_plan.next_snapshot,
+            # The clock-authorized delegation applies only to clearing the
+            # expired claim. Acquire/claim must use ordinary holder rules,
+            # without carrying that ephemeral authority into a later command.
+            replace(clear_plan.next_snapshot, lifecycle_grants=()),
             actor,
             request["operation_id"],
             command["lease_ttl_seconds"],

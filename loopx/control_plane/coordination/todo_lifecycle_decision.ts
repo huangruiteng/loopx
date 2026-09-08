@@ -28,6 +28,7 @@ export const COORDINATION_TERMINAL_FENCE_RESULT_SCHEMA =
 const HANDOFF_MODES = ["legacy", "soft_claim", "hard_lease"] as const;
 const OUTCOMES = ["approve", "reject", "cancel"] as const;
 const AUTHORITY_ACTIONS = ["complete", "reassign", "supersede", "update"] as const;
+const EXECUTOR_RECLAIM_ACTION = "reclaim";
 
 type LifecycleCommand = typeof COMMANDS[number] | typeof MUTATION_COMMANDS[number];
 type HandoffMode = typeof HANDOFF_MODES[number];
@@ -234,6 +235,28 @@ function lifecycleGrants(
   });
 }
 
+function executorReclaimGrant(request: JsonObject, actor: string | null): LifecycleGrant[] {
+  // This is the existing executor's ephemeral, clock-authorized clear-claim
+  // intent, not a configurable public lifecycle grant. The executor checks
+  // expiry/grace under CAS; this pure decision still owns actor eligibility.
+  const grants = request.lifecycle_grants;
+  if (request.command !== "update" || request.clear_claim !== true ||
+      request.ownership_mutation !== true || request.requested_claimed_by != null ||
+      actor === null || !Array.isArray(grants) || grants.length !== 1) {
+    throw new EffectRuntimeRequestError("executor reclaim requires one standing clear-claim grant");
+  }
+  const grant = requireJsonObject(grants[0], "executor reclaim grant");
+  const agent = normalizeTodoAgent(grant.agent_id, "executor reclaim grant.agent_id");
+  const actions = requireStringArray(grant.actions, "executor reclaim grant.actions");
+  if (agent !== actor || actions.length !== 1 || actions[0] !== EXECUTOR_RECLAIM_ACTION ||
+      grant.requires_reason !== false) {
+    throw new EffectRuntimeRequestError("executor reclaim grant must match its actor and action");
+  }
+  // Do not require registration here: authority() must return the established
+  // typed actor rejection before considering this synthesized delegation.
+  return [{agent_id: agent, actions: [EXECUTOR_RECLAIM_ACTION], requires_reason: false}];
+}
+
 function decodeRequest(value: unknown, kind: "terminal" | "mutation" = "terminal"): LifecycleDecisionRequest {
   const request = requireJsonObject(value, "Todo terminal decision request");
   requireStringLiteral(
@@ -245,22 +268,26 @@ function decodeRequest(value: unknown, kind: "terminal" | "mutation" = "terminal
   const registeredAgents = normalizeRegisteredTodoAgents(
     requireStringArray(request.registered_agents, "registered_agents"),
   );
+  const actor = optionalAgent(request.actor_agent_id, "actor_agent_id");
+  const internalReclaim = kind === "mutation" && request.authority_action === EXECUTOR_RECLAIM_ACTION;
   const outcome = kind === "terminal" ? optionalString(request.decision_outcome, "decision_outcome") : null;
   return {
     command: requireStringLiteral(request.command,
       kind === "terminal" ? COMMANDS : MUTATION_COMMANDS, "command"),
     handoff_mode: requireStringLiteral(request.handoff_mode, HANDOFF_MODES, "handoff_mode"),
     registered_agents: registeredAgents,
-    lifecycle_grants: lifecycleGrants(request.lifecycle_grants ?? [], registeredAgents),
+    lifecycle_grants: internalReclaim ? executorReclaimGrant(request, actor)
+      : lifecycleGrants(request.lifecycle_grants ?? [], registeredAgents),
     todo: todoFact(request.todo, "todo"),
     decision_target: kind !== "terminal" || request.decision_target === null || request.decision_target === undefined
       ? null
       : todoFact(request.decision_target, "decision_target"),
     lease: leaseFact(request.lease),
-    actor_agent_id: optionalAgent(request.actor_agent_id, "actor_agent_id"),
+    actor_agent_id: actor,
     authority_action: requireStringLiteral(
       request.authority_action,
-      kind === "terminal" ? AUTHORITY_ACTIONS : [...AUTHORITY_ACTIONS, "claim"],
+      kind === "terminal" ? AUTHORITY_ACTIONS
+        : [...AUTHORITY_ACTIONS, "claim", EXECUTOR_RECLAIM_ACTION],
       "authority_action",
     ),
     authority_reason: optionalString(request.authority_reason, "authority_reason"),
