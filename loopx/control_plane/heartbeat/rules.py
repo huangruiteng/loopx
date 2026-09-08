@@ -3,25 +3,29 @@
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
 DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex session is already trusted."
+OPERATOR_LANGUAGE_RULE = (
+    "Language=user; fallback=English; mix only if asked/scoped-bilingual."
+)
+OPERATOR_LANGUAGE_RULE_THIN = "Lang=user; default=en; mix=asked/scoped."
 USER_TODO_FINAL_MESSAGE_RULE = (
-    "`interaction_contract.user_channel.notify` controls output: `NOTIFY` -> concrete "
-    "action; otherwise quiet. `should_run`/due monitor and other-agent scoped todos "
-    "are not user prompts. Only inside `NOTIFY`, `action_required` without an action -> "
-    '"具体 user todo 未投影，需修复 LoopX 状态投影"; with `DONT_NOTIFY`, repair '
+    f"{OPERATOR_LANGUAGE_RULE} "
+    "`interaction_contract.user_channel.notify` controls output: "
+    "NOTIFY=action; DONT_NOTIFY=quiet. "
+    "Due/peer work is not a prompt. Missing action: specific user Todo "
+    "is not projected; repair LoopX state projection. With `DONT_NOTIFY`, repair "
     "the projection internally and stay quiet."
 )
 HEARTBEAT_NOTIFICATION_RULE_SHORT = (
-    "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。执行义务看 `heartbeat_recommendation.agent_must_attempt`/"
-    "`execution_obligation.must_attempt_work`：true 时必须执行 bounded slice 并写回，"
-    "quiet no-op 仅当 false。"
-    "Due/peer gate != prompt; missing NOTIFY action->"
-    "具体user todo未投影，需修复LoopX状态投影."
+    f"{OPERATOR_LANGUAGE_RULE} "
+    "`user_channel.notify` OUTPUT only: NOTIFY=show; DONT_NOTIFY=no output. "
+    "Work iff `heartbeat_recommendation.agent_must_attempt`/"
+    "`execution_obligation.must_attempt_work`. Due/peer != prompt; "
+    "missing action->repair Todo projection."
 )
 HEARTBEAT_NOTIFICATION_RULE_THIN = (
-    "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。执行义务看 `agent_must_attempt`/`must_attempt_work`。"
-    "Due/peer gate != prompt; missing NOTIFY action->具体user todo未投影."
+    f"{OPERATOR_LANGUAGE_RULE_THIN} OUTPUT only:N=show,D=none. Work iff "
+    "agent_must_attempt/execution_obligation.must_attempt_work; due/peer not "
+    "prompt; repair no action."
 )
 HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
     "writeback: no-change=`surface_only`/no spend; "

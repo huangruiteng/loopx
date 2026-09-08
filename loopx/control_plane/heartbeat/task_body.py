@@ -14,6 +14,7 @@ from .rules import (
     HOST_LOOP_QUOTA_DISPATCH_RULE,
     HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE,
     HOST_LOOP_TODO_CLOSEOUT_RULE,
+    OPERATOR_LANGUAGE_RULE,
     RUNTIME_CAPABILITY_PROJECTION_THIN_RULE,
     RUNTIME_EXECUTION_ROUTING_RULE,
     SCHEDULER_HINT_APPLICATION_RULE,
@@ -111,7 +112,7 @@ If the result says `should_run=false`:
 - Only if `user_channel.notify=NOTIFY`, interpret `state=operator_gate` or
   `notify_user_on_open_todo=true` as a user prompt. Read `gate_prompt`,
   `operator_question`, `user_todo_summary`, and `open_todo_notify_reason`;
-  ask one concise Chinese action/question with reply format. If
+  ask one concise action/question with reply format. If
   `user_todo_summary.open_count > 0`, include up to three `first_open_items`;
   never say "no new user action". Honor
   `open_todo_notification_policy=repeat_until_resolved`; when
@@ -394,9 +395,8 @@ If `should_run=true`:
    `attention_queue.items` / `project_asset`, and guard `user_todo_summary`.
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
-2. Goal-owned blocker: stop its path. Under `NOTIFY`, send a concrete Chinese
-   blocker-push; under `DONT_NOTIFY`, repair internally and stay quiet.
-   Dependency/sibling todos: record; continue audit.
+2. Goal blocker: stop. {OPERATOR_LANGUAGE_RULE} `NOTIFY`: blocker-push;
+   `DONT_NOTIFY`: repair quietly. Record dependencies.
 3. If `effective_action=outcome_floor_recovery` or
    `recovery_delivery_allowed=true` or
    `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
@@ -565,11 +565,12 @@ def _render_goal_task_body(
 {scope_block}
 
 {RUNTIME_EXECUTION_ROUTING_RULE}
+{OPERATOR_LANGUAGE_RULE}
 
 {prequota_block}{HOST_LOOP_QUOTA_DISPATCH_RULE}
 Guard: `{quota_guard_command}`.
 
-`should_run=false`: no delivery/spend; NOTIFY: Chinese action/gate;
+`should_run=false`: no delivery/spend; NOTIFY: action/gate in the user's language;
 otherwise wait.{host_wait_rule}
 
 `should_run=true`: take highest-priority unblocked in-scope todo by default; choose any
