@@ -259,6 +259,18 @@ lease、successor link、validation marker、归档压力，以及足以触发�
 
 ### Production-scale fixture stewardship / 生产规模 fixture 维护契约
 
+For decision-owner migrations, inventory command producers as well as state
+fields. A large real-state snapshot does not exercise commands synthesized only
+inside an executor: run unchanged production caller chains, including reclaim,
+replay and stale-writer rejection, before claiming caller closure. Persistent
+public grants and clock-authorized ephemeral executor grants are separate
+contracts; neither a broad allowlist nor agreement across providers proves parity.
+
+迁移决策 owner 时，既要盘点状态字段，也要盘点命令生产者。真实大快照不会自动覆盖
+executor 内部生成的 reclaim 等命令；必须运行未改动的完整调用链，包括接管、重放和
+旧执行者拒绝，再声明调用方已闭合。持久公开 grant 与时钟授权的临时 executor grant
+是不同合同，不能用扩大 allowlist 或 provider 间一致替代行为对齐。
+
 Treat `tests/fixtures/control_plane/coordination_production_scale_v0.json`
 and its generator as a shared acceptance input for both the TypeScript
 control-plane migration and shared-goal-authority RFCs. A pull request that

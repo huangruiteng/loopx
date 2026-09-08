@@ -95,6 +95,76 @@ def terminal(
     return TodoMutationCommand(**values)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("mode", list(HandoffMode))
+@pytest.mark.parametrize("ownership", [False, True])
+def test_update_authority_keeps_claim_neutral_edits_separate_from_ownership(
+    mode, ownership
+):
+    state = snapshot(handoff_mode=mode)
+    command = TodoMutationCommand(
+        action=TodoAction.UPDATE,
+        actor_agent_id=AGENT_A,
+        requested_claimed_by=AGENT_A if ownership else None,
+        ownership_mutation=ownership,
+    )
+    result = decide(state, command)
+    if mode is HandoffMode.HARD_LEASE and ownership:
+        assert result.code == "handoff_mode_requires_lease"
+        assert result.next_snapshot is None
+    else:
+        assert result.outcome is DecisionOutcome.APPLY
+        assert result.next_snapshot.todo.claimed_by == (AGENT_A if ownership else None)
+        assert result.next_snapshot.lease is None
+        assert result.authority_mode == "registered_peer_actor"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_standalone_fence_does_not_complete_todo_or_reauthorize_the_actor(strict):
+    state = snapshot(todo=todo(claimed_by=AGENT_B))
+    result = decide(
+        state,
+        TerminalFenceCommand(
+            actor_agent_id=None,
+            lease_idempotency_key="stale-key",
+            require_active_when_fence_supplied=strict,
+        ),
+    )
+    assert result.authority_mode is None
+    if strict:
+        assert result.code == "lease_not_active"
+        assert result.next_snapshot is None
+    else:
+        assert result.code == "terminal_fence_not_required"
+        assert result.next_snapshot == state
+
+
+@pytest.mark.parametrize("clear", [False, True])
+def test_delegated_update_requires_the_actual_action_and_never_releases_holder(clear):
+    state = snapshot(
+        handoff_mode=HandoffMode.HARD_LEASE,
+        todo=todo(claimed_by=AGENT_B),
+        lease=lease(owner=AGENT_B),
+        lifecycle_grants=(LifecycleGrant(AGENT_A, frozenset({"reassign"})),),
+    )
+    command = TodoMutationCommand(
+        action=TodoAction.UPDATE,
+        actor_agent_id=AGENT_A,
+        authority_action="reassign",
+        authority_reason="recover abandoned work",
+        ownership_mutation=True,
+        requested_claimed_by=AGENT_A,
+        clear_claim=clear,
+    )
+    result = decide(state, command)
+    assert result.outcome is DecisionOutcome.APPLY
+    assert result.ownership_gate is OwnershipGate.DELEGATED_OVERRIDE
+    assert result.next_snapshot.todo.claimed_by == (None if clear else AGENT_A)
+    assert result.next_snapshot.lease == state.lease
+    rejected = decide(state, replace(command, authority_action="update"))
+    assert rejected.code == "delegation_action_not_granted"
+    assert rejected.next_snapshot is None
+
+
 def test_decision_is_deterministic_and_target_scoped() -> None:
     base = snapshot()
     command = claim()

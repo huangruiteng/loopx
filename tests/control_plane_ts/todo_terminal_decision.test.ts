@@ -4,7 +4,12 @@ import test from "node:test";
 import {
   COORDINATION_TODO_TERMINAL_DECISION_REQUEST_SCHEMA,
   evaluateCoordinationTodoTerminalDecision,
-} from "../../loopx/control_plane/coordination/todo_terminal_decision.ts";
+  COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA,
+  COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
+  evaluateCoordinationTodoMutationDecision,
+  evaluateCoordinationTerminalFence,
+  evaluateTodoOwnershipGate,
+} from "../../loopx/control_plane/coordination/todo_lifecycle_decision.ts";
 
 function request(overrides: Record<string, unknown> = {}) {
   return {
@@ -38,6 +43,119 @@ function request(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+function mutation(overrides: Record<string, unknown> = {}) {
+  return request({
+    schema_version: COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA,
+    command: "update", authority_action: "update", requested_claimed_by: null,
+    clear_claim: false, ownership_mutation: false, ...overrides,
+  });
+}
+
+test("update admission shares actor rules without inventing terminal effects", () => {
+  const base = mutation({ todo: { ...request().todo as object, claimed_by: null } });
+  for (const mode of ["legacy", "soft_claim", "hard_lease"]) {
+    const edited = evaluateCoordinationTodoMutationDecision({ ...base, handoff_mode: mode });
+    assert.equal(edited.outcome, "apply");
+    assert.equal(edited.next_todo_status, "open");
+    assert.equal(edited.next_todo_claimed_by, null);
+    assert.equal(edited.next_lease, null);
+    assert.equal(edited.authority_mode, "registered_peer_actor");
+  }
+  for (const [override, code] of [
+    [{ actor_agent_id: null }, "actor_required"],
+    [{ actor_agent_id: "unknown" }, "actor_not_registered"],
+    [{ todo: { ...base.todo as object, excluded_agents: ["agent-a"] } }, "actor_excluded"],
+    [{ todo: { ...base.todo as object, bound_agent: "agent-b" } }, "bound_agent_mismatch"],
+    [{ todo: { ...base.todo as object, claimed_by: "agent-b" } }, "claim_owner_mismatch"],
+  ] as const) {
+    const rejected = evaluateCoordinationTodoMutationDecision({ ...base, ...override });
+    assert.equal(rejected.code, code);
+    assert.equal(rejected.outcome, "rejected");
+  }
+});
+
+test("ownership changes use the same holder gate as the locked writer", () => {
+  const base = mutation({ handoff_mode: "hard_lease", ownership_mutation: true, clear_claim: true });
+  assert.equal(evaluateCoordinationTodoMutationDecision(base).code, "handoff_mode_requires_lease");
+  const lease = { present: true, active: true, status: "active", owner: "agent-a",
+    idempotency_key: "execution-a", version: 3, lease_epoch: 5, write_scopes: [] };
+  const cleared = evaluateCoordinationTodoMutationDecision({ ...base, lease });
+  assert.equal(cleared.outcome, "apply");
+  assert.equal(cleared.next_todo_claimed_by, null);
+  assert.equal(cleared.next_lease, null, "ownership admission must not release the holder lease");
+  assert.equal(cleared.ownership_gate, evaluateTodoOwnershipGate({
+    handoff_mode: "hard_lease", ownership_mutation: true, authority_mode: "registered_peer_actor",
+  }).ownership_gate);
+  assert.equal(evaluateCoordinationTodoMutationDecision({ ...base, lease: { ...lease, owner: "agent-b" } }).code,
+    "handoff_mode_requires_lease");
+});
+
+test("delegated update is action/reason bound, not a general ownership bypass", () => {
+  const base = mutation({ actor_agent_id: "agent-b", handoff_mode: "hard_lease",
+    ownership_mutation: true, requested_claimed_by: "agent-b", authority_action: "reassign",
+    lifecycle_grants: [{agent_id: "agent-b", actions: ["reassign"], requires_reason: true}] });
+  assert.equal(evaluateCoordinationTodoMutationDecision(base).code, "delegation_reason_required");
+  const accepted = evaluateCoordinationTodoMutationDecision({ ...base, authority_reason: "recover work" });
+  assert.equal(accepted.ownership_gate, "delegated_override");
+  assert.equal(accepted.next_todo_claimed_by, "agent-b");
+  assert.equal(evaluateCoordinationTodoMutationDecision({ ...base, authority_action: "update",
+    authority_reason: "recover work" }).code, "delegation_action_not_granted");
+});
+
+test("mutation protocol cannot masquerade as completion or smuggle boolean strings", () => {
+  const minimal = mutation();
+  for (const key of ["allow_user_gate_auto_acquire", "decision_target", "decision_outcome",
+    "lease_idempotency_key", "lease_expected_version"]) delete minimal[key];
+  assert.equal(evaluateCoordinationTodoMutationDecision(minimal).outcome, "apply");
+  assert.throws(() => evaluateCoordinationTodoMutationDecision(mutation({ command: "complete" })));
+  assert.throws(() => evaluateCoordinationTodoTerminalDecision(mutation()));
+  assert.throws(() => evaluateCoordinationTodoMutationDecision(mutation({ ownership_mutation: "false" })));
+  assert.equal(evaluateCoordinationTodoMutationDecision(mutation({ command: "claim",
+    authority_action: "claim", requested_claimed_by: "agent-b" })).code, "claim_actor_mismatch");
+});
+
+test("executor reclaim remains internal and preserves actor rejection precedence", () => {
+  const reclaim = (actor: string) => mutation({
+    actor_agent_id: actor, authority_action: "reclaim", ownership_mutation: true,
+    clear_claim: true, handoff_mode: "hard_lease",
+    lifecycle_grants: [{ agent_id: actor, actions: ["reclaim"], requires_reason: false }],
+  });
+  const accepted = evaluateCoordinationTodoMutationDecision(reclaim("agent-b"));
+  assert.equal(accepted.outcome, "apply");
+  assert.equal(accepted.ownership_gate, "delegated_override");
+  assert.equal(accepted.next_todo_claimed_by, null);
+  assert.equal(accepted.next_lease, null);
+  assert.equal(evaluateCoordinationTodoMutationDecision(reclaim("agent-z")).code,
+    "actor_not_registered");
+  assert.equal(evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"),
+    todo: { ...request().todo as object, excluded_agents: ["agent-b"] },
+  }).code, "actor_excluded");
+  for (const change of [
+    { command: "claim" }, { clear_claim: false }, { ownership_mutation: false },
+    { requested_claimed_by: "agent-b" },
+    { lifecycle_grants: [{ agent_id: "agent-a", actions: ["reclaim"], requires_reason: false }] },
+    { lifecycle_grants: [{ agent_id: "agent-b", actions: ["update", "reclaim"], requires_reason: false }] },
+  ]) assert.throws(() => evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"), ...change }));
+  // The public grant decoder and terminal wire must not gain reclaim authority.
+  assert.throws(() => evaluateCoordinationTodoMutationDecision({ ...reclaim("agent-b"), authority_action: "update" }));
+  assert.throws(() => evaluateCoordinationTodoTerminalDecision(request({
+    lifecycle_grants: reclaim("agent-b").lifecycle_grants,
+  })));
+});
+
+test("standalone fence is preauthorized and never completes or attributes a Todo", () => {
+  const base = request({ schema_version: COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
+    actor_agent_id: null, delegated_authority: false, require_active_when_fence_supplied: false,
+    lease_idempotency_key: "old-key" });
+  const accepted = evaluateCoordinationTerminalFence(base);
+  assert.equal(accepted.code, "terminal_fence_not_required");
+  assert.equal(accepted.next_todo_status, null);
+  assert.equal(accepted.authority_mode, null);
+  assert.equal(evaluateCoordinationTerminalFence({ ...base, require_active_when_fence_supplied: true }).code,
+    "lease_not_active");
+  assert.throws(() => evaluateCoordinationTerminalFence({ ...base, delegated_authority: "true" }));
+});
 
 test("terminal decision owns complete and supersede authority", () => {
   for (const command of ["complete", "supersede"]) {

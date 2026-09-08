@@ -2492,6 +2492,14 @@ The next complete stage packages are:
    never revive legacy Todos. This is consumer progress, not promotion proof:
    Turn, quota, planning, standing decisions, leases and monitor writeback still
    need their own parity inventory. Read authority does not grant writeback.
+   Lifecycle admission and the preauthorized terminal fence now share the TS
+   owner across legacy writers and native terminal transactions; the replaced
+   Python rules are removed without changing provider defaults or promotion.
+   This is not full native field-edit support: retain the strict text/note
+   transaction boundary until update's fields, ownership, validation and
+   monitor/resume effects close together. Neither an admission result nor a
+   lease-fence result is a commit receipt. Keep provider CAS/replay and existing
+   writer lock lifetimes unchanged while collecting this deletion payoff.
 2. **Permanent projection closure.** Reuse `provider_projection.py`, the
    Todo-section renderer and existing journal/outbox. Preserve non-owned human
    narrative; render owned sections from a known canonical revision, with

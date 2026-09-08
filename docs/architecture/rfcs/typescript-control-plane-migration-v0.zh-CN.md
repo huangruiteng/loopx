@@ -159,6 +159,16 @@ lifecycle classification code 或其他 cadence policy，不能宣称全局已�
 负责 durable truth、恢复、cutover 与投影交付。删除 Python decision 不以前端 CLI
 全部改成 TypeScript 或 `loopxd` 落地为前提；输入适配和外部 effect 执行可以保留 Python。
 
+本次 lifecycle-admission 切片将 legacy claim/update 准入、委托 action/reason 检查、
+ownership-holder 路由及预授权 terminal fence 统一到 `todo_lifecycle_decision.ts`，
+与 native complete/supersede 共用规则；`authority_core.py` 只投影这些决策结果。
+Terminal wire 合同仍只接受 terminal 命令；mutation admission 不能完成 Todo，
+独立 fence 不能授予 actor 权限或完成 Todo。这立即删除重复规则，**不等于删除完整
+legacy update writer**。字段 patch、省略/清空、monitor/resume effect 和 validation
+仍需收口为完整 update transaction。Legacy 准入及持锁 gate 仍跨 runtime；本次减少
+语义 owner，不宣称减少 crossings，native transaction 仍进程内调用。下一步将这些
+crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加桥。
+
 1. **闭合实际命令与 consumer 清单。** 基于已合入的 create/claim/update 和 #4053
    terminal/successor/archive transaction 推进，不重复建设。按真实合同盘点剩余
    字段编辑、monitor、lease、event caller，把规则迁入既有 TS owner，并在同一切片
@@ -533,7 +543,7 @@ exactly-once 保证；原 handler 可能仍存活时，caller 不得启动第二
 
 | 字段 | 回执 |
 | --- | --- |
-| Canonical owner | 迁移前，Python 持有 terminal admission、successor derivation 与 archive retention，completion reduction 和 lease operation 则跨越更窄的 TS 边界。迁移后，`todo_terminal_decision.ts`、`todo_successor_derivation.ts`、`todo_terminal_lifecycle.ts` 与 `todo_archive_selection.ts` 成为 terminal admission、successor 默认值／继承／绑定、lease release、completion reduction、CAS、receipt replay 与 archive selection 的 typed owner。Terminal transaction 直接 import successor 与 archive owner；legacy Markdown/event writer 只调用其严格 wire handler 并物化返回 proposal。 |
+| Canonical owner | 迁移前，Python 持有 terminal admission、successor derivation 与 archive retention，completion reduction 和 lease operation 则跨越更窄的 TS 边界。迁移后，`todo_lifecycle_decision.ts`、`todo_successor_derivation.ts`、`todo_terminal_lifecycle.ts` 与 `todo_archive_selection.ts` 成为 terminal admission、successor 默认值／继承／绑定、lease release、completion reduction、CAS、receipt replay 与 archive selection 的 typed owner。Terminal transaction 直接 import successor 与 archive owner；legacy Markdown/event writer 只调用其严格 wire handler 并物化返回 proposal。 |
 | 删除的旧语义代码 | 从 Python 语义 ownership 删除 284 行产品代码：74 行 terminal decision 与 archive eligibility/order/standing-receipt selection，加上 Markdown complete/supersede 和 event completion 三条路径中重复的 210 行 successor priority、capability/binding、exclusion、continuation 与 predecessor-link derivation。其余 Python complete/supersede body 是未 promotion 路径的 compatibility writer，不是第二个 terminal decision owner。其他删除属于 adapter reshaping 或搬移，不计为 payoff。 |
 | 新增的 bridge 代码 | 有界 transport/compatibility 共 937 行 gross 产品代码：538 行 `provider_terminal_lifecycle.py`、135 行 successor intent/result adapter、173 行 local TS request decoder/router 增量、33 行 legacy archive result adapter、10 行 handler registration、6 行 projection settlement，以及 42 行 promotion 后将 Turn durable readback 指向 canonical authority 的路由。29 行 `resolve_todo_state_path` extraction 是搬移，不是收益。Host-local validation declaration 的存储与执行是保留的 external effect，不冒充已删除 bridge。 |
 | Successor ownership | Public caller 持有请求的 successor text 与 option。Python 仅序列化 intent，并把 typed proposal 适配给 legacy writer。只有 TypeScript 推导继承 priority、默认 task class、capability binding、user binding、exclusion、same-agent continuity 与 `unblocks_todo_id`；promotion 后 lifecycle 在同一 provider transaction 内完成推导和校验，再原子提交 target、successor、lease 与 receipt。Legacy 与 event 路径通过一次 effect-runtime 调用复用同一纯 TS 决策。 |

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime, timezone
+from heapq import merge
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -253,7 +255,9 @@ def collect_history(
         else None
     )
     goals: list[dict[str, Any]] = []
-    all_runs: list[dict[str, Any]] = []
+    recent_runs: list[dict[str, Any]] = []
+    run_count = 0
+    recent_limit = max(0, limit)
 
     for current_goal_id in discover_goal_ids(
         runtime_root,
@@ -288,7 +292,18 @@ def collect_history(
         ]
         for run in runs:
             run["goal_id"] = str(run.get("goal_id") or current_goal_id)
-        all_runs.extend(runs)
+        run_count += len(runs)
+        recent_runs = list(
+            islice(
+                merge(
+                    recent_runs,
+                    runs,
+                    key=lambda item: _chronology_key(item.get("generated_at")),
+                    reverse=True,
+                ),
+                recent_limit,
+            )
+        )
 
         adapter = meta.get("adapter") if isinstance(meta.get("adapter"), dict) else {}
         quota = goal_quota_with_spend_ledger(meta, runs) if registry_member else None
@@ -329,18 +344,15 @@ def collect_history(
                     goal_record[field] = meta.get(field)
         goals.append(goal_record)
 
-    all_runs.sort(
-        key=lambda item: _chronology_key(item.get("generated_at")), reverse=True
-    )
     return {
         "ok": True,
         "registry": str(registry_path),
         "runtime_root": str(runtime_root),
         "goal_filter": goal_id,
         "goal_count": len(goals),
-        "run_count": len(all_runs),
+        "run_count": run_count,
         "goals": goals,
-        "runs": all_runs[:limit],
+        "runs": recent_runs,
     }
 
 

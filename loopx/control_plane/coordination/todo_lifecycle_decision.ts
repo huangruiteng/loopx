@@ -16,11 +16,21 @@ export const COORDINATION_TODO_TERMINAL_DECISION_RESULT_SCHEMA =
   "loopx_coordination_todo_terminal_decision_result_v0";
 
 const COMMANDS = ["complete", "supersede"] as const;
+const MUTATION_COMMANDS = ["claim", "update"] as const;
+export const COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA =
+  "loopx_coordination_todo_mutation_decision_request_v0";
+export const COORDINATION_TODO_MUTATION_DECISION_RESULT_SCHEMA =
+  "loopx_coordination_todo_mutation_decision_result_v0";
+export const COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA =
+  "loopx_coordination_terminal_fence_request_v0";
+export const COORDINATION_TERMINAL_FENCE_RESULT_SCHEMA =
+  "loopx_coordination_terminal_fence_result_v0";
 const HANDOFF_MODES = ["legacy", "soft_claim", "hard_lease"] as const;
 const OUTCOMES = ["approve", "reject", "cancel"] as const;
 const AUTHORITY_ACTIONS = ["complete", "reassign", "supersede", "update"] as const;
+const EXECUTOR_RECLAIM_ACTION = "reclaim";
 
-type TerminalCommand = typeof COMMANDS[number];
+type LifecycleCommand = typeof COMMANDS[number] | typeof MUTATION_COMMANDS[number];
 type HandoffMode = typeof HANDOFF_MODES[number];
 type DecisionOutcome = typeof OUTCOMES[number];
 
@@ -62,8 +72,8 @@ interface LifecycleGrant extends JsonObject {
   readonly requires_reason: boolean;
 }
 
-interface TerminalDecisionRequest {
-  readonly command: TerminalCommand;
+interface LifecycleDecisionRequest {
+  readonly command: LifecycleCommand;
   readonly handoff_mode: HandoffMode;
   readonly registered_agents: readonly string[];
   readonly lifecycle_grants: readonly LifecycleGrant[];
@@ -77,6 +87,9 @@ interface TerminalDecisionRequest {
   readonly lease_idempotency_key: string | null;
   readonly lease_expected_version: number | null;
   readonly allow_user_gate_auto_acquire: boolean;
+  readonly requested_claimed_by: string | null;
+  readonly clear_claim: boolean;
+  readonly ownership_mutation: boolean;
 }
 
 export interface CoordinationTodoTerminalDecisionResult extends JsonObject {
@@ -222,49 +235,81 @@ function lifecycleGrants(
   });
 }
 
-function decodeRequest(value: unknown): TerminalDecisionRequest {
+function executorReclaimGrant(request: JsonObject, actor: string | null): LifecycleGrant[] {
+  // This is the existing executor's ephemeral, clock-authorized clear-claim
+  // intent, not a configurable public lifecycle grant. The executor checks
+  // expiry/grace under CAS; this pure decision still owns actor eligibility.
+  const grants = request.lifecycle_grants;
+  if (request.command !== "update" || request.clear_claim !== true ||
+      request.ownership_mutation !== true || request.requested_claimed_by != null ||
+      actor === null || !Array.isArray(grants) || grants.length !== 1) {
+    throw new EffectRuntimeRequestError("executor reclaim requires one standing clear-claim grant");
+  }
+  const grant = requireJsonObject(grants[0], "executor reclaim grant");
+  const agent = normalizeTodoAgent(grant.agent_id, "executor reclaim grant.agent_id");
+  const actions = requireStringArray(grant.actions, "executor reclaim grant.actions");
+  if (agent !== actor || actions.length !== 1 || actions[0] !== EXECUTOR_RECLAIM_ACTION ||
+      grant.requires_reason !== false) {
+    throw new EffectRuntimeRequestError("executor reclaim grant must match its actor and action");
+  }
+  // Do not require registration here: authority() must return the established
+  // typed actor rejection before considering this synthesized delegation.
+  return [{agent_id: agent, actions: [EXECUTOR_RECLAIM_ACTION], requires_reason: false}];
+}
+
+function decodeRequest(value: unknown, kind: "terminal" | "mutation" = "terminal"): LifecycleDecisionRequest {
   const request = requireJsonObject(value, "Todo terminal decision request");
   requireStringLiteral(
     request.schema_version,
-    [COORDINATION_TODO_TERMINAL_DECISION_REQUEST_SCHEMA] as const,
+    [kind === "terminal" ? COORDINATION_TODO_TERMINAL_DECISION_REQUEST_SCHEMA
+      : COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA],
     "schema_version",
   );
   const registeredAgents = normalizeRegisteredTodoAgents(
     requireStringArray(request.registered_agents, "registered_agents"),
   );
-  const outcome = optionalString(request.decision_outcome, "decision_outcome");
+  const actor = optionalAgent(request.actor_agent_id, "actor_agent_id");
+  const internalReclaim = kind === "mutation" && request.authority_action === EXECUTOR_RECLAIM_ACTION;
+  const outcome = kind === "terminal" ? optionalString(request.decision_outcome, "decision_outcome") : null;
   return {
-    command: requireStringLiteral(request.command, COMMANDS, "command"),
+    command: requireStringLiteral(request.command,
+      kind === "terminal" ? COMMANDS : MUTATION_COMMANDS, "command"),
     handoff_mode: requireStringLiteral(request.handoff_mode, HANDOFF_MODES, "handoff_mode"),
     registered_agents: registeredAgents,
-    lifecycle_grants: lifecycleGrants(request.lifecycle_grants ?? [], registeredAgents),
+    lifecycle_grants: internalReclaim ? executorReclaimGrant(request, actor)
+      : lifecycleGrants(request.lifecycle_grants ?? [], registeredAgents),
     todo: todoFact(request.todo, "todo"),
-    decision_target: request.decision_target === null || request.decision_target === undefined
+    decision_target: kind !== "terminal" || request.decision_target === null || request.decision_target === undefined
       ? null
       : todoFact(request.decision_target, "decision_target"),
     lease: leaseFact(request.lease),
-    actor_agent_id: optionalAgent(request.actor_agent_id, "actor_agent_id"),
+    actor_agent_id: actor,
     authority_action: requireStringLiteral(
       request.authority_action,
-      AUTHORITY_ACTIONS,
+      kind === "terminal" ? AUTHORITY_ACTIONS
+        : [...AUTHORITY_ACTIONS, "claim", EXECUTOR_RECLAIM_ACTION],
       "authority_action",
     ),
     authority_reason: optionalString(request.authority_reason, "authority_reason"),
     decision_outcome: outcome === null
       ? null
       : requireStringLiteral(outcome, OUTCOMES, "decision_outcome"),
-    lease_idempotency_key: optionalString(
+    lease_idempotency_key: kind === "terminal" ? optionalString(
       request.lease_idempotency_key,
       "lease_idempotency_key",
-    ),
-    lease_expected_version: optionalNonNegativeInteger(
+    ) : null,
+    lease_expected_version: kind === "terminal" ? optionalNonNegativeInteger(
       request.lease_expected_version,
       "lease_expected_version",
-    ),
-    allow_user_gate_auto_acquire: requireBoolean(
+    ) : null,
+    allow_user_gate_auto_acquire: kind === "terminal" ? requireBoolean(
       request.allow_user_gate_auto_acquire,
       "allow_user_gate_auto_acquire",
-    ),
+    ) : false,
+    requested_claimed_by: optionalAgent(request.requested_claimed_by, "requested_claimed_by"),
+    clear_claim: kind === "mutation" ? requireBoolean(request.clear_claim, "clear_claim") : false,
+    ownership_mutation: kind === "mutation"
+      ? requireBoolean(request.ownership_mutation, "ownership_mutation") : false,
   };
 }
 
@@ -272,7 +317,7 @@ function scopeKey(scope: DecisionScope): string {
   return `${scope.kind}\u0000${scope.granularity}\u0000${scope.scope_key}`;
 }
 
-function exactUserGateOverride(request: TerminalDecisionRequest): boolean {
+function exactUserGateOverride(request: LifecycleDecisionRequest): boolean {
   const { todo, decision_target: target } = request;
   return request.command === "complete" && target !== null && todo.role === "user" &&
     todo.task_class === "user_gate" && request.decision_outcome !== null &&
@@ -301,7 +346,7 @@ function result(
   };
 }
 
-function authority(request: TerminalDecisionRequest):
+function authority(request: LifecycleDecisionRequest):
   | { mode: string; ownershipGate: CoordinationTodoTerminalDecisionResult["ownership_gate"] }
   | CoordinationTodoTerminalDecisionResult {
   const { todo, actor_agent_id: actor, registered_agents: registered } = request;
@@ -332,10 +377,17 @@ function authority(request: TerminalDecisionRequest):
     }
     return { mode: "delegated_orchestration_override", ownershipGate: "not_required" };
   }
+  if (request.command === "claim" && request.requested_claimed_by !== actor) {
+    return result("rejected", "claim_actor_mismatch");
+  }
   return { mode: "registered_peer_actor", ownershipGate: "not_required" };
 }
 
-function ownerEligible(request: TerminalDecisionRequest, owner: string | null): boolean {
+type FenceRequest = Pick<LifecycleDecisionRequest,
+  "todo" | "lease" | "registered_agents" | "handoff_mode" | "actor_agent_id" |
+  "lease_idempotency_key" | "lease_expected_version" | "allow_user_gate_auto_acquire">;
+
+function ownerEligible(request: FenceRequest, owner: string | null): boolean {
   const todo = request.todo;
   return todo.status === "open" && owner !== null &&
     request.registered_agents.includes(owner) && !todo.excluded_agents.includes(owner) &&
@@ -343,8 +395,9 @@ function ownerEligible(request: TerminalDecisionRequest, owner: string | null): 
 }
 
 function terminalFence(
-  request: TerminalDecisionRequest,
-  authorityMode: string,
+  request: FenceRequest,
+  authorityMode: string | null,
+  requireActiveWhenFenceSupplied = true,
 ): CoordinationTodoTerminalDecisionResult {
   const lease = request.lease;
   const timeActive = lease !== null && lease.present && lease.active;
@@ -364,10 +417,9 @@ function terminalFence(
     }
     const version = (lease?.present ? lease.version : 0) + 1;
     const epoch = (lease?.lease_epoch ?? 0) + 1;
-    return result("apply", "terminal_transition", {
+    return result("apply", "terminal_fence_verified", {
       authority_mode: authorityMode,
       lease_fence: "auto_acquire",
-      next_todo_status: "done",
       next_lease: {
         present: true,
         active: false,
@@ -390,15 +442,14 @@ function terminalFence(
         lease_fence: "required",
       });
     }
-    if (explicitFence) {
+    if (explicitFence && requireActiveWhenFenceSupplied) {
       return result("rejected", "lease_not_active", { authority_mode: authorityMode });
     }
-    return result("apply", "terminal_transition", {
+    return result("apply", "terminal_fence_not_required", {
       authority_mode: authorityMode,
       lease_fence: delegated && request.handoff_mode === "hard_lease"
         ? "delegated_override"
         : "not_required",
-      next_todo_status: "done",
     });
   }
   if (request.lease_idempotency_key === null) {
@@ -426,10 +477,9 @@ function terminalFence(
       lease_fence: "required",
     });
   }
-  return result("apply", "terminal_transition", {
+  return result("apply", "terminal_fence_verified", {
     authority_mode: authorityMode,
     lease_fence: "required",
-    next_todo_status: "done",
     next_lease: { ...lease!, active: false, status: "released" },
   });
 }
@@ -448,5 +498,68 @@ export function evaluateCoordinationTodoTerminalDecision(
       idempotent: true,
     });
   }
-  return terminalFence(request, authorityResult.mode);
+  const fence = terminalFence(request, authorityResult.mode);
+  return fence.outcome === "apply"
+    ? { ...fence, code: "terminal_transition", next_todo_status: "done" }
+    : fence;
+}
+
+function ownershipGate(mode: HandoffMode, mutation: boolean, authorityMode: string | null):
+    CoordinationTodoTerminalDecisionResult["ownership_gate"] {
+  if (!mutation || mode !== "hard_lease") return "not_required";
+  return authorityMode === "delegated_orchestration_override" ? "delegated_override" : "require_holder";
+}
+
+export function evaluateTodoOwnershipGate(value: unknown): JsonObject {
+  const input = requireJsonObject(value, "Todo ownership gate");
+  return { ownership_gate: ownershipGate(
+    requireStringLiteral(input.handoff_mode, HANDOFF_MODES, "handoff_mode"),
+    requireBoolean(input.ownership_mutation, "ownership_mutation"),
+    optionalString(input.authority_mode, "authority_mode"),
+  ) };
+}
+
+/** Claim/update admission only: this neither edits arbitrary fields nor releases a lease. */
+export function evaluateCoordinationTodoMutationDecision(value: unknown): JsonObject {
+  const request = decodeRequest(value, "mutation");
+  const decided = authority(request);
+  if ("outcome" in decided) {
+    return { ...decided, schema_version: COORDINATION_TODO_MUTATION_DECISION_RESULT_SCHEMA };
+  }
+  const gate = ownershipGate(request.handoff_mode, request.ownership_mutation, decided.mode);
+  const lease = request.lease;
+  const denied = gate === "require_holder" &&
+    (lease === null || !lease.present || !lease.active || lease.owner !== request.actor_agent_id);
+  return {
+    ...result(denied ? "rejected" : "apply", denied ? "handoff_mode_requires_lease" : "todo_transition", {
+      authority_mode: decided.mode, ownership_gate: gate,
+    }),
+    schema_version: COORDINATION_TODO_MUTATION_DECISION_RESULT_SCHEMA,
+    next_todo_status: denied ? null : request.todo.status,
+    next_todo_claimed_by: denied ? null : request.command === "claim"
+      ? request.requested_claimed_by
+      : request.ownership_mutation
+        ? request.clear_claim ? null : request.requested_claimed_by
+        : request.todo.claimed_by,
+  };
+}
+
+/** Preauthorized lease fence; authority was checked by the caller under its state lock. */
+export function evaluateCoordinationTerminalFence(value: unknown): JsonObject {
+  const input = requireJsonObject(value, "terminal fence request");
+  requireStringLiteral(input.schema_version, [COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA], "schema_version");
+  const request: FenceRequest = {
+    todo: todoFact(input.todo, "todo"),
+    lease: leaseFact(input.lease),
+    registered_agents: normalizeRegisteredTodoAgents(requireStringArray(input.registered_agents, "registered_agents")),
+    handoff_mode: requireStringLiteral(input.handoff_mode, HANDOFF_MODES, "handoff_mode"),
+    actor_agent_id: optionalAgent(input.actor_agent_id, "actor_agent_id"),
+    lease_idempotency_key: optionalString(input.lease_idempotency_key, "lease_idempotency_key"),
+    lease_expected_version: optionalNonNegativeInteger(input.lease_expected_version, "lease_expected_version"),
+    allow_user_gate_auto_acquire: requireBoolean(input.allow_user_gate_auto_acquire, "allow_user_gate_auto_acquire"),
+  };
+  const delegated = requireBoolean(input.delegated_authority, "delegated_authority");
+  const fence = terminalFence(request, delegated ? "delegated_orchestration_override" : null,
+    requireBoolean(input.require_active_when_fence_supplied, "require_active_when_fence_supplied"));
+  return { ...fence, schema_version: COORDINATION_TERMINAL_FENCE_RESULT_SCHEMA, authority_mode: null };
 }

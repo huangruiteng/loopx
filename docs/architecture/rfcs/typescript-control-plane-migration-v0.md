@@ -204,6 +204,20 @@ owns durable truth, recovery, cutover, and projection delivery. Neither a fully
 TypeScript CLI nor `loopxd` is a prerequisite for removing Python decisions.
 An input adapter or external-effect executor may remain Python.
 
+The lifecycle-admission slice now uses `todo_lifecycle_decision.ts` for legacy
+claim/update admission, delegated action/reason checks, ownership-holder routing,
+and the preauthorized terminal fence, alongside native complete/supersede.
+`authority_core.py` projects results rather than retaining those decisions.
+The terminal wire contract stays terminal-only; mutation admission cannot complete
+a Todo, and a standalone fence neither grants actor authority nor completes it.
+This deletes duplicate rules now, **not** the complete legacy update writer.
+Field patches, omission/clear semantics, monitor/resume effects and validation
+still need one complete update transaction before the writer can retire. Legacy
+callers still cross the runtime boundary for admission and their locked gate;
+this slice reduces semantic owners, not crossing count. Native transactions stay
+in-process. Fold the remaining crossings into that complete transaction rather
+than extending these adapters field by field.
+
 1. **Close the actual command and consumer inventory.** Build on the merged
    create/claim/update and #4053 terminal/successor/archive transactions; do not
    recreate them. Inventory remaining field-edit, monitor, lease, and event
@@ -653,7 +667,7 @@ not start a second independent operation while that handler may still be live.
 
 | Field | Receipt |
 | --- | --- |
-| Canonical owner | Before: Python owned terminal admission, successor derivation, and archive retention, while completion reduction and lease operations crossed narrower TS boundaries. After: `todo_terminal_decision.ts`, `todo_successor_derivation.ts`, `todo_terminal_lifecycle.ts`, and `todo_archive_selection.ts` are the typed owners of terminal admission, successor defaults/inheritance/bindings, lease release, completion reduction, CAS, receipt replay, and archive selection. The terminal transaction imports the successor and archive owners directly; legacy Markdown/event writers call their strict wire handlers and only materialize the returned proposal. |
+| Canonical owner | Before: Python owned terminal admission, successor derivation, and archive retention, while completion reduction and lease operations crossed narrower TS boundaries. After: `todo_lifecycle_decision.ts`, `todo_successor_derivation.ts`, `todo_terminal_lifecycle.ts`, and `todo_archive_selection.ts` are the typed owners of terminal admission, successor defaults/inheritance/bindings, lease release, completion reduction, CAS, receipt replay, and archive selection. The terminal transaction imports the successor and archive owners directly; legacy Markdown/event writers call their strict wire handlers and only materialize the returned proposal. |
 | Legacy semantic code deleted | 284 Python product LOC are removed from semantic ownership: 74 lines for terminal decision plus archive eligibility/order/standing-receipt selection, and 210 lines of duplicated successor priority, capability/binding, exclusion, continuation, and predecessor-link derivation across Markdown complete/supersede and event completion. The remaining Python complete/supersede bodies are unpromoted compatibility writers, not a second terminal decision owner. Other deleted lines are adapter reshaping and moves and are not counted as payoff. |
 | Bridge code added | 937 gross product LOC are classified as bounded transport/compatibility: the 538-line `provider_terminal_lifecycle.py`, 135-line successor intent/result adapter, 173-line local TS request decoder/router delta, 33-line legacy archive result adapter, 10 handler-registration lines, 6 projection-settlement lines, and 42 lines that route Turn durable readback to canonical authority after promotion. The 29-line `resolve_todo_state_path` extraction is a move, not payoff. Host-local validation declaration storage/execution is a retained external effect and is not mislabeled as bridge deletion. |
 | Successor ownership | The public caller owns requested successor text and options. Python serializes that intent and adapts the typed proposal to the legacy writer. TypeScript alone derives inherited priority, default task class, capability binding, user binding, exclusions, same-agent continuity, and `unblocks_todo_id`; the promoted lifecycle derives and validates these facts inside the same provider transaction before atomically committing the target, successors, lease, and receipt. The legacy and event paths invoke the same pure TS decision through one effect-runtime call. |

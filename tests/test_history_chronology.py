@@ -99,6 +99,42 @@ def test_collect_history_orders_runs_across_goals_by_utc_instant(
     assert [run["classification"] for run in history["runs"]] == ["utc-later"]
 
 
+def test_collect_history_does_not_resort_unbounded_global_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    runs = [
+        {
+            "classification": f"run-{index}",
+            "generated_at": f"2026-08-18T17:00:{index:02d}Z",
+        }
+        for index in range(50)
+    ]
+    registry_path, runtime_root = _write_history_fixture(
+        tmp_path,
+        {"goal-a": runs, "goal-b": runs},
+    )
+    chronology_key = history_module._chronology_key
+    chronology_calls = 0
+
+    def count_chronology(value: Any):
+        nonlocal chronology_calls
+        chronology_calls += 1
+        return chronology_key(value)
+
+    monkeypatch.setattr(history_module, "_chronology_key", count_chronology)
+    history = collect_history(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id=None,
+        limit=1,
+    )
+
+    assert history["run_count"] == 100
+    assert len(history["runs"]) == 1
+    assert chronology_calls < 150
+
+
 def test_collect_history_filters_stopped_goals_before_reading_run_indexes(
     tmp_path: Path,
     monkeypatch,
