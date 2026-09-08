@@ -51,12 +51,14 @@ from loopx.kiro_cli_goal_mode import (
     KIRO_CLI_GOAL_MAX_ITERATION_CEILING,
     KIRO_CLI_GOAL_STATUS_COMMAND,
     KIRO_CLI_GOAL_VALIDATE_FLAG,
+    KIRO_CLI_HOME_ENV,
     KIRO_CLI_HOOK_TRIGGERS,
     KIRO_CLI_NATIVE_GOAL_FACTS,
     KIRO_CLI_SESSION_ID_ENV,
     kiro_cli_chat_command,
     kiro_home,
 )
+from loopx.slash_command_files import MANAGED_MARKER_PREFIX
 from loopx.slash_command_install import install_slash_commands
 
 HOST_SURFACE = "kiro-cli"
@@ -105,18 +107,60 @@ def test_agent_onboarding_setup_command_installs_the_kiro_cli_surface(
     )
 
 
-def test_kiro_home_is_the_documented_fixed_path(
+def test_kiro_home_resolves_the_host_override_then_the_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The host documents no home override for the skills root
-    # (KIRO_AGENT_CONFIG_DIR relocates agent configs only), so LoopX exposes
-    # none: only HOME itself (tests stay hermetic) and the internal injection
-    # parameter move the root.
+    """KIRO_HOME is the host's own override for the global root.
+
+    The earlier version of this test asserted the adjacent but wrong variable
+    (KIRO_AGENT_CONFIG_DIR), so it passed while a relocated profile received a
+    successful install it could never discover. Resolution order must be the
+    same as every other host: injected value, host override, default.
+    """
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("KIRO_AGENT_CONFIG_DIR", str(tmp_path / "elsewhere"))
+    monkeypatch.delenv(KIRO_CLI_HOME_ENV, raising=False)
     assert kiro_home() == tmp_path / "home" / ".kiro"
+
+    monkeypatch.setenv(KIRO_CLI_HOME_ENV, str(tmp_path / "profile"))
+    assert kiro_home() == tmp_path / "profile"
     assert kiro_home(str(tmp_path / "explicit")) == tmp_path / "explicit"
+
+
+def test_install_and_uninstall_follow_the_host_override_not_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real failure this guards: install reporting success outside the
+    active profile. HOME and KIRO_HOME differ, so a resolver that ignores the
+    override writes where the running host never looks."""
+    home = tmp_path / "home"
+    profile = tmp_path / "profile"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(KIRO_CLI_HOME_ENV, str(profile))
+
+    payload = install_slash_commands(execute=True, surfaces=[HOST_SURFACE])
+    assert payload["ok"] is True
+
+    installed_skill = profile / "skills" / "loopx" / "SKILL.md"
+    assert installed_skill.is_file(), "install must target the resolved host root"
+    assert not (home / ".kiro").exists(), "install must not touch the default root"
+    assert MANAGED_MARKER_PREFIX in installed_skill.read_text(encoding="utf-8")
+
+    reported = {
+        item["path"]
+        for item in payload["installed"]
+        if item["surface"] == HOST_SURFACE and item["path"]
+    }
+    assert str(installed_skill) in reported, "readback must name the resolved path"
+
+    removed = install_slash_commands(
+        execute=True,
+        surfaces=[HOST_SURFACE],
+        uninstall=True,
+    )
+    assert removed["ok"] is True
+    assert not installed_skill.exists(), "uninstall must use the same resolved root"
 
 
 def test_installed_skills_are_invocable_as_kiro_slash_commands(
@@ -314,7 +358,8 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert "quota should-run" in _start_instruction(HOST_SURFACE)
     assert "/goal" in _start_instruction(HOST_SURFACE)
     assert (
-        packet["entry_command_hint"] == "the LoopX skill installed in ~/.kiro/skills"
+        packet["entry_command_hint"]
+        == "the LoopX skill installed in KIRO_HOME/skills"
     )
     # Rendered heartbeat commands and scope must carry no machine-gate semantics.
     assert "gated" not in packet["activation_input_command"].lower()
@@ -410,6 +455,18 @@ def test_kiro_cli_is_recognized_across_the_control_plane(
     assert ChatActionService._agent_family("codex-main-control") == "codex"
     assert ChatActionService._agent_family("claude-impl") == "claude-code"
     assert ChatActionService._agent_family("trae-cli-1") == "trae-cli-1"
+    # Matching is bounded at the delimiter: an unrelated operator id that merely
+    # begins with a family root keeps its own identity. Without this bound a
+    # single false match lets `_resolve_goal_agent` bind a built-in Endpoint to
+    # the wrong durable agent instead of raising `agent_binding_required`.
+    assert ChatActionService._agent_family("kiroscope-worker") == "kiroscope-worker"
+    assert ChatActionService._agent_family("kirograph") == "kirograph"
+    assert ChatActionService._agent_family("codexplorer") == "codexplorer"
+    assert ChatActionService._agent_family("claudeflow") == "claudeflow"
+    # The exact family root itself still classifies, so built-in Endpoint ids
+    # such as `kiro` keep resolving to their registered peer.
+    assert ChatActionService._agent_family("kiro") == KIRO_CLI_CHAT_AGENT_ID
+    assert ChatActionService._agent_family("codex") == "codex"
 
     # The adapter records KIRO_SESSION_ID as the stable thread key; reading it is
     # what makes that a binding instead of a note.
