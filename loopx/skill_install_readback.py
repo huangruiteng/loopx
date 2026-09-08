@@ -11,9 +11,12 @@ import subprocess
 import tempfile
 from typing import Any, Mapping, Sequence
 
+from . import __version__
 
-SKILL_INSTALL_READBACK_SCHEMA_VERSION = "loopx_skill_install_readback_v0"
+SKILL_INSTALL_READBACK_SCHEMA_VERSION = "loopx_skill_install_readback_v1"
 SKILL_INSTALL_READBACK_FILENAME = ".loopx-skill-install.json"
+SKILL_VERSION_MARKER_SCHEMA_VERSION = "loopx_installed_skill_version_v0"
+SKILL_VERSION_MARKER_FILENAME = ".loopx-skill-version.json"
 SKILL_INSTALL_OWNER = "loopx_install_script"
 SKILL_INSTALL_INTEGRATION_MODE = "fixed_install_script"
 PYTHON_DISTRIBUTION_SKILL_INSTALL_OWNER = "loopx_workflow_skills_cli"
@@ -193,7 +196,11 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def hash_skill_tree(root: Path) -> dict[str, Any]:
+def hash_skill_tree(
+    root: Path,
+    *,
+    ignored_relative_paths: Sequence[str] = (),
+) -> dict[str, Any]:
     if not root.is_dir():
         return {
             "available": False,
@@ -202,8 +209,11 @@ def hash_skill_tree(root: Path) -> dict[str, Any]:
         }
     digest = hashlib.sha256()
     file_count = 0
+    ignored = set(ignored_relative_paths)
     for path in sorted(item for item in root.rglob("*") if item.is_file()):
         relative = path.relative_to(root).as_posix()
+        if relative in ignored:
+            continue
         file_hash = _sha256_file(path)
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
@@ -314,6 +324,50 @@ def _skills_digest(items: Mapping[str, Any]) -> str:
     ).hexdigest()
 
 
+def _write_json_atomic(target: Path, payload: Mapping[str, Any]) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f"{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _normalized_install_identity(
+    *,
+    owner: str,
+    integration_mode: str,
+    loopx_version: str,
+) -> dict[str, str]:
+    if owner not in SKILL_INSTALL_OWNERS:
+        raise ValueError(f"unsupported skill install owner: {owner}")
+    if integration_mode not in SKILL_INSTALL_INTEGRATION_MODES:
+        raise ValueError(f"unsupported skill install integration mode: {integration_mode}")
+    if (owner, integration_mode) not in SKILL_INSTALL_PROFILES:
+        raise ValueError(
+            "skill install owner and integration mode do not form a supported profile"
+        )
+    normalized_version = loopx_version.strip()
+    if not normalized_version:
+        raise ValueError("loopx_version must not be empty")
+    return {
+        "owner": owner,
+        "integration_mode": integration_mode,
+        "loopx_version": normalized_version,
+    }
+
+
 def build_skill_install_readback(
     *,
     skills_dir: Path,
@@ -324,15 +378,11 @@ def build_skill_install_readback(
     installed_at: str | None = None,
     owner: str = SKILL_INSTALL_OWNER,
     integration_mode: str = SKILL_INSTALL_INTEGRATION_MODE,
+    loopx_version: str = __version__,
 ) -> dict[str, Any]:
-    if owner not in SKILL_INSTALL_OWNERS:
-        raise ValueError(f"unsupported skill install owner: {owner}")
-    if integration_mode not in SKILL_INSTALL_INTEGRATION_MODES:
-        raise ValueError(f"unsupported skill install integration mode: {integration_mode}")
-    if (owner, integration_mode) not in SKILL_INSTALL_PROFILES:
-        raise ValueError(
-            "skill install owner and integration mode do not form a supported profile"
-        )
+    identity = _normalized_install_identity(
+        owner=owner, integration_mode=integration_mode, loopx_version=loopx_version,
+    )
     normalized_ids = sorted(
         {skill_id.strip() for skill_id in skill_ids if skill_id.strip()}
     )
@@ -351,8 +401,7 @@ def build_skill_install_readback(
         source["kind"] = source_kind_override
     return {
         "schema_version": SKILL_INSTALL_READBACK_SCHEMA_VERSION,
-        "owner": owner,
-        "integration_mode": integration_mode,
+        **identity,
         "installed_at": installed_at
         or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "source": source,
@@ -374,31 +423,41 @@ def write_skill_install_readback(
     installed_at: str | None = None,
     owner: str = SKILL_INSTALL_OWNER,
     integration_mode: str = SKILL_INSTALL_INTEGRATION_MODE,
+    loopx_version: str = __version__,
 ) -> Path:
+    identity = _normalized_install_identity(
+        owner=owner, integration_mode=integration_mode, loopx_version=loopx_version,
+    )
+    normalized_ids = sorted(
+        {skill_id.strip() for skill_id in skill_ids if skill_id.strip()}
+    )
+    for skill_id in normalized_ids:
+        skill_dir = skills_dir / skill_id
+        if not skill_dir.is_dir():
+            raise FileNotFoundError(
+                f"cannot record the LoopX version for missing skill: {skill_id}"
+            )
     skills_dir.mkdir(parents=True, exist_ok=True)
+    for skill_id in normalized_ids:
+        _write_json_atomic(
+            skills_dir / skill_id / SKILL_VERSION_MARKER_FILENAME,
+            {
+                "schema_version": SKILL_VERSION_MARKER_SCHEMA_VERSION,
+                "skill_id": skill_id,
+                **identity,
+            },
+        )
     payload = build_skill_install_readback(
         skills_dir=skills_dir,
-        skill_ids=skill_ids,
+        skill_ids=normalized_ids,
         source_root=source_root,
         source_kind_override=source_kind_override,
         source_revision_override=source_revision_override,
         installed_at=installed_at,
-        owner=owner,
-        integration_mode=integration_mode,
+        **identity,
     )
     target = skills_dir / SKILL_INSTALL_READBACK_FILENAME
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=skills_dir,
-        prefix=f"{SKILL_INSTALL_READBACK_FILENAME}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        handle.write("\n")
-        temporary = Path(handle.name)
-    os.replace(temporary, target)
+    _write_json_atomic(target, payload)
     return target
 
 
@@ -413,11 +472,13 @@ def inspect_skill_install_readback(
     required_skill_ids: Sequence[str],
     source_root: Path | None = None,
     expected_source_revision_override: str | None = None,
+    expected_loopx_version_override: str | None = None,
 ) -> dict[str, Any]:
     expected_source_revision = (
         expected_source_revision_override
         or (_source_revision_for_root(source_root) if source_root else None)
     )
+    expected_loopx_version = expected_loopx_version_override or __version__
     required_ids = sorted(
         {skill_id.strip() for skill_id in required_skill_ids if skill_id.strip()}
     )
@@ -432,9 +493,13 @@ def inspect_skill_install_readback(
             "materialized_skill_ids": [],
             "missing_skill_ids": required_ids,
             "digest_mismatches": [],
+            "version_marker_mismatches": [],
             "integrity_ok": False,
             "manifest_digest_valid": False,
             "integration_mode": None,
+            "loopx_version": None,
+            "expected_loopx_version": expected_loopx_version,
+            "loopx_version_matches": None,
             "source_revision": None,
             "expected_source_revision": expected_source_revision,
             "source_revision_matches": None,
@@ -493,6 +558,41 @@ def inspect_skill_install_readback(
         if source_revision and expected_source_revision
         else None
     )
+    raw_loopx_version = (
+        manifest.get("loopx_version") if isinstance(manifest, dict) else None
+    )
+    installed_loopx_version = (
+        raw_loopx_version.strip()
+        if isinstance(raw_loopx_version, str) and raw_loopx_version.strip()
+        else None
+    )
+    loopx_version_matches = (
+        installed_loopx_version == expected_loopx_version
+        if installed_loopx_version and expected_loopx_version
+        else None
+    )
+    manifest_owner = manifest.get("owner") if isinstance(manifest, dict) else None
+    manifest_integration_mode = (
+        manifest.get("integration_mode") if isinstance(manifest, dict) else None
+    )
+    version_marker_mismatches: list[str] = []
+    for skill_id in materialized_ids:
+        try:
+            marker = json.loads(
+                (root / skill_id / SKILL_VERSION_MARKER_FILENAME).read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            marker = None
+        if marker != {
+            "schema_version": SKILL_VERSION_MARKER_SCHEMA_VERSION,
+            "skill_id": skill_id,
+            "owner": manifest_owner,
+            "integration_mode": manifest_integration_mode,
+            "loopx_version": installed_loopx_version,
+        }:
+            version_marker_mismatches.append(skill_id)
     manifest_valid = bool(
         isinstance(manifest, dict)
         and manifest.get("schema_version") == SKILL_INSTALL_READBACK_SCHEMA_VERSION
@@ -503,6 +603,7 @@ def inspect_skill_install_readback(
         in SKILL_INSTALL_PROFILES
         and set(required_ids).issubset(manifest_ids)
         and source_revision
+        and installed_loopx_version
     )
     manifest_digest_valid = bool(
         isinstance(manifest_skills.get("digest"), str)
@@ -512,7 +613,9 @@ def inspect_skill_install_readback(
         manifest_valid
         and manifest_digest_valid
         and not digest_mismatches
+        and not version_marker_mismatches
         and source_revision_matches is not False
+        and loopx_version_matches is not False
     )
     ready = not missing_ids and integrity_ok
     if ready:
@@ -529,6 +632,15 @@ def inspect_skill_install_readback(
     elif not manifest_digest_valid:
         status = "manifest_digest_mismatch"
         reason = "install readback skill manifest digest does not match its items"
+    elif loopx_version_matches is False or version_marker_mismatches:
+        status = "loopx_version_mismatch"
+        reason = (
+            "installed workflow skill version markers do not match the install "
+            f"readback: {','.join(version_marker_mismatches)}"
+            if version_marker_mismatches
+            else f"installed workflow skills use LoopX {installed_loopx_version}; "
+            f"the active CLI uses {expected_loopx_version}"
+        )
     elif digest_mismatches:
         status = "skill_digest_mismatch"
         reason = f"skill content differs from install readback: {','.join(digest_mismatches)}"
@@ -552,11 +664,15 @@ def inspect_skill_install_readback(
         "materialized_skill_ids": materialized_ids,
         "missing_skill_ids": missing_ids,
         "digest_mismatches": digest_mismatches,
+        "version_marker_mismatches": version_marker_mismatches,
         "integrity_ok": integrity_ok,
         "manifest_digest_valid": manifest_digest_valid,
         "integration_mode": manifest.get("integration_mode")
         if isinstance(manifest, dict)
         else None,
+        "loopx_version": installed_loopx_version,
+        "expected_loopx_version": expected_loopx_version,
+        "loopx_version_matches": loopx_version_matches,
         "source_revision": source_revision,
         "expected_source_revision": expected_source_revision,
         "source_revision_matches": source_revision_matches,

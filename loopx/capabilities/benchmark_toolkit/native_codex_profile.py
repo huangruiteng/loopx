@@ -463,11 +463,32 @@ def inspect_native_codex_profile(
     if resolved_release not in resolved_cli.parents:
         raise NativeCodexProfileError("profile_cli_not_release_snapshot")
 
+    env = _formal_install_environment(
+        paths=paths,
+        python_executable=_resolved_executable(None),
+        release_id=release_id,
+        base_env=base_env,
+    )
+    # The profile's CLI owns the loaded skills; the inspecting supervisor may
+    # run a different LoopX version.
+    try:
+        version_readback = subprocess.run(
+            [str(cli_bin), "--version"],
+            cwd=paths["root"], env=env, check=False, capture_output=True,
+            text=True, timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise NativeCodexProfileError("profile_cli_version_unavailable") from exc
+    version_parts = version_readback.stdout.split()
+    if version_readback.returncode or len(version_parts) != 2 or version_parts[0] != "loopx":
+        raise NativeCodexProfileError("profile_cli_version_invalid")
+
     expected_source = Path(source_root).expanduser().resolve() if source_root else None
     skill_readback = inspect_skill_install_readback(
         skills_dir=paths["skills_dir"],
         required_skill_ids=required,
         source_root=expected_source,
+        expected_loopx_version_override=version_parts[1],
     )
     if skill_readback.get("ready") is not True:
         status = re.sub(r"[^A-Za-z0-9_.:-]", "_", str(skill_readback.get("status")))
@@ -484,12 +505,6 @@ def inspect_native_codex_profile(
     if not isinstance(skills_digest, str) or not isinstance(source_revision, str):
         raise NativeCodexProfileError("profile_identity_missing")
 
-    env = _formal_install_environment(
-        paths=paths,
-        python_executable=_resolved_executable(None),
-        release_id=release_id,
-        base_env=base_env,
-    )
     doctor = _doctor_payload(cli_bin=cli_bin, paths=paths, env=env)
     release_manifest = (doctor.get("release_manifest") or {}).get("manifest") or {}
     release_source = release_manifest.get("source") or {}
