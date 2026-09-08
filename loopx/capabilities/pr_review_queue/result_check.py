@@ -31,6 +31,9 @@ def check_review_result(
     }
     blockers: list[str] = []
     errors: list[str] = []
+    revision = result.get("review_policy_revision")
+    if type(revision) is not int or revision != contract["policy_revision"]:
+        blockers.append("review_policy_revision:stale_or_missing")
     if result.get("schema_version") != "pull_request_review_result_v1":
         errors.append("unsupported_result_schema")
     evidence = result.get("evidence")
@@ -50,6 +53,10 @@ def check_review_result(
         detail = {k: v for k, v in row.items() if k not in {"status", "verdict"}}
         if not any(v not in (None, "", [], {}) for v in detail.values()):
             blockers.append(f"{key}:missing_evidence_detail")
+        if status == "verified":
+            for field in requirements[key].get("fields", []):
+                if row.get(field) in (None, "", [], {}):
+                    blockers.append(f"{key}:missing_field:{field}")
         allowed = requirements[key].get("verdict_values")
         if allowed and row.get("verdict") not in allowed:
             blockers.append(f"{key}:missing_or_invalid_verdict")

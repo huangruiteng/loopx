@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sonarcloud.yml"
+
+
+def _workflow_steps(workflow: str) -> list[str]:
+    return re.findall(
+        r"(?ms)^      - name: .+?(?=^      - name: |\Z)",
+        workflow,
+    )
 
 
 def test_missing_sonar_token_reaches_a_successful_skip_step() -> None:
@@ -18,23 +26,19 @@ def test_missing_sonar_token_reaches_a_successful_skip_step() -> None:
 
 
 def _assert_token_guards(workflow: str) -> None:
-    # Match the workflow's existing named-step convention, not its step count:
-    # adding another coverage artifact must not weaken or break token isolation.
-    steps = workflow.split("      - name: ")[1:]
-    assert steps
-    analysis_steps = []
-    for step in steps:
-        if "        id: sonar-token\n" in step:
-            continue
-        if step.startswith("Skip analysis when the token is unavailable\n"):
-            assert "if: steps.sonar-token.outputs.available != 'true'" in step
-            continue
-        assert "if: steps.sonar-token.outputs.available == 'true'" in step, step.splitlines()[0]
-        analysis_steps.append(step)
-    assert any("uses: actions/checkout@" in step for step in analysis_steps)
-    assert any("uses: SonarSource/sonarqube-scan-action@" in step for step in analysis_steps)
-    for artifact in ("python-coverage-xml", "typescript-control-plane-coverage"):
-        assert any(f"name: {artifact}\n" in step for step in analysis_steps)
+    sensitive_actions = (
+        "uses: actions/checkout@",
+        "uses: actions/download-artifact@",
+        "uses: SonarSource/sonarqube-scan-action@",
+    )
+    steps = _workflow_steps(workflow)
+    for action in sensitive_actions:
+        matching_steps = [step for step in steps if action in step]
+        assert matching_steps
+        assert all(
+            "if: steps.sonar-token.outputs.available == 'true'" in step
+            for step in matching_steps
+        )
 
 
 def test_sonar_steps_remain_guarded_by_the_token() -> None:

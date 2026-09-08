@@ -14,6 +14,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
 import loopx.pr_review as pr_review_module  # noqa: E402
+from loopx.capabilities.pr_review_queue.review_contract import (  # noqa: E402
+    REVIEW_POLICY_REVISION,
+)
 from loopx.pr_review import (  # noqa: E402
     _github_search_date,
     build_pr_review_packet,
@@ -72,10 +75,8 @@ def main() -> int:
         "详细中文评审",
         "英文简短结论",
         "complete Chinese five-block review plus one concise English verdict",
-        "Full PR Interpretation Depth",
-        "Walk one positive path",
-        "Walk one negative path",
-        "omits whole files/modules is incomplete",
+        f"Require execution `policy_revision == {REVIEW_POLICY_REVISION}`",
+        "Do not retain expired temporary worktree overrides",
         "Treat `candidate` as a preview, not a durable projection",
         "durable Todo target-key readback -> `--projected-exact-head` -> exact-head review/comment readback -> `--handled-exact-head`",
         "Never send the projection ACK before the Todo exists",
@@ -93,6 +94,14 @@ def main() -> int:
         assert duplicated_contract_heading not in skill_source, (
             duplicated_contract_heading
         )
+    policy_requirement = re.search(
+        r"Require execution `policy_revision == ([0-9]+)`", skill_source
+    )
+    assert policy_requirement, "skill must declare an exact review policy revision"
+    assert int(policy_requirement.group(1)) == REVIEW_POLICY_REVISION, (
+        policy_requirement.group(1),
+        REVIEW_POLICY_REVISION,
+    )
 
     assert _github_search_date("2026-06-28T00:00:00+08:00") == "2026-06-27"
     assert _github_search_date("2026-06-28T00:00:00Z") == "2026-06-28"
