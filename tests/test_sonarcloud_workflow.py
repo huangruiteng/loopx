@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sonarcloud.yml"
+
+
+def _workflow_steps(workflow: str) -> list[str]:
+    return re.findall(
+        r"(?ms)^      - name: .+?(?=^      - name: |\Z)",
+        workflow,
+    )
 
 
 def test_missing_sonar_token_reaches_a_successful_skip_step() -> None:
@@ -19,7 +27,19 @@ def test_missing_sonar_token_reaches_a_successful_skip_step() -> None:
 def test_sonar_steps_remain_guarded_by_the_token() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
-    assert workflow.count("if: steps.sonar-token.outputs.available == 'true'") == 3
+    sensitive_actions = (
+        "uses: actions/checkout@",
+        "uses: actions/download-artifact@",
+        "uses: SonarSource/sonarqube-scan-action@",
+    )
+    steps = _workflow_steps(workflow)
+    for action in sensitive_actions:
+        matching_steps = [step for step in steps if action in step]
+        assert matching_steps
+        assert all(
+            "if: steps.sonar-token.outputs.available == 'true'" in step
+            for step in matching_steps
+        )
     assert workflow.count("SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}") == 2
     assert "\n    env:\n      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}" not in workflow
 
