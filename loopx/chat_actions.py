@@ -50,9 +50,10 @@ _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
 # raises `agent_binding_required` for an agent the user did register. A host
 # absent from the table resolves to its own id, which only matches an
 # identically named agent — correct as a fallback, wrong as a built-in's only
-# behavior. The prefix shape is a deliberate compatibility seam for existing
-# operator-chosen ids, not a classification rule: keep it in this one table.
-_AGENT_FAMILY_PREFIXES: tuple[tuple[str, str], ...] = (
+# behavior. Matching is bounded at a `-` delimiter, so this table lists family
+# roots rather than free prefixes: `kiro-worker-1` joins the Kiro family while
+# `kiroscope-worker` keeps its own identity. Keep the rule in this one table.
+_AGENT_FAMILY_ROOTS: tuple[tuple[str, str], ...] = (
     ("codex", "codex"),
     ("claude", "claude-code"),
     ("kiro", KIRO_CLI_CHAT_AGENT_ID),
@@ -238,9 +239,20 @@ class ChatActionService(
 
     @staticmethod
     def _agent_family(value: str) -> str:
+        """Classify an id into a host family, bounded at a delimiter.
+
+        A bare prefix match silently swallowed unrelated operator ids:
+        ``kiroscope-worker`` and ``codexplorer`` are not the Kiro or Codex
+        family, but they matched, and a single false match is enough for
+        ``_resolve_goal_agent`` to bind a built-in endpoint to the wrong
+        durable identity instead of raising ``agent_binding_required``. The
+        family token must therefore be the whole id or end at a ``-``
+        delimiter, which still accepts every documented shape (``kiro``,
+        ``kiro-cli``, ``kiro-worker-1``) because ids are normalized first.
+        """
         token = value.strip().lower().replace("_", "-")
-        for prefix, family in _AGENT_FAMILY_PREFIXES:
-            if token.startswith(prefix):
+        for prefix, family in _AGENT_FAMILY_ROOTS:
+            if token == prefix or token.startswith(f"{prefix}-"):
                 return family
         return token
 
