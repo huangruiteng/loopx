@@ -115,6 +115,7 @@ import {
   rollbackCoordinationRuntimeShadow,
 } from "./coordination/runtime_shadow.ts";
 import {
+  acknowledgeLocalCoordinationTodoArchive,
   archiveLocalCoordinationTodos,
   claimLocalCoordinationTodo,
   createLocalCoordinationTodo,
@@ -430,6 +431,7 @@ export function createEffectRuntimeHandlers(
     ["coordination.local_authority.todo_update", updateLocalCoordinationTodo],
     ["coordination.local_authority.todo_terminal", terminalLifecycleLocalCoordinationTodo],
     ["coordination.local_authority.todo_archive", archiveLocalCoordinationTodos],
+    ["coordination.local_authority.todo_archive_ack", acknowledgeLocalCoordinationTodoArchive],
     ["coordination.local_authority.todo_compatibility_edit", editLocalCoordinationTodo],
     ["coordination.local_authority.mutate", mutateLocalCoordinationAuthority],
     ["coordination.local_authority.todo_read", readLocalCoordinationTodo],

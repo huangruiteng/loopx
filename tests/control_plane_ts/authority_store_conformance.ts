@@ -547,6 +547,46 @@ export function registerAuthorityStoreConformance(
     assert.equal(afterNoChange.cursor, beforeNoChange.cursor);
   });
 
+  test(`${providerName} conformance: archive binds the observed head and replays before current eligibility`, async (t) => {
+    const {store} = await factory(t);
+    const goalId = "goal-archive-retry";
+    const seed = await store.commitAuthority({
+      operation_id: "archive-retry-seed", expected_provider_revision: null,
+      next_projection: todoTerminalProjection(goalId), events: [], receipts: [],
+    });
+    assert.equal(seed.status, "applied");
+    if (seed.status !== "applied") return;
+    const request = {goal_id: goalId, role: "agent" as const, max_active_done: 0,
+      operation_id: "archive-retry", dry_run: false,
+      expected_provider_revision: seed.provider_revision,
+      now: new Date("2026-09-08T01:00:00Z")};
+    const before = await store.loadAuthority();
+    const stale = await executeCoordinationTodoArchiveCompleted(store, {
+      ...request, expected_provider_revision: "stale-observed-revision",
+    });
+    assert.equal(stale.status, "conflict", JSON.stringify(stale));
+    assert.equal(stale.conflict_kind, "provider_revision_mismatch");
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
+
+    const applied = await executeCoordinationTodoArchiveCompleted(store, request);
+    assert.equal(applied.status, "applied", JSON.stringify(applied));
+    assert.deepEqual(applied.moved_todo_ids, ["todo-done-a", "todo-done-b"]);
+    const after = await store.loadAuthority();
+    const replay = await executeCoordinationTodoArchiveCompleted(store, {
+      ...request, now: new Date("2026-09-08T02:00:00Z"),
+    });
+    assert.equal(replay.status, "replayed", JSON.stringify(replay));
+    assert.equal(replay.moved_count, 2);
+    assert.deepEqual(replay.original_receipt, applied.original_receipt);
+    assert.deepEqual(await store.loadAuthority(), after);
+    const changedIntent = await executeCoordinationTodoArchiveCompleted(store, {
+      ...request, expected_provider_revision: String(applied.provider_revision),
+    });
+    assert.equal(changedIntent.reason_code, "coordination_operation_identity_mismatch");
+    assert.deepEqual(await store.loadAuthority(), after);
+  });
+
   test(`${providerName} conformance: supersede preserves the legacy terminal continuation`, async (t) => {
     const {store} = await factory(t);
     const goalId = "goal-supersede";

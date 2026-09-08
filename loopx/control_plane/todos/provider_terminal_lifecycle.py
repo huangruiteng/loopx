@@ -40,6 +40,7 @@ from .successor_derivation import build_successor_intents
 
 _TERMINAL_REQUEST_SCHEMA = "loopx_local_coordination_todo_terminal_lifecycle_request_v0"
 _ARCHIVE_REQUEST_SCHEMA = "loopx_local_coordination_todo_archive_request_v0"
+_ARCHIVE_ACK_REQUEST_SCHEMA = "loopx_local_coordination_todo_archive_ack_request_v0"
 _ACCEPTED = {"applied", "recovered", "replayed", "no_change", "planned"}
 
 
@@ -532,6 +533,7 @@ def archive_canonical_todos_if_promoted(
                 max_active_done=max_active_done,
                 provider_revision=provider_revision,
             ),
+            "expected_provider_revision": provider_revision,
             "dry_run": dry_run,
             "observed_at": now_local(),
         },
@@ -545,7 +547,7 @@ def archive_canonical_todos_if_promoted(
             ),
             payload=payload,
         )
-    return _projection_payload(
+    response = _projection_payload(
         settle_canonical_todo_projection(
             {"ok": True, "dry_run": dry_run, "goal_id": goal_id, **dict(result)},
             registry_path=registry_path,
@@ -555,6 +557,36 @@ def archive_canonical_todos_if_promoted(
             state_file=state_file,
         )
     )
+    if (
+        not dry_run
+        and response.get("moved_count", 0) > 0
+        and response.get("projection_delivery") in {"delivered", "current"}
+    ):
+        # The native owner retains the attempt until its external projection
+        # provider succeeds. An ACK failure must preserve the committed result
+        # and leave the same attempt available for the next retry.
+        try:
+            acknowledgement = effect_runtime_result(
+                "coordination.local_authority.todo_archive_ack",
+                {
+                    "schema_version": _ARCHIVE_ACK_REQUEST_SCHEMA,
+                    "runtime_root": str(runtime_root.expanduser().resolve(strict=False)),
+                    "goal_id": goal_id,
+                    "role": role,
+                    "operation_id": response.get("operation_id"),
+                },
+            )
+            response["archive_delivery_ack"] = (
+                dict(acknowledgement)
+                if isinstance(acknowledgement, Mapping)
+                else {"status": "pending", "reason_code": "invalid_archive_ack_result"}
+            )
+        except Exception as error:  # noqa: BLE001 - the canonical commit already landed
+            response["archive_delivery_ack"] = {
+                "status": "pending", "reason_code": "archive_ack_unavailable",
+                "error_class": error.__class__.__name__, "retryable": True,
+            }
+    return response
 
 
 __all__ = [
