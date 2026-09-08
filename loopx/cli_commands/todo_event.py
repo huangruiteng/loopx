@@ -37,7 +37,7 @@ def todo_error_payload(args: argparse.Namespace, exc: Exception) -> dict[str, ob
         "dry_run": True
         if args.todo_command == "suggest"
         else not bool(args.execute)
-        if args.todo_command == "archive-completed"
+        if args.todo_command in {"archive-completed", "project-markdown"}
         else bool(args.dry_run),
         "added": False,
         "already_exists": False,

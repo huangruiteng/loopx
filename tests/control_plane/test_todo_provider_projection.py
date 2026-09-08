@@ -135,7 +135,12 @@ def test_settlement_preserves_commit_and_replays_after_projection_failure(
     assert committed["status"] == "applied"
     assert committed["changed"] is True
     assert committed["projection_delivery"] == "pending"
-    assert committed["projection_outbox"] == {
+    outbox = dict(committed["projection_outbox"])
+    recommendation = outbox.pop("recommended_action")
+    assert "todo list" in recommendation
+    assert "todo project-markdown" in recommendation
+    assert outbox.pop("retry_business_mutation") is False
+    assert outbox == {
         "schema_version": "loopx_todo_projection_delivery_v0",
         "status": "pending",
         "source": "committed_authority_journal",

@@ -11,6 +11,7 @@ current head idempotently.
 from __future__ import annotations
 
 import os
+import json
 import stat
 import tempfile
 from collections.abc import Mapping
@@ -49,10 +50,10 @@ def _fsync_parent_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _atomic_write_text(path: Path, text: str) -> None:
+def _atomic_write_text(path: Path, text: str, *, create_only: bool = False) -> None:
     """Durably replace a compatibility projection without changing its mode."""
 
-    original_mode = stat.S_IMODE(path.stat().st_mode)
+    original_mode = 0o600 if create_only else stat.S_IMODE(path.stat().st_mode)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
     )
@@ -63,7 +64,12 @@ def _atomic_write_text(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
+        if create_only:
+            # Publish a complete file without clobbering a concurrently restored
+            # document, even if that writer does not participate in our lock.
+            os.link(temporary_path, path)
+        else:
+            os.replace(temporary_path, path)
         _fsync_parent_directory(path)
     finally:
         temporary_path.unlink(missing_ok=True)
@@ -91,9 +97,6 @@ def project_current_canonical_todos(
     )
     if goal is None:
         raise ValueError(f"goal {goal_id!r} is not present in the registry")
-    if not state_path.exists():
-        raise ValueError("Todo Markdown projection target does not exist")
-
     with exclusive_cross_runtime_file_lock(
         state_path, operation="project_canonical_todo_sections"
     ):
@@ -116,7 +119,19 @@ def project_current_canonical_todos(
                 "Todo Markdown projection provider revision does not match the "
                 "canonical read head"
             )
-        source = _read_text_exact(state_path)
+        recovered_missing = False
+        try:
+            source = _read_text_exact(state_path)
+        except FileNotFoundError:
+            recovered_missing = True
+            source = (
+                f"---\ngoal_id: {json.dumps(goal_id, ensure_ascii=False)}\n---\n\n"
+                "# Recovered Todo projection\n\n"
+                "> Regenerated from canonical Todo authority. Non-Todo sections "
+                "are not in this provider snapshot and were not recovered. "
+                "This is a Todo projection, not a complete Goal-state restore.\n\n"
+                "## Agent Todo\n"
+            )
         projection = render_canonical_todo_sections(
             source,
             authority_read["todos"],
@@ -141,7 +156,10 @@ def project_current_canonical_todos(
                 goal_id=goal_id,
                 state_file=state_path,
             )
-            _atomic_write_text(state_path, projection.markdown)
+            if recovered_missing:
+                _atomic_write_text(state_path, projection.markdown, create_only=True)
+            else:
+                _atomic_write_text(state_path, projection.markdown)
             if _read_text_exact(state_path) != projection.markdown:
                 raise RuntimeError("Todo Markdown projection readback mismatch")
 
@@ -166,7 +184,8 @@ def project_current_canonical_todos(
         "narrative_sha256": projection.narrative_sha256,
         "section_record_sha256": projection.section_record_sha256,
         "parse_render_parity": True,
-        "narrative_preserved": True,
+        "narrative_preserved": not recovered_missing,
+        **({"recovery_scope": "todo_sections_only"} if recovered_missing else {}),
         "legacy_fallback_used": False,
     }
 
@@ -217,6 +236,11 @@ def settle_canonical_todo_projection(
             "reason_code": reason_code,
             "error_class": error.__class__.__name__,
             "retryable": True,
+            "recommended_action": (
+                "Repair the display or provider error, read the current provider revision "
+                "with todo list, then retry todo project-markdown for that revision."
+            ),
+            "retry_business_mutation": False,
         }
     if isinstance(trigger_revision, str) and trigger_revision:
         delivery["trigger_provider_revision"] = trigger_revision

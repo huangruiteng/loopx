@@ -60,6 +60,9 @@ def test_canonical_argument_intent_and_atomic_claim(caller: Caller) -> None:
     assert native(w, 'read', {}) == before
     applied = w.call(*claim)
     assert applied['status'] == 'applied', applied
+    assert applied['projection_delivery'] == 'delivered', applied
+    recovered = w.state.read_bytes()
+    assert b'claimed_by=agent-a' in recovered
     replay = w.call(*claim)
     assert replay['status'] == 'replayed' and replay['original_receipt'] == applied['original_receipt']
     stored = native(w, 'read', {})['head']['head']
@@ -70,7 +73,7 @@ def test_canonical_argument_intent_and_atomic_claim(caller: Caller) -> None:
     assert rejected.get('error_code') == 'update_owner_mismatch', rejected
     assert rejected['error'] == rejected['reason'] == "Todo update cannot edit another claim owner's work"
     assert native(w, 'read', {}) == before
-    assert not w.state.exists()
+    assert w.state.read_bytes() == recovered
 
 
 def test_native_unclaimed_edit_and_explicit_note_clear(caller: Caller) -> None:
@@ -81,7 +84,10 @@ def test_native_unclaimed_edit_and_explicit_note_clear(caller: Caller) -> None:
     projection = w.invoke([sys.executable, '-c', builder, json.dumps(record)], ['fixture-projection', json.dumps(record)])
     assert native(w, 'seed', projection)['status'] == 'applied'
     w.state.unlink()
-    assert w.call('todo', 'update', '--todo-id', todo, '--agent-id', 'agent-b', '--note', 'Claim-neutral context')['ok'] is True
+    updated = w.call('todo', 'update', '--todo-id', todo, '--agent-id', 'agent-b', '--note', 'Claim-neutral context')
+    assert updated['ok'] is True and updated['projection_delivery'] == 'delivered', updated
+    recovered = w.state.read_bytes()
+    assert todo.encode() in recovered
     stored = native(w, 'read', {})['head']['head']
     assert stored['todos'][0]['note'] == 'Claim-neutral context'
     assert not stored['todos'][0].get('claimed_by') and stored['leases'] == []
@@ -99,7 +105,9 @@ def test_native_unclaimed_edit_and_explicit_note_clear(caller: Caller) -> None:
         'todo_id': 'todo_missing', 'actor_agent_id': 'unknown', 'patch': {'text': 'Must not persist'}, 'clear_fields': []})
     assert rejected['status'] in {'failed', 'rejected'}, rejected
     assert native(w, 'read', {}) == after
-    assert not w.state.exists()
+    # Native transactions do not own display delivery; only the CLI facade
+    # regenerated it. Neither direct-native update nor rejection rewrites it.
+    assert w.state.read_bytes() == recovered
 
 
 HTTP = r"""

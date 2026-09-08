@@ -42,6 +42,7 @@ from .contract import (
     TODO_STATUS_OPEN,
     format_todo_metadata_line,
     normalize_todo_status,
+    require_todo_decision_scope,
     todo_marker_for_status,
 )
 from .todo_summary import canonical_todo_read_record
@@ -309,7 +310,7 @@ def _projection_record(
     *,
     display_index: int,
 ) -> dict[str, object]:
-    return dict(canonical_todo_read_record(
+    projected = dict(canonical_todo_read_record(
         {
             **record,
             "schema_version": TODO_ITEM_SCHEMA_VERSION,
@@ -322,6 +323,12 @@ def _projection_record(
         },
         reject_unknown=True,
     ))
+    if "decision_scope" in projected:
+        # The Markdown codec spells out the optional scope schema version on
+        # readback. Normalize that display representation, never the provider
+        # record or its digest, before comparing the same semantic scope.
+        projected["decision_scope"] = require_todo_decision_scope(projected["decision_scope"])
+    return projected
 
 
 _DERIVED_READ_MODEL_FIELDS = {

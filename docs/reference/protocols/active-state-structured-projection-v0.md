@@ -119,12 +119,12 @@ Directly editing a projection is not a state transition.
 
 ## Markdown Ownership Boundary
 
-Markdown is not one undifferentiated database row. Its free-form rationale,
-notes, and operator narrative remain human-authored. Sections that correspond
-to the versioned coordination contract may later be regenerated as a
-deterministic compatibility projection after authority promotion. Promotion
-must not make unrelated prose generated or discard text that is outside the
-machine-owned record contract.
+Markdown is not one undifferentiated database row. Agents generate and maintain
+both its structured sections and narrative through LoopX. The distinction is
+canonical ownership, not human versus Agent authorship: after promotion,
+sections covered by the versioned coordination contract are regenerated from
+that authority. Content outside that contract must remain intact until its own
+canonical source can reconstruct it.
 
 The cutover is deliberately section-sized, not document-sized:
 
@@ -132,7 +132,8 @@ The cutover is deliberately section-sized, not document-sized:
   unchanged;
 - after promotion, the versioned Todo records live in the canonical provider
   head and Markdown's Todo section is a compatibility/workbench projection;
-- free-form rationale and operator narrative remain Markdown-owned;
+- other generated sections remain in Markdown until their canonical ownership
+  migrates; Todo promotion does not silently discard or reinterpret them;
 - a provider outage after promotion fails closed and never makes stale
   Markdown authoritative again.
 
@@ -143,12 +144,12 @@ supply a task-lease idempotency key and optional expected version so the claim,
 canonical lease, and durable receipt commit in one provider transaction; the
 write scopes come from the canonical Todo rather than caller input. After
 promotion, `loopx todo project-markdown` can explicitly
-regenerate the two active Todo sections from the exact provider revision. It
+regenerate active and archived Todo sections from the exact provider revision. It
 never runs before promotion and never turns Markdown back into authority.
 
 The projection command has four safety properties:
 
-- it replaces only the active user and agent Todo section spans;
+- it replaces only the machine-owned active user, agent and archived Todo regions;
 - it preserves every segment outside those spans byte-for-byte;
 - it fails closed when a canonical field cannot be represented by the current
   Markdown metadata grammar, rather than dropping that field;
@@ -166,7 +167,7 @@ nested, mismatched or missing markers, and non-generated content inside a marked
 region, fail closed. No ordinary Goal is rewritten or opted in by installation.
 Legacy unmarked readers and bootstrap output remain unchanged.
 
-Narrative byte preservation and canonical Todo parse/render parity are separate
+Non-Todo byte preservation and canonical Todo parse/render parity are separate
 checks: the former compares untouched source slices, while the latter reads only
 the generated regions. Neither marker is provider authority or a current-head
 freshness guarantee.
@@ -190,20 +191,57 @@ Todo sections, but must not promote stale Markdown back to canonical truth.
 
 The projector accepts complete legacy records and native `TodoDomainRecord`
 manifests. Native records receive display-only section/index provenance; that
-provenance never enters the canonical record. Archived records render only
-inside an existing machine-owned `Completed Work Archive` region and retain
-their original `role`. Unknown canonical fields, missing sections, and unsafe
-region ownership continue to fail closed.
+provenance never enters the canonical record. Archived records render in a
+machine-owned `Completed Work Archive` region (created when needed) and retain
+their original `role`. Unknown canonical fields and unsafe region ownership
+continue to fail closed.
 
 For promoted provider-first Todo create, claim, and narrow text/note update,
 the committed authority journal is the transaction-bound projection outbox:
 the canonical mutation, complete head, cursor, revision, and receipt land in
 one provider transaction. After that commit, the Python compatibility adapter
 renders the latest head under the Markdown lock and durably reads it back. A
-missing target or renderer/write failure leaves typed `pending` delivery
+renderer/write failure leaves typed `pending` delivery
 evidence without reversing or hiding the canonical commit. A later successful
 mutation or `todo project-markdown --execute` replays the current head
 idempotently. This is projection recovery, not a second authority path.
+
+### Generated display recovery / 生成式展示恢复
+
+LoopX state documents are generated and maintained by Agents through LoopX.
+There is no separate hand-written-document workflow or recovery approval gate.
+After promotion, a missing Markdown target is automatically regenerated during
+normal projection delivery. The existing command is also sufficient:
+
+```bash
+loopx --format json todo list --goal-id <goal-id>
+# Use provider_revision from that read; omitting --execute previews only.
+loopx todo project-markdown --goal-id <goal-id> --provider-revision <revision>
+loopx todo project-markdown --goal-id <goal-id> --provider-revision <revision> --execute
+```
+
+The generated document states its recovery scope. The current coordination
+provider contains Todo and lease state, not every Objective, operating contract,
+vision, Next Action or progress-ledger section. A missing-file rebuild therefore
+reports `recovery_scope=todo_sections_only` and `narrative_preserved=false`;
+it is not a complete Goal-state restore. Existing non-Todo content is preserved
+regardless of who generated it. Those remaining state families must converge
+on their own canonical sources before whole-document reconstruction can be
+claimed; do not introduce a second Markdown authority or fill gaps from prose.
+
+Publication uses the existing source lock and source-ownership checks. New files
+are private (`0600` on POSIX) and published atomically without replacing a file
+concurrently restored by another writer. Existing malformed or non-UTF-8 files
+remain untouched and delivery stays pending. A stale requested revision or
+unavailable canonical provider cannot rebuild the target. Normal reads never
+write it. Recovery does not rerun the business transaction or validation command;
+private validation declarations must still match the canonical digest.
+
+缺失的展示文件由投影交付自动重建，不增加手写文档假设、人工确认或额外开关；原有
+`project-markdown` 仍默认预览。当前只恢复 canonical Todo 的活动与归档区域，并明确
+报告 `todo_sections_only`，不冒充完整 Goal 状态恢复。已有的非 Todo 内容无论由谁生成
+都保持原样；其权威源归一化是后续状态迁移，不是人工补文档流程。损坏文件不静默覆盖，
+revision 不匹配或 provider 不可用时不重建；交付失败只重试投影，不重复业务事务。
 
 1. Emit this projection from active-state Markdown.
 2. Add parity smokes comparing it with existing status todo summaries.
