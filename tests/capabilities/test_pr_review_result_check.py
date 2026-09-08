@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from loopx.capabilities.pr_review_queue import review_contract
 from loopx.capabilities.pr_review_queue.result_check import check_review_result
 from loopx.capabilities.pr_review_queue.review_contract import (
     build_review_execution_contract,
@@ -85,6 +86,23 @@ def test_old_or_invalid_policy_cannot_certify_current_approval(revision):
     packet, result = _review()
     result["review_policy_revision"] = revision
     checked = check_review_result(packet, result)
+    assert "review_policy_revision:stale_or_missing" in checked["approval_blockers"]
+    assert not checked["ok"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+
+
+def test_pinned_result_is_rejected_after_installed_policy_bump(monkeypatch):
+    packet, result = _review()
+    pinned_revision = result["review_policy_revision"]
+    monkeypatch.setattr(
+        review_contract,
+        "REVIEW_POLICY_REVISION",
+        pinned_revision + 1,
+    )
+
+    checked = check_review_result(packet, result)
+
     assert "review_policy_revision:stale_or_missing" in checked["approval_blockers"]
     assert not checked["ok"]
     result["verdict"] = "REQUEST_CHANGES"

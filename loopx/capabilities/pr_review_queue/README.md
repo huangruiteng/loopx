@@ -547,8 +547,10 @@ fresh review evidence when the installed contract has advanced. The execution
 contract now carries `policy_revision`, distinct from its stable wire schema;
 results bind `review_policy_revision`. Missing or mismatched policy revisions
 cannot certify approval. Regenerate the packet and perform the current plan,
-not merely relabel old evidence. The skill rejects incompatible packets from
-expired development-runtime overrides before publication.
+not merely relabel old evidence. The skill rejects approval from incompatible
+packets produced by expired development-runtime overrides. It may still publish
+a conservative `REQUEST_CHANGES` only when that verdict explicitly identifies
+the incompatible-policy evidence gap; a later approval requires regeneration.
 
 For retained or parallel implementations, `repository_reuse.rule_ownership`
 maps business rules across both reachable paths, including unchanged files.

@@ -50,11 +50,13 @@ Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
-Require execution `policy_revision >= 1`; a schema name alone is insufficient.
-If missing/older, stop publication and regenerate with current installed LoopX.
-Do not retain expired temporary worktree overrides. Honor explicit runtime pins,
-but report incompatible policy instead of silently downgrading the review.
-This establishes compatibility, not latest-release freshness.
+Require execution `policy_revision == 1`; a schema name alone is insufficient.
+If missing or unequal, do not publish APPROVE. A conservative REQUEST_CHANGES
+may be published only when it explicitly names the incompatible-policy evidence
+gap; regenerate with current installed LoopX before any later approval. Do not retain
+expired temporary worktree overrides. Honor explicit runtime pins, but
+report incompatible policy instead of silently downgrading the review. The repository
+smoke binds this number to the canonical revision; this is not a freshness claim.
 
 ## Execute One Review Plan
 
