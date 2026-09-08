@@ -2463,36 +2463,65 @@ the read-only three-arm rehearsal as a separate promotion gate.
 
 ### Next delivery and parallel provider work
 
-The immediate kernel sequence is: (1) finish the remaining provider-first Todo
-command inventory behind the same runtime boundary; (2) explicit v0 import plus
-sustained consumer/capture/recovery qualification; (3) reviewed promotion with
-fenced export and cleanup. Each slice must prove an end-to-end transaction, not
-merely another schema identifier consolidation. Native contract acceptance
-alone is not permission to bypass any promotion hold.
+Markdown is a **permanent first-class readable projection**. Retire its database
+and business-writer authority, not its human/agent presentation. The
+[TS RFC's delivery sequence](typescript-control-plane-migration-v0.md#next-delivery-sequence)
+owns business-rule unification and caller deletion; this RFC owns one durable
+truth, recovery and cutover. Native CLI conversion and a daemon are not
+prerequisites, and PostgreSQL deployment must not hold local adoption hostage.
 
-The first replacement-first `claim` slice routes both the default Markdown
-writer and the promoted provider transaction through one TypeScript decision.
-Python's default path retains only locked commit and existing projection-
-compatibility duties. This closes duplicate claim policy; it neither promotes
-Markdown to authority nor replaces the remaining unified
-create/update/complete/archive transactions and projection outbox.
+```text
+CLI / Agent / Dashboard → one TS Todo transaction owner → canonical authority
+                                                        ├ structured consumers
+                                                        └ Markdown projection
+```
 
-The following `create` slice routes promoted `todo add` through a native
-provider transaction. The legacy CLI surface remains, but after argument
-validation it performs one typed crossing; TypeScript owns semantic duplicate
-resolution, actor/owner eligibility, CAS, replay receipts, and the projection
-outbox mutation. A deleted Markdown state file stays absent in real subprocess
-CLI preview and apply tests. This removes Markdown commit authority for create
-on promoted goals without claiming that update/complete/archive are ready for
-live promotion; those commands remain fenced until their own transaction
-types land behind the same runtime boundary.
+There are only two authority phases per goal: before cutover, Markdown feeds
+qualified shadow capture; after cutover, the selected canonical provider feeds
+one-way projections. Do not add a third TS-Markdown backend, bidirectional
+live synchronization, or per-command split authority. Unsupported post-cutover
+commands fail closed; they do not fall back to the old writer.
 
-Use file-v0 for bounded conformance and import rehearsal only. Start the
-Section 7.2 embedded-store slice alongside the provider-first Todo caller; both
-converge before long-goal local qualification and promotion. PostgreSQL
-service/deployment work remains parallel; it is not a local-promotion dependency. NoKV remains independently gated by its own lineage and recovery
-qualification. The shared authority owns decisions and receipts; providers own
-durable CAS/transactions, never a second Todo state machine.
+The next complete stage packages are:
+
+1. **Command/consumer closure.** Reuse the merged create, claim, update and
+   #4053 terminal/successor/archive paths. Inventory remaining public mutations
+   and reads against actual callers. Status/attention now joins `todo list` in
+   reading canonical Todo summaries after promotion, without requiring the
+   Markdown file. Missing providers fail closed and empty canonical collections
+   never revive legacy Todos. This is consumer progress, not promotion proof:
+   Turn, quota, planning, standing decisions, leases and monitor writeback still
+   need their own parity inventory. Read authority does not grant writeback.
+2. **Permanent projection closure.** Reuse `provider_projection.py`, the
+   Todo-section renderer and existing journal/outbox. Preserve non-owned human
+   narrative; render owned sections from a known canonical revision, with
+   idempotent repair and freshness/readback evidence. Pending projection delivery
+   is independent of business commit/replay. Direct Markdown edits must never
+   import themselves into authority. Explicit validated edit/import tooling is
+   a separate proposal, not a second writer hidden inside rendering. Current
+   missing-file behavior remains pending, not silent recreation: a future
+   explicit rebuild must distinguish recoverable Todo sections from lost human
+   narrative. Validate stale/missing/malformed display, crash/retry, revision
+   races, narrative preservation and private-field boundaries.
+3. **One qualified local profile and fenced cutover.** Section 7.2's embedded
+   candidate must prove bounded head/index growth, historical receipts, crash
+   recovery, real CLI readback, capacity and >=10-day soak. File-v0 conformance
+   is not that evidence. Bind one exact lineage/revision/manifest, drain capture,
+   reconcile consumers, fence writers and verify projection recovery plus fenced
+   export/rollback before explicit promotion approval. Do not promote active
+   goals for development tests. PostgreSQL deployment and NoKV qualification
+   proceed independently; changed shared transactions still qualify each
+   affected provider, including a real isolated PostgreSQL server.
+4. **Retirement with named callers.** Remove old Markdown business writers and
+   capture/reference/bridge code only when their final callers and migration
+   windows close. Keep the permanent renderer, qualified import/export, and
+   durable regression coverage. Publish the retained-seam inventory and next
+   deletion condition, rather than indefinitely expanding dual paths.
+
+The current default and Appendix C promotion holds remain unchanged. This plan
+does not declare the whole Todo family, long-goal profile, or shared deployment
+production-ready. Providers keep CAS/transactions durable; they never own a
+second Todo state machine.
 
 ### Parallel delivery plan
 

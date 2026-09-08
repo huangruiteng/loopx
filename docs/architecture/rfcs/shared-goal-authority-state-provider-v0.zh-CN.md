@@ -1954,30 +1954,50 @@ promotion gate。
 
 ### 下一步交付与并行 provider 工作
 
-kernel 的近期顺序是：（1）在同一 runtime boundary 后补完剩余 provider-first Todo
-command inventory；（2）显式 v0 import 加持续 consumer/capture/recovery 资格化；
-（3）具备 fenced export 和 cleanup 的已评审 promotion。每个切片必须证明端到端
-transaction，不能只做另一轮 schema identifier 统一。接受 native contract 不等于
-可以绕过任何 promotion hold。
+Markdown 是**长期保留的一等可读投影**。退役的是它的数据库及业务 writer 权威，
+不是面向 human/agent 的展示。[TS RFC 交付顺序](typescript-control-plane-migration-v0.zh-CN.md#下一步交付顺序)
+负责业务规则统一和 caller 删除；本 RFC 负责唯一 durable truth、恢复和 cutover。
+CLI 原生 TS 化与 daemon 不是前提，PostgreSQL 部署不能阻塞本地采用。
 
-`claim` 的第一个 replacement-first 切片把默认 Markdown writer 与 promotion 后的
-provider transaction 接到同一个 TS decision；Python 默认路径只保留持锁提交和既有
-投影兼容职责。它关闭 claim policy 的双实现，但不把 Markdown 提升为 authority，
-也不替代剩余 create/update/complete/archive 的统一 transaction 与 projection outbox。
+```text
+CLI / Agent / Dashboard → 唯一 TS Todo 事务 owner → canonical authority
+                                                   ├ structured consumers
+                                                   └ Markdown 投影
+```
 
-随后的 `create` 切片让 promotion 后的 `todo add` 进入原生 provider transaction。
-旧 CLI 表面仍保留，但参数验证之后只跨一次 typed boundary；语义重复判断、actor/owner
-资格、CAS、replay receipt 与 projection outbox mutation 都由 TypeScript 持有。真实
-subprocess CLI 的 preview/apply 测试会先删除 Markdown state file，并证明它不会被重新
-创建。这消除了 promoted goal 上 create 的 Markdown 提交权威，但不宣称
-update/complete/archive 已可用于活跃 goal promote；这些命令要等各自 transaction
-类型进入同一 runtime boundary 前继续被 fence。
+每个 goal 只有两个 authority 阶段：cutover 前，Markdown 向已资格化 shadow capture
+供数；cutover 后，所选 canonical provider 向单向投影供数。不增加第三种 TS-Markdown
+backend、实时双向同步或按命令拆开的权威；晋升后不支持的命令 fail closed，不能回退旧 writer。
 
-file-v0 只用于有界 conformance 与 import 演练。第 7.2 节嵌入式存储切片与 provider-first
-Todo caller 同时推进，在长程本地资格化与晋升前汇合。PostgreSQL service/deployment
-继续并行，不成为本地晋升的依赖；NoKV 独立通过自己的 lineage/recovery 资格门禁。
-shared authority 持有 decision 与 receipt；provider 只持有 durable CAS/transaction，
-不再实现第二份 Todo 状态机。
+后续完整阶段包按以下顺序推进：
+
+1. **命令/consumer 闭合。** 复用已合入的 create、claim、update 和 #4053
+   terminal/successor/archive 路径。按实际 caller 盘点剩余公开 mutation 和 read。
+   status/attention 现在与 `todo list` 一样，在 promotion 后读 canonical Todo summary，
+   不要求 Markdown 文件存在；provider 缺失 fail closed，canonical 空集合不能复活旧
+   Todo。这是 consumer 进展，不是 promotion 证明：Turn、quota、planning、standing
+   decision、lease、monitor writeback 仍需各自的 parity 清单。读权威不授予写回能力。
+2. **永久投影闭合。** 复用 `provider_projection.py`、Todo-section renderer 和既有
+   journal/outbox。保留非托管的人工叙述，从已知 canonical revision 渲染托管 section，
+   提供幂等修复与 freshness/readback 证据。投影 pending 独立于业务 commit/replay。
+   直接编辑 Markdown 不能自动导入 authority；显式验证的 edit/import 工具另提方案，
+   不能藏在 renderer 内成为第二个 writer。当前文件缺失仍保持 pending，不静默重建；
+   后续显式 rebuild 要区分可恢复 Todo section 与已丢失人工叙述。验证陈旧/缺失/非法
+   展示、crash/retry、revision race、叙述保留与私有字段边界。
+3. **一个已资格化的本地 profile 与 fenced cutover。** 第 7.2 节嵌入式候选证明
+   head/index 增长有界、历史 receipt、crash recovery、真实 CLI readback、容量和
+   >=10 天 soak；file-v0 conformance 不能代替这些证据。绑定精确 lineage/revision/
+   manifest、排空 capture、对齐 consumer、fence writer，并验证投影恢复及 fenced
+   export/rollback 后，才请求显式 promotion 批准。不能拿活跃 goal 做开发晋升测试。
+   PostgreSQL 部署与 NoKV 资格化独立推进；shared transaction 改动仍验证每个受影响
+   provider，包括真实隔离 PostgreSQL server。
+4. **列明 caller 后退役。** 最后 caller 和迁移窗口关闭后，删除旧 Markdown 业务
+   writer 与 capture/reference/bridge；保留永久 renderer、已资格化 import/export 和
+   持久回归覆盖。公布保留 seam 清单及下一删除条件，不无限扩大双路径。
+
+当前默认和附录 C promotion hold 均不改变。这份计划不宣称完整 Todo 命令族、长程
+profile 或 shared deployment 已生产就绪。provider 负责 durable CAS/transaction，
+不拥有第二份 Todo 状态机。
 
 ### 并行交付计划
 

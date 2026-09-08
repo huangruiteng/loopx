@@ -197,33 +197,48 @@ slice; they must not be reported as migrated or globally free of prose rules.
 
 ### Next delivery sequence
 
-1. **One provider-first Todo transaction family.** Route native create, claim,
-   update, complete-with-successor, archive, and their lease effects through
-   the existing TS authority owner. Deliver coherent vertical slices with the
-   real CLI caller, replay/CAS/error tests, and removal of the replaced Python
-   decisions. A schema or constants-only PR does not satisfy this exit.
-   A single-command slice (for example `todo update --text/--note` through a
-   shared compatibility editor) is a validation milestone for synthetic or
-   qualification goals, never a real-goal promotion: once a goal is promoted,
-   every other legacy writer is still fenced fail-closed. Promoting a live goal
-   therefore waits until the write-command family its agents actually use routes
-   through the same unified TS commit authority (per-command transaction types
-   behind one effect-runtime boundary, not parallel semantic owners) and until capture/projection outbox
-   delivery is flushed. The deletion payoff lands only when the in-place
-   Markdown editor is replaced by a pure projection renderer behind that one
-   entry point.
+The destination retains Markdown as a **permanent readable projection**, not a
+second database. This RFC owns one typed business-rule/transaction owner and
+its deletion payoff; the [shared-authority RFC](shared-goal-authority-state-provider-v0.md#next-delivery-and-parallel-provider-work)
+owns durable truth, recovery, cutover, and projection delivery. Neither a fully
+TypeScript CLI nor `loopxd` is a prerequisite for removing Python decisions.
+An input adapter or external-effect executor may remain Python.
 
-2. **Qualification before activation.** Join that path with the shared-authority
-   RFC's explicit v0 import, consumer parity, writer fencing, capture/projection
-   outbox recovery and fenced export. Integrate the local-persistence slice
-   above, including historical receipt retention, volume and >=10-day soak
-   evidence. File-v0 conformance is insufficient for long-goal promotion. No
-   default authority flip or dependency on PostgreSQL service readiness.
-3. **Retire the bridge, then converge entrypoints.** Delete the replaced
-   reference aggregate and Python facades when their last callers switch;
-   reuse the same kernel from native CLI/App and optional daemon. Report
-   product LOC removed, bridge LOC added, crossings, and remaining deletion
-   conditions per slice. Stop and replan after two scaffolding-only slices.
+1. **Close the actual command and consumer inventory.** Build on the merged
+   create/claim/update and #4053 terminal/successor/archive transactions; do not
+   recreate them. Inventory remaining field-edit, monitor, lease, and event
+   callers against their real contracts. Move their decisions to the existing
+   TS owner and delete the replaced decisions in the same slice. Reuse the
+   canonical Todo summary for reads: `todo list` and status/attention must not
+   select stale Markdown or event Todos after promotion, even when the display
+   is missing or the canonical collection is empty. Audit Turn, quota, planning,
+   Dashboard and standing-decision consumers separately; fixing one does not
+   qualify all consumers. Prove real-entrypoint parity and unavailable-provider
+   rejection, not just transport snapshots.
+2. **Make the display a recoverable one-way projection.** Reuse the canonical
+   journal/outbox and Todo-section renderer. Keep human narrative, source
+   revision, idempotent delivery and actionable pending repair. A failed render
+   must not undo a committed mutation or authorize a Markdown fallback.
+   Projection recovery must not replay the business operation. No third
+   TS-Markdown backend or automatic bidirectional synchronization is needed.
+3. **Qualify one local store, then cut over whole goals.** Close import,
+   ordering/consumer parity, writer fencing, capture/projection recovery,
+   historical receipts, capacity and >=10-day soak for the selected profile.
+   File-v0 conformance alone is not long-goal readiness. Do not route complete
+   to a provider while leaving update authoritative in Markdown for the same
+   goal. Until qualification and explicit promotion approval, keep the existing
+   default and fail-closed fences. Local qualification does not wait for the
+   PostgreSQL service; affected PostgreSQL transactions still require real
+   integration coverage.
+4. **Collect deletion payoff at each closed boundary.** After the last caller
+   and explicit migration window end, remove old Markdown business writers,
+   capture-only glue, duplicate reference aggregates and redundant bridges.
+   Keep the Markdown renderer and qualified import/export tools. List the exact
+   remaining callers and exit condition for each retained seam; a full native
+   CLI rewrite must not become a blanket reason to retain duplicate semantics.
+   Report product LOC removed, bridge LOC added and crossings separately from
+   tests/generated contracts. Stop and replan after two scaffolding-only slices;
+   net-negative LOC is useful evidence, not a quota that excuses lost behavior.
 
 Stacked schema-identifier cleanup is independent maintenance, not a prerequisite
 for this sequence. Absorb a downstream change only when the selected complete
@@ -642,7 +657,7 @@ not start a second independent operation while that handler may still be live.
 | Cross-runtime calls | Measured at the public facade: promoted complete without validation, supersede, and archive use three request/responses (`todo_list`, terminal/archive transaction, projection readback). A validated complete uses four (`todo_list`, terminal preflight, terminal finalization, projection readback) plus one declared host-local validation effect. After an injected post-commit projection crash, the first attempt uses two calls and the receipt replay uses three. The promoted happy path did not exist before this cutover; a legacy terminal call uses the existing TS admission decision and adds one coarse successor-derivation call only when it has generated successor intent. |
 | Product-code net change | Final merge-base classification is +4,051/−364 product LOC, net +3,687; tests/fixtures/examples are +3,594/−156, net +3,438; generated contracts are +3/−0 and docs are excluded. The increase delivers a complete provider-neutral transaction, one successor semantic owner, real File/PostgreSQL conformance, public facade parity, and durable mutation gates; it is not counted as deletion payoff. |
 | Migration scaffolding | The production-scale fixture, three-arm rehearsal, provider conformance, public legacy/promoted parity matrix, and mutation cases remain because they express durable migration contracts. The compatibility facade and its call-count assertions exit with the facade; provider-neutral transaction and archive-order mutation coverage remain. |
-| Facade exit | Delete `provider_terminal_lifecycle.py`, the successor wire adapter, their Python call-count tests, and `resolve_todo_state_path` after the top-level Todo CLI runs in-process TypeScript, registry/lifecycle facts arrive through the native caller, validation is executed by a native host adapter, and compatibility consumers drain the canonical journal directly. Delete the legacy successor-derivation and archive-selection crossings when the default Markdown/event writers migrate. |
+| Facade exit | Retire the legacy successor-derivation/archive-selection crossings and their call-count tests when the last Markdown/event business writer migrates. Remove terminal facade portions as registry/lifecycle inputs and journal consumers converge; a native CLI permits full transport removal but is not required to delete duplicated decisions. Keep only caller-required input, private validation execution and projection-delivery adapters, even if they remain Python. Delete `resolve_todo_state_path` only after its concrete path consumers disappear; keep permanent Markdown rendering and qualified import/export. |
 | Correctness evidence | Independent archive-order/standing-receipt semantics kill an oldest-selection mutant; optional `note`/`evidence`/`reason` cover `None`, empty, ordinary, Python-Unicode-whitespace-only, and whitespace compaction before/after promotion. Public-entry tests prove canonical commit followed by Turn-journal crash/retry settles once, logical retry tolerates prose changes but rejects different successor intent, rejected/concurrent/crash-recovered validated create publishes only the accepted digest sidecar, and legacy/promoted illegal actors retain a domain-rejection class. Independent successor tests pin priority, binding, exclusion, continuation, and predecessor-link inheritance. Stage 2C proves provider-first fence routing, live-lease import, orphan-history filtering, management-lock exclusion, replay, and zero-write previews. File and real PostgreSQL providers execute the same terminal conformance, while the independent legacy arm remains mandatory compatibility evidence. |
 
 The monitor-poll cutover removes the Python admission-policy and monitor-target
