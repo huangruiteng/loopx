@@ -53,9 +53,11 @@ from loopx.kiro_cli_goal_mode import (
     KIRO_CLI_GOAL_VALIDATE_FLAG,
     KIRO_CLI_HOME_ENV,
     KIRO_CLI_HOOK_TRIGGERS,
+    SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
     KIRO_CLI_NATIVE_GOAL_FACTS,
     KIRO_CLI_SESSION_ID_ENV,
     kiro_cli_chat_command,
+    kiro_cli_goal_invocation,
     kiro_home,
 )
 from loopx.slash_command_files import MANAGED_MARKER_PREFIX
@@ -105,6 +107,54 @@ def test_agent_onboarding_setup_command_installs_the_kiro_cli_surface(
         env,
         expected_skill=(tmp_path / "home" / ".kiro" / "skills" / "loopx" / "SKILL.md"),
     )
+
+
+def test_public_outputs_agree_with_the_canonical_host_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The consumers a user actually reads must not contradict the fact module.
+
+    Resolver tests passing is not the contract: the onboarding instruction and
+    the installer note are the observable output, and both previously named a
+    fixed ~/.kiro root and claimed the host has no override while the fact
+    module already resolved KIRO_HOME. A relocated profile then got a working
+    install with instructions pointing at the wrong root.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv(KIRO_CLI_HOME_ENV, str(tmp_path / "profile"))
+
+    instruction = _start_instruction(HOST_SURFACE)
+    note = next(
+        item
+        for item in install_slash_commands(execute=False, surfaces=[HOST_SURFACE])[
+            "notes"
+        ]
+        if item.startswith("Kiro CLI")
+    )
+
+    # Neither output may hardcode the default root or deny the override.
+    assert "~/.kiro/skills" not in instruction
+    assert KIRO_CLI_SKILLS_ROOT_LABEL in instruction
+    assert "offers no home override" not in note
+    assert KIRO_CLI_HOME_ENV in note
+
+    # The activation command must be complete: without the validation flag the
+    # host judges completion by its own reading instead of the Todo's criteria.
+    assert KIRO_CLI_GOAL_VALIDATE_FLAG in instruction
+    assert kiro_cli_goal_invocation() in instruction
+    assert KIRO_CLI_GOAL_STATUS_COMMAND in instruction
+
+
+def test_canonical_goal_invocation_uses_the_host_argument_order() -> None:
+    """An independent oracle for the command, built from the host's documented
+    syntax rather than from the composer's own output."""
+    command = kiro_cli_goal_invocation(
+        task="<task_body>", criteria="<criteria>", max_iterations="7"
+    )
+    assert command == "/goal <task_body> --validate <criteria> --max 7"
+    # The flag order follows the host's own `--validate` before `--max`.
+    assert command.index(KIRO_CLI_GOAL_VALIDATE_FLAG) < command.index("--max")
 
 
 def test_kiro_home_resolves_the_host_override_then_the_default(
