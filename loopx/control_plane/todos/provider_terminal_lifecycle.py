@@ -74,6 +74,9 @@ def _route_terminal_call(command: str, call: Mapping[str, Any]) -> dict[str, Any
             goal_id=goal_id,
             project=call.get("project"),
             state_file=call.get("state_file"),
+            # Canonical archive can recover its display after committing or
+            # replaying. The legacy fallback still requires an existing file.
+            require_existing=False,
         )
         return archive_canonical_todos_if_promoted(
             registry_path=registry_path,

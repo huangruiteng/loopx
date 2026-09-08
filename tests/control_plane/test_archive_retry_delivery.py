@@ -138,8 +138,9 @@ def _archive_cli(
     )
 
 
+@pytest.mark.parametrize("missing_display", [False, True], ids=["existing", "missing"])
 def test_archive_cli_recovers_committed_result_after_process_exit(
-    tmp_path: Path,
+    tmp_path: Path, missing_display: bool,
 ) -> None:
     registry, runtime, state = _fixture(tmp_path)
     original_markdown = state.read_bytes()
@@ -151,6 +152,8 @@ def test_archive_cli_recovers_committed_result_after_process_exit(
     assert committed["moved_count"] == 1
     assert committed["moved_todo_ids"] == ["todo_completed"]
     assert state.read_bytes() == original_markdown
+    if missing_display:
+        state.unlink()
 
     retry = _archive_cli(registry)
     assert retry.returncode == 0, retry.stderr or retry.stdout
@@ -162,6 +165,10 @@ def test_archive_cli_recovers_committed_result_after_process_exit(
     assert recovered["provider_revision"] == committed["provider_revision"]
     assert recovered["changed"] is False
     assert recovered["projection_delivery"] in {"delivered", "current"}
+    assert state.exists()
+    assert recovered["archive_delivery_ack"]["status"] == "acknowledged"
+    if missing_display:
+        assert recovered["projection_outbox"]["recovery_scope"] == "todo_sections_only"
     canonical = read_canonical_todos_if_promoted(
         runtime_root=runtime, goal_id="archive-goal"
     )
@@ -198,12 +205,16 @@ def test_archive_cli_recovers_committed_result_after_process_exit(
     )
 
 
+@pytest.mark.parametrize("missing_display", [False, True], ids=["existing", "missing"])
 def test_pending_projection_and_preview_preserve_archive_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    missing_display: bool,
 ) -> None:
     registry, runtime, state = _fixture(tmp_path)
     original_markdown = state.read_text(encoding="utf-8")
+    if missing_display:
+        state.unlink()
 
     def reject_projection(*_args, **_kwargs):
         raise OSError("injected projection write failure")
@@ -222,7 +233,10 @@ def test_pending_projection_and_preview_preserve_archive_retry(
     preview = _archive_cli(registry, execute=False)
     assert preview.returncode == 0, preview.stderr
     assert json.loads(preview.stdout)["moved_count"] == 0
-    assert state.read_text(encoding="utf-8") == original_markdown
+    if missing_display:
+        assert not state.exists()
+    else:
+        assert state.read_text(encoding="utf-8") == original_markdown
     canonical = read_canonical_todos_if_promoted(
         runtime_root=runtime, goal_id="archive-goal"
     )
@@ -237,6 +251,7 @@ def test_pending_projection_and_preview_preserve_archive_retry(
     assert replay["status"] == "replayed"
     assert replay["original_receipt"] == committed["original_receipt"]
     assert replay["projection_delivery"] in {"delivered", "current"}
+    assert replay["archive_delivery_ack"]["status"] == "acknowledged"
 
 
 def test_archive_rejects_snapshot_drift_before_selection(
@@ -317,3 +332,22 @@ def test_archive_ack_transport_failure_preserves_committed_result(
     )
     assert canonical is not None
     assert canonical["provider_revision"] == committed["provider_revision"]
+
+
+def test_unpromoted_archive_does_not_rebuild_missing_display(tmp_path: Path) -> None:
+    from loopx.control_plane.coordination.legacy_writer_fence import (
+        legacy_coordination_writer_fence_path,
+    )
+
+    registry, runtime, state = _fixture(tmp_path)
+    state.unlink()
+    legacy_coordination_writer_fence_path(
+        runtime_root=runtime, goal_id="archive-goal"
+    ).unlink()
+    authority = runtime / "authority" / "file-v0"
+    before = {path: path.read_bytes() for path in authority.rglob("*") if path.is_file()}
+    result = _archive_cli(registry)
+    assert result.returncode == 1
+    assert "active state file does not exist" in json.loads(result.stdout)["error"]
+    assert not state.exists()
+    assert {path: path.read_bytes() for path in authority.rglob("*") if path.is_file()} == before

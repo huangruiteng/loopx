@@ -49,6 +49,12 @@ This does not promise recovery of a CLI response lost after acknowledgement or
 discover attempts made before correlation records existed. Callers requiring
 that stronger guarantee need an explicit caller-retained request identity.
 
+Missing Markdown can be rebuilt from canonical Todos during archive retry;
+successful recovery still requires the same exact-attempt acknowledgement.
+An explicit `todo project-markdown` rebuild repairs the display without
+acknowledging an archive attempt. The next archive with the same role and limit
+first replays and acknowledges that prior batch; it does not archive a new one.
+
 A changed promoted archive uses four Python/TypeScript request-responses:
 authority read, archive transaction, projection readback, and acknowledgement.
 The previous path used three; empty and preview paths add no acknowledgement.
@@ -74,6 +80,10 @@ crash/retry conformance coverage.
 不写状态；空归档不推进 canonical revision。确认仅在投影交付成功后进行，且必须匹配
 原 operation、receipt 和 store。过期确认不能清除新操作；结果不确定时保留重试身份，
 确定未提交的拒绝允许后续修正请求继续。
+
+Markdown 缺失时，归档重试可从 canonical Todos 重建投影，成功后仍须确认原 attempt。
+单独运行 `todo project-markdown` 只修复显示，不确认归档 attempt；之后相同 role/limit
+的归档调用会先重放并确认旧批次，不会归档新一批。
 
 恢复保证截至投影确认成功；之后相同 CLI 调用代表新一批归档，不承诺恢复确认之后才
 丢失的 stdout，也不追溯发现旧版本未记录的调用。发生归档的路径从三次跨运行时调用
