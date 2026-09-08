@@ -10,6 +10,7 @@ from typing import Any, Iterator
 import pytest
 
 from loopx import file_lock
+from loopx import skill_install_readback
 from loopx import workflow_skill_install as install_module
 from loopx.skill_install_readback import (
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
@@ -17,8 +18,10 @@ from loopx.skill_install_readback import (
     PYTHON_DISTRIBUTION_SKILL_INSTALL_MODE,
     PYTHON_DISTRIBUTION_SKILL_INSTALL_OWNER,
     SKILL_INSTALL_READBACK_FILENAME,
+    SKILL_VERSION_MARKER_FILENAME,
 )
 from loopx.workflow_skill_install import (
+    render_workflow_skill_install_markdown,
     resolve_workflow_skill_source,
     workflow_skill_install,
 )
@@ -92,6 +95,15 @@ def test_install_is_idempotent_and_uninstall_removes_managed_skills(
     )
     assert manifest["owner"] == PYTHON_DISTRIBUTION_SKILL_INSTALL_OWNER
     assert manifest["integration_mode"] == PYTHON_DISTRIBUTION_SKILL_INSTALL_MODE
+    assert manifest["loopx_version"] == install_module.__version__
+    for skill_id in ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS:
+        marker = json.loads(
+            (skills_dir / skill_id / SKILL_VERSION_MARKER_FILENAME).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert marker["skill_id"] == skill_id
+        assert marker["loopx_version"] == install_module.__version__
 
     repeated = workflow_skill_install(skills_dir=skills_dir, execute=True)
 
@@ -110,6 +122,102 @@ def test_install_is_idempotent_and_uninstall_removes_managed_skills(
         ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS
     )
     assert not (skills_dir / SKILL_INSTALL_READBACK_FILENAME).exists()
+
+
+def test_install_upgrades_legacy_unversioned_skills(tmp_path: Path) -> None:
+    skills_dir = tmp_path / "skills"
+    installed = workflow_skill_install(skills_dir=skills_dir, execute=True)
+    assert installed["ok"] is True
+
+    manifest_path = skills_dir / SKILL_INSTALL_READBACK_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = "loopx_skill_install_readback_v0"
+    manifest.pop("loopx_version")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    for skill_id in ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS:
+        (skills_dir / skill_id / SKILL_VERSION_MARKER_FILENAME).unlink()
+
+    preview = workflow_skill_install(skills_dir=skills_dir)
+    upgraded = workflow_skill_install(skills_dir=skills_dir, execute=True)
+
+    assert preview["before"]["status"] == "manifest_contract_invalid"
+    assert preview["install_required"] is True
+    assert upgraded["ok"] is True
+    assert upgraded["after"]["loopx_version_matches"] is True
+    assert not upgraded["after"]["version_marker_mismatches"]
+    assert set(upgraded["installed"].values()) == {"unchanged"}
+    for skill_id in ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS:
+        assert (skills_dir / skill_id / SKILL_VERSION_MARKER_FILENAME).is_file()
+
+
+def test_inspect_markdown_reports_installed_and_active_versions(
+    tmp_path: Path,
+) -> None:
+    skills_dir = tmp_path / "skills"
+    assert workflow_skill_install(skills_dir=skills_dir, execute=True)["ok"] is True
+
+    inspected = workflow_skill_install(skills_dir=skills_dir)
+    markdown = render_workflow_skill_install_markdown(inspected)
+
+    assert f"- installed_loopx_version: `{install_module.__version__}`" in markdown
+    assert f"- active_loopx_version: `{install_module.__version__}`" in markdown
+    assert "- loopx_version_matches: `True`" in markdown
+
+
+@pytest.mark.parametrize("skill_id", ["loopx-project", "loopx"])
+def test_corrupt_version_marker_allows_inspection_and_reinstall(
+    tmp_path: Path, skill_id: str,
+) -> None:
+    skills_dir = tmp_path / "skills"
+    assert workflow_skill_install(skills_dir=skills_dir, execute=True)["ok"] is True
+    (skills_dir / skill_id / SKILL_VERSION_MARKER_FILENAME).write_bytes(b"\xff")
+
+    inspected = workflow_skill_install(skills_dir=skills_dir)
+    assert inspected["before"]["status"] == "loopx_version_mismatch"
+    assert inspected["before"]["version_marker_mismatches"] == [skill_id]
+    assert inspected["install_required"] is True
+
+    removed = workflow_skill_install(
+        skills_dir=skills_dir, execute=True, uninstall=True,
+    )
+    assert removed["result"]["preserved_modified"] == [skill_id]
+    repaired = workflow_skill_install(skills_dir=skills_dir, execute=True)
+    assert repaired["ok"] is True
+    assert repaired["after"]["version_marker_mismatches"] == []
+
+
+@pytest.mark.parametrize("failure", ["write", "replace"])
+def test_failed_marker_write_preserves_readback_and_can_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    skills_dir = tmp_path / "skills"
+    assert workflow_skill_install(skills_dir=skills_dir, execute=True)["ok"] is True
+    replace = skill_install_readback.os.replace
+    dump = skill_install_readback.json.dump
+
+    def fail_marker_write(payload, handle, **kwargs):
+        if payload.get("skill_id") == "loopx":
+            handle.write("{")
+            raise OSError("synthetic marker failure")
+        return dump(payload, handle, **kwargs)
+
+    def fail_marker_replace(source, target):
+        if target == skills_dir / "loopx" / SKILL_VERSION_MARKER_FILENAME:
+            raise OSError("synthetic marker failure")
+        return replace(source, target)
+
+    with monkeypatch.context() as patch:
+        if failure == "write":
+            patch.setattr(skill_install_readback.json, "dump", fail_marker_write)
+        else:
+            patch.setattr(skill_install_readback.os, "replace", fail_marker_replace)
+        with pytest.raises(OSError, match="synthetic marker failure"):
+            workflow_skill_install(skills_dir=skills_dir, execute=True)
+
+    assert workflow_skill_install(skills_dir=skills_dir)["before"]["ready"] is True
+    assert workflow_skill_install(skills_dir=skills_dir, execute=True)["ok"] is True
 
 
 def test_uninstall_preserves_locally_modified_skill(tmp_path: Path) -> None:
@@ -270,7 +378,13 @@ def test_frozen_bundle_install_lifecycle(
     )
     assert installed["after"]["source_revision_matches"] is True
     for skill_id in PACKAGED_HOST_SKILL_IDS:
-        assert install_module.hash_skill_tree(target / skill_id) == install_module.hash_skill_tree(canonical / skill_id)
+        assert install_module.hash_skill_tree(
+            target / skill_id,
+            ignored_relative_paths=(SKILL_VERSION_MARKER_FILENAME,),
+        ) == install_module.hash_skill_tree(
+            canonical / skill_id,
+            ignored_relative_paths=(SKILL_VERSION_MARKER_FILENAME,),
+        )
     repeated = workflow_skill_install(skills_dir=target, execute=True)
     assert set(repeated["installed"].values()) == {"unchanged"}
     monkeypatch.setattr(install_module, "__version__", "999.0.0")

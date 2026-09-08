@@ -506,8 +506,11 @@ shipped Stage 2B cutovers are in place:
   reduction. A real caller-approved validation command remains an explicit
   Python provider between two reductions. Todo and policy-source snapshots are
   compared after the mutation lock so a receipt for one declaration or agent
-  registry cannot authorize changed facts. Materialized and event-projected
-  writes consume the same typed result.
+  registry cannot authorize changed facts. Policy admission failures are
+  returned as typed data by that same reduction and consumed only after Python
+  actor/lease admission, preserving legacy error priority without a leaf
+  runtime call inside the writer critical section. Materialized and
+  event-projected writes consume the same typed result.
 - Scheduler heartbeat/state: TypeScript owns receipt freshness, ACK and
   host-failure validation, identity-aware progression, failure-cache
   retention/counting, replay and CAS fencing, preview reduction, the locked

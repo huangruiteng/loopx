@@ -8,7 +8,6 @@ from ...agent_registry import (
     load_goal_from_registry,
     registered_agent_ids_for_goal,
 )
-from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
 from .active_state_editing import find_todo_block
 from .contract import (
     normalize_todo_claimed_by,
@@ -19,6 +18,7 @@ from .contract import (
 
 TODO_COMPLETION_POLICY_REQUEST_SCHEMA = "loopx_todo_completion_policy_request_v0"
 TODO_COMPLETION_POLICY_RESULT_SCHEMA = "loopx_todo_completion_policy_result_v0"
+TODO_COMPLETION_POLICY_FAILURE_SCHEMA = "loopx_todo_completion_policy_failure_v0"
 
 
 @dataclass(frozen=True)
@@ -148,6 +148,23 @@ def completion_policy_from_transaction(
         # These fields are dead on the event-projected replay path; the TS
         # completion fence has already prohibited every write.
         return CompletionPolicy(None, [], None, [], False)
+    if transaction.get("decision") == "policy_reject":
+        failure = transaction.get("completion_policy_failure")
+        if not (
+            isinstance(failure, Mapping)
+            and failure.get("schema_version")
+            == TODO_COMPLETION_POLICY_FAILURE_SCHEMA
+            and failure.get("kind") == "completion_policy_rejected"
+            and isinstance(failure.get("diagnostic_code"), str)
+            and bool(failure.get("diagnostic_code"))
+            and isinstance(failure.get("summary"), str)
+            and bool(failure.get("summary"))
+            and transaction.get("completion_policy") is None
+        ):
+            raise RuntimeError(
+                "TypeScript Todo completion policy failure shape mismatch"
+            )
+        raise ValueError(str(failure["summary"]))
     policy = transaction.get("completion_policy")
     if not isinstance(policy, Mapping) or (
         policy.get("schema_version") != TODO_COMPLETION_POLICY_RESULT_SCHEMA
@@ -179,32 +196,3 @@ def completion_policy_from_transaction(
         self_merged=bool(policy["self_merged"]),
         linked_successor_id=linked_successor_id,
     )
-
-
-def bind_completion_policy_to_transaction(
-    transaction: Mapping[str, Any],
-    completion_policy_request: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Attach the TS-owned policy after actor and lease admission.
-
-    External validation and completion-state reduction stay single-shot. Only
-    the pure policy reducer runs under the locked authority boundary, which
-    preserves the legacy actor -> lease -> policy error priority.
-    """
-
-    bound = dict(transaction)
-    if bound.get("decision") != "commit":
-        return bound
-    try:
-        result = effect_runtime_result(
-            "todo.completion_policy.resolve",
-            dict(completion_policy_request),
-        )
-    except EffectRuntimeRejected as exc:
-        raise ValueError(str(exc)) from None
-    if not isinstance(result, Mapping):
-        raise RuntimeError("TypeScript Todo completion policy result must be an object")
-    bound["completion_policy"] = dict(result)
-    # Reuse the public adapter as the exact result-shape guard.
-    completion_policy_from_transaction(bound)
-    return bound

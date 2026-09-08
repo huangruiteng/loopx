@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from loopx.boundary_authority import build_checkpointed_boundary_authority_entry
+from loopx.capabilities.explore.harness_gate import resolve_explore_harness_gate
 from loopx.control_plane.quota.goal_boundary import (
     declared_available_capabilities,
     goal_boundary,
@@ -174,6 +175,35 @@ def test_goal_boundary_projects_credential_free_repository_identity(
             "reason_codes": ["task_repository_not_allowed"],
         }
     ]
+
+
+def test_goal_boundary_requires_boolean_spawn_authority() -> None:
+    for authority_key in ("allowed", "spawn_allowed"):
+        boundary = goal_boundary(
+            {
+                "spawn_policy": {
+                    authority_key: "false",
+                    "max_children": 2,
+                    "explore_harness": {"enabled": True},
+                }
+            }
+        )
+
+        assert boundary is not None
+        assert boundary["orchestration"] == {
+            "mode": "default",
+            "spawn_allowed": False,
+            "max_children": 2,
+            "explore_harness": {"enabled": True},
+        }
+        gate = resolve_explore_harness_gate(
+            boundary["orchestration"],
+            requested_width=2,
+            max_lanes=8,
+            max_lanes_label="max_worker_lanes",
+        )
+        assert gate["state"] == "analysis_only"
+        assert gate["reason"] == "spawn_not_allowed_by_goal_boundary"
 
 
 def test_goal_boundary_appends_only_active_checkpointed_write_scopes() -> None:

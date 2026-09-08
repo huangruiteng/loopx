@@ -4,6 +4,9 @@ import pytest
 
 from loopx.control_plane import effect_runtime
 from loopx.control_plane.todos import completion_transaction
+from loopx.control_plane.todos.completion_policy import (
+    completion_policy_from_transaction,
+)
 
 
 def _commit_result(**overrides: object) -> dict[str, object]:
@@ -41,6 +44,24 @@ def _completion_policy_result(**overrides: object) -> dict[str, object]:
         "linked_successor_id": None,
         **overrides,
     }
+
+
+def _completion_policy_failure(**overrides: object) -> dict[str, object]:
+    return {
+        "schema_version": "loopx_todo_completion_policy_failure_v0",
+        "kind": "completion_policy_rejected",
+        "diagnostic_code": "invalid_request",
+        "summary": "completion policy was rejected",
+        **overrides,
+    }
+
+
+def _policy_reject_result(**overrides: object) -> dict[str, object]:
+    return _commit_result(
+        decision="policy_reject",
+        completion_policy_failure=_completion_policy_failure(),
+        **overrides,
+    )
 
 
 def test_python_adapter_sends_one_coarse_transaction(monkeypatch) -> None:
@@ -160,6 +181,28 @@ def test_python_adapter_requires_requested_completion_policy_projection(
             completion_policy_request=policy_request,
         )
 
+    monkeypatch.setattr(
+        completion_transaction,
+        "effect_runtime_result",
+        lambda _method, _params: _policy_reject_result(),
+    )
+    failure_result = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=True,
+        dry_run=False,
+        completion_policy_request=policy_request,
+    )
+    assert failure_result["completion_policy_failure"] == (
+        _completion_policy_failure()
+    )
+    assert failure_result["decision"] == "policy_reject"
+
 
 def test_python_adapter_and_typescript_runtime_share_agent_identity_semantics() -> None:
     policy_request = {
@@ -221,43 +264,45 @@ def test_python_adapter_and_typescript_runtime_share_agent_identity_semantics() 
         self_merged=True,
     )
 
+    rejected_evidence = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=False,
+        dry_run=False,
+        completion_policy_request={
+            **policy_request,
+            "next_claimed_by": None,
+            "next_agent_todo": None,
+            "next_excluded_agents": [],
+            "self_merged": True,
+            "evidence": "\u0085",
+        },
+    )
     with pytest.raises(ValueError, match="--self-merged requires --evidence"):
-        completion_transaction.reduce_todo_completion_transaction(
-            todo={"status": "open"},
-            projection_source="materialized",
-            goal_id="goal-example",
-            todo_id="todo_example001",
-            completion_turn_key=None,
-            completion_identity_source=None,
-            no_followup=False,
-            requested_has_successor=False,
-            dry_run=False,
-            completion_policy_request={
-                **policy_request,
-                "next_claimed_by": None,
-                "next_agent_todo": None,
-                "next_excluded_agents": [],
-                "self_merged": True,
-                "evidence": "\u0085",
-            },
-        )
+        completion_policy_from_transaction(rejected_evidence)
 
+    rejected_agent = completion_transaction.reduce_todo_completion_transaction(
+        todo={"status": "open"},
+        projection_source="materialized",
+        goal_id="goal-example",
+        todo_id="todo_example001",
+        completion_turn_key=None,
+        completion_identity_source=None,
+        no_followup=False,
+        requested_has_successor=True,
+        dry_run=False,
+        completion_policy_request={
+            **policy_request,
+            "claimed_by": "\ufeffagent-a",
+        },
+    )
     with pytest.raises(ValueError, match="public-safe registered agent id"):
-        completion_transaction.reduce_todo_completion_transaction(
-            todo={"status": "open"},
-            projection_source="materialized",
-            goal_id="goal-example",
-            todo_id="todo_example001",
-            completion_turn_key=None,
-            completion_identity_source=None,
-            no_followup=False,
-            requested_has_successor=True,
-            dry_run=False,
-            completion_policy_request={
-                **policy_request,
-                "claimed_by": "\ufeffagent-a",
-            },
-        )
+        completion_policy_from_transaction(rejected_agent)
 
 
 @pytest.mark.parametrize(

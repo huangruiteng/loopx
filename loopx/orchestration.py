@@ -32,6 +32,10 @@ def _int_number(value: Any, *, default: int = 0) -> int:
     return default
 
 
+def _spawn_allowed(policy: dict[str, Any]) -> bool:
+    return policy.get("allowed") is True or policy.get("spawn_allowed") is True
+
+
 def orchestration_mode_from_spawn_policy(spawn_policy: Any) -> str:
     if not isinstance(spawn_policy, dict):
         return DEFAULT_ORCHESTRATION_MODE
@@ -40,7 +44,7 @@ def orchestration_mode_from_spawn_policy(spawn_policy: Any) -> str:
     ).strip()
     if explicit_mode in VALID_ORCHESTRATION_MODES:
         return explicit_mode
-    spawn_allowed = bool(spawn_policy.get("allowed") or spawn_policy.get("spawn_allowed"))
+    spawn_allowed = _spawn_allowed(spawn_policy)
     if spawn_allowed and _int_number(spawn_policy.get("max_children")) > 0:
         return MULTI_SUBAGENT_ORCHESTRATION_MODE
     return DEFAULT_ORCHESTRATION_MODE
@@ -73,7 +77,7 @@ def compact_orchestration_policy(spawn_policy: Any) -> dict[str, Any]:
         allowed_domains = []
     compact: dict[str, Any] = {
         "mode": orchestration_mode_from_spawn_policy(policy),
-        "spawn_allowed": bool(policy.get("allowed") or policy.get("spawn_allowed")),
+        "spawn_allowed": _spawn_allowed(policy),
         "max_children": max_children,
     }
     compact_domains = [str(value) for value in allowed_domains if str(value).strip()]

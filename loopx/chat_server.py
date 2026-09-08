@@ -1477,10 +1477,10 @@ def serve_chat(
     )
     server.action_service = ChatActionService(
         store=server.action_store,
-        registry_path=registry_path,
+        registry_path=resolved_registry_path,
         chat_store=server.chat_store,
         runtime_controller=server.runtime_controller,
-        workspace_roots=scan_roots,
+        workspace_roots=resolved_scan_roots,
     )
     server.lark_goal_topic_runtime = LarkGoalTopicRuntimeService(
         snapshot_provider=lambda: build_lark_goal_topic_runtime_snapshot(

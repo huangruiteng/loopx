@@ -60,7 +60,6 @@ from .control_plane.todos.active_state_editing import (
 from .control_plane.todos.addition import matching_todo_block, require_replan_successor_rebinding, require_replan_successor_scope
 from .control_plane.todos.completed_archive import archive_completed_todo_lines
 from .control_plane.todos.completion_policy import (
-    bind_completion_policy_to_transaction,
     completion_policy_from_transaction,
 )
 from .control_plane.todos.completion_transaction import (
@@ -1749,9 +1748,6 @@ def complete_goal_todo(
                 handoff=completion_handoff,
                 runtime_root=shadow_runtime_root,
             )
-        )
-        completion_transaction = bind_completion_policy_to_transaction(
-            completion_transaction, locked_completion_policy_source
         )
         completion_fence = completion_transaction["fence"]
         completion_state = completion_transaction.get("completion_state")

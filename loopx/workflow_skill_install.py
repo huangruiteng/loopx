@@ -20,6 +20,7 @@ from .skill_install_readback import (
     PYTHON_DISTRIBUTION_SKILL_INSTALL_OWNER,
     SKILL_INSTALL_OWNERS,
     SKILL_INSTALL_READBACK_FILENAME,
+    SKILL_VERSION_MARKER_FILENAME,
     hash_skill_tree,
     inspect_skill_install_readback,
     write_skill_install_readback,
@@ -164,7 +165,10 @@ def _exclusive_install_lock(skills_dir: Path) -> Iterator[None]:
 
 
 def _install_one_skill(source: Path, target: Path) -> str:
-    if target.is_dir() and hash_skill_tree(source) == hash_skill_tree(target):
+    ignored = (SKILL_VERSION_MARKER_FILENAME,)
+    if target.is_dir() and hash_skill_tree(
+        source, ignored_relative_paths=ignored
+    ) == hash_skill_tree(target, ignored_relative_paths=ignored):
         return "unchanged"
 
     temporary = Path(
@@ -270,6 +274,7 @@ def workflow_skill_install(
         required_skill_ids=ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
         source_root=source_root,
         expected_source_revision_override=frozen_source_revision,
+        expected_loopx_version_override=__version__,
     )
     if uninstall:
         result = (
@@ -382,6 +387,7 @@ def workflow_skill_install(
             source_revision_override=frozen_source_revision,
             owner=PYTHON_DISTRIBUTION_SKILL_INSTALL_OWNER,
             integration_mode=PYTHON_DISTRIBUTION_SKILL_INSTALL_MODE,
+            loopx_version=__version__,
         )
 
     after = inspect_skill_install_readback(
@@ -389,6 +395,7 @@ def workflow_skill_install(
         required_skill_ids=ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
         source_root=source_root,
         expected_source_revision_override=frozen_source_revision,
+        expected_loopx_version_override=__version__,
     )
     return {
         "ok": bool(after.get("ready")),
@@ -423,6 +430,7 @@ def _public_source(source: Mapping[str, Any]) -> dict[str, Any]:
 
 def render_workflow_skill_install_markdown(payload: Mapping[str, Any]) -> str:
     source = payload.get("source") or {}
+    readback = payload.get("after") or payload.get("before") or {}
     lines = [
         "# LoopX Workflow Skills",
         "",
@@ -431,6 +439,9 @@ def render_workflow_skill_install_markdown(payload: Mapping[str, Any]) -> str:
         f"- skills_dir: `{payload.get('skills_dir')}`",
         f"- source: `{source.get('kind')}`",
         f"- ready_before: `{(payload.get('before') or {}).get('ready')}`",
+        f"- installed_loopx_version: `{readback.get('loopx_version')}`",
+        f"- active_loopx_version: `{readback.get('expected_loopx_version')}`",
+        f"- loopx_version_matches: `{readback.get('loopx_version_matches')}`",
     ]
     if payload.get("install_command"):
         lines.append(f"- install: `{payload['install_command']}`")

@@ -64,7 +64,6 @@ import {
   selectTodoCompletionContinuation,
 } from "./todos/completion_state.ts";
 import { reduceTodoCompletionTransaction } from "./todos/completion_transaction.ts";
-import { resolveTodoCompletionPolicy } from "./todos/completion_policy.ts";
 import { transitionTodoNextAction } from "./todos/next_action.ts";
 import {
   evaluateTodoResumeConditions,
@@ -384,7 +383,6 @@ export function createEffectRuntimeHandlers(
     ["todo.archive.select", evaluateCoordinationTodoArchiveSelection],
     ["todo.successor.derive", evaluateCoordinationTodoSuccessorDerivation],
     ["todo.completion.reduce", reduceTodoCompletionTransaction],
-    ["todo.completion_policy.resolve", resolveTodoCompletionPolicy],
     ["todo.next_action.transition", transitionTodoNextAction],
     ["todo.resume_condition.normalize", normalizeTodoResumeWhen],
     ["todo.resume_condition.evaluate", evaluateTodoResumeConditions],

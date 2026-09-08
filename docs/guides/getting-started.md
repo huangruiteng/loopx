@@ -381,6 +381,39 @@ update` now projects the active installation owner: PyPI environments stay
 package-manager owned, archive snapshots stay LoopX owned, and live source
 checkouts stay Git owned.
 
+### Workflow Skill Versions And Pinned Hosts
+
+Each installed skill, including the generated `$loopx` entry, records its source
+LoopX version in `.loopx-skill-version.json`. The root
+`.loopx-skill-install.json` also records `loopx_version`. Inspect with the CLI
+that the host will actually run:
+
+```bash
+loopx workflow-skills --skills-dir ./host-skills --format json
+loopx workflow-skills --install --skills-dir ./host-skills
+```
+
+The inspect result's `before` object reports `loopx_version`,
+`expected_loopx_version`, and `loopx_version_matches`; install reports these
+under `after`. A mismatch or missing/invalid marker makes the readback not
+ready. Legacy `loopx_skill_install_readback_v0` manifests require a one-time
+reinstall using a CLI that includes this version-marker fix. Reinstalling with
+an unpatched pinned CLI still writes unversioned metadata; upgrade that runtime
+or backport the fix first. This readiness rule also applies to
+Ark Managed Agent doctor, Ark/DeepSeek filesystem onboarding, and isolated
+native profiles. An isolated profile compares against its own installed CLI,
+even when its supervisor uses another LoopX version.
+
+User-level skill directories can be shared across hosts. For a pinned host,
+run its pinned executable (for example `./loopx-sidecar`) for both commands
+and use a separate `--skills-dir` for each runtime version. Configure the host
+to load that directory and compare the readback before loading skills; older
+or third-party hosts do not gain this check automatically. Restart the host
+after installing or repairing skills so its session reloads them. To roll
+back, reinstall into that same directory using the previous pinned executable.
+These commands only manage skill files; they grant no repository, network,
+credential, or merge authority.
+
 ### Host-Bundled / Frozen Workflow Skills
 
 PyInstaller hosts can bundle the existing skill data without Python distribution

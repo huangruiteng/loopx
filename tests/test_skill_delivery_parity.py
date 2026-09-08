@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from loopx import __version__
 from loopx.skill_install_readback import (
     PACKAGED_HOST_SKILL_IDS,
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
@@ -97,6 +98,7 @@ class TestReadbackLifecycle:
             assert rb["schema_version"] == SKILL_INSTALL_READBACK_SCHEMA_VERSION
             assert rb["owner"] == "loopx_install_script"
             assert rb["integration_mode"] == "fixed_install_script"
+            assert rb["loopx_version"] == __version__
             assert sorted(rb["materialized_skill_ids"]) == sorted(
                 PACKAGED_HOST_SKILL_IDS)
             assert len(rb["skills"]["items"]) == len(PACKAGED_HOST_SKILL_IDS)
@@ -106,6 +108,19 @@ class TestReadbackLifecycle:
                 source_root=REPO_ROOT)
             assert m.is_file()
             assert m.name == SKILL_INSTALL_READBACK_FILENAME
+            for skill_id in PACKAGED_HOST_SKILL_IDS:
+                marker = json.loads(
+                    (d / skill_id / ".loopx-skill-version.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                assert marker == {
+                    "integration_mode": "fixed_install_script",
+                    "loopx_version": __version__,
+                    "owner": "loopx_install_script",
+                    "schema_version": "loopx_installed_skill_version_v0",
+                    "skill_id": skill_id,
+                }
 
             ins = inspect_skill_install_readback(
                 skills_dir=d, required_skill_ids=PACKAGED_HOST_SKILL_IDS,
@@ -113,6 +128,10 @@ class TestReadbackLifecycle:
             assert ins["ready"] is True
             assert ins["status"] == "ready_for_host_load"
             assert ins["integrity_ok"]
+            assert ins["loopx_version"] == __version__
+            assert ins["expected_loopx_version"] == __version__
+            assert ins["loopx_version_matches"] is True
+            assert not ins["version_marker_mismatches"]
             assert not ins["missing_skill_ids"]
             assert not ins["digest_mismatches"]
             assert _public_safe(rb)
@@ -151,6 +170,64 @@ class TestReadbackLifecycle:
             assert ins["status"] == "skill_digest_mismatch"
             assert stale in ins["digest_mismatches"]
 
+    def test_active_runtime_version_mismatch_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "skills"
+            for sid in PACKAGED_HOST_SKILL_IDS:
+                _write_fixture_skill(d, sid)
+            write_skill_install_readback(
+                skills_dir=d, skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT, loopx_version="0.0.0")
+
+            ins = inspect_skill_install_readback(
+                skills_dir=d, required_skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT)
+            assert ins["ready"] is False
+            assert ins["status"] == "loopx_version_mismatch"
+            assert ins["loopx_version"] == "0.0.0"
+            assert ins["expected_loopx_version"] == __version__
+            assert ins["loopx_version_matches"] is False
+            assert not ins["version_marker_mismatches"]
+
+    def test_missing_skill_version_marker_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "skills"
+            for sid in PACKAGED_HOST_SKILL_IDS:
+                _write_fixture_skill(d, sid)
+            write_skill_install_readback(
+                skills_dir=d, skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT)
+            stale = "loopx-pr-program"
+            (d / stale / ".loopx-skill-version.json").unlink()
+
+            ins = inspect_skill_install_readback(
+                skills_dir=d, required_skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT)
+            assert ins["ready"] is False
+            assert ins["status"] == "loopx_version_mismatch"
+            assert ins["version_marker_mismatches"] == [stale]
+
+    def test_legacy_readback_requires_reinstall(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "skills"
+            for sid in PACKAGED_HOST_SKILL_IDS:
+                _write_fixture_skill(d, sid)
+            manifest_path = write_skill_install_readback(
+                skills_dir=d, skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["schema_version"] = "loopx_skill_install_readback_v0"
+            manifest.pop("loopx_version")
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8")
+
+            ins = inspect_skill_install_readback(
+                skills_dir=d, required_skill_ids=PACKAGED_HOST_SKILL_IDS,
+                source_root=REPO_ROOT)
+            assert ins["ready"] is False
+            assert ins["status"] == "manifest_contract_invalid"
+
     def test_null_dir_status(self):
         ins = inspect_skill_install_readback(
             skills_dir=None, required_skill_ids=["loopx"],
@@ -172,6 +249,26 @@ class TestReadbackLifecycle:
                     owner="loopx_install_script",
                     integration_mode="python_distribution_cli",
                 )
+
+    @pytest.mark.parametrize("invalid", [
+        {"owner": "unsupported"},
+        {"integration_mode": "python_distribution_cli"},
+        {"loopx_version": " "},
+        {"skill_ids": [*PACKAGED_HOST_SKILL_IDS, "missing-skill"]},
+    ])
+    def test_invalid_write_preserves_existing_install(self, tmp_path, invalid):
+        for sid in PACKAGED_HOST_SKILL_IDS:
+            _write_fixture_skill(tmp_path, sid)
+        options = dict(skills_dir=tmp_path, skill_ids=PACKAGED_HOST_SKILL_IDS,
+                       source_root=REPO_ROOT)
+        write_skill_install_readback(**options)
+        before = hash_skill_tree(tmp_path)
+
+        with pytest.raises((ValueError, FileNotFoundError)):
+            write_skill_install_readback(**{**options, "loopx_version": "0.0.0",
+                                           **invalid})
+
+        assert hash_skill_tree(tmp_path) == before
 
 
 # -- Install dedupe -----------------------------------------------------------

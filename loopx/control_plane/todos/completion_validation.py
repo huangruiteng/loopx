@@ -395,10 +395,10 @@ def run_completion_validation_gate_with_source(
         todo_id=todo_id,
         requested_has_successor=requested_has_successor,
         validation_receipt=None,
-        # Preserve the legacy error priority: policy admission is evaluated
-        # only after actor authority and the task-lease fence are established
-        # under the write lock. The source is still captured here for CAS.
-        completion_policy_request=None,
+        # The coarse reducer returns policy success or typed failure as data.
+        # The public writer consumes that projection only after actor and lease
+        # admission, preserving legacy error priority without a second IPC.
+        completion_policy_request=completion_policy_source,
     )
     completion_validation = None
     if transaction["decision"] == "execute_validation":
@@ -441,7 +441,7 @@ def run_completion_validation_gate_with_source(
             todo_id=todo_id,
             requested_has_successor=requested_has_successor,
             validation_receipt=completion_validation,
-            completion_policy_request=None,
+            completion_policy_request=completion_policy_source,
         )
     if transaction["decision"] != "reject":
         return {
