@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from loopx.capabilities.pr_review_queue import review_contract
 from loopx.capabilities.pr_review_queue.result_check import check_review_result
 from loopx.capabilities.pr_review_queue.review_contract import (
     build_review_execution_contract,
@@ -24,6 +25,10 @@ def _review():
         row.update(
             status="verified",
             evidence="Synthetic consistency fixture, not a real review.",
+            **{
+                field: "Synthetic consistency fixture, not a real review."
+                for field in requirements[key].get("fields", [])
+            },
         )
         if "verdict_values" in requirements[key]:
             row["verdict"] = requirements[key]["verdict_values"][0]
@@ -51,7 +56,9 @@ def test_approval_cannot_hide_missing_or_contradictory_evidence(kind):
     elif kind == "unverified":
         row["status"] = "unverified"
     elif kind == "empty":
-        del row["evidence"]
+        for field in list(row):
+            if field not in {"status", "verdict"}:
+                del row[field]
     elif kind == "blocking":
         row["verdict"] = "disproportionate"
     elif kind == "unknown_verdict":
@@ -72,6 +79,45 @@ def test_nonblocking_suggestion_does_not_force_rejection():
     packet, result = _review()
     result["findings"] = [{"severity": "P2", "blocking": False}]
     assert check_review_result(packet, result)["approval_consistent"]
+
+
+@pytest.mark.parametrize("revision", [None, 0, True, "1", 999])
+def test_old_or_invalid_policy_cannot_certify_current_approval(revision):
+    packet, result = _review()
+    result["review_policy_revision"] = revision
+    checked = check_review_result(packet, result)
+    assert "review_policy_revision:stale_or_missing" in checked["approval_blockers"]
+    assert not checked["ok"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+
+
+def test_pinned_result_is_rejected_after_installed_policy_bump(monkeypatch):
+    packet, result = _review()
+    pinned_revision = result["review_policy_revision"]
+    monkeypatch.setattr(
+        review_contract,
+        "REVIEW_POLICY_REVISION",
+        pinned_revision + 1,
+    )
+
+    checked = check_review_result(packet, result)
+
+    assert "review_policy_revision:stale_or_missing" in checked["approval_blockers"]
+    assert not checked["ok"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+
+
+def test_verified_label_and_generic_prose_do_not_replace_rule_ownership():
+    packet, result = _review()
+    del result["evidence"]["repository_reuse"]["rule_ownership"]
+    result["evidence"]["repository_reuse"]["evidence"] = "All providers passed."
+    checked = check_review_result(packet, result)
+    assert "repository_reuse:missing_field:rule_ownership" in checked["approval_blockers"]
+    assert not checked["ok"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
 
 
 @pytest.mark.parametrize("mutation", ["head", "duplicate", "shape"])

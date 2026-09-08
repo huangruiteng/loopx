@@ -154,26 +154,34 @@ lifecycle classification code 或其他 cadence policy，不能宣称全局已�
 
 ### 下一步交付顺序
 
-1. **一组 provider-first Todo 完整事务。** 原生 create、claim、update、
-   complete-with-successor、archive 及相关 lease effect 经过现有 TS authority owner。
-   每个内聚的纵向切片包含真实 CLI caller、replay/CAS/error 测试，并删除被替代的
-   Python decision。仅统一 schema 或常量不满足退出条件。
-   单命令切片（例如通过同一兼容 editor 的 `todo update --text/--note`）只是
-   合成/资格化 goal 的验证里程碑，不是真实 goal 的 promote：一旦 promote，其余
-   legacy writer 仍被 fence 以 fail-closed 拦截。因此活跃 goal 的 promote 要等
-   到其 agent 实际使用的写命令族都经由同一个统一 TS 提交权威（同一入口的分命令
-   transaction 类型（共享同一个 effect-runtime 边界，而不是平行语义 owner），并且
-   capture/projection outbox 落盘接通之后。
-   删除的收益只在该入口背后的 in-place Markdown editor 被纯投影 renderer 替代时兑现。
+终态长期保留 Markdown 作为**可读投影**，不是第二个数据库。本 RFC 负责唯一 typed
+业务规则/事务 owner 及删除收益；[shared-authority RFC](shared-goal-authority-state-provider-v0.zh-CN.md#下一步交付与并行-provider-工作)
+负责 durable truth、恢复、cutover 与投影交付。删除 Python decision 不以前端 CLI
+全部改成 TypeScript 或 `loopxd` 落地为前提；输入适配和外部 effect 执行可以保留 Python。
 
-2. **先资格化，再启用。** 与 shared-authority RFC 的显式 v0 import、consumer
-   parity、writer fencing、capture/projection outbox recovery 和 fenced export 汇合。
-   集成上述本地持久化切片，包含历史 receipt 保留、容量与 >=10 天 soak 证据。
-   file-v0 conformance 不足以支持长程晋升；不默认切换 authority，也不依赖 PostgreSQL service。
-3. **删除 bridge，再收敛入口。** 最后一个 caller 切换后，删除被替代的 reference
-   aggregate 与 Python facade；native CLI/App 和可选 daemon 复用同一 kernel。
-   每个切片报告删除的 product LOC、新增 bridge LOC、crossings 与剩余删除条件。
-   连续两个切片只有 scaffolding 时，停止并重新规划。
+1. **闭合实际命令与 consumer 清单。** 基于已合入的 create/claim/update 和 #4053
+   terminal/successor/archive transaction 推进，不重复建设。按真实合同盘点剩余
+   字段编辑、monitor、lease、event caller，把规则迁入既有 TS owner，并在同一切片
+   删除被替代的 decision。读取复用 canonical Todo summary：promotion 后，`todo list`
+   和 status/attention 不得选择陈旧 Markdown/event Todo；投影缺失、canonical 集合为空
+   也不例外。另行审计 Turn、quota、planning、Dashboard、standing-decision consumer；
+   修好一条不等于全部合格。通过真实入口验证 parity 和 provider 故障拒绝，不能只比传输快照。
+2. **把展示闭合为可恢复的单向投影。** 复用 canonical journal/outbox 与 Todo-section
+   renderer，保留人工叙述、来源 revision、幂等交付和可操作的 pending repair。
+   渲染失败不能撤销已提交事务，也不能授权 Markdown fallback；恢复投影不能重跑业务操作。
+   不引入第三种 TS-Markdown backend 或自动双向同步。
+3. **资格化一个本地 store，再按完整 goal 切换。** 所选 profile 闭合 import、排序与
+   consumer parity、writer fencing、capture/projection recovery、历史 receipt、容量及
+   >=10 天 soak。file-v0 conformance 本身不等于长程就绪。不能让同一 goal 的 complete
+   走 provider、update 却仍以 Markdown 为权威。资格化与显式 promotion 批准前，保留
+   当前默认及 fail-closed fence。本地资格化不等待 PostgreSQL service；受影响的
+   PostgreSQL transaction 仍需真实集成验证。
+4. **每闭合一个边界就兑现删除。** 最后 caller 与显式迁移窗口结束后，删除旧 Markdown
+   业务 writer、仅供 capture 的 glue、重复 reference aggregate 和冗余 bridge；保留
+   Markdown renderer 与已资格化 import/export 工具。每条保留 seam 列出具体 caller
+   和退出条件，不能用“CLI 尚未全 TS 化”笼统保留重复语义。分别报告 product LOC 删除、
+   bridge LOC 增加、crossings，不能把测试/生成合同计为删除收益。连续两个切片只有
+   scaffolding 时停止并重规划；净减代码是证据，不是可以牺牲行为的配额。
 
 stack 中的 schema identifier 清理是独立维护，不是上述路线的前置条件。只吸收所选
 完整事务确实依赖的下游改动；base 合并后，其余工作再 rebase。
@@ -532,7 +540,7 @@ exactly-once 保证；原 handler 可能仍存活时，caller 不得启动第二
 | 跨 runtime 调用 | 从 public facade 实测：promotion 后无 validation 的 complete、supersede 与 archive 均为三次 request/response（`todo_list`、terminal/archive transaction、projection readback）。带 validation 的 complete 为四次（`todo_list`、terminal preflight、terminal finalization、projection readback），另执行一次声明式 host-local validation effect。注入 post-commit projection crash 后，首次尝试为两次调用，receipt replay 为三次。该 cutover 前不存在合法 promoted happy path；legacy terminal 调用沿用既有 TS admission decision，仅在存在 generated successor intent 时增加一次 coarse successor-derivation 调用。 |
 | 产品代码净增减 | 最终 merge-base 分类为产品代码 +4,051/−364，净增 3,687；test/fixture/example 为 +3,594/−156，净增 3,438；generated contract 为 +3/−0，docs 不计入。该增长交付完整 provider-neutral transaction、单一 successor semantic owner、真实 File/PostgreSQL conformance、public facade parity 与持久 mutation gate，不记作 deletion payoff。 |
 | 迁移 scaffolding | Production-scale fixture、三臂演练、provider conformance、public legacy/promoted parity matrix 与 mutation case 因表达持久迁移 contract 而保留。Compatibility facade 及其 call-count assertion 随 facade 退出；provider-neutral transaction 与 archive-order mutation coverage 保留。 |
-| Facade 退出 | 顶层 Todo CLI 在进程内执行 TypeScript、registry/lifecycle fact 由 native caller 提供、validation 由 native host adapter 执行、compatibility consumer 直接 drain canonical journal 后，删除 `provider_terminal_lifecycle.py`、successor wire adapter、Python call-count test 与 `resolve_todo_state_path`。默认 Markdown/event writer 迁移后，删除 legacy successor-derivation 与 archive-selection crossing。 |
+| Facade 退出 | 最后一个 Markdown/event 业务 writer 迁移后，退役 legacy successor-derivation/archive-selection crossing 及其 call-count test。随 registry/lifecycle 输入与 journal consumer 收敛，逐段删除 terminal facade；native CLI 允许全部移除 transport，但不是删除重复 decision 的前提。只保留实际 caller 需要的输入、私有 validation 执行和投影交付 adapter，即使它们仍是 Python。`resolve_todo_state_path` 的具体路径 consumer 消失后再删除；永久 Markdown renderer 与已资格化 import/export 保留。 |
 | 正确性证据 | 独立 archive order/standing receipt 语义可以 kill oldest-selection mutant；可选 `note`/`evidence`/`reason` 覆盖 promotion 前后的 `None`、empty、ordinary、Python Unicode 纯空白与空白压缩。Public-entry 测试证明 canonical commit 后 Turn-journal 崩溃重试只结算一次；logical retry 允许说明文本变化但拒绝不同 successor intent；validated create 在拒绝、并发与 canonical commit 后崩溃恢复时只发布 accepted digest sidecar；非法 actor 在 legacy/promoted 下都保持领域拒绝分类。独立 successor 测试钉住 priority、binding、exclusion、continuation 与 predecessor-link inheritance。Stage 2C 证明 provider-first fence routing、live-lease import、orphan-history filtering、management-lock exclusion、replay 与 zero-write preview。File 与真实 PostgreSQL provider 执行同一 terminal conformance，独立 legacy 臂仍是强制 compatibility evidence。 |
 
 Monitor-poll cutover 删除了 Python admission-policy、monitor-target module，以及

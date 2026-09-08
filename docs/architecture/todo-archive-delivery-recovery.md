@@ -54,9 +54,12 @@ authority read, archive transaction, projection readback, and acknowledgement.
 The previous path used three; empty and preview paths add no acknowledgement.
 The extra durable correlation writes and acknowledgement are a correctness cost,
 not a claimed migration speedup. Archive domain rules stay in TypeScript.
-Delete the Python acknowledgement crossing with the terminal lifecycle facade
-when the top-level Todo CLI and projection consumer run in TypeScript; retain
-the provider receipt and independent crash/retry conformance coverage.
+Retire the separate Python ACK bridge when the canonical journal consumer owns
+both projection delivery and exact-attempt acknowledgement. Remove facade parts
+as their concrete callers converge, retaining required Python projection
+adapters. A native CLI permits full transport removal; it is not a prerequisite
+for retiring redundant boundaries. Keep provider receipts and independent
+crash/retry conformance coverage.
 
 ## 中文契约
 
@@ -74,5 +77,7 @@ the provider receipt and independent crash/retry conformance coverage.
 
 恢复保证截至投影确认成功；之后相同 CLI 调用代表新一批归档，不承诺恢复确认之后才
 丢失的 stdout，也不追溯发现旧版本未记录的调用。发生归档的路径从三次跨运行时调用
-增加为四次，额外确认和持久化是明确的正确性成本。顶层 Todo CLI 与投影消费者迁入
-TypeScript 后删除 Python 确认桥接，保留 provider receipt 和独立崩溃恢复测试。
+增加为四次，额外确认和持久化是明确的正确性成本。canonical journal 消费者同时接管
+投影交付与精确 attempt 确认后，删除独立 Python ACK 桥接；按具体调用者收敛逐步删除
+facade，保留仍必需的 Python 投影 adapter。原生 CLI 允许彻底移除 transport，但不是
+删除冗余边界的普遍前提。保留 provider receipt 和独立崩溃恢复测试。

@@ -746,6 +746,51 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
                 "raw_log_error_count_alone",
             ],
         },
+        "active_case_observation": {
+            "status": "provisional_only",
+            "purpose": (
+                "Preserve traceable runtime evidence while a case or campaign is "
+                "still active without presenting it as an official scored insight."
+            ),
+            "artifact_template": {
+                "schema_version": "benchmark_case_observation_v0",
+                "case": {
+                    "benchmark_id": "<public-id>",
+                    "case_id": "<public-id>",
+                    "arm": "<baseline-or-treatment>",
+                },
+                "run_status": "<planned-running-or-terminal>",
+                "runtime_outcome": "<ok-error-in_progress-or-unknown>",
+                "duration_ms": "<non-negative-integer-or-null>",
+                "evidence_refs": [
+                    {
+                        "kind": "<trace-log-artifact-report-or-other>",
+                        "trace_id": "<opaque-id-or-null>",
+                        "span_id": "<opaque-id-or-null>",
+                        "env": "<environment-token-or-null>",
+                        "artifact_ref": "<private-pointer-or-null>",
+                    }
+                ],
+                "hypothesis": "<provisional-causal-explanation>",
+                "confidence": "<high-medium-or-low>",
+                "promotion_state": "pending_terminal_score_review",
+            },
+            "score_boundary": (
+                "A provisional observation must not invent an official score or "
+                "treat request success, progress, or runtime status as case quality."
+            ),
+            "promotion_rule": (
+                "After terminal scoring, re-read the complete authorized evidence "
+                "and write a separate benchmark_case_insight_v0; do not relabel the "
+                "provisional artifact as final."
+            ),
+            "privacy_boundary": (
+                "Keep raw evidence references in private benchmark storage. The "
+                "public experiment board may expose only a compact classification "
+                "or private artifact handle, never trace IDs, spans, URLs, paths, "
+                "or provider-specific session identifiers."
+            ),
+        },
         "hint": (
             "After the solver has stopped and scoring is complete, read the task, "
             "real trajectory, final patch or workspace, hidden tests, grader or "
@@ -814,6 +859,15 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
                 "hidden_tests",
                 "grader_or_verifier",
                 "failure_and_score_details",
+            ],
+            "evidence_refs": [
+                {
+                    "kind": "<trace-log-artifact-report-or-other>",
+                    "trace_id": "<opaque-id-or-null>",
+                    "span_id": "<opaque-id-or-null>",
+                    "env": "<environment-token-or-null>",
+                    "artifact_ref": "<private-pointer-or-null>",
+                }
             ],
             "insight": {
                 "approach_summary": "<what-the-solver-tried>",
@@ -938,6 +992,11 @@ BENCHMARK_TOOLKIT_CATALOG_ENTRY: dict[str, Any] = {
         {
             "schema_version": "run_permission_policy_v0",
             "module": "loopx.capabilities.benchmark_toolkit.run_permissions",
+            "doc": "loopx/capabilities/benchmark_toolkit/README.md",
+        },
+        {
+            "schema_version": "benchmark_case_observation_v0",
+            "module": "loopx.capabilities.benchmark_toolkit.catalog_entry",
             "doc": "loopx/capabilities/benchmark_toolkit/README.md",
         },
         {

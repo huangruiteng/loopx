@@ -4,6 +4,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from ..coordination.local_authority import (
+    canonical_todo_summary_fields,
+    read_canonical_todos_if_promoted,
+)
+
 MONITOR_WRITEBACK_CONTRACT_SCHEMA_VERSION = "monitor_writeback_contract_v0"
 
 
@@ -90,31 +95,47 @@ def active_state_todo_fields(
 ) -> dict[str, Any]:
     monitor_writeback_contract_writer = attach_monitor_writeback_contract or _attach_monitor_writeback_contract
     todo_field_redactor = redacted_status_todo_fields or _redacted_status_todo_fields
+    goal_id = str(goal.get("id") or "").strip()
+    # Inspect authority before the display file. A missing/stale projection is
+    # not an empty Todo collection, and an unavailable provider must fail closed.
+    canonical = (
+        read_canonical_todos_if_promoted(runtime_root=runtime_root, goal_id=goal_id)
+        if runtime_root is not None and goal_id else None
+    )
     state_path = resolve_goal_local_path(goal.get("state_file"), goal, fallback_base=Path.cwd())
-    if state_path is None or not state_path.exists():
+    if canonical is None and (state_path is None or not state_path.exists()):
         return {}
     try:
-        state_text = state_path.read_text(encoding="utf-8")
+        state_text = state_path.read_text(encoding="utf-8") if state_path is not None else ""
     except OSError:
-        return {}
+        if canonical is None:
+            return {}
+        state_text = ""
+    except UnicodeError:
+        if canonical is None:
+            raise
+        state_text = ""
     next_action_entries = active_state_next_action_entries(state_text, limit=3)
     preferred_todo_ids: set[str] = set()
     for entry in next_action_entries:
         preferred_todo_ids.update(active_next_action_todo_ids(entry))
     rollout_events: list[dict[str, Any]] = []
-    goal_id = str(goal.get("id") or "").strip()
     if runtime_root is not None and goal_id:
         rollout_events = load_rollout_events(
             rollout_event_log_path(runtime_root, goal_id),
             limit=max_todo_index_rollout_events_per_goal,
         )
-    event_fields = active_state_event_projection_fields(
+    event_fields = {} if canonical is not None else active_state_event_projection_fields(
         goal,
         state_path=state_path,
         preferred_todo_ids=preferred_todo_ids,
         rollout_events=rollout_events,
     )
-    if event_fields.get("user_todos") or event_fields.get("agent_todos"):
+    if canonical is not None:
+        fields = canonical_todo_summary_fields(canonical["todos"], rollout_events=rollout_events)
+        # Reading canonical Todos does not qualify legacy monitor writeback.
+        monitor_writeback_contract_writer(fields, supported=False, source="file_authority")
+    elif event_fields.get("user_todos") or event_fields.get("agent_todos"):
         fields = event_fields
         markdown_fields = parse_active_state_todos(
             state_text,

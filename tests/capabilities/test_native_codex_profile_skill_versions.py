@@ -1,3 +1,4 @@
+"""Pinned capability profiles validate their own managed skill versions."""
 from __future__ import annotations
 
 import sys

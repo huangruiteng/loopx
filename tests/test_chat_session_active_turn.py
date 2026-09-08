@@ -186,6 +186,52 @@ def test_chat_idempotency_keys_reject_different_requests(tmp_path: Path) -> None
         )
 
 
+def test_generated_message_id_skips_transcript_deduplication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session_id = str(
+        store.create_session(
+            goal_id="goal-one",
+            agent_id="codex",
+            executor_endpoint_id="codex",
+            adapter_kind="codex_app_server",
+            upstream_thread_id="thread-one",
+            upstream_mode="chat",
+        )["session_id"]
+    )
+    expected = store.append_message(
+        session_id,
+        role="agent",
+        text="durable completion",
+        message_id="completion-one",
+    )
+    assert (
+        store.append_message(
+            session_id,
+            role="agent",
+            text="ignored replay",
+            message_id="completion-one",
+        )
+        == expected
+    )
+
+    read_messages = chat_store._read_jsonl
+    monkeypatch.setattr(
+        chat_store,
+        "_read_jsonl",
+        lambda _path: pytest.fail("generated message IDs must not scan the transcript"),
+    )
+    appended = store.append_message(session_id, role="user", text="new message")
+
+    assert appended["message_id"] != "completion-one"
+    assert read_messages(store._session_dir(session_id) / "messages.jsonl") == [
+        expected,
+        appended,
+    ]
+
+
 @pytest.mark.parametrize("restart", [False, True])
 @pytest.mark.parametrize("with_image", [False, True])
 def test_managed_replay_compares_durable_attachments(

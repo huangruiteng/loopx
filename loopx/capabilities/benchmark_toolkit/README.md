@@ -1049,6 +1049,49 @@ solver-trajectory slice, even when no case became terminal. This readback is for
 campaign supervision and insight discovery only; it must not expose hidden
 evaluator evidence to the solving arm.
 
+When that readback produces a useful case-level runtime finding before terminal
+scoring, preserve it as a private provisional observation rather than waiting for
+the final grader or overstating it as a scored insight:
+
+```json
+{
+  "schema_version": "benchmark_case_observation_v0",
+  "case": {
+    "benchmark_id": "<public-id>",
+    "case_id": "<public-id>",
+    "arm": "<baseline-or-treatment>"
+  },
+  "run_status": "running",
+  "runtime_outcome": "<ok-error-in_progress-or-unknown>",
+  "duration_ms": null,
+  "evidence_refs": [
+    {
+      "kind": "trace",
+      "trace_id": "<opaque-id-or-null>",
+      "span_id": "<opaque-id-or-null>",
+      "env": "<environment-token-or-null>",
+      "artifact_ref": "<private-pointer-or-null>"
+    }
+  ],
+  "hypothesis": "<provisional-causal-explanation>",
+  "confidence": "medium",
+  "promotion_state": "pending_terminal_score_review"
+}
+```
+
+`trace_id`, `span_id`, and `env` are provider-neutral optional traceability fields.
+Provider-specific session identifiers belong in private provider extensions, not in
+this common contract. Raw evidence references can still disclose sensitive runtime
+topology, so the artifact stays in private benchmark storage. The public experiment
+board records only a compact classification or private artifact handle; it never
+copies trace IDs, spans, URLs, paths, or provider-specific session identifiers.
+
+The provisional observation must not invent a score or treat request success,
+progress, or runtime status as case quality. Once the run is terminal and scoring
+is complete, the analyst re-reads the complete authorized evidence and writes a
+separate `benchmark_case_insight_v0`; it does not relabel the provisional artifact
+as final.
+
 This is a provider obligation, not an effect performed by the reducer: the
 runtime-observation command only returns a typed classification and recommended
 transition. The provider remains responsible for the monitor cycle, trajectory
@@ -1092,6 +1135,15 @@ Record the result in this compact shape:
     "hidden_tests",
     "grader_or_verifier",
     "failure_and_score_details"
+  ],
+  "evidence_refs": [
+    {
+      "kind": "<trace-log-artifact-report-or-other>",
+      "trace_id": "<opaque-id-or-null>",
+      "span_id": "<opaque-id-or-null>",
+      "env": "<environment-token-or-null>",
+      "artifact_ref": "<private-pointer-or-null>"
+    }
   ],
   "insight": {
     "approach_summary": "<what-the-solver-tried>",

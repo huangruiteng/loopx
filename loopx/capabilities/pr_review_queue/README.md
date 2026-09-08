@@ -543,7 +543,23 @@ blocking findings. A successful check is **not** proof of factual evidence, revi
 quality, current remote head, or merge permission. Re-read the head and publish the
 human-readable evidence separately. Existing queue/monitor behavior is unchanged;
 omit these two flags to use normal queue discovery. An older saved packet may need
-fresh review evidence when the installed contract has advanced.
+fresh review evidence when the installed contract has advanced. The execution
+contract now carries `policy_revision`, distinct from its stable wire schema;
+results bind `review_policy_revision`. Missing or mismatched policy revisions
+cannot certify approval. Regenerate the packet and perform the current plan,
+not merely relabel old evidence. The skill rejects approval from incompatible
+packets produced by expired development-runtime overrides. It may still publish
+a conservative `REQUEST_CHANGES` only when that verdict explicitly identifies
+the incompatible-policy evidence gap; a later approval requires regeneration.
+
+For retained or parallel implementations, `repository_reuse.rule_ownership`
+maps business rules across both reachable paths, including unchanged files.
+Keeping a legacy storage writer does not justify keeping its independent
+eligibility, retention, ordering or successor rules. Name actual retired rules
+and justified compatibility/effect code, not a net-deletion quota. A positive
+twin with shared decisions and necessary extra adapter code must remain
+approvable. Verified evidence rows must fill their declared fields; the checker
+validates this completeness only, never the truth of their contents.
 
 Behavioral qualification lives in `tests/capabilities/test_pr_review_behavior.py`:
 paired synthetic cases include valid designs as well as counterexamples. The optional

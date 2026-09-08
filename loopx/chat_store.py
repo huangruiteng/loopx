@@ -489,9 +489,10 @@ class ChatSessionStore:
             "created_at": utc_now(),
         }
         with exclusive_file_lock(path, agent_id="loopx-chat", operation="append_chat_message"):
-            for existing in _read_jsonl(path):
-                if existing.get("message_id") == payload["message_id"]:
-                    return existing
+            if message_id:
+                for existing in _read_jsonl(path):
+                    if existing.get("message_id") == payload["message_id"]:
+                        return existing
             _append_jsonl(path, payload)
         return payload
 

@@ -221,6 +221,38 @@ def test_catalog_exposes_post_run_case_insight_monitor_contract() -> None:
     assert "must not read hidden evaluator evidence" in active_monitor
     assert "send findings back" in active_monitor
     assert "only after" in analysis["role_boundary"]["post_run_analyst"]
+
+    observation = analysis["active_case_observation"]
+    assert observation["status"] == "provisional_only"
+    assert observation["artifact_template"] == {
+        "schema_version": "benchmark_case_observation_v0",
+        "case": {
+            "benchmark_id": "<public-id>",
+            "case_id": "<public-id>",
+            "arm": "<baseline-or-treatment>",
+        },
+        "run_status": "<planned-running-or-terminal>",
+        "runtime_outcome": "<ok-error-in_progress-or-unknown>",
+        "duration_ms": "<non-negative-integer-or-null>",
+        "evidence_refs": [
+            {
+                "kind": "<trace-log-artifact-report-or-other>",
+                "trace_id": "<opaque-id-or-null>",
+                "span_id": "<opaque-id-or-null>",
+                "env": "<environment-token-or-null>",
+                "artifact_ref": "<private-pointer-or-null>",
+            }
+        ],
+        "hypothesis": "<provisional-causal-explanation>",
+        "confidence": "<high-medium-or-low>",
+        "promotion_state": "pending_terminal_score_review",
+    }
+    assert "must not invent an official score" in observation["score_boundary"]
+    assert "write a separate benchmark_case_insight_v0" in observation[
+        "promotion_rule"
+    ]
+    assert "never trace IDs" in observation["privacy_boundary"]
+
     artifact = analysis["artifact_template"]
     assert artifact["schema_version"] == "benchmark_case_insight_v0"
     assert artifact["evidence_reviewed"] == [
@@ -230,6 +262,15 @@ def test_catalog_exposes_post_run_case_insight_monitor_contract() -> None:
         "hidden_tests",
         "grader_or_verifier",
         "failure_and_score_details",
+    ]
+    assert artifact["evidence_refs"] == [
+        {
+            "kind": "<trace-log-artifact-report-or-other>",
+            "trace_id": "<opaque-id-or-null>",
+            "span_id": "<opaque-id-or-null>",
+            "env": "<environment-token-or-null>",
+            "artifact_ref": "<private-pointer-or-null>",
+        }
     ]
     assert set(artifact["insight"]) == {
         "approach_summary",
