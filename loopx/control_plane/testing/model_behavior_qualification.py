@@ -17,6 +17,7 @@ from ..runtime.public_safety import (
     SECRET_LIKE_SURFACE_PATTERN,
 )
 from ..work_items.interaction_contract import INTERACTION_RESPONSE_PLAN_SCHEMA_VERSION
+from .model_behavior_packet_safety import scheduler_transport_validation_view
 
 
 MODEL_BEHAVIOR_QUALIFICATION_SCHEMA_VERSION = "model_behavior_qualification_v0"
@@ -339,7 +340,7 @@ def build_model_behavior_actor_request(
     )
     packet_schema_version = _packet_schema(normalized_packet, arm=arm)
     _validated_packet_response_plan(normalized_packet, arm=arm)
-    _reject_private_or_secret_material(normalized_packet)
+    _reject_private_or_secret_material(scheduler_transport_validation_view(normalized_packet, arm=arm))
     return {
         "schema_version": MODEL_BEHAVIOR_ACTOR_REQUEST_SCHEMA_VERSION,
         "qualification_id": _token(qualification_id, field="qualification_id"),
