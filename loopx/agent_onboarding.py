@@ -18,8 +18,7 @@ from .install_contract import NO_CLONE_INSTALL_URL
 from .kiro_cli_goal_mode import (
     KIRO_CLI_GOAL_CLEAR_COMMAND,
     KIRO_CLI_GOAL_COMPLETION_TOOL,
-    KIRO_CLI_GOAL_MAX_ITERATION_CEILING,
-    KIRO_CLI_GOAL_STATUS_COMMAND,
+    KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS,
     SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
     kiro_cli_goal_invocation,
 )
@@ -371,10 +370,11 @@ def _start_instruction(agent_type: str) -> str:
             f"Run `/loopx <task>` (the LoopX skill installed in "
             f"`{KIRO_CLI_SKILLS_ROOT_LABEL}`); after todo writeback, bind the "
             f"objective with the native `{kiro_cli_goal_invocation()}` command, "
-            f"taking N from the remaining quota slots and never above the host "
-            f"ceiling of {KIRO_CLI_GOAL_MAX_ITERATION_CEILING} "
-            f"(`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels, "
-            f"`{KIRO_CLI_GOAL_STATUS_COMMAND}` reads the bound goal back). "
+            f"stating the todo's acceptance criteria inside the goal statement "
+            f"because the host derives them from it, and taking N from the "
+            f"remaining quota slots (host default is "
+            f"{KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS}; "
+            f"`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels). "
             f"Start every turn and native goal iteration with `quota "
             f"should-run`, and settle through the built-in "
             f"`{KIRO_CLI_GOAL_COMPLETION_TOOL}` tool only after LoopX writeback "
