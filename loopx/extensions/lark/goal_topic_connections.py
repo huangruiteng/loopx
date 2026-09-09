@@ -64,6 +64,7 @@ from .goal_channel_transport import (
     OPEN_ID_PATTERN,
     SAFE_PROFILE_PATTERN,
     bot_group_history_permission_guidance,
+    bot_membership_verified,
     call,
     ensure_bot_chat_membership,
     find_first_string,
@@ -71,6 +72,7 @@ from .goal_channel_transport import (
     lark_args,
     message_readback_verified,
 )
+from .goal_topic_edit import resolve_existing_goal_topic
 from .goal_topic_routing import (
     CaptureScope,
     decide_lark_topic_route_event,
@@ -349,14 +351,15 @@ def connect_lark_goal_topic(
     goal_id: str,
     target_path: Path,
     binding_path: Path,
-    app_ref: str,
-    chat_id: str,
-    chat_name: str,
+    app_ref: str = "",
+    chat_id: str = "",
+    chat_name: str = "",
+    connection_id: str | None = None,
     incoming_mode: str = "mentions",
     agent_id: str | None = None,
     session_id: str | None = None,
     capture_scope: str | None = None,
-    ingress_mode: str = "direct_session",
+    ingress_mode: str = "async_inbox",
     reply_mode: str = "topic_reply",
     registry_path: Path | None = None,
     execute: bool = True,
@@ -364,6 +367,22 @@ def connect_lark_goal_topic(
     cli_bin: str = DEFAULT_CLI_BIN,
 ) -> dict[str, Any]:
     goal = goal_from_registry(registry, goal_id)
+    editing = None
+    if connection_id:
+        edit = resolve_existing_goal_topic(
+            goal=goal,
+            goal_id=goal_id,
+            binding_path=binding_path,
+            target_path=target_path,
+            connection_id=connection_id,
+            app_ref=app_ref,
+            chat_id=chat_id,
+            agent_id=agent_id,
+            capture_scope=capture_scope,
+        )
+        editing = edit.binding
+        app_ref, chat_id, chat_name = edit.app_ref, edit.chat_id, edit.chat_name
+        agent_id, capture_scope = edit.agent_id, edit.capture_scope
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     if agent_id and not normalized_agent_id:
         raise ValueError("agent_id must be a public-safe registered Agent id")
@@ -371,16 +390,26 @@ def connect_lark_goal_topic(
         goal
     ):
         raise ValueError("agent_id must name an Agent registered for the Goal")
-    connection_id = goal_channel_connection_id(goal_id, normalized_agent_id)
+    connection_id = connection_id or goal_channel_connection_id(
+        goal_id, normalized_agent_id
+    )
     ingress_mode = _routing_value(
         IngressMode,
         ingress_mode,
-        default=IngressMode.DIRECT_SESSION.value,
+        default=IngressMode.ASYNC_INBOX.value,
         field="ingress_mode",
     )
-    if ingress_mode != IngressMode.DIRECT_SESSION.value and not normalized_agent_id:
+    if ingress_mode == IngressMode.DIRECT_SESSION.value:
+        raise ValueError(
+            "direct_session is read-only compatibility; use async_inbox, session_queue, or live_steering"
+        )
+    if not normalized_agent_id:
         raise ValueError(f"{ingress_mode} requires a registered agent_id")
-    normalized_session_id = str(session_id or "").strip()
+    normalized_session_id = (
+        ""
+        if ingress_mode == IngressMode.ASYNC_INBOX.value
+        else str(session_id or "").strip()
+    )
     if (
         ingress_mode
         in {
@@ -431,6 +460,16 @@ def connect_lark_goal_topic(
         app_ref=profile,
         chat_id=safe_chat_id,
     )
+    if editing is not None and not reusable_goal_topic_root(
+        read_goal_channel_binding(binding_path),
+        goal_id,
+        connection_id=connection_id,
+        provider_target=matched[1] if matched is not None else None,
+        chat_id=safe_chat_id,
+    ):
+        raise ValueError(
+            "the existing Topic is unavailable; upgrade cannot create a replacement"
+        )
     target_identity = matched[1].get("identity") if matched is not None else None
     target_cli_bin = (
         str(target_identity.get("cli_bin") or "").strip()
@@ -480,14 +519,28 @@ def connect_lark_goal_topic(
                 "connection_id": connection_id,
             },
         )
-    membership_result = ensure_bot_chat_membership(
-        runner=runner,
-        cli_bin=effective_cli_bin,
-        membership_profile=profile,
-        bot_profile=profile,
-        chat_id=safe_chat_id,
-        app_id=str(identity["app_id"]),
-    )
+    if editing is not None:
+        # Upgrades verify the existing group; they never add members or create topics.
+        membership_result = (
+            BotChatMembershipResult.ALREADY_VERIFIED
+            if bot_membership_verified(
+                runner=runner,
+                cli_bin=effective_cli_bin,
+                profile=profile,
+                chat_id=safe_chat_id,
+                app_id=str(identity["app_id"]),
+            )
+            else BotChatMembershipResult.ALREADY_UNVERIFIED
+        )
+    else:
+        membership_result = ensure_bot_chat_membership(
+            runner=runner,
+            cli_bin=effective_cli_bin,
+            membership_profile=profile,
+            bot_profile=profile,
+            chat_id=safe_chat_id,
+            app_id=str(identity["app_id"]),
+        )
     membership_added = membership_result.external_write_performed
     if membership_result is BotChatMembershipResult.ADD_FAILED:
         return operation_packet(
@@ -625,6 +678,7 @@ def connect_lark_goal_topic(
         message_id=root_message_id,
         expected_text=f"Goal ID: {goal_id}" if reusable_root else topic_text,
         expected_chat_id=safe_chat_id if reusable_root else None,
+        expected_goal_id=goal_id if reusable_root else None,
     ):
         return operation_packet(
             ok=False,
@@ -724,13 +778,20 @@ def connect_lark_goal_topic(
             **existing,
             "goal_id": goal_id,
             "agent_id": normalized_agent_id,
-            **({"session_id": normalized_session_id} if normalized_session_id else {}),
+            "connection_id": connection_id,
+            "session_id": normalized_session_id or None,
             "provider": "lark",
             "enabled": True,
             "target_ref": target_name,
-            "channel": {"pinned_message_id": root_message_id},
+            "channel": {
+                **dict(existing.get("channel") or {}),
+                "pinned_message_id": root_message_id,
+            },
             "topic": {
-                "name": topic_name,
+                **dict(existing.get("topic") or {}),
+                "name": (existing.get("topic") or {}).get("name", topic_name)
+                if editing
+                else topic_name,
                 "root_message_id": root_message_id,
                 "created_automatically": True,
             },

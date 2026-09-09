@@ -416,6 +416,7 @@ class LarkChatRequestMixin:
                 "agent_bindings",
                 "app_ref",
                 "capture_scope",
+                "connection_id",
                 "chat_id",
                 "chat_name",
                 "execute",
@@ -433,6 +434,7 @@ class LarkChatRequestMixin:
             incoming_mode = (
                 _compact_text(body.get("incoming_mode"), limit=40) or "mentions"
             )
+            connection_id = _compact_text(body.get("connection_id"), limit=160) or None
             agent_id = _compact_text(body.get("agent_id"), limit=160) or None
             capture_scope = _compact_text(body.get("capture_scope"), limit=40) or None
             ingress_mode = (
@@ -442,11 +444,15 @@ class LarkChatRequestMixin:
                 _compact_text(body.get("reply_mode"), limit=40) or "topic_reply"
             )
             app_refs_by_agent = _parse_lark_agent_bindings(body)
+            if connection_id and app_refs_by_agent is not None:
+                raise ValueError(
+                    "connection_id edits exactly one connection, not an Agent batch"
+                )
             if (
                 not goal_id
-                or not chat_id
-                or not chat_name
-                or (app_refs_by_agent is None and not app_ref)
+                or (not connection_id and not chat_id)
+                or (not connection_id and not chat_name)
+                or (not connection_id and app_refs_by_agent is None and not app_ref)
                 or (app_refs_by_agent is not None and not app_refs_by_agent)
             ):
                 raise ValueError(
@@ -457,7 +463,9 @@ class LarkChatRequestMixin:
             session_ids_by_agent: dict[str, str] = {}
             if ingress_mode in {"live_steering", "session_queue"}:
                 session_agent_ids = (
-                    list(app_refs_by_agent) if app_refs_by_agent is not None else [agent_id]
+                    list(app_refs_by_agent)
+                    if app_refs_by_agent is not None
+                    else [agent_id]
                 )
                 if not all(session_agent_ids):
                     raise ValueError(f"{ingress_mode} requires a registered agent_id")
@@ -503,6 +511,7 @@ class LarkChatRequestMixin:
                     **common,
                     app_ref=app_ref,
                     agent_id=agent_id,
+                    connection_id=connection_id,
                     session_id=session_id,
                 )
         except ValueError as exc:
@@ -521,9 +530,8 @@ class LarkChatRequestMixin:
                 or packet.get("blocker")
                 or "Lark connection failed"
             )
-        if (
-            body.get("execute") is True
-            and _connection_packet_has_committed_binding(packet)
+        if body.get("execute") is True and _connection_packet_has_committed_binding(
+            packet
         ):
             self._refresh_lark_goal_topic_runtime()
         self._send_json(packet, status=200 if packet.get("ok") else 400)

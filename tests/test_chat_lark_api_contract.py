@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 import loopx.chat_server as chat_server
 from loopx.chat_server import (
     CHAT_GOAL_CONTEXTS_PATH,
@@ -400,8 +402,9 @@ def test_lark_connections_include_app_reply_health(
     assert responses[0]["connections"][0]["last_event_reason"] == "topic_mismatch"
 
 
+@pytest.mark.parametrize("editing", [False, True])
 def test_connect_refreshes_the_app_level_event_consumer(
-    monkeypatch: Any, tmp_path: Path
+    monkeypatch: Any, tmp_path: Path, editing: bool
 ) -> None:
     import loopx.chat_lark_api as api
 
@@ -425,7 +428,7 @@ def test_connect_refreshes_the_app_level_event_consumer(
         )
 
         def _read_json(self) -> dict[str, Any]:
-            return {
+            body = {
                 "goal_id": "goal-alpha",
                 "app_ref": "mew",
                 "chat_id": "oc_public_fixture",
@@ -437,6 +440,12 @@ def test_connect_refreshes_the_app_level_event_consumer(
                 "reply_mode": "topic_reply",
                 "execute": True,
             }
+
+            if editing:
+                for field in ("app_ref", "chat_id", "chat_name"):
+                    body.pop(field)
+                body["connection_id"] = "lark_existing"
+            return body
 
         def _goal_channel_context(self, _goal_id: str):
             return ({"goals": [{"id": "goal-alpha"}]}, tmp_path / "goal-channel.json")
@@ -455,6 +464,7 @@ def test_connect_refreshes_the_app_level_event_consumer(
 
     Handler()._lark_connect()
 
+    assert connect_calls[0]["connection_id"] == ("lark_existing" if editing else None)
     assert refreshed == [True]
     assert connect_calls[0]["agent_id"] == "agent-alpha"
     assert connect_calls[0]["capture_scope"] == "addressed_only"

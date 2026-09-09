@@ -167,3 +167,91 @@ def connect_lark_goal_topics(
         readback_verified=True,
         details={"connections": results, "completed_agent_ids": completed},
     )
+
+
+def upgrade_lark_goal_topics(
+    *,
+    registry: Mapping[str, Any],
+    goal_id: str,
+    target_path: Path,
+    binding_path: Path,
+    registry_path: Path,
+    connection_id: str | None = None,
+    agent_id: str | None = None,
+    execute: bool = False,
+    runner: CommandRunner = default_subprocess_runner,
+    cli_bin: str = DEFAULT_CLI_BIN,
+) -> dict[str, Any]:
+    """Resume old-route upgrades, preserving identities, Topics and capture scope.
+
+    An explicit recipient requires an exact connection. Independent blocked
+    routes do not prevent unambiguous routes from upgrading.
+    """
+    from .goal_channel_contracts import bindings_for_goal, read_goal_channel_binding
+
+    if agent_id and not connection_id:
+        raise ValueError("agent_id requires an exact connection_id for upgrade")
+    connections = bindings_for_goal(read_goal_channel_binding(binding_path), goal_id)
+    if connection_id:
+        connections = [
+            item for item in connections if item.get("connection_id") == connection_id
+        ]
+        if not connections:
+            raise ValueError("connection_id is not registered for this Goal")
+    results: list[dict[str, Any]] = []
+    for connection in connections:
+        if connection.get("provider") != "lark" or not connection.get("enabled"):
+            continue
+        ref = str(connection["connection_id"])
+        if (connection.get("routing") or {}).get(
+            "ingress_mode", "direct_session"
+        ) != "direct_session":
+            results.append(
+                {"connection_id": ref, "status": "already_current", "ok": True}
+            )
+            continue
+        try:
+            result = connect_lark_goal_topic(
+                registry=registry,
+                registry_path=registry_path,
+                goal_id=goal_id,
+                target_path=target_path,
+                binding_path=binding_path,
+                connection_id=ref,
+                agent_id=agent_id,
+                execute=execute,
+                runner=runner,
+                cli_bin=cli_bin,
+            )
+            results.append(
+                {
+                    "connection_id": ref,
+                    "ok": bool(result.get("ok")),
+                    "status": result.get("status"),
+                    "blocker": result.get("blocker"),
+                    "details": result.get("details", {}),
+                    "readback_verified": bool(result.get("readback_verified")),
+                }
+            )
+        except ValueError as exc:
+            results.append(
+                {
+                    "connection_id": ref,
+                    "ok": False,
+                    "status": "blocked",
+                    "blocker": "upgrade_context_required",
+                    "public_summary": str(exc),
+                }
+            )
+    ok = all(item["ok"] for item in results)
+    return operation_packet(
+        ok=ok,
+        goal_id=goal_id,
+        operation="upgrade_topics",
+        execute=execute,
+        status=("upgraded" if execute else "preview_ready")
+        if ok
+        else "upgrade_incomplete",
+        public_summary="checked existing Lark connections for Agent inbox upgrade",
+        details={"connections": results},
+    )

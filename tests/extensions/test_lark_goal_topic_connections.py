@@ -53,6 +53,21 @@ def _registry(tmp_path: Path) -> dict[str, Any]:
     }
 
 
+def _connect_registered_agent(**kwargs: Any) -> dict[str, Any]:
+    """Set up a real source registry for tests exercising provider behavior."""
+    registry = kwargs["registry"]
+    for goal in registry["goals"]:
+        goal.setdefault("coordination", {"registered_agents": ["agent-alpha"]})
+    root = Path(registry["goals"][0]["repo"])
+    registry.setdefault("common_runtime_root", str(root / "runtime"))
+    registry_path = kwargs.setdefault(
+        "registry_path", root / ".loopx" / "registry.json"
+    )
+    atomic_write_json(registry_path, registry)
+    kwargs.setdefault("agent_id", "agent-alpha")
+    return connect_lark_goal_topic(**kwargs)
+
+
 def _runner(state: dict[str, Any]):
     def run(args: list[str], _cwd: object, _timeout: object) -> dict[str, Any]:
         state.setdefault("calls", []).append(list(args))
@@ -178,8 +193,8 @@ def test_connections_for_two_agents_coexist(tmp_path: Path) -> None:
         runner=_runner(state),
         cli_bin="fake-lark",
     )
-    assert connect_lark_goal_topic(**kwargs, agent_id="agent-alpha")["ok"]
-    result = connect_lark_goal_topic(**kwargs, agent_id="agent-beta")
+    assert _connect_registered_agent(**kwargs, agent_id="agent-alpha")["ok"]
+    result = _connect_registered_agent(**kwargs, agent_id="agent-beta")
     assert result["ok"] is True
     payload = read_goal_channel_binding(tmp_path / "binding.json")
     assert {item["agent_id"] for item in bindings_for_goal(payload, "goal-alpha")} == {
@@ -215,7 +230,11 @@ def test_batch_preflights_every_agent_before_any_provider_write(tmp_path: Path) 
         app_refs_by_agent={"agent-alpha": "mew", "agent-beta": "broken"},
         chat_id=CHAT_ID,
         chat_name="Product group",
-        ingress_mode="direct_session",
+        ingress_mode="session_queue",
+        session_ids_by_agent={
+            "agent-alpha": "session-alpha",
+            "agent-beta": "session-beta",
+        },
         execute=True,
         runner=runner,
         cli_bin="fake-lark",
@@ -257,7 +276,11 @@ def test_batch_retry_resumes_after_partial_provider_failure(tmp_path: Path) -> N
         "app_refs_by_agent": {"agent-alpha": "mew", "agent-beta": "mew"},
         "chat_id": CHAT_ID,
         "chat_name": "Product group",
-        "ingress_mode": "direct_session",
+        "ingress_mode": "session_queue",
+        "session_ids_by_agent": {
+            "agent-alpha": "session-alpha",
+            "agent-beta": "session-beta",
+        },
         "execute": True,
         "runner": runner,
         "cli_bin": "fake-lark",
@@ -284,6 +307,8 @@ def test_batch_api_partial_success_starts_committed_app_worker(tmp_path: Path) -
     }
     target_path = tmp_path / "targets.json"
     binding_path = tmp_path / "binding.json"
+    registry["common_runtime_root"] = str(tmp_path / "runtime")
+    atomic_write_json(tmp_path / "registry.json", registry)
     state: dict[str, Any] = {}
     base_runner = _runner(state)
     send_count = 0
@@ -306,9 +331,7 @@ def test_batch_api_partial_success_starts_committed_app_worker(tmp_path: Path) -
     def snapshot() -> dict[str, Any]:
         return {
             "target_payload": read_goal_channel_targets(target_path),
-            "binding_payloads": {
-                "goal-alpha": read_goal_channel_binding(binding_path)
-            },
+            "binding_payloads": {"goal-alpha": read_goal_channel_binding(binding_path)},
             "goal_contexts": {
                 "goal-alpha": {
                     "work_dir": str(tmp_path),
@@ -338,7 +361,7 @@ def test_batch_api_partial_success_starts_committed_app_worker(tmp_path: Path) -
                 ],
                 "chat_id": CHAT_ID,
                 "chat_name": "Product group",
-                "ingress_mode": "direct_session",
+                "ingress_mode": "async_inbox",
                 "execute": True,
             }
 
@@ -400,9 +423,9 @@ def test_concurrent_peer_connections_preserve_both_recipients(tmp_path: Path) ->
         cli_bin="fake-lark",
     )
     with ThreadPoolExecutor(max_workers=2) as pool:
-        first = pool.submit(connect_lark_goal_topic, **kwargs, agent_id="agent-alpha")
+        first = pool.submit(_connect_registered_agent, **kwargs, agent_id="agent-alpha")
         assert entered.wait(3)
-        second = pool.submit(connect_lark_goal_topic, **kwargs, agent_id="agent-beta")
+        second = pool.submit(_connect_registered_agent, **kwargs, agent_id="agent-beta")
         release.set()
         assert first.result()["ok"]
         assert second.result()["ok"]
@@ -662,7 +685,7 @@ def test_two_goals_share_one_connection_with_distinct_topics(tmp_path: Path) -> 
     binding_path = tmp_path / "goal-channel.json"
 
     for goal_id in ("goal-alpha", "goal-beta"):
-        result = connect_lark_goal_topic(
+        result = _connect_registered_agent(
             registry=_registry(tmp_path),
             goal_id=goal_id,
             target_path=target_path,
@@ -690,8 +713,9 @@ def test_two_goals_share_one_connection_with_distinct_topics(tmp_path: Path) -> 
     assert alpha["routing"] == {
         "incoming_mode": "mentions",
         "capture_scope": "addressed_only",
-        "ingress_mode": "direct_session",
+        "ingress_mode": "async_inbox",
         "reply_mode": "topic_reply",
+        "inbox_config_ref": alpha["routing"]["inbox_config_ref"],
     }
 
     rows = list_lark_connections(
@@ -705,7 +729,10 @@ def test_two_goals_share_one_connection_with_distinct_topics(tmp_path: Path) -> 
     assert {row["goal_id"] for row in rows} == {"goal-alpha", "goal-beta"}
     assert {row["app_ref"] for row in rows} == {"mew"}
     assert {row["chat_name"] for row in rows} == {"Product group"}
-    assert {row["topic_name"] for row in rows} == {"Alpha delivery", "Beta delivery"}
+    assert {row["topic_name"] for row in rows} == {
+        "Alpha delivery · agent-alpha",
+        "Beta delivery · agent-alpha",
+    }
     assert all(row["reply_ready"] is True for row in rows)
     assert all(row["health_error_code"] is None for row in rows)
     assert "oc_" not in json.dumps(rows)
@@ -719,7 +746,7 @@ def test_listening_connection_without_received_events_is_not_reply_ready(
     runner = _runner(state)
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
+    connected = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -760,7 +787,7 @@ def test_starting_listener_is_not_presented_as_reply_ready(tmp_path: Path) -> No
     runner = _runner(state)
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
+    connected = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -819,7 +846,7 @@ def test_connect_preview_uses_verified_bot_identity_without_user_oauth(
             }
         return base_runner(args, cwd, timeout)
 
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=tmp_path / "goal-channel-targets.json",
@@ -847,7 +874,7 @@ def test_connection_health_reports_received_event_processing_blocker(
     runner = _runner(state)
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -901,7 +928,7 @@ def test_connection_health_reports_ambiguous_topic_context(tmp_path: Path) -> No
     runner = _runner(state)
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -940,7 +967,7 @@ def test_connection_health_reports_safe_topic_route_mismatch(tmp_path: Path) -> 
     state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
+    connected = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -981,7 +1008,7 @@ def test_connection_health_drops_unknown_route_reason(tmp_path: Path) -> None:
     state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
+    connected = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1032,7 +1059,7 @@ def test_connect_uses_bot_chat_access_when_member_listing_is_unavailable(
             }
         return base_runner(args, cwd, timeout)
 
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=tmp_path / "goal-channel-targets.json",
@@ -1073,7 +1100,7 @@ def test_existing_member_readback_failure_does_not_claim_external_write(
                 }
         return base_runner(args, cwd, timeout)
 
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=tmp_path / "goal-channel-targets.json",
@@ -1134,8 +1161,8 @@ def test_connect_adds_a_missing_bot_and_retry_does_not_add_it_twice(
         "runner": runner,
         "cli_bin": "fake-lark",
     }
-    first = connect_lark_goal_topic(**kwargs)
-    second = connect_lark_goal_topic(**kwargs)
+    first = _connect_registered_agent(**kwargs)
+    second = _connect_registered_agent(**kwargs)
 
     assert first["ok"] is True
     assert second["ok"] is True
@@ -1147,9 +1174,7 @@ def test_connect_adds_a_missing_bot_and_retry_does_not_add_it_twice(
     assert len(add_calls) == 1
     add_call = add_calls[0]
     assert add_call[add_call.index("--member-id-type") + 1] == "app_id"
-    assert json.loads(add_call[add_call.index("--data") + 1]) == {
-        "id_list": [APP_ID]
-    }
+    assert json.loads(add_call[add_call.index("--data") + 1]) == {"id_list": [APP_ID]}
 
 
 def test_connect_stops_before_topic_write_when_bot_add_fails(tmp_path: Path) -> None:
@@ -1169,7 +1194,7 @@ def test_connect_stops_before_topic_write_when_bot_add_fails(tmp_path: Path) -> 
             return {"returncode": 1, "stdout": "", "stderr": "denied"}
         return base_runner(args, cwd, timeout)
 
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=tmp_path / "goal-channel-targets.json",
@@ -1208,7 +1233,7 @@ def test_existing_target_cli_bin_has_priority_for_connection(tmp_path: Path) -> 
         execute=True,
     )
 
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1230,7 +1255,7 @@ def test_routes_bound_topic_messages_and_replies_in_thread(tmp_path: Path) -> No
     runner = _runner(state)
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connect_lark_goal_topic(
+    _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1393,15 +1418,21 @@ def test_routes_bound_topic_messages_and_replies_in_thread(tmp_path: Path) -> No
             "mentions": [{"name": "LoopX Mew", "id": APP_ID}],
         },
     )
-    assert route == {
+    assert route is not None
+    assert route["agent_id"] == "agent-alpha"
+    assert route["ingress_mode"] == "async_inbox"
+    assert route["connector"]["agent_ref"] == "agent-alpha"
+    expected = {
         "app_ref": "mew",
-        "connection_id": goal_channel_connection_id("goal-alpha", None),
+        "connection_id": goal_channel_connection_id("goal-alpha", "agent-alpha"),
         "goal_id": "goal-alpha",
         "message_id": "om_incoming",
         "reply_mode": "topic_reply",
         "target_ref": next(iter(read_goal_channel_targets(target_path)["targets"])),
         "topic_root_message_id": "om_topic_alpha",
     }
+
+    assert {key: route[key] for key in expected} == expected
 
     reply_route = route_lark_topic_event(
         target_payload=read_goal_channel_targets(target_path),
@@ -1489,7 +1520,7 @@ def test_provider_bot_open_id_is_persisted_and_routes_tokenized_mentions(
 
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
+    connected = _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1544,7 +1575,7 @@ def test_topic_route_decision_reports_safe_reason_codes(tmp_path: Path) -> None:
     state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connect_lark_goal_topic(
+    _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1671,7 +1702,7 @@ def test_configured_chat_all_fails_closed_when_multiple_goal_routes_match(
     state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connect_lark_goal_topic(
+    _connect_registered_agent(
         registry=_registry(tmp_path),
         goal_id="goal-alpha",
         target_path=target_path,
@@ -1689,6 +1720,7 @@ def test_configured_chat_all_fails_closed_when_multiple_goal_routes_match(
     connection_id = beta_binding["default_connection_id"]
     connection = beta_binding["connections"][connection_id]
     connection["goal_id"] = "goal-beta"
+    connection["connector"]["goal_ref"] = "goal-beta"
     connection["topic"]["root_message_id"] = "om_topic_beta"
     connection["channel"]["pinned_message_id"] = "om_topic_beta"
     beta["bindings"]["goal-beta"] = beta_binding
@@ -1717,7 +1749,7 @@ def test_disconnect_removes_only_the_selected_goal_topic(tmp_path: Path) -> None
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
     for goal_id in ("goal-alpha", "goal-beta"):
-        connect_lark_goal_topic(
+        _connect_registered_agent(
             registry=_registry(tmp_path),
             goal_id=goal_id,
             target_path=target_path,
@@ -1733,6 +1765,7 @@ def test_disconnect_removes_only_the_selected_goal_topic(tmp_path: Path) -> None
     connection = binding_for_goal(read_goal_channel_binding(binding_path), "goal-alpha")
     assert connection is not None
     result = disconnect_lark_goal_topic(
+        registry_path=tmp_path / ".loopx" / "registry.json",
         binding_path=binding_path,
         goal_id="goal-alpha",
         connection_id=str(connection["connection_id"]),
@@ -1768,9 +1801,9 @@ def test_disconnect_async_inbox_unregisters_only_selected_agent(
         runner=_runner(state),
         cli_bin="fake-lark",
     )
-    assert connect_lark_goal_topic(**kwargs, agent_id="agent-alpha")["ok"]
+    assert _connect_registered_agent(**kwargs, agent_id="agent-alpha")["ok"]
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
-    assert connect_lark_goal_topic(
+    assert _connect_registered_agent(
         **{**kwargs, "registry": registry}, agent_id="agent-beta"
     )["ok"]
     payload = read_goal_channel_binding(binding_path)
@@ -1818,7 +1851,7 @@ def test_disconnect_reports_agent_inbox_cleanup_failure(
     registry["goals"][0]["coordination"] = {"registered_agents": ["agent-alpha"]}
     atomic_write_json(registry_path, registry)
     binding_path = tmp_path / "binding.json"
-    assert connect_lark_goal_topic(
+    assert _connect_registered_agent(
         registry=registry,
         registry_path=registry_path,
         goal_id="goal-alpha",
@@ -1891,7 +1924,7 @@ def test_disconnect_reports_agent_inbox_cleanup_raise_as_packet(
     registry["goals"][0]["coordination"] = {"registered_agents": ["agent-alpha"]}
     atomic_write_json(registry_path, registry)
     binding_path = tmp_path / "binding.json"
-    assert connect_lark_goal_topic(
+    assert _connect_registered_agent(
         registry=registry,
         registry_path=registry_path,
         goal_id="goal-alpha",
@@ -2045,8 +2078,10 @@ def test_reconnect_after_upgrade_reuses_legacy_topic_root_without_resend(
     write_goal_channel_binding(
         binding_path, _legacy_v0_binding_payload("om_legacy_root", "agent-alpha")
     )
-    state: dict[str, Any] = {"sent": {"om_legacy_root": "Old title\nGoal ID: goal-alpha"}}
-    result = connect_lark_goal_topic(
+    state: dict[str, Any] = {
+        "sent": {"om_legacy_root": "Old title\nGoal ID: goal-alpha"}
+    }
+    result = _connect_registered_agent(
         registry=registry,
         goal_id="goal-alpha",
         target_path=target_path,
@@ -2087,7 +2122,7 @@ def test_reconnect_with_mismatched_target_ref_sends_new_topic(
         ),
     )
     state: dict[str, Any] = {}
-    result = connect_lark_goal_topic(
+    result = _connect_registered_agent(
         registry=registry,
         goal_id="goal-alpha",
         target_path=target_path,
@@ -2129,10 +2164,10 @@ def test_set_connection_reconnect_reuses_root_without_resend(tmp_path: Path) -> 
         runner=_runner(state),
         cli_bin="fake-lark",
     )
-    assert connect_lark_goal_topic(**kwargs)["ok"] is True
+    assert _connect_registered_agent(**kwargs)["ok"] is True
     first_sends = [call for call in state["calls"] if "+messages-send" in call]
     assert len(first_sends) == 1
-    assert connect_lark_goal_topic(**kwargs)["ok"] is True
+    assert _connect_registered_agent(**kwargs)["ok"] is True
     total_sends = [call for call in state["calls"] if "+messages-send" in call]
     assert len(total_sends) == 1
     connection = binding_for_goal(
@@ -2147,7 +2182,9 @@ def test_set_connection_reconnect_reuses_root_without_resend(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("failure", ["missing", "wrong_chat", "wrong_goal"])
-def test_reconnect_unverified_root_preserves_binding(tmp_path: Path, failure: str) -> None:
+def test_reconnect_unverified_root_preserves_binding(
+    tmp_path: Path, failure: str
+) -> None:
     registry = _registry(tmp_path)
     registry["goals"][0]["coordination"] = {"registered_agents": ["agent-alpha"]}
     target_path = _prep_goal_channel_target(tmp_path)
@@ -2163,20 +2200,42 @@ def test_reconnect_unverified_root_preserves_binding(tmp_path: Path, failure: st
         state.setdefault("readbacks", []).append(args)
         return {
             "returncode": 1 if failure == "missing" else 0,
-            "stdout": json.dumps({"data": {"items": [{
-                "message_id": "om_legacy_root",
-                "chat_id": "oc_other" if failure == "wrong_chat" else CHAT_ID,
-                "body": {"content": "Goal ID: " + (
-                    "goal-other" if failure == "wrong_goal" else "goal-alpha"
-                )},
-            }]}}),
+            "stdout": json.dumps(
+                {
+                    "data": {
+                        "items": [
+                            {
+                                "message_id": "om_legacy_root",
+                                "chat_id": "oc_other"
+                                if failure == "wrong_chat"
+                                else CHAT_ID,
+                                "body": {
+                                    "content": "Goal ID: "
+                                    + (
+                                        "goal-other"
+                                        if failure == "wrong_goal"
+                                        else "goal-alpha"
+                                    )
+                                },
+                            }
+                        ]
+                    }
+                }
+            ),
             "stderr": "",
         }
 
-    result = connect_lark_goal_topic(
-        registry=registry, goal_id="goal-alpha", target_path=target_path,
-        binding_path=binding_path, app_ref="mew", chat_id=CHAT_ID,
-        chat_name="Product group", agent_id="agent-alpha", runner=runner, cli_bin="fake-lark",
+    result = _connect_registered_agent(
+        registry=registry,
+        goal_id="goal-alpha",
+        target_path=target_path,
+        binding_path=binding_path,
+        app_ref="mew",
+        chat_id=CHAT_ID,
+        chat_name="Product group",
+        agent_id="agent-alpha",
+        runner=runner,
+        cli_bin="fake-lark",
     )
     assert result["ok"] is False
     assert result["readback_verified"] is False
@@ -2188,30 +2247,244 @@ def test_reconnect_unverified_root_preserves_binding(tmp_path: Path, failure: st
 
 def test_reconnect_isolates_other_agent_target(tmp_path: Path) -> None:
     registry = _registry(tmp_path)
-    registry["goals"][0]["coordination"] = {"registered_agents": ["agent-alpha", "agent-beta"]}
+    registry["goals"][0]["coordination"] = {
+        "registered_agents": ["agent-alpha", "agent-beta"]
+    }
     target_path = _prep_goal_channel_target(tmp_path)
     binding_path = tmp_path / "binding.json"
-    alpha = _legacy_v0_binding_payload("om_existing", "agent-alpha")["bindings"]["goal-alpha"]
-    beta = _legacy_v0_binding_payload("om_other", "agent-beta", "other-target")["bindings"]["goal-alpha"]
+    alpha = _legacy_v0_binding_payload("om_existing", "agent-alpha")["bindings"][
+        "goal-alpha"
+    ]
+    beta = _legacy_v0_binding_payload("om_other", "agent-beta", "other-target")[
+        "bindings"
+    ]["goal-alpha"]
     alpha_id = goal_channel_connection_id("goal-alpha", "agent-alpha")
     beta_id = goal_channel_connection_id("goal-alpha", "agent-beta")
-    write_goal_channel_binding(binding_path, {
-        "schema_version": GOAL_CHANNEL_BINDING_SCHEMA_VERSION,
-        "bindings": {"goal-alpha": {
-            "schema_version": GOAL_CHANNEL_CONNECTION_SET_SCHEMA_VERSION,
-            "connections": {alpha_id: alpha, beta_id: beta},
-        }},
-    })
+    write_goal_channel_binding(
+        binding_path,
+        {
+            "schema_version": GOAL_CHANNEL_BINDING_SCHEMA_VERSION,
+            "bindings": {
+                "goal-alpha": {
+                    "schema_version": GOAL_CHANNEL_CONNECTION_SET_SCHEMA_VERSION,
+                    "connections": {alpha_id: alpha, beta_id: beta},
+                }
+            },
+        },
+    )
     state: dict[str, Any] = {"sent": {"om_existing": "Old title\nGoal ID: goal-alpha"}}
-    result = connect_lark_goal_topic(
-        registry=registry, goal_id="goal-alpha", target_path=target_path,
-        binding_path=binding_path, app_ref="mew", chat_id=CHAT_ID,
-        chat_name="Product group", agent_id="agent-alpha", runner=_runner(state), cli_bin="fake-lark",
+    result = _connect_registered_agent(
+        registry=registry,
+        goal_id="goal-alpha",
+        target_path=target_path,
+        binding_path=binding_path,
+        app_ref="mew",
+        chat_id=CHAT_ID,
+        chat_name="Product group",
+        agent_id="agent-alpha",
+        runner=_runner(state),
+        cli_bin="fake-lark",
     )
     assert result["ok"] is True
     assert result["external_write_performed"] is False
     assert result["readback_verified"] is True
     assert not any("+messages-send" in args for args in state["calls"])
-    saved = read_goal_channel_binding(binding_path)["bindings"]["goal-alpha"]["connections"]
+    saved = read_goal_channel_binding(binding_path)["bindings"]["goal-alpha"][
+        "connections"
+    ]
     assert saved[alpha_id]["topic"]["root_message_id"] == "om_existing"
     assert saved[beta_id] == beta
+
+
+def _upgrade_fixture(tmp_path: Path, *, agent_id: str = "", peers: bool = False):
+    registry = _registry(tmp_path)
+    registry["common_runtime_root"] = str(tmp_path / "runtime")
+    registry["goals"][0]["coordination"] = {
+        "registered_agents": ["agent-alpha", "agent-beta"] if peers else ["agent-alpha"]
+    }
+    registry_path = tmp_path / ".loopx" / "registry.json"
+    atomic_write_json(registry_path, registry)
+    binding_path = tmp_path / "binding.json"
+    payload = _legacy_v0_binding_payload("om_legacy_root", agent_id)
+    payload["bindings"]["goal-alpha"]["session_id"] = "obsolete-session"
+    payload["bindings"]["goal-alpha"]["channel"]["table_id"] = "retained-table"
+    write_goal_channel_binding(binding_path, payload)
+    state: dict[str, Any] = {"sent": {"om_legacy_root": "Goal ID: goal-alpha"}}
+    kwargs = dict(
+        registry=registry,
+        registry_path=registry_path,
+        goal_id="goal-alpha",
+        target_path=_prep_goal_channel_target(tmp_path),
+        binding_path=binding_path,
+        connection_id=goal_channel_connection_id("goal-alpha", agent_id or None),
+        runner=_runner(state),
+        cli_bin="fake-lark",
+    )
+    return kwargs, state
+
+
+def test_legacy_write_is_rejected_and_default_requires_agent(tmp_path: Path) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path)
+    kwargs.pop("connection_id")
+    kwargs.update(app_ref="mew", chat_id=CHAT_ID, chat_name="Product group")
+    for mode in (None, "direct_session"):
+        with pytest.raises(
+            ValueError, match="registered agent_id|read-only compatibility"
+        ):
+            connect_lark_goal_topic(
+                **kwargs, **({"ingress_mode": mode} if mode else {})
+            )
+    assert not state.get("calls")
+
+
+@pytest.mark.parametrize("agent_id", ["", "agent-alpha"])
+def test_upgrade_default_preserves_identity_topic_and_receipts(
+    tmp_path: Path, agent_id: str
+) -> None:
+    from loopx.extensions.lark.goal_topic_batch import upgrade_lark_goal_topics
+
+    kwargs, state = _upgrade_fixture(tmp_path, agent_id=agent_id)
+    before_binding = kwargs["binding_path"].read_bytes()
+    before_registry = kwargs["registry_path"].read_bytes()
+    preview = upgrade_lark_goal_topics(**kwargs)
+    assert preview["ok"] is True
+    assert kwargs["binding_path"].read_bytes() == before_binding
+    assert kwargs["registry_path"].read_bytes() == before_registry
+    assert not list((tmp_path / ".loopx/config").glob("**/*.json"))
+    result = upgrade_lark_goal_topics(**kwargs, execute=True)
+    assert result["ok"] is True
+    connection = binding_for_goal(
+        read_goal_channel_binding(kwargs["binding_path"]), "goal-alpha"
+    )
+    assert connection is not None
+    assert connection["connection_id"] == kwargs["connection_id"]
+    assert connection["agent_id"] == "agent-alpha"
+    assert connection["session_id"] is None
+    assert connection["channel"]["table_id"] == "retained-table"
+    assert connection["topic"]["root_message_id"] == "om_legacy_root"
+    assert connection["automation"] == {"human_gate_auto_notify": True}
+    assert connection["routing"]["ingress_mode"] == "async_inbox"
+    assert connection["routing"]["capture_scope"] == "addressed_only"
+    assert connection["connector"]["agent_ref"] == "agent-alpha"
+    assert connection["receipts"]
+    assert (
+        len(
+            bindings_for_goal(
+                read_goal_channel_binding(kwargs["binding_path"]), "goal-alpha"
+            )
+        )
+        == 1
+    )
+    writes = [
+        call
+        for call in state["calls"]
+        if "+messages-send" in call or "+chat-members-add" in call
+    ]
+    assert writes == []
+    call_count = len(state["calls"])
+    assert upgrade_lark_goal_topics(**kwargs, execute=True)["ok"] is True
+    assert len(state["calls"]) == call_count
+
+
+@pytest.mark.parametrize("change", ["app", "chat", "agent", "scope", "root"])
+def test_upgrade_rejects_identity_or_scope_drift_before_effects(
+    tmp_path: Path, change: str
+) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path, agent_id="agent-alpha", peers=True)
+    if change == "app":
+        kwargs["app_ref"] = "standby"
+    elif change == "chat":
+        kwargs["chat_id"] = "oc_other_fixture"
+    elif change == "agent":
+        kwargs["agent_id"] = "agent-beta"
+    elif change == "scope":
+        kwargs["capture_scope"] = "configured_chat_all"
+    else:
+        payload = read_goal_channel_binding(kwargs["binding_path"])
+        payload["bindings"]["goal-alpha"]["topic"]["root_message_id"] = ""
+        write_goal_channel_binding(kwargs["binding_path"], payload)
+    before = kwargs["binding_path"].read_bytes()
+    with pytest.raises(ValueError):
+        connect_lark_goal_topic(**kwargs)
+    assert kwargs["binding_path"].read_bytes() == before
+    assert not state.get("calls")
+
+
+def test_unassigned_multi_agent_upgrade_needs_exact_mapping(tmp_path: Path) -> None:
+    from loopx.extensions.lark.goal_topic_batch import upgrade_lark_goal_topics
+
+    kwargs, state = _upgrade_fixture(tmp_path, peers=True)
+    before = kwargs["binding_path"].read_bytes()
+    blocked = upgrade_lark_goal_topics(**kwargs, execute=True)
+    assert blocked["ok"] is False
+    assert kwargs["binding_path"].read_bytes() == before
+    assert not state.get("calls")
+    result = upgrade_lark_goal_topics(**kwargs, agent_id="agent-beta", execute=True)
+    assert result["ok"] is True
+    row = binding_for_goal(
+        read_goal_channel_binding(kwargs["binding_path"]), "goal-alpha"
+    )
+    assert row["agent_id"] == "agent-beta"
+
+
+def test_upgrade_readback_failure_preserves_existing_route(tmp_path: Path) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path)
+    state["sent"]["om_legacy_root"] = "Goal ID: wrong-goal"
+    before = kwargs["binding_path"].read_bytes()
+    result = connect_lark_goal_topic(**kwargs)
+    assert result["ok"] is False
+    assert result["blocker"] == "readback_mismatch"
+    assert result["external_write_performed"] is False
+    assert kwargs["binding_path"].read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        ("LoopX Goal: goal-alpha\nObjective: Historical title", True),
+        ('{"text":"LoopX Goal: goal-alpha\\nObjective: Historical title"}', True),
+        ("LoopX Goal: goal-alpha-other\nObjective: Wrong Goal", False),
+        ("Goal ID: goal-alpha-other", False),
+    ],
+)
+def test_upgrade_verifies_exact_legacy_control_message(
+    tmp_path: Path, body: str, expected: bool
+) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path)
+    state["sent"]["om_legacy_root"] = body
+    result = connect_lark_goal_topic(**kwargs)
+    assert result["ok"] is expected
+
+
+def test_upgrade_cannot_join_evidence_from_two_messages(tmp_path: Path) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path)
+    base_runner = kwargs["runner"]
+
+    def runner(args, cwd, timeout):
+        if "+messages-mget" in args:
+            return {
+                "returncode": 0,
+                "stdout": json.dumps(
+                    {
+                        "items": [
+                            {
+                                "message_id": "om_legacy_root",
+                                "chat_id": CHAT_ID,
+                                "content": "another goal",
+                            },
+                            {
+                                "message_id": "om_unrelated",
+                                "chat_id": CHAT_ID,
+                                "content": "LoopX Goal: goal-alpha",
+                            },
+                        ]
+                    }
+                ),
+                "stderr": "",
+            }
+        return base_runner(args, cwd, timeout)
+
+    kwargs["runner"] = runner
+    before = kwargs["binding_path"].read_bytes()
+    assert connect_lark_goal_topic(**kwargs)["blocker"] == "readback_mismatch"
+    assert kwargs["binding_path"].read_bytes() == before

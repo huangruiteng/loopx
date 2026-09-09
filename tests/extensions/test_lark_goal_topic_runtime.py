@@ -128,33 +128,48 @@ def _reply_runner(state: dict[str, Any]):
     return run
 
 
+def _seed_legacy_topic(target_path: Path, binding_path: Path) -> dict[str, Any]:
+    """Old on-disk fixtures remain readable even though new legacy writes are closed."""
+    from loopx.extensions.lark.goal_channel_contracts import save_goal_connection
+    from loopx.extensions.lark.goal_channel_targets import add_lark_goal_channel_target
+
+    add_lark_goal_channel_target(
+        target_path=target_path,
+        target_name="fixture",
+        chat_id="oc_public_fixture",
+        chat_name="Product group",
+        identity_mode="local_user",
+        sender_profile="mew",
+        bot_app_id="cli_public_fixture",
+        bot_display_name="linkmacbot",
+        execute=True,
+    )
+    save_goal_connection(
+        binding_path=binding_path,
+        payload=read_goal_channel_binding(binding_path),
+        goal_id="goal-alpha",
+        binding={
+            "enabled": True,
+            "provider": "lark",
+            "target_ref": "fixture",
+            "topic": {"root_message_id": "om_topic_alpha"},
+            "routing": {
+                "ingress_mode": "direct_session",
+                "incoming_mode": "mentions",
+                "reply_mode": "topic_reply",
+            },
+        },
+    )
+    return {"ok": True}
+
+
 def test_mention_uses_existing_inbox_reply_and_ack_path(tmp_path: Path) -> None:
     from loopx.extensions.lark.goal_topic_runtime import process_lark_goal_topic_event
 
     state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    registry = {
-        "goals": [
-            {
-                "id": "goal-alpha",
-                "repo": str(tmp_path),
-                "objective": "Alpha delivery",
-            }
-        ]
-    }
-    connected = connect_lark_goal_topic(
-        registry=registry,
-        goal_id="goal-alpha",
-        target_path=target_path,
-        binding_path=binding_path,
-        app_ref="mew",
-        chat_id="oc_public_fixture",
-        chat_name="Product group",
-        incoming_mode="mentions",
-        runner=_connection_runner(state),
-        cli_bin="fake-lark",
-    )
+    connected = _seed_legacy_topic(target_path, binding_path)
     assert connected["ok"] is True
 
     answers: list[tuple[str, str]] = []
@@ -416,28 +431,9 @@ def test_invalid_persisted_routing_state_never_answers_replies_or_acknowledges(
 ) -> None:
     from loopx.extensions.lark.goal_topic_runtime import process_lark_goal_topic_event
 
-    state: dict[str, Any] = {}
     target_path = tmp_path / "goal-channel-targets.json"
     binding_path = tmp_path / "goal-channel.json"
-    connected = connect_lark_goal_topic(
-        registry={
-            "goals": [
-                {
-                    "id": "goal-alpha",
-                    "repo": str(tmp_path),
-                    "objective": "Alpha delivery",
-                }
-            ]
-        },
-        goal_id="goal-alpha",
-        target_path=target_path,
-        binding_path=binding_path,
-        app_ref="mew",
-        chat_id="oc_public_fixture",
-        chat_name="Product group",
-        runner=_connection_runner(state),
-        cli_bin="fake-lark",
-    )
+    connected = _seed_legacy_topic(target_path, binding_path)
     assert connected["ok"] is True
     binding = read_goal_channel_binding(binding_path)
     connection = binding_for_goal(binding, "goal-alpha")
