@@ -48,6 +48,7 @@ import { evaluateQuotaVoidCommit } from "./quota/void_commit.ts";
 import { readQuotaSettlement } from "./quota/settlement_readback.ts";
 import { evaluateTurnEnvelope } from "./quota/turn_envelope.ts";
 import { evaluateQuotaMonitorPollCommit } from "./quota/monitor_poll_commit.ts";
+import { planMonitorSuccessor } from "./scheduler/monitor_successor.ts";
 import { evaluateDeliveryWorkspace } from "./agents/delivery_workspace.ts";
 import {
   interpretTurnJournal,
@@ -461,6 +462,7 @@ export function createEffectRuntimeHandlers(
     ],
     ["task_lease.write_scopes.overlap", evaluateTaskLeaseWriteScopesOverlap],
     ["quota.monitor_poll.commit", evaluateQuotaMonitorPollCommit],
+    ["scheduler.monitor_successor.plan", planMonitorSuccessor],
     ["coordination.local_authority_shadow.record", recordLocalAuthorityShadow],
     ["coordination.runtime_shadow.commit_entry", commitLocalAuthorityShadowEntry],
     ["coordination.runtime_shadow.outbox_read", readLocalAuthorityShadow],
