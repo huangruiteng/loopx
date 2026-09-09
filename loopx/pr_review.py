@@ -854,6 +854,11 @@ def _review_conclusion(
         key=lambda item: _parse_updated_epoch(item.get("submittedAt")),
         reverse=True,
     )
+    reviewer_owns_pr = bool(
+        reviewer_login
+        and pr_author
+        and reviewer_login.casefold() == pr_author.casefold()
+    )
     if not reviews:
         return {
             "schema_version": REVIEW_CONCLUSION_SCHEMA_VERSION,
@@ -871,17 +876,18 @@ def _review_conclusion(
         english_verdict = _english_review_verdict(body)
         review_author = str(_as_dict(review.get("author")).get("login") or "").strip()
         commit_oid = str(_as_dict(review.get("commit")).get("oid") or "").strip()
-        author_owned = bool(
+        review_is_by_pr_author = bool(
             review_author
             and pr_author
             and review_author.casefold() == pr_author.casefold()
         )
+        author_owned_fallback = review_is_by_pr_author and reviewer_owns_pr
         reasons: list[str] = []
         if not head_oid or commit_oid.casefold() != head_oid.casefold():
             reasons.append("review_not_bound_to_current_head")
         if not _review_body_has_required_format(body, head_oid=head_oid):
             reasons.append("review_body_missing_standalone_bilingual_format")
-        if author_owned:
+        if author_owned_fallback:
             expected_title = {
                 "APPROVE": AUTHOR_OWNED_APPROVAL_FALLBACK_TITLE,
                 "REQUEST_CHANGES": AUTHOR_OWNED_REQUEST_CHANGES_FALLBACK_TITLE,

@@ -487,3 +487,65 @@ def test_latest_review_and_author_owned_fallback_are_enforced(monkeypatch) -> No
     )["pull_requests"][0]
     assert ordinary_comment["review_conclusion"]["status"] == "valid"
     assert ordinary_comment["review_action_kind"] is None
+
+
+def test_community_author_self_review_does_not_satisfy_maintainer_queue(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
+    row = _queue_pr(
+        3660,
+        author="community-author",
+        ready_at="2026-08-18T07:00:00Z",
+        updated_at="2026-08-18T11:00:00Z",
+    )
+    head = str(row["headRefOid"])
+    row["reviews"] = [
+        {
+            "author": {"login": "community-author"},
+            "body": _full_review_body(head, author_fallback=True),
+            "commit": {"oid": head},
+            "state": "COMMENTED",
+            "submittedAt": "2026-08-18T11:00:00Z",
+        }
+    ]
+
+    self_review_only = pr_review_module.build_pr_review_packet(
+        pull_requests=[row],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="open",
+        reviewer_login="maintainer",
+    )["pull_requests"][0]
+
+    assert self_review_only["review_conclusion"]["status"] == "invalid"
+    assert (
+        "formal_review_state_required"
+        in self_review_only["review_conclusion"]["invalid_reasons"]
+    )
+    assert self_review_only["review_action_kind"] == "review_pull_request_exact_head"
+
+    row["reviews"].append(
+        {
+            "author": {"login": "maintainer"},
+            "body": _full_review_body(head),
+            "commit": {"oid": head},
+            "state": "APPROVED",
+            "submittedAt": "2026-08-18T10:00:00Z",
+        }
+    )
+    independently_reviewed = pr_review_module.build_pr_review_packet(
+        pull_requests=[row],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="open",
+        reviewer_login="maintainer",
+    )["pull_requests"][0]
+
+    assert independently_reviewed["review_conclusion"]["status"] == "valid"
+    assert independently_reviewed["review_conclusion"]["reviewer"] == "maintainer"
+    assert independently_reviewed["review_action_kind"] == (
+        "qualify_pull_request_merge_readiness"
+    )
