@@ -301,6 +301,19 @@ Relevant command results expose the compact
 `monitor_advancement_authoring_v0` contract so an Agent can recover this
 sequence without parsing documentation prose.
 
+Monitor successor routing uses one typed plan for preflight, writeback and
+receipt verification. Common Git transport URLs resolve to the same canonical
+repository identity, and action/claim/capability aliases are normalized before
+comparison. Repository routes must be representable as canonical `git:<host>/<path>`
+identities; control characters, backslashes and percent-encoded paths are rejected.
+Every supplied capability must be valid: an invalid entry is not silently dropped
+from a partly valid list. Follow-ups require `--material-change`; assignment or
+other agent-route flags without `--next-agent-todo` are rejected before writeback.
+User follow-ups still require explicit `user_action` or `user_gate`, never an
+implicit global gate. A route plan is not a claim, approval or atomic commit.
+Replay identity continues to bind the original observation, not a rewritten
+canonical spelling; retry the same logical observation with the same arguments.
+
 Open todos may also carry `resume_when` when they are visible but not yet
 executable. Until the parsed `resume_condition.satisfied` value is true, status
 and quota keep the todo out of `first_executable_items`,

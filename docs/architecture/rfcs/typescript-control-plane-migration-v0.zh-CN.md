@@ -294,6 +294,16 @@ commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立�
 
 **T2 — 闭合 monitor 写回及原子后续动作。**
 
+已交付有边界前置项：`scheduler/monitor_successor.ts` 统一 quota preflight、legacy
+writeback 与 receipt verification 的后续路由校验和规范化，删除 Python route
+guard/resolver 及 TS 回执端独立的默认值／capability 解释。非法 capability 项、非法
+后续 claim 和未声明 material change 的 follow-up 在 observation 写入前拒绝；合法
+action/claim/capability 别名和 Git transport 在回执核对时指向同一路由。v0 replay
+digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending receipt 失效。
+无需 Node 的 repository/bootstrap codec 暂留并做跨运行时对照，不引入启动依赖。
+这**不是** T2 原子事务：monitor mutation 和 successor 写入仍通过既有 fenced effect
+执行；跨 effect crash 恢复、native writer 闭合及整 Goal promotion 仍未放行。
+
 - 盘点 `monitor_poll_writeback.py` 及 event/Todo/lease caller，复用 monitor
   generation、独立 successor 和 settlement owner，组成一笔事务，不建第二套引擎。
 - 保持 unchanged poll/reschedule、generation fence、material-change successor

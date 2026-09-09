@@ -2034,6 +2034,11 @@ summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promote
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
+T2 monitor successor 的路由 owner 已由 preflight、legacy effect adapter 和回执校验
+共享。其结果仅证明规范化 intent，不证明 actor authority、provider commit 或
+monitor-plus-successor 原子持久化；事务闭合前继续保留 monitor writer fence 与
+promotion hold。
+
 - 从 `loopx/control_plane/todos/provider_projection.py`、既有 Todo-section renderer、
   canonical journal/outbox 入手。复用 #4097 已有的缺失 Todo section 恢复及
   `recovery_scope=todo_sections_only`；它不能恢复丢失的独立 Goal 正文。

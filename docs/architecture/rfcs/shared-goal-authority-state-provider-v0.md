@@ -2561,6 +2561,11 @@ source paths, authorize monitor writeback, or change provider/promotion holds.
 
 **D1 — qualify permanent projection delivery; may overlap T1/T2.**
 
+The T2 monitor successor route owner is now shared across preflight, the legacy
+effect adapter and receipt checks. Its result proves only normalized intent,
+not actor authority, provider commit or atomic monitor-plus-successor durability.
+Keep the monitor writer fence and promotion hold until that transaction closes.
+
 - Start from `loopx/control_plane/todos/provider_projection.py`, the existing
   Todo-section renderer and canonical journal/outbox. #4097 already recovers
   missing Todo sections with `recovery_scope=todo_sections_only`; reuse it.
