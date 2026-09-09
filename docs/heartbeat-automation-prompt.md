@@ -557,6 +557,71 @@ could not be resolved,
 `fallback_hint.available=false` and the pasteable heartbeat gate is the correct
 stop - never guess an automation id.
 
+### Optional Prompt-Delivery Canary / 可选提示词送达检查
+
+An installed `ACTIVE` automation and a successful scheduler ACK prove
+configuration, not prompt delivery or Agent startup. For #3927, the existing
+fallback executable also offers a **read-only**, explicit diagnostic:
+
+```bash
+loopx-apply-rrule --check-delivery \
+  --automation-id <automation-id> --goal-id <goal-id> --agent-id <agent-id> \
+  --scheduled-thread-id <host-thread-id> --scheduled-turn-id <host-turn-id>
+```
+
+Without independent host evidence this returns exit code `1` and
+`status=host_prompt_delivery_unverified`. It does not run `quota should-run`,
+touch SQLite, apply a schedule, ACK, create a receipt, or spend quota. The
+existing apply path is unchanged when `--check-delivery` is absent. There is no
+persistent activation; stop invoking the option to disable the check.
+
+To compare an observation, add `--delivery-observation <local-json-file>`.
+Choose the expected scheduled thread and **turn** independently in the host;
+do not copy the expected identity from the observation being checked. A prior
+turn in the same recurring thread is not proof for the selected turn.
+The trusted host observer must export exactly these compact fields:
+
+| Field | Required observation |
+| --- | --- |
+| `schema_version` | `codex_app_prompt_delivery_observation_v0` |
+| `automation_id`, `goal_id`, `agent_id`, `thread_id`, `turn_id` | Exact identities for the selected scheduled execution |
+| `prompt_sha256` | SHA-256 of the exact UTF-8 task body **received by that turn**, without trimming or newline normalization |
+| `prompt_delivered_at_ms` | Positive integer UTC epoch milliseconds, or `null` when delivery was not observed |
+| `agent_started_at_ms` | Positive integer UTC epoch milliseconds, or `null` when startup was not observed |
+| `observed_at_ms` | Positive integer UTC epoch milliseconds of host observation |
+
+This release does **not** ship a Codex App observation exporter or a hook into
+the host scheduler. Never manufacture the observation by copying the installed
+prompt digest, relabeling scheduler ACK, or using an Agent's completion claim.
+If the host cannot supply these facts, leave delivery unverified and use the
+generated heartbeat body in a visible session with the normal quota guard.
+
+The canary compares the observation with the installed heartbeat TOML and
+caller-selected identities. It accepts only an active heartbeat bound to that
+thread, the exact prompt digest, ordered delivery/start/observation timestamps,
+and a delivery age of at most 900 seconds. Override the window with
+`--delivery-max-age-seconds N` (1–86400). Re-reading an old observation does not
+refresh its delivery age. Invalid, extra, duplicate, oversized, stale or
+incomplete input fails closed. Observation input is limited to 4096 bytes and
+the manifest to 256 KiB; results expose fixed reason codes, never raw prompts,
+observation bodies, input paths or parser errors.
+
+Exit `0`, `status=host_observation_matched` means the supplied observation
+matches this selected turn; it is **not cryptographic host attestation**,
+future-run liveness, validated Todo completion or execution permission. This
+optional diagnostic does not change `automation_liveness_v0`, scheduler
+admission or notification policy. Repeating it produces no write or quota spend.
+
+中文：`ACTIVE` 和 scheduler ACK 仅证明配置已安装。显式运行上述只读检查时，
+缺少宿主独立观测就返回 `host_prompt_delivery_unverified` 和退出码 `1`。
+调用者须从宿主独立选择本轮 thread/turn，观测必须来自本轮实际收到的任务正文及
+Agent 启动事件，不能由安装器或 Agent 自报补造。本版本没有宿主观测导出器；宿主
+无法提供这些事实时保持未验证，并在可见会话中按正常 quota guard 测试 heartbeat。
+可用 `--delivery-observation` 传入严格限定字段的本地 JSON；默认时效为 900 秒，
+可用 `--delivery-max-age-seconds` 设置 1–86400 秒。匹配仅代表输入观测一致，
+不授予执行权限，也不证明未来调度活性或任务完成。检查不写入、不 ACK、不消费 quota，
+不读取会话日志，输出不含正文、路径或原始错误；不再调用该选项即停用。
+
 ```text
 Create a heartbeat automation starting at 3 minutes for the current thread;
 then apply `quota should-run.scheduler_hint`: update RRULE only when
