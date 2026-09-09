@@ -165,9 +165,10 @@ transition, at most one newly pushed community response head may take a bounded
 fast-feedback slot after all unprojected owner-authored work. `updatedAt` does
 not define readiness because comments and checks must not make old code look
 new. Only an explicit PR selection in the current user request may override the
-next item for that request; Todo text, monitor notes, and one-off author filters
-must not replace the capability policy. Projected candidates remain skipped
-until handled or their exact head materially changes.
+next item's ordering for that request; it does not override the selected row's
+`review_action_kind` or exact-head idempotency. Todo text, monitor notes, and
+one-off author filters must not replace the capability policy. Projected
+candidates remain skipped until handled or their exact head materially changes.
 It emits a
 `pull_request_review_todo_preview_v0` bound to its exact head. The preview may
 route to initial review, re-review after changes, or merge-readiness
@@ -548,6 +549,14 @@ challenge whether the design should ship, falsify its strongest material claim,
 inspect the whole implementation, then reconcile the verdict. The goal is justified
 acceptance, not more rejections. Read the target repository's architecture rules;
 do not export LoopX-specific kernel/provider or TypeScript placement to other repos.
+
+Before those evidence steps, apply
+`pr_review_selection_execution_contract_v0`. A generic `re-review`,
+`重新review`, or `复审` request selects and orders the named PR but does not force
+a duplicate audit. When `review_action_kind` is null, perform only a compact
+exact-head conclusion readback. A fresh audit despite a null action requires an
+explicit force-refresh request or a concrete new concern/evidence invalidation;
+the fresh audit must still satisfy the complete execution contract.
 
 A re-review has two scopes: the latest corrective diff and the complete base-to-head
 PR. Reuse observations only after checking their revisions and assumptions against

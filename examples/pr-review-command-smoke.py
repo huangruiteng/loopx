@@ -80,6 +80,8 @@ def main() -> int:
         "Treat `candidate` as a preview, not a durable projection",
         "durable Todo target-key readback -> `--projected-exact-head` -> exact-head review/comment readback -> `--handled-exact-head`",
         "Never send the projection ACK before the Todo exists",
+        "Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token.",
+        "When `review_action_kind` is null, do not execute its `review_plan`.",
     ):
         assert phrase in skill_text, phrase
     assert len(skill_source.splitlines()) <= 180, len(skill_source.splitlines())
@@ -679,6 +681,17 @@ def main() -> int:
         response_contract
     )
     assert response_contract["queue_table_role"] == "preface_only", response_contract
+    assert response_contract["selection_execution_contract"] == {
+        "schema_version": "pr_review_selection_execution_contract_v0",
+        "explicit_selection_scope": "ordering_only",
+        "review_action_authority": "pull_requests[].review_action_kind",
+        "generic_rereview_terms_force_fresh_audit": False,
+        "no_action_behavior": "compact_exact_head_conclusion_readback_only",
+        "force_fresh_audit_requires": (
+            "An explicit request to rerun evidence despite the unchanged/no-action "
+            "exact head, or a concrete new concern or evidence invalidation."
+        ),
+    }, response_contract
     assert response_contract["required_packet_fields_to_preserve"] == [
         "agent_response_contract",
         "agent_response_contract.review_execution_contract",
