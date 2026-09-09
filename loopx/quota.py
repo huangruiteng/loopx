@@ -247,6 +247,13 @@ def quota_with_handoff_outcome_floor(
     threshold = outcome_floor_threshold(profile)
     if outcome_gap_streak < threshold:
         return quota
+    from .control_plane.work_items.delivery_history import project_delivery_response
+
+    latest = handoff_readiness.get("post_handoff_latest_run")
+    if isinstance(latest, dict) and not project_delivery_response(
+        latest, project_asset.get("agent_todos") if isinstance(project_asset, dict) else None,
+    )["outcome_floor_applicable"]:
+        return quota
     state = str(quota.get("state") or "eligible")
     if state in {"blocked_health", "operator_gate", "waiting", "paused", "throttled"}:
         return quota

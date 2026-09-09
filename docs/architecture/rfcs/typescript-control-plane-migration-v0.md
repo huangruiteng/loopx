@@ -194,6 +194,19 @@ label; no legacy prediction is retained without a concrete display consumer.
   the normalized claim before registry access or lock creation. Invalid input
   therefore takes precedence over store errors, including in dry-run mode;
   state-dependent admission and writeback still share the same runtime lock.
+- Delivery response is a separate typed read decision consumed by quota,
+  handoff and work-lane projection. A scoped blocked observation exempts the
+  historical outcome floor only while its canonical Todo has a positively
+  identified pending resume target. Missing/invalid source, another actor's
+  claim, exclusions and unbound legacy blocker labels cannot establish that
+  exemption. Other runnable work remains selectable by the canonical planner.
+  Unknown refreshes interrupt statistics, not Todo/replan obligations; no new
+  persistent delivery ledger is added. Surface-only supervision and the
+  independent small-delivery rule remain unchanged.
+  This exemption requires the parsed target identity and a supported task class;
+  monitor baseline, capability and PR repository/number also bind to the current
+  Todo. Missing actors or stale/mismatched conditions cannot relax supervision.
+  Incomplete legacy conditions remain readable, but are not positive wait proof.
 - Legacy outcome-marker/hint configuration remains readable and preserves
   whether an outcome floor is configured. Its words no longer classify runs.
   No persisted history is rewritten and no new default-off flag restores the
@@ -298,49 +311,116 @@ rewrite or new writer admission is implied. General add/update admission and a
 generic repair action for every invalid condition remain separate scopes; this
 is not a claim of zero behavior change or full Todo writer closure.
 
-1. **Close the actual command and consumer inventory.** Build on the merged
-   create/claim/update and #4053 terminal/successor/archive transactions; do not
-   recreate them. Inventory remaining field-edit, monitor, lease, and event
-   callers against their real contracts. Move their decisions to the existing
-   TS owner and delete the replaced decisions in the same slice. Reuse the
-   canonical Todo summary for reads: `todo list` and status/attention must not
-   select stale Markdown or event Todos after promotion, even when the display
-   is missing or the canonical collection is empty. Refresh now loads one
-   unbounded canonical Todo snapshot for recommendation, repair/replan
-   qualification and completion-validation accountability; Todo-add's replan
-   binding and guided-start's existing frontier use the same source adapter.
-   Their existing decision reducers remain owners: no second planning store or
-   permission rule is introduced. Legacy callers retain their parser contracts.
-   Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
-   amendment revision bases separately; this closes the named planning callers,
-   not every consumer. Prove real-entrypoint parity and unavailable-provider
-   rejection, not just transport snapshots. Independently authored Next Action
-   remains narrative, not a Todo import. Missing display does not authorize
-   reconstructing narrative or weaken an accountable completion fence.
-2. **Make the display a recoverable one-way projection.** Reuse the canonical
-   journal/outbox and Todo-section renderer. Keep human narrative, source
-   revision, idempotent delivery and actionable pending repair. A failed render
-   must not undo a committed mutation or authorize a Markdown fallback.
-   Projection recovery must not replay the business operation. No third
-   TS-Markdown backend or automatic bidirectional synchronization is needed.
-3. **Qualify one local store, then cut over whole goals.** Close import,
-   ordering/consumer parity, writer fencing, capture/projection recovery,
-   historical receipts, capacity and >=10-day soak for the selected profile.
-   File-v0 conformance alone is not long-goal readiness. Do not route complete
-   to a provider while leaving update authoritative in Markdown for the same
-   goal. Until qualification and explicit promotion approval, keep the existing
-   default and fail-closed fences. Local qualification does not wait for the
-   PostgreSQL service; affected PostgreSQL transactions still require real
-   integration coverage.
-4. **Collect deletion payoff at each closed boundary.** After the last caller
-   and explicit migration window end, remove old Markdown business writers,
-   capture-only glue, duplicate reference aggregates and redundant bridges.
-   Keep the Markdown renderer and qualified import/export tools. List the exact
-   remaining callers and exit condition for each retained seam; a full native
-   CLI rewrite must not become a blanket reason to retain duplicate semantics.
-   Report product LOC removed, bridge LOC added and crossings separately from
-   tests/generated contracts. Stop and replan after two scaffolding-only slices;
-   net-negative LOC is useful evidence, not a quota that excuses lost behavior.
+#### Execution cards after the current stack
+
+This is a **conditional execution plan**, not a merged-status declaration.
+At the 2026-09-09 checkpoint, #4053, #4117, #4129, #4122
+(resume diagnosis/planning), #4134 (delivery history) and #4136 (claim diagnosis)
+are merged. The canonical delivery-response follow-up targets that landed main.
+Check their actual merge commits before starting. #4121 (SQLite candidate)
+and #4101 (projection receipt retention) are independent candidates, not
+implicit prerequisites or approved defaults.
+
+Execute the first unclosed card below; do not start all cards or rebuild a
+completed transaction. Keep the task ledger in LoopX state; this document is
+the shared plan, not another per-agent checklist database.
+
+**T0 — reconcile the landed baseline, inside the next implementation PR.**
+
+- Fetch the intended remote base; record its SHA and each dependency's actual
+  merged/not-merged status. Compare code, not just PR titles. If a dependency
+  is open, use an explicitly selected stacked base or stop that dependent unit.
+- Start from `coordination/todo_update.ts`, `todos/field_update.ts`,
+  `todos/provider_compatibility_edit.py`, `todos/line_update.py`,
+  `scheduler/monitor_poll_writeback.py` and their public callers. These paths
+  are under `loopx/control_plane/`. Re-resolve moved symbols instead of
+  restoring removed compatibility wrappers.
+- Produce a compact caller matrix: public operation, authority source before/
+  after promotion, TS owner, external effects, retained legacy caller, and
+  exact deletion condition. Update this section's completion facts with the
+  implementation; do not deliver an inventory-only framework PR.
+- When #4122 and delivery response meet, reconcile pending/invalid condition
+  diagnosis in the existing resume owner. A missing target is not proof of a
+  valid wait; readable historical pending state is not permission to relax
+  supervision. Retire duplicate checks only after both contracts are tested.
+
+**T1 — close the public Todo update transaction.**
+
+- Reuse the current provider text/note transaction, lifecycle admission,
+  field-plan and completion rules. Enumerate actual public metadata edits and
+  explicit-clear behavior before implementation; this is not permission to
+  widen `UPDATE_FIELDS` to every stored field or admit terminal transitions
+  through a generic patch.
+- Deliver one coarse typed transaction covering admitted intent, actor/claim/
+  exclusion/lease checks, field semantics, final validation, CAS and replay.
+  Keep external execution/checkpointing outside pure reduction. Monitor effects
+  that cannot fit safely remain explicitly unsupported until T2; list them.
+- Delete replaced Python update decisions and leaf-RPC orchestration in the
+  same PR. Keep the legacy codec/lock and compatibility writer while
+  unpromoted callers still need them; do not claim full writer deletion.
+- Prove omission versus clear, unclaimed copy correction versus privileged
+  metadata, other-owner/lease rejection, no-op, invalid-input no-write,
+  competing revisions, retry and lost-response recovery through the public
+  command and affected real providers.
+
+**T2 — close monitor writeback and its atomic follow-up.**
+
+- Inventory `monitor_poll_writeback.py` and its event/Todo/lease callers.
+  Reuse existing monitor generation, independent-successor and settlement
+  owners. Compose one transaction rather than adding a second monitor engine.
+- Preserve unchanged polling/reschedule behavior, generation fences,
+  material-change successor deduplication and accountable settlement.
+  A monitor remains non-executable delivery context; its independent
+  advancement Todo is not the monitor itself.
+- Delete the replaced Python transition decisions. External polling remains
+  an effect adapter. Prove duplicate polls, crash between phases, races,
+  failed effects, another actor's claim, and no-change no-delivery semantics.
+  If a required command effect is still unsupported, hold whole-Goal promotion;
+  never fall back to a Markdown business write.
+
+**T3 — close remaining structured consumers, then remove their old reads.**
+
+- Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
+  amendment revision inputs. Reuse #4117's canonical source adapter and pass
+  one snapshot through a decision; do not build another Todo inventory.
+- For each migrated caller, delete its post-promotion Markdown/event fallback in that
+  PR. Prove absent/stale/malformed display, empty canonical state, unavailable
+  provider, terminal/archive ordering, claim scope and data beyond UI limits.
+  Canonical absence must not revive legacy data or become successful completion.
+- Keep outcome history supervision, canonical obligations and settlement
+  authority separate. Unknown observations cannot settle Todo/replan work.
+  Explicitly disclose any semantic correction; do not label it full parity.
+
+**T4 — collect full-writer retirement after durability cutover.**
+
+- Depends on T1–T3 and the shared RFC's [D1–D3](shared-goal-authority-state-provider-v0.md#durability-execution-cards), including owner approval
+  and the explicit legacy migration window. Search remaining imports and
+  public command routes before deleting old Markdown business writers,
+  capture-only adapters and duplicate reference aggregates.
+- Keep permanent Markdown rendering, validated import/export and external
+  effect adapters. Every retained bridge names its live caller and exit
+  condition. No full TS CLI, daemon or remote service is required.
+
+**Validation and stop rules for every card**
+
+Use `tests/fixtures/control_plane/coordination_production_scale_v0.json`,
+`tests/control_plane/canonical_authority_fixture.py` and the existing provider
+conformance suite when their semantic dimensions are affected. Verify their
+current schema before reuse; never silently shrink a complex fixture to pass.
+Run `npm run typecheck:control-plane`, `npm run test:control-plane`, the
+affected public CLI tests and risk-based canary coverage. Shared transaction
+changes require affected File/NoKV arms and an isolated real PostgreSQL run;
+new local-store claims require that actual backend, not an in-memory substitute.
+
+Before moving code, assert intended legal and illegal behavior independently.
+After moving it, report baseline/head parity, intentional differences,
+production versus bridge LOC, and crossings separately from tests/generated
+code. Stop on an unknown writer, missing real environment, unexplained
+difference, private-data dependency or failed required gate. Do not waive
+authority, evidence, fixture or payload budgets to complete a card.
+A read-only snapshot or disposable synthetic Goal is allowed; active Goal
+promotion, new models/jobs, soak automation, release or merge need their
+respective explicit authority.
 
 Stacked schema-identifier cleanup is independent maintenance, not a prerequisite
 for this sequence. Absorb a downstream change only when the selected complete

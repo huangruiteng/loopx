@@ -47,6 +47,13 @@ class Case:
 
 
 CASES = [
+    Case('delivery_wait_target_unbound', (('loopx/control_plane/todos/resume_condition.ts', replacement(
+        'condition.target_todo_id !== spec.target || ', '')),),
+         'tests/control_plane_ts/delivery_response.test.ts', 'exact dependency identity'),
+    Case('delivery_wait_unknown_class', (('loopx/control_plane/todos/resume_condition.ts', replacement(
+        '["advancement_task", "user_gate", "user_action", "blocker"].includes(String(condition.target_task_class))',
+        'true')),),
+         'tests/control_plane_ts/delivery_response.test.ts', 'exact dependency identity'),
     Case('rollout_cwd_root', (('loopx/cli_rollout.py', replacement(
         'resolve_runtime_root(registry, runtime_root_arg, registry_path=registry_path)',
         'resolve_runtime_root(registry, runtime_root_arg)')),),

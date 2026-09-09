@@ -1,6 +1,7 @@
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
+import { resumeConditionHasKnownPendingTarget } from "../todos/resume_condition.ts";
 import { DELIVERY_OUTCOMES, diagnoseDeliveryClaim, isTurnScopedSettlementOutcome, type DeliveryOutcome } from "./delivery_outcome.ts";
 
 const TURN_KINDS = [
@@ -105,6 +106,41 @@ function followthrough(run: DeliveryRun, outcome: OutcomeSignal, kind: TurnKind)
 function prefixLength<T>(items: readonly T[], matches: (item: T) => boolean): number {
   const boundary = items.findIndex((item) => !matches(item));
   return boundary < 0 ? items.length : boundary;
+}
+
+/** Historical supervision may defer to a positively established current wait,
+ * never to a prose blocker, missing source row, or another actor's work.
+ * This read decision does not settle work or choose an alternative Todo. */
+export function projectDeliveryResponse(value: unknown): JsonObject {
+  const input = requireJsonObject(value, "delivery response");
+  const run = decodeRun(input.run);
+  const signal = (projectDeliveryHistory({ schema_version: "delivery_history_request_v0",
+    runs: [input.run], outcome_floor_configured: true }).runs as DeliverySignal[])[0];
+  const todo = input.todo === null ? null : requireJsonObject(input.todo, "bound Todo");
+  const runAgent = typeof input.run_agent_id === "string" ? input.run_agent_id.trim() : "";
+  const agentId = typeof input.agent_id === "string" ? input.agent_id.trim() : "";
+  const owner = typeof todo?.claimed_by === "string" ? todo.claimed_by.trim() : "";
+  const excluded = Array.isArray(todo?.excluded_agents) ? todo.excluded_agents : [];
+  const condition = todo?.resume_condition && typeof todo.resume_condition === "object"
+    && !Array.isArray(todo.resume_condition) ? todo.resume_condition as JsonObject : null;
+  const boundBlocker = Boolean(run.todo_id) && !run.replan_obligation_id
+    && run.delivery_outcome.trim() === "outcome_gap"
+    && !signal.delivery_claim_conflicts
+    && isTurnScopedSettlementOutcome(run.delivery_outcome, run.progress_observation, run.todo_id.trim());
+  const canonicalWait = boundBlocker && todo?.todo_id === run.todo_id.trim()
+    && todo.role === "agent" && todo.task_class === "advancement_task"
+    && ["open", "deferred"].includes(String(todo.status))
+    && (todo.archive_state === undefined || todo.archive_state === "active")
+    && Boolean(agentId) && agentId === runAgent && (!owner || owner === agentId) && !excluded.includes(agentId)
+    && condition?.schema_version === "todo_resume_condition_v0"
+    && condition.satisfied === false && todo.resume_ready !== true
+    && resumeConditionHasKnownPendingTarget(condition, todo);
+  return {
+    schema_version: "delivery_response_v0",
+    outcome_floor_applicable: !canonicalWait,
+    outcome_followthrough: canonicalWait ? null : signal.outcome_followthrough,
+    reason: canonicalWait ? "canonical_todo_wait" : "history_supervision",
+  };
 }
 
 /** One pure batch projection. History selection/order remains the caller's job;

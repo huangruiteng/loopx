@@ -2522,69 +2522,111 @@ one-way projections. Do not add a third TS-Markdown backend, bidirectional
 live synchronization, or per-command split authority. Unsupported post-cutover
 commands fail closed; they do not fall back to the old writer.
 
-The next complete stage packages are:
+#### Refactoring roadmap overview
 
-1. **Command/consumer closure.** Reuse the merged create, claim, update and
-   #4053 terminal/successor/archive paths. Inventory remaining public mutations
-   and reads against actual callers. Status/attention now joins `todo list` in
-   reading canonical Todo summaries after promotion, without requiring the
-   Markdown file. Missing providers fail closed and empty canonical collections
-   never revive legacy Todos. Refresh recommendation, repair/replan qualification,
-   completion-validation accountability, Todo-add replan binding and guided-start
-   frontier now share that canonical source. A refresh reads one snapshot and
-   passes it through its decisions rather than rereading a changing provider or
-   Markdown at each gate. Provider failure aborts; an empty snapshot is not a
-   fallback signal. This is consumer progress, not promotion proof: Turn/quota,
-   standing decisions, leases, monitor writeback, shared-goal alignment and
-   amendment revision bases still need their own parity inventory. Read authority
-   does not grant writeback. Source/display independence is tested with the
-   shared production-scale fixture and real FileAuthorityStore; these reads do
-   not establish freshness/CAS for a later business commit or change provider
-   defaults. Next Action narrative remains independent of Todo authority.
+The original direction remains; execution cards expand these stages rather than cancel them:
 
-   Lifecycle admission and the preauthorized terminal fence now share the TS
-   owner across legacy writers and native terminal transactions; the replaced
-   Python rules are removed without changing provider defaults or promotion.
-   This is not full native field-edit support: retain the strict text/note
-   transaction boundary until update's fields, ownership, validation and
-   monitor/resume effects close together. Neither an admission result nor a
-   lease-fence result is a commit receipt. Keep provider CAS/replay and existing
-   writer lock lifetimes unchanged while collecting this deletion payoff.
-   Waiting/resume lane selection is now one TS read-policy owner shared by quota,
-   vision-wait, agent-scope and replan. The obsolete Python selector module is
-   deleted; the adapter accepts the same canonical summary after promotion and
-   legacy summary before it. Real CLI coverage includes capacity changes and
-   missing promoted display without writing it. This does not close all quota
-   source paths, authorize monitor writeback, or change provider/promotion holds.
-2. **Permanent projection closure.** Reuse `provider_projection.py`, the
-   Todo-section renderer and existing journal/outbox. Preserve non-owned human
-   narrative; render owned sections from a known canonical revision, with
-   idempotent repair and freshness/readback evidence. Pending projection delivery
-   is independent of business commit/replay. Direct Markdown edits must never
-   import themselves into authority. Explicit validated edit/import tooling is
-   a separate proposal, not a second writer hidden inside rendering. Missing
-   displays now automatically recover Todo-only sections from canonical state
-   during normal projection delivery
-   ([#4097](https://github.com/huangruiteng/loopx/pull/4097)); recovery reports
-   `recovery_scope=todo_sections_only` and does not restore lost Goal narrative.
-   The [active-state projection contract](../../reference/protocols/active-state-structured-projection-v0.md)
-   defines the shipped recovery boundary. Validate stale/missing/malformed
-   display, crash/retry, revision races, narrative preservation and private-field
-   boundaries.
-3. **One qualified local profile and fenced cutover.** Section 7.2's embedded
-   candidate must prove bounded head/index growth, historical receipts, crash
-   recovery, real CLI readback, capacity and >=10-day soak. File-v0 conformance
-   is not that evidence. Bind one exact lineage/revision/manifest, drain capture,
-   reconcile consumers, fence writers and verify projection recovery plus fenced
-   export/rollback before explicit promotion approval. Do not promote active
-   goals for development tests. PostgreSQL deployment and NoKV qualification
-   proceed independently; changed shared transactions still qualify each
-   affected provider, including a real isolated PostgreSQL server.
-4. **Retirement with named callers.** Remove old Markdown business writers and
-   capture/reference/bridge code only when their final callers and migration
-   windows close. Keep the permanent renderer, qualified import/export, and
-   durable regression coverage. Publish the retained-seam inventory and next
-   deletion condition, rather than indefinitely expanding dual paths.
+1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.
+2. **Permanent projection closure.** D1 below retains Markdown as a long-lived one-way display, never a second business authority.
+3. **One qualified local profile and fenced cutover.** D2/D3 require the real backend, capacity, soak and explicit promotion approval.
+4. **Retirement with named callers.** T4 removes obsolete business writers after their callers exit; permanent rendering and required import/export remain.
+
+#### Durability execution cards
+
+Use the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
+for command inventory, update/monitor transactions and consumer deletion. Do not
+repeat that plan in a second implementation or treat a merged read-policy PR
+as storage readiness. Its T0 checkpoint is the entry condition for these cards.
+
+Lifecycle admission and the preauthorized terminal fence now share the TS
+owner across legacy writers and native terminal transactions; the replaced
+Python rules are removed without changing provider defaults or promotion.
+This is not full native field-edit support: retain the strict text/note
+transaction boundary until update's fields, ownership, validation and
+monitor/resume effects close together. Neither an admission result nor a
+lease-fence result is a commit receipt. Keep provider CAS/replay and existing
+writer lock lifetimes unchanged while collecting this deletion payoff.
+Waiting/resume lane selection is now one TS read-policy owner shared by quota,
+vision-wait, agent-scope and replan. The obsolete Python selector module is
+deleted; the adapter accepts the same canonical summary after promotion and
+legacy summary before it. Real CLI coverage includes capacity changes and
+missing promoted display without writing it. This does not close all quota
+source paths, authorize monitor writeback, or change provider/promotion holds.
+
+**D1 — qualify permanent projection delivery; may overlap T1/T2.**
+
+- Start from `loopx/control_plane/todos/provider_projection.py`, the existing
+  Todo-section renderer and canonical journal/outbox. #4097 already recovers
+  missing Todo sections with `recovery_scope=todo_sections_only`; reuse it.
+  It cannot recover lost independent Goal narrative.
+  The shipped boundary is the [active-state projection contract](../../reference/protocols/active-state-structured-projection-v0.md).
+  Direct Markdown edits must not import themselves into authority; validated edit/import tooling is a separate proposal, never a second writer hidden inside rendering.
+- Evaluate #4101's receipt-retention candidate against its actual merged head;
+  do not replace it with another delivery queue. A committed business result
+  and pending projection delivery must remain separately observable.
+- Prove crash/retry, concurrent revisions, absent/stale/malformed display,
+  receipt lifetime until delivery, non-owned narrative preservation and
+  private-field boundaries. Recovery must not rerun the business operation.
+- Delete obsolete projection repair/receipt paths only after their callers
+  move. Exit with deterministic freshness/readback and an actionable repair
+  path; a successful render once is insufficient.
+
+**D2 — qualify exactly one local profile; independent of PostgreSQL deployment.**
+
+- Reconcile the SQLite candidate #4121 with Section 7.2 before adding code.
+  Keep it opt-in until qualified and approved. If it does not meet the contract,
+  record the concrete gap rather than building a second store or changing
+  defaults. Keep File/NoKV as existing conformance references.
+- On a disposable real backend, prove atomic head/event/receipt commit,
+  concurrent access, historical cursor/replay compatibility, bounded live-head/
+  index growth, crash/restore recovery and public CLI readback using the shared
+  production-scale fixture and accelerated growth cases.
+- Separately obtain the existing >=10-day synthetic-goal soak evidence.
+  Accelerated volume is not elapsed time; code may merge with promotion held.
+  Starting a scheduled soak or touching live Goals requires separate authority.
+- Exit with one exact provider/profile revision and a qualification ledger
+  naming passed, failed and missing evidence. NoKV and PostgreSQL retain their
+  own qualification; a pass on SQLite cannot waive another affected provider.
+
+**D3 — integrate and request a whole-Goal cutover.**
+
+- Requires T1–T3, D1/D2 and qualified capture; production cutover additionally
+  requires explicit approval. Transaction-
+  bound capture from merged #3870 is the starting point, not a new subsystem.
+  Audit sustained mixed-writer and event-only coverage against the final command
+  matrix; unresolved rows block promotion.
+- Bind one lineage, source revision, field manifest, digest and cursor; drain
+  capture, fence old writers and read back canonical state plus projection.
+  Rehearse legacy/canonical/selected-provider parity on disposable inputs,
+  including empty state, ordering, archived records, leases and receipts.
+- Demonstrate fenced export/rollback. Never simply disable a fence and revive
+  an older Markdown snapshot after canonical writes. A failed cutover leaves
+  one known authority or an explicit blocked state, never two writable stores.
+- Promote only the approved profile/cohort. Keep unsupported commands fail-
+  closed. After the declared migration window and final legacy caller close,
+  hand off exact retired paths to T4; keep renderer and validated import/export.
+
+#### Execution handoff and integration order
+
+| Ready condition | Next action | What it does not authorize |
+| --- | --- | --- |
+| Current refactor stack is reconciled | T1; D1 and D2 may proceed independently | Default provider changes or another generic migration framework |
+| T1 closes field semantics | T2; close T3 consumers as their contracts become available | Per-command split authority within one Goal |
+| T1–T3 and D1/D2 plus capture qualify | D3 rehearsal, then explicit promotion request | Skipping soak, bypassing failed evidence, or production promotion by the agent |
+| Approved cutover and legacy window finish | T4 full-writer retirement | Deleting permanent Markdown presentation or historical receipts still needed for replay |
+
+Expect roughly **five to seven cohesive implementation/qualification batches**
+after reconciling the current stack, not a fixed PR quota: T1, T2, T3, D1, D2,
+D3 and T4 can share a PR only when their dependencies, review and rollback
+remain clear. Semantic deletion starts in T1; full legacy-writer deletion waits
+for D3/T4. Elapsed-time soak is separate and is not shortened by splitting PRs.
+
+For each handoff, record the exact base/head, selected card, actual callers
+removed, changed authority/observable semantics, real-backend results, remaining
+holds and one next executable action. If an earlier stage already landed,
+verify its evidence and skip its implementation; if prerequisites fail, stop
+that dependent stage. Do not turn hypothetical post-merge readiness into an
+automatic promotion, automation, merge or release permission.
 
 The current default and Appendix C promotion holds remain unchanged. This plan
 does not declare the whole Todo family, long-goal profile, or shared deployment
@@ -2597,6 +2639,6 @@ second Todo state machine.
 | --- | --- | --- | --- |
 | L. Long-goal local persistence | Now, alongside the Todo caller | Section 7.2: embedded-store candidate, bounded live head and receipt index, historical scan compatibility, crash-safe checkpoints, real CLI readback, accelerated capacity and >=10-day soak. | Reuses the TS authority owner; required for local long-goal promotion, independent of P. |
 | P. PostgreSQL provider plane | Now, from current `main` | Keep the existing `AuthorityStore` contract; finish schema migration/install ownership, authenticated service and tenant authorization, restore-incarnation rotation, pool/cancellation/failover behavior, and reviewed indexes, partitioning, retention, and measured capacity. Live PostgreSQL conformance remains mandatory. | Does not depend on #3870 and must not stack on its branch. This lane alone creates no runtime caller or promotion claim. |
-| C. Canonical transaction capture | In implementation, based on #3870 | Transaction-bound outbox capture now targets the one `coordination.runtime_shadow` lineage and retains complete versioned Todo/lease records. Finish sustained mixed-writer parity, explicit-clear/omission coverage, and event-only Todo recovery evidence. | Can run in parallel with P, but both C and the selected provider profile must finish before parity or promotion integration. |
+| C. Canonical transaction capture | Qualify the implementation merged in #3870 | Transaction-bound outbox capture targets the one `coordination.runtime_shadow` lineage and retains complete versioned Todo/lease records. Finish sustained mixed-writer parity, explicit-clear/omission coverage, and event-only Todo recovery evidence. | Can run in parallel with P, but both C and the selected provider profile must finish before parity or promotion integration. |
 | I. Binding and qualification integration | After C and the selected profile's qualification | Bind one exact provider lineage, field manifest, source revision, digest, and cursor; qualify explicit v0 import, ordering/archival/consumer parity, and recovery/capacity without consulting legacy state for missing fields. | Long-goal local integration requires L and does not wait for P. PostgreSQL joins only when its own P holds pass. |
 | F. Promotion and cleanup | After I and explicit maintainer approval | Complete provider-first CLI routing, the lock-owning promotion orchestrator, compatibility projection outbox, post-promotion fenced export/rollback, then delete duplicate reference aggregates and flip the reviewed stage/hold declarations. | Each profile must pass C, I, and its own provider qualification; long-goal local promotion additionally requires L, and PostgreSQL requires P. |

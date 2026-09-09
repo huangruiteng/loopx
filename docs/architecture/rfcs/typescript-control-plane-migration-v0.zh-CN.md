@@ -149,6 +149,15 @@ classification 保留为历史标签；没有明确展示消费者时，不保�
   Refresh 先按既有顺序校验各字段，再以归一化结果检查组合语义，之后才读取
   registry 和创建锁。因此非法输入优先于存储错误返回，dry-run 也一致；依赖
   当前状态的准入与写回仍在同一 runtime 锁内完成。
+- delivery response 是 quota、handoff 和 work-lane 共用的 TS 只读决策：只有
+  绑定的 blocked observation 与当前 canonical Todo 的明确、合法等待条件一致，
+  才不施加历史 outcome floor。来源缺失／非法、其他 actor claim、exclusion 和
+  无绑定的旧 blocker 标签不能建立该例外；其他可执行工作仍由 canonical planner
+  选择。unknown 刷新中断统计，不清除 Todo/replan 义务，不新增持久化交付账本。
+  连续表层交付监督与独立的小规模交付规则保持不变。
+  该例外必须匹配解析后的 target identity 和合法 task class；monitor baseline、
+  capability、PR repository/number 也绑定当前 Todo。缺失 actor 或陈旧／错配的
+  condition 不能解除监督。旧式不完整条件仍可读取，但不构成正向等待证明。
 - 新交付声明通过现有 writer API 写显式 enum，例如
   `refresh-state --delivery-outcome ... --delivery-batch-scale ...`。
   纯状态刷新仍可不声明交付；本批不强迫每次刷新声明进展。既有写入 enum 校验、
@@ -231,35 +240,90 @@ generation fence、claim/exclusion、capacity 和 PR 等待语义保持。非法
 准入。普通 add/update 准入及覆盖全部非法条件的通用修复动作仍是独立范围；不能宣称
 全量零行为变化或全部 Todo writer 已闭合。
 
-1. **闭合实际命令与 consumer 清单。** 基于已合入的 create/claim/update 和 #4053
-   terminal/successor/archive transaction 推进，不重复建设。按真实合同盘点剩余
-   字段编辑、monitor、lease、event caller，把规则迁入既有 TS owner，并在同一切片
-   删除被替代的 decision。读取复用 canonical Todo summary：promotion 后，`todo list`
-   和 status/attention 不得选择陈旧 Markdown/event Todo；投影缺失、canonical 集合为空
-   也不例外。Refresh 现在只读一次无截断 canonical Todo 快照，供推荐、repair/replan
-   验收和 completion-validation 问责共同使用；Todo-add 的 replan 绑定和 guided-start
-   的既有 frontier 也复用同一来源适配器。既有 decision reducer 仍是规则 owner，不增加
-   第二份 planning store 或权限规则；旧模式保留原 parser 合同。Turn/quota、Dashboard、
-   standing decision、shared-goal alignment 与 amendment revision basis 另行审计，
-   不能将这些具名调用链的闭合等同于全部 consumer 合格。通过真实入口验证 parity 和
-   provider 故障拒绝。独立维护的 Next Action 仍是正文，不导入 Todo；展示缺失不授权
-   重建丢失正文，也不能削弱完成验收门禁。
-2. **把展示闭合为可恢复的单向投影。** 复用 canonical journal/outbox 与 Todo-section
-   renderer，保留人工叙述、来源 revision、幂等交付和可操作的 pending repair。
-   渲染失败不能撤销已提交事务，也不能授权 Markdown fallback；恢复投影不能重跑业务操作。
-   不引入第三种 TS-Markdown backend 或自动双向同步。
-3. **资格化一个本地 store，再按完整 goal 切换。** 所选 profile 闭合 import、排序与
-   consumer parity、writer fencing、capture/projection recovery、历史 receipt、容量及
-   >=10 天 soak。file-v0 conformance 本身不等于长程就绪。不能让同一 goal 的 complete
-   走 provider、update 却仍以 Markdown 为权威。资格化与显式 promotion 批准前，保留
-   当前默认及 fail-closed fence。本地资格化不等待 PostgreSQL service；受影响的
-   PostgreSQL transaction 仍需真实集成验证。
-4. **每闭合一个边界就兑现删除。** 最后 caller 与显式迁移窗口结束后，删除旧 Markdown
-   业务 writer、仅供 capture 的 glue、重复 reference aggregate 和冗余 bridge；保留
-   Markdown renderer 与已资格化 import/export 工具。每条保留 seam 列出具体 caller
-   和退出条件，不能用“CLI 尚未全 TS 化”笼统保留重复语义。分别报告 product LOC 删除、
-   bridge LOC 增加、crossings，不能把测试/生成合同计为删除收益。连续两个切片只有
-   scaffolding 时停止并重规划；净减代码是证据，不是可以牺牲行为的配额。
+#### 当前 stack 合入后的执行卡
+
+这是**条件式执行规划**，不是所有阶段已完成的声明。2026-09-09 核查时，#4053、#4117、
+#4129、#4122（resume 诊断／规划）、#4134（交付历史）、#4136（声明诊断）均已合并；
+canonical delivery-response 后续批次基于这些已合入的 main。执行前核验实际 merge
+commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立候选，不自动成为
+依赖或已批准的默认配置。
+
+只执行下面第一个未闭合阶段，不同时启动所有阶段，不重建已完成事务。具体任务
+写入 LoopX Todo；本节作为共享路线，不再维护另一份 per-agent 状态账本。
+
+**T0 — 在下一实现 PR 内对齐已合入基线。**
+
+- Fetch 目标 remote base，记录 SHA 和每项依赖的实际合并状态。核对代码而非 PR
+  标题；依赖未合并时，使用明确选定的 stacked base，或暂停该依赖单元。
+- 从 `loopx/control_plane/` 下的 `coordination/todo_update.ts`、
+  `todos/field_update.ts`、`todos/provider_compatibility_edit.py`、
+  `todos/line_update.py`、`scheduler/monitor_poll_writeback.py` 及公开 caller
+  入手。符号移动后重新定位，不恢复已删除 wrapper。
+- 形成紧凑 caller 表：公开操作、promotion 前后来源、TS owner、外部 effect、
+  保留的 legacy caller、精确删除条件。随实现更新完成事实，不单独交付 inventory
+  framework PR。
+- #4122 与 delivery response 汇合时，在既有 resume owner 对齐 pending/invalid
+  诊断。目标缺失不证明合法等待；历史 pending 可读不等于可放宽监督。
+  两个合同都验证后，再删除重复检查。
+
+**T1 — 闭合公开 Todo update 事务。**
+
+- 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
+  规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
+  字段，也不让 generic patch 获得 terminal transition 权限。
+- 一次粗粒度 TS 事务覆盖合法 intent、actor/claim/exclusion/lease、字段语义、
+  最终验证、CAS 与 replay；外部执行和 checkpoint 留在 effect adapter。
+  无法安全一起闭合的 monitor effect 留到 T2，并显式列为不支持。
+- 同 PR 删除被替代的 Python update decision 与 leaf-RPC 编排；未 promotion
+  caller 仍需要的 codec、lock 和 compatibility writer 保留，不宣称完整 writer 退役。
+- 通过公开命令及受影响真实 provider 验证：省略／清空、unclaimed 文案修正与受限
+  metadata 的差异、other-owner/lease 拒绝、no-op、非法输入无写入、竞争 revision、
+  retry 和丢响应恢复。
+
+**T2 — 闭合 monitor 写回及原子后续动作。**
+
+- 盘点 `monitor_poll_writeback.py` 及 event/Todo/lease caller，复用 monitor
+  generation、独立 successor 和 settlement owner，组成一笔事务，不建第二套引擎。
+- 保持 unchanged poll/reschedule、generation fence、material-change successor
+  去重和可归属 settlement。Monitor 不是 delivery 执行任务；独立 advancement Todo
+  不能被 monitor 自身替代。
+- 删除被替代的 Python transition decision，外部轮询保留 effect adapter。
+  验证重复 poll、阶段间 crash、race、effect 失败、其他 actor claim 和 no-change
+  不形成交付。必要命令 effect 尚不支持时暂停整 Goal promotion，不能回退 Markdown 写入。
+
+**T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
+
+- 分别审计 Turn/quota、Dashboard、standing decision、shared-goal alignment、
+  amendment revision 输入。复用 #4117 canonical source adapter，一次决策传递一份
+  snapshot，不新增 Todo inventory。
+- 每迁完 caller，就在该 PR 删除其 promotion 后的 Markdown/event fallback。验证缺失／陈旧／
+  非法 display、canonical 空集合、provider 不可用、terminal/archive 排序、
+  claim scope 和超过 UI limit 的数据。来源为空不能复活 legacy 数据或视为任务完成。
+- 区分历史监督、canonical 义务与 settlement 权威；unknown 不能结清 Todo/replan。
+  有意语义修正单独披露，不标成全量 parity。
+
+**T4 — durable cutover 后兑现完整 writer 删除。**
+
+- 前提是 T1–T3 和 shared RFC 的 [D1–D3](shared-goal-authority-state-provider-v0.zh-CN.md#持久化执行卡)，包括 owner 批准及明确的 legacy 迁移窗口。
+  搜索剩余 import 和公开路由后，删除旧 Markdown 业务 writer、capture-only adapter、
+  重复 reference aggregate。
+- 保留永久 Markdown renderer、已验证 import/export 和外部 effect adapter。
+  每条保留 bridge 标明真实 caller 与退出条件；不等待全 TS CLI、daemon 或远端服务。
+
+**每张执行卡的验证与停止规则**
+
+涉及对应语义时，复用 `tests/fixtures/control_plane/coordination_production_scale_v0.json`、
+`tests/control_plane/canonical_authority_fixture.py` 和既有 provider conformance；
+先核验当前 schema，不能为过测试缩减复杂 fixture。运行
+`npm run typecheck:control-plane`、`npm run test:control-plane`、受影响公开 CLI
+测试和按风险选择的 canary。共享事务改动须覆盖受影响 File/NoKV 及真实隔离 PostgreSQL；
+本地 store 声明须验证实际 backend，内存替身不能替代。
+
+移动代码前独立定义合法／非法行为；移动后分别报告 baseline/head parity、有意差异、
+product/bridge LOC 和 crossings，不混入 test/generated LOC。发现未知 writer、
+真实环境缺失、未解释差异、私有数据依赖或必要门禁失败时停止，不降低 authority、
+证据、fixture 或 payload 预算。允许只读快照和一次性 synthetic Goal；活跃 Goal
+promotion、启动模型／任务、soak automation、发布或合并仍需各自明确授权。
 
 stack 中的 schema identifier 清理是独立维护，不是上述路线的前置条件。只吸收所选
 完整事务确实依赖的下游改动；base 合并后，其余工作再 rebase。

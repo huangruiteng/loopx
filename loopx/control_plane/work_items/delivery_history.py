@@ -81,3 +81,43 @@ def require_consistent_delivery_claim(record: Mapping[str, Any]) -> None:
         raise RuntimeError("TypeScript delivery claim validation shape mismatch")
     if result.get("valid") is not True:
         raise ValueError("contradictory delivery claim: " + ", ".join(result.get("conflicts") or []))
+
+
+def project_delivery_response(
+    run: Mapping[str, Any], summary: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Select a canonical source row; TS alone decides its supervision meaning."""
+    from ..todos.summary_item import todo_planning_source_items
+    from ..todos.projection import todo_summary_claim_scope_agent_id
+
+    source = next((item for item in todo_planning_source_items(summary, include_terminal=True)
+                   if item.get("todo_id") == run.get("todo_id")), None) if summary else None
+    fields = ("todo_id", "role", "status", "task_class", "archive_state", "claimed_by",
+              "excluded_agents", "resume_when", "resume_ready", "resume_condition",
+              "resume_monitor_generation", "task_repository")
+    todo = {key: source[key] for key in fields if key in source} if source else None
+    if todo and isinstance(todo.get("resume_condition"), dict):
+        condition = todo["resume_condition"]
+        todo["resume_condition"] = {key: condition[key] for key in (
+            "schema_version", "resume_when", "satisfied", "invalid_target", "invalid_state",
+            "kind", "target", "target_todo_id", "target_status", "target_task_class", "target_archive_state",
+            "baseline_generation", "material_change_generation", "provider_required", "provider", "capability",
+            "pr_repo", "pr_number", "repository_binding_state", "repository_binding_source",
+        ) if key in condition}
+    result = effect_runtime_result("work_item.delivery_response.project", {
+        "run": _run_facts(run), "todo": todo,
+        "agent_id": todo_summary_claim_scope_agent_id(summary),
+        "run_agent_id": run.get("agent_id"),
+    })
+    if not isinstance(result, dict) or result.get("schema_version") != "delivery_response_v0":
+        raise RuntimeError("TypeScript delivery response shape mismatch")
+    if result["outcome_followthrough"] is not None:
+        result["outcome_followthrough"]["latest_classification"] = _text(run.get("classification")).strip()
+    return result
+
+
+def compact_delivery_binding(run: Mapping[str, Any]) -> dict[str, Any]:
+    """Retain compact evidence identity, never evidence bodies, for read decisions."""
+    facts = _run_facts(run)
+    return {key: facts[key] for key in ("todo_id", "replan_obligation_id", "progress_observation")
+            if facts[key]} | ({"agent_id": _bounded_text(_text(run["agent_id"]))} if run.get("agent_id") else {})

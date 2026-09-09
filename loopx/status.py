@@ -88,7 +88,7 @@ from .control_plane.work_items.autonomous_replan_obligation import (
 from .control_plane.work_items.backlog_hygiene import (
     MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS as _MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS_READ_MODEL,
 )
-from .control_plane.work_items.delivery_history import project_delivery_history
+from .control_plane.work_items.delivery_history import compact_delivery_binding, project_delivery_history
 from .control_plane.runtime.run_compaction import (
     RUN_BASE_COMPACT_FIELDS,
     attach_run_summary_projections as _attach_run_summary_projections_read_model,
@@ -588,6 +588,8 @@ def project_post_handoff_history(
         compact.update({field: signal[field] for field in ("delivery_batch_scale", "delivery_turn_kind")})
         if signal.get("delivery_claim_conflicts"):
             compact["delivery_claim_conflicts"] = signal["delivery_claim_conflicts"]
+        if signal["delivery_turn_kind"] == "blocker_writeback":
+            compact.update(compact_delivery_binding(run))
         if signal["delivery_outcome"] != "not_configured":
             compact["delivery_outcome"] = signal["delivery_outcome"]
         compact_runs.append(_attach_run_summary_projections_read_model(

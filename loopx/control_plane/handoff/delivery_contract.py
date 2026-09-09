@@ -10,6 +10,7 @@ from ...execution_profile import (
     outcome_floor_threshold,
 )
 from ..runtime.public_safety import compact_text
+from ..work_items.delivery_history import project_delivery_response
 
 
 def compact_packet_text(value: str, limit: int = 180) -> str:
@@ -61,6 +62,11 @@ def handoff_delivery_contract(item: dict[str, Any] | None) -> dict[str, Any] | N
         isinstance(outcome_gap_streak, int)
         and outcome_gap_streak >= outcome_threshold
     )
+    latest = readiness.get("post_handoff_latest_run")
+    if outcome_degraded and isinstance(latest, dict):
+        outcome_degraded = project_delivery_response(
+            latest, item.get("agent_todos") or project_asset.get("agent_todos"),
+        )["outcome_floor_applicable"]
     if not small_degraded and not outcome_degraded:
         return None
     recent_runs = readiness.get("post_handoff_recent_runs")
