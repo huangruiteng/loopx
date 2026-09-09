@@ -3,7 +3,7 @@
 - Status: Accepted, transaction-payoff phase in progress
 - Proposed by: LoopX maintainers
 - Date: 2026-08-15
-- Last revised: 2026-09-07
+- Last revised: 2026-09-09
 - Scope: an incremental, replacement-first migration of the LoopX control-plane
   core from Python to TypeScript without maintaining two semantic
   implementations
@@ -195,6 +195,32 @@ marker/hint configuration with an explicit compatibility plan. Exact legacy
 lifecycle classification codes and unrelated cadence policies are outside this
 slice; they must not be reported as migrated or globally free of prose rules.
 
+### Legacy field-rule retirement checkpoint
+
+`todos/field_update.ts` now owns the complete metadata intent assembly used by
+the legacy `update`, `claim`, `complete`, and `supersede` line writer: status and
+completion timestamps, omission versus explicit clears, binding precedence,
+removed-policy repair, resume-generation pairing, and completion metadata.
+It composes the existing TS completion rule directly. The replaced Python
+decision branches and the last-caller `todo.completion_state.metadata_updates`
+RPC/facade are removed, not kept as a fallback.
+
+This is a pure plan, not admission or a provider commit. Python still owns
+Markdown lookup/encoding, byte-level no-op detection, locking and external
+effects. Public role/binding admission and the event writer are not declared
+migrated by this slice. Promoted update remains text/note-only; no unsupported
+field gains authority, no goal is promoted, and no third storage path appears.
+Rejected plans now leave even the caller's in-memory line buffer unchanged;
+public rejected transactions were already non-committing.
+
+There is one field-plan crossing per legacy line write. It replaces the former
+metadata RPC on ordinary edits; already-finalized completions with an override
+gain one planning crossing. Cached codec normalization calls remain. This is
+semantic deletion, not a claim of fewer crossings on every command. Retire the
+adapter with its final legacy lifecycle caller after full-goal cutover, or fold
+it into that caller's coarse transaction when migrating the caller; do not grow
+a series of field-level RPCs. Retain Markdown rendering permanently.
+
 ### Next delivery sequence
 
 The destination retains Markdown as a **permanent readable projection**, not a
@@ -225,10 +251,18 @@ than extending these adapters field by field.
    TS owner and delete the replaced decisions in the same slice. Reuse the
    canonical Todo summary for reads: `todo list` and status/attention must not
    select stale Markdown or event Todos after promotion, even when the display
-   is missing or the canonical collection is empty. Audit Turn, quota, planning,
-   Dashboard and standing-decision consumers separately; fixing one does not
-   qualify all consumers. Prove real-entrypoint parity and unavailable-provider
-   rejection, not just transport snapshots.
+   is missing or the canonical collection is empty. Refresh now loads one
+   unbounded canonical Todo snapshot for recommendation, repair/replan
+   qualification and completion-validation accountability; Todo-add's replan
+   binding and guided-start's existing frontier use the same source adapter.
+   Their existing decision reducers remain owners: no second planning store or
+   permission rule is introduced. Legacy callers retain their parser contracts.
+   Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
+   amendment revision bases separately; this closes the named planning callers,
+   not every consumer. Prove real-entrypoint parity and unavailable-provider
+   rejection, not just transport snapshots. Independently authored Next Action
+   remains narrative, not a Todo import. Missing display does not authorize
+   reconstructing narrative or weaken an accountable completion fence.
 2. **Make the display a recoverable one-way projection.** Reuse the canonical
    journal/outbox and Todo-section renderer. Keep human narrative, source
    revision, idempotent delivery and actionable pending repair. A failed render

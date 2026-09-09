@@ -58,13 +58,13 @@ import {
   evaluateTodoCompletionFence,
 } from "./todos/completion_fence.ts";
 import {
-  buildTodoCompletionMetadataUpdates,
   normalizeTodoCompletionValue,
   requireTodoCompletionMetadataValue,
   selectTodoCompletionContinuation,
 } from "./todos/completion_state.ts";
 import { reduceTodoCompletionTransaction } from "./todos/completion_transaction.ts";
 import { transitionTodoNextAction } from "./todos/next_action.ts";
+import { planTodoFieldUpdate } from "./todos/field_update.ts";
 import {
   evaluateTodoResumeConditions,
   normalizeTodoResumeWhen,
@@ -365,7 +365,7 @@ export function createEffectRuntimeHandlers(
     ["todo.completion_state.normalize", normalizeTodoCompletionValue],
     ["todo.completion_state.require_metadata", requireTodoCompletionMetadataValue],
     ["todo.completion_state.continuation_for_write", selectTodoCompletionContinuation],
-    ["todo.completion_state.metadata_updates", buildTodoCompletionMetadataUpdates],
+    ["todo.field_update.plan", planTodoFieldUpdate],
     [
       "todo.claim.decide",
       (params) => evaluateCoordinationTodoClaimDecision(

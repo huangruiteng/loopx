@@ -15,6 +15,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from ..coordination.local_authority import read_canonical_todo_fields_if_promoted
+from ...paths import resolve_runtime_root
 from ...control_plane.todos.active_state_todo_parser import parse_active_state_todos
 from ...control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -33,6 +35,7 @@ def existing_runnable_agent_frontier(
     *,
     resolved_goal_id: str,
     effective_agent_id: str | None,
+    runtime_root_arg: str | None = None,
 ) -> list[dict[str, Any]] | None:
     """Runnable advancement agent Todos already present in the goal's state.
 
@@ -41,9 +44,11 @@ def existing_runnable_agent_frontier(
     whose resume condition is satisfied (or absent) enter the frontier.
     Blocked, deferred, monitor, blocker, resume-blocked, or peer-claimed
     Todos never enter the frontier. Returns ``None`` whenever the frontier
-    cannot be proven (not connected, unknown goal, missing or unreadable
-    state file, or nothing runnable), so callers keep the unconditional
-    planning contract — fail-closed.
+    cannot be proven (not connected, unknown goal, missing legacy state, or
+    nothing runnable), so callers keep the unconditional planning contract.
+    After cutover only canonical records count; provider unavailability raises
+    instead of being mistaken for an empty frontier. A missing display is safe
+    to ignore, not permission to reconstruct its non-Todo narrative.
     """
     if inspection.get("connection_state") != "connected":
         return None
@@ -63,18 +68,22 @@ def existing_runnable_agent_frontier(
         Path(str(inspection.get("project") or "")),
         registry_goal.get("state_file"),
     )
-    if state_file is None or not state_file.is_file():
-        return None
-    try:
-        state_text = state_file.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    parsed = parse_active_state_todos(
-        state_text,
-        goal=registry_goal,
-        state_path=state_file,
-        item_limit=None,
+    parsed = read_canonical_todo_fields_if_promoted(
+        runtime_root=resolve_runtime_root(
+            registry_payload or {}, runtime_root_arg, registry_path=registry_path,
+        ),
+        goal_id=resolved_goal_id,
     )
+    if parsed is None:
+        if state_file is None or not state_file.is_file():
+            return None
+        try:
+            state_text = state_file.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        parsed = parse_active_state_todos(
+            state_text, goal=registry_goal, state_path=state_file, item_limit=None,
+        )
     agent_summary = parsed.get("agent_todos") if isinstance(parsed, dict) else None
     items = (
         agent_summary.get("items", []) if isinstance(agent_summary, dict) else []
@@ -86,19 +95,12 @@ def existing_runnable_agent_frontier(
         and todo_item_is_actionable_open(item)
         and item.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
     ]
-    if effective_agent_id:
-        runnable = [
-            item
-            for item in runnable
-            if not item.get("claimed_by")
-            or str(item.get("claimed_by")) == effective_agent_id
-        ]
-    else:
-        runnable = [
-            item
-            for item in runnable
-            if not item.get("claimed_by")
-        ]
+    runnable = [
+        item
+        for item in runnable
+        if not item.get("claimed_by")
+        or (effective_agent_id and str(item.get("claimed_by")) == effective_agent_id)
+    ]
     return runnable or None
 
 

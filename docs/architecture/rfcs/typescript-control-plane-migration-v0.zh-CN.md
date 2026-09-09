@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-07
+- Last revised：2026-09-09
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -152,6 +152,28 @@ Python decision，保留独立审阅的 typed case，并通过真实 CLI 验证�
 字段的 writer，并用明确兼容计划退役旧 marker/hint 配置。本批不迁移精确的旧
 lifecycle classification code 或其他 cadence policy，不能宣称全局已无文本规则。
 
+### Legacy 字段规则退役检查点
+
+`todos/field_update.ts` 现在持有 legacy `update`、`claim`、`complete`、`supersede`
+line writer 共用的完整 metadata intent 组装：status 与 completion 时间、未传与显式
+清空、binding 优先级、已移除 policy 的修复、resume-generation 配对及 completion
+metadata。它直接组合已有 TS completion rule。被替代的 Python decision 分支，以及
+失去最后调用者的 `todo.completion_state.metadata_updates` RPC/facade 一起删除，
+不保留为 fallback。
+
+这是一份纯 plan，不是 admission 或 provider commit。Python 仍保留 Markdown 定位／
+编码、字节级 no-op 检查、锁与外部 effect；本批不宣称迁完公共 role/binding admission
+或 event writer。Promoted update 仍只支持 text/note：不扩权、不 promotion goal、
+不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
+事务在拒绝时原本就不会提交。
+
+每次 legacy line write 有一次 field-plan crossing：普通编辑替代原 metadata RPC；
+已经 finalization、携带 override 的 completion 会增加一次 planning crossing。
+带缓存的 codec normalization 调用仍在。这兑现的是语义代码删除，不宣称每个命令
+都减少 round trip。完整 goal cutover 后随最后 legacy lifecycle caller 删除 adapter，
+或者迁移该 caller 时将 plan 折叠进其粗粒度事务；不得继续扩张逐字段 RPC。
+Markdown renderer 长期保留。
+
 ### 下一步交付顺序
 
 终态长期保留 Markdown 作为**可读投影**，不是第二个数据库。本 RFC 负责唯一 typed
@@ -174,8 +196,14 @@ crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加�
    字段编辑、monitor、lease、event caller，把规则迁入既有 TS owner，并在同一切片
    删除被替代的 decision。读取复用 canonical Todo summary：promotion 后，`todo list`
    和 status/attention 不得选择陈旧 Markdown/event Todo；投影缺失、canonical 集合为空
-   也不例外。另行审计 Turn、quota、planning、Dashboard、standing-decision consumer；
-   修好一条不等于全部合格。通过真实入口验证 parity 和 provider 故障拒绝，不能只比传输快照。
+   也不例外。Refresh 现在只读一次无截断 canonical Todo 快照，供推荐、repair/replan
+   验收和 completion-validation 问责共同使用；Todo-add 的 replan 绑定和 guided-start
+   的既有 frontier 也复用同一来源适配器。既有 decision reducer 仍是规则 owner，不增加
+   第二份 planning store 或权限规则；旧模式保留原 parser 合同。Turn/quota、Dashboard、
+   standing decision、shared-goal alignment 与 amendment revision basis 另行审计，
+   不能将这些具名调用链的闭合等同于全部 consumer 合格。通过真实入口验证 parity 和
+   provider 故障拒绝。独立维护的 Next Action 仍是正文，不导入 Todo；展示缺失不授权
+   重建丢失正文，也不能削弱完成验收门禁。
 2. **把展示闭合为可恢复的单向投影。** 复用 canonical journal/outbox 与 Todo-section
    renderer，保留人工叙述、来源 revision、幂等交付和可操作的 pending repair。
    渲染失败不能撤销已提交事务，也不能授权 Markdown fallback；恢复投影不能重跑业务操作。

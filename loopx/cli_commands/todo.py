@@ -4,6 +4,7 @@ import argparse
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from ..control_plane.coordination.local_authority import read_canonical_todo_fields_if_promoted
 from ..control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_todo_continuation_policy,
@@ -148,11 +149,16 @@ def _validated_replan_successor_obligation(
         )
     registry = load_registry(registry_path)
     runtime_root = resolve_runtime_root(registry, runtime_root_arg)
-    _, _, state_text, _ = resolve_todo_state(
-        registry_path=registry_path,
-        goal_id=args.goal_id,
-        **_todo_path_args(args),
+    todo_fields = read_canonical_todo_fields_if_promoted(
+        runtime_root=runtime_root, goal_id=args.goal_id,
     )
+    state_text = ""
+    if todo_fields is None:
+        _, _, state_text, _ = resolve_todo_state(
+            registry_path=registry_path,
+            goal_id=args.goal_id,
+            **_todo_path_args(args),
+        )
     existing_runs, _ = load_index(
         runtime_root / "goals" / args.goal_id / "runs" / "index.jsonl"
     )
@@ -176,6 +182,7 @@ def _validated_replan_successor_obligation(
         None,
     )
     obligation, _ = qualify_replan_writeback(
+        todo_fields=todo_fields,
         newest_first_runs=newest_first_runs,
         state_text=state_text,
         agent_id=args.claimed_by,

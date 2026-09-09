@@ -57,6 +57,7 @@ from .control_plane.work_items.refresh_recommendation import (
     RECOMMENDED_ACTION_SOURCE_SETTLEMENT_BOUND_TODO as RECOMMENDED_ACTION_SOURCE_SETTLEMENT_BOUND_TODO,
     derive_recommended_action as derive_recommended_action,
     derive_recommended_action_with_source as derive_recommended_action_with_source,
+    load_refresh_planning_source,
     resolve_refresh_recommendation,
 )
 from .control_plane.runtime.shared_runtime_refresh_projection import (
@@ -98,7 +99,6 @@ from .control_plane.todos.contract import (
 from .control_plane.todos.completion_validation_accountability import (
     require_accountable_completion_validation,
 )
-from .rollout_event_log import load_rollout_events, rollout_event_log_path
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 GOAL_PROGRESS_SCOPE = "goal"
@@ -973,13 +973,14 @@ def refresh_state_run(
         project_override=project,
         state_file_override=state_file,
     )
-    if not resolved_state_file.exists():
-        raise FileNotFoundError(f"state file does not exist: {resolved_state_file}")
-    state_text = resolved_state_file.read_text(encoding="utf-8")
+    state_text, planning_events, todo_fields = load_refresh_planning_source(
+        runtime_root, safe_goal_id, resolved_state_file, require_display=bool(next_action)
+    )
     expected_write_state_text = state_text
     if normalized_delivery_outcome in ACCOUNTABLE_DELIVERY_OUTCOMES:
         require_accountable_completion_validation(
             state_text,
+            todo_fields=todo_fields,
             todo_id=(settlement_identity.todo_id if settlement_identity else None),
             agent_id=normalized_agent_id or None,
         )
@@ -1078,6 +1079,7 @@ def refresh_state_run(
 
     recommendation_resolution = resolve_refresh_recommendation(
         state_text,
+        todo_fields=todo_fields,
         explicit_action=recommended_action,
         agent_id=normalized_agent_id or None,
         settlement_identity=(
@@ -1086,10 +1088,7 @@ def refresh_state_run(
         registry_goal=registry_goal,
         state_path=resolved_state_file,
         rollout_events=(
-            load_rollout_events(rollout_event_log_path(runtime_root, safe_goal_id))
-            if not recommended_action
-            and (normalized_agent_id or settlement_identity is not None)
-            else None
+            planning_events if normalized_agent_id or settlement_identity is not None else None
         ),
     )
     action = str(recommendation_resolution["recommended_action"])
@@ -1104,6 +1103,7 @@ def refresh_state_run(
         else {}
     )
     replan_qualification = qualify_refresh_replan_writeback(
+        todo_fields=todo_fields,
         autonomous_replan_recorded=autonomous_replan_recorded,
         requested_delta_kinds=normalized_repair_delta_kinds,
         active_state_next_action_update=active_state_next_action_update,
