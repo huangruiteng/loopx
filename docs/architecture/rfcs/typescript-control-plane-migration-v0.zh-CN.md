@@ -120,11 +120,16 @@ receipt 过期。
 不能判定交付规模。例如，`unblocked after dependency update` 不构成 blocker
 receipt，`implemented network protocol parser` 不构成仅完成准备工作的证据。
 
-规则继续由 `control_plane/work_items/delivery_outcome.py`、`delivery_signals.py`
-和 `outcome_followthrough.py` 持有。本批在既有 owner 中完成正确性前置修复，不新增
-capability/provider，也不宣称完成 TypeScript 事务迁移。删除关键词推断与 status
-常量，不增加 runtime crossing、schema 或 service；复用已有 typed blocker
-settlement 判定，不复制证据绑定规则。
+`control_plane/work_items/delivery_history.ts` 现在持有完整的交付历史到后续义务
+读投影：outcome、turn kind、scale、连续计数及 follow-through。Status 先选出一批
+有界历史，再调用一次 `work_item.delivery_history.project`；quota 的 latest-run
+消费者以单行调用同一投影。相比此前 Python 本地判断，新增 managed-runtime crossing，
+但不是每个字段或每条历史各跨一次。Python bridge 只发送紧凑 typed facts，不发送
+叙述或证据正文；classification 在决策之后作为展示标签附加。
+删除被替代的 `delivery_signals.py`、`outcome_followthrough.py`、turn-kind 推断
+及 status 连续计数 wrapper，复用已有 TS blocker 绑定规则。Python enum codec 和
+settlement writer predicate 仍有真实 caller，因此保留；本批不是 writer/事务或
+provider 迁移。
 
 验收不变量是**叙述非干涉**：固定 typed fields 与配置，改写叙述或增加未经验证的
 `compact_evidence` / `case_result` 对象，都不能改变交付语义与后续执行义务。
@@ -144,13 +149,16 @@ classification 保留为历史标签；没有明确展示消费者时，不保�
   词语不再分类 run。不改写持久历史，也不新增开关恢复错误行为。此前由未结构化
   历史标签推导的 status、handoff/review 和 quota 决策会发生明确的行为变化。
 
-交付领域的迁移单元是完整的 delivery-history-to-obligation projection，包含规模／结果
-连续计数与 status/quota 消费者。这定义该领域的切片边界，不改变下文 provider-first
-Todo 的交付顺序。每批有界历史最多跨 runtime 一次，删除被替代的
-Python decision，保留独立审阅的 typed case，并通过真实 CLI 验证叙述变异用例。
-旧推断本身错误，因此只有传输 golden parity 不够。另行盘点仍缺少 material-result
-字段的 writer，并用明确兼容计划退役旧 marker/hint 配置。本批不迁移精确的旧
-lifecycle classification code 或其他 cadence policy，不能宣称全局已无文本规则。
+迁移保留独立刻画的合法 typed 行为，并验证真实 refresh/history/status/quota 入口、
+批次基数与叙述非干涉。有一项有意修正单独披露，不能混称 parity：两个非法 work-item
+identifier 不能仅因都归一化为缺失值而被视为相等；此类 observation 不能推断出
+blocker writeback 或解除后续义务。仍在使用的 Python writer predicate 同样拒绝该
+情况，不改写任何活跃历史。
+
+下一步另行盘点仍缺少 material-result 字段的 writer，并用明确兼容计划退役旧
+marker/hint 配置。精确的旧 lifecycle classification code、历史选取与其他 cadence
+policy 不在本批范围内，不能宣称所有 writer 已迁移或全局已无文本规则。这一读策略
+闭合不改变下文 provider-first Todo 顺序，也不等待 provider cutover。
 
 ### Legacy 字段规则退役检查点
 
@@ -190,6 +198,30 @@ legacy update writer**。字段 patch、省略/清空、monitor/resume effect �
 仍需收口为完整 update transaction。Legacy 准入及持锁 gate 仍跨 runtime；本次减少
 语义 owner，不宣称减少 crossings，native transaction 仍进程内调用。下一步将这些
 crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加桥。
+
+等待/恢复规划现由 `todos/resume_planning.ts` 一次完成 deferred、resume-blocked、
+monitor-repair 和 blocked-successor 选择。Quota 为每个 source summary 将容量条件与这些 lane 合为一个请求，
+在 TS 进程内复用既有 resume evaluator；vision-wait、agent-scope、frontier、replan
+共用此投影。删除旧 `deferred_resume.py` 规则 owner，不保留第二份实现。Python 适配层
+只保留 reader 兼容边界，不再决定 claim/exclusion 选择或等待路由。Resume、
+route-continuation、succession-warning 共用 `compact_projection.py` 的字段省略与 scope
+归一化；各 caller 的文本推断差异及 succession 独有字段显式保留，priority rank
+归一化仍在 resume adapter。这闭合一个读取策略族，不是整个 quota reducer，也未
+迁移 monitor/lease writer。相同公开排序键保持 source 顺序；完整计数先于展示截断；
+`monitor_changed` 不进入旧 `todo_done:<monitor>` 修复路径。只读结果不授予执行权限，
+也不是生命周期 receipt；caller 在进程内消费 typed Todo record 后可删除此适配层。
+
+条件 evaluator 与规划 owner 现在共用恢复条件诊断；agent-scope 消费已选好的修复 lane，
+不再重新解释 target 类型/状态。旧 compact 输入缺少 kind/class 时，只从 typed
+`resume_when` 和同一快照的 Monitor 记录补足，不从叙述猜测。本次 refinement 包含
+明确行为修正：自依赖，以及对未完成 Monitor 的 `todo_done` 依赖，被诊断为
+`resume_condition_invalid`，不再当作普通 pending wait。历史已完成 Monitor 依赖仍可
+满足；完成依赖的目标缺失仍为 pending，因局部快照中的缺失不能证明依赖非法。合法的
+generation fence、claim/exclusion、capacity 和 PR 等待语义保持。非法条件不进入
+精确 blocked-successor 等待；Monitor 完成依赖的修复仍可见，且仅在合法执行者范围内
+可选。此诊断不自动改写为 `monitor_changed`、重置 baseline、重写持久状态或增加写入
+准入。普通 add/update 准入及覆盖全部非法条件的通用修复动作仍是独立范围；不能宣称
+全量零行为变化或全部 Todo writer 已闭合。
 
 1. **闭合实际命令与 consumer 清单。** 基于已合入的 create/claim/update 和 #4053
    terminal/successor/archive transaction 推进，不重复建设。按真实合同盘点剩余

@@ -4,15 +4,35 @@ from copy import deepcopy
 
 import pytest
 
-from loopx.control_plane.work_items.delivery_outcome import delivery_turn_kind_for_run
-from loopx.control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint
-from loopx.status import (
-    compact_post_handoff_run,
-    delivery_batch_scale_for_run,
-    delivery_outcome_for_run,
-    outcome_gap_streak,
-    small_delivery_batch_scale_streak,
-)
+from loopx.control_plane.work_items.delivery_history import project_delivery_history
+from loopx.control_plane.work_items.work_lane_context import outcome_followthrough_hint
+from loopx.status import compact_post_handoff_run
+
+
+# Test adapters retain the independently characterized assertions after retiring
+# the single-field production readers. Production projects the selected batch.
+def delivery_turn_kind_for_run(run):
+    return project_delivery_history([run])["runs"][0]["delivery_turn_kind"]
+
+
+def delivery_batch_scale_for_run(run):
+    return project_delivery_history([run])["runs"][0]["delivery_batch_scale"]
+
+
+def delivery_outcome_for_run(run, profile=None):
+    return project_delivery_history([run], outcome_floor_configured=bool(profile))["runs"][0]["delivery_outcome"]
+
+
+def outcome_gap_streak(runs, profile=None):
+    return project_delivery_history(runs, outcome_floor_configured=bool(profile))["outcome_gap_streak"]
+
+
+def small_delivery_batch_scale_streak(runs):
+    return project_delivery_history(runs)["small_scale_streak"]
+
+
+def build_outcome_followthrough_hint(run):
+    return outcome_followthrough_hint({"handoff_readiness": {"post_handoff_latest_run": run}})
 
 
 PROFILE = {
@@ -135,4 +155,52 @@ def test_explicit_legacy_blocker_and_explicit_obligation_remain_readable() -> No
     run = {"delivery_turn_kind": "blocker_writeback", "delivery_outcome": "outcome_gap"}
     assert build_outcome_followthrough_hint(run) is None
     run["outcome_followthrough_required"] = True
+    assert build_outcome_followthrough_hint(run)["required"] is True
+
+
+@pytest.mark.parametrize("required", (False, None, 0, 1, "true", [], {}))
+def test_followthrough_requires_literal_true_not_truthy_metadata(required) -> None:
+    assert build_outcome_followthrough_hint({"outcome_followthrough_required": required}) is None
+
+
+def test_primary_outcome_precedes_explicit_followthrough_and_unknown_kind_does_not_recover() -> None:
+    assert build_outcome_followthrough_hint({
+        "delivery_outcome": "primary_goal_outcome", "outcome_followthrough_required": True,
+    }) is None
+    assert delivery_turn_kind_for_run({
+        "delivery_outcome": "primary_goal_outcome", "delivery_turn_kind": "future_kind",
+    }) == "unknown"
+
+
+@pytest.mark.parametrize("scale", ("single_segment", "bounded_segment", " single_surface "))
+def test_legacy_scale_aliases_keep_small_batch_meaning(scale) -> None:
+    run = {"delivery_batch_scale": scale, "delivery_outcome": "surface_only"}
+    assert delivery_batch_scale_for_run(run) == "single_surface"
+    assert small_delivery_batch_scale_streak([run, run]) == 2
+    assert outcome_gap_streak([run, run], None) == 0
+
+
+@pytest.mark.parametrize("binding", (
+    {"replan_obligation_id": "replan-a"},
+    {"todo_id": "todo-a", "replan_obligation_id": "replan-a"},
+    {},
+))
+def test_blocker_binding_is_exactly_one_todo_or_replan(binding) -> None:
+    run = {**binding, "delivery_outcome": "outcome_gap", "progress_observation": {
+        "schema_version": "typed_progress_observation_v0", "result_class": "blocked",
+        "work_item_id": "replan-a", "blocker_id": "blocker-a", "evidence_ids": ["evidence-a"],
+    }}
+    expected = "blocker_writeback" if len(binding) == 1 else "outcome_gap"
+    assert delivery_turn_kind_for_run(run) == expected
+
+
+@pytest.mark.parametrize("invalid_id", ("bad id", " ", "x" * 129))
+def test_invalid_identifier_pair_cannot_prove_blocker_attribution(invalid_id) -> None:
+    from loopx.control_plane.work_items.delivery_outcome import qualifies_turn_scoped_blocker_settlement
+
+    observation = {"schema_version": "typed_progress_observation_v0", "result_class": "blocked",
+                   "work_item_id": invalid_id, "blocker_id": "blocker-a", "evidence_ids": ["evidence-a"]}
+    assert not qualifies_turn_scoped_blocker_settlement("outcome_gap", observation, work_item_id=invalid_id)
+    run = {"delivery_outcome": "outcome_gap", "todo_id": invalid_id, "progress_observation": observation}
+    assert delivery_turn_kind_for_run(run) == "outcome_gap"
     assert build_outcome_followthrough_hint(run)["required"] is True

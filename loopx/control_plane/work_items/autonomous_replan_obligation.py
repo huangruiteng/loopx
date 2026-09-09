@@ -13,10 +13,7 @@ from ..todos.contract import (
     normalize_todo_id_list,
     normalize_todo_replan_obligation_id,
 )
-from ..todos.deferred_resume import (
-    todo_summary_deferred_items,
-    todo_summary_monitor_blocked_resume_items,
-)
+from ..todos.resume_planning import project_todo_resume_planning
 from .progress_observation import typed_progress_repeat_trigger
 from .replan_settlement import (
     project_todo_lifecycle_settlement_reentry as project_todo_lifecycle_reentry_effect,
@@ -472,9 +469,10 @@ def _future_due_blocking_monitor(
         monitors_by_id[monitor_todo_id] = monitor
 
     blocking_monitor_ids: set[str] = set()
+    resume_planning = project_todo_resume_planning(agent_todos)
     blocked_items = [
-        *todo_summary_monitor_blocked_resume_items(agent_todos),
-        *todo_summary_deferred_items(agent_todos, "deferred_items"),
+        *resume_planning["monitor_blocked_items"],
+        *resume_planning["deferred_items"],
     ]
     for item in blocked_items:
         claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))

@@ -14,10 +14,7 @@ def project_asset_handoff_state(
     is_handoff_ready_run: Callable[[dict[str, Any]], bool],
     is_custom_post_handoff_work_run: Callable[[dict[str, Any]], bool],
     is_status_neutral_run: Callable[[dict[str, Any]], bool],
-    compact_post_handoff_run: Callable[[dict[str, Any], dict[str, Any] | None], dict[str, Any]],
-    small_delivery_batch_scale_streak: Callable[[list[dict[str, Any]]], int],
-    outcome_floor_configured: Callable[[dict[str, Any] | None], bool],
-    outcome_gap_streak: Callable[[list[dict[str, Any]], dict[str, Any] | None], int],
+    project_delivery_history: Callable[[list[dict[str, Any]], dict[str, Any] | None], dict[str, Any]],
 ) -> dict[str, Any]:
     runs = [run for run in latest_runs or [] if isinstance(run, dict)]
     profile = compact_execution_profile(
@@ -97,21 +94,8 @@ def project_asset_handoff_state(
         state["handoff_ready_at"] = handoff_run.get("generated_at")
     if handoff_run and handoff_run.get("classification"):
         state["handoff_ready_classification"] = handoff_run.get("classification")
-    if post_handoff_run:
-        state["post_handoff_latest_run"] = compact_post_handoff_run(post_handoff_run, profile)
     if recent_post_handoff_runs:
-        state["post_handoff_recent_runs"] = [
-            compact_post_handoff_run(run, profile)
-            for run in recent_post_handoff_runs
-        ]
-        state["post_handoff_small_scale_streak"] = small_delivery_batch_scale_streak(
-            recent_post_handoff_runs
-        )
-        if outcome_floor_configured(profile):
-            state["post_handoff_outcome_gap_streak"] = outcome_gap_streak(
-                recent_post_handoff_runs,
-                profile,
-            )
+        state.update(project_delivery_history(recent_post_handoff_runs, profile))
     return state
 
 

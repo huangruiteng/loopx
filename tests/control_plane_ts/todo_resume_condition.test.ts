@@ -7,6 +7,7 @@ import {
   TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
   TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION,
   evaluateTodoResumeConditions,
+  diagnoseTodoResumeCondition,
   normalizeTodoResumeWhen,
   planTodoExternalWaitTransition,
 } from "../../loopx/control_plane/todos/resume_condition.ts";
@@ -35,6 +36,56 @@ test("resume syntax is normalized by the typed Todo boundary", () => {
     schema_version: TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION,
     resume_when: "note_contains:approved",
   }), null);
+});
+
+test("live monitor completion is invalid, but historical completion remains satisfied", () => {
+  for (const status of ["open", "blocked", "deferred", "done"]) {
+    const result = evaluateTodoResumeConditions({
+      schema_version: TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
+      items: [todo("todo_waiting", "open", "advancement_task", { resume_when: "todo_done:todo_monitor" })],
+      source_items: [todo("todo_monitor", status, "continuous_monitor", { archive_state: "archived" })],
+    });
+    const condition = (result.conditions as Array<{ condition: Record<string, unknown> }>)[0].condition;
+    assert.equal(condition.satisfied, status === "done");
+    assert.equal(condition.availability_reason, status === "done" ? "resume_condition_satisfied" : "resume_condition_invalid");
+    assert.equal(condition.invalid_state, status === "done" ? undefined : "monitor_completion_requires_replan");
+  }
+});
+
+test("self-dependency is not satisfied even when a stale completed row says done", () => {
+  for (const kind of ["todo_done", "monitor_changed"]) {
+    const result = evaluateTodoResumeConditions({
+      schema_version: TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
+      items: [todo("todo_waiting", "done", "continuous_monitor", {
+        resume_when: `${kind}:todo_waiting`, resume_monitor_generation: 1, material_change_generation: 2,
+      })], source_items: [],
+    });
+    const condition = (result.conditions as Array<{ condition: Record<string, unknown> }>)[0].condition;
+    assert.equal(condition.satisfied, false);
+    assert.equal(condition.invalid_state, "dependency_self_reference");
+  }
+});
+
+test("missing completion target stays pending rather than claiming proof of invalidity", () => {
+  const result = evaluateTodoResumeConditions({
+    schema_version: TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
+    items: [todo("todo_waiting", "open", "advancement_task", { resume_when: "todo_done:todo_missing" })],
+    source_items: [],
+  });
+  const condition = (result.conditions as Array<{ condition: Record<string, unknown> }>)[0].condition;
+  assert.equal(condition.availability_reason, "resume_condition_pending");
+  assert.equal(condition.invalid_state, undefined);
+});
+
+test("legacy compact diagnosis infers only typed resume syntax, not prose or another kind", () => {
+  const legacy = { resume_when: "todo_done:todo_monitor", satisfied: false,
+    target_status: "open", target_task_class: "continuous_monitor" };
+  assert.deepEqual(diagnoseTodoResumeCondition(legacy), {
+    kind: "todo_done", state: "invalid", reason: "monitor_completion_requires_replan",
+  });
+  for (const kind of ["monitor_changed", "capacity_available", "pr_merged"]) {
+    assert.equal(diagnoseTodoResumeCondition({ ...legacy, kind }).state, "pending");
+  }
 });
 
 test("one reducer evaluates Todo, PR, capacity, and monitor resume conditions", () => {

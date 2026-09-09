@@ -6,7 +6,7 @@ from typing import Any
 from ...todos.contract import (
     normalize_todo_id,
 )
-from ...todos.deferred_resume import todo_summary_blocked_successor_items
+from ...todos.resume_planning import project_todo_resume_planning
 from ...todos.projection import (
     agent_scoped_selectable_advancement_todo_ids,
 )
@@ -125,10 +125,10 @@ def _blocked_successor_todo_ids(
         todo_id
         for todo_id in (
             normalize_todo_id(item.get("todo_id"))
-            for item in todo_summary_blocked_successor_items(
+            for item in project_todo_resume_planning(
                 agent_todo_summary,
                 agent_id=agent_id,
-            )
+            )["blocked_successor_items"]
             if isinstance(item, dict)
         )
         if todo_id
@@ -148,10 +148,10 @@ def _blocked_primary_waiting(
     if isinstance(blocker_items, list) and blocker_items:
         return True
     return bool(
-        todo_summary_blocked_successor_items(
+        project_todo_resume_planning(
             agent_todo_summary,
             agent_id=agent_id,
-        )
+        )["blocked_successor_items"]
     )
 
 

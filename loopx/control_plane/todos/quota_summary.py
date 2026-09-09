@@ -21,11 +21,7 @@ from .contract import (
     TODO_TASK_CLASS_BLOCKER,
     TODO_TASK_CLASS_MONITOR,
 )
-from .deferred_resume import (
-    build_todo_deferred_visibility_lanes,
-    build_todo_resume_blocked_visibility_lanes,
-    resolve_capacity_resume_summary,
-)
+from .resume_planning import project_todo_resume_planning
 from .frontier_deadline import todo_summary_frontier_deadline
 from .handoff_gate import build_todo_handoff_gate_lanes
 from .projection import (
@@ -488,10 +484,16 @@ def summarize_user_todos_for_quota(
     agent_identity: dict[str, Any] | None = None,
     filter_user_gate_blocks_agent: bool = False,
     available_capabilities: Any = None,
+    resume_planning: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
     source_completeness, closure_intent = validate_todo_source_contract(value)
+    if resume_planning is None:
+        resume_planning = project_todo_resume_planning(
+            value, agent_id=(agent_identity or {}).get("agent_id"),
+            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
+        )
     all_open_items = sorted(
         todo_summary_source_items(value),
         key=todo_projection_sort_key,
@@ -598,20 +600,8 @@ def summarize_user_todos_for_quota(
             visibility_lane_limit=TODO_VISIBILITY_LANE_LIMIT,
         )
     )
-    summary.update(
-        build_todo_deferred_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
-        )
-    )
-    summary.update(
-        build_todo_resume_blocked_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
-            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
-        )
-    )
+    summary.update(resume_planning["deferred_lanes"])
+    summary.update(resume_planning["resume_blocked_lanes"])
     summary.update(
         build_todo_handoff_gate_lanes(
             value,
@@ -932,6 +922,7 @@ def summarize_project_asset_todos_for_quota(
     agent_identity: dict[str, Any] | None = None,
     filter_user_gate_blocks_agent: bool = False,
     available_capabilities: Any = None,
+    resume_planning: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -946,6 +937,7 @@ def summarize_project_asset_todos_for_quota(
             agent_identity=agent_identity,
             filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
             available_capabilities=available_capabilities,
+            resume_planning=resume_planning,
         )
 
     all_open_items = sorted(
@@ -1000,13 +992,12 @@ def summarize_project_asset_todos_for_quota(
             visibility_lane_limit=TODO_VISIBILITY_LANE_LIMIT,
         )
     )
-    summary.update(
-        build_todo_deferred_visibility_lanes(
-            value,
-            agent_identity=agent_identity,
+    if resume_planning is None:
+        resume_planning = project_todo_resume_planning(
+            value, agent_id=(agent_identity or {}).get("agent_id"),
             item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
         )
-    )
+    summary.update(resume_planning["deferred_lanes"])
     summary.update(
         build_todo_handoff_gate_lanes(
             value,
@@ -1081,25 +1072,31 @@ def select_quota_todo_summary(
     filter_user_gate_blocks_agent: bool = False,
     available_capabilities: Any = None,
 ) -> dict[str, Any] | None:
-    canonical_value = resolve_capacity_resume_summary(
-        canonical_value,
-        available_capabilities=available_capabilities,
-    )
-    project_asset_value = resolve_capacity_resume_summary(
-        project_asset_value,
-        available_capabilities=available_capabilities,
-    )
+    plans = []
+    for source in (canonical_value, project_asset_value):
+        plans.append(project_todo_resume_planning(
+            source, agent_id=(agent_identity or {}).get("agent_id"),
+            item_limit=TODO_DEFERRED_VISIBILITY_LIMIT,
+            available_capabilities=available_capabilities or [],
+        ) if isinstance(source, dict) else None)
+    canonical_plan, project_asset_plan = plans
+    if canonical_plan is not None:
+        canonical_value = {**canonical_value, **canonical_plan["capacity_fields"]}
+    if project_asset_plan is not None:
+        project_asset_value = {**project_asset_value, **project_asset_plan["capacity_fields"]}
     canonical_summary = summarize_user_todos_for_quota(
         canonical_value,
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
         available_capabilities=available_capabilities,
+        resume_planning=canonical_plan,
     )
     project_asset_summary = summarize_project_asset_todos_for_quota(
         project_asset_value,
         agent_identity=agent_identity,
         filter_user_gate_blocks_agent=filter_user_gate_blocks_agent,
         available_capabilities=available_capabilities,
+        resume_planning=project_asset_plan,
     )
     if is_canonical_attention_todo_summary(canonical_value):
         return canonical_summary or project_asset_summary

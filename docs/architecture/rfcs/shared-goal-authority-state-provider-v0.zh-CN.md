@@ -1985,6 +1985,11 @@ Markdown 是**长期保留的一等可读投影**。退役的是它的数据库�
 负责业务规则统一和 caller 删除；本 RFC 负责唯一 durable truth、恢复和 cutover。
 CLI 原生 TS 化与 daemon 不是前提，PostgreSQL 部署不能阻塞本地采用。
 
+交付历史现已由 status 与 quota 共用一份 TS outcome/scale/follow-through 读投影，
+删除被替代的 Python decision。这独立推进 TS RFC，不改变 provider、持久历史、
+writer fence 或 promotion 资格。Markdown 仍作为可读投影；它和历史叙述标签都
+不能成为额外的交付权威。
+
 ```text
 CLI / Agent / Dashboard → 唯一 TS Todo 事务 owner → canonical authority
                                                    ├ structured consumers
@@ -2015,6 +2020,11 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
    这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume
    effect 一起闭合前，保留严格 text/note 事务边界。准入结果和 lease-fence 结果都不是
    commit receipt；兑现删除收益时，provider CAS/replay 与既有 writer 持锁生命周期不变。
+   等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
+   策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
+   summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promoted display
+   缺失且不写回的场景。这不代表所有 quota source 路径已闭合，不授予 monitor 写回
+   权限，也不改变 provider 默认与 promotion hold。
 2. **永久投影闭合。** 复用 `provider_projection.py`、Todo-section renderer 和既有
    journal/outbox。保留非托管的人工叙述，从已知 canonical revision 渲染托管 section，
    提供幂等修复与 freshness/readback 证据。投影 pending 独立于业务 commit/replay。

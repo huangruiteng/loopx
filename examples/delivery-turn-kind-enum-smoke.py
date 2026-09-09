@@ -11,11 +11,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.work_items.delivery_history import project_delivery_history  # noqa: E402
 from loopx.control_plane.work_items.delivery_outcome import (  # noqa: E402
     DELIVERY_TURN_KIND_CHOICES,
     DeliveryOutcome,
     DeliveryTurnKind,
-    delivery_turn_kind_for_run,
     normalize_delivery_turn_kind,
     require_delivery_turn_kind,
 )
@@ -47,7 +47,7 @@ def assert_invalid_explicit_kind_does_not_fallback_to_classification() -> None:
         "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
         "delivery_turn_kind": "contract_v0_delivered",
     }
-    assert delivery_turn_kind_for_run(run) == DeliveryTurnKind.UNKNOWN.value
+    assert project_delivery_history([run])["runs"][0]["delivery_turn_kind"] == DeliveryTurnKind.UNKNOWN.value
     assert compact_post_handoff_run(run)["delivery_turn_kind"] == DeliveryTurnKind.UNKNOWN.value
 
 
@@ -57,11 +57,11 @@ def assert_inference_still_works_when_kind_is_absent() -> None:
         "delivery_outcome": DeliveryOutcome.SURFACE_ONLY.value,
     }
     assert (
-        delivery_turn_kind_for_run(contract_run)
+        project_delivery_history([contract_run])["runs"][0]["delivery_turn_kind"]
         == DeliveryTurnKind.CONTRACT_ONLY_PREPARATION.value
     )
     assert (
-        delivery_turn_kind_for_run({"delivery_outcome": DeliveryOutcome.PRIMARY_GOAL_OUTCOME.value})
+        project_delivery_history([{"delivery_outcome": DeliveryOutcome.PRIMARY_GOAL_OUTCOME.value}])["runs"][0]["delivery_turn_kind"]
         == DeliveryTurnKind.PRODUCT_PATH_EXECUTION.value
     )
 

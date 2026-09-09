@@ -6,11 +6,15 @@ from pathlib import Path
 import subprocess
 import sys
 
-from loopx.control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint
+from loopx.control_plane.work_items.work_lane_context import outcome_followthrough_hint
 from loopx.status import compact_post_handoff_run
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def build_outcome_followthrough_hint(run):
+    return outcome_followthrough_hint({"handoff_readiness": {"post_handoff_latest_run": run}})
 
 
 def test_refresh_history_preserves_labels_without_inventing_delivery(tmp_path: Path) -> None:

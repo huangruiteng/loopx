@@ -2504,6 +2504,12 @@ owns business-rule unification and caller deletion; this RFC owns one durable
 truth, recovery and cutover. Native CLI conversion and a daemon are not
 prerequisites, and PostgreSQL deployment must not hold local adoption hostage.
 
+Delivery history now shares one TS outcome/scale/follow-through read projection
+across status and quota, deleting the replaced Python decisions. This advances
+the TS RFC independently: it changes no provider, durable history, writer fence
+or promotion eligibility. Markdown remains a readable projection; neither it
+nor narrative history labels become an additional delivery authority.
+
 ```text
 CLI / Agent / Dashboard → one TS Todo transaction owner → canonical authority
                                                         ├ structured consumers
@@ -2544,6 +2550,12 @@ The next complete stage packages are:
    monitor/resume effects close together. Neither an admission result nor a
    lease-fence result is a commit receipt. Keep provider CAS/replay and existing
    writer lock lifetimes unchanged while collecting this deletion payoff.
+   Waiting/resume lane selection is now one TS read-policy owner shared by quota,
+   vision-wait, agent-scope and replan. The obsolete Python selector module is
+   deleted; the adapter accepts the same canonical summary after promotion and
+   legacy summary before it. Real CLI coverage includes capacity changes and
+   missing promoted display without writing it. This does not close all quota
+   source paths, authorize monitor writeback, or change provider/promotion holds.
 2. **Permanent projection closure.** Reuse `provider_projection.py`, the
    Todo-section renderer and existing journal/outbox. Preserve non-owned human
    narrative; render owned sections from a known canonical revision, with

@@ -12,7 +12,7 @@ from ..todos.contract import (
     normalize_todo_id,
     normalize_todo_status,
 )
-from ..todos.deferred_resume import todo_summary_blocked_successor_items
+from ..todos.resume_planning import project_todo_resume_planning
 
 GOAL_VISION_WAIT_STATE_SCHEMA_VERSION = "goal_vision_wait_state_v0"
 VISION_ACCEPTANCE_GAP_KIND = "vision_acceptance_gap"
@@ -170,9 +170,9 @@ def _covered_wait_items(
         and normalize_todo_claimed_by(item.get("claimed_by")) == safe_agent_id
         and not todo_item_excludes_agent(item, agent_id=safe_agent_id)
     ]
-    candidates = todo_summary_blocked_successor_items(
+    candidates = project_todo_resume_planning(
         agent_todo_summary or {}, agent_id=agent_id
-    )
+    )["blocked_successor_items"]
     coverage = effect_runtime_result(
         "goal.vision_wait.coverage",
         {

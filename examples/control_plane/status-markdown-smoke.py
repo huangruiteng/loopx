@@ -18,12 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.status import project_post_handoff_history  # noqa: E402
 from loopx.status import (  # noqa: E402
     build_status_runtime_summaries,
     build_contract_health_projection,
     collect_status,
-    delivery_batch_scale_for_run,
-    delivery_outcome_for_run,
     project_asset_summary_is_public_safe,
 )
 from loopx.presentation.renderers.status_markdown import render_status_markdown  # noqa: E402
@@ -921,8 +920,11 @@ def assert_connected_delivery_surface_loop(payload: dict, markdown: str) -> None
 
 
 def assert_delivery_semantics_require_structured_fields() -> None:
+    def delivery_scale_signal(run: dict) -> str:
+        return project_post_handoff_history([run])["post_handoff_latest_run"]["delivery_batch_scale"]
+
     assert (
-        delivery_batch_scale_for_run(
+        delivery_scale_signal(
             {
                 "classification": "dashboard_home_browser_smoke_regression",
                 "delivery_batch_scale": "multi_surface",
@@ -931,21 +933,21 @@ def assert_delivery_semantics_require_structured_fields() -> None:
         == "multi_surface"
     )
     assert (
-        delivery_batch_scale_for_run(
+        delivery_scale_signal(
             {"classification": "side_bypass_validation_plan_source_shape_consumer_test"}
         )
         == "unknown"
     )
     assert (
-        delivery_batch_scale_for_run({"classification": "owner_handoff_consumer_test"})
+        delivery_scale_signal({"classification": "owner_handoff_consumer_test"})
         == "unknown"
     )
     assert (
-        delivery_batch_scale_for_run({"classification": "delivery_ranker_readiness_batch"})
+        delivery_scale_signal({"classification": "delivery_ranker_readiness_batch"})
         == "unknown"
     )
     assert (
-        delivery_batch_scale_for_run({"classification": "feedback_reranker_adapter_slice"})
+        delivery_scale_signal({"classification": "feedback_reranker_adapter_slice"})
         == "unknown"
     )
     profile = {
@@ -956,31 +958,19 @@ def assert_delivery_semantics_require_structured_fields() -> None:
         }
     }
     assert (
-        delivery_outcome_for_run(
-            {"classification": "side_bypass_owner_drop_landing_forecast_implementation"},
-            profile,
-        )
+        project_post_handoff_history([{"classification": "side_bypass_owner_drop_landing_forecast_implementation"}], profile)["post_handoff_latest_run"]["delivery_outcome"]
         == "unknown"
     )
     assert (
-        delivery_outcome_for_run(
-            {"classification": "side_bypass_ranker_fit_metric_implementation"},
-            profile,
-        )
+        project_post_handoff_history([{"classification": "side_bypass_ranker_fit_metric_implementation"}], profile)["post_handoff_latest_run"]["delivery_outcome"]
         == "unknown"
     )
     assert (
-        delivery_outcome_for_run(
-            {"classification": "side_bypass_macro_evidence_segment_implementation"},
-            profile,
-        )
+        project_post_handoff_history([{"classification": "side_bypass_macro_evidence_segment_implementation"}], profile)["post_handoff_latest_run"]["delivery_outcome"]
         == "unknown"
     )
     assert (
-        delivery_outcome_for_run(
-            {"classification": "status_refresh_without_marker", "delivery_outcome": "primary_goal_outcome"},
-            profile,
-        )
+        project_post_handoff_history([{"classification": "status_refresh_without_marker", "delivery_outcome": "primary_goal_outcome"}], profile)["post_handoff_latest_run"]["delivery_outcome"]
         == "primary_goal_outcome"
     )
 

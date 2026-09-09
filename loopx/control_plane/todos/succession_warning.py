@@ -3,14 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..agents.agent_scope import agent_scope_item_claimed_by_agent_or_unclaimed
+from .compact_projection import compact_todo_projection_item
 from .contract import (
     TODO_STATUS_OPEN,
-    normalize_required_write_scopes,
     normalize_todo_id,
     normalize_todo_id_list,
-    normalize_todo_decision_scope,
-    normalize_todo_required_decision_scopes,
-    normalize_todo_task_class,
 )
 
 
@@ -48,91 +45,6 @@ def build_open_parent_successor_advisory(
     }
 
 
-def _compact_succession_warning_item(item: dict[str, Any]) -> dict[str, Any]:
-    compact: dict[str, Any] = {
-        "index": item.get("index"),
-        "text": item.get("text"),
-    }
-    for key in (
-        "schema_version",
-        "todo_id",
-        "role",
-        "status",
-        "priority",
-        "title",
-        "archive_state",
-        "source_section",
-        "task_class",
-        "action_kind",
-        "task_domain",
-        "task_repository",
-        "continuation_policy",
-        "required_write_scopes",
-        "required_capabilities",
-        "target_capabilities",
-        "decision_scope",
-        "required_decision_scopes",
-        "claimed_by",
-        "blocks_agent",
-        "excluded_agents",
-        "unblocks_todo_id",
-        "resume_when",
-        "resume_monitor_generation",
-        "resume_condition",
-        "resume_ready",
-        "no_followup",
-        "successor_todo_ids",
-        "completion_continuation",
-        "completion_recovery",
-        "target_key",
-        "cadence",
-        "next_due_at",
-        "expires_at",
-        "last_checked_at",
-        "result_hash",
-        "consecutive_no_change",
-        "material_change",
-        "material_change_generation",
-        "max_no_change_before_replan",
-        "route_continuation_replan_required",
-        "route_continuation_reason",
-        "route_id",
-        "route_key",
-        "completed_at",
-        "completion_turn_key",
-        "updated_at",
-        "superseded_by",
-        "done",
-        "succession_tracked",
-        "recommended_action",
-    ):
-        if item.get(key) is not None:
-            compact[key] = item.get(key)
-    required_write_scopes = normalize_required_write_scopes(compact.get("required_write_scopes"))
-    if required_write_scopes:
-        compact["required_write_scopes"] = required_write_scopes
-    else:
-        compact.pop("required_write_scopes", None)
-    decision_scope = normalize_todo_decision_scope(compact.get("decision_scope"))
-    if decision_scope:
-        compact["decision_scope"] = decision_scope
-    else:
-        compact.pop("decision_scope", None)
-    required_decision_scopes = normalize_todo_required_decision_scopes(
-        compact.get("required_decision_scopes")
-    )
-    if required_decision_scopes:
-        compact["required_decision_scopes"] = required_decision_scopes
-    else:
-        compact.pop("required_decision_scopes", None)
-    compact["task_class"] = normalize_todo_task_class(
-        compact.get("task_class"),
-        text=str(compact.get("text") or ""),
-        action_kind=compact.get("action_kind"),
-    )
-    return compact
-
-
 def build_todo_succession_warning_lanes(
     summary: dict[str, Any],
     *,
@@ -146,7 +58,11 @@ def build_todo_succession_warning_lanes(
         else summary.get("completed_without_successor_items")
     )
     items = [
-        _compact_succession_warning_item(item)
+        compact_todo_projection_item(
+            item, text=item.get("text"), task_class_text=str(item.get("text") or ""),
+            extra_fields=("completion_continuation", "completion_recovery", "completion_turn_key",
+                          "done", "succession_tracked", "recommended_action"),
+        )
         for item in (source_items or [])
         if isinstance(item, dict)
     ][:item_limit]

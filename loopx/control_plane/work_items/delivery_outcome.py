@@ -33,8 +33,6 @@ class DeliveryTurnKind(str, Enum):
 
 DELIVERY_OUTCOME_CHOICES = tuple(outcome.value for outcome in DeliveryOutcome)
 DELIVERY_TURN_KIND_CHOICES = tuple(kind.value for kind in DeliveryTurnKind)
-DELIVERY_OUTCOME_UNKNOWN = "unknown"
-DELIVERY_OUTCOME_NOT_CONFIGURED = "not_configured"
 
 MATERIAL_DELIVERY_OUTCOMES = frozenset(
     {
@@ -47,12 +45,6 @@ ACCOUNTABLE_DELIVERY_OUTCOMES = frozenset(
     {
         DeliveryOutcome.OUTCOME_PROGRESS,
         DeliveryOutcome.PRIMARY_GOAL_OUTCOME,
-    }
-)
-FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES = frozenset(
-    {
-        DeliveryOutcome.SURFACE_ONLY,
-        DeliveryOutcome.OUTCOME_GAP,
     }
 )
 PROGRESS_DELIVERY_OUTCOMES = ACCOUNTABLE_DELIVERY_OUTCOMES
@@ -86,7 +78,8 @@ def qualifies_turn_scoped_blocker_settlement(
         work_item_id or replan_obligation_id
     )
     if (
-        observation.get("result_class") != ProgressResultClass.BLOCKED.value
+        normalized_work_item_id is None
+        or observation.get("result_class") != ProgressResultClass.BLOCKED.value
         or normalize_progress_identifier(observation.get("blocker_id")) is None
         or normalize_progress_identifier(observation.get("work_item_id"))
         != normalized_work_item_id
@@ -160,41 +153,3 @@ def require_delivery_turn_kind(value: Any) -> DeliveryTurnKind:
     if kind is None:
         raise ValueError("delivery_turn_kind must be one of: " + ", ".join(DELIVERY_TURN_KIND_CHOICES))
     return kind
-
-
-def delivery_turn_kind_for_run(
-    run: dict[str, Any],
-    *,
-    delivery_outcome: Any = None,
-) -> str:
-    """Read explicit delivery semantics; narrative and evidence presence grant none.
-
-    Missing or invalid historical fields remain unknown. A blocker needs an
-    explicit turn kind or a scoped typed observation; an outcome gap alone
-    does not prove blocker writeback.
-    """
-
-    raw_explicit = str(run.get("delivery_turn_kind") or "").strip()
-    if raw_explicit:
-        explicit = normalize_delivery_turn_kind(raw_explicit)
-        return explicit.value if explicit else DeliveryTurnKind.UNKNOWN.value
-
-    outcome = normalize_delivery_outcome(
-        delivery_outcome if delivery_outcome is not None else run.get("delivery_outcome")
-    )
-    if qualifies_turn_scoped_blocker_settlement(
-        outcome,
-        run.get("progress_observation"),
-        work_item_id=run.get("todo_id"),
-        replan_obligation_id=run.get("replan_obligation_id"),
-    ):
-        return DeliveryTurnKind.BLOCKER_WRITEBACK.value
-    if outcome == DeliveryOutcome.PRIMARY_GOAL_OUTCOME:
-        return DeliveryTurnKind.PRODUCT_PATH_EXECUTION.value
-    if outcome == DeliveryOutcome.OUTCOME_PROGRESS:
-        return DeliveryTurnKind.COMPACT_EVIDENCE.value
-    if outcome == DeliveryOutcome.SURFACE_ONLY:
-        return DeliveryTurnKind.CONTRACT_ONLY_PREPARATION.value
-    if outcome == DeliveryOutcome.OUTCOME_GAP:
-        return DeliveryTurnKind.OUTCOME_GAP.value
-    return DeliveryTurnKind.UNKNOWN.value

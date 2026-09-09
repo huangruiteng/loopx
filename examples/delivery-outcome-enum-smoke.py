@@ -14,17 +14,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from loopx.control_plane.work_items.delivery_history import project_delivery_history  # noqa: E402
 from loopx.control_plane.work_items.delivery_outcome import (  # noqa: E402
     ACCOUNTABLE_DELIVERY_OUTCOMES,
     DELIVERY_OUTCOME_CHOICES,
-    DELIVERY_OUTCOME_UNKNOWN,
     DeliveryOutcome,
-    FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES,
     normalize_delivery_outcome,
     require_delivery_outcome,
 )
 from loopx.state_refresh import refresh_state_run  # noqa: E402
-from loopx.status import delivery_outcome_for_run  # noqa: E402
 
 
 GOAL_ID = "delivery-outcome-enum-fixture"
@@ -85,10 +83,6 @@ def assert_enum_sets() -> None:
     assert ACCOUNTABLE_DELIVERY_OUTCOMES == {
         DeliveryOutcome.OUTCOME_PROGRESS,
         DeliveryOutcome.PRIMARY_GOAL_OUTCOME,
-    }
-    assert FOLLOWTHROUGH_REQUIRED_DELIVERY_OUTCOMES == {
-        DeliveryOutcome.SURFACE_ONLY,
-        DeliveryOutcome.OUTCOME_GAP,
     }
     try:
         require_delivery_outcome("contract_v0_delivered")
@@ -158,22 +152,18 @@ def assert_refresh_state_enforces_enum(registry_path: Path) -> None:
 
 def assert_status_uses_enum_not_classification() -> None:
     assert (
-        delivery_outcome_for_run(
-            {
+        project_delivery_history([{
                 "classification": "runner_contract_v0_delivered",
                 "delivery_outcome": DeliveryOutcome.OUTCOME_PROGRESS.value,
-            }
-        )
+            }], outcome_floor_configured=False)["runs"][0]["delivery_outcome"]
         == DeliveryOutcome.OUTCOME_PROGRESS.value
     )
     assert (
-        delivery_outcome_for_run(
-            {
+        project_delivery_history([{
                 "classification": "runner_contract_v0_delivered",
                 "delivery_outcome": "contract_v0_delivered",
-            }
-        )
-        == DELIVERY_OUTCOME_UNKNOWN
+            }], outcome_floor_configured=False)["runs"][0]["delivery_outcome"]
+        == "unknown"
     )
 
 

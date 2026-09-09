@@ -71,6 +71,7 @@ import {
   planTodoExternalWaitTransition,
 } from "./todos/resume_condition.ts";
 import { evaluateSchedulerStateTransition } from "./scheduler/state_transition_rules.ts";
+import { projectTodoResumePlanning } from "./todos/resume_planning.ts";
 import {
   evaluateSchedulerStateOperation,
   loadSchedulerState,
@@ -94,6 +95,7 @@ import {
   qualifyActionSelection,
 } from "./work_items/action_portfolio.ts";
 import { projectQuotaPlanningHorizon } from "./work_items/planning_horizon.ts";
+import { projectDeliveryHistory } from "./work_items/delivery_history.ts";
 import {
   evaluateTaskLeaseAcquireDecision,
   evaluateTaskLeaseWriteScopesOverlap,
@@ -395,6 +397,7 @@ export function createEffectRuntimeHandlers(
     ["todo.next_action.transition", transitionTodoNextAction],
     ["todo.resume_condition.normalize", normalizeTodoResumeWhen],
     ["todo.resume_condition.evaluate", evaluateTodoResumeConditions],
+    ["todo.resume_planning.project", projectTodoResumePlanning],
     ["todo.external_wait.plan", planTodoExternalWaitTransition],
     ["scheduler.state_transition.evaluate", evaluateSchedulerStateTransition],
     ["scheduler.state.evaluate", evaluateSchedulerStateOperation],
@@ -407,6 +410,7 @@ export function createEffectRuntimeHandlers(
     ["work_item.planning_inventory.project", projectTodoPlanningInventory],
     ["work_item.planning_inventory.detail", projectTodoPlanningInventoryDetail],
     ["work_item.refresh_recommendation.resolve", resolveRefreshRecommendation],
+    ["work_item.delivery_history.project", projectDeliveryHistory],
     ["goal.vision_checkpoint.evaluate", buildVisionCheckpoint],
     ["goal.vision_wait.coverage", projectVisionWaitCoverage],
     ["goal.shared_goal_alignment.project", projectSharedGoalAlignment],

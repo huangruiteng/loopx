@@ -17,7 +17,6 @@ from ..work_items.work_lane import (
     work_lane_contract_requires_current_agent_attempt,
 )
 from ..todos.contract import (
-    TODO_STATUS_OPEN,
     TODO_TASK_CLASS_ADVANCEMENT,
     TODO_TASK_CLASS_MONITOR,
     normalize_todo_blocks_agent,
@@ -26,11 +25,9 @@ from ..todos.contract import (
     normalize_todo_excluded_agents,
     normalize_todo_global_gate,
     normalize_todo_id,
-    normalize_todo_status,
-    normalize_todo_task_class,
 )
 from ..todos.handoff_gate import HandoffGateState
-from ..todos.deferred_resume import todo_summary_blocked_successor_items
+from ..todos.resume_planning import project_todo_resume_planning
 from ..todos.projection import (
     todo_item_claimed_by_agent_or_unclaimed,
     todo_item_excludes_agent,
@@ -936,28 +933,16 @@ def _agent_scope_monitor_blocked_resume_candidates(
             continue
         if item.get("resume_ready") is not False:
             continue
-        raw_condition = item.get("resume_condition")
-        condition = raw_condition if isinstance(raw_condition, dict) else {}
-        if normalize_todo_status(condition.get("target_status")) != TODO_STATUS_OPEN:
-            continue
-        target_todo_id = normalize_todo_id(
-            item.get("blocking_monitor_todo_id")
-            or condition.get("target_todo_id")
-            or condition.get("target")
-        )
-        target_task_class = normalize_todo_task_class(
-            condition.get("target_task_class"),
-            text="",
-        )
-        if target_task_class != TODO_TASK_CLASS_MONITOR and not target_todo_id:
-            continue
+        # The typed resume-planning owner has already diagnosed and selected
+        # this repair lane. This consumer keeps executor scope and presentation,
+        # not a second interpretation of condition target/class/status.
         identity = str(item.get("todo_id") or item.get("index") or item.get("text") or "")
         if identity in seen:
             continue
         seen.add(identity)
         compact = compact_todo_summary_item(item, text=str(item.get("text") or "").strip())
-        if target_todo_id:
-            compact["blocking_monitor_todo_id"] = target_todo_id
+        if item.get("blocking_monitor_todo_id"):
+            compact["blocking_monitor_todo_id"] = item["blocking_monitor_todo_id"]
         unique.append(compact)
     return sorted(unique, key=_todo_projection_sort_key)
 
@@ -1261,10 +1246,10 @@ def _deferred_resume_frontier(
 def _blocked_successor_wait_frontier(
     context: _AgentScopeNoCandidateContext,
 ) -> dict[str, Any] | None:
-    candidates = todo_summary_blocked_successor_items(
+    candidates = project_todo_resume_planning(
         context.summary,
         agent_id=context.agent_id,
-    )
+    )["blocked_successor_items"]
     if not candidates:
         return None
     first = candidates[0]

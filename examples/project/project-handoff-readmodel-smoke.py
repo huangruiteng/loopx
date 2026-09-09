@@ -36,10 +36,7 @@ def _projection_state(
         is_handoff_ready_run=status_module.is_handoff_ready_run,
         is_custom_post_handoff_work_run=status_module.is_custom_post_handoff_work_run,
         is_status_neutral_run=status_module.is_status_neutral_run,
-        compact_post_handoff_run=status_module.compact_post_handoff_run,
-        small_delivery_batch_scale_streak=status_module.small_delivery_batch_scale_streak,
-        outcome_floor_configured=status_module.outcome_floor_configured,
-        outcome_gap_streak=status_module.outcome_gap_streak,
+        project_delivery_history=status_module.project_post_handoff_history,
     )
 
 

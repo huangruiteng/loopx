@@ -7,7 +7,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.work_items.outcome_followthrough import build_outcome_followthrough_hint  # noqa: E402
+from loopx.control_plane.work_items.work_lane_context import outcome_followthrough_hint  # noqa: E402
+
+
+def build_outcome_followthrough_hint(run):
+    return outcome_followthrough_hint({"handoff_readiness": {"post_handoff_latest_run": run}})
 
 
 def assert_none(latest_run: dict[str, object] | None) -> None:

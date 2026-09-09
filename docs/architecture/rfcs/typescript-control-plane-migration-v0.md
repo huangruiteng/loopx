@@ -150,12 +150,18 @@ follow-through obligation, prove an outcome, or classify delivery scale.
 For example, `unblocked after dependency update` is not a blocker receipt and
 `implemented network protocol parser` is not preparation-only evidence.
 
-The owning modules remain `control_plane/work_items/delivery_outcome.py`,
-`delivery_signals.py`, and `outcome_followthrough.py`. This is a correctness
-prerequisite inside the existing owner, not a new capability/provider or a
-completed TypeScript transaction migration. It deletes keyword inference and
-its status constants without adding a runtime crossing, schema, or service.
-The existing typed blocker-settlement predicate is reused rather than copied.
+`control_plane/work_items/delivery_history.ts` now owns the complete delivery
+history-to-obligation read projection: outcome, turn kind, scale, consecutive
+streaks and follow-through. Status selects one bounded history batch before one
+`work_item.delivery_history.project` request; quota's latest-run consumer uses
+the same projection with one row. This adds a managed-runtime crossing where
+Python previously decided locally, not one request per field or historical row.
+The Python bridge sends compact typed facts, never narrative or evidence bodies;
+display-only classification is attached after the decision. The replaced
+`delivery_signals.py`, `outcome_followthrough.py`, turn-kind inference and status
+streak wrappers are deleted. Existing TS blocker binding is reused. Python enum
+codecs and the settlement writer predicate still have real callers and remain;
+this is not a writer/transaction or provider migration.
 
 The acceptance invariant is **narrative non-interference**: holding typed
 fields and configuration fixed, rewriting narrative or adding an unvalidated
@@ -182,18 +188,20 @@ label; no legacy prediction is retained without a concrete display consumer.
   erroneous behavior. This intentionally changes status, handoff/review, and
   quota decisions previously derived from untyped historical labels.
 
-Within this delivery domain, the migration unit is the complete
-delivery-history-to-obligation projection, including scale/outcome streaks and
-its status/quota consumers. This defines the slice boundary without displacing
-the provider-first Todo sequence below.
-It must cross at most once per bounded history batch, delete the replaced
-Python decision path, preserve independently reviewed typed cases, and retain
-narrative-mutation regressions through the real CLI. Transport-only golden
-parity is insufficient because the old inference was incorrect. Separately
-inventory writers still omitting material-result fields and retire obsolete
+The migration preserves independently characterized legal typed behavior and
+validates real refresh/history/status/quota entrypoints, batch cardinality and
+narrative non-interference. One intentional correction is separate from parity:
+two invalid work-item identifiers must not compare equal merely because both
+normalize to a missing value. Such observations cannot infer blocker writeback
+or discharge a follow-through obligation. The remaining Python writer predicate
+rejects that case too; no active history is rewritten.
+
+Next, inventory writers still omitting material-result fields and retire obsolete
 marker/hint configuration with an explicit compatibility plan. Exact legacy
-lifecycle classification codes and unrelated cadence policies are outside this
-slice; they must not be reported as migrated or globally free of prose rules.
+lifecycle classification codes, history selection and unrelated cadence policies
+remain outside this slice. Do not claim all writers migrated or all prose rules
+retired. This read-policy closure does not displace the provider-first Todo
+sequence below or wait for a provider cutover.
 
 ### Legacy field-rule retirement checkpoint
 
@@ -243,6 +251,40 @@ callers still cross the runtime boundary for admission and their locked gate;
 this slice reduces semantic owners, not crossing count. Native transactions stay
 in-process. Fold the remaining crossings into that complete transaction rather
 than extending these adapters field by field.
+
+The waiting/resume planning slice now uses `todos/resume_planning.ts` for the
+complete deferred, resume-blocked, monitor-repair and blocked-successor selection.
+Quota composes capacity evaluation with these lanes in one request per source summary, reusing the
+existing TS resume evaluator in-process; vision-wait, agent-scope, frontier and
+replan consumers use the same projection. The old `deferred_resume.py` rule owner
+is removed, not retained behind a second implementation. The Python adapter keeps
+the reader compatibility boundary, not claim/exclusion selection or wait routing.
+Resume, route-continuation and succession-warning share `compact_projection.py`
+for field omission and scope normalization; caller-specific text inference and
+succession-only fields remain explicit. Priority rank normalization stays in the
+resume adapter. This retires
+one read-policy family, not the whole quota reducer or the monitor/lease writers.
+Equal public sort keys retain source order; full counts precede display limits;
+`monitor_changed` is not the legacy `todo_done:<monitor>` repair path. This
+read-only result grants neither execution authority nor a lifecycle receipt.
+The adapter exits when its callers consume typed Todo records in-process.
+
+Resume condition diagnosis is now shared by the evaluator and planning owner;
+agent-scope consumes the selected repair lane rather than reinterpreting target
+type/status. Old compact inputs may recover omitted kind/class from typed
+`resume_when` and the same snapshot's monitor records, never from narrative.
+This refinement includes explicit behavior corrections: self-dependencies and
+`todo_done` dependencies on unfinished monitors are `resume_condition_invalid`,
+not ordinary pending waits. Completed historical monitor dependencies remain
+satisfied; missing completion targets remain pending because absence in a
+partial snapshot is not proof of an invalid dependency. Valid generation fences,
+claim/exclusion, capacity and PR waits retain their existing semantics. Invalid
+conditions cannot become exact blocked-successor waits. Monitor completion
+repair stays visible and selectable only in the permitted executor scope.
+No automatic conversion to `monitor_changed`, baseline reset, persisted-state
+rewrite or new writer admission is implied. General add/update admission and a
+generic repair action for every invalid condition remain separate scopes; this
+is not a claim of zero behavior change or full Todo writer closure.
 
 1. **Close the actual command and consumer inventory.** Build on the merged
    create/claim/update and #4053 terminal/successor/archive transactions; do not

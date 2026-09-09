@@ -11,14 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.control_plane.todos.deferred_resume import (  # noqa: E402
-    TODO_DEFERRED_RESUME_SELECTION_POLICY,
-    TODO_MONITOR_BLOCKED_RESUME_SELECTION_POLICY,
-    build_todo_deferred_visibility_lanes,
-    build_todo_resume_blocked_visibility_lanes,
-    todo_summary_monitor_blocked_resume_items,
-    todo_summary_resume_blocked_items,
-)
+from loopx.control_plane.todos.resume_planning import project_todo_resume_planning  # noqa: E402
 
 
 CURRENT_AGENT = "codex-product-capability"
@@ -116,11 +109,11 @@ def assert_deferred_resume_lanes_filter_current_unclaimed_and_other_agents() -> 
         ],
     }
 
-    lanes = build_todo_deferred_visibility_lanes(
+    lanes = project_todo_resume_planning(
         summary,
-        agent_identity={"agent_id": CURRENT_AGENT},
+        agent_id=CURRENT_AGENT,
         item_limit=10,
-    )
+    )["deferred_lanes"]
     assert lanes["deferred_count"] == 1, lanes
     assert lanes["deferred_visibility_limit"] == 10, lanes
     assert lanes["deferred_items"][0]["todo_id"] == "todo_deferred_backlog", lanes
@@ -140,9 +133,6 @@ def assert_deferred_resume_lanes_filter_current_unclaimed_and_other_agents() -> 
     current = lanes["current_agent_deferred_resume_candidates"][0]
     assert current["required_write_scopes"] == ["loopx/**"], current
     assert current["decision_scope"]["scope_key"] == "resume", current
-    assert lanes["deferred_resume_selection_policy"] == (
-        TODO_DEFERRED_RESUME_SELECTION_POLICY
-    ), lanes
 
 
 def assert_monitor_blocked_resume_lanes_filter_by_claim_and_monitor_target() -> None:
@@ -181,7 +171,9 @@ def assert_monitor_blocked_resume_lanes_filter_by_claim_and_monitor_target() -> 
         "backlog_items": [current],
     }
 
-    resume_blocked = todo_summary_resume_blocked_items(summary)
+    projection = project_todo_resume_planning(summary, agent_id=CURRENT_AGENT, item_limit=10)
+    lanes = projection["resume_blocked_lanes"]
+    resume_blocked = lanes["resume_blocked_items"]
     assert [item["todo_id"] for item in resume_blocked] == [
         "todo_current_blocked",
         "todo_unclaimed_blocked",
@@ -189,7 +181,7 @@ def assert_monitor_blocked_resume_lanes_filter_by_claim_and_monitor_target() -> 
         "todo_non_monitor_blocked",
         "todo_excluded_blocked",
     ], resume_blocked
-    monitor_blocked = todo_summary_monitor_blocked_resume_items(summary)
+    monitor_blocked = projection["monitor_blocked_items"]
     assert [item["todo_id"] for item in monitor_blocked] == [
         "todo_current_blocked",
         "todo_unclaimed_blocked",
@@ -201,20 +193,12 @@ def assert_monitor_blocked_resume_lanes_filter_by_claim_and_monitor_target() -> 
         for item in monitor_blocked
     ), monitor_blocked
 
-    lanes = build_todo_resume_blocked_visibility_lanes(
-        summary,
-        agent_identity={"agent_id": CURRENT_AGENT},
-        item_limit=10,
-    )
     assert lanes["resume_blocked_count"] == 5, lanes
     assert lanes["monitor_blocked_resume_count"] == 4, lanes
     assert lanes["current_agent_monitor_blocked_resume_count"] == 1, lanes
     assert lanes["unclaimed_monitor_blocked_resume_count"] == 1, lanes
     assert lanes["other_agent_monitor_blocked_resume_count"] == 1, lanes
     assert lanes["executor_excluded_self_monitor_blocked_resume_count"] == 1, lanes
-    assert lanes["monitor_blocked_resume_selection_policy"] == (
-        TODO_MONITOR_BLOCKED_RESUME_SELECTION_POLICY
-    ), lanes
 
 
 def main() -> int:

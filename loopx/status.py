@@ -14,13 +14,6 @@ from .control_plane.status.runtime_summaries import (
     build_status_runtime_summaries as _build_status_runtime_summaries_read_model,
 )
 from .contract import check_contract
-from .control_plane.work_items.delivery_batch_scale import (
-    SMALL_DELIVERY_BATCH_SCALES as STRUCTURED_SMALL_DELIVERY_BATCH_SCALES,
-)
-from .control_plane.work_items.delivery_outcome import (
-    DELIVERY_OUTCOME_NOT_CONFIGURED,
-    delivery_turn_kind_for_run,
-)
 from .doctor import (
     PROMOTION_READINESS_CLASSIFICATIONS,
     PROMOTION_READINESS_FRESHNESS_HOURS,
@@ -95,13 +88,7 @@ from .control_plane.work_items.autonomous_replan_obligation import (
 from .control_plane.work_items.backlog_hygiene import (
     MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS as _MAX_BACKLOG_HYGIENE_EVIDENCE_ITEMS_READ_MODEL,
 )
-from .control_plane.work_items.delivery_signals import (
-    delivery_batch_scale_for_run as _delivery_batch_scale_for_run_read_model,
-    delivery_outcome_for_run as _delivery_outcome_for_run_read_model,
-    outcome_floor_configured as _outcome_floor_configured_read_model,
-    outcome_gap_streak as _outcome_gap_streak_read_model,
-    small_delivery_batch_scale_streak as _small_delivery_batch_scale_streak_read_model,
-)
+from .control_plane.work_items.delivery_history import project_delivery_history
 from .control_plane.runtime.run_compaction import (
     RUN_BASE_COMPACT_FIELDS,
     attach_run_summary_projections as _attach_run_summary_projections_read_model,
@@ -291,9 +278,6 @@ EVENT_LEDGER_EVIDENCE_HINTS = (
 )
 
 
-SMALL_DELIVERY_BATCH_SCALES = {
-    scale.value for scale in STRUCTURED_SMALL_DELIVERY_BATCH_SCALES
-}
 CONNECTED_ADAPTER_STATUSES = {
     "connected",
     "connected-read-only",
@@ -584,62 +568,38 @@ def is_custom_post_handoff_work_run(run: dict[str, Any]) -> bool:
     )
 
 
-def delivery_batch_scale_for_run(run: dict[str, Any]) -> str:
-    return _delivery_batch_scale_for_run_read_model(run)
-
-
-def delivery_outcome_for_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> str:
-    return _delivery_outcome_for_run_read_model(
-        run,
-        profile,
-        execution_profile_outcome_floor=execution_profile_outcome_floor,
-    )
-
-
-def outcome_floor_configured(profile: dict[str, Any] | None) -> bool:
-    return _outcome_floor_configured_read_model(
-        profile,
-        execution_profile_outcome_floor=execution_profile_outcome_floor,
-    )
-
-
-def outcome_gap_streak(runs: list[dict[str, Any]], profile: dict[str, Any] | None = None) -> int:
-    return _outcome_gap_streak_read_model(
-        runs,
-        profile,
-        delivery_outcome_for_run=delivery_outcome_for_run,
-        outcome_floor_configured=outcome_floor_configured,
-    )
-
-
 def compact_post_handoff_run(run: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
-    compact: dict[str, Any] = {}
-    for field in ("generated_at", "classification", "health_check", "json_exists", "markdown_exists"):
-        if field in run:
-            compact[field] = run[field]
-    compact["delivery_batch_scale"] = delivery_batch_scale_for_run(run)
-    outcome = delivery_outcome_for_run(run, profile)
-    if outcome != DELIVERY_OUTCOME_NOT_CONFIGURED:
-        compact["delivery_outcome"] = outcome
-    compact["delivery_turn_kind"] = delivery_turn_kind_for_run(
-        run,
-        delivery_outcome=outcome,
-    )
-    return _attach_run_summary_projections_read_model(
-        compact,
-        run,
-        compact_session_runtime_projection_from_run=(
-            compact_session_runtime_projection_from_run
-        ),
-    )
+    return project_post_handoff_history([run], profile)["post_handoff_latest_run"]
 
 
-def small_delivery_batch_scale_streak(runs: list[dict[str, Any]]) -> int:
-    return _small_delivery_batch_scale_streak_read_model(
-        runs,
-        delivery_batch_scale_for_run=delivery_batch_scale_for_run,
-        small_delivery_batch_scales=SMALL_DELIVERY_BATCH_SCALES,
-    )
+def project_post_handoff_history(
+    runs: list[dict[str, Any]], profile: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not runs:
+        return {}
+    floor = execution_profile_outcome_floor(profile)
+    floor_configured = bool(floor.get("outcome_markers") or floor.get("surface_only_hints"))
+    projection = project_delivery_history(runs, outcome_floor_configured=floor_configured)
+    compact_runs = []
+    for run, signal in zip(runs, projection["runs"], strict=True):
+        compact = {field: run[field] for field in (
+            "generated_at", "classification", "health_check", "json_exists", "markdown_exists",
+        ) if field in run}
+        compact.update({field: signal[field] for field in ("delivery_batch_scale", "delivery_turn_kind")})
+        if signal["delivery_outcome"] != "not_configured":
+            compact["delivery_outcome"] = signal["delivery_outcome"]
+        compact_runs.append(_attach_run_summary_projections_read_model(
+            compact, run,
+            compact_session_runtime_projection_from_run=compact_session_runtime_projection_from_run,
+        ))
+    result = {
+        "post_handoff_latest_run": compact_runs[0],
+        "post_handoff_recent_runs": compact_runs,
+        "post_handoff_small_scale_streak": projection["small_scale_streak"],
+    }
+    if floor_configured:
+        result["post_handoff_outcome_gap_streak"] = projection["outcome_gap_streak"]
+    return result
 
 
 def project_asset_handoff_state(
@@ -657,10 +617,7 @@ def project_asset_handoff_state(
         is_handoff_ready_run=is_handoff_ready_run,
         is_custom_post_handoff_work_run=is_custom_post_handoff_work_run,
         is_status_neutral_run=is_status_neutral_run,
-        compact_post_handoff_run=compact_post_handoff_run,
-        small_delivery_batch_scale_streak=small_delivery_batch_scale_streak,
-        outcome_floor_configured=outcome_floor_configured,
-        outcome_gap_streak=outcome_gap_streak,
+        project_delivery_history=project_post_handoff_history,
     )
 
 

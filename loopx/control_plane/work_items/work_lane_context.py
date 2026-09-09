@@ -14,7 +14,7 @@ from ..todos.projection import (
     todo_summary_monitor_schedule_gap_items,
     todo_summary_open_task_counts,
 )
-from .outcome_followthrough import build_outcome_followthrough_hint
+from .delivery_history import project_delivery_history
 from .work_lane import (
     build_work_lane_contract,
     due_monitor_preempts_advancement,
@@ -73,7 +73,8 @@ def post_handoff_latest_run(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def outcome_followthrough_hint(item: dict[str, Any]) -> dict[str, Any] | None:
-    return build_outcome_followthrough_hint(post_handoff_latest_run(item))
+    run = post_handoff_latest_run(item)
+    return project_delivery_history([run])["runs"][0]["outcome_followthrough"] if run else None
 
 
 def next_action_requires_advancement(item: dict[str, Any]) -> bool:
