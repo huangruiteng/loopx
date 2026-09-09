@@ -586,6 +586,8 @@ def project_post_handoff_history(
             "generated_at", "classification", "health_check", "json_exists", "markdown_exists",
         ) if field in run}
         compact.update({field: signal[field] for field in ("delivery_batch_scale", "delivery_turn_kind")})
+        if signal.get("delivery_claim_conflicts"):
+            compact["delivery_claim_conflicts"] = signal["delivery_claim_conflicts"]
         if signal["delivery_outcome"] != "not_configured":
             compact["delivery_outcome"] = signal["delivery_outcome"]
         compact_runs.append(_attach_run_summary_projections_read_model(

@@ -76,3 +76,21 @@ def test_refresh_history_preserves_labels_without_inventing_delivery(tmp_path: P
         else:
             assert compact["delivery_turn_kind"] == "compact_evidence"
             assert build_outcome_followthrough_hint(compact) is None
+
+    # The real authoring entrypoint rejects a contradictory claim before any
+    # state/history changes, including in dry-run mode.
+    before = {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()}
+    for mode in ([], ["--dry-run"]):
+        rejected = subprocess.run(
+            [sys.executable, "-m", "loopx.cli", "--registry", str(registry),
+             "--runtime-root", str(runtime), "--format", "json", "refresh-state",
+             "--goal-id", "delivery-semantics", "--classification", "typed claim",
+             "--delivery-outcome", "primary_goal_outcome", "--todo-id", "todo_delivery",
+             "--progress-result-class", "blocked", "--progress-blocker-id", "blocker-a",
+             "--progress-evidence-id", "evidence-a", "--no-global-sync", *mode],
+            cwd=tmp_path, env={**os.environ, "PYTHONPATH": str(ROOT)},
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        assert rejected.returncode != 0
+        assert "primary_outcome_with_blocker" in rejected.stdout + rejected.stderr
+        assert {path: path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()} == before

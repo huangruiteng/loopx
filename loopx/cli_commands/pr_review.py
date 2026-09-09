@@ -277,6 +277,7 @@ def handle_pr_review_command(
                 previous_observation=previous_observation,
                 handled_exact_heads=args.handled_exact_head,
                 projected_exact_heads=args.projected_exact_head,
+                authenticated_developer_login=reviewer_login,
             )
             payload["autonomous_review"] = autonomous_review
             payload["request"]["autonomous_observation"] = True

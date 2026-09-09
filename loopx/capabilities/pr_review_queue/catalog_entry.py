@@ -23,7 +23,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
     "default_enabled": False,
     "real_world_anchor": "maintainer review of a changing public GitHub PR queue",
     "user_value": (
-        "Turn complete open-PR observations into age-fair exact-head review "
+        "Turn complete open-PR observations into policy-ranked exact-head review "
         "candidates without repeating handled work or granting external writes."
     ),
     "entry_command": (
@@ -63,7 +63,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
                 "[--projected-exact-head NUMBER@HEAD_OID] "
                 "[--handled-exact-head NUMBER@HEAD_OID] --format json"
             ),
-            "purpose": "Atomically continue age-fair review scheduling across Codex tasks.",
+            "purpose": "Atomically continue policy-ranked review scheduling across Codex tasks.",
             "write_boundary": "writes only the explicit public-safe local checkpoint; grants no GitHub, Todo, push, or merge authority",
         },
     ],
@@ -91,6 +91,11 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         {
             "schema_version": "pull_request_review_queue_observation_v1",
             "module": "loopx.capabilities.pr_review_queue.core",
+            "doc": "loopx/capabilities/pr_review_queue/README.md",
+        },
+        {
+            "schema_version": "pull_request_review_scheduling_policy_v0",
+            "module": "loopx.capabilities.pr_review_queue.scheduling",
             "doc": "loopx/capabilities/pr_review_queue/README.md",
         },
         {
@@ -123,7 +128,8 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         "The shared execution contract owns review depth, evidence completeness, repository-reuse comparison, exact-head freshness, symbol-map, walkthrough, validation, failure, code-volume, change-proportionality, default-off isolation, and authority-semantics requirements; host skills only route and publish it.",
         "A queue is observed only when result_completeness.complete=true; partial or failed reads are not_observed and never count as unchanged.",
         "Fingerprints cover exact head, formal conclusion, next action, check state, draft state, and mergeability for every open PR.",
-        "Current-head review_ready_at, not updatedAt, owns age-fair ordering; one new head after REQUEST_CHANGES may use a bounded fast-feedback slot.",
+        "Actionable authenticated-developer-owned heads rank first; community response heads and 24-hour backlog share the next tier; remaining work keeps current-head review_ready_at ordering, and one new head after REQUEST_CHANGES may use a bounded fast-feedback slot.",
+        "Only an explicit request-scoped PR selection may override the queue; Todo prose, monitor notes, and one-off author filters are not scheduling authority.",
         "A complete exact-head conclusion requires the five Chinese sections, a state-aligned English verdict, and formal state or the verdict-specific titled author-owned fallback.",
         "One observation emits at most one exact-head advancement Todo preview; unchanged observations replay it until explicit durable Todo-projection ACK, then rotate across acknowledged exact heads.",
         "The capability reuses the existing pr-review GitHub scan and normalized packet; review bodies are inspected for format but never emitted or checkpointed.",

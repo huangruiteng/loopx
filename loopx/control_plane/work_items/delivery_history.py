@@ -1,4 +1,4 @@
-"""Compact transport for the typed delivery-history read model, never a writer."""
+"""Compact transport for typed delivery diagnostics and pre-write validation."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -70,3 +70,14 @@ def project_delivery_history(
             # Display-only annotation after the decision; narrative never enters TS.
             hint["latest_classification"] = _text(run.get("classification")).strip()
     return result
+
+
+def require_consistent_delivery_claim(record: Mapping[str, Any]) -> None:
+    """Reject contradictory authored claims before effects; add no new fields."""
+    if not any(record.get(key) for key in ("delivery_outcome", "delivery_turn_kind", "outcome_followthrough_required")):
+        return
+    result = effect_runtime_result("work_item.delivery_claim.validate", _run_facts(record))
+    if not isinstance(result, dict) or result.get("schema_version") != "delivery_claim_validation_v0":
+        raise RuntimeError("TypeScript delivery claim validation shape mismatch")
+    if result.get("valid") is not True:
+        raise ValueError("contradictory delivery claim: " + ", ".join(result.get("conflicts") or []))

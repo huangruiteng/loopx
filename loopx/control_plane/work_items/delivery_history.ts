@@ -1,7 +1,7 @@
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
-import { DELIVERY_OUTCOMES, isTurnScopedSettlementOutcome, type DeliveryOutcome } from "./delivery_outcome.ts";
+import { DELIVERY_OUTCOMES, diagnoseDeliveryClaim, isTurnScopedSettlementOutcome, type DeliveryOutcome } from "./delivery_outcome.ts";
 
 const TURN_KINDS = [
   "contract_only_preparation", "compact_evidence", "blocker_writeback",
@@ -117,6 +117,12 @@ export function projectDeliveryHistory(value: unknown): JsonObject {
   }
   const floorConfigured = input.outcome_floor_configured;
   const runs: DeliverySignal[] = input.runs.map(decodeRun).map((run) => {
+    const conflicts = diagnoseDeliveryClaim({ ...run });
+    if (conflicts.length > 0) return {
+      delivery_outcome: "unknown", delivery_batch_scale: batchScale(run.delivery_batch_scale),
+      delivery_turn_kind: "unknown", outcome_followthrough: null,
+      delivery_claim_conflicts: conflicts,
+    };
     const outcome = outcomeSignal(run.delivery_outcome, floorConfigured);
     const kind = turnKind(run, outcome);
     return {

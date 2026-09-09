@@ -944,13 +944,14 @@ def build_agent_response_contract() -> dict[str, Any]:
         "stats_only_requires_explicit_opt_out": True,
         "queue_table_role": "preface_only",
         "default_review_scope": (
-            "Review PRs in review_groups.unmerged first, then review_groups.merged, "
-            "bounded by the requested limit."
+            "Follow scheduling_policy and its ranked review_sequence, with only an explicit "
+            "request-scoped PR selection allowed to override it."
         ),
         "required_packet_fields_to_preserve": [
             "agent_response_contract",
             "agent_response_contract.review_execution_contract",
             "result_completeness",
+            "scheduling_policy",
             "review_groups",
             "pull_requests[].review_plan",
             "pull_requests[].review_template",
@@ -974,8 +975,9 @@ def build_agent_response_contract() -> dict[str, Any]:
             "freshness": "Record and recheck the remote head SHA; do not publish a stale verdict.",
         },
         "instructions": [
-            "Use review_groups as the queue and require result_completeness.complete=true for exhaustive review.",
+            "Use scheduling_policy plus review_groups as the queue and require result_completeness.complete=true for exhaustive review.",
             "Start with review_execution_contract.decision_procedure, before implementation narration or prior-comment closure.",
+            "Follow the capability-ranked review_sequence; only an explicit request-scoped PR selection may override it, and Todo or monitor prose must not replace the stable policy.",
             "Execute each pull_requests[].review_plan against the shared review_execution_contract before drafting prose.",
             "Do not infer verified evidence from title, labels, changed-file counts, metadata_risk_hint, or green CI alone.",
             "Recheck the exact remote head before verdict and publication.",

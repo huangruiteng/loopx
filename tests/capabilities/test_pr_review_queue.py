@@ -4,6 +4,8 @@ from copy import deepcopy
 
 from loopx.capabilities.pr_review_queue import (
     build_pull_request_review_queue_observation,
+    build_scheduling_policy,
+    scheduling_tier,
 )
 
 
@@ -15,6 +17,7 @@ def _pr(
     draft: bool = False,
     merge_state: str = "CLEAN",
     failures: list[str] | None = None,
+    author_owned: bool = False,
 ) -> dict[str, object]:
     return {
         "number": number,
@@ -25,6 +28,7 @@ def _pr(
         "review_decision": decision,
         "is_draft": draft,
         "merge_state": merge_state,
+        "author_owned": author_owned,
         "checks": {
             "counts": {
                 "success": 1,
@@ -91,7 +95,9 @@ def test_initial_complete_observation_selects_one_exact_head_candidate() -> None
     assert result["repository"] == "owner/repo"
     assert result["queue_size"] == 2
     assert all(
-        set(item) == {"number", "fingerprint", "head_oid", "review_decision"}
+        set(item)
+        == {"number", "fingerprint", "head_oid", "review_decision"}
+        | {"review_action_kind"}
         for item in result["items"]
     )
     candidate = result["candidate"]
@@ -103,6 +109,38 @@ def test_initial_complete_observation_selects_one_exact_head_candidate() -> None
     assert todo["required_capabilities"] == ["network", "external_evidence_poll"]
     assert result["write_authority_granted"] is False
     assert result["external_write_performed"] is False
+
+
+def test_authenticated_developer_owned_candidate_precedes_community() -> None:
+    result = _observe([_pr(1), _pr(2, author_owned=True)])
+
+    assert result["candidate"]["number"] == 2
+    assert result["candidate_selection_reason"] == "authenticated_developer_owned_first"
+    assert result["scheduling_policy"]["owner_first_active"] is True
+
+
+def test_scheduling_policy_tiers_match_machine_lane_values() -> None:
+    policy = build_scheduling_policy(authenticated_developer_login="maintainer")
+
+    for declared_tier in policy["ordered_tiers"]:
+        for lane in declared_tier["lanes"]:
+            assert scheduling_tier({"scheduling_lane": lane}) == declared_tier["tier"]
+
+
+def test_community_fast_feedback_does_not_preempt_unprojected_owner() -> None:
+    first = _observe([_pr(1, decision="CHANGES_REQUESTED"), _pr(2, author_owned=True)])
+
+    changed = _observe(
+        [
+            _pr(1, head="f" * 40, decision="CHANGES_REQUESTED"),
+            _pr(2, author_owned=True),
+        ],
+        previous=first,
+    )
+
+    assert changed["changed_pr_numbers"] == [1]
+    assert changed["candidate"]["number"] == 2
+    assert changed["candidate_selection_reason"] == "authenticated_developer_owned_first"
 
 
 def test_unacknowledged_candidate_replays_on_unchanged_observation() -> None:

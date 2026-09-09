@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { JsonObject } from "../../loopx/control_plane/effect_program.ts";
 import { projectDeliveryHistory } from "../../loopx/control_plane/work_items/delivery_history.ts";
+import { validateDeliveryClaim } from "../../loopx/control_plane/work_items/delivery_outcome.ts";
 
 function run(fields: JsonObject = {}): JsonObject {
   return { delivery_outcome: "", delivery_batch_scale: "", delivery_turn_kind: "",
@@ -100,4 +101,30 @@ test("wire faults fail closed, not a fallback to untyped history", () => {
     const rows = [run(fields)];
     assert.throws(() => project(rows));
   }
+});
+
+test("contradictory historical declarations are diagnostic, not progress or new obligations", () => {
+  for (const fields of [
+    { delivery_outcome: "outcome_progress", delivery_turn_kind: "contract_only_preparation" },
+    { delivery_outcome: "primary_goal_outcome", delivery_turn_kind: "blocker_writeback" },
+    { delivery_outcome: "primary_goal_outcome", outcome_followthrough_required: true },
+    { delivery_outcome: "primary_goal_outcome", progress_observation: {
+      schema_version: "typed_progress_observation_v0", result_class: "blocked" } },
+  ]) {
+    const record = run(fields);
+    const before = structuredClone(record);
+    assert.equal(validateDeliveryClaim(record).valid, false);
+    const projected = signal(record);
+    assert.equal(projected.delivery_outcome, "unknown");
+    assert.equal(projected.delivery_turn_kind, "unknown");
+    assert.equal(projected.outcome_followthrough, null);
+    assert.deepEqual(projected.delivery_claim_conflicts, validateDeliveryClaim(record).conflicts);
+    assert.deepEqual(record, before);
+  }
+  for (const fields of [
+    { delivery_outcome: "outcome_progress", delivery_turn_kind: "product_path_execution" },
+    { delivery_outcome: "primary_goal_outcome", delivery_turn_kind: "compact_evidence" },
+    { delivery_outcome: "outcome_gap", delivery_turn_kind: "blocker_writeback" },
+    {},
+  ]) assert.equal(validateDeliveryClaim(run(fields)).valid, true);
 });

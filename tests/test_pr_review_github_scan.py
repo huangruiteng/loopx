@@ -219,7 +219,7 @@ def _full_review_body(
     )
 
 
-def test_age_fair_queue_uses_current_head_ready_time_and_aging(monkeypatch) -> None:
+def test_queue_prioritizes_authenticated_developer_owned_heads(monkeypatch) -> None:
     monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
     rows = [
         _queue_pr(
@@ -251,13 +251,28 @@ def test_age_fair_queue_uses_current_head_ready_time_and_aging(monkeypatch) -> N
         reviewer_login="maintainer",
     )
 
-    assert [item["number"] for item in packet["pull_requests"]] == [11, 12, 13]
+    assert [item["number"] for item in packet["pull_requests"]] == [12, 13, 11]
     assert [item["scheduling_lane"] for item in packet["pull_requests"]] == [
-        "community",
-        "author_owned_aged_24h",
-        "author_owned_fallback",
+        "authenticated_developer_owned",
+        "authenticated_developer_owned",
+        "composite_remaining",
     ]
-    assert packet["pull_requests"][0]["review_ready_at"] == "2026-08-18T07:00:00Z"
+    assert [item["scheduling_tier"] for item in packet["pull_requests"]] == [
+        0,
+        0,
+        2,
+    ]
+    assert packet["pull_requests"][0]["review_ready_at"] == "2026-08-17T06:00:00Z"
+    policy = packet["scheduling_policy"]
+    assert policy["schema_version"] == "pull_request_review_scheduling_policy_v0"
+    assert policy["authenticated_developer_login"] == "maintainer"
+    assert policy["owner_first_active"] is True
+    assert [item["id"] for item in policy["ordered_tiers"][:3]] == [
+        "authenticated_developer_owned",
+        "community_feedback_and_aged_backlog",
+        "composite_remaining",
+    ]
+    assert "one-off author filters" in policy["manual_override_rule"]
 
     overdue = pr_review_module.build_pr_review_packet(
         pull_requests=[
@@ -276,7 +291,99 @@ def test_age_fair_queue_uses_current_head_ready_time_and_aging(monkeypatch) -> N
         reviewer_login="maintainer",
     )
     assert overdue["pull_requests"][0]["number"] == 14
-    assert overdue["pull_requests"][0]["scheduling_lane"] == "author_owned_aged_48h"
+    assert (
+        overdue["pull_requests"][0]["scheduling_lane"]
+        == "authenticated_developer_owned"
+    )
+
+
+def test_community_feedback_and_aged_backlog_precede_remaining_queue(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
+    feedback = _queue_pr(
+        21,
+        author="community",
+        ready_at="2026-08-18T10:00:00Z",
+        updated_at="2026-08-18T11:00:00Z",
+        review_decision="CHANGES_REQUESTED",
+        reviews=[
+            {
+                "author": {"login": "maintainer"},
+                "body": "Please repair the exact-head behavior.",
+                "commit": {"oid": "f" * 40},
+                "state": "CHANGES_REQUESTED",
+                "submittedAt": "2026-08-18T09:00:00Z",
+            }
+        ],
+    )
+    aged = _queue_pr(
+        22,
+        author="community",
+        ready_at="2026-08-17T06:00:00Z",
+        updated_at="2026-08-18T11:01:00Z",
+    )
+    ordinary = _queue_pr(
+        23,
+        author="community",
+        ready_at="2026-08-18T07:00:00Z",
+        updated_at="2026-08-18T11:02:00Z",
+    )
+
+    packet = pr_review_module.build_pr_review_packet(
+        pull_requests=[ordinary, feedback, aged],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="open",
+        reviewer_login="maintainer",
+    )
+
+    assert [item["number"] for item in packet["pull_requests"]] == [22, 21, 23]
+    assert [item["scheduling_lane"] for item in packet["pull_requests"]] == [
+        "community_aged_backlog",
+        "community_feedback",
+        "composite_remaining",
+    ]
+    assert [item["scheduling_tier"] for item in packet["pull_requests"]] == [
+        1,
+        1,
+        2,
+    ]
+
+
+def test_request_changes_after_current_head_is_not_community_feedback(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
+    row = _queue_pr(
+        24,
+        author="community",
+        ready_at="2026-08-18T09:00:00Z",
+        updated_at="2026-08-18T11:00:00Z",
+        review_decision="CHANGES_REQUESTED",
+        reviews=[
+            {
+                "author": {"login": "maintainer"},
+                "body": "Please repair the current exact head.",
+                "commit": {"oid": str(24).zfill(40)},
+                "state": "CHANGES_REQUESTED",
+                "submittedAt": "2026-08-18T10:00:00Z",
+            }
+        ],
+    )
+
+    item = pr_review_module.build_pr_review_packet(
+        pull_requests=[row],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="open",
+        reviewer_login="maintainer",
+    )["pull_requests"][0]
+
+    assert item["community_feedback_ready"] is False
+    assert item["scheduling_lane"] == "composite_remaining"
 
 
 def test_review_conclusion_requires_format_exact_head_and_formal_state(

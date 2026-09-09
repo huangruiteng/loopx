@@ -9,9 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from .capabilities.pr_review_queue import (
+    PullRequestSchedulingLane,
     build_agent_response_contract,
     build_review_plan,
     build_review_template,
+    build_scheduling_policy,
+    classify_scheduling_lane,
+    community_feedback_ready,
+    scheduling_sort_key,
+    scheduling_tier,
 )
 from .control_plane.runtime.time import now_utc_iso
 from .presentation.markdown import as_dict as _as_dict
@@ -939,32 +945,6 @@ def _review_action_kind(item: Mapping[str, Any]) -> str | None:
     return "review_pull_request_exact_head"
 
 
-def _review_priority(pr: dict[str, Any]) -> tuple[int, float, float, int]:
-    is_draft = bool(pr.get("isDraft") or pr.get("is_draft"))
-    state = str(pr.get("state") or "").upper()
-    action_kind = pr.get("review_action_kind")
-    author_owned = pr.get("author_owned") is True
-    age_hours = float(pr.get("review_ready_age_hours") or 0.0)
-    if is_draft:
-        bucket = 6
-    elif state == "MERGED":
-        bucket = 5
-    elif state == "CLOSED":
-        bucket = 7
-    elif action_kind is None:
-        bucket = 4
-    elif not author_owned or age_hours >= 48:
-        bucket = 0
-    elif age_hours >= 24:
-        bucket = 1
-    else:
-        bucket = 2
-    ready_epoch = _parse_updated_epoch(pr.get("review_ready_at"))
-    created_epoch = _parse_updated_epoch(pr.get("created_at"))
-    number = int(pr.get("number") or 0)
-    return (bucket, ready_epoch, created_epoch, number)
-
-
 def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]:
     main_risk = _as_dict(item.get("main_regression_analysis"))
     return {
@@ -980,7 +960,9 @@ def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]
         "review_ready_at": item.get("review_ready_at"),
         "review_ready_age_hours": item.get("review_ready_age_hours"),
         "author_owned": item.get("author_owned") is True,
+        "community_feedback_ready": item.get("community_feedback_ready") is True,
         "scheduling_lane": item.get("scheduling_lane"),
+        "scheduling_tier": item.get("scheduling_tier"),
         "review_action_kind": item.get("review_action_kind"),
         "review_conclusion_status": _as_dict(item.get("review_conclusion")).get(
             "status"
@@ -1034,6 +1016,7 @@ def _normalize_pr(
         "author_owned": bool(
             reviewer_login and author.casefold() == reviewer_login.casefold()
         ),
+        "community_feedback_ready": False,
         "closed_at": pr.get("closedAt"),
         "merged_at": pr.get("mergedAt"),
         "merge_commit": _redact_text(merge_commit_oid, limit=80)
@@ -1073,15 +1056,13 @@ def _normalize_pr(
         else [],
     }
     item["review_action_kind"] = _review_action_kind(item)
-    if item["author_owned"]:
-        if ready_age_hours >= 48:
-            item["scheduling_lane"] = "author_owned_aged_48h"
-        elif ready_age_hours >= 24:
-            item["scheduling_lane"] = "author_owned_aged_24h"
-        else:
-            item["scheduling_lane"] = "author_owned_fallback"
-    else:
-        item["scheduling_lane"] = "community"
+    item["community_feedback_ready"] = bool(
+        not item["author_owned"]
+        and item["review_action_kind"] == "rereview_pull_request_exact_head"
+        and community_feedback_ready(pr, review_ready_at=ready_at)
+    )
+    item["scheduling_lane"] = classify_scheduling_lane(item).value
+    item["scheduling_tier"] = scheduling_tier(item)
     item["review_plan"] = build_review_plan(item)
     item["review_template"] = build_review_template(item)
     return item
@@ -1115,7 +1096,7 @@ def build_pr_review_packet(
         if (normalized_state_filter == "all" or str(item.get("state") or "").lower() == normalized_state_filter)
         and _include_pr_in_window(item, since=since)
     ]
-    normalized_all.sort(key=_review_priority)
+    normalized_all.sort(key=scheduling_sort_key)
     packet_limit = max(1, limit)
     unmerged_all = [item for item in normalized_all if str(item.get("state") or "").upper() != "MERGED"]
     merged_all = [item for item in normalized_all if str(item.get("state") or "").upper() == "MERGED"]
@@ -1268,6 +1249,7 @@ def build_pr_review_packet(
                 "main_regression_analysis",
                 "risk_notes",
                 "review_sequence",
+                "scheduling_policy",
             ],
             "privacy_mode": "public_safe_github_metadata",
             "dry_run": True,
@@ -1287,6 +1269,9 @@ def build_pr_review_packet(
             "recommended_first_pr": first,
         },
         "result_completeness": result_completeness,
+        "scheduling_policy": build_scheduling_policy(
+            authenticated_developer_login=reviewer_login
+        ),
         "review_sequence": review_sequence,
         "review_groups": review_groups,
         "pull_requests": normalized,
@@ -1297,7 +1282,7 @@ def build_pr_review_packet(
                 "kind": "review",
                 "requires_user_approval": False,
                 "requires_maintainer_authority": False,
-                "preview": "Start with the first age-fair actionable PR in review_sequence, read its motivation, inspect key files, then decide approve/request changes/defer.",
+                "preview": "Start with the first capability-ranked actionable PR in review_sequence, read its motivation, inspect key files, then decide approve/request changes/defer.",
             },
             {
                 "action_id": "act_merge_after_review",
@@ -1329,7 +1314,14 @@ def _review_why_now(item: dict[str, Any]) -> str:
             return "The current exact head has a complete approval; qualify merge readiness."
         return "The current exact head already has a complete standalone conclusion."
     if item.get("author_owned"):
-        return "Author-owned PR awaiting a complete titled COMMENTED fallback after community work."
+        return "Authenticated-developer-owned PR is in the first actionable scheduling tier."
+    if item.get("community_feedback_ready"):
+        return "A community contributor pushed a new exact head after an independent request-changes review."
+    if (
+        item.get("scheduling_lane")
+        == PullRequestSchedulingLane.COMMUNITY_AGED_BACKLOG.value
+    ):
+        return "Community exact head has waited at least 24 hours and is in the aged-backlog tier."
     decision = str(item.get("review_decision") or "").upper()
     if decision in {"REVIEW_REQUIRED", "UNKNOWN", ""}:
         return "Open and awaiting reviewer decision."

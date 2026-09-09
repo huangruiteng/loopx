@@ -203,11 +203,8 @@ CASES.extend([
          move_guard_outside_lock("require_registry_source_write_allowed")),),
          WRITER_TEST + "test_waiting_override_writer_rechecks_registry_binding_inside_shared_state_lock"),
     Case("remove_refresh_cas", (("loopx/state_refresh.py", replacement(
-        '''            if current_state_text != expected_write_state_text:
-                raise ValueError(
-                    "active goal state changed while refresh-state was qualifying "
-                    "its semantic writeback; retry from the current state"
-                )''', "")),),
+        "if current_state_text != expected_write_state_text:",
+        "if False:  # DELIBERATE MUTANT: bypass stale-state rejection.")),),
          WRITER_TEST + "test_concurrent_public_refresh_preserves_the_newer_owned_paragraph"),
     Case("fence_unshared_state_lock", ((COORDINATION + "legacy_writer_fence.ts", replacement(
         "withFileMutationLock(statePath, () =>",

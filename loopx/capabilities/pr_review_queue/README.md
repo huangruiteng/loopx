@@ -114,7 +114,7 @@ the cursor as evidence that a review happened.
 `projected_candidate_exact_heads` persists every candidate whose durable Todo
 projection has been explicitly acknowledged but not yet completed. An unchanged
 poll skips those acknowledged exact heads and selects the next unprojected,
-unhandled PR in the age-fair review sequence. Legacy v0 observations treated
+unhandled PR in the capability-ranked review sequence. Legacy v0 observations treated
 emission as projection; v1 deliberately replays their candidates so stale
 emission cursors cannot strand unreviewed PRs. Todo target-key deduplication
 keeps this recovery idempotent.
@@ -149,13 +149,25 @@ states:
 
 The repository-scoped fingerprint contains only compact public PR metadata.
 Persisted `items` carry the PR number, fingerprint, exact head, decision, and
-next action; they never carry review bodies. One community response head after
-`REQUEST_CHANGES` may take the fast-feedback lane, then community work is
-oldest-first by the current head's `review_ready_at`. Author-owned fallback
-reviews follow community work, with 24-hour and 48-hour aging lanes preventing
-starvation. `updatedAt` does not define readiness because comments and checks
-must not make old code look new. Projected candidates remain skipped until
-handled or their exact head materially changes.
+next action; they never carry review bodies.
+`pull_request_review_scheduling_policy_v0` owns the stable queue order:
+
+1. actionable PRs authored by the authenticated developer (`reviewer_login`);
+2. community response heads pushed after an independent `REQUEST_CHANGES`
+   review and community exact heads waiting at least 24 hours;
+3. remaining actionable work in current-head `review_ready_at`, creation-time,
+   and PR-number order;
+4. current heads that already have a conclusion, followed by merged, draft,
+   and closed rows.
+
+Community feedback and aged backlog share one age-fair tier. On a material
+transition, at most one newly pushed community response head may take a bounded
+fast-feedback slot after all unprojected owner-authored work. `updatedAt` does
+not define readiness because comments and checks must not make old code look
+new. Only an explicit PR selection in the current user request may override the
+next item for that request; Todo text, monitor notes, and one-off author filters
+must not replace the capability policy. Projected candidates remain skipped
+until handled or their exact head materially changes.
 It emits a
 `pull_request_review_todo_preview_v0` bound to its exact head. The preview may
 route to initial review, re-review after changes, or merge-readiness
@@ -165,7 +177,7 @@ authority; callers must use normal LoopX Todo authority, `loopx-pr-review`, and
 
 Do not pipe that first packet through `jq` or another projection that only
 keeps `.summary` and `.review_sequence`; that drops
-`agent_response_contract`, `review_groups`, `pull_requests[].review_template`,
+`agent_response_contract`, `scheduling_policy`, `review_groups`, `pull_requests[].review_template`,
 `pull_requests[].review_plan`, and `pull_requests[].evidence_commands`, which
 are the fields that make the command a guided review instead of a statistics
 table.
@@ -356,6 +368,17 @@ absolute paths, private source bodies, or hidden CI artifacts.
     "recommended_limit": null,
     "rerun_cli_args": []
   },
+  "scheduling_policy": {
+    "schema_version": "pull_request_review_scheduling_policy_v0",
+    "identity_basis": "request.reviewer_login",
+    "owner_first_active": true,
+    "community_backlog_age_hours": 24.0,
+    "ordered_tiers": [
+      {"tier": 0, "id": "authenticated_developer_owned"},
+      {"tier": 1, "id": "community_feedback_and_aged_backlog"},
+      {"tier": 2, "id": "composite_remaining"}
+    ]
+  },
   "summary": {
     "headline": "8 PR(s) in review window: 3 open, 5 merged; 8 need review attention.",
     "total_pr_count": 8,
@@ -380,6 +403,8 @@ absolute paths, private source bodies, or hidden CI artifacts.
       "review_depth": "docs_and_smoke_review",
       "risk_hint_level": "low",
       "main_risk_level": "low",
+      "scheduling_lane": "authenticated_developer_owned",
+      "scheduling_tier": 0,
       "why_now": "Open and awaiting reviewer decision."
     }
   ],
@@ -647,9 +672,12 @@ A first implementation is acceptable when:
   long answer;
 - live packets expose and recheck `headRefOid` so a review verdict is bound to
   the remote revision actually inspected;
-- autonomous packets order community work by current-head `review_ready_at`,
-  bound response preemption to one slot, age author-owned fallbacks, and ignore
-  check-only activity for priority;
+- autonomous packets rank authenticated-developer-owned actionable work first,
+  then community response and 24-hour backlog, then remaining work by
+  current-head `review_ready_at`; response preemption is bound to one slot and
+  check-only activity does not change readiness priority;
+- `scheduling_policy` is preserved as packet authority; Todo/monitor prose and
+  one-off author filters cannot replace it;
 - `--observation-state-file` atomically carries observation and handled cursors
   across Codex tasks without returning a local path or granting external writes;
 - template sections must leave `content` empty so agentloop reads the real PR

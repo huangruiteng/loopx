@@ -40,7 +40,7 @@ paths named by `agent_response_contract.required_packet_fields_to_preserve`,
 especially:
 
 - `agent_response_contract.review_execution_contract`
-- `result_completeness`
+- `result_completeness` and `scheduling_policy`
 - `review_groups`
 - `pull_requests[].review_plan`
 - `pull_requests[].review_template`
@@ -60,8 +60,8 @@ smoke binds this number to the canonical revision; this is not a freshness claim
 
 ## Execute One Review Plan
 
-Review `review_groups.unmerged` first, then `review_groups.merged`. For every
-selected PR:
+Follow `scheduling_policy` and its ranked `review_sequence`; only an explicit
+current-request PR selection may override it. Todo/monitor prose may not. For every selected PR:
 
 1. Record the packet's exact head. Start with the capability's
    `review_execution_contract.decision_procedure`, including on re-review;

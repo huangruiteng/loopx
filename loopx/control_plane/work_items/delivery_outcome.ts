@@ -1,4 +1,6 @@
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
+import { requireJsonObject } from "../runtime_decode.ts";
+import type { JsonObject } from "../effect_program.ts";
 
 export const DELIVERY_OUTCOMES = [
   "surface_only",
@@ -16,6 +18,35 @@ export const MATERIAL_DELIVERY_OUTCOMES = [
 export type DeliveryOutcome = (typeof DELIVERY_OUTCOMES)[number];
 export type MaterialDeliveryOutcome =
   (typeof MATERIAL_DELIVERY_OUTCOMES)[number];
+
+export type DeliveryClaimConflict =
+  | "progress_with_preparation_only"
+  | "primary_outcome_with_blocker"
+  | "primary_outcome_with_followthrough";
+
+/** Validate combinations, not prose or evidence truth. Historical readers use
+ * these same codes without rewriting already committed records or receipts. */
+export function diagnoseDeliveryClaim(raw: JsonObject): DeliveryClaimConflict[] {
+  const outcome = String(raw.delivery_outcome ?? "").trim();
+  const kind = String(raw.delivery_turn_kind ?? "").trim();
+  const conflicts: DeliveryClaimConflict[] = [];
+  if ((outcome === "outcome_progress" || outcome === "primary_goal_outcome")
+    && kind === "contract_only_preparation") conflicts.push("progress_with_preparation_only");
+  const observation = jsonObject(raw.progress_observation);
+  if (outcome === "primary_goal_outcome" && (kind === "blocker_writeback"
+    || (observation?.schema_version === "typed_progress_observation_v0" && observation.result_class === "blocked"))) {
+    conflicts.push("primary_outcome_with_blocker");
+  }
+  if (outcome === "primary_goal_outcome" && raw.outcome_followthrough_required === true) {
+    conflicts.push("primary_outcome_with_followthrough");
+  }
+  return conflicts;
+}
+
+export function validateDeliveryClaim(value: unknown): JsonObject {
+  const conflicts = diagnoseDeliveryClaim(requireJsonObject(value, "delivery claim"));
+  return { schema_version: "delivery_claim_validation_v0", valid: conflicts.length === 0, conflicts };
+}
 
 const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const PROGRESS_DELIVERY_OUTCOMES = new Set<DeliveryOutcome>([

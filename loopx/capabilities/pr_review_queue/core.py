@@ -6,6 +6,14 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .scheduling import (
+    PullRequestSchedulingLane,
+    build_scheduling_policy,
+    classify_scheduling_lane,
+    scheduling_sort_key,
+    scheduling_tier,
+)
+
 OBSERVATION_SCHEMA_VERSION = "pull_request_review_queue_observation_v1"
 CANDIDATE_SCHEMA_VERSION = "pull_request_review_candidate_v0"
 TODO_PREVIEW_SCHEMA_VERSION = "pull_request_review_todo_preview_v0"
@@ -67,16 +75,26 @@ def _pr_snapshot(item: Mapping[str, Any]) -> dict[str, Any]:
         "is_draft": item.get("is_draft") is True,
         "merge_state": _upper(item.get("merge_state")),
         "review_ready_at": item.get("review_ready_at"),
+        "review_ready_age_hours": item.get("review_ready_age_hours"),
+        "created_at": item.get("created_at"),
         "author_owned": item.get("author_owned") is True,
+        "community_feedback_ready": item.get("community_feedback_ready") is True,
         "review_conclusion_status": str(
             (item.get("review_conclusion") or {}).get("status")
             if isinstance(item.get("review_conclusion"), Mapping)
             else ""
         ),
     }
-    if "review_action_kind" in item:
-        snapshot["review_action_kind"] = item.get("review_action_kind")
-    return snapshot | {"fingerprint": _fingerprint(snapshot)}
+    action = _candidate_action(item)
+    snapshot["review_action_kind"] = action[0] if action is not None else None
+    snapshot["scheduling_lane"] = classify_scheduling_lane(snapshot).value
+    snapshot["scheduling_tier"] = scheduling_tier(snapshot)
+    fingerprint_snapshot = {
+        key: value
+        for key, value in snapshot.items()
+        if key != "review_ready_age_hours"
+    }
+    return snapshot | {"fingerprint": _fingerprint(fingerprint_snapshot)}
 
 
 def _previous_observation(value: Any) -> Mapping[str, Any]:
@@ -288,6 +306,7 @@ def build_pull_request_review_queue_observation(
     previous_observation: Mapping[str, Any] | None = None,
     handled_exact_heads: Sequence[str] = (),
     projected_exact_heads: Sequence[str] = (),
+    authenticated_developer_login: str | None = None,
 ) -> dict[str, Any]:
     """Build one read-only observation and at most one exact-head candidate."""
 
@@ -388,26 +407,37 @@ def build_pull_request_review_queue_observation(
             "projected_candidate_count": len(projected_sorted),
             "candidate_projection_ack_semantics": PROJECTION_ACK_SEMANTICS,
             "selection_policy": (
-                "one fast-feedback selection for a new head after REQUEST_CHANGES; "
-                "otherwise rotate through the age-fair unprojected backlog; exact head required"
+                "authenticated-developer-owned actionable heads first; then one bounded "
+                "community fast-feedback slot and aged community backlog; otherwise use "
+                "the capability-ranked unprojected queue; exact head required"
+            ),
+            "scheduling_policy": build_scheduling_policy(
+                authenticated_developer_login=authenticated_developer_login,
+                owner_first_active=any(
+                    item.get("author_owned") is True for item in pull_requests
+                ),
             ),
             "write_authority_granted": False,
             "external_write_performed": False,
         }
 
-    ranked_items: list[dict[str, Any]] = []
-    for rank, item in enumerate(pull_requests, start=1):
+    normalized_ranked_items: list[dict[str, Any]] = []
+    for item in pull_requests:
         if _upper(item.get("state"), "OPEN") != "OPEN":
             continue
         snapshot = _pr_snapshot(item)
         snapshot.update(
             {
-                "rank": rank,
                 "title": str(item.get("title") or "").strip(),
                 "url": str(item.get("url") or "").strip(),
             }
         )
-        ranked_items.append(snapshot)
+        normalized_ranked_items.append(snapshot)
+    normalized_ranked_items.sort(key=scheduling_sort_key)
+    ranked_items = [
+        {**item, "rank": rank}
+        for rank, item in enumerate(normalized_ranked_items, start=1)
+    ]
 
     current_exact_heads = {
         key
@@ -473,8 +503,21 @@ def build_pull_request_review_queue_observation(
 
     candidate = None
     candidate_selection_reason = None
+    for item in ranked_items:
+        if (
+            item.get("scheduling_lane")
+            != PullRequestSchedulingLane.AUTHENTICATED_DEVELOPER_OWNED.value
+        ):
+            continue
+        exact_head_key = _exact_head_key(item.get("number"), item.get("head_oid"))
+        if exact_head_key in handled_set or exact_head_key in projected_set:
+            continue
+        candidate = _candidate_packet(item, repository=normalized_repository)
+        if candidate is not None:
+            candidate_selection_reason = "authenticated_developer_owned_first"
+            break
     if observation_state == "material_transition":
-        for item in changed:
+        for item in changed if candidate is None else []:
             prior = prior_items.get(str(item.get("number")), {})
             action = _candidate_action(item)
             became_approved = (
@@ -483,7 +526,8 @@ def build_pull_request_review_queue_observation(
                 and _upper(prior.get("review_decision")) != "APPROVED"
             )
             is_author_response = (
-                bool(prior)
+                item.get("author_owned") is not True
+                and bool(prior)
                 and _upper(prior.get("review_decision")) == "CHANGES_REQUESTED"
                 and str(prior.get("head_oid") or "").strip().lower()
                 != str(item.get("head_oid") or "").strip().lower()
@@ -562,8 +606,15 @@ def build_pull_request_review_queue_observation(
         "projected_candidate_count": len(projected_sorted),
         "candidate_projection_ack_semantics": PROJECTION_ACK_SEMANTICS,
         "selection_policy": (
-            "one fast-feedback selection for a new head after REQUEST_CHANGES; "
-            "otherwise rotate through the age-fair unprojected backlog; exact head required"
+            "authenticated-developer-owned actionable heads first; then one bounded "
+            "community fast-feedback slot and aged community backlog; otherwise use "
+            "the capability-ranked unprojected queue; exact head required"
+        ),
+        "scheduling_policy": build_scheduling_policy(
+            authenticated_developer_login=authenticated_developer_login,
+            owner_first_active=any(
+                item.get("author_owned") is True for item in ranked_items
+            ),
         ),
         "write_authority_granted": False,
         "external_write_performed": False,

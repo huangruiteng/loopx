@@ -33,6 +33,7 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "agent_response_contract",
         "agent_response_contract.review_execution_contract",
         "result_completeness",
+        "scheduling_policy",
         "review_groups",
         "pull_requests[].review_plan",
         "pull_requests[].review_template",

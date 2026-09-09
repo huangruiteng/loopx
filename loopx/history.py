@@ -110,6 +110,10 @@ def write_reserved_run_artifacts(
     render_markdown: Callable[[dict[str, Any]], str],
 ) -> None:
     from .control_plane.quota.usage_collector import ingest_usage_into_run_record
+    from .control_plane.work_items.delivery_history import require_consistent_delivery_claim
+
+    require_consistent_delivery_claim(record)
+    require_consistent_delivery_claim(index_record)
 
     # Producer call site for GH-C95: normalize any compact usage measurement onto
     # the durable run record and its index row before append. Fail closed here so

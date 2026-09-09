@@ -163,10 +163,14 @@ def test_followthrough_requires_literal_true_not_truthy_metadata(required) -> No
     assert build_outcome_followthrough_hint({"outcome_followthrough_required": required}) is None
 
 
-def test_primary_outcome_precedes_explicit_followthrough_and_unknown_kind_does_not_recover() -> None:
-    assert build_outcome_followthrough_hint({
+def test_contradictory_primary_claim_is_diagnostic_and_unknown_kind_does_not_recover() -> None:
+    contradictory = {
         "delivery_outcome": "primary_goal_outcome", "outcome_followthrough_required": True,
-    }) is None
+    }
+    assert build_outcome_followthrough_hint(contradictory) is None
+    compact = compact_post_handoff_run(contradictory)
+    assert compact["delivery_outcome"] == "unknown"
+    assert compact["delivery_claim_conflicts"] == ["primary_outcome_with_followthrough"]
     assert delivery_turn_kind_for_run({
         "delivery_outcome": "primary_goal_outcome", "delivery_turn_kind": "future_kind",
     }) == "unknown"

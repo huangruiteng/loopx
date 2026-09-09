@@ -191,7 +191,19 @@ def main() -> int:
     assert request["repository"] == "owner/repo", request
     assert request["state_filter"] == "all", request
     assert "result_completeness" in request["include"], request
+    assert "scheduling_policy" in request["include"], request
     assert payload["result_completeness"]["complete"] is True, payload
+    scheduling_policy = payload["scheduling_policy"]
+    assert (
+        scheduling_policy["schema_version"]
+        == "pull_request_review_scheduling_policy_v0"
+    ), scheduling_policy
+    assert [item["id"] for item in scheduling_policy["ordered_tiers"][:3]] == [
+        "authenticated_developer_owned",
+        "community_feedback_and_aged_backlog",
+        "composite_remaining",
+    ], scheduling_policy
+    assert "one-off author filters" in scheduling_policy["manual_override_rule"]
     assert payload["summary"]["total_pr_count"] == 4, payload["summary"]
     assert payload["summary"]["open_pr_count"] == 3, payload["summary"]
     assert payload["summary"]["merged_pr_count"] == 1, payload["summary"]
@@ -671,6 +683,7 @@ def main() -> int:
         "agent_response_contract",
         "agent_response_contract.review_execution_contract",
         "result_completeness",
+        "scheduling_policy",
         "review_groups",
         "pull_requests[].review_plan",
         "pull_requests[].review_template",
