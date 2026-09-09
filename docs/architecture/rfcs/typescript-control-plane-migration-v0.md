@@ -409,6 +409,20 @@ closure and whole-Goal promotion remain held; do not infer them from a route pla
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Current bounded delivery: shared-goal alignment and amendment admission use one
+`shared_goal_work_source.py` snapshot per decision, reusing the canonical Todo
+summary after promotion. The same provider read optionally supplies leases at
+that revision; absent/empty/stale display and old lease files are not fallback
+authority. `shared_goal_work.ts` owns their open-work, claim and exclusion
+selection; the old Python selectors and amendment's second Markdown parse are
+removed. Excluded work is not recommended to that Agent, but remains available
+as amendment impact context. The source digest binds the canonical revision;
+`canonical_todo_snapshot` has event sequence 0, not a fabricated Goal intent
+revision, and a changed digest requires proposal rebase even without events.
+Active malformed lease expiry now fails through the existing typed lease rule.
+This independent consumer slice does not depend on open #4142, close T1/T2,
+migrate all T3 consumers or grant amendment commit/whole-Goal promotion authority.
+
 - Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
   amendment revision inputs. Reuse #4117's canonical source adapter and pass
   one snapshot through a decision; do not build another Todo inventory.

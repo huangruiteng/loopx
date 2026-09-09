@@ -2530,6 +2530,13 @@ agents; `goal_bound` grants no global-gate semantics. This consolidates T1
 admission rules without expanding native update fields, changing provider/profile
 defaults, or releasing D1–D3 projection, real-backend, soak or promotion holds.
 
+Shared-goal alignment and amendment admission now consume the same canonical
+Todo/lease revision after promotion, including authoritative empty state. Their
+old display/lease-file reads remain only before promotion. Proposal source
+digests include that revision, without treating it as a Goal intent revision or
+an amendment commit receipt. This is a bounded T3 consumer closure; the default
+provider, permanent projection, D1–D3 qualification and T1/T2 holds are unchanged.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.

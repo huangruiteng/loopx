@@ -315,6 +315,17 @@ digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+当前有边界交付：shared-goal alignment 与 amendment admission 每次决策共用一份
+`shared_goal_work_source.py` 快照，promotion 后复用 canonical Todo summary；同一次
+provider 读取可返回同 revision 的 lease。缺失／空／陈旧展示及旧 lease 文件不再是
+fallback authority。`shared_goal_work.ts` 统一这两个消费者的开放工作、claim 和
+exclusion 筛选，删除旧 Python selector 与 amendment 的第二次 Markdown 解析。
+被排除的工作不推荐给该 Agent，但仍可作为 amendment 的影响对象。Source digest
+绑定 canonical revision；无事件时 `canonical_todo_snapshot` 的事件序号为 0，不能
+冒充 Goal intent revision，digest 变化仍要求 proposal rebase。活动 lease 的非法
+到期时间复用现有 TS lease 规则拒绝。本批不依赖仍开放的 #4142，不表示 T1/T2 或全部
+T3 完成，也不授予 amendment commit／整 Goal promotion 权限。
+
 - 分别审计 Turn/quota、Dashboard、standing decision、shared-goal alignment、
   amendment revision 输入。复用 #4117 canonical source adapter，一次决策传递一份
   snapshot，不新增 Todo inventory。
