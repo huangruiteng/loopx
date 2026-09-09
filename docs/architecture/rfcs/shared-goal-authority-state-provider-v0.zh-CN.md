@@ -441,6 +441,24 @@ precondition 与 command parameter；不覆盖 transport retry metadata。Goal-w
 携带读到的 head revision，只能把它作为 transport observation；改变该观测不构成
 一条新的语义 operation。
 
+Operation identity 标识调用方的一次逻辑尝试，不是参数组合。在 transport retry 外
+生成一次 id，并在该尝试内复用；UUID 可以满足这个用途。稍后的独立调用即使参数
+相同，也可能需要新 id（例如其他 writer 改值后再次设置原值）。永久按参数哈希会
+重放过期历史；按新读到的 provider revision 哈希，也无法在提交后丢响应时找回原 id。
+
+当前 claim/update 合同中的 `changed=false` 描述 Todo/lease 状态，不表示存储零写入：
+首次接受一个具名 no-change operation 时，会在 CAS 下保存终结 receipt。状态后来
+变化，再重试该 id，必须重放原来的 no-change，不能变成新工作。空 archive selection
+有另一套明确的零事务合同，不能推广到所有动词。Receipt-only history 增长确实有
+存储成本，但优化时必须保留 identity consumption、重放与冲突校验。
+
+当前本地 facade 在 managed-runtime retry 内复用生成的 id。两次独立 CLI 调用不会
+自动视为同一尝试：claim 提供 `--claim-operation-id`，create 和 text/note update
+目前没有等价的跨进程恢复 key。这是 caller recovery 的限制，不证明业务效果重复，
+也不能宣称通用 exactly-once。扩展前应先定义重试边界、区分 retry 与新 intent，再
+决定是否需要 key 或耐久 attempt tracking。用丢响应与中间插入其他写入来验证，
+而不是用禁止 UUID 构造的源码扫描代替语义测试。
+
 对每个 request，authority 执行以下顺序：
 
 1. load aggregate 与 provider generation；

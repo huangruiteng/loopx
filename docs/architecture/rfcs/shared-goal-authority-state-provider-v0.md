@@ -515,6 +515,31 @@ is not a client domain precondition and is not part of the request digest. A
 caller may carry a previously observed head revision only as transport
 metadata; changing that observation does not create a new semantic operation.
 
+Operation identity names a caller's logical attempt, not the parameter tuple.
+Mint an id once outside transport retries and reuse it for that attempt; a UUID
+is valid for this purpose. A later independent call may have identical parameters
+and still require a new id (for example, setting a value again after another
+writer changed it). Hashing parameters forever would replay stale history;
+hashing a newly observed provider revision cannot recover the original id after
+a commit whose response was lost.
+
+In the shipped claim/update contract, `changed=false` describes Todo/lease state,
+not the absence of a storage write: a first accepted named no-change operation
+persists its terminal receipt under CAS. Retrying that id after a later state
+change must replay the original no-change result, not perform new work. An empty
+archive selection has a different, explicit no-transaction contract; do not
+generalize it to all verbs. Receipt-only history growth is a real storage cost,
+but optimizing it must retain identity consumption, replay and conflict checks.
+
+Current local facades reuse their generated id within managed-runtime retries.
+Separate CLI invocations are not implicitly one attempt: claim exposes
+`--claim-operation-id`, while create and text/note update do not currently expose
+an equivalent cross-process recovery key. That is a caller-recovery limitation,
+not proof of duplicate business effects or universal exactly-once execution.
+Any extension must define the retry boundary and distinguish retries from new
+intent before adding keys or durable attempt tracking. Test lost responses and
+intervening writes; a source-level ban on UUID construction proves neither.
+
 For every request, the authority performs this sequence:
 
 1. load the aggregate and provider generation;
