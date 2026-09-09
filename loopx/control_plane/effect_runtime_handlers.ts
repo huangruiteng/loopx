@@ -80,6 +80,7 @@ import { buildVisionCheckpoint } from "./goals/vision_checkpoint.ts";
 import { projectVisionWaitCoverage } from "./goals/vision_wait_coverage.ts";
 import { admitGoalAmendmentProposal } from "./goals/goal_amendment_proposal.ts";
 import { projectSharedGoalAlignment } from "./goals/shared_goal_alignment.ts";
+import { projectGoalOperatorActions } from "./goals/operator_actions.ts";
 import {
   evaluateDeliveryRoute,
 } from "./turn_driver/delivery_continuity.ts";
@@ -409,6 +410,7 @@ export function createEffectRuntimeHandlers(
     ["goal.vision_checkpoint.evaluate", buildVisionCheckpoint],
     ["goal.vision_wait.coverage", projectVisionWaitCoverage],
     ["goal.shared_goal_alignment.project", projectSharedGoalAlignment],
+    ["goal.operator_actions.project", projectGoalOperatorActions],
     ["goal.amendment_proposal.admit", admitGoalAmendmentProposal],
     ["agent.delivery_workspace.evaluate", evaluateDeliveryWorkspace],
     [

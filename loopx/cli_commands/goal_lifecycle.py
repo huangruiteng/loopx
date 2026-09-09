@@ -35,6 +35,10 @@ def register_goal_lifecycle_command(
     )
     parser.add_argument("--reason", help="Bounded owner-visible transition reason.")
     parser.add_argument(
+        "--expected-state-fingerprint",
+        help="SHA-256 registry fingerprint from a fresh goal-actions projection.",
+    )
+    parser.add_argument(
         "--execute",
         action="store_true",
         help="Write the source registry and verify the shared projection; preview is the default.",
@@ -54,6 +58,7 @@ def handle_goal_lifecycle_command(
             state="stopped" if args.operation == "stop" else "active",
             reason=args.reason,
             runtime_root_override=args.runtime_root,
+            expected_state_fingerprint=args.expected_state_fingerprint,
             execute=bool(args.execute),
         )
     except Exception as exc:
