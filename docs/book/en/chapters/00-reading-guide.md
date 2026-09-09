@@ -114,8 +114,8 @@ Do not bypass a newer permission or lifecycle check just to make an older exampl
 
 ## Version baseline
 
-The current release anchor is LoopX GitHub release `v1.0.1`. Local command examples were checked against
-the public `loopx 1.0.1` CLI and protocol surface. This release requires Python 3.11+ and Node.js 22.6+.
+The current release anchor is LoopX GitHub release `v1.0.2`. Local command examples were checked against
+the public `loopx 1.0.2` CLI and protocol surface. This release requires Python 3.11+ and Node.js 22.6+.
 LoopX starts and reuses its managed, idle-exiting TypeScript Effect runtime automatically; users do not
 operate that runtime as a manual daemon.
 
