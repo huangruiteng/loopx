@@ -2524,6 +2524,13 @@ commands fail closed; they do not fall back to the old writer.
 
 #### Refactoring roadmap overview
 
+The Monitor state owner now lives in TS and is composed by the legacy update
+field plan. This removes Python poll/generation and metadata rules, but the
+legacy writer still holds the lock and commits the result. The typed plan is
+not an authority receipt; monitor/successor atomicity, native metadata update,
+provider defaults and D1–D3 remain separate, unfinished gates. Permanent
+Markdown projection remains part of the target architecture.
+
 Todo authoring scope and terminal successors now share the TS resolved-binding
 invariant. Only explicit `global_gate` can widen blocking to all registered
 agents; `goal_bound` grants no global-gate semantics. This consolidates T1

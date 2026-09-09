@@ -19,7 +19,6 @@ from loopx.control_plane.scheduler.monitor_todo import (  # noqa: E402
     monitor_todo_is_expired,
     monitor_todo_missing_schedule,
     monitor_todo_next_due_at,
-    parse_monitor_counter,
 )
 from loopx.status import (  # noqa: E402
     todo_item_is_due_monitor,
@@ -92,8 +91,6 @@ def main() -> int:
     assert_policy_matches_wrappers(cadence_only, due=False, expired=False)
     assert monitor_todo_missing_schedule(cadence_only, now=NOW) is True, cadence_only
     assert monitor_todo_next_due_at({"next_due_at": "2026-01-01T00:00:00"}) == NOW
-    assert parse_monitor_counter("3") == 3
-    assert parse_monitor_counter("not-a-number") == 0
     assert monitor_cadence_delta("2h").total_seconds() == 7200
     cadence_due_at = monitor_next_due_at(
         generated_at="2026-01-01T00:00:00+00:00",

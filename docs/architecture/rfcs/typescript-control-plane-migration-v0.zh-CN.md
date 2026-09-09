@@ -15,6 +15,20 @@
 
 ## 当前实现检查点
 
+Monitor metadata authoring 与 poll transition 现共用 `todos/monitor_metadata.ts`。
+公开 update 在已有 field-plan 请求内组合该 owner；cadence 在进程内计算，不再额外
+调用两次 scheduler RPC。删除 Python 的 observation/replay/counter/scope/boundedness
+规则。Create 与低层 Markdown add codec 仍保留 metadata-plan adapter；这不是完整
+T1 事务，也不是 T2 的 Monitor 与 successor 原子提交。
+
+有意修正：不再因任一 effect ID 缺失而允许旧 observation 倒退状态；issue-fix 分组
+成员更新使用持锁 observation 路径，在 material result hash 改变时递增 generation。
+新计数拒绝负数及不安全整数。ISO 日期进行日历校验，codec 保留 Python 的紧凑日期、
+周日期、时区偏移秒数及微秒排序，不改写历史。
+Lifecycle/ownership 准入现在先于 poll 诊断，未授权请求不能靠非法 metadata 回避
+权限拒绝。精确 replay、同秒无 ID 轮询、显式清空及 legacy boundedness 豁免保持。
+Plan 不授予权限、receipt 或 promotion；native update 仍只拥有 text/note。
+
 公开 Todo add/update 现通过 `todos/authoring_scope.ts` 统一解析角色、continuation
 绑定、gate 作用域与 deferred 条件要求。删除 Python `write_policy.py` 及 `todos.py`
 重复的 scope 选择；Markdown codec 只保留早期 class 检查的适配调用。已物化的 terminal

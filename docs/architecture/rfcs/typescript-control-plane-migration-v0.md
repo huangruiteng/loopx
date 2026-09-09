@@ -16,6 +16,24 @@
 
 ## Current implementation checkpoint
 
+Monitor metadata authoring and poll transitions now share `todos/monitor_metadata.ts`.
+Public update composes that owner inside its existing field-plan request; cadence
+calculation stays in-process instead of making two additional scheduler RPCs.
+The Python observation/replay/counter/scope/boundedness rules are retired. Create
+and the low-level Markdown add codec retain a metadata-plan adapter; this is not
+the complete T1 transaction or T2 atomic monitor-plus-successor commit.
+
+Intentional corrections: older observations cannot rewind state merely because
+either effect ID is absent; issue-fix grouped membership updates use the locked
+observation path and advance generation when a material result hash changes.
+New counters reject negative or unsafe integers. ISO dates are calendar-checked;
+the codec retains Python compact/week-date forms, offset seconds and microsecond
+ordering without rewriting history. Lifecycle/ownership admission now precedes poll
+diagnostics, so an unauthorized request cannot use malformed metadata to avoid
+its authority rejection. Exact replay, same-second unkeyed polls, explicit
+clears and legacy boundedness exemptions remain. The plan grants no permission,
+receipt or promotion; native update still owns only text/note.
+
 Public Todo add/update now resolve role, continuation binding, gate scope and
 deferred-condition requirements through `todos/authoring_scope.ts`. Python's
 `write_policy.py` and duplicated scope selection in `todos.py` are retired;

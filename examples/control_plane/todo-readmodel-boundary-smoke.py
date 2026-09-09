@@ -108,7 +108,6 @@ def assert_status_compatibility_boundary() -> None:
     assert status_module.compact_operator_gate_resume_contract is run_compaction_read_model.compact_operator_gate_resume_contract
     assert status_module.compact_controller_readiness is run_compaction_read_model.compact_controller_readiness
     assert status_module.parse_timestamp is runtime_time_read_model.parse_timestamp
-    assert monitor_metadata_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert scheduler_time_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert status_cache_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
     assert evidence_log_read_model.parse_timestamp is runtime_time_read_model.parse_timestamp
@@ -158,8 +157,9 @@ def assert_wrapper_parity() -> None:
     assert stripped is not None
     assert stripped.isoformat() == "2026-01-01T00:00:00+00:00", stripped
     assert status_module.parse_timestamp("not-a-time") is None
-    assert monitor_metadata_read_model.normalize_monitor_metadata(
-        {"next_due_at": "2026-01-01T00:00:00Z"}
+    assert monitor_metadata_read_model.require_monitor_metadata_scope(
+        monitor_metadata={"next_due_at": "2026-01-01T00:00:00Z"},
+        role="agent", task_class="continuous_monitor",
     ) == {"next_due_at": "2026-01-01T00:00:00Z"}
 
 
