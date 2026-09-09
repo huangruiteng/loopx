@@ -193,6 +193,7 @@ def qualify_replan_writeback(
     agent_vision: dict[str, Any] | None = None,
     completion_todo_id: str | None = None,
     completion_turn_key: str | None = None,
+    todo_fields: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Return the shared open obligation and the writeback's typed delta.
 
@@ -204,7 +205,7 @@ def qualify_replan_writeback(
     safe_agent_id = str(agent_id or "").strip()
     if not safe_agent_id:
         return None, None
-    todo_projection = parse_active_state_todos(
+    todo_projection = todo_fields if todo_fields is not None else parse_active_state_todos(
         state_text, item_limit=None,
         goal={**(registry_goal or {}), "latest_runs": list(newest_first_runs or [])},
     )
@@ -337,6 +338,7 @@ def enforce_open_replan_writeback(
     completion_turn_key: str | None = None,
     guard_scoped: bool = False,
     guard_semantic_replan_obligation_id: str | None = None,
+    todo_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Fail closed unless concrete typed evidence satisfies the selected replan.
 
@@ -357,6 +359,7 @@ def enforce_open_replan_writeback(
         agent_vision=agent_vision,
         completion_todo_id=completion_todo_id,
         completion_turn_key=completion_turn_key,
+        todo_fields=todo_fields,
     )
     if not obligation:
         return None
@@ -406,6 +409,7 @@ def qualify_refresh_replan_writeback(
     completion_turn_key: str | None,
     classification: str,
     delivery_outcome: str | None,
+    todo_fields: dict[str, Any] | None = None,
 ) -> RefreshReplanQualification:
     """Qualify one refresh's replan delta and accountable settlement outcome."""
 
@@ -420,8 +424,9 @@ def qualify_refresh_replan_writeback(
             active_state_next_action_update=active_state_next_action_update,
             agent_vision=agent_vision,
             existing_agent_vision=existing_agent_vision,
-            agent_todo_summary=parse_active_state_todos(
-                state_text, item_limit=None
+            agent_todo_summary=(
+                todo_fields if todo_fields is not None
+                else parse_active_state_todos(state_text, item_limit=None)
             ).get("agent_todos"),
             agent_id=agent_id or None,
             dry_run=dry_run,
@@ -466,6 +471,7 @@ def qualify_refresh_replan_writeback(
         completion_todo_id=completion_todo_id,
         completion_turn_key=completion_turn_key,
         guard_scoped=settlement_guard_scoped,
+        todo_fields=todo_fields,
         guard_semantic_replan_obligation_id=(
             settlement_guard_semantic_replan_obligation_id
         ),

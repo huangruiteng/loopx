@@ -107,6 +107,9 @@ def replan_successor_transition_ack(
         source_checkpoint = long_todo_chain_source_checkpoint(
             source_items,
             agent_id=safe_agent_id,
+            frontier_revision_index=(agent_todo_summary or {}).get(
+                "advancement_frontier_revision_index"
+            ),
         )
         if source_checkpoint is None:
             return None

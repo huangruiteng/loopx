@@ -36,14 +36,6 @@ def _no_followup_value(value: Any) -> bool | str:
     return value if isinstance(value, bool) else _string_value(value)
 
 
-def _successor_values(value: Any) -> Any:
-    if not value:
-        return []
-    if isinstance(value, (list, tuple, set, str, Mapping)):
-        return list(value)
-    return value
-
-
 def _result(method: str, params: dict[str, Any]) -> Mapping[str, Any]:
     try:
         result = effect_runtime_result(method, params)
@@ -135,44 +127,3 @@ def completion_continuation_for_write(*, no_followup: bool, has_successor: bool)
     if continuation not in {item.value for item in TodoCompletionContinuation}:
         raise RuntimeError("TypeScript completion continuation result shape mismatch")
     return str(continuation)
-
-
-def completion_metadata_updates(
-    block: Mapping[str, Any],
-    *,
-    target_status: str,
-    normalized_status: str | None,
-    completion_continuation: str | None,
-    completion_recovery: str | None,
-    no_followup: bool | None,
-    successor_todo_ids: list[str] | None,
-) -> dict[str, Any]:
-    result = _result(
-        "todo.completion_state.metadata_updates",
-        {
-            "schema_version": TODO_COMPLETION_STATE_REQUEST_SCHEMA,
-            "block": {
-                "no_followup": _no_followup_value(block.get("no_followup")),
-                "completion_continuation": _string_value(
-                    block.get("completion_continuation")
-                ),
-                "successor_todo_ids": _successor_values(
-                    block.get("successor_todo_ids")
-                ),
-            },
-            "target_status": target_status,
-            "normalized_status": normalized_status,
-            "completion_continuation": completion_continuation,
-            "completion_recovery": completion_recovery,
-            "no_followup": no_followup,
-            "successor_todo_ids": successor_todo_ids,
-        },
-    )
-    updates = result.get("updates")
-    if not isinstance(updates, Mapping) or any(
-        key not in {"completion_continuation", "completion_recovery"}
-        or not isinstance(value, str)
-        for key, value in updates.items()
-    ):
-        raise RuntimeError("TypeScript completion metadata updates shape mismatch")
-    return dict(updates)

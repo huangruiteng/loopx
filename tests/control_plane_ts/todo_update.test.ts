@@ -130,12 +130,23 @@ test(`provider-first update fails closed without a hard-lease execution proof ($
 test("provider-first update records no-change identity without state mutation", async () => {
   const {store, request} = await seeded();
   const before = await store.loadAuthority();
-  const result = await executeCoordinationTodoUpdate(store, {...request,
-    patch: {text: "Old text"}, clear_fields: [], operation_id: "no-change"});
+  const noChangeRequest = {...request,
+    patch: {text: "Old text"}, clear_fields: [], operation_id: "no-change"};
+  const result = await executeCoordinationTodoUpdate(store, noChangeRequest);
   assert.equal(result.status, "no_change");
   const after = await store.loadAuthority();
   assert.equal(after.status, "loaded");
   if (before.status !== "loaded" || after.status !== "loaded") return;
   assert.deepEqual(after.head, before.head);
   assert.notEqual(after.provider_revision, before.provider_revision);
+  // A consumed no-change identity must not overwrite a later edit on retry.
+  assert.equal((await executeCoordinationTodoUpdate(store, request)).status, "applied");
+  const later = await store.loadAuthority();
+  const replay = await executeCoordinationTodoUpdate(store, noChangeRequest);
+  assert.equal(replay.status, "replayed");
+  assert.equal(replay.changed, false);
+  assert.deepEqual(await store.loadAuthority(), later);
+  // Identical parameters under a new attempt are new work, not stale replay.
+  assert.equal((await executeCoordinationTodoUpdate(store, {...noChangeRequest,
+    operation_id: "independent-reset"})).status, "applied");
 });

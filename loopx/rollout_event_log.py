@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping, Sequence
@@ -477,10 +477,10 @@ def iter_rollout_events(
 
 
 def load_rollout_events(log_path: Path, *, limit: int | None = None) -> list[dict[str, Any]]:
-    events = list(iter_rollout_events(log_path))
-    if limit is not None:
-        events = events[-max(0, limit) :]
-    return events
+    events = iter_rollout_events(log_path)
+    if limit is None or limit <= 0:
+        return list(events)
+    return list(deque(events, maxlen=limit))
 
 
 def _safe_event_view(event: Mapping[str, Any]) -> dict[str, Any]:

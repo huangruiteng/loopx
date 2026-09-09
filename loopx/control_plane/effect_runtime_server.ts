@@ -63,12 +63,25 @@ const server = createServer((socket) => {
   resetIdleTimer(server);
   socket.setEncoding("utf8");
   let raw = "";
+  let receivedBytes = 0;
   socket.on("data", (chunk: string) => {
-    raw += chunk;
-    if (Buffer.byteLength(raw, "utf8") > MAX_REQUEST_BYTES) {
-      socket.destroy();
+    receivedBytes += Buffer.byteLength(chunk, "utf8");
+    if (receivedBytes > MAX_REQUEST_BYTES) {
+      raw = "";
+      socket.pause();
+      socket.removeAllListeners("data");
+      writeResponse(socket, {
+        schema_version: RESPONSE_SCHEMA,
+        request_id: "unknown",
+        ok: false,
+        error: effectRuntimeErrorPayload(new EffectRuntimeRequestError(
+          "Effect runtime request exceeds the 2 MiB limit",
+          "request_too_large",
+        )),
+      });
       return;
     }
+    raw += chunk;
     if (!raw.includes("\n")) return;
     socket.pause();
     void (async () => {

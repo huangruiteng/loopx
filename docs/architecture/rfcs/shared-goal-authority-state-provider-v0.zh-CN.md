@@ -441,6 +441,24 @@ precondition 与 command parameter；不覆盖 transport retry metadata。Goal-w
 携带读到的 head revision，只能把它作为 transport observation；改变该观测不构成
 一条新的语义 operation。
 
+Operation identity 标识调用方的一次逻辑尝试，不是参数组合。在 transport retry 外
+生成一次 id，并在该尝试内复用；UUID 可以满足这个用途。稍后的独立调用即使参数
+相同，也可能需要新 id（例如其他 writer 改值后再次设置原值）。永久按参数哈希会
+重放过期历史；按新读到的 provider revision 哈希，也无法在提交后丢响应时找回原 id。
+
+当前 claim/update 合同中的 `changed=false` 描述 Todo/lease 状态，不表示存储零写入：
+首次接受一个具名 no-change operation 时，会在 CAS 下保存终结 receipt。状态后来
+变化，再重试该 id，必须重放原来的 no-change，不能变成新工作。空 archive selection
+有另一套明确的零事务合同，不能推广到所有动词。Receipt-only history 增长确实有
+存储成本，但优化时必须保留 identity consumption、重放与冲突校验。
+
+当前本地 facade 在 managed-runtime retry 内复用生成的 id。两次独立 CLI 调用不会
+自动视为同一尝试：claim 提供 `--claim-operation-id`，create 和 text/note update
+目前没有等价的跨进程恢复 key。这是 caller recovery 的限制，不证明业务效果重复，
+也不能宣称通用 exactly-once。扩展前应先定义重试边界、区分 retry 与新 intent，再
+决定是否需要 key 或耐久 attempt tracking。用丢响应与中间插入其他写入来验证，
+而不是用禁止 UUID 构造的源码扫描代替语义测试。
+
 对每个 request，authority 执行以下顺序：
 
 1. load aggregate 与 provider generation；
@@ -1952,6 +1970,14 @@ fence。它不能替代只读三臂演练，因为所有 provider 共享新的 s
 声明 fixture 影响、覆盖所有受影响的 provider arm，并把只读三臂演练保留为独立的
 promotion gate。
 
+Legacy lifecycle 的字段组装现在调用唯一 TS field planner，详见
+[TS 退役检查点](typescript-control-plane-migration-v0.zh-CN.md#legacy-字段规则退役检查点)。
+它删除 Python decision，但不改变逐 goal 的 authority 阶段：未 promotion 的 goal
+仍由持锁 Markdown writer 提交，promoted goal 仍使用既有 provider transaction 与
+unsupported-field fence。planner 不读取 provider，也不授予 lease、CAS receipt 或
+写权限。该检查点闭合的是一个规则 owner，不是剩余 mutation inventory 或本地
+store／promotion 资格化。
+
 ### 下一步交付与并行 provider 工作
 
 Markdown 是**长期保留的一等可读投影**。退役的是它的数据库及业务 writer 权威，
@@ -1975,8 +2001,15 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
    terminal/successor/archive 路径。按实际 caller 盘点剩余公开 mutation 和 read。
    status/attention 现在与 `todo list` 一样，在 promotion 后读 canonical Todo summary，
    不要求 Markdown 文件存在；provider 缺失 fail closed，canonical 空集合不能复活旧
-   Todo。这是 consumer 进展，不是 promotion 证明：Turn、quota、planning、standing
-   decision、lease、monitor writeback 仍需各自的 parity 清单。读权威不授予写回能力。
+   Todo。Refresh 推荐、repair/replan 验收、completion-validation 问责、Todo-add replan
+   绑定和 guided-start frontier 现已复用该 canonical 来源。一次 refresh 读取一份快照，
+   传给各项决策，不在每个门禁重新读取变化中的 provider 或 Markdown；provider 故障
+   直接中止，空快照不是 fallback 信号。这是 consumer 进展，不是 promotion 证明：
+   Turn/quota、standing decision、lease、monitor writeback、shared-goal alignment 与
+   amendment revision basis 仍需各自 parity 清单。读权威不授予写回能力。共用的复杂
+   fixture 和真实 FileAuthorityStore 验证 source/display 独立性，但不证明后续业务
+   commit 的 freshness/CAS，也不改变 provider 默认值。Next Action 正文仍独立于 Todo 权威。
+
    Lifecycle 准入及预授权 terminal fence 现由 legacy writer 与 native terminal
    transaction 共用 TS owner；删除对应 Python 规则，不改变 provider 默认或 promotion。
    这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume

@@ -561,6 +561,10 @@ def summarize_user_todos_for_quota(
         "backlog_items": lanes.display_open_items[:TODO_BACKLOG_ITEM_LIMIT],
         "executable_backlog_items": lanes.executable_items[:TODO_BACKLOG_ITEM_LIMIT],
     }
+    if isinstance(value.get("advancement_frontier_revision_index"), dict):
+        summary["advancement_frontier_revision_index"] = value[
+            "advancement_frontier_revision_index"
+        ]
     if value.get("watch_only_monitor_count"):
         summary["watch_only_monitor_count"] = value["watch_only_monitor_count"]
         summary["watch_only_monitor_due_count"] = value.get(
@@ -750,6 +754,10 @@ def compact_quota_todo_summary_for_payload(summary: dict[str, Any]) -> dict[str,
     compact: dict[str, Any] = {}
     compacted_lanes: dict[str, dict[str, int]] = {}
     for key, value in summary.items():
+        if key == "advancement_frontier_revision_index":
+            # Decision input is complete by construction, but it is not an
+            # agent-facing diagnostic surface.
+            continue
         if key in {"source_completeness", "closure_intent"}:
             continue
         if isinstance(value, list):

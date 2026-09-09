@@ -797,6 +797,44 @@ def test_oversized_request_is_rejected_before_runtime_dispatch(
     )
 
 
+@pytest.mark.parametrize("unit", [b"x", "界".encode()])
+def test_oversized_raw_socket_request_returns_typed_error(
+    tmp_path: Path,
+    monkeypatch,
+    unit: bytes,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setattr(effect_runtime, "_runtime_dir", lambda: runtime_dir)
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", "1000")
+
+    ping = effect_runtime.effect_runtime_result("runtime.ping", {})
+    fingerprint = effect_runtime._runtime_fingerprint()
+    info = effect_runtime._read_info(
+        effect_runtime._runtime_info_path(fingerprint),
+        fingerprint=fingerprint,
+    )
+    assert info is not None
+    repeats = effect_runtime.MAX_REQUEST_BYTES // len(unit) + 1
+
+    response = _raw_runtime_response(info, unit * repeats)
+
+    assert response == {
+        "schema_version": effect_runtime.EFFECT_RUNTIME_RESPONSE_SCHEMA_VERSION,
+        "request_id": "unknown",
+        "ok": False,
+        "error": {
+            "kind": "request_rejected",
+            "code": "request_too_large",
+            "message": "Effect runtime request exceeds the 2 MiB limit",
+        },
+    }
+    assert (
+        effect_runtime.effect_runtime_result("runtime.ping", {})["pid"]
+        == ping["pid"]
+    )
+    effect_runtime.effect_runtime_result("runtime.shutdown", {}, retry_safe=False)
+
+
 def test_non_object_json_request_is_rejected_at_the_socket_boundary(
     tmp_path: Path,
     monkeypatch,

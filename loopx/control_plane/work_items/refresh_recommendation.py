@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from ..agents.agent_lane_recommendation import build_agent_lane_next_action
+from ..coordination.local_authority import read_canonical_todo_fields_if_promoted
 from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
 from ..todos.active_state_todo_parser import parse_active_state_todos
 from ..todos.contract import normalize_todo_id
 from ...feedback import validate_local_control_text
 from ...state_projection import active_state_next_action_entries
+from ...rollout_event_log import load_rollout_events, rollout_event_log_path
 
 REFRESH_RECOMMENDATION_REQUEST_SCHEMA_VERSION = "refresh_recommendation_request_v0"
 REFRESH_RECOMMENDATION_SCHEMA_VERSION = "refresh_recommendation_v0"
@@ -22,6 +24,31 @@ RECOMMENDED_ACTION_SOURCE_AGENT_LANE_SELECTED_TODO = "agent_lane_selected_todo"
 RECOMMENDED_ACTION_SOURCE_ACTIVE_NEXT_ACTION = "active_state_next_action"
 RECOMMENDED_ACTION_SOURCE_AGENT_TODO_FALLBACK = "agent_todo_fallback"
 RECOMMENDED_ACTION_SOURCE_DEFAULT = "default_refresh_action"
+
+
+def load_refresh_planning_source(
+    runtime_root: Path,
+    goal_id: str,
+    state_path: Path,
+    *,
+    require_display: bool,
+) -> tuple[str, list[dict[str, Any]], dict[str, Any] | None]:
+    """Read one shared planning snapshot without repairing its display.
+
+    Canonical Todo availability permits observation without Markdown, not an
+    edit of missing Next Action narrative. Provider failures propagate.
+    """
+    events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+    fields = read_canonical_todo_fields_if_promoted(
+        runtime_root=runtime_root, goal_id=goal_id, rollout_events=events,
+    )
+    try:
+        text = state_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        if fields is None or require_display:
+            raise FileNotFoundError(f"state file does not exist: {state_path}") from None
+        text = ""
+    return text, events, fields
 
 
 def _first_valid_action(values: list[str]) -> str | None:
@@ -41,9 +68,10 @@ def _agent_todo_summary(
     state_path: Path | None,
     settlement_todo_id: str | None,
     rollout_events: list[dict[str, Any]] | None,
+    todo_fields: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     preferred = {settlement_todo_id} if settlement_todo_id else None
-    parsed = parse_active_state_todos(
+    parsed = todo_fields if todo_fields is not None else parse_active_state_todos(
         state_text,
         goal=registry_goal,
         state_path=state_path,
@@ -95,6 +123,7 @@ def resolve_refresh_recommendation(
     registry_goal: dict[str, Any] | None = None,
     state_path: Path | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
+    todo_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Adapt canonical Todo facts into the TS-owned refresh read reducer."""
 
@@ -121,6 +150,7 @@ def resolve_refresh_recommendation(
             state_path=state_path,
             settlement_todo_id=settlement_todo_id,
             rollout_events=rollout_events,
+            todo_fields=todo_fields,
         )
         lane_candidate = build_agent_lane_next_action(
             agent_identity={"agent_id": agent_id} if agent_id else None,

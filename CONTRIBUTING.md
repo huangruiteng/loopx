@@ -242,3 +242,32 @@ Before opening a pull request:
 - confirm that no private/local runtime state was committed.
 
 Maintainers may ask for a smaller PR if the change mixes unrelated concerns.
+
+### Validation disclosure
+
+Use the [PR template](.github/PULL_REQUEST_TEMPLATE.md) to report facts, not a
+self-assessed quality grade. The enum values are author declarations, not an
+automated proof or merge gate. `finished` means execution ended, not that all
+checks passed or that coverage is sufficient. Record the tested commit; after
+changes, rerun affected checks or identify the stale evidence and remaining gap.
+
+Use one row per relevant check, including failures, skips (`not_run`), blocked
+checks and work still running. Static checks do not prove runtime behavior;
+unit/mocked tests do not prove the public entrypoint or a real backend. State
+the behavior checked and why the set covers the changed paths. Refactors need
+the real-path and parity evidence required by the
+[testing guide](docs/development/testing-and-quality.md#refactor-real-path-gate--重构真实路径门).
+Small documentation changes can report a link/render/static check and explain
+why runtime testing is not applicable; do not launch unrelated suites to fill rows.
+
+Keep evidence public-safe at the point of entry, including hidden HTML comments
+and attachments. Report repository-relative test commands, public fixture names,
+aggregate outcomes, backend product/version and isolation mode, or public CI links.
+Do not copy commands containing private arguments, raw logs, snapshots, prompts,
+private screenshots, infrastructure addresses, connection strings, local paths or
+credentials. `authorized_private_read_only` discloses only a data category: it
+neither grants permission to access live state nor requires publishing its content,
+identifiers or fingerprints. When evidence cannot be shared, describe the tested
+behavior and verification limitation; public reproducibility remains an explicit
+gap until a safe reproducer or authorized review is available. Never upload private
+evidence to make a checkbox green.

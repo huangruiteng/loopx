@@ -515,6 +515,31 @@ is not a client domain precondition and is not part of the request digest. A
 caller may carry a previously observed head revision only as transport
 metadata; changing that observation does not create a new semantic operation.
 
+Operation identity names a caller's logical attempt, not the parameter tuple.
+Mint an id once outside transport retries and reuse it for that attempt; a UUID
+is valid for this purpose. A later independent call may have identical parameters
+and still require a new id (for example, setting a value again after another
+writer changed it). Hashing parameters forever would replay stale history;
+hashing a newly observed provider revision cannot recover the original id after
+a commit whose response was lost.
+
+In the shipped claim/update contract, `changed=false` describes Todo/lease state,
+not the absence of a storage write: a first accepted named no-change operation
+persists its terminal receipt under CAS. Retrying that id after a later state
+change must replay the original no-change result, not perform new work. An empty
+archive selection has a different, explicit no-transaction contract; do not
+generalize it to all verbs. Receipt-only history growth is a real storage cost,
+but optimizing it must retain identity consumption, replay and conflict checks.
+
+Current local facades reuse their generated id within managed-runtime retries.
+Separate CLI invocations are not implicitly one attempt: claim exposes
+`--claim-operation-id`, while create and text/note update do not currently expose
+an equivalent cross-process recovery key. That is a caller-recovery limitation,
+not proof of duplicate business effects or universal exactly-once execution.
+Any extension must define the retry boundary and distinguish retries from new
+intent before adding keys or durable attempt tracking. Test lost responses and
+intervening writes; a source-level ban on UUID construction proves neither.
+
 For every request, the authority performs this sequence:
 
 1. load the aggregate and provider generation;
@@ -2461,6 +2486,15 @@ Every pull request that claims progress against this RFC follows the
 It declares fixture impact, exercises every affected provider arm, and keeps
 the read-only three-arm rehearsal as a separate promotion gate.
 
+Legacy lifecycle field assembly now calls the single TS field planner described
+in the [TS retirement checkpoint](typescript-control-plane-migration-v0.md#legacy-field-rule-retirement-checkpoint).
+This removes Python decisions without changing the per-goal authority phase:
+unpromoted goals still commit through the locked Markdown writer, while promoted
+goals retain their existing provider transactions and unsupported-field fences.
+The planner neither reads a provider nor grants a lease, CAS receipt, or write
+permission. This checkpoint closes one rule owner, not the remaining mutation
+inventory or local-store/promotion qualification.
+
 ### Next delivery and parallel provider work
 
 Markdown is a **permanent first-class readable projection**. Retire its database
@@ -2489,9 +2523,19 @@ The next complete stage packages are:
    and reads against actual callers. Status/attention now joins `todo list` in
    reading canonical Todo summaries after promotion, without requiring the
    Markdown file. Missing providers fail closed and empty canonical collections
-   never revive legacy Todos. This is consumer progress, not promotion proof:
-   Turn, quota, planning, standing decisions, leases and monitor writeback still
-   need their own parity inventory. Read authority does not grant writeback.
+   never revive legacy Todos. Refresh recommendation, repair/replan qualification,
+   completion-validation accountability, Todo-add replan binding and guided-start
+   frontier now share that canonical source. A refresh reads one snapshot and
+   passes it through its decisions rather than rereading a changing provider or
+   Markdown at each gate. Provider failure aborts; an empty snapshot is not a
+   fallback signal. This is consumer progress, not promotion proof: Turn/quota,
+   standing decisions, leases, monitor writeback, shared-goal alignment and
+   amendment revision bases still need their own parity inventory. Read authority
+   does not grant writeback. Source/display independence is tested with the
+   shared production-scale fixture and real FileAuthorityStore; these reads do
+   not establish freshness/CAS for a later business commit or change provider
+   defaults. Next Action narrative remains independent of Todo authority.
+
    Lifecycle admission and the preauthorized terminal fence now share the TS
    owner across legacy writers and native terminal transactions; the replaced
    Python rules are removed without changing provider defaults or promotion.
