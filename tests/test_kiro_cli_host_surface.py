@@ -44,14 +44,12 @@ from loopx.host_loop_activation import (
 )
 from loopx.kiro_cli_goal_mode import (
     KIRO_CLI_CHAT_AGENT_ID,
-    KIRO_CLI_GOAL_AGENT_FLAG,
     KIRO_CLI_GOAL_CLEAR_COMMAND,
     KIRO_CLI_GOAL_COMMAND,
     KIRO_CLI_GOAL_COMPLETION_TOOL,
     KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS,
-    KIRO_CLI_GOAL_MAX_ITERATION_CEILING,
-    KIRO_CLI_GOAL_STATUS_COMMAND,
-    KIRO_CLI_GOAL_VALIDATE_FLAG,
+    KIRO_CLI_GOAL_CRITERIA_LEAD,
+    KIRO_CLI_GOAL_MAX_FLAG,
     KIRO_CLI_HOME_ENV,
     KIRO_CLI_AGENT_TYPE_CATALOG_ENTRY,
     KIRO_CLI_HOOK_TRIGGERS,
@@ -112,6 +110,12 @@ def test_agent_onboarding_setup_command_installs_the_kiro_cli_surface(
     )
 
 
+# Arguments an earlier revision projected that neither the published command
+# reference nor the host's own advertised registry contracts. Kept as data so a
+# reintroduction fails on every consumer at once.
+UNSUPPORTED_GOAL_ARGUMENTS = ("--validate", "--agent", "/goal status")
+
+
 def _copyable_goal_commands(value: object) -> list[str]:
     """Every backticked native goal command carrying a task placeholder.
 
@@ -143,7 +147,13 @@ def assert_no_incomplete_goal_command(
     *,
     require_command: bool = False,
 ) -> None:
-    """Assert every copyable goal command is complete on its own.
+    """Assert every copyable goal command matches the contracted shape.
+
+    Two failure modes are guarded. A command must not claim an argument the host
+    does not contract — an unrecognised flag after the description is read as
+    more goal text, so the objective is polluted and the iteration budget is
+    silently dropped. And it must keep the iteration flag before the
+    description, which is the documented order.
 
     Presence is a separate question: some surfaces legitimately expose only the
     `/loopx` skill entry. Only the surfaces whose job is to hand over the
@@ -152,15 +162,29 @@ def assert_no_incomplete_goal_command(
     commands = _copyable_goal_commands(value)
     if require_command:
         assert commands, f"{label} exposes no copyable native goal command"
-    incomplete = [
-        command
-        for command in commands
-        if KIRO_CLI_GOAL_VALIDATE_FLAG not in command
-    ]
-    assert not incomplete, (
-        f"{label} exposes a copyable goal command without "
-        f"{KIRO_CLI_GOAL_VALIDATE_FLAG}: {incomplete}"
-    )
+    for command in commands:
+        for unsupported in UNSUPPORTED_GOAL_ARGUMENTS:
+            assert unsupported not in command, (
+                f"{label} projects {unsupported}, which the host does not "
+                f"contract for {KIRO_CLI_GOAL_COMMAND}: {command}"
+            )
+        if KIRO_CLI_GOAL_MAX_FLAG in command:
+            description_starts = min(
+                (
+                    command.index(token)
+                    for token in ("<task", "<任务>")
+                    if token in command
+                ),
+                default=None,
+            )
+            assert description_starts is not None, (
+                f"{label} exposes a goal command with no description "
+                f"placeholder: {command}"
+            )
+            assert command.index(KIRO_CLI_GOAL_MAX_FLAG) < description_starts, (
+                f"{label} places {KIRO_CLI_GOAL_MAX_FLAG} after the "
+                f"description; the host documents it first: {command}"
+            )
 
 
 def test_every_actionable_consumer_renders_the_complete_goal_command() -> None:
@@ -239,22 +263,31 @@ def test_public_outputs_agree_with_the_canonical_host_facts(
     assert "offers no home override" not in note
     assert KIRO_CLI_HOME_ENV in note
 
-    # The activation command must be complete: without the validation flag the
-    # host judges completion by its own reading instead of the Todo's criteria.
-    assert KIRO_CLI_GOAL_VALIDATE_FLAG in instruction
+    # The activation command must carry the acceptance criteria inside the goal
+    # statement, because that is where the host derives them from, and must not
+    # claim an argument the host does not contract.
     assert kiro_cli_goal_invocation() in instruction
-    assert KIRO_CLI_GOAL_STATUS_COMMAND in instruction
+    assert KIRO_CLI_GOAL_CRITERIA_LEAD in instruction
+    for unsupported in UNSUPPORTED_GOAL_ARGUMENTS:
+        assert unsupported not in instruction
 
 
 def test_canonical_goal_invocation_uses_the_host_argument_order() -> None:
-    """An independent oracle for the command, built from the host's documented
-    syntax rather than from the composer's own output."""
+    """An independent oracle, written from the host's documented syntax rather
+    than from the composer's own output.
+
+    The reference documents `/goal --max <N> <description>`: the flag first, then
+    the goal statement. Acceptance criteria are part of that statement because
+    the host derives them from it."""
     command = kiro_cli_goal_invocation(
         task="<task_body>", criteria="<criteria>", max_iterations="7"
     )
-    assert command == "/goal <task_body> --validate <criteria> --max 7"
-    # The flag order follows the host's own `--validate` before `--max`.
-    assert command.index(KIRO_CLI_GOAL_VALIDATE_FLAG) < command.index("--max")
+    assert command == "/goal --max 7 <task_body> Done when: <criteria>"
+    # Omitting criteria still yields a valid command, just without them stated.
+    assert (
+        kiro_cli_goal_invocation(task="<task_body>", criteria=None, max_iterations="7")
+        == "/goal --max 7 <task_body>"
+    )
 
 
 def test_kiro_home_resolves_the_host_override_then_the_default(
@@ -467,12 +500,15 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     assert mutation["quota_gate_enforcement"] == "advisory_only"
     assert mutation["native_goal_command"] == KIRO_CLI_GOAL_COMMAND
     assert mutation["native_goal_cancel_command"] == KIRO_CLI_GOAL_CLEAR_COMMAND
-    assert mutation["native_goal_status_command"] == KIRO_CLI_GOAL_STATUS_COMMAND
-    assert mutation["native_goal_validate_flag"] == KIRO_CLI_GOAL_VALIDATE_FLAG
-    assert (
-        mutation["native_goal_max_iteration_ceiling"]
-        == KIRO_CLI_GOAL_MAX_ITERATION_CEILING
-    )
+    assert mutation["native_goal_criteria_placement"] == "inside_goal_statement"
+    for unsupported_key in (
+        "native_goal_status_command",
+        "native_goal_validate_flag",
+        "native_goal_max_iteration_ceiling",
+    ):
+        assert unsupported_key not in mutation, (
+            f"{unsupported_key} projects an argument the host does not contract"
+        )
     assert (
         mutation["native_goal_default_max_iterations"]
         == KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS
@@ -498,13 +534,16 @@ def test_activation_binds_native_goal_with_advisory_quota_entry() -> None:
     # separate prose step, so an agent copying the command bound a goal the host
     # judged by its own default instead of the Todo's criteria.
     assert kiro_cli_goal_invocation() in steps
-    assert str(KIRO_CLI_GOAL_MAX_ITERATION_CEILING) in steps
+    assert str(KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS) in steps
     assert "quota should-run" in steps
     assert KIRO_CLI_GOAL_COMPLETION_TOOL in steps
     assert "no host scheduler to fall back on" not in steps
-    assert KIRO_CLI_GOAL_STATUS_COMMAND in steps
-    # Every copyable command in the packet must be complete on its own. Prose
-    # elsewhere cannot repair a command a reader has already executed.
+    # The steps must say criteria live in the goal statement, and must not tell
+    # the agent to read a status subcommand the host does not expose.
+    assert KIRO_CLI_GOAL_CRITERIA_LEAD in steps
+    assert "steer" in steps.lower()
+    # Every copyable command in the packet must match the contracted shape.
+    # Prose elsewhere cannot repair a command a reader has already executed.
     assert_no_incomplete_goal_command("activation packet", packet)
 
     assert packet["setup_command"] == _surface_install_command(
@@ -646,15 +685,18 @@ def test_kiro_cli_is_recognized_across_the_control_plane(
 
 def test_native_goal_facts_match_the_probed_host() -> None:
     """The host-facts constants are the single source the activation packet,
-    README and PR narrative cite; they must stay pinned to what the host
-    actually documents and what the probed binary exposes."""
+    README and PR narrative cite, so they must stay pinned to what the host
+    itself contracts.
+
+    An earlier revision pinned `--validate`, `--agent`, a `status` subcommand
+    and an iteration ceiling of 50. None of those appear in the published
+    command reference or in the registry the installed host advertises over ACP,
+    and `examples/kiro-cli-goal-command-contract-probe.py` replays that check
+    against a real binary."""
     assert KIRO_CLI_GOAL_COMMAND == "/goal"
     assert KIRO_CLI_GOAL_CLEAR_COMMAND == "/goal clear"
-    assert KIRO_CLI_GOAL_STATUS_COMMAND == "/goal status"
-    assert KIRO_CLI_GOAL_VALIDATE_FLAG == "--validate"
-    assert KIRO_CLI_GOAL_AGENT_FLAG == "--agent"
+    assert KIRO_CLI_GOAL_MAX_FLAG == "--max"
     assert KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS == 5
-    assert KIRO_CLI_GOAL_MAX_ITERATION_CEILING == 50
     assert KIRO_CLI_GOAL_COMPLETION_TOOL == "goal"
     assert KIRO_CLI_SESSION_ID_ENV == "KIRO_SESSION_ID"
     assert set(KIRO_CLI_HOOK_TRIGGERS) == {
@@ -666,11 +708,11 @@ def test_native_goal_facts_match_the_probed_host() -> None:
     }
     facts = " ".join(KIRO_CLI_NATIVE_GOAL_FACTS)
     assert "--max" in facts
-    assert "ceiling 50" in facts
     assert "completion contract" in facts
     assert "exit code 2" in facts
-    # The host's own hint names --validate and --agent; an adapter that only
-    # documents --max understates the primitive it binds.
-    assert KIRO_CLI_GOAL_VALIDATE_FLAG in facts
-    assert KIRO_CLI_GOAL_AGENT_FLAG in facts
-    assert KIRO_CLI_GOAL_STATUS_COMMAND in facts
+    # The facts must state where acceptance criteria live, because that is the
+    # host's mechanism and the reason no criteria flag is projected.
+    assert "goal statement" in facts
+    # They must not reintroduce an argument the host does not contract.
+    for unsupported in UNSUPPORTED_GOAL_ARGUMENTS:
+        assert unsupported not in facts
