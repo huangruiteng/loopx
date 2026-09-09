@@ -1,7 +1,7 @@
 """Read-only shared goal alignment projection adapter (RFC Stage 1).
 
 This adapter collects typed facts for one registered Agent around one shared
-Goal — registry identity, the markdown active state, the append-only state
+Goal — registry identity, the selected Todo/lease source, the append-only state
 event log, Todo claim/lease fields, and recorded replan obligations — and
 asks the TypeScript-owned reducer (``goal.shared_goal_alignment.project``)
 to project ``shared_goal_alignment_v0``.
@@ -13,7 +13,7 @@ Derivation invariants (RFC shared-goal-alignment-and-governed-amendment-v0
 The projection is strictly read-only: no writer path is touched, and no
 approval or escalation semantics exist here. ``source_basis_digest`` is a
 typed source-facts basis summary (goal status, registered agents, and
-event-log basis facts), not a canonical intent-envelope digest — the full
+event-log basis facts, and canonical Todo revision when promoted), not a canonical intent-envelope digest — the full
 RFC §3.1 envelope (objective, non-goals, acceptance, permission scope,
 terminal conditions) has no typed storage yet, so nothing here claims
 canonical intent identity.
@@ -22,8 +22,9 @@ Basis semantics: the only goal-level monotonic sequence carrier on this
 codebase is the state event log's ``append_sequence``, so
 ``state_event_basis_sequence`` reports that event projection basis — it is
 NOT a canonical goal/intent revision. Goals without a parsable
-``events.jsonl`` project ``revision_basis="markdown_active_state"`` with
-``state_event_basis_sequence=0`` and every Agent frontier ``unbound``;
+``events.jsonl`` use sequence 0 and an unbound Agent frontier. Before promotion
+this is ``markdown_active_state``; after promotion it is ``canonical_todo_snapshot``
+with a separate ``todo_basis`` token, never a fabricated event sequence;
 drift is then reported as ``frontier_basis_unverifiable`` instead of a
 fabricated behind fact.
 """
@@ -43,21 +44,10 @@ from ...event_sourced_state import (
     build_state_projection,
     event_sort_key,
 )
-from ...registry import registry_goals, resolve_state_file
+from ...registry import registry_goals
 from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
-from ..todos.active_state_todo_parser import parse_active_state_todos
-from ..todos.contract import (
-    TODO_TASK_CLASS_ADVANCEMENT,
-    normalize_todo_bound_agent,
-    normalize_todo_claimed_by,
-    normalize_todo_id,
-)
-from ..todos.projection import (
-    todo_advancement_frontier_counts,
-    todo_item_is_actionable_open,
-)
-from ..work_items.local_lease_record import lease_epoch, read_lease
-from ..work_items.task_lease import lease_is_active, task_lease_path
+from ..todos.contract import normalize_todo_claimed_by
+from .shared_goal_work_source import SharedGoalWorkSource, read_shared_goal_work_source
 from .active_state_event_projection import state_event_log_candidates
 from .active_state_metadata import parse_state_frontmatter
 from .goal_frontier import (
@@ -183,6 +173,7 @@ def _source_basis_facts_envelope(
     last_append_sequence: int | None,
     source_checksum: str | None,
     state_updated_at: str | None,
+    todo_basis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "goal_id": goal_id,
@@ -192,107 +183,23 @@ def _source_basis_facts_envelope(
         "last_append_sequence": last_append_sequence,
         "source_checksum": source_checksum,
         "state_updated_at": state_updated_at,
+        **({"todo_basis": todo_basis} if todo_basis is not None else {}),
     }
 
 
-def _parsed_active_state(
-    state_text: str,
-    *,
-    goal: Mapping[str, Any],
-    state_path: Path,
-) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    parsed = parse_active_state_todos(
-        state_text,
-        goal=dict(goal),
-        state_path=state_path,
-        item_limit=None,
-    )
-    summary = parsed.get("agent_todos") if isinstance(parsed, dict) else None
-    items = summary.get("items") if isinstance(summary, dict) else None
-    if not isinstance(summary, dict):
-        return None, []
-    if not isinstance(items, list):
-        return summary, []
-    return summary, [item for item in items if isinstance(item, dict)]
-
-
-def _frontier_claim_items(
-    items: list[dict[str, Any]],
-    *,
-    agent_id: str,
-) -> list[dict[str, Any]]:
-    return [
-        item
-        for item in items
-        if todo_item_is_actionable_open(item)
-        and item.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
-        and normalize_todo_claimed_by(item.get("claimed_by")) == agent_id
-    ]
-
-
-def _unclaimed_eligible_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        item
-        for item in items
-        if todo_item_is_actionable_open(item)
-        and item.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
-        and not normalize_todo_claimed_by(item.get("claimed_by"))
-    ]
-
-
-def _peer_claimed_bound_todo_ids(
-    items: list[dict[str, Any]],
-    *,
-    agent_id: str,
-) -> list[str]:
-    todo_ids: list[str] = []
-    for item in items:
-        claimed_by = normalize_todo_claimed_by(item.get("claimed_by"))
-        if not claimed_by or claimed_by == agent_id:
-            continue
-        if not todo_item_is_actionable_open(item):
-            continue
-        if item.get("task_class") != TODO_TASK_CLASS_ADVANCEMENT:
-            continue
-        if normalize_todo_bound_agent(item.get("bound_agent")) != agent_id:
-            continue
-        todo_id = normalize_todo_id(item.get("todo_id"))
-        if todo_id and todo_id not in todo_ids:
-            todo_ids.append(todo_id)
-    return todo_ids
-
-
-def _claim_lease_facts(
-    todo_id: str,
-    *,
-    runtime_root: Path | None,
-    goal_id: str,
-) -> dict[str, Any]:
-    if runtime_root is None:
-        return {"lease_epoch": None, "lease_owner": None}
-    lease = read_lease(
-        task_lease_path(
-            runtime_root=runtime_root,
-            goal_id=goal_id,
-            todo_id=todo_id,
-        )
-    )
-    if not lease or not lease_is_active(lease):
-        return {"lease_epoch": None, "lease_owner": None}
-    owner = normalize_todo_claimed_by(lease.get("owner"))
-    if not owner:
-        # An active hard lease without a valid owner is corrupt authority.
-        # Projecting it as lease facts with a null owner would let the
-        # reducer treat the broken lease as "no conflict"; fail closed
-        # before the typed request is built instead.
-        raise ValueError(
-            "active task lease has no valid owner: "
-            f"goal={goal_id} todo={todo_id}"
-        )
-    return {"lease_epoch": lease_epoch(lease), "lease_owner": owner}
-
-
 def project_shared_goal_alignment(
+    *, goal_id: str, agent_id: str | None, project: Path,
+    registry_path: Path | None = None, runtime_root: Path | None = None,
+    status_item: Mapping[str, Any] | None = None,
+    project_asset: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Public read-only entrypoint; callers cannot inject the Todo snapshot."""
+    return _project_shared_goal_alignment(goal_id=goal_id, agent_id=agent_id,
+        project=project, registry_path=registry_path, runtime_root=runtime_root,
+        status_item=status_item, project_asset=project_asset)
+
+
+def _project_shared_goal_alignment(
     *,
     goal_id: str,
     agent_id: str | None,
@@ -301,6 +208,7 @@ def project_shared_goal_alignment(
     runtime_root: Path | None = None,
     status_item: Mapping[str, Any] | None = None,
     project_asset: Mapping[str, Any] | None = None,
+    work_source: SharedGoalWorkSource | None = None,
 ) -> dict[str, Any]:
     """Project the read-only ``shared_goal_alignment_v0`` view for one Agent."""
 
@@ -334,12 +242,13 @@ def project_shared_goal_alignment(
             f"{normalized_agent_id}"
         )
 
-    state_file = resolve_state_file(project, goal.get("state_file"))
-    if state_file is None or not state_file.is_file():
-        raise ValueError(
-            f"goal state file is missing for {normalized_goal_id}"
-        )
-    state_text = state_file.read_text(encoding="utf-8")
+    effective_runtime_root = runtime_root if runtime_root is not None else _runtime_root_from_registry(registry_payload)
+    source = work_source or read_shared_goal_work_source(
+        goal=goal, project=project, runtime_root=effective_runtime_root,
+    )
+    if source.goal_id != normalized_goal_id:
+        raise ValueError("shared work snapshot belongs to another Goal")
+    state_file, state_text = source.state_path, source.state_text
 
     event_facts = _load_state_event_facts(goal, state_path=state_file)
     frontmatter = parse_state_frontmatter(state_text)
@@ -359,7 +268,8 @@ def project_shared_goal_alignment(
             str(projection.get("source_checksum") or "").strip() or None
         )
     else:
-        revision_basis = REVISION_BASIS_MARKDOWN_ACTIVE_STATE
+        revision_basis = ("canonical_todo_snapshot" if source.canonical_basis is not None
+            else REVISION_BASIS_MARKDOWN_ACTIVE_STATE)
         basis_sequence = 0
         source_checksum = None
 
@@ -376,6 +286,7 @@ def project_shared_goal_alignment(
             ),
             source_checksum=source_checksum,
             state_updated_at=state_updated_at,
+            todo_basis=source.canonical_basis,
         )
     )
     source_basis = {
@@ -383,58 +294,13 @@ def project_shared_goal_alignment(
         "source_basis_digest": source_basis_digest,
         "revision_basis": revision_basis,
         "state_updated_at": state_updated_at,
+        **({"todo_basis": source.canonical_basis} if source.canonical_basis is not None else {}),
     }
 
     frontier_basis = _agent_frontier_basis(
         event_facts,
         agent_id=normalized_agent_id,
     )
-
-    agent_summary, items = _parsed_active_state(
-        state_text,
-        goal=goal,
-        state_path=state_file,
-    )
-    frontier_counts = todo_advancement_frontier_counts(
-        agent_summary,
-        agent_id=normalized_agent_id,
-    )
-
-    effective_runtime_root = (
-        runtime_root
-        if runtime_root is not None
-        else _runtime_root_from_registry(registry_payload)
-    )
-    claims = []
-    for item in _frontier_claim_items(items, agent_id=normalized_agent_id):
-        todo_id = normalize_todo_id(item.get("todo_id"))
-        if not todo_id:
-            continue
-        claims.append(
-            {
-                "todo_id": todo_id,
-                "claimed_by": normalized_agent_id,
-                **_claim_lease_facts(
-                    todo_id,
-                    runtime_root=effective_runtime_root,
-                    goal_id=normalized_goal_id,
-                ),
-            }
-        )
-
-    unclaimed_eligible = [
-        {
-            "todo_id": normalize_todo_id(item.get("todo_id")),
-            "task_class": TODO_TASK_CLASS_ADVANCEMENT,
-            **(
-                {"action_kind": str(item.get("action_kind"))}
-                if str(item.get("action_kind") or "").strip()
-                else {}
-            ),
-        }
-        for item in _unclaimed_eligible_items(items)
-        if normalize_todo_id(item.get("todo_id"))
-    ]
 
     replan_obligation = select_autonomous_replan_obligation(
         dict(status_item) if isinstance(status_item, Mapping) else {},
@@ -448,13 +314,8 @@ def project_shared_goal_alignment(
         "agent_id": normalized_agent_id,
         "source_basis": source_basis,
         "frontier_basis": frontier_basis,
-        "frontier_counts": frontier_counts,
-        "claims": claims,
-        "unclaimed_eligible": unclaimed_eligible,
-        "peer_claimed_bound_todo_ids": _peer_claimed_bound_todo_ids(
-            items,
-            agent_id=normalized_agent_id,
-        ),
+        "work_items": source.items,
+        "observed_at": source.observed_at,
         "open_lane_replan_obligation_required": (
             autonomous_replan_is_required(replan_obligation)
         ),
