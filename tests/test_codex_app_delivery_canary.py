@@ -27,15 +27,15 @@ def delivery(tmp_path: Path):
         encoding="utf-8",
     )
     observation = {
-        "schema_version": "codex_app_prompt_delivery_observation_v0",
+        "schema_version": "codex_app_prompt_delivery_observation_v1",
         "automation_id": "synthetic",
         "goal_id": "synthetic-goal",
         "agent_id": "synthetic-agent",
         "thread_id": "synthetic-thread",
         "turn_id": "scheduled-turn-1",
         "prompt_sha256": hashlib.sha256(PROMPT.encode("utf-8")).hexdigest(),
-        "prompt_delivered_at_ms": NOW - 2000,
-        "agent_started_at_ms": NOW - 1000,
+        "turn_started_at_ms": NOW - 2000,
+        "agent_activity_observed": True,
         "observed_at_ms": NOW,
     }
     observation_path = tmp_path / "observation.json"
@@ -93,14 +93,16 @@ def test_other_identity_never_satisfies_selected_turn(delivery, field):
     [
         ("prompt_sha256", "0" * 64, "host_prompt_digest_mismatch"),
         ("schema_version", "future-v99", "host_observation_schema_mismatch"),
-        ("prompt_delivered_at_ms", None, "prompt_delivery_not_observed"),
-        ("agent_started_at_ms", None, "agent_start_not_observed"),
-        ("agent_started_at_ms", True, "host_observation_invalid"),
+        ("prompt_sha256", None, "prompt_delivery_not_observed"),
+        ("turn_started_at_ms", None, "agent_start_not_observed"),
+        ("agent_activity_observed", False, "agent_start_not_observed"),
+        ("agent_activity_observed", 1, "host_observation_invalid"),
+        ("turn_started_at_ms", True, "host_observation_invalid"),
         ("observed_at_ms", "1800000000000", "host_observation_invalid"),
         ("observed_at_ms", 2**53, "host_observation_invalid"),
         ("observed_at_ms", NOW + 1, "host_observation_time_mismatch"),
-        ("agent_started_at_ms", NOW - 3000, "host_observation_time_mismatch"),
-        ("prompt_delivered_at_ms", NOW - 900001, "host_observation_stale"),
+        ("turn_started_at_ms", NOW + 1, "host_observation_time_mismatch"),
+        ("turn_started_at_ms", NOW - 900001, "host_observation_stale"),
     ],
 )
 def test_reject_missing_changed_or_stale_host_facts(delivery, field, value, reason):
@@ -114,7 +116,7 @@ def test_reject_missing_changed_or_stale_host_facts(delivery, field, value, reas
 
 def test_fresh_readback_does_not_extend_old_delivery(delivery):
     kwargs, observation = delivery
-    observation["prompt_delivered_at_ms"] = NOW - 900000
+    observation["turn_started_at_ms"] = NOW - 900000
     kwargs["observation_path"].write_text(json.dumps(observation))
     assert check_codex_app_delivery(**kwargs)["ok"]
     kwargs["now_ms"] += 1
@@ -238,8 +240,8 @@ def test_real_cli_reports_delivery_without_creating_host_state(
     if observed:
         now = time.time_ns() // 1_000_000
         observation.update(
-            prompt_delivered_at_ms=now - 2000,
-            agent_started_at_ms=now - 1000,
+            turn_started_at_ms=now - 2000,
+            agent_activity_observed=True,
             observed_at_ms=now,
         )
         kwargs["observation_path"].write_text(json.dumps(observation))
@@ -299,3 +301,31 @@ def test_incomplete_or_mixed_modes_are_rejected(argv):
     with pytest.raises(SystemExit) as raised:
         main(argv)
     assert raised.value.code == 2
+
+
+def test_host_read_is_explicit_and_never_falls_back_to_supplied_facts(
+    delivery, monkeypatch
+):
+    from loopx.control_plane.runtime import codex_app_delivery_observer as observer
+
+    kwargs, _ = delivery
+    calls = []
+
+    def unavailable(**args):
+        calls.append(args)
+        raise observer.HostObservationError("host_observer_unavailable")
+
+    monkeypatch.setattr(observer, "observe_codex_app_delivery", unavailable)
+    assert check_codex_app_delivery(**kwargs)["ok"]
+    assert calls == []
+    kwargs["observe_host"] = True
+    assert (
+        check_codex_app_delivery(**kwargs)["reason_code"]
+        == "conflicting_observation_sources"
+    )
+    assert calls == []
+    kwargs["observation_path"] = None
+    assert (
+        check_codex_app_delivery(**kwargs)["reason_code"] == "host_observer_unavailable"
+    )
+    assert len(calls) == 1

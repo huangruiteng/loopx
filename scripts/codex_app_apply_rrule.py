@@ -492,11 +492,21 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Read-only host delivery canary; never query quota, apply an RRULE or ACK.",
     )
     parser.add_argument("--delivery-observation", type=Path)
+    parser.add_argument(
+        "--observe-host",
+        action="store_true",
+        help="Read the selected stored turn through Codex App Server.",
+    )
+    parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--scheduled-thread-id")
     parser.add_argument("--scheduled-turn-id")
     parser.add_argument("--delivery-max-age-seconds", type=int, default=900)
     args = parser.parse_args(argv)
     if args.check_delivery:
+        if args.observe_host and args.delivery_observation is not None:
+            parser.error(
+                "--observe-host and --delivery-observation are mutually exclusive"
+            )
         if not args.scheduled_thread_id or not args.scheduled_turn_id:
             parser.error(
                 "--check-delivery requires --scheduled-thread-id and --scheduled-turn-id"
@@ -508,6 +518,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         or args.scheduled_thread_id is not None
         or args.scheduled_turn_id is not None
         or args.delivery_max_age_seconds != 900
+        or args.observe_host
+        or args.codex_bin != "codex"
     ):
         parser.error("delivery observation options require --check-delivery")
     return args
@@ -532,6 +544,8 @@ def main(argv: list[str] | None = None) -> int:
             turn_id=args.scheduled_turn_id,
             now_ms=_now_ms(),
             max_age_seconds=args.delivery_max_age_seconds,
+            observe_host=args.observe_host,
+            codex_bin=args.codex_bin,
         )
         print(json.dumps(result, sort_keys=True))
         return 0 if result["ok"] else 1

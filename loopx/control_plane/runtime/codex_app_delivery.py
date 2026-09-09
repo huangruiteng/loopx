@@ -9,7 +9,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-OBSERVATION_SCHEMA = "codex_app_prompt_delivery_observation_v0"
+OBSERVATION_SCHEMA = "codex_app_prompt_delivery_observation_v1"
 RESULT_SCHEMA = "codex_app_prompt_delivery_canary_v0"
 MAX_OBSERVATION_BYTES = 4096
 MAX_MANIFEST_BYTES = 256 * 1024
@@ -24,8 +24,8 @@ _FIELDS = frozenset(
         "thread_id",
         "turn_id",
         "prompt_sha256",
-        "prompt_delivered_at_ms",
-        "agent_started_at_ms",
+        "turn_started_at_ms",
+        "agent_activity_observed",
         "observed_at_ms",
     }
 )
@@ -84,6 +84,8 @@ def check_codex_app_delivery(
     turn_id: str,
     now_ms: int,
     max_age_seconds: int = 900,
+    observe_host: bool = False,
+    codex_bin: str = "codex",
 ) -> dict[str, Any]:
     """Compare a caller-selected turn with a trusted host observer's compact facts.
 
@@ -124,18 +126,35 @@ def check_codex_app_delivery(
     prompt = manifest.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
         return _result("installed_prompt_missing")
-    if observation_path is None:
-        return _result("host_observation_missing")
-    try:
-        observation = json.loads(
-            _read_bounded(observation_path, MAX_OBSERVATION_BYTES),
-            object_pairs_hook=_unique_object,
-            parse_constant=_reject_constant,
+    if observe_host and observation_path is not None:
+        return _result("conflicting_observation_sources")
+    if observe_host:
+        from .codex_app_delivery_observer import (
+            HostObservationError,
+            observe_codex_app_delivery,
         )
-    except FileNotFoundError:
+
+        try:
+            observation = observe_codex_app_delivery(
+                codex_bin=codex_bin,
+                expected=expected,
+                observed_at_ms=now_ms,
+            )
+        except HostObservationError as exc:
+            return _result(exc.reason_code)
+    elif observation_path is None:
         return _result("host_observation_missing")
-    except (OSError, UnicodeError, ValueError, RecursionError):
-        return _result("host_observation_invalid")
+    else:
+        try:
+            observation = json.loads(
+                _read_bounded(observation_path, MAX_OBSERVATION_BYTES),
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_constant,
+            )
+        except FileNotFoundError:
+            return _result("host_observation_missing")
+        except (OSError, UnicodeError, ValueError, RecursionError):
+            return _result("host_observation_invalid")
     if not isinstance(observation, dict) or set(observation) != _FIELDS:
         return _result("host_observation_invalid")
     if observation["schema_version"] != OBSERVATION_SCHEMA:
@@ -143,25 +162,24 @@ def check_codex_app_delivery(
     if any(observation[key] != value for key, value in expected.items()):
         return _result("host_observation_identity_mismatch")
     digest = observation["prompt_sha256"]
+    if digest is None:
+        return _result("prompt_delivery_not_observed")
     if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
         return _result("host_observation_invalid")
     if digest != hashlib.sha256(prompt.encode("utf-8")).hexdigest():
         return _result("host_prompt_digest_mismatch")
-    delivered = observation["prompt_delivered_at_ms"]
-    started = observation["agent_started_at_ms"]
+    started = observation["turn_started_at_ms"]
+    activity = observation["agent_activity_observed"]
     observed = observation["observed_at_ms"]
-    if delivered is None:
-        return _result("prompt_delivery_not_observed")
-    if started is None:
+    if activity is False or started is None:
         return _result("agent_start_not_observed")
-    if any(
-        type(t) is not int or not 0 < t <= 2**53 - 1
-        for t in (delivered, started, observed)
-    ):
+    if type(activity) is not bool:
         return _result("host_observation_invalid")
-    if not delivered <= started <= observed <= now_ms:
+    if any(type(t) is not int or not 0 < t <= 2**53 - 1 for t in (started, observed)):
+        return _result("host_observation_invalid")
+    if not started <= observed <= now_ms:
         return _result("host_observation_time_mismatch")
-    # Re-observing an old turn must not extend its delivery freshness.
-    if now_ms - delivered > max_age_seconds * 1000:
+    # Re-observing an old turn must not extend its freshness.
+    if now_ms - started > max_age_seconds * 1000:
         return _result("host_observation_stale")
     return _result("selected_turn_delivery_and_start_matched", matched=True)
