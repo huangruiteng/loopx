@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
+import { productionScaleCoordinationFixture } from "./production_scale_coordination_fixture.ts";
 import { monitorSuccessorIntent, planMonitorSuccessor, MONITOR_SUCCESSOR_REQUEST_SCHEMA } from "../../loopx/control_plane/scheduler/monitor_successor.ts";
 
 const intent = {material_change: true, next_agent_todo: "Validate the transition.", next_action_kind: "validate"};
@@ -57,4 +58,26 @@ test("unsafe repository routes cannot be silently repaired by URL parsing", () =
     "https://example.invalid\\other/repo", "https://example.invalid/a%2fb", "https://example.invalid/a b"]) {
     assert.throws(() => plan({next_task_repository: repo}));
   }
+});
+
+test("production-scale monitor route planning is read-only and preserves target separation", () => {
+  const fixture = productionScaleCoordinationFixture("goal-route-fixture");
+  const original = structuredClone(fixture.projection);
+  const todos = fixture.projection.todos as Record<string, unknown>[];
+  const monitors = todos.filter(todo => todo.task_class === "continuous_monitor");
+  assert.equal(monitors.length, 63);
+  const targets = new Set<unknown>();
+  for (const monitor of monitors) {
+    // A route can be described for historical context, but is never a lifecycle grant.
+    const result = planMonitorSuccessor({schema_version: MONITOR_SUCCESSOR_REQUEST_SCHEMA,
+      todo_id: monitor.todo_id, result_hash: "same-material-hash",
+      source_task_repository: monitor.task_repository ?? null,
+      intent: {...intent, next_task_repository: monitor.task_repository ?? null,
+        next_required_capabilities: monitor.required_capabilities ?? []}});
+    targets.add((result.agent_route as Record<string, unknown>).target_key);
+  }
+  assert.equal(targets.size, monitors.length);
+  assert.equal(todos.length, fixture.expected_initial_todo_count);
+  assert.equal((fixture.projection.leases as unknown[]).length, fixture.expected_current_lease_count);
+  assert.deepEqual(fixture.projection, original);
 });
