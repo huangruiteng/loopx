@@ -3,54 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from typing import Any
 
-from ...agents.agent_scope import agent_scope_item_claimed_by
 from ...runtime.time import parse_timestamp
+from ...todos.frontier_revision import (
+    TODO_FRONTIER_REVISION_SCHEMA_VERSION,
+    advancement_frontier_revision_from_index,
+    selectable_advancement_frontier_revision,
+)
 from ...todos.contract import normalize_todo_replan_obligation_id
-from ...todos.projection import todo_item_task_class
 
 
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
 LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
 LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
-LONG_TODO_CHAIN_FRONTIER_REVISION_SCHEMA_VERSION = "todo_frontier_revision_v0"
-
-_FRONTIER_REVISION_FIELDS = (
-    "todo_id",
-    "status",
-    "done",
-    "title",
-    "text",
-    "task_class",
-    "claimed_by",
-    "bound_agent",
-    "blocks_agent",
-    "excluded_agents",
-    "priority",
-    "action_kind",
-    "task_domain",
-    "task_repository",
-    "capability_binding_ref",
-    "required_capabilities",
-    "target_capabilities",
-    "target_key",
-    "continuation_policy",
-    "removed_continuation_policy",
-    "decision_scope",
-    "required_decision_scopes",
-    "decision_outcome",
-    "replan_obligation_id",
-    "unblocks_todo_id",
-    "depends_on_todo_id",
-    "depends_on_todo_ids",
-    "resume_when",
-    "no_followup",
-    "successor_todo_ids",
-    "completion_continuation",
+LONG_TODO_CHAIN_FRONTIER_REVISION_SCHEMA_VERSION = (
+    TODO_FRONTIER_REVISION_SCHEMA_VERSION
 )
 
 
@@ -73,52 +42,9 @@ def _selectable_advancement_frontier_revision(
     projection cannot silently suppress an obligation.
     """
 
-    if not isinstance(source_items, list):
-        return None, None, False
-    normalized_agent_id = str(agent_id or "").strip()
-    revisions: list[dict[str, Any]] = []
-    revision_times: list[tuple[Any, str]] = []
-    relevant_count = 0
-    for item in source_items:
-        if not isinstance(item, dict):
-            continue
-        if todo_item_task_class(item) != TODO_TASK_CLASS_ADVANCEMENT:
-            continue
-        claimed_by = agent_scope_item_claimed_by(item)
-        if normalized_agent_id and claimed_by not in {None, normalized_agent_id}:
-            continue
-        relevant_count += 1
-        todo_id = str(item.get("todo_id") or "").strip()
-        raw_revision = str(
-            item.get("updated_at") or item.get("completed_at") or ""
-        ).strip()
-        parsed_revision = parse_timestamp(raw_revision)
-        if not todo_id or parsed_revision is None:
-            return None, None, False
-        revisions.append(
-            {
-                field: item.get(field)
-                for field in _FRONTIER_REVISION_FIELDS
-                if item.get(field) is not None
-            }
-        )
-        revision_times.append((parsed_revision, raw_revision))
-    if relevant_count == 0 or not revisions:
-        return None, None, False
-    encoded = json.dumps(
-        sorted(
-            revisions,
-            key=lambda item: str(item.get("todo_id") or ""),
-        ),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return (
-        f"{LONG_TODO_CHAIN_FRONTIER_REVISION_SCHEMA_VERSION}:"
-        f"{sha256(encoded).hexdigest()[:24]}",
-        max(revision_times, key=lambda item: item[0])[1],
-        True,
+    return selectable_advancement_frontier_revision(
+        source_items,
+        agent_id=agent_id,
     )
 
 
@@ -163,11 +89,21 @@ def long_todo_chain_source_checkpoint(
     source_items: list[dict[str, Any]],
     *,
     agent_id: str | None,
+    frontier_revision_index: Any = None,
 ) -> tuple[dict[str, str], str] | None:
     """Return the revision and ordering fence for an exact Todo source."""
 
+    projected = advancement_frontier_revision_from_index(
+        frontier_revision_index,
+        agent_id=agent_id,
+    )
     frontier_revision, frontier_updated_at, revision_complete = (
-        _selectable_advancement_frontier_revision(source_items, agent_id=agent_id)
+        projected
+        if projected is not None
+        else _selectable_advancement_frontier_revision(
+            source_items,
+            agent_id=agent_id,
+        )
     )
     if not revision_complete or not frontier_revision or not frontier_updated_at:
         return None
@@ -224,8 +160,14 @@ def observe_long_todo_chain(
         count_kind = "selectable_open_todos"
     if threshold is None:
         return None
+    projected = advancement_frontier_revision_from_index(
+        (agent_todo_summary or {}).get("advancement_frontier_revision_index"),
+        agent_id=agent_id,
+    )
     frontier_revision, _, revision_complete = (
-        _selectable_advancement_frontier_revision(
+        projected
+        if projected is not None
+        else _selectable_advancement_frontier_revision(
             agent_todo_source_items,
             agent_id=agent_id,
         )

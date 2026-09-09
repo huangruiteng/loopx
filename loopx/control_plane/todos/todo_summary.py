@@ -45,6 +45,7 @@ from .contract import (
     todo_done_for_status,
 )
 from .completion_validation_projection import project_completion_validation_authority
+from .frontier_revision import attach_advancement_frontier_revision_index
 from .handoff_gate import build_todo_handoff_gate_states
 from .handoff_note import attach_todo_handoff_note
 from .projection import (
@@ -1206,6 +1207,7 @@ def compact_todo_group(
         ][:MAX_DEFERRED_TODO_VISIBILITY_ITEMS],
         "items": lanes.budgeted_items if item_limit is None else lanes.budgeted_items[:item_limit],
     }
+    attach_advancement_frontier_revision_index(summary, items, role=role)
     attach_active_vision_waits(
         summary, vision_runs, role=role, items=items,
         lineage_items=resume_source_items,
