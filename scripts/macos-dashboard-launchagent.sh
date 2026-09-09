@@ -44,6 +44,7 @@ Environment overrides:
   LOOPX_CHAT_PORT
   LOOPX_DASHBOARD_HOST
   LOOPX_LAUNCH_LABEL_PREFIX
+  LOOPX_CHAT_CODEX_HOME  Explicit managed Codex home (upgrades preserve the existing binding)
 EOF
 }
 
@@ -154,9 +155,45 @@ raise SystemExit(1)
 PY
 }
 
+resolve_chat_codex_home() {
+  "$1" - "$chat_plist" <<'PY'
+import os
+from pathlib import Path
+import plistlib
+import shlex
+import sys
+
+target = Path(sys.argv[1])
+selected = os.environ.get("LOOPX_CHAT_CODEX_HOME")
+if not selected and target.exists():
+    # Decode, never execute, an old generated shell command. A malformed plist
+    # must fail closed rather than silently adopt the upgrader's account home.
+    with target.open("rb") as stream:
+        plist = plistlib.load(stream)
+    env = plist.get("EnvironmentVariables", {})
+    selected = env.get("LOOPX_CHAT_CODEX_HOME") or env.get("CODEX_HOME")
+    if not selected:
+        args = plist.get("ProgramArguments", [])
+        if len(args) == 3 and args[1] == "-c":
+            lexer = shlex.shlex(args[2], posix=True, punctuation_chars=";")
+            lexer.whitespace_split = True
+            words = list(lexer)
+            for index, word in enumerate(words[:-1]):
+                if word == "export" and words[index + 1].startswith("CODEX_HOME="):
+                    selected = words[index + 1].split("=", 1)[1]
+                    break
+    selected = selected or str(Path.home() / ".codex")
+selected = selected or os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
+path = Path(selected).expanduser()
+if not path.is_absolute():
+    raise SystemExit("LoopX Chat Codex home must be absolute")
+print(path.resolve())
+PY
+}
+
 write_plists() {
   local status_command python_command codex_command claude_command lark_cli_command
-  local path_prefix command_path command_dir status_shell chat_shell control_plane_write_arg lark_cli_arg codex_home_export
+  local path_prefix command_path command_dir status_shell chat_shell control_plane_write_arg lark_cli_arg codex_home_export chat_codex_home
   status_command="$(resolve_status_command)"
   python_command="$(resolve_loopx_python)"
   codex_command="$(resolve_optional_command codex)"
@@ -182,9 +219,8 @@ write_plists() {
   if [[ -n "$lark_cli_command" ]]; then
     lark_cli_arg=" --lark-cli-bin $(shell_quote "$lark_cli_command")"
   fi
-  if [[ -n "${CODEX_HOME:-}" ]]; then
-    codex_home_export=" export CODEX_HOME=$(shell_quote "$CODEX_HOME");"
-  fi
+  chat_codex_home="$(resolve_chat_codex_home "$python_command")"
+  codex_home_export=" export CODEX_HOME=$(shell_quote "$chat_codex_home"); export LOOPX_CHAT_CODEX_HOME=$(shell_quote "$chat_codex_home");"
   status_shell="export LOOPX_PYTHON=$(shell_quote "$python_command"); export PATH=$(shell_quote "$path_prefix"):\$PATH; exec $(shell_quote "$status_command") --registry $(shell_quote "$registry") serve-status --global-registry --host $(shell_quote "$host") --port $(shell_quote "$status_port") --limit $(shell_quote "$status_limit")$control_plane_write_arg"
   chat_shell="export LOOPX_PYTHON=$(shell_quote "$python_command");$codex_home_export export PATH=$(shell_quote "$path_prefix"):\$PATH; exec $(shell_quote "$status_command") --registry $(shell_quote "$registry") chat --global-registry --host $(shell_quote "$host") --port $(shell_quote "$chat_port") --codex-bin $(shell_quote "$codex_command") --claude-bin $(shell_quote "$claude_command")$lark_cli_arg --replace-existing-loopx-chat --no-open"
 
@@ -226,6 +262,11 @@ EOF
 <dict>
   <key>Label</key>
   <string>$chat_label</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOOPX_CHAT_CODEX_HOME</key>
+    <string>$(xml_escape "$chat_codex_home")</string>
+  </dict>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>

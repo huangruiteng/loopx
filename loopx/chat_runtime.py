@@ -55,6 +55,7 @@ class CodexAppServerAdapter:
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
         execution_mode: bool = False,
+        codex_home: Path | None = None,
     ) -> "CodexAppServerAdapter":
         return cls(
             CodexChatAgentSession.start(
@@ -67,6 +68,7 @@ class CodexAppServerAdapter:
                 hard_timeout_sec=hard_timeout_sec,
                 execution_mode=execution_mode,
                 resume_thread_id=resume_thread_id,
+                codex_home=codex_home,
             )
         )
 
@@ -214,6 +216,12 @@ class ChatRuntimeController:
     ) -> None:
         self.store = store
         self.codex_bin = codex_bin
+        # Capture once; the service's startup environment is not session identity.
+        self.codex_home = Path(
+            os.environ.get("LOOPX_CHAT_CODEX_HOME")
+            or os.environ.get("CODEX_HOME")
+            or "~/.codex"
+        ).expanduser().resolve()
         self.claude_bin = claude_bin
         self.startup_timeout_sec = startup_timeout_sec
         self.idle_timeout_sec = idle_timeout_sec
@@ -314,6 +322,7 @@ class ChatRuntimeController:
                     history_context = "\nPrevious visible Chat messages:\n" + "\n".join(history_lines)
             return CodexAppServerAdapter.start(
                 codex_bin=self.codex_bin,
+                codex_home=self.codex_home,
                 work_dir=work_dir,
                 goal_id=goal_id,
                 objective=f"{objective}{history_context}",
@@ -399,6 +408,7 @@ class ChatRuntimeController:
                 upstream_thread_id=adapter.upstream_thread_id,
                 upstream_mode="chat" if agent_id == "codex" else "default",
                 channel_id=selected_channel,
+                codex_home=str(self.codex_home) if agent_id == "codex" else None,
             )
             with self.lock:
                 self.adapters[persisted["session_id"]] = adapter
@@ -407,6 +417,18 @@ class ChatRuntimeController:
     def _session_adapter_lock(self, session_id: str) -> threading.Lock:
         with self.lock:
             return self.session_adapter_locks.setdefault(session_id, threading.Lock())
+
+    def _check_codex_home(self, session: dict[str, Any]) -> None:
+        if session.get("agent_id") != "codex" or session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
+            return
+        bound_home = session.get("codex_home")
+        if bound_home is not None and bound_home != str(self.codex_home):
+            raise CodexChatAgentError(
+                "This managed Session belongs to a different Codex home. Restart LoopX Chat "
+                "with its original LOOPX_CHAT_CODEX_HOME; do not copy or rebind its history.",
+                error_code="codex_home_mismatch",
+                gate=None,
+            )
 
     def _ensure_adapter(
         self,
@@ -436,6 +458,7 @@ class ChatRuntimeController:
         if current_session is None or current_session.get("status") == "closed":
             raise KeyError("chat session was not found")
         session = current_session
+        self._check_codex_home(session)
         if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
             raise CodexChatAgentError(
                 "The attached host Session must be served by its existing host bridge.",
@@ -528,12 +551,16 @@ class ChatRuntimeController:
         with self.lock:
             self.adapters[session_id] = adapter
         try:
+            if session.get("agent_id") == "codex" and session.get("codex_home") is None:
+                # A legacy session is bound only after successful upstream resume,
+                # not when a service happens to start in a new environment.
+                self.store.update_session(session_id, codex_home=str(self.codex_home))
             self.store.restore_managed_session_if_idle(
                 session_id,
                 upstream_thread_id=adapter.upstream_thread_id,
                 upstream_mode=self._managed_upstream_mode(session),
             )
-        except KeyError:
+        except Exception:
             with self.lock:
                 owns_adapter = self.adapters.get(session_id) is adapter
                 if owns_adapter:
@@ -1081,6 +1108,7 @@ class ChatRuntimeController:
             session = self.store.load_session(session_id)
             if session is None or session.get("status") == "closed":
                 raise KeyError("chat session was not found")
+            self._check_codex_home(session)
             if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
                 if session.get("active_turn_id"):
                     return session

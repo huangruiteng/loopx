@@ -57,3 +57,24 @@ def test_codex_chat_app_server_stdio_uses_utf8(
         assert launch_options["encoding"] == "utf-8"
     finally:
         session.close()
+
+
+def test_codex_chat_pins_explicit_home_in_child_environment(monkeypatch, tmp_path):
+    options = {}
+
+    def popen(command, **kwargs):
+        options.update(kwargs)
+        return _FakeAppServerProcess()
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "ambient"))
+    monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(chat_agent.subprocess, "Popen", popen)
+    session = chat_agent.CodexChatAgentSession.start(
+        codex_bin="codex", work_dir=tmp_path, goal_id="fixture", objective="fixture",
+        codex_home=tmp_path / "bound",
+    )
+    try:
+        assert options["env"]["CODEX_HOME"] == str((tmp_path / "bound").resolve())
+        assert chat_agent.os.environ["CODEX_HOME"] == str(tmp_path / "ambient")
+    finally:
+        session.close()

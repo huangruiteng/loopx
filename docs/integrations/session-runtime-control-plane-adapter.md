@@ -40,6 +40,37 @@ recovers after approval; it should not become the default end-user console.
 
 ## Core Principle
 
+### Managed Codex home ownership (implemented)
+
+The managed Chat adapter captures `LOOPX_CHAT_CODEX_HOME`, then `CODEX_HOME`,
+then the host's default Codex home at controller startup. It explicitly passes
+that home to each app-server process, including catalog-compatibility retries.
+New managed Codex sessions persist this binding in owner-local session state.
+Resume and submit reject a different home before starting an upstream process
+or modifying a turn. Legacy sessions acquire the binding only after successful
+upstream restoration; startup alone neither rebinds nor copies their history.
+
+The macOS LaunchAgent installer preserves an existing binding on upgrade,
+including older shell-export plists. Use `LOOPX_CHAT_CODEX_HOME` explicitly when
+installing a deliberately different host profile. A later ambient `CODEX_HOME`
+does not overwrite it. Restore the original home to recover a home-mismatch
+gate; changing this variable is not a session-migration command.
+
+Sharing a host home does not by itself prove a SQLite lock failure. A desktop
+launcher should separate ordinary open (read-only identity/configuration checks)
+from offline account switching, migration, or rollback (exclusive ownership).
+Do not make a normal open perform hidden migrations, kill managed workers, or
+move sessions into another home to pass an overly broad file-open check.
+Sharing a home also does not authorize two clients to run the same thread
+concurrently. Account changes still require quiescing all users of that home;
+this binding does not implement credential copying or account-refresh logic.
+
+Validation: `python -m pytest tests/test_chat_codex_home.py tests/test_chat_agent.py`
+and `python examples/macos-dashboard-launchagent-status-smoke.py`. The latter
+exercises the actual installer with fixture LaunchAgents, not real services.
+
+### Projection boundary
+
 The host session log is the raw fact source. LoopX run history is a
 compact control projection. A projection may reference host ids such as session,
 event, tool call, artifact, approval, or outcome ids, but it must not copy full

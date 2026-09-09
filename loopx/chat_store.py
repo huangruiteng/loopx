@@ -196,10 +196,16 @@ class ChatSessionStore:
         executor_endpoint_id: str | None = None,
         host_surface: str | None = None,
         attached_capabilities: dict[str, bool] | None = None,
+        codex_home: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
         token = _opaque_id(session_id or uuid.uuid4().hex, field="session_id")
         normalized_mode = _opaque_id(session_mode, field="session_mode")
+        if codex_home is not None and (
+            not Path(codex_home).is_absolute() or agent_id != "codex"
+            or normalized_mode != CHAT_SESSION_MODE_MANAGED
+        ):
+            raise ValueError("codex_home must be an absolute managed Codex home")
         if normalized_mode not in {
             CHAT_SESSION_MODE_MANAGED,
             CHAT_SESSION_MODE_ATTACHED,
@@ -241,6 +247,7 @@ class ChatSessionStore:
             "adapter_kind": normalized_adapter_kind,
             "upstream_thread_id": normalized_upstream_thread_id,
             "upstream_mode": normalized_upstream_mode,
+            "codex_home": codex_home,
             "session_mode": normalized_mode,
             "host_surface": normalized_host_surface,
             "attached_capabilities": capabilities,
@@ -278,6 +285,7 @@ class ChatSessionStore:
                     "last_error_code",
                     "upstream_thread_id",
                     "upstream_mode",
+                    "codex_home",
                 }
                 unknown = set(changes) - allowed
                 if unknown:
@@ -286,6 +294,14 @@ class ChatSessionStore:
                     changes["upstream_thread_id"] = _upstream_id(changes["upstream_thread_id"])
                 if "upstream_mode" in changes:
                     changes["upstream_mode"] = _opaque_id(changes["upstream_mode"], field="upstream_mode")
+                if "codex_home" in changes:
+                    home = changes["codex_home"]
+                    if (not isinstance(home, str) or not Path(home).is_absolute()
+                            or payload.get("agent_id") != "codex"
+                            or payload.get("session_mode") != CHAT_SESSION_MODE_MANAGED):
+                        raise ValueError("codex_home must be an absolute managed Codex home")
+                    if payload.get("codex_home") not in (None, home):
+                        raise ValueError("cannot rebind a managed Codex home")
                 payload.update(changes)
                 payload["updated_at"] = utc_now()
                 _atomic_write_json(path, payload, preserve_mode=True)

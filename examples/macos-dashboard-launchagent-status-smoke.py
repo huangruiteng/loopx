@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import plistlib
 import subprocess
 import tempfile
 from pathlib import Path
@@ -27,6 +28,7 @@ def run_script(fake_bin: Path, home: Path, args: list[str], *, schema_version: i
         "FAKE_CONTROL_PLANE_WRITE_ENABLED": "true" if write_enabled else "false",
         "LOOPX_STATUS_CONTRACT_MIN_VERSION": "2",
         "CODEX_HOME": "",
+        "LOOPX_CHAT_CODEX_HOME": "",
         **(extra_env or {}),
     }
     return subprocess.run(
@@ -123,7 +125,7 @@ def main() -> int:
         assert "--port 8767" in default_chat_plist, default_chat_plist
         assert "--replace-existing-loopx-chat" in default_chat_plist, default_chat_plist
         assert "--no-open" in default_chat_plist, default_chat_plist
-        assert "export CODEX_HOME=" not in default_chat_plist, default_chat_plist
+        assert f"export CODEX_HOME={(home / '.codex').resolve()};" in default_chat_plist, default_chat_plist
         assert "export LOOPX_PYTHON=" in default_plist, default_plist
         assert "export LOOPX_PYTHON=" in default_chat_plist, default_chat_plist
         assert "/loopx --registry" in default_plist, default_plist
@@ -135,12 +137,36 @@ def main() -> int:
             home,
             ["--enable-control-plane-write-api", "restart"],
             schema_version=2,
-            extra_env={"CODEX_HOME": str(home / "selected-codex-home")},
+            extra_env={"LOOPX_CHAT_CODEX_HOME": str(home / "selected-codex-home")},
         )
         write_plist = status_plist.read_text(encoding="utf-8")
         selected_chat_plist = chat_plist.read_text(encoding="utf-8")
         assert "--enable-control-plane-write-api" in write_plist, write_plist
-        assert f"export CODEX_HOME={home / 'selected-codex-home'};" in selected_chat_plist, selected_chat_plist
+        selected = (home / 'selected-codex-home').resolve()
+        assert f"export CODEX_HOME={selected};" in selected_chat_plist, selected_chat_plist
+        run_script(fake_bin, home, ["install"], schema_version=2,
+                   extra_env={"CODEX_HOME": str(home / "unrelated-upgrader")})
+        assert plistlib.loads(chat_plist.read_bytes())["EnvironmentVariables"]["LOOPX_CHAT_CODEX_HOME"] == str(selected)
+
+        # Legacy generated plists used only a shell export. Preserve quoted
+        # paths across upgrades without ever executing their command contents.
+        legacy = plistlib.loads(chat_plist.read_bytes())
+        legacy.pop("EnvironmentVariables")
+        legacy_home = (home / "legacy home").resolve()
+        legacy["ProgramArguments"] = ["/bin/zsh", "-c", f"export CODEX_HOME='{legacy_home}'; exec loopx chat"]
+        chat_plist.write_bytes(plistlib.dumps(legacy))
+        run_script(fake_bin, home, ["install"], schema_version=2,
+                   extra_env={"CODEX_HOME": str(home / "unrelated-upgrader")})
+        assert plistlib.loads(chat_plist.read_bytes())["EnvironmentVariables"]["LOOPX_CHAT_CODEX_HOME"] == str(legacy_home)
+
+        chat_plist.write_bytes(b"invalid plist")
+        try:
+            run_script(fake_bin, home, ["install"], schema_version=2)
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise AssertionError("malformed existing binding must fail closed")
+        assert chat_plist.read_bytes() == b"invalid plist"
 
     print("macos-dashboard-launchagent-status-smoke ok")
     return 0
