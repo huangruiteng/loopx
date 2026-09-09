@@ -34,6 +34,8 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "schema_version": "pr_review_selection_execution_contract_v0",
         "explicit_selection_scope": "ordering_only",
         "review_action_authority": "pull_requests[].review_action_kind",
+        "review_sequence_membership": "review_action_kind_non_null_only",
+        "no_action_inventory_location": "pull_requests",
         "generic_rereview_terms_force_fresh_audit": False,
         "no_action_behavior": "compact_exact_head_conclusion_readback_only",
         "force_fresh_audit_requires": (

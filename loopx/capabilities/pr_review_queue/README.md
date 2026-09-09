@@ -169,6 +169,16 @@ next item's ordering for that request; it does not override the selected row's
 `review_action_kind` or exact-head idempotency. Todo text, monitor notes, and
 one-off author filters must not replace the capability policy. Projected
 candidates remain skipped until handled or their exact head materially changes.
+
+The command packet keeps inventory and execution queues distinct.
+`pull_requests` and each group's `pr_numbers` retain every row in the requested
+window for compact conclusion readback. Top-level and group `review_sequence`
+contain only rows whose `review_action_kind` is non-null. A merged exact head
+without a valid conclusion receives `audit_merged_pull_request_exact_head`; a
+merged or open exact head with a valid non-action conclusion remains
+inventory-only and cannot become the recommended first PR. The summary's
+attention counts are derived from this same actionable set.
+
 It emits a
 `pull_request_review_todo_preview_v0` bound to its exact head. The preview may
 route to initial review, re-review after changes, or merge-readiness
@@ -653,6 +663,9 @@ A first implementation is acceptable when:
   lifecycle group, and keeps `review_groups.merged` non-empty when merged PRs
   exist in the requested window; `--state open` preserves the old open-only
   review queue;
+- `pull_requests` remains the full bounded inventory while every
+  `review_sequence` contains only rows with a non-null `review_action_kind`;
+  valid concluded exact heads are never recommended for duplicate work;
 - the default limit is 100, and exhaustive requests only proceed when
   `result_completeness.complete=true`; truncated packets provide a larger
   `recommended_limit` for the next read;
