@@ -1605,8 +1605,9 @@ export async function connectLarkGoalTopic(options: {
   agentId?: string;
   appRef?: string;
   captureScope: LarkCaptureScope;
-  chatId: string;
-  chatName: string;
+  chatId?: string;
+  chatName?: string;
+  connectionId?: string;
   execute: boolean;
   goalId: string;
   incomingMode: "mentions" | "all";
@@ -1625,6 +1626,7 @@ export async function connectLarkGoalTopic(options: {
         } : {}),
         ...(options.agentId ? { agent_id: options.agentId } : {}),
         ...(options.appRef ? { app_ref: options.appRef } : {}),
+        ...(options.connectionId ? { connection_id: options.connectionId } : {}),
         capture_scope: options.captureScope,
         chat_id: options.chatId,
         chat_name: options.chatName,

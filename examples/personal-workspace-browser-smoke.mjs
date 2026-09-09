@@ -899,6 +899,16 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
     }
     if (url.pathname === "/api/chat/lark/connections" && request.method() === "POST") {
       const body = request.postDataJSON();
+      if (body.connection_id) {
+        const existing = runtime.larkConnections.find((item) => item.connection_id === body.connection_id && item.goal_id === body.goal_id);
+        if (!existing || body.app_ref || body.chat_id || body.agent_bindings) throw new Error("Editing must select the stored connection without replacing its identity");
+        if (body.execute) {
+          Object.assign(existing, { agent_id: body.agent_id, ingress_mode: body.ingress_mode, capture_scope: body.capture_scope });
+          state.larkWrites.push({ ...body });
+        }
+        await route.fulfill({ contentType: "application/json", json: { ok: true, status: body.execute ? "connected" : "preview_ready" }, status: 200 });
+        return;
+      }
       const bindings = Array.isArray(body.agent_bindings)
         ? body.agent_bindings
         : [{ agent_id: body.agent_id ?? null, app_ref: body.app_ref }];
@@ -2315,6 +2325,22 @@ async function main() {
     const perAgentAppWrites = Object.fromEntries(api.larkWrites.slice(1).map((item) => [item.agent_id, item.app_ref]));
     if (perAgentAppWrites["codex-older-lane"] !== "mew-research" || perAgentAppWrites["codex-latest-lane"] !== "mew") throw new Error(`Per-Agent App selection was not preserved: ${JSON.stringify(perAgentAppWrites)}`);
     if (!api.larkConnections.some((item) => item.agent_id === "codex-older-lane") || !api.larkConnections.some((item) => item.agent_id === "codex-latest-lane")) throw new Error("One-click Goal Channel lost a peer Agent route");
+    const legacyConnection = api.larkConnections.find((item) => item.agent_id === "codex-older-lane");
+    Object.assign(legacyConnection, { ingress_mode: "direct_session", app_ref: "profile-alias-not-in-catalog", app_label: "Original Bot" });
+    const legacyId = legacyConnection.connection_id;
+    await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const legacyRow = page.locator(".personal-lark-table-row", { hasText: "Original Bot" });
+    await legacyRow.getByText("待升级", { exact: true }).waitFor({ state: "visible" });
+    await legacyRow.getByRole("button", { name: /配置/ }).click();
+    const upgradeDialog = page.getByRole("dialog", { name: "编辑 Lark 连接" });
+    await upgradeDialog.getByText("Original Bot", { exact: true }).waitFor({ state: "visible" });
+    if (await upgradeDialog.getByRole("combobox", { name: "Lark App", exact: true }).count()) throw new Error("An unknown App alias must not display the first catalog App");
+    if (!await upgradeDialog.getByLabel("异步收件箱", { exact: true }).isChecked()) throw new Error("Legacy editing must default to async inbox");
+    if (!await upgradeDialog.getByLabel("接收范围", { exact: true }).isDisabled()) throw new Error("Migration must preserve the old capture scope");
+    await upgradeDialog.getByRole("button", { name: "保存连接", exact: true }).click();
+    await upgradeDialog.waitFor({ state: "hidden" });
+    if (legacyConnection.connection_id !== legacyId || legacyConnection.app_ref !== "profile-alias-not-in-catalog" || legacyConnection.ingress_mode !== "async_inbox" || api.larkConnections.length !== 2) throw new Error("Upgrade changed the connection identity or duplicated the route");
     const removedConnection = api.larkConnections.find((item) => item.agent_id === "codex-older-lane");
     const originalAgent = removedConnection.agent_id;
     removedConnection.agent_id = "removed-peer";
