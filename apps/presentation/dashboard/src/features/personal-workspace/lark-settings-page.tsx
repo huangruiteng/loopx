@@ -183,6 +183,7 @@ export function LarkSettingsPage({
   const [chatLoading, setChatLoading] = useState(false);
   const [chatLoadError, setChatLoadError] = useState<string | null>(null);
   const [captureScope, setCaptureScope] = useState<LarkCaptureScope>("addressed_only");
+  const [conversationKind, setConversationKind] = useState<"goal" | "manager">(focusGoalConnection && initialGoalId ? "goal" : "manager");
   const [ingressMode, setIngressMode] = useState<LarkIngressMode>("async_inbox");
   const [replyMode, setReplyMode] = useState<LarkReplyMode>("topic_reply");
   const [agentId, setAgentId] = useState("");
@@ -343,6 +344,7 @@ export function LarkSettingsPage({
     const nextGoal = goal ?? goals.find((item) => item.goalId === initialGoalId) ?? goals[0];
     setEditingGoalId(null);
     setEditingConnection(null);
+    setConversationKind(goal || focusGoalConnection ? "goal" : "manager");
     setAppRef(apps.some((app) => app.app_ref === appRef) ? appRef : apps.find((app) => app.reply_ready)?.app_ref ?? apps[0]?.app_ref ?? "");
     setChatId("");
     setGoalId(nextGoal?.goalId ?? "");
@@ -360,6 +362,7 @@ export function LarkSettingsPage({
   function openConnectionEditor(connection: LarkGoalConnection) {
     setEditingGoalId(connection.goal_id);
     setEditingConnection(connection);
+    setConversationKind(connection.conversation_kind ?? "goal");
     setAppRef(connection.app_ref);
     setGoalId(connection.goal_id);
     const goal = goals.find((item) => item.goalId === connection.goal_id);
@@ -413,12 +416,16 @@ export function LarkSettingsPage({
   }
 
   async function connect() {
-    if (!appRef || !goalId || (!editingConnection && !selectedChat) || targetAgentIds.length === 0 || connecting) return;
+    if (!appRef || !goalId || (!editingConnection && !selectedChat) || (conversationKind === "goal" && targetAgentIds.length === 0) || connecting) return;
     setConnecting(true);
     setConnectError(null);
     try {
       const input = {
-        ...(editingConnection ? {
+        ...(conversationKind === "manager" ? {
+          ...(editingConnection ? { connectionId: editingConnection.connection_id } : {
+            appRef, chatId: selectedChat!.chat_id, chatName: selectedChat!.chat_name,
+          }),
+        } : editingConnection ? {
           connectionId: editingConnection.connection_id,
           agentId,
         } : {
@@ -426,10 +433,11 @@ export function LarkSettingsPage({
           chatId: selectedChat!.chat_id,
           chatName: selectedChat!.chat_name,
         }),
-        captureScope,
+        conversationKind,
+        captureScope: conversationKind === "manager" ? "addressed_only" as const : captureScope,
         goalId,
         incomingMode: captureScope === "configured_chat_all" ? "all" as const : "mentions" as const,
-        ingressMode,
+        ingressMode: conversationKind === "manager" ? "session_queue" as const : ingressMode,
         replyMode,
       } as const;
       const preview = await connectLarkGoalTopic({ ...input, execute: false });
@@ -521,7 +529,7 @@ export function LarkSettingsPage({
                 </span>
                 <span><strong>{connection.goal_title}</strong><small># {connection.topic_name}</small></span>
                 <span>{connection.capture_scope === "addressed_only" ? t("lark.mentionsOnly") : t("lark.allTopicMessages")}</span>
-                <span><strong>{ingressPresentation(connection.ingress_mode, t).label}</strong><small>{connection.agent_id ?? ingressPresentation(connection.ingress_mode, t).detail}</small></span>
+                <span><strong>{connection.conversation_kind === "manager" ? t("lark.managerConversation") : ingressPresentation(connection.ingress_mode, t).label}</strong><small>{connection.conversation_kind === "manager" ? t("lark.managerConversationDescription") : connection.agent_id ?? ingressPresentation(connection.ingress_mode, t).detail}</small></span>
                 <span className="personal-lark-row-actions">
                   <button aria-label={t("lark.settingsConfigure", { goal: connection.goal_title })} onClick={() => openConnectionEditor(connection)} type="button"><Settings2 size={15} /></button>
                   <button aria-label={t("lark.settingsDisconnect", { goal: connection.goal_title })} className={disconnectConnectionId === connection.connection_id ? "is-confirm" : ""} onClick={() => void disconnect(connection.goal_id, connection.connection_id)} type="button"><Unlink size={15} />{disconnectConnectionId === connection.connection_id ? t("common.confirm") : null}</button>
@@ -537,6 +545,8 @@ export function LarkSettingsPage({
         <div className="personal-lark-modal-backdrop" role="presentation">
           <section aria-labelledby="connect-lark-title" aria-modal="true" className="personal-lark-modal" role="dialog">
             <header><div><small>Goal Topic connection</small><h2 id="connect-lark-title">{editingGoalId ? t("lark.editConnection") : t("lark.connectApp")}</h2></div><button aria-label={t("lark.closeConnection")} onClick={() => setModalOpen(false)} type="button"><X size={18} /></button></header>
+            <label><span>{t("lark.conversationKind")}</span><select aria-label={t("lark.conversationKind")} disabled={Boolean(editingConnection)} value={conversationKind} onChange={(event) => setConversationKind(event.target.value as "goal" | "manager")}><option value="manager">{t("lark.managerConversation")}</option><option value="goal">{t("lark.workerConversation")}</option></select></label>
+            {conversationKind === "manager" ? <p>{t("lark.managerConversationDescription")}</p> : null}
             {editingConnection ? <>
               <label><span>{t("lark.appProfile")}</span><div>{editingConnection.app_label}</div></label>
               <label><span>{t("lark.groupChat")}</span><div>{editingConnection.chat_name}</div></label>
@@ -557,6 +567,7 @@ export function LarkSettingsPage({
             </>}
             <label className="personal-lark-check"><input checked readOnly type="checkbox" /><span><strong>{t("lark.createAutomatically")}</strong><small>{t("lark.createAutomaticallyDescription")}</small></span></label>
             <label><span>{t("lark.topicPreview")}</span><div className="personal-lark-topic-preview"><MessageSquareText size={15} /># {selectedGoal?.title ?? selectedGoal?.goalId ?? "Goal"}</div></label>
+            {conversationKind === "goal" ? <>
             <label><span>{t("lark.captureScope")}</span><select aria-label={t("lark.captureScope")} disabled={editingConnection?.ingress_mode === "direct_session"} onChange={(event) => setCaptureScope(event.target.value as LarkCaptureScope)} value={captureScope}><option value="addressed_only">{t("lark.captureAddressed")}</option><option value="configured_chat_all">{t("lark.captureAll")}</option></select><small>{t("lark.captureScopeDescription")}</small></label>
             <fieldset aria-label={t("lark.agentIngress")} className="personal-lark-ingress"><legend>{t("lark.agentIngress")}</legend><div>{(["live_steering", "session_queue", "async_inbox"] as const).map((mode) => { const presentation = ingressPresentation(mode, t); return <label className={ingressMode === mode ? "is-active" : ""} key={mode}><input aria-label={presentation.label} checked={ingressMode === mode} name="lark-agent-ingress" onChange={() => setIngressMode(mode)} type="radio" value={mode} /><span><strong>{presentation.label}</strong><small>{presentation.detail}</small></span></label>; })}</div></fieldset>
             <label><span>{t("lark.targetAgent")}</span><select aria-label={t("lark.targetAgent")} disabled={Boolean(editingConnection?.agent_id)} onChange={(event) => setAgentId(event.target.value)} value={agentId}>
@@ -586,10 +597,11 @@ export function LarkSettingsPage({
             ) : null}
             {connectAllAgents && targetAgentBindings.length > 0 && !targetAppsReady ? <div className="personal-lark-group-state is-error" role="alert">{t("lark.agentAppPermissions")}</div> : null}
             {targetAgentIds.length === 0 ? <p className="personal-notification-error" role="alert">{t("lark.selectRegisteredAgent")}</p> : null}
+            </> : null}
             <label><span>{t("lark.replyMode")}</span><select aria-label={t("lark.replyMode")} onChange={(event) => setReplyMode(event.target.value as LarkReplyMode)} value={replyMode}><option value="topic_reply">{t("lark.topicReply")}</option></select><small>{t("lark.replyModeDescription")}</small></label>
             <p className="personal-lark-cardinality"><Check size={15} />{t("lark.cardinality")}</p>
             {connectError ? <p className="personal-notification-error" role="alert">{connectError}</p> : null}
-            <footer><button className="personal-secondary-action" onClick={() => setModalOpen(false)} type="button">{t("lark.cancel")}</button><button className="personal-primary-action" disabled={loading || !appRef || (!editingConnection && (!selectedApp?.reply_ready || !chatId)) || !targetAppsReady || !goalId || targetAgentIds.length === 0 || connecting} onClick={() => void connect()} type="button">{connecting ? <Loader2 className="is-spinning" size={15} /> : null}{connectActionLabel}</button></footer>
+            <footer><button className="personal-secondary-action" onClick={() => setModalOpen(false)} type="button">{t("lark.cancel")}</button><button className="personal-primary-action" disabled={loading || !appRef || (!editingConnection && (!selectedApp?.reply_ready || !chatId)) || (conversationKind === "goal" && (!targetAppsReady || targetAgentIds.length === 0)) || !goalId || connecting} onClick={() => void connect()} type="button">{connecting ? <Loader2 className="is-spinning" size={15} /> : null}{connectActionLabel}</button></footer>
           </section>
         </div>
       ) : null}

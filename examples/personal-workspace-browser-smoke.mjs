@@ -919,7 +919,8 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
           const connectionId = `lark-${body.goal_id}-${binding.agent_id ?? "default"}`;
           runtime.larkConnections = runtime.larkConnections.filter((item) => item.connection_id !== connectionId);
           runtime.larkConnections.push({
-            agent_id: binding.agent_id ?? null,
+            agent_id: body.conversation_kind === "manager" ? "loopx-manager" : binding.agent_id ?? null,
+            conversation_kind: body.conversation_kind ?? "goal",
             connection_id: connectionId,
             app_label: binding.app_ref === "mew-research" ? "LoopX Research" : "LoopX Mew", app_ref: binding.app_ref, chat_name: body.chat_name, enabled: true,
             capture_scope: body.capture_scope,
@@ -2250,6 +2251,8 @@ async function main() {
     await page.getByRole("button", { name: /连接 Lark App/ }).click();
     const connectDialog = page.getByRole("dialog", { name: "连接 Lark App" });
     await connectDialog.waitFor({ state: "visible" });
+    if (await connectDialog.getByLabel("连接用途").inputValue() !== "manager") throw new Error("Machine-level Lark setup must default to the built-in manager");
+    await connectDialog.getByLabel("连接用途").selectOption("goal");
     await connectDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
     await connectDialog.getByLabel("群聊").selectOption({ label: "Product group" });
     await connectDialog.getByLabel("接收范围").selectOption("configured_chat_all");
@@ -2313,6 +2316,7 @@ async function main() {
     await editDialog.waitFor({ state: "hidden" });
     await page.locator(".personal-lark-toolbar").getByRole("button", { name: /连接 Lark App/ }).click();
     const batchDialog = page.getByRole("dialog", { name: "连接 Lark App" });
+    await batchDialog.getByLabel("连接用途").selectOption("goal");
     await batchDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
     await batchDialog.getByLabel("群聊").selectOption({ label: "Product group" });
     await batchDialog.getByLabel("绑定到 Goal").selectOption("multi-agent-projection");
@@ -2352,6 +2356,16 @@ async function main() {
     if (await editDialog.getByLabel("目标 Agent").inputValue() !== "removed-peer") throw new Error("Removed recipient silently fell back to another Agent");
     await editDialog.getByRole("button", { name: "取消" }).click();
     removedConnection.agent_id = originalAgent;
+    await page.locator(".personal-lark-toolbar").getByRole("button", { name: /连接 Lark App/ }).click();
+    const managerDialog = page.getByRole("dialog", { name: "连接 Lark App" });
+    await managerDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
+    if (await managerDialog.getByLabel("连接用途").inputValue() !== "manager") throw new Error("Machine manager default was not restored for new setup");
+    if (await managerDialog.getByLabel("目标 Agent").count()) throw new Error("The built-in manager must not require selecting a worker Agent");
+    await managerDialog.getByRole("button", { name: "连接", exact: true }).click();
+    await managerDialog.waitFor({ state: "hidden" });
+    const managerWrite = api.larkWrites.at(-1);
+    if (managerWrite.conversation_kind !== "manager" || managerWrite.ingress_mode !== "session_queue" || managerWrite.agent_bindings) throw new Error("Manager setup did not request its synchronous singleton service");
+    await page.getByText("管家 · 同步对话", { exact: true }).waitFor({ state: "visible" });
     await page.screenshot({ path: resolve(outputDir, "lark-goal-connections.png"), fullPage: false, animations: "disabled" });
     await page.getByRole("button", { name: "返回工作区", exact: true }).click();
     await selectProductReleaseGoal();

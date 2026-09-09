@@ -661,3 +661,75 @@ def test_session_ingress_resolves_the_exact_goal_agent_session(
     ]
     assert connect_calls[0]["session_id"] == "session-alpha"
     assert connect_calls[0]["ingress_mode"] == "session_queue"
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_manager_connection_opens_audience_session_only_on_execute(
+    monkeypatch: Any, tmp_path: Path, execute: bool
+) -> None:
+    import loopx.chat_lark_api as api
+    from loopx.chat_manager import manager_channel
+
+    calls: list[dict[str, Any]] = []
+    opened: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        api,
+        "connect_lark_goal_topic",
+        lambda **kwargs: calls.append(kwargs) or {"ok": True, "status": "connected"},
+    )
+
+    class Handler(LarkChatRequestMixin):
+        path = "/api/chat/lark/connections"
+        server = SimpleNamespace(
+            chat_store=SimpleNamespace(latest_session=lambda **kwargs: None),
+            runtime_controller=SimpleNamespace(
+                open_session=lambda **kwargs: (
+                    opened.append(kwargs) or {"session_id": "manager-session"},
+                    False,
+                )
+            ),
+            lark_goal_topic_runtime=SimpleNamespace(refresh=lambda: None),
+        )
+
+        def _require_lark_cli(self):
+            return "fake-lark"
+
+        def _read_json(self):
+            return {
+                "goal_id": "goal-alpha",
+                "app_ref": "mew",
+                "chat_id": "oc_public_fixture",
+                "chat_name": "Product",
+                "conversation_kind": "manager",
+                "execute": execute,
+            }
+
+        def _goal_channel_context(self, _goal_id):
+            return {
+                "goals": [{"id": "goal-alpha", "repo": str(tmp_path)}]
+            }, tmp_path / "binding.json"
+
+        def _goal_channel_target_path(self):
+            return tmp_path / "targets.json"
+
+        def _lark_runner(self):
+            return lambda *_args: {"returncode": 0, "stdout": "{}", "stderr": ""}
+
+        def _send_json(self, payload, *, status=200):
+            assert payload["ok"]
+
+        def _send_error(self, message, **kwargs):
+            raise AssertionError(message)
+
+    Handler()._lark_connect()
+    assert calls[0]["conversation_kind"] == "manager"
+    assert calls[0]["ingress_mode"] == "session_queue"
+    assert calls[0]["session_id"] == ("manager-session" if execute else None)
+    assert len(opened) == int(execute)
+    if execute:
+        assert opened[0]["agent_goal_id"] == "loopx-manager"
+        assert opened[0]["agent_id"] == "codex"
+        assert opened[0]["channel_id"] == manager_channel(
+            provider="lark", audience="mew\0oc_public_fixture"
+        )
+        assert opened[0]["channel_id"] != "manager"

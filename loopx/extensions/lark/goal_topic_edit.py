@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from ...agent_registry import registered_agent_ids_for_goal
+from ...control_plane.goals.configure_goal_service import (
+    configure_goal_with_global_sync,
+)
 from .goal_channel_contracts import (
     binding_for_goal,
     bindings_for_goal,
@@ -102,3 +105,54 @@ def resolve_existing_goal_topic(
     return ExistingGoalTopic(
         editing, app_ref, chat_id, chat_name, agent_id, capture_scope
     )
+
+
+def resolve_conversation_policy(
+    *,
+    editing: Mapping[str, Any] | None,
+    conversation_kind: str | None,
+    executor_endpoint_id: str | None,
+    ingress_mode: str | None,
+) -> tuple[str, str | None, str | None]:
+    from .goal_channel_transport import SAFE_PROFILE_PATTERN
+
+    prior = (editing or {}).get("routing") or {}
+    kind = conversation_kind or prior.get("conversation_kind") or "goal"
+    if kind not in {"goal", "manager"}:
+        raise ValueError("conversation_kind must be goal or manager")
+    if kind == "manager":
+        endpoint = executor_endpoint_id or prior.get("executor_endpoint_id") or "codex"
+        if not SAFE_PROFILE_PATTERN.fullmatch(endpoint):
+            raise ValueError("executor_endpoint_id must be a safe endpoint reference")
+        if ingress_mode and ingress_mode != "session_queue":
+            raise ValueError(
+                "the machine manager uses synchronous session_queue delivery"
+            )
+        return kind, endpoint, "session_queue"
+    return kind, None, ingress_mode
+
+
+def _unregister_async_inbox(
+    *, removed: Mapping[str, Any] | None, registry_path: Path | None, goal_id: str
+) -> tuple[dict[str, Any] | None, str]:
+    routing = removed.get("routing") if isinstance(removed, Mapping) else None
+    routing = routing if isinstance(routing, Mapping) else {}
+    agent_id = str(removed.get("agent_id") or "").strip() if removed else ""
+    if routing.get("ingress_mode") != "async_inbox" or not agent_id:
+        return None, agent_id
+    if registry_path is None:
+        error = "source registry path is required to unregister the Agent inbox"
+        return {"ok": False, "error": error}, agent_id
+    try:
+        return configure_goal_with_global_sync(
+            registry_path=registry_path,
+            goal_id=goal_id,
+            runtime_root_override=None,
+            execute=True,
+            lark_event_inbox_agent_id=agent_id,
+            clear_lark_event_inbox_config=True,
+        ), agent_id
+    except (OSError, ValueError, TimeoutError) as exc:
+        # The binding removal already landed; report the cleanup failure as a
+        # failed packet instead of raising past the caller mid-disconnect.
+        return {"ok": False, "error": str(exc)}, agent_id

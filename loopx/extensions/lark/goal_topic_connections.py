@@ -12,11 +12,11 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from ...agent_registry import registered_agent_ids_for_goal
+from ...chat_manager import MANAGER_AGENT_GOAL_ID
 from ...control_plane.goals.configure_goal_service import (
     configure_goal_with_global_sync,
 )
@@ -72,9 +72,17 @@ from .goal_channel_transport import (
     lark_args,
     message_readback_verified,
 )
-from .goal_topic_edit import resolve_existing_goal_topic
+from .goal_topic_edit import (
+    _unregister_async_inbox,
+    resolve_existing_goal_topic,
+    resolve_conversation_policy,
+)
+from .manager_routing import decide_manager_event
 from .goal_topic_routing import (
     CaptureScope,
+    IngressMode,
+    ReplyMode,
+    _routing_value,
     decide_lark_topic_route_event,
 )
 from .presentation.kanban import (
@@ -87,36 +95,9 @@ from .private_json import write_private_json_atomic
 INCOMING_MODES = {"mentions", "all"}
 
 
-class IngressMode(str, Enum):
-    LIVE_STEERING = "live_steering"
-    SESSION_QUEUE = "session_queue"
-    # Read compatibility for bindings created by the first Goal Topic slice.
-    DIRECT_SESSION = "direct_session"
-    ASYNC_INBOX = "async_inbox"
-
-
-class ReplyMode(str, Enum):
-    TOPIC_REPLY = "topic_reply"
-
-
 CAPTURE_SCOPES = {item.value for item in CaptureScope}
 INGRESS_MODES = {item.value for item in IngressMode}
 REPLY_MODES = {item.value for item in ReplyMode}
-
-
-def _routing_value(
-    enum_type: type[CaptureScope | IngressMode | ReplyMode],
-    value: Any,
-    *,
-    default: str,
-    field: str,
-) -> str:
-    normalized = str(value or default).strip().lower()
-    try:
-        return enum_type(normalized).value
-    except ValueError as exc:
-        allowed = ", ".join(item.value for item in enum_type)
-        raise ValueError(f"{field} must be one of: {allowed}") from exc
 
 
 class LarkGroupChatLookupError(RuntimeError):
@@ -359,7 +340,9 @@ def connect_lark_goal_topic(
     agent_id: str | None = None,
     session_id: str | None = None,
     capture_scope: str | None = None,
-    ingress_mode: str = "async_inbox",
+    ingress_mode: str | None = None,
+    conversation_kind: str | None = None,
+    executor_endpoint_id: str | None = None,
     reply_mode: str = "topic_reply",
     registry_path: Path | None = None,
     execute: bool = True,
@@ -383,11 +366,21 @@ def connect_lark_goal_topic(
         editing = edit.binding
         app_ref, chat_id, chat_name = edit.app_ref, edit.chat_id, edit.chat_name
         agent_id, capture_scope = edit.agent_id, edit.capture_scope
+    conversation_kind, executor_endpoint_id, ingress_mode = resolve_conversation_policy(
+        editing=editing,
+        conversation_kind=conversation_kind,
+        executor_endpoint_id=executor_endpoint_id,
+        ingress_mode=ingress_mode,
+    )
+    if conversation_kind == "manager":
+        agent_id = MANAGER_AGENT_GOAL_ID
     normalized_agent_id = normalize_todo_claimed_by(agent_id)
     if agent_id and not normalized_agent_id:
         raise ValueError("agent_id must be a public-safe registered Agent id")
-    if normalized_agent_id and normalized_agent_id not in registered_agent_ids_for_goal(
-        goal
+    if (
+        conversation_kind != "manager"
+        and normalized_agent_id
+        and normalized_agent_id not in registered_agent_ids_for_goal(goal)
     ):
         raise ValueError("agent_id must name an Agent registered for the Goal")
     connection_id = connection_id or goal_channel_connection_id(
@@ -417,6 +410,7 @@ def connect_lark_goal_topic(
             IngressMode.SESSION_QUEUE.value,
         }
         and not normalized_session_id
+        and (execute or conversation_kind != "manager")
     ):
         raise ValueError(f"{ingress_mode} requires an exact active Agent session")
     reply_mode = _routing_value(
@@ -762,6 +756,20 @@ def connect_lark_goal_topic(
                 readback_verified=True,
             )
 
+    if conversation_kind == "manager" and editing is not None:
+        cleanup, _ = _unregister_async_inbox(
+            removed=editing, registry_path=registry_path, goal_id=goal_id
+        )
+        if cleanup is not None and not cleanup.get("ok"):
+            return operation_packet(
+                ok=False,
+                goal_id=goal_id,
+                operation="connect_topic",
+                execute=True,
+                status="blocked",
+                blocker="agent_inbox_registration_failed",
+                public_summary="the prior inbox registration could not be retired; connection preserved",
+            )
     payload = read_goal_channel_binding(binding_path)
     existing = binding_for_goal(payload, goal_id, connection_id=connection_id) or {}
     receipts = dict(existing.get("receipts") or {})
@@ -800,6 +808,14 @@ def connect_lark_goal_topic(
                 "capture_scope": effective_capture_scope,
                 "ingress_mode": ingress_mode,
                 "reply_mode": reply_mode,
+                **(
+                    {
+                        "conversation_kind": "manager",
+                        "executor_endpoint_id": executor_endpoint_id,
+                    }
+                    if conversation_kind == "manager"
+                    else {}
+                ),
                 **({"inbox_config_ref": inbox_config_ref} if inbox_config_ref else {}),
             },
             **({"connector": connector_binding} if connector_binding else {}),
@@ -1040,6 +1056,9 @@ def list_lark_connections(
                     "connection_id": str(binding.get("connection_id") or ""),
                     "goal_title": goal_objective(goal),
                     "agent_id": str(binding.get("agent_id") or "") or None,
+                    "conversation_kind": str(
+                        routing.get("conversation_kind") or "goal"
+                    ),
                     "session_bound": bool(binding.get("session_id")),
                     "incoming_mode": str(routing.get("incoming_mode") or "mentions"),
                     "capture_scope": capture_scope,
@@ -1085,6 +1104,11 @@ def decide_lark_topic_event(
 ) -> dict[str, Any]:
     """Return a content-free routing decision for one provider event."""
 
+    manager_decision = decide_manager_event(
+        target_payload=target_payload, binding_payloads=binding_payloads, event=event
+    )
+    if manager_decision is not None:
+        return manager_decision
     chat_id = str(event.get("chat_id") or "")
     root_id = str(event.get("root_id") or "")
     message_id = str(event.get("message_id") or "")
@@ -1397,32 +1421,6 @@ def _without_goal_topic_connection(
             removed = stored
             mutable.pop(goal_id, None)
     return mutable, removed
-
-
-def _unregister_async_inbox(
-    *, removed: Mapping[str, Any] | None, registry_path: Path | None, goal_id: str
-) -> tuple[dict[str, Any] | None, str]:
-    routing = removed.get("routing") if isinstance(removed, Mapping) else None
-    routing = routing if isinstance(routing, Mapping) else {}
-    agent_id = str(removed.get("agent_id") or "").strip() if removed else ""
-    if routing.get("ingress_mode") != IngressMode.ASYNC_INBOX.value or not agent_id:
-        return None, agent_id
-    if registry_path is None:
-        error = "source registry path is required to unregister the Agent inbox"
-        return {"ok": False, "error": error}, agent_id
-    try:
-        return configure_goal_with_global_sync(
-            registry_path=registry_path,
-            goal_id=goal_id,
-            runtime_root_override=None,
-            execute=True,
-            lark_event_inbox_agent_id=agent_id,
-            clear_lark_event_inbox_config=True,
-        ), agent_id
-    except (OSError, ValueError, TimeoutError) as exc:
-        # The binding removal already landed; report the cleanup failure as a
-        # failed packet instead of raising past the caller mid-disconnect.
-        return {"ok": False, "error": str(exc)}, agent_id
 
 
 @serialize_goal_binding_mutation

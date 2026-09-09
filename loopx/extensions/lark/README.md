@@ -320,3 +320,27 @@ its App profile alias is missing from the current App catalog. Source snapshots,
 private provider IDs and migration receipts belong in ignored local storage.
 Configuration readback alone does not prove that a user message was processed;
 verify runtime routing and delivery separately after migration.
+
+## Built-in machine manager
+
+Machine-level Lark onboarding defaults to **Manager · live conversation**. Goal
+worker connections remain a separate purpose with async inbox defaults. The
+manager is the built-in `loopx-manager` role, not an ordinary worker name or a
+project-specific heartbeat. Its executor endpoint defaults to `codex` and is
+recorded separately from its logical identity.
+
+A manager connection uses `conversation_kind=manager`. Preview has no session
+creation side effect. On apply, the Chat service opens or resumes the manager's
+exact audience session and binds `session_queue`; delivery waits for that turn
+and its verified reply, without waiting for a scheduled Agent wakeup. Group-root
+mentions and addressed replies can reach the manager without an invented Topic
+root. Exact worker Topics retain their own routing, and ambiguous manager
+bindings fail closed.
+
+The frontend and Lark use the same manager conversation service and the existing
+typed control plane. Their transcripts are separated by audience: an external
+conversation can never resume the owner's private frontend session or another
+group's session. Long-running work still belongs to worker Agents. Conversation
+turns retain the existing read-only tool policy and typed preview/apply authority;
+a synchronous response is not permission to mutate arbitrary repositories or
+skip a control-plane receipt.

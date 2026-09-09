@@ -1871,7 +1871,7 @@ def test_disconnect_reports_agent_inbox_cleanup_failure(
     )
     assert connection is not None
     monkeypatch.setattr(
-        "loopx.extensions.lark.goal_topic_connections.configure_goal_with_global_sync",
+        "loopx.extensions.lark.goal_topic_edit.configure_goal_with_global_sync",
         lambda **_kwargs: {"ok": False},
     )
 
@@ -1948,7 +1948,7 @@ def test_disconnect_reports_agent_inbox_cleanup_raise_as_packet(
         raise failure_factory()
 
     monkeypatch.setattr(
-        "loopx.extensions.lark.goal_topic_connections.configure_goal_with_global_sync",
+        "loopx.extensions.lark.goal_topic_edit.configure_goal_with_global_sync",
         _raise,
     )
 
@@ -2488,3 +2488,155 @@ def test_upgrade_cannot_join_evidence_from_two_messages(tmp_path: Path) -> None:
     before = kwargs["binding_path"].read_bytes()
     assert connect_lark_goal_topic(**kwargs)["blocker"] == "readback_mismatch"
     assert kwargs["binding_path"].read_bytes() == before
+
+
+def _manager_fixture(tmp_path: Path):
+    kwargs, state = _upgrade_fixture(tmp_path, agent_id="agent-alpha", peers=True)
+    result = connect_lark_goal_topic(
+        **kwargs,
+        conversation_kind="manager",
+        session_id="manager-session",
+        executor_endpoint_id="codex",
+    )
+    assert result["ok"] is True
+    return kwargs, state, read_goal_channel_binding(kwargs["binding_path"])
+
+
+def test_builtin_manager_preview_is_synchronous_without_a_worker_registration(
+    tmp_path: Path,
+) -> None:
+    kwargs, state = _upgrade_fixture(tmp_path)
+    kwargs["registry"]["goals"][0]["coordination"]["registered_agents"] = []
+    before = kwargs["binding_path"].read_bytes()
+    result = connect_lark_goal_topic(
+        **kwargs, conversation_kind="manager", execute=False
+    )
+    assert result["ok"] is True
+    assert result["details"]["ingress_mode"] == "session_queue"
+    assert result["details"]["agent_id"] == "loopx-manager"
+    assert kwargs["binding_path"].read_bytes() == before
+    with pytest.raises(ValueError, match="exact active Agent session"):
+        connect_lark_goal_topic(**kwargs, conversation_kind="manager")
+
+
+@pytest.mark.parametrize("root_id", ["", "om_new_group_topic"])
+def test_manager_routes_structured_mentions_without_fabricating_a_topic(
+    tmp_path: Path, root_id: str
+) -> None:
+    kwargs, state, bindings = _manager_fixture(tmp_path)
+    event = {
+        "chat_id": CHAT_ID,
+        "message_id": "om_manager_request",
+        "root_id": root_id,
+        "mentions": [{"id": APP_ID}],
+        "content": "Please summarize current work",
+    }
+    decision = decide_lark_topic_event(
+        target_payload=read_goal_channel_targets(kwargs["target_path"]),
+        binding_payloads={"goal-alpha": bindings},
+        event=event,
+    )
+    assert decision["matched"] is True
+    route = decision["route"]
+    assert route["conversation_kind"] == "manager"
+    assert route["agent_id"] == "loopx-manager"
+    assert route["executor_endpoint_id"] == "codex"
+    assert route["session_id"] == "manager-session"
+    assert route["ingress_mode"] == "session_queue"
+    assert event["root_id"] == root_id
+    event["mentions"] = [{"id": "cli_unrelated"}]
+    assert (
+        decide_lark_topic_event(
+            target_payload=read_goal_channel_targets(kwargs["target_path"]),
+            binding_payloads={"goal-alpha": bindings},
+            event=event,
+        )["reason"]
+        == "not_addressed"
+    )
+
+
+def test_manager_waits_for_actual_turn_in_its_own_audience_session(
+    tmp_path: Path,
+) -> None:
+    from loopx.chat_manager import manager_channel
+    from loopx.extensions.lark.goal_topic_runtime import answer_lark_goal_topic
+
+    kwargs, state, bindings = _manager_fixture(tmp_path)
+    decision = decide_lark_topic_event(
+        target_payload=read_goal_channel_targets(kwargs["target_path"]),
+        binding_payloads={"goal-alpha": bindings},
+        event={
+            "chat_id": CHAT_ID,
+            "message_id": "om_manager_request",
+            "mentions": [{"id": APP_ID}],
+        },
+    )
+    route = decision["route"]
+    calls = []
+    session = {
+        "session_id": "manager-session",
+        "goal_id": "another-anchor",
+        "agent_id": "codex",
+        "channel_id": route["manager_channel_id"],
+        "status": "open",
+    }
+    controller = SimpleNamespace(
+        store=SimpleNamespace(load_session=lambda _id: session),
+        enqueue_turn=lambda **args: (
+            calls.append(args) or {"turn_id": "turn-one"},
+            True,
+        ),
+        wait_for_turn=lambda **args: {
+            "status": "completed",
+            "response": {"message": "Current work summarized"},
+        },
+    )
+    response = answer_lark_goal_topic(
+        route=route,
+        text="status",
+        work_dir=str(tmp_path),
+        objective="worker objective",
+        runtime_controller=controller,
+    )
+    assert response == "Current work summarized"
+    assert calls[0]["session_id"] == "manager-session"
+    assert "LoopX Goal manager" in calls[0]["objective"]
+    for wrong_channel in [
+        "manager",
+        manager_channel(provider="lark", audience="another-group"),
+    ]:
+        session["channel_id"] = wrong_channel
+        with pytest.raises(RuntimeError, match="no longer matches"):
+            answer_lark_goal_topic(
+                route=route,
+                text="private status",
+                work_dir=str(tmp_path),
+                objective="",
+                runtime_controller=controller,
+            )
+    assert len(calls) == 1
+
+
+def test_ambiguous_manager_does_not_fan_out(tmp_path: Path) -> None:
+    from loopx.extensions.lark.goal_channel_contracts import save_goal_connection
+
+    kwargs, state, bindings = _manager_fixture(tmp_path)
+    manager = binding_for_goal(bindings, "goal-alpha")
+    save_goal_connection(
+        binding_path=kwargs["binding_path"],
+        payload=bindings,
+        goal_id="goal-alpha",
+        binding={**manager, "connection_id": "lark_duplicate_manager"},
+    )
+    decision = decide_lark_topic_event(
+        target_payload=read_goal_channel_targets(kwargs["target_path"]),
+        binding_payloads={
+            "goal-alpha": read_goal_channel_binding(kwargs["binding_path"])
+        },
+        event={
+            "chat_id": CHAT_ID,
+            "message_id": "om_request",
+            "mentions": [{"id": APP_ID}],
+        },
+    )
+    assert decision == {"matched": False, "reason": "route_ambiguous", "route": None}
