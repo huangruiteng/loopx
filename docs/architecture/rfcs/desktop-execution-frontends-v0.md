@@ -452,6 +452,11 @@ disconnected and does not silently launch a managed runtime.
 
 ## Mode B: Managed Agent Runtime
 
+The [DSH/Pi assessment](./harness-selection-dsh-pi-v0.md) separates the first
+passive event source from managed-runtime selection and defines the remaining
+lifecycle, readback and measurement gates. Combined diagnostic CLI readback is
+available; the managed panel and supervisor are not delivered by that increment.
+
 ### Product flow
 
 The managed desktop path is end to end:

@@ -159,8 +159,24 @@ export LOOPX_DSH_SHADOW_OBSERVER_RUN_IDENTITY_JSON='{"worker_id":"<worker>","mod
 
 loopx reliability-diagnostics receipt --goal-id <goal-id> --format json
 loopx reliability-diagnostics status  --goal-id <goal-id> --format json
+loopx reliability-diagnostics status  --goal-id <goal-id> --with-receipt --format json --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 loopx reliability-diagnostics ingest  --goal-id <goal-id> --input observer.ndjson --format json
 ```
+
+For live age/stall evaluation, pass the current timezone-aware `--as-of` as in
+the POSIX-shell example. Without it, historical replay uses the last event time
+and reports zero last-event age. This does not establish current liveness.
+
+Explicit `--as-of` values must be ISO-8601 timestamps with `Z` or a UTC offset.
+Empty, malformed, or timezone-free values exit with code 2, even when the ledger
+is missing, empty, or corrupt; this applies with or without `--with-receipt`.
+
+`status --with-receipt` returns both existing contracts from one ledger read.
+Omit the option to retain projection-only output. It grants no control authority
+and does not enable the observer. Concurrent appends are not atomic snapshots;
+partial records remain integrity failures. See the
+[DSH/Pi assessment](../../../docs/architecture/rfcs/harness-selection-dsh-pi-v0.md)
+before wiring this full-ledger CLI into a polling surface.
 
 The ledger lives at `<runtime-root>/reliability_diagnostics/<goal-id>.ndjson`;
 the default runtime root is the same one the rest of LoopX uses and the CLI

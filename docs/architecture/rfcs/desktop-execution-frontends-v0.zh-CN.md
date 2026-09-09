@@ -380,6 +380,10 @@ Agent 进程或第二个上游会话。
 
 ## 模式 B：托管 Agent 运行时
 
+[DSH/Pi 评估](./harness-selection-dsh-pi-v0.zh-CN.md) 区分首个被动事件源与 managed runtime
+选型，列出生命周期、读取及测量门槛。诊断 CLI 已支持组合读取，但这个增量不交付
+managed 面板或 supervisor。
+
 ### 产品流程
 
 托管桌面路径是端到端的：

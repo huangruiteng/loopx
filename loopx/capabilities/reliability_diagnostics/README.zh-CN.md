@@ -136,8 +136,22 @@ export LOOPX_DSH_SHADOW_OBSERVER_RUN_IDENTITY_JSON='{"worker_id":"<worker>","mod
 
 loopx reliability-diagnostics receipt --goal-id <goal-id> --format json
 loopx reliability-diagnostics status  --goal-id <goal-id> --format json
+loopx reliability-diagnostics status  --goal-id <goal-id> --with-receipt --format json --as-of "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 loopx reliability-diagnostics ingest  --goal-id <goal-id> --input observer.ndjson --format json
 ```
+
+实时年龄／stall 评估应像上述 POSIX shell 示例一样，向 `--as-of` 传入带时区的当前时间。
+省略时按最后事件时间进行历史重放，最后事件年龄为零，不能证明当前仍存活。
+
+显式 `--as-of` 必须是含 `Z` 或 UTC 偏移的 ISO-8601 时间戳。空字符串、格式错误或
+无时区的值均返回退出码 2，即使 ledger 缺失、为空或损坏；是否开启 `--with-receipt`
+不影响此校验。
+
+`status --with-receipt` 从同一次 ledger 读取返回两个现有合同；省略该选项保留原来的
+projection-only 输出，不授予控制权限，也不激活 observer。并发追加不是原子快照，
+末尾半行仍会导致 integrity 失败。接入轮询前应阅读
+[DSH/Pi 评估](../../../docs/architecture/rfcs/harness-selection-dsh-pi-v0.zh-CN.md)
+中的全量读取与身份边界。
 
 ledger 位于 `<runtime-root>/reliability_diagnostics/<goal-id>.ndjson`；默认 runtime root
 与 LoopX 其它部分一致，CLI 只打印相对的 `ledger_ref`。`ingest` 会重新校验每一行；干净的

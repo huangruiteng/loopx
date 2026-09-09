@@ -609,8 +609,9 @@ required before making a stronger commercial claim.
    read-only `session/event`, `agent/status`, `agent/error`, and
    `session/disposed` hooks let the observer be proven non-interfering inside
    an existing packaged boundary. Pi remains the comparison candidate; the
-   harness-selection evaluation shared with the Desktop Execution Frontends
-   RFC is a follow-up deliverable and will be recorded here.
+   [shared harness-selection assessment](./harness-selection-dsh-pi-v0.md)
+   retains DSH for L1 and keeps Mode B selection conditional on lifecycle and
+   matched-run evidence; it is not a runtime promotion.
 3. Should the first two-to-four-week offer stop at L1 diagnostics by default,
    or include an optional L2 advisory week before any L3 seam?
 4. Which data-retention, deletion, and support profiles belong in the first

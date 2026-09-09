@@ -84,6 +84,11 @@ def register_reliability_diagnostics_commands(
     status.add_argument(
         "--as-of", help="Timezone-aware ISO-8601 time used for stall age."
     )
+    status.add_argument(
+        "--with-receipt",
+        action="store_true",
+        help="Include integrity evidence from the same ledger read; grants no control authority.",
+    )
 
 
 def _render(payload: dict[str, Any]) -> str:
@@ -252,6 +257,8 @@ def handle_reliability_diagnostics_command(
                 payload["projection"] = build_diagnostic_projection(
                     reading, as_of=args.as_of
                 )
+                if args.with_receipt:
+                    payload["receipt"] = build_integrity_receipt(reading)
     except (OSError, ValueError) as exc:
         print(f"error: {CAPABILITY_ID}: {exc}", file=sys.stderr)
         return 2

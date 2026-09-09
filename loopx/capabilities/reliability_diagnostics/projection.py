@@ -191,6 +191,15 @@ def build_diagnostic_projection(
     stall_threshold_ms: int = DEFAULT_STALL_THRESHOLD_MS,
     repetition_threshold: int = DEFAULT_REPETITION_THRESHOLD,
 ) -> dict[str, Any]:
+    if as_of is not None:
+        message = "as_of must be a timezone-aware ISO-8601 timestamp"
+        try:
+            parsed_as_of = parse_observed_at(as_of)
+        except ValueError as exc:
+            raise ValueError(message) from exc
+        if parsed_as_of.utcoffset() is None:
+            raise ValueError(message)
+
     receipt = build_integrity_receipt(reading)
     envelopes = reading.ordered_envelopes
 

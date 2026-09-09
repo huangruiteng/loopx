@@ -516,7 +516,8 @@ advantage 与 sustainable delivery evidence。
    **已决定（2026-09）：DeepSeek Harness（`dsh`）session events。** LoopX 已有 typed `dsh`
    Turn host 与 same-session plugin，其只读 `session/event`、`agent/status`、`agent/error`、
    `session/disposed` hook 让 observer 能在既有打包边界内被证明 non-interfering。Pi 仍是
-   对比候选；与 Desktop Execution Frontends RFC 共享的 harness 选型评估是后续交付物，结论将记录在此。
+   对比候选；[共享选型评估](./harness-selection-dsh-pi-v0.zh-CN.md) 保留 DSH 为 L1 首个来源，
+   Mode B 的选择仍取决于生命周期与匹配实跑证据，不构成运行时晋级。
 3. 第一份两到四周 offer 默认应停在 L1 diagnostic，还是在进入任何 L3 seam 前增加可选 L2 advisory week？
 4. 第一份 local/private/BYOC deployment pack 应包含哪些 data-retention、deletion 与 support profile？
 5. 第一份 promotion packet 必须使用哪个 benchmark family 与 non-benchmark canary？
