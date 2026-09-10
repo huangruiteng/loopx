@@ -461,3 +461,45 @@ def test_real_mcp_terminal_completion_closes_out_after_spend(
     )
     assert completed["status"] == "done"
     assert "no_followup=true" in state_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("lost_after", ["lifecycle", "writeback", "spend"])
+def test_real_mcp_completion_recovers_a_lost_mutation_response(tmp_path, lost_after):
+    """The real write commits, but its caller sees a failure: retry must not pay twice."""
+    registry, _ = _write_fixture(tmp_path)
+    added = add_goal_todo(
+        registry_path=registry, goal_id=GOAL_ID, role="agent",
+        text="Validate response-loss recovery.", task_class="advancement_task",
+        continuation_policy="same_agent_non_delivery", claimed_by=AGENT_ID,
+    )
+    control = _control(registry)
+    original = control.run_cli
+    injected = False
+
+    def lose_once(args, **kwargs):
+        nonlocal injected
+        output = original(args, **kwargs)
+        step = {"lifecycle": ["todo", "complete"], "writeback": ["refresh-state"],
+                "spend": ["quota", "spend-slot"]}[lost_after]
+        if not injected and args[:len(step)] == step and json.loads(output).get("ok"):
+            injected = True
+            return json.dumps({"ok": False, "error": "synthetic_response_lost_after_commit"})
+        return output
+
+    control.run_cli = lose_once
+    first = json.loads(control.complete_task(
+        added["todo_id"], AGENT_ID, "recovery fixture check passed", no_follow_up=True,
+    ))
+    assert injected and first["ok"] is False
+    replay = json.loads(control.complete_task(
+        added["todo_id"], AGENT_ID, "recovery fixture check passed", no_follow_up=True,
+    ))
+    assert replay["ok"] is True
+    again = json.loads(control.complete_task(
+        added["todo_id"], AGENT_ID, "recovery fixture check passed", no_follow_up=True,
+    ))
+    assert again["ok"] is True
+    assert again["settlement_identity"] == replay["settlement_identity"]
+    assert again["settlement"]["quota_spend"]["appended"] is False
+    status = json.loads(control.should_run())
+    assert status["quota"]["spent_slots"] == 1

@@ -100,6 +100,14 @@ not active host Goal objectives or benchmark prompts already pinned to a run.
 An installed runtime supplies updated dynamic contracts on later reads; upgrading
 it does not retroactively remove old text from an existing Goal.
 
+Claude Code's MCP-backed `loop.md` follows the same work-sizing rule and current
+quota contract, without a fixed one-segment limit or empty-Todo-list completion
+shortcut. Its `complete_task` tool already owns the ordered writeback/spend
+transaction: callers must not perform a second accounting sequence through CLI.
+Partial work is not Todo completion. Native `/loop` remains Claude's scheduler;
+only the current Goal's wakeup may be cancelled after terminal no-follow-up.
+These changes apply when `loop.md` is regenerated, not by editing active user files.
+
 For Codex App, the generated quota command carries the compact explicit runtime
 profile `--runtime-profile codex_app_heartbeat` (generated commands use the
 equivalent compact alias `--codex-app`). The prompt does not restate the
