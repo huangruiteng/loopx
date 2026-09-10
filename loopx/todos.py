@@ -120,7 +120,7 @@ from .control_plane.coordination.local_authority import (
     local_authority_is_promoted,
     read_canonical_todos_if_promoted,
 )
-from .control_plane.todos.provider_compatibility_edit import edit_canonical_todo_if_promoted
+from .control_plane.todos.provider_update import update_canonical_todo_if_promoted
 from .control_plane.todos.provider_create import create_canonical_todo_if_promoted
 from .control_plane.todos.path_resolution import resolve_todo_state_path
 from .control_plane.todos.provider_terminal_lifecycle import provider_first_terminal_lifecycle
@@ -1112,21 +1112,26 @@ def update_goal_todo(
         )
         if canonical_claim is not None:
             return canonical_claim
-    # A narrow compatibility editor is admitted through provider CAS. All
-    # other legacy writes still encounter the existing promotion fence.
-    if not claim_only and (text is not None or note is not None) and not any((
+    # Transport explicit planning intent; TS owns its meaning at the canonical
+    # commit revision. Unsupported fields still encounter the promotion fence.
+    planning_intent = {key: value for key, value in {
+        "status": status, "evidence": evidence, "reason": reason,
+        "resume_when": resume_when, "clear_resume_when": clear_resume_when or None,
+        "unblocks_todo_id": unblocks_todo_id, "successor_todo_ids": successor_todo_ids,
+        "no_followup": no_followup,
+    }.items() if value is not None}
+    if not claim_only and (text is not None or note is not None or planning_intent) and not any((
         monitor_metadata,
         goal_bound, clear_blocks_agent, clear_excluded_agents, global_gate,
-        clear_global_gate, clear_resume_when, clear_claim, authority_reason,
+        clear_global_gate, clear_claim, authority_reason,
     )) and all(value is None for value in (
-        status, evidence, reason, task_class, action_kind, task_domain,
+        task_class, action_kind, task_domain,
         task_repository, continuation_policy, required_write_scopes,
         required_capabilities, target_capabilities, explore_result_node_refs,
         decision_scope, required_decision_scopes, claimed_by, bound_agent,
-        blocks_agent, excluded_agents, unblocks_todo_id, successor_todo_ids,
-        resume_when, no_followup, authority_reason,
+        blocks_agent, excluded_agents, authority_reason,
     )):
-        canonical_edit = edit_canonical_todo_if_promoted(
+        canonical_edit = update_canonical_todo_if_promoted(
             registry_path=registry_path, runtime_root=shadow_runtime_root,
             goal_id=goal_id, todo_id=normalize_todo_id(todo_id) or todo_id,
             actor_agent_id=agent_id, role=role, text=text, note=note, dry_run=dry_run,
@@ -1134,13 +1139,14 @@ def update_goal_todo(
             operation_id=update_operation_id,
             task_lease_idempotency_key=task_lease_idempotency_key,
             task_lease_expected_version=task_lease_expected_version,
+            planning_intent=planning_intent,
         )
         if canonical_edit is not None:
             return canonical_edit
     if update_operation_id is not None or (not claim_only and (
         task_lease_idempotency_key is not None or task_lease_expected_version is not None
     )):
-        raise ValueError("update operation id and lease proof require promoted text/note-only update; no legacy write attempted")
+        raise ValueError("update operation id and lease proof require a supported promoted update; no legacy write attempted")
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import {registerNativePlanningUpdateConformance} from "./native_planning_update_conformance.ts";
 
 import type {
   AuthorityStore,
@@ -215,6 +216,7 @@ export function registerAuthorityStoreConformance(
   providerName: string,
   factory: AuthorityStoreConformanceFactory,
 ): void {
+  registerNativePlanningUpdateConformance(providerName, factory);
   for (const native of [false, true]) test(`${providerName} conformance: governance reads one full Todo/lease snapshot (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
     const goal = "goal-governance";

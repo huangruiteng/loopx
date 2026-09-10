@@ -65,7 +65,9 @@ def register_todo_command(
     todo_parser.add_argument("--todo-id", help="Structured todo id from status/quota, such as todo_ab12cd34ef56.")
     todo_parser.add_argument(
         "--update-operation-id",
-        help="For promoted text/note update, reuse this operation id after a lost response; changed intent is rejected.",
+        help=("For promoted text/note or nonterminal planning update, reuse this operation id after a lost response; "
+              "changed intent is rejected. Planning supports status, evidence, reason, resume conditions and successor links; "
+              "leased status changes and Monitor planning remain unsupported."),
     )
     todo_parser.add_argument(
         "--claim-operation-id",
@@ -283,7 +285,7 @@ def register_todo_command(
         "--task-lease-idempotency-key",
         help=(
             "For todo claim on promoted hard-lease authority, atomically acquire "
-            "the canonical lease and claim; for promoted text/note update, complete and supersede, prove the "
+            "the canonical lease and claim; for promoted text/note or planning update, complete and supersede, prove the "
             "execution instance that owns the active lease."
         ),
     )
@@ -292,7 +294,7 @@ def register_todo_command(
         type=int,
         help=(
             "For promoted todo claim, optionally compare-and-set the canonical "
-            "lease version; for promoted text/note update, complete and supersede, supply the active lease "
+            "lease version; for promoted text/note or planning update, complete and supersede, supply the active lease "
             "version when it is effective."
         ),
     )
