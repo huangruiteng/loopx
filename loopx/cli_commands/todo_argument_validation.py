@@ -11,6 +11,7 @@ TODO_OPTION_FIELDS = (
     ("--follow-up", "followups"),
     ("--todo-id", "todo_id"),
     ("--claim-operation-id", "claim_operation_id"),
+    ("--update-operation-id", "update_operation_id"),
     ("--turn-instance-id", "turn_instance_id"),
     ("--completion-identity-key", "completion_identity_key"),
     ("--replan-obligation-id", "replan_obligation_id"),
@@ -509,6 +510,8 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
         raise ValueError(
             "--turn-instance-id is supported only by todo complete settlement"
         )
+    if getattr(args, "update_operation_id", None) is not None and args.todo_command != "update":
+        raise ValueError("--update-operation-id is supported only by todo update")
     if getattr(args, "claim_operation_id", None) is not None and args.todo_command != "claim":
         raise ValueError("--claim-operation-id is supported only by todo claim")
     if (
@@ -526,7 +529,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
             "--replan-obligation-id is supported only by todo add"
         )
     if (
-        args.todo_command not in {"claim", "complete", "supersede"}
+        args.todo_command not in {"claim", "update", "complete", "supersede"}
         and (
             args.task_lease_idempotency_key
             or args.task_lease_expected_version is not None
@@ -534,7 +537,7 @@ def validate_shared_todo_options(args: argparse.Namespace) -> None:
     ):
         raise ValueError(
             "--task-lease-idempotency-key and --task-lease-expected-version "
-            "are supported only by todo claim, todo complete, and todo supersede"
+            "are supported only by todo claim, todo update, todo complete, and todo supersede"
         )
     if args.capability_binding_ref and args.todo_command != "add":
         raise ValueError(

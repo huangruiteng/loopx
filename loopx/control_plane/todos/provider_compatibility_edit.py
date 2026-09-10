@@ -29,6 +29,8 @@ def edit_canonical_todo_if_promoted(
     actor_agent_id: str | None, role: str | None, text: str | None,
     note: str | None, dry_run: bool,
     project: Path | None = None, state_file: Path | None = None,
+    operation_id: str | None = None, task_lease_idempotency_key: str | None = None,
+    task_lease_expected_version: int | None = None,
 ) -> dict[str, Any] | None:
     canonical = read_canonical_todos_if_promoted(runtime_root=runtime_root, goal_id=goal_id)
     if canonical is None:
@@ -60,7 +62,9 @@ def edit_canonical_todo_if_promoted(
         "runtime_root": str(runtime_root.resolve()), "goal_id": goal_id,
         "todo_id": todo_id, "role": role, "actor_agent_id": actor_agent_id,
         "registered_agents": registered_agent_ids_from_registry(registry_path, goal_id),
-        "operation_id": f"todo-update:{uuid4().hex}",
+        "operation_id": operation_id if operation_id is not None else f"todo-update:{uuid4().hex}",
+        "lease_idempotency_key": task_lease_idempotency_key,
+        "lease_expected_version": task_lease_expected_version,
         "patch": patch, "clear_fields": [], "dry_run": dry_run,
         "observed_at": now_local(),
     })

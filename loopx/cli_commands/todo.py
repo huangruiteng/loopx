@@ -407,6 +407,9 @@ def handle_todo_command(
                     if value is not None
                 },
                 clear_claim=bool(args.clear_claim),
+                update_operation_id=args.update_operation_id,
+                task_lease_idempotency_key=args.task_lease_idempotency_key,
+                task_lease_expected_version=args.task_lease_expected_version,
                 **_todo_path_args(args),
                 dry_run=bool(args.dry_run),
             )

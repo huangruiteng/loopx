@@ -1126,6 +1126,32 @@ def test_canonical_hard_lease_claim_cli_atomically_acquires_ownership(
     assert after["todos"][0]["claimed_by"] == "agent-a"
     assert not state_file.exists()
 
+    edit = [sys.executable, "-m", "loopx.cli", "--format", "json", "--registry",
+        str(registry_path), "todo", "update", "--goal-id", "goal-a", "--todo-id",
+        "todo_atomic_claim", "--agent-id", "agent-a", "--text", "Correct leased task",
+        "--note", "Updated note", "--update-operation-id", "cli-leased-edit",
+        "--task-lease-idempotency-key", "turn:atomic-cli-claim",
+        "--task-lease-expected-version", str(applied["lease"]["version"])]
+    def invoke_edit(argv):
+        return subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    preview_edit = invoke_edit([*edit, "--dry-run"])
+    assert preview_edit.returncode == 0, preview_edit.stdout + preview_edit.stderr
+    assert json.loads(preview_edit.stdout)["status"] == "planned"
+    assert list_goal_todos(registry_path=registry_path, goal_id="goal-a") == after
+    first_edit = invoke_edit(edit)
+    assert first_edit.returncode == 0, first_edit.stdout + first_edit.stderr
+    assert json.loads(first_edit.stdout)["status"] == "applied"
+    retry_edit = invoke_edit(edit)
+    assert retry_edit.returncode == 0, retry_edit.stdout + retry_edit.stderr
+    assert json.loads(retry_edit.stdout)["status"] == "replayed"
+    changed_edit = invoke_edit([*edit, "--note", "Different intent"])
+    assert changed_edit.returncode != 0
+    final = list_goal_todos(registry_path=registry_path, goal_id="goal-a")
+    assert final["todos"][0]["text"] == "Correct leased task"
+    assert final["todos"][0]["note"] == "Updated note"
+    assert final["todos"][0]["claimed_by"] == "agent-a"
+    assert not state_file.exists()
+
 
 def test_promoted_terminal_lifecycle_commits_successors_and_archive_natively(
     tmp_path: Path,

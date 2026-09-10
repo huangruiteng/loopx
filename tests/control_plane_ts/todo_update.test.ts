@@ -120,9 +120,10 @@ test(`provider-first update fails closed without a hard-lease execution proof ($
     next_projection: {...head.head, handoff_mode: "hard_lease", leases: [{
       todo_id: "todo_a", owner: "agent-a", status: "active",
       expires_at: "2026-09-06T00:00:00Z",
+      idempotency_key: "execution-a", version: 1, lease_epoch: 1,
     }]}});
   const result = await executeCoordinationTodoUpdate(store, request);
-  assert.equal(result.reason_code, "update_lease_unsupported");
+  assert.equal(result.reason_code, "lease_fence_required");
   assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
 });
 }
@@ -150,3 +151,30 @@ test("provider-first update records no-change identity without state mutation", 
   assert.equal((await executeCoordinationTodoUpdate(store, {...noChangeRequest,
     operation_id: "independent-reset"})).status, "applied");
 });
+
+for (const [label, leaseChange, todoChange, reason] of [
+  ["released", {status: "released"}, {}, "handoff_mode_requires_lease"],
+  ["expired", {expires_at: "2026-01-01T00:00:00Z"}, {}, "handoff_mode_requires_lease"],
+  ["malformed expiry", {expires_at: "invalid"}, {}, "invalid_coordination_projection"],
+  ["malformed epoch", {lease_epoch: -1}, {}, "invalid_coordination_projection"],
+  ["unclaimed", {}, {claimed_by: null}, "update_owner_mismatch"],
+] as const) {
+  test(`leased update rejects ${label} without writing`, async () => {
+    const {store, request} = await seeded(todoChange);
+    const head = await store.loadAuthority();
+    assert.equal(head.status, "loaded");
+    if (head.status !== "loaded") return;
+    await store.commitAuthority({operation_id: "lease-invalid-case",
+      expected_provider_revision: head.provider_revision, events: [], receipts: [],
+      next_projection: {...head.head, handoff_mode: "hard_lease", leases: [{
+        todo_id: "todo_a", owner: "agent-a", status: "active", version: 2, lease_epoch: 2,
+        idempotency_key: "execution-a", expires_at: "2026-09-06T00:00:00Z", ...leaseChange,
+      }]}});
+    const before = await store.loadAuthority();
+    const result = await executeCoordinationTodoUpdate(store, {...request,
+      lease_idempotency_key: "execution-a", lease_expected_version: 2});
+    assert.equal(result.reason_code, reason);
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
+  });
+}

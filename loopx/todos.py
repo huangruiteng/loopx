@@ -1040,6 +1040,7 @@ def update_goal_todo(
     clear_claim: bool = False,
     claim_only: bool = False,
     claim_operation_id: str | None = None,
+    update_operation_id: str | None = None,
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
     project: Path | None = None,
@@ -1071,7 +1072,7 @@ def update_goal_todo(
         raise ValueError(
             "--task-lease-expected-version requires --task-lease-idempotency-key"
         )
-    if task_lease_idempotency_key is not None and not promoted_claim:
+    if task_lease_idempotency_key is not None and claim_only and not promoted_claim:
         raise ValueError(
             "--task-lease-idempotency-key on todo claim requires promoted canonical authority; no legacy write attempted"
         )
@@ -1134,9 +1135,16 @@ def update_goal_todo(
             goal_id=goal_id, todo_id=normalize_todo_id(todo_id) or todo_id,
             actor_agent_id=agent_id, role=role, text=text, note=note, dry_run=dry_run,
             project=project, state_file=state_file,
+            operation_id=update_operation_id,
+            task_lease_idempotency_key=task_lease_idempotency_key,
+            task_lease_expected_version=task_lease_expected_version,
         )
         if canonical_edit is not None:
             return canonical_edit
+    if update_operation_id is not None or (not claim_only and (
+        task_lease_idempotency_key is not None or task_lease_expected_version is not None
+    )):
+        raise ValueError("update operation id and lease proof require promoted text/note-only update; no legacy write attempted")
     resolved_project, resolved_state_file = resolve_todo_state_path(
         registry_path=registry_path,
         goal_id=goal_id,

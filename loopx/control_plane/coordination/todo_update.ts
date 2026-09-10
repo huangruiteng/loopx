@@ -19,6 +19,10 @@ import {
 } from "./coordination_projection.ts";
 import { normalizeRegisteredTodoAgents, normalizeTodoAgent } from "./todo_agents.ts";
 
+import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA }
+  from "./todo_lifecycle_decision.ts";
+import { leaseEpoch, parseLeaseTimestamp } from "../work_items/task_lease_acquire.ts";
+
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
 export const COORDINATION_TODO_UPDATE_RESULT_SCHEMA =
@@ -39,6 +43,8 @@ export interface CoordinationTodoUpdateInput {
   readonly clear_fields: readonly string[];
   readonly dry_run: boolean;
   readonly now: Date;
+  readonly lease_idempotency_key?: string | null;
+  readonly lease_expected_version?: number | null;
 }
 
 export type CoordinationTodoUpdateResult = JsonObject & {
@@ -56,6 +62,14 @@ function isFailure(value: JsonObject): value is CoordinationTodoUpdateResult {
 }
 
 function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdateInput {
+  const key = raw.lease_idempotency_key ?? null;
+  const version = raw.lease_expected_version ?? null;
+  if (key !== null && (typeof key !== "string" || !key.trim() || key !== key.trim())) {
+    throw new AuthorityStoreProtocolError("lease_idempotency_key must be a non-empty unpadded string");
+  }
+  if (version !== null && (!Number.isSafeInteger(version) || version < 0)) {
+    throw new AuthorityStoreProtocolError("lease_expected_version must be a non-negative safe integer");
+  }
   const patch = canonicalAuthorityObject(raw.patch, "Todo update patch");
   const clearFields = raw.clear_fields.map((field, index) =>
     requireAuthorityStoreId(field, `clear_fields[${index}]`));
@@ -82,7 +96,7 @@ function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdat
   if (!(raw.now instanceof Date) || Number.isNaN(raw.now.valueOf())) {
     throw new AuthorityStoreProtocolError("now must be a valid Date");
   }
-  return {...raw,
+  return {...raw, lease_idempotency_key: key, lease_expected_version: version,
     goal_id: requireAuthorityStoreId(raw.goal_id, "goal id"),
     todo_id: requireAuthorityStoreId(raw.todo_id, "todo id"),
     operation_id: requireAuthorityStoreId(raw.operation_id, "operation id"),
@@ -122,7 +136,13 @@ function updateRequestSha(input: CoordinationTodoUpdateInput): string {
   return canonicalAuthoritySha256({goal_id: input.goal_id,
     todo_id: input.todo_id, expected_role: input.expected_role,
     actor_agent_id: input.actor_agent_id, patch: input.patch,
-    clear_fields: input.clear_fields, dry_run: input.dry_run});
+    clear_fields: input.clear_fields, dry_run: input.dry_run,
+    // Preserve receipt identity for pre-proof requests already persisted in v0.
+    ...(input.lease_idempotency_key != null || input.lease_expected_version != null ? {
+      lease_idempotency_key: input.lease_idempotency_key,
+      lease_expected_version: input.lease_expected_version,
+    } : {}),
+  });
 }
 
 function loadUpdateTarget(
@@ -166,11 +186,42 @@ function targetRejection(
   if (todo.claimed_by && todo.claimed_by !== input.actor_agent_id) {
     return failure("update_owner_mismatch", "Todo update cannot edit another claim owner's work");
   }
-  // Lease-bearing updates need an execution-instance fence in addition to the
-  // actor identity. Until the native request carries that proof, fail closed.
-  if (![undefined, "legacy", "soft_claim"].includes(head.handoff_mode as string | undefined) ||
-      leases.has(input.todo_id)) {
-    return failure("update_lease_unsupported", "lease-bearing Todo updates are not yet supported");
+  const lease = leases.get(input.todo_id);
+  const mode = head.handoff_mode === undefined ? "legacy" : head.handoff_mode;
+  if (typeof mode !== "string" || !["legacy", "soft_claim", "hard_lease"].includes(mode)) {
+    return failure("invalid_handoff_mode", "canonical handoff mode is invalid");
+  }
+  if (lease !== undefined || mode === "hard_lease" ||
+      input.lease_idempotency_key != null || input.lease_expected_version != null) {
+    try {
+      const expires = lease === undefined ? null :
+        typeof lease.expires_at === "string" ? parseLeaseTimestamp(lease.expires_at) : null;
+      if (lease?.status === "active" && expires === null) {
+        return failure("invalid_coordination_projection", "active lease expiry is invalid");
+      }
+      const fence = evaluateCoordinationTerminalFence({
+        schema_version: COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
+        todo, registered_agents: input.registered_agents, actor_agent_id: input.actor_agent_id,
+        // A historical lease never licenses an unfenced edit. No acquisition or override.
+        handoff_mode: lease !== undefined ? "hard_lease" : mode,
+        lease: lease === undefined ? null : {...lease, present: true,
+          active: lease.status === "active" && expires !== null && expires > input.now,
+          lease_epoch: leaseEpoch(lease)},
+        lease_idempotency_key: input.lease_idempotency_key ?? null,
+        lease_expected_version: input.lease_expected_version ?? null,
+        allow_user_gate_auto_acquire: false, delegated_authority: false,
+        require_active_when_fence_supplied: true,
+      });
+      if (fence.outcome !== "apply") {
+        return failure(String(fence.code), "Todo update requires the current active lease execution proof");
+      }
+      if (lease !== undefined && todo.claimed_by !== input.actor_agent_id) {
+        return failure("update_owner_mismatch", "Leased Todo update requires the current claim owner");
+      }
+    } catch (error) {
+      return failure("invalid_coordination_projection",
+        error instanceof Error ? error.message : "invalid lease facts");
+    }
   }
   return null;
 }

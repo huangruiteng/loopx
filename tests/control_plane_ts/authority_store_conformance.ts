@@ -1157,6 +1157,90 @@ export function registerAuthorityStoreConformance(
       assert.equal(rejected.reason_code, "claim_owner_mismatch");
       assert.deepEqual(await store.loadAuthority(), loaded);
     });
+    test(`${providerName} conformance: lease-fenced text/note update (${native ? "native" : "v0"})`, async (t) => {
+      const {store, contender} = await factory(t);
+      const goalId = "goal-claim";
+      const projection = {...todoClaimProjection(goalId, native), handoff_mode: "hard_lease"};
+      await store.commitAuthority({operation_id: "seed-update", expected_provider_revision: null,
+        next_projection: projection, events: [], receipts: []});
+      const initial = await store.loadAuthority();
+      assert.equal(initial.status, "loaded");
+      if (initial.status !== "loaded") return;
+      const todo = (initial.head.todos as Record<string, unknown>[])[0]!;
+      const lease = {todo_id: "todo-claim", owner: "agent-a", status: "active",
+        idempotency_key: "execution-a", version: 4, lease_epoch: 2,
+        expires_at: "2026-09-05T06:00:00Z"};
+      await store.commitAuthority(prepareCoordinationProjectionCommit({goal_id: goalId,
+        operation_id: "seed-lease", expected_provider_revision: initial.provider_revision,
+        projection: initial.head, mutations: [
+          {kind: "todo_upsert", todo: {...todo, claimed_by: "agent-a"}},
+          {kind: "lease_upsert", lease},
+        ]}));
+      const request = {goal_id: goalId, todo_id: "todo-claim", expected_role: "agent",
+        actor_agent_id: "agent-a", registered_agents: ["agent-a", "agent-b"],
+        operation_id: "leased-edit", patch: {text: "Correct leased task", note: "Correction"},
+        clear_fields: [], dry_run: false, now: new Date("2026-09-05T05:00:00Z"),
+        lease_idempotency_key: "execution-a", lease_expected_version: 4};
+      const before = await store.loadAuthority();
+      for (const invalid of [
+        {...request, actor_agent_id: "agent-b"},
+        {...request, lease_idempotency_key: "old-execution"},
+        {...request, lease_expected_version: 3},
+        {...request, lease_idempotency_key: null, lease_expected_version: null},
+        {...request, now: new Date("2026-09-05T06:00:00Z")},
+      ]) {
+        assert.equal((await executeCoordinationTodoUpdate(store, invalid)).status, "failed");
+        assert.deepEqual(await store.loadAuthority(), before);
+        assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
+      }
+      assert.equal((await executeCoordinationTodoUpdate(store, {...request, dry_run: true})).status, "planned");
+      assert.deepEqual(await store.loadAuthority(), before);
+      assert.equal((await executeCoordinationTodoUpdate(store, request)).status, "applied");
+      const after = await store.loadAuthority();
+      assert.equal(after.status, "loaded");
+      if (after.status !== "loaded") return;
+      assert.deepEqual(after.head.leases, before.status === "loaded" ? before.head.leases : []);
+      assert.equal((after.head.todos as Record<string, unknown>[])[0]!.note, "Correction");
+      assert.equal((await executeCoordinationTodoUpdate(contender, {...request,
+        now: new Date("2026-09-06T05:00:00Z")})).status, "replayed");
+      for (const changed of [{patch: {text: "Different"}}, {lease_expected_version: 5},
+        {lease_idempotency_key: "different"}]) {
+        assert.equal((await executeCoordinationTodoUpdate(store, {...request, ...changed})).reason_code,
+          "coordination_operation_identity_mismatch");
+      }
+      assert.deepEqual(await store.loadAuthority(), after);
+      for (const fault of ["lost_response", "lease_transfer"] as const) {
+        const fencedRequest = {...request, operation_id: fault, patch: {note: fault}};
+        const intercepted: AuthorityStore = {
+          storeIdentity: () => store.storeIdentity(), loadAuthority: () => store.loadAuthority(),
+          readReceipt: (id) => store.readReceipt(id),
+          scanCommitted: (cursor, limit) => store.scanCommitted(cursor, limit),
+          commitAuthority: async (commit) => {
+            if (fault === "lease_transfer") {
+              const current = await contender.loadAuthority();
+              assert.equal(current.status, "loaded");
+              if (current.status !== "loaded") throw new Error("missing head");
+              await contender.commitAuthority(prepareCoordinationProjectionCommit({goal_id: goalId,
+                operation_id: "transfer", expected_provider_revision: current.provider_revision,
+                projection: current.head, mutations: [{kind: "lease_upsert",
+                  lease: {...lease, owner: "agent-b", version: 5, lease_epoch: 3}}]}));
+              return store.commitAuthority(commit);
+            }
+            assert.equal((await store.commitAuthority(commit)).status, "applied");
+            return {status: "ambiguous", reason_code: "lost_response", reason: "response lost"};
+          },
+        };
+        const outcome = await executeCoordinationTodoUpdate(intercepted, fencedRequest);
+        assert.equal(outcome.status, fault === "lost_response" ? "recovered" : "conflict");
+        assert.equal((await store.readReceipt(fault)).status,
+          fault === "lost_response" ? "found" : "missing");
+      }
+      const transferred = await store.loadAuthority();
+      assert.equal((await executeCoordinationTodoUpdate(store, request)).status, "replayed");
+      assert.equal((await executeCoordinationTodoUpdate(store, {...request,
+        operation_id: "stale-after-transfer"})).status, "failed");
+      assert.deepEqual(await store.loadAuthority(), transferred);
+    });
     for (const fault of ["lease_replaced", "lost_response"] as const) {
       test(`${providerName} conformance: hard-lease claim ${fault} (${native ? "native" : "v0"})`, async (t) => {
         const {store, contender} = await factory(t);

@@ -749,6 +749,9 @@ export async function updateLocalCoordinationTodo(
         registered_agents: input.registered_agents.map((agent) =>
           claimAgentValue(agent, "registered agent")),
         operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
+        lease_idempotency_key: input.lease_idempotency_key == null ? null :
+          requireAuthorityStoreId(input.lease_idempotency_key, "lease_idempotency_key"),
+        lease_expected_version: optionalNonNegativeSafeInteger(input.lease_expected_version, "lease_expected_version"),
         patch: requireJsonObject(input.patch, "Todo update patch"),
         clear_fields: input.clear_fields.map((field) => claimAgentValue(field, "clear field")),
         dry_run: input.dry_run as boolean,
