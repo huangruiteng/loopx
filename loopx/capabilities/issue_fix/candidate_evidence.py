@@ -128,6 +128,8 @@ def _run_graphql_pages(
             ],
             check=False,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout_seconds,
         )
