@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -87,3 +88,21 @@ def test_settlement_oracle_rejects_missing_identity_and_duplicate_spend(tmp_path
     todos = [{"todo_id": todo, "status": "done"} for todo in runner.TODOS]
     with pytest.raises(AssertionError):
         runner.verify_settlement(tmp_path, todos)
+
+
+@pytest.mark.parametrize("missing", ["writeback", "spend", "receipt"])
+def test_settlement_oracle_requires_durable_receipts_not_only_index_rows(tmp_path, monkeypatch, missing):
+    from loopx.control_plane.quota import settlement
+
+    receipt = None if missing == "receipt" else SimpleNamespace(
+        writeback=None if missing == "writeback" else {"ok": True},
+        spend=None if missing == "spend" else {"ok": True},
+    )
+    monkeypatch.setattr(settlement, "read_heartbeat_settlement", lambda *_, **__: receipt)
+    rows = [{"classification": "quota_slot_spent", "todo_id": todo, "turn_instance_id": todo,
+             "settlement_identity": {"effect_id": todo}} for todo in sorted(runner.TODOS)]
+    index = tmp_path / "goals" / runner.GOAL / "runs/index.jsonl"
+    index.parent.mkdir(parents=True)
+    index.write_text("\n".join(json.dumps(row) for row in rows))
+    with pytest.raises(AssertionError):
+        runner.verify_settlement(tmp_path, [{"todo_id": t, "status": "done"} for t in runner.TODOS])

@@ -122,6 +122,20 @@ def verify_settlement(runtime: Path, todos: list[dict]) -> int:
     return len(spends)
 
 
+def verify_delivery(project: Path, runtime: Path, launcher: Path, profile: str) -> dict:
+    assert (project / "TASK.md").read_bytes() == (FIXTURE / "TASK.md").read_bytes()
+    oracle = subprocess.run([sys.executable, str(FIXTURE / "verify.py"), str(project)],
+                            capture_output=True, timeout=60)
+    assert oracle.returncode == 0, "independent_acceptance_failed"
+    todos = cli(launcher, "todo", "list", "--goal-id", GOAL, "--role", "agent")["todos"]
+    spends = verify_settlement(runtime, todos)
+    quota = cli(launcher, "quota", "should-run", "--goal-id", GOAL,
+                "--agent-id", AGENT, "--runtime-profile", profile)
+    assert quota["should_run"] is False
+    assert quota["interaction_contract"]["mode"] == "terminal_no_followup"
+    return {"settled_spends": spends, "independent_acceptance": "passed"}
+
+
 def qualify(root: Path, codex: str, timeout: int) -> dict:
     from loopx.capabilities.benchmark_toolkit.native_codex_goal import (
         NativeGoalConfig, StdioNativeGoalTransport, run_native_goal_until_terminal,
@@ -146,19 +160,9 @@ def qualify(root: Path, codex: str, timeout: int) -> dict:
                                             stderr=stderr) as transport:
             turn = run_native_goal_until_terminal(transport, config, timeout_sec=timeout)
     assert turn.post_goal_status == "complete", "native_goal_did_not_complete"
-    assert (project / "TASK.md").read_bytes() == (FIXTURE / "TASK.md").read_bytes()
-    oracle = subprocess.run([sys.executable, str(FIXTURE / "verify.py"), str(project)],
-                            capture_output=True, timeout=60)
-    assert oracle.returncode == 0, "independent_acceptance_failed"
-    todos = cli(launcher, "todo", "list", "--goal-id", GOAL, "--role", "agent")["todos"]
-    spends = verify_settlement(runtime, todos)
-    quota = cli(launcher, "quota", "should-run", "--goal-id", GOAL,
-                "--agent-id", AGENT, "--runtime-profile", "codex_cli")
-    assert quota["should_run"] is False
-    assert quota["interaction_contract"]["mode"] == "terminal_no_followup"
     return {"status": "passed", "model_executed": True,
-            "native_turns": turn.turn_completed_count, "settled_spends": spends,
-            "independent_acceptance": "passed"}
+            "native_turns": turn.turn_completed_count,
+            **verify_delivery(project, runtime, launcher, "codex_cli")}
 
 
 def main(argv: list[str] | None = None) -> int:

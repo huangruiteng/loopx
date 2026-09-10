@@ -768,6 +768,42 @@ deadline is 1,200 seconds; this is a wall-clock ceiling, not a token budget.
 这不是网络隔离，任务不授权外部操作。回归脚本不采集或上传原始对话/工具日志，
 公开结果仅包含状态、计数和错误类别；Codex 自身仍按当前 host 配置保存会话。
 
+### Claude Code and release coverage / Claude Code 与发布覆盖
+
+```bash
+# No provider call by default. Explicit release opt-in uses ARK_API_KEY from the environment.
+python3 scripts/qualify-claude-goal-release.py --release-live
+```
+
+This arm uses the same ledger specification, independent oracle and durable
+settlement readback as the Codex arm. It launches actual Claude Code with the
+project's shipped `loop.md` and LoopX stdio MCP server, using
+`doubao-seed-evolving` through Ark's Anthropic-compatible API. It does not
+inherit another Anthropic account, install into the user's Claude configuration,
+or retain host sessions. The subprocess timeout also cleans its process group
+on POSIX. Allowed local development tools are not a security sandbox; the
+synthetic task authorizes no external side effects.
+
+**A headless work-loop pass is not a `/loop` timer pass.** The release report
+explicitly returns `scheduler_qualification=not_run_headless`; interactive
+native wakeup, cancel/resume and process-restart behavior need their own host
+qualification. Do not turn repeated `claude -p` invocations into a substitute
+scheduler and claim host lifecycle coverage.
+
+Before calling a changed host surface release-qualified, distinguish:
+
+| Boundary | Required evidence |
+| --- | --- |
+| Work and terminal closeout | Final candidate, actual host, independent artifact checks, completed Todos and terminal quota; code delivery alone is insufficient. |
+| Idempotency and failure | Real committed lifecycle/writeback/spend followed by lost-response injection and same-intent retries; one final spend. Failed declared validation must not complete or spend. |
+| Authority and transport | Actual MCP initialization/tool invocation and mismatched-agent rejection; existing claim/lease and validation suites remain required. |
+| Host lifecycle | Native scheduler wakeup/cancellation/resume on supported versions, reported separately from headless execution. |
+| Upgrade and isolation | Exact managed-wrapper recognition, preview/apply revision checks, preserved scheduler state, explicit skips, no default model calls or leaked test processes. |
+
+普通 CI 只跑确定性规则、真实 CLI/MCP 和故障注入；模型执行仍仅 release 前显式启用。
+环境缺失可 skip 且退出成功，但最终版本没有完整的真实 host 结果时，不得写成
+“产品级发布验证通过”。单次成功也不是模型可靠性或长程调度 soak 的证明。
+
 ## Exact Release Commit Gate / 精确发布 Commit 门
 
 The final release gate does not rerun tests through a second orchestration
