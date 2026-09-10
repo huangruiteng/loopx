@@ -294,6 +294,19 @@ commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立�
 
 **T1 — 闭合公开 Todo update 事务。**
 
+已闭合的前置项：`todos/public_update.ts` 在同一锁内快照上组合 authoring scope、
+external-wait 拓扑和 Monitor/field 规划。公开 Python writer 不再逐个调用这些
+leaf RPC，也不推导 Monitor 等待基线。`update_source.py` 只输送完整、紧凑的
+active/archive 事实，不使用受展示条数限制的 inventory。局部拓扑修改必须验证
+保留的等待条件；纯文案修改保留原 fence，不重新设置等待。显式清除条件后，仍可
+修改原来的拓扑。锁内 completion proof 先于纯规划检查，因此 proof 已过期时，
+优先返回该失败而非其他非法字段诊断；两种失败均不写入。
+这里删除的是编排而非持久化：lifecycle/lease 准入、completion effect、writer
+lock、capture、provider CAS/replay 仍由既有 owner 负责。内部 terminal/import
+field codec 仍有真实 caller，不引入公开 update 限制。Native metadata 扩展和
+T2 原子后续动作仍未闭合。修改 provider 事务前先核对独立 lease-edit PR #4152，
+不能从本检查点推断它已经合入。
+
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
   字段，也不让 generic patch 获得 terminal transition 权限。

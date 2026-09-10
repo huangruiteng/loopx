@@ -2524,9 +2524,11 @@ commands fail closed; they do not fall back to the old writer.
 
 #### Refactoring roadmap overview
 
-The Monitor state owner now lives in TS and is composed by the legacy update
-field plan. This removes Python poll/generation and metadata rules, but the
-legacy writer still holds the lock and commits the result. The typed plan is
+The Monitor state owner now lives in TS and is composed with authoring scope,
+external-wait validation and field updates by one public update plan. Python
+transports the locked compact snapshot instead of sequencing those leaf RPCs;
+partial topology edits cannot invalidate retained waits. The legacy writer
+still owns admission, the lock and persistence. The typed plan is
 not an authority receipt; monitor/successor atomicity, native metadata update,
 provider defaults and D1–D3 remain separate, unfinished gates. Permanent
 Markdown projection remains part of the target architecture.

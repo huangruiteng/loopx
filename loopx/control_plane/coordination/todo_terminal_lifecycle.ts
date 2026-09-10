@@ -109,6 +109,7 @@ export interface CoordinationTodoArchiveInput {
   readonly role: TodoRole;
   readonly max_active_done: number;
   readonly operation_id: string;
+  readonly expected_provider_revision?: string;
   readonly dry_run: boolean;
   readonly now: Date;
 }
@@ -1093,6 +1094,11 @@ function normalizeArchiveInput(raw: CoordinationTodoArchiveInput): CoordinationT
     goal_id: requireAuthorityStoreId(raw.goal_id, "goal id"),
     role: requireLiteral(raw.role, TODO_ROLES, "role"),
     operation_id: requireAuthorityStoreId(raw.operation_id, "operation id"),
+    ...(raw.expected_provider_revision === undefined ? {} : {
+      expected_provider_revision: requireAuthorityStoreId(
+        raw.expected_provider_revision, "expected provider revision",
+      ),
+    }),
     dry_run: requireBoolean(raw.dry_run, "dry_run"),
     now: requireDate(raw.now, "now"),
   };
@@ -1122,6 +1128,7 @@ function replayArchive(
   return {
     ...result,
     schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
+    operation_id: input.operation_id,
     status,
     changed: status !== "replayed" && result.changed === true,
     provider_revision: receipt.provider_revision,
@@ -1151,14 +1158,31 @@ export async function executeCoordinationTodoArchiveCompleted(
     role: input.role,
     max_active_done: input.max_active_done,
     dry_run: input.dry_run,
+    ...(input.expected_provider_revision === undefined ? {} : {
+      expected_provider_revision: input.expected_provider_revision,
+    }),
   });
-  const replay = replayArchive(
-    await store.readReceipt(input.operation_id), input, requestSha, "replayed",
-  );
-  if (replay !== null) return replay;
+  // Preview observes the current snapshot without consuming or replaying a
+  // durable operation identity. Historical receipts precede current-head CAS.
+  if (!input.dry_run) {
+    const replay = replayArchive(
+      await store.readReceipt(input.operation_id), input, requestSha, "replayed",
+    );
+    if (replay !== null) return replay;
+  }
   const head = await store.loadAuthority();
   if (head.status !== "loaded") {
     return {schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA, ...head, changed: false};
+  }
+  if (input.expected_provider_revision !== undefined &&
+      head.provider_revision !== input.expected_provider_revision) {
+    return {
+      schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
+      status: "conflict", changed: false,
+      conflict_kind: "provider_revision_mismatch",
+      current_provider_revision: head.provider_revision,
+      current_cursor: head.cursor,
+    };
   }
   let projection: ReturnType<typeof indexCoordinationProjection>;
   try {
@@ -1179,6 +1203,7 @@ export async function executeCoordinationTodoArchiveCompleted(
   const updatedAt = input.now.toISOString().replace(/\.\d{3}Z$/u, "Z");
   const result: JsonObject = {
     role: selection.role,
+    operation_id: input.operation_id,
     changed: moved.length > 0,
     active_done_before: selection.active_done_before,
     active_done_after: selection.active_done_after,

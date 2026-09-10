@@ -18,6 +18,10 @@ update, select **Install update**, then **Restart to finish**. The App verifies
 the archive signature before replacing itself; the restarted App installs its
 bundled runtime and verifies the selected CLI revision before reconnecting.
 This updates both layers without asking the operator to run a terminal command.
+The boot screen shows runtime installation separately from status/chat service
+connection, and reports elapsed startup time across WebView reloads. Slow
+startup exposes recovery guidance in the first screen instead of hiding all
+progress in the collapsed update panel.
 Existing desktop builds without this updater need a one-time App replacement.
 Windows preview installers retain the manual CLI installation path; they are
 not advertised in the signed update feed until their runtime installer is

@@ -581,24 +581,51 @@ class AppendOnlyStateEventStore:
         return _dedupe_events(events)
 
     def append(self, event: dict[str, Any]) -> dict[str, Any]:
-        with exclusive_file_lock(self.path):
-            events = self.load()
-            existing = {item["event_id"]: item for item in events}
-            next_sequence = max((int(item["append_sequence"]) for item in events), default=0) + 1
-            normalized = normalize_state_event(event, append_sequence=next_sequence)
-            prior = existing.get(normalized["event_id"])
-            if prior is not None:
-                if event_fingerprint(prior) != event_fingerprint(normalized):
-                    raise StateEventConflictError(f"conflicting event_id: {normalized['event_id']}")
-                return prior
-
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(normalized, sort_keys=True, ensure_ascii=False) + "\n")
-            return normalized
+        return self.append_many((event,))[0]
 
     def append_many(self, events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [self.append(event) for event in events]
+        if type(events) not in (list, tuple):
+            return [self.append(event) for event in events]
+        if not events:
+            return []
+
+        with exclusive_file_lock(self.path):
+            stored = self.load()
+            existing = {item["event_id"]: item for item in stored}
+            next_sequence = max(
+                (int(item["append_sequence"]) for item in stored), default=0
+            ) + 1
+            appended: list[dict[str, Any]] = []
+            stream = None
+            try:
+                for event in events:
+                    normalized = normalize_state_event(
+                        event,
+                        append_sequence=next_sequence,
+                    )
+                    prior = existing.get(normalized["event_id"])
+                    if prior is not None:
+                        if event_fingerprint(prior) != event_fingerprint(normalized):
+                            raise StateEventConflictError(
+                                f"conflicting event_id: {normalized['event_id']}"
+                            )
+                        appended.append(prior)
+                        continue
+
+                    if stream is None:
+                        self.path.parent.mkdir(parents=True, exist_ok=True)
+                        stream = self.path.open("a", encoding="utf-8")
+                    stream.write(
+                        json.dumps(normalized, sort_keys=True, ensure_ascii=False) + "\n"
+                    )
+                    stream.flush()
+                    existing[normalized["event_id"]] = normalized
+                    appended.append(normalized)
+                    next_sequence += 1
+            finally:
+                if stream is not None:
+                    stream.close()
+            return appended
 
 
 def _dedupe_events(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -28,6 +28,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const calls = [];
   let nativeState = null;
+  let startupTiming = null;
   let failUpdate = false;
   let checkFailure = null;
   let statusFailure = false;
@@ -35,7 +36,7 @@ try {
   await page.exposeFunction("nativeInvoke", async (command, args) => {
     if (command === "desktop_update_status") {
       if (statusFailure) throw new Error("Command desktop_update_status not allowed by ACL");
-      return { state: nativeState, app_version: "0.5.4", rollback_available: true, environment: environmentTelemetry };
+      return { state: nativeState, startup: startupTiming, app_version: "0.5.4", rollback_available: true, environment: environmentTelemetry };
     }
     calls.push({ command, args });
     if (checkFailure && args.action === "check") return { phase: "error", details: { code: checkFailure } };
@@ -231,6 +232,23 @@ try {
   nativeState = { phase: "runtime_required", details: { code: "runtime_setup_required" } };
   await page.waitForFunction(() => document.querySelector("main").dataset.state === "error" && document.querySelector("#status").innerText.includes("请修复当前版本，成功后重启"));
   environmentTelemetry = null;
+  // Production boot surface must expose native installation and service
+  // stages even while recovery is collapsed; reload keeps native elapsed time.
+  nativeState = { phase: "installing_runtime", details: {} };
+  startupTiming = { elapsed_ms: 35000, phase_elapsed_ms: 32000 };
+  await page.reload();
+  await page.getByText("正在安装 App 配套运行时", { exact: true }).waitFor();
+  assert.ok((await page.locator("#boot-elapsed").innerText()).includes("35 秒"));
+  assert.equal(await page.locator("details.recovery").getAttribute("open"), null);
+  await page.screenshot({ path: resolve(output, "startup-installing-progress.png") });
+  await page.reload();
+  await page.getByText("正在安装 App 配套运行时", { exact: true }).waitFor();
+  assert.ok((await page.locator("#boot-elapsed").innerText()).includes("35 秒"));
+  nativeState = { phase: "connecting", details: { service: "chat" } };
+  await page.getByText("正在连接管家对话服务", { exact: true }).waitFor();
+  await page.getByText(/启动用时较长/).waitFor();
+  nativeState = { phase: "service_error", details: { code: "service_start_failed" } };
+  await page.getByText("本地服务连接失败，正在等待重试", { exact: true }).waitFor();
   console.log("desktop-update-browser-smoke: passed (confirmation, failure redaction, mobile, missing assets + reload, startup motion states, startup recovery, startup error escalation)");
 } finally {
   await browser.close();

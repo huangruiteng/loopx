@@ -11,10 +11,12 @@ import {
 } from "../../loopx/control_plane/coordination/shadow_management.ts";
 import {
   archiveLocalCoordinationTodos,
+  acknowledgeLocalCoordinationTodoArchive,
   createLocalCoordinationTodo, claimLocalCoordinationTodo,
   mutateLocalCoordinationAuthority, editLocalCoordinationTodo,
   terminalLifecycleLocalCoordinationTodo,
   LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA,
+  LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_CREATE_REQUEST_SCHEMA, LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA,
   LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA,
   LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
@@ -31,7 +33,14 @@ for (const [name, invoke, schema, requestFields] of [
       linked_successor_todo_ids: [], lease_expected_version: null,
     }],
   ["archive", archiveLocalCoordinationTodos,
-    LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, {max_active_done: 0}],
+    LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, {
+      max_active_done: 0, role: "agent", operation_id: "archive-maintenance",
+      observed_at: "2026-01-01T00:00:00Z",
+    }],
+  ["archive acknowledgement", acknowledgeLocalCoordinationTodoArchive,
+    LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA, {
+      role: "agent", operation_id: "archive-maintenance",
+    }],
 ] as const) {
   test(`promoted ${name} checks maintenance before opening a provider`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "loopx-native-maintenance-"));
@@ -54,7 +63,14 @@ for (const [name, invoke, schema, requestFields] of [
       linked_successor_todo_ids: [], lease_expected_version: null,
     }],
   ["archive", archiveLocalCoordinationTodos,
-    LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, {max_active_done: 0}],
+    LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, {
+      max_active_done: 0, role: "agent", operation_id: "archive-maintenance",
+      observed_at: "2026-01-01T00:00:00Z",
+    }],
+  ["archive acknowledgement", acknowledgeLocalCoordinationTodoArchive,
+    LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA, {
+      role: "agent", operation_id: "archive-maintenance",
+    }],
 ] as const) {
   test(`promoted ${name} waits behind the bootstrap and rollback maintenance lock`, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "loopx-native-maintenance-race-"));

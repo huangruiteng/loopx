@@ -102,6 +102,16 @@ eligible time, `--cadence` is the retry interval, `--monitor-target-key` is the
 stable idempotency key, and optional `--expires-at` is the hard stop after
 which the monitor must not catch up.
 
+Public Todo updates validate the effective waiting state, not just newly supplied
+`resume_when`. Changing a Monitor-waiting Todo's status/task class or successor
+list must preserve the open advancement-task/independent-successor contract.
+To leave that contract, explicitly clear `resume_when` in the same update; this
+also clears its Monitor generation fence. Ordinary text/note corrections do not
+re-arm a wait, reset its baseline, or demand a new successor after its condition
+becomes satisfied. Explicitly re-submitting a satisfied Monitor condition still
+requires clearing it before re-arming. These checks are planning constraints,
+not permission to claim work, commit to a provider, or execute a successor.
+
 Monitor observations are reduced against the Todo under its existing writer lock.
 Callers report a result hash and material-change fact; they must not independently
 increment counters. A material observation with a different result hash increments

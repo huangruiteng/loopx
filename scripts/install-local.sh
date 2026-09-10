@@ -218,35 +218,47 @@ acquire_install_lock() {
 warn_stale_promotion_readiness() {
   local python_bin="${LOOPX_PYTHON:-python3}"
   local runtime_root="${LOOPX_RUNTIME_ROOT:-$codex_home/loopx}"
-  local gate_json
-  gate_json="$(PYTHONSAFEPATH=1 PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" "$python_bin" -m loopx.cli --runtime-root "$runtime_root" --format json promotion-gate 2>/dev/null || true)"
-  if [[ -z "$gate_json" ]]; then
-    return 0
-  fi
-  LOOPX_PROMOTION_GATE_JSON="$gate_json" "$python_bin" - <<'PY' || true
-import json
+  # Reuse the same collector and registry resolution without importing every CLI.
+  LOOPX_PROMOTION_WARNING_RUNTIME_ROOT="$runtime_root" \
+    PYTHONSAFEPATH=1 PYTHONPATH="$repo_root${PYTHONPATH:+:$PYTHONPATH}" \
+    "$python_bin" - <<'PY_WARNING' || true
+import argparse
 import os
 import sys
 
+from loopx.cli_runtime import resolve_cli_registry
+from loopx.paths import default_registry_path
+from loopx.promotion_gate import build_promotion_gate
+
+runtime_root = os.environ["LOOPX_PROMOTION_WARNING_RUNTIME_ROOT"]
+args = argparse.Namespace(command="promotion-gate", registry=str(default_registry_path()), runtime_root=runtime_root)
+registry_path, _ = resolve_cli_registry(args, [])
 try:
-    payload = json.loads(os.environ.get("LOOPX_PROMOTION_GATE_JSON") or "{}")
-except json.JSONDecodeError:
-    sys.exit(0)
-
-if not payload.get("should_warn"):
-    sys.exit(0)
-
-message = payload.get("warning_message")
-if not message:
-    message = "promotion-readiness evidence requires a canary readiness run before promotion."
-print(f"loopx install warning: {message}", file=sys.stderr)
-PY
+    payload = build_promotion_gate(registry_path=registry_path, runtime_root_override=runtime_root)
+except Exception:
+    print("loopx install warning: promotion readiness could not be checked", file=sys.stderr)
+else:
+    if payload.get("should_warn"):
+        message = payload.get("warning_message") or "promotion-readiness evidence requires a canary readiness run before promotion."
+        print(f"loopx install warning: {message}", file=sys.stderr)
+PY_WARNING
 }
 
+copy_platform="$(uname -s)"
 copy_path() {
   local src="$1"
   local dst="$2"
   if [[ -e "$src" ]]; then
+    # A release owns independent files. APFS clones avoid recopying their data;
+    # copy-on-write keeps later cleanup or edits separate from the checkout.
+    if [[ "$copy_platform" == "Darwin" ]]; then
+      if cp -cR "$src" "$dst" 2>/dev/null; then
+        return 0
+      fi
+      # Cloning may be unsupported across filesystems. Discard only this fresh
+      # staging target before ordinary copy, so a partial directory cannot nest.
+      rm -rf "$dst"
+    fi
     cp -R "$src" "$dst"
   fi
 }

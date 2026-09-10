@@ -9,6 +9,7 @@ from .contract import (
     FINANCE_CASE_EVALUATION_SCHEMA_VERSION,
     validate_finance_case_input,
 )
+from .source_coverage import coverage_observation
 
 OBSERVATION_STATES = {"observed", "missing", "conflict", "not_run"}
 BLOCKING_GATE_STATES = {"failed", "missing", "conflict"}
@@ -120,10 +121,23 @@ def _observed_value_matches(rule: Mapping[str, Any], value: object) -> bool:
 def evaluate_finance_case_gates(value: object) -> dict[str, Any]:
     payload = validate_finance_case_input(value)
     contract = payload["contract"]
-    observations = [
-        _observation(item, index=index)
-        for index, item in enumerate(payload["observations"])
-    ]
+    if len(payload["observations"]) != len(contract["gates"]):
+        raise ValueError("observations must exactly match contract.gates order")
+    observations = []
+    for index, (rule, item) in enumerate(
+        zip(contract["gates"], payload["observations"], strict=True)
+    ):
+        if (
+            "source_coverage" in rule
+            and isinstance(item, Mapping)
+            and item.get("observation_state") != "not_run"
+        ):
+            observation = coverage_observation(
+                item, rule=rule, evaluation_as_of=contract["evaluation_as_of"]
+            )
+        else:
+            observation = _observation(item, index=index)
+        observations.append(observation)
     gate_order = [item["gate_id"] for item in contract["gates"]]
     observed_order = [item["gate_id"] for item in observations]
     if observed_order != gate_order:

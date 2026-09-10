@@ -55,9 +55,13 @@ import {
 import {
   COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
   COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
-  executeCoordinationTodoArchiveCompleted,
   executeCoordinationTodoTerminalLifecycle,
 } from "./todo_terminal_lifecycle.ts";
+import {
+  acknowledgeLocalArchiveAttempt,
+  executeLocalArchiveAttempt,
+  LOCAL_TODO_ARCHIVE_ACK_RESULT_SCHEMA,
+} from "./local_archive_attempt.ts";
 import { editCoordinationTodo, TODO_COMPATIBILITY_EDIT_RESULT_SCHEMA } from "./todo_compatibility_edit.ts";
 import {
   normalizeIdempotencyKey,
@@ -73,6 +77,8 @@ export const LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_terminal_lifecycle_request_v0";
 export const LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_archive_request_v0";
+export const LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA =
+  "loopx_local_coordination_todo_archive_ack_request_v0";
 export {
   LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
   LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
@@ -153,6 +159,11 @@ function requiredNonNegativeSafeInteger(value: unknown, label: string): number {
     throw new TypeError(`${label} must be a non-negative safe integer`);
   }
   return value as number;
+}
+
+function archiveRole(value: unknown): "agent" | "user" {
+  if (value !== "agent" && value !== "user") throw new TypeError("unsupported archive role");
+  return value;
 }
 
 function optionalNonNegativeSafeInteger(value: unknown, label: string): number | null {
@@ -882,16 +893,23 @@ export async function archiveLocalCoordinationTodos(
       input.max_active_done,
       "max_active_done",
     );
+    const role = archiveRole(input.role);
+    const operationId = requireAuthorityStoreId(input.operation_id, "operation id");
+    const expectedRevision = input.expected_provider_revision === undefined ? undefined :
+      requireAuthorityStoreId(input.expected_provider_revision, "expected provider revision");
+    if (typeof input.dry_run !== "boolean") throw new TypeError("dry_run must be a boolean");
+    const now = claimObservedAt(input.observed_at);
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
         new FileAuthorityStore(authorityDirectory(root), goalId);
-      return {...await executeCoordinationTodoArchiveCompleted(store, {
+      return {...await executeLocalArchiveAttempt(store, root, {
         goal_id: goalId,
-        role: requireAuthorityStoreId(input.role, "role") as "agent" | "user",
+        role,
         max_active_done: maxActiveDone,
-        operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
+        operation_id: operationId,
+        expected_provider_revision: expectedRevision,
         dry_run: input.dry_run as boolean,
-        now: claimObservedAt(input.observed_at),
+        now,
       }), ...providerEvidence};
     });
   } catch (error) {
@@ -901,6 +919,36 @@ export async function archiveLocalCoordinationTodos(
         "invalid_local_coordination_todo_archive_request",
       reason: error instanceof Error ? error.message : "invalid local Todo archive request",
       ...providerEvidence};
+  }
+}
+
+/** Retire one local retry identity only after its compatibility projection succeeds. */
+export async function acknowledgeLocalCoordinationTodoArchive(
+  value: unknown,
+  dependencies: LocalAuthorityRuntimeDependencies = {},
+): Promise<JsonObject> {
+  try {
+    const input = requireJsonObject(value, "local Todo archive acknowledgement");
+    if (input.schema_version !== LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA) {
+      throw new TypeError("local Todo archive acknowledgement schema mismatch");
+    }
+    const root = runtimeRoot(input.runtime_root);
+    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
+    const role = archiveRole(input.role);
+    const operationId = requireAuthorityStoreId(input.operation_id, "operation id");
+    return await withCanonicalWriter(root, goalId, false, async () => {
+      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
+        new FileAuthorityStore(authorityDirectory(root), goalId);
+      return acknowledgeLocalArchiveAttempt(store, root, goalId, role, operationId);
+    });
+  } catch (error) {
+    return {
+      schema_version: LOCAL_TODO_ARCHIVE_ACK_RESULT_SCHEMA,
+      status: "failed", changed: false,
+      reason_code: error instanceof ShadowManagementError ? error.reason_code :
+        "invalid_local_coordination_todo_archive_ack_request",
+      reason: error instanceof Error ? error.message : "invalid archive acknowledgement",
+    };
   }
 }
 

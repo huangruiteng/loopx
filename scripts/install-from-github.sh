@@ -20,6 +20,12 @@ need curl
 need tar
 need "$python_bin"
 
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loopx-install.XXXXXX")"
+cleanup() {
+  rm -rf "$tmp_dir"
+}
+trap cleanup EXIT
+
 if [[ -n "${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-}" \
   && ! "$LOOPX_RESOLVED_SOURCE_GIT_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
   echo "loopx installer error: LOOPX_RESOLVED_SOURCE_GIT_COMMIT must be a full Git commit SHA" >&2
@@ -43,15 +49,16 @@ print(
 )
 PY
 )"
-  commit_json="$(curl -fsSL \
+  curl -fsSL \
     -H 'Accept: application/vnd.github+json' \
     -H 'User-Agent: LoopX-installer' \
-    "$commit_api_url")"
-  resolved_commit="$(LOOPX_COMMIT_JSON="$commit_json" "$python_bin" - <<'PY'
+    "$commit_api_url" -o "$tmp_dir/commit.json"
+  resolved_commit="$("$python_bin" - "$tmp_dir/commit.json" <<'PY'
 import json
-import os
+import sys
 
-payload = json.loads(os.environ["LOOPX_COMMIT_JSON"])
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
 sha = payload.get("sha")
 if not isinstance(sha, str) or len(sha) != 40:
     raise SystemExit("GitHub commit response did not include a full SHA")
@@ -62,12 +69,6 @@ PY
   archive_url="https://codeload.github.com/$repo/tar.gz/$resolved_commit"
 fi
 export LOOPX_ARCHIVE_URL="$archive_url"
-
-tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loopx-install.XXXXXX")"
-cleanup() {
-  rm -rf "$tmp_dir"
-}
-trap cleanup EXIT
 
 archive_path="$tmp_dir/loopx.tar.gz"
 extract_dir="$tmp_dir/extract"

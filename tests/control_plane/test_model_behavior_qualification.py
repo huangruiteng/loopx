@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import base64
 import json
+import zlib
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from loopx.control_plane.quota.turn_envelope import build_turn_envelope
+from loopx.control_plane.runtime.public_safety import SECRET_LIKE_SURFACE_PATTERN
 from loopx.control_plane.testing.model_behavior_qualification import (
     MODEL_BEHAVIOR_ACTOR_RESULT_SCHEMA_VERSION,
     MODEL_BEHAVIOR_ARM_TERMINAL_RECEIPT_SCHEMA_VERSION,
@@ -15,6 +19,7 @@ from loopx.control_plane.testing.model_behavior_qualification import (
     build_model_behavior_actor_request,
     compare_model_behavior_receipts,
     model_behavior_semantic_contract_from_packet,
+    normalize_model_behavior_actor_request,
     run_model_behavior_qualification_arm,
     run_model_behavior_qualification_pair,
 )
@@ -159,6 +164,186 @@ def test_actor_request_rejects_private_or_secret_material(
             qualification_id="case-boundary-001",
             arm="full_packet",
         )
+
+
+_HOST_FACTS_FLAG = "--scheduler-host-facts-chunk"
+
+
+def _scheduler_wire(operation: str = "ack") -> bytes:
+    fixture = Path(__file__).parents[1] / "fixtures/control_plane/model_behavior_scheduler_transport.json"
+    return bytes.fromhex(json.loads(fixture.read_text())[operation]["zlib_hex"])
+
+
+def _scheduler_transport_packet(
+    arm: str, operation: str, *, inline: bool = False, compressed: bytes | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    if compressed is None:
+        # Frozen public synthetic wire bytes keep the collision independent of
+        # the platform's zlib encoder. Hex storage is not a secret-shaped value.
+        compressed = _scheduler_wire(operation)
+    encoded = base64.urlsafe_b64encode(compressed).decode().rstrip("=")
+    command = "scheduler-ack-current" if operation == "ack" else "scheduler-fail-current"
+    args = ["quota", command, "--goal-id", "goal-native-followup", "--agent-id", "agent-native-followup"]
+    for offset in range(0, len(encoded), 384):
+        chunk = encoded[offset:offset + 384]
+        args.extend([f"{_HOST_FACTS_FLAG}={chunk}"] if inline else [_HOST_FACTS_FLAG, chunk])
+    packet = _full_packet()
+    if arm == "full_packet":
+        kind = "ack" if operation == "ack" else "failure"
+        packet["scheduler_hint"] = {"schema_version": "scheduler_hint_v0", "codex_app": {
+            f"{kind}_hint": {"schema_version": f"codex_app_scheduler_{kind}_hint_v0", "cli_args": args},
+        }}
+    else:
+        packet = build_turn_envelope(packet)
+        packet["scheduler"] = {"codex_app": {"ack_cli_args": args}}
+    return packet, args
+
+
+@pytest.mark.parametrize("arm, operation", [
+    ("full_packet", "ack"), ("full_packet", "host_failure"), ("candidate_packet", "ack"),
+])
+@pytest.mark.parametrize("inline", [False, True])
+def test_actor_request_scans_decoded_scheduler_facts_without_changing_wire(
+    arm: str, operation: str, inline: bool,
+) -> None:
+    packet, args = _scheduler_transport_packet(arm, operation, inline=inline)
+    assert any(SECRET_LIKE_SURFACE_PATTERN.search(arg) for arg in args)
+    before = json.dumps(packet, sort_keys=True)
+
+    request = build_model_behavior_actor_request(packet, qualification_id="public-wire-collision", arm=arm)
+
+    assert json.dumps(request["packet"], sort_keys=True) == before
+    assert json.dumps(packet, sort_keys=True) == before
+    assert normalize_model_behavior_actor_request(request) == request
+
+
+@pytest.mark.parametrize("arm, operation", [
+    ("full_packet", "ack"), ("full_packet", "host_failure"), ("candidate_packet", "ack"),
+])
+@pytest.mark.parametrize("location", ["before", "host_facts", "extension"])
+def test_actor_rejects_private_material_inside_encoded_scheduler_facts(
+    arm: str, operation: str, location: str,
+) -> None:
+    payload = json.loads(zlib.decompress(_scheduler_wire(operation)))
+    if location == "before":
+        payload[location]["api_key"] = "synthetic-private-value"
+    elif location == "host_facts":
+        payload[location]["note"] = "/" + "Users/example/private.txt"
+    else:
+        payload[location] = [{"nested": ["token" + "=abcdefghijklmnop"]}]
+    packet, _ = _scheduler_transport_packet(arm, operation, inline=True,
+        compressed=zlib.compress(json.dumps(payload).encode()))
+    before = json.dumps(packet, sort_keys=True)
+    with pytest.raises(ValueError, match="credential-shaped field|local absolute path|credential-like value"):
+        build_model_behavior_actor_request(packet, qualification_id="encoded-private", arm=arm)
+    assert json.dumps(packet, sort_keys=True) == before
+
+
+@pytest.mark.parametrize("case", [
+    "bad_json", "utf8", "root_array", "duplicate_key", "nonfinite", "hint_schema", "facts_schema",
+    "before_shape", "current_hint_shape", "truncated", "trailing", "concatenated", "bomb", "encoded_limit",
+])
+def test_actor_rejects_malformed_or_unbounded_scheduler_wire(case: str) -> None:
+    payload = json.loads(zlib.decompress(_scheduler_wire()))
+    if case == "hint_schema":
+        payload["schema_version"] = "future_hint"
+    elif case == "facts_schema":
+        payload["host_facts"]["schema_version"] = "future_facts"
+    elif case == "before_shape":
+        payload["before"] = []
+    elif case == "current_hint_shape":
+        payload["use_current_hint"] = "true"
+    elif case == "nonfinite":
+        payload["extension"] = float("nan")
+    elif case == "bomb":
+        payload["extension"] = "a" * 16_385
+    raw = json.dumps(payload).encode()
+    if case == "bad_json":
+        raw = b"not-json"
+    elif case == "utf8":
+        raw = b"\xff"
+    elif case == "root_array":
+        raw = b"[]"
+    elif case == "duplicate_key":
+        raw = raw[:-1] + b', "before": {}}'
+    compressed = zlib.compress(raw)
+    if case == "truncated":
+        compressed = compressed[:-1]
+    elif case == "trailing":
+        compressed += b"hidden tail"
+    elif case == "concatenated":
+        compressed += zlib.compress(b"{}")
+    elif case == "encoded_limit":
+        compressed = b"x" * 3_073
+    packet, _ = _scheduler_transport_packet("full_packet", "ack", compressed=compressed)
+    with pytest.raises(ValueError, match="scheduler host facts"):
+        build_model_behavior_actor_request(packet, qualification_id="invalid-wire", arm="full_packet")
+
+
+@pytest.mark.parametrize("case", [
+    "hint_schema", "scheduler_schema", "command", "missing", "empty_inline", "alphabet", "padding", "pad_bits",
+])
+def test_actor_rejects_unrecognized_or_malformed_scheduler_arguments(case: str) -> None:
+    packet, args = _scheduler_transport_packet("full_packet", "ack")
+    if case == "hint_schema":
+        packet["scheduler_hint"]["codex_app"]["ack_hint"]["schema_version"] = "future_hint"
+    elif case == "scheduler_schema":
+        packet["scheduler_hint"]["schema_version"] = "future_scheduler"
+    elif case == "command":
+        args[1] = "scheduler-fail-current"
+    elif case == "missing":
+        args.append(_HOST_FACTS_FLAG)
+    elif case == "empty_inline":
+        args.append(_HOST_FACTS_FLAG + "=")
+    elif case == "alphabet":
+        args[7] = "+invalid"
+    elif case == "padding":
+        args[-1] += "="
+    else:
+        # One byte canonically encodes as eA; eB has nonzero unused pad bits.
+        args[6:] = [_HOST_FACTS_FLAG, "eB"]
+    with pytest.raises(ValueError, match="scheduler host facts"):
+        build_model_behavior_actor_request(packet, qualification_id="invalid-args", arm="full_packet")
+
+
+@pytest.mark.parametrize("case", ["ordinary_arg", "unrelated", "dotted_key", "alias"])
+def test_actor_does_not_exempt_untyped_fields_or_other_arguments(case: str) -> None:
+    packet, args = _scheduler_transport_packet("full_packet", "ack")
+    if case == "ordinary_arg":
+        args.extend(["--reason-summary", "token" + "=abcdefghijklmnop"])
+    elif case == "unrelated":
+        packet["diagnostic"] = {"cli_args": args.copy()}
+    elif case == "dotted_key":
+        packet["scheduler_hint.codex_app.ack_hint.cli_args"] = args.copy()
+    else:
+        packet["diagnostic"] = args  # Same object as the valid typed argv.
+    with pytest.raises(ValueError, match="credential-like value"):
+        build_model_behavior_actor_request(packet, qualification_id="untyped-wire", arm="full_packet")
+
+
+def test_actor_normalization_rescans_tampered_encoded_material() -> None:
+    packet, _ = _scheduler_transport_packet("candidate_packet", "ack")
+    request = build_model_behavior_actor_request(packet, qualification_id="tampered-wire", arm="candidate_packet")
+    payload = json.loads(zlib.decompress(_scheduler_wire()))
+    payload["extension"] = {"password": "synthetic-private-value"}
+    tainted, _ = _scheduler_transport_packet("candidate_packet", "ack",
+        compressed=zlib.compress(json.dumps(payload).encode()))
+    request["packet"] = tainted
+    with pytest.raises(ValueError, match="credential-shaped field"):
+        normalize_model_behavior_actor_request(request)
+
+
+def test_actor_accepts_unencoded_legacy_hint_and_inflated_limit() -> None:
+    packet, args = _scheduler_transport_packet("full_packet", "ack")
+    args[6:] = ["--reset-token", "public-reset"]
+    assert build_model_behavior_actor_request(packet, qualification_id="legacy-hint", arm="full_packet")["packet"] == packet
+    payload = json.loads(zlib.decompress(_scheduler_wire()))
+    payload["padding"] = ""
+    payload["padding"] = "a" * (16_384 - len(json.dumps(payload).encode()))
+    raw = json.dumps(payload).encode()
+    assert len(raw) == 16_384
+    packet, _ = _scheduler_transport_packet("full_packet", "ack", compressed=zlib.compress(raw))
+    assert build_model_behavior_actor_request(packet, qualification_id="at-limit", arm="full_packet")["packet"] == packet
 
 
 def test_qualification_receipt_is_compact_and_drops_raw_conversation() -> None:

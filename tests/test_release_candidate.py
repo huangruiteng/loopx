@@ -148,3 +148,27 @@ def test_python_distribution_checks_reject_command_from_another_install(
     checks = {check["id"]: check for check in payload["checks"]}
     assert payload["ok"] is False
     assert checks["command_package_same_distribution"]["ok"] is False
+
+
+def test_command_probes_overlap_but_keep_each_failure(monkeypatch):
+    import subprocess
+    import threading
+    from loopx.release_candidate import _command_summary
+
+    rendezvous = threading.Barrier(4)
+
+    def run(argv, **kwargs):
+        rendezvous.wait(timeout=5)
+        if "commands" in argv:
+            return subprocess.CompletedProcess(argv, 3)
+        if "quota" in argv:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr("loopx.release_candidate.subprocess.run", run)
+    result = _command_summary(Path("/fixture/loopx"))
+    assert not result["ok"]
+    assert result["failed"] == ["commands", "quota_help"]
+    assert list(result["results"]) == ["version", "commands", "status_help", "quota_help"]
+    assert result["results"]["commands"]["returncode"] == 3
+    assert "TimeoutExpired" in result["results"]["quota_help"]["detail"]

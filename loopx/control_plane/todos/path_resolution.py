@@ -14,6 +14,7 @@ def resolve_todo_state_path(
     goal_id: str,
     project: Path | None = None,
     state_file: Path | None = None,
+    require_existing: bool = True,
 ) -> tuple[Path | None, Path]:
     registry = load_registry(registry_path)
     goal, resolved_project, resolved_state_file = resolve_goal_state(
@@ -24,6 +25,6 @@ def resolve_todo_state_path(
     )
     if goal is None:
         raise ValueError(f"goal {goal_id!r} is not present in the registry")
-    if not resolved_state_file.exists():
+    if require_existing and not resolved_state_file.exists():
         raise ValueError(f"active state file does not exist: {resolved_state_file}")
     return resolved_project, resolved_state_file

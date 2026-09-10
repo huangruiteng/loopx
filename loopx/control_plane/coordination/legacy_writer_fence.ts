@@ -142,10 +142,12 @@ export async function loadLegacyCoordinationWriterFence(
     return { status: "loaded", fence };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { status: "missing" };
+    const path = (error as NodeJS.ErrnoException).path;
+    const reason = error instanceof Error ? error.message : "legacy writer fence read failed";
     return {
       status: "failed",
       reason_code: "legacy_writer_fence_read_failed",
-      reason: error instanceof Error ? error.message : "legacy writer fence read failed",
+      reason: typeof path === "string" ? reason.replace(` '${path}'`, "") : reason,
     };
   }
 }

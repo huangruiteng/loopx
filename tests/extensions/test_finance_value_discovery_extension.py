@@ -936,7 +936,12 @@ def test_standalone_extension_runs_through_verified_runtime(
     assert packet["projection"]["next_targets"] == ["PYPL"]
 
 
+@pytest.mark.parametrize(
+    "case_example",
+    [CASE_EXAMPLE, EXTENSION_ROOT / "examples" / "finance-source-coverage-v1.json"],
+)
 def test_unified_gate_contract_runs_through_verified_runtime(
+    case_example: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -953,7 +958,7 @@ def test_unified_gate_contract_runs_through_verified_runtime(
                 "run",
                 "loopx-finance-value-discovery",
                 "--input-json",
-                str(CASE_EXAMPLE),
+                str(case_example),
                 "--execute",
             ]
         )
@@ -965,6 +970,9 @@ def test_unified_gate_contract_runs_through_verified_runtime(
     assert evaluation["schema_version"] == "finance_case_gate_evaluation_v1"
     assert evaluation["disposition"] == "insufficient_evidence"
     assert evaluation["replay"]["evaluation_sha256"]
+    if case_example.name == "finance-source-coverage-v1.json":
+        assert evaluation["gate_results"][0]["source_coverage"]["state"] == "complete"
+        assert evaluation["first_blocking_gate"]["gate_id"] == "economic_evidence"
 
 
 @pytest.mark.parametrize(
