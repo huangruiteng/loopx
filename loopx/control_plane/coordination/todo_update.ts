@@ -21,7 +21,8 @@ import { normalizeRegisteredTodoAgents, normalizeTodoAgent } from "./todo_agents
 
 import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA }
   from "./todo_lifecycle_decision.ts";
-import { leaseEpoch, parseLeaseTimestamp } from "../work_items/task_lease_acquire.ts";
+import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
+import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
@@ -195,7 +196,7 @@ function targetRejection(
       input.lease_idempotency_key != null || input.lease_expected_version != null) {
     try {
       const expires = lease === undefined ? null :
-        typeof lease.expires_at === "string" ? parseLeaseTimestamp(lease.expires_at) : null;
+        typeof lease.expires_at === "string" ? parseIsoTimestamp(lease.expires_at) : null;
       if (lease?.status === "active" && expires === null) {
         return failure("invalid_coordination_projection", "active lease expiry is invalid");
       }
