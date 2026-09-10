@@ -46,7 +46,7 @@ def quota_spend_source_for_execution_context(
     return DEFAULT_SLOT_SPEND_SOURCE
 
 
-def visible_goal_turn_reentry_action(
+def host_goal_turn_reentry_action(
     payload: Mapping[str, Any],
     settlement_plan: Mapping[str, Any] | None,
     scheduler_execution_context: (
@@ -67,7 +67,9 @@ def visible_goal_turn_reentry_action(
         or normalize_todo_replan_obligation_id(replan.get("obligation_id"))
     )
     if (
-        profile in NATIVE_GOAL_RUNTIME_PROFILES
+        (profile in NATIVE_GOAL_RUNTIME_PROFILES
+         or (profile is SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE
+             and normalize_todo_replan_obligation_id(replan.get("obligation_id"))))
         and has_settlement_binding
         and settlement_plan is None
         and turn_instance_id is None

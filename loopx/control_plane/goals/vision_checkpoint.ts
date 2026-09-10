@@ -59,6 +59,23 @@ const GOAL_PATH_DELTA_LIST_LIMITS = {
   unresolved_questions: [2, 140],
   evidence_refs: [4, 140],
 } as const;
+
+/** Authoring hints share the validator's limits; they grant no transition authority. */
+export function visionAuthoringContract(): JsonObject {
+  return {
+    schema_version: GOAL_VISION_REPLAN_SCHEMA_VERSION,
+    fields: {state: "lifecycle token", vision_patch: {...GOAL_VISION_FIELD_LIMITS}},
+    total_text_limit: GOAL_VISION_TOTAL_LIMIT,
+    unchanged_reason_limit: VISION_UNCHANGED_REASON_LIMIT,
+    path_delta: {
+      schema_version: GOAL_PATH_DELTA_SCHEMA_VERSION,
+      outcomes: [...GOAL_PATH_DELTA_OUTCOMES],
+      scalar_limits: {...GOAL_PATH_DELTA_SCALAR_LIMITS},
+      list_limits: {...GOAL_PATH_DELTA_LIST_LIMITS},
+    },
+    rule: "Compare acceptance with evidence. vision_closed closes a stage, not the Goal; no_followup requires no remaining scoped work. A changed mainline needs path_delta; respect the live replan contract.",
+  };
+}
 // Bounded typed fallback declarations survive prepare unchanged so the
 // declared direction cannot disappear behind later read-model compaction.
 const VISION_FALLBACK_DECLARATION_ENTRY_LIMIT = 4;

@@ -42,6 +42,8 @@ def guard_native_controller_writeback(control_plane: Any) -> None:
         task_lease_expected_version: int | None = None,
         no_follow_up: bool = False,
         successor_todo_ids: list[str] | None = None,
+        agent_vision: dict | None = None,
+        vision_unchanged_reason: str = "",
     ) -> str:
         del (
             next_agent_todo,
@@ -49,11 +51,18 @@ def guard_native_controller_writeback(control_plane: Any) -> None:
             task_lease_expected_version,
             no_follow_up,
             successor_todo_ids,
+            agent_vision,
+            vision_unchanged_reason,
         )
         return _native_controller_rejection("complete_task")
 
     control_plane.claim_task = blocked_claim
     control_plane.complete_task = blocked_complete
+
+    def blocked_vision(*_args: Any, **_kwargs: Any) -> str:
+        return _native_controller_rejection("review_task_vision")
+
+    control_plane.review_task_vision = blocked_vision
 
 
 def native_controller_cli_write_block(arguments: Any) -> dict[str, Any] | None:

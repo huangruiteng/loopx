@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
+from pathlib import Path
 from enum import StrEnum
 from typing import Any, Protocol
 
@@ -55,6 +58,8 @@ class HostTodoSettlementRequest:
     execution_mode: str
     completion_args: tuple[str, ...]
     no_follow_up: bool = False
+    vision_path: str | None = None
+    vision_unchanged_reason: str | None = None
 
 
 class HostCliRunner(Protocol):
@@ -95,7 +100,56 @@ def _request_payload(
     }
     if provider_outcomes is not None:
         payload["provider_outcomes"] = provider_outcomes
+    if request.vision_path or request.vision_unchanged_reason or phase == "vision_refresh":
+        payload.update(
+            schema_version="loopx_host_todo_completion_transaction_v1",
+            vision_path=request.vision_path,
+            vision_unchanged_reason=request.vision_unchanged_reason,
+        )
     return payload
+
+
+@contextmanager
+def host_vision_request(request: HostTodoSettlementRequest, vision: dict | None, unchanged: str):
+    """Materialize authored JSON for the existing CLI codec, never as public state."""
+    if vision is not None and unchanged:
+        raise ValueError("choose a vision patch or an unchanged reason, not both")
+    if vision is not None and not isinstance(vision, dict):
+        raise ValueError("agent_vision must be a JSON object")
+    if vision is None:
+        yield replace(request, vision_unchanged_reason=unchanged or None)
+        return
+    with tempfile.TemporaryDirectory(prefix="loopx-host-vision-") as directory:
+        path = Path(directory) / "vision.json"
+        path.write_text(json.dumps(vision, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+        yield replace(request, vision_path=str(path))
+
+
+def refresh_host_todo_vision(request: HostTodoSettlementRequest, *, run_cli: HostCliRunner) -> str:
+    """Repair the original checkpoint; no lifecycle operation, new Turn or spend."""
+    plan = _runtime_reduction(_request_payload(request, phase="vision_refresh"), phase="vision_refresh")
+    _runtime_identity(plan.get("identity"))
+    args = plan.get("args")
+    if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
+        raise RuntimeError("TypeScript host vision command shape mismatch")
+    return run_cli(args)
+
+
+def project_host_interaction(output: str) -> str:
+    """Keep admission facts; let the typed host lens choose the transport instructions."""
+    try:
+        packet = json.loads(output)
+    except ValueError:
+        return output
+    if not isinstance(packet, dict):
+        return output
+    projection = _runtime_reduction({
+        "schema_version": "loopx_host_todo_completion_transaction_v1",
+        "phase": "project_guard", "packet": packet,
+    }, phase="project_guard")
+    if not isinstance(projection.get("packet"), dict):
+        raise RuntimeError("TypeScript host interaction projection shape mismatch")
+    return json.dumps(projection["packet"], ensure_ascii=False)
 
 
 def _runtime_reduction(params: Mapping[str, Any], *, phase: str) -> dict[str, Any]:
