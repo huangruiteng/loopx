@@ -37,7 +37,7 @@ def _run_fixture_smoke(workspace: Path) -> dict[str, Any]:
         [sys.executable, "test_calculator.py"],
         cwd=workspace,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
@@ -63,7 +63,7 @@ def _run_git_step(
     result = subprocess.run(
         ["git", *args],
         cwd=workspace,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
@@ -90,7 +90,7 @@ def _run_git_capture(
     result = subprocess.run(
         ["git", *args],
         cwd=workspace,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout,
@@ -110,7 +110,7 @@ def _validate_branch_name(branch: str, *, field: str) -> str:
         raise ValueError(f"{field} must be a single git branch name")
     result = subprocess.run(
         ["git", "check-ref-format", "--branch", value],
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
@@ -138,7 +138,7 @@ def _git_branch_exists(workspace: Path, branch: str) -> bool:
     result = subprocess.run(
         ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
         cwd=workspace,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=10,
@@ -234,7 +234,7 @@ def _changed_files(workspace: Path, *, base_branch: str) -> tuple[list[str], boo
         result = subprocess.run(
             ["git", "diff", "--name-only", f"{base_branch}...HEAD"],
             cwd=workspace,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=10,

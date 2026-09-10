@@ -28,7 +28,7 @@ def _run_git(checkout: Path, arguments: list[str], *, operation: str) -> str:
             ["git", *arguments],
             cwd=checkout,
             check=False,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             timeout=10,

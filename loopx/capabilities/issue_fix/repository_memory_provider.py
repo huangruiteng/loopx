@@ -744,7 +744,7 @@ def write_issue_fix_validated_outcome_memory(
             result = subprocess.run(
                 ["git", *args],
                 cwd=checkout,
-                text=True,
+                text=True, encoding="utf-8", errors="replace",
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=10,

@@ -792,7 +792,7 @@ def _fetch_github_review_response_metadata(
                 "-f",
                 f"query={_REVIEW_RESPONSE_QUERY}",
             ],
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout_seconds,
@@ -896,7 +896,7 @@ def fetch_github_pr_lifecycle_payload(
                 ]
             ),
         ],
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout_seconds,
