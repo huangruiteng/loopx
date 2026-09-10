@@ -470,19 +470,21 @@ def test_real_mcp_completion_recovers_a_lost_mutation_response(tmp_path, lost_af
     added = add_goal_todo(
         registry_path=registry, goal_id=GOAL_ID, role="agent",
         text="Validate response-loss recovery.", task_class="advancement_task",
-        continuation_policy="same_agent_non_delivery", claimed_by=AGENT_ID,
+        claimed_by=AGENT_ID,
     )
     control = _control(registry)
     original = control.run_cli
     injected = False
+    bound_identity = None
 
     def lose_once(args, **kwargs):
-        nonlocal injected
+        nonlocal injected, bound_identity
         output = original(args, **kwargs)
         step = {"lifecycle": ["todo", "complete"], "writeback": ["refresh-state"],
                 "spend": ["quota", "spend-slot"]}[lost_after]
         if not injected and args[:len(step)] == step and json.loads(output).get("ok"):
             injected = True
+            bound_identity = json.loads(output)["settlement_identity"]
             return json.dumps({"ok": False, "error": "synthetic_response_lost_after_commit"})
         return output
 
@@ -491,6 +493,20 @@ def test_real_mcp_completion_recovers_a_lost_mutation_response(tmp_path, lost_af
         added["todo_id"], AGENT_ID, "recovery fixture check passed", no_follow_up=True,
     ))
     assert injected and first["ok"] is False
+    from loopx.control_plane.quota.settlement import read_heartbeat_settlement
+    readback = read_heartbeat_settlement(
+        tmp_path / "runtime", goal_id=GOAL_ID, agent_id=AGENT_ID,
+        todo_id=added["todo_id"], turn_instance_id=bound_identity["turn_instance_id"],
+    )
+    assert readback.replay_phase == ("settled" if lost_after == "spend" else "settlement_pending")
+    if lost_after != "spend":
+        rc, terminal = _run_cli(
+            registry, "todo", "complete", "--goal-id", GOAL_ID,
+            "--todo-id", added["todo_id"], "--agent-id", AGENT_ID,
+            "--turn-instance-id", bound_identity["turn_instance_id"],
+            "--no-follow-up", "--evidence", "synthetic terminal intent",
+        )
+        assert rc != 0 and terminal["settlement_blocked_completion"] is True
     replay = json.loads(control.complete_task(
         added["todo_id"], AGENT_ID, "recovery fixture check passed", no_follow_up=True,
     ))
@@ -503,3 +519,34 @@ def test_real_mcp_completion_recovers_a_lost_mutation_response(tmp_path, lost_af
     assert again["settlement"]["quota_spend"]["appended"] is False
     status = json.loads(control.should_run())
     assert status["quota"]["spent_slots"] == 1
+
+
+def test_real_mcp_links_existing_successor_without_creating_another_todo(tmp_path):
+    registry, state_file = _write_fixture(tmp_path)
+    ids = [str(add_goal_todo(
+        registry_path=registry, goal_id=GOAL_ID, role="agent", text=text,
+        task_class="advancement_task",
+        claimed_by=AGENT_ID,
+    )["todo_id"]) for text in ("First accepted step.", "Already planned follow-up.")]
+    control = _control(registry)
+    before = state_file.read_bytes()
+    rejected = json.loads(control.complete_task(
+        ids[0], AGENT_ID, "synthetic check passed", successor_todo_ids=[ids[1]], no_follow_up=True,
+    ))
+    assert rejected["ok"] is False
+    assert state_file.read_bytes() == before
+    first = json.loads(control.complete_task(
+        ids[0], AGENT_ID, "synthetic check passed", successor_todo_ids=[ids[1]],
+    ))
+    assert first["ok"] is True, first
+    replay = json.loads(control.complete_task(
+        ids[0], AGENT_ID, "synthetic check passed", successor_todo_ids=[ids[1]],
+    ))
+    assert replay["ok"] is True
+    assert replay["settlement_identity"] == first["settlement_identity"]
+    todos = parse_active_state_todos(state_file.read_text())["agent_todos"]["items"]
+    by_id = {row["todo_id"]: row for row in todos}
+    assert set(by_id) == set(ids)
+    assert by_id[ids[0]]["status"] == "done" and by_id[ids[1]]["status"] == "open"
+    assert by_id[ids[0]]["successor_todo_ids"] == [ids[1]]
+    assert json.loads(control.should_run())["quota"]["spent_slots"] == 1

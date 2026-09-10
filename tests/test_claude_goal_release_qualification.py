@@ -61,6 +61,7 @@ def test_claude_loop_uses_current_contract_not_segment_or_empty_list_stop():
     assert "Complete only finished Todos, not partial work" in prompt
     assert 'agent_id="agent-a"' in prompt
     assert "That MCP operation owns writeback/spend" in prompt
+    assert "successor_todo_ids" in prompt
     assert "unavailable/incomplete contract" in prompt
 
 
@@ -82,6 +83,23 @@ def test_host_nonzero_is_not_reported_as_a_successful_model_turn(tmp_path):
     with pytest.raises(AssertionError, match="claude_host_failed"):
         runner.run_host([sys.executable, "-c", "raise SystemExit(2)"],
                         cwd=tmp_path, env=dict(os.environ), timeout=10)
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_mcp_oracle_requires_successful_transactions_not_only_invocations(failed):
+    events = []
+    for todo in sorted(runner.shared.TODOS):
+        events.append({"message": {"content": [{"type": "tool_use", "id": todo,
+            "name": "mcp__loopx__complete_task", "input": {"todo_id": todo}}]}})
+        result = {"ok": not failed, "completed": True, "todo_id": todo,
+                  "settlement": {"ok": not failed}}
+        events.append({"message": {"content": [{"type": "tool_result", "tool_use_id": todo,
+            "content": json.dumps({"result": json.dumps(result)})}]}})
+    if failed:
+        with pytest.raises(AssertionError, match="mcp_delivery_transactions_not_completed"):
+            runner.verify_mcp_completions(events)
+    else:
+        runner.verify_mcp_completions(events)
 
 
 def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
@@ -106,6 +124,8 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
                 await session.initialize()
                 tools = await session.list_tools()
                 assert {"should_run", "claim_task", "complete_task"} <= {t.name for t in tools.tools}
+                complete = next(t for t in tools.tools if t.name == "complete_task")
+                assert "successor_todo_ids" in complete.inputSchema["properties"]
                 guard = await session.call_tool("should_run", {})
                 payload = json.loads(guard.content[0].text)
                 assert payload["ok"] is True and payload["selected_todo"]["todo_id"] == "todo_reducer"
@@ -113,3 +133,30 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
                 assert json.loads(rejected.content[0].text)["ok"] is False
     asyncio.run(exercise())
     assert state.read_bytes() == before
+
+
+def test_real_mcp_delivery_completes_and_settles_existing_plan(tmp_path):
+    from loopx.goal_mode_mcp import GoalModeMCPConfig, GoalModeMCPControlPlane
+
+    project, runtime, launcher = runner.shared.setup(tmp_path)
+    # Real delivery class: do not substitute same_agent_non_delivery to make
+    # this acceptance test green. No live model or external side effect.
+    (project / "delivery.txt").write_text("synthetic verified delivery\n")
+    control = GoalModeMCPControlPlane(
+        GoalModeMCPConfig(server_name="loopx", runtime_profile="claude_code", legacy_host_surface="claude_code"),
+        lambda: {"goal_id": runner.shared.GOAL, "agent_id": runner.shared.AGENT,
+                 "registry": str(project / ".loopx/registry.json")},
+    )
+    control.command_prefix = lambda: [str(launcher)]
+    result = json.loads(control.complete_task(
+        "todo_reducer", runner.shared.AGENT, "synthetic delivery validation passed",
+        successor_todo_ids=["todo_cli"],
+    ))
+    assert result["ok"] is True, "unexpected completion failure"
+    todos = runner.shared.cli(launcher, "todo", "list", "--goal-id", runner.shared.GOAL, "--role", "agent")["todos"]
+    assert {row["todo_id"] for row in todos} == runner.shared.TODOS
+    assert next(row for row in todos if row["todo_id"] == "todo_reducer")["status"] == "done"
+    index = runtime / "goals" / runner.shared.GOAL / "runs/index.jsonl"
+    spends = [json.loads(line) for line in index.read_text().splitlines()
+              if json.loads(line).get("classification") == "quota_slot_spent"]
+    assert len(spends) == 1 and spends[0]["todo_id"] == "todo_reducer"

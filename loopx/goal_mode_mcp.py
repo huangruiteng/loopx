@@ -179,6 +179,7 @@ class GoalModeMCPControlPlane:
         task_lease_idempotency_key: str = "",
         task_lease_expected_version: ExpectedTaskLeaseVersion = None,
         no_follow_up: bool = False,
+        successor_todo_ids: list[str] | None = None,
     ) -> str:
         goal_id, _ = self.context()
         if not goal_id:
@@ -193,6 +194,13 @@ class GoalModeMCPControlPlane:
                     "error": "next_agent_todo and no_follow_up are mutually exclusive",
                 }
             )
+        if successor_todo_ids is not None and (
+            not isinstance(successor_todo_ids, list)
+            or any(not isinstance(value, str) or not value.strip() for value in successor_todo_ids)
+        ):
+            return json.dumps({"ok": False, "error": "successor_todo_ids must be a list of nonempty ids"})
+        if successor_todo_ids and (next_agent_todo or no_follow_up):
+            return json.dumps({"ok": False, "error": "choose existing successors, a new successor, or no follow-up"})
         args = [
             "todo",
             "complete",
@@ -209,6 +217,8 @@ class GoalModeMCPControlPlane:
         ]
         if next_agent_todo:
             args += ["--next-agent-todo", next_agent_todo]
+        for successor in successor_todo_ids or []:
+            args += ["--successor-todo-id", successor]
         if task_lease_idempotency_key:
             args += ["--task-lease-idempotency-key", task_lease_idempotency_key]
         if task_lease_expected_version is not None:
@@ -273,8 +283,12 @@ def create_fastmcp_server(
         task_lease_idempotency_key: str = "",
         task_lease_expected_version: ExpectedTaskLeaseVersion = None,
         no_follow_up: bool = False,
+        successor_todo_ids: list[str] | None = None,
     ) -> str:
-        """Complete one verified todo, write follow-up state, then spend quota."""
+        """Complete verified work and settle once. Link existing planned successors
+        with successor_todo_ids; next_agent_todo creates a NEW Todo, not an id link.
+        Use no_follow_up only for terminal intent. Do not duplicate existing work.
+        """
         return control.complete_task(
             todo_id,
             agent_id,
@@ -283,6 +297,7 @@ def create_fastmcp_server(
             task_lease_idempotency_key=task_lease_idempotency_key,
             task_lease_expected_version=task_lease_expected_version,
             no_follow_up=no_follow_up,
+            successor_todo_ids=successor_todo_ids,
         )
 
     return server, control
