@@ -2033,11 +2033,13 @@ D1–D3 资格化和 T1/T2 条件保持不变。
 推进，不在这里复制第二套实现路线，也不把 read-policy PR 合并视为存储就绪。
 进入本节前先完成 T0 基线核对。
 
-Lifecycle 准入及预授权 terminal fence 现由 legacy writer 与 native terminal
-transaction 共用 TS owner；删除对应 Python 规则，不改变 provider 默认或 promotion。
-这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume
-effect 一起闭合前，保留严格 text/note 事务边界。准入结果和 lease-fence 结果都不是
-commit receipt；兑现删除收益时，provider CAS/replay 与既有 writer 持锁生命周期不变。
+Lifecycle 准入由 legacy writer 与 native transaction 共用 TS owner。Native
+text/note 编辑与 terminal transition 在进程内复用预授权 lease fence；删除对应
+Python 规则和无调用方的独立 effect-runtime wire，不改变 provider 默认或 promotion。
+在 update 的字段、ownership、validation 和 monitor/resume effect 一起闭合前，
+这仍是严格 text/note 事务边界，不是通用 native metadata 支持。准入结果和
+lease-fence 结果都不是 commit receipt；兑现删除收益时，provider CAS/replay 与既有
+writer 持锁生命周期不变。
 等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
 策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
 summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promoted display

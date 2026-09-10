@@ -308,10 +308,11 @@ An input adapter or external-effect executor may remain Python.
 
 The lifecycle-admission slice now uses `todo_lifecycle_decision.ts` for legacy
 claim/update admission, delegated action/reason checks, ownership-holder routing,
-and the preauthorized terminal fence, alongside native complete/supersede.
-`authority_core.py` projects results rather than retaining those decisions.
-The terminal wire contract stays terminal-only; mutation admission cannot complete
-a Todo, and a standalone fence neither grants actor authority nor completes it.
+and native complete/supersede. Native text/note edits and terminal transitions
+reuse the preauthorized lease fence in-process. `authority_core.py` projects only
+the live admission and terminal decisions; there is no standalone Python command
+or effect-runtime handler for the fence. Mutation admission cannot complete a
+Todo, and the in-process fence cannot grant actor authority or commit a change.
 This deletes duplicate rules now, **not** the complete legacy update writer.
 Field patches, omission/clear semantics, monitor/resume effects and validation
 still need one complete update transaction before the writer can retire. Legacy

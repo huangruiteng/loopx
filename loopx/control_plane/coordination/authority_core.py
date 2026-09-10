@@ -177,18 +177,6 @@ class LeaseModeGateCommand:
 
 
 @dataclass(frozen=True)
-class TerminalFenceCommand:
-    """Verify the lease side of an already-authorized terminal mutation."""
-
-    actor_agent_id: str | None
-    lease_idempotency_key: str | None = None
-    lease_expected_version: int | None = None
-    delegated_authority: bool = False
-    allow_user_gate_auto_acquire: bool = False
-    require_active_when_fence_supplied: bool = True
-
-
-@dataclass(frozen=True)
 class HandoffModeTransitionCommand:
     requested_mode: HandoffMode
 
@@ -201,7 +189,6 @@ CoordinationCommand = (
     | LeaseReleaseCommand
     | LeaseOwnerEligibilityCommand
     | LeaseModeGateCommand
-    | TerminalFenceCommand
     | HandoffModeTransitionCommand
 )
 
@@ -487,51 +474,6 @@ def ownership_gate_requirement(
     if not isinstance(payload, dict):
         raise RuntimeError("TypeScript ownership gate result shape mismatch")
     return OwnershipGate(payload["ownership_gate"])
-
-
-def _typescript_terminal_fence(
-    snapshot: CoordinationSnapshot,
-    command: TerminalFenceCommand,
-) -> TransitionPlan:
-    if snapshot.todo is None:
-        return _result(DecisionOutcome.REJECTED, "todo_not_found")
-    payload = effect_runtime_result(
-        "task_lease.terminal_fence.decide",
-        {
-            "schema_version": "loopx_coordination_terminal_fence_request_v0",
-            "todo": _todo_fact_payload(snapshot.todo),
-            "lease": _lease_fact_payload(snapshot.lease),
-            "registered_agents": list(snapshot.registered_agents),
-            "handoff_mode": snapshot.handoff_mode.value,
-            "actor_agent_id": command.actor_agent_id,
-            "lease_idempotency_key": command.lease_idempotency_key,
-            "lease_expected_version": command.lease_expected_version,
-            "delegated_authority": command.delegated_authority,
-            "allow_user_gate_auto_acquire": command.allow_user_gate_auto_acquire,
-            "require_active_when_fence_supplied": command.require_active_when_fence_supplied,
-        },
-    )
-    if not isinstance(payload, dict) or payload.get("schema_version") != (
-        "loopx_coordination_terminal_fence_result_v0"
-    ):
-        raise RuntimeError("TypeScript terminal fence result shape mismatch")
-    outcome = DecisionOutcome(payload["outcome"])
-    next_snapshot = None
-    if outcome is DecisionOutcome.APPLY:
-        next_snapshot = replace(
-            snapshot,
-            lease=(
-                snapshot.lease
-                if payload["next_lease"] is None
-                else _lease_fact_from_payload(payload["next_lease"])
-            ),
-        )
-    return TransitionPlan(
-        outcome=outcome,
-        code=payload["code"],
-        next_snapshot=next_snapshot,
-        lease_fence=LeaseFence(payload["lease_fence"]),
-    )
 
 
 def _lease_handoff_rejection(snapshot: CoordinationSnapshot) -> str | None:
@@ -902,8 +844,6 @@ def decide(
         return _decide_lease_owner_eligibility(snapshot, command)
     if isinstance(command, LeaseModeGateCommand):
         return _decide_lease_mode_gate(snapshot, command)
-    if isinstance(command, TerminalFenceCommand):
-        return _typescript_terminal_fence(snapshot, command)
     if isinstance(command, HandoffModeTransitionCommand):
         return _decide_handoff_transition(snapshot, command)
     raise TypeError(f"unsupported coordination command: {type(command).__name__}")

@@ -144,7 +144,7 @@ test("executor reclaim remains internal and preserves actor rejection precedence
   })));
 });
 
-test("standalone fence is preauthorized and never completes or attributes a Todo", () => {
+test("in-process preauthorized fence never completes or attributes a Todo", () => {
   const base = request({ schema_version: COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
     actor_agent_id: null, delegated_authority: false, require_active_when_fence_supplied: false,
     lease_idempotency_key: "old-key" });

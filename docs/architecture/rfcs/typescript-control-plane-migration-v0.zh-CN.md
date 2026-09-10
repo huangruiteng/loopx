@@ -240,11 +240,12 @@ Markdown renderer 长期保留。
 全部改成 TypeScript 或 `loopxd` 落地为前提；输入适配和外部 effect 执行可以保留 Python。
 
 本次 lifecycle-admission 切片将 legacy claim/update 准入、委托 action/reason 检查、
-ownership-holder 路由及预授权 terminal fence 统一到 `todo_lifecycle_decision.ts`，
-与 native complete/supersede 共用规则；`authority_core.py` 只投影这些决策结果。
-Terminal wire 合同仍只接受 terminal 命令；mutation admission 不能完成 Todo，
-独立 fence 不能授予 actor 权限或完成 Todo。这立即删除重复规则，**不等于删除完整
-legacy update writer**。字段 patch、省略/清空、monitor/resume effect 和 validation
+ownership-holder 路由及 native complete/supersede 统一到
+`todo_lifecycle_decision.ts`。Native text/note 编辑与 terminal transition 在进程内
+复用预授权 lease fence；`authority_core.py` 只投影仍有真实调用方的准入和 terminal
+决策，不再暴露独立 Python command 或 effect-runtime handler。Mutation admission
+不能完成 Todo，进程内 fence 不能授予 actor 权限或提交变更。这立即删除重复规则，
+**不等于删除完整 legacy update writer**。字段 patch、省略/清空、monitor/resume effect 和 validation
 仍需收口为完整 update transaction。Legacy 准入及持锁 gate 仍跨 runtime；本次减少
 语义 owner，不宣称减少 crossings，native transaction 仍进程内调用。下一步将这些
 crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加桥。

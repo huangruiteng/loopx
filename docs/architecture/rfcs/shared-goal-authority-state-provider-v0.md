@@ -2560,14 +2560,15 @@ for command inventory, update/monitor transactions and consumer deletion. Do not
 repeat that plan in a second implementation or treat a merged read-policy PR
 as storage readiness. Its T0 checkpoint is the entry condition for these cards.
 
-Lifecycle admission and the preauthorized terminal fence now share the TS
-owner across legacy writers and native terminal transactions; the replaced
-Python rules are removed without changing provider defaults or promotion.
-This is not full native field-edit support: retain the strict text/note
-transaction boundary until update's fields, ownership, validation and
-monitor/resume effects close together. Neither an admission result nor a
-lease-fence result is a commit receipt. Keep provider CAS/replay and existing
-writer lock lifetimes unchanged while collecting this deletion payoff.
+Lifecycle admission shares the TS owner across legacy writers and native
+transactions. Native text/note edits and terminal transitions reuse the
+preauthorized lease fence in-process; the replaced Python rules and the
+callerless standalone effect-runtime wire are removed without changing provider
+defaults or promotion. This remains a strict text/note transaction boundary,
+not general native metadata support, until update's fields, ownership,
+validation and monitor/resume effects close together. Neither an admission
+result nor a lease-fence result is a commit receipt. Keep provider CAS/replay
+and existing writer lock lifetimes unchanged while collecting this deletion payoff.
 Waiting/resume lane selection is now one TS read-policy owner shared by quota,
 vision-wait, agent-scope and replan. The obsolete Python selector module is
 deleted; the adapter accepts the same canonical summary after promotion and

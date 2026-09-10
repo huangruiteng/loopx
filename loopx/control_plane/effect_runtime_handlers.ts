@@ -138,7 +138,6 @@ import { evaluateCoordinationTodoClaimDecision } from "./coordination/todo_claim
 import {
   evaluateCoordinationTodoTerminalDecision,
   evaluateCoordinationTodoMutationDecision,
-  evaluateCoordinationTerminalFence,
   evaluateTodoOwnershipGate,
 } from "./coordination/todo_lifecycle_decision.ts";
 import { evaluateCoordinationTodoArchiveSelection } from "./coordination/todo_archive_selection.ts";
@@ -397,7 +396,6 @@ export function createEffectRuntimeHandlers(
     ],
     ["todo.terminal.decide", evaluateCoordinationTodoTerminalDecision],
     ["todo.mutation.decide", evaluateCoordinationTodoMutationDecision],
-    ["task_lease.terminal_fence.decide", evaluateCoordinationTerminalFence],
     ["todo.ownership_gate.decide", evaluateTodoOwnershipGate],
     ["todo.archive.select", evaluateCoordinationTodoArchiveSelection],
     ["todo.successor.derive", evaluateCoordinationTodoSuccessorDerivation],
