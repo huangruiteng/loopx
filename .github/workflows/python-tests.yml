@@ -88,12 +88,21 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck:control-plane
           npm run test:control-plane:coverage
+          npm run test:dashboard:coverage
 
       - name: Upload TypeScript control-plane coverage
         uses: actions/upload-artifact@v7
         with:
           name: typescript-control-plane-coverage
           path: coverage/control-plane/lcov.info
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Upload dashboard coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: dashboard-coverage
+          path: coverage/dashboard/lcov.info
           if-no-files-found: error
           retention-days: 3
 
