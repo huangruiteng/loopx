@@ -45,6 +45,7 @@ import {FileAuthorityStore} from '__FILE_STORE__';
 import {PostgreSqlAuthorityStore, installPostgreSqlAuthorityStoreSchema} from '__PG_STORE__';
 import {executeCoordinationTodoArchiveCompleted} from '__TERMINAL__';
 import {canonicalAuthorityBytes} from '__CODEC__';
+import {evaluateTodoResumeConditions} from '__RESUME__';
 
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
@@ -77,6 +78,11 @@ const archiveFailureCategory = (result) => {
 const semanticTodo = (todo) => {
   const result = {...todo};
   delete result.index;
+  if (result.resume_condition) {
+    result.resume_condition = {...result.resume_condition};
+    // Imported Markdown location is presentation, not completion evidence.
+    delete result.resume_condition.target_source_section;
+  }
   return result;
 };
 const pool = new Pool({connectionString: process.env.LOOPX_TEST_POSTGRES_URL, max: 4});
@@ -143,9 +149,10 @@ try {
     todo.archive_state === 'archive' &&
     initialById.get(todo.todo_id)?.archive_state !== 'archive');
   const movedIds = new Set(moved.map((todo) => todo.todo_id));
-  const legacyIds = new Set(request.legacy.todos.map((todo) => todo.todo_id));
+  const legacyActive = request.legacy.todos.filter(todo => todo.archive_state === 'active');
+  const legacyIds = new Set(legacyActive.map((todo) => todo.todo_id));
   const removedByLegacy = request.initial.todos
-    .filter((todo) => !legacyIds.has(todo.todo_id))
+    .filter((todo) => todo.archive_state === 'active' && !legacyIds.has(todo.todo_id))
     .map((todo) => todo.todo_id)
     .sort();
   assert.equal(
@@ -176,14 +183,23 @@ try {
   // compacts the remaining display indexes. Provider heads retain archived
   // records and stable imported indexes. Compare active domain records without
   // absolute display ordinals, then prove the per-role relative order itself.
-  const activeTodos = results.file.head.todos.filter((todo) =>
-    todo.archive_state === 'active');
+  // Compare current consumer semantics, not stale derived diagnostics stored
+  // before archive. The full post-commit head remains the only fact source.
+  const evaluated = evaluateTodoResumeConditions({
+    schema_version: 'todo_resume_evaluation_request_v0',
+    items: results.file.head.todos, source_items: results.file.head.todos,
+    kinds: ['todo_done', 'monitor_changed'],
+  });
+  const conditions = new Map(evaluated.conditions.map(entry => [entry.todo_id, entry.condition]));
+  const activeTodos = results.file.head.todos.filter(todo => todo.archive_state === 'active')
+    .map(todo => conditions.has(todo.todo_id) ? {...todo,
+      resume_condition: conditions.get(todo.todo_id), resume_ready: conditions.get(todo.todo_id).satisfied === true} : todo);
   const activeIds = new Set(activeTodos.map((todo) => todo.todo_id));
   const activeLeases = results.file.head.leases.filter((lease) =>
     activeIds.has(lease.todo_id));
   assert.equal(
     digest(activeTodos.map(semanticTodo)),
-    digest(request.legacy.todos.map(semanticTodo)),
+    digest(legacyActive.map(semanticTodo)),
     'legacy and provider active Todo semantics differ',
   );
   assert.equal(
@@ -198,7 +214,7 @@ try {
       .map((todo) => todo.todo_id);
     assert.equal(
       digest(order(activeTodos)),
-      digest(order(request.legacy.todos)),
+      digest(order(legacyActive)),
       `${role} relative order differs`,
     );
   }
@@ -272,6 +288,7 @@ def _node_script(repository: Path) -> str:
                 "loopx/control_plane/coordination/authority_store_codec.ts",
             ),
         )
+        .replace("__RESUME__", _module_uri(repository, "loopx/control_plane/todos/resume_condition.ts"))
     )
 
 
@@ -323,6 +340,20 @@ def main() -> int:
     # The live source arm is a point-in-time input. Keep it detached from any
     # compatibility code exercised by the cloned legacy arm below.
     initial = copy.deepcopy(initial)
+    captured_ids = {item["todo_id"] for item in initial["todos"]}
+    missing_history = sum(
+        1 for item in initial["todos"]
+        if isinstance((condition := item.get("resume_condition")), dict)
+        and condition.get("kind") == "todo_done"
+        and condition.get("target_status") == "done"
+        and condition.get("target_archive_state") == "archive"
+        and condition.get("target_todo_id") not in captured_ids
+    )
+    if missing_history:
+        raise SystemExit(
+            f"source projection omits {missing_history} archived resume target records; "
+            "promotion rehearsal held (derived readiness is not canonical evidence)"
+        )
 
     with tempfile.TemporaryDirectory(prefix="loopx-three-arm-legacy-") as temporary:
         root = Path(temporary)

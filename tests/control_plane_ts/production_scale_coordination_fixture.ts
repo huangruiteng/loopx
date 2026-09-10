@@ -19,6 +19,8 @@ const envelope = JSON.parse(readFileSync(new URL(
   current_lease_count: number;
   retired_lease_count: number;
   standing_user_decision_count: number;
+  scoped_without_outcome_count: number;
+  linked_decision_count: number;
   completion_target_index: number;
   supersede_target_index: number;
 };
@@ -98,6 +100,19 @@ function todoRecords(
       record.global_gate = true;
       record.goal_bound = true;
     }
+    // Long-lived histories include scoped gates without an explicit outcome
+    // and exact-action approvals. Neither is reusable standing authority.
+    const partialEnd = envelope.standing_user_decision_count + envelope.scoped_without_outcome_count;
+    if (role === "user" && index >= envelope.standing_user_decision_count &&
+        index < partialEnd + envelope.linked_decision_count) {
+      record.task_class = "user_gate";
+      record.blocks_agent = "agent-a";
+      record.decision_scope = {kind: "direction", granularity: "goal", scope_key: goalId};
+      if (index >= partialEnd) {
+        record.decision_outcome = "approve";
+        record.unblocks_todo_id = todoId("agent", envelope.completion_target_index);
+      }
+    }
     return record;
   });
 }
@@ -110,6 +125,9 @@ export function productionScaleCoordinationFixture(
   }
   const agents = todoRecords(goalId, "agent", envelope.agent_status_counts);
   const users = todoRecords(goalId, "user", envelope.user_status_counts);
+  const archiveDependent = [...agents].reverse().find(item => item.status === "open")!;
+  archiveDependent.task_class = "advancement_task";
+  archiveDependent.resume_when = `todo_done:${todoId("agent", 3)}`;
   const completionTodo = agents[envelope.completion_target_index]!;
   const supersedeTodo = agents[envelope.supersede_target_index]!;
   completionTodo.task_class = "advancement_task";

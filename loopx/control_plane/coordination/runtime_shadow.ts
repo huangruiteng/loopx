@@ -143,7 +143,7 @@ export async function verifyShadowSourceSnapshot(request: ShadowRequest): Promis
   const inventory: JsonObject[] = [];
   const leases: JsonObject[] = [];
   const currentTodoIds = new Set(
-    (request.projection.todos as JsonObject[]).map((todo) =>
+    (request.projection.todos as JsonObject[]).filter(todo => todo.archive_state === "active").map((todo) =>
       String(canonicalAuthorityObject(todo, "source Todo").todo_id)),
   );
   // ASCII filenames must use the same ordinal order as Python's source snapshot.

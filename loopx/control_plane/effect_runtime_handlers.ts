@@ -142,6 +142,8 @@ import {
   evaluateTodoOwnershipGate,
 } from "./coordination/todo_lifecycle_decision.ts";
 import { evaluateCoordinationTodoArchiveSelection } from "./coordination/todo_archive_selection.ts";
+import {evaluateStandingDecisionProjection} from "./todos/standing_decision.ts";
+import {captureArchivedTodoDependencies} from "./todos/archive_capture.ts";
 import { evaluateCoordinationTodoSuccessorDerivation } from "./coordination/todo_successor_derivation.ts";
 import {
   checkLegacyCoordinationWriteAllowed,
@@ -374,6 +376,8 @@ export function createEffectRuntimeHandlers(
     ["todo.completion_state.continuation_for_write", selectTodoCompletionContinuation],
     ["todo.field_update.plan", planTodoFieldUpdate],
     ["todo.public_update.plan", planPublicTodoUpdate],
+    ["todo.standing_decision.project", evaluateStandingDecisionProjection],
+    ["todo.archive.capture_dependencies", captureArchivedTodoDependencies],
     ["todo.monitor_metadata.plan", planMonitorMetadata],
     ["todo.authoring_scope.plan", planTodoAuthoringScope],
     [
