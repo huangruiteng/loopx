@@ -28,6 +28,7 @@ from .skill_install_readback import (
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
     configured_host_skills_dir,
     inspect_skill_install_readback,
+    skill_install_doctor_checks,
 )
 
 
@@ -1213,19 +1214,7 @@ def collect_doctor(
                 else ",".join(globally_visible_project_skills)
             ),
         },
-        *(
-            [
-                {
-                    "id": "host_skill_installation_readback",
-                    "required": False,
-                    "ok": bool(host_skill_install_readback.get("ready")),
-                    "applicable": True,
-                    "detail": str(host_skill_install_readback.get("reason")),
-                }
-            ]
-            if host_skill_install_readback
-            else []
-        ),
+        *skill_install_doctor_checks(host_skill_install_readback),
         {
             "id": "global_registry_writable",
             "required": True,

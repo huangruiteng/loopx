@@ -679,3 +679,16 @@ def inspect_skill_install_readback(
         "source_dirty": source.get("git_dirty"),
         "reason": reason,
     }
+
+
+def skill_install_doctor_checks(readback: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Expose an optional host installation check only when readback applies."""
+    if not readback:
+        return []
+    return [{
+        "id": "host_skill_installation_readback",
+        "required": False,
+        "ok": bool(readback.get("ready")),
+        "applicable": True,
+        "detail": str(readback.get("reason")),
+    }]
