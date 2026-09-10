@@ -37,6 +37,15 @@ test("vision decisions require v1 and cannot combine patch with unchanged", () =
   assert.deepEqual(prepare({schema_version: HOST_TODO_VISION_TRANSACTION_SCHEMA_VERSION}), base);
 });
 
+test("vision-aware Todo closeout never certifies Goal termination", () => {
+  const reduced = finalize(providerOutcomes(identityFrom(prepare())), {schema_version: HOST_TODO_VISION_TRANSACTION_SCHEMA_VERSION,
+    vision_path: "vision.json"});
+  assert.equal((reduced.result as Record<string, unknown>).completion_scope, "todo");
+  const terminal = (reduced.result as Record<string, unknown>).goal_terminal as Record<string, unknown>;
+  assert.equal(terminal.assessed, false);
+  assert.equal(terminal.next_tool, "should_run");
+});
+
 function request(
   phase: "prepare" | "finalize" | "classify_guard",
   overrides: Record<string, unknown> = {},

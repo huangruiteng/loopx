@@ -13,6 +13,7 @@ from typing import Any, Protocol
 
 from .effect_program import SettlementIdentity
 from .effect_runtime import EffectRuntimeRejected, effect_runtime_result
+from .goals.vision_checkpoint import prepare_vision_refresh
 
 
 HOST_ADAPTER_SETTLEMENT_SCHEMA_VERSION = "host_adapter_todo_settlement_v0"
@@ -119,6 +120,11 @@ def host_vision_request(request: HostTodoSettlementRequest, vision: dict | None,
     if vision is None:
         yield replace(request, vision_unchanged_reason=unchanged or None)
         return
+    # Reject malformed, misbound or oversized authoring before lifecycle writes.
+    # This is syntax/budget preflight only: refresh-state still validates against
+    # the real baseline and current replan/settlement state at writeback time.
+    prepare_vision_refresh(vision, goal_id=request.goal_id, agent_id=request.agent_id,
+        existing_agent_vision=None, merge_patch=False, require_path_delta_for_durable_change=False)
     with tempfile.TemporaryDirectory(prefix="loopx-host-vision-") as directory:
         path = Path(directory) / "vision.json"
         path.write_text(json.dumps(vision, ensure_ascii=False, allow_nan=False), encoding="utf-8")

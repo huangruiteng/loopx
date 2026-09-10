@@ -642,6 +642,14 @@ function blockedResult(
     settlement,
   };
   if (options.completion) result.completion = options.completion;
+  if (options.completion?.completed === true &&
+      (request.vision_path !== null || request.vision_unchanged_reason !== null)) {
+    result.recovery = {
+      tool: "complete_task", todo_id: request.todo_id,
+      settlement_identity: expectedIdentity(request).payload,
+      instruction: "After correcting the reported error, retry complete_task with the same Todo, evidence and successor/no-follow-up intent. Correct only an uncommitted vision decision; do not repeat work, create another successor, or manually spend. review_task_vision alone does not finish a pending settlement. Committed conflicts and authority failures must not be bypassed.",
+    };
+  }
   return result;
 }
 
@@ -921,6 +929,15 @@ function finalize(request: HostTodoCompletionRequest): JsonObject {
     settlement_identity: identity,
     completion: finalCompletion,
     settlement,
+    ...(request.vision_path !== null || request.vision_unchanged_reason !== null ? {
+      completion_scope: "todo",
+      goal_terminal: {
+        assessed: false,
+        authority: "should_run.interaction_contract",
+        next_tool: "should_run",
+        instruction: "Todo terminal_closeout/no_followup is not Goal completion. Obey the fresh Goal contract, including vision replan. A vision evidence timestamp predating completion does not make that live decision stale. If all scoped acceptance is verified, use the admitted replan path to author no_followup; do not invent filler work or silently drop the obligation.",
+      },
+    } : {}),
   });
 }
 

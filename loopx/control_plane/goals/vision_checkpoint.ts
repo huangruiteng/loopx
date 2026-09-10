@@ -21,6 +21,7 @@ const GOAL_PATH_DELTA_SCHEMA_VERSION = "goal_path_delta_v0";
 const GOAL_VISION_BUDGET_ERROR = "vision_budget_exceeded";
 // Direction and evidence-linked path changes share one bounded packet.
 const GOAL_VISION_TOTAL_LIMIT = 1_800;
+const GOAL_VISION_ADVANCEMENT_POLICIES = ["as_needed", "repeat_until_closed"] as const;
 const VISION_UNCHANGED_REASON_LIMIT = 240;
 const VISION_BUDGET_SUGGESTION_LIMIT = 96;
 
@@ -65,13 +66,23 @@ export function visionAuthoringContract(): JsonObject {
   return {
     schema_version: GOAL_VISION_REPLAN_SCHEMA_VERSION,
     fields: {state: "lifecycle token", vision_patch: {...GOAL_VISION_FIELD_LIMITS}},
+    common_states: ["vision_patch_proposed", "vision_closed", "no_followup"],
+    advancement_policies: [...GOAL_VISION_ADVANCEMENT_POLICIES],
+    minimal_example: {schema_version: GOAL_VISION_REPLAN_SCHEMA_VERSION, state: "vision_patch_proposed", vision_patch: {
+      vision_summary: "Scoped outcome", acceptance_summary: "Verified evidence and remaining gap",
+    }},
+    authoring_hint: "Fields are optional, not a checklist. Keep the whole decision compact; total includes path_delta. Do not copy the delivery evidence report into every field.",
     total_text_limit: GOAL_VISION_TOTAL_LIMIT,
     unchanged_reason_limit: VISION_UNCHANGED_REASON_LIMIT,
     path_delta: {
       schema_version: GOAL_PATH_DELTA_SCHEMA_VERSION,
       outcomes: [...GOAL_PATH_DELTA_OUTCOMES],
+      required: ["outcome", "prior_assumption", "observed_reality"],
+      require_any: ["retained", "changed", "stopped"],
       scalar_limits: {...GOAL_PATH_DELTA_SCALAR_LIMITS},
-      list_limits: {...GOAL_PATH_DELTA_LIST_LIMITS},
+      list_limits: Object.fromEntries(Object.entries(GOAL_PATH_DELTA_LIST_LIMITS).map(
+        ([field, [maxItems, maxChars]]) => [field, {item_type: "string", max_items: maxItems, max_item_chars: maxChars}],
+      )),
     },
     rule: "Compare acceptance with evidence. vision_closed closes a stage, not the Goal; no_followup requires no remaining scoped work. A changed mainline needs path_delta; respect the live replan contract.",
   };
@@ -316,7 +327,7 @@ function normalizeGoalVisionState(value: unknown): string {
 
 function normalizeAdvancementPolicy(value: unknown): string {
   const candidate = compactText(value).toLowerCase().replaceAll("-", "_");
-  if (candidate !== "as_needed" && candidate !== "repeat_until_closed") {
+  if (!GOAL_VISION_ADVANCEMENT_POLICIES.some(policy => policy === candidate)) {
     throw new EffectRuntimeRequestError(
       "agent_vision.advancement_policy must be one of: as_needed, repeat_until_closed",
     );

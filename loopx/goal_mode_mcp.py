@@ -343,10 +343,14 @@ def create_fastmcp_server(
     ) -> str:
         """Complete verified work and settle once. Link existing planned successors
         with successor_todo_ids; next_agent_todo creates a NEW Todo, not an id link.
-        Use no_follow_up only for terminal intent. Do not duplicate existing work.
+        no_follow_up closes this Todo's continuation, NOT the Goal's vision.
+        Do not duplicate existing work; only the fresh should_run contract can
+        establish Goal terminal state, regardless of the Todo closeout receipt.
         Include an authored agent_vision (goal_vision_replan_contract_v0 with state
         and vision_patch), or an unchanged reason backed by an existing vision.
         Omission keeps a required checkpoint open; repair with review_task_vision.
+        If settlement failed, correct uncommitted input and retry complete_task
+        with the same completion intent; checkpoint-only recovery cannot spend.
         """
         return control.complete_task(
             todo_id,
