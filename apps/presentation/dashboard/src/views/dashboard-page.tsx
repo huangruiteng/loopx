@@ -140,6 +140,7 @@ import { ensureSshSource } from "../data/ssh-host-catalog";
 import {
   addSshTunnelStatusSource,
   defaultLocalStatusSourceUrl,
+  emptyStatusSourceCatalog,
   loadStatusSourceCatalog,
   localStatusSource,
   activeStatusSourceForUrl,
@@ -2823,9 +2824,14 @@ export function DashboardPage() {
   preferredGoalRef.current = search.goalId;
   const [payload, setPayload] = useState<StatusPayload>(exampleStatusPayload);
   const [source, setSource] = useState<DataSource>({ kind: "example", label: "bundled example" });
-  const [statusSourceCatalog, setStatusSourceCatalog] = useState(() =>
-    loadStatusSourceCatalog(window.localStorage, window.location.href)
-  );
+  const [statusSourceCatalog, setStatusSourceCatalog] = useState(() => {
+    try {
+      return loadStatusSourceCatalog(window.localStorage, window.location.href);
+    } catch {
+      // Browsers may reject access to the storage object itself.
+      return emptyStatusSourceCatalog();
+    }
+  });
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
