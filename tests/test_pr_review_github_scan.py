@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import loopx.pr_review as pr_review_module
+import pytest
 
 HEAD_1 = "a" * 40
 HEAD_2 = "b" * 40
@@ -645,7 +646,14 @@ def test_actionable_sequence_excludes_valid_merged_exact_head(monkeypatch) -> No
     rows = {item["number"]: item for item in packet["pull_requests"]}
     assert rows[4141]["review_conclusion"]["status"] == "valid"
     assert rows[4141]["review_action_kind"] is None
+    assert rows[4141]["review_plan"] is None
+    assert rows[4141]["review_template"] is None
+    assert rows[4141]["evidence_commands"] == []
+    assert "no full evidence review is authorized" in rows[4141]["review_goal"]
     assert rows[4142]["review_action_kind"] == "audit_merged_pull_request_exact_head"
+    assert rows[4142]["review_plan"]["target"]["exact_head_key"].startswith("4142@")
+    assert rows[4142]["review_template"]["sections"]
+    assert rows[4142]["evidence_commands"]
     assert [item["number"] for item in packet["review_sequence"]] == [4142]
     merged = packet["review_groups"]["merged"]
     assert merged["pr_numbers"] == [4141, 4142]
@@ -655,6 +663,77 @@ def test_actionable_sequence_excludes_valid_merged_exact_head(monkeypatch) -> No
     assert packet["summary"]["review_attention_count"] == 1
     assert packet["summary"]["post_merge_review_count"] == 1
     assert packet["summary"]["recommended_first_pr"]["number"] == 4142
+
+    reviewed_head = str(reviewed["headRefOid"])
+    forced = pr_review_module.build_pr_review_packet(
+        pull_requests=[reviewed],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="merged",
+        reviewer_login="maintainer",
+        fresh_audit_exact_heads=[f"4141@{reviewed_head}"],
+    )
+    forced_row = forced["pull_requests"][0]
+    assert forced_row["review_action_kind"] == "audit_pull_request_exact_head"
+    assert forced_row["fresh_audit_requested"] is True
+    assert forced_row["review_plan"]["target"]["exact_head_key"] == f"4141@{reviewed_head}"
+    assert forced_row["review_template"]["sections"]
+    assert forced_row["evidence_commands"]
+    assert forced["review_sequence"][0]["number"] == 4141
+    assert "explicitly requested" in forced["review_sequence"][0]["why_now"]
+
+    with pytest.raises(ValueError, match="absent from the current result window"):
+        pr_review_module.build_pr_review_packet(
+            pull_requests=[reviewed],
+            repository="owner/repo",
+            limit=10,
+            source="fixture",
+            state_filter="open",
+            reviewer_login="maintainer",
+            fresh_audit_exact_heads=[f"4141@{reviewed_head}"],
+        )
+
+
+def test_fresh_audit_exact_head_fails_closed() -> None:
+    row = _queue_pr(
+        4141,
+        author="maintainer",
+        ready_at="2026-08-18T07:00:00Z",
+        updated_at="2026-08-18T11:00:00Z",
+    )
+    head = str(row["headRefOid"])
+
+    with pytest.raises(ValueError, match="already actionable"):
+        pr_review_module.build_pr_review_packet(
+            pull_requests=[row],
+            repository="owner/repo",
+            limit=10,
+            source="fixture",
+            reviewer_login="maintainer",
+            fresh_audit_exact_heads=[f"4141@{head}"],
+        )
+
+    row["isDraft"] = True
+    with pytest.raises(ValueError, match="valid prior conclusion"):
+        pr_review_module.build_pr_review_packet(
+            pull_requests=[row],
+            repository="owner/repo",
+            limit=10,
+            source="fixture",
+            reviewer_login="maintainer",
+            fresh_audit_exact_heads=[f"4141@{head}"],
+        )
+
+    with pytest.raises(ValueError, match="absent from the current result window"):
+        pr_review_module.build_pr_review_packet(
+            pull_requests=[row],
+            repository="owner/repo",
+            limit=10,
+            source="fixture",
+            reviewer_login="maintainer",
+            fresh_audit_exact_heads=[f"4141@{'b' * 40}"],
+        )
 
 
 def test_community_author_self_review_does_not_satisfy_maintainer_queue(

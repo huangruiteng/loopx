@@ -38,9 +38,11 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "no_action_inventory_location": "pull_requests",
         "generic_rereview_terms_force_fresh_audit": False,
         "no_action_behavior": "compact_exact_head_conclusion_readback_only",
+        "no_action_execution_artifacts": "plan_and_template_null_commands_empty",
         "force_fresh_audit_requires": (
             "An explicit request to rerun evidence despite the unchanged/no-action "
-            "exact head, or a concrete new concern or evidence invalidation."
+            "exact head, or a concrete new concern or evidence invalidation, encoded "
+            "as --fresh-audit-exact-head NUMBER@HEAD_OID."
         ),
     }
 
@@ -50,9 +52,9 @@ def test_execution_contract_owns_deep_review_requirements() -> None:
         "result_completeness",
         "scheduling_policy",
         "review_groups",
-        "pull_requests[].review_plan",
-        "pull_requests[].review_template",
-        "pull_requests[].evidence_commands",
+        "pull_requests[review_action_kind!=null].review_plan",
+        "pull_requests[review_action_kind!=null].review_template",
+        "pull_requests[review_action_kind!=null].evidence_commands",
     ]
     contract = response["review_execution_contract"]
     assert contract["schema_version"] == "pull_request_review_execution_contract_v2"
@@ -407,6 +409,11 @@ def test_public_cli_delivers_state_review_without_claiming_it_was_performed(caps
     assert packet["pull_requests"]
     reviewed_code = False
     for item in packet["pull_requests"]:
+        if not item["review_action_kind"]:
+            assert item["review_plan"] is None
+            assert item["review_template"] is None
+            assert item["evidence_commands"] == []
+            continue
         evidence = item["review_plan"]["result_template"]["evidence"]
         if "repository_reuse" in item["review_plan"]["required_evidence_ids"]:
             reviewed_code = True

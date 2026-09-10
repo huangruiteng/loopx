@@ -55,7 +55,7 @@ jobs:
       - name: Set up the packaged TypeScript control-plane runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "24"
 
       - name: Resolve and validate release identity
         id: identity

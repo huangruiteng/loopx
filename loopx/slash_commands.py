@@ -125,7 +125,7 @@ def build_slash_command_catalog(
         _command(
             command="/loopx-pr-review",
             scope="repo",
-            intent="Run pr-review, execute each exact-head review plan, then render verified evidence through the five-block template.",
+            intent="Run pr-review; execute actionable rows and read back null-action rows.",
             mutation_policy="read_only; does not comment, approve, merge, or spend quota",
             cli_reference=f"{cli_bin} pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
             agent_contract={
@@ -143,18 +143,14 @@ def build_slash_command_catalog(
                     "agent_response_contract.explanation_depth_contract",
                     "review_groups.unmerged",
                     "review_groups.merged",
-                    "pull_requests[].review_plan",
-                    "pull_requests[].review_template",
-                    "pull_requests[].evidence_commands",
+                    "agent_response_contract.required_packet_fields_to_preserve",
                     "agent_response_contract.required_final_sections",
                 ],
                 "required_packet_fields_to_preserve": [
                     "agent_response_contract",
                     "result_completeness",
                     "review_groups",
-                    "pull_requests[].review_plan",
-                    "pull_requests[].review_template",
-                    "pull_requests[].evidence_commands",
+                    "pull_requests",
                 ],
                 "final_answer_contract": {
                     "table_only_response_allowed": False,

@@ -714,11 +714,10 @@ def test_skill_slash_fallback_contract() -> None:
     assert "loopx --format json pr-review --state all" in pr_review_skill_text
     assert "Save the full first JSON packet before printing a compact projection" in pr_review_normalized
     assert "agent_response_contract" in pr_review_skill_text
-    assert "pull_requests[].review_template" in pr_review_skill_text
-    assert "pull_requests[].evidence_commands" in pr_review_skill_text
+    assert "pull_requests[review_action_kind!=null].review_template" in pr_review_skill_text
+    assert "pull_requests[review_action_kind!=null].evidence_commands" in pr_review_skill_text
     assert "Do not pipe the only copy through `jq`" in pr_review_skill_text
-    assert "review_groups.unmerged" in pr_review_skill_text
-    assert "review_groups.merged" in pr_review_skill_text
+    assert "review_groups" in pr_review_skill_text
     assert "The five sections are output structure, while the execution contract is the evidence authority" in pr_review_normalized
 
 

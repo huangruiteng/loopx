@@ -24,10 +24,11 @@ development and qualification surface, not a second implicit package channel.
 The archive snapshot remains a recovery path rather than a competing default.
 
 LoopX's Effect Program core runs in a managed, idle-exiting TypeScript runtime
-and requires Node.js 22.6 or later. LoopX starts and reuses that local runtime
-automatically; users do not run a daemon manually. The runtime binds only to
-loopback, authenticates requests with a user-private token, rotates when the
-packaged Effect core changes, and exits after an idle period. `loopx doctor`
+and requires Node.js 22.6 or later; Node.js 24 LTS is the recommended primary
+runtime. LoopX starts and reuses that local runtime automatically; users do not
+run a daemon manually. The runtime binds only to loopback, authenticates
+requests with a user-private token, rotates when the packaged Effect core
+changes, and exits after an idle period. `loopx doctor`
 reports it as `ready`, `missing`, `unsupported`, or `probe_failed`; a missing
 or stale runtime fails closed instead of falling back to a second Python rule
 engine. The same doctor projection exposes `runtime_lifecycle.state` as

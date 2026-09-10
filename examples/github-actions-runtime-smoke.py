@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 
@@ -16,6 +17,10 @@ NODE24_ACTION_MAJORS = {
     "actions/setup-python": "v6",
     "actions/upload-artifact": "v7",
 }
+
+PRIMARY_NODE_VERSION = "24"
+MINIMUM_NODE_VERSION = "22.6"
+FORWARD_NODE_VERSION = "26"
 
 
 def declared_major(reference: str) -> str:
@@ -32,9 +37,11 @@ def declared_major(reference: str) -> str:
 
 
 def main() -> int:
-    workflow_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))
-    )
+    workflows = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted(WORKFLOWS.glob("*.yml"))
+    }
+    workflow_text = "\n".join(workflows.values())
 
     for action, major in NODE24_ACTION_MAJORS.items():
         references = [
@@ -45,7 +52,34 @@ def main() -> int:
         assert references, f"missing workflow reference for {action}"
         assert all(declared_major(reference) == major for reference in references), references
 
-    print("github-actions-runtime-smoke ok")
+    declared_versions = {
+        name: re.findall(r'^\s*node-version:\s*["\']([^"\']+)["\']\s*$', text, re.MULTILINE)
+        for name, text in workflows.items()
+    }
+    for name, versions in declared_versions.items():
+        if not versions:
+            continue
+        expected = (
+            {PRIMARY_NODE_VERSION, MINIMUM_NODE_VERSION, FORWARD_NODE_VERSION}
+            if name == "python-tests.yml"
+            else {PRIMARY_NODE_VERSION}
+        )
+        assert set(versions) <= expected, (name, versions)
+
+    python_versions = declared_versions["python-tests.yml"]
+    assert python_versions.count(MINIMUM_NODE_VERSION) == 1, python_versions
+    assert python_versions.count(FORWARD_NODE_VERSION) == 1, python_versions
+    assert PRIMARY_NODE_VERSION in python_versions, python_versions
+
+    python_workflow = workflows["python-tests.yml"]
+    assert "node-forward-compatibility:" in python_workflow
+    assert "continue-on-error: true" in python_workflow
+    assert "needs: [changes, pytest, node-minimum-compatibility," in python_workflow
+
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert package["engines"]["node"] == f">={MINIMUM_NODE_VERSION}"
+
+    print("github-actions-runtime-smoke ok: Node 24 primary, 22.6 minimum, 26 forward")
     return 0
 
 

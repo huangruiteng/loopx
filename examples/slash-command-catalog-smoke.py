@@ -72,9 +72,7 @@ def main() -> int:
         "agent_response_contract",
         "result_completeness",
         "review_groups",
-        "pull_requests[].review_plan",
-        "pull_requests[].review_template",
-        "pull_requests[].evidence_commands",
+        "pull_requests",
     ], pr_review
     final_contract = pr_review["agent_contract"]["final_answer_contract"]
     assert final_contract["table_only_response_allowed"] is False, final_contract

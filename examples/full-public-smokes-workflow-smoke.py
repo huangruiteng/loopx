@@ -39,7 +39,7 @@ def main() -> int:
         "actions/setup-python@",
         "python-version: \"3.11\"",
         "actions/setup-node@v6",
-        "node-version: \"22.6\"",
+        "node-version: \"24\"",
         "python3 examples/run-smokes.py",
         "--suite full-public",
         "--offset \"${{ matrix.offset }}\"",
