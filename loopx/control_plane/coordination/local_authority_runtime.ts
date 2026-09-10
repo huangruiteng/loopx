@@ -49,6 +49,7 @@ import {
 } from "./todo_create.ts";
 import {
   COORDINATION_TODO_UPDATE_REQUEST_SCHEMA,
+  COORDINATION_TODO_PLANNING_UPDATE_REQUEST_SCHEMA,
   COORDINATION_TODO_UPDATE_RESULT_SCHEMA,
   executeCoordinationTodoUpdate,
 } from "./todo_update.ts";
@@ -740,8 +741,15 @@ export async function updateLocalCoordinationTodo(
     decision_read_from_provider: true, legacy_fallback_used: false};
   try {
     const input = requireJsonObject(value, "local coordination Todo update request");
-    if (input.schema_version !== COORDINATION_TODO_UPDATE_REQUEST_SCHEMA) {
+    if (input.schema_version !== COORDINATION_TODO_UPDATE_REQUEST_SCHEMA &&
+        input.schema_version !== COORDINATION_TODO_PLANNING_UPDATE_REQUEST_SCHEMA) {
       throw new TypeError("local coordination Todo update request schema mismatch");
+    }
+    const planningIntent = input.planning_intent == null ? undefined :
+      requireJsonObject(input.planning_intent, "Todo planning intent");
+    if (planningIntent && Object.keys(planningIntent).length &&
+        input.schema_version !== COORDINATION_TODO_PLANNING_UPDATE_REQUEST_SCHEMA) {
+      throw new TypeError("planning_intent requires the v1 Todo update request");
     }
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
@@ -764,6 +772,7 @@ export async function updateLocalCoordinationTodo(
           requireAuthorityStoreId(input.lease_idempotency_key, "lease_idempotency_key"),
         lease_expected_version: optionalNonNegativeSafeInteger(input.lease_expected_version, "lease_expected_version"),
         patch: requireJsonObject(input.patch, "Todo update patch"),
+        planning_intent: planningIntent,
         clear_fields: input.clear_fields.map((field) => claimAgentValue(field, "clear field")),
         dry_run: input.dry_run as boolean,
         now: claimObservedAt(input.observed_at),

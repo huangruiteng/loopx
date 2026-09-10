@@ -1,8 +1,7 @@
-"""In-memory Markdown editing adapter; the TS provider owns the commit.
+"""Input transport for the native update transaction, never a Markdown editor.
 
-Only the explicitly requested text/note fields cross back. Unrepresented
-canonical fields, section/index provenance and lease records never round-trip
-through Markdown. The on-disk projection is not an input or a commit target.
+The provider owns target lookup, planning, authority and CAS at one revision.
+This adapter preserves CLI text encoding and drains the committed projection.
 """
 
 from __future__ import annotations
@@ -15,50 +14,33 @@ from ...agent_registry import registered_agent_ids_from_registry
 from ...state_refresh import now_local
 from ..coordination.local_authority import (
     LocalCoordinationAuthorityUnavailable,
-    read_canonical_todos_if_promoted,
+    local_authority_is_promoted,
 )
 from ..effect_runtime import effect_runtime_result
-from .active_state_editing import find_todo_block, set_todo_text
-from .contract import format_todo_metadata_line, metadata_line_for_todo_block
-from .line_update import upsert_todo_metadata
+from .contract import compact_todo_text
 from .provider_projection import settle_canonical_todo_projection
+from .text import normalize_new_todo
 
 
-def edit_canonical_todo_if_promoted(
+def update_canonical_todo_if_promoted(
     *, registry_path: Path, runtime_root: Path, goal_id: str, todo_id: str,
     actor_agent_id: str | None, role: str | None, text: str | None,
     note: str | None, dry_run: bool,
     project: Path | None = None, state_file: Path | None = None,
     operation_id: str | None = None, task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
+    planning_intent: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    canonical = read_canonical_todos_if_promoted(runtime_root=runtime_root, goal_id=goal_id)
-    if canonical is None:
+    if not local_authority_is_promoted(runtime_root=runtime_root, goal_id=goal_id):
         return None
-    todo = next((item for item in canonical["todos"] if item["todo_id"] == todo_id), None)
-    if todo is None:
-        raise ValueError("Todo is missing from canonical authority")
-    if role is not None and role != todo["role"]:
-        raise ValueError("Todo does not have the requested role")
-    # Reuse the existing Markdown text/metadata editor as a codec, not an
-    # authorization engine. This buffer is synthetic and is never persisted.
-    lines = ["## Agent Todo", "", f"- [ ] {todo['text']}",
-             format_todo_metadata_line(todo_id=todo_id, note=todo.get("note"))]
-    found = find_todo_block(lines, todo_id=todo_id, role="agent")
-    if found is None:
-        raise ValueError("canonical Todo cannot be represented by the compatibility editor")
-    block = found[4]
+    patch: dict[str, Any] = {}
     if text is not None:
-        set_todo_text(lines, block, text, status="open")
+        patch["text"] = normalize_new_todo(text)
     if note is not None:
-        upsert_todo_metadata(lines, block, metadata_line_for_todo_block(block, {"note": note}))
-    edited = find_todo_block(lines, todo_id=todo_id, role="agent")
-    if edited is None:
-        raise ValueError("compatibility editor lost Todo identity")
-    patch = {field: edited[4].get(field) for field, requested in
-             (("text", text), ("note", note)) if requested is not None}
+        patch["note"] = compact_todo_text(note) or None
     result = effect_runtime_result("coordination.local_authority.todo_update", {
-        "schema_version": "loopx_local_coordination_todo_update_request_v0",
+        "schema_version": ("loopx_local_coordination_todo_update_request_v1" if planning_intent
+                           else "loopx_local_coordination_todo_update_request_v0"),
         "runtime_root": str(runtime_root.resolve()), "goal_id": goal_id,
         "todo_id": todo_id, "role": role, "actor_agent_id": actor_agent_id,
         "registered_agents": registered_agent_ids_from_registry(registry_path, goal_id),
@@ -66,8 +48,15 @@ def edit_canonical_todo_if_promoted(
         "lease_idempotency_key": task_lease_idempotency_key,
         "lease_expected_version": task_lease_expected_version,
         "patch": patch, "clear_fields": [], "dry_run": dry_run,
+        "planning_intent": planning_intent or {},
         "observed_at": now_local(),
     })
+    # Keep the public lookup-error contract, without a second pre-transaction read.
+    if isinstance(result, dict) and result.get("status") == "failed":
+        if result.get("reason_code") == "todo_not_found":
+            raise ValueError("Todo is missing from canonical authority")
+        if result.get("reason_code") == "todo_role_mismatch":
+            raise ValueError("Todo does not have the requested role")
     if not isinstance(result, dict) or result.get("status") not in {
         "applied", "recovered", "replayed", "no_change", "planned",
     } or result.get("source_authority") != "file_v0" or (
@@ -82,7 +71,7 @@ def edit_canonical_todo_if_promoted(
         )
     return settle_canonical_todo_projection(
         {"ok": True, "goal_id": goal_id, "todo_id": todo_id,
-         "role": todo["role"], "dry_run": dry_run, **result},
+         "role": "agent", "dry_run": dry_run, **result},
         registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
         project=project, state_file=state_file,
     )
