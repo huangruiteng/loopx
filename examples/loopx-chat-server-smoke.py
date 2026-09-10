@@ -574,7 +574,7 @@ def main() -> None:
             code, manager_created = request_json(
                 f"{base_url}/api/chat/sessions",
                 method="POST",
-                body={"goal_id": GOAL_ID, "context_kind": "manager"},
+                body={"context_kind": "manager"},
             )
             assert code == 201, manager_created
             assert manager_created["session"]["channel_id"] == "manager", manager_created
@@ -586,7 +586,7 @@ def main() -> None:
             )
             assert code == 200 and manager_resumed["resumed"] is True, manager_resumed
             assert manager_resumed["session_id"] == manager_created["session_id"], manager_resumed
-            assert manager_resumed["goal_id"] == GOAL_ID, manager_resumed
+            assert manager_resumed["goal_id"] == "loopx-manager", manager_resumed
             listed_manager = wait_for_json(
                 f"{base_url}/api/chat/sessions?agent_id=codex&channel_id=manager"
             )

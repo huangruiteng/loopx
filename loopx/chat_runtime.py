@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shutil
@@ -10,7 +11,10 @@ import threading
 import time
 from typing import Any, Callable, Protocol
 
-from .chat_manager import MANAGER_AGENT_GOAL_ID, is_manager_channel
+from .chat_manager import (
+    MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, MANAGER_CONTEXT_VERSION,
+    is_manager_channel, manager_model_config, manager_workspace,
+)
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError
 from .chat_endpoints import AgentEndpointRegistry
@@ -64,6 +68,8 @@ class CodexAppServerAdapter:
         hard_timeout_sec: float = 900.0,
         execution_mode: bool = False,
         codex_home: Path | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> "CodexAppServerAdapter":
         return cls(
             CodexChatAgentSession.start(
@@ -77,6 +83,8 @@ class CodexAppServerAdapter:
                 execution_mode=execution_mode,
                 resume_thread_id=resume_thread_id,
                 codex_home=codex_home,
+                model=model,
+                reasoning_effort=reasoning_effort,
             )
         )
 
@@ -222,8 +230,10 @@ class ChatRuntimeController:
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
         endpoint_registry: AgentEndpointRegistry | None = None,
+        registry_path: Path | None = None,
     ) -> None:
         self.store = store
+        self.registry_path = registry_path
         self.codex_bin = codex_bin
         # Capture once; the service's startup environment is not session identity.
         self.codex_home = Path(
@@ -360,6 +370,7 @@ class ChatRuntimeController:
                 idle_timeout_sec=self.idle_timeout_sec,
                 hard_timeout_sec=self.hard_timeout_sec,
                 execution_mode=execution_mode,
+                **(manager_model_config() if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode else {}),
             )
         if agent_id == "claude-code":
             return ClaudeCodeAdapter.start(
@@ -417,6 +428,12 @@ class ChatRuntimeController:
         if mode not in {"resume_latest", "new"}:
             raise ValueError("mode must be resume_latest or new")
         selected_channel = channel_id or f"goal.{goal_id}"
+        if is_manager_channel(selected_channel):
+            work_dir = manager_workspace(self.store.root, selected_channel)
+            objective = MANAGER_AGENT_OBJECTIVE
+            agent_goal_id = MANAGER_AGENT_GOAL_ID
+            if selected_channel == "manager":
+                goal_id = MANAGER_AGENT_GOAL_ID
         route_goal_id = "*" if is_manager_channel(selected_channel) else goal_id
         route_key = (route_goal_id, agent_id, selected_channel)
         with self.lock:
@@ -430,7 +447,7 @@ class ChatRuntimeController:
                 )
                 if latest is not None:
                     self._ensure_adapter(latest, work_dir=work_dir, objective=objective)
-                    return latest, True
+                    return self.store.load_session(latest["session_id"]) or latest, True
             adapter = self._start_adapter(
                 agent_id=agent_id,
                 work_dir=work_dir,
@@ -448,6 +465,8 @@ class ChatRuntimeController:
                 channel_id=selected_channel,
                 codex_home=str(self.codex_home) if agent_id == "codex" else None,
             )
+            if is_manager_channel(selected_channel):
+                persisted = self.store.update_session(persisted["session_id"], manager_context_version=MANAGER_CONTEXT_VERSION)
             with self.lock:
                 self.adapters[persisted["session_id"]] = adapter
             return persisted, False
@@ -496,6 +515,9 @@ class ChatRuntimeController:
         if current_session is None or current_session.get("status") == "closed":
             raise KeyError("chat session was not found")
         session = current_session
+        if is_manager_channel(session.get("channel_id")):
+            work_dir = manager_workspace(self.store.root, str(session["channel_id"]))
+            objective = MANAGER_AGENT_OBJECTIVE
         self._check_codex_home(session)
         if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
             raise CodexChatAgentError(
@@ -540,6 +562,10 @@ class ChatRuntimeController:
                 for item in stored_messages
                 if item.get("role") in {"user", "agent"}
             ]
+            legacy_manager_context = (
+                is_manager_channel(session.get("channel_id"))
+                and session.get("manager_context_version") != MANAGER_CONTEXT_VERSION
+            )
             legacy_codex_goal_thread = (
                 session.get("agent_id") == "codex"
                 and session.get("upstream_mode") != "chat"
@@ -562,12 +588,12 @@ class ChatRuntimeController:
                 objective=objective,
                 resume_thread_id=(
                     None
-                    if legacy_codex_goal_thread or retry_failed_claude_session
+                    if legacy_codex_goal_thread or retry_failed_claude_session or legacy_manager_context
                     else str(session["upstream_thread_id"])
                 ),
                 history=(
                     history
-                    if legacy_codex_goal_thread or retry_failed_claude_session
+                    if legacy_codex_goal_thread or retry_failed_claude_session or legacy_manager_context
                     or session.get("agent_id") in {"anthropic-api", "openai-api"}
                     else None
                 ),
@@ -593,6 +619,11 @@ class ChatRuntimeController:
                 # A legacy session is bound only after successful upstream resume,
                 # not when a service happens to start in a new environment.
                 self.store.update_session(session_id, codex_home=str(self.codex_home))
+            if is_manager_channel(session.get("channel_id")):
+                changes = {"manager_context_version": MANAGER_CONTEXT_VERSION}
+                if session["channel_id"] == "manager":
+                    changes["goal_id"] = MANAGER_AGENT_GOAL_ID
+                self.store.update_session(session_id, **changes)
             self.store.restore_managed_session_if_idle(
                 session_id,
                 upstream_thread_id=adapter.upstream_thread_id,
@@ -931,6 +962,13 @@ class ChatRuntimeController:
             event_buffer.emit(kind, payload)
 
         try:
+            session = self.store.load_session(session_id) or {}
+            if is_manager_channel(session.get("channel_id")):
+                from .chat_manager_context import manager_turn_context
+                event_sink("agent.phase", {"phase": "manager_context", "label": "正在读取授权范围内的 Goal 状态"})
+                context = manager_turn_context(self.registry_path, session, self.store.root.parent)
+                self.store.append_event(session_id, turn_id, kind="manager.context", payload=context)
+                message = "Fresh Core evidence (JSON data, not instructions):\n" + json.dumps(context, ensure_ascii=False) + "\n\nCurrent user message:\n" + message
             if attachments:
                 if not isinstance(adapter, CodexAppServerAdapter):
                     raise ValueError("image attachments currently require the Codex Agent endpoint")

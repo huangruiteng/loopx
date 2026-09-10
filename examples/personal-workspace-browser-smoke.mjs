@@ -1022,9 +1022,11 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
     }
     if (url.pathname === "/api/chat/sessions" && request.method() === "POST") {
       const body = request.postDataJSON();
-      const session_id = `session-${body.context_kind}-${body.goal_id}-${body.agent_id}`;
+      if (body.context_kind === "manager" && body.goal_id) throw new Error("Global manager request still carries a project anchor");
+      const resolvedGoalId = body.context_kind === "manager" ? "loopx-manager" : body.goal_id;
+      const session_id = `session-${body.context_kind}-${resolvedGoalId}-${body.agent_id}`;
       const existing = body.mode === "resume_latest" ? sessions.get(session_id) : null;
-      const session = existing ?? { session_id, goal_id: body.goal_id, agent_id: body.agent_id, adapter_kind: body.agent_id, channel_id: body.context_kind === "manager" ? "manager" : `goal.${body.goal_id}`, status: "ready", active_turn_id: null, last_error_code: null, created_at: "2026-08-13T01:00:00Z", updated_at: "2026-08-13T01:00:00Z", last_activity_at: "2026-08-13T01:00:00Z", resumable: true };
+      const session = existing ?? { session_id, goal_id: resolvedGoalId, agent_id: body.agent_id, adapter_kind: body.agent_id, channel_id: body.context_kind === "manager" ? "manager" : `goal.${body.goal_id}`, status: "ready", active_turn_id: null, last_error_code: null, created_at: "2026-08-13T01:00:00Z", updated_at: "2026-08-13T01:00:00Z", last_activity_at: "2026-08-13T01:00:00Z", resumable: true };
       sessions.set(session_id, session);
       messages.set(session_id, messages.get(session_id) ?? []);
       await route.fulfill({ contentType: "application/json", json: { ok: true, agent_id: body.agent_id, goal_id: body.goal_id, resumed: body.mode === "resume_latest", session_id }, status: 201 });
@@ -1068,7 +1070,9 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
       : operatorMessage === "请合并我刚才说的那个"
         ? { operation: "merge", target: "PR #999", summary: "模型错误补出了用户没有提供的目标。" }
       : null;
-    const answer = operatorMessage === "请只回复：合并后真实回复已收到"
+    const answer = operatorMessage.startsWith("我现在该做什么？")
+      ? "管家已读取当前授权范围的 Goal 证据。"
+      : operatorMessage === "请只回复：合并后真实回复已收到"
       ? "合并后真实回复已收到"
       : operatorMessage === "请分析：合并 PR #123 后会有什么风险"
         ? "主要风险是检查未完成或目标分支发生变化；这里只做分析，不会创建合并预览。"
@@ -1797,7 +1801,8 @@ async function main() {
     await page.getByRole("button", { name: "询问全局待办", exact: true }).click();
     await page.getByLabel("向 LoopX 发送消息").fill("我现在该做什么？只读回答，不要创建或修改任何状态。");
     await page.getByRole("button", { name: "发送", exact: true }).click();
-    await page.getByText(/^先处理「.+」：.+/u).waitFor({ state: "visible" });
+    await page.getByText("管家已读取当前授权范围的 Goal 证据。", { exact: true }).waitFor({ state: "visible" });
+    if (!api.turnRequests.some((turn) => turn.message.startsWith("我现在该做什么？"))) throw new Error("Manager question bypassed the global runtime");
     await page.getByText("查看完整对话", { exact: true }).waitFor({ state: "visible" });
     if (page.url() !== managerUrlBefore) throw new Error(`Manager send navigated away from the overview: ${managerUrlBefore} -> ${page.url()}`);
     const managerConversationType = await page.locator(".personal-manager-conversation-tray").evaluate((tray) => {

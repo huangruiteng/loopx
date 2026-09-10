@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..work_items.delivery_outcome import MATERIAL_DELIVERY_OUTCOMES
+from ..work_items.delivery_outcome import (
+    MATERIAL_DELIVERY_OUTCOMES,
+    PROGRESS_DELIVERY_OUTCOMES,
+)
+from ..work_items.progress_result import PROGRESS_OBSERVATION_SCHEMA_VERSION, ProgressResultClass
 from ..work_items.autonomous_replan_ack import autonomous_replan_ack_recorded
 
 GOAL_SEMANTIC_HISTORY_SCHEMA_VERSION = "goal_semantic_history_v0"
@@ -14,6 +18,7 @@ SEMANTIC_CONTEXT_RUN_FIELDS = (
     "latest_autonomous_replan_ack_run",
     "latest_replan_ack_feedback_run",
     "latest_material_milestone_run",
+    "latest_evidence_delivery_run",
 )
 SEMANTIC_CONTEXT_RUN_PAYLOAD_FIELDS = {
     "latest_agent_vision_run": (
@@ -47,6 +52,15 @@ SEMANTIC_CONTEXT_RUN_PAYLOAD_FIELDS = {
         "agent_id",
         "classification",
         "delivery_outcome",
+    ),
+    "latest_evidence_delivery_run": (
+        "generated_at",
+        "run_id",
+        "goal_id",
+        "agent_id",
+        "todo_id",
+        "delivery_outcome",
+        "progress_observation",
     ),
 }
 OWNER_CORRECTION_RUN_PAYLOAD_FIELDS = (
@@ -163,6 +177,24 @@ def goal_semantic_history_from_runs(
             in MATERIAL_DELIVERY_OUTCOMES
         ):
             context["latest_material_milestone_run"] = run
+
+        observation = run.get("progress_observation")
+        if (
+            "latest_evidence_delivery_run" not in context
+            and run.get("delivery_outcome") in PROGRESS_DELIVERY_OUTCOMES
+            and isinstance(observation, dict)
+            and observation.get("schema_version") == PROGRESS_OBSERVATION_SCHEMA_VERSION
+            and observation.get("result_class") == ProgressResultClass.ADVANCED.value
+            and run.get("todo_id")
+            and observation.get("work_item_id") == run.get("todo_id")
+            and isinstance(observation.get("evidence_ids"), list)
+            and observation["evidence_ids"]
+            and all(
+                isinstance(ref, str) and ref.strip()
+                for ref in observation["evidence_ids"]
+            )
+        ):
+            context["latest_evidence_delivery_run"] = run
 
     semantic_history: dict[str, Any] = {
         "schema_version": GOAL_SEMANTIC_HISTORY_SCHEMA_VERSION,

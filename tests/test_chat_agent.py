@@ -120,3 +120,31 @@ def test_codex_chat_pins_explicit_home_in_child_environment(monkeypatch, tmp_pat
         assert chat_agent.os.environ["CODEX_HOME"] == str(tmp_path / "ambient")
     finally:
         session.close()
+
+
+@pytest.mark.parametrize('resume_thread_id', [None, 'thread-loopx-chat'])
+def test_explicit_manager_model_and_effort_reach_start_resume_and_turn(monkeypatch, tmp_path, resume_thread_id):
+    process = _FakeAppServerProcess()
+    monkeypatch.setattr(chat_agent.shutil, 'which', lambda _: 'codex')
+    monkeypatch.setattr(chat_agent.subprocess, 'Popen', lambda *a, **k: process)
+    session = chat_agent.CodexChatAgentSession.start(
+        codex_bin='codex', work_dir=tmp_path, goal_id='loopx-manager', objective='global',
+        model='gpt-6-astra', reasoning_effort='medium', resume_thread_id=resume_thread_id,
+    )
+    try:
+        requests = [json.loads(line) for line in process.stdin.getvalue().splitlines()]
+        start = next(r for r in requests if r['method'] in {'thread/start','thread/resume'})
+        assert start['params']['model'] == 'gpt-6-astra'
+        assert start['params']['config']['model_reasoning_effort'] == 'medium'
+        turns = []
+        def request(method, params, **kwargs):
+            turns.append((method, params))
+            return {'turn': {'id': 'fixture-turn'}}
+        monkeypatch.setattr(session, '_request', request)
+        monkeypatch.setattr(session, '_next_event', lambda **kwargs: {'method':'turn/completed','params':{'turn':{'status':'completed'}}})
+        session.send('Which Goals?')
+        assert turns[0][0] == 'turn/start'
+        assert turns[0][1]['model'] == 'gpt-6-astra'
+        assert turns[0][1]['effort'] == 'medium'
+    finally:
+        session.close()

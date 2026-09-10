@@ -1025,20 +1025,7 @@ function personalManagerMatches(question: string, keywords: string[]) {
   return keywords.some((keyword) => question.includes(keyword));
 }
 
-function isManagerProjectionQuestion(question: string) {
-  return personalManagerMatches(question, [
-    "我现在该做什么",
-    "该做什么",
-    "下一步",
-    "哪些 Goal 在等我",
-    "哪些 Goal 正在等我",
-    "等我",
-    "优先处理",
-    "全局待办",
-    "Agent 在做什么",
-    "哪些 Goal 需要我",
-  ]);
-}
+
 
 function answerPersonalManagerQuestion(
   payload: StatusPayload,
@@ -1606,7 +1593,6 @@ function PersonalGoalHome({
     const sessionKey = `${targetContextId}:${selectedAgent.agentId}`;
     const contextKind = selectedGoal ? "goal" : "manager";
     const channelId = selectedGoal ? `goal.${selectedGoal.goalId}` : "manager";
-    const anchorGoalId = selectedGoal?.goalId ?? model.goals[0]?.goalId ?? "";
     let cancelled = false;
     let recoveryController: AbortController | null = null;
     let latestDiscoveredSessionId: string | null = null;
@@ -1650,8 +1636,8 @@ function PersonalGoalHome({
           });
           return;
         }
-        const sessionGoalId = latest?.goal_id ?? anchorGoalId;
-        if (!sessionGoalId) return;
+        const sessionGoalId = contextKind === "manager" ? "" : selectedGoal?.goalId ?? "";
+        if (contextKind === "goal" && !sessionGoalId) return;
         const created = await createChatSession(
           sessionGoalId,
           selectedAgent.agentId,
@@ -1970,7 +1956,7 @@ function PersonalGoalHome({
       ? route.goalId ?? "manager"
       : contextId;
     const targetGoal = targetContextId === "manager"
-      ? questionModel.goals[0] ?? model.goals[0] ?? null
+      ? null
       : model.goals.find((goal) => goal.goalId === targetContextId) ?? null;
     const selectedRoute = route?.agentId
       ? selectAvailableChatAgent(agentOptions, route.agentId, defaultAgentId)
@@ -1998,8 +1984,7 @@ function PersonalGoalHome({
     setManagerInput("");
     setSendingContextId(targetContextId);
 
-    const isProjectionQuickQuestion = targetContextId === "manager" && isManagerProjectionQuestion(question);
-    if (isProjectionQuickQuestion || selectedRoute.agentId === "status-only" || !targetGoal) {
+    if (selectedRoute.agentId === "status-only" || (!targetGoal && targetContextId !== "manager")) {
       const answer = answerPersonalManagerQuestion(selectedPayload, targetQuestionModel, question);
       const usesStatusOnlyRoute = selectedRoute.agentId === "status-only";
       appendManagerAssistantMessage(targetContextId, {
@@ -2027,7 +2012,7 @@ function PersonalGoalHome({
       if (!sessionId) {
         const mode = newSessionRequired.current.has(sessionKey) ? "new" : "resume_latest";
         const session = await createChatSession(
-          targetGoal.goalId,
+          targetContextId === "manager" ? "" : targetGoal!.goalId,
           selectedRoute.agentId,
           mode,
           targetContextId === "manager" ? "manager" : "goal",
@@ -2049,7 +2034,7 @@ function PersonalGoalHome({
         lines: [],
         pending: true,
         sourceLabel: targetContextId !== "manager"
-          ? `${selectedRoute.label} Agent · ${personalGoalTitle(targetGoal.goalId)}`
+          ? `${selectedRoute.label} Agent · ${personalGoalTitle(targetGoal!.goalId)}`
           : `${selectedRoute.label} 管家 · 跨 Goal`,
         text: "",
       });
@@ -2099,7 +2084,12 @@ function PersonalGoalHome({
         pending: false,
         text: visibleAgentMessage(response.message || streamedText.trim()) || `${selectedRoute.label} 已完成分析。`,
       });
-      if (response.proposals.length > 0) {
+      if (response.proposals.length > 0 && !targetGoal) {
+        updateManagerAssistantMessage(targetContextId, streamingMessageId, {
+          lines: ["请进入要修改的 Goal，预览并确认具体变更。"],
+        });
+      }
+      if (response.proposals.length > 0 && targetGoal) {
         const cards = response.proposals.map((proposal) => ({
           goalId: targetGoal.goalId,
           id: proposalId.current++,

@@ -251,6 +251,8 @@ class CodexChatAgentSession:
     work_dir: Path
     context_summary: str = ""
     execution_mode: bool = False
+    model: str | None = None
+    reasoning_effort: str | None = None
     response_timeout_sec: float = 30.0
     idle_timeout_sec: float = 180.0
     hard_timeout_sec: float = 900.0
@@ -281,6 +283,8 @@ class CodexChatAgentSession:
         resume_thread_id: str | None = None,
         execution_mode: bool = False,
         codex_home: Path | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
         _compatibility_catalog_path: Path | None = None,
     ) -> "CodexChatAgentSession":
         resolved = shutil.which(codex_bin)
@@ -342,6 +346,8 @@ class CodexChatAgentSession:
             idle_timeout_sec=idle_timeout_sec,
             hard_timeout_sec=hard_timeout_sec,
             execution_mode=execution_mode,
+            model=model,
+            reasoning_effort=reasoning_effort,
             model_catalog_compatibility_applied=_compatibility_catalog_path is not None,
         )
         try:
@@ -363,11 +369,17 @@ class CodexChatAgentSession:
                 {
                     **({"threadId": resume_thread_id, "excludeTurns": True} if resume_thread_id else {}),
                     "cwd": str(root),
+                    **({"model": model} if model else {}),
+                    **({"config": {"model_reasoning_effort": reasoning_effort}} if reasoning_effort else {}),
                     "sandbox": "workspace-write" if execution_mode else "read-only",
                     "approvalPolicy": "never",
                 },
                 request_id=2,
             )
+            if model and thread_result.get("model") not in {None, model}:
+                raise session._runtime_error("Codex did not apply the requested manager model.")
+            if reasoning_effort and thread_result.get("reasoningEffort") not in {None, reasoning_effort}:
+                raise session._runtime_error("Codex did not apply the requested manager reasoning effort.")
             session.thread_id = _extract_id(thread_result, "thread", "threadId")
             if not session.thread_id:
                 raise session._runtime_error("Codex app-server did not return a thread id.")
@@ -395,6 +407,8 @@ class CodexChatAgentSession:
                     resume_thread_id=resume_thread_id,
                     execution_mode=execution_mode,
                     codex_home=runtime_home,
+                    model=model,
+                    reasoning_effort=reasoning_effort,
                     _compatibility_catalog_path=catalog_path,
                 )
         except Exception:
@@ -609,6 +623,8 @@ class CodexChatAgentSession:
                 "threadId": self.thread_id,
                 "input": turn_input,
                 "cwd": str(self.work_dir),
+                **({"model": self.model} if self.model else {}),
+                **({"effort": self.reasoning_effort} if self.reasoning_effort else {}),
                 "approvalPolicy": "never",
             },
             request_id=request_id,
