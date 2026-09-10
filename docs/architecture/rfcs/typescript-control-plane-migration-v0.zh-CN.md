@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-09
+- Last revised：2026-09-10
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -14,6 +14,16 @@
 ---
 
 ## 当前实现检查点
+
+Native update 现通过 `todos/public_update.ts` 组合有界的非终态 planning intent
+（status、evidence/reason、resume/clear、successor links），使用权限检查与 CAS
+同一份完整 canonical head。独立 intent 命名空间不扩大原 text/note patch allowlist，
+不改变旧回执指纹。规划使用 v1 请求 envelope，让旧 runtime 拒绝整个请求，避免只
+提交其中的 text/note。删除 Python 的合成 Markdown 编解码与事务前目标查询；adapter
+只规范化 CLI 文本、传递意图并排空已提交的展示投影。
+Active lease 下的状态改变、Monitor 规划/观察、ownership/routing/capability 编辑及
+terminal transition 仍未开放。这是 T1 的一个阶段，不是完整 update 闭合，不改变
+provider 默认，也不授予 promotion 权限。
 
 Provider-first text/note 更新现可携带当前执行 key 和租约版本，复用 terminal fence，
 禁用自动获取及委托覆盖。修改和回执受同一个 provider revision 保护，租约不变。
@@ -34,7 +44,7 @@ T1 事务，也不是 T2 的 Monitor 与 successor 原子提交。
 周日期、时区偏移秒数及微秒排序，不改写历史。
 Lifecycle/ownership 准入现在先于 poll 诊断，未授权请求不能靠非法 metadata 回避
 权限拒绝。精确 replay、同秒无 ID 轮询、显式清空及 legacy boundedness 豁免保持。
-Plan 不授予权限、receipt 或 promotion；native update 仍只拥有 text/note。
+Plan 不授予权限、receipt 或 promotion；该切片不开放 native Monitor 规划更新。
 
 公开 Todo add/update 现通过 `todos/authoring_scope.ts` 统一解析角色、continuation
 绑定、gate 作用域与 deferred 条件要求。删除 Python `write_policy.py` 及 `todos.py`
@@ -44,9 +54,9 @@ successor 共用最终 scope 不变量，不执行草稿默认值推断。
 不得从 actor 或 `goal_bound` 推断全局 gate。省略 scope 的更新、历史已完成记录修复、
 lifecycle／lease 权限边界保持。
 
-这是 T1 的 authoring-scope 前置闭合，不是整个 update 事务完成。公开 metadata 扩展、
-validation／effect 闭合和 provider CAS/replay 汇合仍属于 T1/T2。Native update 继续
-保留 text/note allowlist；legacy codec／lock／writer 仍有实际 caller，本批不退役。
+这是 T1 的 authoring-scope 前置闭合，不是整个 update 事务完成。其余 metadata 扩展及
+validation／effect 闭合仍属于 T1/T2。Native update 保留原 text/note patch allowlist，
+另接有界 planning intent；legacy codec／lock／writer 仍有实际 caller，本批不退役。
 
 受检入的 generator 校验语言中立 contract，并生成深度不可变的 Python/TypeScript
 binding，覆盖原生 domain 与 projection section。两端 runtime 直接 import 生成物；
@@ -221,8 +231,8 @@ metadata。它直接组合已有 TS completion rule。被替代的 Python decisi
 
 这是一份纯 plan，不是 admission 或 provider commit。Python 仍保留 Markdown 定位／
 编码、字节级 no-op 检查、锁与外部 effect；本批不宣称迁完公共 role/binding admission
-或 event writer。Promoted update 仍只支持 text/note：不扩权、不 promotion goal、
-不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
+或 event writer。Native planning 现按 T1 所述组合此 owner；不支持的字段不扩权、
+不 promotion goal、不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
 事务在拒绝时原本就不会提交。
 
 每次 legacy line write 有一次 field-plan crossing：普通编辑替代原 metadata RPC；
@@ -290,7 +300,7 @@ commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立�
 - Fetch 目标 remote base，记录 SHA 和每项依赖的实际合并状态。核对代码而非 PR
   标题；依赖未合并时，使用明确选定的 stacked base，或暂停该依赖单元。
 - 从 `loopx/control_plane/` 下的 `coordination/todo_update.ts`、
-  `todos/field_update.ts`、`todos/provider_compatibility_edit.py`、
+  `todos/field_update.ts`、`todos/provider_update.py`、`todos/native_update_plan.ts`、
   `todos/line_update.py`、`scheduler/monitor_poll_writeback.py` 及公开 caller
   入手。符号移动后重新定位，不恢复已删除 wrapper。
 - 形成紧凑 caller 表：公开操作、promotion 前后来源、TS owner、外部 effect、
@@ -312,8 +322,8 @@ active/archive 事实，不使用受展示条数限制的 inventory。局部拓�
 这里删除的是编排而非持久化：lifecycle/lease 准入、completion effect、writer
 lock、capture、provider CAS/replay 仍由既有 owner 负责。内部 terminal/import
 field codec 仍有真实 caller，不引入公开 update 限制。Native metadata 扩展和
-T2 原子后续动作仍未闭合。修改 provider 事务前先核对独立 lease-edit PR #4152，
-不能从本检查点推断它已经合入。
+T2 原子后续动作尚未全部闭合。Lease-edit PR #4152 已合入；有界规划更新复用该
+fence 及既有 CAS/receipt 事务。下一步继续剩余字段/effect 清单，不另建 update engine。
 
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
