@@ -482,6 +482,38 @@ Active malformed lease expiry now fails through the existing typed lease rule.
 This independent consumer slice does not depend on open #4142, close T1/T2,
 migrate all T3 consumers or grant amendment commit/whole-Goal promotion authority.
 
+Standing-decision consumer closure: `todos/standing_decision.ts` owns reusable
+receipt eligibility and chronology, shared by status/quota reads and archive
+selection. Python decodes legacy metadata and submits one batch; its old receipt
+selector and the archive-local TS eligibility copy are removed. Canonical reads
+use the complete Todo snapshot, including retained archived decisions, before
+assigning display indexes. Later rejection/cancellation is ordered by decision
+time, not Todo ID; contradictory unresolved chronology yields a diagnostic and
+no active receipt. Explicit user-gate metadata replaces notification heuristics
+for this authority surface. These corrections are disclosed in the
+[decision-scope contract](../../reference/protocols/decision-scope-v0.md#decision-chronology-not-display-order).
+Legacy all-undated source-order compatibility remains; native display order is
+not authority. Scope coverage and open-gate routing are not migrated by this slice.
+This does not close T1/T2, all T3 consumers, or any durability/promotion hold.
+
+The list-filter consumer now uses `compact_evaluated_todo_group` instead of
+re-running resume evaluation on active-only rows. Initial parsing/canonical reads
+still evaluate against the full source through the TS owner; filtering requires
+matching evaluated conditions and cannot make archived prerequisites disappear.
+The shared synthetic fixture adds scoped-but-undecided gates and linked approvals;
+a separate long-history CLI regression covers thousands of archived records.
+
+Bootstrap and writer-outbox capture now include referenced archived resume targets
+and their transitive dependency records. `archive_capture.ts` selects actual records,
+rejects duplicate identities and contradictory role/class facts, and never imports
+saved readiness as evidence. Legacy archive moves now retain the source role without
+reserializing the original receipt. For older role-less rows, only an explicit
+agent-only task class permits agent reconstruction; user decision authority requires
+a recorded user role. Captured history does not become an active work/lease lane.
+Unidentifiable referenced history still needs explicit repair, not a post-promotion
+Markdown fallback. This closes the demonstrated dependency omission, not all history
+import, provider qualification, soak, or D3 cutover requirements.
+
 - Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
   amendment revision inputs. Reuse #4117's canonical source adapter and pass
   one snapshot through a decision; do not build another Todo inventory.

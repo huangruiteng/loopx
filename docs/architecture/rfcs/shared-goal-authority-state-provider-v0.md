@@ -2546,6 +2546,26 @@ digests include that revision, without treating it as a Goal intent revision or
 an amendment commit receipt. This is a bounded T3 consumer closure; the default
 provider, permanent projection, D1–D3 qualification and T1/T2 holds are unchanged.
 
+Standing decisions derive from that complete canonical Todo snapshot before
+display indexes or active-only filtering. One TS rule is shared with archive
+retention; an archived revocation remains decision history, while ambiguous
+contradictory chronology cannot select approval by storage order. This is a
+T3 read correction, not a new durable permission ledger or commit receipt.
+Providers retain their existing CAS/replay boundaries; legacy source-order
+compatibility, permanent Markdown projection and D1–D3 gates remain. Validation
+must cover real CLI reads, archive/replay on real providers, and data beyond
+display limits, not just a sorted in-memory list.
+
+The full-source/list-filter boundary preserves evaluated resume facts. Bootstrap
+and writer-outbox capture share the typed archived-dependency selector, bringing
+referenced completion records into canonical state so readers can recompute those
+facts independently. New legacy archive moves preserve role; old agent-only class
+records allow bounded role reconstruction, never inferred user approval authority.
+Duplicate/contradictory identities are rejected, and historical nodes/leases do not
+re-enter active lanes. The three-arm rehearsal checks this closure against real
+providers; derived readiness is not evidence. General historical import and the
+remaining D3 qualification/explicit cutover approval are still separate work.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.

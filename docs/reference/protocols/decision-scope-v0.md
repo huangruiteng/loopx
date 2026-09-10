@@ -154,7 +154,7 @@ Some owner decisions are operating policies rather than one-action gates.
 LoopX projects such a decision as `standing_decision_authority_v0` only when
 all of these conditions hold:
 
-- the source item is a completed `user_gate`, not a `user_action`;
+- the source item explicitly has `role=user`, `task_class=user_gate` and completed status;
 - it carries a normalized `decision_scope` and an explicit
   `decision_outcome=approve|reject|cancel`;
 - its granularity is `goal`, `project`, or `global`;
@@ -162,9 +162,42 @@ all of these conditions hold:
 - it has no `unblocks_todo_id`, which remains the one-action consumption path.
 
 The latest receipt for the exact scope and owner identity wins. `approve`
-activates it; a later `reject` or `cancel` revokes it. Archive compaction keeps
-standing receipts in the active User Todo section so status and quota do not
-lose authority when ordinary completed work is archived.
+activates it; a later `reject` or `cancel` revokes it. The shared typed owner
+`todos/standing_decision.ts` defines both read eligibility and archive retention.
+Compaction keeps all eligible standing receipts, including revocations. Reads
+also consider retained archived receipts with explicit user role: moving a
+decision to history must not reactivate an earlier approval. Reads do not move
+records back into the active display or repair storage.
+
+### Decision chronology, not display order
+
+`completed_at` identifies decision time; `updated_at` is a compatibility fallback
+only if completion time is absent. Comparison uses parsed instants with
+microsecond precision, not timestamp strings. Editing an old receipt's note must
+not outrank a later revocation when completion time is present.
+
+For an all-undated legacy group, the existing source-order convention remains.
+Captured legacy records may use unique persisted indexes from the same source
+section. Native records must never use Todo ID, array position, or synthesized
+display indexes as chronology. Positions across active and archive sections are
+not comparable. Missing, invalid, mixed or tied chronology with contradictory
+outcomes yields `conflicts` and `conflict_count` on `standing_decision_authority_v0`,
+with `reason_code=standing_decision_order_unresolved`, scope, owner and source Todo
+IDs. That group supplies no active receipt; no rejection is fabricated and no
+history is erased. Identical outcomes need no ordering decision. Agent filtering
+preserves applicable conflicts even when `entries` is empty.
+Required-scope consistency exposes the same conflict code and source IDs rather
+than reporting a missing gate. Its repair hint requires reconciling explicit
+owner evidence, not deleting required scopes or inventing approval to clear the
+diagnostic. This does not change open-gate or explicit terminal-outcome precedence.
+
+These are intentional corrections, not full parity: list-order approval
+resurrection is removed, ambiguous contradictory canonical history fails closed,
+and prose/action-kind heuristics no longer establish standing authority. Malformed
+scope or exact-link metadata is not silently upgraded into broad permission.
+Resolve conflict through explicit owner-confirmed decision history with valid
+chronology; never edit the display to override canonical authority. Other scopes,
+other owners and open-gate precedence retain their existing rules.
 
 A standing receipt does not make work implicitly privileged. The selected
 agent todo must still declare a covered `required_decision_scope`; quota
