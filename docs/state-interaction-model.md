@@ -770,8 +770,41 @@ isolation (`--no-global-sync`, `--suppress-external-sinks`) options, with their
 original values and presence. Both first-writeback and replay Markdown list
 the preserve/remove/add rules; do not add isolation flags absent from the
 original command or silently change the delivery target. These instructions
-preserve the original boundary when followed; they do not persist an authority
-ceiling that rejects callers who manually remove flags.
+preserve target, scope, and global-sync choices. Turn-bound external delivery
+also has a tool-enforced pause/resume handshake:
+
+- `--suppress-external-sinks` records a pause for the exact settlement operation.
+  A later send-capable refresh that omits this flag returns
+  `external_delivery_resume_required` before new business writes or sends.
+- To keep recovering locally, retain `--suppress-external-sinks`. To deliberately
+  resume external delivery, retry the same recovery command with
+  `--resume-external-sinks <resume_key>` using the key returned in
+  `external_delivery.resume_key`. The two flags are mutually exclusive. Preserve
+  the original identity and omit already executed mutation and spend arguments.
+- A matching acknowledgement lifts only that operation's current pause. A new
+  pause invalidates the old key. Repeating an accepted acknowledgement is safe;
+  it does not append another business run. Existing provider permissions,
+  configuration, and delivery de-duplication still apply. This is explicit intent,
+  not a new authorization grant or an exactly-once transport guarantee.
+- Receipt-only repair remains local and does not require or consume a resume
+  acknowledgement; the next send-capable replay still checks the pause. Direct
+  Python callers that request no delivery remain local without creating a pause.
+- Historical operations without pause evidence keep the previous per-call
+  behavior. Once a new explicit suppression is recorded, later recovery must
+  acknowledge it. Non-Turn refresh keeps the existing single-call suppression.
+  No permanent permission ceiling or new recovery mode is introduced.
+
+Pause/resume observations are scoped by settlement identity in the existing
+local rollout journal and processed by the TypeScript quota owner. A pause is
+persisted before a new business writeback; if later validation fails, the pause
+remains and can be explicitly resumed. Resume is persisted only after an
+accepted recovery, before CLI delivery. Journal failures prevent delivery;
+dry-run never persists either transition. Corrupt or unsupported relevant pause
+history cannot enable sends, but explicit suppression remains available for
+local recovery. Existing original-writeback, one-spend, and sink retry contracts
+remain unchanged. Global-sync flags, target migration, general hooks, and
+cross-service atomicity are outside this handshake. Older binaries do not enforce
+the handshake: rolling back loses this protection and must not erase its journal.
 
 Remove previously executed state-mutation options, even when their values are unchanged: `--next-action`,
 `--autonomous-replan-recorded`, `--repair-delta-kind`, `--usage-json`, and
