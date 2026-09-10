@@ -35,9 +35,12 @@ def installed(tmp_path, monkeypatch):
     )
 
     def git(repo, *args, check=True):
-        return subprocess.run(
-            ["git", "-C", str(repo), *args], check=check, capture_output=True, text=True
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args], check=False, capture_output=True, text=True
         )
+        if check:
+            assert result.returncode == 0, result.stdout + result.stderr
+        return result
 
     git(remote, "config", "user.name", "Synthetic User")
     git(remote, "config", "user.email", "user@example.invalid")
@@ -161,6 +164,41 @@ def test_selected_cli_does_not_import_full_cli(installed):
         [sys.executable, "-c", program], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("phase", ["preparing", "prepared"])
+def test_empty_transaction_is_noop_but_keeps_hook_guards(
+    installed, tmp_path, monkeypatch, phase
+):
+    repo, _remote, _git, _policy = installed
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("empty transaction evaluated the time policy")
+
+    monkeypatch.setattr(owner, "evaluate_policy", unexpected)
+    args = {
+        "repo_path": repo,
+        "runtime_root": tmp_path / "runtime",
+        "event": "reference-transaction",
+        "hook_args": [phase],
+        "hook_stdin": b"",
+    }
+    result = owner.run_git_hook_provider(**args)
+    assert result["ok"] and result["previous_hook_invoked"]
+    assert not result["guarded_change"] and not result["policy_evaluated"]
+    assert result["decision"] is None
+    assert (tmp_path / "phases").read_text().splitlines() == [phase]
+    assert (tmp_path / "payloads").read_bytes() == b""
+    # An empty batch is legal; a nonempty malformed row is not.
+    with pytest.raises(ValueError, match="at least one ref update"):
+        owner.run_git_hook_provider(**{**args, "hook_stdin": b" \n"})
+    previous = tmp_path / "previous" / "reference-transaction"
+    previous.write_text("#!/bin/sh\nexit 7\n")
+    result = owner.run_git_hook_provider(**args)
+    assert result["status"] == "previous_hook_failed" and result["exit_code"] == 7
+    managed = repo / ".git/loopx/repository-change-window/hooks/reference-transaction"
+    managed.write_text(managed.read_text() + "# modified\n")
+    assert owner.run_git_hook_provider(**args)["status"] == "provider_drift"
 
 
 def test_old_valid_hook_generation_requires_explicit_refresh(installed):

@@ -992,6 +992,11 @@ def _reference_transaction_introduces_commit(
         ReferenceTransactionPhase.PREPARED,
     }:
         return False
+    # Git can invoke admission hooks for a zero-update transaction (including
+    # Git 2.55's pull path). No refs means no new commit to guard; provider
+    # integrity and previous-hook delegation remain owned by the caller.
+    if not hook_stdin:
+        return False
     if not hook_stdin.strip():
         raise RepositoryChangeWindowError(
             f"reference-transaction {phase.value} phase requires at least one ref update"
