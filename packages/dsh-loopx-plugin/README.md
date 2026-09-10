@@ -53,7 +53,7 @@ Install the prebuilt release into the web profile:
 
 ```bash
 dsh plugin --profile web add \
-  "https://github.com/huangruiteng/loopx/releases/download/dsh-loopx-plugin-v0.1.1-beta.4/dsh-loopx-plugin-0.1.1-beta.4.tgz"
+  "https://github.com/huangruiteng/loopx/releases/download/dsh-loopx-plugin-v0.1.1-beta.5/dsh-loopx-plugin-0.1.1-beta.5.tgz"
 ```
 
 For a source checkout, the equivalent build-and-install path is:
@@ -124,9 +124,10 @@ Start/Pause. Focused Client tests cover Session-generation replacement and old
 request cancellation without duplicating that matrix in the packed smoke.
 The Docker smoke packs the current plugin and builds the current LoopX
 release-candidate wheel, then starts both in a clean Debian container with the
-supported DSH release. It proves PEP 668-compatible private installation, the
-managed launcher, startup readiness, and first-session `loopx` skill
-discovery. It requires Docker, `uv`, and network access for base images and
+DSH 0.1.5 release candidate. It proves PEP 668-compatible private installation,
+the managed launcher, startup readiness, installed `loopx` skill files, launch-
+token authentication, and an authenticated GoalBar read through DSH's shared
+API carrier. It requires Docker, `uv`, and network access for base images and
 never opens a browser or configures a model provider.
 
 ## Shadow observer (default off)

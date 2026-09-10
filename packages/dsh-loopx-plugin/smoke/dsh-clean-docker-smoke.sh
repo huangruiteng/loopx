@@ -20,6 +20,11 @@ container_smoke() {
   local dsh_log="$smoke_root/dsh.log"
   local pep668_log="$smoke_root/pep668.log"
 
+  print_dsh_log() {
+    sed -n "$LOG_PREVIEW_RANGE" "$dsh_log" \
+      | sed -E 's/([?&][A-Za-z0-9_-]+=)[A-Za-z0-9_-]+/\1<redacted>/g'
+  }
+
   if python3 -m pip install --dry-run --no-index loopx >"$pep668_log" 2>&1; then
     echo 'clean Docker smoke: PEP 668 guard was not active' >&2
     return 1
@@ -34,6 +39,10 @@ container_smoke() {
   mkdir -p "$workspace"
   timeout 180 dsh plugin --profile web add \
     /artifact/dsh-loopx-plugin.tgz --ignore-scripts
+  [[ "$(dsh --version)" == '0.1.5-rc.1' ]] || {
+    echo 'clean Docker smoke: unexpected DSH regression version' >&2
+    return 1
+  }
 
   dsh --profile web --port 0 --no-open >"$dsh_log" 2>&1 &
   DSH_SMOKE_PID=$!
@@ -49,14 +58,14 @@ container_smoke() {
     base_url="$(awk '/dsh web: / { value = $NF } END { print value }' "$dsh_log")"
     [[ -n "$base_url" ]] && break
     if ! kill -0 "$DSH_SMOKE_PID" 2>/dev/null; then
-      sed -n "$LOG_PREVIEW_RANGE" "$dsh_log"
+      print_dsh_log
       return 1
     fi
     sleep 1
   done
 
   if [[ -z "$base_url" ]]; then
-    sed -n "$LOG_PREVIEW_RANGE" "$dsh_log"
+    print_dsh_log
     echo 'clean Docker smoke: DSH did not publish a URL' >&2
     return 1
   fi
@@ -67,7 +76,7 @@ container_smoke() {
     "$runtime_dir/site-packages/loopx" \
     "$DSH_AGENTS_HOME/skills/loopx/SKILL.md"; do
     if [[ ! -e "$expected" ]]; then
-      sed -n "$LOG_PREVIEW_RANGE" "$dsh_log"
+      print_dsh_log
       find "$DSH_AGENTS_HOME" "$HOME/.agents" \
         -maxdepth 4 -type f -print 2>/dev/null | sort || true
       if [[ -f "$runtime_dir/loopx_cli.py" ]]; then
@@ -81,7 +90,7 @@ container_smoke() {
     fi
   done
   python3 "$runtime_dir/loopx_cli.py" --version | grep -E '^loopx '
-  node /smoke/dsh-clean-docker-probe.mjs "$base_url" "$workspace"
+  node "$SCRIPT_DIR/dsh-clean-docker-probe.mjs" "$base_url" "$workspace"
   printf '\nclean Docker smoke passed\n'
 }
 
@@ -99,7 +108,16 @@ for command in docker pnpm uv; do
   }
 done
 
-artifact_parent="${TMPDIR:-/tmp}"
+if [[ -n "${DSH_DOCKER_SMOKE_TMPDIR:-}" ]]; then
+  artifact_parent="$DSH_DOCKER_SMOKE_TMPDIR"
+elif [[ "$(uname -s)" == 'Darwin' ]]; then
+  # Docker Desktop and Colima share the user's home by default, but not every
+  # per-user macOS TMPDIR under /var/folders.
+  artifact_parent="$HOME/.cache/loopx-dsh-smoke"
+else
+  artifact_parent="${TMPDIR:-/tmp}"
+fi
+mkdir -p "$artifact_parent"
 artifact_dir="$(mktemp -d "$artifact_parent/dsh-loopx-clean-docker.XXXXXX")"
 image_id=''
 cleanup_artifact() {
@@ -129,6 +147,10 @@ wheel_count="$(find "$artifact_dir" -maxdepth 1 -name 'loopx-*.whl' -print | wc 
 }
 chmod 755 "$artifact_dir"
 chmod 644 "$artifact_dir/dsh-loopx-plugin.tgz" "$artifact_dir"/loopx-*.whl
+install -m 755 "$SCRIPT_DIR/dsh-clean-docker-smoke.sh" \
+  "$artifact_dir/dsh-clean-docker-smoke.sh"
+install -m 644 "$SCRIPT_DIR/dsh-clean-docker-probe.mjs" \
+  "$artifact_dir/dsh-clean-docker-probe.mjs"
 docker build \
   --file "$SCRIPT_DIR/Dockerfile.clean" \
   --iidfile "$artifact_dir/image-id" \
@@ -140,6 +162,5 @@ image_id="$(tr -d '[:space:]' <"$artifact_dir/image-id")"
 }
 docker run --rm \
   --mount "type=bind,src=$artifact_dir,dst=/artifact,readonly" \
-  --mount "type=bind,src=$SCRIPT_DIR,dst=/smoke,readonly" \
   "$image_id" \
-  bash /smoke/dsh-clean-docker-smoke.sh --container
+  bash /artifact/dsh-clean-docker-smoke.sh --container
