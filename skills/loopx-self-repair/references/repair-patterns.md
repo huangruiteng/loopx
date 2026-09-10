@@ -196,6 +196,15 @@ teaches a reusable control-plane lesson.
 | `dashboard_verified_mutation_projection_gap` | A preview-locked dashboard mutation reports a successful shared-state readback, but the initiating control still shows its old value; a second click then says the requested setting already exists. | Exact apply receipt, no-change canonical preview, shared-state readback verification, status projection generation/revision, rendered control state, and refresh outcome. | The data adapter verified the canonical write or no-change state, then the UI discarded that receipt and rebound immediately to a separate stale status projection. | Return the verified configuration through apply and no-change preview callbacks and use it as a drawer-scoped read model for the same Goal; refresh the normal projection independently, surface refresh failure without undoing the verified result, and clear the override when the drawer selection changes. Keep preview state visibly pending rather than presenting it as applied. Cover a deliberately stale status response in the browser smoke. |
 | `dashboard_open_token_picker_gap` | A bounded dashboard setting asks users to type protocol tokens such as `task_domain`; the placeholder looks like a current value, users cannot discover legal choices, or Goals without tagged work cannot enable a capability whose runtime treats the token filter as optional. | Current Goal Todo index, configured token allowlist, option-to-Todo match counts, canonical empty-filter semantics, preview payload, empty state, and packaged browser behavior. | An intentionally open optional backend vocabulary was exposed as a required product authority boundary; reading only a compact Goal-card Todo slice can also hide valid choices. | Keep the open typed token contract in the owning control-plane boundary, but present it as an optional per-Goal multi-select derived from the authoritative Todo index plus already configured values, using compact Goal Todo rows only as a compatibility fallback. Empty means no token filter while every independent admission boundary remains enforced; a non-empty selection remains a strict allowlist. Show match counts, preserve configured zero-match values, and cover unrestricted, restricted, invalid-token, preview, readback, empty-state, and packaged parity behavior. |
 
+### Runtime diagnostic drift in parity fixtures
+
+When a newer runtime fails parity only because a filesystem error includes an
+additional path, reproduce with that runtime before changing product behavior.
+Normalize only the exact known diagnostic and expected path in test support;
+retain full envelope, error-code, retry, and disk-effect comparisons. Add
+negative cases for wrong paths and different errors, then validate both the
+minimum supported runtime and the forward-compatibility runtime.
+
 ## Minimal Evidence Packet
 
 Desktop runtime preparation failures must remain inside the live startup
