@@ -465,6 +465,12 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
             metric=metric,
             base=base_value,
         )
+        # Thin installed prompts contain bilingual lifecycle instructions. A
+        # small character-level clarification can cost three bytes per CJK
+        # character. Keep character, line and absolute output ceilings intact;
+        # do not relax quota or other agent-facing surfaces with this allowance.
+        if row_id.startswith("surface/heartbeat_prompt_thin/") and metric == "utf8_bytes":
+            allowance = max(allowance, 192)
         if migration.portfolio_growth_migration:
             allowance = max(
                 allowance,

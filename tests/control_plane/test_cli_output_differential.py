@@ -58,6 +58,19 @@ def _receipt(*rows: dict[str, object]) -> dict[str, object]:
     }
 
 
+def test_thin_bilingual_byte_allowance_does_not_relax_character_or_quota_limits():
+    from loopx.control_plane.testing.cli_output_differential import _compare_row
+    base = _row(row_id="surface/heartbeat_prompt_thin/small/markdown", format="markdown",
+                chars=100, utf8_bytes=100, lines=1, compact_payload_chars=100)
+    candidate = {**base, "chars": 120, "utf8_bytes": 260}
+    assert not _compare_row(base, candidate)["failures"]
+    assert _compare_row(base, {**candidate, "chars": 133})["failures"]
+    assert _compare_row(base, {**candidate, "utf8_bytes": 293})["failures"]
+    base["row_id"] = "surface/quota_should_run/small/markdown"
+    candidate["row_id"] = base["row_id"]
+    assert _compare_row(base, candidate)["failures"]
+
+
 def test_sync_commit_uses_main_as_cli_output_base() -> None:
     ancestors = {
         ("origin/main", "HEAD"),

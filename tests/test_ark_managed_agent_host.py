@@ -72,11 +72,11 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "Goal runtime owns continuation and inner iterations" in normalized
     assert "goal loop, not automation" in normalized
     assert "invoke LoopX Turn" in normalized
-    assert "a segment is progress, not a new Goal boundary" in normalized
+    assert "Progress is not a new Goal boundary" in normalized
     assert (
         "Reuse this Goal until terminal"
     ) in normalized
-    assert "do not create a successor host Goal merely to continue" in normalized
+    assert "do not create a successor merely to continue" in normalized
     assert (
         "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
         "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."

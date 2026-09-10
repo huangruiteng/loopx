@@ -617,7 +617,7 @@ def _default_rule(
             "recommended_mode": "steering_audit_then_one_step",
             "spend_policy": (
                 "append exactly one heartbeat spend only after scope-bounded work "
-                "is validated and written back; one_step names the mode, not an operation limit"
+                "is validated and written back; one_step: mode, not an operation limit"
             ),
             "reason": (
                 "eligible Codex-ready goal requires the standard steering audit "
