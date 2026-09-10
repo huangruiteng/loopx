@@ -86,6 +86,14 @@ changes.
     A read-only shared-alignment projection, automated amendment policy,
     verifier boundary, and canonical Goal-amendment transaction have not
     shipped.
+- [Goal Direction Baseline v0](goal-direction-baseline-v0.md)
+  ([中文版](goal-direction-baseline-v0.zh-CN.md))
+  - **RFC status:** Draft, under maintainer review.
+  - **Delivery on `main`:** Proposal only.
+  - **Current boundary:** A provider-neutral, Agent-scoped read model and
+    synthetic drift fixture plan are proposed. No direction declaration,
+    reducer, runtime consumer, Vision writer, scheduler effect, or provider
+    integration has shipped.
 - [Goal Artifact Lifecycle Projection v0](goal-artifact-lifecycle-projection-v0.md)
   ([中文版](goal-artifact-lifecycle-projection-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
