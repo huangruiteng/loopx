@@ -379,6 +379,22 @@ the shared plan, not another per-agent checklist database.
 
 **T1 — close the public Todo update transaction.**
 
+Bounded prerequisite: `todos/public_update.ts` now composes authoring scope,
+external-wait topology and Monitor/field planning over one locked source.
+The public Python writer no longer sequences their leaf RPCs or derives the
+Monitor wait baseline. `update_source.py` supplies complete compact active/archive
+facts, never a display-limited inventory. A partial topology edit validates its
+retained wait; copy-only edits preserve the original fence without re-arming it.
+Explicitly clearing the condition still permits changing its former topology.
+Locked completion proof is checked before this pure plan, so a stale proof wins
+over unrelated invalid field diagnostics; no write occurs in either case.
+This deletes orchestration, not persistence: lifecycle/lease admission, completion
+effects, writer lock, capture and provider CAS/replay remain with their existing
+owners. The internal terminal/import field codec still has actual callers and
+does not acquire the public update policy. Native metadata expansion and T2
+atomic follow-up remain held. Reconcile the separate lease-edit PR #4152 before
+changing the provider transaction; do not infer it is merged from this checkpoint.
+
 - Reuse the current provider text/note transaction, lifecycle admission,
   field-plan and completion rules. Enumerate actual public metadata edits and
   explicit-clear behavior before implementation; this is not permission to

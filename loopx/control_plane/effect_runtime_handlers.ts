@@ -66,6 +66,7 @@ import {
 import { reduceTodoCompletionTransaction } from "./todos/completion_transaction.ts";
 import { transitionTodoNextAction } from "./todos/next_action.ts";
 import { planTodoFieldUpdate } from "./todos/field_update.ts";
+import { planPublicTodoUpdate } from "./todos/public_update.ts";
 import { planMonitorMetadata } from "./todos/monitor_metadata.ts";
 import { planTodoAuthoringScope } from "./todos/authoring_scope.ts";
 import {
@@ -371,6 +372,7 @@ export function createEffectRuntimeHandlers(
     ["todo.completion_state.require_metadata", requireTodoCompletionMetadataValue],
     ["todo.completion_state.continuation_for_write", selectTodoCompletionContinuation],
     ["todo.field_update.plan", planTodoFieldUpdate],
+    ["todo.public_update.plan", planPublicTodoUpdate],
     ["todo.monitor_metadata.plan", planMonitorMetadata],
     ["todo.authoring_scope.plan", planTodoAuthoringScope],
     [

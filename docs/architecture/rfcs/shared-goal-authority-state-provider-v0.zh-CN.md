@@ -2002,8 +2002,9 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
 
 #### 重构主线总览
 
-Monitor 状态 owner 现位于 TS，并由 legacy update field plan 组合调用；删除 Python
-poll/generation 与 metadata 规则，但持锁及结果提交仍由 legacy writer 负责。
+Monitor 状态 owner 现位于 TS，并与 authoring scope、external-wait 校验及字段更新
+组合为一次公开 update 规划。Python 输送锁内完整紧凑快照，不再逐个编排 leaf RPC；
+局部拓扑修改不能破坏保留的等待条件。准入、持锁及持久化仍由 legacy writer 负责。
 Typed plan 不是 authority receipt；Monitor/successor 原子性、原生 metadata update、
 provider 默认值及 D1–D3 仍是独立、未完成的门禁。永久 Markdown 投影仍属于终态架构。
 
