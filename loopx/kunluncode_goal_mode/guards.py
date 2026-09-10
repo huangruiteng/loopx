@@ -41,12 +41,14 @@ def guard_native_controller_writeback(control_plane: Any) -> None:
         task_lease_idempotency_key: str = "",
         task_lease_expected_version: int | None = None,
         no_follow_up: bool = False,
+        successor_todo_ids: list[str] | None = None,
     ) -> str:
         del (
             next_agent_todo,
             task_lease_idempotency_key,
             task_lease_expected_version,
             no_follow_up,
+            successor_todo_ids,
         )
         return _native_controller_rejection("complete_task")
 

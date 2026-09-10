@@ -77,6 +77,8 @@ def loop_md_content(goal_id, agent_id) -> str:
         "Run real acceptance checks before `complete_task`; supply truthful evidence\n"
         f"and the bound agent_id=\"{agent_id}\". Complete only finished Todos, not partial work.\n"
         "That MCP operation owns writeback/spend; do not repeat its accounting via CLI.\n"
+        "Link already planned follow-up via successor_todo_ids; next_agent_todo creates\n"
+        "new work, not a reference to an existing id. Do not duplicate the current plan.\n"
         "After a lost response, read back or retry the same completion intent; do not\n"
         "invent a new successor or settlement identity. Recheck `should_run()` afterward.\n"
         "Continue authorized work while the live contract requires it; notification\n"
@@ -244,7 +246,7 @@ def main():
     print("  wrote   : .claude/loop.md  (the per-tick protocol)")
     print()
     print("START WORKING — run native `/loop`  (Claude self-paces)  or  `/loop 10m`  (fixed cadence).")
-    print("Each /loop tick runs: should_run -> claim_task -> ONE bounded verified segment -> complete_task.")
+    print("Each /loop tick follows should_run's current contract; complete_task settles only verified, finished work.")
     print("Stop with Esc or `/loopx off`.")
 
 

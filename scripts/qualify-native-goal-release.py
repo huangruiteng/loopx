@@ -58,7 +58,7 @@ def setup(root: Path) -> tuple[Path, Path, Path]:
     (project / "ACTIVE_GOAL_STATE.md").write_text(
         '---\nstatus: active-read-only\nowner_mode: goal\n'
         'objective: "Deliver the finite local ledger specification."\n---\n\n'
-        '# Ledger\n\n## Objective\n\nDeliver TASK.md, validate and settle both Todos.\n\n'
+        '# Ledger\n\n## Objective\n\nDeliver and validate TASK.md.\n\n'
         '## Next Action\n\nImplement the reducer, then the CLI.\n\n'
         '## User Todo\n\n## Agent Todo\n\n'
         '- [ ] [P1] Implement and validate the TASK.md reducer.\n'
@@ -102,9 +102,11 @@ def cli(launcher: Path, *args: str) -> dict:
 
 
 def verify_settlement(runtime: Path, todos: list[dict]) -> int:
+    from loopx.control_plane.effect_program import SettlementStepKind
     from loopx.control_plane.quota.settlement import read_heartbeat_settlement
 
-    assert {t["todo_id"] for t in todos if t.get("status") == "done"} == TODOS
+    assert len(todos) == len(TODOS) and {t["todo_id"] for t in todos} == TODOS
+    assert all(t.get("status") == "done" for t in todos)
     rows = [json.loads(line) for line in
             (runtime / "goals" / GOAL / "runs/index.jsonl").read_text().splitlines()]
     spends = [r for r in rows if r.get("classification") == "quota_slot_spent"]
@@ -118,7 +120,13 @@ def verify_settlement(runtime: Path, todos: list[dict]) -> int:
             replan_obligation_id=row.get("replan_obligation_id"),
             turn_instance_id=row["turn_instance_id"],
         )
-        assert readback and readback.writeback and readback.spend
+        assert readback is not None, "missing_settlement_readback"
+        assert readback.settlement.failure is None, "incomplete_settlement"
+        assert {r.step_kind for r in readback.settlement.receipts} >= {
+            SettlementStepKind.VALIDATION, SettlementStepKind.DURABLE_WRITEBACK,
+            SettlementStepKind.QUOTA_SPEND,
+        }, "missing_settlement_receipts"
+        assert readback.writeback_run is not None and readback.spend_run is not None
     return len(spends)
 
 

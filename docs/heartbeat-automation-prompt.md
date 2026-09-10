@@ -107,6 +107,12 @@ transaction: callers must not perform a second accounting sequence through CLI.
 Partial work is not Todo completion. Native `/loop` remains Claude's scheduler;
 only the current Goal's wakeup may be cancelled after terminal no-follow-up.
 These changes apply when `loop.md` is regenerated, not by editing active user files.
+The MCP tool now exposes `successor_todo_ids`, reusing CLI/TS completion semantics
+to link known follow-up without creating another Todo. Ordinary acceptance and
+Turn settlement are distinct: the adapter validates/completes work before its
+writeback/spend; only terminal closeout requires the full receipt chain. This
+removes the former delivery-class circular prerequisite, not validation or
+accounting. See the [release test guide](development/testing-and-quality.md#claude-code-and-release-coverage--claude-code-与发布覆盖).
 
 For Codex App, the generated quota command carries the compact explicit runtime
 profile `--runtime-profile codex_app_heartbeat` (generated commands use the

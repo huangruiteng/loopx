@@ -93,10 +93,14 @@ def test_settlement_oracle_rejects_missing_identity_and_duplicate_spend(tmp_path
 @pytest.mark.parametrize("missing", ["writeback", "spend", "receipt"])
 def test_settlement_oracle_requires_durable_receipts_not_only_index_rows(tmp_path, monkeypatch, missing):
     from loopx.control_plane.quota import settlement
+    from loopx.control_plane.effect_program import SettlementFailure, SettlementFailureKind, SettlementResult
 
     receipt = None if missing == "receipt" else SimpleNamespace(
-        writeback=None if missing == "writeback" else {"ok": True},
-        spend=None if missing == "spend" else {"ok": True},
+        # Real failed result objects are truthy, unlike None. The oracle must
+        # inspect the typed failure, not accept object existence as evidence.
+        settlement=SettlementResult(value=None, failure=SettlementFailure(
+            kind=SettlementFailureKind.RECEIPT_MISSING, reason=missing, step_kind=None,
+        )),
     )
     monkeypatch.setattr(settlement, "read_heartbeat_settlement", lambda *_, **__: receipt)
     rows = [{"classification": "quota_slot_spent", "todo_id": todo, "turn_instance_id": todo,
@@ -106,3 +110,10 @@ def test_settlement_oracle_requires_durable_receipts_not_only_index_rows(tmp_pat
     index.write_text("\n".join(json.dumps(row) for row in rows))
     with pytest.raises(AssertionError):
         runner.verify_settlement(tmp_path, [{"todo_id": t, "status": "done"} for t in runner.TODOS])
+
+
+def test_settlement_oracle_rejects_duplicate_open_successor(tmp_path):
+    todos = [{"todo_id": t, "status": "done"} for t in runner.TODOS]
+    todos.append({"todo_id": "todo_duplicate", "status": "open"})
+    with pytest.raises(AssertionError):
+        runner.verify_settlement(tmp_path, todos)

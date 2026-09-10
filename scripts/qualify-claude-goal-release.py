@@ -80,6 +80,34 @@ def host_environment(root: Path, launcher: Path) -> dict[str, str]:
     return env
 
 
+def verify_mcp_completions(events: list[dict]) -> None:
+    """A tool invocation is not evidence that the MCP transaction succeeded."""
+    pending: dict[str, str] = {}
+    completed: set[str] = set()
+    for event in events:
+        for block in (event.get("message") or {}).get("content", []):
+            if block.get("type") == "tool_use" and block.get("name") == "mcp__loopx__complete_task":
+                pending[block["id"]] = (block.get("input") or {}).get("todo_id")
+            if block.get("type") != "tool_result" or block.get("tool_use_id") not in pending:
+                continue
+            content = block.get("content")
+            if isinstance(content, list):
+                content = "".join(item.get("text", "") for item in content if item.get("type") == "text")
+            try:
+                payload = json.loads(content)
+                if isinstance(payload, dict) and isinstance(payload.get("result"), str):
+                    payload = json.loads(payload["result"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(payload, dict) or payload.get("ok") is not True:
+                continue
+            todo_id = pending[block["tool_use_id"]]
+            assert payload.get("todo_id") == todo_id and payload.get("completed") is True
+            assert (payload.get("settlement") or {}).get("ok") is True
+            completed.add(todo_id)
+    assert completed == shared.TODOS, "mcp_delivery_transactions_not_completed"
+
+
 def qualify(root: Path, claude: str, timeout: int) -> dict:
     from loopx.claude_goal_mode.scripts.goalmode_cmd import write_loop_md
 
@@ -111,6 +139,7 @@ def qualify(root: Path, claude: str, timeout: int) -> dict:
              for block in (event.get("message") or {}).get("content", [])
              if block.get("type") == "tool_use"]
     assert "mcp__loopx__should_run" in calls and "mcp__loopx__complete_task" in calls, "mcp_not_exercised"
+    verify_mcp_completions(events)
     return {"status": "passed", "model_executed": True, "model": DOUBAO_SEED_EVOLVING_MODEL,
             "host": "claude_code", "scheduler_qualification": "not_run_headless",
             "mcp_tool_calls": sum(str(c).startswith("mcp__loopx__") for c in calls),
