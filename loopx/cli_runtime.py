@@ -57,7 +57,7 @@ _REGISTRY_OPTIONAL_COMMANDS = frozenset(
 )
 
 _STATUS_COMMANDS = frozenset({"check", "status", "diagnose", "review-packet"})
-_SELECTED_COMMANDS = _STATUS_COMMANDS | {"todo", "quota"}
+_SELECTED_COMMANDS = _STATUS_COMMANDS | {"todo", "quota", "change-window"}
 
 
 class LoopXArgumentParser(argparse.ArgumentParser):
@@ -212,6 +212,10 @@ def _build_selected_parser(command: str) -> LoopXArgumentParser:
 		from .cli_commands.quota_registration import register_quota_command
 
 		register_quota_command(subparsers)
+	elif command == "change-window":
+		from .capabilities.repository_change_window.cli import register_repository_change_window_commands
+
+		register_repository_change_window_commands(subparsers, add_subcommand_format)
 	else:  # pragma: no cover - caller guards the private interface
 		raise ValueError(f"unsupported selected command: {command}")
 	return parser
@@ -225,6 +229,13 @@ def dispatch_common_command(
 ) -> int | None:
 	"""Dispatch one selected command through the shared canonical wiring."""
 
+	if args.command == "change-window":
+		from .capabilities.repository_change_window.cli import handle_repository_change_window_command
+
+		return handle_repository_change_window_command(
+			args, registry_path=registry_path, runtime_root_arg=args.runtime_root,
+			output_format=output_format, print_payload=print_payload,
+		)
 	if args.command in _STATUS_COMMANDS:
 		from .cli_commands.status import (
 			handle_check_command,

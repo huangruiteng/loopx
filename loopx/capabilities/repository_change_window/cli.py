@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -379,9 +380,12 @@ def handle_repository_change_window_command(
             "status": "error",
             "error": str(exc),
         }
-    print_payload(
-        payload, output_format(args), render_repository_change_window_markdown
-    )
+    if not (args.change_window_command == "hook"
+            and os.environ.get("LOOPX_GIT_HOOK_QUIET_SUCCESS") == "1"
+            and payload.get("ok")):
+        print_payload(
+            payload, output_format(args), render_repository_change_window_markdown
+        )
     if args.change_window_command == "hook" and isinstance(
         payload.get("exit_code"), int
     ):
