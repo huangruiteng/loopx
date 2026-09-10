@@ -22,12 +22,14 @@ from .control_plane.work_items.delivery_outcome import (
 from .control_plane.agents.workspace_guard import (
     capture_delivery_workspace,
 )
+from .control_plane.quota.refresh_external_delivery import (
+    finish_external_delivery_refresh, refresh_recovery_payload,
+)
 from .control_plane.quota.settlement import (
     SettlementIdentity,
     read_heartbeat_settlement,
     render_first_refresh_checkpoint_hint,
     render_refresh_recovery_markdown,
-    settlement_result_payload,
 )
 from .control_plane.quota.settlement_workspace_causality import resolve_settlement_workspace_requirement
 from .control_plane.quota.codex_session_usage import (
@@ -792,6 +794,7 @@ def refresh_state_run(
     usage_codex_session: Path | None = None,
     dry_run: bool,
     sync_global: bool = True,
+    external_delivery: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     safe_goal_id = validate_goal_id_path_segment(goal_id)
     validate_public_safe_text("classification", classification)
@@ -874,6 +877,7 @@ def refresh_state_run(
                 turn_instance_id=turn_instance_id,
                 replan_obligation_id=normalized_replan_obligation_id,
                 refresh_retry={
+                    "external_delivery": external_delivery,
                     "vision": agent_vision_packet,
                     "unchanged_reason": vision_unchanged_reason,
                     "merge_patch": bool(merge_agent_vision_patch),
@@ -905,33 +909,13 @@ def refresh_state_run(
             refresh_recovery = settlement_readback.refresh_recovery
             if not refresh_recovery:
                 raise RuntimeError("settlement readback omitted refresh recovery admission")
-            decision = refresh_recovery["decision"]
             prior_writeback_run = settlement_readback.writeback_run
-            if decision in {"replay", "repair_receipt", "reject"}:
-                payload = {
-                    **(prior_writeback_run or {}),
-                    "ok": decision != "reject",
-                    "dry_run": dry_run,
-                    "appended": False,
-                    "idempotent_replay": decision == "replay",
-                    "receipt_repair_required": decision == "repair_receipt" and not dry_run,
-                    "registry": str(registry_path),
-                    "runtime_root": str(runtime_root),
-                    "goal_id": safe_goal_id,
-                    "refresh_recovery": refresh_recovery,
-                    "settlement_identity": settlement_identity.as_dict(),
-                    "settlement_result": settlement_result_payload(
-                        settlement_readback.delivery
-                    ),
-                }
-                if decision == "reject":
-                    payload["error"] = (
-                        f"{refresh_recovery['reason']}: committed writeback is unchanged; "
-                        "do not begin a new Turn or repeat spend to repair it. "
-                        "Retry the original delivery fields with only the missing vision decision; "
-                        "if a newer vision already exists, inspect current quota instead."
-                    )
-                return payload
+            recovery_payload = refresh_recovery_payload(
+                settlement_readback, registry_path=registry_path, runtime_root=runtime_root,
+                goal_id=safe_goal_id, dry_run=dry_run,
+            )
+            if recovery_payload is not None:
+                return recovery_payload
             settlement_workspace_requirement = resolve_settlement_workspace_requirement(
                 delivery_workspace_causality, settlement_binding_kind=settlement_identity.binding_kind.value
             )
@@ -1471,4 +1455,6 @@ def refresh_state_run(
                 "raw_artifacts_copied": False,
                 "recommended_action_copied": False,
             }
-        return payload
+        return finish_external_delivery_refresh(
+            payload, settlement_readback, runtime_root, dry_run=dry_run,
+        )

@@ -101,8 +101,8 @@ def _configure_sinks(registry, runtime):
 
 @pytest.mark.parametrize("hint_source", ["first", "replay"])
 @pytest.mark.parametrize("baseline", [False, True])
-@pytest.mark.parametrize("isolated", [True, False], ids=["isolated", "send-control"])
-def test_stdout_driven_recovery_preserves_boundaries(
+@pytest.mark.parametrize("isolated", [True, False], ids=["isolated", "confirmed-resume"])
+def test_stdout_recovery_requires_confirmation_to_resume_external_delivery(
     tmp_path, monkeypatch, capsys, hint_source, baseline, isolated,
 ):
     project, runtime, registry = _write_fixture(tmp_path)
@@ -113,10 +113,10 @@ def test_stdout_driven_recovery_preserves_boundaries(
     monkeypatch.chdir(project)
     prefix = ["--registry", str(registry), "--runtime-root", str(runtime)]
 
-    def run(argv, output="json"):
+    def run(argv, output="json", expected_rc=0):
         rc = cli.main(["--format", output, *argv])
         stdout = capsys.readouterr().out
-        assert rc == 0, stdout
+        assert rc == expected_rc, stdout
         return json.loads(stdout) if output == "json" else stdout
 
     if baseline:
@@ -193,10 +193,22 @@ def test_stdout_driven_recovery_preserves_boundaries(
     assert graph_calls == [] and channel_calls == []
     assert _snapshot(shared) == shared_before
     if not isolated:
-        # Independent control: explicitly widen this call after following the hint.
+        # Omission must not open either sink or mutate the original writeback.
         recovery = [arg for arg in recovery if arg not in {
             "--no-global-sync", "--suppress-external-sinks",
         }]
+        before = index.read_bytes()
+        denied = run(recovery, expected_rc=1)
+        assert denied["error_code"] == "external_delivery_resume_required"
+        assert index.read_bytes() == before
+        assert _snapshot(shared) == shared_before
+        assert graph_calls == [] and channel_calls == []
+        assert state_path.read_bytes() == original_state
+        key = denied["external_delivery"]["resume_key"]
+        assert f"--resume-external-sinks {key}" in denied["error"]
+        wrong = run([*recovery, "--resume-external-sinks", "0" * 64], expected_rc=1)
+        assert wrong["error_code"] == "external_delivery_resume_mismatch"
+        recovery += ["--resume-external-sinks", key]
     repaired = run(recovery)
     assert repaired["appended"] is True
     assert repaired["vision_checkpoint"]["satisfied"] is True
@@ -220,6 +232,16 @@ def test_stdout_driven_recovery_preserves_boundaries(
     else:
         assert _snapshot(shared) != shared_before
         assert graph_calls and channel_calls, (graph_calls, channel_calls)
+        # Suppression during a pure replay must persist without appending a run.
+        paused = run([*recovery[:-2], "--suppress-external-sinks"])
+        assert paused["idempotent_replay"] is True
+        assert index.read_bytes() == after
+        stale = run(recovery, expected_rc=1)
+        assert stale["error_code"] == "external_delivery_resume_mismatch"
+        assert stale["external_delivery"]["resume_key"] != key
+        resumed = run([*recovery[:-1], stale["external_delivery"]["resume_key"]])
+        assert resumed["external_sink_delivery_authorized"] is True
+        assert index.read_bytes() == after
 
 
 @pytest.mark.parametrize("hint_source", ["first", "replay"])
@@ -230,6 +252,7 @@ def test_hint_preserves_lane_and_repeated_options_without_adding_isolation(first
         "--registry", "registry with spaces.json", "refresh-state", "--goal-id", GOAL_ID,
         "--agent-id", AGENT_ID, "--progress-scope", "agent_lane", "--agent-lane", "validation",
         "--available-capability", "filesystem_read", "--available-capability", "shell",
+        "--resume-external-sinks", "a" * 64,
     ]
     vision = ["--vision-last-patch", "Validation evidence checked."]
     assert _recovery_argv(render_state_refresh_markdown(first_refresh), original, vision) == original + vision

@@ -5,7 +5,10 @@ import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { jsonObject, requireJsonObject } from "../runtime_decode.ts";
 import { normalizeDeliveryWorkspaceSnapshot } from "../agents/delivery_workspace.ts";
 
+import { decodeExternalDelivery, type ExternalDeliveryRequest } from "./refresh_external_delivery.ts";
+
 export interface RefreshRetryRequest {
+  external_delivery?: ExternalDeliveryRequest | null;
   vision: JsonObject | null;
   unchanged_reason: string | null;
   merge_patch: boolean;
@@ -34,6 +37,7 @@ export function decodeRefreshRetry(value: unknown): RefreshRetryRequest | null {
     return value;
   };
   return {
+    external_delivery: decodeExternalDelivery(input.external_delivery),
     vision: input.vision === null ? null : requireJsonObject(input.vision, "refresh_retry.vision"),
     unchanged_reason: nullableString("unchanged_reason"),
     merge_patch: input.merge_patch === true,

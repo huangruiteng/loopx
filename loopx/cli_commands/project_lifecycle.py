@@ -432,13 +432,19 @@ def register_project_lifecycle_commands(
         action="store_true",
         help="Do not refresh the shared global registry after writing the state run.",
     )
-    refresh_state_parser.add_argument(
+    delivery_flags = refresh_state_parser.add_mutually_exclusive_group()
+    delivery_flags.add_argument(
         "--suppress-external-sinks",
         action="store_true",
         help=(
             "Keep enabled local projections active but suppress configured external "
-            "sink writes for this refresh. Pending sink digests remain retryable."
+            "sink writes for this refresh. Turn-bound retries require an explicit resume acknowledgement."
         ),
+    )
+
+    delivery_flags.add_argument(
+        "--resume-external-sinks", metavar="RESUME_KEY",
+        help="Acknowledge the current pause returned by a Turn-bound refresh recovery. Does not grant provider permissions.",
     )
 
     read_only_map_parser = subparsers.add_parser(
@@ -632,7 +638,11 @@ def handle_project_lifecycle_command(
             print_payload(payload, fmt, render_state_refresh_markdown)
             return 1
         try:
+            if getattr(args, "resume_external_sinks", None) and not getattr(args, "turn_instance_id", None):
+                raise ValueError("--resume-external-sinks requires the original --turn-instance-id")
             payload = refresh_state_run(
+                external_delivery={"suppress": bool(args.suppress_external_sinks),
+                                   "resume_key": getattr(args, "resume_external_sinks", None)},
                 registry_path=registry_path,
                 runtime_root_override=args.runtime_root,
                 goal_id=args.goal_id,
@@ -702,8 +712,9 @@ def handle_project_lifecycle_command(
         )
         if projected_capabilities:
             payload["available_capabilities"] = projected_capabilities
-        payload["external_sink_delivery_authorized"] = not bool(
-            args.suppress_external_sinks
+        payload.setdefault(
+            "external_sink_delivery_authorized",
+            not bool(args.suppress_external_sinks or getattr(args, "turn_instance_id", None)),
         )
         material_refresh_ready = bool(
             payload.get("ok")
@@ -848,9 +859,7 @@ def handle_project_lifecycle_command(
                 agent_id=args.agent_id,
                 project=Path(args.project).expanduser() if args.project else None,
                 state_file=Path(args.state_file).expanduser() if args.state_file else None,
-                external_sink_delivery_authorized=not bool(
-                    args.suppress_external_sinks
-                ),
+                external_sink_delivery_authorized=payload["external_sink_delivery_authorized"] is True,
                 syncer=lark_explore_graph_syncer(
                     args.runtime_root,
                     registry_path=registry_path,
@@ -875,9 +884,7 @@ def handle_project_lifecycle_command(
                     runtime_root_override=args.runtime_root,
                     goal_id=args.goal_id,
                     agent_id=args.agent_id,
-                    external_sink_delivery_authorized=not bool(
-                        args.suppress_external_sinks
-                    ),
+                    external_sink_delivery_authorized=payload["external_sink_delivery_authorized"] is True,
                 )
             except Exception:
                 gate_sync = goal_channel_gate_sync_failure(

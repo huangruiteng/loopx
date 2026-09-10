@@ -44,7 +44,8 @@ def _checkpoint_instructions(checkpoint: Mapping[str, Any]) -> str:
         "- Preserve: Keep original values and presence for target, scope, and isolation "
         "options: `--registry`, `--runtime-root`, `--project`, `--state-file`, "
         "`--progress-scope`, `--agent-lane`, `--available-capability`, "
-        "`--no-global-sync`, `--suppress-external-sinks`; identity and delivery options: "
+        "`--no-global-sync`, `--suppress-external-sinks`, `--resume-external-sinks`; "
+        "identity and delivery options: "
         "`--goal-id`, `--agent-id`, `--todo-id`, `--replan-obligation-id`, "
         "`--turn-instance-id`, `--completion-todo-id`, `--completion-turn-key`, "
         "`--classification`, `--recommended-action`, `--delivery-batch-scale`, "
@@ -150,6 +151,7 @@ class QuotaSettlementReadback:
     monitor_phase: ReceiptBoundMonitorPhase | None
     replay_phase: ReceiptBoundReplayPhase | None
     refresh_recovery: dict[str, Any] | None = None
+    external_delivery: dict[str, Any] | None = None
 
 
 __all__ = [
@@ -304,6 +306,7 @@ def read_heartbeat_settlement(
         ),
         writeback_run=_optional_readback_record(payload.get("writeback_run")),
         refresh_recovery=_optional_readback_record(payload.get("refresh_recovery")),
+        external_delivery=_optional_readback_record(payload.get("external_delivery")),
         spend_run=_optional_readback_record(payload.get("spend_run")),
         heartbeat_receipt=_optional_readback_record(payload.get("heartbeat_receipt")),
         writeback_event=_optional_readback_record(payload.get("writeback_event")),
