@@ -7,6 +7,7 @@ decision-scope relations without importing the quota runtime.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from .contract import (
@@ -279,6 +280,7 @@ def build_required_decision_scope_consistency(
                 for item in user_actions
                 if decision_scope_covers(item.get("decision_scope"), required_scope)
             ]
+            related_ids: Sequence[str | None]
             if conflicts:
                 reason_code = "standing_decision_order_unresolved"
                 related_ids = sorted({todo_id for item in conflicts

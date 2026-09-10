@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -271,8 +272,12 @@ def test_production_scale_rebuild_retains_order_and_requires_private_declaration
     assert result["todo_count"] == 464
     rendered = state.read_text()
     for role, count in (("agent", 256), ("user", 208)):
-        positions = [rendered.index(f"todo_id=todo_fixture_{role}_{index:03d} ") for index in range(count)]
-        assert positions == sorted(positions)
+        # Linked approvals also contain unblocks_todo_id=<id>; only record
+        # identities establish display order, not earlier dependency references.
+        rendered_ids = re.findall(
+            rf"(?m)^\s*<!-- loopx:todo todo_id=(todo_fixture_{role}_\d+) ", rendered,
+        )
+        assert rendered_ids == [f"todo_fixture_{role}_{index:03d}" for index in range(count)]
     assert _read(runtime) == before
     code, replay = _run(registry, before["provider_revision"], "--execute")
     assert code == 0 and replay["changed"] is False
