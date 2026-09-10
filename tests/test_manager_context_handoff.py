@@ -283,3 +283,57 @@ def test_provider_wrapper_is_not_forwarded_and_large_registry_is_supported(fixtu
         pending(root, "research", "worker")["items"][0]["message"]
         == "Original user intent"
     )
+
+
+def test_lark_bridge_registers_provenance_before_queueing(fixture):
+    from types import SimpleNamespace
+    from loopx.extensions.lark.goal_topic_runtime import answer_lark_goal_topic
+
+    root, registry, session, _turn, request = fixture
+    session.update(channel_id="manager.external.group", agent_id="codex", status="open")
+    _write(
+        _root(root) / "policy.json",
+        {
+            "schema_version": POLICY_SCHEMA,
+            "sources": {
+                session["channel_id"]: {"sender_ids": ["owner"], "targets": [request]}
+            },
+        },
+    )
+
+    class Controller:
+        store = SimpleNamespace(root=root / "chat", load_session=lambda _sid: session)
+
+        def enqueue_turn(self, **kw):
+            assert kw["origin"] == "lark"
+            assert authority(root, registry, session, kw)["targets"] == [request]
+            deliver(root, registry, session=session, turn=kw, request=request)
+            return {"turn_id": "fixture-turn"}, True
+
+        def wait_for_turn(self, **_kw):
+            return {"status": "completed", "response": {"message": "Delivered"}}
+
+    route = {
+        "goal_id": "manager",
+        "session_id": session["session_id"],
+        "conversation_kind": "manager",
+        "executor_endpoint_id": "codex",
+        "manager_channel_id": session["channel_id"],
+        "ingress_mode": "session_queue",
+        "source_sender_id": "owner",
+        "message_id": "provider-original",
+        "topic_root_message_id": "topic",
+    }
+    assert (
+        answer_lark_goal_topic(
+            route=route,
+            text="Original intent",
+            work_dir=root,
+            objective="manager",
+            runtime_controller=Controller(),
+        )
+        == "Delivered"
+    )
+    assert (
+        pending(root, "research", "worker")["items"][0]["message"] == "Original intent"
+    )

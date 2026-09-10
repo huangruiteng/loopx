@@ -1032,6 +1032,10 @@ class ChatRuntimeController:
                 if not is_manager_channel(session.get("channel_id")):
                     raise ValueError("context handoff is available only to the manager")
                 try:
+                    if session.get("channel_id") != "manager" and (
+                        self.manager_scope_resolver is None or not self.manager_scope_resolver(session)
+                    ):
+                        raise ValueError("manager connection authority is no longer available")
                     receipt = deliver(self.store.root.parent, self.registry_path,
                                       session=session, turn=self.store.load_turn(session_id, turn_id) or {},
                                       request=response["context_handoff"])
