@@ -273,7 +273,7 @@ def test_quota_settlement_readback_returns_the_complete_typed_chain(
     assert readback.spend_run is not None
 
 
-def test_advancement_completion_requires_the_complete_settlement_chain(
+def test_only_terminal_closeout_requires_the_complete_settlement_chain(
     tmp_path: Path,
 ) -> None:
     runtime_root = tmp_path / "runtime"
@@ -289,18 +289,12 @@ def test_advancement_completion_requires_the_complete_settlement_chain(
     )
     assert incomplete is not None
     error = _completion_settlement_error(
-        {
-            "role": "agent",
-            "task_class": "advancement_task",
-            "action_kind": "implement",
-            "text": "Ship the repository change.",
-        },
         incomplete,
-        no_follow_up=False,
+        no_follow_up=True,
     )
     assert error is not None
     assert error.startswith(
-        "turn-scoped advancement completion requires matching writeback and "
+        "terminal no-follow-up closeout requires matching writeback and "
         "quota spend receipts:"
     )
 
@@ -318,26 +312,13 @@ def test_advancement_completion_requires_the_complete_settlement_chain(
     )
     assert (
         _completion_settlement_error(
-            {
-                "role": "agent",
-                "task_class": "advancement_task",
-                "action_kind": "implement",
-                "text": "Ship the repository change.",
-            },
             settled,
-            no_follow_up=False,
+            no_follow_up=True,
         )
         is None
     )
     assert (
         _completion_settlement_error(
-            {
-                "role": "agent",
-                "task_class": "advancement_task",
-                "action_kind": "research",
-                "continuation_policy": "same_agent_non_delivery",
-                "text": "Analyze the evidence.",
-            },
             incomplete,
             no_follow_up=False,
         )

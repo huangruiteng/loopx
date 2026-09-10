@@ -804,6 +804,14 @@ Before calling a changed host surface release-qualified, distinguish:
 环境缺失可 skip 且退出成功，但最终版本没有完整的真实 host 结果时，不得写成
 “产品级发布验证通过”。单次成功也不是模型可靠性或长程调度 soak 的证明。
 
+The real delivery regression covers ordinary Todo acceptance before internal
+writeback/spend, existing-successor linking, and receipt-backed terminal closure.
+Its task specification describes only the deliverable; the external oracle also
+checks LoopX accounting. Passing non-delivery fixtures does not qualify delivery.
+The same delivery class must pass failed-validation rejection and committed
+response-loss recovery without duplicate spending or premature terminal closure.
+Do not relabel delivery work or weaken the independent oracle to pass a host test.
+
 ## Exact Release Commit Gate / 精确发布 Commit 门
 
 The final release gate does not rerun tests through a second orchestration

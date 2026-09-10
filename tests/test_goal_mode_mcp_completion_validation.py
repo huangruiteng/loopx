@@ -5,6 +5,8 @@ import shlex
 import sys
 from pathlib import Path
 
+import pytest
+
 from loopx.goal_mode_mcp import GoalModeMCPConfig, GoalModeMCPControlPlane
 from loopx.status import parse_active_state_todos
 from loopx.todos import add_goal_todo
@@ -68,7 +70,6 @@ def _add_todo(registry: Path, *, validation_command: str | None = None) -> str:
         text="Deliver one bounded change.",
         task_class="advancement_task",
         claimed_by=AGENT,
-        continuation_policy="same_agent_non_delivery",
         validation_command=validation_command,
     )
     return str(todo["todo_id"])
@@ -125,10 +126,13 @@ def test_mcp_complete_task_fails_closed_on_failing_declared_validation(
     assert _agent_todo_status(state, todo_id) != "done"
 
 
-def test_mcp_advancement_completion_returns_typed_settlement_blocker(
-    tmp_path: Path,
+@pytest.mark.parametrize("no_follow_up", [False, True])
+def test_mcp_advancement_validation_precedes_controller_owned_settlement(
+    tmp_path: Path, no_follow_up: bool,
 ) -> None:
     registry, state = _write_fixture(tmp_path)
+    validation = state.parent / "check.py"
+    validation.write_text("from pathlib import Path\nPath('validation-ran').write_text('passed')\n")
     todo = add_goal_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
@@ -136,22 +140,22 @@ def test_mcp_advancement_completion_returns_typed_settlement_blocker(
         text="Deliver one repository advancement.",
         task_class="advancement_task",
         claimed_by=AGENT,
+        validation_command=shlex.join([sys.executable, str(validation)]),
     )
     todo_id = str(todo["todo_id"])
 
     payload = _first_json_blob(
-        _control(registry).complete_task(todo_id, AGENT, "claimed done")
+        _control(registry).complete_task(todo_id, AGENT, "validated delivery", no_follow_up=no_follow_up)
     )
 
-    assert payload["ok"] is False
-    assert payload["completed"] is False
-    assert payload["changed"] is False
-    assert payload["settlement_blocked_completion"] is True
+    assert payload["ok"] is True, payload
+    assert payload["completed"] is True
     assert payload["settlement_identity"]["todo_id"] == todo_id
-    assert payload["settlement_result"]["failure"]["kind"] == (
-        "writeback_missing"
-    )
-    assert _agent_todo_status(state, todo_id) != "done"
+    assert (state.parent / "validation-ran").read_text() == "passed"
+    assert payload["settlement"]["durable_writeback"]["ok"] is True
+    assert payload["settlement"]["quota_spend"]["appended"] is True
+    assert ("terminal_closeout" in payload["settlement"]) is no_follow_up
+    assert _agent_todo_status(state, todo_id) == "done"
 
 def test_expected_lease_version_annotation_rejects_bool_at_the_boundary() -> None:
     """FastMCP validates tool arguments with pydantic, and lax pydantic

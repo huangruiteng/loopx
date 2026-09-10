@@ -17,9 +17,8 @@ with a trailing newline. Empty input succeeds with `{}`. Invalid JSON or domain
 input must leave stdout empty, write a concise diagnostic to stderr, and exit
 nonzero. Add reducer and subprocess tests, including long replay, and a README.
 
-Complete both dependent LoopX Todos and settle validated work using the current
-contract. This is a finite local task: no upload, publication, deployment,
+This is a finite local task: no upload, publication, deployment,
 package installation, or external side effect is part of acceptance. Keep all
 changes in the disposable project/worktrees. Do not change this specification
 or LoopX source to make the task pass. Do not substitute fabricated evidence
-or a non-delivery declaration for actual code delivery.
+for actual code delivery.
