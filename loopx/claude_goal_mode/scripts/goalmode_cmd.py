@@ -36,6 +36,9 @@ DEFAULT_AGENT = "cc"
 # registry-driven context, shared with the hooks/MCP
 sys.path.insert(0, str(HERE.parent / "hooks"))
 from goal_state import goal_context, find_registry, loop_md_path  # noqa: E402
+from loopx.control_plane.heartbeat.rules import (  # noqa: E402
+    SCOPE_BOUNDED_WORK_RULE,
+)
 
 
 def gh_prefix():
@@ -66,14 +69,22 @@ def loop_md_content(goal_id, agent_id) -> str:
         f"<!-- loopx:armed {armed} -->\n"
         f"loopx tick — advance goal `{goal_id}` (agent `{agent_id}`). Use the wired loopx MCP\n"
         f"tools; do NOT run `loopx --help` or guess ids.\n\n"
-        f"1. Call `should_run()`. If should_run=false, say why in ONE line and STOP this\n"
-        f"   iteration (do nothing else) — loopx has paused, gated, or converged.\n"
-        f"2. If should_run=true: `claim_task` the next open todo, do ONE bounded segment,\n"
-        f"   then VERIFY it with a real check (build/test) — never claim success from\n"
-        f"   reasoning — and `complete_task(..., agent_id=\"{agent_id}\", evidence=\"<ran + result>\")`.\n"
-        f"3. Stay within the goal's scope; do not start initiatives outside the todos.\n"
-        f"   Irreversible actions (push/delete) only to finish work already authorized.\n"
-        f"4. Re-check `should_run()`; stop when should_run=false or no open todos remain.\n"
+        "Read complete successful `should_run()` JSON each work iteration. Follow its\n"
+        "current `interaction_contract`: selection/re-entry before admitted work,\n"
+        "then validation and settlement. Never infer completion from an empty Todo list.\n"
+        f"{SCOPE_BOUNDED_WORK_RULE}\n"
+        "Honor claim/lease and user/repository authority; claim only when required.\n"
+        "Run real acceptance checks before `complete_task`; supply truthful evidence\n"
+        f"and the bound agent_id=\"{agent_id}\". Complete only finished Todos, not partial work.\n"
+        "That MCP operation owns writeback/spend; do not repeat its accounting via CLI.\n"
+        "After a lost response, read back or retry the same completion intent; do not\n"
+        "invent a new successor or settlement identity. Recheck `should_run()` afterward.\n"
+        "Continue authorized work while the live contract requires it; notification\n"
+        "silence is not execution silence. Waiting is not completion: follow current\n"
+        "host scheduling guidance without repeated unchanged polling. Terminal\n"
+        "no-follow-up ends this Goal's work; cancel only its own recurring wakeup.\n"
+        "Repair entrypoint errors within authority; an unavailable/incomplete contract\n"
+        "permits neither work nor spending and must not be reported as completion.\n"
     )
 
 
@@ -230,7 +241,7 @@ def main():
     print(f"  todo_id : {tid}")
     print(f"  scope   : {proj}")
     print(f"  task    : {task}")
-    print(f"  wrote   : .claude/loop.md  (the per-tick protocol)")
+    print("  wrote   : .claude/loop.md  (the per-tick protocol)")
     print()
     print("START WORKING — run native `/loop`  (Claude self-paces)  or  `/loop 10m`  (fixed cadence).")
     print("Each /loop tick runs: should_run -> claim_task -> ONE bounded verified segment -> complete_task.")
