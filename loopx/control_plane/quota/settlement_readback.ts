@@ -29,7 +29,12 @@ import {
   receiptBoundReplayPhase,
 } from "./settlement_phase.ts";
 import { isTurnScopedSettlementOutcome } from "../work_items/delivery_outcome.ts";
-import { decodeRefreshRetry, refreshRecovery, type RefreshRetryRequest } from "./refresh_recovery.ts";
+import {
+  decodeRefreshRetry,
+  isMaterialMonitorPoll,
+  refreshRecovery,
+  type RefreshRetryRequest,
+} from "./refresh_recovery.ts";
 
 export const QUOTA_SETTLEMENT_READBACK_REQUEST_SCHEMA =
   "loopx_quota_settlement_readback_request_v0";
@@ -427,7 +432,7 @@ function inferPersistedIdentity(
     if (
       classification === "quota_slot_voided" ||
       classification === "quota_scheduler_ack" ||
-      (classification === "quota_monitor_poll" && run.material_change !== true) ||
+      (classification === "quota_monitor_poll" && !isMaterialMonitorPoll(run)) ||
       (classification === "state_refreshed" &&
         !isTurnScopedSettlementOutcome(
           run.delivery_outcome,
@@ -786,7 +791,7 @@ export async function readQuotaSettlement(value: unknown): Promise<JsonObject> {
     completion_event: completionEvent,
     monitor_phase: receiptBoundMonitorPhase({
       poll_present: monitorPoll !== null,
-      material_change: monitorPoll?.material_change === true,
+      material_change: isMaterialMonitorPoll(monitorPoll),
       durable_writeback_present: writeback.failure === null,
       quota_spend_present: spend.failure === null,
     }),

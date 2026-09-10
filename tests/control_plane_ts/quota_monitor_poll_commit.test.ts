@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -120,8 +121,25 @@ test("event phase matches the legacy quiet monitor event", async () => {
   const event = result.record?.monitor_event as Record<string, unknown>;
   assert.equal(event.reason_summary, "Wait for a public transition.");
   assert.equal(event.material_change, false);
+  assert.equal(result.record?.material_change, false);
   assert.equal(result.record?.health_check, "monitor-only poll unchanged; no quota spend; no material transition");
   assert.equal(result.record?.delivery_outcome, "surface_only");
+});
+
+test("event phase preserves material change on the complete run record", async () => {
+  const result = await evaluateQuotaMonitorPollCommit(request({
+    observation: observation({
+      todo_id: "todo_public_monitor",
+      result_hash: "approved-42",
+      material_change: true,
+    }),
+  }));
+
+  assert.equal(result.record?.material_change, true);
+  assert.equal(
+    (result.record?.monitor_event as Record<string, unknown>).material_change,
+    true,
+  );
 });
 
 test("admission revalidates due, external, and exact blocked-wait modes", async () => {
@@ -494,12 +512,12 @@ test("Todo commit fences the full material successor receipt", async (t) => {
       result_hash: "approved-42",
       material_change: true,
       next_agent_todo: "Advance the approved release.",
-      next_action_kind: "advance_release",
-      next_task_repository: "git:github.com/owner/repo",
+      next_action_kind: "ADVANCE_RELEASE",
+      next_task_repository: "https://github.com/owner/repo.git",
       next_required_capabilities: ["filesystem-write"],
-      next_continuation_policy: "same_agent_non_delivery",
+      next_continuation_policy: "SAME_AGENT_NON_DELIVERY",
       next_target_key: "public-release:42:advance",
-      next_claimed_by: "codex-main-control",
+      next_claimed_by: "Codex Main Control",
     }),
   });
   await evaluateQuotaMonitorPollCommit(params);
@@ -579,6 +597,51 @@ test("Todo commit fences the full material successor receipt", async (t) => {
     (written.payload.todo_writeback as Record<string, unknown>).successor_receipts,
     [successor],
   );
+  assert.equal((await evaluateQuotaMonitorPollCommit({...params, phase: "commit", provider_receipt: providerReceipt})).status, "replayed");
+});
+
+test("successor normalization preserves the legacy pending observation fingerprint", async (t) => {
+  const runtimeRoot = await tempRuntime(t);
+  const params = request({phase: "preflight", runtime_root: runtimeRoot, execute: true,
+    effect_id: "quota-monitor-poll:legacy-route-fingerprint",
+    observation: observation({todo_id: "todo_public_monitor", result_hash: "revision-a",
+      material_change: true, next_agent_todo: "Validate.", next_action_kind: "VALIDATE",
+      next_task_repository: "git@github.com:example/repo.git", next_required_capabilities: ["file--write"],
+      next_continuation_policy: "SAME_AGENT_NON_DELIVERY", next_claimed_by: "Agent A"})});
+  // The shipped v0 identity recipe hashes wire observation, not its normalized route.
+  const legacyEnvelope = Object.fromEntries(["schema_version", "effect_id", "runtime_root", "goal_id",
+    "source", "turn_instance_id", "observation"].map(key => [key, params[key]]));
+  const oracle = spawnSync("python", ["-c", "import hashlib,json,sys; print('sha256:'+hashlib.sha256(json.dumps(json.load(sys.stdin),ensure_ascii=False,sort_keys=True).encode()).hexdigest())"],
+    {input: JSON.stringify(legacyEnvelope), encoding: "utf8"});
+  assert.equal(oracle.status, 0, oracle.stderr);
+  const first = await evaluateQuotaMonitorPollCommit(params);
+  assert.equal(first.status, "provider_required");
+  assert.equal(first.request_digest, oracle.stdout.trim());
+  assert.equal(first.provider_plan?.next_action_kind, "VALIDATE");
+  const retry = await evaluateQuotaMonitorPollCommit({...params, generated_at: "2026-09-10T12:00:00Z"});
+  assert.equal(retry.status, "provider_required");
+  assert.equal(retry.request_digest, first.request_digest);
+  assert.deepEqual(retry.provider_plan, first.provider_plan);
+  const conflict = await evaluateQuotaMonitorPollCommit({...params,
+    observation: {...params.observation as object, next_task_repository: "git:github.com/example/other"}});
+  assert.equal(conflict.status, "conflict");
+  assert.equal(conflict.written, false);
+});
+
+test("invalid successor routes fail before a pending provider effect is saved", async (t) => {
+  const runtimeRoot = await tempRuntime(t);
+  const effectId = "quota-monitor-poll:invalid-route";
+  for (const invalid of [{next_required_capabilities: ["file_write", "bad/token"]},
+    {next_claimed_by: "bad/actor"}, {next_continuation_policy: "primary_review"},
+    {next_task_repository: "https://example.invalid/project/../other"}]) {
+    await assert.rejects(() => evaluateQuotaMonitorPollCommit(request({phase: "preflight",
+      runtime_root: runtimeRoot, execute: true, effect_id: effectId,
+      observation: observation({todo_id: "todo_public_monitor", result_hash: "revision-a",
+        material_change: true, next_agent_todo: "Validate.", next_action_kind: "validate", ...invalid})})));
+  }
+  const path = join(runtimeRoot, "goals", goalId, "runs", ".transactions", "quota-monitor-poll",
+    `${createHash("sha256").update(effectId).digest("hex").slice(0, 24)}.json`);
+  await assert.rejects(() => readFile(path), {code: "ENOENT"});
 });
 
 test("Todo commit rejects injected defaults in the material successor route", async (t) => {

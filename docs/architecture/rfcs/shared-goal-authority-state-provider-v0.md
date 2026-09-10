@@ -2524,6 +2524,12 @@ commands fail closed; they do not fall back to the old writer.
 
 #### Refactoring roadmap overview
 
+Todo authoring scope and terminal successors now share the TS resolved-binding
+invariant. Only explicit `global_gate` can widen blocking to all registered
+agents; `goal_bound` grants no global-gate semantics. This consolidates T1
+admission rules without expanding native update fields, changing provider/profile
+defaults, or releasing D1–D3 projection, real-backend, soak or promotion holds.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.
@@ -2554,6 +2560,11 @@ missing promoted display without writing it. This does not close all quota
 source paths, authorize monitor writeback, or change provider/promotion holds.
 
 **D1 — qualify permanent projection delivery; may overlap T1/T2.**
+
+The T2 monitor successor route owner is now shared across preflight, the legacy
+effect adapter and receipt checks. Its result proves only normalized intent,
+not actor authority, provider commit or atomic monitor-plus-successor durability.
+Keep the monitor writer fence and promotion hold until that transaction closes.
 
 - Start from `loopx/control_plane/todos/provider_projection.py`, the existing
   Todo-section renderer and canonical journal/outbox. #4097 already recovers

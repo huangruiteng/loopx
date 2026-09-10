@@ -3,6 +3,81 @@
     "schema_version": "benchmark_behavior_finding_v0",
     "benchmark_id": "deepswe",
     "study_id": "behavior-sharing-v2",
+    "finding_id": "feature-coverage",
+    "title": "公开需求覆盖的过程信号",
+    "claim_scope": "exploratory_behavior",
+    "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
+    "selection": {
+      "basis": "all_available",
+      "rule": "冻结的同一113题；每题先计算feature pass rate再等权平均，分别在无hint和两组都有SWE hint的条件内比较。",
+      "unit": "case",
+      "population_count": 113,
+      "sample_count": 113,
+      "cohort_digest": "09246c70b1f6683f227fa5bd1a073841db71e6a5113b728b637b979a95238020"
+    },
+    "observation": "两种hint条件下，LoopX的按题等权feature coverage都高约2个百分点。",
+    "interpretation": "这说明在本轮样本中，LoopX更充分地实现了公开feature要求；精选轨迹把这一结果侧信号连接到需求保留、反例处置、修改与复验。它不等于最终成功率。",
+    "measures": [
+      {
+        "name": "无hint条件 · 按题等权feature pass rate",
+        "unit": "fraction",
+        "aggregation": "mean",
+        "groups": [
+          {
+            "label": "Goal · 无 hint",
+            "value": 0.8776336464594047,
+            "n": 113
+          },
+          {
+            "label": "LoopX · 无 hint",
+            "value": 0.8979059935527088,
+            "n": 113
+          }
+        ],
+        "caveat": "每题先计算feature通过比例再等权平均；这是公开需求覆盖信号，不是最终成功率或总体效果估计。"
+      },
+      {
+        "name": "两组都有SWE hint · 按题等权feature pass rate",
+        "unit": "fraction",
+        "aggregation": "mean",
+        "groups": [
+          {
+            "label": "Goal + SWE hint",
+            "value": 0.8793401671444505,
+            "n": 113
+          },
+          {
+            "label": "LoopX + SWE hint",
+            "value": 0.9006128844323404,
+            "n": 113
+          }
+        ],
+        "caveat": "每题先计算feature通过比例再等权平均；这是公开需求覆盖信号，不是最终成功率或总体效果估计。"
+      }
+    ],
+    "evidence": [
+      {
+        "kind": "cohort_summary",
+        "digest": "09246c70b1f6683f227fa5bd1a073841db71e6a5113b728b637b979a95238020",
+        "label": "冻结113题四臂feature覆盖摘要",
+        "relation": "supports",
+        "summary": "同一冻结113题、同一hint条件内比较Goal与LoopX；只投影按题等权feature coverage，不投影总体成功率。"
+      }
+    ],
+    "limitations": [
+      "案例为事后定向选取、独立解题样本，用于提出机制假设。",
+      "长时分层使用四臂平均实测wall-clock，避免由单一Base或Test决定入组；但仍是实验后观测量，不等同任务内在复杂度。",
+      "耗时包括成功与失败run，并受负载、采样及协议演进影响；不能直接推导同质量加速或token节约。"
+    ],
+    "counterevidence": "部分配对case的feature coverage仍会下降；feature覆盖更高也不能证明验证oracle正确、preservation无回归或任务最终完成。",
+    "next_probe": "固定runtime、hint、任务与预算，检验需求保留、反例处置、技术修复与回归；再扩展模型和任务跨度。",
+    "privacy_classification": "public_safe",
+    "producer_redaction_attested": true
+  },
+  {
+    "schema_version": "benchmark_behavior_finding_v0",
+    "benchmark_id": "deepswe",
+    "study_id": "behavior-sharing-v2",
     "finding_id": "hint-action",
     "title": "Hint如何进入验证行为",
     "claim_scope": "exploratory_behavior",
@@ -128,15 +203,15 @@
     "claim_scope": "exploratory_behavior",
     "settings": "DeepSeek V4 Flash · max reasoning + Codex / DeepSWE / ARK API",
     "selection": {
-      "basis": "post_hoc",
+      "basis": "all_available",
       "rule": "固定每臂113个run；仅披露耗时。机制案例定向选择case75、59。",
       "unit": "case",
       "population_count": 113,
       "sample_count": 113,
-      "cohort_digest": "559579110dab5dfae25548d4ce56f7cc23c2796ec919fe0bf49577305ae68bb1"
+      "cohort_digest": "09246c70b1f6683f227fa5bd1a073841db71e6a5113b728b637b979a95238020"
     },
     "observation": "两种hint条件下，LoopX累计原始wall-clock均较少。",
-    "interpretation": "Case75和59显示更有针对性的验证可能减少绕路；全样本时间本身不能证明因果效率。",
+    "interpretation": "Case75和59显示，省时并非来自跳过验证，而可能来自更早使用能区分实现假设的外部契约probe，从而减少错误表示上的扩展、自产测试与返工；全样本时间本身不能证明因果效率。",
     "measures": [
       {
         "name": "无hint条件",

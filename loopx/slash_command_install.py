@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from .agy_goal_mode import agy_home as _agy_home
+from .kiro_cli_goal_mode import (
+    SKILLS_ROOT_LABEL as _KIRO_SKILLS_ROOT_LABEL,
+    kiro_home as _kiro_home,
+)
 from .opencode_goal_mode import plugin_source, runtime_source
 from .pi_goal_mode import extension_source as pi_extension_source
 from .pi_goal_mode import runtime_source as pi_runtime_source
@@ -166,7 +170,7 @@ def _command_prompt_specs(*, cli_bin: str, include_legacy_aliases: bool) -> list
             "argument_hint": "[--fine-grained] [--capability-route issue-fix] [task text]",
             "instructions": [
                 "Visible command arguments: `$ARGUMENTS`.",
-                "Identify the exact current host surface (codex-app, codex-app-ssh, codex-ide-plugin, codex-cli-tui, opencode, opencode2, traex-cli, pi, gemini-cli, cursor-agent, zcode, agy, deepseek-harness, or ark-managed-agent).",
+                "Identify the exact current host surface (codex-app, codex-app-ssh, codex-ide-plugin, codex-cli-tui, opencode, opencode2, traex-cli, pi, gemini-cli, cursor-agent, zcode, agy, kiro-cli, deepseek-harness, or ark-managed-agent).",
                 _loopx_start_goal_arguments_instruction(
                     cli_bin=cli_bin,
                     host_surface=None,
@@ -574,6 +578,8 @@ def _normalize_surfaces(surfaces: list[str] | None) -> list[str]:
             candidates = ["zcode"]
         elif surface in {"agy", "antigravity", "antigravity-cli"}:
             candidates = ["agy"]
+        elif surface in {"kiro", "kiro-cli", "kirocli"}:
+            candidates = ["kiro-cli"]
         else:
             candidates = [surface]
         for candidate in candidates:
@@ -761,6 +767,7 @@ def install_slash_commands(
     zcode_home: str | None = None,
     zcode_agents_home: str | None = None,
     agy_home: str | None = None,
+    kiro_home: str | None = None,
     pi_project: str | None = None,
 ) -> dict[str, Any]:
     specs = _command_prompt_specs(cli_bin=cli_bin, include_legacy_aliases=include_legacy_aliases)
@@ -772,6 +779,7 @@ def install_slash_commands(
     cursor_root = _cursor_home(cursor_home)
     zcode_root = _zcode_home(zcode_home or zcode_agents_home)
     agy_root = _agy_home(agy_home)
+    kiro_root = _kiro_home(kiro_home)
     pi_project_root = Path(pi_project or ".").expanduser().resolve()
     installed: list[dict[str, Any]] = []
 
@@ -997,6 +1005,27 @@ def install_slash_commands(
             execute=execute,
             uninstall=uninstall,
             flat=True,
+        )
+
+    if "kiro-cli" in effective_surfaces:
+        # Kiro CLI discovers global skills from <KIRO_HOME>/skills/<name>/SKILL.md
+        # (workspace skills live in .kiro/skills), and exposes every discovered
+        # skill as a `/<skill-name>` slash command. KIRO_HOME is the host's own
+        # override for that global root, so the resolver honours it: installing
+        # into ~/.kiro while the active profile lives elsewhere would report a
+        # success the running host never discovers. A same-named user prompt in
+        # .kiro/prompts wins over a skill by Kiro's own resolution order; the
+        # installer never touches the prompt directories.
+        _install_skill_facade(
+            specs=specs,
+            installed=installed,
+            skills_dir=kiro_root / "skills",
+            surface="kiro-cli",
+            host_surfaces=["kiro-cli"],
+            mechanism="kiro_cli_skills",
+            execute=execute,
+            uninstall=uninstall,
+            invoke_prefix="/",
         )
 
     if "cursor" in effective_surfaces:
@@ -1338,6 +1367,7 @@ def install_slash_commands(
             "cursor_mcp_path": str(cursor_root / "mcp.json") if "cursor" in effective_surfaces else None,
             "zcode_skill_dir": str(zcode_root / "skills") if "zcode" in effective_surfaces else None,
             "agy_skill_dir": str(agy_root / "skills") if "agy" in effective_surfaces else None,
+            "kiro_cli_skill_dir": str(kiro_root / "skills") if "kiro-cli" in effective_surfaces else None,
             "opencode_skill_dir": str(opencode_root / "skills") if "opencode" in effective_surfaces else None,
             "opencode_command_dir": str(opencode_root / "commands") if "opencode" in effective_surfaces else None,
             "opencode_plugin_path": str(opencode_root / "plugins" / "loopx-goal.js") if "opencode" in effective_surfaces and with_goal_bridge else None,
@@ -1360,6 +1390,7 @@ def install_slash_commands(
             "Cursor discovers skills from CURSOR_HOME/skills and has no user-defined slash commands, so the cursor surface installs the skill facade and registers the LoopX MCP server in CURSOR_HOME/mcp.json; run `cursor-agent mcp enable loopx` once to approve it.",
             "ZCode discovers user skills from ZCODE_HOME/skills (default ~/.zcode/skills) and exposes each skill for invocation via `$skill-name` or Settings -> Skills.",
             "Antigravity CLI discovers global skills from the fixed ~/.gemini/antigravity-cli/skills root using the documented flat layout (one <name>.md per skill); the agy surface is opt-in and offers no home override because the host documents none.",
+            f"Kiro CLI discovers global skills from {_KIRO_SKILLS_ROOT_LABEL}/<name>/SKILL.md (default ~/.kiro/skills) and exposes each as a `/<skill-name>` slash command; the kiro-cli surface is opt-in and resolves KIRO_HOME so install and uninstall target the profile the running host reads. Kiro resolves .kiro/prompts and KIRO_HOME/prompts before skills, so a same-named user prompt shadows the managed skill.",
             "OpenCode discovers global skills from OPENCODE_CONFIG_DIR/skills in addition to the static command facade; a command is typed by the user, a skill can be reached by the model itself.",
             "The default all surface installs only OpenCode's static command facade; the executable goal bridge requires --with-goal-bridge.",
             "The Pi surface is opt-in and installs the self-contained goal extension and its loop runtime into the project's .pi/extensions/; it is not part of the default all surface.",
@@ -1386,6 +1417,7 @@ def render_slash_command_install_markdown(payload: dict[str, Any]) -> str:
     gemini_skill_dir = payload.get("summary", {}).get("gemini_skill_dir")
     cursor_skill_dir = payload.get("summary", {}).get("cursor_skill_dir")
     zcode_skill_dir = payload.get("summary", {}).get("zcode_skill_dir")
+    kiro_cli_skill_dir = payload.get("summary", {}).get("kiro_cli_skill_dir")
     opencode_command_dir = payload.get("summary", {}).get("opencode_command_dir")
     opencode_plugin_path = payload.get("summary", {}).get("opencode_plugin_path")
     if codex_prompt_dir:
@@ -1400,6 +1432,8 @@ def render_slash_command_install_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- cursor skills: `{cursor_skill_dir}`")
     if zcode_skill_dir:
         lines.append(f"- zcode skills: `{zcode_skill_dir}`")
+    if kiro_cli_skill_dir:
+        lines.append(f"- kiro-cli skills: `{kiro_cli_skill_dir}`")
     if opencode_command_dir:
         lines.append(f"- opencode commands: `{opencode_command_dir}`")
     if opencode_plugin_path:

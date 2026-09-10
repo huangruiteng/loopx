@@ -13,6 +13,10 @@ a population-level uplift claim**. The setting is DeepSeek V4 Flash, max reasoni
 with Codex through ARK API. The article separates observations from mechanism
 hypotheses and keeps relevant counterexamples and limitations visible.
 
+- The same frozen 113-task cohort contributes two bounded process views:
+  per-task feature-pass rates are macro-averaged within each hint condition,
+  and raw wall-clock is reported for each arm. Feature coverage describes how
+  much of the public requirement was implemented; it is not task success.
 - Selected case comparisons illustrate requirement retention, handling of failing
   probes, and validation that can overturn an implementation assumption.
 - A post-hoc slice ranks tasks by the mean raw wall-clock across all four arms
@@ -24,13 +28,15 @@ hypotheses and keeps relevant counterexamples and limitations visible.
   failed runs. Exact bug-adjusted time is separately labeled. Lower duration
   alone does not establish equal-quality acceleration or token savings.
 
-本篇分享局部行为发现，不发布完整四臂成绩、全量成功率或排名。精选案例和事后
-长时切片用于提出值得复验的机制假设，不能外推成总体结论。耗时比较单独标明
-样本范围；保留失败样本、选样偏差和验证预期不独立等限制。
+本篇分享局部行为发现，不发布完整四臂成绩、全量成功率或排名。同一冻结 113 题
+只公开两类有边界的过程视图：按单题 feature pass rate 等权汇总的需求覆盖，以及
+各臂原始 wall-clock。Feature coverage 不等于任务成功。精选案例和事后长时切片
+用于提出值得复验的机制假设，不能外推成总体结论；保留失败样本、选样偏差和
+验证预期不独立等限制。
 
 ## Toolkit records
 
-[findings.json](findings.json) contains three `benchmark_behavior_finding_v0`
+[findings.json](findings.json) contains four `benchmark_behavior_finding_v0`
 records. Their evidence digests refer to producer-reviewed, unshared summaries;
 they do not let a reader independently verify the original trajectories. No
 manifest, run ledger, score dashboard, or raw evidence is required to consume

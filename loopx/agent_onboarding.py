@@ -15,6 +15,13 @@ from .host_loop_activation import (
     scheduler_command_binding_for_agent_type,
 )
 from .install_contract import NO_CLONE_INSTALL_URL
+from .kiro_cli_goal_mode import (
+    KIRO_CLI_GOAL_CLEAR_COMMAND,
+    KIRO_CLI_GOAL_COMPLETION_TOOL,
+    KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS,
+    SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
+    kiro_cli_goal_invocation,
+)
 from .project_prompt import (
     render_available_capability_args,
     render_codex_cli_install_preflight,
@@ -52,6 +59,8 @@ def _surface_install_command(agent_type: str, cli_bin: str, project: str) -> str
         return f"{shell_arg(cli_bin)} slash-commands --install --surface zcode"
     if agent_type == "agy":
         return f"{shell_arg(cli_bin)} slash-commands --install --surface agy"
+    if agent_type == "kiro-cli":
+        return f"{shell_arg(cli_bin)} slash-commands --install --surface kiro-cli"
     if agent_type == "pi":
         # The slash-commands installer resolves the Pi extension target through
         # --pi-project; pass the resolved project so the command stays correct
@@ -282,6 +291,7 @@ def _bootstrap_pack_command(
         "cursor-agent": "cursor-agent",
         "zcode": "zcode",
         "agy": "agy",
+        "kiro-cli": "kiro-cli",
         "deepseek-harness": "deepseek-harness",
         "deepseek-harness-native": "deepseek-harness-native",
         "ark-managed-agent": "ark-managed-agent",
@@ -354,6 +364,21 @@ def _start_instruction(agent_type: str) -> str:
             "bounded wake with the native `schedule` tool (DurationSeconds + "
             "wake Prompt; recurring via MaxIterations) when quota allows more "
             "work."
+        )
+    if agent_type == "kiro-cli":
+        return (
+            f"Run `/loopx <task>` (the LoopX skill installed in "
+            f"`{KIRO_CLI_SKILLS_ROOT_LABEL}`); after todo writeback, bind the "
+            f"objective with the native `{kiro_cli_goal_invocation()}` command, "
+            f"stating the todo's acceptance criteria inside the goal statement "
+            f"because the host derives them from it, and taking N from the "
+            f"remaining quota slots (host default is "
+            f"{KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS}; "
+            f"`{KIRO_CLI_GOAL_CLEAR_COMMAND}` cancels). "
+            f"Start every turn and native goal iteration with `quota "
+            f"should-run`, and settle through the built-in "
+            f"`{KIRO_CLI_GOAL_COMPLETION_TOOL}` tool only after LoopX writeback "
+            f"so its completion contract cites the same evidence."
         )
     if agent_type == "deepseek-harness":
         return (

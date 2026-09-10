@@ -16,6 +16,21 @@
 
 ## Current implementation checkpoint
 
+Public Todo add/update now resolve role, continuation binding, gate scope and
+deferred-condition requirements through `todos/authoring_scope.ts`. Python's
+`write_policy.py` and duplicated scope selection in `todos.py` are retired;
+the Markdown codec keeps only its early class-check adapter. Materialized
+terminal successors share the resolved-scope invariant without draft inference.
+Intentional corrections: explicit global/lane scope outranks author defaults;
+explicit conflicting binding is rejected rather than overwritten; global gates
+are never inferred from actor identity or `goal_bound`. Existing omitted scope,
+completed-history repair and lifecycle/lease permission boundaries remain.
+
+This closes T1's authoring-scope prerequisite, not the whole update transaction.
+Public metadata expansion, validation/effect closure and provider CAS/replay
+integration remain T1/T2 work. Native update retains its text/note allowlist;
+legacy codecs/locks/writers still have active callers and are not retired here.
+
 A checked-in generator validates the language-neutral contract and emits
 deeply immutable Python/TypeScript bindings, including the native domain and
 projection sections. Both runtimes import these bindings; CI checks source
@@ -364,6 +379,20 @@ the shared plan, not another per-agent checklist database.
   command and affected real providers.
 
 **T2 — close monitor writeback and its atomic follow-up.**
+
+Bounded prerequisite delivered: `scheduler/monitor_successor.ts` owns successor
+route validation and normalization for quota preflight, legacy writeback and
+receipt verification. The Python route guard/resolver and the separate TS
+receipt-default/capability interpretation are removed. Invalid capability entries,
+malformed successor claims and follow-ups without material change fail before
+the observation write; valid action/claim/capability aliases and Git transports
+are compared as the same route at readback. The original wire observation still
+owns the v0 replay digest; normalization must not silently invalidate pending
+receipts. The node-independent repository/bootstrap codec remains separately
+characterized, not replaced by a runtime dependency.
+This is **not** the T2 atomic transaction: monitor mutation and successor writes
+still use existing fenced effects. Cross-effect crash recovery, native writer
+closure and whole-Goal promotion remain held; do not infer them from a route plan.
 
 - Inventory `monitor_poll_writeback.py` and its event/Todo/lease callers.
   Reuse existing monitor generation, independent-successor and settlement

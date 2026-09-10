@@ -18,6 +18,7 @@ from loopx.chat_acp import ACPStdioAdapter  # noqa: E402
 from loopx.chat_endpoints import AgentEndpointRegistry  # noqa: E402
 from loopx.chat_runtime import ChatRuntimeController  # noqa: E402
 from loopx.chat_store import ChatSessionStore  # noqa: E402
+from loopx.kiro_cli_goal_mode import KIRO_CLI_CHAT_AGENT_ID  # noqa: E402
 
 
 FAKE_ACP = r'''#!/usr/bin/env python3
@@ -238,6 +239,110 @@ def main() -> None:
         assert was_resumed is True
         assert restored["session_id"] == session["session_id"]
         second.close()
+
+        # Kiro CLI is a built-in ACP agent, not an owner-registered endpoint:
+        # the capability row must advertise it and `open_session` must reach the
+        # same ACP adapter. Pointing kiro_cli_bin at the fixture keeps this
+        # offline while still proving the built-in route, because a row that
+        # renders in the dashboard but dead-ends at session open is decorative.
+        kiro_store = ChatSessionStore(root / "kiro-runtime")
+        kiro = ChatRuntimeController(
+            store=kiro_store,
+            codex_bin="missing-codex-for-fixture",
+            kiro_cli_bin=str(fake),
+        )
+        row = next(
+            item
+            for item in kiro.capabilities()
+            if item["agent_id"] == KIRO_CLI_CHAT_AGENT_ID
+        )
+        assert row["source"] == "builtin", row
+        assert row["adapter_kind"] == "acp", row
+        assert row["display_name"] == "Kiro CLI", row
+        assert row["available"] is True, row
+        assert row["trust_scope"] == "read_only", row
+        kiro_session, kiro_resumed = kiro.open_session(
+            goal_id="fixture-goal",
+            agent_id=KIRO_CLI_CHAT_AGENT_ID,
+            work_dir=root,
+            objective="Exercise the built-in Kiro CLI ACP route.",
+            mode="resume_latest",
+        )
+        assert kiro_resumed is False
+        assert kiro_session["upstream_thread_id"] == "acp:fixture/session"
+        kiro_turn, kiro_created = kiro.submit_turn(
+            session_id=str(kiro_session["session_id"]),
+            client_turn_id="kiro-turn",
+            message="检查状态",
+            work_dir=root,
+            objective="Exercise the built-in Kiro CLI ACP route.",
+        )
+        assert kiro_created is True
+        kiro_completed = kiro.wait_for_turn(
+            session_id=str(kiro_session["session_id"]),
+            turn_id=str(kiro_turn["turn_id"]),
+            timeout_sec=3,
+        )
+        assert kiro_completed["status"] == "completed", kiro_completed
+        kiro.close()
+
+        # A built-in id must not be claimable by an owner-local endpoint, or the
+        # registry row would silently shadow the built-in adapter.
+        try:
+            endpoint_registry.upsert(
+                {
+                    "agent_id": KIRO_CLI_CHAT_AGENT_ID,
+                    "display_name": "Shadow Kiro",
+                    "command": [str(fake)],
+                }
+            )
+        except ValueError as exc:
+            assert "reserved" in str(exc), exc
+        else:  # pragma: no cover - guarded by the assertion above
+            raise AssertionError("a reserved built-in agent id was accepted")
+
+        # An uninstalled host renders as needing configuration instead of
+        # failing at session open.
+        unavailable = ChatRuntimeController(
+            store=ChatSessionStore(root / "kiro-missing"),
+            codex_bin="missing-codex-for-fixture",
+            kiro_cli_bin="loopx-missing-kiro-cli-for-fixture",
+        )
+        missing_row = next(
+            item
+            for item in unavailable.capabilities()
+            if item["agent_id"] == KIRO_CLI_CHAT_AGENT_ID
+        )
+        assert missing_row["available"] is False, missing_row
+        unavailable.close()
+
+        # Closing a session must release the agent, not just signal it. An ACP
+        # agent that persists sessions holds a per-session lock while it runs,
+        # so a signalled exit leaves the session looking active and the next
+        # `session/load` from a new process is refused. Hosts that advertise no
+        # `sessionCapabilities.close` are exactly the ones this affects, since
+        # LoopX has no close request to send them.
+        no_close = root / "acp-no-close.py"
+        no_close.write_text(
+            FAKE_ACP.replace('"sessionCapabilities": {"close": {}},', ""),
+            encoding="utf-8",
+        )
+        no_close.chmod(no_close.stat().st_mode | stat.S_IXUSR)
+        adapter = ACPStdioAdapter.start(
+            command=(sys.executable, str(no_close)),
+            work_dir=root,
+            startup_timeout_sec=10.0,
+            idle_timeout_sec=10.0,
+            hard_timeout_sec=20.0,
+        )
+        assert not adapter.agent_capabilities.get("sessionCapabilities"), (
+            "fixture must reproduce a host with no session close capability"
+        )
+        adapter.close_session()
+        assert adapter.process.returncode == 0, (
+            "close_session must let the agent exit on its own so it can release "
+            f"the session; got returncode {adapter.process.returncode}"
+        )
 
     print("loopx-chat-acp-adapter-smoke: ok")
 

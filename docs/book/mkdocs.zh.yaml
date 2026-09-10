@@ -62,6 +62,7 @@ nav:
   - 首页: index.md
   - 开始:
       - Welcome Wagon: welcome-wagon.md
+      - LoopX 1.0 Workspace: chapters/workspace-v1.md
       - 如何使用本书: chapters/00-reading-guide.md
   - 开发者课程:
       - Control-Plane Course: chapters/12-control-plane-course.md

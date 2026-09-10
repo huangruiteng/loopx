@@ -304,7 +304,8 @@ def register_todo_command(
         action="store_true",
         help=(
             "For user todo add/update, explicitly bind the item to the whole goal "
-            "instead of one agent lane."
+            "instead of one agent lane. This scopes continuation, not blocking: "
+            "it does not create a global gate."
         ),
     )
     todo_parser.add_argument(
@@ -337,8 +338,9 @@ def register_todo_command(
         action="store_true",
         help=(
             "For todo add/update on role=user task-class=user_gate, explicitly mark "
-            "that the gate blocks every registered agent. Prefer --blocks-agent or "
-            "--agent-id when only one lane is waiting."
+            "that the gate blocks EVERY registered agent until resolved. This broad "
+            "scope is never inferred from --agent-id, --goal-bound, or missing binding. "
+            "Prefer --blocks-agent or --agent-id when only one lane is waiting."
         ),
     )
     todo_parser.add_argument(

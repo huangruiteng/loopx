@@ -59,6 +59,7 @@ nav:
   - Home: index.md
   - Start:
       - Welcome Wagon: welcome-wagon.md
+      - LoopX 1.0 Workspace: chapters/workspace-v1.md
       - How to use this book: chapters/00-reading-guide.md
   - Developer Course:
       - Control-Plane Course: chapters/12-control-plane-course.md

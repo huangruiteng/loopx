@@ -67,6 +67,7 @@ from .extensions.runtime import (
 )
 from .history import load_registry
 from .chat_completed_todos import CompletedTodoPages, CompletedTodoRequestMixin
+from .kiro_cli_goal_mode import KIRO_CLI_BIN
 from .paths import resolve_runtime_root
 from .release_manifest import release_runtime_identity
 from .registry import registry_goals, resolve_state_file
@@ -75,6 +76,7 @@ from .status_server import (
     cors_response_headers,
     is_loopback_host,
     is_loopback_origin,
+    parse_strict_json_object,
 )
 
 
@@ -491,10 +493,7 @@ class ChatRequestHandler(
             raise ValueError("request body is empty")
         if length > 64_000:
             raise ValueError("request body is too large")
-        payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("request body must be a JSON object")
-        return payload
+        return parse_strict_json_object(self.rfile.read(length))
 
     def _require_loopback_origin(self) -> bool:
         if is_loopback_origin(self.headers.get("Origin")):
@@ -1412,6 +1411,7 @@ def serve_chat(
     goal_id: str | None = None,
     codex_bin: str = "codex",
     claude_bin: str = "claude",
+    kiro_cli_bin: str = KIRO_CLI_BIN,
     lark_cli_bin: str | None = None,
     startup_timeout_sec: float = 30.0,
     idle_timeout_sec: float = 180.0,
@@ -1471,6 +1471,7 @@ def serve_chat(
         store=server.chat_store,
         codex_bin=codex_bin,
         claude_bin=claude_bin,
+        kiro_cli_bin=kiro_cli_bin,
         startup_timeout_sec=startup_timeout_sec,
         idle_timeout_sec=idle_timeout_sec,
         hard_timeout_sec=hard_timeout_sec,

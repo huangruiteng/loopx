@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { access, readFile, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
+import { monitorSuccessorIntent, monitorSuccessorRoute, monitorSuccessorCapabilities } from "../scheduler/monitor_successor.ts";
 
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -363,42 +364,9 @@ function observationObject(value: unknown): MonitorObservation {
       "`quota monitor-poll --material-change` requires --todo-id or --target-key",
     );
   }
-  if ((result.next_agent_todo || result.next_user_todo) && !materialChange) {
-    throw new EffectRuntimeRequestError(
-      "`--next-agent-todo` and `--next-user-todo` require --material-change",
-    );
-  }
-  if (result.next_agent_todo && !result.next_action_kind) {
-    throw new EffectRuntimeRequestError(
-      "`quota monitor-poll --next-agent-todo` requires explicit successor action semantics via --next-action-kind",
-    );
-  }
-  const agentRoute = result.next_action_kind || result.next_task_repository ||
-    result.next_required_capabilities.length || result.next_continuation_policy ||
-    result.next_target_key;
-  if (!result.next_agent_todo && agentRoute) {
-    throw new EffectRuntimeRequestError(
-      "monitor successor routing options require --next-agent-todo",
-    );
-  }
-  if (result.next_user_todo && !result.next_user_task_class) {
-    throw new EffectRuntimeRequestError(
-      "--next-user-todo requires explicit --next-user-task-class user_action|user_gate",
-    );
-  }
-  if (!result.next_user_todo && result.next_user_task_class) {
-    throw new EffectRuntimeRequestError(
-      "--next-user-task-class requires --next-user-todo",
-    );
-  }
-  if (
-    result.next_user_task_class &&
-    !["user_action", "user_gate"].includes(result.next_user_task_class)
-  ) {
-    throw new EffectRuntimeRequestError(
-      "--next-user-task-class must be user_action or user_gate",
-    );
-  }
+  // Validate the route without rewriting the persisted observation fingerprint.
+  // Pending receipts from earlier versions must remain replayable.
+  monitorSuccessorIntent(result);
   return result;
 }
 
@@ -730,6 +698,7 @@ function buildRecord(request: MonitorRequest): JsonObject {
     generated_at: request.generated_at,
     goal_id: request.goal_id,
     classification: QUOTA_MONITOR_POLL_CLASSIFICATION,
+    material_change: material,
     recommended_action: request.decision.recommended_action ?? recommendationReason ??
       request.decision.reason,
     health_check: healthCheck,
@@ -882,15 +851,8 @@ function requireProviderCapabilityMatch(
   expected: readonly string[],
   label: string,
 ): void {
-  const canonical = (items: readonly string[]): string[] => [
-    ...new Set(
-      items
-        .map((item) => item.trim().toLowerCase().replace(/[-\s]+/g, "_"))
-        .filter(Boolean),
-    ),
-  ];
-  const actualCapabilities = canonical(requireStringArray(actual, label));
-  const expectedCapabilities = canonical(expected);
+  const actualCapabilities = monitorSuccessorCapabilities(actual, label);
+  const expectedCapabilities = monitorSuccessorCapabilities(expected, label);
   if (pythonJson(actualCapabilities) !== pythonJson(expectedCapabilities)) {
     throw new EffectRuntimeRequestError(`${label} must match provider plan`);
   }
@@ -914,19 +876,9 @@ function requireProviderTodoText(
   requireProviderMatch(actual, compactExpected, label);
 }
 
-function derivedMonitorSuccessorTargetKey(todoId: string, resultHash: string): string {
-  return `monitor-successor:${todoId}:${sha256Hex(resultHash).slice(0, 16)}`;
-}
-
 function requireCanonicalSuccessorRoute(
   value: JsonObject,
-  expected: {
-    task_repository: string | null;
-    required_capabilities: readonly string[];
-    continuation_policy: string;
-    target_key: string;
-    claimed_by: string | null;
-  },
+  expected: JsonObject,
   label: string,
 ): void {
   requireProviderMatch(
@@ -936,7 +888,7 @@ function requireCanonicalSuccessorRoute(
   );
   requireProviderCapabilityMatch(
     value.required_capabilities ?? [],
-    expected.required_capabilities,
+    requireStringArray(expected.required_capabilities, "expected capabilities"),
     `${label} required_capabilities`,
   );
   requireProviderMatch(
@@ -977,6 +929,7 @@ function validateSuccessorReceipts(
   }
   let offset = 0;
   if (plan.material_change && plan.next_agent_todo) {
+    const canonicalRoute = monitorSuccessorRoute(monitorSuccessorIntent(plan), todoId, plan.result_hash);
     const receipt = receipts[offset];
     const nextTodo = nextTodos[offset++];
     requireProviderMatch(receipt.role, "agent", "agent successor role");
@@ -993,12 +946,12 @@ function validateSuccessorReceipts(
     );
     requireProviderMatch(
       receipt.action_kind,
-      plan.next_action_kind,
+      canonicalRoute.action_kind,
       "agent successor action_kind",
     );
     requireProviderMatch(
       nextTodo.action_kind,
-      plan.next_action_kind,
+      canonicalRoute.action_kind,
       "agent next_todo action_kind",
     );
     requireProviderMatch(
@@ -1021,13 +974,6 @@ function validateSuccessorReceipts(
       requiredProviderTodoId(nextTodo.todo_id, "agent next_todo todo_id"),
       "agent successor todo_id",
     );
-    const canonicalRoute = {
-      task_repository: plan.next_task_repository,
-      required_capabilities: plan.next_required_capabilities,
-      continuation_policy: plan.next_continuation_policy ?? "independent_handoff",
-      target_key: plan.next_target_key ?? derivedMonitorSuccessorTargetKey(todoId, plan.result_hash),
-      claimed_by: plan.next_claimed_by,
-    };
     requireCanonicalSuccessorRoute(receipt, canonicalRoute, "agent successor");
     requireCanonicalSuccessorRoute(nextTodo, canonicalRoute, "agent next_todo");
   }

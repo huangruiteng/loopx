@@ -19,11 +19,33 @@ def managed_marker(*, command: str, surface: str) -> str:
     return f"{MANAGED_MARKER_PREFIX} command={command} surface={surface} -->"
 
 
+def _needs_yaml_quotes(value: str) -> bool:
+    """Whether a front-matter scalar must be double-quoted to stay valid YAML.
+
+    Hosts do not agree on how forgiving their front-matter reader is. Kiro CLI
+    keeps the quote characters verbatim, so a quoted `name` turns the skill's
+    own slash command into `/"loopx"`; a strict YAML reader, on the other hand,
+    rejects an unquoted `[task text]` or a value containing `": "`. Quoting only
+    what YAML actually requires satisfies both: identifiers stay plain and
+    ambiguous prose stays quoted.
+    """
+    if not value or value.strip() != value:
+        return True
+    if value[0] in "-?:,[]{}#&*!|>'\"%@`":
+        return True
+    if value.lower() in {"true", "false", "null", "yes", "no", "on", "off", "~"}:
+        return True
+    return ": " in value or " #" in value or value.endswith(":") or "\n" in value
+
+
 def front_matter(*, fields: dict[str, str]) -> str:
     lines = ["---"]
     for key, value in fields.items():
-        escaped = value.replace('"', '\\"')
-        lines.append(f'{key}: "{escaped}"')
+        if _needs_yaml_quotes(value):
+            escaped = value.replace('"', '\\"')
+            lines.append(f'{key}: "{escaped}"')
+        else:
+            lines.append(f"{key}: {value}")
     lines.append("---")
     return "\n".join(lines)
 

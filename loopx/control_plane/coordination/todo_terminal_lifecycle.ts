@@ -46,6 +46,7 @@ import {
   normalizeWriteScopes,
 } from "../work_items/task_lease_acquire.ts";
 import { selectCoordinationTodoArchive } from "./todo_archive_selection.ts";
+import { userTodoScopeConflict, USER_TODO_TASK_CLASSES } from "../todos/authoring_scope.ts";
 import {
   deriveCoordinationTodoSuccessorProposals,
   TODO_SUCCESSOR_DERIVATION_REQUEST_SCHEMA,
@@ -68,7 +69,6 @@ const COMPLETION_IDENTITY_SOURCES = [
   "unscoped_completion",
   "lifecycle_reentry",
 ] as const;
-const USER_TODO_TASK_CLASSES = new Set(["user_action", "user_gate"]);
 
 type TerminalCommand = typeof TERMINAL_COMMANDS[number];
 type TodoRole = typeof TODO_ROLES[number];
@@ -258,39 +258,25 @@ function validateSuccessorSemantics(
         "generated User successor cannot carry claimed_by ownership",
       );
     }
-    if (boundAgent !== null && goalBound === true) {
-      throw new AuthorityStoreProtocolError(
-        "generated User successor cannot be both agent-bound and goal-bound",
-      );
+    const scopeConflict = userTodoScopeConflict(taskClass, {
+      bound_agent: boundAgent, goal_bound: goalBound, blocks_agent: blocksAgent, global_gate: globalGate,
+    }, registeredAgents.length);
+    // Preserve the terminal protocol's diagnostic vocabulary. The invariant is
+    // shared; a resolved successor never goes through draft authoring inference.
+    if (scopeConflict === "binding_conflict") {
+      throw new AuthorityStoreProtocolError("generated User successor cannot be both agent-bound and goal-bound");
     }
     if (taskClass === "user_action" && (blocksAgent !== null || globalGate === true)) {
-      throw new AuthorityStoreProtocolError(
-        "generated user_action successor cannot carry blocking gate scope",
-      );
+      throw new AuthorityStoreProtocolError("generated user_action successor cannot carry blocking gate scope");
     }
-    if (taskClass === "user_gate") {
-      if (globalGate === true &&
-          (blocksAgent !== null || boundAgent !== null || goalBound !== true)) {
-        throw new AuthorityStoreProtocolError(
-          "goal-wide User gate successor requires goal_bound and no Agent binding",
-        );
-      }
-      if (blocksAgent !== null &&
-          (goalBound === true || boundAgent !== blocksAgent)) {
-        throw new AuthorityStoreProtocolError(
-          "Agent-scoped User gate successor must bind to its blocks_agent",
-        );
-      }
-      if (registeredAgents.length > 1 && blocksAgent === null && globalGate !== true) {
-        throw new AuthorityStoreProtocolError(
-          "multi-agent User gate successor requires an explicit blocking scope",
-        );
-      }
-    }
-    if (registeredAgents.length > 1 && boundAgent === null && goalBound !== true) {
-      throw new AuthorityStoreProtocolError(
-        "multi-agent User successor requires an explicit Agent or Goal binding",
-      );
+    if (scopeConflict) {
+      throw new AuthorityStoreProtocolError({
+        gate_scope_conflict: "goal-wide User gate successor requires goal_bound and no Agent binding",
+        global_binding_conflict: "goal-wide User gate successor requires goal_bound and no Agent binding",
+        agent_binding_conflict: "Agent-scoped User gate successor must bind to its blocks_agent",
+        gate_scope_missing: "multi-agent User gate successor requires an explicit blocking scope",
+        binding_missing: "multi-agent User successor requires an explicit Agent or Goal binding",
+      }[scopeConflict]);
     }
   }
 }

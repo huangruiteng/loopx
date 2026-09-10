@@ -5,6 +5,10 @@ import json
 import threading
 from pathlib import Path
 
+import pytest
+
+from loopx.chat_action_store import ChatActionStore
+from loopx.chat_actions import ChatActionService
 from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
 from loopx.extensions.lark.cli_resolution import LarkCliResolution
 
@@ -44,10 +48,11 @@ def _request(
     method: str,
     origin: str | None,
     path: str = "/api/chat/capabilities",
+    body: bytes | None = None,
 ) -> http.client.HTTPResponse:
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     headers = {"Origin": origin} if origin else {}
-    connection.request(method, path, headers=headers)
+    connection.request(method, path, body=body, headers=headers)
     return connection.getresponse()
 
 
@@ -130,6 +135,67 @@ def test_chat_options_exposes_loopback_preflight_only() -> None:
         assert response.getheader("Access-Control-Allow-Methods") == (
             "GET, POST, DELETE, OPTIONS"
         )
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e309"])
+def test_chat_post_rejects_non_finite_json_numbers(number: str) -> None:
+    server, thread = _start_server()
+    try:
+        response = _request(
+            server.server_address[1],
+            method="POST",
+            origin=None,
+            path="/api/ssh-source/ensure",
+            body=f'{{"host_alias":"","local_port":{number}}}'.encode(),
+        )
+        payload = json.loads(response.read().decode("utf-8"))
+
+        assert response.status == 400
+        assert "request body must be strict JSON" in payload["error"]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+def test_chat_action_context_cannot_persist_or_emit_overflowed_float(
+    tmp_path: Path,
+) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps({"schema_version": "0.1", "goals": [{"id": "goal-one"}]}),
+        encoding="utf-8",
+    )
+    action_store = ChatActionStore(tmp_path / "actions")
+    server, thread = _start_server()
+    server.action_store = action_store
+    server.action_service = ChatActionService(
+        store=action_store,
+        registry_path=registry_path,
+    )
+    try:
+        response = _request(
+            server.server_address[1],
+            method="POST",
+            origin=None,
+            path="/api/actions/preview",
+            body=(
+                b'{"action_kind":"goal.lifecycle","summary":"Stop goal",'
+                b'"normalized_parameters":{"goal_id":"goal-one","operation":"stop"},'
+                b'"context":{"nested":{"overflow":1e309}},'
+                b'"idempotency_key":"stop-goal-one"}'
+            ),
+        )
+        response_body = response.read()
+
+        assert response.status == 400
+        assert b"Infinity" not in response_body
+        assert json.loads(response_body)["error_code"] == "invalid_action_preview"
+        assert action_store.list() == []
     finally:
         server.shutdown()
         thread.join(timeout=5)

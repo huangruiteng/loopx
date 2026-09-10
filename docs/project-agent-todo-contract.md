@@ -113,14 +113,30 @@ agent's broad prompt scope. Scope belongs in the automation prompt or sub-agent
 handoff; the agent uses that scope to decide which open todo it may claim.
 User-gate todos are different: when a user decision only unlocks one registered
 agent or lane, record the blocked agent explicitly with `blocks_agent` so quota
-does not stop unrelated agents. For convenience, `todo add/update --role user
+does not stop unrelated agents. For convenience, `todo add --role user
 --task-class user_gate --agent-id <agent>` defaults `blocks_agent` to that agent
-when `--blocks-agent` is omitted. In multi-agent goals, open `user_gate` todos
+when neither an explicit `--blocks-agent` nor `--global-gate` is supplied.
+Updates preserve omitted scope; changing the author does not retarget a gate.
+In multi-agent goals, open `user_gate` todos
 must have exactly one explicit scope: either `blocks_agent=<registered-agent>`
 for a lane-scoped decision or `global_gate=true` / `--global-gate` for a
 genuine goal-wide owner gate. Unscoped multi-agent user gates are an authoring
 error because every registered agent would otherwise see another lane's
 question as its own stop condition.
+
+**Global gates have broad impact: they block every registered agent until
+resolved.** Creation or widening to global scope requires explicit
+`--global-gate`; it is never inferred from author identity, missing binding,
+or `--goal-bound`. `--goal-bound` scopes continuation only and does not itself
+block agents. Prefer `--blocks-agent <agent>` for a lane-local decision.
+With an explicit global gate, LoopX derives the necessary goal-wide
+continuation binding without inventing a single-agent binding from the author.
+Explicit contradictory flags are rejected, not silently overwritten.
+
+To narrow an existing global gate atomically, use `todo update` with
+`--clear-global-gate --blocks-agent <agent>`. To widen a lane gate deliberately,
+use `--clear-blocks-agent --global-gate`. Merely clearing scope in a multi-agent
+Goal is rejected; it must not turn an ambiguous gate into a global one.
 
 When a user gate only blocks one concrete action, add the blocked todo id with
 `unblocks_todo_id=<todo_id>`. When multiple todos share the same broad
@@ -284,6 +300,19 @@ waiting Todo out of runnable selection until the monitor generation advances.
 Relevant command results expose the compact
 `monitor_advancement_authoring_v0` contract so an Agent can recover this
 sequence without parsing documentation prose.
+
+Monitor successor routing uses one typed plan for preflight, writeback and
+receipt verification. Common Git transport URLs resolve to the same canonical
+repository identity, and action/claim/capability aliases are normalized before
+comparison. Repository routes must be representable as canonical `git:<host>/<path>`
+identities; control characters, backslashes and percent-encoded paths are rejected.
+Every supplied capability must be valid: an invalid entry is not silently dropped
+from a partly valid list. Follow-ups require `--material-change`; assignment or
+other agent-route flags without `--next-agent-todo` are rejected before writeback.
+User follow-ups still require explicit `user_action` or `user_gate`, never an
+implicit global gate. A route plan is not a claim, approval or atomic commit.
+Replay identity continues to bind the original observation, not a rewritten
+canonical spelling; retry the same logical observation with the same arguments.
 
 Open todos may also carry `resume_when` when they are visible but not yet
 executable. Until the parsed `resume_condition.satisfied` value is true, status

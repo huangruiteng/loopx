@@ -7,6 +7,8 @@ import test, { type TestContext } from "node:test";
 
 import {
   executeTaskLeaseAcquire,
+  leaseInteger,
+  TaskLeaseAcquireError,
   TASK_LEASE_ACQUIRE_REQUEST_SCHEMA_VERSION,
 } from "../../loopx/control_plane/work_items/task_lease_acquire.ts";
 import {
@@ -533,6 +535,73 @@ test("corrupt bool integers fail closed and legacy epoch advances", async (t) =>
   assert.equal(migrated.ok, true);
   assert.equal((await persistedLease(root)).lease_epoch, 2);
 });
+
+for (const acquireTtlSeconds of [0, -1]) {
+  test(`corrupt acquire TTL '${acquireTtlSeconds}' fails closed`, async (t) => {
+    const root = await workspace(t);
+    await mkdir(join(root, "runtime", "goals", "goal-a", "task-leases"), {
+      recursive: true,
+    });
+    const existing = {
+      schema_version: "task_lease_v0",
+      goal_id: "goal-a",
+      todo_id: "todo_target",
+      owner: "agent-b",
+      idempotency_key: "existing-owner",
+      write_scopes: ["loopx/**"],
+      acquire_ttl_seconds: acquireTtlSeconds,
+      version: 1,
+      lease_epoch: 1,
+      status: "active",
+      expires_at: "2030-01-01T00:00:00Z",
+    };
+    await writeFile(leasePath(root), JSON.stringify(existing), "utf8");
+
+    const result = await executeTaskLeaseAcquire(await request(root), {
+      now: () => FIXED_NOW,
+    });
+
+    assert.equal(result.error_code, "corrupt_lease");
+    assert.deepEqual(result.settlement, {
+      effect_id: null,
+      receipts: [],
+      failure: {
+        step: "validation",
+        kind: "permission_denied",
+        code: "corrupt_lease",
+      },
+    });
+    assert.throws(
+      () => leaseInteger(existing, "acquire_ttl_seconds"),
+      /acquire_ttl_seconds must be a positive integer/u,
+    );
+    assert.deepEqual(await persistedLease(root), existing);
+  });
+}
+
+for (const [label, stored, expected] of [
+  ["absent", undefined, null],
+  ["null", null, null],
+  ["integer", 120, 120],
+  ["legacy numeric string", "120", 120],
+] as const) {
+  test(`persisted acquire TTL ${label} remains compatible`, () => {
+    assert.equal(
+      leaseInteger({ acquire_ttl_seconds: stored }, "acquire_ttl_seconds"),
+      expected,
+    );
+  });
+}
+
+for (const stored of [0, -1, 1.5, true, "invalid", Number.MAX_SAFE_INTEGER + 1]) {
+  test(`persisted acquire TTL '${String(stored)}' is corrupt`, () => {
+    assert.throws(
+      () => leaseInteger({ acquire_ttl_seconds: stored }, "acquire_ttl_seconds"),
+      (error: unknown) =>
+        error instanceof TaskLeaseAcquireError && error.code === "corrupt_lease",
+    );
+  });
+}
 
 for (const expiresAt of [
   "not-a-timestamp",

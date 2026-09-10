@@ -13,11 +13,21 @@ import uuid
 
 from .chat_store import utc_now
 from .file_lock import exclusive_file_lock
+from .kiro_cli_goal_mode import KIRO_CLI_CHAT_AGENT_ID
 
 
 CHAT_ENDPOINT_REGISTRY_SCHEMA_VERSION = "loopx_chat_endpoint_registry_v1"
 CHAT_ENDPOINT_SCHEMA_VERSION = "loopx_chat_endpoint_v1"
-RESERVED_AGENT_IDS = {"codex", "claude-code", "anthropic-api", "openai-api"}
+# Built-in agent ids. An owner-local endpoint may not claim one, or the
+# registry row would silently shadow the built-in adapter the capability list
+# already advertises.
+RESERVED_AGENT_IDS = {
+    "codex",
+    "claude-code",
+    "anthropic-api",
+    "openai-api",
+    KIRO_CLI_CHAT_AGENT_ID,
+}
 SUPPORTED_TRANSPORTS = {"stdio"}
 SUPPORTED_LOCATIONS = {"local", "remote"}
 SUPPORTED_TRUST_SCOPES = {"read_only"}

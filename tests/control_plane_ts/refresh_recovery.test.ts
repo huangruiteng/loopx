@@ -52,6 +52,9 @@ test("workspace supplements preserve the monitor compatibility boundary", () => 
   assert.equal(refreshRecovery(closeout, monitor, false, "required", true).decision, "reject");
   for (const invalid of [
     { ...monitor, material_change: false }, { ...monitor, classification: "ordinary_refresh" },
+    { ...monitor, material_change: undefined, monitor_event: { material_change: true } },
+    { ...monitor, material_change: null, monitor_event: { material_change: true } },
+    { ...monitor, material_change: "true", monitor_event: { material_change: true } },
     { ...monitor, refresh_recovery: admitted }, { ...monitor, vision_checkpoint: prior.vision_checkpoint },
   ]) assert.equal(refreshRecovery(closeout, invalid, false, "required", false).decision, "reject");
   for (const invalid of [

@@ -19,6 +19,7 @@ BRAND_STYLES = REPO_ROOT / "docs" / "stylesheets" / "loopx.css"
 HOMEPAGE = REPO_ROOT / "apps" / "presentation" / "site" / "src" / "App.tsx"
 
 CHAPTERS = (
+    "workspace-v1",
     "00-reading-guide",
     "01-from-session-to-loop",
     "02-session-goal-loopx",
@@ -182,6 +183,11 @@ def validate_rendered_site(site_dir: Path) -> None:
             "Dev Book 与 Control-Plane Course 如何配合",
             "/loopx/docs/development/control-plane-course/06-quota-decision-kernel/",
         ),
+        "chapters/workspace-v1/index.html": (
+            "操作 LoopX 1.0 Workspace",
+            "typed preview",
+            "live_steering",
+        ),
         "chapters/01-from-session-to-loop/index.html": (
             "从一次会话到长程任务",
         ),
@@ -195,6 +201,11 @@ def validate_rendered_site(site_dir: Path) -> None:
         "chapters/00-reading-guide/index.html": (
             "How the Dev Book and Control-Plane Course work together",
             "/loopx/docs/development/control-plane-course/06-quota-decision-kernel/",
+        ),
+        "chapters/workspace-v1/index.html": (
+            "Operate the LoopX 1.0 Workspace",
+            "typed preview",
+            "live_steering",
         ),
         "chapters/01-from-session-to-loop/index.html": (
             "From one session to long-running work",
@@ -370,6 +381,22 @@ def main() -> int:
         for page in COURSE_PAGES:
             assert f"/loopx/docs/development/control-plane-course/{page}/" in guide, page
 
+    assert_bilingual_concepts(
+        "chapters/workspace-v1.md",
+        "en/chapters/workspace-v1.md",
+        (
+            ("Personal Workspace milestone", "Personal Workspace milestone"),
+            ("不是一套新的事实源", "not a new source of truth"),
+            ("loopx dashboard --no-open", "loopx dashboard --no-open"),
+            ("typed preview -> human or policy review -> governed apply -> verified receipt -> refreshed projection", "typed preview -> human or policy review -> governed apply -> verified receipt -> refreshed projection"),
+            ("loopx machine-config inspect --format json", "loopx machine-config inspect --format json"),
+            ("`live_steering`", "`live_steering`"),
+            ("`session_queue`", "`session_queue`"),
+            ("`async_inbox`", "`async_inbox`"),
+            ("loopx periodic-report inspect-profile --preset weekly --format json", "loopx periodic-report inspect-profile --preset weekly --format json"),
+            ("Stage 2C authority", "Stage 2C authority"),
+        ),
+    )
     assert_bilingual_concepts(
         "index.md",
         "en/index.md",

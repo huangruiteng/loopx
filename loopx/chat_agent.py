@@ -280,6 +280,7 @@ class CodexChatAgentSession:
         hard_timeout_sec: float = 900.0,
         resume_thread_id: str | None = None,
         execution_mode: bool = False,
+        codex_home: Path | None = None,
         _compatibility_catalog_path: Path | None = None,
     ) -> "CodexChatAgentSession":
         resolved = shutil.which(codex_bin)
@@ -292,6 +293,11 @@ class CodexChatAgentSession:
                 ),
             )
         root = work_dir.resolve()
+        # Pin the host store explicitly, including compatibility retries. Never
+        # redirect an existing thread by inheriting a different launch context.
+        runtime_home = (codex_home or Path(os.environ.get("CODEX_HOME") or "~/.codex")).expanduser().resolve()
+        runtime_env = os.environ.copy()
+        runtime_env["CODEX_HOME"] = str(runtime_home)
         command = [resolved, "app-server"]
         if _compatibility_catalog_path is not None:
             command.extend(
@@ -305,6 +311,7 @@ class CodexChatAgentSession:
             process = subprocess.Popen(
                 command,
                 cwd=str(root),
+                env=runtime_env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
@@ -387,6 +394,7 @@ class CodexChatAgentSession:
                     hard_timeout_sec=hard_timeout_sec,
                     resume_thread_id=resume_thread_id,
                     execution_mode=execution_mode,
+                    codex_home=runtime_home,
                     _compatibility_catalog_path=catalog_path,
                 )
         except Exception:

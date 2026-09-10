@@ -80,6 +80,8 @@ def main() -> int:
         "Treat `candidate` as a preview, not a durable projection",
         "durable Todo target-key readback -> `--projected-exact-head` -> exact-head review/comment readback -> `--handled-exact-head`",
         "Never send the projection ACK before the Todo exists",
+        "Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token.",
+        "the row stays in `pull_requests` inventory but must not appear in `review_sequence`",
     ):
         assert phrase in skill_text, phrase
     assert len(skill_source.splitlines()) <= 180, len(skill_source.splitlines())
@@ -220,9 +222,17 @@ def main() -> int:
     assert groups["merged"]["pr_numbers"] == [770], groups
     assert groups["unmerged"]["review_sequence"][0]["number"] == 771, groups
     assert groups["merged"]["review_sequence"][0]["number"] == 770, groups
+    assert groups["unmerged"]["actionable_count"] == 2, groups
+    assert groups["unmerged"]["no_action_count"] == 1, groups
+    assert groups["merged"]["actionable_count"] == 1, groups
+    assert groups["merged"]["no_action_count"] == 0, groups
     sequence = payload["review_sequence"]
+    assert all(item["review_action_kind"] is not None for item in sequence), sequence
     assert sequence[0]["number"] == 771, sequence
-    assert any(item["number"] == 775 for item in sequence), sequence
+    assert any(item["number"] == 775 for item in payload["pull_requests"]), payload[
+        "pull_requests"
+    ]
+    assert all(item["number"] != 775 for item in sequence), sequence
     assert any(
         item["number"] == 770 and item["state"] == "MERGED" for item in sequence
     ), sequence
@@ -231,6 +241,10 @@ def main() -> int:
     merged_sequence = next(item for item in sequence if item["number"] == 770)
     assert merged_sequence["risk_hint_level"] == "medium", merged_sequence
     assert merged_sequence["main_risk_level"] == "high", merged_sequence
+    assert (
+        merged_sequence["review_action_kind"]
+        == "audit_merged_pull_request_exact_head"
+    ), merged_sequence
     first = next(item for item in payload["pull_requests"] if item["number"] == 773)
     assert "newcomer command path" in first["motivation"], first
     template = first["review_template"]
@@ -679,6 +693,19 @@ def main() -> int:
         response_contract
     )
     assert response_contract["queue_table_role"] == "preface_only", response_contract
+    assert response_contract["selection_execution_contract"] == {
+        "schema_version": "pr_review_selection_execution_contract_v0",
+        "explicit_selection_scope": "ordering_only",
+        "review_action_authority": "pull_requests[].review_action_kind",
+        "review_sequence_membership": "review_action_kind_non_null_only",
+        "no_action_inventory_location": "pull_requests",
+        "generic_rereview_terms_force_fresh_audit": False,
+        "no_action_behavior": "compact_exact_head_conclusion_readback_only",
+        "force_fresh_audit_requires": (
+            "An explicit request to rerun evidence despite the unchanged/no-action "
+            "exact head, or a concrete new concern or evidence invalidation."
+        ),
+    }, response_contract
     assert response_contract["required_packet_fields_to_preserve"] == [
         "agent_response_contract",
         "agent_response_contract.review_execution_contract",

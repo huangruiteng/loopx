@@ -69,6 +69,10 @@ import { mergeScopedStatusProjections } from "../data/status-merge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import {
+  agentFamily,
+  presentedAgentFamily,
+} from "../features/personal-workspace/agent-family";
 import { PersonalWorkspacePage } from "../features/personal-workspace/personal-workspace-page";
 import { useWorkspaceI18n, type WorkspaceTranslate } from "../features/personal-workspace/i18n";
 import {
@@ -618,41 +622,43 @@ function isAgentResultMessage(role: string, text: string) {
   return ["agent", "assistant"].includes(role.trim().toLowerCase()) && text.trim().length > 0;
 }
 
+const PERSONAL_AGENT_FALLBACK_CAPABILITY = "已发现的项目 Agent";
+
 function personalAgentLabel(agentId: string) {
-  const normalized = agentId.toLowerCase();
-  if (normalized.includes("codex")) {
-    return "Codex";
+  switch (agentFamily(agentId)) {
+    case "codex":
+      return "Codex";
+    case "claude":
+      return "Claude Code";
+    case "kiro":
+      return "Kiro CLI";
+    case "trae":
+      return "Trae CLI Agent";
+    case "coco":
+      return "Coco Agent";
+    default:
+      return personalGoalTitle(agentId);
   }
-  if (normalized.includes("claude")) {
-    return "Claude Code";
-  }
-  if (normalized.includes("trae")) {
-    return "Trae CLI Agent";
-  }
-  if (normalized.includes("coco")) {
-    return "Coco Agent";
-  }
-  return personalGoalTitle(agentId);
 }
 
-function personalAgentCapability(agentId: string) {
-  const normalized = agentId.toLowerCase();
-  if (normalized.includes("codex")) {
-    return "代码与项目执行";
+function personalAgentCapability(agentId: string, adapterKind?: string | null) {
+  switch (presentedAgentFamily(agentId, adapterKind)) {
+    case "codex":
+      return "代码与项目执行";
+    case "claude":
+      return "复杂分析与长任务";
+    case "openai":
+    case "anthropic":
+      return "管家问答 · 无工具";
+    case "kiro":
+      return "终端编码 · 原生 /goal 循环";
+    case "trae":
+      return "前端与交互实现";
+    case "coco":
+      return "通用任务";
+    default:
+      return PERSONAL_AGENT_FALLBACK_CAPABILITY;
   }
-  if (normalized.includes("claude")) {
-    return "复杂分析与长任务";
-  }
-  if (normalized.includes("openai") || normalized.includes("anthropic")) {
-    return "管家问答 · 无工具";
-  }
-  if (normalized.includes("trae")) {
-    return "前端与交互实现";
-  }
-  if (normalized.includes("coco")) {
-    return "通用任务";
-  }
-  return "已发现的项目 Agent";
 }
 
 function personalVisibleAgentMessage(value: string) {
@@ -1422,7 +1428,7 @@ function PersonalGoalHome({
         agentId: agent.agent_id,
         adapterKind: agent.adapter_kind,
         available: agent.available,
-        capability: personalAgentCapability(agent.agent_id),
+        capability: personalAgentCapability(agent.agent_id, agent.adapter_kind),
         interrupt: agent.interrupt,
         label: agent.display_name,
         location: agent.location,

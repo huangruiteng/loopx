@@ -13,6 +13,13 @@ from typing import Any, Callable, Protocol
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError
 from .chat_endpoints import AgentEndpointRegistry
+from .kiro_cli_goal_mode import (
+    KIRO_CLI_BIN,
+    KIRO_CLI_CHAT_ADAPTER_KIND,
+    KIRO_CLI_CHAT_AGENT_ID,
+    KIRO_CLI_CHAT_DISPLAY_NAME,
+    kiro_cli_chat_command,
+)
 from .chat_store import (
     CHAT_SESSION_MODE_ATTACHED,
     TERMINAL_TURN_STATES,
@@ -55,6 +62,7 @@ class CodexAppServerAdapter:
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
         execution_mode: bool = False,
+        codex_home: Path | None = None,
     ) -> "CodexAppServerAdapter":
         return cls(
             CodexChatAgentSession.start(
@@ -67,6 +75,7 @@ class CodexAppServerAdapter:
                 hard_timeout_sec=hard_timeout_sec,
                 execution_mode=execution_mode,
                 resume_thread_id=resume_thread_id,
+                codex_home=codex_home,
             )
         )
 
@@ -207,6 +216,7 @@ class ChatRuntimeController:
         store: ChatSessionStore,
         codex_bin: str,
         claude_bin: str = "claude",
+        kiro_cli_bin: str = KIRO_CLI_BIN,
         startup_timeout_sec: float = 30.0,
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
@@ -214,7 +224,14 @@ class ChatRuntimeController:
     ) -> None:
         self.store = store
         self.codex_bin = codex_bin
+        # Capture once; the service's startup environment is not session identity.
+        self.codex_home = Path(
+            os.environ.get("LOOPX_CHAT_CODEX_HOME")
+            or os.environ.get("CODEX_HOME")
+            or "~/.codex"
+        ).expanduser().resolve()
         self.claude_bin = claude_bin
+        self.kiro_cli_bin = kiro_cli_bin
         self.startup_timeout_sec = startup_timeout_sec
         self.idle_timeout_sec = idle_timeout_sec
         self.hard_timeout_sec = hard_timeout_sec
@@ -249,6 +266,25 @@ class ChatRuntimeController:
                 "display_name": "Claude Code",
                 "adapter_kind": "claude_code_cli",
                 "available": bool(shutil.which(self.claude_bin)),
+                "streaming": True,
+                "resume": True,
+                "interrupt": True,
+                "tool_calls": True,
+                "trust_scope": "read_only",
+                "source": "builtin",
+            },
+            {
+                # Kiro CLI ships an ACP stdio agent (`kiro-cli acp`), so it is
+                # reachable through the existing ACP adapter without a new
+                # transport. It is a built-in row rather than something the
+                # owner must hand-register, because LoopX already owns the
+                # host's facts; `available` stays a live PATH probe so an
+                # uninstalled host renders as needing configuration instead of
+                # failing at session open.
+                "agent_id": KIRO_CLI_CHAT_AGENT_ID,
+                "display_name": KIRO_CLI_CHAT_DISPLAY_NAME,
+                "adapter_kind": KIRO_CLI_CHAT_ADAPTER_KIND,
+                "available": bool(shutil.which(self.kiro_cli_bin)),
                 "streaming": True,
                 "resume": True,
                 "interrupt": True,
@@ -314,6 +350,7 @@ class ChatRuntimeController:
                     history_context = "\nPrevious visible Chat messages:\n" + "\n".join(history_lines)
             return CodexAppServerAdapter.start(
                 codex_bin=self.codex_bin,
+                codex_home=self.codex_home,
                 work_dir=work_dir,
                 goal_id=goal_id,
                 objective=f"{objective}{history_context}",
@@ -337,6 +374,15 @@ class ChatRuntimeController:
                 work_dir=work_dir,
                 session_id=resume_thread_id,
                 history=history,
+            )
+        if agent_id == KIRO_CLI_CHAT_AGENT_ID:
+            return ACPStdioAdapter.start(
+                command=kiro_cli_chat_command(self.kiro_cli_bin),
+                work_dir=work_dir,
+                resume_thread_id=resume_thread_id,
+                startup_timeout_sec=self.startup_timeout_sec,
+                idle_timeout_sec=self.idle_timeout_sec,
+                hard_timeout_sec=self.hard_timeout_sec,
             )
         endpoint = self.endpoint_registry.get(agent_id)
         if endpoint is not None:
@@ -399,6 +445,7 @@ class ChatRuntimeController:
                 upstream_thread_id=adapter.upstream_thread_id,
                 upstream_mode="chat" if agent_id == "codex" else "default",
                 channel_id=selected_channel,
+                codex_home=str(self.codex_home) if agent_id == "codex" else None,
             )
             with self.lock:
                 self.adapters[persisted["session_id"]] = adapter
@@ -407,6 +454,18 @@ class ChatRuntimeController:
     def _session_adapter_lock(self, session_id: str) -> threading.Lock:
         with self.lock:
             return self.session_adapter_locks.setdefault(session_id, threading.Lock())
+
+    def _check_codex_home(self, session: dict[str, Any]) -> None:
+        if session.get("agent_id") != "codex" or session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
+            return
+        bound_home = session.get("codex_home")
+        if bound_home is not None and bound_home != str(self.codex_home):
+            raise CodexChatAgentError(
+                "This managed Session belongs to a different Codex home. Restart LoopX Chat "
+                "with its original LOOPX_CHAT_CODEX_HOME; do not copy or rebind its history.",
+                error_code="codex_home_mismatch",
+                gate=None,
+            )
 
     def _ensure_adapter(
         self,
@@ -436,6 +495,7 @@ class ChatRuntimeController:
         if current_session is None or current_session.get("status") == "closed":
             raise KeyError("chat session was not found")
         session = current_session
+        self._check_codex_home(session)
         if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
             raise CodexChatAgentError(
                 "The attached host Session must be served by its existing host bridge.",
@@ -528,12 +588,16 @@ class ChatRuntimeController:
         with self.lock:
             self.adapters[session_id] = adapter
         try:
+            if session.get("agent_id") == "codex" and session.get("codex_home") is None:
+                # A legacy session is bound only after successful upstream resume,
+                # not when a service happens to start in a new environment.
+                self.store.update_session(session_id, codex_home=str(self.codex_home))
             self.store.restore_managed_session_if_idle(
                 session_id,
                 upstream_thread_id=adapter.upstream_thread_id,
                 upstream_mode=self._managed_upstream_mode(session),
             )
-        except KeyError:
+        except Exception:
             with self.lock:
                 owns_adapter = self.adapters.get(session_id) is adapter
                 if owns_adapter:
@@ -1081,6 +1145,7 @@ class ChatRuntimeController:
             session = self.store.load_session(session_id)
             if session is None or session.get("status") == "closed":
                 raise KeyError("chat session was not found")
+            self._check_codex_home(session)
             if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
                 if session.get("active_turn_id"):
                     return session

@@ -547,13 +547,11 @@ export function leaseInteger(
   } else if (typeof raw === "string" && /^-?\d+$/u.test(raw)) {
     number = Number(raw);
   }
-  const positive = field === "lease_epoch";
-  const nonNegative = field === "version";
+  const minimum = field === "version" ? 0 : 1;
   if (
-    typeof raw === "boolean" || !Number.isSafeInteger(number) ||
-    (positive && number <= 0) || (nonNegative && number < 0)
+    typeof raw === "boolean" || !Number.isSafeInteger(number) || number < minimum
   ) {
-    let message = "lease acquire_ttl_seconds must be an integer";
+    let message = "lease acquire_ttl_seconds must be a positive integer";
     if (field === "lease_epoch") {
       message = "lease epoch must be a positive integer";
     } else if (field === "version") {
@@ -1216,10 +1214,12 @@ const VALIDATION_FAILURE_CODES = new Set([
   "todo_lease_conflict",
   "write_scope_conflict",
   "authority_source_changed",
+  "corrupt_lease",
 ]);
 
 function failureKind(code: string): string {
   if (INVALID_IDENTITY_CODES.has(code)) return "invalid_identity";
+  if (code === "corrupt_lease") return "permission_denied";
   if (PERMISSION_DENIED_CODES.has(code)) return "permission_denied";
   return "writeback_rejected";
 }

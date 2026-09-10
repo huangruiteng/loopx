@@ -68,13 +68,15 @@ def register_slash_commands_command(
             "z-code",
             "agy",
             "antigravity",
+            "kiro",
+            "kiro-cli",
             "pi",
         ],
         help=(
             "Host surface to install. Repeatable. Defaults to static command facades "
-            "for Codex, Claude Code, and OpenCode. `gemini`, `cursor`, `zcode` and "
-            "`agy`, `pi` are opt-in: they write into those hosts' own homes only when "
-            "requested."
+            "for Codex, Claude Code, and OpenCode. `gemini`, `cursor`, `zcode`, "
+            "`agy`, `kiro-cli`, `pi` are opt-in: they write into those hosts' own "
+            "homes only when requested."
         ),
     )
     parser.add_argument(

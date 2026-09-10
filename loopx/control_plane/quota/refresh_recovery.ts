@@ -56,6 +56,11 @@ function canonical(value: unknown): string {
 
 type Decision = "append" | "replay" | "repair_receipt" | "supplement_checkpoint" | "supplement_workspace" | "reject";
 
+export function isMaterialMonitorPoll(run: JsonObject | null): boolean {
+  if (run?.classification !== "quota_monitor_poll") return false;
+  return run.material_change === true;
+}
+
 export function refreshRecovery(
   request: RefreshRetryRequest,
   prior: JsonObject | null,
@@ -97,8 +102,8 @@ export function refreshRecovery(
   // A material poll is not a completed refresh: its receipt-bound first
   // workspace supplement may author next-action/vision through normal refresh
   // validation. Once appended, the recovery digests restore strict replay.
-  const firstMonitorCloseout = missingWorkspace && prior.classification === "quota_monitor_poll" &&
-    prior.material_change === true && prior.refresh_recovery == null && checkpoint === null;
+  const firstMonitorCloseout = missingWorkspace && isMaterialMonitorPoll(prior) &&
+    prior.refresh_recovery == null && checkpoint === null;
   if (firstMonitorCloseout) {
     const unrelatedMutation = Object.entries(request.mutation).some(([key, value]) =>
       key !== "next_action" && value !== null && value !== false &&

@@ -22,6 +22,7 @@ from .control_plane.scheduler.monitor_todo import monitor_next_due_at
 from .control_plane.todos.contract import require_supported_todo_resume_when
 from .history import load_registry
 from .host_loop_activation import build_host_loop_activation_packet
+from .kiro_cli_goal_mode import KIRO_CLI_CHAT_AGENT_ID
 from .quota import build_quota_should_run
 from .registry import registry_goals
 from .todos import add_goal_todo, update_goal_todo
@@ -42,6 +43,21 @@ SUPPORTED_ACTION_KINDS = {
     "gate.resolve",
 }
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,200}$")
+# Runtime Endpoint ids and durable Goal agent ids are chosen independently, so
+# a family token collapses both onto the host that produced them: Endpoint
+# `codex` has to resolve to a registered `codex-main-control`. Every host that
+# owns a built-in Endpoint needs a row here, or selecting it in the workspace
+# raises `agent_binding_required` for an agent the user did register. A host
+# absent from the table resolves to its own id, which only matches an
+# identically named agent — correct as a fallback, wrong as a built-in's only
+# behavior. Matching is bounded at a `-` delimiter, so this table lists family
+# roots rather than free prefixes: `kiro-worker-1` joins the Kiro family while
+# `kiroscope-worker` keeps its own identity. Keep the rule in this one table.
+_AGENT_FAMILY_ROOTS: tuple[tuple[str, str], ...] = (
+    ("codex", "codex"),
+    ("claude", "claude-code"),
+    ("kiro", KIRO_CLI_CHAT_AGENT_ID),
+)
 _MONITOR_CADENCE = re.compile(
     r"^(?P<count>[1-9][0-9]{0,4})(?P<unit>s|m|h|d)$",
     re.IGNORECASE,
@@ -223,11 +239,21 @@ class ChatActionService(
 
     @staticmethod
     def _agent_family(value: str) -> str:
+        """Classify an id into a host family, bounded at a delimiter.
+
+        A bare prefix match silently swallowed unrelated operator ids:
+        ``kiroscope-worker`` and ``codexplorer`` are not the Kiro or Codex
+        family, but they matched, and a single false match is enough for
+        ``_resolve_goal_agent`` to bind a built-in endpoint to the wrong
+        durable identity instead of raising ``agent_binding_required``. The
+        family token must therefore be the whole id or end at a ``-``
+        delimiter, which still accepts every documented shape (``kiro``,
+        ``kiro-cli``, ``kiro-worker-1``) because ids are normalized first.
+        """
         token = value.strip().lower().replace("_", "-")
-        if token.startswith("codex"):
-            return "codex"
-        if token.startswith("claude"):
-            return "claude-code"
+        for prefix, family in _AGENT_FAMILY_ROOTS:
+            if token == prefix or token.startswith(f"{prefix}-"):
+                return family
         return token
 
     def _resolve_goal_agent(self, goal_id: str, endpoint_id: str) -> str:

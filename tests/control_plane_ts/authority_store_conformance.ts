@@ -373,7 +373,8 @@ export function registerAuthorityStoreConformance(
       requested_completion_turn_key: null,
       requested_completion_identity_source: null,
       linked_successor_todo_ids: [],
-      successor_intents: [successorIntent],
+      successor_intents: [successorIntent, {role: "user", task_class: "user_gate",
+        text: "Decide the completing agent's next step"}],
       note: "completed atomically",
       evidence: "focused provider conformance",
       reason: null,
@@ -481,7 +482,14 @@ export function registerAuthorityStoreConformance(
     assert.equal(completed?.status, "done");
     assert.equal(completed?.note, "completed atomically");
     assert.equal(completed?.evidence, "focused provider conformance");
-    assert.deepEqual(completed?.successor_todo_ids, [generatedId]);
+    assert.deepEqual(completed?.successor_todo_ids, generatedIds);
+    assert.equal(generatedIds?.length, 2);
+    const userSuccessor = (afterCompletion.head.todos as Record<string, unknown>[])
+      .find((todo) => todo.todo_id === generatedIds?.[1]);
+    assert.equal(userSuccessor?.role, "user");
+    assert.equal(userSuccessor?.blocks_agent, "agent-a");
+    assert.equal(userSuccessor?.bound_agent, "agent-a");
+    assert.notEqual(userSuccessor?.global_gate, true);
     assert.equal(created?.claimed_by, "agent-b");
     assert.equal(created?.created_by, "agent-a");
     const releasedLease = (afterCompletion.head.leases as Record<string, unknown>[])
@@ -1137,10 +1145,33 @@ export function registerAuthorityStoreConformance(
         now: new Date("2026-09-05T04:30:00Z"),
       });
 
+      // Promise.all alone does not guarantee a CAS race: a late reader may
+      // correctly reject the already-claimed Todo before reaching commit.
+      // Hold the first two real reads so both transactions see the same head.
+      let releaseReaders: () => void = () => {
+        throw new Error("reader barrier was not initialized");
+      };
+      const ready = new Promise<void>((resolve) => { releaseReaders = resolve; });
+      let readers = 0;
+      const originals = [store, contender].map((backend) => {
+        const load = backend.loadAuthority.bind(backend);
+        backend.loadAuthority = async () => {
+          backend.loadAuthority = load;
+          const snapshot = await load();
+          if (++readers === 2) releaseReaders();
+          await ready;
+          return snapshot;
+        };
+        return load;
+      });
       const results = await Promise.all([
         executeCoordinationTodoClaim(store, request("agent-a")),
         executeCoordinationTodoClaim(contender, request("agent-b")),
-      ]);
+      ]).finally(() => {
+        [store, contender].forEach((backend, index) => {
+          backend.loadAuthority = originals[index]!;
+        });
+      });
       assert.deepEqual(
         results.map((result) => result.status).sort(),
         ["applied", "conflict"],

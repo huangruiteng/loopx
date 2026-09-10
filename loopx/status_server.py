@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -103,6 +104,34 @@ CONFIGURE_GOAL_REQUEST_FIELDS = {
     "clear_boundary_authority",
 }
 CONFIGURE_GOAL_APPLY_FIELDS = CONFIGURE_GOAL_REQUEST_FIELDS | {"preview_id"}
+
+
+def _reject_non_standard_json_constant(value: str) -> None:
+    raise ValueError(
+        f"request body must be strict JSON; non-standard constant {value} is not allowed"
+    )
+
+
+def _require_finite_json_numbers(value: Any) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("request body must be strict JSON; non-finite numbers are not allowed")
+    if isinstance(value, dict):
+        for item in value.values():
+            _require_finite_json_numbers(item)
+    elif isinstance(value, list):
+        for item in value:
+            _require_finite_json_numbers(item)
+
+
+def parse_strict_json_object(raw: bytes) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        parse_constant=_reject_non_standard_json_constant,
+    )
+    _require_finite_json_numbers(payload)
+    if not isinstance(payload, dict):
+        raise ValueError("request body must be a JSON object")
+    return payload
 
 
 def parse_goal_activation_filter(query: dict[str, list[str]]) -> str | None:
@@ -223,11 +252,7 @@ class StatusRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("request body is empty")
         if content_length > 64_000:
             raise ValueError("request body is too large")
-        raw = self.rfile.read(content_length)
-        payload = json.loads(raw.decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("request body must be a JSON object")
-        return payload
+        return parse_strict_json_object(self.rfile.read(content_length))
 
     def _parse_reward_body(self, body: dict[str, Any], *, append: bool) -> tuple[str, str | None, dict[str, Any]]:
         allowed = REWARD_APPEND_FIELDS if append else REWARD_REQUEST_FIELDS
