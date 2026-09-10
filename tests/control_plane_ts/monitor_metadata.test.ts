@@ -112,6 +112,18 @@ test("timestamp codec rejects rollover dates and ordering retains microseconds",
   })));
 });
 
+test("timestamp timezone letters are suffixes, not date separators", () => {
+  for (const date of ["1970-01-01", "19700101", "1970-W01-4"]) {
+    for (const letter of ["Z", "z"]) {
+      assert.equal(parseTodoTimestampMicros(`${date}${letter}00:00`), null);
+      assert.equal(parseTodoTimestampMicros(`${date}T00:00${letter}`), 0n);
+    }
+  }
+  for (const time of ["00", "0000", "00:00", "000000", "00:00:00"]) {
+    assert.equal(parseTodoTimestampMicros(`1970-01-01T${time}Z`), 0n);
+  }
+});
+
 test("production-scale snapshot remains immutable while each monitor gets an isolated plan", () => {
   const fixture = productionScaleCoordinationFixture("goal-fixture");
   const before = structuredClone(fixture);

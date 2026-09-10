@@ -42,7 +42,9 @@ export function parseIsoTimestamp(value: string): Date | null {
  * It keeps microseconds and offset seconds, which a JS Date cannot represent.
  * Missing timezone means UTC, matching the existing Python runtime codec. */
 export function parseTodoTimestampMicros(value: string): bigint | null {
-  const match = /^(\d{4}-\d{2}-\d{2}|\d{8}|\d{4}-W\d{2}(?:-[1-7])?|\d{4}W\d{2}[1-7]?)(?:[\s\S](.+))?$/u.exec(value);
+  // The legacy wrapper replaces Z/z with +00:00 before fromisoformat, so
+  // these letters are timezone suffixes, never date/time separators.
+  const match = /^(\d{4}-\d{2}-\d{2}|\d{8}|\d{4}-W\d{2}(?:-[1-7])?|\d{4}W\d{2}[1-7]?)(?:[^Zz](.+))?$/u.exec(value);
   if (!match) return null;
   const [, date, time] = match;
   let calendar: Date | null;
@@ -64,7 +66,7 @@ export function parseTodoTimestampMicros(value: string): bigint | null {
   if (time === undefined) return BigInt(calendar.valueOf()) * 1000n;
   const parts = /^(.*?)(Z|z|[+-].*)?$/.exec(time)!;
   function clock(raw: string, offset: boolean): bigint | null {
-    const parsed = /^(\d{2})(?:(:?)?(\d{2})(?:\2(\d{2}))?)?(?:[.,](\d+))?$/.exec(raw);
+    const parsed = /^(\d{2})(?:(:?)(\d{2})(?:\2(\d{2}))?)?(?:[.,](\d+))?$/.exec(raw);
     if (!parsed) return null;
     const hour = Number(parsed[1]), minute = Number(parsed[3] ?? 0), second = Number(parsed[4] ?? 0);
     if (!offset && (hour > 23 || minute > 59 || second > 59)) return null;

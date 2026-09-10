@@ -96,3 +96,29 @@ def test_monitor_timestamp_input_matches_retained_python_iso_codec(value):
     else:
         result = effect_runtime_result("todo.monitor_metadata.plan", request)
         assert result["metadata"]["expires_at"] == value
+
+
+@pytest.mark.parametrize("date", ["1970-01-01", "19700101", "1970-W01-4"])
+@pytest.mark.parametrize("separator", ["Z", "z"])
+def test_public_writer_rejects_timezone_letter_as_date_separator(tmp_path, date, separator):
+    registry, _, state = _write_fixture(tmp_path)
+    todo = _add_monitor(registry, text="Observe public fixture", target_key="fixture")
+    value = f"{date}{separator}00:00"
+    assert parse_timestamp(value) is None  # Independent legacy input contract.
+    before = state.read_bytes()
+    with pytest.raises(ValueError, match="expires-at must be an ISO timestamp"):
+        update_goal_todo(registry_path=registry, goal_id=GOAL_ID, todo_id=todo["todo_id"],
+                         role="agent", agent_id=AGENT_ID, monitor_metadata={"expires_at": value})
+    assert state.read_bytes() == before
+
+
+@pytest.mark.parametrize("suffix", ["Z", "z"])
+def test_public_writer_keeps_terminal_timezone_letter(tmp_path, suffix):
+    registry, _, _state = _write_fixture(tmp_path)
+    todo = _add_monitor(registry, text="Observe public fixture", target_key="fixture")
+    value = f"2030-01-01T00:00{suffix}"
+    assert parse_timestamp(value) is not None
+    update_goal_todo(registry_path=registry, goal_id=GOAL_ID, todo_id=todo["todo_id"],
+                     role="agent", agent_id=AGENT_ID, monitor_metadata={"expires_at": value})
+    readback = list_goal_todos(registry_path=registry, goal_id=GOAL_ID, role="agent")
+    assert readback["todos"][0]["expires_at"] == value
