@@ -13,6 +13,8 @@ import {
   waitForHttp,
 } from "./dashboard-browser-smoke-support.mjs";
 
+import { verifyWorkspaceLocales } from "../apps/presentation/dashboard/smoke/workspace-locale-browser-smoke.mjs";
+
 const require = createRequire(import.meta.url);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
@@ -1268,7 +1270,9 @@ async function main() {
     const url = `http://127.0.0.1:${port}/${packaged ? "chat/" : ""}?statusUrl=/status.json`;
     await waitForHttp(url);
     browser = await launchBrowser(chromium);
-    const capabilityOffPage = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    await verifyWorkspaceLocales({ browser, url, installApi, outputDir });
+    if (process.argv.includes("--locale-only")) return;
+    const capabilityOffPage = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     await installApi(capabilityOffPage, { goalSubagentConfigurationEnabled: false });
     await capabilityOffPage.goto(url, { waitUntil: "networkidle" });
     await capabilityOffPage.getByTestId("personal-goal-home").waitFor({ state: "visible", timeout: 15_000 });
@@ -1280,7 +1284,7 @@ async function main() {
       throw new Error("Capability-off Dashboard exposed Goal sub-agent controls");
     }
     await capabilityOffPage.close();
-    const page = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const page = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("console", (message) => {
@@ -1621,7 +1625,7 @@ async function main() {
     api.freezeGoalSubagentStatusProjection = false;
     pass(22, "Per-Goal sub-agent execution supports unrestricted and restricted policies, previews before writing, verifies shared-state readback, leaves no-domain Goals usable, and can be disabled again.");
 
-    if (await page.locator("html").getAttribute("lang") !== "zh-CN") throw new Error("Desktop did not start in Simplified Chinese");
+    if (await page.locator("html").getAttribute("lang") !== "zh-CN") throw new Error("Chinese browser preference did not select Simplified Chinese");
     await page.getByRole("button", { name: "设置", exact: true }).click();
     await page.getByRole("region", { name: "设置", exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: /语言/ }).click();
@@ -2717,7 +2721,7 @@ async function main() {
       observations.push(`Refresh recovery failure: ${error.message}`);
     }
 
-    const remote = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const remote = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     await installApi(remote);
     await remote.goto(url, { waitUntil: "networkidle" });
     await remote.getByRole("button", { name: "添加 SSH 隧道来源" }).click();
@@ -2768,7 +2772,7 @@ async function main() {
     }
     await remote.close();
 
-    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true });
+    const mobile = await browser.newPage({ locale: "zh-CN", viewport: { width: 390, height: 844 }, isMobile: true });
     await installApi(mobile);
     await mobile.goto(url, { waitUntil: "networkidle" });
     await mobile.getByTestId("personal-goal-home").waitFor({ state: "visible" });
@@ -2851,7 +2855,7 @@ async function main() {
     if (mobileGoalOverflow > 1) throw new Error(`Mobile Goal header has ${mobileGoalOverflow}px horizontal overflow`);
     await mobile.screenshot({ path: resolve(outputDir, "mobile-goal-settings-menu.png"), fullPage: false, animations: "disabled" });
     await mobile.close();
-    const progressive = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const progressive = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     const progressiveApi = await installApi(progressive);
     progressiveApi.nextFullStatusDelayMs = 1_500;
     await progressive.goto(url, { waitUntil: "domcontentloaded" });
@@ -2871,7 +2875,7 @@ async function main() {
     pass(23, "The stopped archive loads after active Goals: active Goals are interactive first, the stopped section shows an accessible loading state, then stopped Goals arrive without replacing the page.");
     await progressive.close();
 
-    const revisionRace = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const revisionRace = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     const revisionRaceApi = await installApi(revisionRace);
     revisionRaceApi.captureNextStatusGeneration = true;
     revisionRaceApi.activationChangeAfterCapturedActive = {
@@ -2891,7 +2895,7 @@ async function main() {
     }
     await revisionRace.close();
 
-    const progressiveError = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const progressiveError = await browser.newPage({ locale: "zh-CN", viewport: { width: 1512, height: 982 } });
     const errorApi = await installApi(progressiveError);
     errorApi.failNextFullStatus = true;
     await progressiveError.goto(url, { waitUntil: "domcontentloaded" });
@@ -2936,7 +2940,7 @@ async function main() {
     const failures = [...results.entries()].filter(([, result]) => result.status !== "PASS");
     if (failures.length) throw new Error(`Acceptance failures: ${failures.map(([criterion, result]) => `${criterion} ${result.status}: ${result.note}`).join(" | ")}`);
   } finally {
-    if ([...results.values()].some((result) => result.status !== "PASS")) {
+    if (!process.argv.includes("--locale-only") && [...results.values()].some((result) => result.status !== "PASS")) {
       await writeFile(resolve(outputDir, "acceptance-results.json"), `${JSON.stringify({ criteria: Object.fromEntries(results), observations }, null, 2)}\n`, "utf8");
     }
     await browser?.close();

@@ -1585,6 +1585,10 @@
 .personal-digest-stats { display: flex; gap: 8px; }
 .personal-digest-stats span { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 13px; border: 1px solid var(--pw-line-strong); border-radius: 99px; background: #fff; color: var(--pw-muted); font-size: 12px; }
 .personal-digest-stats b { color: var(--pw-text); font-size: 14px; }
+@media (max-width: 720px) {
+  .personal-digest-card { flex-direction: column; align-items: flex-start; }
+  .personal-digest-stats { flex-wrap: wrap; }
+}
 
 
 .personal-composer-hint { margin: 0 0 8px; color: var(--pw-faint); font-size: 11.5px; }

@@ -1788,10 +1788,19 @@ function formatMessage(template: string, values?: Record<string, string | number
 
 export function readWorkspaceLocale(): WorkspaceLocale {
   try {
-    return window.localStorage.getItem(workspaceLocaleStorageKey) === "en" ? "en" : "zh-CN";
+    const stored = window.localStorage.getItem(workspaceLocaleStorageKey);
+    if (stored === "en" || stored === "zh-CN") return stored;
   } catch {
-    return "zh-CN";
+    // Browser preferences still apply when persistent storage is unavailable.
   }
+  if (typeof navigator === "undefined") return "en";
+  const languages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const language of languages) {
+    const primaryLanguage = language?.split("-")[0].toLowerCase();
+    if (primaryLanguage === "en") return "en";
+    if (primaryLanguage === "zh") return "zh-CN";
+  }
+  return "en";
 }
 
 export type WorkspaceTranslate = (key: WorkspaceMessageKey, values?: Record<string, string | number>) => string;
