@@ -225,6 +225,7 @@ def infer_available_capabilities_from_prompt(prompt: str) -> list[str]:
 
 
 def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, Any]:
+    from .control_plane.heartbeat.automation_upgrade import bootstrap_binding
     home = root or codex_home()
     automations_root = home / "automations"
     if not automations_root.exists():
@@ -273,6 +274,7 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
             continue
         agent_id = infer_agent_id_from_prompt(prompt)
         status = str(automation.get("status") or "ACTIVE")
+        binding = bootstrap_binding(prompt)
         entries.append(
             {
                 "automation_id": str(automation.get("id") or path.parent.name),
@@ -293,6 +295,9 @@ def load_codex_app_automation_manifest(root: Path | None = None) -> dict[str, An
                 "status": status,
                 "installed": status.upper() != "DELETED",
                 "source": "codex_app_automation_toml",
+                "runtime_thin_bootstrap": {
+                    **binding, "registry": str(binding["registry"]),
+                } if binding else None,
                 "path": str(path),
             }
         )
@@ -755,11 +760,21 @@ def build_upgrade_plan(
             expected_digest = str(summary.get("sha256") or "")
             not_installed = entry_declares_not_installed(entry)
             actual_digest = None if not_installed else installed_entry_digest(entry) if entry else None
+            bootstrap = entry.get("runtime_thin_bootstrap") if entry else None
+            live_thin = bool(
+                isinstance(bootstrap, dict)
+                and mode == "thin"
+                and bootstrap.get("goal_id") == goal_id
+                and bootstrap.get("agent_id") == agent_id
+                and bootstrap.get("cli_bin", "loopx") == cli_bin
+                and bootstrap.get("runtime_root") == (str(Path(runtime_root_override).expanduser().resolve()) if runtime_root_override else None)
+                and Path(str(bootstrap.get("registry"))).resolve() == Path(registry_path).resolve()
+            )
             status = "unknown"
             if not_installed:
                 status = "not_installed"
             elif entry:
-                status = "current" if actual_digest == expected_digest else "stale"
+                status = "current" if live_thin or actual_digest == expected_digest else "stale"
             policy_audit = (
                 {
                     "available": False,
