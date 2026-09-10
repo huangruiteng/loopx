@@ -3,7 +3,7 @@ from __future__ import annotations
 from loopx.heartbeat_prompt import build_heartbeat_prompt
 
 
-def test_visible_goal_keeps_final_todo_nonterminal_until_spend() -> None:
+def test_visible_goal_delegates_settlement_then_checks_terminal_readback() -> None:
     payload = build_heartbeat_prompt(
         goal_id="terminal-settlement-fixture",
         thin=True,
@@ -11,20 +11,15 @@ def test_visible_goal_keeps_final_todo_nonterminal_until_spend() -> None:
     )
     task_body = " ".join(payload["task_body"].split())
 
-    terminal_rule = (
-        "Done -> successor first; final -> accountable refresh, spend, then "
-        "no-follow-up completion."
-    )
-    refresh = "refresh the accountable progress record before spending"
-    spend = "Then spend exactly once against that refresh"
-    readback = "Rerun the same guard read-only"
+    # Ordering belongs to the live settlement contract (covered by the real CLI
+    # suite), not a second static list embedded in the host objective.
+    settlement = "cli_channel.settlement_plan.ordered_steps"
+    readback = "After settlement recheck quota"
     terminal_readback = (
         "Complete visible Goal only on `should_run=false` + terminal "
         "no-follow-up"
     )
 
-    assert task_body.index(terminal_rule) < task_body.index(refresh)
-    assert task_body.index(refresh) < task_body.index(spend)
-    assert task_body.index(spend) < task_body.index(readback)
+    assert task_body.index(settlement) < task_body.index(readback)
     assert terminal_readback in task_body
     assert payload["interface_budget"]["within_budget"] is True

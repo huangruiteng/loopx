@@ -167,10 +167,11 @@ def test_one_shot_host_contract_keeps_goal_closure_with_the_host() -> None:
     task_body = prompt["task_body"]
     normalized = " ".join(task_body.split())
     assert "Progress is not a new Goal boundary" in normalized
-    assert "do not create a successor merely to continue" in normalized
-    assert "refresh the accountable progress record before spending" in normalized
-    assert "Then spend exactly once against that refresh" in normalized
-    assert task_body.index("loopx refresh-state") < task_body.index("quota spend-slot")
+    assert "do not create a new host Goal merely to continue" in normalized
+    assert "settlement_plan.ordered_steps" in normalized
+    assert "Do not reconstruct refresh/spend commands" in normalized
+    assert prompt["progress_refresh_state_command"] not in task_body
+    assert prompt["quota_spend_command"] not in task_body
 
     assert activation["activation_method"] == "submit_goal_once"
     assert activation["host_mutation"]["prompt_field"] == "task_body"

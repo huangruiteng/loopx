@@ -55,6 +55,51 @@ transport-neutral goal prompt and lets the goal runtime own inner iteration;
 see the host integration protocol instead of adapting this recurring
 automation contract.
 
+### Native Goal bootstrap and live execution instructions
+
+The automation lifecycle is the reference for shared execution, not a wrapper
+around native Goal behavior. Thin automation and Codex CLI/SSH, TraeX and Ark
+Managed Agent Goal bodies share quota dispatch: selection/re-entry, admitted work
+and validation, then the current writeback/settlement instructions. They do not
+share scheduler ownership, host completion, or blocked/resume rules.
+
+Native Goal bodies share a compact bootstrap.
+Generate it with the host's existing profile (for example `heartbeat-prompt
+--runtime-profile codex_cli --goal-id <GOAL_ID> --agent-id <AGENT_ID>`).
+The persistent body binds the Goal/Agent and quota entrypoint; each work iteration
+reads the current complete, successful quota JSON. The **inner execution
+instructions remain in `interaction_contract`**, including selection/re-entry,
+admitted work, and exact `cli_channel.settlement_plan.ordered_steps`.
+
+Native Goal bodies no longer embed a second static accountable refresh/spend
+template. Those command fields remain available in the generator response for
+compatibility/inspection, but are not a fallback for the live settlement plan.
+When no ordered settlement plan applies, consume the current `next_cli_actions`,
+including any required re-entry; do not substitute a saved generator command.
+Execute selection/re-entry before work and writeback/spend only after the
+corresponding validated work; a projected accounting command is not evidence
+that work happened. Preserve the plan's identity and flags, and follow readback
+or recovery after an ambiguous write instead of retrying a guessed command.
+Failed or incomplete contract reads permit neither work nor spend.
+
+An unbound Codex CLI or Ark Goal with selected Todo/replan work now receives a
+quota re-entry template with `--turn-instance-id`. Fill it with one public-safe
+unique work-iteration id and reuse that id on retries. The next packet supplies
+the same ordered settlement machinery used by automation, with `visible-goal`
+attribution. SSH Goal continues to use its existing `--begin-turn` path. This
+fixes the previous unbound native refresh/spend projection: those commands could
+not satisfy the existing settlement identity guard. It does not turn CLI/Ark
+Goals into App heartbeat receipts or move scheduler ownership into LoopX.
+
+The bootstrap retains work-sizing guidance and the distinction between progress
+and Goal completion. A new Todo is not a new host Goal; quiet/blocked states are
+not terminal no-follow-up. Codex alone retains its native blocked/resume rule.
+User/repository authority still applies; a trusted host is not blanket permission.
+This changes newly generated native Goal bodies and thin automation dispatch,
+not active host Goal objectives or benchmark prompts already pinned to a run.
+An installed runtime supplies updated dynamic contracts on later reads; upgrading
+it does not retroactively remove old text from an existing Goal.
+
 For Codex App, the generated quota command carries the compact explicit runtime
 profile `--runtime-profile codex_app_heartbeat` (generated commands use the
 equivalent compact alias `--codex-app`). The prompt does not restate the

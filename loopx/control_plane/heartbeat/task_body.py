@@ -480,8 +480,6 @@ def render_visible_goal_task_body(
         completion_subject="visible Goal",
         pr_review_pre_quota_command=pr_review_pre_quota_command,
         quota_guard_command=quota_guard_command,
-        quota_spend_command=quota_spend_command,
-        progress_refresh_state_command=progress_refresh_state_command,
         material_queue_rule=material_queue_rule,
         permission_rule=permission_rule,
         agent_scope_instruction=agent_scope_instruction,
@@ -525,8 +523,6 @@ def render_traex_visible_goal_task_body(
         completion_subject="visible Goal",
         pr_review_pre_quota_command=pr_review_pre_quota_command,
         quota_guard_command=quota_guard_command,
-        quota_spend_command=quota_spend_command,
-        progress_refresh_state_command=progress_refresh_state_command,
         material_queue_rule=material_queue_rule,
         permission_rule=permission_rule,
         agent_scope_instruction=agent_scope_instruction,
@@ -540,8 +536,6 @@ def _render_goal_task_body(
     completion_subject: str,
     pr_review_pre_quota_command: str,
     quota_guard_command: str,
-    quota_spend_command: str,
-    progress_refresh_state_command: str,
     material_queue_rule: str,
     permission_rule: str,
     agent_scope_instruction: str,
@@ -556,36 +550,28 @@ def _render_goal_task_body(
     policy_tail = _render_compact_policy_tail(
         material_queue_rule=material_queue_rule,
         permission_rule=permission_rule,
-        include_default_permission=True,
     )
     return f"""Advance LoopX goal `{goal_id}` from `{active_state}` {host_preamble}
 {scope_block}
 
-{RUNTIME_EXECUTION_ROUTING_RULE}
+{prequota_block}Each work iteration, read complete successful JSON from:
+`{quota_guard_command}`
+Use the current `interaction_contract`, not remembered commands.
+{HOST_LOOP_QUOTA_DISPATCH_RULE}
+Use `cli_channel.settlement_plan.ordered_steps` when present; preserve identities/flags
+and supply truthful evidence/actual outcomes.
+Do not reconstruct refresh/spend commands. Ambiguous writes need readback/recovery,
+not blind repeats. Repair local entrypoint failures within authority; while the
+contract is unavailable or incomplete, no work/spend and no claim of completion.
 
-{prequota_block}{HOST_LOOP_QUOTA_DISPATCH_RULE}
-Guard: `{quota_guard_command}`.
-
-`should_run=false`: no delivery/spend; NOTIFY: Chinese action/gate;
-otherwise wait.{host_wait_rule}
-
-`should_run=true`: take highest-priority unblocked in-scope todo by default; choose any
-other eligible Todo with a reason. Honor claims/leases and blocker-push/recovery obligations.
-Before dependencies, persist changed scope/acceptance/non-goal evidence and next todo.
 {SCOPE_BOUNDED_WORK_RULE}
-Progress is not a new Goal boundary. Reuse this Goal until terminal;
-do not create a successor merely to continue. Validate; write public-safe evidence.
-{HOST_LOOP_TODO_CLOSEOUT_RULE}
-
-For classification/scale/outcome, never default or upgrade them to
-`multi_surface` / `outcome_progress`; refresh the accountable progress record
-before spending: `{progress_refresh_state_command}`. Then spend exactly once
-against that refresh; no pipe/retry: `{quota_spend_command}`.
-Rerun the same guard read-only. Complete {completion_subject} only on
-`should_run=false` + terminal no-follow-up; else obey next action.
-
-No spend: gate/wait/dry-run/preflight failure/no-op/duplicate. Stop: private/company
-material, credentials, destructive git, unauthorized production, or repo rules.
+Continue allowed work within user/repository authority; notification controls
+output, not execution. A tool call or settlement is not a stopping target.
+Progress is not a new Goal boundary: do not create a new host Goal merely to
+continue. After settlement recheck quota; use current continuation/wait guidance,
+not repeated unchanged polling.
+Complete {completion_subject} only on `should_run=false` + terminal no-follow-up;
+other no-work states mean wait, not completion.{host_wait_rule}
 
 {policy_tail}"""
 def render_ark_managed_agent_goal_task_body(
@@ -626,8 +612,6 @@ def render_ark_managed_agent_goal_task_body(
         completion_subject="Goal",
         pr_review_pre_quota_command=pr_review_pre_quota_command,
         quota_guard_command=quota_guard_command,
-        quota_spend_command=quota_spend_command,
-        progress_refresh_state_command=progress_refresh_state_command,
         material_queue_rule=material_queue_rule,
         permission_rule=permission_rule,
         agent_scope_instruction=agent_scope_instruction,
@@ -694,7 +678,7 @@ Done->todo/rationale; guard receipt; 2 stalls->replan.
 
 P0 blocked: safe P1/P2; monitor quiet/no-spend.
 
-No project branches; {policy_tail} Stop: private material, credentials,
+{policy_tail} Stop: private material, credentials,
 destructive git, unauthorized prod."""
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}

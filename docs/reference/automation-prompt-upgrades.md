@@ -17,6 +17,13 @@ another scheduler. Failure to load a complete successful response stops work
 and spending; it must not fall back to remembered rules. Project watches and
 business policy belong in LoopX state, not in this bootstrap.
 
+The v2 wrapper distinguishes continued work, notifications and real waits:
+one operation does not end the work; notification silence is not execution
+silence; waits follow the live scheduler contract instead of unchanged polling.
+Local entrypoint errors may be repaired within existing authority, but an
+unavailable contract still forbids delivery and spending. This is not permission
+to bypass a gate, retry indefinitely, or disable a healthy automation.
+
 For a one-agent trial, pass `--cli-bin loopx-canary` to preview and apply. The
 bootstrap and the thin prompt's generated commands both use that executable;
 other automations continue to use their existing runtime. Do not promote the
@@ -90,9 +97,10 @@ for rollback.
 Disable automatic rule adoption by replacing the bootstrap with an explicitly
 pinned prompt using the App, or pause the task there. LoopX runtime rollback
 also changes the rules loaded on the next wake. Future incompatible bootstrap
-revisions still require an explicit migration; the v1 wrapper does not silently
-rewrite itself. `upgrade-plan` recognizes exact v1 wrappers as runtime-loaded
-thin prompts, rather than repeatedly reporting their body as stale.
+revisions still require an explicit migration; a wrapper does not silently
+rewrite itself. Exact v1 wrappers remain recognized as runtime-loaded thin
+prompts; `automation-prompts plan` proposes v2 for explicit adoption and performs
+no writes. Customized wrappers are not recognized merely from their header.
 
 ## 中文摘要
 
