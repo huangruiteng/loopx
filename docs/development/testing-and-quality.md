@@ -817,6 +817,8 @@ vision replan 未关闭时不能提前结束 Goal；这不是完整 Claude/Codex
 ```bash
 # No provider call by default. Explicit release opt-in uses ARK_API_KEY from the environment.
 python3 scripts/qualify-claude-goal-release.py --release-live
+# A completed inventory stage must not hide unfinished integrity acceptance.
+python3 scripts/qualify-claude-goal-release.py --release-live --scenario replan
 ```
 
 This arm uses the same ledger specification, independent oracle and durable
@@ -855,6 +857,77 @@ checks LoopX accounting. Passing non-delivery fixtures does not qualify delivery
 The same delivery class must pass failed-validation rejection and committed
 response-loss recovery without duplicate spending or premature terminal closure.
 Do not relabel delivery work or weaken the independent oracle to pass a host test.
+
+The `replan` scenario starts from a real, settled filename-inventory Todo and its
+valid `vision_closed` stage decision, not a fabricated missing writeback. The
+business specification still requires file sizes, checksums and a read-only
+integrity verifier. It requires an explicit successor vision/path decision,
+completed concrete successor work and terminal readback. The independent oracle
+checks actual hashes and sizes, then changes, removes and adds files in disposable
+copies; a verifier that silently regenerates its evidence fails. The original
+inventory must retain exactly one spend. This complements the finite delivery
+scenario: a model that simply closes every vision cannot pass both.
+The oracle does not require the literal final disposition `replan`: after the
+new successor has actually delivered, `no_followup` + `stop` is a valid scoped
+decision. It must still pass independent artifact, new successor, durable receipt
+and fresh terminal checks; `vision_closed` + `stop` is not Goal closure.
+
+`replan` 场景从真实完成并结算、具有有效 `vision_closed` 判断的“文件名清单”阶段启动，
+但完整验收仍缺少大小、校验和与只读校验器。测试要求后继 vision/显式路径调整、
+具体后继交付及最终终态；独立验收在一次性副本里篡改、删除、新增文件，拒绝通过
+自动重建清单掩盖错误。每个 Todo 必须恰好结算一次。后继真实交付后，最终路径可为
+`no_followup` + `stop`，不强求字面值 `replan`；`vision_closed` + `stop` 仍不是 Goal
+完成。两种场景都仅 release 前显式运行，普通 CI 不调用模型。
+
+### MCP vision authoring and recovery / MCP vision 写入与恢复
+
+The MCP guard projects `interaction_contract.mcp_channel`. For admitted normal
+Todo delivery, it replaces the raw CLI writeback/spend instructions with
+`complete_task` ownership; those are alternate transports, not two obligations.
+Replan-only and blocked lanes preserve their live CLI actions and binding.
+Vision field and total limits come from the same TS validator, not copied prompt
+constants. Quota admission, permission and workspace facts are unchanged.
+
+MCP 的普通 Todo 交付不再同时要求模型执行 CLI 记账和 MCP 结算两套流程；独立 replan
+仍使用动态 CLI 契约。vision 字段与预算直接来自 TS 校验器，不要求模型猜格式或翻测试。
+
+`complete_task` accepts either `agent_vision` (the existing bounded
+`goal_vision_replan_contract_v0` JSON packet) or `vision_unchanged_reason`.
+An unchanged decision needs a persisted valid baseline. The TypeScript host
+plan forwards that authored decision to its ordinary writeback; v1 requests
+fail closed against old runtimes instead of silently dropping the fields.
+Syntax and vision-budget preflight reuse the TS validator before lifecycle writes;
+baseline-dependent checks still run at writeback. Oversized authoring is a
+correctable input failure, not a terminal Goal failure. If an older/interrupted
+host already completed the Todo but failed writeback, retry `complete_task` with
+the same completion intent and a corrected uncommitted vision. Checkpoint-only
+recovery is not a substitute for unfinished settlement.
+
+If a previously completed MCP Todo omitted its decision, call
+`review_task_vision(todo_id, agent_id, agent_vision=...)` with that same Todo.
+It uses the original host Turn and the same writeback command constructor,
+delegating to the existing typed checkpoint recovery. It neither repeats Todo
+completion nor spends again. Exact replay is idempotent; a conflicting committed
+decision or a later superseding vision is rejected. It does not change Next
+Action or erase other work, gates, or permissions. A genuinely new replan follows
+the current interaction contract under a fresh admitted binding, not an edit to
+an already committed decision. Claude Todo-less replan now projects that identity
+re-entry before any refresh/spend instructions; ordinary MCP Todo delivery is
+unchanged.
+
+Todo acceptance, settled accounting, checkpoint satisfaction and Goal termination
+are separate facts. `vision_closed` closes a stage and still requires a successor
+vision for an active Goal. `no_followup` is an authored scoped closure assertion,
+not a substitute for evidence; remaining acceptance gaps or gates still prevent
+terminal quota. Kernel validation does not independently prove arbitrary prose
+true, so behavior qualification must also inspect the delivered artifacts.
+
+MCP 可随完成操作携带 vision 判断，也可用 `review_task_vision` 在原 Turn 补齐遗漏。
+复用 TS 的既有恢复规则，不新增结算引擎、不重扣额度；已提交的判断不能偷偷改写。
+格式和预算预检在 Todo 完成前拒绝非法输入；若旧宿主已部分完成，则修正未提交的
+vision 并重试原 `complete_task`，不能用仅补 checkpoint 的操作替代未完成结算。
+“checkpoint 满足”不等于“Goal 完成”，`vision_closed` 只结束阶段，真实缺口仍须规划。
+外层任务只描述业务验收，LoopX 协议由宿主内层指令和工具承接。
 
 ## Exact Release Commit Gate / 精确发布 Commit 门
 

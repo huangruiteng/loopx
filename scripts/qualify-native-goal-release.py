@@ -144,9 +144,6 @@ def cli(launcher: Path, *args: str) -> dict:
 
 
 def verify_settlement(runtime: Path, todos: list[dict]) -> int:
-    from loopx.control_plane.effect_program import SettlementStepKind
-    from loopx.control_plane.quota.settlement import read_heartbeat_settlement
-
     assert len(todos) == len(TODOS) and {t["todo_id"] for t in todos} == TODOS
     assert all(t.get("status") == "done" for t in todos)
     rows = [json.loads(line) for line in
@@ -156,6 +153,15 @@ def verify_settlement(runtime: Path, todos: list[dict]) -> int:
     assert all(isinstance(r.get("settlement_identity"), dict) for r in spends), "unbound_spend"
     identities = [r["settlement_identity"]["effect_id"] for r in spends]
     assert len(identities) == len(set(identities)), "duplicate_spend"
+    verify_spend_receipts(runtime, spends)
+    return len(spends)
+
+
+def verify_spend_receipts(runtime: Path, spends: list[dict]) -> None:
+    """Read durable receipts for Todo delivery and independent replan Turns."""
+    from loopx.control_plane.effect_program import SettlementStepKind
+    from loopx.control_plane.quota.settlement import read_heartbeat_settlement
+
     for row in spends:
         readback = read_heartbeat_settlement(
             runtime, goal_id=GOAL, agent_id=AGENT, todo_id=row.get("todo_id"),
@@ -169,7 +175,6 @@ def verify_settlement(runtime: Path, todos: list[dict]) -> int:
             SettlementStepKind.QUOTA_SPEND,
         }, "missing_settlement_receipts"
         assert readback.writeback_run is not None and readback.spend_run is not None
-    return len(spends)
 
 
 def verify_delivery(project: Path, runtime: Path, launcher: Path, profile: str) -> dict:

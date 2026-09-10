@@ -23,6 +23,8 @@ def test_default_never_probes_or_calls_model(monkeypatch, capsys):
     monkeypatch.setattr(runner, "prerequisite_failure", forbidden)
     assert runner.main([]) == 0
     assert json.loads(capsys.readouterr().out)["model_executed"] is False
+    assert runner.main(["--scenario", "replan"]) == 0
+    assert json.loads(capsys.readouterr().out)["model_executed"] is False
 
 
 def test_missing_environment_skips_but_attempted_failure_fails(monkeypatch, capsys):
@@ -105,9 +107,10 @@ def test_host_nonzero_is_not_reported_as_a_successful_model_turn(tmp_path):
 
 
 @pytest.mark.parametrize("failed", [False, True])
-def test_mcp_oracle_requires_successful_transactions_not_only_invocations(failed):
+@pytest.mark.parametrize("expected_todos", [None, {"todo_successor"}])
+def test_mcp_oracle_requires_successful_transactions_not_only_invocations(failed, expected_todos):
     events = []
-    for todo in sorted(runner.shared.TODOS):
+    for todo in sorted(runner.shared.TODOS if expected_todos is None else expected_todos):
         events.append({"message": {"content": [{"type": "tool_use", "id": todo,
             "name": "mcp__loopx__complete_task", "input": {"todo_id": todo}}]}})
         result = {"ok": not failed, "completed": True, "todo_id": todo,
@@ -116,9 +119,9 @@ def test_mcp_oracle_requires_successful_transactions_not_only_invocations(failed
             "content": json.dumps({"result": json.dumps(result)})}]}})
     if failed:
         with pytest.raises(AssertionError, match="mcp_delivery_transactions_not_completed"):
-            runner.verify_mcp_completions(events)
+            runner.verify_mcp_completions(events, expected_todos)
     else:
-        runner.verify_mcp_completions(events)
+        runner.verify_mcp_completions(events, expected_todos)
 
 
 def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
@@ -150,13 +153,60 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
                 assert "call the bound LoopX `host_prompt`" not in current["task_body"]
                 complete = next(t for t in tools.tools if t.name == "complete_task")
                 assert "successor_todo_ids" in complete.inputSchema["properties"]
+                assert "agent_vision" in complete.inputSchema["properties"]
+                assert "review_task_vision" in {t.name for t in tools.tools}
                 guard = await session.call_tool("should_run", {})
                 payload = json.loads(guard.content[0].text)
                 assert payload["ok"] is True and payload["selected_todo"]["todo_id"] == "todo_reducer"
+                contract = payload["interaction_contract"]
+                assert contract["cli_channel"]["next_cli_actions"] == []
+                assert contract["mcp_channel"]["delivery_executor"] == "complete_task"
+                assert contract["mcp_channel"]["vision_authoring"]["fields"]["vision_patch"]["acceptance_summary"] == 420
                 rejected = await session.call_tool("claim_task", {"todo_id": "todo_reducer", "agent_id": "other-agent"})
                 assert json.loads(rejected.content[0].text)["ok"] is False
     asyncio.run(exercise())
     assert state.read_bytes() == before
+
+
+def test_replan_fixture_has_real_settlement_but_unfinished_business_acceptance(tmp_path):
+    project, runtime, launcher = runner.setup_replan(tmp_path)
+    todos = runner.shared.cli(launcher, "todo", "list", "--goal-id", runner.shared.GOAL, "--role", "agent")["todos"]
+    assert len(todos) == 1
+    assert todos[0]["status"] == "done"
+    quota = runner.shared.cli(launcher, "quota", "should-run", "--goal-id", runner.shared.GOAL,
+        "--agent-id", runner.shared.AGENT, "--runtime-profile", "claude_code")
+    assert quota["should_run"] is True
+    assert quota["interaction_contract"]["mode"] != "terminal_no_followup"
+    rows = [json.loads(line) for line in (runtime / "goals" / runner.shared.GOAL / "runs/index.jsonl").read_text().splitlines()]
+    assert any(row.get("agent_vision", {}).get("state") == "vision_closed" for row in rows)
+    actions = quota["interaction_contract"]["cli_channel"]["next_cli_actions"]
+    assert len(actions) == 1
+    assert "--turn-instance-id" in actions[0]
+    assert "spend-slot" not in actions[0]
+    with pytest.raises(AssertionError, match="manifest_acceptance_failed"):
+        runner.verify_manifest_delivery(project)
+
+
+@pytest.mark.parametrize("defect", ["ignores_corruption", "rewrites_inputs", "input_changed"])
+def test_manifest_oracle_rejects_false_acceptance(tmp_path, defect):
+    import hashlib
+
+    for name, content in runner.MANIFEST_ASSETS.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    (tmp_path / "manifest.json").write_text(json.dumps({
+        name: {"size": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+        for name, content in runner.MANIFEST_ASSETS.items()
+    }))
+    (tmp_path / "README.md").write_text("Synthetic oracle fixture")
+    (tmp_path / "verify_manifest.py").write_text(
+        "from pathlib import Path\nPath('assets/alpha.txt').write_text('overwritten')\n"
+        if defect == "rewrites_inputs" else "raise SystemExit(0)\n")
+    if defect == "input_changed":
+        (tmp_path / "assets/alpha.txt").write_text("changed")
+    with pytest.raises(AssertionError, match="manifest_(inputs_modified|verifier_unsound|verifier_mutated_evidence)"):
+        runner.verify_manifest_delivery(tmp_path)
 
 
 def test_real_mcp_delivery_completes_and_settles_existing_plan(tmp_path):
