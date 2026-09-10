@@ -1092,6 +1092,20 @@ def compact_todo_group(
     )
 
 
+def _require_full_source_resume_evaluations(items: list[dict[str, Any]]) -> None:
+    for item in items:
+        resume_when = normalize_todo_resume_when(item.get("resume_when"))
+        if not resume_when:
+            continue
+        condition = item.get("resume_condition")
+        if (not isinstance(condition, dict)
+            or condition.get("schema_version") != "todo_resume_condition_v0"
+            or condition.get("resume_when") != resume_when
+            or not isinstance(condition.get("satisfied"), bool)
+            or item.get("resume_ready") is not condition.get("satisfied")):
+            raise ValueError("Todo display requires a matching full-source resume evaluation")
+
+
 def compact_evaluated_todo_group(
     items: list[dict[str, Any]],
     *,
@@ -1111,16 +1125,7 @@ def compact_evaluated_todo_group(
     """
     if not items and not include_empty_source:
         return None
-    for item in items:
-        resume_when = normalize_todo_resume_when(item.get("resume_when"))
-        if resume_when:
-            condition = item.get("resume_condition")
-            if (not isinstance(condition, dict)
-                or condition.get("schema_version") != "todo_resume_condition_v0"
-                or condition.get("resume_when") != resume_when
-                or not isinstance(condition.get("satisfied"), bool)
-                or item.get("resume_ready") is not condition.get("satisfied")):
-                raise ValueError("Todo display requires a matching full-source resume evaluation")
+    _require_full_source_resume_evaluations(items)
     lanes = _todo_group_lanes(items, preferred_todo_ids=preferred_todo_ids)
     source_valid = role in {"user", "agent"} and bool(str(source_section or "").strip())
     no_followup_items = [

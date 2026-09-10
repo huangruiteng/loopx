@@ -286,10 +286,12 @@ def build_required_decision_scope_consistency(
                                       for todo_id in item["source_todo_ids"] if isinstance(todo_id, str)})
             elif matching_actions:
                 reason_code = "non_blocking_user_action_scope_collision"
-                related_ids = [normalize_todo_id(item.get("todo_id")) for item in matching_actions]
+                related_ids = [todo_id for item in matching_actions
+                               if (todo_id := normalize_todo_id(item.get("todo_id"))) is not None]
             elif matching_gates:
                 reason_code = "required_decision_scope_gate_owner_mismatch"
-                related_ids = [normalize_todo_id(item.get("todo_id")) for item in matching_gates]
+                related_ids = [todo_id for item in matching_gates
+                               if (todo_id := normalize_todo_id(item.get("todo_id"))) is not None]
             else:
                 reason_code = "dangling_required_decision_scope"
                 related_ids = []

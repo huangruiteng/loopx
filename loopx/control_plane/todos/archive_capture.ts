@@ -6,6 +6,7 @@ import {requireJsonObject} from "../runtime_decode.ts";
 import {EffectRuntimeRequestError} from "../effect_runtime_errors.ts";
 import {normalizeTodoResumeWhen, TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION} from "./resume_condition.ts";
 import {AGENT_TODO_TASK_CLASSES as AGENT_CLASSES, USER_TODO_TASK_CLASSES as USER_CLASSES} from "./authoring_scope.ts";
+import {isStandingDecisionReceipt} from "./standing_decision.ts";
 
 export const ARCHIVE_CAPTURE_REQUEST_SCHEMA = "todo_archive_dependency_capture_request_v0";
 const fail = (reason: string): never => {throw new EffectRuntimeRequestError(`archive dependency capture: ${reason}`);};
@@ -25,6 +26,19 @@ export function captureArchivedTodoDependencies(value: unknown): JsonObject {
   const activeIds = new Set(active.map(item => item.todo_id));
   const selected = new Map<string, JsonObject>();
   const queue = [...active];
+  // Standing authority depends on the full decision chronology, not only on
+  // records reachable from resume conditions. Preserve every eligible
+  // archived approval, rejection and cancellation before walking topology.
+  for (const [index, item] of archived.entries()) {
+    if (!isStandingDecisionReceipt(item) || typeof item.todo_id !== "string") continue;
+    const candidates = byId.get(item.todo_id);
+    if (!candidates || candidates.length !== 1 || activeIds.has(item.todo_id)) {
+      fail("duplicate standing decision identity");
+    }
+    if (item.archive_state !== "archive") fail("standing decision is not archived");
+    selected.set(item.todo_id, {index, role: "user"});
+    queue.push(item);
+  }
   for (let cursor = 0; cursor < queue.length; cursor++) {
     const token = normalizeTodoResumeWhen({schema_version: TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION,
       resume_when: queue[cursor]!.resume_when ?? null});

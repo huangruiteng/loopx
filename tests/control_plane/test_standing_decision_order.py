@@ -1,6 +1,7 @@
 """Decision chronology is not Markdown layout or canonical Todo-ID ordering."""
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -15,13 +16,12 @@ from loopx.control_plane.coordination.local_authority_shadow_projection import (
     canonical_bytes,
 )
 from loopx.control_plane.coordination.runtime_shadow import (
-    build_todo_runtime_shadow_projection,
+    build_runtime_shadow_source_snapshot,
 )
 from loopx.control_plane.testing.canary_harness import (
     write_fixture_registry,
     run_json_cli_result,
 )
-from loopx.control_plane.todos.active_state_todo_parser import parse_active_state_todos
 from loopx.control_plane.todos.decision_scope import (
     standing_decision_authority_for_agent,
     build_required_decision_scope_consistency,
@@ -169,28 +169,21 @@ def test_public_quota_reads_revocation_from_full_history_without_mutating_displa
         quota_allowed_slots=None,
     )
     if mode != "markdown":
-        fields = parse_active_state_todos(source, item_limit=None)
-        todos = fields["agent_todos"]["items"] + fields["user_todos"]["items"]
-        if archived:
-            todos.append(
-                {
-                    **decision("todo_aaa_reject", "reject", rejection_time),
-                    "schema_version": "todo_item_v0",
-                    "decision_scope": {
-                        "schema_version": "decision_scope_v0",
-                        "kind": "write_scope",
-                        "granularity": "goal",
-                        "scope_key": "release",
-                    },
-                    "text": "Archived revocation",
-                    "archive_state": "archive",
-                    "index": 1,
-                    "source_section": "Todo Archive",
-                }
-            )
-        projection = build_todo_runtime_shadow_projection(
-            goal_id="goal-a", todos=todos, handoff_mode="soft_claim"
+        goal = json.loads(registry.read_text(encoding="utf-8"))["goals"][0]
+        projection, _ = build_runtime_shadow_source_snapshot(
+            goal=goal,
+            runtime_root=runtime,
+            state_path=state,
+            registry_path=registry,
         )
+        if archived:
+            captured = [
+                item
+                for item in projection["todos"]
+                if item["todo_id"] == "todo_aaa_reject"
+            ]
+            assert len(captured) == 1
+            assert captured[0]["archive_state"] == "archive"
         if mode == "native":
             for todo in projection["todos"]:
                 todo.update(schema_version=TODO_DOMAIN_ITEM_SCHEMA_VERSION)
@@ -199,7 +192,7 @@ def test_public_quota_reads_revocation_from_full_history_without_mutating_displa
             projection["todo_read_model"] = {
                 "schema_version": TODO_DOMAIN_READ_RECORD_SCHEMA_VERSION,
                 "contract_fields": list(TODO_DOMAIN_RECORD_FIELDS),
-                "todo_count": len(todos),
+                "todo_count": len(projection["todos"]),
                 "records_sha256": hashlib.sha256(
                     canonical_bytes(projection["todos"])
                 ).hexdigest(),
