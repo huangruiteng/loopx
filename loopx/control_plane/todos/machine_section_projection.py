@@ -38,9 +38,11 @@ from .completion_validation_projection import (
 )
 from .active_state_todo_parser import parse_active_state_todos
 from .contract import (
+    TODO_DECISION_SCOPE_SCHEMA_VERSION,
     TODO_METADATA_FIELDS,
     TODO_STATUS_OPEN,
     format_todo_metadata_line,
+    normalize_todo_id,
     normalize_todo_status,
     require_todo_decision_scope,
     todo_marker_for_status,
@@ -118,6 +120,7 @@ def _canonical_records(records: Sequence[Mapping[str, object]]) -> list[dict[str
             raise TodoSectionProjectionError(
                 f"Todo {todo_id!r} has an unsupported archive state"
             )
+        _validate_projection_decision_scope(record, todo_id=todo_id)
         canonical_todo_read_record(
             {
                 **record,
@@ -133,6 +136,63 @@ def _canonical_records(records: Sequence[Mapping[str, object]]) -> list[dict[str
         )
         canonical.append(record)
     return canonical
+
+
+def _validate_projection_decision_scope(
+    record: Mapping[str, object],
+    *,
+    todo_id: str,
+) -> None:
+    """Reject explicit scope data that the Markdown projection cannot preserve."""
+
+    if "decision_scope" not in record:
+        return
+    value = record["decision_scope"]
+    if not isinstance(value, Mapping):
+        raise TodoSectionProjectionError(
+            f"Todo {todo_id!r} decision_scope must be an object"
+        )
+    allowed_fields = {
+        "schema_version",
+        "kind",
+        "granularity",
+        "scope_key",
+        "decision_id",
+    }
+    unknown_fields = sorted(str(field) for field in set(value) - allowed_fields)
+    if unknown_fields:
+        raise TodoSectionProjectionError(
+            f"Todo {todo_id!r} decision_scope has unsupported fields: "
+            + ", ".join(unknown_fields)
+        )
+    if (
+        "schema_version" in value
+        and value["schema_version"] != TODO_DECISION_SCOPE_SCHEMA_VERSION
+    ):
+        raise TodoSectionProjectionError(
+            f"Todo {todo_id!r} decision_scope.schema_version must be "
+            f"{TODO_DECISION_SCOPE_SCHEMA_VERSION!r} when present"
+        )
+    if "decision_id" in value:
+        decision_id = value["decision_id"]
+        if (
+            not isinstance(decision_id, str)
+            or normalize_todo_id(decision_id) != decision_id
+        ):
+            raise TodoSectionProjectionError(
+                f"Todo {todo_id!r} decision_scope.decision_id must be a "
+                "public-safe Todo id"
+            )
+        raise TodoSectionProjectionError(
+            f"Todo {todo_id!r} decision_scope.decision_id cannot be represented "
+            "by the current Markdown projection"
+        )
+    try:
+        require_todo_decision_scope(value)
+    except ValueError as exc:
+        raise TodoSectionProjectionError(
+            f"Todo {todo_id!r} has invalid decision_scope: {exc}"
+        ) from exc
 
 
 def _record_sort_key(record: Mapping[str, object]) -> tuple[int, str]:

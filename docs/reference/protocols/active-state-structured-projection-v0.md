@@ -153,6 +153,9 @@ The projection command has four safety properties:
 - it preserves every segment outside those spans byte-for-byte;
 - it fails closed when a canonical field cannot be represented by the current
   Markdown metadata grammar, rather than dropping that field;
+- it defaults an optional nested schema field only when the key is absent;
+  explicitly incompatible, malformed or unrepresentable nested values fail
+  before normalization;
 - it parses the rendered sections back and requires deterministic parity and
   idempotent second rendering before an `--execute` write.
 
