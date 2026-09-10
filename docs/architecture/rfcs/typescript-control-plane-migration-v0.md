@@ -3,7 +3,7 @@
 - Status: Accepted, transaction-payoff phase in progress
 - Proposed by: LoopX maintainers
 - Date: 2026-08-15
-- Last revised: 2026-09-09
+- Last revised: 2026-09-10
 - Scope: an incremental, replacement-first migration of the LoopX control-plane
   core from Python to TypeScript without maintaining two semantic
   implementations
@@ -15,6 +15,19 @@
 ---
 
 ## Current implementation checkpoint
+
+Native update now composes `todos/public_update.ts` for a bounded nonterminal
+planning intent (status, evidence/reason, resume/clear and successor links),
+against the same complete canonical head used for authority checks and CAS.
+The separate intent namespace leaves the raw text/note patch allowlist and old
+receipt fingerprints unchanged. Planning uses the v1 request envelope, so older
+runtimes reject the entire request rather than apply only its text/note part.
+Python's synthetic Markdown round-trip and
+pre-transaction target lookup are retired; its adapter only normalizes CLI
+text, transports intent and drains the committed display projection.
+Active-lease status changes, Monitor planning/observations, ownership/routing/
+capability edits and terminal transitions remain held. This is a T1 stage,
+not full update closure, a provider-default change or permission to promote.
 
 Provider-first text/note updates now accept the active execution key and lease
 version through the existing terminal fence, with automatic acquisition and
@@ -42,7 +55,7 @@ ordering without rewriting history. Lifecycle/ownership admission now precedes p
 diagnostics, so an unauthorized request cannot use malformed metadata to avoid
 its authority rejection. Exact replay, same-second unkeyed polls, explicit
 clears and legacy boundedness exemptions remain. The plan grants no permission,
-receipt or promotion; native update still owns only text/note.
+receipt or promotion; Monitor planning is not added to native update by this slice.
 
 Public Todo add/update now resolve role, continuation binding, gate scope and
 deferred-condition requirements through `todos/authoring_scope.ts`. Python's
@@ -55,8 +68,8 @@ are never inferred from actor identity or `goal_bound`. Existing omitted scope,
 completed-history repair and lifecycle/lease permission boundaries remain.
 
 This closes T1's authoring-scope prerequisite, not the whole update transaction.
-Public metadata expansion, validation/effect closure and provider CAS/replay
-integration remain T1/T2 work. Native update retains its text/note allowlist;
+Remaining metadata expansion and validation/effect closure are T1/T2 work.
+Native update retains its raw text/note allowlist alongside bounded planning intent;
 legacy codecs/locks/writers still have active callers and are not retired here.
 
 A checked-in generator validates the language-neutral contract and emits
@@ -284,8 +297,8 @@ RPC/facade are removed, not kept as a fallback.
 This is a pure plan, not admission or a provider commit. Python still owns
 Markdown lookup/encoding, byte-level no-op detection, locking and external
 effects. Public role/binding admission and the event writer are not declared
-migrated by this slice. Promoted update remains text/note-only; no unsupported
-field gains authority, no goal is promoted, and no third storage path appears.
+migrated by that slice. Native planning now composes this owner as described in
+T1; unsupported fields gain no authority, no goal is promoted, and no third storage path appears.
 Rejected plans now leave even the caller's in-memory line buffer unchanged;
 public rejected transactions were already non-committing.
 
@@ -374,7 +387,7 @@ the shared plan, not another per-agent checklist database.
   merged/not-merged status. Compare code, not just PR titles. If a dependency
   is open, use an explicitly selected stacked base or stop that dependent unit.
 - Start from `coordination/todo_update.ts`, `todos/field_update.ts`,
-  `todos/provider_compatibility_edit.py`, `todos/line_update.py`,
+  `todos/provider_update.py`, `todos/native_update_plan.ts`, `todos/line_update.py`,
   `scheduler/monitor_poll_writeback.py` and their public callers. These paths
   are under `loopx/control_plane/`. Re-resolve moved symbols instead of
   restoring removed compatibility wrappers.
@@ -402,8 +415,9 @@ This deletes orchestration, not persistence: lifecycle/lease admission, completi
 effects, writer lock, capture and provider CAS/replay remain with their existing
 owners. The internal terminal/import field codec still has actual callers and
 does not acquire the public update policy. Native metadata expansion and T2
-atomic follow-up remain held. Reconcile the separate lease-edit PR #4152 before
-changing the provider transaction; do not infer it is merged from this checkpoint.
+atomic follow-up are not fully closed. Lease-edit PR #4152 is merged; bounded
+planning updates now reuse that fence and the existing CAS/receipt transaction.
+Continue with the remaining field/effect inventory, not another update engine.
 
 - Reuse the current provider text/note transaction, lifecycle admission,
   field-plan and completion rules. Enumerate actual public metadata edits and

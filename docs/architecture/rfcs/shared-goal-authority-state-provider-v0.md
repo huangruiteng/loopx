@@ -2563,9 +2563,13 @@ as storage readiness. Its T0 checkpoint is the entry condition for these cards.
 Lifecycle admission and the preauthorized terminal fence now share the TS
 owner across legacy writers and native terminal transactions; the replaced
 Python rules are removed without changing provider defaults or promotion.
-This is not full native field-edit support: retain the strict text/note
-transaction boundary until update's fields, ownership, validation and
-monitor/resume effects close together. Neither an admission result nor a
+This is not full native field-edit support. The raw text/note patch remains
+strict; a separate bounded planning intent now composes the public TS update
+owner over the same canonical head before CAS. Resume clearing removes its
+generation fence atomically; retries retain intent identity. Active-lease status
+changes and Monitor planning/effects remain unsupported. The Python synthetic
+Markdown editor and pre-transaction target read are retired, not the unpromoted
+writer or permanent renderer. Neither an admission result nor a
 lease-fence result is a commit receipt. Keep provider CAS/replay and existing
 writer lock lifetimes unchanged while collecting this deletion payoff.
 Waiting/resume lane selection is now one TS read-policy owner shared by quota,

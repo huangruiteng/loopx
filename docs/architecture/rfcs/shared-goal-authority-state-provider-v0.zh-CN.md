@@ -2035,8 +2035,11 @@ D1–D3 资格化和 T1/T2 条件保持不变。
 
 Lifecycle 准入及预授权 terminal fence 现由 legacy writer 与 native terminal
 transaction 共用 TS owner；删除对应 Python 规则，不改变 provider 默认或 promotion。
-这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume
-effect 一起闭合前，保留严格 text/note 事务边界。准入结果和 lease-fence 结果都不是
+这不是完整 native 字段编辑：原 text/note patch 仍严格受限，另有有界 planning intent
+在同一 canonical head 上组合公共 TS update owner 后进行 CAS。清除 resume 时原子
+删除 generation fence，重试保持 intent identity。Active lease 下的状态变化及 Monitor
+规划/effect 仍不支持。删除的是 Python 合成 Markdown editor 和事务前目标读取，
+不是未 promotion writer 或永久 renderer。准入结果和 lease-fence 结果都不是
 commit receipt；兑现删除收益时，provider CAS/replay 与既有 writer 持锁生命周期不变。
 等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
 策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
