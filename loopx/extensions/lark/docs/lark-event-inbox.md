@@ -42,6 +42,24 @@ for eligibility, source verification, write/readback and default-off behavior.
 
 ### Optional turn-start Agent reading hook
 
+Collector health does not prove that an Agent consumes every collected route.
+Verify the canonical project registry's Agent inbox pointer and the normal
+`lark-inbox drain --goal-id ... --agent-id ...` path together. For multiple
+configured chats, bind the collector configuration rather than one child inbox.
+An empty child inbox is not evidence that other routes have no updates.
+
+Connecting an async Goal Topic now fails with `agent_inbox_binding_conflict`
+before provider calls when it would replace a different enabled Agent inbox
+(including an inherited Goal inbox). Reconnecting the same inbox is unchanged.
+Reconcile route ownership explicitly through the canonical project registry;
+do not clear a multi-route binding just to make topic setup pass. This guard
+prevents silent replacement; it does not automatically merge Topic routes.
+
+Before continuing fallback work, review fresh dependency messages and write any
+resolved wait or priority change to the existing Todo/vision state. Settle the
+message after that durable effect; collection alone is not interpretation or
+permission to reply, deploy, or run work.
+
 Realtime collection is the preferred ingress, but a long-running Agent may also
 need a bounded provider-history tail at the beginning of every LoopX turn. The
 collector config can opt into `turn_start_sync`. This is not a background-only

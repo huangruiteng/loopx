@@ -450,6 +450,32 @@ def connect_lark_goal_topic(
             bot_display_name=profile,
             capture_scope=effective_capture_scope,
         )
+        control_plane = goal.get("control_plane")
+        control_plane = control_plane if isinstance(control_plane, Mapping) else {}
+        agent_inboxes = control_plane.get("lark_event_inboxes")
+        agent_inboxes = agent_inboxes if isinstance(agent_inboxes, Mapping) else {}
+        current_inbox = agent_inboxes.get(normalized_agent_id)
+        if not isinstance(current_inbox, Mapping):
+            current_inbox = control_plane.get("lark_event_inbox")
+        if isinstance(current_inbox, Mapping) and current_inbox.get("enabled") is True:
+            current_ref = str(current_inbox.get("config_path") or "").strip()
+            project = Path(str(goal["repo"])).expanduser().resolve()
+            # A Topic is not authority to replace an existing read route. In
+            # particular, a collector may cover several independent chats.
+            # Reject before provider calls or local configuration writes.
+            if current_ref and (project / current_ref).resolve() != inbox_config[0].resolve():
+                return operation_packet(
+                    ok=False,
+                    goal_id=goal_id,
+                    operation="connect_topic",
+                    execute=execute,
+                    status="blocked",
+                    blocker="agent_inbox_binding_conflict",
+                    public_summary=(
+                        "the Agent already consumes a different inbox; reconcile its "
+                        "routes explicitly before connecting this Topic"
+                    ),
+                )
 
     target_payload = read_goal_channel_targets(target_path)
     matched = _target_for_connection(

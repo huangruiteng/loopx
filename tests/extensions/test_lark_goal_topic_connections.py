@@ -678,6 +678,60 @@ def test_async_inbox_preflights_local_state_before_provider_write(
     assert not any("+messages-send" in call for call in state.get("calls", []))
 
 
+@pytest.mark.parametrize("execute", [False, True])
+@pytest.mark.parametrize("scope", ["agent", "goal"])
+def test_connect_preserves_existing_inbox_before_any_effect(
+    tmp_path: Path, execute: bool, scope: str
+) -> None:
+    registry = _registry(tmp_path)
+    inbox = {"enabled": True, "config_path": ".loopx/config/team-collector.json"}
+    registry["goals"][0]["control_plane"] = (
+        {"lark_event_inboxes": {"agent-alpha": inbox}}
+        if scope == "agent"
+        else {"lark_event_inbox": inbox}
+    )
+    state: dict[str, Any] = {}
+    result = _connect_registered_agent(
+        registry=registry,
+        goal_id="goal-alpha",
+        target_path=tmp_path / "targets.json",
+        binding_path=tmp_path / "binding.json",
+        app_ref="mew",
+        chat_id=CHAT_ID,
+        execute=execute,
+        runner=_runner(state),
+        cli_bin="fake-lark",
+    )
+    assert result["ok"] is False
+    assert result["blocker"] == "agent_inbox_binding_conflict"
+    assert state.get("calls", []) == []
+    assert not (tmp_path / "targets.json").exists()
+    assert not (tmp_path / "binding.json").exists()
+    assert not (tmp_path / ".loopx/config/lark-goal-topics").exists()
+    saved = json.loads((tmp_path / ".loopx/registry.json").read_text())
+    assert saved["goals"][0]["control_plane"] == registry["goals"][0]["control_plane"]
+
+
+def test_reconnect_same_inbox_keeps_registration(tmp_path: Path) -> None:
+    state: dict[str, Any] = {}
+    kwargs = dict(
+        goal_id="goal-alpha",
+        target_path=tmp_path / "targets.json",
+        binding_path=tmp_path / "binding.json",
+        app_ref="mew",
+        chat_id=CHAT_ID,
+        runner=_runner(state),
+        cli_bin="fake-lark",
+    )
+    assert _connect_registered_agent(registry=_registry(tmp_path), **kwargs)["ok"]
+    registry_path = tmp_path / ".loopx/registry.json"
+    registry = json.loads(registry_path.read_text())
+    before = registry["goals"][0]["control_plane"]["lark_event_inboxes"]
+    assert _connect_registered_agent(registry=registry, **kwargs)["ok"]
+    after = json.loads(registry_path.read_text())["goals"][0]["control_plane"]
+    assert after["lark_event_inboxes"] == before
+
+
 def test_two_goals_share_one_connection_with_distinct_topics(tmp_path: Path) -> None:
     state: dict[str, Any] = {}
     runner = _runner(state)
