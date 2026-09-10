@@ -61,16 +61,16 @@ def _sample_data() -> dict:
         return base
     return {"bench": "swe-marathon", "cells": {
         "kubernetes-rust-rewrite": {
-            "codex-cli": cell("kubernetes-rust-rewrite", "codex-cli",
-                              build_failed=True, status="blocked", unblock=8, cont=10),
+            "goal": cell("kubernetes-rust-rewrite", "goal",
+                         build_failed=True, status="blocked", unblock=8, cont=10),
             "plain": cell("kubernetes-rust-rewrite", "plain",
                           partial=0.70, status="complete"),          # 有效基线
             "heartbeat": cell("kubernetes-rust-rewrite", "heartbeat",
                               reward=1.0, partial=1.0, status="complete", cont=9),
         },
         "zstd-decoder": {
-            "codex-cli": cell("zstd-decoder", "codex-cli",
-                              partial=0.60, status="blocked", unblock=8, cont=10),
+            "goal": cell("zstd-decoder", "goal",
+                         partial=0.60, status="blocked", unblock=8, cont=10),
         },
         "degenerate-zero-baseline": {  # plain=0.0 视为退化/不可比基线，不做对照
             "plain": cell("degenerate-zero-baseline", "plain", partial=0.0, status="complete"),
@@ -81,6 +81,10 @@ def _sample_data() -> dict:
             "heartbeat": cell("excel-clone", "heartbeat",
                               partial=0.5, status="blocked", unblock=8, cont=9),
             "plain": cell("excel-clone", "plain", partial=0.49, status="active"),  # 无洞见 → skip
+        },
+        "withdrawn-arm": {
+            "codex-cli": cell("withdrawn-arm", "codex-cli",
+                              build_failed=True, status="blocked", unblock=8, cont=10),
         },
     }}
 
@@ -99,8 +103,7 @@ def test_build_failure_and_idle_churn_detected():
 
 
 def test_idle_churn_is_arm_agnostic():
-    """P2-1：空转判据是机制条件（status≠complete 且 unblock≥5），不限 codex-cli。
-    excel-clone/heartbeat 与 codex-cli 同形，必须同样被识别为 idle churn。"""
+    """P2-1：公开保留模式使用同一机制条件（status≠complete 且 unblock≥5）。"""
     recs = case_insights.build(_sample_data())
     hb = next((r for r in recs if r["case_id"] == "excel-clone"
                and r["failure_class"] == "unattended_continuation_idle_churn"), None)
@@ -138,12 +141,18 @@ def test_build_failure_maps_to_runner_invalid():
 
 
 def test_measured_blocked_is_incomplete_not_runner_invalid():
-    """P2-3：有实测 partial 的 blocked 续跑（zstd-decoder/codex-cli, partial=0.6）不能标
+    """P2-3：有实测 partial 的 blocked 续跑（zstd-decoder/goal, partial=0.6）不能标
     runner_invalid（=无可计结果），否则与测量自相矛盾；应为 incomplete。"""
     recs = case_insights.build(_sample_data())
     zc = next(r for r in recs if r["case_id"] == "zstd-decoder"
               and r["failure_class"] == "unattended_continuation_idle_churn")
     assert zc["outcome_status"] == "incomplete"
+
+
+def test_withdrawn_arms_are_excluded_from_public_records():
+    """撤回的实验臂即使仍在历史输入里，也不能重新进入公开 case insights。"""
+    recs = case_insights.build(_sample_data())
+    assert not any(r["case_id"] == "withdrawn-arm" for r in recs)
 
 
 def test_outcome_status_is_fail_closed():
@@ -212,11 +221,8 @@ def test_payload_writes_valid_file():
         assert payload["count"] == len(payload["records"])
         for r in payload["records"]:
             _assert_contract(r)
-        obs = payload["study_observations"]
-        assert obs and all(o["privacy_classification"] == "public_safe" for o in obs)
-        for o in obs:
-            assert o["observation_id"] and o["summary"] and o["interpretation"]
-            assert isinstance(o["metrics"], dict) and o["metrics"]
+        # #4193 撤回跨臂行为聚合；在完成保留臂重算前，不得复用旧结论。
+        assert payload["study_observations"] == []
 
 
 def _run() -> int:
