@@ -4,6 +4,7 @@ import type {
 } from '@deepseek-ai/dsh-client-connection'
 import {
   decodeGoalBarRequestV1,
+  endpointForGoalBarOp,
 } from './protocol.ts'
 import type {
   GoalBarRequestV1,
@@ -15,6 +16,21 @@ import {
 import type { GoalBarServiceHandle } from './service.ts'
 
 export const GOALBAR_RPC_CHANNEL = '/loopx' as const
+export const GOALBAR_SHARED_API_CHANNEL = '/api' as const
+const GOALBAR_SHARED_API_ENDPOINT = 'loopx.goalbar' as const
+
+interface ConnectionFetchRoute {
+  readonly path: string
+  readonly methods: readonly ['POST']
+  readonly requestBody: 'buffered'
+  readonly fetch: (request: Request) => Promise<Response>
+}
+
+interface SharedApiConnection extends HostConnectionHandle {
+  readonly fetch: {
+    register(route: ConnectionFetchRoute): () => Promise<void>
+  }
+}
 
 type ConnectionRpcResult = Awaited<ReturnType<ConnectionRpcHandler>>
 
@@ -31,6 +47,77 @@ function badRequestCarrier(): ConnectionRpcResult {
 
 function successCarrier(value: GoalBarResponseV1): ConnectionRpcResult {
   return { ok: true, value }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasSharedApiFetch(
+  connection: HostConnectionHandle,
+): connection is SharedApiConnection {
+  return Reflect.has(connection, 'fetch')
+}
+
+function responseEnvelope(rpcId: string, result: ConnectionRpcResult): Response {
+  return Response.json({ type: 'server-response', rpcId, result })
+}
+
+function invalidEnvelope(rpcId = 'invalid-request'): Response {
+  return responseEnvelope(rpcId, {
+    ok: false,
+    error: {
+      code: 'bad-request',
+      message: 'invalid client-request message',
+      details: { issues: [] },
+    },
+  })
+}
+
+async function handleSharedApiRequest(
+  request: Request,
+  handler: ConnectionRpcHandler,
+): Promise<Response> {
+  if (request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+    !== 'application/json') {
+    return new Response('content type must be application/json', { status: 415 })
+  }
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return new Response('body is not JSON', { status: 400 })
+  }
+  const rpcId = isRecord(body) && typeof body.rpcId === 'string'
+    ? body.rpcId
+    : 'invalid-request'
+  if (!isRecord(body)
+    || body.type !== 'client-request'
+    || typeof body.rpcId !== 'string'
+    || body.method !== GOALBAR_SHARED_API_ENDPOINT
+    || !Object.hasOwn(body, 'payload')) {
+    return invalidEnvelope(rpcId)
+  }
+  const op = isRecord(body.payload) ? body.payload.op : undefined
+  if (op !== 'read' && op !== 'watch' && op !== 'start' && op !== 'pause') {
+    return responseEnvelope(rpcId, badRequestCarrier())
+  }
+  const endpoint = endpointForGoalBarOp(op)
+  try {
+    return responseEnvelope(
+      rpcId,
+      await handler(endpoint, body.payload, request.signal),
+    )
+  } catch {
+    return responseEnvelope(rpcId, {
+      ok: false,
+      error: {
+        code: 'internal',
+        message: 'GoalBar handler failed',
+        details: {},
+      },
+    })
+  }
 }
 
 /**
@@ -67,4 +154,25 @@ export function registerGoalBarConnectionRpc(
     createGoalBarConnectionHandler(service),
     { authority: 'loopback' },
   )
+}
+
+/**
+ * Register GoalBar on the carrier supported by the installed DSH generation.
+ * DSH 0.1.5 owns extension routes inside its authenticated shared `/api`
+ * bridge; earlier compatible releases expose the legacy standalone channel.
+ */
+export function registerGoalBarConnectionTransport(
+  connection: HostConnectionHandle,
+  service: GoalBarServiceHandle,
+): () => Promise<void> {
+  if (!hasSharedApiFetch(connection)) {
+    return registerGoalBarConnectionRpc(connection, service)
+  }
+  const handler = createGoalBarConnectionHandler(service)
+  return connection.fetch.register({
+    path: `${GOALBAR_SHARED_API_CHANNEL}/${GOALBAR_SHARED_API_ENDPOINT}`,
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: request => handleSharedApiRequest(request, handler),
+  })
 }

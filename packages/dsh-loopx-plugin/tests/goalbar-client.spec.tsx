@@ -921,6 +921,37 @@ describe('GoalBar Connection and registration boundaries', () => {
     )
   })
 
+  it('selects the DSH 0.1.5 shared API endpoint without prose heuristics', async () => {
+    const call = vi.fn((_channel: string, _endpoint: string, payload: unknown) => Promise.resolve({
+      ok: true as const,
+      value: {
+        v: GOALBAR_RESPONSE_VERSION,
+        op: 'read',
+        sessionId: (payload as { sessionId: string }).sessionId,
+        result: {
+          kind: 'hidden',
+          reason: 'binding_missing',
+          baseSessionEventSeq: null,
+          sourceRevision: REVISION_ONE,
+        },
+      },
+    }))
+    const rpc = createGoalBarRpc({ call }, true)
+    const controller = new AbortController()
+    await rpc.read('session-one', controller.signal)
+
+    expect(call).toHaveBeenCalledWith(
+      '/api',
+      'loopx.goalbar',
+      {
+        v: 'loopx_goalbar_request_v2',
+        op: 'read',
+        sessionId: 'session-one',
+      },
+      controller.signal,
+    )
+  })
+
   it('sends the complete V2 watch anchor on the exact watch endpoint', async () => {
     const call = vi.fn((_channel: string, _endpoint: string, payload: unknown) => Promise.resolve({
       ok: true as const,
