@@ -1512,6 +1512,27 @@ CLI runner、observation-lock 窗口、候选回读）、只读 TypeScript 探�
   不同时，todo add、task-lease acquire、todo update、follow-up 捕获与带 lease 的
   complete 仍落入同一个 store identity，registry root 既不产生候选 lineage 也不
   产生 lease 状态；`migrate-state` 在不携带 legacy 字节的前提下建立新 lineage。
+- Stage 2C parity 后半段：十个 `s2c2.*` 行只通过公开 CLI 驱动一个显式开启
+  `coordination.runtime_shadow` 的 goal，并且只经 `authority-shadow status|drain`、
+  `coordination-shadow bootstrap|inspect|qualify|read-candidate|rollback` 与
+  `migrate-state` 断言，历史只经保留的 TypeScript store 读回。Python Todo writer
+  与 TypeScript lease writer 各留下 prepared 记录与 committed 标记，一次 drain 恰好
+  投递一次；有界 drain 可累积、空转 drain 不改变任何东西、writer 重放不铸造条目；
+  主写 replace 前后的 SIGKILL 结算为 `abandoned` 或 `committed_proven_by_readback`，
+  inline drain 内的 SIGKILL 由精确 receipt 恢复且不会二次投递；rollback 归档 pending
+  条目、把 capture 置于 `bootstrap_required`、重新 bootstrap 出新 lineage 并可重放；
+  三轮交错 writer（add、note update 及其无变化重复、显式 exclusion 设置与清除及其
+  无变化重复、acquire、renew、transfer、带 lease 的 complete 与 supersede 及其
+  fence close、capture-followups）让每次有界 qualification 都保持 matched，且
+  `sustained_parity_verdict=not_evaluated`；
+  直接改主文件会报告 `shadow_projection_drift`，其后的写入以
+  `source_partition_continuity_unproved` 挂起，只有 rollback 加重新 bootstrap 才能恢复；
+  event-only Todo 来源让 `inspect`、`qualify`、`read-candidate` 以
+  `event_log_writer_not_bound` 失败关闭而主写继续提交；`migrate-state` 对处于
+  active capture 的来源以 `shadow_source_replacement_requires_rebootstrap` 拒绝，
+  直到 rollback 并关闭 capture 之后才执行，迁移后的 goal 重新 bootstrap 出新 lineage
+  并完成 drain；十笔事务度量 file-v0 历史增长：完整投影全部保留、每笔增量最多增加
+  一条 live 记录，不宣称任何容量水平线。
 
 Live 行按环境门控（`LOOPX_TEST_POSTGRES_URL`；`NOKV_COORDINATION_LIVE=1` 加
 `NOKV_*` 栈变量；`LOOPX_NOKV_AUTHORITY_LIVE=1` 加 `LOOPX_NOKV_AUTHORITY_*` 输入）。
@@ -1524,11 +1545,14 @@ Live 行按环境门控（`LOOPX_TEST_POSTGRES_URL`；`NOKV_COORDINATION_LIVE=1`
 `summary.privacy_violations` 阻止 green 退出，任何开关都不能放宽。
 
 交付边界：test-only。没有任何生产入口构造任何 store；ladder 不新增产品路径，
-只经保留的 TypeScript store 读取候选。Stage 2C parity 后半段
-（`s2c2.*`：outbox 条目、幂等 drain、drain 前与 drain 中的 SIGKILL、带 pending
-条目的 rollback、parity 相等与分歧、迁移 seed-and-drain、增长
-度量）以 pending 行声明，而非宣称已完成。本小节记录的是上述阶段的可执行证据；
-它不晋升任何 provider，也不完成 Stage 2C promotion。
+只经保留的 TypeScript store 读取候选。Stage 2C parity 后半段由上述十个
+`s2c2.*` 行执行；仍有两条声明保持 pending。`s2c2.archive_after_leased_completion_parity`
+记录 parity 行暴露的一个 capture 缺口：对持有已释放 lease 记录的 Todo 执行
+`todo archive-completed` 后，候选 head 仍保留该 lease，而 source 投影会丢弃这条
+已成孤儿的 lease，于是有界 qualification 报告 `shadow_projection_drift`。
+`s2c2.sustained_parity_soak` 是由 7.2 节与车道 L 负责的 >=10 天合成 goal soak，
+有界 qualification 继续报告 `sustained_parity_verdict=not_evaluated`。本小节记录
+的是上述阶段的可执行证据；它不晋升任何 provider，也不完成 Stage 2C promotion。
 
 ### 11.3 剩余验证与晋升计划
 

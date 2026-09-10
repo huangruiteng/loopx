@@ -308,12 +308,16 @@ Python/TS/JSON provenance, and reads back through an independent native process.
 | Fence and maintenance boundaries, source and Goal override races, whole-file durability, paragraph injection, refresh CAS | `test_shadow_writer_boundaries.py`, `test_shadow_writer_variant_e2e.py`, `shadow_native_writer_boundary.test.ts`, `test_shadow_drain_adversarial.py` |
 | Canonical native/v0 Todo updates through CLI and native RPC, real pending management, M ordering, and unchanged authority on hold | `test_shadow_native_todo_update_e2e.py` |
 | History flaws despite equal snapshots, legacy mixed profile, source drift, event-only hold, qualified reads | `coordination_runtime_shadow.test.ts`, `file_outbox_qualification.test.ts`, `test_runtime_shadow_bounded_e2e.py` |
+| Ladder parity half through the public CLI and management interfaces: deferred entries, bounded and idempotent drain, primary and drain SIGKILL windows, rollback with pending entries, sustained mixed-writer parity, drift, the event-only hold, migration refusal and rebootstrap, growth measurement | `test_shared_goal_authority_e2e.py` (`s2c2.*` rows), `ladder.py --stage 2c2` |
 | Installed lifecycle and resource provenance in wheel and sdist | `installed.py` |
 | Missing checks, lock placement, duplicate mirror, early marker, cursor regression | `mutants.py` with unchanged GREEN controls and assertion RED results |
 
 The mandatory repair set must have zero failures, skips, pending, or unverified
-cases. Broader ladder rows retain their declared pending/environment gates;
-these tests grant neither production promotion nor a completed Stage 2C claim.
+cases. Broader ladder rows retain their declared pending/environment gates:
+`s2c2.archive_after_leased_completion_parity` stays pending until the
+archive-completed writer captures the released lease it orphans, and
+`s2c2.sustained_parity_soak` until the Section 7.2 soak exists; these tests
+grant neither production promotion nor a completed Stage 2C claim.
 
 For a caller comparison, run both `test_shadow_observable*_e2e.py` files with
 `LOOPX_SHADOW_COMPARISON_SOURCE` set to an immutable baseline checkout, then to

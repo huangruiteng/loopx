@@ -49,6 +49,18 @@ from .authority_e2e_rows_stage2c import (
     row_every_writer_family_captures,
     row_migration_seeds_new_lineage,
 )
+from .authority_e2e_rows_stage2c2 import (
+    row_drain_idempotent,
+    row_event_only_todo_source_holds,
+    row_growth_measurement_gate,
+    row_migration_seeds_and_drains,
+    row_outbox_prepared_then_committed_entries,
+    row_parity_divergent_detects_foreign_edit,
+    row_parity_equal,
+    row_rollback_with_pending_entries,
+    row_sigkill_between_primary_write_and_drain,
+    row_sigkill_mid_drain,
+)
 from .authority_e2e_fixtures import (
     REPO_ROOT,
     CliOutputError,
@@ -139,6 +151,7 @@ PROBE_SOURCES: tuple[Path, ...] = (
     Path("loopx") / "control_plane" / "testing" / "authority_e2e_fixtures.py",
     Path("loopx") / "control_plane" / "testing" / "authority_e2e_row_support.py",
     Path("loopx") / "control_plane" / "testing" / "authority_e2e_rows_stage2c.py",
+    Path("loopx") / "control_plane" / "testing" / "authority_e2e_rows_stage2c2.py",
 )
 FILE_MATRIX_ROWS: tuple[str, ...] = (
     "same_todo_one_winner",
@@ -647,18 +660,112 @@ LADDER_ROWS: tuple[LadderRow, ...] = (
         posix_only=False,
         run=row_migration_seeds_new_lineage,
     ),
+    LadderRow(
+        id="s2c2.outbox_prepared_then_committed_entries",
+        stage="2c2",
+        title="Python and TypeScript writers leave prepared records with committed markers that one drain delivers once",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_outbox_prepared_then_committed_entries,
+    ),
+    LadderRow(
+        id="s2c2.drain_idempotent",
+        stage="2c2",
+        title="Bounded drains are cumulative, an idle drain changes nothing, and a writer replay mints no entry",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_drain_idempotent,
+    ),
+    LadderRow(
+        id="s2c2.sigkill_between_primary_write_and_drain",
+        stage="2c2",
+        title="A SIGKILL around the primary replace leaves a prepared-only entry that drain settles from the primary bytes",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=True,
+        run=row_sigkill_between_primary_write_and_drain,
+    ),
+    LadderRow(
+        id="s2c2.sigkill_mid_drain",
+        stage="2c2",
+        title="A SIGKILL inside the inline drain is recovered from exact receipts without a second delivery",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=True,
+        run=row_sigkill_mid_drain,
+    ),
+    LadderRow(
+        id="s2c2.rollback_with_pending_entries",
+        stage="2c2",
+        title="Rollback archives pending entries, holds capture until rebootstrap, and replays its historical result",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=True,
+        run=row_rollback_with_pending_entries,
+    ),
+    LadderRow(
+        id="s2c2.parity_equal",
+        stage="2c2",
+        title="Sustained interleaving of Python and TypeScript writers keeps every bounded qualification matched",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_parity_equal,
+    ),
+    LadderRow(
+        id="s2c2.parity_divergent_detects_foreign_edit",
+        stage="2c2",
+        title="A direct primary edit is reported as drift, holds later captures, and recovers only by rollback and rebootstrap",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_parity_divergent_detects_foreign_edit,
+    ),
+    LadderRow(
+        id="s2c2.event_only_todo_source_holds",
+        stage="2c2",
+        title="An event-only Todo source holds qualification and candidate reads fail-closed until rollback and rebootstrap",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_event_only_todo_source_holds,
+    ),
+    LadderRow(
+        id="s2c2.migration_seeds_and_drains",
+        stage="2c2",
+        title="migrate-state refuses an active capture source; after rollback the migrated goal bootstraps a fresh lineage that drains",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_migration_seeds_and_drains,
+    ),
+    LadderRow(
+        id="s2c2.growth_measurement_gate",
+        stage="2c2",
+        title="file-v0 history growth is measured per transaction and gated on retention integrity, claiming no capacity horizon",
+        product_path="real_cli",
+        gate="deterministic",
+        posix_only=False,
+        run=row_growth_measurement_gate,
+    ),
 )
 
 PENDING_ROWS: tuple[PendingRow, ...] = (
-    PendingRow("s2c2.outbox_prepared_then_committed_entries", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.drain_idempotent", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.sigkill_between_primary_write_and_drain", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.sigkill_mid_drain", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.rollback_with_pending_entries", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.parity_equal", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.parity_divergent_detects_foreign_edit", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.migration_seeds_and_drains", "2c2", "Stage 2C parity PRs"),
-    PendingRow("s2c2.growth_measurement_gate", "2c2", "Stage 2C parity PRs"),
+    PendingRow(
+        "s2c2.archive_after_leased_completion_parity",
+        "2c2",
+        "the archive-completed writer captures the released lease it orphans: archiving a Todo "
+        "that holds a released lease record leaves that lease in the candidate head while the "
+        "source projection drops it, so bounded qualification reports shadow_projection_drift",
+    ),
+    PendingRow(
+        "s2c2.sustained_parity_soak",
+        "2c2",
+        "a >=10-day synthetic-goal soak of the selected local profile (RFC section 7.2, lane L); "
+        "bounded qualification reports sustained_parity_verdict=not_evaluated",
+    ),
 )
 
 
