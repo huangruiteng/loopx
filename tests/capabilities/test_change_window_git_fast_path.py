@@ -38,8 +38,11 @@ def installed(tmp_path, monkeypatch):
         result = subprocess.run(
             ["git", "-C", str(repo), *args], check=False, capture_output=True, text=True
         )
-        if check:
-            assert result.returncode == 0, result.stdout + result.stderr
+        if check and result.returncode:
+            pytest.fail(
+                f"git {args!r} exited {result.returncode}:\n"
+                f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            )
         return result
 
     git(remote, "config", "user.name", "Synthetic User")
