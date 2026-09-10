@@ -21,6 +21,7 @@ from .goal_channel_contracts import (
     binding_for_goal,
     bindings_for_goal,
     read_goal_channel_binding,
+    operation_packet,
     write_goal_channel_binding,
 )
 from .goal_channel_targets import (
@@ -169,6 +170,23 @@ class GoalTopicUpgradeError(OSError):
     def __init__(self, *, restored: bool) -> None:
         self.restored = restored
         super().__init__("manager route upgrade failed")
+
+    def operation_packet(self, *, goal_id: str) -> dict[str, Any]:
+        """Expose the upgrade recovery result through the existing API contract."""
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="connect_topic",
+            execute=True,
+            status="blocked" if self.restored else "upgrade_recovery_required",
+            blocker="agent_inbox_registration_failed",
+            public_summary=(
+                "the manager upgrade failed; prior connection and inbox restored"
+                if self.restored
+                else "the manager upgrade and recovery failed; repair the existing route before retrying"
+            ),
+            details={"prior_route_restored": self.restored},
+        )
 
 
 def save_retiring_async_inbox(

@@ -826,20 +826,7 @@ def connect_lark_goal_topic(
             else save_connection()
         )
     except GoalTopicUpgradeError as exc:
-        return operation_packet(
-            ok=False,
-            goal_id=goal_id,
-            operation="connect_topic",
-            execute=True,
-            status="blocked" if exc.restored else "upgrade_recovery_required",
-            blocker="agent_inbox_registration_failed",
-            public_summary=(
-                "the manager upgrade failed; prior connection and inbox restored"
-                if exc.restored
-                else "the manager upgrade and recovery failed; repair the existing route before retrying"
-            ),
-            details={"prior_route_restored": exc.restored},
-        )
+        return exc.operation_packet(goal_id=goal_id)
     return operation_packet(
         ok=True,
         goal_id=goal_id,
