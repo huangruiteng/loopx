@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .chat_manager import manager_model_config
+from .chat_manager_details import read_manager_goal_details
 from .goal_portfolio import build_goal_portfolio
 from .chat import redact_local_paths
 
@@ -76,6 +77,9 @@ def manager_turn_context(
                     for a in row.get("agents", [])
                 ],
                 "deliveries": row.get("deliveries", []),
+                "current_todos": read_manager_goal_details(
+                    registry_path, runtime_root, row["goal_id"], owner_scope=owner_scope,
+                ),
             }
         )
     return {

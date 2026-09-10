@@ -201,6 +201,8 @@ def _read_goal(
                                 "role",
                                 "status",
                                 "priority",
+                                "title",
+                                "next_safe_action",
                                 "claimed_by",
                                 "readiness",
                             )

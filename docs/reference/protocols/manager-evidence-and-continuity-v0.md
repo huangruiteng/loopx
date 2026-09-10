@@ -243,3 +243,24 @@ next action. One delivery spends once against its accountable Goal; another
 Goal may reference the evidence without claiming a second outcome. Protect a
 recurring domain-validation slot in the owner's plan. Infrastructure progress
 does not prove a research hypothesis or improve an investment result.
+
+### Current work details and default manager instructions
+
+Each conversational turn also reads current Todo records through Core's
+canonical-first `list_goal_todos` path for each authorized Goal. This read is
+independent of the age of progress receipts. It retains bounded task titles,
+owner gate/action distinctions, declared priority and target/dependency IDs;
+owner conversations also receive bounded continuation notes. Terminal items
+are excluded and active/included/omitted counts are explicit. Read failures
+mean unknown, never an empty healthy queue. The evidence is a frozen projection,
+not a second Todo store or a fresh claim that old tasks remain urgent.
+
+The neutral manager workspace receives managed `AGENTS.md` instructions and the
+same role contract is supplied to its executor. Custom owner instructions are
+not overwritten. The default manager must connect concrete owner decisions to
+affected work and explain its recommended order; bare Todo IDs, Goal ordering
+and gate counts are insufficient prioritization evidence. It distinguishes
+current declarations from verified execution and names unavailable/truncated
+details. External audiences retain their existing Goal authorization boundary
+and do not receive owner continuation notes. No repository browsing or write
+permission is added to the manager model.
