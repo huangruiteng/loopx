@@ -16,6 +16,7 @@ from loopx.control_plane.heartbeat.host import (
     uses_ark_managed_agent_goal_host,
     uses_native_goal_host_loop,
 )
+from loopx.control_plane.heartbeat.rules import SCOPE_BOUNDED_WORK_RULE
 from loopx.control_plane.heartbeat.visible_goal import (
     build_visible_goal_initial_runtime_capability_projection,
     validate_visible_goal_policy_rule,
@@ -126,6 +127,30 @@ def test_public_facade_still_builds_and_renders_prompts() -> None:
     assert payload["goal_id"] == "loopx-meta"
     assert payload["task_body"]
     assert render_heartbeat_prompt_markdown(payload)
+
+
+@pytest.mark.parametrize("mode", ["full", "compact", "brief", "thin"])
+def test_sizing_guidance_survives_prompt_compaction(mode: str) -> None:
+    payload = build_heartbeat_prompt(goal_id="sizing-fixture", **{mode: True})
+    body = payload["task_body"]
+    # Compaction must not discard how to size work while keeping only "one step".
+    assert body.count(SCOPE_BOUNDED_WORK_RULE) == 1
+    assert "bounded slice" not in body
+    assert payload["interface_budget"]["within_budget"] is True
+    # This is guidance, not a new execution profile, scheduler or authority field.
+    assert "turn_mode" not in payload
+    assert "--fine-grained" not in payload["quota_guard_command"]
+
+
+@pytest.mark.parametrize("profile", ["codex_cli", "ark_managed_agent_goal"])
+def test_goal_hosts_preserve_sizing_and_terminal_boundary(profile: str) -> None:
+    payload = build_heartbeat_prompt(goal_id="sizing-fixture", runtime_profile=profile)
+    body = payload["task_body"]
+    assert body.count(SCOPE_BOUNDED_WORK_RULE) == 1
+    assert "`should_run=false`: no delivery/spend" in body
+    assert "terminal no-follow-up" in body
+    assert "Then spend exactly once" in body
+    assert payload["interface_budget"]["within_budget"] is True
 
 
 @pytest.mark.parametrize("mode", ["full", "compact", "brief", "thin"])

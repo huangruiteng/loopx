@@ -239,11 +239,12 @@ def test_post_handoff_primary_outcome_preserves_observation_contract() -> None:
     assert recommendation["latest_run"]["progress_scope"] == "primary_goal"
 
 
-def test_default_mode_requires_bounded_steering_audit() -> None:
+def test_default_mode_keeps_compatibility_without_an_operation_limit() -> None:
     recommendation = _recommend(
         {"status": "active-read-only"},
         agent_open=1,
     )
 
     assert recommendation["recommended_mode"] == "steering_audit_then_one_step"
-    assert "bounded progress segment" in recommendation["spend_policy"]
+    assert "scope-bounded work" in recommendation["spend_policy"]
+    assert "not an operation limit" in recommendation["spend_policy"]

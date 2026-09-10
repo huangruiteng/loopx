@@ -337,7 +337,7 @@ def protocol_action_packet_fields(payload: dict[str, Any]) -> dict[str, Any]:
     elif bounded_delivery_with_user_notice:
         primary_actor = "agent_with_user_gate"
         agent_action_required = True
-        agent_action = _protocol_first_candidate_action(payload) or "advance one bounded segment"
+        agent_action = _protocol_first_candidate_action(payload) or "advance scope-bounded work with validation"
     elif requires_user_action:
         primary_actor = "user"
         agent_action_required = False
@@ -374,7 +374,7 @@ def protocol_action_packet_fields(payload: dict[str, Any]) -> dict[str, Any]:
                 "the concrete blocker"
             )
         else:
-            agent_action = _protocol_first_candidate_action(payload) or "advance one bounded segment"
+            agent_action = _protocol_first_candidate_action(payload) or "advance scope-bounded work with validation"
     else:
         primary_actor = "agent"
         agent_action_required = False

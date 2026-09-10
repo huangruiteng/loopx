@@ -596,13 +596,13 @@ def _post_handoff_observation_rule(
                 "recommended_mode": "post_handoff_observe_then_backlog_step",
                 "spend_policy": (
                     "observe registry/status/run history/repo state first; if unchanged, "
-                    "advance exactly one bounded agent-todo backlog segment and append "
+                    "advance scope-bounded agent-todo work and append "
                     "quota spend only after validation and durable writeback"
                 ),
                 "reason": (
                     "latest post-handoff implementation reached the primary outcome, "
                     "but an open agent todo remains; observe for new blockers first, "
-                    "then advance one bounded backlog step instead of quiet idling"
+                    "then advance scope-bounded backlog work instead of quiet idling"
                 ),
             },
         )
@@ -616,8 +616,8 @@ def _default_rule(
         {
             "recommended_mode": "steering_audit_then_one_step",
             "spend_policy": (
-                "append exactly one heartbeat spend only after a bounded progress "
-                "segment is validated and written back"
+                "append exactly one heartbeat spend only after scope-bounded work "
+                "is validated and written back; one_step names the mode, not an operation limit"
             ),
             "reason": (
                 "eligible Codex-ready goal requires the standard steering audit "

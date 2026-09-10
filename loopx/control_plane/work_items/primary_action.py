@@ -273,7 +273,7 @@ def resolve_canonical_primary_action(payload: dict[str, Any], *, mode: str) -> s
             "surface the scoped user gate, then advance one non-gated fallback"
         )
     if mode == "bounded_delivery_with_user_notice":
-        return protocol_first_candidate_action(payload) or "advance one bounded validated segment"
+        return protocol_first_candidate_action(payload) or "advance scope-bounded work with validation"
     if mode == "task_orchestration":
         contract = (
             payload.get("task_orchestration_contract")
@@ -321,7 +321,7 @@ def resolve_canonical_primary_action(payload: dict[str, Any], *, mode: str) -> s
     if mode == "boundary_projection_repair":
         return "repair goal_boundary.write_scope projection before attempting the selected write"
     if mode == "bounded_delivery":
-        return protocol_first_candidate_action(payload) or "advance one bounded validated segment"
+        return protocol_first_candidate_action(payload) or "advance scope-bounded work with validation"
     if mode == "mapped_noop_if_unchanged":
         return "confirm no new instruction/evidence/todo/stale source/safe handoff, then quiet no-op"
     if execution_obligation.get("contract_obligation"):

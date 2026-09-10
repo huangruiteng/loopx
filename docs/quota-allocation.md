@@ -992,10 +992,22 @@ common modes are:
 - `mapped_noop_if_unchanged`: the latest compact read-only map already exists;
   if there is no new user instruction, owner evidence, agent todo, stale source,
   or safe handoff, return a quiet no-op without another dry-run or quota spend.
-- `steering_audit_then_one_step`: the goal is eligible but needs the normal
-  steering audit before selecting one bounded progress segment. A coherent
-  implementation/test/state batch is valid when scope and validation are clear;
-  the contract is bounded, not tiny.
+- `steering_audit_then_one_step`: this compatibility mode name does not impose
+  a one-operation limit. The eligible goal needs a steering audit before
+  scope-bounded work toward a verifiable result. Work size follows task,
+  evidence and risk, not calls, files or wake cadence. Related implementation,
+  research, tests and writeback may form one coherent effort; a focused
+  correction can also be sufficient. Explicit stops, budgets, Todo/lease
+  boundaries, settlement and replan requirements remain authoritative.
+
+All heartbeat prompt sizes, including the default thin prompt, carry this
+scope-bounded work guidance. This is a prompt clarification, not a change to
+execution-profile thresholds, scheduler cadence, permissions or spend rules.
+Fine-grained mode still plans independently verifiable checkpoints and checks
+fresh evidence before a successor; checkpoint granularity is not a tool-call
+limit. Read-only monitor polls, bounded recovery attempts and explicit
+`end_current_heartbeat` transitions retain their existing limits. Do not turn
+this guidance into a minimum batch size or a reason to bypass those limits.
 
 The same response includes `interaction_contract.schema_version =
 loopx_interaction_contract_v0`, the top-level user/agent/CLI protocol

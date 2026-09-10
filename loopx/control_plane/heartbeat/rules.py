@@ -3,6 +3,10 @@
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
 DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex session is already trusted."
+SCOPE_BOUNDED_WORK_RULE = (
+    "授权/预算内推进可验证结果；按任务/证据/风险定规模，不按操作/文件数/心跳间隔。"
+    "操作/写回不自动结束；遵守停止/重规划。"
+)
 USER_TODO_FINAL_MESSAGE_RULE = (
     "`interaction_contract.user_channel.notify` controls output: `NOTIFY` -> concrete "
     "action; otherwise quiet. `should_run`/due monitor and other-agent scoped todos "
@@ -12,11 +16,10 @@ USER_TODO_FINAL_MESSAGE_RULE = (
 )
 HEARTBEAT_NOTIFICATION_RULE_SHORT = (
     "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。执行义务看 `heartbeat_recommendation.agent_must_attempt`/"
-    "`execution_obligation.must_attempt_work`：true 时必须执行 bounded slice 并写回，"
-    "quiet no-op 仅当 false。"
+    "DONT_NOTIFY=安静输出。见 `heartbeat_recommendation.agent_must_attempt`/"
+    "`execution_obligation.must_attempt_work`：true须推进并写回，false才可no-op。"
     "Due/peer gate != prompt; missing NOTIFY action->"
-    "具体user todo未投影，需修复LoopX状态投影."
+    "具体user todo未投影."
 )
 HEARTBEAT_NOTIFICATION_RULE_THIN = (
     "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "

@@ -172,7 +172,7 @@ def build_goal_start_prompt(
     agent_clause = f" Use agent id `{agent_id}` for quota/claim commands." if agent_id else ""
     todo_rule = (
         "plan the broader direction as evidence-linked notes, but write exactly one "
-        "current small, verifiable Agent advancement_task Todo; do not write a runnable "
+        "current independently verifiable Agent advancement_task Todo; do not write a runnable "
         "successor ahead. Use `[P0]`/`[P1]`/`[P2]`, no `--priority`; User Todo only "
         "for owner/private gates"
         if fine_grained
@@ -182,11 +182,11 @@ def build_goal_start_prompt(
         "Todo before work"
     )
     fine_rule = (
-        "\n8. Fine-grained mode: the current Todo must be one small verifiable checkpoint. "
-        "If it is too broad, split it before work. A coherent decision slice may complete "
+        "\n8. Fine-grained mode: the current Todo must be an independently verifiable checkpoint. "
+        "Split independent decisions before work. Scope-bounded work may complete "
         "one or more causally related Agent advancement Todos in the same turn: after each "
         "completion inspect its fresh evidence before creating or claiming the next Todo, "
-        "and settle only once after the slice. Use the existing replan obligation/ACK path "
+        "and settle only once after the work. Use the existing replan obligation/ACK path "
         "when evidence changes direction or the bounded-chain review becomes due; never "
         "prewrite a long runnable chain. Protocol/setup and capability re-entry steps stay "
         "inline in the guided transaction, are not Todos, and do not count as advancement "

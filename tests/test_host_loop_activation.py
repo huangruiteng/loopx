@@ -401,7 +401,7 @@ def test_goal_hosts_share_narrow_runtime_skill_routing(
         "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
         in task_body
     )
-    assert "A bounded segment is progress within this Goal" in task_body
+    assert "Progress is not a new Goal boundary" in task_body
     assert "do not create a successor merely to continue" in task_body
 
 

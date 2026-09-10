@@ -19,6 +19,7 @@ from .rules import (
     SCHEDULER_HINT_APPLICATION_RULE,
     SCHEDULER_HINT_COMPACT_RULE,
     SCHEDULER_HINT_THIN_RULE,
+    SCOPE_BOUNDED_WORK_RULE,
     USER_TODO_FINAL_MESSAGE_RULE,
 )
 
@@ -168,7 +169,7 @@ If the result says `should_run=true`:
    the concrete blocker. Do not fall through to ordinary delivery,
    surface propagation, or synthetic-only chains.
    Read `execution_obligation`: `notify` is not an execution gate;
-   `must_attempt_work=true` means one bounded segment even with
+   `must_attempt_work=true` requires scope-bounded work even with
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and
    `user_channel.notify=DONT_NOTIFY`. Use
    `scheduler_hint` for wakeup and unchanged-loop limits. For Codex App:
@@ -210,11 +211,9 @@ If the result says `should_run=true`:
    heartbeats are no-progress loops, run one bounded self-repair/replan segment
    before another quiet no-op. Delete/pause only when that repair path is stuck
    for 2 more eligible turns; no spend for the self-cancel turn.
-4. Choose one bounded, verifiable progress segment from that audit. It may be a
-   coherent batch across related implementation, test, doc, and state-writeback
-   files when the write scope is clear and validation is explicit; it should not
-   be forced into a tiny single-file step.
-5. Do that segment only. Stay inside `goal_boundary` when present and keep
+4. {SCOPE_BOUNDED_WORK_RULE}
+   Related work can form a coherent effort; a focused correction may suffice.
+5. Execute that scoped work. Stay inside `goal_boundary` when present and keep
    public/private boundaries intact. Public-safe repo publication is not an
    operator gate by itself: for routine public project work, commit, push, and
    PR creation may proceed autonomously after validation and a clean
@@ -222,7 +221,7 @@ If the result says `should_run=true`:
    for private or company-internal material, credentials, destructive git
    operations, production actions, or repository rules that explicitly require
    review.
-6. Run the smallest useful validation.
+6. Run validation proportionate to the change and risk.
 7. Write back changed files, validation, critic, and next action to the active
    state. If a user/owner todo appears, do not hide it in prose: use
    `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate --blocks-agent <agent-id>`
@@ -307,6 +306,7 @@ Guard/retry; `LOOPX_TURN=<current_time_iso>`:
 Fail:quiet.
 
 {HEARTBEAT_NOTIFICATION_RULE_THIN}
+{SCOPE_BOUNDED_WORK_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
 
 If `should_run=false`: follow user channel. `monitor_quiet_skip`: receipt/stall
@@ -320,7 +320,7 @@ If `should_run=true`: fetch compact; use `status --limit 3` and
 `execution_obligation`, `effective_action`, `recovery_delivery_allowed`,
 `heartbeat_recommendation`, `safe_bypass_kind=outcome_floor_recovery`,
 `goal_boundary`, `delivery_batch_scale`, `delivery_outcome`, outcome streaks,
-`handoff_delivery_contract`; do 1 bounded segment/batch when
+`handoff_delivery_contract`; advance scope-bounded work when
 `execution_obligation.must_attempt_work=true`; if recovery, run
 ranker/cross-domain evidence recovery or blocker writeback;
 validate/writeback/todos; {HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE} Progress(actual,no upgrade):
@@ -360,9 +360,8 @@ def render_compact_heartbeat_task_body(
     )
     return f"""Advance `{goal_id}` using `{active_state}`.
 
-This compact LoopX heartbeat body; policy:
-registry/state/adapter/`goal_boundary`.
-Expanded lifecycle contract: `{expanded_prompt_command}`.
+Compact policy: registry/state/adapter/`goal_boundary`.
+Detail: `{expanded_prompt_command}`.
 {scope_block}
 
 Preflight/guard; `LOOPX_TURN=<current_time_iso>`; reuse:
@@ -402,10 +401,8 @@ If `should_run=true`:
    `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
    evidence artifact or blocker recovery; no ordinary delivery or
    surface/synthetic-only work.
-4. Follow `execution_obligation`: `notify` is not an execution gate.
-   `must_attempt_work=true` means one bounded segment even with
-   `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and
-   `user_channel.notify=DONT_NOTIFY`.
+4. `execution_obligation`: `must_attempt_work=true` requires work even with
+   `notify=DONT_NOTIFY`; quiet no-op needs false and `user_channel.notify=DONT_NOTIFY`.
    Then follow `heartbeat_recommendation`:
    `run_first_read_only_map`: exact real-map, validate/save/refresh/spend;
    notify only under `NOTIFY`;
@@ -423,7 +420,7 @@ If `should_run=true`:
    `execution_obligation.must_attempt_work=true`; after 2 eligible stall
    heartbeats with only status/brief checks, replan before quiet no-op.
    Pause/delete only if repair stays stuck 2 more turns.
-7. Choose one bounded segment; coherent batch is OK with clear validation.
+7. {SCOPE_BOUNDED_WORK_RULE}
    Public-safe commit/push/PR may proceed after validation/clean scan. Stop for
    private/company material, credentials, destructive git, production, or review rules.
 8. Validate; write files/validation/critic/next action to active state;
@@ -575,9 +572,9 @@ otherwise wait.{host_wait_rule}
 `should_run=true`: take highest-priority unblocked in-scope todo by default; choose any
 other eligible Todo with a reason. Honor claims/leases and blocker-push/recovery obligations.
 Before dependencies, persist changed scope/acceptance/non-goal evidence and next todo.
-A bounded segment is progress within this Goal: a segment is progress, not a new Goal
-boundary. Reuse this Goal until terminal; do not create a successor host Goal merely to
-continue; do not create a successor merely to continue. Validate; write public-safe evidence.
+{SCOPE_BOUNDED_WORK_RULE}
+Progress is not a new Goal boundary. Reuse this Goal until terminal;
+do not create a successor merely to continue. Validate; write public-safe evidence.
 {HOST_LOOP_TODO_CLOSEOUT_RULE}
 
 For classification/scale/outcome, never default or upgrade them to
@@ -688,6 +685,7 @@ def render_thin_heartbeat_task_body(
 `LOOPX_TURN=<current_time_iso>`; reuse.
 {pr_review_pre_quota_instruction}{quota_guard_instruction}.
 {HEARTBEAT_NOTIFICATION_RULE_SHORT}
+{SCOPE_BOUNDED_WORK_RULE}
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}

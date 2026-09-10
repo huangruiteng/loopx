@@ -39,7 +39,7 @@ not only an apology or a one-off explanation.
    - docs/process hygiene gap.
 5. **Repair at the lowest durable layer.**
    - If it is a one-off agent mistake, write back the correct state/todo and
-     continue with a larger bounded batch.
+     size the next scoped effort to its verifiable result, evidence and risk.
    - If the machine projection misled the agent, fix CLI/status/quota
      projection and add a focused smoke.
    - If the user correction changes the goal acceptance, says the agent missed
@@ -138,9 +138,10 @@ replan, or terminal closeout must return to the strict semantic checkpoint.
 - Do not let fallback work hide the primary blocker. When a higher-priority
   path is gated but safe fallback is valid, report both the concrete gate and
   the fallback progress.
-- Do not let tiny safe steps become the default. If several recent turns are
-  short or surface-only, run a steering audit and increase the next bounded
-  batch size unless a real gate blocks it.
+- Do not equate bounded work with a small operation. If turns repeatedly stop
+  after setup or surface-only edits, check whether a verifiable result could
+  have been reached within scope and budget. Repair the premature stop, not by
+  imposing a minimum number of calls/files or ignoring explicit stop conditions.
 
 ## Reference Routes
 

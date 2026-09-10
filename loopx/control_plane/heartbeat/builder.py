@@ -71,12 +71,12 @@ from ...project_prompt import (
 )
 
 FINE_GRAINED_TURN_RULE = (
-    "Fine-grained planning contract: each Todo must be one small verifiable checkpoint; "
-    "if broader, split before delivery. The turn budget is one coherent decision slice "
+    "Fine-grained planning contract: each Todo must be an independently verifiable checkpoint; "
+    "split independent decisions before delivery. Work follows one coherent direction "
     "and may complete one or more causally related Agent advancement Todos. After each "
     "completion inspect fresh evidence before creating or claiming a successor; continue "
     "only while the direction remains unchanged. Validate and durably complete each Todo, "
-    "then perform accountable refresh and spend to settle the turn once after the slice. "
+    "then perform accountable refresh and spend to settle the turn once after the work. "
     "A direction change or bounded-chain review must use the existing replan obligation/"
     "ACK path before further delivery. Protocol/setup and capability re-entry steps are "
     "inline non-advancement work: never create Todos or settle a turn for them alone."

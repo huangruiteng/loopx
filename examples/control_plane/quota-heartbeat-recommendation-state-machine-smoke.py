@@ -258,7 +258,7 @@ def assert_default_bounded_delivery_mode() -> None:
         lane=work_lane(open_count=1, advancement_count=1, monitor_count=0),
     )
     assert normal["recommended_mode"] == "steering_audit_then_one_step", normal
-    assert "bounded progress segment" in normal["spend_policy"], normal
+    assert "scope-bounded work" in normal["spend_policy"], normal
 
 
 def main() -> int:
