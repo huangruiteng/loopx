@@ -315,9 +315,20 @@ async function execute(ws: Workspace, caller: ParityCaller): Promise<JsonObject>
     : await executeTaskLeaseLifecycle(request, CLOCK);
 }
 
+/**
+ * Node started embedding the failing path in EISDIR messages (v26), so the
+ * message a fence read failure carries is no longer stable across supported
+ * Node lines. Canonicalize the versioned suffix back onto the older stable
+ * text the fixture records, exactly like the {runtime_root} placeholder.
+ */
+const EISDIR_MESSAGE_WITH_PATH = /EISDIR: illegal operation on a directory, read '[^']*'/g;
+
 /** Replace the temporary runtime root inside an envelope with a stable placeholder. */
 export function normalize(value: unknown, runtimeRoot: string): JsonObject {
-  return JSON.parse(JSON.stringify(value).split(JSON.stringify(runtimeRoot).slice(1, -1)).join(RUNTIME_ROOT_PLACEHOLDER));
+  const text = JSON.stringify(value)
+    .replace(EISDIR_MESSAGE_WITH_PATH, "EISDIR: illegal operation on a directory, read")
+    .split(JSON.stringify(runtimeRoot).slice(1, -1)).join(RUNTIME_ROOT_PLACEHOLDER);
+  return JSON.parse(text);
 }
 
 export async function observeRow(row: ParityRow): Promise<Observation> {
