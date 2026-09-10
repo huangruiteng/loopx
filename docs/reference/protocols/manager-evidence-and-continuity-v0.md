@@ -19,6 +19,14 @@ receive a synchronous conversational response within their authorized scope.
 Long-running work is assigned to an exact worker and returns a task receipt;
 acceptance of work is never reported as completed work.
 
+Live activity labels follow the executor's typed event. Receiving a message,
+reasoning, producing an answer, and invoking a tool are different activities.
+An unknown item remains generic activity; item completion alone proves neither
+a Goal read nor a successful check. Do not expose item bodies or tool inputs in
+activity labels. Diagnose response latency using request acceptance, upstream
+turn start, first answer, and completion timestamps; a silent upstream interval
+does not identify a scheduler delay or prove what the executor was doing.
+
 Reuse the existing [global-manager protocol](global-manager-command-v0.md),
 [Decision Context source plane](decision-context-architecture-v0.md), and
 [periodic report lifecycle](periodic-report-v0.md). The proposed Goal Portfolio
