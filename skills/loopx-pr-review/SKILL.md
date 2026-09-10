@@ -42,15 +42,15 @@ especially:
 - `agent_response_contract.review_execution_contract`
 - `result_completeness` and `scheduling_policy`
 - `review_groups`
-- `pull_requests[].review_plan`
-- `pull_requests[].review_template`
-- `pull_requests[].evidence_commands`
+- `pull_requests[review_action_kind!=null].review_plan`
+- `pull_requests[review_action_kind!=null].review_template`
+- `pull_requests[review_action_kind!=null].evidence_commands`
 
 Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
-Require execution `policy_revision == 1`; a schema name alone is insufficient.
+Require execution `policy_revision == 2`; a schema name alone is insufficient.
 If missing or unequal, do not publish APPROVE. A conservative REQUEST_CHANGES
 may be published only when it explicitly names the incompatible-policy evidence
 gap; regenerate with current installed LoopX before any later approval. Do not retain
@@ -61,7 +61,7 @@ smoke binds this number to the canonical revision; this is not a freshness claim
 ## Execute One Review Plan
 
 Follow `scheduling_policy` and its ranked actionable `review_sequence`; explicit current-request PR selection may override ordering only, never `pull_requests[].review_action_kind` or exact-head idempotency. Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token. Todo/monitor prose may not select work.
-When `review_action_kind` is null, the row stays in `pull_requests` inventory but must not appear in `review_sequence`; do not execute its `review_plan`. Do one compact exact-head conclusion readback and report the existing verdict or bounded invalid/missing reason. Run a fresh audit only when the user explicitly requests fresh evidence despite that no-action result, or supplies a concrete new concern/evidence invalidation; then execute the complete current plan and never inherit the earlier approval. For every actionable PR:
+When `review_action_kind` is null, the row stays in `pull_requests` inventory but must not appear in `review_sequence`; its `review_plan` and `review_template` are null and `evidence_commands` is empty. Do one compact exact-head conclusion readback and report the existing verdict or bounded invalid/missing reason. Run a fresh audit only when the user explicitly requests fresh evidence despite that no-action result, or supplies a concrete new concern/evidence invalidation; regenerate with `--fresh-audit-exact-head NUMBER@HEAD_OID`, then execute the complete current plan and never inherit the earlier approval. For every actionable PR:
 
 1. Record the packet's exact head. Start with the capability's
    `review_execution_contract.decision_procedure`, including on re-review;
