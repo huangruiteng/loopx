@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 # Increment when review requirements change without changing the packet shape.
-REVIEW_POLICY_REVISION = 2
+REVIEW_POLICY_REVISION = 3
 
 REQUIRED_FINAL_SECTIONS = [
     "动机",
@@ -115,7 +115,12 @@ def build_review_execution_contract() -> dict[str, Any]:
         ),
         "evidence_status_values": ["verified", "unverified", "not_applicable"],
         "decision_procedure": {
-            "order": ["challenge_design", "falsify_claims", "inspect_implementation", "reconcile_verdict"],
+            "order": [
+                "challenge_design",
+                "falsify_claims",
+                "inspect_implementation",
+                "reconcile_verdict",
+            ],
             "challenge_design": (
                 "Before explaining how the patch works, make the strongest evidence-backed "
                 "case for not shipping it. Compare doing nothing, a smaller fix in the existing "
@@ -186,25 +191,40 @@ def build_review_execution_contract() -> dict[str, Any]:
                 "evidence_id": "repository_reuse",
                 "required_when": "behavior_bearing_change",
                 "verdict_values": [
-                    "reused", "separation_justified", "no_existing_candidate",
-                    "unjustified_duplication", "not_yet_proven",
+                    "reused",
+                    "separation_justified",
+                    "no_existing_candidate",
+                    "unjustified_duplication",
+                    "not_yet_proven",
                 ],
                 "fields": [
-                    "searched_revisions", "queries_and_paths", "existing_candidates",
-                    "semantic_comparison", "reuse_or_separation_reason",
-                    "state_model_assessment", "rule_ownership", "validation_evidence", "verdict",
+                    "searched_revisions",
+                    "queries_and_paths",
+                    "existing_candidates",
+                    "semantic_comparison",
+                    "reuse_or_separation_reason",
+                    "state_model_assessment",
+                    "rule_ownership",
+                    "validation_evidence",
+                    "verdict",
                 ],
                 "comparison_dimensions": [
-                    "resource_and_caller", "data_scope_and_filters",
-                    "ordering_and_pagination", "authority_and_sanitization",
+                    "resource_and_caller",
+                    "data_scope_and_filters",
+                    "ordering_and_pagination",
+                    "authority_and_sanitization",
                     "state_retry_and_failure_owner",
                 ],
                 "rule_ownership": {
                     "required_when": "retained_or_parallel_implementations",
                     "row_fields": [
-                        "business_rule", "baseline_owner", "head_owner",
-                        "retained_path_and_caller", "retention_reason",
-                        "deleted_rule_or_exit_condition", "validation",
+                        "business_rule",
+                        "baseline_owner",
+                        "head_owner",
+                        "retained_path_and_caller",
+                        "retention_reason",
+                        "deleted_rule_or_exit_condition",
+                        "validation",
                     ],
                     "rule": (
                         "For migrations, fallback paths, dual providers or old/new entrypoints, "
@@ -225,15 +245,23 @@ def build_review_execution_contract() -> dict[str, Any]:
                 "state_model_assessment": {
                     "required_when": "introduced_or_newly_enforced_state",
                     "classification_values": [
-                        "authoritative_fact", "irreducible_intent",
-                        "derived_projection", "diagnostic_hint",
+                        "authoritative_fact",
+                        "irreducible_intent",
+                        "derived_projection",
+                        "diagnostic_hint",
                     ],
                     "item_fields": [
-                        "field_or_relation", "classification", "existing_canonical_sources",
-                        "derivation_or_irreducibility_evidence", "producer_and_trigger",
-                        "authoring_discovery_path", "update_retire_and_replay_owner",
-                        "missing_stale_or_conflicting_value_behavior", "source_completeness",
-                        "counterfactual_validation", "decision",
+                        "field_or_relation",
+                        "classification",
+                        "existing_canonical_sources",
+                        "derivation_or_irreducibility_evidence",
+                        "producer_and_trigger",
+                        "authoring_discovery_path",
+                        "update_retire_and_replay_owner",
+                        "missing_stale_or_conflicting_value_behavior",
+                        "source_completeness",
+                        "counterfactual_validation",
+                        "decision",
                     ],
                     "rule": (
                         "Before accepting each added or newly enforced declaration, flag, "
@@ -437,6 +465,7 @@ def build_review_execution_contract() -> dict[str, Any]:
             {
                 "evidence_id": "symbol_map",
                 "required_when": "code_change",
+                "items_field": "items",
                 "item_count": {"minimum": 2, "maximum": 5},
                 "item_fields": [
                     "path",
@@ -459,6 +488,8 @@ def build_review_execution_contract() -> dict[str, Any]:
             {
                 "evidence_id": "walkthroughs",
                 "required_when": "always",
+                "positive_field": "positive",
+                "negative_field": "negative",
                 "positive_fields": [
                     "trigger",
                     "ordered_symbols_or_steps",
@@ -479,7 +510,9 @@ def build_review_execution_contract() -> dict[str, Any]:
             {
                 "evidence_id": "validation_matrix",
                 "required_when": "always",
+                "items_field": "items",
                 "item_fields": [
+                    "case_id",
                     "invariant_or_case",
                     "command_or_check",
                     "status",
@@ -488,9 +521,18 @@ def build_review_execution_contract() -> dict[str, Any]:
                     "skip_or_failure_reason",
                 ],
                 "required_cases": [
-                    "changed invariant positive case",
-                    "material negative or failure case when applicable",
-                    "repository-required checks",
+                    {
+                        "case_id": "changed_invariant_positive",
+                        "required_when": "always",
+                    },
+                    {
+                        "case_id": "material_negative_or_failure",
+                        "required_when": "negative_walkthrough_required",
+                    },
+                    {
+                        "case_id": "repository_required_checks",
+                        "required_when": "always",
+                    },
                 ],
             },
             {
@@ -874,7 +916,11 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
             required_evidence.append("scope_fit")
         required_evidence.append("default_off_isolation")
         required_evidence.append("behavior_change_disclosure")
-    if areas & {"product_runtime", "public_entry_or_policy", "agent_instruction_surface"}:
+    if areas & {
+        "product_runtime",
+        "public_entry_or_policy",
+        "agent_instruction_surface",
+    }:
         required_evidence.append("domain_neutrality")
         required_evidence.append("guidance_vs_obligation")
     if smoke_or_example_only:
@@ -909,11 +955,19 @@ def build_review_plan(item: Mapping[str, Any]) -> dict[str, Any]:
             "behavior_change_disclosure_required": behavior_bearing_change,
             "domain_neutrality_required": bool(
                 areas
-                & {"product_runtime", "public_entry_or_policy", "agent_instruction_surface"}
+                & {
+                    "product_runtime",
+                    "public_entry_or_policy",
+                    "agent_instruction_surface",
+                }
             ),
             "guidance_vs_obligation_required": bool(
                 areas
-                & {"product_runtime", "public_entry_or_policy", "agent_instruction_surface"}
+                & {
+                    "product_runtime",
+                    "public_entry_or_policy",
+                    "agent_instruction_surface",
+                }
             ),
             "smoke_or_example_only": smoke_or_example_only,
             "durable_smoke_value_required": smoke_or_example_only,

@@ -27,16 +27,44 @@ def _review():
         for row in build_review_execution_contract()["evidence_requirements"]
     }
     for key, row in result["evidence"].items():
+        requirement = requirements[key]
         row.update(
             status="verified",
             evidence="Synthetic consistency fixture, not a real review.",
             **{
                 field: "Synthetic consistency fixture, not a real review."
-                for field in requirements[key].get("fields", [])
+                for field in requirement.get("fields", [])
             },
         )
-        if "verdict_values" in requirements[key]:
-            row["verdict"] = requirements[key]["verdict_values"][0]
+        if "verdict_values" in requirement:
+            row["verdict"] = requirement["verdict_values"][0]
+        if "items_field" in requirement:
+            item_fields = requirement.get("item_fields", [])
+            if "required_cases" in requirement:
+                case_ids = [case["case_id"] for case in requirement["required_cases"]]
+            else:
+                count = requirement.get("item_count", {}).get("minimum", 1)
+                case_ids = [f"synthetic_{index}" for index in range(count)]
+            row[requirement["items_field"]] = [
+                {
+                    field: (
+                        case_id
+                        if field == "case_id"
+                        else True
+                        if field == "required"
+                        else "Synthetic consistency fixture, not a real review."
+                    )
+                    for field in item_fields
+                }
+                for case_id in case_ids
+            ]
+        for shape in ("positive", "negative"):
+            fields = requirement.get(f"{shape}_fields")
+            if fields:
+                row[shape] = {
+                    field: "Synthetic consistency fixture, not a real review."
+                    for field in fields
+                }
     result["verdict"] = "APPROVE"
     return {"pull_requests": [item]}, result
 
@@ -119,10 +147,59 @@ def test_verified_label_and_generic_prose_do_not_replace_rule_ownership():
     del result["evidence"]["repository_reuse"]["rule_ownership"]
     result["evidence"]["repository_reuse"]["evidence"] = "All providers passed."
     checked = check_review_result(packet, result)
-    assert "repository_reuse:missing_field:rule_ownership" in checked["approval_blockers"]
+    assert (
+        "repository_reuse:missing_field:rule_ownership" in checked["approval_blockers"]
+    )
     assert not checked["ok"]
     result["verdict"] = "REQUEST_CHANGES"
     assert check_review_result(packet, result)["ok"]
+
+
+@pytest.mark.parametrize(
+    "evidence_id", ["symbol_map", "walkthroughs", "validation_matrix"]
+)
+def test_generic_prose_cannot_replace_structured_evidence(evidence_id):
+    packet, result = _review()
+    result["evidence"][evidence_id] = {
+        "status": "verified",
+        "evidence": "Generic prose only.",
+    }
+
+    checked = check_review_result(packet, result)
+
+    assert not checked["approval_consistent"]
+    assert any(
+        blocker.startswith(f"{evidence_id}:")
+        for blocker in checked["approval_blockers"]
+    )
+    assert "approval_contradicts_evidence" in checked["errors"]
+    result["verdict"] = "REQUEST_CHANGES"
+    assert check_review_result(packet, result)["ok"]
+
+
+def test_structured_evidence_enforces_count_fields_and_required_cases():
+    packet, result = _review()
+    result["evidence"]["symbol_map"]["items"] = [
+        result["evidence"]["symbol_map"]["items"][0]
+    ]
+    del result["evidence"]["walkthroughs"]["negative"]["error_or_retry_owner"]
+    result["evidence"]["validation_matrix"]["items"] = [
+        item
+        for item in result["evidence"]["validation_matrix"]["items"]
+        if item["case_id"] != "repository_required_checks"
+    ]
+
+    checked = check_review_result(packet, result)
+
+    assert "symbol_map:too_few_items" in checked["approval_blockers"]
+    assert (
+        "walkthroughs:negative:missing_field:error_or_retry_owner"
+        in checked["approval_blockers"]
+    )
+    assert (
+        "validation_matrix:missing_required_case:repository_required_checks"
+        in checked["approval_blockers"]
+    )
 
 
 @pytest.mark.parametrize("mutation", ["head", "duplicate", "shape"])

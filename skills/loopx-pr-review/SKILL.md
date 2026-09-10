@@ -50,7 +50,7 @@ Do not pipe the only copy through `jq`. When an exhaustive request has
 `result_completeness.complete=false`, rerun with its `recommended_limit` before
 reviewing.
 
-Require execution `policy_revision == 2`; a schema name alone is insufficient.
+Require execution `policy_revision == 3`; a schema name alone is insufficient.
 If missing or unequal, do not publish APPROVE. A conservative REQUEST_CHANGES
 may be published only when it explicitly names the incompatible-policy evidence
 gap; regenerate with current installed LoopX before any later approval. Do not retain
@@ -81,7 +81,7 @@ When `review_action_kind` is null, the row stays in `pull_requests` inventory bu
    check cannot verify evidence truth, architecture judgment, or remote freshness.
    Preserve the template's `review_policy_revision`; do not relabel an old result
    without executing the current evidence plan. Verified rows must fill their
-   declared fields; a single generic “reviewed” note is insufficient.
+   declared structured fields; validation rows bind typed `case_id` coverage, and a generic “reviewed” note is insufficient.
    Missing material evidence needs a concrete hold/request-changes explanation,
    not an invented bug or approval inherited from the previous round.
 4. Render the verified result through `review_template`. The five sections are

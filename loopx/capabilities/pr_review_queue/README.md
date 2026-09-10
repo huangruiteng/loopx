@@ -607,8 +607,12 @@ Keeping a legacy storage writer does not justify keeping its independent
 eligibility, retention, ordering or successor rules. Name actual retired rules
 and justified compatibility/effect code, not a net-deletion quota. A positive
 twin with shared decisions and necessary extra adapter code must remain
-approvable. Verified evidence rows must fill their declared fields; the checker
-validates this completeness only, never the truth of their contents.
+approvable. Verified evidence rows must fill their declared fields and structured
+shapes. `symbol_map.items` obeys the declared count and item fields;
+`walkthroughs.positive` plus any applicable `walkthroughs.negative` fill their
+declared fields; `validation_matrix.items[].case_id` proves coverage of the
+packet's typed required cases. The checker validates this completeness only,
+never the truth of their contents.
 
 Behavioral qualification lives in `tests/capabilities/test_pr_review_behavior.py`:
 paired synthetic cases include valid designs as well as counterexamples. The optional
