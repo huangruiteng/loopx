@@ -186,6 +186,25 @@ loopx-finance-value-discovery evaluate-pack \
   --input-json packages/loopx-finance-value-discovery/examples/software-metric-pack-v1.json
 ```
 
+In extension 0.5.0, a frozen gate can require source-query coverage computed from
+normalized page receipts. Matching totals alone cannot pass it: missing pages or
+snapshot assertions remain insufficient evidence. This does not verify source
+truth or historical publication time. See the [coverage contract](CONTRACT.md#source-query-coverage-extension-050).
+
+```bash
+loopx extension run loopx-finance-value-discovery \
+  --input-json packages/loopx-finance-value-discovery/examples/finance-source-coverage-v1.json \
+  --execute --format json
+loopx-finance-value-discovery evaluate \
+  --input-json packages/loopx-finance-value-discovery/examples/finance-source-coverage-v1.json > evaluation.json
+loopx-finance-value-discovery replay \
+  --input-json packages/loopx-finance-value-discovery/examples/finance-source-coverage-v1.json \
+  --expected-json evaluation.json
+```
+
+The synthetic example passes query coverage but still lacks economic evidence.
+Existing inputs without the optional gate retain their result and replay bytes.
+
 The manifest declares no permissions: this workflow is a deterministic reducer
 over caller-supplied frozen public evidence. It performs no collection or other
 effectful operation. Permissioned Finance work must use a capability or domain

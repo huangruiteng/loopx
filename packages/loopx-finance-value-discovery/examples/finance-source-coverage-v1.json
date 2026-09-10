@@ -1,0 +1,79 @@
+{
+  "schema_version": "finance_case_gate_input_v1",
+  "case_id": "synthetic-disclosure-coverage",
+  "subject_ref": "synthetic-universe",
+  "contract": {
+    "schema_version": "finance_case_contract_v1",
+    "contract_id": "synthetic-coverage-contract",
+    "method_revision": "coverage-example-v1",
+    "point_in_time": "2026-01-02T00:00:00Z",
+    "evaluation_as_of": "2026-01-02T03:00:00Z",
+    "universe_id": "synthetic-universe",
+    "universe_frozen": true,
+    "identities_frozen": true,
+    "thresholds_frozen": true,
+    "outcome_blind": true,
+    "public_evidence_only": true,
+    "investment_advice_allowed": false,
+    "trading_allowed": false,
+    "automatic_promotion_allowed": false,
+    "gates": [
+      {
+        "gate_id": "disclosure_coverage",
+        "value_type": "boolean",
+        "operator": "eq",
+        "reference_value": true,
+        "source_coverage": {
+          "request_identity": {
+            "market": "TEST",
+            "universe_id": "synthetic-universe",
+            "query_id": "synthetic-filings-window-v1"
+          },
+          "collection_started_at": "2026-01-02T00:00:00Z"
+        }
+      },
+      {
+        "gate_id": "economic_evidence",
+        "value_type": "boolean",
+        "operator": "eq",
+        "reference_value": true
+      }
+    ]
+  },
+  "observations": [
+    {
+      "gate_id": "disclosure_coverage",
+      "source_pages": [
+        {
+          "request_identity": {
+            "market": "TEST",
+            "universe_id": "synthetic-universe",
+            "query_id": "synthetic-filings-window-v1"
+          },
+          "page_number": 1,
+          "source_status": "ok",
+          "started_at": "2026-01-02T01:00:00Z",
+          "observed_at": "2026-01-02T01:01:00Z",
+          "total_count": 1,
+          "has_more": false,
+          "snapshot_id": "synthetic-immutable-snapshot",
+          "snapshot_evidence_ref": "synthetic-snapshot-assertion",
+          "rows": [
+            {
+              "id": "synthetic-filing-a",
+              "market": "TEST",
+              "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "gate_id": "economic_evidence",
+      "observation_state": "missing",
+      "value": null,
+      "evidence_refs": [],
+      "reason": "Query coverage does not supply economic evidence."
+    }
+  ]
+}
