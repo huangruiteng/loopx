@@ -117,6 +117,16 @@ def register_pr_review_command(
         help="Read public-safe PR metadata from a JSON fixture instead of live gh output.",
     )
     parser.add_argument(
+        "--fresh-audit-exact-head",
+        action="append",
+        default=[],
+        metavar="NUMBER@HEAD_OID",
+        help=(
+            "Explicitly request a fresh evidence audit for one unchanged exact head "
+            "that already has a valid conclusion. Repeatable."
+        ),
+    )
+    parser.add_argument(
         "--autonomous-observation",
         action="store_true",
         help="Add a read-only autonomous queue observation and at most one exact-head candidate.",
@@ -176,6 +186,7 @@ def handle_pr_review_command(
                 or args.fixture
                 or args.repo
                 or args.since
+                or args.fresh_audit_exact_head
             ):
                 raise ValueError(
                     "result checking cannot be combined with scan or observation options"
@@ -268,6 +279,7 @@ def handle_pr_review_command(
             since=args.since,
             source_scan=source_scan,
             reviewer_login=reviewer_login,
+            fresh_audit_exact_heads=args.fresh_audit_exact_head,
         )
         if args.autonomous_observation:
             autonomous_review = build_pull_request_review_queue_observation(
@@ -322,6 +334,7 @@ def handle_pr_review_command(
                 "limit": max(1, args.limit),
                 "state_filter": normalize_pr_state_filter(args.state),
                 "since": args.since,
+                "fresh_audit_exact_heads": list(args.fresh_audit_exact_head),
                 "source": "fixture" if args.fixture else "github_cli",
                 "privacy_mode": "public_safe_github_metadata",
                 "dry_run": True,

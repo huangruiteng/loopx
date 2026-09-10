@@ -23,6 +23,11 @@ def check_review_result(
     ]
     if len(matches) != 1:
         raise ValueError("review result must match exactly one packet PR head")
+    if not str(matches[0].get("review_action_kind") or "").strip():
+        raise ValueError(
+            "review result cannot execute an inventory-only exact head; regenerate "
+            "the packet with an explicit fresh-audit request"
+        )
     # Rebuild policy from this installed capability, not caller-supplied plans.
     plan = build_review_plan(matches[0])
     contract = build_review_execution_contract()

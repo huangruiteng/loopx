@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -11,11 +11,12 @@ from typing import Any
 from .capabilities.pr_review_queue import (
     PullRequestSchedulingLane,
     build_agent_response_contract,
-    build_review_plan,
-    build_review_template,
     build_scheduling_policy,
     classify_scheduling_lane,
     community_feedback_ready,
+    exact_head_key,
+    materialize_review_execution,
+    normalize_fresh_audit_exact_heads,
     scheduling_sort_key,
     scheduling_tier,
 )
@@ -50,7 +51,6 @@ AUTHOR_OWNED_REQUEST_CHANGES_FALLBACK_TITLE = (
     "Request changes conclusion (author-owned PR; GitHub blocks formal self-review)"
 )
 REVIEW_CONCLUSION_SCHEMA_VERSION = "pull_request_review_conclusion_v0"
-
 RUNTIME_OR_CLI_PREFIXES = (
     "src/",
     "lib/",
@@ -932,24 +932,6 @@ def _review_conclusion(
     return latest_result
 
 
-def _review_action_kind(item: Mapping[str, Any]) -> str | None:
-    state = str(item.get("state") or "").upper()
-    if item.get("is_draft") is True or state == "CLOSED":
-        return None
-    conclusion = _as_dict(item.get("review_conclusion"))
-    if conclusion.get("valid") is True:
-        if state == "OPEN" and str(conclusion.get("state") or "").upper() == "APPROVED":
-            return "qualify_pull_request_merge_readiness"
-        return None
-    if state == "MERGED":
-        return "audit_merged_pull_request_exact_head"
-    if state != "OPEN":
-        return None
-    if str(item.get("review_decision") or "").upper() == "CHANGES_REQUESTED":
-        return "rereview_pull_request_exact_head"
-    return "review_pull_request_exact_head"
-
-
 def _review_sequence_entry(item: dict[str, Any], *, rank: int) -> dict[str, Any]:
     main_risk = _as_dict(item.get("main_regression_analysis"))
     return {
@@ -981,6 +963,7 @@ def _normalize_pr(
     *,
     reviewer_login: str | None,
     generated_at: datetime,
+    fresh_audit_exact_heads: set[str],
 ) -> dict[str, Any]:
     files = _files(pr)
     checks = _checks(pr)
@@ -1050,17 +1033,12 @@ def _normalize_pr(
         "risk_notes": _risk_notes(pr, files),
         "metadata_risk_hint": _metadata_risk_hint(pr, files, checks),
         "main_regression_analysis": _main_regression_analysis(pr, files),
-        "review_goal": "Fill the five-block review template after reading the PR body and diff.",
-        "evidence_commands": [
-            f"gh pr view {number} --json title,body,files,commits,statusCheckRollup,headRefOid,updatedAt",
-            f"gh pr diff {number} --name-only",
-            f"gh pr diff {number} --patch",
-            f"gh pr view {number} --json headRefOid,updatedAt",
-        ]
-        if number
-        else [],
     }
-    item["review_action_kind"] = _review_action_kind(item)
+    item.update(
+        materialize_review_execution(
+            item, fresh_audit_exact_heads=fresh_audit_exact_heads
+        )
+    )
     item["community_feedback_ready"] = bool(
         not item["author_owned"]
         and item["review_action_kind"] == "rereview_pull_request_exact_head"
@@ -1068,8 +1046,6 @@ def _normalize_pr(
     )
     item["scheduling_lane"] = classify_scheduling_lane(item).value
     item["scheduling_tier"] = scheduling_tier(item)
-    item["review_plan"] = build_review_plan(item)
-    item["review_template"] = build_review_template(item)
     return item
 
 
@@ -1083,15 +1059,18 @@ def build_pr_review_packet(
     since: str | None = None,
     source_scan: Mapping[str, Any] | None = None,
     reviewer_login: str | None = None,
+    fresh_audit_exact_heads: Sequence[str] = (),
 ) -> dict[str, Any]:
     normalized_state_filter = normalize_pr_state_filter(state_filter)
     generated_at_text = _now_iso()
     generated_at = _parse_timestamp(generated_at_text) or datetime.now(timezone.utc)
+    requested_fresh_audits = normalize_fresh_audit_exact_heads(fresh_audit_exact_heads)
     normalized_all = [
         _normalize_pr(
             item,
             reviewer_login=reviewer_login,
             generated_at=generated_at,
+            fresh_audit_exact_heads=requested_fresh_audits,
         )
         for item in pull_requests
     ]
@@ -1113,6 +1092,15 @@ def build_pr_review_packet(
         normalized = normalized_all[:packet_limit]
         unmerged_items = [item for item in normalized if str(item.get("state") or "").upper() != "MERGED"]
         merged_items = [item for item in normalized if str(item.get("state") or "").upper() == "MERGED"]
+    observed_exact_heads = {
+        key for item in normalized if (key := exact_head_key(item))
+    }
+    missing_fresh_audits = requested_fresh_audits - observed_exact_heads
+    if missing_fresh_audits:
+        raise ValueError(
+            "fresh audit exact head is absent from the current result window: "
+            + ", ".join(sorted(missing_fresh_audits))
+        )
     source_scan_complete = (
         source_scan.get("complete") is True
         if isinstance(source_scan, Mapping)
@@ -1251,6 +1239,7 @@ def build_pr_review_packet(
             },
             "source": source,
             "reviewer_login": reviewer_login,
+            "fresh_audit_exact_heads": sorted(requested_fresh_audits),
             "include": [
                 "pull_request_list",
                 "result_completeness",
@@ -1316,6 +1305,8 @@ def build_pr_review_packet(
 
 
 def _review_why_now(item: dict[str, Any]) -> str:
+    if item.get("fresh_audit_requested") is True:
+        return "A caller explicitly requested a fresh audit of this unchanged exact head."
     state = str(item.get("state") or "").upper()
     if state == "MERGED":
         return "Merged exact head lacks a valid conclusion; audit outcome, validation, and follow-up quality."
@@ -1372,8 +1363,8 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
         "",
         "- Do not stop at the queue/table summary.",
         "- Do not collapse this packet to `.summary` and `.review_sequence` only; preserve the paths named by `agent_response_contract.required_packet_fields_to_preserve`.",
-        "- For each selected PR, read PR body/files/diff/checks first, then return one review card.",
-        "- Execute each `pull_requests[].review_plan` against `agent_response_contract.review_execution_contract`; that capability-owned contract is the evidence and completeness authority.",
+        "- For each actionable selected PR, read PR body/files/diff/checks first, then return one review card.",
+        "- Execute each non-null `pull_requests[].review_plan` against `agent_response_contract.review_execution_contract`; inventory-only rows expose no execution artifacts.",
         "- Code-changing PRs must include a `关键代码讲解` subsection under `具体改动`, grounded in exact-head symbols and short excerpts or equivalent pseudocode.",
         "- Bind the verdict to the remote head SHA and recheck it before answering.",
         "- Required card headings: `动机`, `改动思路`, `具体改动`, `对主干的风险`, `我的整体评价`.",
@@ -1416,15 +1407,22 @@ def render_pr_review_markdown(payload: dict[str, Any]) -> str:
     for pr in [item for item in _as_list(payload.get("pull_requests")) if isinstance(item, dict)]:
         template = _as_dict(pr.get("review_template"))
         review_plan = _as_dict(pr.get("review_plan"))
+        action_kind = str(pr.get("review_action_kind") or "").strip()
+        row_instruction = (
+            "> Agentloop should fill the five-block review after reading the PR body and diff. The template below is intentionally blank."
+            if action_kind
+            else "> Inventory-only exact head: read back the existing conclusion; do not run a full evidence review."
+        )
         lines.extend(
             [
                 "",
                 f"## PR #{pr.get('number')}: {pr.get('title')}",
                 "",
-                "> Agentloop should fill the five-block review after reading the PR body and diff. The template below is intentionally blank.",
+                row_instruction,
                 "",
                 f"- url: {pr.get('url')}",
                 f"- state: `{pr.get('state')}`",
+                f"- review action: `{action_kind or 'none'}`",
                 f"- merged_at: `{pr.get('merged_at') or 'n/a'}`",
                 f"- branch: `{pr.get('head_ref')}` -> `{pr.get('base_ref')}`",
                 f"- status: review=`{pr.get('review_decision')}`, merge=`{pr.get('merge_state')}`, draft=`{pr.get('is_draft')}`",

@@ -47,7 +47,7 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "loopx --format json pr-review --state all",
         "thin host adapter",
         "agent_response_contract.review_execution_contract",
-        "pull_requests[].review_plan",
+        "pull_requests[review_action_kind!=null].review_plan",
         "completion_gate",
         "loopx-pr-merge",
     ),
