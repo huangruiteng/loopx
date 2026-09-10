@@ -307,7 +307,7 @@ CASES.append(Case("python_fence_remediation_truncated", (
     (COORDINATION + "legacy_writer_fence.py", replacement(
         'LEGACY_WRITER_FENCED_REMEDIATION = (\n    "legacy coordination writer is fenced; use the promoted canonical authority "\n    "({authority_mode}) for goal {goal_id}; fence {fence_id}; "\n    "the primary record was not changed"\n)',
         'LEGACY_WRITER_FENCED_REMEDIATION = "legacy coordination writer is fenced"')),
-), "tests/control_plane/test_shadow_fence_caller_parity_e2e.py::test_fence_caller_parity[cli-todo_update_status-engaged]"))
+), "tests/control_plane/test_shadow_fence_caller_parity_e2e.py::test_fence_caller_parity[cli-todo_update_task_class-engaged]"))
 CASES.append(Case("fence_envelope_schema_leak", (
     (COORDINATION + "legacy_writer_fence.ts", replacement(
         "    this.payload = { write_check: writeCheck };",

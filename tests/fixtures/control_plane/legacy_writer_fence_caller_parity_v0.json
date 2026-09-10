@@ -1310,10 +1310,10 @@
       }
     },
     {
-      "id": "cli-todo_update_status-engaged",
+      "id": "cli-todo_update_task_class-engaged",
       "surface": "cli",
       "workspace": "w1",
-      "caller": "todo_update_status",
+      "caller": "todo_update_task_class",
       "fence_state": "engaged",
       "exit": 1,
       "expect": {

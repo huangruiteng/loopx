@@ -167,7 +167,7 @@ def row_args(ws: Workspace, caller: str) -> tuple[str, ...]:
         "task_lease_release": lease_args(ws, "release"),
         "todo_complete": ("todo", "complete", "--todo-id", a, "--agent-id", "agent-a",
                           "--evidence", "validation://parity", "--no-follow-up"),
-        "todo_update_status": ("todo", "update", "--todo-id", a, "--agent-id", "agent-a", "--status", "deferred"),
+        "todo_update_task_class": ("todo", "update", "--todo-id", a, "--agent-id", "agent-a", "--task-class", "advancement_task"),
         "todo_supersede": ("todo", "supersede", "--todo-id", a, "--agent-id", "agent-a",
                            "--text", "Parity successor", "--evidence", "validation://parity"),
         "todo_archive_completed_execute": ("todo", "archive-completed", "--execute"),
@@ -248,3 +248,20 @@ def test_baseline_annotations_are_not_stale() -> None:
             if revision == "note":
                 continue
             assert delta != row["expect"], row["id"]
+
+
+def test_promoted_planning_status_requires_execution_proof(tmp_path: Path) -> None:
+    """Supported planning reaches canonical fencing, not the retired writer."""
+    ws = build_seeded(tmp_path, "absent", "planning-proof-parity", gate=False)
+    before = {key: value for key, value in ws.w.files().items() if key.startswith("runtime/authority/")}
+    assert before, "fixture must contain a real canonical store"
+    observed = ws.observe(("todo", "update", "--todo-id", ws.ids["todo_a"],
+                           "--agent-id", "agent-a", "--status", "deferred"))
+    assert observed["exit"] == 1
+    assert observed["envelope"]["error_code"] == "handoff_mode_requires_lease"
+    assert observed["envelope"]["decision_read_from_provider"] is True
+    assert observed["envelope"]["legacy_fallback_used"] is False
+    assert observed["effect"] == {"added": [], "removed": [], "changed": []}
+    assert observed["outbox_added"] == []
+    after = {key: value for key, value in ws.w.files().items() if key.startswith("runtime/authority/")}
+    assert after == before
