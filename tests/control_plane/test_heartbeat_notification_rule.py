@@ -8,10 +8,17 @@ for whether a bounded slice must run.
 
 from __future__ import annotations
 
+import re
+
 from loopx.control_plane.heartbeat.rules import HEARTBEAT_NOTIFICATION_RULE_SHORT
 from loopx.control_plane.heartbeat.task_body import (
+    render_ark_managed_agent_goal_task_body,
     render_brief_heartbeat_task_body,
+    render_compact_heartbeat_task_body,
+    render_heartbeat_task_body,
     render_thin_heartbeat_task_body,
+    render_traex_visible_goal_task_body,
+    render_visible_goal_task_body,
 )
 from loopx.control_plane.scheduler.execution_context import (
     GENERIC_CLI_OUTER_CONTROLLER_SCHEDULER_CONTEXT,
@@ -26,6 +33,10 @@ from loopx.quota import build_quota_should_run
 
 GOAL_ID = "heartbeat-notify-obligation-fixture"
 AGENT_ID = "codex-notify-agent"
+LANGUAGE_POLICY = (
+    "Language=user; fallback=English; mix only if asked/scoped-bilingual."
+)
+LANGUAGE_POLICY_THIN = "Lang=user; default=en; mix=asked/scoped."
 
 
 def test_short_rule_qualifies_dont_notify_as_output_only() -> None:
@@ -64,6 +75,48 @@ def test_rendered_task_bodies_keep_execution_obligation_authority() -> None:
         assert "OUTPUT only" in body
         # A bare "DONT_NOTIFY=quiet" no-op mapping must never appear in the prompt.
         assert "DONT_NOTIFY=quiet." not in body
+
+
+def test_generic_task_bodies_follow_user_language_without_forcing_chinese() -> None:
+    kwargs = dict(
+        goal_id="fixture-goal",
+        active_state="active",
+        cli_preflight="",
+        pr_review_pre_quota_command="",
+        quota_guard_command="loopx quota should-run",
+        quota_spend_command="loopx quota spend-slot",
+        refresh_state_command="loopx refresh-state",
+        progress_refresh_state_command="loopx refresh-state --classification delivery",
+        material_queue_rule="",
+        permission_rule="",
+        cli_bin="loopx",
+        agent_scope_instruction="",
+        expanded_prompt_command="loopx heartbeat-prompt",
+        compact_prompt_command="loopx heartbeat-prompt --compact",
+        brief_prompt_command="loopx heartbeat-prompt --brief",
+        thin_prompt_command="loopx heartbeat-prompt --thin",
+    )
+    renderers = (
+        render_heartbeat_task_body,
+        render_compact_heartbeat_task_body,
+        render_brief_heartbeat_task_body,
+        render_thin_heartbeat_task_body,
+        render_visible_goal_task_body,
+        render_traex_visible_goal_task_body,
+        render_ark_managed_agent_goal_task_body,
+    )
+
+    for renderer in renderers:
+        body = renderer(**kwargs)
+        expected_policy = (
+            LANGUAGE_POLICY_THIN
+            if renderer is render_brief_heartbeat_task_body
+            else LANGUAGE_POLICY
+        )
+        assert expected_policy in body, renderer.__name__
+        assert "Chinese action" not in body, renderer.__name__
+        assert "concrete Chinese" not in body, renderer.__name__
+        assert re.search(r"[\u3400-\u9fff]", body) is None, renderer.__name__
 
 
 def test_heartbeat_recommendation_mirrors_execution_obligation_in_replan() -> None:

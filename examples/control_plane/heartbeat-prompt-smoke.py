@@ -62,13 +62,17 @@ def user_output_policy(task_body: str, *, mode: str) -> dict[str, str]:
             "full: bare 'report, write back' (old form outside NOTIFY)"
         )
     else:
-        assert "`user_channel.notify` controls OUTPUT only" in body
-        assert "NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出" in body
-        assert "Due/peer gate != prompt" in body
-        assert "missing NOTIFY action->" in body
-        assert "具体user todo未投影" in body
         if mode == "brief":
+            assert "Lang=user; default=en; mix=asked/scoped" in body
+            assert "OUTPUT only:N=show,D=none" in body
+            assert "due/peer not prompt" in body
+            assert "repair no action" in body
             assert "Return only under `user_channel.notify=NOTIFY`; else quiet." in body
+        else:
+            assert "`user_channel.notify` OUTPUT only" in body
+            assert "NOTIFY=show; DONT_NOTIFY=no output" in body
+            assert "Due/peer != prompt" in body
+            assert "missing action->repair Todo projection" in body
     return {
         "authority": "interaction_contract.user_channel.notify",
         "external": "NOTIFY",
@@ -108,7 +112,9 @@ def assert_sole_notification_authority(task_body: str, *, mode: str) -> None:
         return
 
     assert mode == "thin", mode
-    assert "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出。" in body
+    assert (
+        "`user_channel.notify` OUTPUT only: NOTIFY=show; DONT_NOTIFY=no output."
+    ) in body
 
 
 def assert_peer_scope_notification_authority(task_body: str) -> None:
@@ -584,10 +590,10 @@ def main() -> int:
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run '
         "--goal-id loopx-meta --agent-id codex-product-capability --available-capability network "
         "--available-capability external_evidence_poll",
-        "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
-        "missing NOTIFY action->",
-        "具体user todo未投影",
+        "Language=user; fallback=English; mix only if asked/scoped-bilingual",
+        "`user_channel.notify` OUTPUT only: NOTIFY=show; DONT_NOTIFY=no output",
+        "Due/peer != prompt",
+        "missing action->repair Todo projection",
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/fallback_hint/ack/fail",
@@ -639,11 +645,11 @@ def main() -> int:
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Guard/retry; `LOOPX_TURN=<current_time_iso>`",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
-        "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
+        "Lang=user; default=en; mix=asked/scoped",
+        "OUTPUT only:N=show,D=none",
+        "due/peer not prompt",
         "Done->successor first; final->refresh->spend->no-follow-up",
-        "missing NOTIFY action->",
-        "具体user todo未投影",
+        "repair no action",
         "follow user channel",
         "monitor_quiet_skip",
         "receipt/stall done",
@@ -682,10 +688,10 @@ def main() -> int:
         "lifecycle/registry and `loopx-self-repair` for runtime/projection drift",
         "use selection_command when required",
         "`quota should-run`",
-        "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
-        "missing NOTIFY action->",
-        "具体user todo未投影",
+        "Language=user; fallback=English; mix only if asked/scoped-bilingual",
+        "`user_channel.notify` OUTPUT only: NOTIFY=show; DONT_NOTIFY=no output",
+        "Due/peer != prompt",
+        "missing action->repair Todo projection",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
@@ -731,6 +737,10 @@ def main() -> int:
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id <GOAL_ID>',
         "project non-basic capabilities that are actually present",
         "without guessing capabilities the host does not have",
+        "All generic heartbeat and native Goal bodies match the user's current language",
+        "fall back to English when no user language is available",
+        "do not mix languages unless the user asks or a scoped capability requires bilingual",
+        "Capability-specific bilingual contracts remain authoritative",
         "If that preflight still fails",
         "should_run=false",
         "state=operator_gate",
@@ -747,8 +757,8 @@ def main() -> int:
         "non-blocking means the agent may continue independent work",
         'Never say only "owner gate"',
         "Only when `notify=DONT_NOTIFY`",
-        '"无用户待办/无需通知"',
-        "具体 user todo 未投影，需修复 LoopX 状态投影",
+        '"no user action required" in the user\'s language',
+        "specific user Todo is not projected; repair LoopX state projection",
         "NOTIFY",
         "notify_user_on_open_todo=true",
         "blocker-push opportunity",
@@ -866,11 +876,12 @@ def main() -> int:
         "user_todo_summary",
         "user_todo_summary.open_count > 0",
         "never say \"no new user action\"",
+        "Language=user; fallback=English; mix only if asked/scoped-bilingual",
         "`interaction_contract.user_channel.notify` controls output",
-        "`should_run`/due monitor and other-agent scoped todos",
-        "are not user prompts",
-        "`action_required` without an action",
-        "具体 user todo 未投影，需修复 LoopX 状态投影",
+        "Due/peer work is not a prompt",
+        "Missing action: specific user Todo is not projected",
+        "repair LoopX state projection",
+        "repair the projection internally and stay quiet",
         "NOTIFY",
         "notify_user_on_open_todo=true",
         "blocker-push",

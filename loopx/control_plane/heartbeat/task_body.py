@@ -14,6 +14,7 @@ from .rules import (
     HOST_LOOP_QUOTA_DISPATCH_RULE,
     HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE,
     HOST_LOOP_TODO_CLOSEOUT_RULE,
+    OPERATOR_LANGUAGE_RULE,
     RUNTIME_CAPABILITY_PROJECTION_THIN_RULE,
     RUNTIME_EXECUTION_ROUTING_RULE,
     SCHEDULER_HINT_APPLICATION_RULE,
@@ -111,7 +112,7 @@ If the result says `should_run=false`:
 - Only if `user_channel.notify=NOTIFY`, interpret `state=operator_gate` or
   `notify_user_on_open_todo=true` as a user prompt. Read `gate_prompt`,
   `operator_question`, `user_todo_summary`, and `open_todo_notify_reason`;
-  ask one concise Chinese action/question with reply format. If
+  ask one concise action/question with reply format. If
   `user_todo_summary.open_count > 0`, include up to three `first_open_items`;
   never say "no new user action". Honor
   `open_todo_notification_policy=repeat_until_resolved`; when
@@ -394,9 +395,8 @@ If `should_run=true`:
    `attention_queue.items` / `project_asset`, and guard `user_todo_summary`.
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
-2. Goal-owned blocker: stop its path. Under `NOTIFY`, send a concrete Chinese
-   blocker-push; under `DONT_NOTIFY`, repair internally and stay quiet.
-   Dependency/sibling todos: record; continue audit.
+2. Goal blocker: stop. {OPERATOR_LANGUAGE_RULE} `NOTIFY`: blocker-push;
+   `DONT_NOTIFY`: repair quietly. Record dependencies.
 3. If `effective_action=outcome_floor_recovery` or
    `recovery_delivery_allowed=true` or
    `safe_bypass_kind=outcome_floor_recovery`, run only ranker/cross-domain
@@ -477,8 +477,8 @@ def render_visible_goal_task_body(
         goal_id=goal_id,
         active_state=active_state,
         host_preamble=(
-            "in this visible Codex `/goal`. It is interactive, not a heartbeat "
-            "automation: no automation/RRULE/`LOOPX_TURN`."
+            "in visible Codex `/goal`; interactive, no heartbeat/RRULE/"
+            "`LOOPX_TURN`."
         ),
         completion_subject="visible Goal",
         pr_review_pre_quota_command=pr_review_pre_quota_command,
@@ -565,15 +565,16 @@ def _render_goal_task_body(
 {scope_block}
 
 {RUNTIME_EXECUTION_ROUTING_RULE}
+{OPERATOR_LANGUAGE_RULE}
 
 {prequota_block}{HOST_LOOP_QUOTA_DISPATCH_RULE}
 Guard: `{quota_guard_command}`.
 
-`should_run=false`: no delivery/spend; NOTIFY: Chinese action/gate;
+`should_run=false`: no delivery/spend; NOTIFY: user-language action/gate;
 otherwise wait.{host_wait_rule}
 
-`should_run=true`: take highest-priority unblocked in-scope todo by default; choose any
-other eligible Todo with a reason. Honor claims/leases and blocker-push/recovery obligations.
+`should_run=true`: take highest-priority unblocked in-scope todo by default; another
+eligible Todo requires a reason. Honor claims/leases and blocker-push/recovery obligations.
 Before dependencies, persist changed scope/acceptance/non-goal evidence and next todo.
 A bounded segment is progress within this Goal: a segment is progress, not a new Goal
 boundary. Reuse this Goal until terminal; do not create a successor host Goal merely to
@@ -585,10 +586,10 @@ For classification/scale/outcome, never default or upgrade them to
 before spending: `{progress_refresh_state_command}`. Then spend exactly once
 against that refresh; no pipe/retry: `{quota_spend_command}`.
 Rerun the same guard read-only. Complete {completion_subject} only on
-`should_run=false` + terminal no-follow-up; else obey next action.
+`should_run=false` + terminal no-follow-up.
 
-No spend: gate/wait/dry-run/preflight failure/no-op/duplicate. Stop: private/company
-material, credentials, destructive git, unauthorized production, or repo rules.
+No spend: gate/wait/dry-run/preflight/no-op/duplicate. Stop: private/company
+material, credentials, destructive git, unauthorized production/repo rules.
 
 {policy_tail}"""
 def render_ark_managed_agent_goal_task_body(
