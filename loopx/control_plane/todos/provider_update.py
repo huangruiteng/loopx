@@ -62,6 +62,25 @@ def update_canonical_todo_if_promoted(
             raise ValueError("Todo is missing from canonical authority")
         if result.get("reason_code") == "todo_role_mismatch":
             raise ValueError("Todo does not have the requested role")
+    if isinstance(result, dict) and (
+        result.get("status") == "missing"
+        and result.get("source_authority") == "file_v0"
+        and result.get("decision_read_from_provider") is True
+        and result.get("legacy_fallback_used") is False
+    ):
+        payload = dict(result)
+        payload["recovery"] = {
+            "action": "restore_canonical_authority",
+            "runtime_root": str(runtime_root.expanduser().resolve(strict=False)),
+            "goal_id": goal_id,
+            "legacy_markdown_fallback_allowed": False,
+            "retry_after": "canonical_provider_readback_loaded",
+        }
+        raise LocalCoordinationAuthorityUnavailable(
+            "canonical Todo authority is unavailable",
+            code="local_authority_todo_list_unavailable",
+            payload=payload,
+        )
     if not isinstance(result, dict) or result.get("status") not in {
         "applied", "recovered", "replayed", "no_change", "planned",
     } or result.get("source_authority") != "file_v0" or (
@@ -70,9 +89,9 @@ def update_canonical_todo_if_promoted(
     ):
         payload = result if isinstance(result, dict) else {}
         raise LocalCoordinationAuthorityUnavailable(
-            str(payload.get("reason") or "canonical compatibility edit failed; reread before retry"),
+            str(payload.get("reason") or "canonical Todo update failed; reread before retry"),
             code=str(payload.get("reason_code") or payload.get("conflict_kind")
-                     or "compatibility_edit_failed"), payload=payload,
+                     or "local_authority_todo_update_failed"), payload=payload,
         )
     return settle_canonical_todo_projection(
         {"ok": True, "goal_id": goal_id, "todo_id": todo_id,
