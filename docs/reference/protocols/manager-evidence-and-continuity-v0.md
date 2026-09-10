@@ -307,3 +307,19 @@ by text similarity. Different independent frontend and Lark requests remain
 different requests: this implementation does not claim automatic cross-entry
 origin correlation. A delivered request remains deduplicated after worker
 acknowledgment and service restart. Full three-Goal live acceptance remains open.
+
+
+### Lark receipt feedback
+
+After a routed manager message is durably captured, the synchronous ingress
+uses the existing inbox reaction ledger to add the configured received emoji
+(default `Get`) before waiting for the model. Replayed source messages reuse the
+same receipt. Emoji failure is diagnostic and does not suppress the answer;
+verified final reply performs the existing reaction cleanup and message ACK.
+This received indicator is distinct from internal processed-message ACK and
+from downstream work completion. Provider sender identity is preserved through
+canonical event conversion into the manager handoff provenance record.
+
+Listener registration alone cannot prove upstream message delivery. If provider
+history contains an addressed message but the bus received count stays zero,
+record that gap explicitly; do not report a missing event as successful intake.

@@ -33,6 +33,9 @@ from .goal_channel_contracts import LarkTopicEventDecisionReason, bindings_for_g
 from .goal_channel_targets import goal_channel_target_for_name
 from .goal_topic_connections import decide_lark_topic_event
 from .inbox_reply import CommandRunner, reply_lark_event_inbox
+from .inbox_reactions import (
+    _create_reaction, _delete_reaction, ensure_lark_event_inbox_received_reaction,
+)
 
 Answer = Callable[[Mapping[str, Any], str], str | Mapping[str, Any]]
 SnapshotProvider = Callable[[], Mapping[str, Any]]
@@ -969,6 +972,7 @@ def process_lark_goal_topic_event(
         "create_time": str(event.get("create_time") or ""),
         "content": str(event.get("content") or ""),
         "sender_type": str(event.get("sender_type") or ""),
+        "sender_id": str(event.get("sender_id") or ""),
         "root_id": str(event.get("root_id") or ""),
         "parent_id": str(event.get("parent_id") or ""),
         "mentions": event.get("mentions")
@@ -1005,6 +1009,24 @@ def process_lark_goal_topic_event(
             "agent_id": route.get("agent_id"),
             "inbox_config_ref": config_ref,
         }
+    # Receipt ACK is visible while the synchronous manager is reasoning. The
+    # private reaction ledger makes retries idempotent; final reply owns cleanup.
+    # A cosmetic reaction failure must not suppress the actual answer.
+    received_reaction = None
+    if route.get("conversation_kind") == "manager":
+        profile = str(route.get("app_ref") or "")
+        try:
+            received_reaction = ensure_lark_event_inbox_received_reaction(
+                project=root, config_path=config_path, event=canonical,
+                create_reaction=lambda mid, emoji: _create_reaction(
+                    runner=reply_runner, profile=profile, message_id=mid, emoji_type=emoji),
+                delete_reaction=lambda mid, rid: _delete_reaction(
+                    runner=reply_runner, profile=profile, message_id=mid, reaction_id=rid),
+            )
+        except (OSError, ValueError):
+            received_reaction = {"ok": False, "status": "reaction_state_unavailable"}
+        if not received_reaction.get("ok"):
+            logging.getLogger(__name__).warning("Lark manager received reaction was not verified")
     # Sender provenance comes from the provider event, never the model response.
     route = {**route, "source_sender_id": str(canonical.get("sender_id") or "")}
     answer_result = answer(route, canonical["content"])
@@ -1090,6 +1112,7 @@ def process_lark_goal_topic_event(
     return {
         "ok": True,
         "status": "replied_and_acknowledged",
+        "received_reaction_status": (received_reaction or {}).get("status"),
         "goal_id": route["goal_id"],
         "inbox_config_ref": config_ref,
     }
