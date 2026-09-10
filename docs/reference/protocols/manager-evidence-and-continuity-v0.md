@@ -65,6 +65,13 @@ history but start a fresh executor thread in the same Codex home on first
 restore. This removes inherited project instructions without importing sessions
 across homes. Existing home-identity checks still apply.
 
+External manager continuity is also bounded by the exact authorized Goal set.
+An empty, missing, or changing external authorization fails before the model is
+called. When the authorized Goal set changes, LoopX starts a fresh upstream
+thread without the previous model history before supplying the new scope. This
+prevents evidence learned under a former binding from crossing a later
+authorization boundary while retaining the owner-visible local receipt history.
+
 Global means all Goals in the current owner's registry, including stale or
 unavailable entries; it does not claim discovery of unregistered remote hosts.
 External manager channels resolve their current authorized Goal scope through

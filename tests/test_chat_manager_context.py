@@ -62,6 +62,7 @@ class Adapter:
 
     def __init__(self):
         self.messages = []
+        self.closed = False
 
     def healthcheck(self):
         return True
@@ -71,7 +72,7 @@ class Adapter:
         return {"answer": "fixture response"}
 
     def close_session(self):
-        pass
+        self.closed = True
 
 
 def test_legacy_manager_migrates_without_project_and_refreshes_each_turn(
@@ -195,6 +196,125 @@ def test_external_authority_is_rechecked_after_collection(monkeypatch, tmp_path)
     )
     assert result["goals"] == []
     assert result["warnings"] == ["external_authorization_changed"]
+
+
+def test_empty_external_authority_never_reaches_the_model(monkeypatch, tmp_path):
+    store = ChatSessionStore(tmp_path / "runtime")
+    runtime = ChatRuntimeController(
+        store=store,
+        codex_bin="codex",
+        registry_path=tmp_path / "registry.json",
+        manager_scope_resolver=lambda _session: [],
+    )
+    adapter = Adapter()
+    session = store.create_session(
+        goal_id="previously-authorized",
+        agent_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="old-upstream",
+        channel_id="manager.external.fixture",
+        upstream_mode="chat",
+        codex_home=str(runtime.codex_home),
+    )
+    runtime.adapters[session["session_id"]] = adapter
+    try:
+        turn, _ = runtime.submit_turn(
+            session_id=session["session_id"],
+            client_turn_id="revoked-scope",
+            message="What changed?",
+            work_dir=tmp_path,
+            objective="manager",
+        )
+        done = runtime.wait_for_turn(
+            session_id=session["session_id"], turn_id=turn["turn_id"], timeout_sec=5
+        )
+        assert done["status"] == "failed"
+        assert done["error_code"] == "manager_authorization_unavailable"
+        assert adapter.messages == []
+    finally:
+        runtime.close()
+
+
+def test_changed_external_scope_rotates_upstream_before_model_call(
+    monkeypatch, tmp_path
+):
+    store = ChatSessionStore(tmp_path / "runtime")
+    runtime = ChatRuntimeController(store=store, codex_bin="codex")
+    old_adapter = Adapter()
+    replacement = Adapter()
+    replacement.upstream_thread_id = "replacement-upstream"
+    starts = []
+    monkeypatch.setattr(
+        context,
+        "collect_manager_turn_context",
+        lambda *_args: {
+            "schema_version": "manager_turn_context_v1",
+            "authorization_scope_id": context.manager_authorization_scope_id(
+                ["newly-authorized"]
+            ),
+            "coverage": {"discovered": 1, "verified": 1, "complete": True},
+            "goals": [{"goal_id": "newly-authorized"}],
+        },
+    )
+
+    def start(**kwargs):
+        starts.append(kwargs)
+        return replacement
+
+    monkeypatch.setattr(runtime, "_start_adapter", start)
+    session = store.create_session(
+        goal_id="previously-authorized",
+        agent_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="old-upstream",
+        channel_id="manager.external.fixture",
+        upstream_mode="chat",
+        codex_home=str(runtime.codex_home),
+    )
+    store.update_session(
+        session["session_id"],
+        manager_authorization_scope_id=context.manager_authorization_scope_id(
+            ["previously-authorized"]
+        ),
+    )
+    runtime.adapters[session["session_id"]] = old_adapter
+    try:
+        turn, _ = runtime.submit_turn(
+            session_id=session["session_id"],
+            client_turn_id="changed-scope",
+            message="What changed?",
+            work_dir=tmp_path,
+            objective="manager",
+        )
+        done = runtime.wait_for_turn(
+            session_id=session["session_id"], turn_id=turn["turn_id"], timeout_sec=5
+        )
+        assert done["status"] == "completed"
+        assert old_adapter.closed
+        assert len(starts) == 1
+        assert starts[0]["resume_thread_id"] is None
+        assert starts[0]["history"] is None
+        assert "newly-authorized" in replacement.messages[0]
+        persisted = store.load_session(session["session_id"])
+        assert persisted["upstream_thread_id"] == "replacement-upstream"
+        assert persisted["manager_authorization_scope_id"] == (
+            context.manager_authorization_scope_id(["newly-authorized"])
+        )
+        retry, _ = runtime.submit_turn(
+            session_id=session["session_id"],
+            client_turn_id="same-scope-retry",
+            message="And now?",
+            work_dir=tmp_path,
+            objective="manager",
+        )
+        retried = runtime.wait_for_turn(
+            session_id=session["session_id"], turn_id=retry["turn_id"], timeout_sec=5
+        )
+        assert retried["status"] == "completed"
+        assert len(starts) == 1
+        assert len(replacement.messages) == 2
+    finally:
+        runtime.close()
 
 
 def test_current_external_scope_is_fresh_and_excludes_other_labels(

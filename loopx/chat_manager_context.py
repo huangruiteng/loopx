@@ -14,6 +14,14 @@ from .goal_portfolio import build_goal_portfolio
 from .chat import redact_local_paths
 
 
+def manager_authorization_scope_id(goal_ids: list[str]) -> str:
+    """Opaque identity for the exact external Goal evidence scope."""
+    normalized = sorted(set(goal_ids))
+    return hashlib.sha256(
+        json.dumps(normalized, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def manager_turn_context(
     registry_path: Path | None,
     session: dict[str, Any],
@@ -23,7 +31,7 @@ def manager_turn_context(
 ) -> dict[str, Any]:
     owner_scope = session.get("channel_id") == "manager"
     scope = None if owner_scope else authorized_goal_ids
-    if not owner_scope and scope is None:
+    if not owner_scope and not scope:
         return unavailable_manager_context("external_authorization_unavailable")
     if registry_path is None:
         return unavailable_manager_context("registry_unavailable")
@@ -41,7 +49,9 @@ def manager_turn_context(
             == "sha256:" + hashlib.sha256(raw).hexdigest()
         ):
             for goal in json.loads(raw).get("goals", []):
-                if isinstance(goal, dict) and (owner_scope or goal.get("id") in scope):
+                if isinstance(goal, dict) and (
+                    owner_scope or goal.get("id") in (scope or [])
+                ):
                     labels[str(goal.get("id"))] = redact_local_paths(
                         str(
                             goal.get("display_name")
@@ -82,7 +92,7 @@ def manager_turn_context(
                 ),
             }
         )
-    return {
+    result = {
         "schema_version": "manager_turn_context_v1",
         "scope": "owner_global" if owner_scope else "external_goal_scope",
         "model_defaults": manager_model_config(),
@@ -94,6 +104,9 @@ def manager_turn_context(
         "warnings": portfolio.get("warnings", []),
         "limitations": portfolio.get("limitations", []),
     }
+    if not owner_scope:
+        result["authorization_scope_id"] = manager_authorization_scope_id(scope or [])
+    return result
 
 
 def unavailable_manager_context(reason: str) -> dict[str, Any]:
