@@ -68,6 +68,8 @@ Developers ready to enter Kernel implementation can go directly to the
 
 After those chapters:
 
+- to learn the daily 1.0 operator surface first, start with
+  [Operate the LoopX 1.0 Workspace](./workspace-v1.md);
 - to manage your own repository, start with
   [Connect an existing Git project](./05-connect-existing-project.md);
 - to make any public LoopX contribution, start with the
@@ -175,6 +177,16 @@ If you read an earlier edition of the Dev Book, recalibrate these four areas fir
 
 This table is a reading map, not a copy of the release notes. Confirm whether a surface is usable through
 the installed release's `doctor`, `capability show`, Host readback, and versioned documentation.
+
+### From `v0.5.4` into the `v1.0.0` Workspace
+
+The `v1.0.0` product milestone is the Personal Workspace, not blanket promotion of every staged
+authority path or optional Provider. It brings cross-Goal overview, Agent lanes, completed work,
+Capability settings, verified reports, Goal Channels, and desktop recovery into one operator surface
+while preserving the authority of the CLI, typed Kernel, and project state. Follow the
+[1.0 Workspace operations chapter](./workspace-v1.md) through startup, readback,
+preview/apply/receipt, configuration, and disable checks before entering the project-onboarding or
+developer-contribution path.
 
 ## Deliberate scope
 

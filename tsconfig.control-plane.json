@@ -88,6 +88,7 @@
     "tests/control_plane_ts/settlement_workspace_causality.test.ts",
     "tests/control_plane_ts/quota_settlement_readback.test.ts",
     "tests/control_plane_ts/quota_monitor_poll_commit.test.ts",
+    "tests/control_plane_ts/monitor_successor.test.ts",
     "tests/control_plane_ts/quota_spend_commit.test.ts",
     "tests/control_plane_ts/quota_void_commit.test.ts",
     "tests/control_plane_ts/scheduler_state_store.test.ts",

@@ -380,6 +380,20 @@ the shared plan, not another per-agent checklist database.
 
 **T2 — close monitor writeback and its atomic follow-up.**
 
+Bounded prerequisite delivered: `scheduler/monitor_successor.ts` owns successor
+route validation and normalization for quota preflight, legacy writeback and
+receipt verification. The Python route guard/resolver and the separate TS
+receipt-default/capability interpretation are removed. Invalid capability entries,
+malformed successor claims and follow-ups without material change fail before
+the observation write; valid action/claim/capability aliases and Git transports
+are compared as the same route at readback. The original wire observation still
+owns the v0 replay digest; normalization must not silently invalidate pending
+receipts. The node-independent repository/bootstrap codec remains separately
+characterized, not replaced by a runtime dependency.
+This is **not** the T2 atomic transaction: monitor mutation and successor writes
+still use existing fenced effects. Cross-effect crash recovery, native writer
+closure and whole-Goal promotion remain held; do not infer them from a route plan.
+
 - Inventory `monitor_poll_writeback.py` and its event/Todo/lease callers.
   Reuse existing monitor generation, independent-successor and settlement
   owners. Compose one transaction rather than adding a second monitor engine.

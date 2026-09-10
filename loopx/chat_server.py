@@ -77,6 +77,7 @@ from .status_server import (
     cors_response_headers,
     is_loopback_host,
     is_loopback_origin,
+    parse_strict_json_object,
 )
 
 
@@ -484,10 +485,7 @@ class ChatRequestHandler(
             raise ValueError("request body is empty")
         if length > 64_000:
             raise ValueError("request body is too large")
-        payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("request body must be a JSON object")
-        return payload
+        return parse_strict_json_object(self.rfile.read(length))
 
     def _require_loopback_origin(self) -> bool:
         if is_loopback_origin(self.headers.get("Origin")):

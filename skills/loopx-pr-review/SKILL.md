@@ -60,8 +60,8 @@ smoke binds this number to the canonical revision; this is not a freshness claim
 
 ## Execute One Review Plan
 
-Follow `scheduling_policy` and its ranked `review_sequence`; explicit current-request PR selection may override ordering only, never `pull_requests[].review_action_kind` or exact-head idempotency. Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token. Todo/monitor prose may not select work.
-When `review_action_kind` is null, do not execute its `review_plan`. Do one compact exact-head conclusion readback and report the existing verdict or bounded invalid/missing reason. Run a fresh audit only when the user explicitly requests fresh evidence despite that no-action result, or supplies a concrete new concern/evidence invalidation; then execute the complete current plan and never inherit the earlier approval. For every actionable PR:
+Follow `scheduling_policy` and its ranked actionable `review_sequence`; explicit current-request PR selection may override ordering only, never `pull_requests[].review_action_kind` or exact-head idempotency. Generic `re-review`, `重新review`, and `复审` wording selects the named PR; it is not a force-refresh token. Todo/monitor prose may not select work.
+When `review_action_kind` is null, the row stays in `pull_requests` inventory but must not appear in `review_sequence`; do not execute its `review_plan`. Do one compact exact-head conclusion readback and report the existing verdict or bounded invalid/missing reason. Run a fresh audit only when the user explicitly requests fresh evidence despite that no-action result, or supplies a concrete new concern/evidence invalidation; then execute the complete current plan and never inherit the earlier approval. For every actionable PR:
 
 1. Record the packet's exact head. Start with the capability's
    `review_execution_contract.decision_procedure`, including on re-review;

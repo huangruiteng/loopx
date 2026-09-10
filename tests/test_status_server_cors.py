@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import http.client
+import json
 import threading
 
 import pytest
@@ -9,6 +10,7 @@ from loopx.status_server import (
     StatusHTTPServer,
     StatusRequestHandler,
     cors_response_headers,
+    parse_strict_json_object,
 )
 
 
@@ -137,3 +139,32 @@ def test_options_preflight_with_loopback_origin_echoes_acao() -> None:
     finally:
         server.shutdown()
         thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e309"])
+def test_status_post_rejects_non_finite_json_numbers(number: str) -> None:
+    server, thread = _start_server()
+    server.reward_dry_run_path = "/reward/dry-run"
+    try:
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", server.server_address[1], timeout=5
+        )
+        connection.request(
+            "POST",
+            server.reward_dry_run_path,
+            body=f'{{"unexpected":{number}}}'.encode(),
+        )
+        response = connection.getresponse()
+        payload = json.loads(response.read().decode("utf-8"))
+
+        assert response.status == 400
+        assert "request body must be strict JSON" in payload["error"]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+def test_strict_json_accepts_nested_finite_exponents() -> None:
+    assert parse_strict_json_object(b'{"values":[1e308,{"small":-1e-308}]}') == {
+        "values": [1e308, {"small": -1e-308}]
+    }

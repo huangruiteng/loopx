@@ -62,6 +62,7 @@ LoopX Kernel 源码，也不需要理解所有 CLI 子命令。
 
 完成基础篇后：
 
+- 想先掌握 1.0 的日常操作面，从[操作 LoopX 1.0 Workspace](./workspace-v1.md)开始；
 - 只想管理自己的项目，从[连接你的 Git 项目](./05-connect-existing-project.md)开始；
 - 想给 LoopX 做任何公开贡献，从[开发者贡献地图与协议入口](./source-protocol-map.md)开始；
 - 已经确定需要独立安装、启停和升级的 Provider/package，再进入
@@ -160,6 +161,14 @@ CLI/App convergence 与 Stage 4 distribution cleanup 仍是后续方向。
 
 这张表是阅读导航，不是 release notes 的副本。某个 surface 是否可用，仍应从当前安装版本的
 `doctor`、`capability show`、对应 Host readback 和 versioned 文档判断。
+
+### 从 `v0.5.4` 进入 `v1.0.0` Workspace
+
+`v1.0.0` 的产品里程碑是 Personal Workspace，而不是一次对所有 staged authority 或可选 Provider
+的整体提升。它把跨 Goal 总览、Agent lane、已完成任务、Capability 设置、verified reports、
+Goal Channel 与桌面恢复汇集到一个 operator surface，同时保留 CLI、typed Kernel 与项目状态的
+事实所有权。沿[1.0 Workspace 操作章](./workspace-v1.md)完成启动、readback、preview/apply/receipt、
+配置与停用验收，再进入项目接入或开发者贡献主线。
 
 ## 本书的边界
 

@@ -596,6 +596,67 @@ def test_latest_review_and_author_owned_fallback_are_enforced(monkeypatch) -> No
     assert ordinary_comment["review_action_kind"] is None
 
 
+def test_actionable_sequence_excludes_valid_merged_exact_head(monkeypatch) -> None:
+    monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
+    reviewed = _queue_pr(
+        4141,
+        author="maintainer",
+        ready_at="2026-08-18T07:00:00Z",
+        updated_at="2026-08-18T11:00:00Z",
+    )
+    reviewed_head = str(reviewed["headRefOid"])
+    reviewed.update(
+        {
+            "state": "MERGED",
+            "mergedAt": "2026-08-18T11:30:00Z",
+            "reviews": [
+                {
+                    "author": {"login": "maintainer"},
+                    "body": _full_review_body(reviewed_head, author_fallback=True),
+                    "commit": {"oid": reviewed_head},
+                    "state": "COMMENTED",
+                    "submittedAt": "2026-08-18T11:15:00Z",
+                }
+            ],
+        }
+    )
+    unaudited = _queue_pr(
+        4142,
+        author="community",
+        ready_at="2026-08-18T08:00:00Z",
+        updated_at="2026-08-18T11:01:00Z",
+    )
+    unaudited.update(
+        {
+            "state": "MERGED",
+            "mergedAt": "2026-08-18T11:31:00Z",
+        }
+    )
+
+    packet = pr_review_module.build_pr_review_packet(
+        pull_requests=[reviewed, unaudited],
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="merged",
+        reviewer_login="maintainer",
+    )
+
+    rows = {item["number"]: item for item in packet["pull_requests"]}
+    assert rows[4141]["review_conclusion"]["status"] == "valid"
+    assert rows[4141]["review_action_kind"] is None
+    assert rows[4142]["review_action_kind"] == "audit_merged_pull_request_exact_head"
+    assert [item["number"] for item in packet["review_sequence"]] == [4142]
+    merged = packet["review_groups"]["merged"]
+    assert merged["pr_numbers"] == [4141, 4142]
+    assert merged["actionable_count"] == 1
+    assert merged["no_action_count"] == 1
+    assert [item["number"] for item in merged["review_sequence"]] == [4142]
+    assert packet["summary"]["review_attention_count"] == 1
+    assert packet["summary"]["post_merge_review_count"] == 1
+    assert packet["summary"]["recommended_first_pr"]["number"] == 4142
+
+
 def test_community_author_self_review_does_not_satisfy_maintainer_queue(
     monkeypatch,
 ) -> None:

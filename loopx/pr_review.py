@@ -933,12 +933,17 @@ def _review_conclusion(
 
 
 def _review_action_kind(item: Mapping[str, Any]) -> str | None:
-    if item.get("is_draft") is True or str(item.get("state") or "").upper() != "OPEN":
+    state = str(item.get("state") or "").upper()
+    if item.get("is_draft") is True or state == "CLOSED":
         return None
     conclusion = _as_dict(item.get("review_conclusion"))
     if conclusion.get("valid") is True:
-        if str(conclusion.get("state") or "").upper() == "APPROVED":
+        if state == "OPEN" and str(conclusion.get("state") or "").upper() == "APPROVED":
             return "qualify_pull_request_merge_readiness"
+        return None
+    if state == "MERGED":
+        return "audit_merged_pull_request_exact_head"
+    if state != "OPEN":
         return None
     if str(item.get("review_decision") or "").upper() == "CHANGES_REQUESTED":
         return "rereview_pull_request_exact_head"
@@ -1165,18 +1170,24 @@ def build_pr_review_packet(
         ),
         "source_scan": source_scan_summary,
     }
-    review_sequence = [_review_sequence_entry(item, rank=index) for index, item in enumerate(normalized, start=1)]
+    actionable_items = [item for item in normalized if item.get("review_action_kind")]
     open_review_required = [
         item
-        for item in normalized
+        for item in actionable_items
         if str(item.get("state") or "").upper() == "OPEN"
-        and not item.get("is_draft")
-        and item.get("review_action_kind")
-        in {"review_pull_request_exact_head", "rereview_pull_request_exact_head"}
+    ]
+    merged_review_required = [
+        item
+        for item in actionable_items
+        if str(item.get("state") or "").upper() == "MERGED"
+    ]
+    review_sequence = [
+        _review_sequence_entry(item, rank=index)
+        for index, item in enumerate(actionable_items, start=1)
     ]
     closed_items = [item for item in normalized if str(item.get("state") or "").upper() == "CLOSED"]
     first = review_sequence[0] if review_sequence else None
-    review_attention_count = len(open_review_required) + len(merged_items)
+    review_attention_count = len(actionable_items)
     open_items = [item for item in normalized if str(item.get("state") or "").upper() == "OPEN"]
     review_groups = {
         "unmerged": {
@@ -1189,9 +1200,11 @@ def build_pr_review_packet(
             "observed_count": group_observed_counts["unmerged"],
             "truncated": not group_completeness["unmerged"],
             "pr_numbers": [item.get("number") for item in unmerged_items],
+            "actionable_count": len(open_review_required),
+            "no_action_count": len(unmerged_items) - len(open_review_required),
             "review_sequence": [
                 _review_sequence_entry(item, rank=index)
-                for index, item in enumerate(unmerged_items, start=1)
+                for index, item in enumerate(open_review_required, start=1)
             ],
         },
         "merged": {
@@ -1204,9 +1217,11 @@ def build_pr_review_packet(
             "observed_count": group_observed_counts["merged"],
             "truncated": not group_completeness["merged"],
             "pr_numbers": [item.get("number") for item in merged_items],
+            "actionable_count": len(merged_review_required),
+            "no_action_count": len(merged_items) - len(merged_review_required),
             "review_sequence": [
                 _review_sequence_entry(item, rank=index)
-                for index, item in enumerate(merged_items, start=1)
+                for index, item in enumerate(merged_review_required, start=1)
             ],
         },
     }
@@ -1263,7 +1278,7 @@ def build_pr_review_packet(
             "closed_pr_count": len(closed_items),
             "review_attention_count": review_attention_count,
             "open_review_attention_count": len(open_review_required),
-            "post_merge_review_count": len(merged_items),
+            "post_merge_review_count": len(merged_review_required),
             "draft_count": sum(1 for item in normalized if item.get("is_draft")),
             "source_surfaces": SOURCE_SURFACES,
             "recommended_first_pr": first,
@@ -1303,7 +1318,7 @@ def build_pr_review_packet(
 def _review_why_now(item: dict[str, Any]) -> str:
     state = str(item.get("state") or "").upper()
     if state == "MERGED":
-        return "Merged in the review window; audit outcome, validation, and follow-up quality."
+        return "Merged exact head lacks a valid conclusion; audit outcome, validation, and follow-up quality."
     if state == "CLOSED":
         return "Closed without a merge signal; check whether a replacement or cleanup is needed."
     if item.get("is_draft"):

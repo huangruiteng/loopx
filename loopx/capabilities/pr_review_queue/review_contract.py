@@ -944,7 +944,7 @@ def build_agent_response_contract() -> dict[str, Any]:
         "stats_only_requires_explicit_opt_out": True,
         "queue_table_role": "preface_only",
         "default_review_scope": (
-            "Follow scheduling_policy and its ranked review_sequence. An explicit "
+            "Follow scheduling_policy and its ranked actionable review_sequence. An explicit "
             "request-scoped PR selection may override ordering only; it does not override "
             "the selected row's review_action_kind or exact-head idempotency."
         ),
@@ -952,6 +952,8 @@ def build_agent_response_contract() -> dict[str, Any]:
             "schema_version": "pr_review_selection_execution_contract_v0",
             "explicit_selection_scope": "ordering_only",
             "review_action_authority": "pull_requests[].review_action_kind",
+            "review_sequence_membership": "review_action_kind_non_null_only",
+            "no_action_inventory_location": "pull_requests",
             "generic_rereview_terms_force_fresh_audit": False,
             "no_action_behavior": "compact_exact_head_conclusion_readback_only",
             "force_fresh_audit_requires": (
@@ -989,8 +991,8 @@ def build_agent_response_contract() -> dict[str, Any]:
         "instructions": [
             "Use scheduling_policy plus review_groups as the queue and require result_completeness.complete=true for exhaustive review.",
             "Start with review_execution_contract.decision_procedure, before implementation narration or prior-comment closure.",
-            "Follow the capability-ranked review_sequence; an explicit request-scoped PR selection may override ordering only, while Todo or monitor prose must not replace the stable policy.",
-            "Before evidence commands, obey pull_requests[].review_action_kind. A null action is readback-only; generic re-review wording selects the PR but does not force duplicate evidence for an already concluded or merged no-action row.",
+            "Follow the capability-ranked actionable review_sequence; an explicit request-scoped PR selection may override ordering only, while Todo or monitor prose must not replace the stable policy.",
+            "Before evidence commands, obey pull_requests[].review_action_kind. A null action stays in pull_requests inventory but is excluded from review_sequence and remains readback-only; generic re-review wording selects the PR but does not force duplicate evidence for an already concluded or merged no-action row.",
             "Execute each pull_requests[].review_plan against the shared review_execution_contract before drafting prose.",
             "Do not infer verified evidence from title, labels, changed-file counts, metadata_risk_hint, or green CI alone.",
             "Recheck the exact remote head before verdict and publication.",

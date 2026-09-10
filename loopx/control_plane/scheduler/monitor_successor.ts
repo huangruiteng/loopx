@@ -1,0 +1,146 @@
+/** Monitor follow-up intent, shared by preflight, legacy writeback and receipt
+ * verification. This read-only plan is not authorization or a commit receipt. */
+import { createHash } from "node:crypto";
+import type { JsonObject } from "../effect_program.ts";
+import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
+import { optionalNonEmptyString, requireBoolean, requireJsonObject, requireStringArray } from "../runtime_decode.ts";
+import { compactPythonWhitespace, normalizeTodoAgent, stripPythonWhitespace } from "../coordination/todo_agents.ts";
+
+export const MONITOR_SUCCESSOR_REQUEST_SCHEMA = "loopx_monitor_successor_plan_request_v0";
+export const MONITOR_SUCCESSOR_RESULT_SCHEMA = "loopx_monitor_successor_plan_result_v0";
+
+function text(value: unknown, field: string): string | null {
+  const raw = optionalNonEmptyString(value, field);
+  return raw === null ? null : stripPythonWhitespace(raw) || null;
+}
+
+// The node-independent repository/bootstrap codec remains in repository_identity.py.
+// This pure transport codec is characterized against that public contract; do
+// not use WHATWG's normalized pathname, which silently removes dot segments.
+function repository(value: unknown): string | null {
+  let raw = text(value, "next_task_repository");
+  if (!raw) return null;
+  if (/[\\\s\u0000-\u001f\u007f]/u.test(raw)) {
+    throw new EffectRuntimeRequestError("--next-task-repository must be a credential-free Git remote without control characters or backslashes");
+  }
+  let host: string, path: string;
+  const canonical = /^git:([a-z0-9.-]+(?::[0-9]{1,5})?)\/([A-Za-z0-9._~+/-]+)$/.exec(raw);
+  if (canonical) [host, path] = [canonical[1], canonical[2]];
+  else {
+    const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(raw);
+    if (scp && !raw.includes("://")) raw = `ssh://${scp[1]}/${scp[2]}`;
+    try {
+      const url = new URL(raw);
+      if (!["git:", "http:", "https:", "ssh:"].includes(url.protocol) ||
+        !url.hostname || url.password || url.search || url.hash) throw new Error();
+      host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+      const port = Number(url.port);
+      if (port && !((["http:", "git:"].includes(url.protocol) && port === 80) ||
+        (["https:", "ssh:"].includes(url.protocol) && [22, 443].includes(port)))) host += `:${port}`;
+      const pathMatch = /^[^:]+:\/\/[^/?#]*([^?#]*)/.exec(raw);
+      if (!pathMatch) throw new Error();
+      path = pathMatch[1];
+    } catch {
+      throw new EffectRuntimeRequestError("--next-task-repository must be a credential-free Git remote or canonical git:<host>/<path> identity");
+    }
+  }
+  path = path.replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
+  if (!/^[A-Za-z0-9._~+/-]+$/.test(path) || !/^[a-z0-9.-]+(?::[0-9]{1,5})?$/.test(host) ||
+    path.split("/").some(part => part === "." || part === "..")) {
+    throw new EffectRuntimeRequestError("--next-task-repository must include a safe repository path");
+  }
+  return `git:${host}/${path}`;
+}
+
+export function monitorSuccessorCapabilities(value: unknown, label: string): string[] {
+  const result: string[] = [];
+  for (const raw of requireStringArray(value ?? [], label)) {
+    const token = compactPythonWhitespace(raw).toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+    if (!/^[a-z][a-z0-9_:-]{0,63}$/.test(token)) {
+      throw new EffectRuntimeRequestError(`${label} must contain public-safe capability tokens; invalid entries cannot be dropped`);
+    }
+    if (!result.includes(token)) result.push(token);
+  }
+  return result;
+}
+
+export interface MonitorSuccessorIntent extends JsonObject {
+  next_agent_todo: string | null;
+  next_action_kind: string | null;
+  next_task_repository: string | null;
+  next_required_capabilities: string[];
+  next_continuation_policy: string | null;
+  next_target_key: string | null;
+  next_claimed_by: string | null;
+  next_user_todo: string | null;
+  next_user_task_class: "user_action" | "user_gate" | null;
+}
+
+export function monitorSuccessorIntent(value: unknown): MonitorSuccessorIntent {
+  const input = requireJsonObject(value, "monitor successor intent");
+  const material = requireBoolean(input.material_change, "material_change");
+  const agentTodo = text(input.next_agent_todo, "next_agent_todo");
+  const userTodo = text(input.next_user_todo, "next_user_todo");
+  if ((agentTodo || userTodo) && !material) {
+    throw new EffectRuntimeRequestError("`--next-agent-todo` and `--next-user-todo` require --material-change");
+  }
+  const action = text(input.next_action_kind, "next_action_kind")?.toLowerCase() ?? null;
+  const policy = text(input.next_continuation_policy, "next_continuation_policy")?.toLowerCase() ?? null;
+  const target = text(input.next_target_key, "next_target_key");
+  const claim = text(input.next_claimed_by, "next_claimed_by");
+  const repo = repository(input.next_task_repository);
+  const capabilities = monitorSuccessorCapabilities(input.next_required_capabilities, "--next-required-capability");
+  if (!agentTodo && (action || policy || target || claim || repo || capabilities.length)) {
+    throw new EffectRuntimeRequestError("monitor successor routing options require --next-agent-todo");
+  }
+  if (agentTodo && !action) {
+    throw new EffectRuntimeRequestError("`quota monitor-poll --next-agent-todo` requires explicit successor action semantics via --next-action-kind");
+  }
+  if (action && !/^[a-z][a-z0-9_-]{0,63}$/.test(action)) {
+    throw new EffectRuntimeRequestError("--next-action-kind must be a public-safe token: lowercase letters, digits, '_' or '-'");
+  }
+  if (policy && !["independent_handoff", "same_agent_non_delivery"].includes(policy)) {
+    throw new EffectRuntimeRequestError("--next-continuation-policy must be a supported todo continuation policy");
+  }
+  const userClass = text(input.next_user_task_class, "next_user_task_class");
+  if (userTodo && !userClass) throw new EffectRuntimeRequestError("--next-user-todo requires explicit --next-user-task-class user_action|user_gate");
+  if (!userTodo && userClass) throw new EffectRuntimeRequestError("--next-user-task-class requires --next-user-todo");
+  if (userClass !== null && userClass !== "user_action" && userClass !== "user_gate") {
+    throw new EffectRuntimeRequestError("--next-user-task-class must be user_action or user_gate");
+  }
+  let owner: string | null = null;
+  if (claim) {
+    try { owner = normalizeTodoAgent(claim, "next_claimed_by"); }
+    catch { throw new EffectRuntimeRequestError("--next-claimed-by must be a public-safe agent id"); }
+  }
+  return {next_agent_todo: agentTodo, next_action_kind: action,
+    next_task_repository: repo, next_required_capabilities: capabilities,
+    next_continuation_policy: policy, next_target_key: target, next_claimed_by: owner,
+    next_user_todo: userTodo, next_user_task_class: userClass};
+}
+
+export function monitorSuccessorRoute(intent: MonitorSuccessorIntent, todoId: string, resultHash: string): JsonObject {
+  if (!intent.next_agent_todo) return {};
+  return {action_kind: intent.next_action_kind, task_repository: intent.next_task_repository,
+    required_capabilities: intent.next_required_capabilities,
+    continuation_policy: intent.next_continuation_policy ?? "independent_handoff",
+    target_key: intent.next_target_key ?? `monitor-successor:${todoId}:${createHash("sha256").update(resultHash).digest("hex").slice(0, 16)}`,
+    claimed_by: intent.next_claimed_by};
+}
+
+export function planMonitorSuccessor(value: unknown): JsonObject {
+  const request = requireJsonObject(value, "monitor successor plan");
+  if (request.schema_version !== MONITOR_SUCCESSOR_REQUEST_SCHEMA) throw new EffectRuntimeRequestError("monitor successor plan schema mismatch");
+  const intent = monitorSuccessorIntent(request.intent);
+  const todoId = text(request.todo_id, "todo_id");
+  const resultHash = text(request.result_hash, "result_hash");
+  if (!todoId || !/^todo_[a-z0-9_-]{3,64}$/.test(todoId) || !resultHash) {
+    throw new EffectRuntimeRequestError("monitor successor plan requires a stable todo_id and result_hash");
+  }
+  const sourceRepository = text(request.source_task_repository, "source_task_repository");
+  if (intent.next_agent_todo && sourceRepository && !intent.next_task_repository) {
+    throw new EffectRuntimeRequestError("repository-bound monitor successors require explicit --next-task-repository so same-repository and cross-repository routing cannot be confused");
+  }
+  return {schema_version: MONITOR_SUCCESSOR_RESULT_SCHEMA, intent,
+    agent_route: monitorSuccessorRoute(intent, todoId, resultHash)};
+}
