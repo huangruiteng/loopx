@@ -360,6 +360,30 @@ exclusion 筛选，删除旧 Python selector 与 amendment 的第二次 Markdown
 到期时间复用现有 TS lease 规则拒绝。本批不依赖仍开放的 #4142，不表示 T1/T2 或全部
 T3 完成，也不授予 amendment commit／整 Goal promotion 权限。
 
+Standing decision consumer 收口：`todos/standing_decision.ts` 统一可复用决策的
+资格与先后关系，供 status/quota 读取和 archive selection 共用。Python 只解码旧
+metadata 并批量调用，删除旧 receipt selector 与 TS archive 内的重复资格判断。
+Canonical 读取在生成展示 index 前使用完整 Todo 快照，包括保留的归档决策。
+后续拒绝／取消按决策时间覆盖旧批准，不再依赖 Todo ID；矛盾历史无法定序时给出
+诊断且不提供 active receipt。此授权面必须有显式 user-gate metadata，不再借用
+通知文案启发式。上述有意语义修正见
+[decision-scope 协议](../../reference/protocols/decision-scope-v0.md#decision-chronology-not-display-order)。
+全部无时间的 legacy 决策保留源顺序兼容，native 展示顺序不充当授权证据；本批不迁移
+scope coverage 和 open-gate routing，不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
+
+列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
+初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值
+条件，不能把归档中的已完成依赖变成丢失。共享合成 fixture 增补“有 scope 无 outcome”
+和精确关联批准，另用包含数千归档项的 CLI 回归覆盖长历史。
+
+Bootstrap 与后续 writer outbox 现捕获被引用的归档 resume 目标及其传递依赖。
+`archive_capture.ts` 选择实际记录，拒绝重复 identity 和矛盾 role/class，不把已保存的
+readiness 当作证据。Legacy 归档移动保留源 role，不重序列化原 receipt。旧记录缺少
+role 时，仅显式 agent-only task class 可还原 agent；用户决策权限始终要求已记录的
+user role。历史节点不会进入活动工作或 lease lane。无法识别的被引用历史仍须明确修复，
+不得恢复 promotion 后的 Markdown fallback。本批闭合已复现的依赖遗漏，不代表所有
+历史导入、provider 资格化、soak 或 D3 cutover 条件均完成。
+
 - 分别审计 Turn/quota、Dashboard、standing decision、shared-goal alignment、
   amendment revision 输入。复用 #4117 canonical source adapter，一次决策传递一份
   snapshot，不新增 Todo inventory。

@@ -2019,6 +2019,20 @@ Proposal source digest 包含该 revision，但不将它冒充 Goal intent revis
 amendment commit receipt。这是有边界的 T3 consumer 闭合；默认 provider、永久投影、
 D1–D3 资格化和 T1/T2 条件保持不变。
 
+Standing decision 同样从完整 canonical Todo 快照派生，先于展示 index 和仅活动项
+过滤；归档保留规则与读取共用一个 TS owner。已归档的撤销仍是决策历史，矛盾且无法
+定序的历史不能靠存储顺序选出批准。这是 T3 读取修正，不是新的持久化权限账本或
+commit receipt。各 provider 的 CAS/replay 边界、legacy 源顺序兼容、永久 Markdown
+投影与 D1–D3 条件不变。验证须覆盖真实 CLI、真实 provider 的 archive/replay 和
+超出展示条数的数据，不能只测内存中的排序数组。
+
+完整来源与列表过滤的边界现保留已求值的 resume 事实。Bootstrap 与 writer outbox
+共用 typed 归档依赖 selector，把被引用的实际完成记录纳入 canonical，使 reader 能
+独立重算。新 legacy 归档保留 role；旧 agent-only class 记录可有界还原 agent 身份，
+绝不推测用户批准权限。重复／矛盾 identity 明确拒绝，历史节点／lease 不重新进入
+活动 lane。三臂演练用真实 provider 检查此闭合；派生 readiness 不充当证据。通用历史
+导入、剩余 D3 资格化与显式 cutover 批准仍是后续工作。
+
 以下规划保留原有方向；执行卡是它们的展开，不是替代或取消：
 
 1. **闭合 TS 事务与 consumer。** 按 [T0–T3](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡) 收口规则并删除重复决策。
