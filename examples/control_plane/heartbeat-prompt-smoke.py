@@ -64,9 +64,11 @@ def user_output_policy(task_body: str, *, mode: str) -> dict[str, str]:
     else:
         assert "`user_channel.notify` controls OUTPUT only" in body
         assert "NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出" in body
-        assert "Due/peer gate != prompt" in body
-        assert "missing NOTIFY action->" in body
+        assert "Due/peer非用户动作" in body
+        assert "NOTIFY缺动作→" in body
         assert "具体user todo未投影" in body
+        assert "需修复LoopX状态投影" in body
+        assert "静默时内部修复" in body
         if mode == "brief":
             assert "Return only under `user_channel.notify=NOTIFY`; else quiet." in body
     return {
@@ -585,8 +587,8 @@ def main() -> int:
         "--goal-id loopx-meta --agent-id codex-product-capability --available-capability network "
         "--available-capability external_evidence_poll",
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
-        "missing NOTIFY action->",
+        "Due/peer非用户动作",
+        "NOTIFY缺动作→",
         "具体user todo未投影",
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
@@ -642,9 +644,9 @@ def main() -> int:
         "Guard/retry; `LOOPX_TURN=<current_time_iso>`",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
+        "Due/peer非用户动作",
         "Done->successor first; final->refresh->spend->no-follow-up",
-        "missing NOTIFY action->",
+        "NOTIFY缺动作→",
         "具体user todo未投影",
         "follow user channel",
         "monitor_quiet_skip",
@@ -685,8 +687,8 @@ def main() -> int:
         "use selection_command when required",
         "`quota should-run`",
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
-        "Due/peer gate != prompt",
-        "missing NOTIFY action->",
+        "Due/peer非用户动作",
+        "NOTIFY缺动作→",
         "具体user todo未投影",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
         "else RRULE/fallback_hint/ack/fail",

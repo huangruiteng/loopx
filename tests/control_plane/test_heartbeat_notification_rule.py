@@ -3,12 +3,16 @@
 The short notification rule used to read "DONT_NOTIFY=quiet", which agents can
 misread as "do nothing". The rule must qualify DONT_NOTIFY as an output-level
 signal only and keep `execution_obligation.must_attempt_work` as the authority
-for whether a bounded slice must run.
+for whether work must run. Compact wording must preserve the repair action,
+not just diagnose a missing user action, without turning repair into a prompt.
 """
 
 from __future__ import annotations
 
-from loopx.control_plane.heartbeat.rules import HEARTBEAT_NOTIFICATION_RULE_SHORT
+from loopx.control_plane.heartbeat.rules import (
+    HEARTBEAT_NOTIFICATION_RULE_SHORT,
+    HEARTBEAT_NOTIFICATION_RULE_THIN,
+)
 from loopx.control_plane.heartbeat.task_body import (
     render_brief_heartbeat_task_body,
     render_thin_heartbeat_task_body,
@@ -38,6 +42,13 @@ def test_short_rule_qualifies_dont_notify_as_output_only() -> None:
     assert "execution_obligation.must_attempt_work" in rule
 
 
+def test_short_rules_keep_projection_repair_and_quiet_boundary() -> None:
+    for rule in (HEARTBEAT_NOTIFICATION_RULE_SHORT, HEARTBEAT_NOTIFICATION_RULE_THIN):
+        assert "NOTIFY缺动作→具体user todo未投影" in rule
+        assert "需修复LoopX状态投影" in rule
+        assert "静默时内部修复" in rule
+
+
 def test_rendered_task_bodies_keep_execution_obligation_authority() -> None:
     kwargs = dict(
         goal_id="fixture-goal",
@@ -62,6 +73,8 @@ def test_rendered_task_bodies_keep_execution_obligation_authority() -> None:
         assert "agent_must_attempt" in body
         assert "execution_obligation.must_attempt_work" in body
         assert "OUTPUT only" in body
+        assert "需修复LoopX状态投影" in body
+        assert "静默时内部修复" in body
         # A bare "DONT_NOTIFY=quiet" no-op mapping must never appear in the prompt.
         assert "DONT_NOTIFY=quiet." not in body
 

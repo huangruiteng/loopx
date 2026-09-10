@@ -39,6 +39,12 @@ two separate layers:
   runtime source of truth. This makes the Codex thread a replaceable worker and
   leaves durable task truth in LoopX.
 
+Prompt compression must preserve both conditions and required responses. A
+missing concrete user action under `NOTIFY` calls for state-projection repair,
+not just a diagnostic label. Under `DONT_NOTIFY`, repair stays internal; it
+does not grant notification authority. Keep these semantics in brief and thin
+prompts as well as the expanded contract, within their existing size budgets.
+
 Do not paste the full lifecycle protocol into the visible goal text, and do not
 use a short goal text such as "advance TODO" as the recurring automation body.
 The short text names the goal; the generated task body enforces quota, gates,
