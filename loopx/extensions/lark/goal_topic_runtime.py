@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 from collections.abc import Callable, Mapping
@@ -57,6 +58,7 @@ _EVENT_PROJECTION = (
 
 _EVENT_READY_PREFIX = "[event] ready "
 _EVENT_DIAGNOSTIC_PREFIX = "[event] "
+_EVENT_EXIT_REASON = re.compile(r"\(reason: (limit|timeout|signal)\)$")
 
 
 def _opaque_digest(*values: Any) -> str:
@@ -387,6 +389,7 @@ def stream_lark_goal_topic_profile(
     event_count = 0
     replied_count = 0
     provider_ready = False
+    exit_reason: str | None = None
     try:
         stdout = process.stdout
         if stdout is None:
@@ -404,6 +407,10 @@ def stream_lark_goal_topic_profile(
                 provider_ready = True
                 if health_sink is not None:
                     health_sink({"status": "listening", "error_code": None})
+                continue
+            if stripped.startswith("[event] exited "):
+                match = _EVENT_EXIT_REASON.search(stripped)
+                exit_reason = match.group(1) if match else None
                 continue
             if stripped.startswith(_EVENT_DIAGNOSTIC_PREFIX):
                 continue
@@ -469,11 +476,20 @@ def stream_lark_goal_topic_profile(
             returncode = process.wait(timeout=3)
         watcher.join(timeout=1)
     stopped = stop.is_set()
+    # A bus can die after registering the consumer and tell the CLI to exit
+    # successfully with reason=signal (e.g. a Feishu/Lark domain mismatch).
+    # Only our own stop or the requested bound is a planned stream ending.
+    unexpected_exit = provider_ready and not stopped and (
+        returncode != 0 or exit_reason not in {"limit", "timeout"}
+    )
     return {
-        "ok": stopped or (returncode == 0 and provider_ready),
+        "ok": stopped or (returncode == 0 and provider_ready and not unexpected_exit),
+        **({"error_code": "lark_event_source_disconnected"} if unexpected_exit else {}),
         "status": (
             "stopped"
             if stopped
+            else "source_disconnected"
+            if unexpected_exit
             else "stream_ended"
             if provider_ready
             else "stream_not_ready"
@@ -626,7 +642,7 @@ class LarkGoalTopicRuntimeService:
                     error_code=(
                         None
                         if result.get("ok") is True
-                        else "lark_event_listener_failed"
+                        else str(result.get("error_code") or "lark_event_listener_failed")
                     ),
                     restart_count=restart_count,
                 )

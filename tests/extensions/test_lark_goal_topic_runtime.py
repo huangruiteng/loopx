@@ -7,6 +7,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from loopx.extensions.lark.event_collector import _jq_projection
 from loopx.extensions.lark.event_inbox import inspect_lark_event_inbox
 from loopx.extensions.lark.goal_channel_contracts import (
@@ -812,8 +814,14 @@ def test_profile_stream_keeps_one_consumer_open_between_messages(
     }
 
 
+@pytest.mark.parametrize(
+    "exit_reason,stop_requested,returncode",
+    [("timeout", False, 0), ("limit", False, 0), ("signal", False, 0),
+     ("unknown", False, 0), ("", False, 0), ("signal", True, 0),
+     ("timeout", False, 1)],
+)
 def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
-    tmp_path: Path,
+    tmp_path: Path, exit_reason: str, stop_requested: bool, returncode: int,
 ) -> None:
     from loopx.extensions.lark.goal_topic_runtime import stream_lark_goal_topic_profile
 
@@ -855,14 +863,15 @@ def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
             (
                 "[event] local bus not found; checking remote connections...\n",
                 "[event] ready event_key=im.message.receive_v1\n",
+                f"[event] exited — received 0 event(s) in 2s (reason: {exit_reason})\n",
             )
         )
 
         def poll(self) -> int:
-            return 0
+            return returncode
 
         def wait(self, timeout: float | None = None) -> int:
-            return 0
+            return returncode
 
         def terminate(self) -> None:
             raise AssertionError("a completed consumer must not be terminated")
@@ -870,23 +879,28 @@ def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
         def kill(self) -> None:
             raise AssertionError("a completed consumer must not be killed")
 
+    stop = threading.Event()
+    if stop_requested:
+        stop.set()
     result = stream_lark_goal_topic_profile(
         profile="mew",
         snapshot_provider=lambda: snapshot,
-        stop=threading.Event(),
+        stop=stop,
         runtime_root=tmp_path,
         answer=lambda _route, _text: "ok",
         process_factory=lambda _args: ReadyConsumer(),
         health_sink=lambda update: health.append(dict(update)),
     )
 
+    planned = stop_requested or (exit_reason in {"timeout", "limit"} and returncode == 0)
     assert result == {
-        "ok": True,
-        "status": "stream_ended",
+        "ok": planned,
+        "status": "stopped" if stop_requested else "stream_ended" if planned else "source_disconnected",
+        **({} if planned else {"error_code": "lark_event_source_disconnected"}),
         "event_count": 0,
         "replied_count": 0,
     }
-    assert [item["status"] for item in health] == ["starting", "listening"]
+    assert [item["status"] for item in health] == (["starting"] if stop_requested else ["starting", "listening"])
 
 
 def test_profile_poll_routes_provider_event_through_existing_reply_path(
