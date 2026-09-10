@@ -55,8 +55,8 @@ RUNTIME_EXECUTION_ROUTING_RULE = (
     "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
 )
 HOST_LOOP_QUOTA_DISPATCH_RULE = (
-    "After quota, use selection_command when required; otherwise run "
-    "next_cli_actions[0]."
+    "Quota: use selection_command when required; "
+    "先按指令重新进入，完成获准工作并验证后，再按 next_cli_actions 写回和记账。"
 )
 HOST_LOOP_TODO_CLOSEOUT_RULE = (
     "Done -> successor first; final -> accountable refresh, spend, then "

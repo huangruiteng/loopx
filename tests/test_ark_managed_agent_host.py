@@ -73,22 +73,13 @@ def test_goal_prompt_is_one_transport_independent_activation() -> None:
     assert "goal loop, not automation" in normalized
     assert "invoke LoopX Turn" in normalized
     assert "Progress is not a new Goal boundary" in normalized
-    assert (
-        "Reuse this Goal until terminal"
-    ) in normalized
-    assert "do not create a successor merely to continue" in normalized
-    assert (
-        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
-        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
-        in normalized
-    )
-    assert "take highest-priority unblocked in-scope todo" in normalized
-    assert "claims/leases and blocker-push/recovery obligations" in normalized
-    assert (
-        "Before dependencies, persist changed scope/acceptance/non-goal evidence "
-        "and next todo"
-    ) in normalized
-    assert "refresh the accountable progress record before spending" in normalized
+    assert "do not create a new host Goal merely to continue" in normalized
+    assert "current `interaction_contract`" in normalized
+    assert "selection_command" in normalized
+    assert "settlement_plan.ordered_steps" in normalized
+    assert "terminal no-follow-up" in normalized
+    assert local_development["progress_refresh_state_command"] not in local_development["task_body"]
+    assert local_development["quota_spend_command"] not in local_development["task_body"]
 
 
 def test_goal_prompt_projects_goal_only_host_contract() -> None:

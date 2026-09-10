@@ -147,9 +147,9 @@ def test_goal_hosts_preserve_sizing_and_terminal_boundary(profile: str) -> None:
     payload = build_heartbeat_prompt(goal_id="sizing-fixture", runtime_profile=profile)
     body = payload["task_body"]
     assert body.count(SCOPE_BOUNDED_WORK_RULE) == 1
-    assert "`should_run=false`: no delivery/spend" in body
+    assert "no work/spend" in body
     assert "terminal no-follow-up" in body
-    assert "Then spend exactly once" in body
+    assert "settlement_plan.ordered_steps" in body
     assert payload["interface_budget"]["within_budget"] is True
 
 

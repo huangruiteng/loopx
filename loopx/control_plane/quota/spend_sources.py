@@ -67,12 +67,19 @@ def visible_goal_turn_reentry_action(
         or normalize_todo_replan_obligation_id(replan.get("obligation_id"))
     )
     if (
-        profile is SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE
+        profile in NATIVE_GOAL_RUNTIME_PROFILES
         and has_settlement_binding
         and settlement_plan is None
         and turn_instance_id is None
     ):
-        return f"{typed_quota_guard} --begin-turn"
+        if profile is SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE:
+            return f"{typed_quota_guard} --begin-turn"
+        # CLI/managed Goal hosts own their iteration identity, not an App
+        # heartbeat receipt. Re-enter before exposing any unbound settlement.
+        return (
+            f"{typed_quota_guard} --turn-instance-id "
+            "'<unique-work-iteration-id-reuse-on-retry>'"
+        )
     return None
 
 

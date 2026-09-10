@@ -2016,8 +2016,9 @@ def test_visible_goal_unbound_spend_recovers_delivery_after_capability_replan(
     assert _spend_run_count(runtime) == 1
 
 
+@pytest.mark.parametrize("profile", ["codex_app_ssh_goal", "codex_cli", "ark_managed_agent_goal"])
 def test_unbound_visible_goal_spend_returns_typed_mismatch_without_receipt(
-    tmp_path: Path,
+    tmp_path: Path, profile: str,
 ) -> None:
     project, runtime, registry_path = _write_fixture(tmp_path)
 
@@ -2027,7 +2028,7 @@ def test_unbound_visible_goal_spend_returns_typed_mismatch_without_receipt(
         "quota",
         "should-run",
         "--runtime-profile",
-        "codex_app_ssh_goal",
+        profile,
         "--goal-id",
         GOAL_ID,
         "--agent-id",
@@ -2038,7 +2039,11 @@ def test_unbound_visible_goal_spend_returns_typed_mismatch_without_receipt(
     assert guard_rc == 0, guard
     actions = guard["interaction_contract"]["cli_channel"]["next_cli_actions"]
     assert len(actions) == 1
-    assert actions[0].endswith("--begin-turn")
+    if profile == "codex_app_ssh_goal":
+        assert actions[0].endswith("--begin-turn")
+    else:
+        assert "--turn-instance-id" in actions[0]
+        assert "--begin-turn" not in actions[0]
     assert all("spend-slot" not in action for action in actions)
 
     spend_rc, spend = _run_cli(
@@ -2063,6 +2068,22 @@ def test_unbound_visible_goal_spend_returns_typed_mismatch_without_receipt(
     assert spend["settlement_result"]["failure"]["kind"] == "identity_mismatch"
     assert spend["settlement_result"]["failure"]["step_kind"] == "validation"
     assert spend["delivery_workspace_causality"] is None
+    assert _spend_run_count(runtime) == 0
+
+    # Execute the projected re-entry, filling only the host-owned identity.
+    command = actions[0].replace(
+        "<unique-work-iteration-id-reuse-on-retry>", TURN_ID,
+    )
+    bound_rc, bound = _run_generated_cli(command, registry_path=registry_path)
+    assert bound_rc == 0, bound
+    plan = bound["interaction_contract"]["cli_channel"]["settlement_plan"]
+    assert plan["identity"]["todo_id"] == TODO_ID
+    assert plan["identity"]["agent_id"] == AGENT_ID
+    if profile != "codex_app_ssh_goal":
+        assert plan["identity"]["turn_instance_id"] == TURN_ID
+    assert [step["kind"] for step in plan["ordered_steps"]] == [
+        "validation", "durable_writeback", "quota_spend", "terminal_closeout",
+    ]
     assert _spend_run_count(runtime) == 0
 
 

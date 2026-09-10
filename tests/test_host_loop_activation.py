@@ -322,7 +322,7 @@ def test_deepseek_harness_native_is_distinct_same_session_host() -> None:
     "runtime_profile",
     ("ark_managed_agent_goal", "codex_app_ssh_goal"),
 )
-def test_goal_hosts_attribute_spend_to_current_progress_refresh(
+def test_goal_hosts_delegate_spend_to_live_settlement_not_static_templates(
     runtime_profile: str,
 ) -> None:
     payload = build_heartbeat_prompt(
@@ -334,19 +334,18 @@ def test_goal_hosts_attribute_spend_to_current_progress_refresh(
     refresh_command = f"`{payload['progress_refresh_state_command']}`"
     spend_command = f"`{payload['quota_spend_command']}`"
 
-    assert task_body.index(refresh_command) < task_body.index(spend_command)
+    assert refresh_command not in task_body
+    assert spend_command not in task_body
+    assert "settlement_plan.ordered_steps" in task_body
+    assert "preserve identities/flags" in task_body
     assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in refresh_command
     assert "<ACTUAL_DELIVERY_BATCH_SCALE>" in refresh_command
     assert "<ACTUAL_DELIVERY_OUTCOME>" in refresh_command
     assert "--delivery-batch-scale multi_surface" not in refresh_command
     assert "--delivery-outcome outcome_progress" not in refresh_command
-    normalized_task_body = " ".join(task_body.split())
     assert payload["quota_spend_command"].startswith("loopx --format json ")
-    assert (
-        "never default or upgrade them to `multi_surface` / `outcome_progress`"
-        in normalized_task_body
-    )
-    assert "no pipe/retry" in normalized_task_body
+    assert "actual outcomes" in task_body
+    assert "readback/recovery" in task_body
 
 
 def test_heartbeat_prompt_commands_keep_explicit_runtime_root() -> None:
@@ -386,7 +385,7 @@ def test_heartbeat_prompt_commands_keep_explicit_runtime_root() -> None:
     "runtime_profile",
     ("ark_managed_agent_goal", "codex_app_ssh_goal"),
 )
-def test_goal_hosts_share_narrow_runtime_skill_routing(
+def test_goal_hosts_enter_live_contract_without_a_mandatory_skill_detour(
     runtime_profile: str,
 ) -> None:
     payload = build_heartbeat_prompt(
@@ -396,13 +395,11 @@ def test_goal_hosts_share_narrow_runtime_skill_routing(
     )
     task_body = " ".join(payload["task_body"].split())
 
-    assert (
-        "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
-        "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
-        in task_body
-    )
+    assert "Use the current `interaction_contract`, not remembered commands" in task_body
+    assert "loopx-project" not in task_body
+    assert "loopx-self-repair" not in task_body
     assert "Progress is not a new Goal boundary" in task_body
-    assert "do not create a successor merely to continue" in task_body
+    assert "do not create a new host Goal merely to continue" in task_body
 
 
 def test_goal_hosts_reuse_thin_dispatch_and_stay_compact() -> None:
@@ -435,8 +432,9 @@ def test_goal_hosts_reuse_thin_dispatch_and_stay_compact() -> None:
     for rule in shared_rules:
         assert rule in generic["task_body"]
     for payload in goal_hosts:
-        for rule in shared_rules:
-            assert rule in payload["task_body"]
+        assert "selection_command" in payload["task_body"]
+        assert "No learning queue unless asked." in payload["task_body"]
+        assert "完成获准工作并验证后，再按 next_cli_actions 写回和记账" in payload["task_body"]
         assert payload["interface_budget"]["budget_char_count"] <= 2_800
         assert payload["interface_budget"]["within_budget"] is True
 
