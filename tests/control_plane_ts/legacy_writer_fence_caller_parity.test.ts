@@ -4,7 +4,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import type { JsonObject } from "../../loopx/control_plane/effect_program.ts";
-import { observeRow, TS_ROWS, type ParityRow } from "./legacy_writer_fence_caller_parity_support.ts";
+import { legacyCoordinationWriterFencePath } from "../../loopx/control_plane/coordination/legacy_writer_fence.ts";
+import { GOAL, normalize, observeRow, TS_ROWS, type ParityRow } from "./legacy_writer_fence_caller_parity_support.ts";
 
 /**
  * Data-driven sibling-caller parity for fenced legacy writes.
@@ -12,7 +13,8 @@ import { observeRow, TS_ROWS, type ParityRow } from "./legacy_writer_fence_calle
  * Every row compares the complete envelope, the exclusion-free effect snapshot
  * of the runtime root, the declared after-state of named files, and (for
  * fence-close rows) the identical retry against the literal expectation in the
- * fixture. Nothing is matched by prefix or substring, so a truncated
+ * fixture after normalizing temporary roots and Node's optional EISDIR path.
+ * Nothing is matched by prefix or substring, so a truncated
  * remediation, a fabricated receipt, a drifted settlement kind, or a skipped
  * guard each fails exactly one row.
  */
@@ -33,6 +35,25 @@ const fixture = JSON.parse(
   readFileSync(new URL("../fixtures/control_plane/legacy_writer_fence_caller_parity_v0.json", import.meta.url), "utf8"),
 ) as { schema_version: string; rows: FixtureRow[] };
 const rows = fixture.rows.filter((row) => row.surface === "ts_entry");
+
+test("EISDIR normalization accepts only the exact fence diagnostic variant", () => {
+  const root = "/synthetic-runtime";
+  const message = "EISDIR: illegal operation on a directory, read";
+  const path = legacyCoordinationWriterFencePath(root, GOAL);
+  const legacy = { error: message, write_check: { reason: message }, error_code: "legacy_writer_fence_read_failed" };
+  assert.deepEqual(normalize(legacy, root), legacy);
+  assert.deepEqual(normalize({
+    ...legacy, error: `${message} '${path}'`, write_check: { reason: `${message} '${path}'` },
+  }, root), legacy);
+  for (const unexpected of [
+    `${message} '${path}.wrong'`,
+    `${message} '${path}' extra`,
+    `${message.replace("EISDIR", "EACCES")} '${path}'`,
+  ]) {
+    assert.notEqual(normalize({ error: unexpected }, root).error, message);
+  }
+  assert.notEqual(normalize({ note: `${message} '${path}'` }, root).note, message);
+});
 
 function globMatches(pattern: string, path: string): boolean {
   const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*");
