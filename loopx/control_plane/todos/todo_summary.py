@@ -1084,6 +1084,43 @@ def compact_todo_group(
         rollout_events=rollout_events,
         available_capabilities=available_capabilities,
     )
+    return compact_evaluated_todo_group(
+        items, source_section=source_section, role=role,
+        include_empty_source=include_empty_source, preferred_todo_ids=preferred_todo_ids,
+        item_limit=item_limit, include_task_orchestration_authority=include_task_orchestration_authority,
+        vision_runs=vision_runs, lineage_items=resume_source_items,
+    )
+
+
+def compact_evaluated_todo_group(
+    items: list[dict[str, Any]],
+    *,
+    source_section: str | None,
+    role: str | None = None,
+    include_empty_source: bool = False,
+    preferred_todo_ids: set[str] | None = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
+    include_task_orchestration_authority: bool = False,
+    vision_runs: list[dict[str, Any]] | None = None,
+    lineage_items: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
+    """Filter/display an already evaluated snapshot, never re-evaluate topology.
+
+    Callers must come from the full-source parser or canonical summary, not
+    persisted derived fields. Missing or mismatched evaluations fail closed.
+    """
+    if not items and not include_empty_source:
+        return None
+    for item in items:
+        resume_when = normalize_todo_resume_when(item.get("resume_when"))
+        if resume_when:
+            condition = item.get("resume_condition")
+            if (not isinstance(condition, dict)
+                or condition.get("schema_version") != "todo_resume_condition_v0"
+                or condition.get("resume_when") != resume_when
+                or not isinstance(condition.get("satisfied"), bool)
+                or item.get("resume_ready") is not condition.get("satisfied")):
+                raise ValueError("Todo display requires a matching full-source resume evaluation")
     lanes = _todo_group_lanes(items, preferred_todo_ids=preferred_todo_ids)
     source_valid = role in {"user", "agent"} and bool(str(source_section or "").strip())
     no_followup_items = [
@@ -1210,7 +1247,7 @@ def compact_todo_group(
     attach_advancement_frontier_revision_index(summary, items, role=role)
     attach_active_vision_waits(
         summary, vision_runs, role=role, items=items,
-        lineage_items=resume_source_items,
+        lineage_items=lineage_items,
     )
     if watch_only_monitor_items:
         summary["watch_only_monitor_count"] = len(watch_only_monitor_items)

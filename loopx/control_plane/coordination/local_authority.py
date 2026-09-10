@@ -268,14 +268,18 @@ def canonical_todo_summary_fields(
     """Adapt canonical records into the existing Todo summary read model."""
 
     from ..todos.active_state_editing import TODO_SECTION_HEADINGS
-    from ..todos.decision_scope import build_standing_decision_authority
+    from ..todos.standing_decision import build_standing_decision_authority
     from ..todos.todo_summary import compact_todo_group, count_advancement_todos
 
-    native_archived = {
+    # Read standing decisions before assigning presentation-only indexes, and
+    # include retained history so archiving a revocation cannot revive approval.
+    standing_authority = build_standing_decision_authority(
+        [item for item in todos if item.get("role") == "user"], canonical_records=True,
+    )
+    archived_ids = {
         item["todo_id"]
         for item in todos
-        if item.get("schema_version") == TODO_DOMAIN_ITEM_SCHEMA_VERSION
-        and item.get("archive_state") == "archive"
+        if item.get("archive_state") == "archive"
     }
     # Native provider records have no Markdown address. Allocate display
     # positions from stable provider order; never read legacy Markdown here.
@@ -300,7 +304,7 @@ def canonical_todo_summary_fields(
             item
             for item in todos
             if ("user" if item.get("role") == "user" else "agent") == role
-            and item.get("todo_id") not in native_archived
+            and item.get("todo_id") not in archived_ids
         ]
         summary = compact_todo_group(
             items,
@@ -317,7 +321,7 @@ def canonical_todo_summary_fields(
                     [
                         item
                         for item in todos
-                        if item.get("todo_id") in native_archived
+                        if item.get("todo_id") in archived_ids
                         and item.get("done") is True
                     ]
                 )
@@ -328,7 +332,6 @@ def canonical_todo_summary_fields(
                     )
             fields[f"{role}_todos"] = summary
         if role == "user":
-            standing_authority = build_standing_decision_authority(items)
             if standing_authority:
                 fields["standing_decision_authority"] = standing_authority
     return fields

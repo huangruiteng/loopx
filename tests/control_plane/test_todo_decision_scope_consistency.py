@@ -10,9 +10,9 @@ from loopx.control_plane.testing.quota_fixtures import (
 from loopx.control_plane.todos.decision_scope import (
     build_required_decision_scope_consistency,
     build_required_decision_scope_repair_hint,
-    build_standing_decision_authority,
     standing_decision_authority_for_agent,
 )
+from loopx.control_plane.todos.standing_decision import build_standing_decision_authority
 from loopx.quota import build_quota_should_run
 
 AGENT_ID = "codex-quality-qualification"

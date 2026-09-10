@@ -26,6 +26,9 @@ import { executeCoordinationTodoUpdate } from "../../loopx/control_plane/coordin
 import { listLocalCoordinationTodos, LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA }
   from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 import { sharedGoalWorkFacts } from "../../loopx/control_plane/goals/shared_goal_work.ts";
+import {projectStandingDecisions} from "../../loopx/control_plane/todos/standing_decision.ts";
+import {evaluateTodoResumeConditions} from "../../loopx/control_plane/todos/resume_condition.ts";
+import type {JsonObject} from "../../loopx/control_plane/effect_program.ts";
 import {
   executeCoordinationTodoArchiveCompleted,
   executeCoordinationTodoTerminalLifecycle,
@@ -217,6 +220,43 @@ export function registerAuthorityStoreConformance(
   factory: AuthorityStoreConformanceFactory,
 ): void {
   registerNativePlanningUpdateConformance(providerName, factory);
+  for (const native of [false, true]) test(`${providerName} conformance: standing revocation survives canonical ordering and archive (${native ? "native" : "legacy"})`, async (t) => {
+    const {store} = await factory(t);
+    const goal = "goal-standing";
+    const records: Record<string, unknown>[] = [
+      {todo_id: "todo_aaa_reject", decision_outcome: "reject", completed_at: "2026-09-10T02:00:00Z"},
+      {todo_id: "todo_middle", decision_outcome: "approve", unblocks_todo_id: "todo_delivery"},
+      {todo_id: "todo_zzz_approve", decision_outcome: "approve", completed_at: "2026-09-10T01:00:00Z"},
+    ].map((item, i) => ({schema_version: native ? TODO_DOMAIN_ITEM_SCHEMA : TODO_ITEM_SCHEMA,
+      text: "Synthetic decision", role: "user", status: "done", done: true, task_class: "user_gate",
+      archive_state: "active", global_gate: true,
+      decision_scope: {kind: "write_scope", granularity: "goal", scope_key: "release"},
+      ...(!native ? {index: i + 1, source_section: "User Todo"} : {}), ...item}));
+    const seeded = await store.commitAuthority({operation_id: "standing-fixture", expected_provider_revision: null,
+      events: [], receipts: [], next_projection: {goal_id: goal, todos: records, leases: [],
+        todo_read_model: {schema_version: native ? TODO_DOMAIN_READ_RECORD_SCHEMA : TODO_CANONICAL_READ_RECORD_SCHEMA,
+          todo_count: records.length, records_sha256: canonicalAuthoritySha256(records),
+          contract_fields: native ? [...TODO_DOMAIN_RECORD_CONTRACT.fields] : [...TODO_CANONICAL_READ_RECORD_FIELDS]}}});
+    assert.equal(seeded.status, "applied");
+    const before = await store.loadAuthority();
+    assert.equal(before.status, "loaded");
+    if (before.status !== "loaded") return;
+    const decisions = projectStandingDecisions(before.head.todos as Record<string, unknown>[])!;
+    assert.equal(decisions.active_count, 0);
+    assert.equal((decisions.entries as Record<string, unknown>[])[0].source_todo_id, "todo_aaa_reject");
+    const request = {goal_id: goal, role: "user" as const, max_active_done: 0,
+      operation_id: "standing-archive", dry_run: false, now: new Date("2026-09-10T03:00:00Z")};
+    const archived = await executeCoordinationTodoArchiveCompleted(store, request);
+    assert.equal(archived.status, "applied", JSON.stringify(archived));
+    assert.deepEqual(archived.moved_todo_ids, ["todo_middle"]);
+    assert.equal(archived.retained_standing_decision_count, 2);
+    const after = await store.loadAuthority();
+    assert.equal(after.status, "loaded");
+    if (after.status !== "loaded") return;
+    assert.deepEqual(projectStandingDecisions(after.head.todos as Record<string, unknown>[]), decisions);
+    assert.equal((await executeCoordinationTodoArchiveCompleted(store, request)).status, "replayed");
+  });
+
   for (const native of [false, true]) test(`${providerName} conformance: governance reads one full Todo/lease snapshot (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
     const goal = "goal-governance";
@@ -256,10 +296,15 @@ export function registerAuthorityStoreConformance(
     assert.equal((full.todos as unknown[]).length, fixture.expected_initial_todo_count);
     assert.equal((full.leases as unknown[]).length, fixture.expected_current_lease_count);
     const leases = new Map((full.leases as Record<string, unknown>[]).map((lease) => [lease.todo_id, lease]));
+    const evaluation = evaluateTodoResumeConditions({schema_version: "todo_resume_evaluation_request_v0",
+      items: full.todos, source_items: full.todos, kinds: ["todo_done", "monitor_changed"]});
+    const conditions = new Map((evaluation.conditions as JsonObject[]).map(entry => [entry.todo_id, entry.condition as JsonObject]));
     const items = (full.todos as Record<string, unknown>[]).filter((item) => item.role === "agent")
-      .map((item) => ({...item, lease: leases.get(item.todo_id) ?? null}));
+      .map((item) => ({...item, lease: leases.get(item.todo_id) ?? null,
+        ...(conditions.has(item.todo_id) ? {resume_ready: conditions.get(item.todo_id)!.satisfied === true} : {})}));
     const facts = sharedGoalWorkFacts(items, "agent-a", "2026-09-09T12:00:00Z");
-    // 48 open rows: 12 monitors, with the completion target converted to advancement.
+    // The completed prerequisite satisfies the explicit wait. Evaluate from
+    // the full provider snapshot before passing derived facts to governance.
     assert.deepEqual(facts.frontier_counts, {current_agent_claimed_advancement_count: 13,
       unclaimed_advancement_count: 0, other_agent_claimed_advancement_count: 24});
     assert.equal((facts.goal_todo_inventory as unknown[]).length, 48);
@@ -873,6 +918,9 @@ export function registerAuthorityStoreConformance(
     if (loaded.status !== "loaded") return;
     const todos = loaded.head.todos as Record<string, unknown>[];
     const leases = loaded.head.leases as Record<string, unknown>[];
+    const standing = projectStandingDecisions(todos)!;
+    assert.equal(standing.active_count, 1); // Four receipts, one scope/owner.
+    assert.equal(standing.conflict_count, undefined);
     assert.equal(todos.length, fixture.expected_initial_todo_count);
     assert.equal(leases.length, fixture.expected_current_lease_count);
     assert.equal(
