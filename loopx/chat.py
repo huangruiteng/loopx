@@ -235,6 +235,8 @@ def normalize_agent_response(
 ) -> dict[str, Any]:
     """Normalize one structured provider response to the public Chat contract."""
 
+    from .capabilities.manager_context import normalize_request
+    handoff = normalize_request(payload.get("context_handoff"))
     protected = tuple(protected_paths)
     message = redact_local_paths(
         str(payload.get("message") or ""),
@@ -243,6 +245,7 @@ def normalize_agent_response(
     return {
         "schema_version": CHAT_AGENT_RESPONSE_SCHEMA_VERSION,
         "message": message,
+        **({"context_handoff": handoff} if handoff else {}),
         "proposals": _normalize_proposals(
             payload.get("proposals"),
             protected_paths=protected,

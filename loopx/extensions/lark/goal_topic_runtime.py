@@ -777,11 +777,13 @@ def answer_lark_goal_topic(
     if manager:
         objective = MANAGER_AGENT_OBJECTIVE
     resolved_work_dir = Path(work_dir).expanduser().resolve()
-    message = (
-        "这是来自已绑定 Lark Goal Topic 的用户消息。请直接回答当前问题；"
-        "任何 Goal、Todo 或其他持久状态修改只生成预览，等待用户在 LoopX 明确确认后应用。\n\n"
-        f"用户消息：{str(text or '').strip()}"
+    instruction = (
+        "对已有授权的意图委托使用 context_handoff，直接交给目标 Agent 自主判断并推进，"
+        "不要添加确认或直接替它改优先级。"
+        if manager else
+        "任何 Goal、Todo 或其他持久状态修改只生成预览，等待用户在 LoopX 明确确认后应用。"
     )
+    message = "这是来自已绑定 Lark Goal Topic 的用户消息。请直接回答当前问题；" + instruction + "\n\n用户消息：" + str(text or "").strip()
     client_turn_id = "lark." + _opaque_digest(
         route.get("message_id"),
         route.get("topic_root_message_id"),
@@ -805,6 +807,13 @@ def answer_lark_goal_topic(
                 message=message,
             )
         else:
+            if manager and route.get("source_sender_id") and hasattr(runtime_controller.store, "root"):
+                from ...capabilities.manager_context import register_ingress
+                register_ingress(runtime_controller.store.root.parent,
+                                 session_id=session_id, client_turn_id=client_turn_id,
+                                 channel=expected_channel, sender_id=str(route["source_sender_id"]),
+                                 message=message, source_id="lark:" + str(route["message_id"]),
+                                 source_message=str(text or "").strip())
             turn, _created = runtime_controller.enqueue_turn(
                 session_id=session_id,
                 client_turn_id=client_turn_id,
@@ -996,6 +1005,8 @@ def process_lark_goal_topic_event(
             "agent_id": route.get("agent_id"),
             "inbox_config_ref": config_ref,
         }
+    # Sender provenance comes from the provider event, never the model response.
+    route = {**route, "source_sender_id": str(canonical.get("sender_id") or "")}
     answer_result = answer(route, canonical["content"])
     connector = route.get("connector")
     connector = connector if isinstance(connector, Mapping) else None

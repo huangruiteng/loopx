@@ -271,3 +271,39 @@ current declarations from verified execution and names unavailable/truncated
 details. External audiences retain their existing Goal authorization boundary
 and do not receive owner continuation notes. No repository browsing or write
 permission is added to the manager model.
+
+
+## Intent delegation and worker-owned planning
+
+The default manager interaction is intent delegation: the owner expresses an
+objective, new information or constraints; the manager routes the original
+message to an exact registered worker; that worker assesses its current Goal,
+evidence and commitments, decides whether to replan, and reports its decision.
+Todo editing is an internal planning operation, not a required user interaction.
+Ordinary authorized delegation does not require a second preview confirmation.
+
+The built-in `manager-context` capability supplies a private durable inbox and
+uses the existing turn-start hook contract. The Chat host, not model prose,
+writes the original message and verifies its receipt. The model can select only
+`context_handoff={goal_id,agent_id}` from the supplied recipient catalog; it
+cannot supply replacement text, priority or Todo edits. Delivery does not
+interrupt an active turn, change scheduling, or claim the worker finished.
+The next existing worker turn reads pending context before choosing work; the
+worker can adopt, defer, reject or retain its plan, recording a reason through
+`manager-inbox acknowledge`. Delivery and decision are separate receipts.
+Core remains the only authority for actual Goal/Todo/progress state.
+
+Owner-local manager conversations use registered recipients by default. External
+manager channels require provider-recorded sender/source provenance plus an
+exact sender/recipient grant in private runtime configuration. Recipient routing
+does not expand the channel's Goal evidence read scope. Revocation is rechecked
+at delivery. See [manager context configuration](../../../loopx/capabilities/manager_context/README.md).
+Missing or ambiguous targets require resolution, not an invented recipient.
+Trading, payments, publishing and other protected operations retain their own
+authority requirements; forwarding context supplies no additional authority.
+
+Requests are idempotent by original source identity and exact recipient, never
+by text similarity. Different independent frontend and Lark requests remain
+different requests: this implementation does not claim automatic cross-entry
+origin correlation. A delivered request remains deduplicated after worker
+acknowledgment and service restart. Full three-Goal live acceptance remains open.

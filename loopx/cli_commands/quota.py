@@ -462,6 +462,18 @@ def _dispatch_quota_turn_start_hooks(
         goal_id=args.goal_id,
         agent_id=args.agent_id,
     )
+    if args.agent_id:
+        from ..capabilities.manager_context import turn_start_hook
+        from ..control_plane.capability_hooks import dispatch_turn_start_hooks
+        from ..history import load_registry
+        from ..paths import resolve_runtime_root
+        root = resolve_runtime_root(load_registry(registry_path), runtime_root_arg, registry_path=registry_path)
+        context_dispatch = dispatch_turn_start_hooks((turn_start_hook(root, registry_path, args.goal_id, args.agent_id),))
+        dispatch = dict(dispatch)
+        for key in ("results", "required_reads", "failures"):
+            dispatch[key] = list(dispatch.get(key) or []) + list(context_dispatch.get(key) or [])
+        for key in ("registered_count", "invoked_count"):
+            dispatch[key] = int(dispatch.get(key) or 0) + int(context_dispatch.get(key) or 0)
     local_private_state_mutated = any(
         isinstance(result, Mapping)
         and result.get("local_private_state_mutated") is True

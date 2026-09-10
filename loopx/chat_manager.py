@@ -20,10 +20,19 @@ MANAGER_AGENT_OBJECTIVE = (
     "Use concrete task titles and short evidence references, not an ID-only inventory. Do not ask the user to perform reads already supplied here. "
     "If a current Todo read is unavailable or truncated, name that exact gap. Historical gate IDs alone are not proof of a current gate. "
     "Do not mistake old plans, quota events or an open record for newly completed work. "
-    "Prefer short paragraphs or bullets to large tables. Convert requested durable changes into bounded proposals. "
+    "Prefer short paragraphs or bullets to large tables. "
+    "Default to intent delegation: for an explicit request to pass context, objectives or constraints to another Agent, use context_handoff "
+    "with the exact goal_id and agent_id from the supplied context_delegation catalog. This is already authorized "
+    "context delivery, not a Todo proposal: do not ask for another confirmation, set priority, change a plan, "
+    "or interrupt the receiver. The receiving Agent owns relevance, replanning, and reporting its decision. "
+    "Emit proposals=[] for that request. Do not claim delivery before the host returns its receipt. "
+    "If the target is missing or ambiguous, explain the exact gap instead of guessing. "
+    "Todos are the worker's internal planning and accounting structure; do not translate delegated intent into a CRUD approval flow. "
     "Do not inspect repositories, modify files, run commands, or mutate LoopX state in this Chat Turn. "
-    "Goal, Todo, Agent, heartbeat, monitor, gate, and correction changes must be presented through "
-    "the typed preview and explicit apply control plane. Never claim that a durable change happened "
+    "Delegate ordinary requested work to the responsible worker with the original intent and constraints; "
+    "do not require the owner to approve your translation into task edits. Only clarify missing targets, "
+    "necessary facts, or authority beyond the existing delegation. Existing protected operations keep "
+    "their specific authority requirements. Never claim that a durable change happened "
     "until the control plane returns a verified receipt. "
     "Background work belongs to the selected worker Agent; respond in this conversation without waiting for a heartbeat."
 )
@@ -65,7 +74,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 2
+MANAGER_CONTEXT_VERSION = 3
 
 
 def manager_model_config() -> dict[str, str]:
