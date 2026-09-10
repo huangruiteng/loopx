@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,11 +10,18 @@ from typing import Any
 from ...agent_registry import registered_agent_ids_for_goal
 from ...control_plane.goals.configure_goal_service import (
     configure_goal_with_global_sync,
+    _configure_goal_with_global_sync_unlocked,
+    resolve_configure_goal_sync_target,
 )
+from ...file_lock import exclusive_file_lock
+from ...global_registry import GlobalRegistryReduction, mutate_global_registry
+from ...history import load_registry
+from ...registry import atomic_write_json, registry_goals
 from .goal_channel_contracts import (
     binding_for_goal,
     bindings_for_goal,
     read_goal_channel_binding,
+    write_goal_channel_binding,
 )
 from .goal_channel_targets import (
     goal_channel_target_for_name,
@@ -156,3 +163,109 @@ def _unregister_async_inbox(
         # The binding removal already landed; report the cleanup failure as a
         # failed packet instead of raising past the caller mid-disconnect.
         return {"ok": False, "error": str(exc)}, agent_id
+
+
+class GoalTopicUpgradeError(OSError):
+    def __init__(self, *, restored: bool) -> None:
+        self.restored = restored
+        super().__init__("manager route upgrade failed")
+
+
+def save_retiring_async_inbox(
+    *,
+    previous: Mapping[str, Any],
+    registry_path: Path | None,
+    binding_path: Path,
+    goal_id: str,
+    save: Callable[[], str],
+) -> str:
+    """Compensate failed upgrades under the caller's binding and source locks.
+
+    Restore the exact source authority, not a reconstructed inbox registration.
+    The shared registry reducer restores only this Goal, retaining peer writes.
+    A failed compensation is reported explicitly, never as a preserved route.
+    """
+    if (previous.get("routing") or {}).get("ingress_mode") != "async_inbox":
+        return save()
+    agent_id = str(previous.get("agent_id") or "").strip()
+    if not agent_id:
+        raise ValueError("the prior async inbox must identify its exact Agent")
+    if registry_path is None:
+        raise ValueError("source registry path is required to retire the Agent inbox")
+    with exclusive_file_lock(registry_path, operation="upgrade_lark_manager_route"):
+        source_before = load_registry(registry_path)
+        binding_before = read_goal_channel_binding(binding_path)
+        target = resolve_configure_goal_sync_target(
+            registry_path=registry_path, goal_id=goal_id, runtime_root_override=None
+        )
+        global_path = Path(target["target_global_registry"])
+        shared_source = global_path.resolve() == registry_path.resolve()
+        global_goal_before = next(
+            (g for g in registry_goals(load_registry(global_path)) if g["id"] == goal_id),
+            None,
+        )
+        try:
+            # The source lock spans cleanup, binding commit, and compensation.
+            cleanup = _configure_goal_with_global_sync_unlocked(
+                registry_path=registry_path,
+                goal_id=goal_id,
+                runtime_root_override=None,
+                execute=True,
+                lark_event_inbox_agent_id=agent_id,
+                clear_lark_event_inbox_config=True,
+            )
+            if not cleanup.get("ok"):
+                raise OSError("prior inbox retirement did not verify")
+            return save()
+        except (OSError, ValueError, TimeoutError) as exc:
+            restored = True
+
+            def restore_binding() -> None:
+                if read_goal_channel_binding(binding_path) != binding_before:
+                    write_goal_channel_binding(binding_path, binding_before)
+
+            def restore_source() -> None:
+                if load_registry(registry_path) != source_before:
+                    atomic_write_json(registry_path, source_before)
+
+            def restore_global() -> None:
+                if shared_source:
+                    return
+
+                def reduce(current: dict[str, Any]) -> GlobalRegistryReduction:
+                    goals = list(current.get("goals") or [])
+                    index = next(
+                        (i for i, g in enumerate(goals)
+                         if isinstance(g, dict) and g.get("id") == goal_id),
+                        None,
+                    )
+                    if global_goal_before is None:
+                        if index is not None:
+                            goals.pop(index)
+                    elif index is None:
+                        goals.append(global_goal_before)
+                    else:
+                        goals[index] = global_goal_before
+                    return GlobalRegistryReduction({**current, "goals": goals}, {})
+
+                mutate_global_registry(global_path, "restore_lark_manager_route", reduce)
+
+            for restore in (restore_binding, restore_source, restore_global):
+                try:
+                    restore()
+                except (OSError, ValueError, TimeoutError):
+                    restored = False
+            try:
+                global_goal_after = next(
+                    (g for g in registry_goals(load_registry(global_path)) if g["id"] == goal_id),
+                    None,
+                )
+                restored = bool(
+                    restored
+                    and read_goal_channel_binding(binding_path) == binding_before
+                    and load_registry(registry_path) == source_before
+                    and global_goal_after == global_goal_before
+                )
+            except (OSError, ValueError, TimeoutError):
+                restored = False
+            raise GoalTopicUpgradeError(restored=restored) from exc

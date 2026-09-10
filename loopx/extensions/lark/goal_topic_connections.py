@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import partial
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -74,6 +75,8 @@ from .goal_channel_transport import (
 )
 from .goal_topic_edit import (
     _unregister_async_inbox,
+    GoalTopicUpgradeError,
+    save_retiring_async_inbox,
     resolve_existing_goal_topic,
     resolve_conversation_policy,
 )
@@ -756,20 +759,6 @@ def connect_lark_goal_topic(
                 readback_verified=True,
             )
 
-    if conversation_kind == "manager" and editing is not None:
-        cleanup, _ = _unregister_async_inbox(
-            removed=editing, registry_path=registry_path, goal_id=goal_id
-        )
-        if cleanup is not None and not cleanup.get("ok"):
-            return operation_packet(
-                ok=False,
-                goal_id=goal_id,
-                operation="connect_topic",
-                execute=True,
-                status="blocked",
-                blocker="agent_inbox_registration_failed",
-                public_summary="the prior inbox registration could not be retired; connection preserved",
-            )
     payload = read_goal_channel_binding(binding_path)
     existing = binding_for_goal(payload, goal_id, connection_id=connection_id) or {}
     receipts = dict(existing.get("receipts") or {})
@@ -778,7 +767,8 @@ def connect_lark_goal_topic(
         "message_id": root_message_id,
         "verified_at": now_iso(),
     }
-    saved_connection_id = save_goal_connection(
+    save_connection = partial(
+        save_goal_connection,
         binding_path=binding_path,
         payload=payload,
         goal_id=goal_id,
@@ -823,6 +813,33 @@ def connect_lark_goal_topic(
             "receipts": receipts,
         },
     )
+    try:
+        saved_connection_id = (
+            save_retiring_async_inbox(
+                previous=editing,
+                registry_path=registry_path,
+                binding_path=binding_path,
+                goal_id=goal_id,
+                save=save_connection,
+            )
+            if conversation_kind == "manager" and editing is not None
+            else save_connection()
+        )
+    except GoalTopicUpgradeError as exc:
+        return operation_packet(
+            ok=False,
+            goal_id=goal_id,
+            operation="connect_topic",
+            execute=True,
+            status="blocked" if exc.restored else "upgrade_recovery_required",
+            blocker="agent_inbox_registration_failed",
+            public_summary=(
+                "the manager upgrade failed; prior connection and inbox restored"
+                if exc.restored
+                else "the manager upgrade and recovery failed; repair the existing route before retrying"
+            ),
+            details={"prior_route_restored": exc.restored},
+        )
     return operation_packet(
         ok=True,
         goal_id=goal_id,

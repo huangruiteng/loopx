@@ -2640,3 +2640,116 @@ def test_ambiguous_manager_does_not_fan_out(tmp_path: Path) -> None:
         },
     )
     assert decision == {"matched": False, "reason": "route_ambiguous", "route": None}
+
+
+@pytest.mark.parametrize("failure", ["source", "global", "binding_before", "binding_after"])
+def test_manager_upgrade_restores_old_route_after_any_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    import loopx.configure_goal as configure
+    import loopx.global_registry as global_registry
+    import loopx.extensions.lark.goal_topic_connections as connections
+
+    kwargs, state = _upgrade_fixture(tmp_path, agent_id="agent-alpha")
+    assert connect_lark_goal_topic(**kwargs)["ok"]
+    binding_before = read_goal_channel_binding(kwargs["binding_path"])
+    source_before = json.loads(kwargs["registry_path"].read_text())
+    global_path = tmp_path / "runtime" / "registry.global.json"
+    global_before = json.loads(global_path.read_text())
+    old_goal = next(g for g in global_before["goals"] if g["id"] == "goal-alpha")
+    old_inbox = source_before["goals"][0]["control_plane"]["lark_event_inboxes"]
+    assert "agent-alpha" in old_inbox
+    fired = False
+    original_save = connections.save_goal_connection
+    original_source_write = configure.atomic_write_json
+    original_global_write = global_registry.write_json
+
+    def fail_once() -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            raise OSError("injected upgrade write failure")
+
+    def source_write(*args, **options):
+        if failure == "source":
+            fail_once()
+        return original_source_write(*args, **options)
+
+    def global_write(*args, **options):
+        if failure == "global":
+            fail_once()
+        return original_global_write(*args, **options)
+
+    def save(*args, **options):
+        if failure == "binding_before":
+            fail_once()
+        result = original_save(*args, **options)
+        if failure == "binding_after":
+            # A peer's shared-registry update must survive our compensation.
+            def update_peer(current):
+                for goal in current["goals"]:
+                    if goal["id"] == "goal-beta":
+                        goal["objective"] = "Concurrent peer progress"
+                        break
+                else:
+                    current["goals"].append(
+                        {"id": "goal-beta", "objective": "Concurrent peer progress"}
+                    )
+                return global_registry.GlobalRegistryReduction(current, {})
+            global_registry.mutate_global_registry(global_path, "peer_update", update_peer)
+            fail_once()
+        return result
+
+    monkeypatch.setattr(configure, "atomic_write_json", source_write)
+    monkeypatch.setattr(global_registry, "write_json", global_write)
+    monkeypatch.setattr(connections, "save_goal_connection", save)
+    result = connect_lark_goal_topic(
+        **kwargs, conversation_kind="manager", session_id="manager-session"
+    )
+    assert fired
+    assert result["ok"] is False
+    assert result["details"]["prior_route_restored"] is True
+    assert read_goal_channel_binding(kwargs["binding_path"]) == binding_before
+    assert json.loads(kwargs["registry_path"].read_text()) == source_before
+    global_after = json.loads(global_path.read_text())
+    assert next(g for g in global_after["goals"] if g["id"] == "goal-alpha") == old_goal
+    if failure == "binding_after":
+        assert next(g for g in global_after["goals"] if g["id"] == "goal-beta")[
+            "objective"
+        ] == "Concurrent peer progress"
+
+    retried = connect_lark_goal_topic(
+        **kwargs, conversation_kind="manager", session_id="manager-session"
+    )
+    assert retried["ok"]
+    saved = binding_for_goal(read_goal_channel_binding(kwargs["binding_path"]), "goal-alpha")
+    assert saved["routing"]["ingress_mode"] == "session_queue"
+    assert saved["connection_id"] == kwargs["connection_id"]
+    assert saved["topic"]["root_message_id"] == "om_legacy_root"
+    assert saved["receipts"].keys() >= binding_for_goal(binding_before, "goal-alpha")["receipts"].keys()
+    for path in (kwargs["registry_path"], global_path):
+        goal = next(g for g in json.loads(path.read_text())["goals"] if g["id"] == "goal-alpha")
+        assert not goal["control_plane"].get("lark_event_inboxes", {}).get("agent-alpha")
+    assert not any("+messages-send" in call for call in state["calls"])
+
+
+def test_manager_upgrade_does_not_claim_preserved_route_when_compensation_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import loopx.extensions.lark.goal_topic_connections as connections
+    import loopx.extensions.lark.goal_topic_edit as edit
+
+    kwargs, _ = _upgrade_fixture(tmp_path, agent_id="agent-alpha")
+    assert connect_lark_goal_topic(**kwargs)["ok"]
+
+    def fail(*args, **options):
+        raise OSError("persistent storage failure")
+
+    monkeypatch.setattr(connections, "save_goal_connection", fail)
+    monkeypatch.setattr(edit, "atomic_write_json", fail)
+    result = connect_lark_goal_topic(
+        **kwargs, conversation_kind="manager", session_id="manager-session"
+    )
+    assert result["ok"] is False
+    assert result["status"] == "upgrade_recovery_required"
+    assert result["details"]["prior_route_restored"] is False

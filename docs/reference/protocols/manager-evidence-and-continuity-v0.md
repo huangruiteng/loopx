@@ -36,6 +36,15 @@ presentation owns bounded collection and rendering. An optional
 `DecisionSourceProvider` adapter can exact-read this same projection without
 making Decision Context a prerequisite for basic manager reads.
 
+Manager upgrades retain the existing connection identity, Topic and receipts.
+Retiring an async inbox and saving its replacement form one compensated write
+operation: hold the binding/source mutation locks, and restore the prior
+binding, source registry and affected shared Goal if a write fails. Recovery
+must verify those authorities before claiming the old route was preserved;
+failed compensation returns `upgrade_recovery_required`. Shared-registry
+recovery must retain concurrent updates to other Goals. This exception-recovery
+contract does not claim crash-atomic persistence across multiple files.
+
 ## A bounded portfolio with explicit coverage
 
 Discover Goals from the authorized registry inventory, including unavailable
