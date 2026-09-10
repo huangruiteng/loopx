@@ -80,6 +80,11 @@ from .goal_topic_edit import (
     resolve_existing_goal_topic,
     resolve_conversation_policy,
 )
+from .goal_topic_inbox import (
+    _agent_inbox_config,
+    _write_agent_inbox_config,
+    agent_inbox_binding_conflict_packet,
+)
 from .manager_routing import decide_manager_event
 from .goal_topic_routing import (
     CaptureScope,
@@ -93,7 +98,6 @@ from .presentation.kanban import (
     CommandRunner,
     default_subprocess_runner,
 )
-from .private_json import write_private_json_atomic
 
 INCOMING_MODES = {"mentions", "all"}
 
@@ -276,58 +280,6 @@ def _target_name(app_ref: str, chat_id: str) -> str:
     return f"{prefix[:48]}-{digest}"
 
 
-def _agent_inbox_config(
-    *,
-    goal: Mapping[str, Any],
-    agent_id: str,
-    app_ref: str,
-    chat_id: str,
-    bot_display_name: str,
-    capture_scope: str,
-    topic_root_message_id: str | None = None,
-) -> tuple[Path, str, dict[str, Any]]:
-    project = Path(str(goal.get("repo") or "")).expanduser().resolve()
-    if not project.is_dir():
-        raise ValueError("Goal repository is unavailable for Agent-scoped inbox setup")
-    digest = hashlib.sha256(
-        f"{goal.get('id')}\0{agent_id}\0{app_ref}\0{chat_id}".encode()
-    ).hexdigest()[:20]
-    config_ref = f".loopx/config/lark-goal-topics/{digest}.json"
-    config_path = project / config_ref
-    payload = {
-        "schema_version": "lark_event_inbox_config_v0",
-        "enabled": True,
-        "inbox_dir": f".loopx/inbox/lark-goal-topics/{digest}",
-        # Goal Topic routing applies this same scope before ingestion. Keeping
-        # the local inbox declaration identical prevents an addressed-only
-        # stream from being projected as thread-complete.
-        "capture_scope": capture_scope,
-        **(
-            {"topic_root_message_id": topic_root_message_id}
-            if topic_root_message_id
-            else {}
-        ),
-        "reply": {
-            "enabled": True,
-            "sender_profile": app_ref,
-            "sender_identity": "bot",
-            "bot_display_name": bot_display_name,
-            "chat_id": chat_id,
-        },
-    }
-    return config_path, config_ref, payload
-
-
-def _write_agent_inbox_config(
-    *,
-    config_path: Path,
-    config_ref: str,
-    payload: Mapping[str, Any],
-) -> str:
-    write_private_json_atomic(config_path, payload)
-    return config_ref
-
-
 @serialize_goal_binding_mutation
 def connect_lark_goal_topic(
     *,
@@ -450,32 +402,15 @@ def connect_lark_goal_topic(
             bot_display_name=profile,
             capture_scope=effective_capture_scope,
         )
-        control_plane = goal.get("control_plane")
-        control_plane = control_plane if isinstance(control_plane, Mapping) else {}
-        agent_inboxes = control_plane.get("lark_event_inboxes")
-        agent_inboxes = agent_inboxes if isinstance(agent_inboxes, Mapping) else {}
-        current_inbox = agent_inboxes.get(normalized_agent_id)
-        if not isinstance(current_inbox, Mapping):
-            current_inbox = control_plane.get("lark_event_inbox")
-        if isinstance(current_inbox, Mapping) and current_inbox.get("enabled") is True:
-            current_ref = str(current_inbox.get("config_path") or "").strip()
-            project = Path(str(goal["repo"])).expanduser().resolve()
-            # A Topic is not authority to replace an existing read route. In
-            # particular, a collector may cover several independent chats.
-            # Reject before provider calls or local configuration writes.
-            if current_ref and (project / current_ref).resolve() != inbox_config[0].resolve():
-                return operation_packet(
-                    ok=False,
-                    goal_id=goal_id,
-                    operation="connect_topic",
-                    execute=execute,
-                    status="blocked",
-                    blocker="agent_inbox_binding_conflict",
-                    public_summary=(
-                        "the Agent already consumes a different inbox; reconcile its "
-                        "routes explicitly before connecting this Topic"
-                    ),
-                )
+        conflict = agent_inbox_binding_conflict_packet(
+            goal=goal,
+            goal_id=goal_id,
+            agent_id=str(normalized_agent_id),
+            intended_config_path=inbox_config[0],
+            execute=execute,
+        )
+        if conflict:
+            return conflict
 
     target_payload = read_goal_channel_targets(target_path)
     matched = _target_for_connection(
