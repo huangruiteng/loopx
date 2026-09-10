@@ -20,17 +20,17 @@ need curl
 need tar
 need "$python_bin"
 
-tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loopx-install.XXXXXX")"
-cleanup() {
-  rm -rf "$tmp_dir"
-}
-trap cleanup EXIT
-
 if [[ -n "${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-}" \
   && ! "$LOOPX_RESOLVED_SOURCE_GIT_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
   echo "loopx installer error: LOOPX_RESOLVED_SOURCE_GIT_COMMIT must be a full Git commit SHA" >&2
   exit 2
 fi
+
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/loopx-install.XXXXXX")"
+cleanup() {
+  rm -rf "$tmp_dir"
+}
+trap cleanup EXIT
 
 if [[ -z "$archive_url" ]]; then
   if [[ ! "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then

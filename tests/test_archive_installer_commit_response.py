@@ -12,6 +12,32 @@ import pytest
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX archive installer")
+def test_invalid_commit_override_precedes_temp_directory_failure(tmp_path):
+    source = Path(__file__).resolve().parents[1]
+    env = {k: v for k, v in os.environ.items() if not k.startswith("LOOPX_")}
+    env.update(
+        TMPDIR=str(tmp_path / "missing"),
+        LOOPX_PYTHON=sys.executable,
+        LOOPX_RESOLVED_SOURCE_GIT_COMMIT="not-a-full-sha",
+    )
+
+    result = subprocess.run(
+        ["bash", str(source / "scripts/install-from-github.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 2
+    assert (
+        "LOOPX_RESOLVED_SOURCE_GIT_COMMIT must be a full Git commit SHA"
+        in result.stderr
+    )
+    assert "mktemp" not in result.stderr
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX archive installer")
 @pytest.mark.parametrize("valid", [True, False])
 def test_commit_response_uses_file_transport_and_cleans_up(tmp_path, valid):
     source = Path(__file__).resolve().parents[1]
