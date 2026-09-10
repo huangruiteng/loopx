@@ -35,3 +35,35 @@ completion. Later new evidence can generate a new decision through the ordinary
 worker planning workflow; do not overwrite the original receipt. This feature
 adds no periodic automation, forced wakeup, Todo priority or protected-operation
 permission. Existing private inbox records are retained when delivery is revoked.
+
+## Audience-authorized Goal summaries
+
+An external manager's connection anchor is not its entire portfolio. The local
+operator may grant a particular manager audience an explicit list of registered
+Goals, independently of the sender-bound context-delegation targets:
+
+```sh
+loopx manager-inbox configure-read-scope --channel-id manager.external.0123456789abcdef01234567 --read-goal-id project-a --read-goal-id project-b
+loopx manager-inbox configure-read-scope --channel-id manager.external.0123456789abcdef01234567 --read-goal-id project-a --read-goal-id project-b --execute
+```
+
+Use the exact channel identity from the existing manager session. The first
+command is a read-only configuration preview; `--execute` is a trusted local
+operator action, never a manager-generated proposal. Grant only Goal summaries
+that may be visible to everyone in that audience. This does not authorize raw
+private files, trading, mutation, or context delegation. New registered Goals
+are not automatically added. Configure with no `--read-goal-id` to revoke the
+read scope. Existing installations without a grant retain their connection
+scope; removing the field restores that default. Private policy is stored under
+`<runtime>/.local/manager-context/policy.json`, in `sources[channel].evidence_goal_ids`.
+The live connection must still match; disabled, ambiguous or replaced sessions
+cannot use an old grant. Every turn rechecks scope and discards upstream context
+when it changes.
+
+The manager now receives recent Core delivery receipts from the previous local
+calendar day through collection time, separate from current Todo freshness.
+Accounting rows are excluded before the presentation cap. Completed Todo titles
+help explain recorded deliveries; archive coverage and omitted rows are explicit.
+Reported outcomes and evidence-bearing receipts remain distinct, and neither
+means the referenced artifact was inspected. Lark text replies preserve paragraphs
+and use plain-text report formatting.

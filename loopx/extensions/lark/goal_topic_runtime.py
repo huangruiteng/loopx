@@ -1034,15 +1034,13 @@ def process_lark_goal_topic_event(
     connector = connector if isinstance(connector, Mapping) else None
     effect_receipt: Mapping[str, Any] | None = None
     if isinstance(answer_result, Mapping):
-        reply_text = " ".join(str(answer_result.get("response_text") or "").split())[
-            :1200
-        ]
+        reply_text = str(answer_result.get("response_text") or "").strip()[:6000]
         candidate_receipt = answer_result.get("effect_receipt")
         effect_receipt = (
             candidate_receipt if isinstance(candidate_receipt, Mapping) else None
         )
     else:
-        reply_text = " ".join(str(answer_result or "").split())[:1200]
+        reply_text = str(answer_result or "").strip()[:6000]
     if not reply_text:
         return {
             "ok": False,

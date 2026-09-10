@@ -3,7 +3,11 @@
 import json
 from ..agent_registry import registered_agent_ids_for_goal
 from ..history import load_registry
-from ..capabilities.manager_context import acknowledge, pending
+from ..capabilities.manager_context import (
+    acknowledge,
+    pending,
+    configure_evidence_scope,
+)
 
 
 def register_manager_inbox(subparsers, add_format):
@@ -12,9 +16,14 @@ def register_manager_inbox(subparsers, add_format):
         help="Read context handed to an Agent and record its replan decision.",
     )
     add_format(parser)
-    parser.add_argument("manager_inbox_action", choices=("read", "acknowledge"))
-    parser.add_argument("--goal-id", required=True)
-    parser.add_argument("--agent-id", required=True)
+    parser.add_argument(
+        "manager_inbox_action", choices=("read", "acknowledge", "configure-read-scope")
+    )
+    parser.add_argument("--goal-id")
+    parser.add_argument("--agent-id")
+    parser.add_argument("--channel-id")
+    parser.add_argument("--read-goal-id", action="append", default=[])
+    parser.add_argument("--execute", action="store_true")
     parser.add_argument("--request-id")
     parser.add_argument("--decision", choices=("adopt", "defer", "reject", "no_change"))
     parser.add_argument("--reason")
@@ -22,6 +31,16 @@ def register_manager_inbox(subparsers, add_format):
 
 def handle_manager_inbox(args, registry_path, runtime_root):
     try:
+        if args.manager_inbox_action == "configure-read-scope":
+            result = configure_evidence_scope(
+                runtime_root,
+                registry_path,
+                channel=args.channel_id or "",
+                goal_ids=args.read_goal_id,
+                execute=args.execute,
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         registry = load_registry(registry_path)
         goal = next(
             (g for g in registry.get("goals", []) if g.get("id") == args.goal_id), None

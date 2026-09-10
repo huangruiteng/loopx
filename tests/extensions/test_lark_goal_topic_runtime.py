@@ -298,7 +298,7 @@ def test_agent_session_topic_acks_after_effect_and_verified_reply(
     def answer(route: dict[str, Any], _text: str) -> dict[str, Any]:
         assert route["event_id"] == "evt_effect_committed"
         return {
-            "response_text": "work completed",
+            "response_text": "work completed\n\n• Evidence verified\n• Next step recorded",
             "effect_receipt": {
                 "schema_version": EFFECT_RECEIPT_SCHEMA_VERSION,
                 "event_id": route["event_id"],
@@ -325,7 +325,7 @@ def test_agent_session_topic_acks_after_effect_and_verified_reply(
 
     assert result["ok"] is True
     assert result["status"] == "replied_and_acknowledged", result
-    assert state["reply_text"] == "work completed"
+    assert state["reply_text"] == "work completed\n\n• Evidence verified\n• Next step recorded"
     projection = inspect_lark_event_inbox(
         project=tmp_path / "runtime",
         config_path=Path(result["inbox_config_ref"]),

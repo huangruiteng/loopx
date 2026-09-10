@@ -21,7 +21,8 @@ def test_current_owner_decision_keeps_task_meaning_and_relation(monkeypatch, tmp
     assert result['todos'][0]['title'] == 'Approve the launch copy'
     assert result['todos'][0]['unblocks_todo_id'] == 'todo_work'
     assert result['todos'][1]['title'] == 'Publish the reviewed launch packet'
-    assert 'todo_closed' not in str(result)
+    assert result['completed_todos'][0]['todo_id'] == 'todo_closed'
+    assert all(r['todo_id'] != 'todo_closed' for r in result['todos'])
     external = details.read_manager_goal_details(tmp_path/'r', tmp_path, 'alpha', owner_scope=False, limit=1)
     assert external['coverage']['omitted'] == 1
     assert 'continuation' not in external['todos'][0]
