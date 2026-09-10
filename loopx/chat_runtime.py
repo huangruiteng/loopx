@@ -10,6 +10,7 @@ import threading
 import time
 from typing import Any, Callable, Protocol
 
+from .chat_manager import MANAGER_AGENT_GOAL_ID, is_manager_channel
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError
 from .chat_endpoints import AgentEndpointRegistry
@@ -416,14 +417,14 @@ class ChatRuntimeController:
         if mode not in {"resume_latest", "new"}:
             raise ValueError("mode must be resume_latest or new")
         selected_channel = channel_id or f"goal.{goal_id}"
-        route_goal_id = "*" if selected_channel == "manager" else goal_id
+        route_goal_id = "*" if is_manager_channel(selected_channel) else goal_id
         route_key = (route_goal_id, agent_id, selected_channel)
         with self.lock:
             route_lock = self.session_open_locks.setdefault(route_key, threading.Lock())
         with route_lock:
             if mode == "resume_latest":
                 latest = self.store.latest_session(
-                    goal_id=None if selected_channel == "manager" else goal_id,
+                    goal_id=None if is_manager_channel(selected_channel) else goal_id,
                     agent_id=agent_id,
                     channel_id=selected_channel,
                 )
@@ -554,8 +555,8 @@ class ChatRuntimeController:
                 agent_id=str(session["agent_id"]),
                 work_dir=work_dir,
                 goal_id=(
-                    "loopx-manager"
-                    if session.get("channel_id") == "manager"
+                    MANAGER_AGENT_GOAL_ID
+                    if is_manager_channel(session.get("channel_id"))
                     else str(session["goal_id"])
                 ),
                 objective=objective,

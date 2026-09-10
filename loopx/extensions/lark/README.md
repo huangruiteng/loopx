@@ -277,3 +277,70 @@ https://open.larkoffice.com/page/scope-apply?clientID=<app_id>&scopes=<scope1%2C
 （`recommended_bot_scope_apply_url(app_id)` 会拼出完整 URL。）随后用
 `lark-cli config init --app-id <app_id> --app-secret-stdin --name <profile> --brand lark`
 注册 bot profile，再走 `loopx goal-channel setup`。敏感 scope 需企业管理员审核。
+
+## Goal Topic defaults and existing connections
+
+New Agent connections use `async_inbox` by default across the provider and local
+Chat API. `session_queue` and `live_steering` require an exact Agent session.
+`direct_session` is accepted when reading old bindings; it cannot be selected
+for a new connection write. Existing routes continue to work during migration.
+The older `goal-channel setup` notification/kanban workflow remains available;
+its recipientless connections need an Agent mapping before accepting modern
+Agent inbox work.
+
+Upgrade a Goal's existing Lark connections through the same provider contract:
+
+```sh
+loopx goal-channel upgrade --goal-id example-goal
+loopx goal-channel upgrade --goal-id example-goal --execute
+```
+
+An existing recipient, or the only registered Agent, is reused automatically.
+If an old connection has no recipient and the Goal has multiple Agents, select
+its opaque connection ID and the intended Agent explicitly:
+
+```sh
+loopx goal-channel upgrade --goal-id example-goal \
+  --connection-id lark_example --agent-id example-agent --execute
+```
+
+Preview is read-only. Upgrade retains the connection ID, default route, App,
+group, Topic root, capture scope, notification settings and receipts. It verifies
+the same Bot's membership and reads the exact old message back. Both the earlier
+`LoopX Goal:` control marker and the newer `Goal ID:` Topic marker are recognized
+as exact lines in that message. It creates no Topic and adds no group members.
+An unavailable root, mismatched identity, changed capture scope, or duplicate
+Agent route leaves the connection unmodified. Already upgraded routes are
+skipped, and a blocked route does not prevent independent upgrades.
+
+The local frontend uses `connection_id` for edits rather than reconstructing a
+connection from displayed App/group names. Saving an old connection defaults to
+its Agent inbox. Identity fields stay bound to the original connection even if
+its App profile alias is missing from the current App catalog. Source snapshots,
+private provider IDs and migration receipts belong in ignored local storage.
+Configuration readback alone does not prove that a user message was processed;
+verify runtime routing and delivery separately after migration.
+
+## Built-in machine manager
+
+Machine-level Lark onboarding defaults to **Manager · live conversation**. Goal
+worker connections remain a separate purpose with async inbox defaults. The
+manager is the built-in `loopx-manager` role, not an ordinary worker name or a
+project-specific heartbeat. Its executor endpoint defaults to `codex` and is
+recorded separately from its logical identity.
+
+A manager connection uses `conversation_kind=manager`. Preview has no session
+creation side effect. On apply, the Chat service opens or resumes the manager's
+exact audience session and binds `session_queue`; delivery waits for that turn
+and its verified reply, without waiting for a scheduled Agent wakeup. Group-root
+mentions and addressed replies can reach the manager without an invented Topic
+root. Exact worker Topics retain their own routing, and ambiguous manager
+bindings fail closed.
+
+The frontend and Lark use the same manager conversation service and the existing
+typed control plane. Their transcripts are separated by audience: an external
+conversation can never resume the owner's private frontend session or another
+group's session. Long-running work still belongs to worker Agents. Conversation
+turns retain the existing read-only tool policy and typed preview/apply authority;
+a synchronous response is not permission to mutate arbitrary repositories or
+skip a control-plane receipt.

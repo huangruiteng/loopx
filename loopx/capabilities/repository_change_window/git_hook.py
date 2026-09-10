@@ -19,6 +19,9 @@ from .repository import (
     RepositoryChangeWindowError,
     git,
     git_text,
+    repository_root,
+    repository_common_dir,
+    repository_identity,
     resolve_repository_context,
 )
 
@@ -182,6 +185,7 @@ def _hook_script(event: str) -> str:
         (
             "#!/bin/sh",
             "set -u",
+            "export LOOPX_GIT_HOOK_QUIET_SUCCESS=1",
             (
                 "exec loopx --format json change-window hook "
                 f'--repo-path . --event {event} -- "$@"'
@@ -471,9 +475,7 @@ def _provider_checks(
     include_runtime: bool = True,
 ) -> list[dict[str, object]]:
     hooks_dir = _hooks_dir(common_dir)
-    repository_matches = (
-        state.get("repository_id") == resolve_repository_context(repo).repository_id
-    )
+    repository_matches = state.get("repository_id") == repository_identity(repo, common_dir)
     configured = git_text(
         repo, "config", "--local", "--get", "core.hooksPath", check=False
     )
@@ -648,6 +650,10 @@ def install_git_hook_provider(
             and existing_policy == policy
             and _state_enforcement_level(existing) is enforcement
             and all(bool(item["ok"]) for item in checks)
+            and existing.get("hook_digests") == {
+                event: _digest_text(_hook_script(event))
+                for event in _managed_hook_names(enforcement)
+            }
         ):
             installation_mode = str(
                 existing.get("installation_mode") or "fresh_repository_provider"
@@ -953,6 +959,7 @@ def _commit_reachable_from_existing_branch_or_head(repo: Path, oid: str) -> bool
         f"--contains={oid}",
         "--format=%(refname)",
         "refs/heads",
+        "refs/remotes",
         check=False,
     )
     if containing_branches:
@@ -1060,16 +1067,19 @@ def run_git_hook_provider(
             "reason": "read_only_ssh_transport",
         }
 
-    context = resolve_repository_context(repo_path)
-    state = _read_state(_state_path(context.common_dir))
+    # Hook admission needs repository identity, not a checkout snapshot. In
+    # particular, reference hooks can run before HEAD exists in a new worktree.
+    root = repository_root(repo_path)
+    common_dir = repository_common_dir(root)
+    state = _read_state(_state_path(common_dir))
     enforcement = _state_enforcement_level(state)
     if event not in _managed_events(enforcement):
         raise RepositoryChangeWindowError(
             f"hook event `{event}` is not managed by enforcement level `{enforcement.value}`"
         )
     checks = _provider_checks(
-        repo=context.root,
-        common_dir=context.common_dir,
+        repo=root,
+        common_dir=common_dir,
         state=state,
         include_runtime=False,
     )
@@ -1083,21 +1093,23 @@ def run_git_hook_provider(
             "exit_code": 1,
             "checks": checks,
         }
-    policy = ChangeWindowPolicy.from_dict(state["policy"])
-    decision = evaluate_policy(policy, now=now)
     if event == REFERENCE_GUARD_HOOK_NAME:
         guarded_change = _reference_transaction_introduces_commit(
-            repo=context.root,
+            repo=root,
             hook_args=hook_args,
             hook_stdin=hook_stdin,
         )
     else:
         guarded_change = True
-    if guarded_change and not decision["allowed"]:
+    decision = (
+        evaluate_policy(ChangeWindowPolicy.from_dict(state["policy"]), now=now)
+        if guarded_change else None
+    )
+    if decision is not None and not decision["allowed"]:
         try:
             ledger_record: dict[str, Any] = record_pending_change(
                 runtime_root=runtime_root,
-                repo_path=context.root,
+                repo_path=root,
                 decision=decision,
                 source=f"git_hook:{event}",
                 execute=True,
@@ -1132,7 +1144,7 @@ def run_git_hook_provider(
     if previous_hook_invoked:
         result = subprocess.run(
             [str(previous_hook), *hook_args],
-            cwd=context.root,
+            cwd=root,
             input=hook_stdin,
             check=False,
         )
@@ -1144,6 +1156,7 @@ def run_git_hook_provider(
         "event": event,
         "exit_code": previous_exit_code,
         "decision": decision,
+        "policy_evaluated": guarded_change,
         "enforcement_level": enforcement.value,
         "guarded_change": guarded_change,
         "previous_hook_invoked": previous_hook_invoked,

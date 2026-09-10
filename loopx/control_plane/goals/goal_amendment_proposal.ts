@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { JsonObject } from "../effect_program.ts";
+import { sharedGoalWorkFacts } from "./shared_goal_work.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import {
   optionalNonEmptyString,
@@ -41,7 +42,8 @@ import {
  *
  * The derived goal basis facts arrive from the Python adapter via the Stage 1
  * alignment projection (`state_event_log` head = last append sequence). When
- * no event log exists the basis is `markdown_active_state` with sequence 0 —
+ * no event log exists the basis is `markdown_active_state` before promotion
+ * or `canonical_todo_snapshot` afterwards, both with sequence 0 —
  * the only sequence the markdown producer can emit — and a proposal binding
  * that real 0 is admitted as unverifiable instead of being forced to
  * fabricate a positive sequence.
@@ -49,7 +51,7 @@ import {
  * The proposal declares its own `base_revision_basis` — the type of the
  * basis it was actually produced against — so sequence producibility is
  * validated against the *claimed* basis, never inferred from the current
- * derived basis: 0 is only producible under `markdown_active_state`, and a
+ * derived basis: 0 is only producible under a non-event basis, and a
  * positive sequence is only producible under `state_event_log` (a fabricated
  * value under either claim fails closed as a request rejection). When a
  * Goal's basis evolves from markdown to a typed event log, a proposal still
@@ -108,6 +110,7 @@ export type GoalAmendmentAdmissionFact =
 export const REVISION_BASIS_VALUES = [
   "state_event_log",
   "markdown_active_state",
+  "canonical_todo_snapshot",
 ] as const;
 export type AmendmentRevisionBasis = (typeof REVISION_BASIS_VALUES)[number];
 
@@ -443,11 +446,11 @@ function requireProducibleBaseSequence(
   // event log — that transition is admissionOutcome's superseded branch,
   // not a fabricated history (review round 8).
   if (
-    proposal.base_revision_basis === "markdown_active_state" &&
+    proposal.base_revision_basis !== "state_event_log" &&
     proposal.base_state_event_basis_sequence !== 0
   ) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.base_state_event_basis_sequence must be 0 when the proposal's base_revision_basis is markdown_active_state (the real markdown basis has no event append sequence; do not fabricate one)",
+      `goal_amendment_proposal.base_state_event_basis_sequence must be 0 when the proposal\'s base_revision_basis is ${proposal.base_revision_basis} (no event append sequence; do not fabricate one)`,
     );
   }
   if (
@@ -482,9 +485,9 @@ function decodeDerivedBasis(value: unknown): DerivedGoalBasisFacts {
       "goal_amendment_proposal.derived_basis.state_event_basis_sequence must be a positive event append sequence when revision_basis is state_event_log",
     );
   }
-  if (revisionBasis === "markdown_active_state" && basisSequence !== 0) {
+  if (revisionBasis !== "state_event_log" && basisSequence !== 0) {
     throw new EffectRuntimeRequestError(
-      "goal_amendment_proposal.derived_basis.state_event_basis_sequence must be 0 when revision_basis is markdown_active_state",
+      `goal_amendment_proposal.derived_basis.state_event_basis_sequence must be 0 when revision_basis is ${revisionBasis}`,
     );
   }
   return {
@@ -697,7 +700,7 @@ function admissionOutcome(
     );
   }
   if (
-    proposal.base_revision_basis === "markdown_active_state" &&
+    proposal.base_revision_basis !== "state_event_log" &&
     derived.revision_basis === "state_event_log"
   ) {
     // A real markdown base that has since been superseded by the goal's
@@ -710,6 +713,13 @@ function admissionOutcome(
       admission: "needs_rebase",
       facts: ["base_revision_basis_superseded"],
     };
+  }
+  if (derived.revision_basis === "canonical_todo_snapshot") {
+    const facts: GoalAmendmentAdmissionFact[] = [];
+    if (proposal.base_revision_basis !== derived.revision_basis) facts.push("base_revision_basis_superseded");
+    if (proposal.base_source_basis_digest !== derived.source_basis_digest) facts.push("base_source_basis_digest_mismatch");
+    return facts.length ? {admission: "needs_rebase", facts}
+      : {admission: "admitted", facts: ["base_source_basis_unverifiable"]};
   }
   if (derived.revision_basis === "markdown_active_state") {
     // No event log to compare against: report unverifiable, never a
@@ -748,14 +758,19 @@ export function decodeGoalAmendmentProposalRequest(
       "goal amendment proposal request schema mismatch",
     );
   }
+  if (request.work_items !== undefined && request.goal_todo_inventory !== undefined) {
+    throw new EffectRuntimeRequestError("work_items cannot mix with preselected amendment inventory");
+  }
+  const proposal = decodeProposal(request.proposal);
   return {
     schema_version: GOAL_AMENDMENT_PROPOSAL_REQUEST_SCHEMA_VERSION,
-    proposal: decodeProposal(request.proposal),
+    proposal,
     derived_basis: decodeDerivedBasis(request.derived_basis),
     open_replan_obligations: decodeOpenReplanObligations(
       request.open_replan_obligations,
     ),
-    goal_todo_inventory: decodeGoalTodoInventory(request.goal_todo_inventory),
+    goal_todo_inventory: decodeGoalTodoInventory(request.work_items === undefined
+      ? request.goal_todo_inventory : sharedGoalWorkFacts(request.work_items, proposal.proposer_agent_id, request.observed_at).goal_todo_inventory),
   };
 }
 

@@ -3,7 +3,7 @@
 - 状态：草案；维护者评审中
 - 跟踪 Issue：[#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - 日期：2026-09-02
-- 最后更新：2026-09-05
+- 最后更新：2026-09-09
 - 范围：多个对等 Agent 围绕同一个共享 Goal 协作，同时保留 canonical
   intent、每个 Agent 的执行 frontier、claim/lease 所有权，以及可审计的
   replan/amendment 决策
@@ -18,6 +18,17 @@
 ---
 
 ## 1. 摘要与决策
+
+实现检查点（仅 Stage 1/2）：alignment 与 amendment admission 共用一份完整 Todo/lease
+来源快照。Promotion 前仍为 legacy 读取；之后 canonical 空状态和 provider 失败都不
+回退 Markdown 或逐 Todo lease 文件。TS 筛选排除非 open、归档和恢复条件未满足的
+工作；Agent eligibility 还遵守 exclusion，但 amendment 影响范围可包含其他 Agent
+持有或当前 executor 被排除的开放工作。Source digest 通过 `source_basis.todo_basis`
+绑定 canonical provider revision。有 state event log 时，`revision_basis=state_event_log`
+仍只表示事件轴；没有时，promoted 读取使用 `canonical_todo_snapshot`、事件序号 0 和
+unbound Agent frontier。即使事件序号为 0，canonical digest 变化也要求 `needs_rebase`。
+这不等于完整 Goal intent envelope 已版本化，不推断 Agent 已确认，也不把 admission
+变成审批或 CAS commit；Stage 3 仍须重新验证自己的精确提交时 basis。
 
 LoopX 将区分四类不能坍缩为一份可变计划的状态：
 

@@ -22,6 +22,9 @@ import { prepareCoordinationProjectionCommit } from "../../loopx/control_plane/c
 import { executeCoordinationTodoClaim } from "../../loopx/control_plane/coordination/todo_claim.ts";
 import { executeCoordinationTodoCreate } from "../../loopx/control_plane/coordination/todo_create.ts";
 import { executeCoordinationTodoUpdate } from "../../loopx/control_plane/coordination/todo_update.ts";
+import { listLocalCoordinationTodos, LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA }
+  from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
+import { sharedGoalWorkFacts } from "../../loopx/control_plane/goals/shared_goal_work.ts";
 import {
   executeCoordinationTodoArchiveCompleted,
   executeCoordinationTodoTerminalLifecycle,
@@ -212,6 +215,53 @@ export function registerAuthorityStoreConformance(
   providerName: string,
   factory: AuthorityStoreConformanceFactory,
 ): void {
+  for (const native of [false, true]) test(`${providerName} conformance: governance reads one full Todo/lease snapshot (${native ? "native" : "legacy"})`, async (t) => {
+    const {store} = await factory(t);
+    const goal = "goal-governance";
+    const fixture = productionScaleCoordinationFixture(goal);
+    const projection = structuredClone(fixture.projection);
+    const records = projection.todos as Record<string, unknown>[];
+    if (native) {
+      for (const record of records) {
+        record.schema_version = TODO_DOMAIN_ITEM_SCHEMA;
+        delete record.source_section; delete record.index;
+      }
+      projection.todo_read_model = {schema_version: TODO_DOMAIN_READ_RECORD_SCHEMA,
+        todo_count: records.length, records_sha256: canonicalAuthoritySha256(records),
+        contract_fields: [...TODO_DOMAIN_RECORD_CONTRACT.fields]};
+    }
+    const seeded = await store.commitAuthority({operation_id: "governance-fixture",
+      expected_provider_revision: null, events: [], receipts: [], next_projection: projection});
+    assert.equal(seeded.status, "applied");
+    const request = {schema_version: LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA,
+      runtime_root: "/synthetic-runtime", goal_id: goal};
+    const plain = await listLocalCoordinationTodos(request, {createStore: () => store});
+    assert.equal(plain.status, "loaded");
+    assert.equal(Object.hasOwn(plain, "leases"), false); // Default-off response parity.
+    assert.deepEqual(await listLocalCoordinationTodos({...request, include_leases: false},
+      {createStore: () => store}), plain);
+    assert.notEqual((await listLocalCoordinationTodos({...request, include_leases: "true"},
+      {createStore: () => store})).status, "loaded");
+    const load = store.loadAuthority.bind(store);
+    let reads = 0;
+    store.loadAuthority = async () => { reads++; return load(); };
+    const full = await listLocalCoordinationTodos({...request, include_leases: true}, {createStore: () => store});
+    store.loadAuthority = load;
+    assert.equal(full.status, "loaded");
+    assert.equal(reads, 1);
+    assert.equal(full.provider_revision, plain.provider_revision);
+    assert.deepEqual(full.todos, plain.todos);
+    assert.equal((full.todos as unknown[]).length, fixture.expected_initial_todo_count);
+    assert.equal((full.leases as unknown[]).length, fixture.expected_current_lease_count);
+    const leases = new Map((full.leases as Record<string, unknown>[]).map((lease) => [lease.todo_id, lease]));
+    const items = (full.todos as Record<string, unknown>[]).filter((item) => item.role === "agent")
+      .map((item) => ({...item, lease: leases.get(item.todo_id) ?? null}));
+    const facts = sharedGoalWorkFacts(items, "agent-a", "2026-09-09T12:00:00Z");
+    // 48 open rows: 12 monitors, with the completion target converted to advancement.
+    assert.deepEqual(facts.frontier_counts, {current_agent_claimed_advancement_count: 13,
+      unclaimed_advancement_count: 0, other_agent_claimed_advancement_count: 24});
+    assert.equal((facts.goal_todo_inventory as unknown[]).length, 48);
+  });
   test(`${providerName} conformance: atomic transition, projection, and receipt`, async (t) => {
     const { store } = await factory(t);
     assert.deepEqual(await store.loadAuthority(), { status: "missing" });

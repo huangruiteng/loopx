@@ -10,6 +10,7 @@ import {
   TODO_COMPLETION_STATE_REQUEST_SCHEMA,
 } from "./completion_state.ts";
 import { normalizeTodoResumeWhen, TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION } from "./resume_condition.ts";
+import { MONITOR_METADATA_FIELDS, planMonitorMetadata, TODO_MONITOR_METADATA_REQUEST_SCHEMA } from "./monitor_metadata.ts";
 
 export const TODO_FIELD_UPDATE_REQUEST_SCHEMA = "loopx_todo_field_update_request_v0";
 export const TODO_FIELD_UPDATE_RESULT_SCHEMA = "loopx_todo_field_update_result_v0";
@@ -27,9 +28,6 @@ const STRING_FIELDS = ["note", "evidence", "completion_turn_key", "reason", "tas
 const PRESENT_FIELDS = ["required_write_scopes", "required_capabilities", "target_capabilities",
   "explore_result_node_refs", "decision_scope", "required_decision_scopes", "decision_outcome",
   "decision_scope_outcomes"] as const;
-const MONITOR_FIELDS = ["target_key", "monitor_effect_id", "cadence", "next_due_at", "expires_at",
-  "last_checked_at", "result_hash", "consecutive_no_change", "material_change",
-  "material_change_generation", "max_no_change_before_replan", "watch_only"] as const;
 const FLAGS = ["clear_claim", "claim_only", "clear_user_binding", "clear_blocks_agent",
   "clear_global_gate", "clear_resume_when"] as const;
 const INTENT_FIELDS = new Set<string>([...STRING_FIELDS, ...PRESENT_FIELDS, ...FLAGS,
@@ -190,10 +188,18 @@ export function planTodoFieldUpdate(value: unknown): TodoFieldUpdatePlan {
   }
   if (present(intent.no_followup)) updates.no_followup = intent.no_followup;
   Object.assign(updates, completionUpdates(block, intent, targetStatus, normalizedStatus));
-  if (present(intent.monitor_metadata)) {
-    const monitor = requireJsonObject(intent.monitor_metadata, "monitor metadata");
-    for (const field of MONITOR_FIELDS) if (Object.hasOwn(monitor, field)) updates[field] = monitor[field];
+  // Public update carries the effective scope and raw observation once. The
+  // field plan composes validation and generation without another RPC.
+  const monitorPlan = request.monitor_context == null ? null : planMonitorMetadata({
+    ...requireJsonObject(request.monitor_context, "monitor context"),
+    schema_version: TODO_MONITOR_METADATA_REQUEST_SCHEMA, existing: block, generated_at: updatedAt,
+  });
+  const monitor = monitorPlan?.metadata ?? intent.monitor_metadata;
+  if (present(monitor)) {
+    const metadata = requireJsonObject(monitor, "monitor metadata");
+    for (const field of MONITOR_METADATA_FIELDS) if (Object.hasOwn(metadata, field)) updates[field] = metadata[field];
   }
   return {schema_version: TODO_FIELD_UPDATE_RESULT_SCHEMA, normalized_status: normalizedStatus,
-    target_status: targetStatus, metadata_updates: updates};
+    target_status: targetStatus, metadata_updates: updates,
+    ...(monitorPlan?.transition ? {monitor_poll_transition: monitorPlan.transition} : {})};
 }

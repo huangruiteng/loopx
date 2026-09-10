@@ -3,7 +3,7 @@
 - Status: Draft; under maintainer review
 - Tracking issue: [#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - Date: 2026-09-02
-- Last updated: 2026-09-05
+- Last updated: 2026-09-09
 - Scope: peer Agents collaborating around one shared Goal while preserving
   canonical intent, per-Agent execution frontiers, claim/lease ownership, and
   auditable replan/amendment decisions
@@ -19,6 +19,20 @@
 ---
 
 ## 1. Summary and decision
+
+Implementation checkpoint (Stages 1/2 only): alignment and amendment admission
+share one full Todo/lease source snapshot. Before promotion this remains a
+legacy read; afterwards canonical empty state and provider failures never fall
+back to Markdown or per-Todo lease files. Typed selection excludes non-open,
+archived and unsatisfied-wait work; Agent eligibility also honors exclusions,
+while amendment impact may include peer-held or executor-excluded open work.
+The source digest binds the canonical provider revision in `source_basis.todo_basis`.
+With a state event log, `revision_basis=state_event_log` still names only that
+event axis. Without one, promoted reads use `canonical_todo_snapshot` with
+event sequence 0 and an unbound Agent frontier. A changed canonical digest
+requires `needs_rebase` even at sequence 0. This does not version the full Goal
+intent envelope, infer Agent acknowledgement, or turn admission into an approval
+or CAS commit; Stage 3 must still revalidate its own exact commit-time basis.
 
 LoopX will distinguish four kinds of state that must not collapse into one
 mutable plan:

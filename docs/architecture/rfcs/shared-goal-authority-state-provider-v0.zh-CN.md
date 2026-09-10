@@ -2002,10 +2002,21 @@ backend、实时双向同步或按命令拆开的权威；晋升后不支持的�
 
 #### 重构主线总览
 
+Monitor 状态 owner 现位于 TS，并由 legacy update field plan 组合调用；删除 Python
+poll/generation 与 metadata 规则，但持锁及结果提交仍由 legacy writer 负责。
+Typed plan 不是 authority receipt；Monitor/successor 原子性、原生 metadata update、
+provider 默认值及 D1–D3 仍是独立、未完成的门禁。永久 Markdown 投影仍属于终态架构。
+
 Todo authoring scope 已与 terminal successor 共用 TS 最终绑定不变量；仅显式
 `global_gate` 可以扩大阻塞到全部注册 agent，`goal_bound` 不授予全局 gate 语义。
 这是 T1 准入规则收拢；不扩张 native update 字段权限、不改变 provider/profile 默认值，
 也不解除 D1–D3 的投影、真实 backend、soak 或 promotion 条件。
+
+Shared-goal alignment 与 amendment admission 在 promotion 后共用同一个 canonical
+Todo/lease revision，包括权威空集合；旧展示／lease 文件读取仅保留在 promotion 前。
+Proposal source digest 包含该 revision，但不将它冒充 Goal intent revision 或
+amendment commit receipt。这是有边界的 T3 consumer 闭合；默认 provider、永久投影、
+D1–D3 资格化和 T1/T2 条件保持不变。
 
 以下规划保留原有方向；执行卡是它们的展开，不是替代或取消：
 

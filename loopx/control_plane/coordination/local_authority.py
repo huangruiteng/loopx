@@ -178,7 +178,7 @@ def claim_canonical_todo_if_promoted(
 
 
 def read_canonical_todos_if_promoted(
-    *, runtime_root: Path, goal_id: str
+    *, runtime_root: Path, goal_id: str, include_leases: bool = False,
 ) -> dict[str, Any] | None:
     """Return canonical Todos after cutover, or ``None`` before cutover.
 
@@ -196,6 +196,7 @@ def read_canonical_todos_if_promoted(
             "schema_version": LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA,
             "runtime_root": str(runtime_root.expanduser().resolve(strict=False)),
             "goal_id": goal_id,
+            **({"include_leases": True} if include_leases else {}),
         },
     )
     if not isinstance(result, Mapping):
@@ -230,6 +231,15 @@ def read_canonical_todos_if_promoted(
             payload=payload,
         )
     payload["todos"] = [dict(item) for item in todos]
+    if include_leases and (
+        not isinstance(payload.get("leases"), list)
+        or any(not isinstance(item, Mapping) for item in payload["leases"])
+        or not isinstance(payload.get("provider_revision"), str)
+    ):
+        raise LocalCoordinationAuthorityUnavailable(
+            "canonical Todo/lease snapshot is incomplete", code="local_authority_snapshot_incomplete",
+            payload=payload,
+        )
     return payload
 
 

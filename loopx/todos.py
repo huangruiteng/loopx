@@ -797,11 +797,8 @@ def add_goal_todo(
     updated_at = now_local()
     normalized_monitor_metadata = todo_monitor_metadata.require_monitor_metadata_scope(
         monitor_metadata=monitor_metadata, role=role, task_class=task_class,
-        generated_at=updated_at,
-    )
-    todo_monitor_metadata.require_continuous_monitor_boundedness(
-        task_class=task_class, resume_when=normalized_resume_when,
-        monitor_metadata=normalized_monitor_metadata,
+        generated_at=updated_at, resume_when=normalized_resume_when,
+        enforce_boundedness=True,
     )
     canonical_create = create_canonical_todo_if_promoted(
         registry_path=registry_path,
@@ -1222,12 +1219,7 @@ def update_goal_todo(
             raise ValueError(f"todo_id {normalized_todo_id!r} was not found in active user or agent todos")
         existing_role, _section, _start, _end, existing_block = existing_block_match
         target_role = role or existing_role
-        monitor_metadata_input, monitor_poll_transition = (
-            todo_monitor_metadata.resolve_monitor_metadata_input(
-                existing=existing_block,
-                monitor_metadata=monitor_metadata,
-            )
-        )
+        monitor_intent = todo_monitor_metadata.monitor_metadata_intent(monitor_metadata)
         authority_todo = dict(existing_block)
         authority_todo["role"] = target_role
         authority_action = todo_update_authority_action(
@@ -1247,7 +1239,7 @@ def update_goal_todo(
                 clear_global_gate, unblocks_todo_id, successor_todo_ids,
                 resume_when, clear_resume_when, no_followup,
             ),
-            monitor_metadata=monitor_metadata_input,
+            monitor_metadata=monitor_intent["observation"] or monitor_intent["metadata"],
         )
         mutation_authority = authorize_todo_lifecycle_mutation(
             registry_path=registry_path,
@@ -1336,14 +1328,6 @@ def update_goal_todo(
                 task_class=target_task_class,
             )
         )
-        normalized_monitor_metadata = todo_monitor_metadata.validate_monitor_metadata_update(
-            monitor_metadata=monitor_metadata_input,
-            existing=existing_block,
-            role=target_role,
-            task_class=target_task_class, generated_at=updated_at,
-            resume_when=effective_resume_when,
-            enforce_boundedness=enforce_monitor_boundedness,
-        )
         update_result = apply_todo_update_to_lines(
             lines,
             todo_id=todo_id,
@@ -1386,7 +1370,11 @@ def update_goal_todo(
             completion_metadata_updates_override=(
                 completion_metadata_updates_override
             ),
-            monitor_metadata=normalized_monitor_metadata,
+            monitor_context={
+                **monitor_intent, "role": target_role, "task_class": target_task_class,
+                "resume_when": effective_resume_when,
+                "enforce_boundedness": enforce_monitor_boundedness,
+            },
             clear_claim=clear_claim,
             claim_only=claim_only,
             updated_at=updated_at,
@@ -1422,8 +1410,6 @@ def update_goal_todo(
             payload["parent_successor_advisory"] = parent_successor_advisory
     if external_wait_transition is not None:
         payload["external_wait_transition"] = external_wait_transition
-    if monitor_poll_transition is not None:
-        payload["monitor_poll_transition"] = monitor_poll_transition
     payload = _attach_todo_write_correctness_dry_run_packet(
         payload,
         goal_id=goal_id,

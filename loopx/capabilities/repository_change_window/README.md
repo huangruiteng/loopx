@@ -61,11 +61,27 @@ the repository-local `core.sshCommand` route. In a blocked window it rejects a
 `git commit --no-verify`. The `pre-push` hook covers ordinary pushes, while the
 SSH route also rejects an SSH push that uses `--no-verify`. Checkout,
 linked-worktree creation, branch deletion, SSH fetches, and local branch
-creation at a commit already reachable from another local branch or the current
-`HEAD` stays available. Tags, notes, and custom refs do not make a new commit
+creation at a commit already reachable from another local branch, a remote-tracking
+branch, or the current `HEAD` stays available. This includes fast-forward pulls
+after fetch; a pull that creates a new merge/rebase commit still faces the gate.
+Tags, notes, and custom refs do not make a new commit
 eligible for a local-branch update during the blocked window.
 Unknown SSH service commands fail closed. `status` and `verify` report the
 typed enforcement level, exact managed hook set, and SSH-route health.
+
+Managed hooks use the selected-command CLI loader rather than loading every
+capability. Reference updates outside `HEAD`/local branches and post-transaction
+phases do not evaluate the time policy. Provider integrity checks and the prior
+hook's phase, input, output and exit status remain in force. Successful managed
+hooks are quiet; failures remain visible. Direct `change-window hook` diagnostics
+remain structured unless `LOOPX_GIT_HOOK_QUIET_SUCCESS=1` is set. This flag only
+controls output, never admission, and is harmless with older runtimes.
+
+After upgrading the runtime, preview `change-window install` with the existing
+policy and enforcement settings plus `--replace`, then add `--execute` to refresh
+older generated hooks. Preserve the existing window; do not accidentally use
+installation defaults as a new policy. Status/verify still recognize an intact
+older installation; install detects that its hook generation needs refresh.
 
 Customize one typed v0 window with repeatable weekdays and IANA timezone data:
 
@@ -226,7 +242,8 @@ This is local workflow enforcement, not branch protection. `hook_only` can be
 bypassed with `--no-verify`; `reference_guard` closes that commit path and the
 repository's SSH transport path. HTTPS pushes that both skip `pre-push` and
 avoid SSH, replacing `core.hooksPath` or `core.sshCommand`, using an alternate
-Git configuration or binary, directly editing ref files, writing from another
+Git configuration or binary, staging fabricated remote-tracking refs, directly
+editing ref files, writing from another
 machine, or calling a hosting API remain outside its authority. Use OS policy
 plus remote branch protection or server-side controls for a security boundary.
 The capability does not push, merge, create a PR, modify protected branches,

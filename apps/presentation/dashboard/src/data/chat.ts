@@ -1526,6 +1526,7 @@ export async function fetchLarkGroupChats(appRef: string, query?: string) {
 }
 
 export type LarkGoalConnection = {
+  conversation_kind?: "goal" | "manager";
   agent_id: string | null;
   connection_id: string;
   app_label: string;
@@ -1556,6 +1557,7 @@ export type LarkGoalConnection = {
 const larkConnectionsSchema = z.object({
   ok: z.literal(true),
   connections: z.array(z.object({
+    conversation_kind: z.enum(["goal", "manager"]).default("goal"),
     agent_id: z.string().nullable().default(null),
     connection_id: z.string(),
     app_label: z.string(),
@@ -1601,12 +1603,14 @@ export async function fetchLarkConnections() {
 }
 
 export async function connectLarkGoalTopic(options: {
+  conversationKind?: "goal" | "manager";
   agentBindings?: Array<{ agentId: string; appRef: string }>;
   agentId?: string;
   appRef?: string;
   captureScope: LarkCaptureScope;
-  chatId: string;
-  chatName: string;
+  chatId?: string;
+  chatName?: string;
+  connectionId?: string;
   execute: boolean;
   goalId: string;
   incomingMode: "mentions" | "all";
@@ -1625,6 +1629,8 @@ export async function connectLarkGoalTopic(options: {
         } : {}),
         ...(options.agentId ? { agent_id: options.agentId } : {}),
         ...(options.appRef ? { app_ref: options.appRef } : {}),
+        ...(options.connectionId ? { connection_id: options.connectionId } : {}),
+        conversation_kind: options.conversationKind ?? "goal",
         capture_scope: options.captureScope,
         chat_id: options.chatId,
         chat_name: options.chatName,

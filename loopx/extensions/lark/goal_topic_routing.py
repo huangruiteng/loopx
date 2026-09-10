@@ -20,6 +20,33 @@ class CaptureScope(str, Enum):
     CONFIGURED_CHAT_ALL = "configured_chat_all"
 
 
+class IngressMode(str, Enum):
+    LIVE_STEERING = "live_steering"
+    SESSION_QUEUE = "session_queue"
+    # Read compatibility for bindings created by the first Goal Topic slice.
+    DIRECT_SESSION = "direct_session"
+    ASYNC_INBOX = "async_inbox"
+
+
+class ReplyMode(str, Enum):
+    TOPIC_REPLY = "topic_reply"
+
+
+def _routing_value(
+    enum_type: type[CaptureScope | IngressMode | ReplyMode],
+    value: Any,
+    *,
+    default: str,
+    field: str,
+) -> str:
+    normalized = str(value or default).strip().lower()
+    try:
+        return enum_type(normalized).value
+    except ValueError as exc:
+        allowed = ", ".join(item.value for item in enum_type)
+        raise ValueError(f"{field} must be one of: {allowed}") from exc
+
+
 def _normalize_mention_name(name: str) -> str:
     cleaned = str(name or "").strip()
     if cleaned.startswith("@"):

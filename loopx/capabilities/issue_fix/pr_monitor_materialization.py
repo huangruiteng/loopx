@@ -8,8 +8,8 @@ from typing import Any
 
 from ...control_plane.scheduler.monitor_todo import (
     monitor_next_due_at,
-    parse_monitor_counter,
 )
+from ...control_plane.todos.monitor_metadata import MonitorPollObservation
 from ...todos import (
     add_goal_todo,
     complete_goal_todo,
@@ -145,18 +145,13 @@ def materialize_issue_fix_grouped_monitors(
         previous_hash = str((previous or {}).get("result_hash") or "")
         reopening = bool((previous or {}).get("done"))
         material_change = reopening or previous_hash != result_hash
-        previous_no_change = parse_monitor_counter(
-            (previous or {}).get("consecutive_no_change")
-        )
         monitor_metadata = {
             "target_key": target_key,
             "cadence": cadence,
             "next_due_at": next_due_at,
             "last_checked_at": generated_at,
             "result_hash": result_hash,
-            "consecutive_no_change": (
-                "0" if material_change else str(previous_no_change + 1)
-            ),
+            "consecutive_no_change": "0",
             "material_change": "true" if material_change else "false",
             "watch_only": "true",
         }
@@ -185,7 +180,14 @@ def materialize_issue_fix_grouped_monitors(
                 role="agent",
                 status="open" if reopening else None,
                 reason=reason,
-                monitor_metadata=monitor_metadata,
+                # Membership is an observation, not precomputed Todo state.
+                # The writer derives counters/generation against its locked
+                # snapshot, just like quota monitor-poll.
+                monitor_metadata=MonitorPollObservation(
+                    generated_at=generated_at, result_hash=result_hash,
+                    material_change=material_change, target_key=target_key,
+                    cadence=cadence, next_due_at=next_due_at,
+                ),
                 no_followup=False if reopening else None,
                 agent_id=claimed_by,
                 project=project,

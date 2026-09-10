@@ -30,6 +30,7 @@ from .chat_goal_subagent_api import (
 )
 from .chat_status_api import ChatStatusRequestMixin
 from .chat_runtime import ChatRuntimeController, TERMINAL_TURN_STATES
+from .chat_manager import MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel
 from .chat_ssh_source_api import SSH_SOURCE_ENSURE_PATH, SshSourceRequestMixin
 from .chat_store import ChatSessionStore
 from .control_plane.status.ssh_host_catalog import (
@@ -89,15 +90,6 @@ CHAT_ENDPOINTS_PATH = "/api/chat/endpoints"
 CHAT_SESSIONS_PATH = "/api/chat/sessions"
 CHAT_ATTACH_SESSION_PATH = f"{CHAT_SESSIONS_PATH}/attach"
 CHAT_PROJECTION_MESSAGES_PATH = "/api/chat/projection-messages"
-MANAGER_AGENT_GOAL_ID = "loopx-manager"
-MANAGER_AGENT_OBJECTIVE = (
-    "Serve as the user's LoopX Goal manager. Answer only the current user message in concise Chinese. "
-    "Summarize and clarify Goal state, and convert requested durable changes into bounded proposals. "
-    "Do not inspect repositories, modify files, run commands, or mutate LoopX state in this Chat Turn. "
-    "Goal, Todo, Agent, heartbeat, monitor, gate, and correction changes must be presented through "
-    "the typed preview and explicit apply control plane. Never claim that a durable change happened "
-    "until the control plane returns a verified receipt."
-)
 CHAT_TODO_DRY_RUN_PATH = "/api/chat/todo/dry-run"
 CHAT_TODO_APPLY_PATH = "/api/chat/todo/apply"
 CHAT_GOAL_CHANNEL_TARGETS_PATH = "/api/chat/goal-channel/targets"
@@ -682,7 +674,7 @@ class ChatRequestHandler(
             context = _goal_public_context(registry, goal)
             runtime_objective = (
                 MANAGER_AGENT_OBJECTIVE
-                if session.get("channel_id") == "manager"
+                if is_manager_channel(session.get("channel_id"))
                 else str(context["objective"] or context["title"])
             )
             turn, created = self.server.runtime_controller.submit_turn(
@@ -856,7 +848,7 @@ class ChatRequestHandler(
             context = _goal_public_context(registry, goal)
             objective = (
                 MANAGER_AGENT_OBJECTIVE
-                if session.get("channel_id") == "manager"
+                if is_manager_channel(session.get("channel_id"))
                 else str(context["objective"] or context["title"])
             )
             restored = self.server.runtime_controller.resume_session(

@@ -66,6 +66,7 @@
     "loopx/control_plane/work_items/task_lease_acquire_cli.ts",
     "examples/nokv-authority-store/live-qualification.ts",
     "tests/control_plane_ts/effect_program.test.ts",
+    "tests/control_plane_ts/monitor_metadata.test.ts",
     "tests/control_plane_ts/effect_runtime_errors.test.ts",
     "tests/control_plane_ts/post_writeback_hook_transaction.test.ts",
     "tests/control_plane_ts/interaction_contract.test.ts",

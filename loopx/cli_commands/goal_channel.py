@@ -24,6 +24,7 @@ from ..extensions.lark.goal_channel import (
     sync_lark_goal_channel,
 )
 from ..extensions.lark.goal_channel_contracts import binding_for_goal, operation_packet
+from ..extensions.lark.goal_topic_batch import upgrade_lark_goal_topics
 from ..extensions.runtime import (
     default_extension_state_file,
     resolve_extension_activation,
@@ -63,6 +64,18 @@ def register_goal_channel_commands(
         help="Project one LoopX goal into a provider-backed collaboration channel.",
     )
     sub = parser.add_subparsers(dest="goal_channel_command", required=True)
+
+    upgrade = sub.add_parser(
+        "upgrade",
+        help="Upgrade old connections to Agent inboxes in place. Dry-run unless --execute.",
+    )
+    add_subcommand_format(upgrade)
+    _add_common_args(upgrade)
+    upgrade.add_argument("--connection-id", help="Select one existing connection.")
+    upgrade.add_argument(
+        "--agent-id", help="Recipient for an exact unassigned connection."
+    )
+    upgrade.add_argument("--execute", action="store_true")
 
     setup = sub.add_parser(
         "setup",
@@ -699,7 +712,18 @@ def handle_goal_channel_command(
                     if target_name
                     else None
                 )
-                if target_name and provider_target is None:
+                if command == "upgrade":
+                    payload = upgrade_lark_goal_topics(
+                        registry=source_registry,
+                        registry_path=source_registry_path,
+                        goal_id=goal_id,
+                        binding_path=binding_path,
+                        target_path=target_path,
+                        connection_id=args.connection_id,
+                        agent_id=args.agent_id,
+                        execute=execute,
+                    )
+                elif target_name and provider_target is None:
                     payload = _error_packet(
                         goal_id=goal_id,
                         operation=command.replace("-", "_"),

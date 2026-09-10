@@ -19,13 +19,6 @@ from .state_transition_rules import project_monitor_todo_schedule
 parse_monitor_timestamp = parse_scheduler_timestamp
 
 
-def parse_monitor_counter(value: Any) -> int:
-    try:
-        return max(0, int(str(value or "0").strip()))
-    except ValueError:
-        return 0
-
-
 def monitor_cadence_delta(value: Any) -> timedelta | None:
     projected = project_monitor_todo_schedule(
         generated_at="1970-01-01T00:00:00Z",

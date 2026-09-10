@@ -42,6 +42,7 @@ from .completion_state import (
     normalize_todo_completion_continuation,
     normalize_todo_completion_recovery,
 )
+from .contract import TODO_MONITOR_METADATA_FIELDS
 
 
 def upsert_todo_metadata(
@@ -150,7 +151,8 @@ def link_superseding_todo_id(
 
 
 def _field_update_plan(
-    block: Mapping[str, Any], intent: dict[str, Any], updated_at: str
+    block: Mapping[str, Any], intent: dict[str, Any], updated_at: str,
+    monitor_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Adapt source facts only; the TS planner owns omission/clear/state rules."""
     try:
@@ -169,10 +171,13 @@ def _field_update_plan(
                         "no_followup",
                         "completion_continuation",
                         "successor_todo_ids",
+                        "task_class",
+                        *TODO_MONITOR_METADATA_FIELDS,
                     )
                 },
                 "intent": intent,
                 "updated_at": updated_at,
+                "monitor_context": monitor_context,
             },
         )
     except EffectRuntimeRejected as exc:
@@ -232,6 +237,7 @@ def apply_todo_update_to_lines(
     clear_resume_when: bool = False,
     no_followup: bool | None = None,
     monitor_metadata: dict[str, Any] | None = None,
+    monitor_context: dict[str, Any] | None = None,
     clear_claim: bool = False,
     claim_only: bool = False,
     updated_at: str,
@@ -299,6 +305,7 @@ def apply_todo_update_to_lines(
             "claim_only": claim_only,
         },
         updated_at,
+        monitor_context,
     )
     normalized_status = plan["normalized_status"]
     target_status = plan["target_status"]
@@ -319,6 +326,8 @@ def apply_todo_update_to_lines(
     metadata_updated = upsert_todo_metadata(lines, block, metadata_line)
     effective_metadata = parse_todo_metadata_line(metadata_line or "") or {}
     return {
+        **({"monitor_poll_transition": plan["monitor_poll_transition"]}
+           if "monitor_poll_transition" in plan else {}),
         "role": resolved_role,
         "section": section,
         "todo": block.get("text"),

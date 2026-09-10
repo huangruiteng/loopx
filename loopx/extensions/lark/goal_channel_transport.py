@@ -113,8 +113,7 @@ def contains_exact_field(
         if str(payload.get(key) or "") == expected:
             return True
         return any(
-            contains_exact_field(value, key, expected)
-            for value in payload.values()
+            contains_exact_field(value, key, expected) for value in payload.values()
         )
     if isinstance(payload, list):
         return any(contains_exact_field(value, key, expected) for value in payload)
@@ -131,7 +130,9 @@ def payload_contains_text(payload: Any, expected: str) -> bool:
 
 def payload_contains_exact(payload: Any, expected: str) -> bool:
     if isinstance(payload, Mapping):
-        return any(payload_contains_exact(value, expected) for value in payload.values())
+        return any(
+            payload_contains_exact(value, expected) for value in payload.values()
+        )
     if isinstance(payload, list):
         return any(payload_contains_exact(value, expected) for value in payload)
     return isinstance(payload, str) and payload == expected
@@ -235,16 +236,10 @@ def goal_topic_message_permissions(
     payload = json_payload(result)
     granted_raw = payload.get("granted")
     granted_items = granted_raw if isinstance(granted_raw, list) else []
-    granted = {
-        str(scope)
-        for scope in granted_items
-        if isinstance(scope, str)
-    }
+    granted = {str(scope) for scope in granted_items if isinstance(scope, str)}
     missing = [scope for scope in REQUIRED_GOAL_TOPIC_SCOPES if scope not in granted]
     ready = bool(
-        result.get("returncode") == 0
-        and payload.get("ok") is True
-        and not missing
+        result.get("returncode") == 0 and payload.get("ok") is True and not missing
     )
     return {
         "ready": ready,
@@ -421,6 +416,7 @@ def message_readback_verified(
     message_id: str,
     expected_text: str,
     expected_chat_id: str | None = None,
+    expected_goal_id: str | None = None,
 ) -> bool:
     result = call(
         runner,
@@ -441,6 +437,44 @@ def message_readback_verified(
         ),
     )
     payload = json_payload(result)
+    if expected_goal_id is not None:
+        # Topic roots and the earlier Goal control messages use different exact
+        # line markers. Verify the marker in this message, never in a sibling
+        # record returned by a batched provider response.
+        markers = {f"Goal ID: {expected_goal_id}", f"LoopX Goal: {expected_goal_id}"}
+
+        def has_marker(value: Any) -> bool:
+            if isinstance(value, Mapping):
+                return any(has_marker(item) for item in value.values())
+            if isinstance(value, list):
+                return any(has_marker(item) for item in value)
+            if not isinstance(value, str):
+                return False
+            if markers.intersection(line.strip() for line in value.splitlines()):
+                return True
+            try:
+                decoded = json.loads(value)
+            except (ValueError, TypeError):
+                return False
+            return isinstance(decoded, (dict, list)) and has_marker(decoded)
+
+        def matching_record(value: Any) -> bool:
+            if isinstance(value, Mapping):
+                if value.get("message_id") == message_id:
+                    return bool(
+                        not value.get("deleted")
+                        and (
+                            expected_chat_id is None
+                            or value.get("chat_id") == expected_chat_id
+                        )
+                        and has_marker(value.get("body") or value.get("content"))
+                    )
+                return any(matching_record(item) for item in value.values())
+            return isinstance(value, list) and any(
+                matching_record(item) for item in value
+            )
+
+        return result.get("returncode") == 0 and matching_record(payload)
     return bool(
         result.get("returncode") == 0
         and contains_exact_field(payload, "message_id", message_id)

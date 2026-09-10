@@ -16,6 +16,24 @@
 
 ## Current implementation checkpoint
 
+Monitor metadata authoring and poll transitions now share `todos/monitor_metadata.ts`.
+Public update composes that owner inside its existing field-plan request; cadence
+calculation stays in-process instead of making two additional scheduler RPCs.
+The Python observation/replay/counter/scope/boundedness rules are retired. Create
+and the low-level Markdown add codec retain a metadata-plan adapter; this is not
+the complete T1 transaction or T2 atomic monitor-plus-successor commit.
+
+Intentional corrections: older observations cannot rewind state merely because
+either effect ID is absent; issue-fix grouped membership updates use the locked
+observation path and advance generation when a material result hash changes.
+New counters reject negative or unsafe integers. ISO dates are calendar-checked;
+the codec retains Python compact/week-date forms, offset seconds and microsecond
+ordering without rewriting history. Lifecycle/ownership admission now precedes poll
+diagnostics, so an unauthorized request cannot use malformed metadata to avoid
+its authority rejection. Exact replay, same-second unkeyed polls, explicit
+clears and legacy boundedness exemptions remain. The plan grants no permission,
+receipt or promotion; native update still owns only text/note.
+
 Public Todo add/update now resolve role, continuation binding, gate scope and
 deferred-condition requirements through `todos/authoring_scope.ts`. Python's
 `write_policy.py` and duplicated scope selection in `todos.py` are retired;
@@ -408,6 +426,20 @@ closure and whole-Goal promotion remain held; do not infer them from a route pla
   never fall back to a Markdown business write.
 
 **T3 — close remaining structured consumers, then remove their old reads.**
+
+Current bounded delivery: shared-goal alignment and amendment admission use one
+`shared_goal_work_source.py` snapshot per decision, reusing the canonical Todo
+summary after promotion. The same provider read optionally supplies leases at
+that revision; absent/empty/stale display and old lease files are not fallback
+authority. `shared_goal_work.ts` owns their open-work, claim and exclusion
+selection; the old Python selectors and amendment's second Markdown parse are
+removed. Excluded work is not recommended to that Agent, but remains available
+as amendment impact context. The source digest binds the canonical revision;
+`canonical_todo_snapshot` has event sequence 0, not a fabricated Goal intent
+revision, and a changed digest requires proposal rebase even without events.
+Active malformed lease expiry now fails through the existing typed lease rule.
+This independent consumer slice does not depend on open #4142, close T1/T2,
+migrate all T3 consumers or grant amendment commit/whole-Goal promotion authority.
 
 - Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
   amendment revision inputs. Reuse #4117's canonical source adapter and pass

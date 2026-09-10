@@ -15,6 +15,20 @@
 
 ## 当前实现检查点
 
+Monitor metadata authoring 与 poll transition 现共用 `todos/monitor_metadata.ts`。
+公开 update 在已有 field-plan 请求内组合该 owner；cadence 在进程内计算，不再额外
+调用两次 scheduler RPC。删除 Python 的 observation/replay/counter/scope/boundedness
+规则。Create 与低层 Markdown add codec 仍保留 metadata-plan adapter；这不是完整
+T1 事务，也不是 T2 的 Monitor 与 successor 原子提交。
+
+有意修正：不再因任一 effect ID 缺失而允许旧 observation 倒退状态；issue-fix 分组
+成员更新使用持锁 observation 路径，在 material result hash 改变时递增 generation。
+新计数拒绝负数及不安全整数。ISO 日期进行日历校验，codec 保留 Python 的紧凑日期、
+周日期、时区偏移秒数及微秒排序，不改写历史。
+Lifecycle/ownership 准入现在先于 poll 诊断，未授权请求不能靠非法 metadata 回避
+权限拒绝。精确 replay、同秒无 ID 轮询、显式清空及 legacy boundedness 豁免保持。
+Plan 不授予权限、receipt 或 promotion；native update 仍只拥有 text/note。
+
 公开 Todo add/update 现通过 `todos/authoring_scope.ts` 统一解析角色、continuation
 绑定、gate 作用域与 deferred 条件要求。删除 Python `write_policy.py` 及 `todos.py`
 重复的 scope 选择；Markdown codec 只保留早期 class 检查的适配调用。已物化的 terminal
@@ -314,6 +328,17 @@ digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending
   不形成交付。必要命令 effect 尚不支持时暂停整 Goal promotion，不能回退 Markdown 写入。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
+
+当前有边界交付：shared-goal alignment 与 amendment admission 每次决策共用一份
+`shared_goal_work_source.py` 快照，promotion 后复用 canonical Todo summary；同一次
+provider 读取可返回同 revision 的 lease。缺失／空／陈旧展示及旧 lease 文件不再是
+fallback authority。`shared_goal_work.ts` 统一这两个消费者的开放工作、claim 和
+exclusion 筛选，删除旧 Python selector 与 amendment 的第二次 Markdown 解析。
+被排除的工作不推荐给该 Agent，但仍可作为 amendment 的影响对象。Source digest
+绑定 canonical revision；无事件时 `canonical_todo_snapshot` 的事件序号为 0，不能
+冒充 Goal intent revision，digest 变化仍要求 proposal rebase。活动 lease 的非法
+到期时间复用现有 TS lease 规则拒绝。本批不依赖仍开放的 #4142，不表示 T1/T2 或全部
+T3 完成，也不授予 amendment commit／整 Goal promotion 权限。
 
 - 分别审计 Turn/quota、Dashboard、standing decision、shared-goal alignment、
   amendment revision 输入。复用 #4117 canonical source adapter，一次决策传递一份
