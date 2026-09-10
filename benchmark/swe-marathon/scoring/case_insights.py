@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把五模式聚合（data.json）里的观察，投影成**非官方 draft** 记录
+"""把公开模式聚合（data.json）里的观察，投影成**非官方 draft** 记录
 `swe_marathon_case_insight_draft_v0`（见 upstream #3878 / RFC #3812）。
 
 【为什么是 draft，不是官方 projection】
@@ -28,6 +28,8 @@ import hashlib
 import json
 import pathlib
 import re
+
+from _common import PUBLIC_ARMS
 
 # 脚本所属 benchmark 目录（benchmark/swe-marathon）；输入/输出固定落在此处，
 # 不从命令行参数拼路径（避免用户可控数据构造文件路径 —— SonarCloud S2083）。
@@ -76,8 +78,7 @@ def _outcome_status(cell: dict) -> str:
     build_failed → runner_invalid（构建失败，确无可计能力结果）。
     status=complete → completed。
     status∈{blocked, active} → incomplete（有测量/续跑但未达终态；**不**当作
-      runner 失败——例如 zstd-decoder/codex-cli 有实测 partial=0.605，若标 runner_invalid
-      会与“无可计结果”的语义自相矛盾）。
+      runner 失败：有实测分数但未完成，不能等同于没有可计结果）。
     其余未知 status → 抛错，拒绝像旧版那样把未知值静默归入 runner_invalid。
     """
     if cell.get("build_failed"):
@@ -106,18 +107,11 @@ def _build_failed_insight(task: str, arm: str) -> tuple:
 
 def _idle_churn_insight(task: str, arm: str, unblock: int, cont: int, partial) -> tuple:
     return ("unattended_continuation_idle_churn",
-            (f"{arm} 在 {task} 的多轮续跑退化为空转：unblock={unblock}、cont={cont}、"
-             f"终态未 {_COMPLETE}（末态实测 partial={partial}）。该模式与续跑 guard 缺"
-             f" --begin-turn、以及面向‘人值守 TUI’的交互设计被适配到无人运行有关"
-             f"（假设，非模型能力定论）。判据是**机制条件**（status≠complete 且 "
-             f"unblock≥5），**不限定具体模式**：data.json 中 codex-cli 与 heartbeat 都出现"
-             f"同形空转（如 excel-clone/heartbeat: unblock=8, cont=9），因此本记录不做"
-             f"模式专属归因。"),
-            ("续跑模式的低分更可能来自 harness 与无人运行方式的匹配度（回合边界、唤醒/"
-             "解锁时机），而非模型能力弱；相同机制在多个模式上复现，进一步指向 harness "
-             "适配而非某一模式的固有缺陷。"),
-            ("补 --begin-turn / 对齐回合边界后重跑；对比‘有效工作 Turn 数’与‘重复 "
-             "blocked 次数’，并检查每次解锁后是否真正推进了 worktree。"),
+            (f"{arm} 在 {task} 的多轮续跑出现重复解锁：unblock={unblock}、cont={cont}、"
+             f"终态未 {_COMPLETE}（partial={partial}）。这些计数是描述性观察，"
+             "尚不能确定失败原因或据此比较其他接入模式。"),
+            ("额外续跑未保证完成；需要区分有效工作与重复解锁，并保留此负例。"),
+            ("核查每次解锁后的实际工作与回合边界，再做匹配重复实验。"),
             "unexpected", "medium")
 
 
@@ -133,9 +127,6 @@ _GOOD_CASE_NOTES = {
         "了具体边界缺陷——包括 offset-table 越界，以及 four-stream Huffman 在极小 regenerated size 下第四段"
         "计算下溢、令前序段越过 literal buffer 的内存安全漏洞（并补了 sanitizer 回归）。这些正是 hidden 套件"
         "考察的长尾，最终 hidden 37/37。"),
-    ("zstd-decoder", "ssh-goal"): (
-        "轨迹对照：plain 52 step 早停（hidden 25/37）；ssh-goal 经续跑推进到 135 step，越过 plain 的自宣完成点后"
-        "继续加固 dictionary/frame 边界与畸形输入路径，hidden 37/37。同一机制、更短路径达到满分。"),
 }
 
 
@@ -144,8 +135,8 @@ def _automation_recovers_insight(task: str, arm: str, partial, plain_partial, no
     return ("automation_recovers_over_baseline",
             (f"{arm}（automation/续跑模式）在 {task} 达终态 partial={partial}，而同任务的 plain 基线"
              f"（有效运行）停在 partial={plain_partial}。gap≈{round((partial or 0) - (plain_partial or 0), 3)}"
-             f" 的差距不来自模型能力——两者同模型同预算——而来自 harness：plain 在自认为完成后即停手，"
-             f"续跑模式由外部 driver 持 Turn 边界、每轮重读 worktree，把基线未覆盖的长尾边界补齐。{tail}"),
+             f"。这是同模型配置和时限预算下的单次观察，不能排除采样差异；"
+             f"轨迹与继续验证补齐边界的机制假设一致。{tail}"),
             ("这条正面回答“automation 如何帮基线做出题”：其价值在于**抵消模型的早停**——当基线在"
              "public/可见信号变绿后就宣布完成时，续跑循环继续驱动它覆盖 hidden 边界。注意这只在"
              "**基线尚有未覆盖长尾**时有增益；在 plain 已达上限的任务上（本套多数任务）automation 与"
@@ -155,7 +146,7 @@ def _automation_recovers_insight(task: str, arm: str, partial, plain_partial, no
             "expected", "medium")
 
 
-_AUTOMATION_ARMS = {"goal", "ssh-goal", "codex-cli", "heartbeat"}
+_AUTOMATION_ARMS = {"goal", "heartbeat"}
 _RECOVER_MIN_GAP = 0.2
 
 
@@ -180,7 +171,7 @@ def _insight_for(task: str, arm: str, cell: dict, cols: dict, benchmark_id: str)
     if build_failed:
         (fc, causal, impl, probe, exp, conf) = _build_failed_insight(task, arm)
     elif status != _COMPLETE and unblock >= 5:
-        # 机制条件，arm-agnostic（P2-1）：codex-cli 与 heartbeat 的同形空转都覆盖。
+        # 对保留组使用相同机制条件，不作跨已撤回组的归因。
         (fc, causal, impl, probe, exp, conf) = _idle_churn_insight(
             task, arm, unblock, cont, partial)
     elif (arm in _AUTOMATION_ARMS and status == _COMPLETE
@@ -214,36 +205,8 @@ def _insight_for(task: str, arm: str, cell: dict, cols: dict, benchmark_id: str)
     }
 
 
-# ── study-level 观测（跨任务聚合，非某一次 run 的 child）─────────────────────
-# 数字来自 14 个任务各模式的 agent 轨迹（public-safe：仅 step 计数与关键词密度，无 raw 轨迹）。
-# per-case 记录只落到单次 run；下面这条是把“LoopX 续跑到底改变了什么”做成可核对的聚合结论。
-_STUDY_OBSERVATIONS = [
-    {
-        "observation_id": "loopx_extends_horizon_and_activates_self_verification",
-        "summary": ("LoopX 的续跑机制通过剥夺模型“提前宣布完成”的退出权，把 codex 从“实现即止”"
-                    "逼入持续的自我验证/对抗性加固模式。这不是单个案例，而是全套 14 个任务上的"
-                    "普遍、可量化效应，且强于 codex 原生 goal。"),
-        "metrics": {
-            # agent step 数相对 plain 的倍率（跨 14 任务中位数）——“工作时长被拉长多少”
-            "agent_step_ratio_vs_plain_median": {
-                "ssh-goal": 1.89, "heartbeat": 1.52, "codex-cli": 1.34, "goal_native": 1.19},
-            "tasks_where_a_loopx_arm_runs_longer_than_plain": "14/14",
-            # 自我验证密度（每步提及 audit/sanitizer/fuzz/regression/edge-case 的次数）——“工作性质”
-            "self_verification_density_per_step_median": {
-                "plain": 0.024, "ssh-goal": 0.107, "heartbeat": 0.104, "goal_native": 0.084},
-            "tasks_where_loopx_density_exceeds_plain": "14/14",
-        },
-        "interpretation": ("裸 codex 可见测试一绿即判定完成、几乎不自查（密度 0.024/步）；LoopX 续跑"
-                           "反复驳回其 update_goal=complete、每轮重读 worktree，模型随即转向审自己的"
-                           "代码、造边界用例、加 sanitizer/fuzz 回归（密度 ~0.10/步，约 4.5×）。当任务"
-                           "存在可见信号之外的长尾时，这段被激活的自我验证直接兑现为能力得分——见 "
-                           "zstd-decoder 的 automation_recovers_over_baseline 记录（plain 0.72→LoopX 1.0）。"),
-        "evidence_note": ("aggregate over 14 SWE-Marathon tasks' agent trajectories; public-safe "
-                          "(step counts and keyword densities only, no raw traces)."),
-        "privacy_classification": "public_safe",
-        "producer_redaction_attested": True,
-    }
-]
+# Cross-arm behavior aggregates are withdrawn; no retained-arm-only recomputation is available.
+_STUDY_OBSERVATIONS = []
 
 
 def build(data: dict) -> list[dict]:
@@ -252,7 +215,7 @@ def build(data: dict) -> list[dict]:
     out = []
     for task, cols in data.get("cells", {}).items():
         for arm, cell in cols.items():
-            if not isinstance(cell, dict):
+            if arm not in PUBLIC_ARMS or not isinstance(cell, dict):
                 continue
             rec = _insight_for(task, arm, cell, cols, benchmark_id)
             if rec:

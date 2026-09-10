@@ -2,33 +2,8 @@
   "note": "Non-official DRAFT case-insight records for the codex×LoopX SWE-Marathon study. Two tiers: per-case `records` (child of a single terminal run) and `study_observations` (cross-task aggregate on how LoopX continuation changes behavior). Field shapes track benchmark_case_insight_projection_v0 (upstream #3878 / RFC #3812) so records can be promoted, but schema_version is a draft: these are NOT attachable via the official benchmark provider until matching benchmark_experiment_board_row_v0 rows exist (see README lineage). Identity note: data.json is latest-attempt-per-(task,arm) after _common.collect() folding; run_id hashes the surviving attempt's run_dir.",
   "schema_version": "swe_marathon_case_insight_draft_v0",
   "promotion_target": "benchmark_case_insight_projection_v0",
-  "study_observations": [
-    {
-      "observation_id": "loopx_extends_horizon_and_activates_self_verification",
-      "summary": "LoopX 的续跑机制通过剥夺模型“提前宣布完成”的退出权，把 codex 从“实现即止”逼入持续的自我验证/对抗性加固模式。这不是单个案例，而是全套 14 个任务上的普遍、可量化效应，且强于 codex 原生 goal。",
-      "metrics": {
-        "agent_step_ratio_vs_plain_median": {
-          "ssh-goal": 1.89,
-          "heartbeat": 1.52,
-          "codex-cli": 1.34,
-          "goal_native": 1.19
-        },
-        "tasks_where_a_loopx_arm_runs_longer_than_plain": "14/14",
-        "self_verification_density_per_step_median": {
-          "plain": 0.024,
-          "ssh-goal": 0.107,
-          "heartbeat": 0.104,
-          "goal_native": 0.084
-        },
-        "tasks_where_loopx_density_exceeds_plain": "14/14"
-      },
-      "interpretation": "裸 codex 可见测试一绿即判定完成、几乎不自查（密度 0.024/步）；LoopX 续跑反复驳回其 update_goal=complete、每轮重读 worktree，模型随即转向审自己的代码、造边界用例、加 sanitizer/fuzz 回归（密度 ~0.10/步，约 4.5×）。当任务存在可见信号之外的长尾时，这段被激活的自我验证直接兑现为能力得分——见 zstd-decoder 的 automation_recovers_over_baseline 记录（plain 0.72→LoopX 1.0）。",
-      "evidence_note": "aggregate over 14 SWE-Marathon tasks' agent trajectories; public-safe (step counts and keyword densities only, no raw traces).",
-      "privacy_classification": "public_safe",
-      "producer_redaction_attested": true
-    }
-  ],
-  "count": 5,
+  "study_observations": [],
+  "count": 2,
   "records": [
     {
       "schema_version": "swe_marathon_case_insight_draft_v0",
@@ -38,51 +13,13 @@
       "run_id": "excel-clone__heartbeat__8b86bd1f",
       "outcome_status": "incomplete",
       "failure_class": "unattended_continuation_idle_churn",
-      "causal_summary": "heartbeat 在 excel-clone 的多轮续跑退化为空转：unblock=8、cont=9、终态未 complete（末态实测 partial=0.5）。该模式与续跑 guard 缺 --begin-turn、以及面向‘人值守 TUI’的交互设计被适配到无人运行有关（假设，非模型能力定论）。判据是**机制条件**（status≠complete 且 unblock≥5），**不限定具体模式**：data.json 中 codex-cli 与 heartbeat 都出现同形空转（如 excel-clone/heartbeat: unblock=8, cont=9），因此本记录不做模式专属归因。",
+      "causal_summary": "heartbeat 在 excel-clone 的多轮续跑出现重复解锁：unblock=8、cont=9、终态未 complete（partial=0.5）。这些计数是描述性观察，尚不能确定失败原因或据此比较其他接入模式。",
       "expectedness": "unexpected",
-      "implication": "续跑模式的低分更可能来自 harness 与无人运行方式的匹配度（回合边界、唤醒/解锁时机），而非模型能力弱；相同机制在多个模式上复现，进一步指向 harness 适配而非某一模式的固有缺陷。",
-      "next_probe": "补 --begin-turn / 对齐回合边界后重跑；对比‘有效工作 Turn 数’与‘重复 blocked 次数’，并检查每次解锁后是否真正推进了 worktree。",
+      "implication": "额外续跑未保证完成；需要区分有效工作与重复解锁，并保留此负例。",
+      "next_probe": "核查每次解锁后的实际工作与回合边界，再做匹配重复实验。",
       "confidence": "medium",
       "evidence_refs": [
         "run:excel-clone__heartbeat__8b86bd1f"
-      ],
-      "privacy_classification": "public_safe",
-      "producer_redaction_attested": true
-    },
-    {
-      "schema_version": "swe_marathon_case_insight_draft_v0",
-      "benchmark_id": "swe-marathon",
-      "study_id": "codex-loopx-access-modes",
-      "case_id": "kubernetes-rust-rewrite",
-      "run_id": "kubernetes-rust-rewrite__codex-cli__2950c826",
-      "outcome_status": "runner_invalid",
-      "failure_class": "build_failed_gate_zeroed",
-      "causal_summary": "codex-cli 在 kubernetes-rust-rewrite 的构建阶段失败，agent 未能产出可编译/可运行的成品，partial_score 被评分门禁归零。这是运行/环境侧的结果（镜像、依赖、构建超时或 agent 留下不可编译的代码），并非该模型在此任务上的能力定论；同一格在不同 attempt 下可能构建成功。",
-      "expectedness": "unexpected",
-      "implication": "该格作为观测计入 matched 分母并单列标注，不做单模式剔除——剔除会系统性偏袒‘构建更容易失败’的模式。报分时应把 build_failed 作为独立类目呈现，而不是把它混入能力低分。",
-      "next_probe": "重复运行以区分偶发构建失败与稳定失配；必要时对齐镜像/依赖版本、放宽构建超时，并核对 agent 末态代码是否可编译。",
-      "confidence": "medium",
-      "evidence_refs": [
-        "run:kubernetes-rust-rewrite__codex-cli__2950c826"
-      ],
-      "privacy_classification": "public_safe",
-      "producer_redaction_attested": true
-    },
-    {
-      "schema_version": "swe_marathon_case_insight_draft_v0",
-      "benchmark_id": "swe-marathon",
-      "study_id": "codex-loopx-access-modes",
-      "case_id": "zstd-decoder",
-      "run_id": "zstd-decoder__codex-cli__9e1a6472",
-      "outcome_status": "incomplete",
-      "failure_class": "unattended_continuation_idle_churn",
-      "causal_summary": "codex-cli 在 zstd-decoder 的多轮续跑退化为空转：unblock=8、cont=10、终态未 complete（末态实测 partial=0.605）。该模式与续跑 guard 缺 --begin-turn、以及面向‘人值守 TUI’的交互设计被适配到无人运行有关（假设，非模型能力定论）。判据是**机制条件**（status≠complete 且 unblock≥5），**不限定具体模式**：data.json 中 codex-cli 与 heartbeat 都出现同形空转（如 excel-clone/heartbeat: unblock=8, cont=9），因此本记录不做模式专属归因。",
-      "expectedness": "unexpected",
-      "implication": "续跑模式的低分更可能来自 harness 与无人运行方式的匹配度（回合边界、唤醒/解锁时机），而非模型能力弱；相同机制在多个模式上复现，进一步指向 harness 适配而非某一模式的固有缺陷。",
-      "next_probe": "补 --begin-turn / 对齐回合边界后重跑；对比‘有效工作 Turn 数’与‘重复 blocked 次数’，并检查每次解锁后是否真正推进了 worktree。",
-      "confidence": "medium",
-      "evidence_refs": [
-        "run:zstd-decoder__codex-cli__9e1a6472"
       ],
       "privacy_classification": "public_safe",
       "producer_redaction_attested": true
@@ -95,32 +32,13 @@
       "run_id": "zstd-decoder__heartbeat__2fefe10b",
       "outcome_status": "completed",
       "failure_class": "automation_recovers_over_baseline",
-      "causal_summary": "heartbeat（automation/续跑模式）在 zstd-decoder 达终态 partial=1.0，而同任务的 plain 基线（有效运行）停在 partial=0.721。gap≈0.279 的差距不来自模型能力——两者同模型同预算——而来自 harness：plain 在自认为完成后即停手，续跑模式由外部 driver 持 Turn 边界、每轮重读 worktree，把基线未覆盖的长尾边界补齐。 轨迹对照：plain 在 6 个可见 fixture 通过后即于第 52 step 宣布“Implemented the complete RFC 8878 decoder”收工（hidden 25/37）——典型的“可见信号变绿即停”。heartbeat 在同一可见-通过点没有停：LoopX 续跑循环反复注入 goal、驳回其 update_goal=complete，把运行推到 453 step。这段续跑里 agent 自建了一套 RFC-derived 验收程序（156 项检查，远超 6 个 fixture）、转入内存安全审计，并定位/修复了具体边界缺陷——包括 offset-table 越界，以及 four-stream Huffman 在极小 regenerated size 下第四段计算下溢、令前序段越过 literal buffer 的内存安全漏洞（并补了 sanitizer 回归）。这些正是 hidden 套件考察的长尾，最终 hidden 37/37。",
+      "causal_summary": "heartbeat（automation/续跑模式）在 zstd-decoder 达终态 partial=1，而同任务的 plain 基线（有效运行）停在 partial=0.721。gap≈0.279。这是同模型配置和时限预算下的单次观察，不能排除采样差异；轨迹与继续验证补齐边界的机制假设一致。 轨迹对照：plain 在 6 个可见 fixture 通过后即于第 52 step 宣布“Implemented the complete RFC 8878 decoder”收工（hidden 25/37）——典型的“可见信号变绿即停”。heartbeat 在同一可见-通过点没有停：LoopX 续跑循环反复注入 goal、驳回其 update_goal=complete，把运行推到 453 step。这段续跑里 agent 自建了一套 RFC-derived 验收程序（156 项检查，远超 6 个 fixture）、转入内存安全审计，并定位/修复了具体边界缺陷——包括 offset-table 越界，以及 four-stream Huffman 在极小 regenerated size 下第四段计算下溢、令前序段越过 literal buffer 的内存安全漏洞（并补了 sanitizer 回归）。这些正是 hidden 套件考察的长尾，最终 hidden 37/37。",
       "expectedness": "expected",
       "implication": "这条正面回答“automation 如何帮基线做出题”：其价值在于**抵消模型的早停**——当基线在public/可见信号变绿后就宣布完成时，续跑循环继续驱动它覆盖 hidden 边界。注意这只在**基线尚有未覆盖长尾**时有增益；在 plain 已达上限的任务上（本套多数任务）automation 与基线打平，不产生此类 gap。",
       "next_probe": "在更多任务和重复运行上量化‘早停’的普遍度（如对比各模式 agent step 数与最终 hidden 覆盖），并确认基线低分是能力所限还是早停所致；对早停敏感的任务优先用续跑模式。",
       "confidence": "medium",
       "evidence_refs": [
         "run:zstd-decoder__heartbeat__2fefe10b"
-      ],
-      "privacy_classification": "public_safe",
-      "producer_redaction_attested": true
-    },
-    {
-      "schema_version": "swe_marathon_case_insight_draft_v0",
-      "benchmark_id": "swe-marathon",
-      "study_id": "codex-loopx-access-modes",
-      "case_id": "zstd-decoder",
-      "run_id": "zstd-decoder__ssh-goal__0e5a7e02",
-      "outcome_status": "completed",
-      "failure_class": "automation_recovers_over_baseline",
-      "causal_summary": "ssh-goal（automation/续跑模式）在 zstd-decoder 达终态 partial=1.0，而同任务的 plain 基线（有效运行）停在 partial=0.721。gap≈0.279 的差距不来自模型能力——两者同模型同预算——而来自 harness：plain 在自认为完成后即停手，续跑模式由外部 driver 持 Turn 边界、每轮重读 worktree，把基线未覆盖的长尾边界补齐。 轨迹对照：plain 52 step 早停（hidden 25/37）；ssh-goal 经续跑推进到 135 step，越过 plain 的自宣完成点后继续加固 dictionary/frame 边界与畸形输入路径，hidden 37/37。同一机制、更短路径达到满分。",
-      "expectedness": "expected",
-      "implication": "这条正面回答“automation 如何帮基线做出题”：其价值在于**抵消模型的早停**——当基线在public/可见信号变绿后就宣布完成时，续跑循环继续驱动它覆盖 hidden 边界。注意这只在**基线尚有未覆盖长尾**时有增益；在 plain 已达上限的任务上（本套多数任务）automation 与基线打平，不产生此类 gap。",
-      "next_probe": "在更多任务和重复运行上量化‘早停’的普遍度（如对比各模式 agent step 数与最终 hidden 覆盖），并确认基线低分是能力所限还是早停所致；对早停敏感的任务优先用续跑模式。",
-      "confidence": "medium",
-      "evidence_refs": [
-        "run:zstd-decoder__ssh-goal__0e5a7e02"
       ],
       "privacy_classification": "public_safe",
       "producer_redaction_attested": true

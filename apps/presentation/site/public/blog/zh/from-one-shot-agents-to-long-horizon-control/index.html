@@ -239,20 +239,18 @@ Readback → Capability 验证 → Kernel 状态迁移</code></pre>
 <h2>10. 证据能回答什么</h2>
 <p>一个运行很久的项目，与一次更好的 Benchmark 结果，证明的是不同事情。Showcase 可以展示 Turn、等待、Review 和恢复之间的连续性，经过的项目时间不等于连续推理时间。Benchmark 回答某个系统在指定条件下完成了什么。</p>
 <p>更广泛的研究也说明设置值得认真对待。OpenAI 报告，UK AISI 的 Cyber Range 评测把 Token 预算从 10M 提高到 100M 后，性能提升最高达 59%。这是该评测设置下的结果，不是 LoopX 的结果，也不意味着运行越久一定越好；它支持把 Harness 与预算一起测量。参见 <a href="https://openai.com/index/trustworthy-third-party-evaluations-foundations/">OpenAI 的评测方法讨论</a>。</p>
-<h3>SWE-Marathon：收益、成本与失败的接入模式</h3>
-<p><a href="../../../benchmarks/swe-marathon/?lang=zh">LoopX 公开研究</a>由 <a href="https://github.com/huangruiteng/loopx/pull/3838">BouwenZhou 贡献</a>，在 SWE-Marathon v1.1 的 15 个匹配任务上比较五种模式，共 75 次 Trial，每个任务、每种模式各一次。模型为 GPT-5.6 Sol，Reasoning Effort 为 high；Codex 0.151.0、LoopX 0.5.3、Harbor 0.20.0，Timeout Multiplier 为 0.3。这是历史实验版本，与本文其他部分引用的实现修订分开理解。</p>
+<h3>SWE-Marathon：保留结果与成本</h3>
+<p><a href="../../../benchmarks/swe-marathon/?lang=zh">LoopX 公开研究</a>由 <a href="https://github.com/huangruiteng/loopx/pull/3838">BouwenZhou 贡献</a>，在 SWE-Marathon v1.1 的 15 个匹配任务上保留三种模式的结果，共 45 次 Trial，每个任务、每种模式各一次。模型为 GPT-5.6 Sol，Reasoning Effort 为 high；Codex 0.151.0、LoopX 0.5.3、Harbor 0.20.0，Timeout Multiplier 为 0.3。这是历史实验版本，与本文其他部分引用的实现修订分开理解。</p>
 <div class="table-scroll"><table class="benchmark-table"><caption>每格一次 Trial；成本为 15 个任务的美元总额，已取整</caption><thead><tr><th>模式</th><th>二值成功</th><th>平均连续分</th><th>总成本</th></tr></thead><tbody>
 <tr><td>裸 Codex</td><td>4 / 15</td><td>0.710</td><td>$368</td></tr>
 <tr><td>Codex 原生 Goal</td><td>4 / 15</td><td>0.767</td><td>$533</td></tr>
-<tr><td>原生 Goal + LoopX（SSH）</td><td>4 / 15</td><td>0.773</td><td>$696</td></tr>
-<tr><td>codex-cli 接入 LoopX</td><td>3 / 15</td><td>0.655</td><td>$419</td></tr>
 <tr><td>LoopX + 外部 Heartbeat</td><td>5 / 15</td><td>0.778</td><td>$830</td></tr>
 </tbody></table></div>
-<p>Heartbeat 相比原生 Goal 多完成一个任务，平均连续分提高 0.011，总成本增加约 56%。codex-cli 模式更差，并出现一次构建失败；该失败保留在共同分母中。研究提出，有人值守的 Host 模式与无人续跑之间的错配，可能解释部分表现，但这是待验证假设，没有被实验单独隔离。<a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/benchmark/swe-marathon/README.md">设置与局限</a> · <a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/benchmark/swe-marathon/data.json">固定版本的聚合数据</a>。</p>
+<p>Heartbeat 相比原生 Goal 多完成一个任务，平均连续分提高 0.011，总成本增加约 56%。更正：SSH Goal 与 Codex CLI 两组分数及行为比较已撤回，等待重新验证；不据此判断这两种模式的能力，私有原始记录保留。<a href="https://github.com/huangruiteng/loopx/blob/main/benchmark/swe-marathon/README.md">设置与局限</a> · <a href="https://github.com/huangruiteng/loopx/blob/main/benchmark/swe-marathon/data.json">更正后的聚合数据</a>。</p>
 <p>这是多项机制同时变化的探索性比较。每格没有重复 Trial，无法据此估计波动；相对裸 Codex 的较大部分提升，在原生 Goal 基线中已经出现。表格支持继续研究续跑方式和接入质量，尚不足以证明 LoopX 的普遍增益，或每项内核机制的效率。</p>
 <h3>一个继续验证有价值的案例</h3>
-<p><a href="https://github.com/huangruiteng/loopx/pull/3887">Wanli-Lee 贡献的 Case Insight 投影</a>进一步给出了具体例子。zstd-decoder 任务中，裸 Codex 在 52 步、六个可见 Fixture 后停止，最终评测通过 37 个隐藏检查中的 25 个。SSH LoopX 模式用了 135 步，通过 37/37；Heartbeat 模式用了 453 步，构建 156 项验收检查，也通过 37/37。数字来自<a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/benchmark/swe-marathon/case_insights.json">公开聚合 Case 分析</a>，描述的是这些运行中的观察。</p>
-<figure class="diagram" aria-labelledby="verification-caption"><p class="diagram-label">06 / 更多执行，需要更好的停止条件</p><div class="diagram-pair"><div class="diagram-node"><b>可见样例通过</b><span>在已观察的边界停下</span><strong>裸 Codex：25 / 37</strong></div><div class="diagram-node"><b>扩大验证范围</b><span>探查可见样例之外的要求</span><strong>SSH 与 Heartbeat：37 / 37</strong></div></div><figcaption id="verification-caption">同一任务中的描述性对照。步骤数量与验证策略同时变化，无法单独识别哪项干预造成差异。</figcaption></figure>
+<p><a href="https://github.com/huangruiteng/loopx/pull/3887">Wanli-Lee 贡献的 Case Insight 投影</a>进一步给出了具体例子。zstd-decoder 任务中，裸 Codex 在 52 步、六个可见 Fixture 后停止，最终评测通过 37 个隐藏检查中的 25 个。Heartbeat 模式用了 453 步，构建 156 项验收检查，通过 37/37。数字来自<a href="https://github.com/huangruiteng/loopx/blob/main/benchmark/swe-marathon/case_insights.json">公开聚合 Case 分析</a>，描述的是这些运行中的观察。</p>
+<figure class="diagram" aria-labelledby="verification-caption"><p class="diagram-label">06 / 更多执行，需要更好的停止条件</p><div class="diagram-pair"><div class="diagram-node"><b>可见样例通过</b><span>在已观察的边界停下</span><strong>裸 Codex：25 / 37</strong></div><div class="diagram-node"><b>扩大验证范围</b><span>探查可见样例之外的要求</span><strong>Heartbeat：37 / 37</strong></div></div><figcaption id="verification-caption">同一任务中的描述性对照。步骤数量与验证策略同时变化，无法单独识别哪项干预造成差异。</figcaption></figure>
 <p>值得检验的假设是：额外 Turn 在产生新证据和修复时有价值。持续重读相同计划，也能消耗更多预算，却未必改善结果。工程目标是让停止条件对验收缺口、失败假设与边际收益下降敏感。</p>
 <p>后续实验需要重复匹配 Trial，报告波动与每次成功的成本，并分别改变续跑策略、证据保留和恢复机制。中断 Effect、Peer 交接也需要专项验证。<a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/docs/architecture/rfcs/long-horizon-harness-benchmark-research-program-v0.zh-CN.md">研究计划</a>描述了更大的评测空间。一个有希望的案例，值得用更严谨的实验继续追问。</p>
 </section>
@@ -278,7 +276,7 @@ loopx status</code></pre>
 <ul>
 <li><a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/docs/architecture.md">LoopX 架构</a>：目标、状态与执行边界的整体设计。实际使用可从<a href="../../../docs/book/">开发者手册</a>开始。</li>
 <li><a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/loopx/control_plane/effect_program.ts">Effect Program 实现</a>与<a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/tests/control_plane_ts/effect_program.test.ts">对应测试</a>：核对结算顺序、Receipt、重放与中断恢复。</li>
-<li><a href="../../../benchmarks/swe-marathon/?lang=zh">SWE-Marathon 双语研究简报</a>与<a href="https://github.com/huangruiteng/loopx/blob/41a35880fc63ed8b51696e08ec1f17b5369b1a4b/benchmark/swe-marathon/data.json">固定版本的聚合数据</a>：阅读五种模式的实验设置、结果、成本和局限。</li>
+<li><a href="../../../benchmarks/swe-marathon/?lang=zh">SWE-Marathon 双语研究简报</a>与<a href="https://github.com/huangruiteng/loopx/blob/main/benchmark/swe-marathon/data.json">更正后的聚合数据</a>：阅读三个保留模式的实验设置、结果、成本和局限。</li>
 </ul>
 <h3 id="agent-loop-reading">Agent Loop 与函数式编程</h3>
 <p>齐梦星空的小红书系列（2026 年 5 月），从带 Effect 的计算出发讨论工具调用与组合：</p>

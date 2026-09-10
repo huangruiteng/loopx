@@ -4,11 +4,11 @@
     "back": "LoopX home",
     "source": "Public evidence",
     "title": "LoopX keeps agents verifying after they say ‘done.’",
-    "deck": "Across 15 matched SWE-Marathon tasks, LoopX-governed runners produced a large, consistent shift toward audit, falsification, and hardening after visible tests passed.",
-    "evidenceTag": "SWE-Marathon v1.1 · exploratory evidence · 15 matched tasks · 75 trials",
+    "deck": "This revision retains exploratory results for plain, native goal, and LoopX Turn on 15 tasks; the zstd case illustrates verification after visible tests pass.",
+    "evidenceTag": "SWE-Marathon v1.1 · exploratory evidence · 15 matched tasks · 45 trials",
     "contributorsLabel": "Research contributors",
     "executiveEyebrow": "00 / Core result",
-    "executiveTitle": "LoopX Turn (external-scheduler automation) led on outcome; Codex App SSH Goal + LoopX led on verification; the CLI Goal-profile arm was the counterexample.",
+    "executiveTitle": "Among the three retained arms, LoopX Turn had the highest score and cost; repeatable gains remain unproven.",
     "executiveBody": "GPT-5.6 Sol · high reasoning · 15 matched tasks · 1 trial per task-arm · 30% timeout budget. The table combines treatment, outcome, cost, and the decision-relevant read.",
     "executiveColumns": [
       "Arm",
@@ -22,11 +22,9 @@
     "executiveReads": {
       "plain": "Lowest-cost baseline; stops earlier",
       "goal": "Goal alone improves partial, not binary reward",
-      "ssh-goal": "Highest verification density; stable build",
-      "codex-cli": "Regressed in this runner; transport/host mismatch present",
       "heartbeat": "Highest reward and partial; highest cost"
     },
-    "runnerNote": "Runner naming: ssh-goal is Codex App SSH Goal-driven LoopX; codex-cli is Codex CLI Goal-profile-driven LoopX, but this benchmark substitutes app-server transport for the live TUI; heartbeat is the LoopX Turn / automation arm, driven externally through generic_cli rather than a real Codex App automation host.",
+    "runnerNote": "Correction: SSH Goal and Codex CLI group data and conclusions have been withdrawn pending validation; no capability conclusion is drawn about either mode. heartbeat is LoopX Turn driven externally through generic_cli, not a real Codex App automation host.",
     "backgroundEyebrow": "01 / Why this benchmark",
     "backgroundTitle": "Long enough to expose the work after ‘done.’",
     "backgroundBody": "SWE-Marathon v1.1 contains 20 realistic, multi-hour software tasks. It combines visible and hidden tests, adversarial checks, and, for product clones, computer-use verification. This study used 15 non-GPU tasks so every arm shared one matched denominator.",
@@ -72,18 +70,6 @@
         "Baseline 2"
       ],
       [
-        "ssh-goal",
-        "Codex visible Goal",
-        "LoopX body/skills + codex_app_ssh_goal",
-        "Treatment"
-      ],
-      [
-        "codex-cli",
-        "Codex visible Goal*",
-        "codex_cli body via app-server substitute",
-        "Treatment / mismatch probe"
-      ],
-      [
         "heartbeat",
         "External driver",
         "generic_cli wake, replan, writeback",
@@ -91,10 +77,8 @@
       ]
     ],
     "mechanismEyebrow": "02 / Statistics & mechanism insight",
-    "mechanismTitle": "The control plane takes back the right to declare completion.",
-    "mechanismBody": "Wanli’s trajectory analysis in PR #3887 found stronger self-verification in at least one LoopX arm on 14/14 comparable tasks; the SSH Goal median was 0.107 events/step versus 0.024 for plain (~4.5×). The stronger result is quality per step, not raw step count.",
-    "stepsChart": "Median agent steps vs plain",
-    "densityChart": "Self-verification events per step",
+    "mechanismTitle": "The zstd case: verification continues after self-reported completion.",
+    "mechanismBody": "The previous cross-arm 14/14 coverage claims and behavior charts are also withdrawn, not reinterpreted as heartbeat-only results. The mechanism below is limited to the retained zstd case and needs repeated validation.",
     "mechanismChain": [
       [
         "01",
@@ -117,23 +101,15 @@
         "Where visible success masks defects, additional verification can become score."
       ]
     ],
-    "quote": "LoopX’s value is not that it makes the model smarter. It takes back the authority to decide when the work is complete.",
-    "quoteBy": "Wanli-Lee · public analysis in PR #3887",
     "caseEyebrow": "03 / Case analysis",
     "caseTitle": "zstd-decoder: the visible finish line was not the real one.",
-    "caseBody": "The same model and budget produced very different stopping behavior. The plain run stopped after visible success; governed continuations moved into protocol acceptance and memory-safety work.",
+    "caseBody": "With the same model configuration and timeout budget, this plain run stopped after visible tests passed; heartbeat continued into protocol acceptance and memory-safety checks. A single comparison does not rule out sampling variation.",
     "timeline": [
       [
         "Plain · step 52",
         "Declares RFC 8878 complete",
         "6 visible fixtures pass",
         "hidden 25/37 · partial 0.72"
-      ],
-      [
-        "Codex App SSH Goal + LoopX · step 135",
-        "Continues past self-declared completion",
-        "hardens dictionary, frame, malformed-input paths",
-        "hidden 37/37 · partial 1.00"
       ],
       [
         "LoopX Turn (external-scheduler automation) · step 453",
@@ -151,10 +127,6 @@
       [
         "Self-verification is a leading indicator",
         "Track verification events per step alongside score and cost. It explains whether added horizon is buying quality."
-      ],
-      [
-        "Host-mode fit is part of capability",
-        "A TUI contract adapted to an unattended runner can underperform even with nearly identical goal text."
       ],
       [
         "Stateful control, replaceable executors",
@@ -185,9 +157,9 @@
       ],
       [
         "Runtime",
-        "Research harness; sandbox, sidecar, and build instability observed",
+        "Research harness; three retained arms",
         "Standardized official runner",
-        "Infrastructure failures can depress this study's result."
+        "Protocols differ; withdrawn-arm build failures are not used to explain this comparison."
       ],
       [
         "Budget / repeats",
@@ -204,8 +176,9 @@
     ],
     "officialNote": "Bottom line: use this study to compare matched runner arms and inspect mechanism—not as a replacement leaderboard score. The official v1.1 leaderboard is the right external reference, but its published High/Max results follow a different protocol.",
     "limitsEyebrow": "05 / Evidence boundary",
-    "limitsTitle": "Strong mechanism signal, incomplete causal identification.",
+    "limitsTitle": "Exploratory results, not a capability verdict across modes.",
     "limits": [
+      "SSH Goal, Codex CLI, and comparisons depending on them are withdrawn; raw records are retained and excluded from public results pending validation.",
       "One trial per task-arm cell; no confidence intervals or run-to-run variance estimate.",
       "Several mechanism variables move together across arms: prompt body, host transport, turn boundary, and recovery policy.",
       "The 15-task subset excludes five GPU-dependent tasks (four H100, one A100) and represents one benchmark family.",
@@ -221,11 +194,6 @@
         "LoopX study",
         "Pinned aggregate, scoring code, and public-safe case insights",
         "https://github.com/huangruiteng/loopx/tree/main/benchmark/swe-marathon"
-      ],
-      [
-        "Wanli analysis",
-        "Trajectory-derived mechanism analysis and zstd case",
-        "https://github.com/huangruiteng/loopx/pull/3887#issuecomment-5535839229"
       ],
       [
         "SWE-Marathon",
@@ -245,11 +213,11 @@
     "back": "返回 LoopX",
     "source": "公开证据",
     "title": "LoopX 让 Agent 在说“完成”之后继续验证。",
-    "deck": "在 15 个 matched SWE-Marathon 任务上，LoopX 治理的 runner 稳定地把可见测试通过后的工作转向审计、证伪和加固。",
-    "evidenceTag": "SWE-Marathon v1.1 · 探索性证据 · 15 个 matched 任务 · 75 trial",
+    "deck": "本版保留 plain、原生 goal 与 LoopX Turn 三组在 15 个任务上的探索性结果；zstd 个案展示了可见测试通过后的继续验证。",
+    "evidenceTag": "SWE-Marathon v1.1 · 探索性证据 · 15 个 matched 任务 · 45 trial",
     "contributorsLabel": "研究贡献者",
     "executiveEyebrow": "00 / 核心结论",
-    "executiveTitle": "LoopX Turn（外部调度 Automation）得分最高；Codex App SSH Goal + LoopX 自验证最强；Codex CLI Goal-profile arm 是反例。",
+    "executiveTitle": "保留三组中，LoopX Turn 得分与成本均最高；尚不能确立稳定收益。",
     "executiveBody": "GPT-5.6 Sol · high 思考深度 · 15 个 matched 任务 · 每个 task-arm 1 次 · 30% timeout。下表合并实验处理、结果、成本和决策含义。",
     "executiveColumns": [
       "Arm",
@@ -263,14 +231,12 @@
     "executiveReads": {
       "plain": "最低成本基线；更早停止",
       "goal": "Goal 提升 partial，未提升二值 reward",
-      "ssh-goal": "自验证密度最高；构建稳定",
-      "codex-cli": "本 runner 中退化；存在传输/Host 错配",
       "heartbeat": "Reward 与 partial 最高；成本也最高"
     },
-    "runnerNote": "Runner 命名：ssh-goal 是 Codex App SSH Goal 驱动 LoopX；codex-cli 是 Codex CLI Goal profile 驱动 LoopX，但本 benchmark 以 app-server 代替真实 TUI 承载；heartbeat 才是 LoopX Turn / Automation arm，由 generic_cli 外部调度，并非真实 Codex App automation host。",
+    "runnerNote": "更正：SSH Goal 与 Codex CLI 两组数据及其结论已撤回，等待重新验证；不据此判断这两种模式的能力。heartbeat 是通过 generic_cli 外部调度的 LoopX Turn，并非真实 Codex App automation host。",
     "backgroundEyebrow": "01 / 为什么选这个 Benchmark",
     "backgroundTitle": "它足够长，能看见 Agent 在“完成”之后做什么。",
-    "backgroundBody": "SWE-Marathon v1.1 包含 20 个真实、多小时的软件工程任务，使用可见与隐藏测试、对抗性检查，并对产品克隆任务加入 Computer-Use 验证。本实验选取其中 15 个非 GPU 任务，使五个 arm 保持同一 matched 分母。",
+    "backgroundBody": "SWE-Marathon v1.1 包含 20 个真实、多小时的软件工程任务，使用可见与隐藏测试、对抗性检查，并对产品克隆任务加入 Computer-Use 验证。本实验选取其中 15 个非 GPU 任务，使三个保留 arm 保持同一 matched 分母。",
     "benchmarkFacts": [
       [
         "20",
@@ -313,18 +279,6 @@
         "基线 2"
       ],
       [
-        "ssh-goal",
-        "Codex visible Goal",
-        "LoopX body/skills + codex_app_ssh_goal",
-        "Treatment"
-      ],
-      [
-        "codex-cli",
-        "Codex visible Goal*",
-        "codex_cli body，由 app-server 代承载",
-        "Treatment / 错配探针"
-      ],
-      [
         "heartbeat",
         "外部 driver",
         "generic_cli 唤醒、replan、writeback",
@@ -332,10 +286,8 @@
       ]
     ],
     "mechanismEyebrow": "02 / 统计与机制 Insight",
-    "mechanismTitle": "控制面收回“何时算完成”的判定权。",
-    "mechanismBody": "Wanli 在 PR #3887 中发现：14/14 个可比任务里，至少一个 LoopX arm 的自验证更强；SSH Goal 中位数为 0.107 次/step，plain 为 0.024（约 4.5×）。更强的结论来自单位 step 的质量，而非 raw step 数。",
-    "stepsChart": "Agent step 中位数 / plain",
-    "densityChart": "每 step 自验证事件密度",
+    "mechanismTitle": "zstd 个案：在自报完成之后继续验证。",
+    "mechanismBody": "此前跨多组的 14/14 覆盖结论与行为统计图一并撤回，未将其重解释为 heartbeat 单组结果。以下机制描述限于保留的 zstd 个案，仍需重复实验检验。",
     "mechanismChain": [
       [
         "01",
@@ -358,23 +310,15 @@
         "当可见成功掩盖缺陷，额外验证才可能转化为得分。"
       ]
     ],
-    "quote": "LoopX 的价值不在于让模型更聪明，而在于收回‘何时算完成’的判定权。",
-    "quoteBy": "Wanli-Lee · PR #3887 公开分析",
     "caseEyebrow": "03 / Case 分析",
     "caseTitle": "zstd-decoder：可见终点，不是真正终点。",
-    "caseBody": "相同模型和预算产生了完全不同的停止行为。Plain 在可见成功后收工；受治理的续跑则进入协议验收和内存安全阶段。",
+    "caseBody": "相同模型配置和时限预算下，本次 plain 运行在可见测试通过后收工；heartbeat 运行继续进行了协议验收和内存安全检查。单次对照不能排除采样差异。",
     "timeline": [
       [
         "Plain · step 52",
         "宣布完整实现 RFC 8878",
         "6 个可见 fixture 通过",
         "hidden 25/37 · partial 0.72"
-      ],
-      [
-        "Codex App SSH Goal + LoopX · step 135",
-        "越过自宣完成点继续推进",
-        "加固 dictionary、frame、畸形输入路径",
-        "hidden 37/37 · partial 1.00"
       ],
       [
         "LoopX Turn（外部调度 Automation）· step 453",
@@ -392,10 +336,6 @@
       [
         "自验证是领先指标",
         "除分数和成本外，持续跟踪每 step 自验证事件，解释新增 horizon 是否买来了质量。"
-      ],
-      [
-        "Host-mode fit 也是能力",
-        "几乎相同的 Goal 文本，经面向 TUI 的契约适配到无人 Runner 后也可能显著退化。"
       ],
       [
         "持久控制，短命执行器",
@@ -426,9 +366,9 @@
       ],
       [
         "运行环境",
-        "研究 harness；观察到 sandbox、sidecar 与构建稳定性问题",
+        "研究 harness；保留三组",
         "官方标准化 runner",
-        "基建失败可能压低本研究结果。"
+        "运行协议不同；不沿用已撤回组的构建失败作解释。"
       ],
       [
         "预算 / 重复",
@@ -445,8 +385,9 @@
     ],
     "officialNote": "结论：本研究用于比较同一 matched 分母下的 runner arm，并解释行为机制，不应替代官方榜单分数。官方 v1.1 榜单是正确的外部参照，但其 High/Max 结果属于另一套实验协议。",
     "limitsEyebrow": "05 / 证据边界",
-    "limitsTitle": "机制信号很强，因果识别仍未完成。",
+    "limitsTitle": "保留探索性结果，不作跨模式能力定论。",
     "limits": [
+      "SSH Goal、Codex CLI 及依赖这两组的比较已撤回；原始记录保留，重新验证前不纳入公开结果。",
       "每个 task-arm 只有 1 次 trial，尚无置信区间与运行方差。",
       "各 arm 同时改变多项机制：prompt body、Host transport、Turn 边界与恢复策略。",
       "15 任务子集排除了 5 个 GPU 依赖任务（4 个 H100、1 个 A100），且仅覆盖一个 benchmark family。",
@@ -462,11 +403,6 @@
         "LoopX 实验",
         "Pinned 聚合、评分代码与 public-safe case insight",
         "https://github.com/huangruiteng/loopx/tree/main/benchmark/swe-marathon"
-      ],
-      [
-        "Wanli 分析",
-        "轨迹机制分析与 zstd 个案",
-        "https://github.com/huangruiteng/loopx/pull/3887#issuecomment-5535839229"
       ],
       [
         "SWE-Marathon",

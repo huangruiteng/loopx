@@ -14,11 +14,8 @@ import caseInsights from "../../../../benchmark/swe-marathon/case_insights.json"
 import copy from "./swe-marathon-copy.json";
 
 type Language = "en" | "zh";
-type Arm = (typeof benchmarkData.arms)[number];
 
-const armOrder = ["plain", "goal", "ssh-goal", "codex-cli", "heartbeat"] as const;
-const publicAnalysisUrl =
-  "https://github.com/huangruiteng/loopx/pull/3887#issuecomment-5535839229";
+const armOrder = ["plain", "goal", "heartbeat"] as const;
 const repositoryStudyUrl =
   "https://github.com/huangruiteng/loopx/tree/main/benchmark/swe-marathon";
 const researchContributors = [
@@ -27,8 +24,6 @@ const researchContributors = [
   { handle: "Wanli-Lee", href: "https://wanli-lee.github.io/" },
 ] as const;
 
-const studyObservation = caseInsights.study_observations[0];
-const behaviorMetrics = studyObservation.metrics;
 const zstdHeartbeat = caseInsights.records.find(
   (record) => record.case_id === "zstd-decoder" && record.run_id.includes("heartbeat"),
 );
@@ -37,15 +32,11 @@ const armLabels: Record<Language, Record<string, string>> = {
   en: {
     plain: "Plain Codex",
     goal: "Native Goal",
-    "ssh-goal": "Codex App SSH Goal + LoopX",
-    "codex-cli": "Codex CLI Goal profile + LoopX*",
     heartbeat: "LoopX Turn (external-scheduler automation)",
   },
   zh: {
     plain: "裸 Codex",
     goal: "原生 Goal",
-    "ssh-goal": "Codex App SSH Goal + LoopX",
-    "codex-cli": "Codex CLI Goal profile + LoopX*",
     heartbeat: "LoopX Turn（外部调度 Automation）",
   },
 };
@@ -71,37 +62,6 @@ function HorizonDiagram({ language }: Readonly<{ language: Language }>) {
           ? "示意：任务 horizon 足以让可见完成与隐藏正确性分离。"
           : "Conceptual view: the task horizon separates visible completion from hidden correctness."}
       </figcaption>
-    </figure>
-  );
-}
-
-function BarChart({
-  title,
-  values,
-  format,
-}: Readonly<{
-  title: string;
-  values: Array<[string, number, boolean?]>;
-  format: (value: number) => string;
-}>) {
-  const max = Math.max(...values.map(([, value]) => value));
-  return (
-    <figure className="bm-bar-chart" aria-label={title}>
-      <figcaption>{title}</figcaption>
-      <div className="bm-bars">
-        {values.map(([label, value, accent]) => (
-          <div className="bm-bar-row" key={label}>
-            <span>{label}</span>
-            <div className="bm-bar-track">
-              <i
-                className={accent ? "is-accent" : undefined}
-                style={{ width: `${Math.max(2, (value / max) * 100)}%` }}
-              />
-            </div>
-            <b>{format(value)}</b>
-          </div>
-        ))}
-      </div>
     </figure>
   );
 }
@@ -185,7 +145,6 @@ export function SweMarathonBrief() {
                   const owner = c.armRows.find(([arm]) => arm === row.arm)?.[1];
                   let rowClassName: string | undefined;
                   if (row.arm === "heartbeat") rowClassName = "is-highlight";
-                  else if (row.arm === "codex-cli") rowClassName = "is-caution";
                   return (
                     <tr key={row.arm} className={rowClassName}>
                       <th scope="row"><code>{row.arm}</code><span>{armLabels[language][row.arm]}</span></th>
@@ -228,28 +187,6 @@ export function SweMarathonBrief() {
             <h2>{c.mechanismTitle}</h2>
             <p>{c.mechanismBody}</p>
           </div>
-          <div className="bm-chart-grid">
-            <BarChart
-              title={c.stepsChart}
-              values={[
-                [armLabels[language].goal, behaviorMetrics.agent_step_ratio_vs_plain_median.goal_native],
-                [armLabels[language]["codex-cli"], behaviorMetrics.agent_step_ratio_vs_plain_median["codex-cli"]],
-                [armLabels[language].heartbeat, behaviorMetrics.agent_step_ratio_vs_plain_median.heartbeat],
-                [armLabels[language]["ssh-goal"], behaviorMetrics.agent_step_ratio_vs_plain_median["ssh-goal"], true],
-              ]}
-              format={(value) => `${value.toFixed(2)}×`}
-            />
-            <BarChart
-              title={c.densityChart}
-              values={[
-                [armLabels[language].plain, behaviorMetrics.self_verification_density_per_step_median.plain],
-                [armLabels[language].goal, behaviorMetrics.self_verification_density_per_step_median.goal_native],
-                [armLabels[language].heartbeat, behaviorMetrics.self_verification_density_per_step_median.heartbeat],
-                [armLabels[language]["ssh-goal"], behaviorMetrics.self_verification_density_per_step_median["ssh-goal"], true],
-              ]}
-              format={(value) => value.toFixed(3)}
-            />
-          </div>
           <div className="bm-chain" aria-label="Mechanism chain">
             {c.mechanismChain.map(([number, title, body]) => (
               <article key={number}><span>{number}</span><h3>{title}</h3><p>{body}</p></article>
@@ -260,10 +197,6 @@ export function SweMarathonBrief() {
               <article key={title}><span>0{index + 1}</span><h3>{title}</h3><p>{body}</p></article>
             ))}
           </div>
-          <blockquote>
-            <p>“{c.quote}”</p>
-            <cite><a href={publicAnalysisUrl} target="_blank" rel="noreferrer">{c.quoteBy} <ExternalLink size={12} /></a></cite>
-          </blockquote>
         </section>
 
         <section className="bm-section bm-shell" id="zstd">

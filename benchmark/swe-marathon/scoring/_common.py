@@ -17,6 +17,13 @@ import re
 # 五个模式：2 条 baseline（plain=裸 codex、goal=codex 原生 goal）+ 3 个 LoopX 模式
 ARMS = ("plain", "goal", "ssh-goal", "codex-cli", "heartbeat")
 
+# Publication scope only: runner support and private collection remain unchanged.
+PUBLIC_ARMS = ("plain", "goal", "heartbeat")
+PUBLICATION_NOTE = (
+    "The ssh-goal and codex-cli groups and conclusions are withdrawn pending validation. "
+    "This publication retains plain, goal, and heartbeat only; private raw results are unchanged."
+)
+
 
 def norm(name: str) -> str:
     """模式名归一化：ssh-goal-1537631 → ssh-goal。
