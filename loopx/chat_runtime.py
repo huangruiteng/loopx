@@ -302,7 +302,10 @@ class ChatRuntimeController:
                 "resume": True,
                 "interrupt": True,
                 "tool_calls": True,
-                "trust_scope": "read_only",
+                # Kiro owns its persistent permission rules. LoopX cancels
+                # interactive ACP permission requests, but cannot turn an
+                # existing host-level `allow` rule into a read-only sandbox.
+                "trust_scope": "workspace_write",
                 "source": "builtin",
             },
             {
@@ -397,6 +400,7 @@ class ChatRuntimeController:
                 startup_timeout_sec=self.startup_timeout_sec,
                 idle_timeout_sec=self.idle_timeout_sec,
                 hard_timeout_sec=self.hard_timeout_sec,
+                execution_mode=execution_mode,
             )
         endpoint = self.endpoint_registry.get(agent_id)
         if endpoint is not None:
@@ -408,6 +412,7 @@ class ChatRuntimeController:
                 startup_timeout_sec=self.startup_timeout_sec,
                 idle_timeout_sec=self.idle_timeout_sec,
                 hard_timeout_sec=self.hard_timeout_sec,
+                execution_mode=execution_mode,
             )
         raise ValueError(f"unknown Agent endpoint: {agent_id}")
 

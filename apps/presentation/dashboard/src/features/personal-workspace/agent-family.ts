@@ -7,8 +7,9 @@
  * kept it independent, which is wrong owner attribution wherever the label is
  * rendered — diagnostics, run timelines, evidence and report cards.
  *
- * A capability row's typed `display_name` / `adapter_kind` stays authoritative;
- * this module is the fallback used when no row is in scope.
+ * A capability row's typed `display_name` stays authoritative. Provider-shaped
+ * adapter kinds can identify a family, while generic transport/projection kinds
+ * cannot; this module falls back to the agent id for those rows.
  */
 
 export const AGENT_FAMILY_ROOTS = [
@@ -23,6 +24,8 @@ export const AGENT_FAMILY_ROOTS = [
 
 export type AgentFamilyRoot = (typeof AGENT_FAMILY_ROOTS)[number];
 
+const GENERIC_ADAPTER_KINDS = new Set(["acp", "status_projection"]);
+
 /** Return the bounded family root for an id, or the normalized id itself. */
 export function agentFamily(agentId: string): string {
   const token = agentId.trim().toLowerCase().replace(/_/gu, "-");
@@ -36,14 +39,15 @@ export function agentFamily(agentId: string): string {
 
 /**
  * Resolve the family a capability row should be presented as, preferring the
- * typed adapter kind over the operator-chosen id when the row carries one.
+ * typed provider adapter kind over the operator-chosen id when the row carries
+ * one. Generic transport/projection kinds are not provider identities.
  */
 export function presentedAgentFamily(
   agentId: string,
   adapterKind?: string | null,
 ): string {
   const typed = adapterKind?.trim().toLowerCase() ?? "";
-  if (typed.length > 0 && typed !== "status_projection") {
+  if (typed.length > 0 && !GENERIC_ADAPTER_KINDS.has(typed)) {
     return agentFamily(typed);
   }
   return agentFamily(agentId);

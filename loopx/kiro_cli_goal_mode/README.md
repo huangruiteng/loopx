@@ -129,11 +129,14 @@ loopx dashboard --kiro-cli-bin /path/to/kiro-cli # explicit executable
 
 Two boundaries this does **not** cross:
 
-- **Read-only by refusal.** LoopX Chat answers every ACP
-  `session/request_permission` with `cancelled` and exposes no client host
-  tools, so a Kiro tool call that needs approval is refused rather than
-  auto-approved. The launch argv carries no `--trust-all-tools`; adding it
-  would move that decision out of the owner's hands.
+- **Owner-managed host permissions.** LoopX Chat answers every interactive ACP
+  `session/request_permission` with `cancelled`, exposes no client host tools,
+  and launches without `--trust-all-tools`. Kiro can still execute a tool
+  without asking when its user, workspace, or agent permission rules already
+  say `allow`; LoopX cannot turn those persistent host rules into a read-only
+  sandbox. The capability therefore advertises `workspace_write`, and the
+  owner must configure Kiro permissions for the desired boundary. A planning
+  prompt or a cancelled request is not an authority gate.
 - **Not the governed loop.** A dashboard Chat session is one bounded
   conversation. The `/goal` loop above is entered from a Kiro CLI session
   through the installed skill facade; the two surfaces share the host, not the

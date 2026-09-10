@@ -23,7 +23,7 @@ assert.equal(agentFamily("codexplorer"), "codexplorer");
 assert.equal(agentFamily("claudeflow"), "claudeflow");
 
 // The typed adapter kind wins over the operator-chosen id when present, and the
-// status projection placeholder is not treated as a family signal.
+// generic transport/projection placeholders are not treated as family signals.
 assert.equal(presentedAgentFamily("kiroscope-worker", "kiro-cli"), "kiro");
 assert.equal(presentedAgentFamily("kiroscope-worker", null), "kiroscope-worker");
 assert.equal(presentedAgentFamily("kiroscope-worker", ""), "kiroscope-worker");
@@ -31,5 +31,7 @@ assert.equal(
   presentedAgentFamily("kiroscope-worker", "status_projection"),
   "kiroscope-worker",
 );
+assert.equal(presentedAgentFamily("kiro-cli", "acp"), "kiro");
+assert.equal(presentedAgentFamily("custom-worker", "acp"), "custom-worker");
 
 console.log("Agent family presentation invariants passed");
