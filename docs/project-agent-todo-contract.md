@@ -886,3 +886,31 @@ The fourth verifies concurrent todo writers wait on the active-state lock and
 preserve both claim metadata and unrelated updates.
 The fifth verifies per-todo `required_capabilities`, including multiple P0/P1
 candidate selection, bridge repair, and owner-gated capability misses.
+
+### Lease-fenced canonical text/note updates
+
+After explicit canonical-authority promotion, the active lease holder can edit
+only `text` and `note` using the existing execution key and current lease version:
+
+```bash
+loopx todo update --goal-id <goal> --todo-id <todo> --agent-id <agent> \
+  --text 'Correct task description' --note 'Correction context' \
+  --task-lease-idempotency-key <execution-key> --task-lease-expected-version <version> \
+  --update-operation-id <stable-update-id>
+```
+
+Reuse the update id, execution proof and edit intent after a lost response.
+The original receipt can be replayed after lease expiry or transfer; it grants no
+current execution authority. Changed proof or edit intent with that id conflicts.
+Omitting the update id preserves a fresh id per CLI invocation. Preview writes
+nothing and does not consume the id. Updates preserve the lease exactly: they
+cannot acquire, renew, release or transfer it. Missing, stale or expired proof
+fails closed. These options do not enable promotion or a legacy Markdown fallback;
+legacy updates without the new options retain their existing behavior.
+
+显式切换到 canonical authority 后，当前租约持有者可使用执行 key 和当前租约版本
+修改 `text`／`note`。响应丢失后复用相同 `--update-operation-id`、凭证和修改内容；
+历史回执可在租约过期或转交后回放，但不授予当前执行权。相同 ID 搭配不同凭证或
+内容会冲突；省略 ID 则每次 CLI 调用生成新 ID。Preview 不写入、不消耗 ID。
+更新不获取、续期、释放或转交租约；缺失、陈旧或过期凭证拒绝。此入口不自动
+promotion，也不回退 Markdown；不带新选项的 legacy 更新保持原行为。

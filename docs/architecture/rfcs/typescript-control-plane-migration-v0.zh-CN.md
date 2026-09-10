@@ -15,6 +15,14 @@
 
 ## 当前实现检查点
 
+Provider-first text/note 更新现可携带当前执行 key 和租约版本，复用 terminal fence，
+禁用自动获取及委托覆盖。修改和回执受同一个 provider revision 保护，租约不变。
+显式 `--update-operation-id` 支持同凭证、同内容的 CLI 重试，过期或转交后仍可回放
+历史回执。缺失／陈旧凭证及历史非活跃租约拒绝；无凭证的旧回执指纹保持兼容。
+这是 #4105 的租约 fence 切片，不是完整 T1 metadata 或 T2 effect 闭合；不带新选项
+的 legacy 更新不变。用法见 [Todo 合同](../../project-agent-todo-contract.md#lease-fenced-canonical-textnote-updates)。
+
+
 公开 Todo add/update 现通过 `todos/authoring_scope.ts` 统一解析角色、continuation
 绑定、gate 作用域与 deferred 条件要求。删除 Python `write_policy.py` 及 `todos.py`
 重复的 scope 选择；Markdown codec 只保留早期 class 检查的适配调用。已物化的 terminal
