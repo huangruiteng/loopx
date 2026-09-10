@@ -109,7 +109,10 @@ def test_merge_gate_runs_on_all_prs_and_checks_every_core_aggregate() -> None:
     assert "paths:" not in trigger and "paths-ignore:" not in trigger
     gate = WORKFLOW.split("  merge-gate:", 1)[1]
     assert "if: always()" in gate
-    assert "needs: [changes, pytest, stage2c-correctness-e2e, windows-powershell]" in gate
+    assert (
+        "needs: [changes, pytest, node-minimum-compatibility, "
+        "stage2c-correctness-e2e, windows-powershell]"
+    ) in gate
     assert "NEEDS_JSON: ${{ toJSON(needs) }}" in gate
     assert "run: python scripts/ci/review_gate.py verify" in gate
     assert "continue-on-error" not in gate

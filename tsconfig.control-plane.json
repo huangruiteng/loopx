@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
     "forceConsistentCasingInFileNames": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
@@ -65,6 +66,7 @@
     "loopx/control_plane/work_items/task_lease_acquire_cli.ts",
     "examples/nokv-authority-store/live-qualification.ts",
     "tests/control_plane_ts/effect_program.test.ts",
+    "tests/control_plane_ts/monitor_metadata.test.ts",
     "tests/control_plane_ts/effect_runtime_errors.test.ts",
     "tests/control_plane_ts/post_writeback_hook_transaction.test.ts",
     "tests/control_plane_ts/interaction_contract.test.ts",
@@ -75,6 +77,7 @@
     "tests/control_plane_ts/coordination_projection.test.ts",
     "tests/control_plane_ts/coordination_state_contract.test.ts",
     "tests/control_plane_ts/local_authority_runtime.test.ts",
+    "tests/control_plane_ts/local_archive_attempt.test.ts",
     "tests/control_plane_ts/local_authority_shadow_outbox.test.ts",
     "tests/control_plane_ts/authority_store_conformance.ts",
     "tests/control_plane_ts/nokv_authority_store.test.ts",

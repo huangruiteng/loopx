@@ -245,11 +245,11 @@ More inspectable surfaces:
 
 ## Try LoopX
 
-Requirements: Python 3.11+ and Node.js 22.6+. Use an active Python environment
-whose console scripts are on `PATH`; macOS and Linux use a POSIX shell, while
-native Windows uses PowerShell 7. Node.js runs the managed, idle-exiting
-TypeScript Effect core; LoopX starts it automatically. Git is only needed for
-contributor clone/canary workflows.
+Requirements: Python 3.11+ and Node.js 22.6+; Node.js 24 LTS is recommended.
+Use an active Python environment whose console scripts are on `PATH`; macOS and
+Linux use a POSIX shell, while native Windows uses PowerShell 7. Node.js runs
+the managed, idle-exiting TypeScript Effect core; LoopX starts it automatically.
+Git is only needed for contributor clone/canary workflows.
 
 Install from PyPI without cloning:
 

@@ -210,6 +210,7 @@ def _candidate_action(item: Mapping[str, Any]) -> tuple[str, str] | None:
         if not action_kind:
             return None
         if action_kind not in {
+            "audit_pull_request_exact_head",
             "rereview_pull_request_exact_head",
             "qualify_pull_request_merge_readiness",
             "review_pull_request_exact_head",
@@ -241,6 +242,7 @@ def _candidate_packet(
     url = str(item.get("url") or "").strip()
     task_repository = f"git:github.com/{repository}" if repository else None
     verb = {
+        "audit_pull_request_exact_head": "Fresh-audit",
         "rereview_pull_request_exact_head": "Re-review",
         "qualify_pull_request_merge_readiness": "Qualify merge readiness for",
         "review_pull_request_exact_head": "Review",

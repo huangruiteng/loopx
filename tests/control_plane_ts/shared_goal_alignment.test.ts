@@ -8,6 +8,18 @@ import {
 
 const DIGEST = "sha256:" + "a".repeat(64);
 
+test("canonical Todo basis does not fabricate an event frontier or accept mixed selectors", () => {
+  const request = baseRequest({source_basis: {revision_basis: "canonical_todo_snapshot",
+    state_event_basis_sequence: 0, source_basis_digest: DIGEST, state_updated_at: null,
+    todo_basis: {source_authority: "file_v0", provider_revision: "opaque-provider-token", records_sha256: "a".repeat(64)}},
+    frontier_basis: {basis_source: "unbound", based_on_state_event_sequence: null, last_agent_event_id: null}});
+  const result = projectSharedGoalAlignment(request);
+  assert.deepEqual(result.drift_facts, []);
+  assert.ok(result.conflict_facts.includes("frontier_basis_unverifiable"));
+  assert.equal(result.source_basis.todo_basis?.provider_revision, "opaque-provider-token");
+  assert.throws(() => projectSharedGoalAlignment({...request, work_items: [], observed_at: "2026-09-09T00:00:00Z"}), /cannot mix/);
+});
+
 function baseRequest(overrides: Record<string, unknown> = {}) {
   return {
     schema_version: "shared_goal_alignment_request_v0",

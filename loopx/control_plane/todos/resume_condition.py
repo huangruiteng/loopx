@@ -136,6 +136,11 @@ def _compact_item(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def compact_todo_resume_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lossless-for-resume facts, independent of display limits and prose size."""
+    return [_compact_item(item) for item in items if item.get("todo_id")]
+
+
 def _pr_ref_number(value: Any) -> int | None:
     if not isinstance(value, str):
         return None
@@ -358,9 +363,7 @@ def plan_todo_external_wait_transition(
                 "todo_id": todo_id,
                 "resume_when": resume_when,
                 "successor_todo_ids": successor_todo_ids,
-                "items": [
-                    _compact_item(item) for item in items if item.get("todo_id")
-                ],
+                "items": compact_todo_resume_items(items),
             },
         )
     except EffectRuntimeRejected as exc:

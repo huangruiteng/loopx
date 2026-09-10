@@ -30,6 +30,9 @@ from .extensions.lark.presentation.kanban import (
     CommandRunner,
     default_subprocess_runner,
 )
+from .chat_manager import manager_channel, open_manager_session
+from .extensions.lark.goal_channel_contracts import binding_for_goal, goal_from_registry
+from .extensions.lark.goal_channel_targets import goal_channel_target_for_name
 from .history import load_registry
 from .paths import resolve_runtime_root
 from .registry import registry_goals
@@ -416,6 +419,9 @@ class LarkChatRequestMixin:
                 "agent_bindings",
                 "app_ref",
                 "capture_scope",
+                "connection_id",
+                "conversation_kind",
+                "executor_endpoint_id",
                 "chat_id",
                 "chat_name",
                 "execute",
@@ -433,31 +439,106 @@ class LarkChatRequestMixin:
             incoming_mode = (
                 _compact_text(body.get("incoming_mode"), limit=40) or "mentions"
             )
+            connection_id = _compact_text(body.get("connection_id"), limit=160) or None
             agent_id = _compact_text(body.get("agent_id"), limit=160) or None
             capture_scope = _compact_text(body.get("capture_scope"), limit=40) or None
-            ingress_mode = (
-                _compact_text(body.get("ingress_mode"), limit=40) or "async_inbox"
-            )
+            ingress_mode = _compact_text(body.get("ingress_mode"), limit=40) or None
             reply_mode = (
                 _compact_text(body.get("reply_mode"), limit=40) or "topic_reply"
             )
             app_refs_by_agent = _parse_lark_agent_bindings(body)
+            if connection_id and app_refs_by_agent is not None:
+                raise ValueError(
+                    "connection_id edits exactly one connection, not an Agent batch"
+                )
             if (
                 not goal_id
-                or not chat_id
-                or not chat_name
-                or (app_refs_by_agent is None and not app_ref)
+                or (not connection_id and not chat_id)
+                or (not connection_id and not chat_name)
+                or (not connection_id and app_refs_by_agent is None and not app_ref)
                 or (app_refs_by_agent is not None and not app_refs_by_agent)
             ):
                 raise ValueError(
                     "goal_id, one or more App bindings, chat_id, and chat_name are required"
                 )
             registry, binding_path = self._goal_channel_context(goal_id)
+            stored = (
+                binding_for_goal(
+                    read_goal_channel_binding(binding_path),
+                    goal_id,
+                    connection_id=connection_id,
+                )
+                if connection_id
+                else None
+            )
+            stored_routing = (stored or {}).get("routing") or {}
+            conversation_kind = (
+                _compact_text(body.get("conversation_kind"), limit=40)
+                or stored_routing.get("conversation_kind")
+                or "goal"
+            )
+            executor_endpoint_id = (
+                _compact_text(body.get("executor_endpoint_id"), limit=100)
+                or stored_routing.get("executor_endpoint_id")
+                or "codex"
+            )
             session_id: str | None = None
             session_ids_by_agent: dict[str, str] = {}
-            if ingress_mode in {"live_steering", "session_queue"}:
+            if conversation_kind == "manager":
+                if app_refs_by_agent is not None:
+                    raise ValueError(
+                        "the machine manager is one recipient, not an Agent batch"
+                    )
+                if ingress_mode and ingress_mode != "session_queue":
+                    raise ValueError(
+                        "the machine manager uses synchronous session_queue delivery"
+                    )
+                ingress_mode = "session_queue"
+                audience_app, audience_chat = app_ref, chat_id
+                if stored:
+                    target = (
+                        goal_channel_target_for_name(
+                            read_goal_channel_targets(self._goal_channel_target_path()),
+                            str(stored.get("target_ref") or ""),
+                        )
+                        or {}
+                    )
+                    audience_app = str(
+                        (target.get("identity") or {}).get("sender_profile")
+                        or "default"
+                    )
+                    audience_chat = str(
+                        (target.get("channel") or {}).get("chat_id") or ""
+                    )
+                if not audience_app or not audience_chat:
+                    raise ValueError(
+                        "the manager requires an exact App and group audience"
+                    )
+                audience = f"{audience_app}\0{audience_chat}"
+                if body.get("execute") is True:
+                    goal = goal_from_registry(registry, goal_id)
+                    session, _ = open_manager_session(
+                        controller=self.server.runtime_controller,
+                        goal_id=goal_id,
+                        work_dir=Path(str(goal.get("repo") or ""))
+                        .expanduser()
+                        .resolve(),
+                        executor_endpoint_id=executor_endpoint_id,
+                        provider="lark",
+                        audience=audience,
+                    )
+                else:
+                    session = self.server.chat_store.latest_session(
+                        goal_id=None,
+                        agent_id=executor_endpoint_id,
+                        channel_id=manager_channel(provider="lark", audience=audience),
+                    )
+                session_id = str(session["session_id"]) if session else None
+            elif ingress_mode in {"live_steering", "session_queue"}:
                 session_agent_ids = (
-                    list(app_refs_by_agent) if app_refs_by_agent is not None else [agent_id]
+                    list(app_refs_by_agent)
+                    if app_refs_by_agent is not None
+                    else [agent_id]
                 )
                 if not all(session_agent_ids):
                     raise ValueError(f"{ingress_mode} requires a registered agent_id")
@@ -485,7 +566,7 @@ class LarkChatRequestMixin:
                 "chat_name": chat_name,
                 "incoming_mode": incoming_mode,
                 "capture_scope": capture_scope,
-                "ingress_mode": ingress_mode,
+                "ingress_mode": ingress_mode or "async_inbox",
                 "reply_mode": reply_mode,
                 "registry_path": binding_path.parent / "registry.json",
                 "execute": body.get("execute") is True,
@@ -503,6 +584,11 @@ class LarkChatRequestMixin:
                     **common,
                     app_ref=app_ref,
                     agent_id=agent_id,
+                    connection_id=connection_id,
+                    conversation_kind=conversation_kind,
+                    executor_endpoint_id=executor_endpoint_id
+                    if conversation_kind == "manager"
+                    else None,
                     session_id=session_id,
                 )
         except ValueError as exc:
@@ -521,9 +607,8 @@ class LarkChatRequestMixin:
                 or packet.get("blocker")
                 or "Lark connection failed"
             )
-        if (
-            body.get("execute") is True
-            and _connection_packet_has_committed_binding(packet)
+        if body.get("execute") is True and _connection_packet_has_committed_binding(
+            packet
         ):
             self._refresh_lark_goal_topic_runtime()
         self._send_json(packet, status=200 if packet.get("ok") else 400)

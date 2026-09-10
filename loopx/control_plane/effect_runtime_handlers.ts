@@ -66,6 +66,8 @@ import {
 import { reduceTodoCompletionTransaction } from "./todos/completion_transaction.ts";
 import { transitionTodoNextAction } from "./todos/next_action.ts";
 import { planTodoFieldUpdate } from "./todos/field_update.ts";
+import { planPublicTodoUpdate } from "./todos/public_update.ts";
+import { planMonitorMetadata } from "./todos/monitor_metadata.ts";
 import { planTodoAuthoringScope } from "./todos/authoring_scope.ts";
 import {
   evaluateTodoResumeConditions,
@@ -120,6 +122,7 @@ import {
   rollbackCoordinationRuntimeShadow,
 } from "./coordination/runtime_shadow.ts";
 import {
+  acknowledgeLocalCoordinationTodoArchive,
   archiveLocalCoordinationTodos,
   claimLocalCoordinationTodo,
   createLocalCoordinationTodo,
@@ -370,6 +373,8 @@ export function createEffectRuntimeHandlers(
     ["todo.completion_state.require_metadata", requireTodoCompletionMetadataValue],
     ["todo.completion_state.continuation_for_write", selectTodoCompletionContinuation],
     ["todo.field_update.plan", planTodoFieldUpdate],
+    ["todo.public_update.plan", planPublicTodoUpdate],
+    ["todo.monitor_metadata.plan", planMonitorMetadata],
     ["todo.authoring_scope.plan", planTodoAuthoringScope],
     [
       "todo.claim.decide",
@@ -448,6 +453,7 @@ export function createEffectRuntimeHandlers(
     ["coordination.local_authority.todo_update", updateLocalCoordinationTodo],
     ["coordination.local_authority.todo_terminal", terminalLifecycleLocalCoordinationTodo],
     ["coordination.local_authority.todo_archive", archiveLocalCoordinationTodos],
+    ["coordination.local_authority.todo_archive_ack", acknowledgeLocalCoordinationTodoArchive],
     ["coordination.local_authority.todo_compatibility_edit", editLocalCoordinationTodo],
     ["coordination.local_authority.mutate", mutateLocalCoordinationAuthority],
     ["coordination.local_authority.todo_read", readLocalCoordinationTodo],

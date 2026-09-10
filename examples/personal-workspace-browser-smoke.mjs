@@ -899,6 +899,16 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
     }
     if (url.pathname === "/api/chat/lark/connections" && request.method() === "POST") {
       const body = request.postDataJSON();
+      if (body.connection_id) {
+        const existing = runtime.larkConnections.find((item) => item.connection_id === body.connection_id && item.goal_id === body.goal_id);
+        if (!existing || body.app_ref || body.chat_id || body.agent_bindings) throw new Error("Editing must select the stored connection without replacing its identity");
+        if (body.execute) {
+          Object.assign(existing, { agent_id: body.agent_id, ingress_mode: body.ingress_mode, capture_scope: body.capture_scope });
+          state.larkWrites.push({ ...body });
+        }
+        await route.fulfill({ contentType: "application/json", json: { ok: true, status: body.execute ? "connected" : "preview_ready" }, status: 200 });
+        return;
+      }
       const bindings = Array.isArray(body.agent_bindings)
         ? body.agent_bindings
         : [{ agent_id: body.agent_id ?? null, app_ref: body.app_ref }];
@@ -909,7 +919,8 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
           const connectionId = `lark-${body.goal_id}-${binding.agent_id ?? "default"}`;
           runtime.larkConnections = runtime.larkConnections.filter((item) => item.connection_id !== connectionId);
           runtime.larkConnections.push({
-            agent_id: binding.agent_id ?? null,
+            agent_id: body.conversation_kind === "manager" ? "loopx-manager" : binding.agent_id ?? null,
+            conversation_kind: body.conversation_kind ?? "goal",
             connection_id: connectionId,
             app_label: binding.app_ref === "mew-research" ? "LoopX Research" : "LoopX Mew", app_ref: binding.app_ref, chat_name: body.chat_name, enabled: true,
             capture_scope: body.capture_scope,
@@ -2240,6 +2251,8 @@ async function main() {
     await page.getByRole("button", { name: /连接 Lark App/ }).click();
     const connectDialog = page.getByRole("dialog", { name: "连接 Lark App" });
     await connectDialog.waitFor({ state: "visible" });
+    if (await connectDialog.getByLabel("连接用途").inputValue() !== "manager") throw new Error("Machine-level Lark setup must default to the built-in manager");
+    await connectDialog.getByLabel("连接用途").selectOption("goal");
     await connectDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
     await connectDialog.getByLabel("群聊").selectOption({ label: "Product group" });
     await connectDialog.getByLabel("接收范围").selectOption("configured_chat_all");
@@ -2303,6 +2316,7 @@ async function main() {
     await editDialog.waitFor({ state: "hidden" });
     await page.locator(".personal-lark-toolbar").getByRole("button", { name: /连接 Lark App/ }).click();
     const batchDialog = page.getByRole("dialog", { name: "连接 Lark App" });
+    await batchDialog.getByLabel("连接用途").selectOption("goal");
     await batchDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
     await batchDialog.getByLabel("群聊").selectOption({ label: "Product group" });
     await batchDialog.getByLabel("绑定到 Goal").selectOption("multi-agent-projection");
@@ -2315,6 +2329,22 @@ async function main() {
     const perAgentAppWrites = Object.fromEntries(api.larkWrites.slice(1).map((item) => [item.agent_id, item.app_ref]));
     if (perAgentAppWrites["codex-older-lane"] !== "mew-research" || perAgentAppWrites["codex-latest-lane"] !== "mew") throw new Error(`Per-Agent App selection was not preserved: ${JSON.stringify(perAgentAppWrites)}`);
     if (!api.larkConnections.some((item) => item.agent_id === "codex-older-lane") || !api.larkConnections.some((item) => item.agent_id === "codex-latest-lane")) throw new Error("One-click Goal Channel lost a peer Agent route");
+    const legacyConnection = api.larkConnections.find((item) => item.agent_id === "codex-older-lane");
+    Object.assign(legacyConnection, { ingress_mode: "direct_session", app_ref: "profile-alias-not-in-catalog", app_label: "Original Bot" });
+    const legacyId = legacyConnection.connection_id;
+    await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const legacyRow = page.locator(".personal-lark-table-row", { hasText: "Original Bot" });
+    await legacyRow.getByText("待升级", { exact: true }).waitFor({ state: "visible" });
+    await legacyRow.getByRole("button", { name: /配置/ }).click();
+    const upgradeDialog = page.getByRole("dialog", { name: "编辑 Lark 连接" });
+    await upgradeDialog.getByText("Original Bot", { exact: true }).waitFor({ state: "visible" });
+    if (await upgradeDialog.getByRole("combobox", { name: "Lark App", exact: true }).count()) throw new Error("An unknown App alias must not display the first catalog App");
+    if (!await upgradeDialog.getByLabel("异步收件箱", { exact: true }).isChecked()) throw new Error("Legacy editing must default to async inbox");
+    if (!await upgradeDialog.getByLabel("接收范围", { exact: true }).isDisabled()) throw new Error("Migration must preserve the old capture scope");
+    await upgradeDialog.getByRole("button", { name: "保存连接", exact: true }).click();
+    await upgradeDialog.waitFor({ state: "hidden" });
+    if (legacyConnection.connection_id !== legacyId || legacyConnection.app_ref !== "profile-alias-not-in-catalog" || legacyConnection.ingress_mode !== "async_inbox" || api.larkConnections.length !== 2) throw new Error("Upgrade changed the connection identity or duplicated the route");
     const removedConnection = api.larkConnections.find((item) => item.agent_id === "codex-older-lane");
     const originalAgent = removedConnection.agent_id;
     removedConnection.agent_id = "removed-peer";
@@ -2326,6 +2356,16 @@ async function main() {
     if (await editDialog.getByLabel("目标 Agent").inputValue() !== "removed-peer") throw new Error("Removed recipient silently fell back to another Agent");
     await editDialog.getByRole("button", { name: "取消" }).click();
     removedConnection.agent_id = originalAgent;
+    await page.locator(".personal-lark-toolbar").getByRole("button", { name: /连接 Lark App/ }).click();
+    const managerDialog = page.getByRole("dialog", { name: "连接 Lark App" });
+    await managerDialog.getByRole("option", { name: "Product group" }).waitFor({ state: "attached" });
+    if (await managerDialog.getByLabel("连接用途").inputValue() !== "manager") throw new Error("Machine manager default was not restored for new setup");
+    if (await managerDialog.getByLabel("目标 Agent").count()) throw new Error("The built-in manager must not require selecting a worker Agent");
+    await managerDialog.getByRole("button", { name: "连接", exact: true }).click();
+    await managerDialog.waitFor({ state: "hidden" });
+    const managerWrite = api.larkWrites.at(-1);
+    if (managerWrite.conversation_kind !== "manager" || managerWrite.ingress_mode !== "session_queue" || managerWrite.agent_bindings) throw new Error("Manager setup did not request its synchronous singleton service");
+    await page.getByText("管家 · 同步对话", { exact: true }).waitFor({ state: "visible" });
     await page.screenshot({ path: resolve(outputDir, "lark-goal-connections.png"), fullPage: false, animations: "disabled" });
     await page.getByRole("button", { name: "返回工作区", exact: true }).click();
     await selectProductReleaseGoal();

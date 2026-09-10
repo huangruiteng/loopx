@@ -1,0 +1,106 @@
+"""Typed boundary between PR inventory selection and review execution."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping, Sequence
+from typing import Any
+
+from .review_contract import build_review_plan, build_review_template
+
+
+EXACT_HEAD_PATTERN = re.compile(
+    r"^(?P<number>[1-9][0-9]*)@(?P<head>[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$"
+)
+
+
+def review_action_kind(item: Mapping[str, Any]) -> str | None:
+    state = str(item.get("state") or "").upper()
+    if item.get("is_draft") is True or state == "CLOSED":
+        return None
+    conclusion = item.get("review_conclusion")
+    conclusion = conclusion if isinstance(conclusion, Mapping) else {}
+    if conclusion.get("valid") is True:
+        if state == "OPEN" and str(conclusion.get("state") or "").upper() == "APPROVED":
+            return "qualify_pull_request_merge_readiness"
+        return None
+    if state == "MERGED":
+        return "audit_merged_pull_request_exact_head"
+    if state != "OPEN":
+        return None
+    if str(item.get("review_decision") or "").upper() == "CHANGES_REQUESTED":
+        return "rereview_pull_request_exact_head"
+    return "review_pull_request_exact_head"
+
+
+def normalize_fresh_audit_exact_heads(values: Sequence[str]) -> set[str]:
+    normalized: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        match = EXACT_HEAD_PATTERN.fullmatch(text)
+        if match is None:
+            raise ValueError(
+                "fresh audit exact head must use NUMBER@HEAD_OID with a full "
+                "40- or 64-character hexadecimal head"
+            )
+        normalized.add(f"{int(match.group('number'))}@{match.group('head').casefold()}")
+    return normalized
+
+
+def exact_head_key(item: Mapping[str, Any]) -> str | None:
+    number = item.get("number")
+    head_oid = str(item.get("head_oid") or "").strip().casefold()
+    if not isinstance(number, int) or number < 1:
+        return None
+    if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", head_oid) is None:
+        return None
+    return f"{number}@{head_oid}"
+
+
+def materialize_review_execution(
+    item: Mapping[str, Any], *, fresh_audit_exact_heads: set[str]
+) -> dict[str, Any]:
+    action_kind = review_action_kind(item)
+    key = exact_head_key(item)
+    fresh_audit_requested = key in fresh_audit_exact_heads
+    conclusion = item.get("review_conclusion")
+    conclusion = conclusion if isinstance(conclusion, Mapping) else {}
+    if fresh_audit_requested:
+        if action_kind is not None:
+            raise ValueError(f"fresh audit exact head {key} is already actionable")
+        if conclusion.get("valid") is not True:
+            raise ValueError(f"fresh audit exact head {key} requires a valid prior conclusion")
+        action_kind = "audit_pull_request_exact_head"
+
+    result: dict[str, Any] = {
+        "review_action_kind": action_kind,
+        "fresh_audit_requested": fresh_audit_requested,
+    }
+    if not action_kind:
+        return result | {
+            "review_goal": (
+                "Read back the existing exact-head conclusion; no full evidence review "
+                "is authorized."
+            ),
+            "evidence_commands": [],
+            "review_plan": None,
+            "review_template": None,
+        }
+
+    number = item.get("number")
+    actionable_item = dict(item) | result
+    return result | {
+        "review_goal": (
+            "Run a fresh five-block exact-head audit despite the valid prior conclusion."
+            if fresh_audit_requested
+            else "Fill the five-block review template after reading the PR body and diff."
+        ),
+        "evidence_commands": [
+            f"gh pr view {number} --json title,body,files,commits,statusCheckRollup,headRefOid,updatedAt",
+            f"gh pr diff {number} --name-only",
+            f"gh pr diff {number} --patch",
+            f"gh pr view {number} --json headRefOid,updatedAt",
+        ],
+        "review_plan": build_review_plan(actionable_item),
+        "review_template": build_review_template(actionable_item),
+    }

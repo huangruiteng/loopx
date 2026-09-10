@@ -11,6 +11,23 @@ import {
 const DIGEST = "sha256:" + "a".repeat(64);
 const MISMATCHED_DIGEST = "sha256:" + "b".repeat(64);
 
+test("canonical Todo bases cannot be declared fresh merely because both event sequences are zero", () => {
+  const request = baseRequest();
+  request.proposal.base_revision_basis = "canonical_todo_snapshot";
+  request.proposal.base_state_event_basis_sequence = 0;
+  request.derived_basis.revision_basis = "canonical_todo_snapshot";
+  request.derived_basis.state_event_basis_sequence = 0;
+  const fresh = admitGoalAmendmentProposal(request);
+  assert.equal(fresh.admission, "admitted");
+  assert.deepEqual(fresh.admission_facts, ["base_source_basis_unverifiable"]);
+  request.derived_basis.source_basis_digest = MISMATCHED_DIGEST;
+  const stale = admitGoalAmendmentProposal(request);
+  assert.equal(stale.admission, "needs_rebase");
+  assert.deepEqual(stale.admission_facts, ["base_source_basis_digest_mismatch"]);
+  request.proposal.base_revision_basis = "markdown_active_state";
+  assert.ok(admitGoalAmendmentProposal(request).admission_facts.includes("base_revision_basis_superseded"));
+});
+
 function baseRequest(overrides: Record<string, unknown> = {}) {
   return {
     schema_version: "goal_amendment_proposal_request_v0",

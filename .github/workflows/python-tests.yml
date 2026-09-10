@@ -76,7 +76,7 @@ jobs:
       - name: Set up the TypeScript Effect runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "24"
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -114,6 +114,43 @@ jobs:
           LOOPX_CLI_OUTPUT_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
         run: python examples/control_plane/cli-output-budget-regression-smoke.py
 
+  node-minimum-compatibility:
+    needs: changes
+    if: needs.changes.outputs.core_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.6"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Qualify the public minimum Node.js runtime
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck:control-plane
+          npm run test:control-plane
+
+  node-forward-compatibility:
+    needs: changes
+    if: needs.changes.outputs.core_tests == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Probe the next Node.js runtime
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck:control-plane
+          npm run test:control-plane
+
   test-shard:
     needs: changes
     if: needs.changes.outputs.core_tests == 'true'
@@ -133,7 +170,7 @@ jobs:
           cache: pip
       - uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "24"
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Install test dependencies
@@ -223,7 +260,7 @@ jobs:
           cache-dependency-path: tests/requirements-stage2c-linux-py311.txt
       - uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "24"
           cache: npm
       - name: Install locked test and package build tools
         run: |
@@ -314,7 +351,7 @@ jobs:
       - name: Set up the TypeScript Effect runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "24"
 
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check -e ".[test]"
@@ -341,7 +378,7 @@ jobs:
   merge-gate:
     # Always publish one stable outcome, including documentation-only PRs.
     if: always()
-    needs: [changes, pytest, stage2c-correctness-e2e, windows-powershell]
+    needs: [changes, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

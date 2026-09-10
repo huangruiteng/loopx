@@ -2524,11 +2524,27 @@ commands fail closed; they do not fall back to the old writer.
 
 #### Refactoring roadmap overview
 
+The Monitor state owner now lives in TS and is composed with authoring scope,
+external-wait validation and field updates by one public update plan. Python
+transports the locked compact snapshot instead of sequencing those leaf RPCs;
+partial topology edits cannot invalidate retained waits. The legacy writer
+still owns admission, the lock and persistence. The typed plan is
+not an authority receipt; monitor/successor atomicity, native metadata update,
+provider defaults and D1–D3 remain separate, unfinished gates. Permanent
+Markdown projection remains part of the target architecture.
+
 Todo authoring scope and terminal successors now share the TS resolved-binding
 invariant. Only explicit `global_gate` can widen blocking to all registered
 agents; `goal_bound` grants no global-gate semantics. This consolidates T1
 admission rules without expanding native update fields, changing provider/profile
 defaults, or releasing D1–D3 projection, real-backend, soak or promotion holds.
+
+Shared-goal alignment and amendment admission now consume the same canonical
+Todo/lease revision after promotion, including authoritative empty state. Their
+old display/lease-file reads remain only before promotion. Proposal source
+digests include that revision, without treating it as a Goal intent revision or
+an amendment commit receipt. This is a bounded T3 consumer closure; the default
+provider, permanent projection, D1–D3 qualification and T1/T2 holds are unchanged.
 
 The original direction remains; execution cards expand these stages rather than cancel them:
 

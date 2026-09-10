@@ -659,11 +659,25 @@ class CodexChatAgentSession:
             params = message.get("params")
             if on_event:
                 phase = {
-                    "turn/started": "正在连接 Agent",
-                    "item/started": "正在读取 Goal 上下文",
-                    "item/completed": "已完成一项检查",
-                    "turn/completed": "正在整理回答",
+                    "turn/started": "Agent 已开始处理",
+                    "item/completed": "Agent 返回了处理状态",
+                    "turn/completed": "Agent 回合已结束",
                 }.get(method)
+                if method == "item/started":
+                    item = params.get("item") if isinstance(params, dict) else None
+                    item_type = str(item.get("type") or "") if isinstance(item, dict) else ""
+                    # Transport activity does not prove a Goal read or a
+                    # successful check. Project only the typed activity; do
+                    # not expose arbitrary item text, command or tool inputs.
+                    phase = {
+                        "userMessage": "Agent 已收到消息",
+                        "agentMessage": "Agent 正在生成回答",
+                        "reasoning": "Agent 正在思考",
+                        "commandExecution": "Agent 正在执行命令",
+                        "mcpToolCall": "Agent 正在调用工具",
+                        "dynamicToolCall": "Agent 正在调用工具",
+                        "webSearch": "Agent 正在检索",
+                    }.get(item_type, "Agent 正在处理")
                 if phase:
                     on_event("agent.phase", {"label": phase, "method": method})
             if method == "item/agentMessage/delta" and isinstance(params, dict):

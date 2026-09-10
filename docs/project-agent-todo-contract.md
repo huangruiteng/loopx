@@ -102,6 +102,39 @@ eligible time, `--cadence` is the retry interval, `--monitor-target-key` is the
 stable idempotency key, and optional `--expires-at` is the hard stop after
 which the monitor must not catch up.
 
+Public Todo updates validate the effective waiting state, not just newly supplied
+`resume_when`. Changing a Monitor-waiting Todo's status/task class or successor
+list must preserve the open advancement-task/independent-successor contract.
+To leave that contract, explicitly clear `resume_when` in the same update; this
+also clears its Monitor generation fence. Ordinary text/note corrections do not
+re-arm a wait, reset its baseline, or demand a new successor after its condition
+becomes satisfied. Explicitly re-submitting a satisfied Monitor condition still
+requires clearing it before re-arming. These checks are planning constraints,
+not permission to claim work, commit to a provider, or execute a successor.
+
+Monitor observations are reduced against the Todo under its existing writer lock.
+Callers report a result hash and material-change fact; they must not independently
+increment counters. A material observation with a different result hash increments
+`material_change_generation`; repeating the same hash does not. An unchanged
+same-hash poll increments `consecutive_no_change`; material change or a changed hash
+resets that count. Issue-fix grouped membership updates use this same path.
+New grouped monitors default to watch-only; subsequent observations preserve
+the existing expiration/watch policy rather than silently re-enabling watch-only.
+
+An exact `monitor_effect_id` replay keeps the committed counters. Reusing the ID
+with different observation fields fails. Older timestamps fail even without an
+effect ID; same-second unkeyed polls remain allowed, while distinct keyed effects
+retain strict ordering. Ordering preserves microseconds. Newly written
+`material_change_generation` and `consecutive_no_change` values must be
+non-negative safe integers. Use ISO timestamps
+(for example `2030-01-01T12:00:00.000001+00:00`); invalid calendar dates are
+rejected. Existing compact/week-date and timezone-offset-second spellings remain readable.
+Existing malformed historical timestamps do not prove an ordering fence.
+
+These rules do not make a Monitor executable delivery work, grant claim/lease
+authority, or make Monitor and successor writes atomic. A planning result is
+not a durable receipt; provider promotion remains explicitly gated.
+
 Terminology: a `goal_id` is the LoopX control-plane boundary: registry
 entry, active-state file, quota lane, status projection, and run-history stream.
 A `todo_id` is a structured work item inside that goal. LoopX does not

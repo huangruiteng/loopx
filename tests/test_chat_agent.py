@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import queue
 from pathlib import Path
 
 import loopx.chat_agent as chat_agent
@@ -57,6 +58,47 @@ def test_codex_chat_app_server_stdio_uses_utf8(
         assert launch_options["encoding"] == "utf-8"
     finally:
         session.close()
+
+
+@pytest.mark.parametrize(
+    ("item", "expected_activity"),
+    [
+        ({"type": "userMessage"}, "Agent 已收到消息"),
+        ({"type": "agentMessage"}, "Agent 正在生成回答"),
+        ({"type": "commandExecution"}, "Agent 正在执行命令"),
+        ({"type": "reasoning"}, "Agent 正在思考"),
+        ({"type": "mcpToolCall"}, "Agent 正在调用工具"),
+        ({"type": "futureItem", "text": "private-fixture-content"}, "Agent 正在处理"),
+        ({}, "Agent 正在处理"),
+    ],
+)
+def test_turn_activity_does_not_invent_goal_reads_or_successful_checks(
+    monkeypatch, tmp_path, item, expected_activity,
+):
+    session = chat_agent.CodexChatAgentSession(
+        process=_FakeAppServerProcess(), messages=queue.Queue(),
+        thread_id="thread-fixture", work_dir=tmp_path,
+    )
+    upstream = iter([
+        {"method": "turn/started", "params": {"turn": {"id": "turn-fixture"}}},
+        {"method": "item/started", "params": {"item": item}},
+        # Completion can mean a failed command or receipt of a user message;
+        # neither is evidence that a Goal check passed.
+        {"method": "item/completed", "params": {"item": {**item, "status": "failed"}}},
+        {"method": "item/agentMessage/delta", "params": {"delta": "Ready."}},
+        {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
+    ])
+    monkeypatch.setattr(session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}})
+    monkeypatch.setattr(session, "_next_event", lambda **kw: next(upstream))
+    events = []
+    session.send("Reply briefly.", on_event=lambda kind, payload: events.append((kind, payload)))
+    phases = [p for kind, p in events if kind == "agent.phase"]
+    assert phases[1]["label"] == expected_activity
+    assert phases[0]["label"] == "Agent 已开始处理"
+    assert phases[2]["label"] == "Agent 返回了处理状态"
+    assert not any("检查" in p["label"] or "Goal" in p["label"] for p in phases)
+    assert "private-fixture-content" not in json.dumps(phases)
+    assert any(kind == "answer.delta" and p["text"] == "Ready." for kind, p in events)
 
 
 def test_codex_chat_pins_explicit_home_in_child_environment(monkeypatch, tmp_path):

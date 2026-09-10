@@ -22,7 +22,7 @@ pub enum ServiceKind {
 }
 
 impl ServiceKind {
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Status => "status",
             Self::Chat => "chat",
@@ -118,12 +118,13 @@ pub struct ServiceSet {
 }
 
 impl ServiceSet {
-    pub fn start() -> Result<Self, ServiceError> {
+    pub fn start(mut progress: impl FnMut(ServiceKind)) -> Result<Self, ServiceError> {
         let mut services = Self {
             owned: Vec::new(),
             healed: false,
         };
         for kind in [ServiceKind::Status, ServiceKind::Chat] {
+            progress(kind);
             if let Err(error) = services.ensure(kind) {
                 services.stop();
                 return Err(error);

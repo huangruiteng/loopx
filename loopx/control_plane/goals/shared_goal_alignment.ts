@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import { sharedGoalWorkFacts } from "./shared_goal_work.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import {
   optionalNonEmptyString,
@@ -21,10 +22,12 @@ import {
  * computed once on the Python side so both runtimes observe one value.
  *
  * Basis semantics: `source_basis` is an event-log-derived projection basis,
- * NOT a canonical intent revision. `state_event_basis_sequence` is the state
+ * NOT a canonical intent revision. With no event log, canonical Todo reads
+ * use `canonical_todo_snapshot`, sequence 0 and an unbound Agent frontier.
+ * The separate `todo_basis` identifies the single Todo/lease snapshot. `state_event_basis_sequence` is the state
  * event log's append sequence (or 0 with the markdown fallback), and
- * `source_basis_digest` hashes goal status, registered agents, and event-log
- * basis facts — the RFC §3.1 canonical intent envelope (objective,
+ * `source_basis_digest` hashes goal status, registered agents, event-log
+ * basis facts and the canonical Todo revision when promoted — the RFC §3.1 canonical intent envelope (objective,
  * non-goals, acceptance, permissions, terminal conditions) has no typed
  * storage yet, so no field here claims canonical intent identity. This
  * contract has no writer surface: it projects drift and conflict facts only
@@ -53,6 +56,7 @@ export type SharedGoalAlignmentConflictFact =
 const REVISION_BASIS_VALUES = [
   "state_event_log",
   "markdown_active_state",
+  "canonical_todo_snapshot",
 ] as const;
 const BASIS_SOURCE_VALUES = ["state_event_log", "unbound"] as const;
 
@@ -74,6 +78,7 @@ export interface SourceBasisFacts extends JsonObject {
   source_basis_digest: string;
   revision_basis: RevisionBasis;
   state_updated_at: string | null;
+  todo_basis?: JsonObject;
 }
 
 export interface FrontierBasisFacts extends JsonObject {
@@ -185,9 +190,9 @@ function decodeSourceBasis(value: unknown): SourceBasisFacts {
       "shared_goal_alignment source_basis state_event_basis_sequence must be a positive event append sequence when revision_basis is state_event_log",
     );
   }
-  if (revisionBasis === "markdown_active_state" && basisSequence !== 0) {
+  if (revisionBasis !== "state_event_log" && basisSequence !== 0) {
     throw new EffectRuntimeRequestError(
-      "shared_goal_alignment source_basis state_event_basis_sequence must be 0 when revision_basis is markdown_active_state",
+      `shared_goal_alignment source_basis state_event_basis_sequence must be 0 when revision_basis is ${revisionBasis}`,
     );
   }
   const sourceBasisDigest = requireNonEmptyString(
@@ -199,6 +204,19 @@ function decodeSourceBasis(value: unknown): SourceBasisFacts {
       "shared_goal_alignment.source_basis.source_basis_digest must be a sha256:<hex> digest computed from typed source facts",
     );
   }
+  let todoBasis: JsonObject | undefined;
+  if (raw.todo_basis !== undefined) {
+    const basis = requireJsonObject(raw.todo_basis, "todo_basis");
+    if (basis.source_authority !== "file_v0" ||
+      typeof basis.records_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(basis.records_sha256)) {
+      throw new EffectRuntimeRequestError("invalid canonical Todo basis");
+    }
+    todoBasis = {source_authority: basis.source_authority, records_sha256: basis.records_sha256,
+      provider_revision: requireNonEmptyString(basis.provider_revision, "todo_basis.provider_revision")};
+  }
+  if (revisionBasis === "canonical_todo_snapshot" && todoBasis === undefined) {
+    throw new EffectRuntimeRequestError("canonical_todo_snapshot requires a canonical Todo basis");
+  }
   return {
     state_event_basis_sequence: basisSequence,
     source_basis_digest: sourceBasisDigest,
@@ -207,6 +225,7 @@ function decodeSourceBasis(value: unknown): SourceBasisFacts {
       raw.state_updated_at,
       "shared_goal_alignment.source_basis.state_updated_at",
     ),
+    ...(todoBasis === undefined ? {} : {todo_basis: todoBasis}),
   };
 }
 
@@ -478,7 +497,7 @@ function conflictFacts(
 export function decodeSharedGoalAlignmentRequest(
   value: unknown,
 ): SharedGoalAlignmentRequest {
-  const request = requireJsonObject(value, "shared_goal_alignment request");
+  let request = requireJsonObject(value, "shared_goal_alignment request");
   if (
     request.schema_version !== SHARED_GOAL_ALIGNMENT_REQUEST_SCHEMA_VERSION
   ) {
@@ -496,6 +515,12 @@ export function decodeSharedGoalAlignmentRequest(
     );
   }
   const agentIdValue = agentId(request.agent_id, "shared_goal_alignment.agent_id");
+  if (request.work_items !== undefined) {
+    for (const key of ["claims", "frontier_counts", "unclaimed_eligible", "peer_claimed_bound_todo_ids"]) {
+      if (request[key] !== undefined) throw new EffectRuntimeRequestError("work_items cannot mix with preselected alignment facts");
+    }
+    request = {...request, ...sharedGoalWorkFacts(request.work_items, agentIdValue, request.observed_at)};
+  }
   const sourceBasis = decodeSourceBasis(request.source_basis);
   const frontier = decodeFrontierBasis(request.frontier_basis, sourceBasis);
   const claims = decodeClaims(request.claims, agentIdValue);

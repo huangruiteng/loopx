@@ -9,7 +9,12 @@ from pathlib import PurePosixPath
 import subprocess
 
 
-CORE_JOBS = ("pytest", "stage2c-correctness-e2e", "windows-powershell")
+CORE_JOBS = (
+    "pytest",
+    "node-minimum-compatibility",
+    "stage2c-correctness-e2e",
+    "windows-powershell",
+)
 ROOT_DOCS = {"README.md", "README.zh-CN.md", "CHANGELOG.md", "CONTRIBUTING.md"}
 
 

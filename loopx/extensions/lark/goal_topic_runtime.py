@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ...chat_manager import MANAGER_AGENT_OBJECTIVE
+from .manager_routing import has_manager_binding
 from ..external_connector_runtime import (
     EFFECT_RECEIPT_SCHEMA_VERSION,
     ExternalEffectKind,
@@ -270,7 +272,9 @@ def poll_lark_goal_topic_profile_once(
         target_ref, _target = target_match
         routed_event = dict(event)
         root_id = str(routed_event.get("root_id") or "")
-        if not MESSAGE_ID_PATTERN.fullmatch(root_id):
+        if not MESSAGE_ID_PATTERN.fullmatch(root_id) and not has_manager_binding(
+            binding_payloads, target_ref
+        ):
             candidate_roots = _topic_roots_for_target(
                 binding_payloads,
                 target_ref=target_ref,
@@ -712,7 +716,9 @@ class LarkGoalTopicRuntimeService:
                             self.runtime_controller.resume_session_queue(
                                 session_id=session_id,
                                 work_dir=resolved_work_dir,
-                                objective=str(context.get("objective") or goal_id),
+                                objective=MANAGER_AGENT_OBJECTIVE
+                                if routing.get("conversation_kind") == "manager"
+                                else str(context.get("objective") or goal_id),
                             )
 
     def active_profiles(self) -> list[str]:
@@ -743,7 +749,17 @@ def answer_lark_goal_topic(
     goal_id = str(route.get("goal_id") or "")
     ingress_mode = str(route.get("ingress_mode") or "direct_session")
     session_id = str(route.get("session_id") or "")
-    agent_id = str(route.get("agent_id") or "codex")
+    manager = route.get("conversation_kind") == "manager"
+    agent_id = (
+        str(route.get("executor_endpoint_id") or "codex")
+        if manager
+        else str(route.get("agent_id") or "codex")
+    )
+    expected_channel = (
+        str(route.get("manager_channel_id") or "") if manager else f"goal.{goal_id}"
+    )
+    if manager:
+        objective = MANAGER_AGENT_OBJECTIVE
     resolved_work_dir = Path(work_dir).expanduser().resolve()
     message = (
         "这是来自已绑定 Lark Goal Topic 的用户消息。请直接回答当前问题；"
@@ -758,9 +774,9 @@ def answer_lark_goal_topic(
         session = runtime_controller.store.load_session(session_id)
         if (
             session is None
-            or session.get("goal_id") != goal_id
+            or (not manager and session.get("goal_id") != goal_id)
             or session.get("agent_id") != agent_id
-            or session.get("channel_id") != f"goal.{goal_id}"
+            or session.get("channel_id") != expected_channel
             or session.get("status") == "closed"
         ):
             raise RuntimeError(

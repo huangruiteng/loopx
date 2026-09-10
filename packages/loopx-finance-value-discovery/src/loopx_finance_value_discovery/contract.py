@@ -6,6 +6,7 @@ from math import isfinite
 from typing import Any
 
 from .boundary import reject_forbidden_material
+from .source_coverage import validate_coverage_requirement
 
 FINANCE_CASE_CONTRACT_SCHEMA_VERSION = "finance_case_contract_v1"
 FINANCE_CASE_INPUT_SCHEMA_VERSION = "finance_case_gate_input_v1"
@@ -66,7 +67,7 @@ def _gate_rule(value: object, *, index: int) -> dict[str, Any]:
     field = f"contract.gates[{index}]"
     if not isinstance(value, Mapping):
         raise ValueError(f"{field} must be an object")
-    allowed = {"gate_id", "value_type", "operator", "reference_value"}
+    allowed = {"gate_id", "value_type", "operator", "reference_value", "source_coverage"}
     if set(value) - allowed:
         raise ValueError(f"{field} has unsupported fields")
     value_type = _text(
@@ -92,12 +93,17 @@ def _gate_rule(value: object, *, index: int) -> dict[str, Any]:
         reference = _text(
             reference, field=f"{field}.reference_value", limit=120
         )
-    return {
+    rule = {
         "gate_id": _text(value.get("gate_id"), field=f"{field}.gate_id", limit=80),
         "value_type": value_type,
         "operator": operator,
         "reference_value": reference,
     }
+    if "source_coverage" in value:
+        if value_type != "boolean" or operator != "eq" or reference is not True:
+            raise ValueError("source_coverage requires a boolean eq true gate")
+        rule["source_coverage"] = validate_coverage_requirement(value["source_coverage"])
+    return rule
 
 
 def validate_finance_case_contract(value: object) -> dict[str, Any]:
@@ -154,6 +160,21 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
         raise ValueError(
             "contract.point_in_time must not be after contract.evaluation_as_of"
         )
+    universe_id = _text(value.get("universe_id"), field="contract.universe_id", limit=96)
+    for rule in gates:
+        requirement = rule.get("source_coverage")
+        if requirement is None:
+            continue
+        if requirement["request_identity"]["universe_id"] != universe_id:
+            raise ValueError("source_coverage universe_id must match contract.universe_id")
+        if not (
+            iso_comparable_datetime(point_in_time)
+            <= iso_comparable_datetime(requirement["collection_started_at"])
+            <= iso_comparable_datetime(evaluation_as_of)
+        ):
+            raise ValueError(
+                "source_coverage collection start must be inside the case window"
+            )
     return {
         "schema_version": FINANCE_CASE_CONTRACT_SCHEMA_VERSION,
         "contract_id": _text(
@@ -166,9 +187,7 @@ def validate_finance_case_contract(value: object) -> dict[str, Any]:
         ),
         "point_in_time": point_in_time,
         "evaluation_as_of": evaluation_as_of,
-        "universe_id": _text(
-            value.get("universe_id"), field="contract.universe_id", limit=96
-        ),
+        "universe_id": universe_id,
         "universe_frozen": _required_boolean(
             value, "universe_frozen", expected=True
         ),

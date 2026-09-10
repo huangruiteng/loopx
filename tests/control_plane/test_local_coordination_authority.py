@@ -1371,6 +1371,7 @@ Continue provider-first delivery.
         "coordination.local_authority.todo_list",
         "coordination.local_authority.todo_archive",
         "coordination.local_authority.todo_list",
+        "coordination.local_authority.todo_archive_ack",
     ]
     canonical_after_archive = read_canonical_todos_if_promoted(
         runtime_root=runtime_root,

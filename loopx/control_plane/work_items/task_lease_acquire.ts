@@ -1,4 +1,5 @@
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed } from "../coordination/shadow_management.ts";
+import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 import { LegacyCoordinationWriteError, requireLegacyCoordinationPrimaryWriteAllowed } from "../coordination/legacy_writer_fence.ts";
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
@@ -571,44 +572,6 @@ export function leaseEpoch(lease: LeaseRecord | null): number {
   return leaseInteger(lease, "lease_epoch") ?? 1;
 }
 
-export function parseLeaseTimestamp(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|z|[+-]\d{2}(?::?\d{2})?)?)?$/u.exec(
-    value.trim(),
-  );
-  if (match === null) return null;
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction, timezone] = match;
-  const [year, month, day, hour, minute, second, millisecond] = [
-    yearText,
-    monthText,
-    dayText,
-    hourText ?? "0",
-    minuteText ?? "0",
-    secondText ?? "0",
-    (fraction ?? "").slice(0, 3).padEnd(3, "0") || "0",
-  ].map(Number);
-  const endOfDay = hour === 24;
-  if (
-    endOfDay &&
-    (minute !== 0 || second !== 0 || (fraction !== undefined && /[1-9]/u.test(fraction)))
-  ) return null;
-  const calendarHour = endOfDay ? 0 : hour;
-  const calendar = new Date(0);
-  calendar.setUTCHours(calendarHour, minute, second, millisecond);
-  calendar.setUTCFullYear(year, month - 1, day);
-  if (
-    calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 ||
-    calendar.getUTCDate() !== day || calendar.getUTCHours() !== calendarHour ||
-    calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second ||
-    calendar.getUTCMilliseconds() !== millisecond
-  ) return null;
-  if (hourText === undefined) return calendar;
-  let text = value.trim().replace(" ", "T").replace(/z$/u, "Z");
-  if (fraction !== undefined) text = text.replace(`.${fraction}`, `.${fraction.slice(0, 3)}`);
-  if (timezone === undefined) text += "Z";
-  else text = text.replace(/([+-]\d{2})$/u, "$1:00");
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.valueOf()) ? null : parsed;
-}
 
 export function leaseIsActive(lease: LeaseRecord | null, at: Date): boolean {
   if (
@@ -624,7 +587,7 @@ export function leaseIsActive(lease: LeaseRecord | null, at: Date): boolean {
       { expires_at: lease.expires_at ?? null },
     );
   }
-  const expiresAt = parseLeaseTimestamp(lease.expires_at);
+  const expiresAt = parseIsoTimestamp(lease.expires_at);
   if (expiresAt === null) {
     throw new TaskLeaseAcquireError(
       "active lease expires_at must be a valid timestamp",

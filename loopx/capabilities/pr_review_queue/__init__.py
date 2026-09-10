@@ -7,6 +7,11 @@ from .review_contract import (
     build_review_plan,
     build_review_template,
 )
+from .selection_execution import (
+    exact_head_key,
+    materialize_review_execution,
+    normalize_fresh_audit_exact_heads,
+)
 from .scheduling import (
     PullRequestSchedulingLane,
     build_scheduling_policy,
@@ -25,6 +30,9 @@ __all__ = [
     "build_scheduling_policy",
     "classify_scheduling_lane",
     "community_feedback_ready",
+    "exact_head_key",
+    "materialize_review_execution",
+    "normalize_fresh_audit_exact_heads",
     "PullRequestSchedulingLane",
     "scheduling_sort_key",
     "scheduling_tier",

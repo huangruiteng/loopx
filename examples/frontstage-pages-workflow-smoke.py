@@ -76,7 +76,7 @@ def main() -> int:
         "github.event.pull_request.number",
         "|| 'deployment'",
         "cancel-in-progress: true",
-        'node-version: "20"',
+        'node-version: "24"',
         "npm install -g npm@11",
         "npm ci --include=dev --no-audit --no-fund --registry=https://registry.npmjs.org",
         "docs/showcases/**",

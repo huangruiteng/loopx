@@ -129,7 +129,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         "A queue is observed only when result_completeness.complete=true; partial or failed reads are not_observed and never count as unchanged.",
         "Fingerprints cover exact head, formal conclusion, next action, check state, draft state, and mergeability for every open PR.",
         "Actionable authenticated-developer-owned heads rank first; community response heads and 24-hour backlog share the next tier; remaining work keeps current-head review_ready_at ordering, and one new head after REQUEST_CHANGES may use a bounded fast-feedback slot.",
-        "Only rows with a non-null review_action_kind enter review_sequence; valid exact-head conclusions remain inventory-only, and an explicit request-scoped PR selection cannot override that idempotency boundary.",
+        "Only rows with a non-null review_action_kind enter review_sequence and carry review plans, templates, or evidence commands; valid exact-head conclusions remain artifact-free inventory-only rows, and only --fresh-audit-exact-head NUMBER@HEAD_OID can explicitly reopen one.",
         "Todo prose, monitor notes, and one-off author filters are not scheduling authority.",
         "A complete exact-head conclusion requires the five Chinese sections, a state-aligned English verdict, and formal state or the verdict-specific titled author-owned fallback.",
         "One observation emits at most one exact-head advancement Todo preview; unchanged observations replay it until explicit durable Todo-projection ACK, then rotate across acknowledged exact heads.",

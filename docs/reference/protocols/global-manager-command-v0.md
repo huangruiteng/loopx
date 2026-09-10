@@ -8,6 +8,12 @@ The product goal is to let a user act as a manager across long-running agent
 work: ask for the last day of progress, see blocked decisions, compare agent
 lanes, and choose the next safe action without reading every thread.
 
+The staged [manager evidence and continuity design](manager-evidence-and-continuity-v0.md)
+extends this read-first boundary toward complete Goal coverage, scoped
+cross-entrypoint continuity, and restart-safe reporting. Its proposed Goal
+Portfolio provider is not an additional shipped CLI command. This protocol's
+existing command behavior remains the baseline until each stage is qualified.
+
 This protocol is not a general chat-command router yet. It defines the
 request, allowed sources, response shape, privacy boundary, and action ladder
 for Codex hosts, CLI wrappers, or dashboard command palettes. The four

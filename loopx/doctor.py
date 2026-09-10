@@ -28,6 +28,7 @@ from .skill_install_readback import (
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
     configured_host_skills_dir,
     inspect_skill_install_readback,
+    skill_install_doctor_checks,
 )
 
 
@@ -47,7 +48,7 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "loopx --format json pr-review --state all",
         "thin host adapter",
         "agent_response_contract.review_execution_contract",
-        "pull_requests[].review_plan",
+        "pull_requests[review_action_kind!=null].review_plan",
         "completion_gate",
         "loopx-pr-merge",
     ),
@@ -1213,19 +1214,7 @@ def collect_doctor(
                 else ",".join(globally_visible_project_skills)
             ),
         },
-        *(
-            [
-                {
-                    "id": "host_skill_installation_readback",
-                    "required": False,
-                    "ok": bool(host_skill_install_readback.get("ready")),
-                    "applicable": True,
-                    "detail": str(host_skill_install_readback.get("reason")),
-                }
-            ]
-            if host_skill_install_readback
-            else []
-        ),
+        *skill_install_doctor_checks(host_skill_install_readback),
         {
             "id": "global_registry_writable",
             "required": True,
@@ -1251,6 +1240,16 @@ def collect_doctor(
             "detail": str(typescript_control_plane.get("status")),
         },
     ]
+    from .desktop_installation import desktop_installation_status
+
+    desktop_installation = desktop_installation_status(release_manifest_source.get("git_commit"))
+    if desktop_installation["apps"]:
+        checks.append({
+            "id": "desktop_app_runtime_pairing",
+            "required": False,
+            "ok": desktop_installation["status"] == "paired",
+            "detail": desktop_installation["recommended_action"] or "App bundle and CLI source revisions match; running App not verified",
+        })
     if deep_validation:
         checks.extend(deep_validation["checks"])
     payload = {
@@ -1289,6 +1288,7 @@ def collect_doctor(
             "python_distribution": python_distribution,
         },
         "release_manifest": release_manifest,
+        "desktop_installation": desktop_installation,
         "release_provenance": release_provenance,
         "global_registry_writability": global_registry_writability,
         "runtime_projection_routes": runtime_projection_routes,

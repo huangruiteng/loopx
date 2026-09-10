@@ -26,6 +26,23 @@ closed. No-proof receipt fingerprints remain compatible. This is the bounded
 #4105 lease-fence slice, not full T1 metadata or T2 effect closure; legacy updates
 without these options remain unchanged. See the [Todo contract](../../project-agent-todo-contract.md#lease-fenced-canonical-textnote-updates).
 
+Monitor metadata authoring and poll transitions now share `todos/monitor_metadata.ts`.
+Public update composes that owner inside its existing field-plan request; cadence
+calculation stays in-process instead of making two additional scheduler RPCs.
+The Python observation/replay/counter/scope/boundedness rules are retired. Create
+and the low-level Markdown add codec retain a metadata-plan adapter; this is not
+the complete T1 transaction or T2 atomic monitor-plus-successor commit.
+
+Intentional corrections: older observations cannot rewind state merely because
+either effect ID is absent; issue-fix grouped membership updates use the locked
+observation path and advance generation when a material result hash changes.
+New counters reject negative or unsafe integers. ISO dates are calendar-checked;
+the codec retains Python compact/week-date forms, offset seconds and microsecond
+ordering without rewriting history. Lifecycle/ownership admission now precedes poll
+diagnostics, so an unauthorized request cannot use malformed metadata to avoid
+its authority rejection. Exact replay, same-second unkeyed polls, explicit
+clears and legacy boundedness exemptions remain. The plan grants no permission,
+receipt or promotion; native update still owns only text/note.
 
 Public Todo add/update now resolve role, continuation binding, gate scope and
 deferred-condition requirements through `todos/authoring_scope.ts`. Python's
@@ -372,6 +389,22 @@ the shared plan, not another per-agent checklist database.
 
 **T1 — close the public Todo update transaction.**
 
+Bounded prerequisite: `todos/public_update.ts` now composes authoring scope,
+external-wait topology and Monitor/field planning over one locked source.
+The public Python writer no longer sequences their leaf RPCs or derives the
+Monitor wait baseline. `update_source.py` supplies complete compact active/archive
+facts, never a display-limited inventory. A partial topology edit validates its
+retained wait; copy-only edits preserve the original fence without re-arming it.
+Explicitly clearing the condition still permits changing its former topology.
+Locked completion proof is checked before this pure plan, so a stale proof wins
+over unrelated invalid field diagnostics; no write occurs in either case.
+This deletes orchestration, not persistence: lifecycle/lease admission, completion
+effects, writer lock, capture and provider CAS/replay remain with their existing
+owners. The internal terminal/import field codec still has actual callers and
+does not acquire the public update policy. Native metadata expansion and T2
+atomic follow-up remain held. Reconcile the separate lease-edit PR #4152 before
+changing the provider transaction; do not infer it is merged from this checkpoint.
+
 - Reuse the current provider text/note transaction, lifecycle admission,
   field-plan and completion rules. Enumerate actual public metadata edits and
   explicit-clear behavior before implementation; this is not permission to
@@ -419,6 +452,20 @@ closure and whole-Goal promotion remain held; do not infer them from a route pla
   never fall back to a Markdown business write.
 
 **T3 — close remaining structured consumers, then remove their old reads.**
+
+Current bounded delivery: shared-goal alignment and amendment admission use one
+`shared_goal_work_source.py` snapshot per decision, reusing the canonical Todo
+summary after promotion. The same provider read optionally supplies leases at
+that revision; absent/empty/stale display and old lease files are not fallback
+authority. `shared_goal_work.ts` owns their open-work, claim and exclusion
+selection; the old Python selectors and amendment's second Markdown parse are
+removed. Excluded work is not recommended to that Agent, but remains available
+as amendment impact context. The source digest binds the canonical revision;
+`canonical_todo_snapshot` has event sequence 0, not a fabricated Goal intent
+revision, and a changed digest requires proposal rebase even without events.
+Active malformed lease expiry now fails through the existing typed lease rule.
+This independent consumer slice does not depend on open #4142, close T1/T2,
+migrate all T3 consumers or grant amendment commit/whole-Goal promotion authority.
 
 - Audit Turn/quota, Dashboard, standing decisions, shared-goal alignment and
   amendment revision inputs. Reuse #4117's canonical source adapter and pass
