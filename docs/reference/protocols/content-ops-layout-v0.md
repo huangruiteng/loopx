@@ -32,9 +32,9 @@ Templates define canvas size, safe area, density limits, page archetypes, and
 portable style tokens. They do not contain project names, private paths, draft
 bodies, or provider credentials.
 
-All built-in templates set `density.role_overrides.cover.min` to `0.90` and
-`max` to `0.98`. The cover default is intentionally stricter than ordinary
-pages: at least 90% of the safe-area height must be occupied by meaningful
+All built-in templates set `density.role_overrides.cover.min` to `0.82` and
+`max` to `0.94`. The cover default is intentionally stricter than ordinary
+pages: at least 82% of the safe-area height must be occupied by meaningful
 content bounds. Decorative rules, indexes, page numbers, and footers do not
 count toward that density.
 
@@ -44,20 +44,28 @@ Every built-in template also exposes the same `page_sequence` defaults:
 {
   "first_role": "cover",
   "density_order": "first_page_maximum",
-  "interior_min": 0.80
+  "interior_min": 0.72
 }
 ```
 
 The first planned page must be the cover and its measured density must be at
-least every later page. Pages between the cover and final page use `0.80` as a
+least every later page. Pages between the cover and final page use `0.72` as a
 density floor, or a stricter role/template minimum when one exists. The final
 page keeps its own closing/CTA role limits so an intentional synthesis page
 does not need to imitate a dense analytical middle page.
 
-These defaults change acceptance for formerly valid sparse or misordered page
-sets: a cover below `0.90`, an interior page below `0.80`, a non-cover first
-page, or a later page denser than the cover now returns a typed revision
-failure. Publishing authority remains unchanged.
+These readability defaults replace cover `0.90–0.98` and interior floor `0.80`.
+Default upper bounds also drop from `0.91–0.94` to `0.88–0.90`, depending on
+template; explicit non-cover role overrides are unchanged. Existing plans are
+checked against the installed catalog, so an older very full page may now need
+revision. Cover-first and first-page-maximum obligations are unchanged.
+
+Density measures the vertical content span, not glyph coverage or readability.
+Do not shrink text, compress line spacing, or add filler to satisfy the floor.
+The writing adapter must also inspect font size, line length, paragraph rhythm,
+and code/table hierarchy at phone display size. Respect the owner's page budget:
+use approved editorial compression or reflow into more pages rather than
+silently shrinking type. Publishing authority remains unchanged.
 
 ## Typed plan
 
@@ -128,7 +136,7 @@ loopx content-ops layout-check \
 
 - measured page ids exactly match the plan;
 - the first page has role `cover` and is at least as dense as every later page;
-- every interior page satisfies the built-in `0.80` density floor;
+- every interior page satisfies the built-in `0.72` density floor;
 - all required roles are present and the last page has the planned closing role;
 - canvas and density satisfy the selected template and role;
 - overflow, collision, and single-character-line checks are explicitly false;

@@ -30,7 +30,7 @@ def _measurement(*, sparse_page: str | None = None) -> dict[str, Any]:
     for index in range(1, 6):
         page_id = f"p{index:02d}"
         if page_id == "p01":
-            bottom = 1640
+            bottom = 1580
         elif page_id == "p05":
             bottom = 1364
         else:
@@ -82,11 +82,11 @@ def main() -> int:
             template_id,
         )
         cover_density = built_in["template"]["density"]["role_overrides"]["cover"]
-        assert cover_density == {"min": 0.90, "max": 0.98}, built_in
+        assert cover_density == {"min": 0.82, "max": 0.94}, built_in
         assert built_in["template"]["page_sequence"] == {
             "first_role": "cover",
             "density_order": "first_page_maximum",
-            "interior_min": 0.80,
+            "interior_min": 0.72,
         }, built_in
 
     template = _run(
@@ -163,33 +163,51 @@ def main() -> int:
     assert accepted["autopublish_allowed"] is False, accepted
 
     sparse_cover = _measurement()
-    sparse_cover["pages"][0]["meaningful_content_bounds"]["bottom"] = 1500
+    sparse_cover["pages"][0]["meaningful_content_bounds"]["bottom"] = 1475
     rejected_cover = check_layout_packet(plan_packet, sparse_cover)
     assert rejected_cover["status"] == "revise", rejected_cover
     cover_result = rejected_cover["page_results"][0]
-    assert cover_result["density"] < 0.90, rejected_cover
+    assert cover_result["density"] < 0.82, rejected_cover
     assert {failure["code"] for failure in cover_result["failures"]} == {
         "content_too_sparse"
     }, rejected_cover
 
     loose_interior = _measurement()
-    loose_interior["pages"][1]["meaningful_content_bounds"]["bottom"] = 1364
+    loose_interior["pages"][1]["meaningful_content_bounds"]["bottom"] = 1280
     rejected_interior = check_layout_packet(plan_packet, loose_interior)
     assert rejected_interior["status"] == "revise", rejected_interior
     interior_result = rejected_interior["page_results"][1]
-    assert 0.66 < interior_result["density"] < 0.80, rejected_interior
+    assert 0.66 < interior_result["density"] < 0.72, rejected_interior
     assert {failure["code"] for failure in interior_result["failures"]} == {
         "content_too_sparse"
     }, rejected_interior
 
     denser_interior = _measurement()
-    denser_interior["pages"][1]["meaningful_content_bounds"]["bottom"] = 1660
+    denser_interior["pages"][0]["meaningful_content_bounds"]["bottom"] = 1500
+    denser_interior["pages"][1]["meaningful_content_bounds"]["bottom"] = 1520
     rejected_sequence = check_layout_packet(plan_packet, denser_interior)
     assert rejected_sequence["status"] == "revise", rejected_sequence
     assert rejected_sequence["page_results"][1]["status"] == "pass", rejected_sequence
     assert {
         failure["code"] for failure in rejected_sequence["page_results"][0]["failures"]
     } == {"first_page_not_density_maximum"}, rejected_sequence
+
+    # The new defaults accept breathing room previously rejected by the floors.
+    readable = _measurement()
+    readable["pages"][0]["meaningful_content_bounds"]["bottom"] = 1500
+    readable["pages"][1]["meaningful_content_bounds"]["bottom"] = 1364
+    assert check_layout_packet(plan_packet, readable)["status"] == "pass"
+
+    # More permissive floors must not allow overcrowding or bypass safety.
+    crowded = _measurement()
+    crowded["pages"][1]["meaningful_content_bounds"]["bottom"] = 1640
+    crowded_result = check_layout_packet(plan_packet, crowded)
+    assert "content_too_dense" in {
+        f["code"] for f in crowded_result["page_results"][1]["failures"]
+    }, crowded_result
+    unsafe_layout = _measurement()
+    unsafe_layout["pages"][1]["checks"]["overflow"] = True
+    assert check_layout_packet(plan_packet, unsafe_layout)["status"] == "revise"
 
     wrong_first_role = json.loads(json.dumps(plan_packet))
     wrong_first_role["plan"]["pages"][0]["role"] = "argument"

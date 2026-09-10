@@ -49,10 +49,10 @@ or role-incomplete page sets. See
 - Provider delivery and readback receipts must match the approved revision and
   digest; the lifecycle helper performs no external write.
 - Layout acceptance never implies content approval or publishing authority.
-- Built-in cover pages require `0.90–0.98` meaningful vertical density; the
+- Built-in cover pages require `0.82–0.94` meaningful vertical density; the
   template field is `density.role_overrides.cover`.
 - Built-in `page_sequence` defaults require a cover first, make it the density
-  maximum, and require at least `0.80` meaningful density on interior pages;
+  maximum, and require at least `0.72` meaningful density on interior pages;
   the final page keeps its closing/CTA role limits.
 
 ## Connector-First Ops Pattern
