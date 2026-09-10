@@ -23,7 +23,17 @@ from loopx.upgrade import (
 )
 
 SCHEMA = "loopx_automation_prompt_upgrade_v0"
-BOOTSTRAP = "LoopX managed heartbeat bootstrap v1"
+BOOTSTRAP = "LoopX managed heartbeat bootstrap v2"
+_LEGACY_BOOTSTRAP = "LoopX managed heartbeat bootstrap v1"
+_LEGACY_INSTRUCTION = (
+    "读取完整结果；仅 ok=true 时按本次 task_body 执行，不复用旧指令；"
+    "失败或结果不完整则停止并报告，不执行任务或记账。"
+)
+_BOOTSTRAP_INSTRUCTION = (
+    "读取完整结果；仅 ok=true 时按本次 task_body 推进，不复用旧指令。"
+    "一次操作不代表结束；通知与执行分开，等待按当前调度契约，不反复空查。"
+    "入口异常先做权限内恢复；契约仍不可用时不执行任务或记账，并报告阻塞。"
+)
 
 
 def digest(value: str) -> str:
@@ -47,8 +57,7 @@ def bootstrap_prompt(*, registry: Path, goal_id: str, agent_id: str,
         f"{BOOTSTRAP}\n"
         "每次唤醒先执行：\n"
         f"```sh\n{shlex.join(args)}\n```\n"
-        "读取完整结果；仅 ok=true 时按本次 task_body 执行，不复用旧指令；"
-        "失败或结果不完整则停止并报告，不执行任务或记账。"
+        f"{_BOOTSTRAP_INSTRUCTION}"
     )
 
 
@@ -72,7 +81,7 @@ def _atomic(path: Path, text: str) -> None:
 
 
 def bootstrap_binding(prompt: str) -> dict | None:
-    if not prompt.startswith(BOOTSTRAP + "\n"):
+    if not prompt.startswith((BOOTSTRAP + "\n", _LEGACY_BOOTSTRAP + "\n")):
         return None
     try:
         command = prompt.split("```sh\n", 1)[1].split("\n```", 1)[0]
@@ -98,7 +107,11 @@ def bootstrap_binding(prompt: str) -> dict | None:
         values["registry"] = Path(values["registry"])
         if tokens[0] != values.get("cli_bin", "loopx"):
             return None
-        return values if bootstrap_prompt(**values) == prompt else None
+        expected = bootstrap_prompt(**values)
+        legacy = expected.replace(BOOTSTRAP, _LEGACY_BOOTSTRAP, 1).removesuffix(
+            _BOOTSTRAP_INSTRUCTION
+        ) + _LEGACY_INSTRUCTION
+        return values if prompt in (expected, legacy) else None
     except (IndexError, KeyError, TypeError, ValueError):
         return None
 

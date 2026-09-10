@@ -631,7 +631,7 @@ def test_codex_app_actions_preserve_a_concrete_admitted_turn_identity() -> None:
         SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
     ),
 )
-def test_unbound_native_goal_actions_preserve_visible_goal_spend_attribution(
+def test_unbound_native_goal_actions_require_host_identity_before_settlement(
     profile: SchedulerRuntimeProfile,
 ) -> None:
     todo_id = "todo_visible_goal"
@@ -647,14 +647,12 @@ def test_unbound_native_goal_actions_preserve_visible_goal_spend_attribution(
         ),
     )
 
-    assert len(actions) == 2
-    assert actions[0].startswith("loopx refresh-state")
-    assert actions[1] == (
-        f"loopx quota spend-slot --goal-id {GOAL_ID} --slots 1 "
-        f"--source visible-goal --execute --agent-id {AGENT_ID}"
-    )
-    assert all("--todo-id" not in command for command in actions)
-    assert all("--turn-instance-id" not in command for command in actions)
+    assert len(actions) == 1
+    assert "quota should-run" in actions[0]
+    assert "--turn-instance-id" in actions[0]
+    assert "--begin-turn" not in actions[0]
+    assert "spend-slot" not in actions[0]
+    assert "refresh-state" not in actions[0]
 
 
 def test_unbound_codex_app_ssh_goal_requires_a_guided_turn_before_delivery() -> None:
@@ -677,7 +675,14 @@ def test_unbound_codex_app_ssh_goal_requires_a_guided_turn_before_delivery() -> 
     assert "spend-slot" not in actions[0]
 
 
-def test_unbound_codex_app_ssh_goal_requires_a_guided_turn_before_replan() -> None:
+@pytest.mark.parametrize(
+    "profile", (
+        SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL,
+    ),
+)
+def test_unbound_native_goal_requires_identity_before_replan(profile) -> None:
     actions = interaction_next_cli_actions(
         {
             "goal_id": GOAL_ID,
@@ -698,19 +703,30 @@ def test_unbound_codex_app_ssh_goal_requires_a_guided_turn_before_replan() -> No
         },
         mode="autonomous_replan",
         scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
-            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE
+            profile
         ),
     )
 
     assert len(actions) == 1
     assert actions[0].startswith("loopx --format json quota should-run")
-    assert "--runtime-profile codex_app_ssh_goal" in actions[0]
-    assert actions[0].endswith("--begin-turn")
+    assert f"--runtime-profile {profile.value}" in actions[0]
+    if profile is SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE:
+        assert actions[0].endswith("--begin-turn")
+    else:
+        assert "--turn-instance-id" in actions[0]
+        assert "--begin-turn" not in actions[0]
     assert "refresh-state" not in actions[0]
     assert "spend-slot" not in actions[0]
 
 
-def test_turn_bound_codex_app_ssh_goal_preserves_visible_goal_settlement() -> None:
+@pytest.mark.parametrize(
+    "profile", (
+        SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
+        SchedulerRuntimeProfile.CODEX_CLI_VISIBLE,
+        SchedulerRuntimeProfile.ARK_MANAGED_AGENT_GOAL,
+    ),
+)
+def test_turn_bound_native_goal_preserves_visible_goal_settlement(profile) -> None:
     turn_instance_id = "guided-start:native-visible-goal"
 
     actions = interaction_next_cli_actions(
@@ -721,7 +737,7 @@ def test_turn_bound_codex_app_ssh_goal_preserves_visible_goal_settlement() -> No
         },
         mode="bounded_delivery",
         scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
-            SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE
+            profile
         ),
         turn_instance_id=turn_instance_id,
     )

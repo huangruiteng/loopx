@@ -599,7 +599,6 @@ def main() -> int:
         "`agent_read_required`",
         "drain/read/triage before work; settle/ACK",
         "P0 blocked: safe P1/P2; monitor quiet/no-spend",
-        "No project branches",
         "No learning queue unless asked",
         "Stop: private material, credentials, destructive git, unauthorized prod",
     ):
@@ -697,7 +696,6 @@ def main() -> int:
         "guard receipt; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
         "monitor quiet/no-spend",
-        "No project branches",
         "No learning queue unless asked",
         "Stop: private material, credentials, destructive git, unauthorized prod",
     ):
