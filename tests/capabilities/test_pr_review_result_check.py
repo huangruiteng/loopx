@@ -15,7 +15,12 @@ from loopx.cli import main
 
 
 def _review():
-    item = {"number": 42, "head_oid": "a" * 40, "areas": {"product_runtime": 1}}
+    item = {
+        "number": 42,
+        "head_oid": "a" * 40,
+        "areas": {"product_runtime": 1},
+        "review_action_kind": "review_pull_request_exact_head",
+    }
     result = build_review_plan(item)["result_template"]
     requirements = {
         row["evidence_id"]: row
@@ -130,6 +135,14 @@ def test_saved_head_must_match_exactly_once(mutation):
     else:
         packet["pull_requests"] = {}
     with pytest.raises((ValueError, TypeError)):
+        check_review_result(packet, result)
+
+
+def test_inventory_only_head_cannot_certify_a_new_review() -> None:
+    packet, result = _review()
+    packet["pull_requests"][0]["review_action_kind"] = None
+
+    with pytest.raises(ValueError, match="inventory-only exact head"):
         check_review_result(packet, result)
 
 
