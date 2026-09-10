@@ -127,6 +127,8 @@ def _run_gh_json(args: list[str], *, cwd: Path | None = None) -> Any:
         cwd=cwd,
         check=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
