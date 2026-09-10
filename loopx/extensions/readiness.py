@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -19,6 +20,19 @@ RUNTIME_ENTRYPOINT_IDENTITY_SCHEMA_VERSION = "loopx_runtime_entrypoint_identity_
 class ResolvedRuntimeEntrypoint:
     argv_prefix: tuple[str, ...]
     identity: str
+    path_prefix: str | None = None
+
+
+def runtime_process_environment(
+    path_prefix: str | None, base: Mapping[str, str] | None = None,
+) -> Mapping[str, str] | None:
+    if path_prefix is None:
+        return base
+    if not isinstance(path_prefix, str) or not Path(path_prefix).is_absolute():
+        raise ValueError("extension runtime search directory must be absolute")
+    environment = dict(os.environ if base is None else base)
+    environment["PATH"] = path_prefix + os.pathsep + environment.get("PATH", os.defpath)
+    return environment
 
 
 def extension_runtime(manifest: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -71,6 +85,7 @@ def resolve_runtime_entrypoint(
         return ResolvedRuntimeEntrypoint(
             argv_prefix=(str(resolved[0]),),
             identity=resolved[1],
+            path_prefix=str(resolved[0].parent),
         )
 
     interpreter_path = Path(sys.executable).expanduser()
@@ -133,6 +148,7 @@ def extension_doctor(
                 stderr=subprocess.DEVNULL,
                 timeout=int(runtime["timeout_seconds"]),
                 check=False,
+                env=runtime_process_environment(identity_before.path_prefix),
             )
         except (OSError, subprocess.TimeoutExpired):
             completed = None

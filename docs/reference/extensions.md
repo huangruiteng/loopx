@@ -902,6 +902,31 @@ clean source checkout and a local LoopX release activate bundled providers
 without separately installing a console script; catalog discovery remains
 declarative and does not import the module.
 
+### Local executable locations
+
+Successful executable install/upgrade and doctor operations save the resolved
+absolute entrypoint in the host-local revision state, separately from the
+portable manifest. Enable, rollback, update-time revalidation and invocation use
+that revision's saved location instead of rediscovering a same-named executable
+on the current shell PATH. File-identity checks remain mandatory; a missing
+saved executable does not fall back to another PATH entry. Package upgrades
+resolve and verify the new revision's executable through the explicit upgrade
+workflow. Bundled `python_module` providers continue using the current LoopX
+interpreter and retain their existing identity checks.
+
+For executable providers, only the child process prepends the executable's
+directory to PATH, so tools installed in the same environment remain available.
+No complete environment, credentials, package contents, or local path is added
+to the public manifest or doctor result. An explicitly supplied execution
+environment remains the base environment; only this PATH prefix is added.
+
+Legacy installations without a saved location require one successful
+`loopx extension doctor <extension-id> --execute` with the provider environment
+available on PATH. Read-only doctor calls do not migrate state. Subsequent
+revalidation can run from the desktop's minimal PATH. If an executable is moved,
+restore its registered location or explicitly upgrade its local manifest to
+point to the new executable; do not hide the failure by disabling the extension.
+
 ## Scope Boundaries
 
 The executable v0 runtime intentionally does not:

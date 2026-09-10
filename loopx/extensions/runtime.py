@@ -14,12 +14,13 @@ from typing import Any
 from ..file_lock import exclusive_file_lock
 from .manifest import load_extension_manifest
 from .process_runtime import run_capped_process
+from .runtime_location import located_runtime, probe_runtime_location, record_runtime_location
 from .readiness import (
     EXTENSION_DOCTOR_SCHEMA_VERSION,
     ResolvedRuntimeEntrypoint,
-    extension_doctor,
     extension_runtime,
     resolve_runtime_entrypoint,
+    runtime_process_environment,
 )
 
 EXTENSION_STATE_SCHEMA_VERSION = "loopx_extension_state_v0"
@@ -176,7 +177,7 @@ def install_extension(
     provider = manifest["provider"]
     extension_id = str(provider["id"])
     revision = _revision(manifest)
-    doctor = extension_doctor(manifest, execute=execute)
+    doctor, location = probe_runtime_location(manifest, execute=execute)
     if execute and not doctor["verified"]:
         raise ValueError(
             f"extension `{extension_id}` doctor is not ready: {doctor['status']}"
@@ -209,6 +210,7 @@ def install_extension(
                     "revision": revision,
                     "version": provider["version"],
                     "manifest": _manifest_snapshot(manifest),
+                    **({"entrypoint_path": location} if location is not None else {}),
                 },
                 required_revision=previous_revision,
             )
@@ -256,7 +258,9 @@ def enable_extension(
     if not isinstance(manifest, Mapping):
         raise ValueError("extension active manifest is invalid")
     already_enabled = bool(entry.get("enabled"))
-    doctor = extension_doctor(manifest, execute=execute)
+    doctor, location = probe_runtime_location(
+        manifest, location=snapshot.get("entrypoint_path"), execute=execute,
+    )
     if execute and not doctor["verified"]:
         with exclusive_file_lock(path):
             current_state = _read_state(path)
@@ -284,6 +288,10 @@ def enable_extension(
                 or bool(current_entry.get("enabled")) != already_enabled
             ):
                 raise ValueError("extension state changed during enable; retry")
+            record_runtime_location(
+                _entry_for_revision(current_entry, active_revision),
+                location=location, expected=snapshot.get("entrypoint_path"),
+            )
             current_entry["enabled"] = True
             current_entry["doctor_verified_revision"] = active_revision
             current_entry["doctor_verified_entrypoint_identity"] = doctor[
@@ -353,7 +361,9 @@ def rollback_extension(
     manifest = target.get("manifest")
     if not isinstance(manifest, dict):
         raise ValueError("extension rollback manifest is invalid")
-    doctor = extension_doctor(manifest, execute=execute)
+    doctor, location = probe_runtime_location(
+        manifest, location=target.get("entrypoint_path"), execute=execute,
+    )
     if execute and not doctor["verified"]:
         raise ValueError(
             f"extension `{extension_id}` rollback doctor is not ready: {doctor['status']}"
@@ -370,6 +380,10 @@ def rollback_extension(
                 or current_entry.get("rollback_revision") != target_revision
             ):
                 raise ValueError("extension state changed during rollback; retry")
+            record_runtime_location(
+                _entry_for_revision(current_entry, target_revision),
+                location=location, expected=target.get("entrypoint_path"),
+            )
             current_entry["active_revision"] = target_revision
             current_entry["rollback_revision"] = previous_revision
             current_entry["doctor_verified_revision"] = target_revision
@@ -453,7 +467,9 @@ def doctor_installed_extension(
     manifest = snapshot.get("manifest")
     if not isinstance(manifest, Mapping):
         raise ValueError("extension active manifest is invalid")
-    doctor = extension_doctor(manifest, execute=execute)
+    doctor, location = probe_runtime_location(
+        manifest, location=snapshot.get("entrypoint_path"), execute=execute,
+    )
     if execute:
         with exclusive_file_lock(path):
             current_state = _read_state(path)
@@ -465,6 +481,10 @@ def doctor_installed_extension(
             ):
                 raise ValueError("extension state changed during doctor; retry")
             if doctor["verified"]:
+                record_runtime_location(
+                    _entry_for_revision(current_entry, active_revision),
+                    location=location, expected=snapshot.get("entrypoint_path"),
+                )
                 current_entry["doctor_verified_revision"] = active_revision
                 current_entry["doctor_verified_entrypoint_identity"] = doctor[
                     "entrypoint_identity"
@@ -540,7 +560,7 @@ def _verified_entrypoint(
     manifest = snapshot.get("manifest")
     if not isinstance(manifest, Mapping):
         return None
-    runtime = _runtime(manifest)
+    runtime = located_runtime(manifest, snapshot.get("entrypoint_path"))
     identity = resolve_runtime_entrypoint(runtime)
     if identity is None or identity.identity != entry.get(
         "doctor_verified_entrypoint_identity"
@@ -773,6 +793,7 @@ def _capability_binding_from_entry(
         "revision": active_revision,
         "protocol": protocol,
         "argv": [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])],
+        "environment_path_prefix": verified_entrypoint.path_prefix,
         "doctor_argv": [
             *verified_entrypoint.argv_prefix,
             *(runtime.get("args") or []),
@@ -1025,6 +1046,7 @@ def resolve_extension_runtime_binding(
         "revision": active_revision,
         "protocol": protocol,
         "argv": [*verified_entrypoint.argv_prefix, *(runtime.get("args") or [])],
+        "environment_path_prefix": verified_entrypoint.path_prefix,
         "doctor_argv": [
             *verified_entrypoint.argv_prefix,
             *(runtime.get("args") or []),
@@ -1132,6 +1154,7 @@ def run_standalone_extension(
             stdin=request_bytes,
             timeout_seconds=int(runtime["timeout_seconds"]),
             output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
+            env=runtime_process_environment(verified_entrypoint.path_prefix),
         )
     except OSError:
         return {
@@ -1238,7 +1261,7 @@ def execute_extension_runtime_binding(
             stdin=request_bytes,
             timeout_seconds=timeout_seconds,
             output_limit_bytes=MAX_EXTENSION_RESPONSE_BYTES,
-            env=environment,
+            env=runtime_process_environment(binding.get("environment_path_prefix"), environment),
         )
     except OSError as exc:
         raise RuntimeError("extension provider execution failed") from exc

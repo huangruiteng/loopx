@@ -1904,3 +1904,88 @@ def test_legacy_openviking_alias_matches_provider_argument_contract() -> None:
     assert options(_register_legacy_openviking_provider_arguments) == options(
         register_openviking_provider_arguments
     )
+
+
+def test_executable_location_survives_path_changes_upgrade_and_rollback(tmp_path, monkeypatch):
+    first_bin, second_bin, unrelated = [tmp_path / name for name in ("first", "second", "unrelated")]
+    for directory in (first_bin, second_bin, unrelated):
+        directory.mkdir()
+    first = _provider(first_bin / "provider")
+    second = _provider(second_bin / "provider")
+    _provider(unrelated / "provider", doctor_exit=42)
+    helper = _provider(first_bin / "companion")
+    first.write_text(first.read_text().replace(
+        "import json", f"import shutil\nassert shutil.which('companion') == {str(helper)!r}\nimport json",
+    ))
+    one = _standalone_manifest(tmp_path / "one.toml", entrypoint=Path("provider"))
+    two = _standalone_manifest(tmp_path / "two.toml", entrypoint=Path("provider"), version="2.0.0")
+    state_file = tmp_path / "state.json"
+    monkeypatch.setenv("PATH", str(first_bin))
+    installed = install_extension(one, state_file=state_file, execute=True)
+    monkeypatch.setenv("PATH", str(unrelated))
+    assert doctor_enabled_extensions(state_file=state_file, execute=True)["ok"]
+    result = run_standalone_extension(
+        "test-standalone-extension", state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"}, execute=True,
+    )
+    assert result["status"] == "succeeded"
+    assert str(first_bin) not in json.dumps(installed)
+    assert os.environ["PATH"] == str(unrelated)
+    monkeypatch.setenv("PATH", str(second_bin))
+    install_extension(two, state_file=state_file, operation="upgrade", execute=True)
+    monkeypatch.setenv("PATH", str(unrelated))
+    assert rollback_extension("test-standalone-extension", state_file=state_file, execute=True)["doctor"]["verified"]
+    state = json.loads(state_file.read_text())
+    entry = state["extensions"]["test-standalone-extension"]
+    assert {r["entrypoint_path"] for r in entry["revisions"]} == {str(first), str(second)}
+    assert all(r["manifest"]["runtime"]["entrypoint"] == "provider" for r in entry["revisions"])
+    first.unlink()
+    missing = doctor_installed_extension("test-standalone-extension", state_file=state_file, execute=True)
+    assert missing["status"] == "entrypoint_missing"  # Never switch to the unrelated PATH copy.
+
+
+def test_legacy_doctor_captures_location_only_after_success(tmp_path, monkeypatch):
+    provider = _provider(tmp_path / "provider")
+    manifest = _standalone_manifest(tmp_path / "manifest.toml", entrypoint=Path("provider"))
+    state_file = tmp_path / "state.json"
+    monkeypatch.setenv("PATH", str(tmp_path))
+    install_extension(manifest, state_file=state_file, execute=True)
+    state = json.loads(state_file.read_text())
+    state["extensions"]["test-standalone-extension"]["revisions"][0].pop("entrypoint_path")
+    state_file.write_text(json.dumps(state))
+    preview = doctor_installed_extension("test-standalone-extension", state_file=state_file)
+    assert preview["status"] == "probe_required"
+    assert json.loads(state_file.read_text()) == state
+    assert doctor_installed_extension("test-standalone-extension", state_file=state_file, execute=True)["verified"]
+    monkeypatch.setenv("PATH", "")
+    assert doctor_installed_extension("test-standalone-extension", state_file=state_file, execute=True)["verified"]
+    provider.write_text(provider.read_text() + "\n# changed artifact\n")
+    with pytest.raises(ValueError, match="doctor readiness is stale"):
+        resolve_extension_activation("test-standalone-extension", state_file=state_file)
+
+
+def test_bound_execution_preserves_explicit_environment_and_sibling_tools(tmp_path, monkeypatch):
+    provider = _provider(tmp_path / "provider")
+    helper = _provider(tmp_path / "companion")
+    provider.write_text(provider.read_text().replace(
+        "request = json.load(sys.stdin)",
+        f"import os, shutil\nassert os.environ.get('EXPLICIT_BASE') == 'fixture'\n"
+        f"assert shutil.which('companion') == {str(helper)!r}\nrequest = json.load(sys.stdin)",
+    ))
+    manifest = _standalone_manifest(
+        tmp_path / "manifest.toml", entrypoint=Path("provider"), permission="semantic_preference.read",
+    )
+    state_file = tmp_path / "state.json"
+    monkeypatch.setenv("PATH", str(tmp_path))
+    install_extension(manifest, state_file=state_file, execute=True)
+    monkeypatch.setenv("PATH", "")
+    binding = resolve_extension_runtime_binding(
+        "test-standalone-extension", state_file=state_file,
+        protocol="semantic_preference_provider_v0", permission="semantic_preference.read",
+    )
+    environment = {"EXPLICIT_BASE": "fixture", "PATH": ""}
+    result = execute_extension_runtime_binding(
+        binding, request={"schema_version": "test_extension_request_v0"}, environment=environment,
+    )
+    assert result["schema_version"] == "semantic_preference_provider_response_v0"
+    assert environment == {"EXPLICIT_BASE": "fixture", "PATH": ""}
