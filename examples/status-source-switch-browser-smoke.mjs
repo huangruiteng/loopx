@@ -71,6 +71,46 @@ async function main() {
     const appUrl = `http://127.0.0.1:${port}/${packaged ? "chat/" : ""}`;
     await waitForHttp(appUrl);
     browser = await launchBrowser(chromium);
+    for (const storageFailure of ["getter", "methods"]) {
+      const isolated = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+      const errors = [];
+      isolated.on("pageerror", (error) => errors.push(error.message));
+      await isolated.addInitScript((failure) => {
+        const deny = () => { throw new DOMException("Storage unavailable", "SecurityError"); };
+        if (failure === "getter") {
+          Object.defineProperty(window, "localStorage", { get: deny });
+        } else {
+          Storage.prototype.getItem = deny;
+          Storage.prototype.setItem = deny;
+        }
+      }, storageFailure);
+      await isolated.route(`http://127.0.0.1:${port}/ssh-hosts`, (route) => route.fulfill({
+        json: { ok: true, schema_version: "ssh_host_catalog_v0", hosts: [] },
+      }));
+      await isolated.route(`http://127.0.0.1:${port}/status.json*`, (route) => route.fulfill({
+        json: statusPayload("local-goal", "Local Goal Only"),
+      }));
+      await isolated.route("http://127.0.0.1:8976/status.json*", (route) => route.fulfill({
+        json: statusPayload("remote-b-goal", "Remote B Goal Only"),
+      }));
+      await isolated.goto(appUrl, { waitUntil: "networkidle" });
+      await isolated.getByText("Local Goal Only", { exact: true }).first().waitFor({ timeout: 10_000 });
+      const select = isolated.getByRole("combobox", { name: "选择控制面来源" });
+      if (await selectedSourceLabel(select) !== "本机") throw new Error(`${storageFailure}: missing local source fallback`);
+      await isolated.getByRole("button", { name: "添加 SSH 隧道来源" }).click();
+      await isolated.getByRole("tab", { name: "手动 URL" }).click();
+      await isolated.getByLabel("名称").fill("Session Remote");
+      await isolated.getByLabel("本地转发 URL").fill("http://127.0.0.1:8976/status.json");
+      await isolated.getByRole("button", { name: "添加只读来源" }).click();
+      await isolated.getByText("Remote B Goal Only", { exact: true }).first().waitFor({ timeout: 10_000 });
+      await isolated.locator(".personal-read-only-source", { hasText: "Session Remote" }).waitFor();
+      await selectSource(isolated, select, "本机");
+      await isolated.getByText("Local Goal Only", { exact: true }).first().waitFor({ timeout: 10_000 });
+      await isolated.reload({ waitUntil: "networkidle" });
+      await isolated.getByText("Local Goal Only", { exact: true }).first().waitFor({ timeout: 10_000 });
+      if (errors.length) throw new Error(`${storageFailure}: uncaught page errors: ${errors.join("; ")}`);
+      await isolated.close();
+    }
     const page = await browser.newPage({ viewport: { width: 1512, height: 982 } });
     const state = {
       ensureGates: new Map(),
