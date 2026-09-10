@@ -37,7 +37,12 @@ def update_canonical_todo_if_promoted(
     if text is not None:
         patch["text"] = normalize_new_todo(text)
     if note is not None:
-        patch["note"] = compact_todo_text(note) or None
+        # Empty notes have always meant omission at the public update boundary.
+        # Clearing a persisted note requires a future explicit contract; never
+        # reinterpret an empty CLI/Python value as an implicit clear here.
+        normalized_note = compact_todo_text(note)
+        if normalized_note:
+            patch["note"] = normalized_note
     result = effect_runtime_result("coordination.local_authority.todo_update", {
         "schema_version": ("loopx_local_coordination_todo_update_request_v1" if planning_intent
                            else "loopx_local_coordination_todo_update_request_v0"),

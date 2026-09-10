@@ -39,7 +39,8 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
             contract_fields: native ? [...TODO_DOMAIN_RECORD_CONTRACT.fields] : [...TODO_CANONICAL_READ_RECORD_FIELDS]}}});
       assert.equal(seed.status, "applied");
       const request = {goal_id: goal, todo_id: "todo_aaa_target", expected_role: "agent", actor_agent_id: "agent-a",
-        registered_agents: ["agent-a", "agent-b"], operation_id: "wait", patch: {}, clear_fields: [],
+        registered_agents: ["agent-a", "agent-b"], operation_id: "wait",
+        patch: {text: "Synthetic planning record"}, clear_fields: [],
         planning_intent: {resume_when: "monitor_changed:todo_zzz_monitor", reason: "Await material change"},
         dry_run: false, now: new Date("2026-09-10T00:00:00Z")};
       const before = await head(store);
@@ -125,6 +126,9 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
     const original = before.head.todos as JsonObject[];
     assert.equal(records.length, fixture.expected_initial_todo_count);
     assert.deepEqual(records.filter(t => t.todo_id !== request.todo_id), original.filter(t => t.todo_id !== request.todo_id));
+    assert.equal(records.find(t => t.todo_id === request.todo_id)?.last_actor_agent_id,
+      original.find(t => t.todo_id === request.todo_id)?.last_actor_agent_id,
+      "planning-only updates preserve legacy actor attribution");
     for (const [operation_id, change] of [
       ["no-proof", {lease_idempotency_key: null, lease_expected_version: null}],
       ["status-change", {planning_intent: {status: "deferred", resume_when: "pr_merged:#123"}}],

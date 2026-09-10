@@ -59,6 +59,49 @@ def records(registry: Path) -> dict[str, dict]:
 
 
 @pytest.mark.parametrize("promoted", [False, True])
+@pytest.mark.parametrize("surface", ["cli", "python_api"])
+@pytest.mark.parametrize(("label", "note", "expected_note"), [
+    ("omitted", None, "Preserved note"),
+    ("empty", "", "Preserved note"),
+    ("unicode_whitespace", " \t\u2003\n", "Preserved note"),
+    ("nonempty", "  Updated\u2003note  ", "Updated note"),
+])
+def test_note_input_semantics_match_before_and_after_promotion(
+    tmp_path: Path, promoted: bool, surface: str, label: str,
+    note: str | None, expected_note: str,
+) -> None:
+    registry, _state = fixture(tmp_path, promoted)
+    operation_id = f"note-{surface}-{label}" if promoted else None
+    if surface == "cli":
+        args = ["--text", "Corrected task"]
+        if note is not None:
+            args += ["--note", note]
+        if operation_id is not None:
+            args += ["--update-operation-id", operation_id]
+        update(registry, *args)
+    else:
+        result = update_goal_todo(
+            registry_path=registry, goal_id="goal-a", todo_id="todo_target",
+            role="agent", agent_id="agent-a", text="Corrected task", note=note,
+            update_operation_id=operation_id,
+        )
+        assert result["ok"] is True
+    persisted = records(registry)["todo_target"]
+    assert persisted["text"] == "Corrected task"
+    assert persisted["note"] == expected_note
+
+
+def test_promoted_v0_replay_uses_normalized_empty_note_identity(tmp_path: Path) -> None:
+    registry, _state = fixture(tmp_path, True)
+    base = ["--text", "Corrected task", "--update-operation-id", "note-v0-replay"]
+    assert update(registry, *base)["status"] == "applied"
+    assert update(registry, *base, "--note", "")["status"] == "replayed"
+    assert update(registry, *base, "--note", " \t\u2003\n")["status"] == "replayed"
+    update(registry, *base, "--note", "Different note", ok=False)
+    assert records(registry)["todo_target"]["note"] == "Preserved note"
+
+
+@pytest.mark.parametrize("promoted", [False, True])
 def test_public_cli_nonterminal_wait_update_and_clear(tmp_path: Path, promoted: bool) -> None:
     registry, state = fixture(tmp_path, promoted)
     before = records(registry)

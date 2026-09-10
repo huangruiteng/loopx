@@ -23,7 +23,7 @@ test("planning transport is explicitly versioned before any provider access", as
 
 test("native planning edit commits nonterminal state and clears its wait atomically", async () => {
   const {store, request} = await seeded({task_class: "advancement_task"});
-  const edit = {...request, patch: {}, clear_fields: [], planning_intent: {
+  const edit = {...request, patch: {text: "Old text"}, clear_fields: [], planning_intent: {
     status: "deferred", resume_when: "pr_merged:#123", reason: "Waiting for upstream",
   }};
   const before = await store.loadAuthority();
@@ -39,6 +39,7 @@ test("native planning edit commits nonterminal state and clears its wait atomica
   assert.equal(record.resume_when, "pr_merged:#123");
   assert.equal(record.claimed_by, "agent-a");
   assert.equal(record.note, "old note");
+  assert.equal(Object.hasOwn(record, "last_actor_agent_id"), false);
   assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "replayed");
   assert.equal((await executeCoordinationTodoUpdate(store, {...edit,
     planning_intent: {...edit.planning_intent, reason: "Different intent"}})).reason_code,

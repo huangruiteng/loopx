@@ -244,7 +244,15 @@ function prepareUpdatedTodo(
 ): {next: JsonObject; changed: boolean; clearFields: string[]} | CoordinationTodoUpdateResult {
   const next: JsonObject = {...todo, ...input.patch};
   for (const field of input.clear_fields) delete next[field];
-  next.last_actor_agent_id = input.actor_agent_id;
+  // Preserve the public planner's legacy metadata semantics. Raw copy edits
+  // already carry actor attribution, while planning-only updates historically
+  // leave last_actor_agent_id untouched.
+  const rawCopyChanged = Object.entries(input.patch).some(([field, value]) =>
+    !Object.hasOwn(todo, field) || !canonicalAuthorityBytes(todo[field]).equals(canonicalAuthorityBytes(value))) ||
+    input.clear_fields.some(field => Object.hasOwn(todo, field));
+  if (rawCopyChanged) {
+    next.last_actor_agent_id = input.actor_agent_id;
+  }
   next.updated_at = input.now.toISOString().replace(/\.\d{3}Z$/u, "Z");
   const clearFields = new Set(input.clear_fields);
   try {
