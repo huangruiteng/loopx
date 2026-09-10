@@ -67,7 +67,12 @@ across homes. Existing home-identity checks still apply.
 
 Global means all Goals in the current owner's registry, including stale or
 unavailable entries; it does not claim discovery of unregistered remote hosts.
-External manager channels retain their authorized Goal scope before collection.
+External manager channels resolve their current authorized Goal scope through
+an injected control-plane resolver before collection and recheck it before
+handing evidence to the executor. The Lark adapter uses the active connection,
+exact audience, session, executor and connector identity. Missing, disabled or
+ambiguous grants produce no Goal evidence; a session's old Goal is not a grant.
+Changing/revoking scope during collection discards the collected snapshot.
 Global scope never means broadcasting private owner context to all Lark groups.
 A proposal without an exact Goal must not inherit the first visible Goal as a
 write target. The current Todo proposal schema requires entering a specific

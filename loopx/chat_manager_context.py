@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -13,17 +14,18 @@ from .chat import redact_local_paths
 
 
 def manager_turn_context(
-    registry_path: Path | None, session: dict[str, Any], runtime_root: Path
+    registry_path: Path | None,
+    session: dict[str, Any],
+    runtime_root: Path,
+    *,
+    authorized_goal_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     owner_scope = session.get("channel_id") == "manager"
-    scope = None if owner_scope else [str(session.get("goal_id") or "")]
+    scope = None if owner_scope else authorized_goal_ids
+    if not owner_scope and scope is None:
+        return unavailable_manager_context("external_authorization_unavailable")
     if registry_path is None:
-        return {
-            "schema_version": "manager_turn_context_v1",
-            "coverage": {"discovered": None, "verified": 0},
-            "goals": [],
-            "warnings": ["registry_unavailable"],
-        }
+        return unavailable_manager_context("registry_unavailable")
     portfolio = build_goal_portfolio(
         registry_path=registry_path,
         runtime_root_override=str(runtime_root),
@@ -88,3 +90,44 @@ def manager_turn_context(
         "warnings": portfolio.get("warnings", []),
         "limitations": portfolio.get("limitations", []),
     }
+
+
+def unavailable_manager_context(reason: str) -> dict[str, Any]:
+    return {
+        "schema_version": "manager_turn_context_v1",
+        "coverage": {"discovered": None, "verified": 0, "complete": False},
+        "goals": [],
+        "warnings": [reason],
+    }
+
+
+def collect_manager_turn_context(
+    registry_path: Path | None,
+    session: dict[str, Any],
+    runtime_root: Path,
+    scope_resolver: Callable[[dict[str, Any]], list[str] | None] | None = None,
+) -> dict[str, Any]:
+    if session.get("channel_id") == "manager":
+        return manager_turn_context(registry_path, session, runtime_root)
+
+    def resolve() -> list[str] | None:
+        try:
+            scope = scope_resolver(session) if scope_resolver else None
+            if not isinstance(scope, list) or any(
+                not isinstance(g, str) for g in scope
+            ):
+                return None
+            return sorted(set(scope))
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+            return None
+
+    before = resolve()
+    context = manager_turn_context(
+        registry_path,
+        session,
+        runtime_root,
+        authorized_goal_ids=before,
+    )
+    if before != resolve():
+        return unavailable_manager_context("external_authorization_changed")
+    return context

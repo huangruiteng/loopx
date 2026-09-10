@@ -62,6 +62,7 @@ from .extensions.lark.goal_channel import (
 )
 from .extensions.lark.goal_topic_connections import list_lark_apps
 from .extensions.lark.goal_topic_runtime import LarkGoalTopicRuntimeService
+from .extensions.lark.manager_routing import authorized_manager_goal_ids
 from .extensions.lark.presentation.kanban import (
     CommandRunner,
 )
@@ -1461,6 +1462,11 @@ def serve_chat(
     server.runtime_controller = ChatRuntimeController(
         store=server.chat_store,
         registry_path=resolved_registry_path,
+        manager_scope_resolver=lambda session: authorized_manager_goal_ids(
+            build_lark_goal_topic_runtime_snapshot(
+                registry_path=server.registry_path, runtime_root_override=server.runtime_root_override,
+            ), session,
+        ),
         codex_bin=codex_bin,
         claude_bin=claude_bin,
         kiro_cli_bin=kiro_cli_bin,

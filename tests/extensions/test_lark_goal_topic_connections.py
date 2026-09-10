@@ -2600,7 +2600,8 @@ def test_manager_waits_for_actual_turn_in_its_own_audience_session(
     )
     assert response == "Current work summarized"
     assert calls[0]["session_id"] == "manager-session"
-    assert "LoopX Goal manager" in calls[0]["objective"]
+    from loopx.chat_manager import MANAGER_AGENT_OBJECTIVE
+    assert calls[0]["objective"] == MANAGER_AGENT_OBJECTIVE
     for wrong_channel in [
         "manager",
         manager_channel(provider="lark", audience="another-group"),
@@ -2753,3 +2754,56 @@ def test_manager_upgrade_does_not_claim_preserved_route_when_compensation_fails(
     assert result["ok"] is False
     assert result["status"] == "upgrade_recovery_required"
     assert result["details"]["prior_route_restored"] is False
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "none",
+        "disabled_binding",
+        "disabled_target",
+        "wrong_session",
+        "wrong_executor",
+        "wrong_audience",
+        "ambiguous",
+    ],
+)
+def test_manager_read_scope_follows_live_authorized_connection(tmp_path, mutation):
+    from loopx.extensions.lark.manager_routing import authorized_manager_goal_ids
+
+    kwargs, _state, bindings = _manager_fixture(tmp_path)
+    targets = read_goal_channel_targets(kwargs["target_path"])
+    decision = decide_lark_topic_event(
+        target_payload=targets,
+        binding_payloads={"goal-alpha": bindings},
+        event={
+            "chat_id": CHAT_ID,
+            "message_id": "om_scope_read",
+            "mentions": [{"id": APP_ID}],
+        },
+    )
+    route = decision["route"]
+    session = {
+        "session_id": "manager-session",
+        "agent_id": "codex",
+        "channel_id": route["manager_channel_id"],
+        "goal_id": "unrelated-old-anchor",
+    }
+    snapshot = {"target_payload": targets, "binding_payloads": {"goal-alpha": bindings}}
+    connections = bindings["bindings"]["goal-alpha"]["connections"]
+    bound = connections[route["connection_id"]]
+    if mutation == "disabled_binding":
+        bound["enabled"] = False
+    elif mutation == "disabled_target":
+        targets["targets"][route["target_ref"]]["enabled"] = False
+    elif mutation == "wrong_session":
+        session["session_id"] = "other-session"
+    elif mutation == "wrong_executor":
+        session["agent_id"] = "claude-code"
+    elif mutation == "wrong_audience":
+        session["channel_id"] = "manager"
+    elif mutation == "ambiguous":
+        connections["duplicate-manager"] = dict(bound)
+    assert authorized_manager_goal_ids(snapshot, session) == (
+        ["goal-alpha"] if mutation == "none" else []
+    )

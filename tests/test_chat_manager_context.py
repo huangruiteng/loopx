@@ -1,6 +1,5 @@
 """Manager scope, restart migration and per-turn Core evidence contracts."""
 
-
 import pytest
 
 import loopx.chat_manager_context as context
@@ -48,8 +47,9 @@ def test_context_scopes_before_read_and_missing_registry_is_unknown(
     )
     context.manager_turn_context(
         tmp_path / "registry.json",
-        {"channel_id": "manager.external.fixture", "goal_id": "allowed"},
+        {"channel_id": "manager.external.fixture", "goal_id": "old-anchor"},
         tmp_path,
+        authorized_goal_ids=["allowed"],
     )
     assert calls == [None, ["allowed"]]
     missing = context.manager_turn_context(None, {"channel_id": "manager"}, tmp_path)
@@ -161,3 +161,80 @@ def test_legacy_manager_migrates_without_project_and_refreshes_each_turn(
         )
     finally:
         runtime.close()
+
+
+def test_external_session_anchor_never_supplies_read_authority(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        context,
+        "build_goal_portfolio",
+        lambda **kwargs: calls.append(kwargs) or {"goals": []},
+    )
+    result = context.collect_manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager.external.fixture", "goal_id": "old-private-anchor"},
+        tmp_path,
+    )
+    assert calls == []
+    assert result["coverage"]["discovered"] is None
+    assert result["warnings"] == ["external_authorization_unavailable"]
+
+
+def test_external_authority_is_rechecked_after_collection(monkeypatch, tmp_path):
+    def collect(**kwargs):
+        assert kwargs["goal_ids"] == ["currently-authorized"]
+        return {"goals": [{"goal_id": "currently-authorized", "quality": "verified"}]}
+
+    monkeypatch.setattr(context, "build_goal_portfolio", collect)
+    grants = iter([["currently-authorized"], []])
+    result = context.collect_manager_turn_context(
+        tmp_path / "registry.json",
+        {"channel_id": "manager.external.fixture", "goal_id": "old-private-anchor"},
+        tmp_path,
+        lambda session: next(grants),
+    )
+    assert result["goals"] == []
+    assert result["warnings"] == ["external_authorization_changed"]
+
+
+def test_current_external_scope_is_fresh_and_excludes_other_labels(
+    monkeypatch, tmp_path
+):
+    import json
+    import loopx.goal_portfolio as portfolio
+
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "goals": [
+                    {"id": "old-private-anchor", "display_name": "PRIVATE-OLD-LABEL"},
+                    {"id": "currently-authorized", "display_name": "Allowed label"},
+                ]
+            }
+        )
+    )
+    reads = []
+
+    def read(goal, **kwargs):
+        reads.append(goal["id"])
+        return {"goal_id": goal["id"], "quality": "verified", "warnings": []}
+
+    monkeypatch.setattr(portfolio, "_read_goal", read)
+    grant = ["currently-authorized"]
+    session = {
+        "channel_id": "manager.external.fixture",
+        "goal_id": "old-private-anchor",
+    }
+    result = context.collect_manager_turn_context(
+        registry, session, tmp_path, lambda _: grant
+    )
+    assert reads == ["currently-authorized"]
+    assert [g["goal_id"] for g in result["goals"]] == grant
+    assert "PRIVATE-OLD-LABEL" not in json.dumps(result)
+    grant.clear()
+    revoked = context.collect_manager_turn_context(
+        registry, session, tmp_path, lambda _: grant
+    )
+    assert revoked["goals"] == []
+    assert reads == ["currently-authorized"]

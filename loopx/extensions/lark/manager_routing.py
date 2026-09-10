@@ -82,18 +82,7 @@ def decide_manager_event(
     if not is_event_addressed_to_bot(event, identity):
         return ignored("not_addressed")
     connector = binding.get("connector")
-    try:
-        status = project_external_connector_status(connector)
-        if (
-            routing.get("ingress_mode") != "session_queue"
-            or not binding.get("session_id")
-            or status["goal_ref"] != goal_id
-            or status["agent_ref"] != binding.get("agent_id")
-            or status["ingress_policy"] != "session_queue"
-            or connector.get("session_ref") != binding.get("session_id")
-        ):
-            return ignored("invalid_routing_state")
-    except (TypeError, ValueError, AttributeError):
+    if not _valid_manager_binding(goal_id, binding, routing):
         return ignored("invalid_routing_state")
     profile = str(identity.get("sender_profile") or "default")
     return {
@@ -120,3 +109,63 @@ def decide_manager_event(
             "connector": dict(connector),
         },
     }
+
+
+def _valid_manager_binding(goal_id, binding, routing) -> bool:
+    connector = binding.get("connector")
+    try:
+        status = project_external_connector_status(connector)
+        return bool(
+            routing.get("ingress_mode") == "session_queue"
+            and binding.get("session_id")
+            and status["goal_ref"] == goal_id
+            and status["agent_ref"] == binding.get("agent_id")
+            and status["ingress_policy"] == "session_queue"
+            and connector.get("session_ref") == binding.get("session_id")
+        )
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def authorized_manager_goal_ids(
+    snapshot: Mapping[str, Any], session: Mapping[str, Any]
+) -> list[str]:
+    """Resolve current external read authority; a session's old Goal is not a grant."""
+    candidates = []
+    targets = snapshot.get("target_payload") or {}
+    for goal_id, payload in (snapshot.get("binding_payloads") or {}).items():
+        for binding in bindings_for_goal(payload, goal_id):
+            routing = binding.get("routing") or {}
+            if (
+                binding.get("enabled") is not True
+                or routing.get("conversation_kind") != "manager"
+            ):
+                continue
+            target = (
+                goal_channel_target_for_name(
+                    targets, str(binding.get("target_ref") or "")
+                )
+                or {}
+            )
+            if target.get("enabled") is not True:
+                continue
+            profile = str(
+                (target.get("identity") or {}).get("sender_profile") or "default"
+            )
+            chat_id = str((target.get("channel") or {}).get("chat_id") or "")
+            channel = manager_channel(provider="lark", audience=f"{profile}\0{chat_id}")
+            if channel != session.get("channel_id") or not CHAT_ID_PATTERN.fullmatch(
+                chat_id
+            ):
+                continue
+            candidates.append((goal_id, binding, routing))
+    if len(candidates) != 1:
+        return []
+    goal_id, binding, routing = candidates[0]
+    if (
+        binding.get("session_id") != session.get("session_id")
+        or (routing.get("executor_endpoint_id") or "codex") != session.get("agent_id")
+        or not _valid_manager_binding(goal_id, binding, routing)
+    ):
+        return []
+    return [goal_id]
