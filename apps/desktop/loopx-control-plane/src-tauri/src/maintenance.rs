@@ -21,6 +21,8 @@ pub struct Maintenance {
     runtime_retry: Mutex<RuntimeRetry>,
     install_journal_discarded: AtomicBool,
     environment_cache: Mutex<Option<(Instant, Value)>>,
+    startup_started: std::sync::OnceLock<Instant>,
+    phase_started: Mutex<Option<Instant>>,
 }
 
 #[derive(Default)]
@@ -55,8 +57,31 @@ impl Maintenance {
         if matches!(phase, "error" | "runtime_required" | "service_error") {
             *self.last_failure.lock().unwrap() = value.clone();
         }
-        *self.snapshot.lock().unwrap() = value.clone();
+        let mut snapshot = self.snapshot.lock().unwrap();
+        if snapshot["phase"] != phase || snapshot["details"] != value["details"] {
+            *self.phase_started.lock().unwrap() = Some(Instant::now());
+            if let Some(started) = self.startup_started.get() {
+                eprintln!(
+                    "LoopX startup phase={phase} elapsed_ms={}",
+                    started.elapsed().as_millis()
+                );
+            }
+        }
+        *snapshot = value.clone();
         value
+    }
+
+    fn startup_timing(&self) -> Value {
+        let elapsed = self
+            .startup_started
+            .get()
+            .map(|at| at.elapsed().as_millis());
+        let phase_elapsed = self
+            .phase_started
+            .lock()
+            .unwrap()
+            .map(|at| at.elapsed().as_millis());
+        json!({"elapsed_ms": elapsed, "phase_elapsed_ms": phase_elapsed})
     }
 
     fn prepare_runtime(
@@ -232,7 +257,7 @@ pub fn desktop_update_status(app: AppHandle, state: State<'_, Maintenance>) -> V
         }
         cache.as_ref().expect("refreshed above").1.clone()
     };
-    json!({"state": snapshot, "last_failure": last_failure, "app_version": app.package_info().version.to_string(), "runtime": bundled_runtime::identity(&app).ok(), "rollback_available": crate::update_backup::available(&app), "environment": environment})
+    json!({"state": snapshot, "startup": state.startup_timing(), "last_failure": last_failure, "app_version": app.package_info().version.to_string(), "runtime": bundled_runtime::identity(&app).ok(), "rollback_available": crate::update_backup::available(&app), "environment": environment})
 }
 #[tauri::command]
 pub async fn desktop_update(
@@ -596,6 +621,9 @@ fn resume_runtime(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 pub fn start_services(app: &AppHandle) -> Result<Option<crate::services::ServiceSet>, String> {
+    app.state::<Maintenance>()
+        .startup_started
+        .get_or_init(Instant::now);
     app.state::<Maintenance>().reconcile_services(|| {
         if let Err(error) = resume_runtime(app) {
             if error != "runtime_setup_required" {
@@ -604,7 +632,11 @@ pub fn start_services(app: &AppHandle) -> Result<Option<crate::services::Service
             }
             return Err(error);
         }
-        crate::services::ServiceSet::start().map_err(|e| e.to_string())
+        crate::services::ServiceSet::start(|kind| {
+            app.state::<Maintenance>()
+                .publish("connecting", json!({"service":kind.label()}));
+        })
+        .map_err(|e| e.to_string())
     })
 }
 
@@ -615,6 +647,23 @@ pub fn reconnect_requested(app: &AppHandle) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_clock_survives_status_reads_and_repeated_phase_publication() {
+        let state = Maintenance::default();
+        assert!(state.startup_timing()["elapsed_ms"].is_null());
+        state
+            .startup_started
+            .set(Instant::now() - Duration::from_secs(35))
+            .unwrap();
+        state.publish("installing_runtime", json!({}));
+        let first = *state.phase_started.lock().unwrap();
+        state.publish("installing_runtime", json!({}));
+        assert_eq!(*state.phase_started.lock().unwrap(), first);
+        assert!(state.startup_timing()["elapsed_ms"].as_u64().unwrap() >= 35000);
+        state.publish("connecting", json!({"service":"chat"}));
+        assert!(state.phase_started.lock().unwrap().unwrap() >= first.unwrap());
+        assert!(state.startup_timing()["elapsed_ms"].as_u64().unwrap() >= 35000);
+    }
     #[test]
     fn runtime_failure_can_recover_without_restarting_the_supervisor() {
         let state = Maintenance::default();

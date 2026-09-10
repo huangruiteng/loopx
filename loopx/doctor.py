@@ -1251,6 +1251,16 @@ def collect_doctor(
             "detail": str(typescript_control_plane.get("status")),
         },
     ]
+    from .desktop_installation import desktop_installation_status
+
+    desktop_installation = desktop_installation_status(release_manifest_source.get("git_commit"))
+    if desktop_installation["apps"]:
+        checks.append({
+            "id": "desktop_app_runtime_pairing",
+            "required": False,
+            "ok": desktop_installation["status"] == "paired",
+            "detail": desktop_installation["recommended_action"] or "App bundle and CLI source revisions match; running App not verified",
+        })
     if deep_validation:
         checks.extend(deep_validation["checks"])
     payload = {
@@ -1289,6 +1299,7 @@ def collect_doctor(
             "python_distribution": python_distribution,
         },
         "release_manifest": release_manifest,
+        "desktop_installation": desktop_installation,
         "release_provenance": release_provenance,
         "global_registry_writability": global_registry_writability,
         "runtime_projection_routes": runtime_projection_routes,

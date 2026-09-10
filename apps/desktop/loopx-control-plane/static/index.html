@@ -18,7 +18,8 @@
           <span aria-hidden="true" class="status-dots"><i></i><i></i><i></i></span>
         </p>
         <div aria-hidden="true" class="progress"></div>
-        <p class="boot-note">启动较慢时仍会自动重试；不会自动升级安装包。</p>
+        <p id="boot-elapsed" class="boot-note" aria-live="off">正在读取启动进度…</p>
+        <p id="boot-detail" class="boot-note">正在检查 App 配套组件和本地服务。</p>
       </section>
       <details class="recovery">
         <summary>恢复与更新 / Recovery & updates</summary>

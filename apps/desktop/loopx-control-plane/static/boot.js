@@ -1,5 +1,44 @@
 const panel = document.querySelector("main");
 const status = document.querySelector("#status");
+const bootElapsed = document.querySelector("#boot-elapsed");
+const bootDetail = document.querySelector("#boot-detail");
+const pageStarted = performance.now();
+let lastTiming = null;
+let timingObservedAt = pageStarted;
+let bootState = null;
+function renderStartup(result) {
+  const state = result?.state;
+  bootState = state;
+  if (Number.isFinite(result?.startup?.elapsed_ms) && result.startup.elapsed_ms >= 0) {
+    lastTiming = result.startup.elapsed_ms;
+    timingObservedAt = performance.now();
+  }
+  const titles = {
+    installing_runtime: "正在安装 App 配套运行时",
+    connecting: state?.details?.service === "status" ? "正在连接状态服务" : state?.details?.service === "chat" ? "正在连接管家对话服务" : "正在连接本地服务",
+    ready: "本地服务已就绪，正在打开工作区",
+    service_error: "本地服务连接失败，正在等待重试",
+  };
+  if (Object.hasOwn(titles, state?.phase)) {
+    status.textContent = titles[state.phase];
+    panel.dataset.state = "loading";
+    panel.setAttribute("aria-busy", "true");
+  }
+  updateStartupElapsed();
+}
+function updateStartupElapsed() {
+  const elapsed = lastTiming === null ? performance.now() - pageStarted : lastTiming + performance.now() - timingObservedAt;
+  const seconds = Math.floor(elapsed / 1000);
+  bootElapsed.textContent = `${lastTiming === null ? "此页面已等待" : "启动已用时"} ${seconds} 秒`;
+  bootDetail.textContent = bootState?.phase === "installing_runtime"
+    ? "正在安装此 App 随附的组件，并切换本机运行时；无需重复打开 App。"
+    : bootState?.phase === "service_error"
+      ? "启动器会自动重试；可展开「恢复与更新」查看诊断。"
+      : seconds >= 15
+        ? "启动用时较长。当前步骤尚未完成，可展开「恢复与更新」查看诊断。"
+        : "正在检查 App 配套组件和本地服务。";
+}
+setInterval(updateStartupElapsed, 1000);
 window.loopxBootFailed = (message) => {
   panel.dataset.state = "error";
   panel.setAttribute("aria-busy", "false");
@@ -155,6 +194,7 @@ async function refresh() {
     rollback.hidden = !result.rollback_available;
     renderDiagnostics(result);
     render(result.state);
+    renderStartup(result);
     escalateFromSnapshot(result.state);
   } catch { renderDiagnostics({state:{phase:"error",details:{code:"desktop_status_unavailable"}}}); }
 }
