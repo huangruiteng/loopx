@@ -15,21 +15,19 @@ USER_TODO_FINAL_MESSAGE_RULE = (
     "the projection internally and stay quiet."
 )
 HEARTBEAT_NOTIFICATION_RULE_SHORT = (
-    "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。见 `heartbeat_recommendation.agent_must_attempt`/"
-    "`execution_obligation.must_attempt_work`：true须推进并写回，false才可no-op。"
-    "Due/peer非用户动作；NOTIFY缺动作→"
+    "DONT_NOTIFY is OUTPUT only; execution follows "
+    "`heartbeat_recommendation.agent_must_attempt`/"
+    "`execution_obligation.must_attempt_work`. NOTIFY缺动作→"
     "具体user todo未投影，需修复LoopX状态投影；静默时内部修复。"
 )
 HEARTBEAT_NOTIFICATION_RULE_THIN = (
-    "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。执行义务看 `agent_must_attempt`/`must_attempt_work`。"
-    "Due/peer非用户动作；NOTIFY缺动作→"
+    "DONT_NOTIFY is OUTPUT only; execution follows `agent_must_attempt`/"
+    "`execution_obligation.must_attempt_work`. NOTIFY缺动作→"
     "具体user todo未投影，需修复LoopX状态投影；静默时内部修复。"
 )
 HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
-    "writeback: no-change=`surface_only`/no spend; "
-    "unchanged->`--vision-unchanged-reason`; material->actual outcome."
+    "Vision: no-change=`surface_only`/no spend + `--vision-unchanged-reason`; "
+    "material=actual outcome."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
     "`scheduler_hint` no-spend. host_action=pause_or_delete_current_heartbeat -> "
@@ -44,27 +42,24 @@ SCHEDULER_HINT_COMPACT_RULE = (
     "then ack/fail. No spend."
 )
 SCHEDULER_HINT_THIN_RULE = (
-    "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend); "
-    "else RRULE/fallback_hint/ack/fail."
+    "host_action=pause_or_delete_current_heartbeat->automation_update; "
+    "else RRULE/fallback_hint/ack/fail; no spend."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
-    "Observed capabilities -> `--available-capability`; never user gates."
+    "`--available-capability`; not user gates."
 )
 RUNTIME_REPAIR_ROUTING_RULE = (
-    "use `loopx-project` for "
-    "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
+    "Repair: `loopx-project`/`loopx-self-repair`."
 )
 RUNTIME_EXECUTION_ROUTING_RULE = (
-    "Normal turns use CLI `interaction_contract`; " + RUNTIME_REPAIR_ROUTING_RULE
+    "Current CLI `interaction_contract`; " + RUNTIME_REPAIR_ROUTING_RULE
 )
 HOST_LOOP_SAFETY_RULE = (
-    "Follow user authority and repository rules. Protect credentials/private material; "
-    "publish public-safe evidence. Destructive Git/production requires explicit authorization. "
-    "Gate only the affected path; continue independent allowed work."
+    "User/repository rules; protect credentials/private material. "
+    "Destructive Git/production needs authorization. Gate only the affected path."
 )
 HEARTBEAT_TURN_BOOTSTRAP_RULE = (
-    "Per wake, replace `<current_time_iso>` once. Run assignment and guard as separate "
-    "statements in one shell, not a command-prefix assignment; reuse the value on retries."
+    "Per wake set/reuse `LOOPX_TURN`; run assignment, then the complete guard."
 )
 HOST_LOOP_QUOTA_DISPATCH_RULE = (
     "Quota: use selection_command when required; "

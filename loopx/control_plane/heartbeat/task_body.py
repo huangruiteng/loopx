@@ -325,12 +325,9 @@ Spend once; no pipe/retry:
 Post-spend state:
 `{refresh_state_command}`
 
-No spend for quiet skips, preflight failures, blocker-push asks, dry-runs, or
-duplicate accounting. Return only under `user_channel.notify=NOTIFY`; else quiet.
+No spend for skips/failures/dry-runs/duplicates; output only under `NOTIFY`.
 
-{HOST_LOOP_SAFETY_RULE}
-{RUNTIME_REPAIR_ROUTING_RULE}
-
+{HOST_LOOP_SAFETY_RULE} {RUNTIME_REPAIR_ROUTING_RULE}
 {material_queue_rule}
 {permission_rule}"""
 def render_compact_heartbeat_task_body(
@@ -649,8 +646,7 @@ def render_thin_heartbeat_task_body(
     )
     return f"""Advance `{goal_id}` from {active_state}.
 
-{RUNTIME_EXECUTION_ROUTING_RULE}
-{HOST_LOOP_SAFETY_RULE}
+{RUNTIME_EXECUTION_ROUTING_RULE} {HOST_LOOP_SAFETY_RULE}
 {scope_sentence}
 
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
@@ -664,11 +660,8 @@ LOOPX_TURN=<current_time_iso>
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
-Done->todo/rationale; guard receipt; 2 stalls->replan.
-`agent_read_required`: drain/read/triage before work; settle/ACK.
-
-P0 blocked: safe P1/P2; monitor quiet/no-spend.
-
+`agent_read_required`: read/settle/ACK; 2 stalls replan; P0 blocked->P1/P2;
+monitor quiet/no-spend.
 {policy_tail}"""
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
