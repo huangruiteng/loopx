@@ -89,6 +89,14 @@ function todoRecords(
     if (role === "agent" && status !== "done" && status !== "deferred") {
       record.claimed_by = index % 2 === 0 ? "agent-a" : "agent-b";
     }
+    if (role === "agent" && record.task_class === "advancement_task") {
+      // Full requirement declarations survive unrelated transitions and archive;
+      // editing a declaration must not change an existing execution grant.
+      Object.assign(record, {action_kind: "implement", task_domain: "code",
+        task_repository: "git:github.com/example/project",
+        required_write_scopes: ["src/**", "tests/**"], required_capabilities: ["code_review"],
+        target_capabilities: ["delivery"], explore_result_node_refs: [`Node:fixture-${index}`]});
+    }
     if (record.task_class === "continuous_monitor") {
       // Durable mixed-source observation shapes: bounded and watch-only,
       // untouched and previously changed, with cadence and retained generation.

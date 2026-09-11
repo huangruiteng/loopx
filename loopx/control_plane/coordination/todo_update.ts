@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import { TODO_WORK_REQUIREMENT_FIELDS } from "../todos/work_requirements.ts";
 import type { AuthorityStore, AuthorityStoreCommit, AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -230,6 +231,11 @@ function targetRejection(
         return failure("update_owner_mismatch", "Leased Todo update requires the current claim owner");
       }
       const status = input.planning_intent?.status;
+      if (lease !== undefined && TODO_WORK_REQUIREMENT_FIELDS.some(field =>
+        Object.hasOwn(input.planning_intent ?? {}, field))) {
+        return failure("update_lease_requirements_transition_unsupported",
+          "Changing leased work requirements requires a new execution grant; metadata update leaves the lease unchanged");
+      }
       if (lease !== undefined && typeof status === "string" && status.toLowerCase() !== todo.status) {
         return failure("update_lease_status_transition_unsupported",
           "Changing a leased Todo status requires an atomic lifecycle operation; planning update leaves the lease unchanged");

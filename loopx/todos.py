@@ -1119,15 +1119,17 @@ def update_goal_todo(
         "resume_when": resume_when, "clear_resume_when": clear_resume_when or None,
         "unblocks_todo_id": unblocks_todo_id, "successor_todo_ids": successor_todo_ids,
         "no_followup": no_followup,
+        "action_kind": action_kind, "task_domain": task_domain,
+        "task_repository": task_repository, "required_write_scopes": required_write_scopes,
+        "required_capabilities": required_capabilities, "target_capabilities": target_capabilities,
+        "explore_result_node_refs": explore_result_node_refs,
     }.items() if value is not None}
     if not claim_only and (text is not None or note is not None or planning_intent) and not any((
         monitor_metadata,
         goal_bound, clear_blocks_agent, clear_excluded_agents, global_gate,
         clear_global_gate, clear_claim, authority_reason,
     )) and all(value is None for value in (
-        task_class, action_kind, task_domain,
-        task_repository, continuation_policy, required_write_scopes,
-        required_capabilities, target_capabilities, explore_result_node_refs,
+        task_class, continuation_policy,
         decision_scope, required_decision_scopes, claimed_by, bound_agent,
         blocks_agent, excluded_agents, authority_reason,
     )):

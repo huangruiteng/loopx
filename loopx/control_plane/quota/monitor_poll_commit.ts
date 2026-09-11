@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { access, readFile, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { monitorSuccessorIntent, monitorSuccessorRoute, monitorSuccessorCapabilities } from "../scheduler/monitor_successor.ts";
+import { monitorSuccessorIntent, monitorSuccessorRoute } from "../scheduler/monitor_successor.ts";
+import { normalizeTodoCapabilities } from "../todos/work_requirements.ts";
 
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -868,8 +869,8 @@ function requireProviderCapabilityMatch(
   expected: readonly string[],
   label: string,
 ): void {
-  const actualCapabilities = monitorSuccessorCapabilities(actual, label);
-  const expectedCapabilities = monitorSuccessorCapabilities(expected, label);
+  const actualCapabilities = normalizeTodoCapabilities(actual, label);
+  const expectedCapabilities = normalizeTodoCapabilities(expected, label);
   if (pythonJson(actualCapabilities) !== pythonJson(expectedCapabilities)) {
     throw new EffectRuntimeRequestError(`${label} must match provider plan`);
   }
