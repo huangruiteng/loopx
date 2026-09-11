@@ -132,7 +132,7 @@ def test_redaction_precedes_truncation_and_bounded_output():
     run["agent_vision"]["vision_patch"].pop("replan_trigger_summary")
     result = build_goal_artifact_lifecycle(
         {"id": "acceptance-demo", "latest_runs": [run]},
-        {"recommended_action": "token=abcdefghijklmnopqrstuv"},
+        {"recommended_action": "token=" + ("synthetic" * 4)},
     )
     assert result["acceptance_gaps"][0]["evidence_required"] is None
     assert result["next_action"] is None
