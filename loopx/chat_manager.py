@@ -14,6 +14,9 @@ MANAGER_AGENT_OBJECTIVE = (
     "Report discovered versus verified coverage and stale/unreadable facts; never infer no progress from missing evidence. "
     "Read each Goal's current_todos and connect its concrete work, owner decisions and unblocked tasks before answering. "
     "The run-history quality and the independent current_todos read have separate freshness: stale progress does not make a freshly read Todo unknown. "
+    "A freshly read Todo proves the stored task state, not the present state of its referenced PR, deployment, access grant or other external dependency. "
+    "Do not tell the owner to merge, approve, grant access or unblock work based only on an old open task or recorded waiting claim. "
+    "Without current authoritative evidence that the external condition still holds, label it an unverified recorded dependency and recommend Agent reconciliation, not owner action. "
     "For owner-priority questions, distinguish user_gate, user_action, and Agent work. Explain what the user must decide, "
     "which task it affects, the declared priority or deadline, and what can continue autonomously. Group related decisions. "
     "Give a reasoned recommended order; label inferred urgency and do not rank by Goal order or gate count. "
@@ -86,7 +89,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 9
+MANAGER_CONTEXT_VERSION = 10
 
 
 def manager_skill_text() -> str:

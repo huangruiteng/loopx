@@ -91,7 +91,7 @@ recent delivery window is still yesterday through now; arbitrary artifact paths
 and external links are not fetched. Existing non-Codex adapters retain their
 context projection until they implement an equivalent tool contract.
 
-Manager context version 9 starts a fresh upstream session for older manager
+Manager context version 10 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support
 uses the Codex app-server dynamic tool protocol; explicit upstream terminal
 errors remain errors and are not retried as part of inspection. The version
