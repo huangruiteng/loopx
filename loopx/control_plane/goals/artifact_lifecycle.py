@@ -148,27 +148,6 @@ def build_goal_artifact_lifecycle(
                     "source": "latest_agent_vision",
                 }
             )
-    frontier = _dict(
-        asset.get("goal_frontier_projection") or item.get("goal_frontier_projection")
-    )
-    for gap in _rows(frontier.get("acceptance_gaps")):
-        if any(
-            row["kind"] == gap.get("kind")
-            and row["owner"] == _text(gap.get("agent_id"))
-            for row in gaps
-        ):
-            continue
-        gaps.append(
-            {
-                "kind": _text(gap.get("kind")) or "acceptance_gap",
-                "owner": _text(gap.get("agent_id") or frontier.get("agent_id")),
-                "reason": _text(gap.get("replan_trigger_summary")),
-                "evidence_required": _text(gap.get("acceptance_summary")),
-                "observed_at": _text(gap.get("generated_at")),
-                "source": "goal_frontier",
-            }
-        )
-
     guards: list[dict[str, Any]] = []
     user_group = _dict(item.get("user_todos") or asset.get("user_todos"))
     for todo in open_user_gate_todo_items(user_group):
@@ -208,8 +187,6 @@ def build_goal_artifact_lifecycle(
         sources_missing.append("attention_queue")
     if not agents:
         sources_missing.append("agent_vision")
-    if not frontier:
-        sources_missing.append("goal_frontier")
     if item.get("todo_projection_gap") or asset.get("todo_projection_gap"):
         sources_missing.append("todo_projection")
     if item.get("stale_latest_run_warning"):
@@ -221,9 +198,7 @@ def build_goal_artifact_lifecycle(
         "acceptance_assessed": False,
         "coverage": "partial" if item or runs else "unavailable",
         "missing_sources": sources_missing,
-        "truncated": len(gaps) > OBSERVATION_LIMIT
-        or len(guards) > OBSERVATION_LIMIT
-        or bool(frontier.get("payload_compaction")),
+        "truncated": len(gaps) > OBSERVATION_LIMIT or len(guards) > OBSERVATION_LIMIT,
         "milestones": milestones[:OBSERVATION_LIMIT],
         "acceptance_gaps": gaps[:OBSERVATION_LIMIT],
         "guards": guards[:OBSERVATION_LIMIT],

@@ -85,25 +85,19 @@ def test_latest_vision_is_per_agent_and_closed_lane_does_not_hide_other_lane():
     assert [gap["owner"] for gap in result["acceptance_gaps"]] == ["agent-b"]
 
 
-def test_missing_and_compacted_sources_are_never_complete():
+def test_missing_history_and_empty_observations_are_never_complete():
     result = build_goal_artifact_lifecycle(
         {"id": "acceptance-demo", "lifecycle_flags": [{}, "connected"]}, None
     )
     assert result["coverage"] == "unavailable"
     assert result["acceptance_assessed"] is False
-    compact = build_goal_artifact_lifecycle(
-        {"id": "acceptance-demo"},
-        {
-            "goal_frontier_projection": {
-                "agent_id": "agent-a",
-                "acceptance_gaps": [],
-                "acceptance_gap_count": 5,
-                "payload_compaction": {},
-            }
-        },
+    partial = build_goal_artifact_lifecycle(
+        {"id": "acceptance-demo", "latest_runs": [vision_run(state="closed")]},
+        {"goal_id": "acceptance-demo"},
     )
-    assert compact["coverage"] == "partial"
-    assert compact["acceptance_assessed"] is False
+    assert partial["coverage"] == "partial"
+    assert partial["acceptance_gaps"] == []
+    assert partial["acceptance_assessed"] is False
 
 
 def test_deferred_and_completed_gates_are_not_current_pending_gates():
@@ -177,9 +171,23 @@ def collect_fixture(root: Path) -> dict:
             }
         )
     )
-    runs = runtime / "goals" / "acceptance-demo" / "runs"
-    runs.mkdir(parents=True)
-    (runs / "index.jsonl").write_text(json.dumps(vision_run()) + "\n")
+    from loopx.state_refresh import refresh_state_run
+
+    refresh_state_run(
+        registry_path=registry,
+        runtime_root_override=str(runtime),
+        goal_id="acceptance-demo",
+        project=project,
+        state_file=state,
+        classification="state_refreshed",
+        recommended_action=None,
+        agent_id="agent-a",
+        agent_vision_packet={
+            "vision_patch": vision_run()["agent_vision"]["vision_patch"]
+        },
+        dry_run=False,
+        sync_global=False,
+    )
     return collect_status(
         registry_path=registry,
         runtime_root_override=str(runtime),

@@ -7,7 +7,7 @@ export function GoalAcceptanceCard({ goal }: { goal: WorkspaceGoal }) {
     connected: t("acceptance.connected"), mapped: t("acceptance.mapped"), refreshed: t("acceptance.refreshed"),
     adapter_inspected: t("acceptance.inspected"), run_recorded: t("acceptance.recorded"), reward_judged: t("acceptance.judged"),
     operator_approved: t("acceptance.approved"), controller_ready: t("acceptance.ready"),
-    attention_queue: t("acceptance.attentionSource"), agent_vision: t("acceptance.visionSource"), goal_frontier: t("acceptance.frontierSource"),
+    attention_queue: t("acceptance.attentionSource"), agent_vision: t("acceptance.visionSource"),
     todo_projection: t("acceptance.todoSource"), current_run: t("acceptance.runSource"),
   };
   const label = (key: string) => labels[key as keyof typeof labels] ?? t("acceptance.unknown");
