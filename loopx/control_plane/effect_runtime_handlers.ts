@@ -149,6 +149,7 @@ import {evaluateStandingDecisionProjection} from "./todos/standing_decision.ts";
 import {evaluateDecisionScope} from "./todos/decision_scope.ts";
 import {evaluateCapabilityGate} from "./agents/capability_gate.ts";
 import {captureArchivedTodoDependencies} from "./todos/archive_capture.ts";
+import {projectAdvancementFrontier, evaluateLongTodoChain} from "./todos/frontier_revision.ts";
 import { evaluateCoordinationTodoSuccessorDerivation } from "./coordination/todo_successor_derivation.ts";
 import {
   checkLegacyCoordinationWriteAllowed,
@@ -417,6 +418,8 @@ export function createEffectRuntimeHandlers(
     ["todo.resume_condition.evaluate", evaluateTodoResumeConditions],
     ["todo.resume_planning.project", projectTodoResumePlanning],
     ["todo.quota_planning.project", projectTodoQuotaPlanning],
+    ["todo.frontier_revision.project", projectAdvancementFrontier],
+    ["goal.long_todo_chain.evaluate", evaluateLongTodoChain],
     ["todo.external_wait.plan", planTodoExternalWaitTransition],
     ["scheduler.state_transition.evaluate", evaluateSchedulerStateTransition],
     ["scheduler.state.evaluate", evaluateSchedulerStateOperation],

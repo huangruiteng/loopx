@@ -11,41 +11,15 @@ from ...todos.frontier_revision import (
     advancement_frontier_revision_from_index,
     selectable_advancement_frontier_revision,
 )
-from ...todos.contract import normalize_todo_replan_obligation_id
+from ...effect_runtime import effect_runtime_result
+from ...todos.frontier_revision import frontier_source_facts
 
 
 LONG_TODO_CHAIN_TRIGGER = "long_todo_chain"
-LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD = 15
-LONG_TODO_CHAIN_OPEN_THRESHOLD = 20
 TODO_TASK_CLASS_ADVANCEMENT = "advancement_task"
 LONG_TODO_CHAIN_FRONTIER_REVISION_SCHEMA_VERSION = (
     TODO_FRONTIER_REVISION_SCHEMA_VERSION
 )
-
-
-def _safe_non_negative_int(value: Any) -> int:
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _selectable_advancement_frontier_revision(
-    source_items: list[dict[str, Any]] | None,
-    *,
-    agent_id: str | None,
-) -> tuple[str | None, str | None, bool]:
-    """Return a complete material revision for one selectable agent lane.
-
-    Terminal advancement rows remain relevant because completion and pruning
-    mutate the frontier. Incomplete source revisions fail closed so a legacy
-    projection cannot silently suppress an obligation.
-    """
-
-    return selectable_advancement_frontier_revision(
-        source_items,
-        agent_id=agent_id,
-    )
 
 
 @dataclass(frozen=True)
@@ -100,7 +74,7 @@ def long_todo_chain_source_checkpoint(
     frontier_revision, frontier_updated_at, revision_complete = (
         projected
         if projected is not None
-        else _selectable_advancement_frontier_revision(
+        else selectable_advancement_frontier_revision(
             source_items,
             agent_id=agent_id,
         )
@@ -116,119 +90,28 @@ def long_todo_chain_source_checkpoint(
     )
 
 
-def observe_long_todo_chain(
-    *,
-    agent_todo_summary: dict[str, Any] | None,
-    agent_counts: dict[str, int],
-    frontier_counts: dict[str, int],
-    agent_id: str | None,
-    agent_todo_source_items: list[dict[str, Any]] | None = None,
-) -> LongTodoChainObservation | None:
-    """Observe one agent-scoped long chain without inferring from prose."""
-
-    current_advancement = frontier_counts.get(
-        "current_agent_claimed_advancement_count", 0
-    )
-    unclaimed_advancement = frontier_counts.get("unclaimed_advancement_count", 0)
-    selectable_advancement = current_advancement + unclaimed_advancement
-    if isinstance(agent_todo_summary, dict):
-        current_open = _safe_non_negative_int(
-            agent_todo_summary.get("current_agent_claimed_open_count")
-        )
-        unclaimed_open = _safe_non_negative_int(
-            agent_todo_summary.get("unclaimed_open_count")
-        )
-        selectable_open = max(
-            current_open + unclaimed_open,
-            selectable_advancement,
-        )
-    else:
-        selectable_open = max(agent_counts.get("open", 0), selectable_advancement)
-    threshold: int | None = None
-    trigger_count = 0
-    count_kind = ""
-    if selectable_advancement >= LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD:
-        threshold = LONG_TODO_CHAIN_ADVANCEMENT_THRESHOLD
-        trigger_count = selectable_advancement
-        count_kind = "selectable_advancement_todos"
-    elif (
-        selectable_open >= LONG_TODO_CHAIN_OPEN_THRESHOLD
-        and selectable_advancement > 0
-    ):
-        threshold = LONG_TODO_CHAIN_OPEN_THRESHOLD
-        trigger_count = selectable_open
-        count_kind = "selectable_open_todos"
-    if threshold is None:
-        return None
-    projected = advancement_frontier_revision_from_index(
-        (agent_todo_summary or {}).get("advancement_frontier_revision_index"),
-        agent_id=agent_id,
-    )
-    frontier_revision, _, revision_complete = (
-        projected
-        if projected is not None
-        else _selectable_advancement_frontier_revision(
-            agent_todo_source_items,
-            agent_id=agent_id,
-        )
-    )
-    return LongTodoChainObservation(
-        trigger_count=trigger_count,
-        count_kind=count_kind,
-        selectable_open_count=selectable_open,
-        selectable_advancement_count=selectable_advancement,
-        current_agent_claimed_advancement_count=current_advancement,
-        unclaimed_advancement_count=unclaimed_advancement,
-        threshold=threshold,
-        agent_id=agent_id,
-        frontier_revision=frontier_revision,
-        frontier_revision_complete=revision_complete,
-    )
-
-
-def classify_long_todo_chain_ack(
-    observation: LongTodoChainObservation,
-    latest_replan_ack: dict[str, Any] | None,
-) -> LongTodoChainAckDecision:
-    """Classify an accepted checkpoint against the current frontier revision."""
-
-    if (
-        not isinstance(latest_replan_ack, dict)
-        or latest_replan_ack.get("recorded") is not True
-    ):
-        return LongTodoChainAckDecision(acknowledged=False)
-    semantic_delta_value = latest_replan_ack.get("semantic_delta")
-    semantic_delta: dict[str, Any] = (
-        semantic_delta_value if isinstance(semantic_delta_value, dict) else {}
-    )
-    trigger_kinds = {
-        str(value or "").strip()
-        for value in semantic_delta.get("trigger_kinds") or []
-        if str(value or "").strip()
-    }
-    obligation_id = normalize_todo_replan_obligation_id(
-        semantic_delta.get("obligation_id")
-    )
-    if (
-        semantic_delta.get("accepted") is not True
-        or LONG_TODO_CHAIN_TRIGGER not in trigger_kinds
-        or not obligation_id
-    ):
-        return LongTodoChainAckDecision(acknowledged=False)
-    if not observation.frontier_revision_complete or not observation.frontier_revision:
-        return LongTodoChainAckDecision(acknowledged=False)
-    checkpoint_matches = any(
-        isinstance(checkpoint, dict)
-        and str(checkpoint.get("kind") or "").strip() == LONG_TODO_CHAIN_TRIGGER
-        and str(checkpoint.get("frontier_revision") or "").strip()
-        == observation.frontier_revision
-        for checkpoint in semantic_delta.get("trigger_checkpoints") or []
-    )
-    if checkpoint_matches:
-        return LongTodoChainAckDecision(acknowledged=True)
-    return LongTodoChainAckDecision(
-        acknowledged=False,
-        rearmed_after_obligation_id=obligation_id,
+def evaluate_long_todo_chain(
+    *, agent_todo_summary: dict[str, Any] | None,
+    agent_counts: dict[str, int], frontier_counts: dict[str, int],
+    agent_id: str | None, agent_todo_source_items: list[dict[str, Any]] | None = None,
+    latest_replan_ack: dict[str, Any] | None = None,
+) -> tuple[LongTodoChainObservation | None, LongTodoChainAckDecision | None]:
+    """One typed observation + checkpoint qualification, not two rule RPCs."""
+    result = effect_runtime_result("goal.long_todo_chain.evaluate", {
+        "schema_version": "long_todo_chain_request_v0", "operation": "observe",
+        "summary": agent_todo_summary, "agent_counts": agent_counts,
+        "frontier_counts": frontier_counts, "agent_id": agent_id,
+        "rows": (
+            None if isinstance((agent_todo_summary or {}).get("advancement_frontier_revision_index"), dict)
+            else frontier_source_facts(agent_todo_source_items)
+        ),
+        "ack": latest_replan_ack,
+    })
+    observation = result["observation"]
+    decision = result["decision"]
+    return (
+        LongTodoChainObservation(**observation) if observation is not None else None,
+        LongTodoChainAckDecision(**decision) if decision is not None else None,
     )
 
 

@@ -62,8 +62,7 @@ from .fallback_disposition import (
 )
 from .long_todo_chain import (
     LONG_TODO_CHAIN_TRIGGER,
-    classify_long_todo_chain_ack,
-    observe_long_todo_chain,
+    evaluate_long_todo_chain,
 )
 from .replan_rules import (
     GoalFrontierReplanFacts,
@@ -983,20 +982,13 @@ def derive_goal_frontier_replan_obligation_from_summaries(
         agent_todo_summary,
         agent_id=agent_id,
     )
-    long_chain_observation = observe_long_todo_chain(
+    long_chain_observation, long_chain_ack_decision = evaluate_long_todo_chain(
         agent_todo_summary=agent_todo_summary,
         agent_counts=agent_counts,
         frontier_counts=frontier_counts,
         agent_id=agent_id,
         agent_todo_source_items=agent_todo_source_items,
-    )
-    long_chain_ack_decision = (
-        classify_long_todo_chain_ack(
-            long_chain_observation,
-            current_transition_replan_ack or latest_replan_ack,
-        )
-        if long_chain_observation is not None
-        else None
+        latest_replan_ack=current_transition_replan_ack or latest_replan_ack,
     )
     replan_rule = select_goal_frontier_replan_rule(
         GoalFrontierReplanFacts(
