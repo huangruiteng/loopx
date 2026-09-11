@@ -12,13 +12,11 @@ from typing import Any
 from .contract import (
     normalize_todo_blocks_agent,
     normalize_todo_claimed_by,
-    normalize_todo_decision_outcome,
     normalize_todo_decision_scope,
     normalize_todo_decision_scope_outcomes,
     normalize_todo_global_gate,
     normalize_todo_id,
     normalize_todo_required_decision_scopes,
-    normalize_todo_status,
 )
 from .user_gate import is_user_gate_todo_item
 
@@ -36,8 +34,6 @@ TODO_GATE_BLOCKING_STATES = frozenset(
 
 DECISION_SCOPE_CONSISTENCY_SCHEMA_VERSION = "required_decision_scope_consistency_v0"
 STANDING_DECISION_AUTHORITY_SCHEMA_VERSION = "standing_decision_authority_v0"
-STANDING_DECISION_RECEIPT_SCHEMA_VERSION = "standing_decision_receipt_v0"
-STANDING_DECISION_GRANULARITIES = frozenset({"goal", "project", "global"})
 _AGENT_SUMMARY_ITEM_KEYS = (
     "current_agent_claimed_open_items",
     "current_agent_claimed_advancement_items",
@@ -112,79 +108,6 @@ def _scope_identity(scope: dict[str, Any]) -> str:
     return f"{scope['kind']}:{scope['granularity']}:{scope['scope_key']}"
 
 
-def is_standing_decision_receipt_item(item: dict[str, Any]) -> bool:
-    """Return whether a completed user gate is a reusable decision receipt."""
-
-    if not is_user_gate_todo_item(item):
-        return False
-    status = normalize_todo_status(
-        item.get("status") or ("done" if item.get("done") else "open")
-    )
-    if status != "done":
-        return False
-    if normalize_todo_id(item.get("unblocks_todo_id")):
-        return False
-    scope = normalize_todo_decision_scope(item.get("decision_scope"))
-    outcome = normalize_todo_decision_outcome(item.get("decision_outcome"))
-    if not scope or not outcome:
-        return False
-    if scope["granularity"] not in STANDING_DECISION_GRANULARITIES:
-        return False
-    return bool(
-        normalize_todo_global_gate(item.get("global_gate"))
-        or normalize_todo_blocks_agent(item.get("blocks_agent"))
-    )
-
-
-def build_standing_decision_authority(
-    user_items: list[dict[str, Any]] | None,
-) -> dict[str, Any] | None:
-    """Compile latest broad, unlinked user-gate decisions into receipts."""
-
-    latest_by_identity: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-    for item in user_items or []:
-        if not isinstance(item, dict) or not is_standing_decision_receipt_item(item):
-            continue
-        scope = normalize_todo_decision_scope(item.get("decision_scope"))
-        outcome = normalize_todo_decision_outcome(item.get("decision_outcome"))
-        source_todo_id = normalize_todo_id(item.get("todo_id"))
-        if not scope or not outcome or not source_todo_id:
-            continue
-        global_gate = bool(normalize_todo_global_gate(item.get("global_gate")))
-        blocks_agent = normalize_todo_blocks_agent(item.get("blocks_agent"))
-        owner_key = "global" if global_gate else f"agent:{blocks_agent}"
-        receipt: dict[str, Any] = {
-            "schema_version": STANDING_DECISION_RECEIPT_SCHEMA_VERSION,
-            "source_todo_id": source_todo_id,
-            "decision_scope": scope,
-            "outcome": outcome,
-            "active": outcome == "approve",
-            "global_gate": global_gate,
-        }
-        if blocks_agent:
-            receipt["blocks_agent"] = blocks_agent
-        for key in ("completed_at", "updated_at"):
-            value = str(item.get(key) or "").strip()
-            if value:
-                receipt[key] = value
-        identity = (
-            scope["kind"],
-            scope["granularity"],
-            scope["scope_key"],
-            owner_key,
-        )
-        latest_by_identity[identity] = receipt
-    if not latest_by_identity:
-        return None
-    entries = list(latest_by_identity.values())
-    return {
-        "schema_version": STANDING_DECISION_AUTHORITY_SCHEMA_VERSION,
-        "active_count": sum(entry["active"] is True for entry in entries),
-        "inactive_count": sum(entry["active"] is not True for entry in entries),
-        "entries": entries,
-    }
-
-
 def standing_decision_authority_for_agent(
     authority: dict[str, Any] | None,
     *,
@@ -203,7 +126,13 @@ def standing_decision_authority_for_agent(
         if isinstance(entry, dict)
         and _gate_owner_compatible(entry, agent_id=agent_id)
     ]
-    if not compatible:
+    raw_conflicts = authority.get("conflicts")
+    conflicts = [
+        dict(entry)
+        for entry in (raw_conflicts if isinstance(raw_conflicts, list) else [])
+        if isinstance(entry, dict) and _gate_owner_compatible(entry, agent_id=agent_id)
+    ]
+    if not compatible and not conflicts:
         return None
     return {
         "schema_version": STANDING_DECISION_AUTHORITY_SCHEMA_VERSION,
@@ -211,6 +140,7 @@ def standing_decision_authority_for_agent(
         "active_count": sum(entry.get("active") is True for entry in compatible),
         "inactive_count": sum(entry.get("active") is not True for entry in compatible),
         "entries": compatible,
+        **({"conflicts": conflicts, "conflict_count": len(conflicts)} if conflicts else {}),
     }
 
 
@@ -339,17 +269,29 @@ def build_required_decision_scope_consistency(
                         }
                     )
                 continue
+            scoped_authority = standing_decision_authority_for_agent(
+                standing_decision_authority, agent_id=effective_owner,
+            ) or {}
+            conflicts = [item for item in scoped_authority.get("conflicts", [])
+                         if decision_scope_covers(item.get("decision_scope"), required_scope)]
             matching_actions = [
                 item
                 for item in user_actions
                 if decision_scope_covers(item.get("decision_scope"), required_scope)
             ]
-            if matching_actions:
+            if conflicts:
+                reason_code = "standing_decision_order_unresolved"
+                related_ids = sorted({todo_id for item in conflicts
+                                      if isinstance(item.get("source_todo_ids"), list)
+                                      for todo_id in item["source_todo_ids"] if isinstance(todo_id, str)})
+            elif matching_actions:
                 reason_code = "non_blocking_user_action_scope_collision"
-                related_ids = [normalize_todo_id(item.get("todo_id")) for item in matching_actions]
+                related_ids = [todo_id for item in matching_actions
+                               if (todo_id := normalize_todo_id(item.get("todo_id"))) is not None]
             elif matching_gates:
                 reason_code = "required_decision_scope_gate_owner_mismatch"
-                related_ids = [normalize_todo_id(item.get("todo_id")) for item in matching_gates]
+                related_ids = [todo_id for item in matching_gates
+                               if (todo_id := normalize_todo_id(item.get("todo_id"))) is not None]
             else:
                 reason_code = "dangling_required_decision_scope"
                 related_ids = []
@@ -410,7 +352,7 @@ def build_required_decision_scope_repair_hint(
             ),
             "consistency": consistency,
         }
-    return {
+    result = {
         "source": "quota.should-run",
         "trigger": "required_decision_scope_projection_drift",
         "recommended_mode": "repair_required_decision_scope_projection",
@@ -431,6 +373,16 @@ def build_required_decision_scope_repair_hint(
         ),
         "consistency": consistency,
     }
+    if any(isinstance(error, dict) and error.get("reason_code") == "standing_decision_order_unresolved"
+           for error in errors):
+        result.update(
+            reason="contradictory standing decisions have no established chronological winner",
+            repair_focus=(
+                "reconcile decision chronology against explicit owner evidence; do not remove "
+                "required_decision_scopes or invent approval merely to clear this conflict"
+            ),
+        )
+    return result
 
 
 def decision_scope_covers(gate_scope: Any, required_scope: Any) -> bool:

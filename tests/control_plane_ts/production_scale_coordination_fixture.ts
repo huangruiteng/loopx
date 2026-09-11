@@ -19,6 +19,8 @@ const envelope = JSON.parse(readFileSync(new URL(
   current_lease_count: number;
   retired_lease_count: number;
   standing_user_decision_count: number;
+  scoped_without_outcome_count: number;
+  linked_decision_count: number;
   completion_target_index: number;
   supersede_target_index: number;
 };
@@ -87,6 +89,15 @@ function todoRecords(
     if (role === "agent" && status !== "done" && status !== "deferred") {
       record.claimed_by = index % 2 === 0 ? "agent-a" : "agent-b";
     }
+    if (record.task_class === "continuous_monitor") {
+      // Durable mixed-source observation shapes: bounded and watch-only,
+      // untouched and previously changed, with cadence and retained generation.
+      Object.assign(record, {target_key: `synthetic-watch-${index}`, cadence: "1h",
+        last_checked_at: observedAt(index), next_due_at: "2025-02-01T00:00:00Z",
+        result_hash: `synthetic-result-${index}`, material_change_generation: index % 3,
+        consecutive_no_change: String(index % 5), material_change: String(index % 3 === 0),
+        ...(index % 8 === 0 ? {watch_only: "true"} : {max_no_change_before_replan: "5"})});
+    }
     if (role === "agent" && status === "done" && index < 3) {
       record.successor_todo_ids = [todoId("agent", envelope.completion_target_index + index)];
       record.completion_continuation = "successor";
@@ -97,6 +108,19 @@ function todoRecords(
       record.decision_outcome = "approve";
       record.global_gate = true;
       record.goal_bound = true;
+    }
+    // Long-lived histories include scoped gates without an explicit outcome
+    // and exact-action approvals. Neither is reusable standing authority.
+    const partialEnd = envelope.standing_user_decision_count + envelope.scoped_without_outcome_count;
+    if (role === "user" && index >= envelope.standing_user_decision_count &&
+        index < partialEnd + envelope.linked_decision_count) {
+      record.task_class = "user_gate";
+      record.blocks_agent = "agent-a";
+      record.decision_scope = {kind: "direction", granularity: "goal", scope_key: goalId};
+      if (index >= partialEnd) {
+        record.decision_outcome = "approve";
+        record.unblocks_todo_id = todoId("agent", envelope.completion_target_index);
+      }
     }
     return record;
   });
@@ -110,6 +134,9 @@ export function productionScaleCoordinationFixture(
   }
   const agents = todoRecords(goalId, "agent", envelope.agent_status_counts);
   const users = todoRecords(goalId, "user", envelope.user_status_counts);
+  const archiveDependent = [...agents].reverse().find(item => item.status === "open")!;
+  archiveDependent.task_class = "advancement_task";
+  archiveDependent.resume_when = `todo_done:${todoId("agent", 3)}`;
   const completionTodo = agents[envelope.completion_target_index]!;
   const supersedeTodo = agents[envelope.supersede_target_index]!;
   completionTodo.task_class = "advancement_task";

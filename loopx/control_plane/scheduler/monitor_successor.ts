@@ -9,6 +9,39 @@ import { compactPythonWhitespace, normalizeTodoAgent, stripPythonWhitespace } fr
 export const MONITOR_SUCCESSOR_REQUEST_SCHEMA = "loopx_monitor_successor_plan_request_v0";
 export const MONITOR_SUCCESSOR_RESULT_SCHEMA = "loopx_monitor_successor_plan_result_v0";
 
+/** Select from the caller's complete snapshot, never from a compact lane. */
+export function selectMonitorTodo(items: readonly JsonObject[], todoId: string | null,
+  targetKey: string | null): JsonObject {
+  if (!todoId && !targetKey) throw new EffectRuntimeRequestError("monitor todo writeback requires --todo-id or --target-key");
+  // A completed historical watch must not shadow its active replacement.
+  // Explicit IDs still resolve first so an inactive target gets a rejection.
+  const matches = items.filter(item => todoId ? item.todo_id === todoId :
+    item.target_key === targetKey && item.status !== "done" && item.archive_state !== "archive");
+  if (matches.length !== 1) throw new EffectRuntimeRequestError(
+    matches.length ? "monitor target matched multiple todos; pass --todo-id" : "monitor todo target was not found");
+  const item = matches[0]!;
+  if (targetKey && item.target_key && item.target_key !== targetKey) {
+    throw new EffectRuntimeRequestError(`monitor todo target_key resolves to '${item.target_key}', not '${targetKey}'`);
+  }
+  if (item.role !== "agent" || item.task_class !== "continuous_monitor") {
+    throw new EffectRuntimeRequestError("monitor-poll todo writeback target must be task_class=continuous_monitor");
+  }
+  if (item.status === "done" || item.archive_state === "archive") {
+    throw new EffectRuntimeRequestError("monitor-poll requires an active, unfinished Monitor");
+  }
+  return item;
+}
+
+export function selectMonitorTodoRequest(value: unknown): JsonObject {
+  const request = requireJsonObject(value, "monitor target selection");
+  if (request.schema_version !== "loopx_monitor_target_request_v0" || !Array.isArray(request.items)) {
+    throw new EffectRuntimeRequestError("monitor target selection schema mismatch");
+  }
+  return {schema_version: "loopx_monitor_target_result_v0", todo: selectMonitorTodo(
+    request.items.map(item => requireJsonObject(item, "monitor target item")),
+    text(request.todo_id, "todo_id"), text(request.target_key, "target_key"))};
+}
+
 function text(value: unknown, field: string): string | null {
   const raw = optionalNonEmptyString(value, field);
   return raw === null ? null : stripPythonWhitespace(raw) || null;

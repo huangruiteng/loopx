@@ -8,7 +8,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global --silent --ignore-scripts \
-      pnpm@10.33.0 @deepseek-ai/dsh@0.1.1-rc.2
+      pnpm@10.33.0 @deepseek-ai/dsh@0.1.5-rc.1
 RUN useradd --create-home --uid 10001 --shell /bin/bash loopx-smoke \
     && externally_managed="$(python3 -c \
       'import sysconfig; print(sysconfig.get_path("stdlib") + "/EXTERNALLY-MANAGED")')" \

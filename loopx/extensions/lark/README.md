@@ -275,8 +275,27 @@ https://open.larkoffice.com/page/scope-apply?clientID=<app_id>&scopes=<scope1%2C
 ```
 
 （`recommended_bot_scope_apply_url(app_id)` 会拼出完整 URL。）随后用
-`lark-cli config init --app-id <app_id> --app-secret-stdin --name <profile> --brand lark`
-注册 bot profile，再走 `loopx goal-channel setup`。敏感 scope 需企业管理员审核。
+`lark-cli config init --app-id <app_id> --app-secret-stdin --name <profile> --brand feishu`
+注册飞书 bot profile；国际版 Lark 应用才使用 `--brand lark`。品牌必须与应用实际
+所属平台一致，不能从 App ID 或普通 API 查询成功推断。然后走
+`loopx goal-channel setup`。敏感 scope 需企业管理员审核。
+
+### Real-time source health / 实时连接排障
+
+A successful bot authentication or history query does not verify the event
+WebSocket. The CLI ready marker confirms local consumer registration, not
+upstream connectivity. If the bus subsequently closes and the CLI exits with
+`reason: signal`, LoopX reports `lark_event_source_disconnected` and retries;
+exit code zero alone does not make this a healthy scheduled restart. Only the
+requested timeout/limit or LoopX's own shutdown is a planned ending.
+
+遇到该错误，先核对所选 profile 的品牌：飞书为 `feishu`，国际版为 `lark`。
+上游 `1000040351` / `Incorrect domain name` 表示域名与应用平台不匹配。
+随后核查事件总线的连接错误、订阅和权限；不要仅凭 `event status` 的本地
+consumer 数或普通消息查询成功宣布恢复。不要自动切换品牌、账号或扩大权限。
+修复后核验真实 WebSocket 连接，再通过原消息 ID 核对收件、执行、回复回读和
+ACK；断线期间的历史消息不能批量重放，已执行请求必须复用原幂等标识。
+错误日志可能带连接凭据，诊断与公开报告只保留错误码和脱敏结论。
 
 ## Goal Topic defaults and existing connections
 

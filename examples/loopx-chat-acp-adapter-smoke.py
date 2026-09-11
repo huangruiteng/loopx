@@ -55,6 +55,14 @@ for line in sys.stdin:
     elif method == "session/prompt":
         active_prompt_id = request_id
         prompt = request["params"]["prompt"][0]["text"]
+        if "verify execution mode" in prompt:
+            assert "execution agent for a confirmed LoopX Task" in prompt, prompt
+            assert "planning agent inside LoopX Chat" not in prompt, prompt
+            assert "Do not edit files" not in prompt, prompt
+        if "verify planning mode" in prompt:
+            assert "planning agent inside LoopX Chat" in prompt, prompt
+            assert "execution agent for a confirmed LoopX Task" not in prompt, prompt
+            assert "Do not edit files" in prompt, prompt
         if "wait for cancel" in prompt:
             continue
         if "activity renew" in prompt:
@@ -206,13 +214,14 @@ def main() -> None:
             work_dir=root,
             objective="Exercise the ACP route.",
             mode="resume_latest",
+            channel_id="task.fixture-acp",
         )
         assert was_resumed is False
         assert session["upstream_thread_id"] == "acp:fixture/session"
         turn, created = first.submit_turn(
             session_id=str(session["session_id"]),
             client_turn_id="fixture-turn",
-            message="检查状态",
+            message="verify execution mode",
             work_dir=root,
             objective="Exercise the ACP route.",
         )
@@ -235,6 +244,7 @@ def main() -> None:
             work_dir=root,
             objective="Exercise the ACP route.",
             mode="resume_latest",
+            channel_id="task.fixture-acp",
         )
         assert was_resumed is True
         assert restored["session_id"] == session["session_id"]
@@ -260,20 +270,21 @@ def main() -> None:
         assert row["adapter_kind"] == "acp", row
         assert row["display_name"] == "Kiro CLI", row
         assert row["available"] is True, row
-        assert row["trust_scope"] == "read_only", row
+        assert row["trust_scope"] == "workspace_write", row
         kiro_session, kiro_resumed = kiro.open_session(
             goal_id="fixture-goal",
             agent_id=KIRO_CLI_CHAT_AGENT_ID,
             work_dir=root,
             objective="Exercise the built-in Kiro CLI ACP route.",
             mode="resume_latest",
+            channel_id="task.fixture-task",
         )
         assert kiro_resumed is False
         assert kiro_session["upstream_thread_id"] == "acp:fixture/session"
         kiro_turn, kiro_created = kiro.submit_turn(
             session_id=str(kiro_session["session_id"]),
             client_turn_id="kiro-turn",
-            message="检查状态",
+            message="verify execution mode",
             work_dir=root,
             objective="Exercise the built-in Kiro CLI ACP route.",
         )
@@ -285,6 +296,69 @@ def main() -> None:
         )
         assert kiro_completed["status"] == "completed", kiro_completed
         kiro.close()
+
+        # Persisted task channels must retain execution mode after process
+        # recovery; otherwise the first turn can execute while the next one
+        # silently falls back to planning-only instructions.
+        kiro_resumed_controller = ChatRuntimeController(
+            store=kiro_store,
+            codex_bin="missing-codex-for-fixture",
+            kiro_cli_bin=str(fake),
+        )
+        resumed_session, was_resumed = kiro_resumed_controller.open_session(
+            goal_id="fixture-goal",
+            agent_id=KIRO_CLI_CHAT_AGENT_ID,
+            work_dir=root,
+            objective="Exercise the resumed Kiro CLI ACP route.",
+            mode="resume_latest",
+            channel_id="task.fixture-task",
+        )
+        assert was_resumed is True
+        resumed_turn, created = kiro_resumed_controller.submit_turn(
+            session_id=str(resumed_session["session_id"]),
+            client_turn_id="kiro-resumed-turn",
+            message="verify execution mode",
+            work_dir=root,
+            objective="Exercise the resumed Kiro CLI ACP route.",
+        )
+        assert created is True
+        resumed_completed = kiro_resumed_controller.wait_for_turn(
+            session_id=str(resumed_session["session_id"]),
+            turn_id=str(resumed_turn["turn_id"]),
+            timeout_sec=3,
+        )
+        assert resumed_completed["status"] == "completed", resumed_completed
+        kiro_resumed_controller.close()
+
+        # Goal/manager chat remains planning-only: task execution authority must
+        # not leak into ordinary conversation through the shared ACP adapter.
+        planning = ChatRuntimeController(
+            store=ChatSessionStore(root / "kiro-planning"),
+            codex_bin="missing-codex-for-fixture",
+            kiro_cli_bin=str(fake),
+        )
+        planning_session, _ = planning.open_session(
+            goal_id="fixture-goal",
+            agent_id=KIRO_CLI_CHAT_AGENT_ID,
+            work_dir=root,
+            objective="Exercise the planning-only Kiro CLI ACP route.",
+            mode="new",
+        )
+        planning_turn, created = planning.submit_turn(
+            session_id=str(planning_session["session_id"]),
+            client_turn_id="kiro-planning-turn",
+            message="verify planning mode",
+            work_dir=root,
+            objective="Exercise the planning-only Kiro CLI ACP route.",
+        )
+        assert created is True
+        planning_completed = planning.wait_for_turn(
+            session_id=str(planning_session["session_id"]),
+            turn_id=str(planning_turn["turn_id"]),
+            timeout_sec=3,
+        )
+        assert planning_completed["status"] == "completed", planning_completed
+        planning.close()
 
         # A built-in id must not be claimable by an owner-local endpoint, or the
         # registry row would silently shadow the built-in adapter.

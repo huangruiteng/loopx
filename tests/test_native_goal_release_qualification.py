@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -18,9 +19,12 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
-def test_native_spawn_and_shell_receive_only_allowed_environment(monkeypatch, tmp_path):
+def test_native_spawn_preserves_isolated_profile_and_secret_free_shell(monkeypatch, tmp_path):
     from loopx.capabilities.benchmark_toolkit.native_codex_goal import StdioNativeGoalTransport
-    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-selected-key")
+
+    for suffix, value in {"API_KEY": "synthetic-selected-key", "MODEL": "fixture-model",
+                          "BASE_URL": "https://example.com/v1"}.items():
+        monkeypatch.setenv("LOOPX_CODEX_QUALIFICATION_" + suffix, value)
     monkeypatch.setenv("UNRELATED_AUTH_TOKEN", "synthetic-forbidden-key")
     monkeypatch.setenv("SSH_AUTH_SOCK", "synthetic-forbidden-socket")
     launcher = tmp_path / "bin/loopx"
@@ -33,10 +37,10 @@ def test_native_spawn_and_shell_receive_only_allowed_environment(monkeypatch, tm
     def inspect(command, **kwargs):
         env = kwargs["env"]
         assert "UNRELATED_AUTH_TOKEN" not in env and "SSH_AUTH_SOCK" not in env
-        settings = tomllib.loads("\n".join(command[i + 1] for i, arg in enumerate(command) if arg == "-c"))
+        settings = tomllib.loads((Path(env["CODEX_HOME"]) / "config.toml").read_text())
         policy = settings["shell_environment_policy"]
         assert policy["inherit"] == "none"
-        assert "OPENAI_API_KEY" not in policy["set"]
+        assert "LOOPX_CODEX_QUALIFICATION_API_KEY" not in policy["set"]
         child = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
                                env=policy["set"], capture_output=True, text=True, check=True)
         assert "synthetic-selected-key" not in child.stdout
@@ -46,28 +50,6 @@ def test_native_spawn_and_shell_receive_only_allowed_environment(monkeypatch, tm
     monkeypatch.setattr(StdioNativeGoalTransport, "spawn", inspect)
     with pytest.raises(InspectedSpawn):
         runner.qualify(tmp_path, "synthetic-codex", 10)
-
-
-def test_native_environment_copies_only_selected_auth(monkeypatch, tmp_path):
-    source = tmp_path / "source"
-    source.mkdir()
-    (source / "auth.json").write_text('{"synthetic_auth":true}')
-    (source / "config.toml").write_text('unrelated = "sentinel"')
-    monkeypatch.setenv("CODEX_HOME", str(source))
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    for key in ("UNRELATED_TOKEN", "ARK_API_KEY", "SSH_AUTH_SOCK", "ANTHROPIC_AUTH_TOKEN"):
-        monkeypatch.setenv(key, "synthetic-unrelated-secret")
-    root = tmp_path / "isolated"
-    env = runner.host_environment(root, root / "bin/loopx")
-    assert "synthetic-unrelated-secret" not in env.values()
-    assert env["HOME"] == str(root / "home")
-    assert (root / "codex/auth.json").read_bytes() == (source / "auth.json").read_bytes()
-    assert not (root / "codex/config.toml").exists()
-    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-selected-key")
-    other = tmp_path / "api"
-    env = runner.host_environment(other, other / "bin/loopx")
-    assert env["OPENAI_API_KEY"] == "synthetic-selected-key"
-    assert not (other / "codex/auth.json").exists()
 
 
 def test_default_does_not_even_probe_model_environment(monkeypatch, capsys):
@@ -99,6 +81,30 @@ def test_attempted_release_failure_is_not_converted_to_skip(monkeypatch, capsys)
 def test_release_timeout_must_be_positive():
     with pytest.raises(SystemExit):
         runner.main(["--timeout-seconds", "0"])
+
+
+def test_isolated_codex_profile_never_imports_operator_config_or_shell_secrets(monkeypatch, tmp_path):
+    for suffix, value in {"API_KEY": "synthetic-key", "MODEL": "fixture-model",
+                          "BASE_URL": "https://example.com/v1"}.items():
+        monkeypatch.setenv("LOOPX_CODEX_QUALIFICATION_" + suffix, value)
+    forbidden = ("ARK_API_KEY", "GH_TOKEN", "CUSTOM_AUTH", "SSH_AUTH_SOCK", "NODE_OPTIONS", "BASH_ENV")
+    for key in forbidden:
+        monkeypatch.setenv(key, "synthetic-unrelated-value")
+    env = runner.configure_codex(tmp_path, tmp_path / "bin/loopx")
+    assert all(key not in env for key in forbidden)
+    config = tomllib.loads((tmp_path / "codex/config.toml").read_text())
+    assert "synthetic-key" not in (tmp_path / "codex/config.toml").read_text()
+    assert config["model"] == "fixture-model"
+    policy = config["shell_environment_policy"]
+    assert policy["inherit"] == "none"
+    result = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                            env=policy["set"], capture_output=True, text=True, check=True)
+    actual = json.loads(result.stdout)
+    assert "LOOPX_CODEX_QUALIFICATION_API_KEY" not in actual
+    assert all(key not in actual for key in forbidden)
+    assert actual["HOME"] == str(tmp_path / "home")
+    assert env["CODEX_HOME"] == str(tmp_path / "codex")
+    assert os.environ["GH_TOKEN"] == "synthetic-unrelated-value"
 
 
 def test_synthetic_fixture_real_cli_projects_identity_reentry(tmp_path):

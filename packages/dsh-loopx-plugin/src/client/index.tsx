@@ -41,7 +41,10 @@ export function apply(ctx: GoalBarClientContext): void {
     'dsh-loopx-plugin GoalBar locale',
   )
 
-  const rpc = createGoalBarRpc(ctx.connection.rpc)
+  const rpc = createGoalBarRpc(
+    ctx.connection.rpc,
+    Reflect.has(ctx.connection, 'generation'),
+  )
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
     id: 'loopx-goal',

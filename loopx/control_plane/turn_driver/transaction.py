@@ -32,6 +32,7 @@ class LoopXTurnResultKind(str, Enum):
     REPLAN_REQUIRED = "replan_required"
     USER_ACTION_REQUIRED = "user_action_required"
     WAIT = "wait"
+    ITERATION_FAILED = "iteration_failed"
     HOST_FAILURE = "host_failure"
     VALIDATION_FAILED = "validation_failed"
     WRITEBACK_FAILED = "writeback_failed"
@@ -48,6 +49,7 @@ MATERIAL_RESULT_KINDS = {
 NO_SPEND_RESULT_KINDS = {
     LoopXTurnResultKind.USER_ACTION_REQUIRED,
     LoopXTurnResultKind.WAIT,
+    LoopXTurnResultKind.ITERATION_FAILED,
     LoopXTurnResultKind.HOST_FAILURE,
     LoopXTurnResultKind.VALIDATION_FAILED,
     LoopXTurnResultKind.WRITEBACK_FAILED,
@@ -56,6 +58,7 @@ NO_SPEND_RESULT_KINDS = {
 STOP_RESULT_KINDS = {
     LoopXTurnResultKind.USER_ACTION_REQUIRED,
     LoopXTurnResultKind.WAIT,
+    LoopXTurnResultKind.ITERATION_FAILED,
 }
 FAILURE_PHASES = {
     LoopXTurnResultKind.HOST_FAILURE: "host_execute",

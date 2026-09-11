@@ -641,11 +641,11 @@ def record_quota_monitor_poll_for_decision(
         else f"quota-monitor-poll:{goal_id}:{uuid.uuid4().hex}"
     )
     if execute and (safe_todo_id or safe_target_key):
-        from ..coordination.legacy_writer_fence import (
-            require_legacy_coordination_write_allowed,
+        from ..scheduler.provider_monitor_poll import (
+            require_monitor_poll_source_available,
         )
 
-        require_legacy_coordination_write_allowed(
+        require_monitor_poll_source_available(
             runtime_root=runtime_root,
             goal_id=goal_id,
         )

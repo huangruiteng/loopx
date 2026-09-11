@@ -59,6 +59,7 @@ class ACPStdioAdapter:
     work_dir: Path
     agent_work_dir: Path
     agent_capabilities: dict[str, Any]
+    execution_mode: bool = False
     startup_timeout_sec: float = 30.0
     idle_timeout_sec: float = 180.0
     hard_timeout_sec: float = 900.0
@@ -86,6 +87,7 @@ class ACPStdioAdapter:
         startup_timeout_sec: float = 30.0,
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
+        execution_mode: bool = False,
     ) -> "ACPStdioAdapter":
         if not command:
             raise ValueError("ACP command is required")
@@ -122,6 +124,7 @@ class ACPStdioAdapter:
             work_dir=work_dir.expanduser().resolve(),
             agent_work_dir=agent_work_dir or work_dir.expanduser().resolve(),
             agent_capabilities={},
+            execution_mode=execution_mode,
             startup_timeout_sec=startup_timeout_sec,
             idle_timeout_sec=idle_timeout_sec,
             hard_timeout_sec=hard_timeout_sec,
@@ -376,7 +379,15 @@ class ACPStdioAdapter:
                 "session/prompt",
                 {
                     "sessionId": self.session_id,
-                    "prompt": [{"type": "text", "text": _turn_prompt(message)}],
+                    "prompt": [
+                        {
+                            "type": "text",
+                            "text": _turn_prompt(
+                                message,
+                                execution_mode=self.execution_mode,
+                            ),
+                        }
+                    ],
                 },
                 request_id=request_id,
                 timeout_sec=self.hard_timeout_sec,
@@ -386,7 +397,6 @@ class ACPStdioAdapter:
             )
         except TimeoutError as exc:
             elapsed = time.monotonic() - started_at
-            idle = time.monotonic() - last_activity_at
             error_code = "hard_timeout" if elapsed >= self.hard_timeout_sec else "idle_timeout"
             summary = (
                 "ACP Chat turn reached its hard time limit."

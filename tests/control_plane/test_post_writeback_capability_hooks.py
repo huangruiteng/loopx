@@ -2309,6 +2309,7 @@ def test_post_writeback_concurrent_exact_dispatch_lease_timeout_isolated(
     calls = 0
     lock = threading.Lock()
     started = threading.Event()
+    release = threading.Event()
     base = _hook()
 
     def producer(value: object) -> dict[str, object]:
@@ -2316,7 +2317,7 @@ def test_post_writeback_concurrent_exact_dispatch_lease_timeout_isolated(
         with lock:
             calls += 1
         started.set()
-        time.sleep(0.3)
+        assert release.wait(timeout=5.0)
         return dict(base.producer(value))  # type: ignore[arg-type]
 
     hook = PostWritebackHookRegistration(
@@ -2340,14 +2341,18 @@ def test_post_writeback_concurrent_exact_dispatch_lease_timeout_isolated(
     assert started.wait(timeout=5.0)
 
     # Second caller attempts exact dispatch with small lease timeout while producer is holding lease
-    result_timeout = dispatch_post_writeback_hooks(
-        [hook],
-        hook_input=_input(),
-        runtime_root=tmp_path,
-        lease_timeout_seconds=0.05,
-    )
+    try:
+        result_timeout = dispatch_post_writeback_hooks(
+            [hook],
+            hook_input=_input(),
+            runtime_root=tmp_path,
+            lease_timeout_seconds=0.05,
+        )
+    finally:
+        release.set()
 
     t_slow.join(timeout=5.0)
+    assert not t_slow.is_alive()
     result_slow = results["slow"]
 
     # Contention timeout is isolated: does not raise, preserves primary writeback, returns typed failure

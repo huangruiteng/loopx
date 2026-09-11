@@ -19,9 +19,7 @@ from loopx.event_sourced_state import (  # noqa: E402
     TODO_UPDATED,
     make_state_event,
 )
-from loopx.control_plane.todos.claim_visibility import (  # noqa: E402
-    build_agent_claim_scoped_open_items,
-)
+from loopx.control_plane.todos.quota_selection import project_quota_planning  # noqa: E402
 from loopx.quota import build_quota_should_run, render_quota_should_run_markdown  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
 from loopx.status import active_state_todo_fields, project_asset_todo_summary  # noqa: E402
@@ -402,18 +400,22 @@ def test_legacy_event_review_handoffs_fail_closed_until_explicit_repair() -> Non
             assert legacy["removed_continuation_policy"] == policy, fields
             assert legacy.get("continuation_policy") is None, fields
             items = fields["agent_todos"]["items"]
-            author_selectable, author_scope = build_agent_claim_scoped_open_items(
-                items,
+            planning = project_quota_planning(
+                {}, all_open_items=items, source_open_count=len(items),
                 agent_identity={"agent_id": AUTHOR_AGENT, "agent_model": "peer_v1"},
-                diagnostic_item_limit=3,
+                filter_user_gate_blocks_agent=False, available_capabilities=None,
             )
+            author_selectable = planning["lanes"]["open_items"]
+            author_scope = planning["lanes"]["claim_scope"]
             assert [item["todo_id"] for item in author_selectable] == [LEGACY_FALLBACK_ID]
             assert author_scope["removed_continuation_blocked_count"] == 1, author_scope
-            reviewer_selectable, reviewer_scope = build_agent_claim_scoped_open_items(
-                items,
+            planning = project_quota_planning(
+                {}, all_open_items=items, source_open_count=len(items),
                 agent_identity={"agent_id": REVIEWER_AGENT, "agent_model": "peer_v1"},
-                diagnostic_item_limit=3,
+                filter_user_gate_blocks_agent=False, available_capabilities=None,
             )
+            reviewer_selectable = planning["lanes"]["open_items"]
+            reviewer_scope = planning["lanes"]["claim_scope"]
             assert reviewer_selectable == [], reviewer_selectable
             assert reviewer_scope["removed_continuation_blocked_count"] == 1, reviewer_scope
 

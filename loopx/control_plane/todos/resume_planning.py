@@ -60,25 +60,35 @@ def _planning_sources(value: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return sources
 
 
+def build_todo_resume_planning_request(
+    value: Any, *, agent_id: str | None = None, item_limit: int = 5,
+    available_capabilities: Any = None,
+) -> dict[str, Any]:
+    """Encode legacy input facts for the typed planning owner."""
+    value = value if isinstance(value, dict) else {}
+    return {
+        "schema_version": "todo_resume_planning_request_v0",
+        "sources": _planning_sources(value),
+        "agent_id": normalize_todo_claimed_by(agent_id), "item_limit": item_limit,
+        "has_deferred_count": "deferred_count" in value,
+        "has_visible_deferred_count": bool(value.get("deferred_count")),
+        "deferred_count": value.get("deferred_count"),
+        "available_capabilities": (
+            normalize_required_capabilities(available_capabilities)
+            if available_capabilities is not None else None
+        ),
+    }
+
+
 def project_todo_resume_planning(
     value: Any, *, agent_id: str | None = None, item_limit: int = 5,
     available_capabilities: Any = None,
 ) -> dict[str, Any]:
     """Project one snapshot; no business write or additional authority is granted."""
-    value = value if isinstance(value, dict) else {}
     try:
-        result = effect_runtime_result("todo.resume_planning.project", {
-            "schema_version": "todo_resume_planning_request_v0",
-            "sources": _planning_sources(value),
-            "agent_id": normalize_todo_claimed_by(agent_id), "item_limit": item_limit,
-            "has_deferred_count": "deferred_count" in value,
-            "has_visible_deferred_count": bool(value.get("deferred_count")),
-            "deferred_count": value.get("deferred_count"),
-            "available_capabilities": (
-                normalize_required_capabilities(available_capabilities)
-                if available_capabilities is not None else None
-            ),
-        })
+        result = effect_runtime_result("todo.resume_planning.project",
+            build_todo_resume_planning_request(value, agent_id=agent_id,
+                item_limit=item_limit, available_capabilities=available_capabilities))
     except EffectRuntimeRejected as exc:
         raise ValueError(str(exc)) from None
     if not isinstance(result, dict) or result.get("schema_version") != "todo_resume_planning_v0":

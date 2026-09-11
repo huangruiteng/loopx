@@ -23,9 +23,13 @@ import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_
   from "./todo_lifecycle_decision.ts";
 import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
+import { normalizeNativePlanningIntent, planNativeTodoUpdate } from "../todos/native_update_plan.ts";
 
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
+// Older runtimes must reject planning requests rather than commit only their copy patch.
+export const COORDINATION_TODO_PLANNING_UPDATE_REQUEST_SCHEMA =
+  "loopx_local_coordination_todo_update_request_v1";
 export const COORDINATION_TODO_UPDATE_RESULT_SCHEMA =
   "loopx_coordination_todo_update_result_v0";
 export const COORDINATION_TODO_UPDATE_RECEIPT_SCHEMA =
@@ -46,6 +50,7 @@ export interface CoordinationTodoUpdateInput {
   readonly now: Date;
   readonly lease_idempotency_key?: string | null;
   readonly lease_expected_version?: number | null;
+  readonly planning_intent?: JsonObject;
 }
 
 export type CoordinationTodoUpdateResult = JsonObject & {
@@ -63,6 +68,7 @@ function isFailure(value: JsonObject): value is CoordinationTodoUpdateResult {
 }
 
 function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdateInput {
+  const planningIntent = normalizeNativePlanningIntent(raw.planning_intent);
   const key = raw.lease_idempotency_key ?? null;
   const version = raw.lease_expected_version ?? null;
   if (key !== null && (typeof key !== "string" || !key.trim() || key !== key.trim())) {
@@ -74,7 +80,7 @@ function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdat
   const patch = canonicalAuthorityObject(raw.patch, "Todo update patch");
   const clearFields = raw.clear_fields.map((field, index) =>
     requireAuthorityStoreId(field, `clear_fields[${index}]`));
-  if (Object.keys(patch).length + clearFields.length === 0) {
+  if (Object.keys(patch).length + clearFields.length + Object.keys(planningIntent).length === 0) {
     throw new AuthorityStoreProtocolError("Todo update requires a non-empty patch");
   }
   if (new Set(clearFields).size !== clearFields.length) {
@@ -97,7 +103,7 @@ function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdat
   if (!(raw.now instanceof Date) || Number.isNaN(raw.now.valueOf())) {
     throw new AuthorityStoreProtocolError("now must be a valid Date");
   }
-  return {...raw, lease_idempotency_key: key, lease_expected_version: version,
+  return {...raw, planning_intent: planningIntent, lease_idempotency_key: key, lease_expected_version: version,
     goal_id: requireAuthorityStoreId(raw.goal_id, "goal id"),
     todo_id: requireAuthorityStoreId(raw.todo_id, "todo id"),
     operation_id: requireAuthorityStoreId(raw.operation_id, "operation id"),
@@ -138,6 +144,7 @@ function updateRequestSha(input: CoordinationTodoUpdateInput): string {
     todo_id: input.todo_id, expected_role: input.expected_role,
     actor_agent_id: input.actor_agent_id, patch: input.patch,
     clear_fields: input.clear_fields, dry_run: input.dry_run,
+    ...(Object.keys(input.planning_intent ?? {}).length ? {planning_intent: input.planning_intent} : {}),
     // Preserve receipt identity for pre-proof requests already persisted in v0.
     ...(input.lease_idempotency_key != null || input.lease_expected_version != null ? {
       lease_idempotency_key: input.lease_idempotency_key,
@@ -219,6 +226,11 @@ function targetRejection(
       if (lease !== undefined && todo.claimed_by !== input.actor_agent_id) {
         return failure("update_owner_mismatch", "Leased Todo update requires the current claim owner");
       }
+      const status = input.planning_intent?.status;
+      if (lease !== undefined && typeof status === "string" && status.toLowerCase() !== todo.status) {
+        return failure("update_lease_status_transition_unsupported",
+          "Changing a leased Todo status requires an atomic lifecycle operation; planning update leaves the lease unchanged");
+      }
     } catch (error) {
       return failure("invalid_coordination_projection",
         error instanceof Error ? error.message : "invalid lease facts");
@@ -228,13 +240,31 @@ function targetRejection(
 }
 
 function prepareUpdatedTodo(
-  todo: JsonObject, input: CoordinationTodoUpdateInput,
-): {next: JsonObject; changed: boolean} | CoordinationTodoUpdateResult {
+  todo: JsonObject, input: CoordinationTodoUpdateInput, head: JsonObject,
+): {next: JsonObject; changed: boolean; clearFields: string[]} | CoordinationTodoUpdateResult {
   const next: JsonObject = {...todo, ...input.patch};
   for (const field of input.clear_fields) delete next[field];
-  next.last_actor_agent_id = input.actor_agent_id;
+  // Preserve the public planner's legacy metadata semantics. Raw copy edits
+  // already carry actor attribution, while planning-only updates historically
+  // leave last_actor_agent_id untouched.
+  const rawCopyChanged = Object.entries(input.patch).some(([field, value]) =>
+    !Object.hasOwn(todo, field) || !canonicalAuthorityBytes(todo[field]).equals(canonicalAuthorityBytes(value))) ||
+    input.clear_fields.some(field => Object.hasOwn(todo, field));
+  if (rawCopyChanged) {
+    next.last_actor_agent_id = input.actor_agent_id;
+  }
   next.updated_at = input.now.toISOString().replace(/\.\d{3}Z$/u, "Z");
+  const clearFields = new Set(input.clear_fields);
   try {
+    if (Object.keys(input.planning_intent ?? {}).length) {
+      const updates = planNativeTodoUpdate(todo, input.planning_intent!, head,
+        input.actor_agent_id, input.registered_agents, String(next.updated_at));
+      for (const [field, value] of Object.entries(updates)) {
+        if (value === null) { delete next[field]; clearFields.add(field); }
+        else next[field] = value;
+      }
+      next.done = next.status === "done" || next.status === "deferred";
+    }
     if (todo.schema_version === TODO_DOMAIN_ITEM_SCHEMA) {
       canonicalTodoDomainRecord(next, "updated Todo");
     } else {
@@ -256,7 +286,7 @@ function prepareUpdatedTodo(
     next.last_actor_agent_id = todo.last_actor_agent_id;
     next.updated_at = todo.updated_at;
   }
-  return {next, changed};
+  return {next, changed, clearFields: [...clearFields]};
 }
 
 /** Update mutable Todo metadata from the canonical provider head. */
@@ -282,16 +312,16 @@ export async function executeCoordinationTodoUpdate(
   if (isFailure(target)) return target;
   const rejected = targetRejection(head.head, target.todo, target.leases, input);
   if (rejected !== null) return rejected;
-  const prepared = prepareUpdatedTodo(target.todo, input);
+  const prepared = prepareUpdatedTodo(target.todo, input, head.head);
   if (isFailure(prepared)) return prepared;
-  const {next, changed} = prepared;
+  const {next, changed, clearFields} = prepared;
   if (input.dry_run) return {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA,
     status: changed ? "planned" : "no_change", changed, todo_id: input.todo_id,
     provider_revision: head.provider_revision, cursor: head.cursor, dry_run: true};
   const commit: AuthorityStoreCommit = changed ? prepareCoordinationProjectionCommit({
     goal_id: input.goal_id, operation_id: input.operation_id,
     expected_provider_revision: head.provider_revision, projection: head.head,
-    mutations: [{kind: "todo_upsert", todo: next, clear_fields: input.clear_fields}],
+    mutations: [{kind: "todo_upsert", todo: next, clear_fields: clearFields}],
   }) : {operation_id: input.operation_id,
     expected_provider_revision: head.provider_revision, next_projection: head.head,
     events: [], receipts: []};

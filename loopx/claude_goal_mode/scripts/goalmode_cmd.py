@@ -37,6 +37,8 @@ DEFAULT_AGENT = "cc"
 sys.path.insert(0, str(HERE.parent / "hooks"))
 from goal_state import goal_context, find_registry, loop_md_path  # noqa: E402
 from loopx.control_plane.heartbeat.rules import (  # noqa: E402
+    HOST_LOOP_SAFETY_RULE,
+    RUNTIME_REPAIR_ROUTING_RULE,
     SCOPE_BOUNDED_WORK_RULE,
 )
 
@@ -69,6 +71,7 @@ def loop_md_content(goal_id, agent_id) -> str:
         f"<!-- loopx:armed {armed} -->\n"
         f"loopx tick — advance goal `{goal_id}` (agent `{agent_id}`). Use the wired loopx MCP\n"
         f"tools; do NOT run `loopx --help` or guess ids.\n\n"
+        f"{HOST_LOOP_SAFETY_RULE}\n{RUNTIME_REPAIR_ROUTING_RULE}\n"
         "Read complete successful `should_run()` JSON each work iteration. Follow its\n"
         "current `interaction_contract`: selection/re-entry before admitted work,\n"
         "then validation and settlement. Never infer completion from an empty Todo list.\n"

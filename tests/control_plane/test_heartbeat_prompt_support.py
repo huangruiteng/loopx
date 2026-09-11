@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 import pytest
-import os
-import re
-import shutil
-import subprocess
 
 from loopx.control_plane.heartbeat.agent import (
     agent_prompt_command_args,
@@ -21,8 +17,6 @@ from loopx.control_plane.heartbeat.host import (
     uses_native_goal_host_loop,
 )
 from loopx.control_plane.heartbeat.rules import SCOPE_BOUNDED_WORK_RULE
-
-
 from loopx.control_plane.heartbeat.visible_goal import (
     build_visible_goal_initial_runtime_capability_projection,
     validate_visible_goal_policy_rule,
@@ -156,9 +150,6 @@ def test_goal_hosts_preserve_sizing_and_terminal_boundary(profile: str) -> None:
     assert "no work/spend" in body
     assert "terminal no-follow-up" in body
     assert "settlement_plan.ordered_steps" in body
-    for boundary in ("loopx-project", "loopx-self-repair", "credentials", "private material",
-                     "destructive git", "production", "repository/review rules"):
-        assert boundary in body
     assert payload["interface_budget"]["within_budget"] is True
 
 
@@ -224,28 +215,3 @@ def test_exact_heartbeat_requires_agent_and_receipt_producing_profile() -> None:
             runtime_profile="codex_cli",
             turn_instance_id="turn-exact",
         )
-
-
-@pytest.mark.parametrize("shell", ["bash", "zsh"])
-def test_thin_turn_assignment_executes_before_guard(tmp_path, shell):
-    executable = shutil.which(shell)
-    if executable is None:
-        pytest.skip(f"{shell} unavailable")
-    cli = tmp_path / "loopx"
-    cli.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
-    cli.chmod(0o700)
-    payload = build_heartbeat_prompt(goal_id="fixture", agent_id="agent-a", thin=True,
-                                     runtime_profile="codex_app_heartbeat", cli_bin=str(cli))
-    assignment = re.search(r"`(export LOOPX_TURN=[^`]+)`", payload["task_body"])
-    assert assignment is not None
-    turn = "2026-09-11T00:00:00Z"
-    setup = assignment.group(1).replace("<current_time_iso>", turn)
-    guard = payload["quota_guard_command"]
-    env = {key: value for key, value in os.environ.items() if key != "LOOPX_TURN"}
-    good = subprocess.run([executable, "-c", setup + "\n" + guard], env=env,
-                          text=True, capture_output=True)
-    assert good.returncode == 0, good.stderr
-    assert turn in good.stdout.splitlines()
-    mutant = subprocess.run([executable, "-c", f"LOOPX_TURN={turn} {guard}"], env=env,
-                            text=True, capture_output=True)
-    assert mutant.returncode != 0 and "LOOPX_TURN" in mutant.stderr

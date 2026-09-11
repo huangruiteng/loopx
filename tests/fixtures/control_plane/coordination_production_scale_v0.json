@@ -14,6 +14,8 @@
   "current_lease_count": 64,
   "retired_lease_count": 160,
   "standing_user_decision_count": 4,
+  "scoped_without_outcome_count": 12,
+  "linked_decision_count": 12,
   "completion_target_index": 160,
   "supersede_target_index": 161
 }

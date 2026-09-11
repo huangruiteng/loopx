@@ -145,6 +145,7 @@ files = [
   "loopx/control_plane/testing/authority_e2e_ladder.py",
   "loopx/control_plane/testing/authority_e2e_row_support.py",
   "loopx/control_plane/testing/authority_e2e_rows_stage2c.py",
+  "loopx/control_plane/testing/authority_e2e_rows_stage2c2.py",
   "loopx/control_plane/work_items/delivery_batch_scale.py",
   "loopx/control_plane/work_items/delivery_outcome.py",
   "loopx/control_plane/work_items/lifecycle.py",

@@ -7,6 +7,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from loopx.extensions.lark.event_collector import _jq_projection
 from loopx.extensions.lark.event_inbox import inspect_lark_event_inbox
 from loopx.extensions.lark.goal_channel_contracts import (
@@ -296,7 +298,7 @@ def test_agent_session_topic_acks_after_effect_and_verified_reply(
     def answer(route: dict[str, Any], _text: str) -> dict[str, Any]:
         assert route["event_id"] == "evt_effect_committed"
         return {
-            "response_text": "work completed",
+            "response_text": "work completed\n\n• Evidence verified\n• Next step recorded",
             "effect_receipt": {
                 "schema_version": EFFECT_RECEIPT_SCHEMA_VERSION,
                 "event_id": route["event_id"],
@@ -323,7 +325,7 @@ def test_agent_session_topic_acks_after_effect_and_verified_reply(
 
     assert result["ok"] is True
     assert result["status"] == "replied_and_acknowledged", result
-    assert state["reply_text"] == "work completed"
+    assert state["reply_text"] == "work completed\n\n• Evidence verified\n• Next step recorded"
     projection = inspect_lark_event_inbox(
         project=tmp_path / "runtime",
         config_path=Path(result["inbox_config_ref"]),
@@ -812,8 +814,14 @@ def test_profile_stream_keeps_one_consumer_open_between_messages(
     }
 
 
+@pytest.mark.parametrize(
+    "exit_reason,stop_requested,returncode",
+    [("timeout", False, 0), ("limit", False, 0), ("signal", False, 0),
+     ("unknown", False, 0), ("", False, 0), ("signal", True, 0),
+     ("timeout", False, 1)],
+)
 def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
-    tmp_path: Path,
+    tmp_path: Path, exit_reason: str, stop_requested: bool, returncode: int,
 ) -> None:
     from loopx.extensions.lark.goal_topic_runtime import stream_lark_goal_topic_profile
 
@@ -855,14 +863,15 @@ def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
             (
                 "[event] local bus not found; checking remote connections...\n",
                 "[event] ready event_key=im.message.receive_v1\n",
+                f"[event] exited — received 0 event(s) in 2s (reason: {exit_reason})\n",
             )
         )
 
         def poll(self) -> int:
-            return 0
+            return returncode
 
         def wait(self, timeout: float | None = None) -> int:
-            return 0
+            return returncode
 
         def terminate(self) -> None:
             raise AssertionError("a completed consumer must not be terminated")
@@ -870,23 +879,28 @@ def test_profile_stream_waits_for_provider_ready_before_reporting_listening(
         def kill(self) -> None:
             raise AssertionError("a completed consumer must not be killed")
 
+    stop = threading.Event()
+    if stop_requested:
+        stop.set()
     result = stream_lark_goal_topic_profile(
         profile="mew",
         snapshot_provider=lambda: snapshot,
-        stop=threading.Event(),
+        stop=stop,
         runtime_root=tmp_path,
         answer=lambda _route, _text: "ok",
         process_factory=lambda _args: ReadyConsumer(),
         health_sink=lambda update: health.append(dict(update)),
     )
 
+    planned = stop_requested or (exit_reason in {"timeout", "limit"} and returncode == 0)
     assert result == {
-        "ok": True,
-        "status": "stream_ended",
+        "ok": planned,
+        "status": "stopped" if stop_requested else "stream_ended" if planned else "source_disconnected",
+        **({} if planned else {"error_code": "lark_event_source_disconnected"}),
         "event_count": 0,
         "replied_count": 0,
     }
-    assert [item["status"] for item in health] == ["starting", "listening"]
+    assert [item["status"] for item in health] == (["starting"] if stop_requested else ["starting", "listening"])
 
 
 def test_profile_poll_routes_provider_event_through_existing_reply_path(
@@ -1358,3 +1372,51 @@ def test_profile_poll_does_not_reply_or_invoke_agent_when_message_mentions_other
     assert result_all["replied_count"] == 0
     assert result_all["event_statuses"] == ["ignored"]
     assert not answer_called
+
+
+@pytest.mark.parametrize("reaction_ok", [True, False, None])
+def test_manager_receives_reaction_before_answer_and_preserves_sender(tmp_path, monkeypatch, reaction_ok):
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+    target_path, binding_path = tmp_path / "targets.json", tmp_path / "bindings.json"
+    _seed_legacy_topic(target_path, binding_path)
+    original_decide = runtime.decide_lark_topic_event
+    def manager_decision(**kw):
+        result = original_decide(**kw)
+        result["route"] = {**result["route"], "conversation_kind": "manager", "ingress_mode": "session_queue"}
+        return result
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", manager_decision)
+    state = {}
+    runner = _reply_runner(state)
+    stages = []
+    if reaction_ok is None:
+        def unavailable(**kw):
+            raise OSError("private receipt unavailable")
+        monkeypatch.setattr(runtime, "ensure_lark_event_inbox_received_reaction", unavailable)
+    def with_reactions(args):
+        if args[3:6] == ["im", "reactions", "create"]:
+            stages.append("received")
+            assert args[args.index("--message-id") + 1] == "om_incoming"
+            assert json.loads(args[args.index("--data") + 1])["reaction_type"]["emoji_type"] == "Get"
+            return {"returncode": 0 if reaction_ok else 1, "stdout": json.dumps({"ok": reaction_ok, "data": {"reaction_id": "reaction_fixture"}})}
+        if args[3:6] == ["im", "reactions", "delete"]:
+            stages.append("cleanup")
+            return {"returncode": 0, "stdout": json.dumps({"ok": True})}
+        return runner(args)
+    def answer(route, text):
+        stages.append("answer")
+        assert stages == (["answer"] if reaction_ok is None else ["received", "answer"])
+        assert route["source_sender_id"] == "ou_owner_fixture"
+        return "Received the original intent."
+    kwargs = dict(target_payload=read_goal_channel_targets(target_path),
+                  binding_payloads={"goal-alpha": read_goal_channel_binding(binding_path)},
+                  event={"event_id": "evt_incoming", "message_id": "om_incoming", "chat_id": "oc_public_fixture",
+                         "root_id": "om_topic_alpha", "create_time": "2026-08-14T21:00:00Z",
+                         "content": "@linkmacbot forward this", "mentioned": True, "sender_type": "user", "sender_id": "ou_owner_fixture"},
+                  runtime_root=tmp_path / "runtime", answer=answer, reply_runner=with_reactions)
+    result = runtime.process_lark_goal_topic_event(**kwargs)
+    assert result["ok"], result
+    assert result["status"] == "replied_and_acknowledged"
+    assert ("cleanup" in stages) == bool(reaction_ok)
+    before = list(stages)
+    assert runtime.process_lark_goal_topic_event(**kwargs)["status"] == "already_acknowledged"
+    assert stages == before

@@ -70,6 +70,29 @@ def _registry(project: Path) -> Path:
     return path
 
 
+@pytest.fixture
+def mock_goal_cli(monkeypatch):
+    """Keep CLI test doubles out of the real Effect runtime subprocess path."""
+
+    def install(runner):
+        monkeypatch.setattr(goal_mode_mcp, "subprocess", SimpleNamespace(run=runner))
+
+    return install
+
+
+def test_goal_cli_mock_preserves_real_node_probe(mock_goal_cli):
+    from loopx.control_plane import effect_runtime
+
+    def fake_cli(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, "not-json", "")
+
+    mock_goal_cli(fake_cli)
+    status, executable, version = effect_runtime._probe_node()
+    assert status == "ready"
+    assert executable is not None
+    assert version is not None
+
+
 def test_claude_and_kunluncode_bind_distinct_agents(tmp_path: Path) -> None:
     _registry(tmp_path)
     claude_dir = tmp_path / ".claude"
@@ -96,7 +119,7 @@ def test_kunluncode_binding_fails_closed_for_unregistered_agent(tmp_path: Path) 
 
 
 def test_mcp_uses_kunluncode_profile_and_rejects_agent_impersonation(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     control = GoalModeMCPControlPlane(
         GoalModeMCPConfig(
@@ -159,7 +182,7 @@ def test_mcp_uses_kunluncode_profile_and_rejects_agent_impersonation(
                 )
         return subprocess.CompletedProcess(command, 0, payload, "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", capture)
+    mock_goal_cli(capture)
 
     assert json.loads(control.claim_task("todo-1", "cc"))["ok"] is False
     assert commands == []
@@ -202,7 +225,7 @@ def test_mcp_uses_kunluncode_profile_and_rejects_agent_impersonation(
 
 
 def test_fastmcp_complete_task_forwards_complete_task_lease_fence(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     server, control = create_fastmcp_server(
         GoalModeMCPConfig(
@@ -261,7 +284,7 @@ def test_fastmcp_complete_task_forwards_complete_task_lease_fence(
                 )
         return subprocess.CompletedProcess(command, 0, payload, "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", capture)
+    mock_goal_cli(capture)
 
     result = asyncio.run(
         server.call_tool(
@@ -291,7 +314,7 @@ def test_fastmcp_complete_task_forwards_complete_task_lease_fence(
 
 
 def test_mcp_spends_only_after_typed_completed_state(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     control = GoalModeMCPControlPlane(
         GoalModeMCPConfig(
@@ -323,7 +346,7 @@ def test_mcp_spends_only_after_typed_completed_state(
         )
         return subprocess.CompletedProcess(command, 0, payload, "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", incomplete)
+    mock_goal_cli(incomplete)
 
     output = control.complete_task("todo_111111111111", "claude", "not yet complete")
 
@@ -333,7 +356,7 @@ def test_mcp_spends_only_after_typed_completed_state(
 
 
 def test_complete_task_spends_bound_to_selected_todo_and_refreshes_state(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     control = GoalModeMCPControlPlane(
         GoalModeMCPConfig(
@@ -391,7 +414,7 @@ def test_complete_task_spends_bound_to_selected_todo_and_refreshes_state(
             )
         return subprocess.CompletedProcess(command, 0, payload, "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", capture)
+    mock_goal_cli(capture)
 
     output = control.complete_task(
         "todo_222222222222", "claude", "focused check passed"
@@ -443,7 +466,7 @@ def test_complete_task_spends_bound_to_selected_todo_and_refreshes_state(
 
 
 def test_complete_task_classifies_terminal_no_selection_and_fails_closed(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     control = GoalModeMCPControlPlane(
         GoalModeMCPConfig(
@@ -472,7 +495,7 @@ def test_complete_task_classifies_terminal_no_selection_and_fails_closed(
         )
         return subprocess.CompletedProcess(command, 0, payload, "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", capture)
+    mock_goal_cli(capture)
 
     output = control.complete_task(
         "todo_222222222222", "claude", "focused check passed"
@@ -485,7 +508,7 @@ def test_complete_task_classifies_terminal_no_selection_and_fails_closed(
 
 
 def test_complete_task_fails_closed_on_unparseable_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_goal_cli,
 ) -> None:
     control = GoalModeMCPControlPlane(
         GoalModeMCPConfig(
@@ -506,7 +529,7 @@ def test_complete_task_fails_closed_on_unparseable_snapshot(
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, "not-json", "")
 
-    monkeypatch.setattr(goal_mode_mcp.subprocess, "run", capture)
+    mock_goal_cli(capture)
 
     output = control.complete_task(
         "todo_222222222222", "claude", "focused check passed"

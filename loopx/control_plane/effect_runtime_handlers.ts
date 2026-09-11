@@ -48,7 +48,7 @@ import { evaluateQuotaVoidCommit } from "./quota/void_commit.ts";
 import { readQuotaSettlement } from "./quota/settlement_readback.ts";
 import { evaluateTurnEnvelope } from "./quota/turn_envelope.ts";
 import { evaluateQuotaMonitorPollCommit } from "./quota/monitor_poll_commit.ts";
-import { planMonitorSuccessor } from "./scheduler/monitor_successor.ts";
+import { planMonitorSuccessor, selectMonitorTodoRequest } from "./scheduler/monitor_successor.ts";
 import { evaluateDeliveryWorkspace } from "./agents/delivery_workspace.ts";
 import {
   interpretTurnJournal,
@@ -76,6 +76,7 @@ import {
 } from "./todos/resume_condition.ts";
 import { evaluateSchedulerStateTransition } from "./scheduler/state_transition_rules.ts";
 import { projectTodoResumePlanning } from "./todos/resume_planning.ts";
+import { projectTodoQuotaPlanning } from "./todos/quota_selection.ts";
 import {
   evaluateSchedulerStateOperation,
   loadSchedulerState,
@@ -128,6 +129,7 @@ import {
   createLocalCoordinationTodo,
   editLocalCoordinationTodo,
   updateLocalCoordinationTodo,
+  pollLocalCoordinationMonitor,
   mutateLocalCoordinationAuthority,
   listLocalCoordinationTodos,
   promoteLocalCoordinationAuthority,
@@ -138,10 +140,11 @@ import { evaluateCoordinationTodoClaimDecision } from "./coordination/todo_claim
 import {
   evaluateCoordinationTodoTerminalDecision,
   evaluateCoordinationTodoMutationDecision,
-  evaluateCoordinationTerminalFence,
   evaluateTodoOwnershipGate,
 } from "./coordination/todo_lifecycle_decision.ts";
 import { evaluateCoordinationTodoArchiveSelection } from "./coordination/todo_archive_selection.ts";
+import {evaluateStandingDecisionProjection} from "./todos/standing_decision.ts";
+import {captureArchivedTodoDependencies} from "./todos/archive_capture.ts";
 import { evaluateCoordinationTodoSuccessorDerivation } from "./coordination/todo_successor_derivation.ts";
 import {
   checkLegacyCoordinationWriteAllowed,
@@ -374,6 +377,8 @@ export function createEffectRuntimeHandlers(
     ["todo.completion_state.continuation_for_write", selectTodoCompletionContinuation],
     ["todo.field_update.plan", planTodoFieldUpdate],
     ["todo.public_update.plan", planPublicTodoUpdate],
+    ["todo.standing_decision.project", evaluateStandingDecisionProjection],
+    ["todo.archive.capture_dependencies", captureArchivedTodoDependencies],
     ["todo.monitor_metadata.plan", planMonitorMetadata],
     ["todo.authoring_scope.plan", planTodoAuthoringScope],
     [
@@ -397,7 +402,6 @@ export function createEffectRuntimeHandlers(
     ],
     ["todo.terminal.decide", evaluateCoordinationTodoTerminalDecision],
     ["todo.mutation.decide", evaluateCoordinationTodoMutationDecision],
-    ["task_lease.terminal_fence.decide", evaluateCoordinationTerminalFence],
     ["todo.ownership_gate.decide", evaluateTodoOwnershipGate],
     ["todo.archive.select", evaluateCoordinationTodoArchiveSelection],
     ["todo.successor.derive", evaluateCoordinationTodoSuccessorDerivation],
@@ -406,6 +410,7 @@ export function createEffectRuntimeHandlers(
     ["todo.resume_condition.normalize", normalizeTodoResumeWhen],
     ["todo.resume_condition.evaluate", evaluateTodoResumeConditions],
     ["todo.resume_planning.project", projectTodoResumePlanning],
+    ["todo.quota_planning.project", projectTodoQuotaPlanning],
     ["todo.external_wait.plan", planTodoExternalWaitTransition],
     ["scheduler.state_transition.evaluate", evaluateSchedulerStateTransition],
     ["scheduler.state.evaluate", evaluateSchedulerStateOperation],
@@ -451,6 +456,7 @@ export function createEffectRuntimeHandlers(
     ["coordination.local_authority.todo_claim", claimLocalCoordinationTodo],
     ["coordination.local_authority.todo_create", createLocalCoordinationTodo],
     ["coordination.local_authority.todo_update", updateLocalCoordinationTodo],
+    ["coordination.local_authority.monitor_poll", pollLocalCoordinationMonitor],
     ["coordination.local_authority.todo_terminal", terminalLifecycleLocalCoordinationTodo],
     ["coordination.local_authority.todo_archive", archiveLocalCoordinationTodos],
     ["coordination.local_authority.todo_archive_ack", acknowledgeLocalCoordinationTodoArchive],
@@ -469,6 +475,7 @@ export function createEffectRuntimeHandlers(
     ["task_lease.write_scopes.overlap", evaluateTaskLeaseWriteScopesOverlap],
     ["quota.monitor_poll.commit", evaluateQuotaMonitorPollCommit],
     ["scheduler.monitor_successor.plan", planMonitorSuccessor],
+    ["scheduler.monitor_target.select", selectMonitorTodoRequest],
     ["coordination.local_authority_shadow.record", recordLocalAuthorityShadow],
     ["coordination.runtime_shadow.commit_entry", commitLocalAuthorityShadowEntry],
     ["coordination.runtime_shadow.outbox_read", readLocalAuthorityShadow],

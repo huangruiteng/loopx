@@ -116,7 +116,7 @@ def build_todo_runtime_shadow_projection(
     )
 
     compact = todo_partition_projection(handoff_mode=handoff_mode, todos=todos if isinstance(todos, list) else [])["todos"]
-    current_todo_ids = {str(item["todo_id"]) for item in compact}
+    current_todo_ids = {str(item["todo_id"]) for item in compact if item.get("archive_state") == "active"}
     compact_leases: list[dict[str, object]] = []
     if isinstance(leases, list):
         for item in leases:
@@ -149,6 +149,30 @@ def build_todo_runtime_shadow_projection(
         },
         "partitions": {"todos": None, "leases": None},
     }
+
+
+def capture_todo_archive_dependencies(todos: list[dict[str, Any]], state_text: str) -> list[dict[str, Any]]:
+    """Use the same bounded capture for bootstrap and subsequent writer outbox."""
+    from ..todos.active_state_todo_parser import parse_todo_source
+    from ..todos.todo_summary import structured_todo_item, canonical_todo_read_record
+
+    _, archived, _ = parse_todo_source(state_text)
+    # No prose or wide diagnostics cross the selection transport budget.
+    capture_fields = ("todo_id", "role", "task_class", "status", "done", "archive_state", "resume_when",
+        "decision_scope", "decision_outcome", "global_gate", "blocks_agent", "bound_agent", "goal_bound")
+    capture = effect_runtime_result("todo.archive.capture_dependencies", {
+        "schema_version": "todo_archive_dependency_capture_request_v0",
+        "active": [{"todo_id": item["todo_id"], "resume_when": item.get("resume_when")} for item in todos],
+        "archived": [{key: item[key] for key in capture_fields if key in item} for item in archived],
+    })
+    if not isinstance(capture, dict) or capture.get("schema_version") != "todo_archive_dependency_capture_result_v0":
+        raise ValueError("invalid archived dependency capture result")
+    result = list(todos)
+    for selected in capture["records"]:
+        item = archived[selected["index"]]
+        result.append(canonical_todo_read_record(structured_todo_item(item,
+            role=selected["role"], source_section=item["source_section"], archive_state="archive")))
+    return result
 
 
 def build_runtime_shadow_source_snapshot(
@@ -213,6 +237,7 @@ def build_runtime_shadow_source_snapshot(
     todos = todo_summaries_from_fields(fields=fields, source="markdown_active_state", projection_fields={},
         projection_overlay=None, rollout_events=rollout_events, roles=["user", "agent"], status=None,
         todo_id=None, agent_id=None, limit=None).todos
+    todos = capture_todo_archive_dependencies(todos, state_text)
     leases: list[dict[str, Any]] = []
     inventory: list[dict[str, object]] = []
     for path in sorted((runtime_root / "goals" / goal_id / "task-leases").glob("*.json")):

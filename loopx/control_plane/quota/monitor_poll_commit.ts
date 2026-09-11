@@ -633,7 +633,24 @@ function compactProviderWriteback(receipt: JsonObject): JsonObject {
   ]) {
     compact[field] = receipt[field] ?? null;
   }
+  Object.assign(compact, monitorProjectionDelivery(receipt));
   return compact;
+}
+
+/** Display acknowledgement is diagnostic, never evidence for business commit.
+ * Omitted on the legacy path to retain its exact v0 response shape. */
+function monitorProjectionDelivery(receipt: JsonObject): JsonObject {
+  if (receipt.projection_delivery == null) return {};
+  const status = optionalString(receipt.projection_delivery, "projection_delivery");
+  if (!["delivered", "pending", "not_required"].includes(String(status))) {
+    throw new EffectRuntimeRequestError("invalid Monitor projection delivery status");
+  }
+  const outbox = requiredObject(receipt.projection_outbox, "projection_outbox");
+  const diagnostic: JsonObject = {};
+  for (const key of ["schema_version", "status", "reason_code", "retryable", "recommended_action", "retry_business_mutation"]) {
+    if (outbox[key] != null) diagnostic[key] = outbox[key];
+  }
+  return {projection_delivery: status, projection_outbox: diagnostic};
 }
 
 function buildRecord(request: MonitorRequest): JsonObject {
@@ -1114,6 +1131,7 @@ function validatedProviderReceipt(
     todo_update: requiredObject(receipt.todo_update, "provider_receipt.todo_update"),
     next_todos: nextTodos,
     successor_receipts: successors,
+    ...monitorProjectionDelivery(receipt),
   };
 }
 

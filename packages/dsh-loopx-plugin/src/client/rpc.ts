@@ -14,6 +14,8 @@ import type {
 } from '../goalbar/protocol.ts'
 
 const GOALBAR_CHANNEL = '/loopx'
+const GOALBAR_SHARED_API_CHANNEL = '/api'
+const GOALBAR_SHARED_API_ENDPOINT = 'loopx.goalbar'
 
 export type GoalBarRpcOutcome<T> =
   | { readonly ok: true; readonly response: T }
@@ -75,11 +77,13 @@ async function callGoalBar<T extends GoalBarRequestV1>(
   caller: ConnectionRpcCaller,
   request: T,
   signal: AbortSignal,
+  sharedApi: boolean,
 ): Promise<GoalBarRpcOutcome<GoalBarResponseFor<T>>> {
   try {
+    const endpoint = endpointForGoalBarOp(request.op)
     const carrier = await caller.call(
-      GOALBAR_CHANNEL,
-      endpointForGoalBarOp(request.op),
+      sharedApi ? GOALBAR_SHARED_API_CHANNEL : GOALBAR_CHANNEL,
+      sharedApi ? GOALBAR_SHARED_API_ENDPOINT : endpoint,
       request,
       signal,
     )
@@ -97,7 +101,10 @@ async function callGoalBar<T extends GoalBarRequestV1>(
  * Wrap DSH's generic Connection caller with the closed GoalBar V2 wire.
  * Carrier errors and thrown values are deliberately discarded at this boundary.
  */
-export function createGoalBarRpc(caller: ConnectionRpcCaller): GoalBarRpc {
+export function createGoalBarRpc(
+  caller: ConnectionRpcCaller,
+  sharedApi = false,
+): GoalBarRpc {
   return {
     read(sessionId, signal) {
       const request = {
@@ -105,7 +112,7 @@ export function createGoalBarRpc(caller: ConnectionRpcCaller): GoalBarRpc {
         op: 'read',
         sessionId,
       } as const
-      return callGoalBar(caller, request, signal)
+      return callGoalBar(caller, request, signal, sharedApi)
     },
     watch(sessionId, anchor, signal) {
       const request = {
@@ -114,7 +121,7 @@ export function createGoalBarRpc(caller: ConnectionRpcCaller): GoalBarRpc {
         sessionId,
         ...anchor,
       } as const
-      return callGoalBar(caller, request, signal)
+      return callGoalBar(caller, request, signal, sharedApi)
     },
     start(sessionId, expected, signal) {
       const request = {
@@ -123,7 +130,7 @@ export function createGoalBarRpc(caller: ConnectionRpcCaller): GoalBarRpc {
         sessionId,
         expected,
       } as const
-      return callGoalBar(caller, request, signal)
+      return callGoalBar(caller, request, signal, sharedApi)
     },
     pause(sessionId, expected, signal) {
       const request = {
@@ -132,7 +139,7 @@ export function createGoalBarRpc(caller: ConnectionRpcCaller): GoalBarRpc {
         sessionId,
         expected,
       } as const
-      return callGoalBar(caller, request, signal)
+      return callGoalBar(caller, request, signal, sharedApi)
     },
   }
 }

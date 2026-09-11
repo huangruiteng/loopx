@@ -1465,7 +1465,7 @@ def serve_chat(
         manager_scope_resolver=lambda session: authorized_manager_goal_ids(
             build_lark_goal_topic_runtime_snapshot(
                 registry_path=server.registry_path, runtime_root_override=server.runtime_root_override,
-            ), session,
+            ), session, runtime_root=runtime_root,
         ),
         codex_bin=codex_bin,
         claude_bin=claude_bin,

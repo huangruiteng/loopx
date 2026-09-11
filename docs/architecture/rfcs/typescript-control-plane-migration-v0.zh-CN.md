@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-09
+- Last revised：2026-09-10
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -14,6 +14,16 @@
 ---
 
 ## 当前实现检查点
+
+Native update 现通过 `todos/public_update.ts` 组合有界的非终态 planning intent
+（status、evidence/reason、resume/clear、successor links），使用权限检查与 CAS
+同一份完整 canonical head。独立 intent 命名空间不扩大原 text/note patch allowlist，
+不改变旧回执指纹。规划使用 v1 请求 envelope，让旧 runtime 拒绝整个请求，避免只
+提交其中的 text/note。删除 Python 的合成 Markdown 编解码与事务前目标查询；adapter
+只规范化 CLI 文本、传递意图并排空已提交的展示投影。
+Active lease 下的状态改变、Monitor 规划/观察、ownership/routing/capability 编辑及
+terminal transition 仍未开放。这是 T1 的一个阶段，不是完整 update 闭合，不改变
+provider 默认，也不授予 promotion 权限。
 
 Provider-first text/note 更新现可携带当前执行 key 和租约版本，复用 terminal fence，
 禁用自动获取及委托覆盖。修改和回执受同一个 provider revision 保护，租约不变。
@@ -34,7 +44,7 @@ T1 事务，也不是 T2 的 Monitor 与 successor 原子提交。
 周日期、时区偏移秒数及微秒排序，不改写历史。
 Lifecycle/ownership 准入现在先于 poll 诊断，未授权请求不能靠非法 metadata 回避
 权限拒绝。精确 replay、同秒无 ID 轮询、显式清空及 legacy boundedness 豁免保持。
-Plan 不授予权限、receipt 或 promotion；native update 仍只拥有 text/note。
+Plan 不授予权限、receipt 或 promotion；该切片不开放 native Monitor 规划更新。
 
 公开 Todo add/update 现通过 `todos/authoring_scope.ts` 统一解析角色、continuation
 绑定、gate 作用域与 deferred 条件要求。删除 Python `write_policy.py` 及 `todos.py`
@@ -44,9 +54,9 @@ successor 共用最终 scope 不变量，不执行草稿默认值推断。
 不得从 actor 或 `goal_bound` 推断全局 gate。省略 scope 的更新、历史已完成记录修复、
 lifecycle／lease 权限边界保持。
 
-这是 T1 的 authoring-scope 前置闭合，不是整个 update 事务完成。公开 metadata 扩展、
-validation／effect 闭合和 provider CAS/replay 汇合仍属于 T1/T2。Native update 继续
-保留 text/note allowlist；legacy codec／lock／writer 仍有实际 caller，本批不退役。
+这是 T1 的 authoring-scope 前置闭合，不是整个 update 事务完成。其余 metadata 扩展及
+validation／effect 闭合仍属于 T1/T2。Native update 保留原 text/note patch allowlist，
+另接有界 planning intent；legacy codec／lock／writer 仍有实际 caller，本批不退役。
 
 受检入的 generator 校验语言中立 contract，并生成深度不可变的 Python/TypeScript
 binding，覆盖原生 domain 与 projection section。两端 runtime 直接 import 生成物；
@@ -221,8 +231,8 @@ metadata。它直接组合已有 TS completion rule。被替代的 Python decisi
 
 这是一份纯 plan，不是 admission 或 provider commit。Python 仍保留 Markdown 定位／
 编码、字节级 no-op 检查、锁与外部 effect；本批不宣称迁完公共 role/binding admission
-或 event writer。Promoted update 仍只支持 text/note：不扩权、不 promotion goal、
-不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
+或 event writer。Native planning 现按 T1 所述组合此 owner；不支持的字段不扩权、
+不 promotion goal、不增加第三条存储路径。plan 拒绝时，现在连调用方的内存行缓冲也保持不变；公共
 事务在拒绝时原本就不会提交。
 
 每次 legacy line write 有一次 field-plan crossing：普通编辑替代原 metadata RPC；
@@ -240,11 +250,12 @@ Markdown renderer 长期保留。
 全部改成 TypeScript 或 `loopxd` 落地为前提；输入适配和外部 effect 执行可以保留 Python。
 
 本次 lifecycle-admission 切片将 legacy claim/update 准入、委托 action/reason 检查、
-ownership-holder 路由及预授权 terminal fence 统一到 `todo_lifecycle_decision.ts`，
-与 native complete/supersede 共用规则；`authority_core.py` 只投影这些决策结果。
-Terminal wire 合同仍只接受 terminal 命令；mutation admission 不能完成 Todo，
-独立 fence 不能授予 actor 权限或完成 Todo。这立即删除重复规则，**不等于删除完整
-legacy update writer**。字段 patch、省略/清空、monitor/resume effect 和 validation
+ownership-holder 路由及 native complete/supersede 统一到
+`todo_lifecycle_decision.ts`。Native text/note 编辑与 terminal transition 在进程内
+复用预授权 lease fence；`authority_core.py` 只投影仍有真实调用方的准入和 terminal
+决策，不再暴露独立 Python command 或 effect-runtime handler。Mutation admission
+不能完成 Todo，进程内 fence 不能授予 actor 权限或提交变更。这立即删除重复规则，
+**不等于删除完整 legacy update writer**。字段 patch、省略/清空、monitor/resume effect 和 validation
 仍需收口为完整 update transaction。Legacy 准入及持锁 gate 仍跨 runtime；本次减少
 语义 owner，不宣称减少 crossings，native transaction 仍进程内调用。下一步将这些
 crossing 一起折叠进完整事务，不能沿着 adapter 逐字段继续加桥。
@@ -289,7 +300,7 @@ commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立�
 - Fetch 目标 remote base，记录 SHA 和每项依赖的实际合并状态。核对代码而非 PR
   标题；依赖未合并时，使用明确选定的 stacked base，或暂停该依赖单元。
 - 从 `loopx/control_plane/` 下的 `coordination/todo_update.ts`、
-  `todos/field_update.ts`、`todos/provider_compatibility_edit.py`、
+  `todos/field_update.ts`、`todos/provider_update.py`、`todos/native_update_plan.ts`、
   `todos/line_update.py`、`scheduler/monitor_poll_writeback.py` 及公开 caller
   入手。符号移动后重新定位，不恢复已删除 wrapper。
 - 形成紧凑 caller 表：公开操作、promotion 前后来源、TS owner、外部 effect、
@@ -311,8 +322,8 @@ active/archive 事实，不使用受展示条数限制的 inventory。局部拓�
 这里删除的是编排而非持久化：lifecycle/lease 准入、completion effect、writer
 lock、capture、provider CAS/replay 仍由既有 owner 负责。内部 terminal/import
 field codec 仍有真实 caller，不引入公开 update 限制。Native metadata 扩展和
-T2 原子后续动作仍未闭合。修改 provider 事务前先核对独立 lease-edit PR #4152，
-不能从本检查点推断它已经合入。
+T2 原子后续动作尚未全部闭合。Lease-edit PR #4152 已合入；有界规划更新复用该
+fence 及既有 CAS/receipt 事务。下一步继续剩余字段/effect 清单，不另建 update engine。
 
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
@@ -335,10 +346,25 @@ guard/resolver 及 TS 回执端独立的默认值／capability 解释。非法 c
 action/claim/capability 别名和 Git transport 在回执核对时指向同一路由。v0 replay
 digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending receipt 失效。
 无需 Node 的 repository/bootstrap codec 暂留并做跨运行时对照，不引入启动依赖。
-这**不是** T2 原子事务：monitor mutation 和 successor 写入仍通过既有 fenced effect
-执行；跨 effect crash 恢复、native writer 闭合及整 Goal promotion 仍未放行。
+原生 `coordination.local_authority.monitor_poll` 现将无 lease Monitor 的观察及请求的
+独立后继，绑定同一个 canonical revision，以一次 CAS 和持久 operation receipt
+提交。它组合已有 generation、successor route、User authoring scope 和 Todo create
+planner；单项 create 与 Monitor 批次共用创建准入／语义去重，legacy preflight 与
+native commit 共用目标选择。Python 只路由意图并交付既有 projection outbox。
 
-- 盘点 `monitor_poll_writeback.py` 及 event/Todo/lease caller，复用 monitor
+明确的语义修正：拒绝已完成／归档的 Monitor；target-key 选择排除结束的历史项，
+但多个活跃匹配仍要求显式 id；创建后继必须实际推进 material-change
+generation，不能对相同证据重复声明 `material_change=true` 就继续生成任务。
+原 operation 重试恢复原后继，不创建新工作；不附带后继的新 observation 仍可接受。
+User gate 复用既有 actor-bound scope，不推导全局 gate。
+
+尚未闭合：原生操作遇到任何保留的 Monitor lease 仍 fail closed，不隐式授权跨 owner
+的 successor claim；未 promotion Goal 仍走旧 writer。Quota 记账继续使用现有
+preflight/writeback/settlement 协议，沿用 v0 回执形状及原始 observation identity。
+Canonical 提交成功独立于 Markdown delivery pending。这不代表全部 T2 命令或整 Goal
+promotion 已完成。
+
+- 继续闭合 `monitor_poll_writeback.py` 保留的 lease 与 event caller，复用 monitor
   generation、独立 successor 和 settlement owner，组成一笔事务，不建第二套引擎。
 - 保持 unchanged poll/reschedule、generation fence、material-change successor
   去重和可归属 settlement。Monitor 不是 delivery 执行任务；独立 advancement Todo
@@ -348,6 +374,18 @@ digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending
   不形成交付。必要命令 effect 尚不支持时暂停整 Goal promotion，不能回退 Markdown 写入。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
+
+Quota 的 scope/claim 消费者现通过每个 source 一次 `todo.quota_planning.project`，
+组合选择、有限展示与既有 resume planner。`quota_selection.ts` 替代 Python
+claim-visibility 模块及 Agent-scope 中独立的 User gate/action 过滤器。Python
+保留旧输入 codec、时钟与 capability/profile 适配；TS 拥有 lane 选择与排序。
+本批有意修正两处语义：显式适用的 User gate 不再被他人 claim 或 executor exclusion
+抵消；active-next-action 与普通行遵守相同作用域和已移除 continuation 限制。
+User action 按 `bound_agent` 路由（兼容旧 claim 回退），不是执行归属；User summary
+不再暴露 Agent 执行 `claim_scope`。计数先于展示限流；claim 优先级、Monitor
+写回/capability fence 与 resume 义务不变。这些只读判断不授予写权限。
+本批不替换 source adapter、不新增 inventory，也不宣称整个 T3 完成；继续按下文
+审计剩余消费者。独立 Todo summary 的展示 codec 保留至其真实调用者迁移。
 
 当前有边界交付：shared-goal alignment 与 amendment admission 每次决策共用一份
 `shared_goal_work_source.py` 快照，promotion 后复用 canonical Todo summary；同一次
@@ -359,6 +397,30 @@ exclusion 筛选，删除旧 Python selector 与 amendment 的第二次 Markdown
 冒充 Goal intent revision，digest 变化仍要求 proposal rebase。活动 lease 的非法
 到期时间复用现有 TS lease 规则拒绝。本批不依赖仍开放的 #4142，不表示 T1/T2 或全部
 T3 完成，也不授予 amendment commit／整 Goal promotion 权限。
+
+Standing decision consumer 收口：`todos/standing_decision.ts` 统一可复用决策的
+资格与先后关系，供 status/quota 读取和 archive selection 共用。Python 只解码旧
+metadata 并批量调用，删除旧 receipt selector 与 TS archive 内的重复资格判断。
+Canonical 读取在生成展示 index 前使用完整 Todo 快照，包括保留的归档决策。
+后续拒绝／取消按决策时间覆盖旧批准，不再依赖 Todo ID；矛盾历史无法定序时给出
+诊断且不提供 active receipt。此授权面必须有显式 user-gate metadata，不再借用
+通知文案启发式。上述有意语义修正见
+[decision-scope 协议](../../reference/protocols/decision-scope-v0.md#decision-chronology-not-display-order)。
+全部无时间的 legacy 决策保留源顺序兼容，native 展示顺序不充当授权证据；本批不迁移
+scope coverage 和 open-gate routing，不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
+
+列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
+初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值
+条件，不能把归档中的已完成依赖变成丢失。共享合成 fixture 增补“有 scope 无 outcome”
+和精确关联批准，另用包含数千归档项的 CLI 回归覆盖长历史。
+
+Bootstrap 与后续 writer outbox 现捕获被引用的归档 resume 目标及其传递依赖。
+`archive_capture.ts` 选择实际记录，拒绝重复 identity 和矛盾 role/class，不把已保存的
+readiness 当作证据。Legacy 归档移动保留源 role，不重序列化原 receipt。旧记录缺少
+role 时，仅显式 agent-only task class 可还原 agent；用户决策权限始终要求已记录的
+user role。历史节点不会进入活动工作或 lease lane。无法识别的被引用历史仍须明确修复，
+不得恢复 promotion 后的 Markdown fallback。本批闭合已复现的依赖遗漏，不代表所有
+历史导入、provider 资格化、soak 或 D3 cutover 条件均完成。
 
 - 分别审计 Turn/quota、Dashboard、standing decision、shared-goal alignment、
   amendment revision 输入。复用 #4117 canonical source adapter，一次决策传递一份

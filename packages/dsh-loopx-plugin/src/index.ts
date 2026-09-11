@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
-  registerGoalBarConnectionRpc,
+  registerGoalBarConnectionTransport,
 } from './goalbar/connection-rpc.ts'
 import { goalBarCoordinator } from './goalbar/events.ts'
 import { createGoalBarService } from './goalbar/service.ts'
@@ -19,7 +19,7 @@ export function apply(ctx: Context): void {
       resolveCommand: signal => resolvePluginLoopXCommand({ signal }),
       warn: message => { ctx.logger.warn(message) },
     })
-    const disposeRpc = registerGoalBarConnectionRpc(ctx.connection, service)
+    const disposeRpc = registerGoalBarConnectionTransport(ctx.connection, service)
     return async () => {
       await service.dispose()
       await disposeRpc()
@@ -46,6 +46,8 @@ export type {
 export {
   createGoalBarConnectionHandler,
   GOALBAR_RPC_CHANNEL,
+  GOALBAR_SHARED_API_CHANNEL,
+  registerGoalBarConnectionTransport,
   registerGoalBarConnectionRpc,
 } from './goalbar/connection-rpc.ts'
 export {

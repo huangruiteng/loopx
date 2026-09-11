@@ -49,6 +49,13 @@ jobs:
           name: typescript-control-plane-coverage
           path: coverage/control-plane
 
+      - name: Download this run's dashboard coverage
+        if: steps.sonar-token.outputs.available == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: dashboard-coverage
+          path: coverage/dashboard
+
       - name: SonarCloud scan
         if: steps.sonar-token.outputs.available == 'true'
         # Analysis-only: findings are reported to the PR/dashboard but never

@@ -204,6 +204,7 @@ def handle_turn_command(
             scheduler_owner=args.scheduler_owner,
             session_binding=session_binding,
             turn_instance_id=args.turn_instance_id,
+            iteration_context_policy=args.iteration_context.replace("-", "_"),
         )
         if turn_start_hook_dispatch.get("registered_count") or (
             turn_start_hook_dispatch.get("failures")

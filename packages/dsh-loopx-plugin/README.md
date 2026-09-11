@@ -53,7 +53,7 @@ Install the prebuilt release into the web profile:
 
 ```bash
 dsh plugin --profile web add \
-  "https://github.com/huangruiteng/loopx/releases/download/dsh-loopx-plugin-v0.1.1-beta.4/dsh-loopx-plugin-0.1.1-beta.4.tgz"
+  "https://github.com/huangruiteng/loopx/releases/download/dsh-loopx-plugin-v0.1.1-beta.5/dsh-loopx-plugin-0.1.1-beta.5.tgz"
 ```
 
 For a source checkout, the equivalent build-and-install path is:
@@ -124,10 +124,40 @@ Start/Pause. Focused Client tests cover Session-generation replacement and old
 request cancellation without duplicating that matrix in the packed smoke.
 The Docker smoke packs the current plugin and builds the current LoopX
 release-candidate wheel, then starts both in a clean Debian container with the
-supported DSH release. It proves PEP 668-compatible private installation, the
-managed launcher, startup readiness, and first-session `loopx` skill
-discovery. It requires Docker, `uv`, and network access for base images and
+DSH 0.1.5 release candidate. It proves PEP 668-compatible private installation,
+the managed launcher, startup readiness, installed `loopx` skill files, launch-
+token authentication, and an authenticated GoalBar read through DSH's shared
+API carrier. It requires Docker, `uv`, and network access for base images and
 never opens a browser or configures a model provider.
+
+## Maintainer release and marketplace handoff
+
+A DSH plugin release is complete only after its immutable GitHub asset exists
+and an update pull request has been opened against the upstream
+[`awesome-dsh-plugin`](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
+marketplace. Marketplace maintainers retain merge authority; publishing a
+LoopX release does not grant authority over that catalog.
+
+For every DSH plugin release:
+
+1. Update the package version and this README's pinned install URL. Run the
+   typecheck, tests, and the built, packed, runtime, profile, and Docker smokes
+   listed above.
+2. Prepare complete bilingual GitHub release notes. Run
+   `examples/release/release-readiness-doc-smoke.py` with one `--surface` for
+   every optional capability changed by the release.
+3. Merge the exact reviewed commit, pack from that immutable tag target, and
+   publish both the version tag and `dsh-loopx-plugin-<version>.tgz` asset.
+4. Read the remote release body back and rerun the release-readiness smoke.
+   Download the remote asset and verify that its SHA-256 matches the local
+   package before advertising it.
+5. In a clean fork branch of `awesome-dsh-plugin`, update only
+   `data/plugins/huangruiteng__loopx--packages-dsh-loopx-plugin.yml` to the new
+   immutable asset URL. Confirm the URL resolves, then run
+   `node scripts/generate-readme.mjs --check` and `git diff --check`.
+6. Open an upstream marketplace pull request and link it from the release
+   closeout. Do not describe the release as marketplace-published until that
+   pull request is merged by the upstream maintainers.
 
 ## Shadow observer (default off)
 

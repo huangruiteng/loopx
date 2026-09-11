@@ -45,6 +45,7 @@ from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.coordination.legacy_writer_fence import (
     LegacyCoordinationWriterFenced,
 )
+from ..control_plane.coordination.local_authority import LocalCoordinationAuthorityUnavailable
 from ..control_plane.effect_runtime import EffectRuntimeRejected
 from ..control_plane.scheduler.execution_context import (
     GUIDED_START_TURN_RUNTIME_PROFILES,
@@ -241,7 +242,7 @@ def _quota_failure_payload(
         )
         if error.agent_id is not None:
             payload["agent_id"] = error.agent_id
-    elif isinstance(error, LegacyCoordinationWriterFenced):
+    elif isinstance(error, (LegacyCoordinationWriterFenced, LocalCoordinationAuthorityUnavailable)):
         payload.update(
             {
                 "error_code": error.code,
@@ -462,6 +463,18 @@ def _dispatch_quota_turn_start_hooks(
         goal_id=args.goal_id,
         agent_id=args.agent_id,
     )
+    if args.agent_id:
+        from ..capabilities.manager_context import turn_start_hook
+        from ..control_plane.capability_hooks import dispatch_turn_start_hooks
+        from ..history import load_registry
+        from ..paths import resolve_runtime_root
+        root = resolve_runtime_root(load_registry(registry_path), runtime_root_arg, registry_path=registry_path)
+        context_dispatch = dispatch_turn_start_hooks((turn_start_hook(root, registry_path, args.goal_id, args.agent_id),))
+        dispatch = dict(dispatch)
+        for key in ("results", "required_reads", "failures"):
+            dispatch[key] = list(dispatch.get(key) or []) + list(context_dispatch.get(key) or [])
+        for key in ("registered_count", "invoked_count"):
+            dispatch[key] = int(dispatch.get(key) or 0) + int(context_dispatch.get(key) or 0)
     local_private_state_mutated = any(
         isinstance(result, Mapping)
         and result.get("local_private_state_mutated") is True

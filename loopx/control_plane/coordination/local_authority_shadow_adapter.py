@@ -39,7 +39,7 @@ from .local_authority_shadow_projection import (
     partition_digest,
     todo_partition_projection,
 )
-from .runtime_shadow import resolve_coordination_runtime_shadow_config
+from .runtime_shadow import resolve_coordination_runtime_shadow_config, capture_todo_archive_dependencies
 from .shadow_management import read_shadow_capture_binding
 
 
@@ -188,12 +188,12 @@ def todo_partition_projector(
     def project(state_text: str) -> dict[str, Any]:
         return todo_partition_projection(
             handoff_mode=goal_handoff_mode(state_text),
-            todos=project_goal_todo_items(
+            todos=capture_todo_archive_dependencies(project_goal_todo_items(
                 goal_record,
                 state_text=state_text,
                 state_path=state_path,
                 rollout_events=events,
-            ),
+            ), state_text),
         )
 
     return project

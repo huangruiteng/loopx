@@ -5,8 +5,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..control_plane.coordination.legacy_writer_fence import (
-    require_legacy_coordination_write_allowed,
+from ..control_plane.scheduler.provider_monitor_poll import (
+    require_monitor_poll_source_available,
 )
 from ..control_plane.quota.error_codes import QuotaCommandValidationError
 from ..control_plane.runtime.status_projection_cache import (
@@ -225,10 +225,9 @@ def prepare_quota_command_context(
         runtime_root_override=runtime_root_arg,
     )
     if command == "monitor-poll" and args.execute and (args.todo_id or args.target_key):
-        # This command still uses the legacy Todo writer. Preserve its typed
-        # rejection before collecting a promoted read model (which may itself
-        # be unavailable). The writer repeats the check under its mutation lock.
-        require_legacy_coordination_write_allowed(
+        # Canonical availability precedes unrelated status/quota preparation.
+        # The eventual transaction repeats its fence check under the writer lock.
+        require_monitor_poll_source_available(
             runtime_root=runtime_root, goal_id=args.goal_id,
         )
     status_goal_id = args.goal_id if command not in {"status", "plan"} else None

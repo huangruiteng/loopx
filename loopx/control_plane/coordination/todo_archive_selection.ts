@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import {isStandingDecisionReceipt} from "../todos/standing_decision.ts";
 import {
   authorityUnicodeCompare,
   canonicalAuthorityObject,
@@ -9,8 +10,6 @@ export const COORDINATION_TODO_ARCHIVE_SELECTION_SCHEMA =
   "loopx_coordination_todo_archive_selection_v0";
 
 const TODO_ROLES = ["agent", "user"] as const;
-const DECISION_OUTCOMES = ["approve", "reject", "cancel"] as const;
-const STANDING_DECISION_GRANULARITIES = new Set(["goal", "project", "global"]);
 
 export type CoordinationTodoArchiveRole = typeof TODO_ROLES[number];
 
@@ -43,19 +42,6 @@ function archiveLimit(value: unknown): number {
     throw new TypeError("max_active_done must be a non-negative safe integer");
   }
   return Number(value);
-}
-
-function isStandingDecisionReceipt(todo: JsonObject): boolean {
-  if (todo.role !== "user" || todo.task_class !== "user_gate" || todo.status !== "done" ||
-      typeof todo.unblocks_todo_id === "string") return false;
-  const scope = todo.decision_scope;
-  if (scope === null || typeof scope !== "object" || Array.isArray(scope) ||
-      typeof (scope as JsonObject).granularity !== "string" ||
-      !STANDING_DECISION_GRANULARITIES.has(String((scope as JsonObject).granularity)) ||
-      !DECISION_OUTCOMES.includes(todo.decision_outcome as typeof DECISION_OUTCOMES[number])) {
-    return false;
-  }
-  return todo.global_gate === true || typeof todo.blocks_agent === "string";
 }
 
 function archiveOrder(left: JsonObject, right: JsonObject): number {

@@ -16,7 +16,7 @@ from .contract import (
     todo_done_for_status,
     todo_status_from_marker,
 )
-from .decision_scope import build_standing_decision_authority
+from .standing_decision import build_standing_decision_authority
 from .machine_region import TODO_REGION_PREFIX, find_todo_regions
 from .todo_summary import (
     MAX_STATUS_TODOS_PER_ROLE,
@@ -26,24 +26,13 @@ from .todo_summary import (
 )
 
 
-def parse_active_state_todos(
+def parse_todo_source(
     state_text: str,
     *,
     goal: dict[str, Any] | None = None,
     state_path: Path | None = None,
-    preferred_todo_ids: set[str] | None = None,
-    rollout_events: list[dict[str, Any]] | None = None,
-    available_capabilities: Any = None,
-    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
-) -> dict[str, Any]:
-    orchestration = compact_orchestration_policy(
-        goal.get("spawn_policy") if isinstance(goal, dict) else None
-    )
-    include_task_orchestration_authority = bool(
-        orchestration.get("mode") == "multi_subagent"
-        and orchestration.get("spawn_allowed") is True
-        and int(orchestration.get("max_children") or 0) > 0
-    )
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]], dict[str, str | None]]:
+    """Decode active and archived source rows without inventing archive roles."""
     role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
     items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
@@ -113,6 +102,28 @@ def parse_active_state_todos(
                 f"{current_todo.get('text', '')} {continuation}"
             )
 
+    return items, archive_items, source_sections
+
+
+def parse_active_state_todos(
+    state_text: str,
+    *,
+    goal: dict[str, Any] | None = None,
+    state_path: Path | None = None,
+    preferred_todo_ids: set[str] | None = None,
+    rollout_events: list[dict[str, Any]] | None = None,
+    available_capabilities: Any = None,
+    item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
+) -> dict[str, Any]:
+    orchestration = compact_orchestration_policy(
+        goal.get("spawn_policy") if isinstance(goal, dict) else None
+    )
+    include_task_orchestration_authority = bool(
+        orchestration.get("mode") == "multi_subagent"
+        and orchestration.get("spawn_allowed") is True
+        and int(orchestration.get("max_children") or 0) > 0
+    )
+    items, archive_items, source_sections = parse_todo_source(state_text, goal=goal, state_path=state_path)
     result: dict[str, Any] = {}
     archived_resume_source_items = [
         item for item in archive_items if normalize_todo_id(item.get("todo_id"))
@@ -156,7 +167,12 @@ def parse_active_state_todos(
         result["user_todos"] = user
     if agent:
         result["agent_todos"] = agent
-    standing_authority = build_standing_decision_authority(items["user"])
+    archived_decisions = [item for item in archive_items if item.get("role") == "user"]
+    standing_authority = build_standing_decision_authority(
+        [*items["user"], *archived_decisions],
+        # Separate sections are not a single chronological append log.
+        legacy_source_order=not archived_decisions,
+    )
     if standing_authority:
         result["standing_decision_authority"] = standing_authority
     return result

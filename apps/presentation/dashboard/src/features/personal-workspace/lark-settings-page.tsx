@@ -60,6 +60,9 @@ function larkConnectionHealth(connection: LarkGoalConnection, t: WorkspaceTransl
   if (connection.listener_status === "starting") {
     return { label: t("lark.health.starting"), detail: t("lark.health.startingDetail"), ready: false };
   }
+  if (connection.listener_status === "retrying" && connection.listener_error_code === "lark_event_source_disconnected") {
+    return { label: t("lark.health.sourceDisconnected"), detail: t("lark.health.sourceDisconnectedDetail"), ready: false };
+  }
   if (connection.listener_status === "retrying") {
     return { label: t("lark.health.retrying"), detail: t("lark.health.retryingDetail"), ready: false };
   }

@@ -10,6 +10,67 @@ import {
   TODO_DOMAIN_ITEM_SCHEMA, TODO_DOMAIN_READ_RECORD_SCHEMA, TODO_DOMAIN_RECORD_CONTRACT,
 } from "../../loopx/control_plane/coordination/coordination_state_contract.ts";
 import { executeCoordinationTodoUpdate } from "../../loopx/control_plane/coordination/todo_update.ts";
+import {updateLocalCoordinationTodo} from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
+
+test("planning transport is explicitly versioned before any provider access", async () => {
+  const result = await updateLocalCoordinationTodo({
+    schema_version: "loopx_local_coordination_todo_update_request_v0",
+    patch: {text: "Must not partially commit"}, planning_intent: {status: "blocked"},
+  }, {createStore: () => {throw new Error("must not open a store");}});
+  assert.equal(result.status, "failed");
+  assert.match(String(result.reason), /requires the v1/);
+});
+
+test("native planning edit commits nonterminal state and clears its wait atomically", async () => {
+  const {store, request} = await seeded({task_class: "advancement_task"});
+  const edit = {...request, patch: {text: "Old text"}, clear_fields: [], planning_intent: {
+    status: "deferred", resume_when: "pr_merged:#123", reason: "Waiting for upstream",
+  }};
+  const before = await store.loadAuthority();
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit, dry_run: true})).status, "planned");
+  assert.deepEqual(await store.loadAuthority(), before);
+  assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "applied");
+  const deferred = await store.loadAuthority();
+  assert.equal(deferred.status, "loaded");
+  if (deferred.status !== "loaded") return;
+  const record = (deferred.head.todos as Record<string, unknown>[])[0]!;
+  assert.equal(record.status, "deferred");
+  assert.equal(record.done, true);
+  assert.equal(record.resume_when, "pr_merged:#123");
+  assert.equal(record.claimed_by, "agent-a");
+  assert.equal(record.note, "old note");
+  assert.equal(Object.hasOwn(record, "last_actor_agent_id"), false);
+  assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "replayed");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit,
+    planning_intent: {...edit.planning_intent, reason: "Different intent"}})).reason_code,
+    "coordination_operation_identity_mismatch");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit, operation_id: "resume-a",
+    planning_intent: {status: "open", clear_resume_when: true}})).status, "applied");
+  const resumed = await store.loadAuthority();
+  assert.equal(resumed.status, "loaded");
+  if (resumed.status !== "loaded") return;
+  const next = (resumed.head.todos as Record<string, unknown>[])[0]!;
+  assert.equal(next.status, "open");
+  assert.equal(next.done, false);
+  assert.equal(next.resume_when, undefined);
+  assert.equal(next.resume_monitor_generation, undefined);
+});
+
+test("planning intent cannot smuggle terminal, ownership or observation writes", async () => {
+  const {store, request} = await seeded({task_class: "advancement_task"});
+  for (const planning_intent of [
+    {status: "done"}, {claimed_by: "agent-b"}, {clear_claim: true},
+    {global_gate: true}, {monitor_metadata: {material_change: "true"}},
+    {completion_metadata_updates_override: {completion_continuation: "no_followup"}},
+    {status: "deferred"}, {successor_todo_ids: "todo_other"},
+  ]) {
+    const before = await store.loadAuthority();
+    const result = await executeCoordinationTodoUpdate(store, {...request, planning_intent});
+    assert.equal(result.status, "failed", JSON.stringify(planning_intent));
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
+  }
+});
 
 function todo(overrides: Record<string, unknown> = {}) {
   return {schema_version: TODO_DOMAIN_ITEM_SCHEMA, todo_id: "todo_a", role: "agent",
@@ -40,6 +101,11 @@ test("provider-first update commits complete record and replays by intent", asyn
   assert.equal(preview.status, "planned");
   const applied = await executeCoordinationTodoUpdate(store, request);
   assert.equal(applied.status, "applied");
+  assert.equal((applied.original_receipt as Record<string, unknown>).request_sha256,
+    canonicalAuthoritySha256({goal_id: request.goal_id, todo_id: request.todo_id,
+      expected_role: request.expected_role, actor_agent_id: request.actor_agent_id,
+      patch: request.patch, clear_fields: request.clear_fields, dry_run: request.dry_run}));
+  assert.equal((await executeCoordinationTodoUpdate(store, {...request, planning_intent: {}})).status, "replayed");
   const head = await store.loadAuthority();
   assert.equal(head.status, "loaded");
   if (head.status !== "loaded") return;
@@ -51,6 +117,24 @@ test("provider-first update commits complete record and replays by intent", asyn
   assert.equal((await executeCoordinationTodoUpdate(store, request)).status, "replayed");
   assert.equal((await executeCoordinationTodoUpdate(store, {...request,
     patch: {text: "Different"}})).reason_code, "coordination_operation_identity_mismatch");
+});
+
+test("planning no-op consumes its identity but never claims unclaimed work", async () => {
+  const {store, request} = await seeded({claimed_by: null, task_class: "advancement_task", reason: "Same"});
+  const edit = {...request, patch: {}, clear_fields: [], planning_intent: {reason: "Same"}};
+  const before = await store.loadAuthority();
+  assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "no_change");
+  const after = await store.loadAuthority();
+  assert.equal(before.status, "loaded");
+  assert.equal(after.status, "loaded");
+  if (before.status !== "loaded" || after.status !== "loaded") return;
+  assert.deepEqual(after.head, before.head);
+  assert.equal((await store.readReceipt(edit.operation_id)).status, "found");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit, operation_id: "later",
+    planning_intent: {reason: "Later"}})).status, "applied");
+  const latest = await store.loadAuthority();
+  assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "replayed");
+  assert.deepEqual(await store.loadAuthority(), latest);
 });
 
 test("unclaimed text edits are claim-neutral, including preview and replay", async () => {

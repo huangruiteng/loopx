@@ -24,7 +24,7 @@ from .contract import (
     normalize_todo_id,
     normalize_todo_status,
 )
-from .todo_summary import compact_todo_group, todo_item_status
+from .todo_summary import compact_evaluated_todo_group, compact_todo_group, todo_item_status
 
 
 def empty_todo_summary(*, role: str) -> dict[str, Any]:
@@ -57,8 +57,6 @@ def filtered_todo_summary(
     status: str | None = None,
     todo_id: str | None = None,
     agent_id: str | None = None,
-    resume_source_items: list[dict[str, Any]] | None = None,
-    rollout_events: list[dict[str, Any]] | None = None,
     item_limit: int | None = None,
 ) -> dict[str, Any]:
     items = list((summary or {}).get("items") or [])
@@ -94,12 +92,10 @@ def filtered_todo_summary(
             ]
     source_section = str((summary or {}).get("source_section") or TODO_SECTION_HEADINGS[role])
     return (
-        compact_todo_group(
+        compact_evaluated_todo_group(
             items,
             source_section=source_section,
             role=role,
-            resume_source_items=resume_source_items,
-            rollout_events=rollout_events,
             item_limit=item_limit,
         )
         or empty_todo_summary(role=role)
@@ -323,10 +319,6 @@ def todo_summaries_from_fields(
 ) -> GoalTodoSummaries:
     """Apply the shared Todo consumer semantics to an authority read model."""
 
-    resume_source_items = [
-        *summary_items(fields, "user"),
-        *summary_items(fields, "agent"),
-    ]
     summaries: dict[str, dict[str, Any]] = {}
     todos: list[dict[str, Any]] = []
     unfiltered_count = 0
@@ -341,8 +333,6 @@ def todo_summaries_from_fields(
             status=status,
             todo_id=todo_id,
             agent_id=agent_id,
-            resume_source_items=resume_source_items,
-            rollout_events=rollout_events,
             item_limit=limit,
         )
         if limit is not None:

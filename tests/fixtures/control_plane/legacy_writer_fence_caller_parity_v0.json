@@ -1321,18 +1321,16 @@
         "dry_run": false,
         "added": false,
         "already_exists": false,
+        "changed": false,
         "goal_id": "observable",
         "role": null,
         "todo": "",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        }
+        "status": "failed",
+        "reason_code": "handoff_mode_requires_lease",
+        "error_code": "handoff_mode_requires_lease",
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1340,8 +1338,9 @@
         "changed": []
       },
       "outbox_added": [],
+      "match": "subset",
       "baseline": {
-        "note": "same typed rejection as the other Markdown Todo writers; not recorded on earlier revisions"
+        "note": "promoted planning updates now follow the canonical provider path, matching complete and supersede; the legacy writer fence remains authoritative only for callers that still write Markdown"
       }
     },
     {

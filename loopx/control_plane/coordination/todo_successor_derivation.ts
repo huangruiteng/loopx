@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import {AGENT_TODO_TASK_CLASSES as AGENT_TASK_CLASSES, USER_TODO_TASK_CLASSES as USER_TASK_CLASSES} from "../todos/authoring_scope.ts";
 import {
   AuthorityStoreProtocolError,
   canonicalAuthorityObject,
@@ -18,12 +19,6 @@ export const TODO_SUCCESSOR_DERIVATION_RESULT_SCHEMA =
 
 const TERMINAL_COMMANDS = ["complete", "supersede"] as const;
 const TODO_ROLES = ["agent", "user"] as const;
-const AGENT_TASK_CLASSES = new Set([
-  "advancement_task",
-  "continuous_monitor",
-  "blocker",
-]);
-const USER_TASK_CLASSES = new Set(["user_action", "user_gate"]);
 const CONTINUATION_POLICIES = new Set([
   "independent_handoff",
   "same_agent_non_delivery",

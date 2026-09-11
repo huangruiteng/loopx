@@ -1899,6 +1899,33 @@ Per stage, this increment implements:
   follow-up capture, and a leased completion in one store identity while the
   registry root gains neither a candidate lineage nor lease state; and
   `migrate-state` seeds a fresh lineage without legacy bytes.
+- Stage 2C parity half: ten `s2c2.*` rows drive one explicitly enabled
+  `coordination.runtime_shadow` goal through the public CLI and assert only
+  through `authority-shadow status|drain`, `coordination-shadow
+  bootstrap|inspect|qualify|read-candidate|rollback` and `migrate-state`,
+  reading history through the retained TypeScript store. A Python Todo writer
+  and a TypeScript lease writer leave prepared records with committed markers
+  that one drain delivers once; bounded drains are cumulative, an idle drain
+  changes nothing and a writer replay mints no entry; a SIGKILL around the
+  primary replace settles as `abandoned` or `committed_proven_by_readback`,
+  and a SIGKILL inside the inline drain is recovered from exact receipts
+  without a second delivery; rollback archives pending entries, holds capture
+  as `bootstrap_required`, rebootstraps a fresh lineage and replays; three
+  cycles of interleaved writers (add, note update with a no-change repeat,
+  explicit exclusion set and clear with a no-change repeat, acquire, renew,
+  transfer, leased complete and supersede with their fence closes,
+  capture-followups) keep every bounded qualification matched with
+  `sustained_parity_verdict=not_evaluated`; a
+  direct primary edit reports `shadow_projection_drift`, a later write holds
+  on `source_partition_continuity_unproved`, and only rollback plus rebootstrap
+  recovers; an event-only Todo source holds `inspect`, `qualify` and
+  `read-candidate` with `event_log_writer_not_bound` while the primary keeps
+  committing; `migrate-state` refuses an active capture source with
+  `shadow_source_replacement_requires_rebootstrap` until rollback and disabled
+  capture, after which the migrated goal bootstraps a fresh lineage that
+  drains; and ten transactions measure file-v0 history growth with complete
+  projections retained, per-transaction growth accelerating by at most one
+  live record, and no capacity horizon claimed.
 
 Live rows are environment-gated (`LOOPX_TEST_POSTGRES_URL`;
 `NOKV_COORDINATION_LIVE=1` plus the `NOKV_*` stack variables;
@@ -1917,12 +1944,17 @@ relaxes.
 
 Delivery boundary: test-only. No production entry point constructs any store;
 the ladder adds no product path and reads the candidate only through the
-retained TypeScript store. The Stage 2C parity half
-(`s2c2.*`: outbox entries, idempotent drain, SIGKILL before and during drain,
-rollback with pending entries, parity equal and divergent,
-migration seed-and-drain, growth measurement) are declared as pending rows,
-not claimed. This subsection records executable evidence for the stages above;
-it does not promote any provider or complete the Stage 2C promotion.
+retained TypeScript store. The Stage 2C parity half executes through the ten
+`s2c2.*` rows above; two declarations stay pending.
+`s2c2.archive_after_leased_completion_parity` records a capture gap the parity
+row exposed: `todo archive-completed` on a Todo holding a released lease record
+keeps that lease in the candidate head while the source projection drops the
+orphaned lease, so bounded qualification reports `shadow_projection_drift`.
+`s2c2.sustained_parity_soak` is the >=10-day synthetic-goal soak owned by
+Section 7.2 and lane L, and bounded qualification keeps reporting
+`sustained_parity_verdict=not_evaluated`. This subsection records executable
+evidence for the stages above; it does not promote any provider or complete
+the Stage 2C promotion.
 
 ### 11.3 Remaining qualification and promotion plan
 
@@ -2546,6 +2578,34 @@ digests include that revision, without treating it as a Goal intent revision or
 an amendment commit receipt. This is a bounded T3 consumer closure; the default
 provider, permanent projection, D1–D3 qualification and T1/T2 holds are unchanged.
 
+Standing decisions derive from that complete canonical Todo snapshot before
+display indexes or active-only filtering. One TS rule is shared with archive
+retention; an archived revocation remains decision history, while ambiguous
+contradictory chronology cannot select approval by storage order. This is a
+T3 read correction, not a new durable permission ledger or commit receipt.
+Providers retain their existing CAS/replay boundaries; legacy source-order
+compatibility, permanent Markdown projection and D1–D3 gates remain. Validation
+must cover real CLI reads, archive/replay on real providers, and data beyond
+display limits, not just a sorted in-memory list.
+
+The full-source/list-filter boundary preserves evaluated resume facts. Bootstrap
+and writer-outbox capture share the typed archived-dependency selector, bringing
+referenced completion records into canonical state so readers can recompute those
+facts independently. New legacy archive moves preserve role; old agent-only class
+records allow bounded role reconstruction, never inferred user approval authority.
+Duplicate/contradictory identities are rejected, and historical nodes/leases do not
+re-enter active lanes. The three-arm rehearsal checks this closure against real
+providers; derived readiness is not evidence. General historical import and the
+remaining D3 qualification/explicit cutover approval are still separate work.
+
+Quota scope/claim selection and resume planning now share one typed read boundary.
+It consumes existing legacy/canonical summaries without a provider-specific rule
+fork. User gate scope is distinct from Agent execution ownership, including in
+active-next-action projections; see the TS RFC's T3 card for intentional changes
+and retired Python selectors. Real FileAuthorityStore CLI tests cover missing and
+stale display without writing it back. This is consumer-rule consolidation, not
+a transaction/store change, provider qualification or whole-Goal cutover.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.
@@ -2560,14 +2620,19 @@ for command inventory, update/monitor transactions and consumer deletion. Do not
 repeat that plan in a second implementation or treat a merged read-policy PR
 as storage readiness. Its T0 checkpoint is the entry condition for these cards.
 
-Lifecycle admission and the preauthorized terminal fence now share the TS
-owner across legacy writers and native terminal transactions; the replaced
-Python rules are removed without changing provider defaults or promotion.
-This is not full native field-edit support: retain the strict text/note
-transaction boundary until update's fields, ownership, validation and
-monitor/resume effects close together. Neither an admission result nor a
-lease-fence result is a commit receipt. Keep provider CAS/replay and existing
-writer lock lifetimes unchanged while collecting this deletion payoff.
+Lifecycle admission shares the TS owner across legacy writers and native
+transactions. Native text/note updates pass a bounded planning intent that
+composes the public TS update owner over the same canonical head before CAS;
+terminal transitions and planning updates reuse the preauthorized lease fence
+in-process. Resume clearing removes its generation fence atomically and retries
+retain intent identity. The replaced Python rules, synthetic Markdown editor,
+pre-transaction target read and callerless standalone effect-runtime wire are
+removed without changing provider defaults or promotion. This remains a bounded
+nonterminal planning transaction, not general native metadata support: active-
+lease status changes and Monitor planning/effects remain unsupported. Neither an
+admission result nor a lease-fence result is a commit receipt. Keep provider
+CAS/replay and existing writer lock lifetimes unchanged while collecting this
+deletion payoff.
 Waiting/resume lane selection is now one TS read-policy owner shared by quota,
 vision-wait, agent-scope and replan. The obsolete Python selector module is
 deleted; the adapter accepts the same canonical summary after promotion and
@@ -2577,10 +2642,17 @@ source paths, authorize monitor writeback, or change provider/promotion holds.
 
 **D1 — qualify permanent projection delivery; may overlap T1/T2.**
 
-The T2 monitor successor route owner is now shared across preflight, the legacy
-effect adapter and receipt checks. Its result proves only normalized intent,
-not actor authority, provider commit or atomic monitor-plus-successor durability.
-Keep the monitor writer fence and promotion hold until that transaction closes.
+T2 now commits a lease-free native Monitor observation and its independent
+successors in one canonical CAS/receipt; the route planner alone still grants
+no authority. The CLI delivers committed state through the existing journal/
+outbox renderer: display failure is pending, not rollback or successor recreation.
+Quota consumes the same v0 business receipt for its separate settlement.
+Validation covers the real CLI with missing display, operation replay after a
+renderer failure, and complex-data concurrency/lost-acknowledgement recovery on
+File, NoKV and isolated real PostgreSQL. Retained Monitor leases and cross-owner
+successor claims remain explicitly unsupported. This slice changes neither the
+provider default, writer fence nor promotion approval, and does not replace the
+independent legacy three-arm comparison or D2 soak.
 
 - Start from `loopx/control_plane/todos/provider_projection.py`, the existing
   Todo-section renderer and canonical journal/outbox. #4097 already recovers

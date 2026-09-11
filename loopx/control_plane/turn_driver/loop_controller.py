@@ -7,11 +7,11 @@ spends quota. `loopx turn run-once` remains the only delivery transaction;
 scheduler process management, host wake APIs, and operator presentation belong
 to later adapters (see the Turn Loop Controller plan in docs/development/contributor-tasks).
 
-The transition output space is exactly six dispositions:
-``run_now | wait | user_action_required | repair | replan | terminal``.
+The transition output space is exactly seven dispositions:
+``run_now | wait | stop | user_action_required | repair | replan | terminal``.
 
-Input validity is enforced at the typed-input boundary, not encoded as a
-seventh disposition. ``decide_loop_disposition`` raises ``ValueError`` when a
+Input validity is enforced at the typed-input boundary, not encoded as an
+eighth disposition. ``decide_loop_disposition`` raises ``ValueError`` when a
 receipt, envelope, or budget cannot be proven against the shared Turn
 contracts, so the caller is responsible for feeding only validated, fresh
 inputs.
@@ -57,6 +57,7 @@ _MATERIAL_RECEIPT_ORDER = (
 class LoopDisposition(str, Enum):
     RUN_NOW = "run_now"
     WAIT = "wait"
+    STOP = "stop"
     USER_ACTION_REQUIRED = "user_action_required"
     REPAIR = "repair"
     REPLAN = "replan"
@@ -639,6 +640,21 @@ def decide_loop_disposition(
             LoopDisposition.WAIT,
             reason="turn receipt is a typed no-spend wait",
             lineage=effective_lineage,
+        )
+
+    if result_kind is LoopXTurnResultKind.ITERATION_FAILED:
+        return _disposition(
+            LoopDisposition.STOP,
+            reason=(
+                "the iteration reported failure and no typed continuation was "
+                "requested; stop this iteration without retry or successor"
+            ),
+            lineage=effective_lineage,
+            extra={
+                "stop_scope": "iteration",
+                "goal_terminal": False,
+                "continuation_required": False,
+            },
         )
 
     if result_kind is LoopXTurnResultKind.HOST_FAILURE and turn_receipt.host_failure:

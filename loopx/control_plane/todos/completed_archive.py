@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .contract import parse_todo_metadata_line
+
 from ..effect_runtime import effect_runtime_result
 from .active_state_editing import (
     COMPLETED_WORK_ARCHIVE_HEADING,
@@ -134,7 +136,20 @@ def archive_completed_todo_lines(
             raise RuntimeError("typed Todo archive selector returned inconsistent counts")
         move_starts = {int(block["start"]) for block in blocks_to_move}
         for block in blocks_to_move:
-            moved_blocks.append(updated_lines[int(block["start"]) : int(block["end"])])
+            moved_lines = updated_lines[int(block["start"]) : int(block["end"])]
+            # Preserve the section identity before moving into the mixed archive.
+            # Append a narrow metadata line; do not reserialize/drop unknown
+            # fields in the original receipt while performing a storage move.
+            roles = [metadata["role"] for line in moved_lines
+                if (metadata := parse_todo_metadata_line(line)) and "role" in metadata]
+            if any(value != role for value in roles):
+                raise ValueError("Todo archive source role contradicts its active section")
+            if not roles:
+                insert_at = len(moved_lines)
+                while insert_at > 1 and not moved_lines[insert_at - 1].strip():
+                    insert_at -= 1
+                moved_lines.insert(insert_at, f"  <!-- loopx:todo role={role} -->")
+            moved_blocks.append(moved_lines)
         if move_starts:
             new_lines: list[str] = []
             index = 0

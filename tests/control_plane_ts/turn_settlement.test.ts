@@ -75,6 +75,15 @@ test("Turn settlement rejects an unknown result_kind at the typed boundary", () 
   );
 });
 
+test("iteration failure cannot enter durable settlement", () => {
+  assert.throws(
+    () => reduceTurnSettlementTransaction(
+      request({ turn_result_kind: "iteration_failed" }),
+    ),
+    /cannot run for iteration stop result_kind iteration_failed/,
+  );
+});
+
 test("non-terminal completion requires a durable continuing Todo outcome", () => {
   const reduced = reduceTurnSettlementTransaction(
     request({ turn_result_kind: "validated_completion" }),

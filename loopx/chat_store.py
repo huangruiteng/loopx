@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from datetime import datetime, timedelta, timezone
 import json
 import os
@@ -1347,14 +1348,19 @@ class ChatSessionStore:
         with self._event_lock:
             cached = self._event_cache.get(key)
             rows = (
-                list(cached)
+                cached
                 if cached is not None and self._event_cache_revision.get(key) == revision
                 else None
             )
         if rows is None:
             with exclusive_file_lock(path, agent_id="loopx-chat", operation="read_chat_events"):
-                rows = list(self._event_rows_locked(session_id, turn_id))
-        return [row for row in rows if int(row.get("sequence") or 0) > after]
+                rows = self._event_rows_locked(session_id, turn_id)
+        start = bisect_right(
+            rows,
+            after,
+            key=lambda row: int(row.get("sequence") or 0),
+        )
+        return rows[start:]
 
     def compact_completed_events(self, *, older_than_hours: float = 24.0) -> int:
         """Drop replay-only deltas after the durable final message is old enough."""

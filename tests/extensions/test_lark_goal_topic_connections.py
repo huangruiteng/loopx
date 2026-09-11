@@ -2861,3 +2861,23 @@ def test_manager_read_scope_follows_live_authorized_connection(tmp_path, mutatio
     assert authorized_manager_goal_ids(snapshot, session) == (
         ["goal-alpha"] if mutation == "none" else []
     )
+
+
+def test_manager_explicit_audience_scope_still_requires_live_binding(tmp_path):
+    import json
+    from loopx.extensions.lark.manager_routing import authorized_manager_goal_ids
+    from loopx.capabilities.manager_context import POLICY_SCHEMA
+    kwargs, _state, bindings = _manager_fixture(tmp_path)
+    targets = read_goal_channel_targets(kwargs["target_path"])
+    route = decide_lark_topic_event(target_payload=targets,
+        binding_payloads={"goal-alpha": bindings},
+        event={"chat_id":CHAT_ID,"message_id":"om_scope_multi","mentions":[{"id":APP_ID}]})["route"]
+    session = {"session_id":"manager-session","agent_id":"codex","channel_id":route["manager_channel_id"]}
+    snapshot = {"target_payload":targets,"binding_payloads":{"goal-alpha":bindings}}
+    path=tmp_path/'.local'/'manager-context'/'policy.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"schema_version":POLICY_SCHEMA,"sources":{
+        session['channel_id']:{'evidence_goal_ids':['goal-alpha','goal-beta']}}}))
+    assert authorized_manager_goal_ids(snapshot,session,runtime_root=tmp_path)==['goal-alpha','goal-beta']
+    session['session_id']='different-session'
+    assert authorized_manager_goal_ids(snapshot,session,runtime_root=tmp_path)==[]

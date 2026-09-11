@@ -6,10 +6,12 @@ import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 from .chat_manager import manager_model_config
 from .chat_manager_details import read_manager_goal_details
+from .chat_manager_history import read_manager_delivery_history
 from .goal_portfolio import build_goal_portfolio
 from .chat import redact_local_paths
 
@@ -65,6 +67,7 @@ def manager_turn_context(
         pass
     rows = []
     for row in portfolio.get("goals", []):
+        history = read_manager_delivery_history(runtime_root, row["goal_id"])
         rows.append(
             {
                 "goal_id": row["goal_id"],
@@ -87,8 +90,10 @@ def manager_turn_context(
                     for a in row.get("agents", [])
                 ],
                 "deliveries": row.get("deliveries", []),
+                "recent_delivery_history": history,
                 "current_todos": read_manager_goal_details(
                     registry_path, runtime_root, row["goal_id"], owner_scope=owner_scope,
+                    completed_todo_ids={r["todo_id"] for r in history["deliveries"]},
                 ),
             }
         )
@@ -104,6 +109,11 @@ def manager_turn_context(
         "warnings": portfolio.get("warnings", []),
         "limitations": portfolio.get("limitations", []),
     }
+    result["portfolio_snapshot_id"] = result["snapshot_id"]
+    result["collection_completed_at"] = datetime.now(timezone.utc).isoformat()
+    result["snapshot_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(result, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
     if not owner_scope:
         result["authorization_scope_id"] = manager_authorization_scope_id(scope or [])
     return result

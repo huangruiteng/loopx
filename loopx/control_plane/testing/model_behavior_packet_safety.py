@@ -43,11 +43,18 @@ def _decode_facts(chunks: list[str]) -> dict[str, Any]:
         if sum(map(len, chunks)) > _MAX_ENCODED_CHARS:
             raise ValueError("encoded boundary")
         encoded = "".join(chunks)
-        if not encoded or not re.fullmatch(r"[A-Za-z0-9_-]+", encoded):
+        if not encoded or not re.fullmatch(r"[A-Za-z0-9_+/-]+", encoded):
             raise ValueError("encoded alphabet")
         compressed = base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True)
-        if base64.urlsafe_b64encode(compressed).decode().rstrip("=") != encoded:
-            raise ValueError("non-canonical base64url")
+        # The shipped scheduler emits standard Base64 to avoid secret-shaped
+        # URL-safe chunks. Native CLI also accepts the older URL-safe form.
+        # Validate either canonical alphabet, not mixed alphabets or pad bits;
+        # the decoded envelope still receives the full confidentiality scan.
+        if encoded not in {
+            base64.b64encode(compressed).decode().rstrip("="),
+            base64.urlsafe_b64encode(compressed).decode().rstrip("="),
+        }:
+            raise ValueError("non-canonical base64")
         inflater = zlib.decompressobj()
         raw = inflater.decompress(compressed, _MAX_INFLATED_BYTES + 1)
         if len(raw) > _MAX_INFLATED_BYTES or not inflater.eof or inflater.unused_data or inflater.unconsumed_tail:

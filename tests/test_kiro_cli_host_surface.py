@@ -574,8 +574,10 @@ def test_dashboard_lists_kiro_cli_as_a_builtin_chat_agent(tmp_path: Path) -> Non
     """`loopx dashboard` renders its Agent picker from the running process's
     capability rows, so a host is only reachable there if it appears as a row
     with an adapter the runtime can actually start. Kiro CLI ships an ACP agent,
-    so the row must be built-in, ACP-shaped, and read-only — and its id must be
-    reserved, or an owner-local endpoint could shadow the built-in adapter."""
+    so the row must be built-in and ACP-shaped — and its id must be reserved,
+    or an owner-local endpoint could shadow the built-in adapter. Kiro owns
+    persistent permission rules, so LoopX must not falsely advertise a
+    read-only sandbox that it cannot enforce."""
     controller = ChatRuntimeController(
         store=ChatSessionStore(tmp_path / "runtime"),
         codex_bin="loopx-missing-codex-for-test",
@@ -589,13 +591,14 @@ def test_dashboard_lists_kiro_cli_as_a_builtin_chat_agent(tmp_path: Path) -> Non
         assert row["source"] == "builtin"
         assert row["adapter_kind"] == "acp"
         assert row["display_name"] == "Kiro CLI"
-        assert row["trust_scope"] == "read_only"
+        assert row["trust_scope"] == "workspace_write"
         assert row["available"] is True
     finally:
         controller.close()
 
     # The launch argv must not auto-approve tools: LoopX Chat cancels every ACP
-    # permission request, and a trust flag here would bypass that decision.
+    # permission request. Pre-existing Kiro allow rules remain host-owned, which
+    # is why the capability row conservatively declares workspace_write.
     command = kiro_cli_chat_command("kiro-cli")
     assert command == ("kiro-cli", "acp")
     assert not any("trust" in argument for argument in command)

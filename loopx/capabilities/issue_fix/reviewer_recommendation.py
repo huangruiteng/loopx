@@ -69,7 +69,7 @@ def _run_git(repo_path: Path, args: Sequence[str]) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=repo_path,
-        text=True,
+        text=True, encoding="utf-8", errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=20,

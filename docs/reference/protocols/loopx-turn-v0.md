@@ -409,6 +409,7 @@ Every attempted tick returns one result kind:
 | `replan_required` | The current route is exhausted or incompatible while the goal acceptance gap remains. | Write a bounded todo delta or vision replan trigger. |
 | `user_action_required` | A concrete user decision, payload, or credential action is projected. | Notify with the projected action in the configured operator language; no host run and no spend. |
 | `wait` | Quota, monitor, scheduler, or another typed wait contract applies. | Preserve state, apply cadence if needed, no spend. |
+| `iteration_failed` | This bounded iteration did not satisfy its task-facing outcome, and no continuation was requested. | Stop this iteration without retry, successor, writeback, or spend; a later iteration requires a new decision. |
 | `host_failure` | The host could not start, resume, or finish a turn. | Record the failure class and retry or repair policy. |
 | `validation_failed` | Host output exists but task validation failed or is inconclusive. | Preserve failure evidence and route to repair/replan. |
 | `writeback_failed` | Validated work could not be durably recorded. | Do not spend; retry idempotent writeback before more delivery. |
@@ -498,6 +499,24 @@ Session recovery is fail-closed:
 Session eligibility is recovery metadata, not evidence that work happened. It
 never bypasses a fresh Turn decision, task lease, independent validation, or
 writeback ordering.
+
+## Cross-Iteration Context Policy
+
+Each `turn plan` or `turn run-once` invocation declares an iteration context
+policy independently from the Todo and Goal lifecycle:
+
+- `resume-if-available` preserves the existing behavior and resumes a compatible
+  opaque Host Session for the same Goal, Agent, and Todo;
+- `fresh` ignores a compatible saved session for this invocation and starts a
+  clean Host Session. Selecting `fresh` does not itself delete the prior binding;
+  after a successful host start, the newly observed session becomes the eligible
+  binding for later iterations. It does not imply a new Todo, successor, retry,
+  or Goal.
+
+Use a new `turn_instance_id` for each new iteration. Reuse the same id only for
+an explicit replay or failed-Turn recovery. The context policy controls Host
+memory, while the TurnEnvelope and durable LoopX frontier remain the sole
+authority for work selection and continuation.
 
 ## Adapter Requirements
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from pathlib import Path
 
 from ...chat_manager import manager_channel
 from ..external_connector_runtime import project_external_connector_status
@@ -128,7 +129,7 @@ def _valid_manager_binding(goal_id, binding, routing) -> bool:
 
 
 def authorized_manager_goal_ids(
-    snapshot: Mapping[str, Any], session: Mapping[str, Any]
+    snapshot: Mapping[str, Any], session: Mapping[str, Any], *, runtime_root: Path | None = None
 ) -> list[str]:
     """Resolve current external read authority; a session's old Goal is not a grant."""
     candidates = []
@@ -168,4 +169,9 @@ def authorized_manager_goal_ids(
         or not _valid_manager_binding(goal_id, binding, routing)
     ):
         return []
+    if runtime_root is not None:
+        from ...capabilities.manager_context import evidence_goal_scope
+        grant = evidence_goal_scope(runtime_root, str(session.get("channel_id") or ""))
+        if grant is not None:
+            return grant
     return [goal_id]

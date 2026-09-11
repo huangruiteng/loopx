@@ -1512,6 +1512,27 @@ CLI runner、observation-lock 窗口、候选回读）、只读 TypeScript 探�
   不同时，todo add、task-lease acquire、todo update、follow-up 捕获与带 lease 的
   complete 仍落入同一个 store identity，registry root 既不产生候选 lineage 也不
   产生 lease 状态；`migrate-state` 在不携带 legacy 字节的前提下建立新 lineage。
+- Stage 2C parity 后半段：十个 `s2c2.*` 行只通过公开 CLI 驱动一个显式开启
+  `coordination.runtime_shadow` 的 goal，并且只经 `authority-shadow status|drain`、
+  `coordination-shadow bootstrap|inspect|qualify|read-candidate|rollback` 与
+  `migrate-state` 断言，历史只经保留的 TypeScript store 读回。Python Todo writer
+  与 TypeScript lease writer 各留下 prepared 记录与 committed 标记，一次 drain 恰好
+  投递一次；有界 drain 可累积、空转 drain 不改变任何东西、writer 重放不铸造条目；
+  主写 replace 前后的 SIGKILL 结算为 `abandoned` 或 `committed_proven_by_readback`，
+  inline drain 内的 SIGKILL 由精确 receipt 恢复且不会二次投递；rollback 归档 pending
+  条目、把 capture 置于 `bootstrap_required`、重新 bootstrap 出新 lineage 并可重放；
+  三轮交错 writer（add、note update 及其无变化重复、显式 exclusion 设置与清除及其
+  无变化重复、acquire、renew、transfer、带 lease 的 complete 与 supersede 及其
+  fence close、capture-followups）让每次有界 qualification 都保持 matched，且
+  `sustained_parity_verdict=not_evaluated`；
+  直接改主文件会报告 `shadow_projection_drift`，其后的写入以
+  `source_partition_continuity_unproved` 挂起，只有 rollback 加重新 bootstrap 才能恢复；
+  event-only Todo 来源让 `inspect`、`qualify`、`read-candidate` 以
+  `event_log_writer_not_bound` 失败关闭而主写继续提交；`migrate-state` 对处于
+  active capture 的来源以 `shadow_source_replacement_requires_rebootstrap` 拒绝，
+  直到 rollback 并关闭 capture 之后才执行，迁移后的 goal 重新 bootstrap 出新 lineage
+  并完成 drain；十笔事务度量 file-v0 历史增长：完整投影全部保留、每笔增量最多增加
+  一条 live 记录，不宣称任何容量水平线。
 
 Live 行按环境门控（`LOOPX_TEST_POSTGRES_URL`；`NOKV_COORDINATION_LIVE=1` 加
 `NOKV_*` 栈变量；`LOOPX_NOKV_AUTHORITY_LIVE=1` 加 `LOOPX_NOKV_AUTHORITY_*` 输入）。
@@ -1524,11 +1545,14 @@ Live 行按环境门控（`LOOPX_TEST_POSTGRES_URL`；`NOKV_COORDINATION_LIVE=1`
 `summary.privacy_violations` 阻止 green 退出，任何开关都不能放宽。
 
 交付边界：test-only。没有任何生产入口构造任何 store；ladder 不新增产品路径，
-只经保留的 TypeScript store 读取候选。Stage 2C parity 后半段
-（`s2c2.*`：outbox 条目、幂等 drain、drain 前与 drain 中的 SIGKILL、带 pending
-条目的 rollback、parity 相等与分歧、迁移 seed-and-drain、增长
-度量）以 pending 行声明，而非宣称已完成。本小节记录的是上述阶段的可执行证据；
-它不晋升任何 provider，也不完成 Stage 2C promotion。
+只经保留的 TypeScript store 读取候选。Stage 2C parity 后半段由上述十个
+`s2c2.*` 行执行；仍有两条声明保持 pending。`s2c2.archive_after_leased_completion_parity`
+记录 parity 行暴露的一个 capture 缺口：对持有已释放 lease 记录的 Todo 执行
+`todo archive-completed` 后，候选 head 仍保留该 lease，而 source 投影会丢弃这条
+已成孤儿的 lease，于是有界 qualification 报告 `shadow_projection_drift`。
+`s2c2.sustained_parity_soak` 是由 7.2 节与车道 L 负责的 >=10 天合成 goal soak，
+有界 qualification 继续报告 `sustained_parity_verdict=not_evaluated`。本小节记录
+的是上述阶段的可执行证据；它不晋升任何 provider，也不完成 Stage 2C promotion。
 
 ### 11.3 剩余验证与晋升计划
 
@@ -2019,6 +2043,27 @@ Proposal source digest 包含该 revision，但不将它冒充 Goal intent revis
 amendment commit receipt。这是有边界的 T3 consumer 闭合；默认 provider、永久投影、
 D1–D3 资格化和 T1/T2 条件保持不变。
 
+Standing decision 同样从完整 canonical Todo 快照派生，先于展示 index 和仅活动项
+过滤；归档保留规则与读取共用一个 TS owner。已归档的撤销仍是决策历史，矛盾且无法
+定序的历史不能靠存储顺序选出批准。这是 T3 读取修正，不是新的持久化权限账本或
+commit receipt。各 provider 的 CAS/replay 边界、legacy 源顺序兼容、永久 Markdown
+投影与 D1–D3 条件不变。验证须覆盖真实 CLI、真实 provider 的 archive/replay 和
+超出展示条数的数据，不能只测内存中的排序数组。
+
+完整来源与列表过滤的边界现保留已求值的 resume 事实。Bootstrap 与 writer outbox
+共用 typed 归档依赖 selector，把被引用的实际完成记录纳入 canonical，使 reader 能
+独立重算。新 legacy 归档保留 role；旧 agent-only class 记录可有界还原 agent 身份，
+绝不推测用户批准权限。重复／矛盾 identity 明确拒绝，历史节点／lease 不重新进入
+活动 lane。三臂演练用真实 provider 检查此闭合；派生 readiness 不充当证据。通用历史
+导入、剩余 D3 资格化与显式 cutover 批准仍是后续工作。
+
+Quota scope/claim 选择与 resume planning 现共用一个 TS 只读边界，消费既有
+legacy/canonical summary，不分叉 provider 专用规则。User gate 作用域与 Agent
+执行归属分开解释，active-next-action 也遵守此区分；有意语义变化与删除的 Python
+selector 见 TS RFC 的 T3 卡。真实 FileAuthorityStore CLI 测试覆盖展示缺失／陈旧且
+不写回。这是 consumer 规则收拢，不是 transaction/store 改造、provider 资格化或
+整 Goal cutover。
+
 以下规划保留原有方向；执行卡是它们的展开，不是替代或取消：
 
 1. **闭合 TS 事务与 consumer。** 按 [T0–T3](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡) 收口规则并删除重复决策。
@@ -2033,11 +2078,15 @@ D1–D3 资格化和 T1/T2 条件保持不变。
 推进，不在这里复制第二套实现路线，也不把 read-policy PR 合并视为存储就绪。
 进入本节前先完成 T0 基线核对。
 
-Lifecycle 准入及预授权 terminal fence 现由 legacy writer 与 native terminal
-transaction 共用 TS owner；删除对应 Python 规则，不改变 provider 默认或 promotion。
-这不是完整 native 字段编辑：在 update 的字段、ownership、validation 和 monitor/resume
-effect 一起闭合前，保留严格 text/note 事务边界。准入结果和 lease-fence 结果都不是
-commit receipt；兑现删除收益时，provider CAS/replay 与既有 writer 持锁生命周期不变。
+Lifecycle 准入由 legacy writer 与 native transaction 共用 TS owner。Native
+text/note 更新通过有界 planning intent，在同一 canonical head 上组合公共 TS update
+owner 后再进行 CAS；terminal transition 与 planning update 在进程内复用预授权 lease
+fence。清除 resume 时原子删除 generation fence，重试保持 intent identity。删除对应
+Python 规则、合成 Markdown editor、事务前目标读取和无调用方的独立 effect-runtime
+wire，不改变 provider 默认或 promotion。这仍是有界的非 terminal planning transaction，
+不是通用 native metadata 支持；Active lease 下的状态变化及 Monitor 规划/effect 仍不
+支持。准入结果和 lease-fence 结果都不是 commit receipt；兑现删除收益时，provider
+CAS/replay 与既有 writer 持锁生命周期不变。
 等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
 策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
 summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promoted display
@@ -2046,10 +2095,13 @@ summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promote
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
-T2 monitor successor 的路由 owner 已由 preflight、legacy effect adapter 和回执校验
-共享。其结果仅证明规范化 intent，不证明 actor authority、provider commit 或
-monitor-plus-successor 原子持久化；事务闭合前继续保留 monitor writer fence 与
-promotion hold。
+T2 的无 lease 原生 Monitor 观察与独立后继现由同一 canonical CAS／receipt 提交；
+route planner 本身仍不授予权限。CLI 将已提交回执交给既有 journal/outbox renderer，
+展示失败标为 pending，不回滚提交、不重新生成后继；quota 继续消费同一 v0 业务回执
+完成独立记账。验证覆盖真实 CLI 的缺失 display、renderer 失败后的 operation 重放，
+及 File／NoKV／真实隔离 PostgreSQL 的复杂数据、并发和丢回执恢复。
+带 lease Monitor、跨 owner claim 等未闭合能力仍明确拒绝；此切片不改变 provider
+默认、writer fence 或 promotion 审批，也不替代三臂 legacy 对照及 D2 soak。
 
 - 从 `loopx/control_plane/todos/provider_projection.py`、既有 Todo-section renderer、
   canonical journal/outbox 入手。复用 #4097 已有的缺失 Todo section 恢复及

@@ -12,6 +12,7 @@ import {
 } from '../src/index.ts'
 import {
   createGoalBarConnectionHandler,
+  registerGoalBarConnectionTransport,
   registerGoalBarConnectionRpc,
 } from '../src/goalbar/connection-rpc.ts'
 import type {
@@ -71,6 +72,38 @@ function connectionCapture(): {
   return { connection, calls, disposed: () => disposeCalls }
 }
 
+function sharedApiConnectionCapture(): {
+  readonly connection: HostConnectionHandle
+  readonly routes: Array<{
+    readonly path: string
+    readonly methods: readonly string[]
+    readonly requestBody: string
+    readonly fetch: (request: Request) => Promise<Response>
+  }>
+  readonly disposed: () => number
+} {
+  const routes: Array<{
+    readonly path: string
+    readonly methods: readonly string[]
+    readonly requestBody: string
+    readonly fetch: (request: Request) => Promise<Response>
+  }> = []
+  let disposeCalls = 0
+  const connection = {
+    rpc: {
+      handle() { throw new Error('DSH 0.1.5 must use shared API Fetch routes') },
+      intercept() { throw new Error('not used') },
+    },
+    fetch: {
+      register(route: typeof routes[number]) {
+        routes.push(route)
+        return async () => { disposeCalls += 1 }
+      },
+    },
+  } as unknown as HostConnectionHandle
+  return { connection, routes, disposed: () => disposeCalls }
+}
+
 describe('GoalBar Connection carrier', () => {
   it('registers the real handler at loopback-only /loopx and returns its disposer', async () => {
     const capture = connectionCapture()
@@ -91,6 +124,46 @@ describe('GoalBar Connection carrier', () => {
       new AbortController().signal,
     )
     expect(result).toEqual({ ok: true, value: readResponse() })
+
+    await dispose()
+    expect(capture.disposed()).toBe(1)
+  })
+
+  it('uses DSH 0.1.5 authenticated shared-API routes without caller WebServer access', async () => {
+    const capture = sharedApiConnectionCapture()
+    const service: GoalBarServiceHandle = {
+      handle: async () => readResponse(),
+      dispose: async () => {},
+    }
+    const dispose = registerGoalBarConnectionTransport(capture.connection, service)
+
+    expect(capture.routes.map(route => route.path)).toEqual([
+      '/api/loopx.goalbar',
+    ])
+    const readRoute = capture.routes[0]
+    expect(readRoute).toMatchObject({
+      methods: ['POST'],
+      requestBody: 'buffered',
+    })
+    const response = await readRoute?.fetch(new Request(
+      'http://dsh.internal/api/loopx.goalbar',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          type: 'client-request',
+          rpcId: 'rpc-shared-api',
+          method: 'loopx.goalbar',
+          payload: readRequest(),
+        }),
+      },
+    ))
+    expect(response?.status).toBe(200)
+    expect(await response?.json()).toEqual({
+      type: 'server-response',
+      rpcId: 'rpc-shared-api',
+      result: { ok: true, value: readResponse() },
+    })
 
     await dispose()
     expect(capture.disposed()).toBe(1)
@@ -210,6 +283,10 @@ describe('GoalBar Connection carrier', () => {
 })
 
 describe('package-root GoalBar Host', () => {
+  it('keeps the package-root dependency set stable across DSH carriers', () => {
+    expect(inject).toEqual(['agents', 'connection', 'loopxBootstrap'])
+  })
+
   it('constructs one real service, registers authority, cancels watch, and disposes', async () => {
     const capture = connectionCapture()
     const session = {
@@ -235,7 +312,6 @@ describe('package-root GoalBar Host', () => {
     } as unknown as Context
 
     expect(name).toBe('dsh-loopx-plugin')
-    expect(inject).toEqual(['agents', 'connection', 'loopxBootstrap'])
     apply(ctx)
     expect(capture.calls[0]).toMatchObject({
       channel: '/loopx', authority: 'loopback',

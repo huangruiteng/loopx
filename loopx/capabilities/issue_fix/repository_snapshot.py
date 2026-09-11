@@ -45,7 +45,7 @@ def _run_gh_json(arguments: list[str], *, timeout_seconds: int, operation: str) 
         completed = subprocess.run(
             ["gh", *arguments],
             check=False,
-            text=True,
+            text=True, encoding="utf-8", errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=timeout_seconds,

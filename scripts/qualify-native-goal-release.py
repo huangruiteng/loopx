@@ -22,36 +22,42 @@ AGENT = "worker-a"
 TODOS = {"todo_reducer", "todo_cli"}
 
 
-def isolated_environment(root: Path, launcher: Path) -> dict[str, str]:
-    """Only execution essentials cross into a release model's process tree."""
-    env = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR")
-           if key in os.environ}
-    for key, directory in {
-        "HOME": "home", "USERPROFILE": "home", "XDG_CONFIG_HOME": "config",
-        "XDG_CACHE_HOME": "cache", "XDG_DATA_HOME": "data", "TMPDIR": "tmp",
-        "TMP": "tmp", "TEMP": "tmp",
-        "CODEX_HOME": "codex", "CLAUDE_CONFIG_DIR": "claude-config",
-    }.items():
-        path = root / directory
-        path.mkdir(parents=True, exist_ok=True, mode=0o700)
-        env[key] = str(path)
-    env.update(PATH=str(launcher.parent) + os.pathsep + env.get("PATH", ""),
-               PYTHONPATH=str(REPO))
-    return env
-
-
 def host_environment(root: Path, launcher: Path) -> dict[str, str]:
-    env = isolated_environment(root, launcher)
-    # Copy only the selected Codex authentication, never user config, MCP
-    # servers, history or unrelated provider credentials.
-    if os.environ.get("OPENAI_API_KEY"):
-        env["OPENAI_API_KEY"] = os.environ["OPENAI_API_KEY"]
-    else:
-        source = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
-        if source.is_file():
-            target = Path(env["CODEX_HOME"]) / "auth.json"
-            target.write_bytes(source.read_bytes())
-            target.chmod(0o600)
+    """Explicit transport/tool environment; never clone the operator's environment."""
+    home, temporary = root / "home", root / "tmp"
+    home.mkdir(exist_ok=True)
+    temporary.mkdir(exist_ok=True)
+    return {
+        "PATH": str(launcher.parent) + os.pathsep + os.environ.get("PATH", os.defpath),
+        "HOME": str(home), "TMPDIR": str(temporary), "SHELL": "/bin/sh",
+        "LANG": "C.UTF-8", "PYTHONPATH": str(REPO),
+        "XDG_CONFIG_HOME": str(home / ".config"),
+        "XDG_CACHE_HOME": str(home / ".cache"),
+    }
+
+
+def configure_codex(root: Path, launcher: Path) -> dict[str, str]:
+    env = host_environment(root, launcher)
+    home = root / "codex"
+    home.mkdir()
+    # No auth/config/session files are imported from the operator's Codex home.
+    env["CODEX_HOME"] = str(home)
+    env["LOOPX_CODEX_QUALIFICATION_API_KEY"] = os.environ["LOOPX_CODEX_QUALIFICATION_API_KEY"]
+    settings = {
+        "model": os.environ["LOOPX_CODEX_QUALIFICATION_MODEL"],
+        "model_provider": "qualification",
+        "model_providers.qualification.name": "Release qualification",
+        "model_providers.qualification.base_url": os.environ["LOOPX_CODEX_QUALIFICATION_BASE_URL"],
+        "model_providers.qualification.env_key": "LOOPX_CODEX_QUALIFICATION_API_KEY",
+        "model_providers.qualification.wire_api": "responses",
+        "shell_environment_policy.inherit": "none",
+    }
+    # Tool shells receive only the non-secret runtime environment, not host auth.
+    settings.update({f"shell_environment_policy.set.{key}": value
+                     for key, value in host_environment(root, launcher).items()})
+    (home / "config.toml").write_text("\n".join(
+        f"{key} = {json.dumps(value)}" for key, value in settings.items()
+    ) + "\n")
     return env
 
 
@@ -59,17 +65,20 @@ def prerequisite_failure(codex: str) -> str | None:
     for executable in (codex, "git", "node"):
         if not shutil.which(executable):
             return "required_executable_unavailable"
-    for command, reason in (
-        ([codex, "login", "status"], "codex_auth_unavailable"),
-        ([codex, "features", "list"], "native_goals_unavailable"),
-    ):
-        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+    if not all(os.environ.get("LOOPX_CODEX_QUALIFICATION_" + name)
+               for name in ("API_KEY", "MODEL", "BASE_URL")):
+        return "isolated_codex_api_profile_unavailable"
+    with tempfile.TemporaryDirectory(prefix="loopx-codex-probe-") as raw:
+        root = Path(raw)
+        env = configure_codex(root, root / "bin/loopx")
+        result = subprocess.run([codex, "features", "list"], env=env,
+                                capture_output=True, text=True, timeout=30)
         if result.returncode:
-            return reason
-        if command[1] == "features" and not any(
+            return "native_goals_unavailable"
+        if not any(
             line.split()[:1] == ["goals"] for line in result.stdout.splitlines()
         ):
-            return reason
+            return "native_goals_unavailable"
     return None
 
 
@@ -194,12 +203,9 @@ def qualify(root: Path, codex: str, timeout: int) -> dict:
         sandbox_policy={"type": "workspaceWrite", "writableRoots": [str(root)],
                         "networkAccess": True},  # Local TS worker needs loopback.
     )
-    env = host_environment(root, launcher)
-    shell_env = {key: value for key, value in env.items() if key != "OPENAI_API_KEY"}
-    shell_settings = "{" + ", ".join(f"{key}={json.dumps(value)}" for key, value in shell_env.items()) + "}"
-    command = [codex, "--enable", "goals", "-c", 'shell_environment_policy.inherit="none"',
-               "-c", f"shell_environment_policy.set={shell_settings}",
-               "-c", "project_doc_max_bytes=0", "app-server", "--stdio"]
+    env = configure_codex(root, launcher)
+    command = [codex, "--enable", "goals", "-c", "project_doc_max_bytes=0",
+               "-c", "allow_login_shell=false", "app-server", "--stdio"]
     with tempfile.TemporaryFile(mode="w+") as stderr:
         with StdioNativeGoalTransport.spawn(command, cwd=str(project), env=env,
                                             stderr=stderr) as transport:

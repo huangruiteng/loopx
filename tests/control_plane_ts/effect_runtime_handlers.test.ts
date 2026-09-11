@@ -156,3 +156,14 @@ test("completion policy has no standalone runtime handler", async () => {
     /unsupported Effect runtime method/,
   );
 });
+
+test("preauthorized lease fence has no standalone runtime handler", async () => {
+  await assert.rejects(
+    dispatchEffectRuntimeMethod(
+      handlers,
+      "task_lease.terminal_fence.decide",
+      {},
+    ),
+    /unsupported Effect runtime method/,
+  );
+});

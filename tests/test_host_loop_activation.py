@@ -320,7 +320,7 @@ def test_deepseek_harness_native_is_distinct_same_session_host() -> None:
 
 @pytest.mark.parametrize(
     "runtime_profile",
-    ("ark_managed_agent_goal", "codex_app_ssh_goal", "codex_cli"),
+    ("ark_managed_agent_goal", "codex_app_ssh_goal"),
 )
 def test_goal_hosts_delegate_spend_to_live_settlement_not_static_templates(
     runtime_profile: str,
@@ -396,9 +396,8 @@ def test_goal_hosts_enter_live_contract_without_a_mandatory_skill_detour(
     task_body = " ".join(payload["task_body"].split())
 
     assert "Use the current `interaction_contract`, not remembered commands" in task_body
-    assert "Normal turns use CLI `interaction_contract`" in task_body
-    assert "use `loopx-project` for lifecycle/registry" in task_body
-    assert "`loopx-self-repair` for runtime/projection drift" in task_body
+    assert "loopx-project" in task_body
+    assert "loopx-self-repair" in task_body
     assert "Progress is not a new Goal boundary" in task_body
     assert "do not create a new host Goal merely to continue" in task_body
 

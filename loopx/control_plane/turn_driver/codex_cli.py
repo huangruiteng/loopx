@@ -35,6 +35,7 @@ CODEX_CLI_RESULT_KINDS = (
     "replan_required",
     "user_action_required",
     "wait",
+    "iteration_failed",
 )
 CODEX_CLI_SANDBOXES = ("read-only", "workspace-write")
 SESSION_ID_MAX_CHARS = 256
@@ -332,7 +333,7 @@ def _prompt(request: Mapping[str, Any]) -> str:
         "Return only the schema-constrained result. For validated_progress, repair_required, or replan_required, fill every material field with public-safe evidence.",
         "For those material results, set path_delta_mode=material_replan only when this Turn changes a prior assumption, route, scope, acceptance rule, or stops prior work; then provide a complete bounded agent vision packet with goal_path_delta_v0 in agent_vision_json and leave vision_unchanged_reason empty.",
         "For routine continuation, retry, successor creation, or no-change replanning, set path_delta_mode=unchanged, leave agent_vision_json empty, and provide vision_unchanged_reason.",
-        "For user_action_required or wait, leave material-only fields empty and explain the stop in summary.",
+        "For user_action_required, wait, or iteration_failed, leave material-only fields empty and explain the stop in summary. iteration_failed ends only this iteration and never requests a retry or successor.",
         'completed_phases must be exactly ["host_execute","typed_result"], and turn_key must match the request.',
         "Turn request:",
         request_json,
@@ -709,9 +710,15 @@ def run_codex_cli_host(
     if not resolved or not Path(resolved).exists():
         raise ValueError("Codex CLI executable is unavailable")
     lineage = _lineage(request)
-    binding = load_codex_cli_session(runtime_root, lineage=lineage)
     planned_session = _mapping(request.get("session"))
     planned_action = str(planned_session.get("action") or "")
+    context_policy = _mapping(planned_session.get("context_policy"))
+    fresh_iteration = context_policy.get("mode") == "fresh"
+    binding = (
+        None
+        if fresh_iteration
+        else load_codex_cli_session(runtime_root, lineage=lineage)
+    )
     if planned_action == "resume" and binding is None:
         raise RuntimeError("Codex CLI resume binding disappeared after planning")
     if planned_action == "start_new" and binding is not None:
