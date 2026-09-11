@@ -3,6 +3,7 @@ import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { requireJsonObject, requireBoolean, requireInteger, requireStringArray,
   optionalNonEmptyString } from "../runtime_decode.ts";
 import { projectTodoResumePlanning } from "./resume_planning.ts";
+import { gateAddressesAgent } from "./gate_scope.ts";
 
 interface Row {
   payload: JsonObject; display: JsonObject; claim: string | null;
@@ -37,7 +38,7 @@ const bucket = (row: Row, agent: string) => row.claim === agent ? 0 : row.claim 
 
 /** A gate addresses a lane; it is not a job whose claim grants execution. */
 function gateApplies(row: Row, agent: string | null): boolean {
-  return !agent || row.global || (row.blocks ? row.blocks === agent : !row.claim || row.claim === agent);
+  return !agent || gateAddressesAgent(row, agent);
 }
 function actionApplies(row: Row, agent: string | null): boolean {
   const bound = row.bound ?? row.claim;

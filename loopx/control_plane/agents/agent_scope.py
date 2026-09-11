@@ -11,7 +11,7 @@ from .agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
     build_agent_scope_frontier_payload,
 )
-from ..todos.decision_scope import todo_gate_relation, todo_gate_relation_blocks_agent
+from ..todos.decision_scope import todo_gate_relations, todo_gate_relation_blocks_agent
 from ..work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
     work_lane_contract_requires_current_agent_attempt,
@@ -225,14 +225,10 @@ def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
     return _action_scope_tokens_from_text(text)
 
 
-def _todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    return todo_gate_relation(gate, agent_item)
-
-
-def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any]) -> bool:
+def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any],
+                                 relation: dict[str, Any] | None) -> bool:
     if normalize_todo_global_gate(gate.get("global_gate")):
         return True
-    relation = _todo_gate_relation(gate, agent_item)
     if relation:
         return todo_gate_relation_blocks_agent(relation)
 
@@ -334,18 +330,20 @@ def _scoped_user_gate_fallback(
             if agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
         ]
     blocked_items: list[dict[str, Any]] = []
+    relations = todo_gate_relations(gates, executable_items)
     selected: dict[str, Any] | None = None
     blocking_gate: dict[str, Any] | None = None
-    for item in executable_items:
+    for item_index, item in enumerate(executable_items):
         matching_gate = next(
-            (gate for gate in gates if _user_gate_blocks_agent_item(gate, item)),
+            (gate for gate_index, gate in enumerate(gates)
+             if _user_gate_blocks_agent_item(gate, item, relations[gate_index][item_index])),
             None,
         )
         if matching_gate:
             blocking_gate = blocking_gate or matching_gate
             text = str(item.get("text") or "").strip()
             blocked_item = compact_todo_summary_item(item, text=text)
-            relation = _todo_gate_relation(matching_gate, item)
+            relation = relations[gates.index(matching_gate)][item_index]
             if relation:
                 blocked_item["todo_gate_relation"] = relation
             blocked_items.append(blocked_item)
@@ -366,7 +364,7 @@ def _scoped_user_gate_fallback(
     )
     if selected_is_deferred_replan:
         selected_item["fallback_kind"] = "deferred_successor_replan"
-    selected_relation = _todo_gate_relation(gate_to_surface, selected)
+    selected_relation = relations[gates.index(gate_to_surface)][executable_items.index(selected)]
     if selected_relation:
         selected_item["todo_gate_relation"] = selected_relation
     gate_text = str(gate_to_surface.get("text") or "").strip()
