@@ -9,6 +9,7 @@ from ...execution_profile import execution_profile_summary
 from ...long_task_cadence import long_task_cadence_hint_summary
 from ...orchestration import orchestration_policy_summary
 from ..markdown import as_dict, as_list, markdown_scalar
+from .goal_acceptance_markdown import append_goal_acceptance_markdown
 
 
 def goals_by_id(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -243,6 +244,7 @@ def append_run_history_markdown(lines: list[str], run_history: dict[str, Any]) -
             f"records={goal.get('raw_index_records')} "
             f"unique_runs={goal.get('unique_runs')}"
         )
+        append_goal_acceptance_markdown(lines, goal)
         quota = goal.get("quota") if isinstance(goal.get("quota"), dict) else {}
         if quota:
             lines.append(
