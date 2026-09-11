@@ -18,7 +18,14 @@ def register_manager_inbox(subparsers, add_format):
     add_format(parser)
     parser.add_argument(
         "manager_inbox_action",
-        choices=("read", "acknowledge", "link", "status", "configure-read-scope"),
+        choices=(
+            "read",
+            "acknowledge",
+            "link",
+            "report",
+            "status",
+            "configure-read-scope",
+        ),
     )
     parser.add_argument("--goal-id")
     parser.add_argument("--agent-id")
@@ -26,6 +33,10 @@ def register_manager_inbox(subparsers, add_format):
     parser.add_argument("--read-goal-id", action="append", default=[])
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--request-id")
+    parser.add_argument(
+        "--phase", choices=("decision", "conclusion"), default="conclusion"
+    )
+    parser.add_argument("--reply-text")
     parser.add_argument("--related-todo-id", action="append", default=[])
     parser.add_argument("--evidence-id", action="append", default=[])
     parser.add_argument("--offset", type=int, default=0)
@@ -58,7 +69,18 @@ def handle_manager_inbox(args, registry_path, runtime_root):
 
             record_read(runtime_root, result["items"])
             result["followthrough"] = (
-                "After deciding, use manager-inbox link with --related-todo-id and/or --evidence-id (sha256) to associate Core work; do not copy progress into the inbox."
+                "After reading and deciding, associate Core work with manager-inbox link. Then use manager-inbox report --phase conclusion --reply-text to return this request's concrete result, replan decision, or explicit blocker/defer reason to its original audience automatically. Use optional --phase decision only for meaningful interim news during longer work. Adoption/linking alone is not a completed exchange. Do not wait for the owner to ask again. Write audience-ready text, not private deliberation."
+            )
+        elif args.manager_inbox_action == "report":
+            from ..capabilities.manager_context.roundtrip import report
+
+            result = report(
+                runtime_root,
+                args.goal_id,
+                args.agent_id,
+                args.request_id or "",
+                args.phase,
+                args.reply_text or "",
             )
         elif args.manager_inbox_action == "link":
             from ..capabilities.manager_context.tracking import link

@@ -77,8 +77,8 @@ def test_original_context_delivery_is_idempotent_without_priority_or_todo_writes
     assert pending(root, "research", "worker")["items"][0]["message"] == turn["message"]
     assert not pending(root, "other", "peer")["items"]
     files = list((root / ".local").rglob("*.json"))
-    assert len(files) == 1
-    assert files[0].stat().st_mode & 0o777 == 0o600
+    assert len(files) == 2  # original intent and its exact return route
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in files)
     with pytest.raises(ValueError, match="identity conflict"):
         deliver(
             root,
@@ -143,7 +143,7 @@ def test_external_authority_requires_exact_sender_source_and_recipient(fixture):
     assert receipt["status"] == "delivered"
 
 
-def test_hook_requires_private_read_without_disclosing_message_then_receiver_decides(
+def test_hook_keeps_decided_requests_open_until_receiver_returns_conclusion(
     fixture,
 ):
     root, registry, session, turn, request = fixture
@@ -163,6 +163,17 @@ def test_hook_requires_private_read_without_disclosing_message_then_receiver_dec
         receipt["request_id"],
         "no_change",
         "Current experiment still has stronger evidence; retain its order.",
+    )
+    assert pending(root, "research", "worker")["items"][0]["receiver_decision_recorded"]
+    from loopx.capabilities.manager_context.roundtrip import report
+
+    report(
+        root,
+        "research",
+        "worker",
+        receipt["request_id"],
+        "conclusion",
+        "Current evidence supports retaining the existing experiment; no plan change.",
     )
     assert not pending(root, "research", "worker")["items"]
     assert not dispatch_turn_start_hooks(

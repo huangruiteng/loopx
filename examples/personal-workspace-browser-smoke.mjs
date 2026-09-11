@@ -1284,9 +1284,15 @@ async function main() {
     await waitForHttp(url);
     browser = await launchBrowser(chromium);
     const capabilityOffPage = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const startupErrors = [];
+    capabilityOffPage.on("pageerror", (error) => startupErrors.push(error.message));
     await installApi(capabilityOffPage, { goalSubagentConfigurationEnabled: false });
     await capabilityOffPage.goto(url, { waitUntil: "networkidle" });
-    await capabilityOffPage.getByTestId("personal-goal-home").waitFor({ state: "visible", timeout: 15_000 });
+    try {
+      await capabilityOffPage.getByTestId("personal-goal-home").waitFor({ state: "visible", timeout: 15_000 });
+    } catch (error) {
+      throw new Error(`${error.message}; errors=${startupErrors.join(" | ")}; body=${(await capabilityOffPage.locator("body").innerText()).slice(0, 1000)}`);
+    }
     await capabilityOffPage.locator(".personal-goal-link").first().click();
     await capabilityOffPage.getByRole("button", { name: "打开 Goal 详情或能力配置" }).click();
     await capabilityOffPage.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
@@ -1834,6 +1840,23 @@ async function main() {
     if (await page.locator(".personal-manager-conversation-tray").count()) throw new Error("Full manager Chat kept the compact home tray visible");
     if (await page.locator(".personal-channel-timeline .personal-message").count() < 4) throw new Error("Manager Chat did not show the complete conversation history");
     await page.screenshot({ path: resolve(outputDir, "manager-chat.png"), fullPage: false, animations: "disabled" });
+    const returnSessionId = api.turnRequests.at(-1).sessionId;
+    const turnsBeforeReturn = api.turnRequests.length;
+    const returnText = "处理结论：已核验新约束并关联现有计划，无需再次追问。";
+    page.__loopxRuntime.messages.get(returnSessionId).push({
+      message_id: "handoff.browser-fixture", turn_id: "original-delegation",
+      role: "agent", origin: "manager_followup", text: returnText,
+      created_at: "2026-08-13T01:00:03Z",
+    });
+    await page.getByText(returnText, { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    await page.screenshot({ path: resolve(outputDir, "manager-automatic-conclusion.png"), fullPage: false, animations: "disabled" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByText(returnText, { exact: true }).waitFor({ state: "visible" });
+    await page.screenshot({ path: resolve(outputDir, "manager-automatic-conclusion-mobile.png"), fullPage: false, animations: "disabled" });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 3500));
+    if (await page.getByText(returnText, { exact: true }).count() !== 1) throw new Error("Worker conclusion duplicated on the next transcript refresh");
+    if (api.turnRequests.length !== turnsBeforeReturn) throw new Error("Receiving a worker conclusion started another model turn");
+    await page.setViewportSize({ width: 1512, height: 982 });
     await page.getByRole("button", { name: "总览", exact: true }).click();
     await page.locator(".personal-home-board").waitFor({ state: "visible" });
     if (await page.locator(".personal-manager-conversation-tray").count()) {

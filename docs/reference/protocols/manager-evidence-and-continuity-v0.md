@@ -17,8 +17,27 @@ second version of "real progress" or turn its own chat summary into evidence.
 The built-in manager is a stable logical role, separate from a replaceable
 executor session. Frontend conversation and an addressed Lark message should
 receive a synchronous conversational response within their authorized scope.
-Long-running work is assigned to an exact worker and returns a task receipt;
-acceptance of work is never reported as completed work.
+Long-running work is assigned to an exact worker with a durable return route.
+The initial receipt does not end the exchange: the worker evaluates or executes
+within its current authority and returns an audience-ready decision/result to
+the original conversation automatically. Acknowledgement or adoption does not
+remove the request from the receiver's hook; a committed conclusion does. The
+Chat runtime then owns transport recovery, separately from work completion.
+
+The expected exchange is receipt → receiver assessment/work → conclusion.
+Meaningful intermediate feedback is optional and coalesced when a conclusion
+is already ready. Normal delegation requires neither a second confirmation nor
+a second status question. Failure, deferral and rejection are explicit results,
+not silent disappearance. A direction-setting request may conclude in a plan
+change; an execution request needs an execution result or explicit blocker.
+
+The builtin manager-context capability owns this round trip; its Lark provider
+reuses the existing Inbox reply/ACK path. Current Core Todos and deliveries own
+work truth. Private decision reasoning is not automatically sent to a group;
+the receiver supplies audience-ready reply text. The exact source grant and live
+binding are checked again before transport, and a failed/unverified send never
+means a successful user-visible return. See the capability README for the
+receiver `read/acknowledge/link/report` workflow and recovery behavior.
 
 Live activity labels follow the executor's typed event. Receiving a message,
 reasoning, producing an answer, and invoking a tool are different activities.
@@ -56,7 +75,7 @@ in a `manager.context` event, and supplies it to the executor. Chat prose is
 never the inventory. Normal manager questions no longer silently use a limited
 frontend projection; explicitly choosing status-only still uses that projection.
 
-For Codex, manager defaults are `gpt-6-astra` with `medium` reasoning. Set
+For Codex, manager defaults are `gpt-6-astra` with `high` reasoning. Set
 `LOOPX_MANAGER_MODEL` and `LOOPX_MANAGER_REASONING_EFFORT` on the Chat service to
 override them. Thread start, resume and turn start explicitly carry the settings;
 worker configuration is unchanged. Capabilities expose the manager defaults.

@@ -522,6 +522,7 @@ export type ChatSessionSummary = {
 };
 
 export type ChatVisibleMessage = {
+  origin?: string;
   attachments?: ChatImageAttachment[];
   message_id: string;
   turn_id: string | null;

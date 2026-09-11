@@ -428,6 +428,8 @@ class ChatHTTPServer(ThreadingHTTPServer):
     def server_close(self) -> None:
         if hasattr(self, "lark_app_setup_manager"):
             self.lark_app_setup_manager.close()
+        if hasattr(self, "manager_return_service"):
+            self.manager_return_service.close()
         if hasattr(self, "lark_goal_topic_runtime"):
             self.lark_goal_topic_runtime.close()
         if hasattr(self, "runtime_controller"):
@@ -1490,6 +1492,8 @@ def serve_chat(
         runtime_controller=server.runtime_controller,
     )
     server.lark_goal_topic_runtime.start()
+    from .extensions.lark.manager_returns import start_return_service
+    server.manager_return_service = start_return_service(server, runtime_root)
     url = f"http://{host}:{port}{DEFAULT_CHAT_PATH}"
     print(f"Serving LoopX Chat at {url}", flush=True)
     print("Agent boundary: local adapters, read-only sandbox, approval policy never", flush=True)

@@ -1070,7 +1070,8 @@ class ChatRuntimeController:
                     response = {**response, "proposals": [], "gate": None,
                                 "context_handoff_receipt": receipt,
                                 "message": "已将原消息交给 " + receipt["agent_id"] +
-                                "，由它结合当前 Goal、证据和计划自主判断是否重规划，并汇报结论。没有调整任务优先级，也没有中断当前工作。"}
+                                "。它会结合当前计划自主处理，处理结论会自动回到这里，你不用再追问。"
+                                "（委托 " + receipt["request_id"][:8] + "）"}
                 except (OSError, ValueError):
                     response = {**response, "proposals": [], "gate": None,
                                 "message": "材料尚未转交：目标绑定、来源授权或持久收件回读未通过。管家需要修复交接链路；没有改动任务或优先级。"}

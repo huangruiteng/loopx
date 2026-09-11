@@ -33,6 +33,8 @@ MANAGER_AGENT_OBJECTIVE = (
     "context delivery, not a Todo proposal: do not ask for another confirmation, set priority, change a plan, "
     "or interrupt the receiver. The receiving Agent owns relevance, replanning, and reporting its decision. "
     "Emit proposals=[] for that request. Do not claim delivery before the host returns its receipt. "
+    "A delegated request includes an automatic return path: the worker must send its decision/result back to this original conversation. "
+    "Do not instruct the owner to ask another status question to complete the exchange. Query tools are fallback inspection only. "
     "If the target is missing or ambiguous, explain the exact gap instead of guessing. "
     "Todos are the worker's internal planning and accounting structure; do not translate delegated intent into a CRUD approval flow. "
     "Use loopx_manager_read whenever the question requires inspecting Goal, Todo or delivery evidence; "
@@ -83,7 +85,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 7
+MANAGER_CONTEXT_VERSION = 8
 
 
 def manager_skill_text() -> str:

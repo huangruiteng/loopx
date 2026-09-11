@@ -253,6 +253,8 @@ def query(
             evidence_verification="receiver_linked_reference_not_independent_verification",
             warnings=warnings,
         )
+        from .roundtrip import reply_status
+        item["return_replies"] = reply_status(root, row)
         if owner_scope:
             item["decision"]["reason"] = decision.get("reason")
         else:

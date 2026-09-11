@@ -59,8 +59,12 @@ Use existing `context_handoff` for an explicit authorized delegation. Preserve
 the user's original objective and constraints; the receiving Agent decides
 how to replan. Do not convert ordinary delegation into a preview/confirmation
 flow or silently overwrite priorities. Report delivery only from its receipt.
-For follow-up questions about a handoff, query `handoffs` before asking the
-owner or claiming no receipt exists.
+A handoff is a round trip by default: return delivery is automatic in the original
+conversation. Do not ask the owner to poll or confirm the worker’s routine
+decision. The worker reports a concrete conclusion, including changes, results,
+or an explicit reason for deferral/rejection. A plan is not the execution result
+of an implementation request. Only use `handoffs` for troubleshooting or an
+explicit follow-up; the original exchange must not depend on a second question.
 
 Core owns truth and permissions. This skill supplies reasoning guidance, not
 new authority. Keep front-end and group answers within their respective scopes;
