@@ -419,6 +419,15 @@ summary 对候选关系批量调用，避免每对 Todo 一次 RPC；legacy comp
 状态快照 parity。T3 仍需处理旧 action-token fallback 路由及从压缩 summary 重建诊断的
 消费者，不把它们列为已迁移；不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
 
+能力缺口与修复路由现由 `agents/capability_gate.ts` 统一解释执行前提、修复产出、
+owner/Agent 责任和受阻 Todo 绑定。Quota planning v1 传归一化的要求，而不是 Python
+算好的 missing；Monitor 分流在 TS 进程内复用同一规则。公共 gate 一次批处理，精确目标
+恢复调用保留有界、只缓存归一化值的桥接，不保留第二套判断。Python 继续负责 legacy
+codec、候选来源／资格和共享 profile/rank 适配。明确修正：共享缺口绑定最高优先级受阻
+Todo，同一 Todo 的不同展示不重复计算，权威空 backlog 不再复活陈旧 first-item。
+target capability 是修复产出，不是安装或授权。没有新 provider／inventory／enablement／
+promotion；压缩候选来源的上限和其余 T3 consumer 仍需分别闭合。
+
 列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
 初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值
 条件，不能把归档中的已完成依赖变成丢失。共享合成 fixture 增补“有 scope 无 outcome”

@@ -2664,6 +2664,14 @@ The original direction remains; execution cards expand these stages rather than 
 
 #### Durability execution cards
 
+Capability-gap consumers now share the TS requirement/resolution owner across
+legacy and canonical inputs, including quota's Monitor capability partition.
+The old Python missing-set and owner/repair decision builders are removed;
+source adaptation and read-only candidate ordering remain. This is T3 read-policy
+consolidation with disclosed resolution-priority/empty-source/identity corrections,
+not capability enablement, a durable permission receipt or D1–D3 qualification.
+The existing permanent Markdown projection and cutover holds remain unchanged.
+
 The T3 decision-dependency read policy now shares one TS owner for scope coverage,
 exact links and consistency diagnostics. Explicit gate recipients are independent
 of claim attribution; conflicting exact targets request repair rather than grant
