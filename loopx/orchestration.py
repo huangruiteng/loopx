@@ -177,3 +177,57 @@ def orchestration_policy_summary(policy: dict[str, Any] | None) -> str:
             state = f"on({profile})"
         summary += f" explore_harness={state}"
     return summary
+
+
+def update_spawn_execution_policy(
+    spawn_policy: dict[str, Any],
+    *,
+    multi_subagent_feature: str | None,
+    orchestration_mode: str | None,
+    spawn_allowed: bool | None,
+    max_children: int | None,
+    subagent_model: str | None,
+    subagent_reasoning_effort: str | None,
+    clear_subagent_model_config: bool,
+    allowed_domains: list[str] | None,
+    clear_allowed_domains: bool,
+    default_max_children: int,
+) -> None:
+    """Apply validated execution options to the caller's transaction-local policy."""
+    if clear_subagent_model_config:
+        spawn_policy.pop("model_config", None)
+    elif subagent_model is not None or subagent_reasoning_effort is not None:
+        model_config = dict(spawn_policy.get("model_config") or {})
+        if subagent_model is not None:
+            model_config["model"] = subagent_model
+        if subagent_reasoning_effort is not None:
+            if subagent_reasoning_effort:
+                model_config["reasoning_effort"] = subagent_reasoning_effort
+            else:
+                model_config.pop("reasoning_effort", None)
+        spawn_policy["model_config"] = validate_subagent_model_config(model_config)
+    if multi_subagent_feature == "enabled":
+        spawn_policy["mode"] = MULTI_SUBAGENT_ORCHESTRATION_MODE
+        spawn_policy["allowed"] = True
+        if max_children is None:
+            existing_children = int(
+                compact_orchestration_policy(spawn_policy).get("max_children") or 0
+            )
+            spawn_policy["max_children"] = (
+                existing_children if existing_children > 0 else default_max_children
+            )
+    elif multi_subagent_feature == "off":
+        spawn_policy["mode"] = DEFAULT_ORCHESTRATION_MODE
+        spawn_policy["allowed"] = False
+        spawn_policy["max_children"] = 0
+        spawn_policy["allowed_domains"] = []
+    elif orchestration_mode is not None:
+        spawn_policy["mode"] = orchestration_mode
+    if spawn_allowed is not None:
+        spawn_policy["allowed"] = spawn_allowed
+    if max_children is not None:
+        spawn_policy["max_children"] = max_children
+    if clear_allowed_domains:
+        spawn_policy["allowed_domains"] = []
+    elif allowed_domains is not None:
+        spawn_policy["allowed_domains"] = allowed_domains
