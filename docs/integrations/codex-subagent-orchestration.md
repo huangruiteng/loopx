@@ -397,7 +397,7 @@ not arbitrary manifest scripts or external plugins.
 
 | Phase | Managed LoopX Turn call site | Coordinator responsibility |
 | --- | --- | --- |
-| `before_plan` | Live quota decision → `interaction_contract.agent_context` → signed `turn_envelope.agent_context` | Identify independent questions and keep useful integration work with the parent. |
+| `before_plan` | Live quota decision → `interaction_contract.agent_context` → signed `turn_envelope.agent_context` | Prefer parallel delegation for read-heavy tasks with independent questions, within the configured child limit; keep useful validation and integration work with the parent. |
 | `before_delegate` | Admitted child operations → plan and host request `delegation_context` | Bound briefs, expected evidence and model preferences before selecting/launching children. |
 | `after_delegate_result` | Host receipt reconciliation → journal `host_result.agent_context` → executor result `agent_context` | Validate receipts and original evidence, then accept/defer/reject and link outcomes. |
 

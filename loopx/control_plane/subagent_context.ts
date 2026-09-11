@@ -9,7 +9,7 @@ export const subagentContextProvider: AgentContextProvider = {
   produce(input, config) {
     const guidance = {
       before_plan: [
-        "Identify fresh, independent evidence questions worth delegating, including within one Todo. Avoid duplicate reads or concurrency for its own sake.",
+        "For read-heavy tasks, prefer parallel delegation of multiple fresh, independent evidence questions, including within one Todo, up to the configured child limit. Actively look for useful splits before keeping the research serial; avoid duplicate reads or concurrency for its own sake.",
         "For native child tools, read loopx agent-context with the current --goal-id and --agent-id at --phase before_delegate and --phase after_delegate_result. These read-only calls do not start turns or spend quota.",
         "Keep useful work with the coordinator. Verify decisive sources, resolve disagreements and integrate results into the plan; child opinions are not independent evidence.",
       ],
