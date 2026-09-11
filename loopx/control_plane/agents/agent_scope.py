@@ -11,7 +11,7 @@ from .agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
     build_agent_scope_frontier_payload,
 )
-from ..todos.decision_scope import todo_gate_relations, todo_gate_relation_blocks_agent
+from ..todos.decision_scope import select_scoped_gate_fallback
 from ..work_items.work_lane import (
     work_lane_contract_is_due_monitor_attempt,
     work_lane_contract_requires_current_agent_attempt,
@@ -23,7 +23,6 @@ from ..todos.contract import (
     normalize_todo_bound_agent,
     normalize_todo_claimed_by,
     normalize_todo_excluded_agents,
-    normalize_todo_global_gate,
     normalize_todo_id,
 )
 from ..todos.handoff_gate import HandoffGateState
@@ -106,12 +105,6 @@ def _todo_task_class(item: dict[str, Any]) -> str:
     return todo_item_task_class(item)
 def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
     return todo_projection_sort_key(item)
-
-
-def _monitor_debt_projection_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
-    priority, *remainder = _todo_projection_sort_key(item)
-    advancement_first = 0 if _todo_task_class(item) == TODO_TASK_CLASS_ADVANCEMENT else 1
-    return (priority, advancement_first, *remainder)
 
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:
@@ -212,42 +205,6 @@ def _action_scope_tokens_from_text(text: str) -> set[str]:
     }
 
 
-def _todo_action_kind_tokens(item: dict[str, Any]) -> set[str]:
-    return _action_scope_tokens_from_text(str(item.get("action_kind") or ""))
-
-
-def _todo_action_scope_tokens(item: dict[str, Any]) -> set[str]:
-    text = " ".join(
-        str(value or "")
-        for value in (item.get("action_kind"), item.get("title"), item.get("text"))
-        if str(value or "").strip()
-    )
-    return _action_scope_tokens_from_text(text)
-
-
-def _user_gate_blocks_agent_item(gate: dict[str, Any], agent_item: dict[str, Any],
-                                 relation: dict[str, Any] | None) -> bool:
-    if normalize_todo_global_gate(gate.get("global_gate")):
-        return True
-    if relation:
-        return todo_gate_relation_blocks_agent(relation)
-
-    gate_action_tokens = _todo_action_kind_tokens(gate)
-    agent_action_tokens = _todo_action_kind_tokens(agent_item)
-    if gate_action_tokens and agent_action_tokens:
-        return bool(gate_action_tokens & agent_action_tokens)
-    if agent_action_tokens:
-        return False
-
-    gate_tokens = _todo_action_scope_tokens(gate)
-    agent_tokens = _todo_action_scope_tokens(agent_item)
-    if not gate_tokens or not agent_tokens:
-        return False
-    if gate_action_tokens:
-        return len(gate_action_tokens & agent_tokens) >= 2
-    return len(gate_tokens & agent_tokens) >= 3
-
-
 def _todo_item_claimed_by_agent_or_unclaimed(item: dict[str, Any], *, agent_id: str) -> bool:
     return agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
 
@@ -300,71 +257,31 @@ def _scoped_user_gate_fallback(
             *ready_deferred_candidates,
         ]
     executable_items = [item for item in executable_items if isinstance(item, dict)]
-    deduped_executable_items: list[dict[str, Any]] = []
-    seen_todo_ids: set[str] = set()
-    for item in executable_items:
-        todo_id = normalize_todo_id(item.get("todo_id"))
-        if todo_id and todo_id in seen_todo_ids:
-            continue
-        if todo_id:
-            seen_todo_ids.add(todo_id)
-        deduped_executable_items.append(item)
-    executable_items = sorted(
-        deduped_executable_items,
-        key=(
-            _monitor_debt_projection_sort_key
-            if monitor_debt_backoff_active
-            else _todo_projection_sort_key
-        ),
-    )
     claim_scope = (
         agent_todo_summary.get("claim_scope")
         if isinstance(agent_todo_summary.get("claim_scope"), dict)
         else None
     )
-    if claim_scope:
-        agent_id = normalize_todo_claimed_by(claim_scope.get("agent_id"))
-        executable_items = [
-            item
-            for item in executable_items
-            if agent_scope_item_claimed_by_agent_or_unclaimed(item, agent_id=agent_id)
-        ]
-    blocked_items: list[dict[str, Any]] = []
-    relations = todo_gate_relations(gates, executable_items)
-    selected: dict[str, Any] | None = None
-    blocking_gate: dict[str, Any] | None = None
-    for item_index, item in enumerate(executable_items):
-        matching_gate = next(
-            (gate for gate_index, gate in enumerate(gates)
-             if _user_gate_blocks_agent_item(gate, item, relations[gate_index][item_index])),
-            None,
-        )
-        if matching_gate:
-            blocking_gate = blocking_gate or matching_gate
-            text = str(item.get("text") or "").strip()
-            blocked_item = compact_todo_summary_item(item, text=text)
-            relation = relations[gates.index(matching_gate)][item_index]
-            if relation:
-                blocked_item["todo_gate_relation"] = relation
-            blocked_items.append(blocked_item)
-            continue
-        if selected is None:
-            selected = item
-
-    if selected is None:
-        return None
-    if not blocking_gate and not allow_unrelated_gate:
-        return None
-
-    selected_text = str(selected.get("text") or "").strip()
-    gate_to_surface = blocking_gate or gates[0]
-    selected_item = compact_todo_summary_item(selected, text=selected_text)
-    selected_is_deferred_replan = (
-        todo_item_is_deferred(selected) and selected.get("resume_ready") is True
+    selection = select_scoped_gate_fallback(
+        gates, executable_items, agent_id=claim_scope.get("agent_id") if claim_scope else None,
+        allow_unrelated_gate=allow_unrelated_gate, monitor_debt_backoff_active=monitor_debt_backoff_active,
     )
+    if selection is None:
+        return None
+    selected = executable_items[selection["selected_index"]]
+    gate_to_surface = gates[selection["gate_index"]]
+    blocking_gate = selection["has_blocking_gate"]
+    blocked_items = []
+    for blocked in selection["blocked"][:3]:
+        item = executable_items[blocked["candidate_index"]]
+        blocked_items.append({**compact_todo_summary_item(item, text=str(item.get("text") or "").strip()),
+                              "todo_gate_relation": blocked["relation"]})
+    selected_text = str(selected.get("text") or "").strip()
+    selected_item = compact_todo_summary_item(selected, text=selected_text)
+    selected_is_deferred_replan = selection["deferred_replan"]
     if selected_is_deferred_replan:
         selected_item["fallback_kind"] = "deferred_successor_replan"
-    selected_relation = relations[gates.index(gate_to_surface)][executable_items.index(selected)]
+    selected_relation = selection["selected_relation"]
     if selected_relation:
         selected_item["todo_gate_relation"] = selected_relation
     gate_text = str(gate_to_surface.get("text") or "").strip()

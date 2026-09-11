@@ -1,7 +1,7 @@
 /** Read-only decision dependency rules over one complete source snapshot.
  * A consistent dependency is not approval, a lease, or a mutation receipt. */
 import type {JsonObject} from "../effect_program.ts";
-import {requireJsonObject, optionalNonEmptyString} from "../runtime_decode.ts";
+import {requireJsonObject, optionalNonEmptyString, requireBoolean, requireInteger} from "../runtime_decode.ts";
 import {gateAddressesAgent} from "./gate_scope.ts";
 
 export const DECISION_SCOPE_REQUEST_SCHEMA = "todo_decision_scope_request_v0";
@@ -68,6 +68,68 @@ export function todoGateRelation(gate: JsonObject, item: JsonObject): JsonObject
   if (exact?.state === "gate_targets_todo") return {...exact, ...(scope ? {decision_scope_relation: scope} : {})};
   if (scope?.state === "gate_covers_action") return {...scope, ...(exact ? {exact_todo_relation: exact} : {})};
   return exact ? {...exact, ...(scope ? {decision_scope_relation: scope} : {})} : scope;
+}
+
+/** Legacy action labels are exact keys, not natural-language permission rules.
+ * Missing scope is insufficient evidence for safe bypass, never a global gate. */
+export function fallbackGateRelation(gate: JsonObject, item: JsonObject): JsonObject {
+  if (gate.global_gate === true) return {source: "global_gate", state: "gate_covers_action"};
+  const explicit = todoGateRelation(gate, item);
+  if (explicit) return explicit;
+  const action = (row: JsonObject) => typeof row.action_kind === "string" ? row.action_kind.trim().toLowerCase() : "";
+  const a = action(gate), b = action(item);
+  return {schema_version: "todo_gate_relation_v0", gate_todo_id: gate.todo_id ?? null,
+    agent_todo_id: item.todo_id ?? null,
+    source: a && a === b ? "legacy_exact_action_kind" : "missing_dependency_scope",
+    state: a && a === b ? "gate_covers_action" : "projection_repair_required",
+    ...(!a || a !== b ? {reason: "safe_fallback_requires_explicit_dependency_scope"} : {})};
+}
+
+/** Select only from already evaluated lanes. Never re-evaluate waits against a
+ * compact list or refill an authoritative empty capability result from backlog.
+ * Return source positions, leaving display compaction and wording to adapters. */
+export function selectScopedGateFallback(request: JsonObject): JsonObject | null {
+  const agent = optionalNonEmptyString(request.agent_id, "agent_id");
+  const debt = requireBoolean(request.monitor_debt_backoff_active, "monitor_debt_backoff_active");
+  const allowUnrelated = requireBoolean(request.allow_unrelated_gate, "allow_unrelated_gate");
+  const gates = rows(request.gates).map((gate, index) => ({gate, index})).filter(({gate}) =>
+    gate.done !== true && ["open", "blocked"].includes(String(gate.status || "open")) &&
+    gate.archive_state !== "archive" && (!agent || addressed(gate, agent)));
+  if (!gates.length) return null;
+  const source = rows(request.candidates).map((item, index) => ({item, index,
+    priority: requireInteger(item.priority_rank, "priority_rank"),
+    persisted: requireInteger(item.persisted_index, "persisted_index")}));
+  const seen = new Set<string>();
+  const candidates = source.filter(({item}) => {
+    const id = text(item.todo_id);
+    if (id && seen.has(id)) return false;
+    if (id) seen.add(id);
+    const deferred = item.status === "deferred" && item.resume_ready === true;
+    return item.archive_state !== "archive" && ((item.status === "open" && item.done !== true) || deferred) &&
+      item.removed !== true && (!agent || ((!item.claimed_by || item.claimed_by === agent) &&
+        (!item.bound_agent || item.bound_agent === agent) &&
+        !(Array.isArray(item.excluded_agents) && item.excluded_agents.includes(agent))));
+  });
+  candidates.sort((a, b) => a.priority - b.priority ||
+    (debt ? Number(a.item.task_class !== "advancement_task") - Number(b.item.task_class !== "advancement_task") : 0) ||
+    a.persisted - b.persisted || a.index - b.index);
+  const blocked: JsonObject[] = [];
+  let selected: typeof candidates[number] | undefined;
+  let blockingGate: typeof gates[number] | undefined;
+  for (const candidate of candidates) {
+    const match = gates.map(g => ({...g, relation: fallbackGateRelation(g.gate, candidate.item)}))
+      .find(g => g.relation.state !== "independent");
+    if (match) {
+      blockingGate ??= match;
+      blocked.push({candidate_index: candidate.index, gate_index: match.index, relation: match.relation});
+    } else selected ??= candidate;
+  }
+  if (!selected || (!blockingGate && !allowUnrelated)) return null;
+  const surface = blockingGate ?? gates[0]!;
+  return {selected_index: selected.index, gate_index: surface.index, blocked: blocked.slice(0, 3), blocked_count: blocked.length,
+    has_blocking_gate: blockingGate !== undefined,
+    selected_relation: fallbackGateRelation(surface.gate, selected.item),
+    deferred_replan: selected.item.status === "deferred" && selected.item.resume_ready === true};
 }
 
 function open(items: JsonObject[]): JsonObject[] {
@@ -143,6 +205,7 @@ export function evaluateDecisionScope(value: unknown): JsonObject {
   if (request.schema_version !== DECISION_SCOPE_REQUEST_SCHEMA) throw new TypeError("decision scope request schema mismatch");
   let result: JsonObject | boolean | null | (JsonObject | null)[][];
   switch (request.operation) {
+    case "fallback": result = selectScopedGateFallback(request); break;
     case "consistency": result = decisionScopeConsistency(request); break;
     case "standing": result = scopeStandingAuthority(request.authority, optionalNonEmptyString(request.agent_id, "agent_id")); break;
     case "covers": result = decisionScopeCovers(request.gate_scope, request.required_scope); break;

@@ -14,6 +14,7 @@ from .contract import (
     normalize_todo_required_decision_scopes,
 )
 from .user_gate import is_user_gate_todo_item
+from .projection import todo_projection_sort_key, todo_item_task_class, todo_item_has_removed_continuation_policy
 
 TODO_GATE_BLOCKING_STATES = frozenset(
     {"gate_targets_todo", "gate_covers_action", "projection_repair_required"}
@@ -347,3 +348,25 @@ def todo_gate_relations(gates: list[dict[str, Any]], items: list[dict[str, Any]]
 
 def todo_gate_relation_blocks_agent(relation: dict[str, Any] | None) -> bool:
     return bool(relation and relation.get("state") in TODO_GATE_BLOCKING_STATES)
+
+
+def select_scoped_gate_fallback(gates: list[dict[str, Any]], items: list[dict[str, Any]], *,
+                               agent_id: str | None, allow_unrelated_gate: bool,
+                               monitor_debt_backoff_active: bool) -> dict[str, Any] | None:
+    """Decode legacy facts; the typed owner returns positions, never display rows."""
+    if not gates or not items:
+        return None
+    from .contract import normalize_todo_bound_agent, normalize_todo_excluded_agents
+
+    def facts(item: dict[str, Any]) -> dict[str, Any]:
+        priority, index = todo_projection_sort_key(item)
+        return {**_facts(item), "action_kind": item.get("action_kind"),
+                "archive_state": item.get("archive_state"), "resume_ready": item.get("resume_ready") is True,
+                "bound_agent": normalize_todo_bound_agent(item.get("bound_agent")),
+                "excluded_agents": normalize_todo_excluded_agents(item.get("excluded_agents")),
+                "removed": todo_item_has_removed_continuation_policy(item),
+                "task_class": todo_item_task_class(item), "priority_rank": priority, "persisted_index": index}
+
+    return _evaluate("fallback", gates=[facts(gate) for gate in gates], candidates=[facts(item) for item in items],
+                     agent_id=normalize_todo_claimed_by(agent_id), allow_unrelated_gate=allow_unrelated_gate,
+                     monitor_debt_backoff_active=monitor_debt_backoff_active)

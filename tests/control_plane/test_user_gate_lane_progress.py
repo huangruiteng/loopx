@@ -32,7 +32,7 @@ APP_CONTEXT = scheduler_execution_context_for_runtime_profile(
 )
 
 
-def _status_payload(*, gate_action_kind: str) -> dict:
+def _status_payload(*, gate_action_kind: str, blocks_deferred: bool = False) -> dict:
     completed = quota_todo_item(
         todo_id="todo_prerequisite",
         status="done",
@@ -61,6 +61,7 @@ def _status_payload(*, gate_action_kind: str) -> dict:
         text="[P2-user] Review the product first screen.",
         action_kind=gate_action_kind,
         blocks_agent=AGENT_ID,
+        unblocks_todo_id="todo_ready_deferred" if blocks_deferred else "todo_first_screen",
     )
     return quota_status_payload(
         goal_id=GOAL_ID,
@@ -203,7 +204,7 @@ def test_consumed_review_gate_exposes_quality_vision_replan() -> None:
 
 def test_blocking_user_gate_backs_off_instead_of_polling_as_active_work() -> None:
     payload = build_quota_should_run(
-        _status_payload(gate_action_kind="refine_benchmark_treatment"),
+        _status_payload(gate_action_kind="refine_benchmark_treatment", blocks_deferred=True),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
         scheduler_execution_context=APP_CONTEXT,
@@ -403,7 +404,7 @@ def test_acked_human_gate_advances_despite_unrelated_historical_host_failure(
     now = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(scheduler_hint_module, "now_utc", lambda: now)
     payload = build_quota_should_run(
-        _status_payload(gate_action_kind="refine_benchmark_treatment"),
+        _status_payload(gate_action_kind="refine_benchmark_treatment", blocks_deferred=True),
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
         scheduler_execution_context=APP_CONTEXT,
