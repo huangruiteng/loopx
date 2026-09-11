@@ -2918,7 +2918,7 @@ async function main() {
       await page.locator(".personal-goal-link").first().click();
       await goalNavigation.getByRole("button", { name: "Chat" }).click();
       await page.getByText("保持运行，用于验证刷新恢复。").waitFor({ state: "visible", timeout: 10_000 });
-      await page.getByText("正在整理…").waitFor({ state: "hidden", timeout: 10_000 });
+      await page.getByText("正在整理…", { exact: true }).waitFor({ state: "hidden", timeout: 10_000 });
       const recovered = page.__loopxRuntime.sessions.get(recoveryTurn.sessionId);
       if (recovered?.active_turn_id !== null && recovered?.active_turn_id !== recoveryTurn.turnId) {
         throw new Error("Recovered Session points at a different active Turn");
