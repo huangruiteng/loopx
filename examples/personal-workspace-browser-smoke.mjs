@@ -2264,8 +2264,8 @@ async function main() {
       await page.getByLabel(label).waitFor({ state: "visible" });
     }
     await page.getByText("开启后将在已验证的阶段节点自动投递", { exact: true }).waitFor({ state: "visible" });
-    await page.getByText("开启后将在已验证的阶段节点自动投递", { exact: true }).click();
-    await page.getByText(/启用此订阅即授予持续投递权/u).waitFor({ state: "visible" });
+    // Activation authority and failure semantics must be visible before operating Enable.
+    await page.getByText(/启用此订阅即授予持续投递权；发送失败或路由漂移会 fail closed/u).waitFor({ state: "visible" });
     await page.locator(".personal-capability-help > summary").click();
     const settingsScrollBounds = await page.evaluate(() => {
       const detail = document.querySelector(".personal-capability-detail");

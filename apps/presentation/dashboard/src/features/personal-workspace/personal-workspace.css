@@ -743,7 +743,6 @@
 .personal-capability-fields .is-boolean input:checked { background: var(--pw-text); }
 .personal-capability-fields .is-boolean input:checked::before { transform: translateX(16px); }
 .personal-capability-fields .is-boolean input:focus-visible { outline: 2px solid var(--pw-blue); outline-offset: 3px; }
-.personal-capability-behavior-note summary { cursor: pointer; font-size: 12px; font-weight: 500; }
 .personal-capability-fields:disabled { opacity: .62; }
 .personal-capability-json-editor { display: grid; gap: 7px; margin: 0; padding: 0 18px 18px; }
 .personal-capability-json-editor > span { font-size: 11px; font-weight: 650; }

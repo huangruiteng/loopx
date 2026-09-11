@@ -301,7 +301,7 @@ export function MachineConfigurationSettings() {
           {selected.capability_id === "periodic_report" ? (
             <section className="personal-capability-behavior-note">
               <ShieldCheck aria-hidden size={18} />
-              <details><summary>{t("machine.periodicReportActivation")}</summary><p>{t("machine.periodicReportActivationDescription")}</p></details>
+              <div><strong>{t("machine.periodicReportActivation")}</strong><p>{t("machine.periodicReportActivationDescription")}</p></div>
             </section>
           ) : null}
 
