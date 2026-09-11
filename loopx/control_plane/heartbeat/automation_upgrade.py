@@ -170,7 +170,10 @@ def _read(home: Path, automation_id: str, connection: sqlite3.Connection) -> tup
         raise ValueError("automation identity missing or mismatched")
     row = dict(row)
     if item.get("kind") != "heartbeat" or row["kind"] != "heartbeat":
-        raise ValueError("only existing heartbeat automations are supported")
+        raise ValueError(
+            "heartbeat kind/binding is not confirmed by both stores; reconcile through "
+            "the App before prompt adoption (do not convert a cron row or infer its thread)"
+        )
     if item.get("status") == "DELETED" or row["status"] == "DELETED":
         raise ValueError("deleted automation cannot be upgraded")
     for key in ("prompt", "status", "target_thread_id"):

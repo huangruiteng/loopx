@@ -10,12 +10,15 @@ from .rules import (
     DEFAULT_PERMISSION_RULE,
     HEARTBEAT_NOTIFICATION_RULE_SHORT,
     HEARTBEAT_NOTIFICATION_RULE_THIN,
+    HEARTBEAT_TURN_BOOTSTRAP_RULE,
     HEARTBEAT_VISION_WRITEBACK_RULE_SHORT,
     HOST_LOOP_QUOTA_DISPATCH_RULE,
+    HOST_LOOP_SAFETY_RULE,
     HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE,
     HOST_LOOP_TODO_CLOSEOUT_RULE,
     RUNTIME_CAPABILITY_PROJECTION_THIN_RULE,
     RUNTIME_EXECUTION_ROUTING_RULE,
+    RUNTIME_REPAIR_ROUTING_RULE,
     SCHEDULER_HINT_APPLICATION_RULE,
     SCHEDULER_HINT_COMPACT_RULE,
     SCHEDULER_HINT_THIN_RULE,
@@ -86,17 +89,14 @@ def render_heartbeat_task_body(
     )
     return f"""Advance `{goal_id}` using `{active_state}`.
 
-Generic LoopX lifecycle. Keep project-specific branching out of the
-automation prompt. Put local policy in registry, active-state sections, adapter
-output, `quota should-run.goal_boundary`, or boundary rules; if a lifecycle
-rule is needed, update `{cli_bin} heartbeat-prompt` so all projects inherit it.
 {scope_block}
 
-Before spending delivery compute, make the CLI reachable; set
-`LOOPX_TURN=<current_time_iso>` per trigger, reuse it on retries, and run guard:
+Before spending delivery compute, make the CLI reachable.
+{HEARTBEAT_TURN_BOOTSTRAP_RULE}
 
 ```bash
 {cli_preflight}
+LOOPX_TURN=<current_time_iso>
 {pr_review_pre_quota_block}{quota_guard_command}
 ```
 
@@ -213,14 +213,8 @@ If the result says `should_run=true`:
    for 2 more eligible turns; no spend for the self-cancel turn.
 4. {SCOPE_BOUNDED_WORK_RULE}
    Related work can form a coherent effort; a focused correction may suffice.
-5. Execute that scoped work. Stay inside `goal_boundary` when present and keep
-   public/private boundaries intact. Public-safe repo publication is not an
-   operator gate by itself: for routine public project work, commit, push, and
-   PR creation may proceed autonomously after validation and a clean
-   public/private boundary scan. Stop and surface a user/controller gate only
-   for private or company-internal material, credentials, destructive git
-   operations, production actions, or repository rules that explicitly require
-   review.
+5. Execute that scoped work. Stay inside `goal_boundary` when present.
+   {HOST_LOOP_SAFETY_RULE}
 6. Run validation proportionate to the change and risk.
 7. Write back changed files, validation, critic, and next action to the active
    state. If a user/owner todo appears, do not hide it in prose: use
@@ -296,10 +290,11 @@ Brief LoopX heartbeat; detail:
 `{compact_prompt_command}`.
 {scope_block}
 
-Guard/retry; `LOOPX_TURN=<current_time_iso>`:
+{HEARTBEAT_TURN_BOOTSTRAP_RULE}
 
 ```bash
 {cli_preflight}
+LOOPX_TURN=<current_time_iso>
 {pr_review_pre_quota_block}{quota_guard_command}
 ```
 
@@ -333,6 +328,9 @@ Post-spend state:
 No spend for quiet skips, preflight failures, blocker-push asks, dry-runs, or
 duplicate accounting. Return only under `user_channel.notify=NOTIFY`; else quiet.
 
+{HOST_LOOP_SAFETY_RULE}
+{RUNTIME_REPAIR_ROUTING_RULE}
+
 {material_queue_rule}
 {permission_rule}"""
 def render_compact_heartbeat_task_body(
@@ -364,10 +362,11 @@ Compact policy: registry/state/adapter/`goal_boundary`.
 Detail: `{expanded_prompt_command}`.
 {scope_block}
 
-Preflight/guard; `LOOPX_TURN=<current_time_iso>`; reuse:
+{HEARTBEAT_TURN_BOOTSTRAP_RULE}
 
 ```bash
 {cli_preflight}
+LOOPX_TURN=<current_time_iso>
 {pr_review_pre_quota_block}{quota_guard_command}
 ```
 
@@ -421,8 +420,7 @@ If `should_run=true`:
    heartbeats with only status/brief checks, replan before quiet no-op.
    Pause/delete only if repair stays stuck 2 more turns.
 7. {SCOPE_BOUNDED_WORK_RULE}
-   Public-safe commit/push/PR may proceed after validation/clean scan. Stop for
-   private/company material, credentials, destructive git, production, or review rules.
+   {HOST_LOOP_SAFETY_RULE}
 8. Validate; write files/validation/critic/next action to active state;
    use `{cli_bin} todo add --goal-id {goal_id} --role user --task-class user_gate|user_action`
    for owner todos and `--role agent` for agent todos, not prose.
@@ -554,6 +552,9 @@ def _render_goal_task_body(
     return f"""Advance LoopX goal `{goal_id}` from `{active_state}` {host_preamble}
 {scope_block}
 
+{RUNTIME_EXECUTION_ROUTING_RULE}
+{HOST_LOOP_SAFETY_RULE}
+
 {prequota_block}Each work iteration, read complete successful JSON from:
 `{quota_guard_command}`
 Use the current `interaction_contract`, not remembered commands.
@@ -641,33 +642,23 @@ def render_thin_heartbeat_task_body(
         permission_rule=permission_rule,
     )
     scope_sentence = f"\n{agent_scope_instruction}" if agent_scope_instruction else ""
-    quota_guard_instruction = (
-        f"`{quota_guard_command}`"
-        if any(
-            marker in quota_guard_command
-            for marker in (
-                "--available-capability",
-                "--runtime-profile",
-                "--codex-app",
-                "--host-surface",
-                " -H ",
-            )
-        )
-        else "`quota should-run`"
-    )
     pr_review_pre_quota_instruction = (
-        f"`{pr_review_pre_quota_command}`\n"
+        f"{pr_review_pre_quota_command}\n"
         if pr_review_pre_quota_command
         else ""
     )
     return f"""Advance `{goal_id}` from {active_state}.
 
 {RUNTIME_EXECUTION_ROUTING_RULE}
+{HOST_LOOP_SAFETY_RULE}
 {scope_sentence}
 
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
-`LOOPX_TURN=<current_time_iso>`; reuse.
-{pr_review_pre_quota_instruction}{quota_guard_instruction}.
+{HEARTBEAT_TURN_BOOTSTRAP_RULE}
+```sh
+LOOPX_TURN=<current_time_iso>
+{pr_review_pre_quota_instruction}{quota_guard_command}
+```
 {HEARTBEAT_NOTIFICATION_RULE_SHORT}
 {SCOPE_BOUNDED_WORK_RULE}
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
@@ -678,8 +669,7 @@ Done->todo/rationale; guard receipt; 2 stalls->replan.
 
 P0 blocked: safe P1/P2; monitor quiet/no-spend.
 
-{policy_tail} Stop: private material, credentials,
-destructive git, unauthorized prod."""
+{policy_tail}"""
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:
     interface_budget = payload.get("interface_budget") if isinstance(payload.get("interface_budget"), dict) else {}
     lines = [

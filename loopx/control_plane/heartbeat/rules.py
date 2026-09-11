@@ -50,9 +50,21 @@ SCHEDULER_HINT_THIN_RULE = (
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."
 )
-RUNTIME_EXECUTION_ROUTING_RULE = (
-    "Normal turns use CLI `interaction_contract`; use `loopx-project` for "
+RUNTIME_REPAIR_ROUTING_RULE = (
+    "use `loopx-project` for "
     "lifecycle/registry and `loopx-self-repair` for runtime/projection drift."
+)
+RUNTIME_EXECUTION_ROUTING_RULE = (
+    "Normal turns use CLI `interaction_contract`; " + RUNTIME_REPAIR_ROUTING_RULE
+)
+HOST_LOOP_SAFETY_RULE = (
+    "Follow user authority and repository rules. Protect credentials/private material; "
+    "publish public-safe evidence. Destructive Git/production requires explicit authorization. "
+    "Gate only the affected path; continue independent allowed work."
+)
+HEARTBEAT_TURN_BOOTSTRAP_RULE = (
+    "Per wake, replace `<current_time_iso>` once. Run assignment and guard as separate "
+    "statements in one shell, not a command-prefix assignment; reuse the value on retries."
 )
 HOST_LOOP_QUOTA_DISPATCH_RULE = (
     "Quota: use selection_command when required; "

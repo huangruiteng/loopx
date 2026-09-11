@@ -13,7 +13,7 @@ import pytest
 from loopx.control_plane.heartbeat import automation_upgrade as upgrade
 
 
-def fixture(tmp_path: Path):
+def fixture(tmp_path: Path, backing_kind="heartbeat"):
     home = tmp_path / "host"
     path = home / "automations/watch/automation.toml"
     path.parent.mkdir(parents=True)
@@ -28,7 +28,7 @@ def fixture(tmp_path: Path):
     with sqlite3.connect(database) as connection:
         connection.execute("CREATE TABLE automations (id TEXT PRIMARY KEY, kind TEXT, prompt TEXT, status TEXT, target_thread_id TEXT, rrule TEXT, model TEXT, updated_at INTEGER, next_run_at INTEGER)")
         connection.execute("INSERT INTO automations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            ("watch", "heartbeat", prompt, "PAUSED", "thread-a", "FREQ=HOURLY", "fixture-model", 123, 456))
+            ("watch", backing_kind, prompt, "PAUSED", "thread-a", "FREQ=HOURLY", "fixture-model", 123, 456))
         connection.execute("CREATE TABLE sessions (id TEXT)")
         connection.execute("INSERT INTO sessions VALUES ('do-not-touch')")
     registry = tmp_path / "registry.json"
@@ -114,7 +114,7 @@ def test_divergence_never_mutates_host(tmp_path, reason):
         if reason == "missing_row":
             connection.execute("DELETE FROM automations")
         elif reason == "wrong_kind":
-            connection.execute("UPDATE automations SET kind='cron'")
+            connection.execute("UPDATE automations SET kind='unknown'")
         elif reason == "metadata":
             connection.execute("UPDATE automations SET status='ACTIVE'")
         else:
@@ -125,6 +125,25 @@ def test_divergence_never_mutates_host(tmp_path, reason):
             expected_prompt_sha256=upgrade.digest(prompt), desired_prompt="new")
     assert path.read_bytes() == original
     assert not (home / "loopx-automation-backups").exists()
+
+
+@pytest.mark.parametrize("mutation", ["standalone", "legacy_mirror", "mismatched_thread"])
+def test_cron_backing_is_not_inferred_to_be_a_bound_heartbeat(tmp_path, mutation):
+    home, path, database, registry, _ = fixture(tmp_path, "cron")
+    if mutation == "standalone":
+        path.write_text(path.read_text().replace('kind = "heartbeat"', 'kind = "cron"'))
+    elif mutation == "legacy_mirror":
+        # Observed legacy shape: TOML claims a thread but the scheduler does not.
+        with sqlite3.connect(database) as connection:
+            connection.execute("UPDATE automations SET target_thread_id=NULL")
+    else:
+        with sqlite3.connect(database) as connection:
+            connection.execute("UPDATE automations SET target_thread_id='thread-b'")
+    before = path.read_bytes()
+    entry = upgrade.build_plan(registry=registry, home=home)["entries"][0]
+    assert entry["status"] == "blocked" and "desired_prompt" not in entry
+    assert "App" in entry["reason"]
+    assert path.read_bytes() == before
 
 
 def test_failure_after_db_commit_is_recoverable_without_duplicate_mutation(tmp_path, monkeypatch):
