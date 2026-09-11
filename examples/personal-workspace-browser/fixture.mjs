@@ -117,8 +117,10 @@ function multiSubagentCapability({ current } = {}) {
 
 function goalCapability({
   availability = "supported_opt_in",
+  defaultConfiguration,
   capabilityId,
   displayName,
+  editorScopes = ["goal"],
   fields = [{ key: "enabled", label: "Enabled", description: "", input_kind: "boolean", required: false }],
   readOnlyReason,
 }) {
@@ -130,12 +132,12 @@ function goalCapability({
     available_scopes: ["goal"],
     goal_feature_id: capabilityId,
     availability,
-    default: editable ? Object.fromEntries(fields.flatMap((field) => field.key === "enabled" ? [[field.key, false]] : [])) : {},
+    default: defaultConfiguration ?? (editable ? Object.fromEntries(fields.flatMap((field) => field.key === "enabled" ? [[field.key, false]] : [])) : {}),
     configuration_editor: {
       schema_version: "capability_configuration_editor_v0",
       editable,
-      supported_scopes: ["goal"],
-      writable_scopes: editable ? ["goal"] : [],
+      supported_scopes: editorScopes,
+      writable_scopes: editable ? editorScopes : [],
       fields,
       ...(readOnlyReason ? { read_only_reason: readOnlyReason } : {}),
     },
@@ -144,10 +146,18 @@ function goalCapability({
 
 export function goalCapabilityCatalog(multiSubagentConfiguration) {
   return [
+    goalCapability({
+      capabilityId: "todo_replan_cadence",
+      displayName: "Goal review cadence",
+      editorScopes: ["machine", "goal"],
+      defaultConfiguration: { completed_todos: 5 },
+      fields: [{ key: "completed_todos", label: "Completed Todos between Goal reviews", description: "", input_kind: "number", required: true, minimum: 1, maximum: 5 }],
+    }),
     periodicReportCapability(),
     goalCapability({
       capabilityId: "change_quality_qualification",
       displayName: "Change quality qualification",
+      editorScopes: ["machine", "goal"],
       fields: [
         { key: "enabled", label: "Enabled", description: "", input_kind: "boolean", required: false },
         { key: "safe_fix", label: "Allow one bounded safe-fix pass", description: "", input_kind: "boolean", required: false },
@@ -186,6 +196,28 @@ export function goalCapabilityCatalog(multiSubagentConfiguration) {
       readOnlyReason: "Requires a reviewed local-private provider binding.",
     }),
   ];
+}
+
+function withMachineConfiguration(capability, { configuration, description }) {
+  return {
+    ...capability,
+    description,
+    available_scopes: ["machine", "goal"],
+    machine_namespace: capability.capability_id,
+    machine_current: configuration,
+    default: configuration,
+    effective_value_policy: "goal_override_over_live_machine_default",
+    effective_configuration: {
+      schema_version: "capability_configuration_resolution_v0",
+      capability_id: capability.capability_id,
+      source: "machine_default",
+      configuration,
+      inherited: true,
+      goal_override_present: false,
+      machine_default_present: true,
+      effective_revision: `sha256:${capability.capability_id}`,
+    },
+  };
 }
 
 export function startServer() {
@@ -690,30 +722,79 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       route_ref: "report-route",
       timezone: "Asia/Shanghai",
     };
+    const cadenceConfiguration = {
+      schema_version: "todo_replan_cadence_machine_defaults_v0",
+      completed_todos: 3,
+    };
+    const changeQualityConfiguration = {
+      schema_version: "change_quality_machine_defaults_v0",
+      enabled: true,
+      safe_fix: false,
+      strict_receipt: true,
+    };
+    const machineNamespaces = {
+      change_quality_qualification: changeQualityConfiguration,
+      periodic_report: periodicConfiguration,
+      todo_replan_cadence: cadenceConfiguration,
+    };
+    const goalCapabilities = goalCapabilityCatalog();
     const machineConfigurationBase = {
       ok: true,
-      available_namespaces: ["periodic_report"],
+      available_namespaces: ["change_quality_qualification", "periodic_report", "todo_replan_cadence"],
       namespace_catalog: {
         schema_version: "machine_configuration_catalog_v0",
-        namespaces: [{
-          namespace: "periodic_report",
-          title: "Periodic reports",
-          description: "Governed report defaults.",
-          schema_versions: ["periodic_report_machine_defaults_v0"],
-          configuration_template: periodicConfiguration,
-          template_status: "ready",
-        }],
+        namespaces: [
+          {
+            namespace: "change_quality_qualification",
+            title: "Change quality qualification",
+            description: "Live exact-diff qualification policy without added authority.",
+            schema_versions: ["change_quality_machine_defaults_v0"],
+            configuration_template: changeQualityConfiguration,
+            template_status: "ready",
+          },
+          {
+            namespace: "periodic_report",
+            title: "Periodic reports",
+            description: "Governed report defaults.",
+            schema_versions: ["periodic_report_machine_defaults_v0"],
+            configuration_template: periodicConfiguration,
+            template_status: "ready",
+          },
+          {
+            namespace: "todo_replan_cadence",
+            title: "Goal review cadence",
+            description: "Live review threshold without added turns, quota, or authority.",
+            schema_versions: ["todo_replan_cadence_machine_defaults_v0"],
+            configuration_template: cadenceConfiguration,
+            template_status: "ready",
+          },
+        ],
       },
       capability_catalog: {
         schema_version: "capability_configuration_catalog_v0",
-        capabilities: goalCapabilityCatalog().map((capability) => capability.capability_id === "periodic_report"
-          ? periodicReportCapability({ machineCurrent: periodicConfiguration })
-          : capability),
+        capabilities: goalCapabilities.map((capability) => {
+          if (capability.capability_id === "periodic_report") {
+            return periodicReportCapability({ machineCurrent: periodicConfiguration });
+          }
+          if (capability.capability_id === "todo_replan_cadence") {
+            return withMachineConfiguration(capability, {
+              configuration: cadenceConfiguration,
+              description: "Live review threshold without added turns, quota, or authority.",
+            });
+          }
+          if (capability.capability_id === "change_quality_qualification") {
+            return withMachineConfiguration(capability, {
+              configuration: changeQualityConfiguration,
+              description: "Live exact-diff qualification policy without added authority.",
+            });
+          }
+          return capability;
+        }),
       },
       changed_namespaces: [],
       machine_configuration: {
         schema_version: "loopx_machine_configuration_v0",
-        namespaces: { periodic_report: periodicConfiguration },
+        namespaces: machineNamespaces,
       },
     };
     if (url.pathname === "/api/chat/machine-configuration" && request.method() === "GET") {
@@ -740,7 +821,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         changed_namespaces: [body.namespace],
         machine_configuration: {
           schema_version: "loopx_machine_configuration_v0",
-          namespaces: { periodic_report: body.namespace_configuration },
+          namespaces: { ...machineNamespaces, [body.namespace]: body.namespace_configuration },
         },
       }, status: 201 });
       return;

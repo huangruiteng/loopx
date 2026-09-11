@@ -743,7 +743,7 @@ export const typedActionsScenario = {
       const goalCapabilityOrder = await page.locator(".personal-capability-list button strong").allTextContents();
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable Goal settings must not show internal editor-contract notices");
       const expectedGoalCapabilities = [
-        "变更质量验证", "探索图谱", "探索 Harness", "飞书事件收件箱",
+        "变更质量验证", "Goal 复核周期", "探索图谱", "探索 Harness", "飞书事件收件箱",
         "飞书看板心跳同步", "本地 Authority 影子观测", "自适应子 Agent 容量",
         "已注册 Peer 任务协调", "周期报告", "Reward Memory 实验",
       ];
@@ -860,7 +860,7 @@ export const typedActionsScenario = {
 
       await page.getByRole("button", { name: /机器配置/ }).click();
       await page.getByRole("heading", { level: 1, name: "机器配置", exact: true }).waitFor({ state: "visible" });
-      await page.getByRole("heading", { level: 2, name: /^周期报告/ }).waitFor({ state: "visible" });
+      await page.getByRole("heading", { level: 2, name: /^变更质量验证/ }).waitFor({ state: "visible" });
       const machineCatalog = page.getByRole("navigation", { name: "机器能力目录" });
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable machine settings must not show internal editor-contract notices");
       if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length) {
@@ -875,6 +875,15 @@ export const typedActionsScenario = {
           || api.machineConfigurationRequests.length !== requestsBeforeReadOnly) {
         throw new Error("Goal-only capability exposed a machine mutation path");
       }
+      await machineCatalog.getByRole("button", { name: /^Goal 复核周期/ }).click();
+      await page.getByLabel(/^两次 Goal 复核间的已完成 Todo 数/u).waitFor({ state: "visible" });
+      await page.getByText(/不会创建 Turn、消耗配额或授予权限/u).waitFor({ state: "visible" });
+      await machineCatalog.getByRole("button", { name: /^变更质量验证/ }).click();
+      for (const label of [/^启用$/u, /^允许一次有界安全修复$/u, /^要求精确 diff 回执$/u]) {
+        await page.getByLabel(label).waitFor({ state: "visible" });
+      }
+      await page.getByText(/不会授予文件、权限或合并权/u).waitFor({ state: "visible" });
+      await page.screenshot({ path: resolve(outputDir, "machine-default-capabilities-zh-cn.png"), fullPage: false, animations: "disabled" });
       await machineCatalog.getByRole("button", { name: /^周期报告/ }).click();
       for (const label of [/^启用$/u, /^报告 Profile/u, /^Goal Channel 路由/u, /^时区/u]) {
         await page.getByLabel(label).waitFor({ state: "visible" });

@@ -305,6 +305,20 @@ export function MachineConfigurationSettings() {
             </section>
           ) : null}
 
+          {selected.capability_id === "change_quality_qualification" ? (
+            <section className="personal-capability-behavior-note">
+              <ShieldCheck aria-hidden size={18} />
+              <div><strong>{t("machine.changeQualityActivation")}</strong><p>{t("machine.changeQualityActivationDescription")}</p></div>
+            </section>
+          ) : null}
+
+          {selected.capability_id === "todo_replan_cadence" ? (
+            <section className="personal-capability-behavior-note">
+              <ShieldCheck aria-hidden size={18} />
+              <div><strong>{t("machine.replanCadenceActivation")}</strong><p>{t("machine.replanCadenceActivationDescription")}</p></div>
+            </section>
+          ) : null}
+
           {editorAvailable ? <>{editorMode === "json" || !selected.configuration_editor.fields.some((field) => field.key === "enabled" && field.input_kind === "boolean") ? <div className="personal-capability-editor-mode">
             <button onClick={() => changeMode(editorMode === "guided" ? "json" : "guided")} type="button">
               <Code2 aria-hidden size={14} />{t(editorMode === "guided" ? "machine.editJson" : "machine.backToForm")}
