@@ -659,6 +659,20 @@ Durable report 与 living document 还必须携带 artifact identity、source li
 
 ### Stage 2：Attention 与 Disclosure Plan
 
+当前 Dashboard 切片：从「需要你」进入事项详情，可查看已有 Todo 投影中的原因、证据、
+目标 Todo/Agent、声明的决策范围和替代关系。只有明确的 `user_gate` 显示为需要决定；
+其他事项不从文案推断阅读或授权含义。已选详情随当前来源更新；来源已无该事项时显示
+不可用，不能视为完成，也不再提供决定操作。仅当同一来源、同一 Goal 中有明确的
+`superseded_by` 目标时提供跳转。阅读不会关闭 gate。现有普通事项仍沿用受控预览。
+
+This Dashboard slice renders existing public Todo facts in the selected attention
+detail. It preserves source/Goal identity, refreshes selected records, and fences
+inactive or missing items without inferring completion or authority from absence.
+It does not implement a cross-channel disclosure compiler, read acknowledgments,
+authorization classification, or automatic deduplication. This is partial Stage 2
+delivery; CLI and Lark contracts are unchanged.
+
+
 - 编译 material attention-queue deltas；
 - 分离 selection、delivery、interaction 与 density；
 - 复用 planning completeness/detail refs；
