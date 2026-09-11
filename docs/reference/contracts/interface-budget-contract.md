@@ -8,7 +8,7 @@ and size/count budgets.
 
 | Surface | Owner | Consumer Action | Cold Path | Size Budget | Nested Budget | Count Budget |
 | --- | --- | --- | --- | --- | --- | --- |
-| `heartbeat_prompt_json` | heartbeat automation | wake and route one bounded turn | `quota should-run`, `status`, or `review-packet --handoff-only` | `json_chars <= 3600` plus `interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 30` |
+| `heartbeat_prompt_json` | heartbeat automation | wake and route one bounded turn | `quota should-run`, `status`, or `review-packet --handoff-only` | `json_chars <= 4800` plus `interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 30` |
 | `review_packet_handoff_only_json` | project-agent handoff | forward the smallest sufficient task packet | full `review-packet` or run-history artifact | `json_chars <= 3000` plus `handoff_interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 18` |
 | `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 13000` | `nested_keys <= 330` | `top_level_keys <= 52` |
 | `dashboard_status_json` | operator dashboard | render first-screen operator state | `history`, run artifacts, or project-local adapter output | `json_chars <= 18500` | `nested_keys <= 260` | `top_level_keys <= 25` |
@@ -18,6 +18,20 @@ measure the exact text written to stdout: JSON indentation, compatibility
 projections, repeated commands, and Markdown wrappers can make emitted output
 materially larger. The emitted-output qualification matrix below measures that
 separate boundary through the real CLI entry point.
+
+The heartbeat envelope ceiling covers the unbound and representative agent/scope-bound
+Codex App thin fixtures. It includes generator metadata and repeated bound commands,
+not only the execution prompt. The shared host contract added static safety, repair
+routing, and retry-stable Turn initialization; the scoped fixture now uses about
+4,362 JSON characters. The 4,800-character ceiling leaves roughly 10% headroom for
+that fixture, without relaxing the independent **2,500-character thin task body**,
+4,000-character native Goal body, structural limits, or emitted CLI ceilings.
+It is not a token count, execution quota, or allowance to append more instructions.
+Arbitrary-length caller paths/scopes are not promised to fit this fixed fixture
+envelope; their emitted output is qualified separately by the CLI matrix.
+Do not remove safety or settlement semantics to fit the envelope, and do not copy
+dynamic quota decisions into the static prompt. No prompt text, saved automation,
+scheduler cadence, or spending policy changes with this qualification adjustment.
 
 The quota budget includes the typed action portfolio, one shared bound CLI
 route, pending-selection qualification, and hard-lane preemption evidence. The
