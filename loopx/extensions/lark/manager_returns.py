@@ -58,6 +58,7 @@ def send_return(
             raise ValueError("manager return target disabled")
         routing = {
             "target_ref": binding["target_ref"],
+            "conversation_kind": "manager",
             "app_ref": (target_config.get("identity") or {}).get("sender_profile")
             or "default",
             "topic_root_message_id": (binding.get("topic") or {}).get("root_message_id")

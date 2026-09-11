@@ -12,6 +12,11 @@ from loopx.extensions.lark.goal_channel_targets import read_goal_channel_targets
 from loopx.extensions.lark.event_inbox import (
     ingest_lark_event_inbox,
     acknowledge_lark_event_inbox,
+    load_lark_event_inbox_config,
+)
+from loopx.extensions.lark.inbox_reactions import (
+    record_lark_inbox_reaction,
+    lark_inbox_reaction_receipts,
 )
 from loopx.capabilities.manager_context import (
     _root,
@@ -158,6 +163,11 @@ def test_original_source_reply_waits_for_ack_and_rechecks_authority(
         message_ids=[event["message_id"]],
         execute=True,
     )
+    inbox = load_lark_event_inbox_config(project=root, config_path=config)["inbox_path"]
+    record_lark_inbox_reaction(
+        inbox=inbox, message_id=event["message_id"], phase="received",
+        reaction_id="reaction_Get", emoji_type="Get",
+    )
     if revoke_before_send:
         with pytest.raises(ValueError, match="revoked"):
             invoke()
@@ -166,3 +176,14 @@ def test_original_source_reply_waits_for_ack_and_rechecks_authority(
         result = invoke()
         assert result["reply_verified"] and result["external_write_performed"], result
         assert len(sent) == 1 and "--idempotency-key" in sent[0]
+        assert load_lark_event_inbox_config(project=root, config_path=config)["reply"][
+            "received_reaction_policy"
+        ] == "retain"
+        assert lark_inbox_reaction_receipts(
+            inbox=inbox, message_id=event["message_id"]
+        )["received"]["reaction_id"] == "reaction_Get"
+        assert invoke()["reply_verified"]
+        assert not any("reactions" in call for call in calls)
+        assert sent[0][sent[0].index("--idempotency-key") + 1] == sent[1][
+            sent[1].index("--idempotency-key") + 1
+        ]
