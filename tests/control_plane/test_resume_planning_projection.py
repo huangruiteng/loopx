@@ -162,23 +162,23 @@ def test_ignored_rows_do_not_turn_an_explicit_lane_into_fallback_input() -> None
 
 
 def test_quota_composes_capacity_and_visibility_in_one_request_per_source(monkeypatch) -> None:
-    from loopx.control_plane.todos import resume_planning
+    from loopx.control_plane.todos import quota_selection
 
-    original = resume_planning.effect_runtime_result
+    original = quota_selection.effect_runtime_result
     calls = []
 
     def record(method, params):
         calls.append(method)
         return original(method, params)
 
-    monkeypatch.setattr(resume_planning, "effect_runtime_result", record)
+    monkeypatch.setattr(quota_selection, "effect_runtime_result", record)
     summary = select_quota_todo_summary(
         {"schema_version": "todo_summary_v0", "items": [waiting("todo_capacity", status="deferred",
           resume_when="capacity_available:compiler")], "total_count": 1, "deferred_count": 1},
         None, agent_identity={"agent_id": "agent-a"}, available_capabilities=["compiler"],
     )
     assert summary["unclaimed_deferred_resume_count"] == 1
-    assert calls == ["todo.resume_planning.project"]
+    assert calls == ["todo.quota_planning.project"]
 
 
 def test_unavailable_typed_owner_does_not_fall_back_to_python_selection(monkeypatch) -> None:

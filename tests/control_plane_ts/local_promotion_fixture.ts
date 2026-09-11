@@ -76,4 +76,3 @@ export async function engageFence(request: ReturnType<typeof promotionRequest>) 
   });
   assert.equal(result.status, "applied");
 }
-

@@ -360,6 +360,18 @@ digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+Quota 的 scope/claim 消费者现通过每个 source 一次 `todo.quota_planning.project`，
+组合选择、有限展示与既有 resume planner。`quota_selection.ts` 替代 Python
+claim-visibility 模块及 Agent-scope 中独立的 User gate/action 过滤器。Python
+保留旧输入 codec、时钟与 capability/profile 适配；TS 拥有 lane 选择与排序。
+本批有意修正两处语义：显式适用的 User gate 不再被他人 claim 或 executor exclusion
+抵消；active-next-action 与普通行遵守相同作用域和已移除 continuation 限制。
+User action 按 `bound_agent` 路由（兼容旧 claim 回退），不是执行归属；User summary
+不再暴露 Agent 执行 `claim_scope`。计数先于展示限流；claim 优先级、Monitor
+写回/capability fence 与 resume 义务不变。这些只读判断不授予写权限。
+本批不替换 source adapter、不新增 inventory，也不宣称整个 T3 完成；继续按下文
+审计剩余消费者。独立 Todo summary 的展示 codec 保留至其真实调用者迁移。
+
 当前有边界交付：shared-goal alignment 与 amendment admission 每次决策共用一份
 `shared_goal_work_source.py` 快照，promotion 后复用 canonical Todo summary；同一次
 provider 读取可返回同 revision 的 lease。缺失／空／陈旧展示及旧 lease 文件不再是

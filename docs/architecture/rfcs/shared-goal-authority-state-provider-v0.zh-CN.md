@@ -2095,6 +2095,13 @@ commit receipt。各 provider 的 CAS/replay 边界、legacy 源顺序兼容、�
 活动 lane。三臂演练用真实 provider 检查此闭合；派生 readiness 不充当证据。通用历史
 导入、剩余 D3 资格化与显式 cutover 批准仍是后续工作。
 
+Quota scope/claim 选择与 resume planning 现共用一个 TS 只读边界，消费既有
+legacy/canonical summary，不分叉 provider 专用规则。User gate 作用域与 Agent
+执行归属分开解释，active-next-action 也遵守此区分；有意语义变化与删除的 Python
+selector 见 TS RFC 的 T3 卡。真实 FileAuthorityStore CLI 测试覆盖展示缺失／陈旧且
+不写回。这是 consumer 规则收拢，不是 transaction/store 改造、provider 资格化或
+整 Goal cutover。
+
 以下规划保留原有方向；执行卡是它们的展开，不是替代或取消：
 
 1. **闭合 TS 事务与 consumer。** 按 [T0–T3](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡) 收口规则并删除重复决策。

@@ -2647,6 +2647,14 @@ re-enter active lanes. The three-arm rehearsal checks this closure against real
 providers; derived readiness is not evidence. General historical import and the
 remaining D3 qualification/explicit cutover approval are still separate work.
 
+Quota scope/claim selection and resume planning now share one typed read boundary.
+It consumes existing legacy/canonical summaries without a provider-specific rule
+fork. User gate scope is distinct from Agent execution ownership, including in
+active-next-action projections; see the TS RFC's T3 card for intentional changes
+and retired Python selectors. Real FileAuthorityStore CLI tests cover missing and
+stale display without writing it back. This is consumer-rule consolidation, not
+a transaction/store change, provider qualification or whole-Goal cutover.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.

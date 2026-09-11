@@ -15,7 +15,6 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.agents.agent_scope import (  # noqa: E402
     _agent_lane_frontier_hint,
     _agent_scope_deferred_resume_candidates,
-    _agent_scope_filter_user_gate_items,
     _agent_scope_monitor_blocked_resume_candidates,
     _agent_scope_no_candidate_frontier,
     _agent_scope_route_continuation_replan_candidates,
@@ -26,6 +25,9 @@ from loopx.control_plane.agents.agent_scope_frontier import (  # noqa: E402
     AgentScopeFrontierAction,
     build_agent_scope_frontier_payload,
 )
+
+
+from loopx.control_plane.todos.quota_selection import project_quota_planning  # noqa: E402
 
 
 GOAL_ID = "agent-scope-projection-characterization"
@@ -106,10 +108,14 @@ def assert_agent_scope_user_gate_filter_contract() -> None:
         task_class="user_gate",
     )
 
-    current_items, other_items, projection = _agent_scope_filter_user_gate_items(
-        [current_gate, other_gate, other_claimed_gate, unscoped_gate],
-        agent_identity=agent_identity(),
+    planning = project_quota_planning(
+        {}, all_open_items=[current_gate, other_gate, other_claimed_gate, unscoped_gate],
+        source_open_count=4, agent_identity=agent_identity(),
+        filter_user_gate_blocks_agent=True, available_capabilities=None,
     )
+    current_items = planning["lanes"]["blocking_open_items"]
+    other_items = planning["lanes"]["other_agent_scoped_items"]
+    projection = planning["lanes"]["agent_scope_filter"]
 
     assert [item["todo_id"] for item in current_items] == [
         "todo_current_gate",
@@ -268,6 +274,8 @@ def assert_agent_scope_frontier_and_hint_contract() -> None:
         index=1,
         claimed_by=AGENT_ID,
         resume_ready=False,
+        # Frontier consumes an already diagnosed resume-planning projection.
+        blocking_monitor_todo_id="todo_open_monitor",
         resume_condition={
             "target_status": "open",
             "target_task_class": "continuous_monitor",

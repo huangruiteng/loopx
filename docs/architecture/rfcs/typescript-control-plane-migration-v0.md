@@ -468,6 +468,22 @@ closure and whole-Goal promotion remain held; do not infer them from a route pla
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Quota's scope/claim consumer now composes selection, bounded visibility and the
+existing resume planner in one `todo.quota_planning.project` call per source.
+`quota_selection.ts` replaces the Python claim-visibility module and the separate
+Agent-scope User gate/action filters. Python retains legacy fact codecs, clock
+and capability/profile adapters; the typed owner chooses lanes and ordering.
+This deliberately corrects two semantics: explicit User gate applicability is
+not cancelled by another Agent's claim or executor exclusion; active-next-action
+rows obey the same scope and removed-continuation restrictions as ordinary rows.
+User actions use `bound_agent` (legacy claim fallback), not execution ownership.
+The User summary no longer presents an Agent execution `claim_scope`. Counts
+precede display limits; claim priority, Monitor writeback/capability fences and
+resume obligations remain unchanged. These are read decisions, not write grants.
+This slice does not replace source adapters, add a second inventory, or claim
+full T3 completion. Continue auditing the remaining consumers below; independent
+standalone Todo summary display codecs remain until their callers migrate.
+
 Current bounded delivery: shared-goal alignment and amendment admission use one
 `shared_goal_work_source.py` snapshot per decision, reusing the canonical Todo
 summary after promotion. The same provider read optionally supplies leases at

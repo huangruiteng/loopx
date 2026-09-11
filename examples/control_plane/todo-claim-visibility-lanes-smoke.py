@@ -14,11 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 from loopx.control_plane.agents.capability_gate import (  # noqa: E402
     _agent_lane_candidate_sort_key,
 )
-from loopx.control_plane.todos.claim_visibility import (  # noqa: E402
-    TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION,
-    build_agent_claim_scoped_open_items,
-    build_todo_claim_visibility_lanes,
-)
+from loopx.control_plane.todos.quota_selection import project_quota_planning  # noqa: E402
 from loopx.control_plane.todos.contract import parse_todo_metadata_line  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.todos import apply_todo_update_to_lines  # noqa: E402
@@ -90,21 +86,23 @@ def assert_agent_claim_scope_prefers_current_then_unclaimed() -> None:
     )
     open_items = [unclaimed_p0, other_p0, current_p2, current_p0]
 
-    selectable, claim_scope = build_agent_claim_scoped_open_items(
-        open_items,
+    planning = project_quota_planning(
+        {}, all_open_items=open_items, source_open_count=len(open_items),
         agent_identity={
             "agent_id": CURRENT_AGENT,
             "agent_model": "peer_v1",
         },
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    selectable = planning["lanes"]["open_items"]
+    claim_scope = planning["lanes"]["claim_scope"]
     assert [item["todo_id"] for item in selectable] == [
         "todo_current_p0",
         "todo_current_p2",
         "todo_unclaimed_p0",
     ], selectable
     assert claim_scope is not None, claim_scope
-    assert claim_scope["schema_version"] == TODO_AGENT_CLAIM_SCOPE_SCHEMA_VERSION
+    assert claim_scope["schema_version"] == "agent_claim_scope_v0"
     assert claim_scope["agent_id"] == CURRENT_AGENT
     assert claim_scope["agent_model"] == "peer_v1"
     assert "primary_agent" not in claim_scope
@@ -167,8 +165,8 @@ def assert_agent_profile_ranks_only_within_claim_buckets() -> None:
         "agent_model": "peer_v1",
         "agent_profile": profile,
     }
-    selectable, claim_scope = build_agent_claim_scoped_open_items(
-        [
+    planning = project_quota_planning(
+        {}, all_open_items=[
             unclaimed_avoided,
             unclaimed_neutral,
             current_avoided,
@@ -176,8 +174,10 @@ def assert_agent_profile_ranks_only_within_claim_buckets() -> None:
             current_preferred,
         ],
         agent_identity=identity,
-        diagnostic_item_limit=3,
+        source_open_count=5, filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    selectable = planning["lanes"]["open_items"]
+    claim_scope = planning["lanes"]["claim_scope"]
     assert [item["todo_id"] for item in selectable] == [
         "todo_current_preferred",
         "todo_current_avoided",
@@ -245,11 +245,13 @@ def assert_executor_exclusion_filters_only_the_named_peer() -> None:
         task_class="advancement_task",
     )
 
-    blocked_selectable, blocked_scope = build_agent_claim_scoped_open_items(
-        [review, fallback],
+    planning = project_quota_planning(
+        {}, all_open_items=[review, fallback], source_open_count=len([review, fallback]),
         agent_identity={"agent_id": CURRENT_AGENT, "agent_model": "peer_v1"},
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    blocked_selectable = planning["lanes"]["open_items"]
+    blocked_scope = planning["lanes"]["claim_scope"]
     assert [item["todo_id"] for item in blocked_selectable] == ["todo_fallback"]
     assert blocked_scope is not None
     assert blocked_scope["executor_excluded_self_count"] == 1
@@ -260,11 +262,13 @@ def assert_executor_exclusion_filters_only_the_named_peer() -> None:
         "excluded_agents_cannot_claim_or_execute"
     )
 
-    reviewer_selectable, reviewer_scope = build_agent_claim_scoped_open_items(
-        [review, fallback],
+    planning = project_quota_planning(
+        {}, all_open_items=[review, fallback], source_open_count=len([review, fallback]),
         agent_identity={"agent_id": OTHER_AGENT, "agent_model": "peer_v1"},
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    reviewer_selectable = planning["lanes"]["open_items"]
+    reviewer_scope = planning["lanes"]["claim_scope"]
     assert [item["todo_id"] for item in reviewer_selectable] == [
         "todo_review",
         "todo_fallback",
@@ -273,11 +277,13 @@ def assert_executor_exclusion_filters_only_the_named_peer() -> None:
     assert reviewer_scope["executor_excluded_self_count"] == 0
 
     invalid_claim = dict(review, claimed_by=CURRENT_AGENT)
-    invalid_selectable, invalid_scope = build_agent_claim_scoped_open_items(
-        [invalid_claim],
+    planning = project_quota_planning(
+        {}, all_open_items=[invalid_claim], source_open_count=len([invalid_claim]),
         agent_identity={"agent_id": CURRENT_AGENT, "agent_model": "peer_v1"},
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    invalid_selectable = planning["lanes"]["open_items"]
+    invalid_scope = planning["lanes"]["claim_scope"]
     assert invalid_selectable == []
     assert invalid_scope is not None
     assert invalid_scope["executor_excluded_self_count"] == 1
@@ -363,11 +369,13 @@ def assert_legacy_review_handoff_fails_closed_until_repaired() -> None:
         item["role"] = "agent"
         item["required_capabilities"] = ["shell"]
 
-    selectable, claim_scope = build_agent_claim_scoped_open_items(
-        [legacy_review, fallback],
+    planning = project_quota_planning(
+        {}, all_open_items=[legacy_review, fallback], source_open_count=len([legacy_review, fallback]),
         agent_identity={"agent_id": CURRENT_AGENT, "agent_model": "peer_v1"},
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    selectable = planning["lanes"]["open_items"]
+    claim_scope = planning["lanes"]["claim_scope"]
     assert [item["todo_id"] for item in selectable] == ["todo_legacy_fallback"]
     assert claim_scope is not None
     assert claim_scope["removed_continuation_blocked_count"] == 1, claim_scope
@@ -393,11 +401,13 @@ def assert_legacy_review_handoff_fails_closed_until_repaired() -> None:
         item["todo_id"] for item in guard["capability_gate"]["runnable_candidates"]
     ] == ["todo_legacy_fallback"], guard
 
-    peer_selectable, peer_scope = build_agent_claim_scoped_open_items(
-        [legacy_review],
+    planning = project_quota_planning(
+        {}, all_open_items=[legacy_review], source_open_count=len([legacy_review]),
         agent_identity={"agent_id": OTHER_AGENT, "agent_model": "peer_v1"},
-        diagnostic_item_limit=3,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    peer_selectable = planning["lanes"]["open_items"]
+    peer_scope = planning["lanes"]["claim_scope"]
     assert peer_selectable == []
     assert peer_scope is not None
     assert peer_scope["removed_continuation_blocked_count"] == 1
@@ -480,12 +490,12 @@ def assert_claim_visibility_lanes_split_current_other_and_task_class() -> None:
         ),
     ]
 
-    lanes = build_todo_claim_visibility_lanes(
-        open_items,
+    planning = project_quota_planning(
+        {}, all_open_items=open_items, source_open_count=len(open_items),
         agent_identity={"agent_id": CURRENT_AGENT},
-        backlog_item_limit=8,
-        visibility_lane_limit=16,
+        filter_user_gate_blocks_agent=False, available_capabilities=None,
     )
+    lanes = planning["claim_visibility"]
     assert lanes["unclaimed_priority_open_items"][0]["todo_id"] == "todo_unclaimed_p0"
     assert [item["todo_id"] for item in lanes["claimed_open_items"]] == [
         "todo_current_advancement",
