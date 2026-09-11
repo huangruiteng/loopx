@@ -17,4 +17,3 @@ export type ActionReviewPlan = ActionReviewIdentity & (
   | { interaction: "gated" | "refresh" | "repair" | "pending" | "completed" | "inactive";
       reason: ActionReviewReason; canApply: false }
 );
-
