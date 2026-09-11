@@ -1,31 +1,13 @@
 import type { TypedActionProposal } from "../../data/chat";
 
-/** Presentation only: the Chat proposal and apply service retain write authority. */
-type ReviewIdentity = {
-  schemaVersion: "action_review_plan_v0";
-  proposalId: string;
-  sourceFingerprint: string;
-};
-export type ActionReviewReason =
-  | "ready_stop" | "resume_review" | "delete_review" | "action_review"
-  | "protected_action" | "unknown_permission" | "unknown_action"
-  | "incomplete_proposal" | "authority_gate" | "stale_proposal"
-  | "apply_pending" | "readback_verified" | "readback_unverified"
-  | "apply_failed" | "inactive_proposal";
-
-export type ActionReviewPlan = ReviewIdentity & (
-  | { interaction: "direct"; reason: "ready_stop"; canApply: true }
-  | { interaction: "review"; reason: ActionReviewReason; canApply: boolean }
-  | { interaction: "gated" | "refresh" | "repair" | "pending" | "completed" | "inactive";
-      reason: ActionReviewReason; canApply: false }
-);
+import type { ActionReviewIdentity, ActionReviewPlan, ActionReviewReason } from "./action-review-plan-types";
 
 // These are named presentation rules, not a second Goal legal-action catalog.
 const lifecycleReviewReasons = { stop: "ready_stop", resume: "resume_review", delete: "delete_review" } as const;
 const hasText = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 
 export function compileActionReviewPlan(proposal: TypedActionProposal): ActionReviewPlan {
-  const identity: ReviewIdentity = {
+  const identity: ActionReviewIdentity = {
     schemaVersion: "action_review_plan_v0",
     proposalId: proposal.proposal_id,
     sourceFingerprint: proposal.expected_state_fingerprint,

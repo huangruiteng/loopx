@@ -1,4 +1,4 @@
-import type { ActionReviewPlan } from "./action-review-plan";
+import type { ActionReviewPlan } from "./action-review-plan-types";
 import type { WorkspaceLoadError } from "../../data/workspace-progressive-status";
 export type WorkspaceGoalState =
   | "需修复"
