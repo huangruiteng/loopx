@@ -325,6 +325,21 @@ field codec 仍有真实 caller，不引入公开 update 限制。Native metadat
 T2 原子后续动作尚未全部闭合。Lease-edit PR #4152 已合入；有界规划更新复用该
 fence 及既有 CAS/receipt 事务。下一步继续剩余字段/effect 清单，不另建 update engine。
 
+工作要求编辑现已闭合：没有保留 lease 的非 Monitor Agent Todo，可通过既有 v1
+planning 事务更新 `action_kind`、`task_domain`、`task_repository`、
+`required_write_scopes`、`required_capabilities`、`target_capabilities` 和
+`explore_result_node_refs`。公开 legacy 编辑与 native planning 共用
+`todos/work_requirements.ts`；Monitor successor authoring 与 receipt verification
+复用其仓库／capability codec，删除 scheduler 私有副本，不增加 RPC 或 store。
+省略／空白标量保留原值，显式空集合清除要求。有意修正：非法成员、不安全仓库和超出
+容量的 Explore 引用使整笔公开更新拒绝，不再静默丢掉要求或截断引用；纯文案编辑不会
+重新审查无关历史字段。SCP 风格的含密码 userinfo 同样拒绝，包括 Monitor 后继路由；
+仅带用户名的 Git transport 仍合法。仓库／capability 别名保持同一规范化 replay identity。
+要求不是授权：ownership、决策结果、任意 raw patch、Monitor 编辑及带 lease 的要求
+变化仍受限。Python 读取／bootstrap codec 与 legacy writer 仍有真实调用者，本批
+不退役它们，也不宣称完整 T1。下一步结合 lifecycle admission 与 validation effect
+闭合 ownership／decision metadata，再推进 T2 剩余带 lease Monitor 事务。
+
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
   字段，也不让 generic patch 获得 terminal transition 权限。

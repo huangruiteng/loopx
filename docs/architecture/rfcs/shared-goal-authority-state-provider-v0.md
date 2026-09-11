@@ -2698,6 +2698,13 @@ lease status changes and Monitor planning/effects remain unsupported. Neither an
 admission result nor a lease-fence result is a commit receipt. Keep provider
 CAS/replay and existing writer lock lifetimes unchanged while collecting this
 deletion payoff.
+The same transaction now accepts bounded work-requirement declarations through
+the shared public TS planner (field list and intentional rejection changes are
+in T1). File, NoKV, SQLite and PostgreSQL conformance exercise aliases, explicit
+clear, replay after a later edit, invalid-input atomicity and lease rejection.
+The production-scale fixture carries requirements across unrelated lifecycle
+operations. This does not qualify a new profile, widen an execution grant, or
+change D1–D3/promotion holds; Markdown remains an independent permanent projection.
 Waiting/resume lane selection is now one TS read-policy owner shared by quota,
 vision-wait, agent-scope and replan. The obsolete Python selector module is
 deleted; the adapter accepts the same canonical summary after promotion and

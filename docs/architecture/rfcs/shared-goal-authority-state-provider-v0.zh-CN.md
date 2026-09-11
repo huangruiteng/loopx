@@ -2125,6 +2125,11 @@ wire，不改变 provider 默认或 promotion。这仍是有界的非 terminal p
 不是通用 native metadata 支持；Active lease 下的状态变化及 Monitor 规划/effect 仍不
 支持。准入结果和 lease-fence 结果都不是 commit receipt；兑现删除收益时，provider
 CAS/replay 与既有 writer 持锁生命周期不变。
+同一事务现通过共享公开 TS planner 接受有界工作要求声明，字段清单和有意拒绝变化见
+T1。File、NoKV、SQLite 与 PostgreSQL conformance 覆盖别名、显式清空、后续编辑后
+的旧操作重放、非法输入原子性和 lease 拒绝；复杂容量 fixture 携带工作要求验证其他
+lifecycle 操作不会丢字段。这不资格化新 profile、不扩大 execution grant，也不改变
+D1–D3／promotion hold；Markdown 继续作为独立的永久投影。
 等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
 策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
 summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promoted display
