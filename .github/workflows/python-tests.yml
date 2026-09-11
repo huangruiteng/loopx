@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 3
     outputs:
       core_tests: ${{ steps.classify.outputs.core_tests }}
+      impact_profile: ${{ steps.classify.outputs.impact_profile }}
+      shadow_profile: ${{ steps.classify.outputs.shadow_profile }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,21 +42,38 @@ jobs:
         with:
           python-version: "3.11"
       - name: Validate merge gate semantics
-        run: python -m unittest discover -s scripts/ci -p 'test_review_gate.py'
+        run: python -m unittest discover -s scripts/ci -p 'test_*.py'
       - name: Classify the exact pull-request change
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHECKOUT_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == pull_request ]]; then
-            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" --plan impact-plan.json >> "$GITHUB_OUTPUT"
           else
-            echo 'core_tests=true' >> "$GITHUB_OUTPUT"
+            python scripts/ci/review_gate.py classify --base "$CHECKOUT_SHA" --head "$CHECKOUT_SHA" --non-pr --plan impact-plan.json >> "$GITHUB_OUTPUT"
           fi
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          plan = json.loads(Path("impact-plan.json").read_text())
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## CI impact plan (shadow rollout)\n\n")
+              summary.write(f"Candidate: **{plan['candidate_profile']}**; execution: **{plan['execution_mode']}**.\n\n")
+              summary.write(plan['reason'] + ".\n\n")
+              summary.write("Full-suite checks and coverage remain authoritative. See the plan artifact for the exact revisions and selected files.\n")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-impact-plan
+          path: impact-plan.json
+          if-no-files-found: error
+          retention-days: 7
 
   checks:
     needs: changes
@@ -226,8 +245,17 @@ jobs:
           --splits 2 --group ${{ matrix.shard }}
           --splitting-algorithm least_duration
           --durations=25 --durations-min=1
+          --junitxml=junit.xml
           --cov=loopx
           --cov-report=term
+      - name: Upload full-shard outcomes for selection audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-junit-${{ matrix.shard }}
+          path: junit.xml
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload shard coverage
         uses: actions/upload-artifact@v7
         with:
@@ -236,6 +264,82 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 3
+
+  impact-tests:
+    needs: changes
+    if: needs.changes.outputs.shadow_profile == 'vision'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: |
+          python -m pip install --disable-pip-version-check -e ".[test]"
+          npm ci --ignore-scripts
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-impact-plan
+      - name: Execute the complete candidate profile without full-suite coverage claims
+        run: python scripts/ci/impact_shadow.py run --plan impact-plan.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ci-impact-selected
+          path: impact-results/
+          if-no-files-found: error
+          retention-days: 7
+
+  impact-shadow:
+    needs: [changes, impact-tests, test-shard]
+    if: always() && needs.changes.outputs.shadow_profile == 'vision'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require candidate execution
+        env:
+          SELECTED_RESULT: ${{ needs.impact-tests.result }}
+        run: |
+          test "$SELECTED_RESULT" = success
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-impact-plan
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-impact-selected
+          path: impact-results
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: python-junit-*
+          path: full-reports
+      - name: Compare exact test identities and outcomes
+        run: python scripts/ci/impact_shadow.py audit --plan impact-plan.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ci-impact-comparison
+          path: impact-comparison.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Full execution failures cannot qualify the shadow
+        env:
+          FULL_RESULT: ${{ needs.test-shard.result }}
+        run: test "$FULL_RESULT" = success
 
   pytest:
     # Keep the required check name; a skipped/failed shard must not turn it green.
@@ -429,7 +533,7 @@ jobs:
   merge-gate:
     # Always publish one stable outcome, including documentation-only PRs.
     if: always()
-    needs: [changes, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell]
+    needs: [changes, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell, impact-shadow]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -440,4 +544,4 @@ jobs:
       - name: Reject incomplete or unsuccessful qualification
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-        run: python scripts/ci/review_gate.py verify
+        run: python scripts/ci/review_gate.py verify --shadow

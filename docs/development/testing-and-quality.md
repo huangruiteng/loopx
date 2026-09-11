@@ -110,6 +110,14 @@ Changes to the classifier or workflow need both code-path and documentation-only
 qualification. Keep required check names stable and never require a
 workflow-level path-filtered check that cannot report on every PR.
 
+The [CI impact-selection shadow rollout](ci-impact-selection.md) additionally
+proposes a reviewed vision-checkpoint slice and compares its actual test
+identities/results with the full shards. It does not yet skip core work or
+replace full-suite coverage. Missing or failed required shadow evidence also
+fails `merge-gate`; policy changes rehearse the candidate while retaining full
+qualification. CI 影响范围选择目前处于 shadow 阶段：真实运行、对照并积累证据，
+不把候选清单当成跳过全量的授权。
+
 PRs opened before activation may need a branch update to produce the new
 required check; an old green suite alone does not supply a missing aggregate.
 
