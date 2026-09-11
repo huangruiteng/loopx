@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from ..agent_context import envelope_agent_context
 from ..runtime.public_safety import validate_public_safe_value
 
 
@@ -563,6 +564,9 @@ def subagent_host_request_projection(
     plan: Mapping[str, Any],
 ) -> dict[str, Any]:
     projection: dict[str, Any] = {}
+    context = plan.get("delegation_context")
+    if isinstance(context, Mapping):
+        projection["delegation_context"] = dict(context)
     child_operations = plan.get("child_operations")
     if isinstance(child_operations, list) and child_operations:
         projection["child_operations"] = child_operations
@@ -1010,6 +1014,13 @@ def observe_subagent_host_result(
     reconciliation = reconcile_subagent_execution(topology, receipts)
     if reconciliation is not None:
         normalized["subagent_reconciliation"] = reconciliation
+        context = envelope_agent_context(
+            _mapping(plan.get("turn_envelope")),
+            phase="after_delegate_result",
+            observations={"reconciliation_counts": reconciliation["counts"]},
+        )
+        if context is not None:
+            normalized["agent_context"] = context
 
 
 def subagent_execution_payload_projection(
@@ -1019,4 +1030,8 @@ def subagent_execution_payload_projection(
     reconciliation = host_result.get("subagent_reconciliation")
     if not isinstance(reconciliation, Mapping):
         return {}
-    return {"subagent_reconciliation": dict(reconciliation)}
+    projection = {"subagent_reconciliation": dict(reconciliation)}
+    context = host_result.get("agent_context")
+    if isinstance(context, Mapping):
+        projection["agent_context"] = dict(context)
+    return projection

@@ -9,6 +9,7 @@ from ..quota.turn_envelope import (
     ACTION_SIGNATURE_COVERAGE_V1,
     ACTION_SIGNATURE_COVERAGE_V2,
     ACTION_SIGNATURE_COVERAGE_V3,
+    ACTION_SIGNATURE_COVERAGE_V4,
 )
 
 
@@ -130,6 +131,16 @@ _PLANNING_HORIZON_V0_MIGRATION_GROWTH_ALLOWANCE: dict[Metric, int] = {
     "compact_payload_chars": 2_800,
 }
 
+# Capability-owned context adds one bounded signed planning contribution. Only
+# an explicit older-coverage -> v4 transition receives this allowance; v4 -> v4
+# keeps the ordinary output budget. Absolute probe ceilings remain unchanged.
+_AGENT_CONTEXT_V4_MIGRATION_GROWTH_ALLOWANCE: dict[Metric, int] = {
+    "chars": 2_048,
+    "utf8_bytes": 2_048,
+    "lines": 48,
+    "compact_payload_chars": 1_664,
+}
+
 # todo_planning_inventory_detail_v0 adds planning/claim semantics only to the
 # explicit agent-Todo detail variants. The allowance is bound to the declared
 # none-to-v0 schema migration; after merge the ordinary cold-path budget
@@ -229,6 +240,10 @@ def _action_signature_migration(
         (ACTION_SIGNATURE_COVERAGE_V0, ACTION_SIGNATURE_COVERAGE_V3),
         (ACTION_SIGNATURE_COVERAGE_V1, ACTION_SIGNATURE_COVERAGE_V3),
         (ACTION_SIGNATURE_COVERAGE_V2, ACTION_SIGNATURE_COVERAGE_V3),
+        (ACTION_SIGNATURE_COVERAGE_V0, ACTION_SIGNATURE_COVERAGE_V4),
+        (ACTION_SIGNATURE_COVERAGE_V1, ACTION_SIGNATURE_COVERAGE_V4),
+        (ACTION_SIGNATURE_COVERAGE_V2, ACTION_SIGNATURE_COVERAGE_V4),
+        (ACTION_SIGNATURE_COVERAGE_V3, ACTION_SIGNATURE_COVERAGE_V4),
     }
     if not (
         isinstance(base_coverages, list)
@@ -331,6 +346,7 @@ class _SchemaMigrationState:
     guided_todo_delta_schema_migration: str | None
     portfolio_growth_migration: bool
     horizon_growth_migration: bool
+    agent_context_growth_migration: bool
     inventory_detail_growth_migration: bool
     guided_todo_delta_growth_migration: bool
 
@@ -420,6 +436,11 @@ def _schema_migration_state(
                 )
             )
         ),
+        agent_context_growth_migration=bool(
+            output_format == "json"
+            and signature_migration
+            and signature_migration.endswith(f" -> {ACTION_SIGNATURE_COVERAGE_V4}")
+        ),
         inventory_detail_growth_migration=bool(
             output_format == "json" and inventory_detail_schema_migration
         ),
@@ -490,6 +511,10 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
             allowance = max(
                 allowance,
                 _PLANNING_HORIZON_V0_MIGRATION_GROWTH_ALLOWANCE[metric],
+            )
+        if migration.agent_context_growth_migration:
+            allowance = max(
+                allowance, _AGENT_CONTEXT_V4_MIGRATION_GROWTH_ALLOWANCE[metric]
             )
         if migration.inventory_detail_growth_migration:
             allowance = max(

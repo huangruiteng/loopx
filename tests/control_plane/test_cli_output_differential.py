@@ -431,7 +431,7 @@ def test_unknown_action_portfolio_schema_migration_fails_closed() -> None:
 def test_unknown_action_signature_coverage_migration_fails_closed() -> None:
     candidate = _row(
         action_signature_sha256="unknown-semantic-signature",
-        action_signature_coverages=["turn_envelope_action_dimensions_v4"],
+        action_signature_coverages=["turn_envelope_action_dimensions_v5"],
     )
 
     result = compare_cli_output_receipts(_receipt(_row()), _receipt(candidate))
@@ -716,3 +716,43 @@ def test_fixture_contract_mismatch_fails_closed() -> None:
     candidate["fixture_contract_version"] = "different"
     with pytest.raises(ValueError, match="fixture_contract_version"):
         compare_cli_output_receipts(_receipt(_row()), candidate)
+
+
+@pytest.mark.parametrize("previous", range(4))
+def test_agent_context_v4_migration_is_bounded_and_one_time(previous):
+    base = _row(action_signature_coverages=[f"turn_envelope_action_dimensions_v{previous}"])
+    candidate = {**base, "action_signature_sha256": "agent-context-signature",
+                 "action_signature_coverages": ["turn_envelope_action_dimensions_v4"],
+                 "chars": 42_048, "utf8_bytes": 42_048, "lines": 1_048,
+                 "compact_payload_chars": 21_664}
+    result = compare_cli_output_receipts(_receipt(base), _receipt(candidate))
+    assert result["ok"] and result["review_required"]
+    assert result["rows"][0]["review_signals"] == [
+        f"action_signature coverage migrated: turn_envelope_action_dimensions_v{previous}"
+        " -> turn_envelope_action_dimensions_v4"]
+    for metric in ("chars", "utf8_bytes", "lines", "compact_payload_chars"):
+        too_large = {**candidate, metric: candidate[metric] + 1}
+        assert not compare_cli_output_receipts(_receipt(base), _receipt(too_large))["ok"]
+    # After migration, neither growing again nor changing semantics is excused.
+    grown = {**candidate, "chars": candidate["chars"] + 2_048}
+    assert not compare_cli_output_receipts(_receipt(candidate), _receipt(grown))["ok"]
+    changed = {**candidate, "action_signature_sha256": "unexpected-semantic-change"}
+    assert not compare_cli_output_receipts(_receipt(candidate), _receipt(changed))["ok"]
+    reverse = {**candidate, "action_signature_coverages": base["action_signature_coverages"],
+               "action_signature_sha256": "reverse-signature"}
+    assert not compare_cli_output_receipts(_receipt(candidate), _receipt(reverse))["ok"]
+
+
+def test_public_multi_subagent_probe_reaches_v4_producer(tmp_path):
+    import runpy
+    from pathlib import Path
+    from tests.control_plane import test_cli_output_budget as probe
+    from loopx.control_plane.testing import cli_output_semantics as semantics
+
+    runner = runpy.run_path(str(Path(__file__).resolve().parents[2]
+                                / 'examples/control_plane/cli-output-probe-runner.py'))
+    with probe._stable_budget_fixture_root(tmp_path) as root:
+        rows = runner['_multi_subagent_rows'](probe, semantics, root)
+    assert len(rows) == 1
+    assert rows[0]['action_signature_coverages'] == ['turn_envelope_action_dimensions_v4']
+    assert any('agent_context' in path for path in rows[0]['json_shape_paths'])

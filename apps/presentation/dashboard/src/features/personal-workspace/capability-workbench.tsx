@@ -126,6 +126,23 @@ export function CapabilityDetailHeader({ capability, locale, source }: Readonly<
           <h2>{localized.display_name}</h2>
           <CapabilityEffectiveSource source={source} t={t} />
         </div>
+        {capability.context_contribution && (
+          <details className="personal-capability-help" data-testid="capability-context-phases">
+            <summary>{locale === "zh-CN" ? "主 Agent 协作指导" : "Coordinator workflow guidance"}</summary>
+            <p>{locale === "zh-CN"
+              ? "随能力开启。支持以下阶段；此处展示能力范围，不能证明某次运行已读取或采纳。"
+              : "Enabled with this capability. These are supported phases, not proof that a run read or adopted the guidance."}</p>
+            <dl>{capability.context_contribution.supported_phases.map((phase) => (
+              <div key={phase}>
+                <dt><code>{phase}</code></dt>
+                <dd>{contextPhaseCopy[phase][locale === "zh-CN" ? "zh" : "en"]}</dd>
+              </div>
+            ))}</dl>
+            <p>{locale === "zh-CN"
+              ? "LoopX Turn 在请求与结果中提供上下文；原生工具入口由 LoopX skill 调用同一只读接口。执行与采纳需另看运行证据。"
+              : "LoopX Turn includes context in requests and results. For native tools, the LoopX skill reads the same interface. Execution and adoption require run evidence."}</p>
+          </details>
+        )}
         <details className="personal-capability-help" key={capability.capability_id}>
           <summary>{locale === "zh-CN" ? "配置说明" : "Configuration help"}</summary>
           <p>{localized.description}</p>
@@ -139,3 +156,10 @@ export function CapabilityDetailHeader({ capability, locale, source }: Readonly<
     </header>
   );
 }
+
+
+const contextPhaseCopy = {
+  before_plan: { zh: "规划前：识别独立问题并保留主 Agent 的核验与整合职责。", en: "Before planning: identify independent questions and retain coordinator validation and integration." },
+  before_delegate: { zh: "委派前：明确子任务边界、模型偏好及预期证据。", en: "Before delegation: specify task boundaries, model preferences and expected evidence." },
+  after_delegate_result: { zh: "回收后：核验结果，说明采纳决定并关联计划与成果。", en: "After results: validate evidence, explain acceptance and link plans and deliverables." },
+} as const;

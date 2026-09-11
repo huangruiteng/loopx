@@ -274,6 +274,42 @@ def _blocking_gate_rows(
     ]
 
 
+
+def _multi_subagent_rows(probe, semantics, fixture_root):
+    """Run the same enabled public fixture on base and head, not default-off only."""
+    project, runtime, registry_path, state_file = probe._write_fixture(
+        fixture_root / "multi_subagent_enabled", probe.SCENARIOS[0]
+    )
+    registry = json.loads(registry_path.read_text())
+    registry["goals"][0]["spawn_policy"] = {
+        "mode": "multi_subagent", "spawn_allowed": True, "max_children": 4,
+        "model_config": {"model": "example-small", "reasoning_effort": "max"},
+    }
+    registry_path.write_text(json.dumps(registry))
+    variant_id = "quota_should_run_turn_envelope"
+    command = probe._mode_variant_commands(
+        project=project, runtime=runtime, registry_path=registry_path,
+        state_file=state_file, output_format="json",
+    )[variant_id]
+    exit_code, output = probe._invoke_cli(command)
+    if exit_code != 0:
+        raise AssertionError("enabled multi_subagent turn envelope failed")
+    measurement = probe.measure_cli_output(output, output_format="json")
+    variant = probe.CLI_OUTPUT_MODE_VARIANT_BY_ID[variant_id]
+    probe.assert_cli_output_mode_variant(
+        variant, output_format="json", text=output, measurement=measurement,
+    )
+    return [_receipt_row(
+        semantics=semantics,
+        row_id="variant/quota_should_run_turn_envelope_multi_subagent/small/json",
+        surface_id=variant.parent_surface_id,
+        variant_id="quota_should_run_turn_envelope_multi_subagent", scenario="small",
+        output_format="json", qualification_policy="explicit_opt_in_cold_path",
+        semantic_json_keys=variant.semantic_json_keys, markdown_anchor=variant.markdown_anchor,
+        measurement=measurement, text=output,
+    )]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--test-source", type=Path, required=True)
@@ -292,6 +328,7 @@ def main() -> int:
             *_default_rows(probe, semantics, stable_root),
             *_variant_rows(probe, semantics, stable_root),
             *_blocking_gate_rows(probe, semantics, stable_root),
+            *_multi_subagent_rows(probe, semantics, stable_root),
         ]
     args.receipt.parent.mkdir(parents=True, exist_ok=True)
     args.receipt.write_text(
