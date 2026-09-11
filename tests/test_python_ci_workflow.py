@@ -111,15 +111,33 @@ def test_merge_gate_runs_on_all_prs_and_checks_every_core_aggregate() -> None:
     assert "if: always()" in gate
     assert (
         "needs: [changes, pytest, node-minimum-compatibility, "
-        "stage2c-correctness-e2e, windows-powershell]"
+        "stage2c-correctness-e2e, windows-powershell, impact-shadow]"
     ) in gate
     assert "NEEDS_JSON: ${{ toJSON(needs) }}" in gate
-    assert "run: python scripts/ci/review_gate.py verify" in gate
+    assert "run: python scripts/ci/review_gate.py verify --shadow" in gate
     assert "continue-on-error" not in gate
     for name in ("checks", "test-shard", "stage2c-suite", "windows-powershell"):
         job = WORKFLOW.split(f"  {name}:\n", 1)[1].split("    steps:", 1)[0]
         assert "needs: changes" in job
         assert "if: needs.changes.outputs.core_tests == 'true'" in job
+
+
+def test_shadow_workflow_keeps_full_coverage_and_requires_exact_artifacts() -> None:
+    selected = WORKFLOW.split("  impact-tests:\n", 1)[1].split("  impact-shadow:\n", 1)[0]
+    audit = WORKFLOW.split("  impact-shadow:\n", 1)[1].split("  pytest:\n", 1)[0]
+    assert "if: needs.changes.outputs.shadow_profile == 'vision'" in selected
+    assert "impact_shadow.py run --plan impact-plan.json" in selected
+    assert "--cov" not in selected and "coverage-xml" not in selected
+    assert "needs: [changes, impact-tests, test-shard]" in audit
+    assert "if: always() && needs.changes.outputs.shadow_profile == 'vision'" in audit
+    for artifact in ("ci-impact-plan", "ci-impact-selected", "python-junit-*"):
+        assert artifact in audit
+    assert "impact_shadow.py audit --plan impact-plan.json" in audit
+    assert 'test "$SELECTED_RESULT" = success' in audit
+    assert 'test "$FULL_RESULT" = success' in audit
+    assert "continue-on-error" not in selected + audit
+    assert "--junitxml=junit.xml" in WORKFLOW
+    assert "name: python-junit-${{ matrix.shard }}" in WORKFLOW
 
 
 def test_two_shards_execute_each_test_once_and_merge_portable_coverage(
