@@ -1,13 +1,17 @@
 """Legacy input codec for the single typed decision-dependency rule owner."""
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from ..effect_runtime import effect_runtime_result
 from .contract import (
-    normalize_todo_blocks_agent, normalize_todo_claimed_by,
-    normalize_todo_decision_scope, normalize_todo_decision_scope_outcomes,
-    normalize_todo_global_gate, normalize_todo_id, normalize_todo_required_decision_scopes,
+    normalize_todo_blocks_agent,
+    normalize_todo_claimed_by,
+    normalize_todo_decision_scope,
+    normalize_todo_decision_scope_outcomes,
+    normalize_todo_global_gate,
+    normalize_todo_id,
+    normalize_todo_required_decision_scopes,
 )
 from .user_gate import is_user_gate_todo_item
 
@@ -16,6 +20,12 @@ TODO_GATE_BLOCKING_STATES = frozenset(
 )
 DECISION_SCOPE_CONSISTENCY_SCHEMA_VERSION = "required_decision_scope_consistency_v0"
 STANDING_DECISION_AUTHORITY_SCHEMA_VERSION = "standing_decision_authority_v0"
+DECISION_SCOPE_RELATION_SCHEMA_VERSION = "decision_scope_relation_v0"
+TODO_GATE_RELATION_SCHEMA_VERSION = "todo_gate_relation_v0"
+TYPED_DECISION_SCOPE_RESULT_SCHEMA_VERSION = "todo_decision_scope_result_v0"
+_RELATION_SCHEMA_VERSIONS = frozenset(
+    {DECISION_SCOPE_RELATION_SCHEMA_VERSION, TODO_GATE_RELATION_SCHEMA_VERSION}
+)
 _AGENT_SUMMARY_ITEM_KEYS = (
     "current_agent_claimed_open_items", "current_agent_claimed_advancement_items",
     "first_executable_items", "executable_backlog_items", "first_open_items", "backlog_items", "items",
@@ -26,13 +36,82 @@ _USER_SUMMARY_ITEM_KEYS = (
 )
 
 
-def _evaluate(operation: str, **facts: Any) -> Any:
+def _evaluate(operation: str, **facts: Any) -> object:
     result = effect_runtime_result("todo.decision_scope.evaluate", {
         "schema_version": "todo_decision_scope_request_v0", "operation": operation, **facts,
     })
-    if not isinstance(result, dict) or result.get("schema_version") != "todo_decision_scope_result_v0":
+    if (
+        not isinstance(result, dict)
+        or result.get("schema_version")
+        != TYPED_DECISION_SCOPE_RESULT_SCHEMA_VERSION
+        or "result" not in result
+    ):
         raise TypeError("invalid typed decision scope projection")
-    return result["result"]
+    evaluated: object = result["result"]
+    return evaluated
+
+
+def _projection(
+    operation: str,
+    value: object,
+    *,
+    schema_versions: frozenset[str],
+    nullable: bool,
+) -> dict[str, Any] | None:
+    if value is None and nullable:
+        return None
+    if not isinstance(value, dict) or any(
+        not isinstance(key, str) for key in value
+    ):
+        raise TypeError(f"invalid typed decision scope {operation} projection")
+    projection = {
+        key: item for key, item in value.items() if isinstance(key, str)
+    }
+    if projection.get("schema_version") not in schema_versions:
+        raise TypeError(f"invalid typed decision scope {operation} schema")
+    return projection
+
+
+def _required_projection(
+    operation: str,
+    value: object,
+    *,
+    schema_version: str,
+) -> dict[str, Any]:
+    projection = _projection(
+        operation,
+        value,
+        schema_versions=frozenset({schema_version}),
+        nullable=False,
+    )
+    if projection is None:  # Defensive narrowing; nullable=False rejects None.
+        raise TypeError(f"invalid typed decision scope {operation} projection")
+    return projection
+
+
+def _optional_relation(operation: str, value: object) -> dict[str, Any] | None:
+    return _projection(
+        operation,
+        value,
+        schema_versions=_RELATION_SCHEMA_VERSIONS,
+        nullable=True,
+    )
+
+
+def _relation_matrix(
+    value: object,
+    *,
+    gate_count: int,
+    item_count: int,
+) -> list[list[dict[str, Any] | None]]:
+    if not isinstance(value, list) or len(value) != gate_count:
+        raise TypeError("invalid typed decision scope relations matrix")
+    matrix: list[list[dict[str, Any] | None]] = []
+    for row in value:
+        if not isinstance(row, list) or len(row) != item_count:
+            raise TypeError("invalid typed decision scope relations matrix")
+        matrix.append([_optional_relation("relations", item) for item in row])
+    return matrix
 
 
 def _facts(item: dict[str, Any]) -> dict[str, Any]:
@@ -88,12 +167,19 @@ def _authority(authority: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def standing_decision_authority_for_agent(authority: dict[str, Any] | None, *,
                                           agent_id: str | None) -> dict[str, Any] | None:
-    if _authority(authority) is None:
+    normalized_authority = _authority(authority)
+    if normalized_authority is None:
         return None
-    return cast(dict[str, Any] | None, _evaluate(
-        "standing", authority=_authority(authority),
-        agent_id=normalize_todo_claimed_by(agent_id),
-    ))
+    return _projection(
+        "standing",
+        _evaluate(
+            "standing",
+            authority=normalized_authority,
+            agent_id=normalize_todo_claimed_by(agent_id),
+        ),
+        schema_versions=frozenset({STANDING_DECISION_AUTHORITY_SCHEMA_VERSION}),
+        nullable=True,
+    )
 
 
 def build_required_decision_scope_consistency(
@@ -103,14 +189,32 @@ def build_required_decision_scope_consistency(
     user_source_items: list[dict[str, Any]] | None = None,
     standing_decision_authority: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return cast(dict[str, Any], _evaluate("consistency",
-        agent_items=_source(agent_todo_summary, agent_source_items, _AGENT_SUMMARY_ITEM_KEYS),
-        user_items=_source(user_todo_summary, user_source_items, _USER_SUMMARY_ITEM_KEYS),
-        agent_id=normalize_todo_claimed_by(agent_id),
-        registered_agents=sorted({value for raw in registered_agent_ids or []
-                                  if (value := normalize_todo_claimed_by(raw))}),
-        standing_authority=_authority(standing_decision_authority),
-    ))
+    return _required_projection(
+        "consistency",
+        _evaluate(
+            "consistency",
+            agent_items=_source(
+                agent_todo_summary,
+                agent_source_items,
+                _AGENT_SUMMARY_ITEM_KEYS,
+            ),
+            user_items=_source(
+                user_todo_summary,
+                user_source_items,
+                _USER_SUMMARY_ITEM_KEYS,
+            ),
+            agent_id=normalize_todo_claimed_by(agent_id),
+            registered_agents=sorted(
+                {
+                    value
+                    for raw in registered_agent_ids or []
+                    if (value := normalize_todo_claimed_by(raw))
+                }
+            ),
+            standing_authority=_authority(standing_decision_authority),
+        ),
+        schema_version=DECISION_SCOPE_CONSISTENCY_SCHEMA_VERSION,
+    )
 
 
 def build_required_decision_scope_repair_hint(
@@ -195,28 +299,50 @@ def decision_scope_covers(gate_scope: Any, required_scope: Any) -> bool:
     required = normalize_todo_decision_scope(required_scope)
     if not gate or not required:
         return False
-    return cast(bool, _evaluate("covers", gate_scope=gate, required_scope=required))
+    result = _evaluate("covers", gate_scope=gate, required_scope=required)
+    if not isinstance(result, bool):
+        raise TypeError("invalid typed decision scope covers projection")
+    return result
 
 
 def decision_scope_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    return cast(dict[str, Any] | None, _evaluate("scope_relation", gate=_facts(gate), item=_facts(agent_item)))
+    return _projection(
+        "scope_relation",
+        _evaluate("scope_relation", gate=_facts(gate), item=_facts(agent_item)),
+        schema_versions=frozenset({DECISION_SCOPE_RELATION_SCHEMA_VERSION}),
+        nullable=True,
+    )
 
 
 def exact_todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    return cast(dict[str, Any] | None, _evaluate("exact_relation", gate=_facts(gate), item=_facts(agent_item)))
+    return _projection(
+        "exact_relation",
+        _evaluate("exact_relation", gate=_facts(gate), item=_facts(agent_item)),
+        schema_versions=frozenset({TODO_GATE_RELATION_SCHEMA_VERSION}),
+        nullable=True,
+    )
 
 
 def todo_gate_relation(gate: dict[str, Any], agent_item: dict[str, Any]) -> dict[str, Any] | None:
-    return cast(dict[str, Any] | None, _evaluate("relation", gate=_facts(gate), item=_facts(agent_item)))
+    return _optional_relation(
+        "relation",
+        _evaluate("relation", gate=_facts(gate), item=_facts(agent_item)),
+    )
 
 
 def todo_gate_relations(gates: list[dict[str, Any]], items: list[dict[str, Any]]) -> list[list[dict[str, Any] | None]]:
     """Evaluate a consumer's candidate set in one RPC, retaining positional identity."""
     if not gates or not items:
         return [[] for _ in gates]
-    return cast(list[list[dict[str, Any] | None]], _evaluate(
-        "relations", gates=[_facts(gate) for gate in gates], items=[_facts(item) for item in items],
-    ))
+    return _relation_matrix(
+        _evaluate(
+            "relations",
+            gates=[_facts(gate) for gate in gates],
+            items=[_facts(item) for item in items],
+        ),
+        gate_count=len(gates),
+        item_count=len(items),
+    )
 
 
 def todo_gate_relation_blocks_agent(relation: dict[str, Any] | None) -> bool:
