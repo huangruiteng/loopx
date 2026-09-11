@@ -1,0 +1,170 @@
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from loopx.configure_goal import configure_goal
+from loopx.control_plane.quota.goal_boundary import goal_boundary
+from loopx.orchestration import (
+    compact_orchestration_policy,
+    validate_subagent_model_config,
+)
+
+
+@pytest.fixture
+def registry(tmp_path: Path) -> Path:
+    path = tmp_path / "registry.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "common_runtime_root": str(tmp_path / "runtime"),
+                "goals": [
+                    {
+                        "id": "example",
+                        "repo": str(tmp_path),
+                        "status": "active",
+                        "spawn_policy": {
+                            "mode": "default",
+                            "allowed": False,
+                            "max_children": 0,
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    return path
+
+
+def test_cli_persists_model_without_enabling_spawn(registry: Path) -> None:
+    command = [
+        sys.executable,
+        "-m",
+        "loopx.cli",
+        "--registry",
+        str(registry),
+        "--format",
+        "json",
+        "configure-goal",
+        "--goal-id",
+        "example",
+        "--subagent-model",
+        "gpt-5.6-luna",
+        "--subagent-reasoning-effort",
+        "max",
+    ]
+    before = registry.read_bytes()
+    preview = subprocess.run(command, capture_output=True, text=True, check=True)
+    assert json.loads(preview.stdout)["dry_run"] is True
+    assert registry.read_bytes() == before
+    applied = json.loads(
+        subprocess.run(
+            command + ["--execute"], capture_output=True, text=True, check=True
+        ).stdout
+    )
+    config = {"model": "gpt-5.6-luna", "reasoning_effort": "max"}
+    assert applied["after"]["orchestration"]["model_config"] == config
+    assert applied["after"]["orchestration"]["spawn_allowed"] is False
+    goal = json.loads(registry.read_text())["goals"][0]
+    assert goal_boundary(goal)["orchestration"]["model_config"] == config
+
+
+def test_incremental_update_off_and_clear_preserve_boundaries(registry: Path) -> None:
+    configure_goal(
+        registry_path=registry,
+        goal_id="example",
+        subagent_model="gpt-5.6-luna",
+        subagent_reasoning_effort="max",
+        multi_subagent_feature="enabled",
+        max_children=2,
+        execute=True,
+    )
+    changed = configure_goal(
+        registry_path=registry,
+        goal_id="example",
+        subagent_reasoning_effort="high",
+        execute=True,
+    )
+    assert (
+        changed["after"]["orchestration"]["model_config"]["reasoning_effort"] == "high"
+    )
+    off = configure_goal(
+        registry_path=registry,
+        goal_id="example",
+        multi_subagent_feature="off",
+        execute=True,
+    )
+    assert off["after"]["orchestration"]["model_config"]["model"] == "gpt-5.6-luna"
+    assert off["after"]["orchestration"]["spawn_allowed"] is False
+    cleared = configure_goal(
+        registry_path=registry,
+        goal_id="example",
+        clear_subagent_model_config=True,
+        execute=True,
+    )
+    assert "model_config" not in cleared["after"]["orchestration"]
+    assert cleared["after"]["orchestration"]["max_children"] == 0
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"subagent_reasoning_effort": "max"},
+        {"subagent_model": ""},
+        {"subagent_model": "model\ninjected"},
+        {"subagent_model": "example", "subagent_reasoning_effort": "extreme"},
+        {"subagent_model": "example", "clear_subagent_model_config": True},
+    ],
+)
+def test_invalid_configuration_does_not_write(registry: Path, kwargs: dict) -> None:
+    before = registry.read_bytes()
+    with pytest.raises(ValueError):
+        configure_goal(
+            registry_path=registry, goal_id="example", execute=True, **kwargs
+        )
+    assert registry.read_bytes() == before
+
+
+def test_registry_model_overrides_stale_asset_and_clear_does_not_resurrect() -> None:
+    stale = {
+        "orchestration": {
+            "mode": "multi_subagent",
+            "spawn_allowed": True,
+            "max_children": 2,
+            "model_config": {"model": "old-model"},
+        }
+    }
+    goal = {
+        "id": "example",
+        "spawn_policy": {
+            "allowed": True,
+            "max_children": 2,
+            "model_config": {"model": "gpt-5.6-luna", "reasoning_effort": "max"},
+        },
+        "project_asset": stale,
+    }
+    assert (
+        goal_boundary(goal)["orchestration"]["model_config"]
+        == goal["spawn_policy"]["model_config"]
+    )
+    del goal["spawn_policy"]["model_config"]
+    assert "model_config" not in goal_boundary(goal)["orchestration"]
+
+
+def test_unconfigured_shape_and_unrecognized_model_availability() -> None:
+    assert compact_orchestration_policy(None) == {
+        "mode": "default",
+        "spawn_allowed": False,
+        "max_children": 0,
+    }
+    # Host catalog owns availability; LoopX does not silently replace unknown models.
+    assert validate_subagent_model_config({"model": "provider/future-model"}) == {
+        "model": "provider/future-model"
+    }
+    with pytest.raises(ValueError):
+        validate_subagent_model_config({"model": "example", "fallback": "parent"})

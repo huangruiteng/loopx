@@ -429,6 +429,13 @@ def goal_boundary(
                 boundary["orchestration"] = compact_orchestration_policy(
                     project_asset["orchestration"]
                 )
+    # Model preferences belong to the current registry, not a stale asset snapshot.
+    if spawn_policy is not None and "orchestration" in boundary:
+        model_config = compact_orchestration_policy(spawn_policy).get("model_config")
+        if model_config is not None:
+            boundary["orchestration"]["model_config"] = model_config
+        else:
+            boundary["orchestration"].pop("model_config", None)
     if boundary:
         boundary["rule"] = "stay_in_scope_or_stop"
         return boundary

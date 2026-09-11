@@ -111,6 +111,19 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
         "--max-children", type=int, help="Maximum child agents for orchestration."
     )
     configure_goal_parser.add_argument(
+        "--subagent-model",
+        help="Persist a child model preference; does not enable spawning or change the parent model.",
+    )
+    configure_goal_parser.add_argument(
+        "--subagent-reasoning-effort",
+        help="Persist child reasoning effort; requires an explicit or already configured child model.",
+    )
+    configure_goal_parser.add_argument(
+        "--clear-subagent-model-config",
+        action="store_true",
+        help="Remove child model and effort preferences together.",
+    )
+    configure_goal_parser.add_argument(
         "--allowed-domain",
         action="append",
         default=None,

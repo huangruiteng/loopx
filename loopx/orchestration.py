@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
 from .agent_registry import normalize_registered_agents
 
@@ -15,6 +16,38 @@ EXPLORE_HARNESS_PROFILES = (
     "adaptive-resilient",
     "moe-router",
 )
+
+
+SUBAGENT_REASONING_EFFORTS = (
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+    "ultra",
+)
+
+
+def validate_subagent_model_config(value: Any) -> dict[str, str]:
+    """Validate launch preferences, without pretending to know host model availability."""
+    if not isinstance(value, dict) or set(value) - {"model", "reasoning_effort"}:
+        raise ValueError(
+            "subagent model config requires model and optional reasoning_effort"
+        )
+    model = value.get("model")
+    if not isinstance(model, str) or not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}", model
+    ):
+        raise ValueError("subagent model must be a non-empty model identifier")
+    result = {"model": model}
+    if "reasoning_effort" in value:
+        effort = value["reasoning_effort"]
+        if effort not in SUBAGENT_REASONING_EFFORTS:
+            raise ValueError("unsupported subagent reasoning effort")
+        result["reasoning_effort"] = effort
+    return result
 
 
 def _int_number(value: Any, *, default: int = 0) -> int:
@@ -80,11 +113,15 @@ def compact_orchestration_policy(spawn_policy: Any) -> dict[str, Any]:
         "spawn_allowed": _spawn_allowed(policy),
         "max_children": max_children,
     }
+    if "model_config" in policy:
+        compact["model_config"] = validate_subagent_model_config(policy["model_config"])
     compact_domains = [str(value) for value in allowed_domains if str(value).strip()]
     if compact_domains:
         compact["allowed_domains"] = compact_domains
     if isinstance(policy.get("explore_harness"), dict):
-        compact["explore_harness"] = compact_explore_harness_policy(policy.get("explore_harness"))
+        compact["explore_harness"] = compact_explore_harness_policy(
+            policy.get("explore_harness")
+        )
     return compact
 
 

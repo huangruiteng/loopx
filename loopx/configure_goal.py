@@ -62,6 +62,7 @@ from .orchestration import (
     compact_orchestration_policy,
     compact_peer_task_coordination_policy,
     orchestration_policy_summary,
+    validate_subagent_model_config,
 )
 from .quota import goal_quota_config
 from .registry import atomic_write_json, read_json, registry_goals
@@ -435,6 +436,9 @@ def configure_goal(
     orchestration_mode: str | None = None,
     spawn_allowed: bool | None = None,
     max_children: int | None = None,
+    subagent_model: str | None = None,
+    subagent_reasoning_effort: str | None = None,
+    clear_subagent_model_config: bool = False,
     allowed_domains: list[str] | None = None,
     clear_allowed_domains: bool = False,
     explore_harness_enabled: bool | None = None,
@@ -593,6 +597,12 @@ def configure_goal(
         raise ValueError(
             "--multi-subagent-feature cannot be combined with --orchestration-mode or --spawn-allowed; "
             "use --max-children/--allowed-domain for bounded feature settings"
+        )
+    if clear_subagent_model_config and (
+        subagent_model is not None or subagent_reasoning_effort is not None
+    ):
+        raise ValueError(
+            "--clear-subagent-model-config cannot be combined with model settings"
         )
     if explore_harness_profile is not None:
         explore_harness_profile = (
@@ -957,6 +967,9 @@ def configure_goal(
         or orchestration_mode is not None
         or spawn_allowed is not None
         or max_children is not None
+        or subagent_model is not None
+        or subagent_reasoning_effort is not None
+        or clear_subagent_model_config
         or allowed_domains is not None
         or clear_allowed_domains
         or explore_harness_enabled is not None
@@ -968,6 +981,15 @@ def configure_goal(
             if isinstance(goal.get("spawn_policy"), dict)
             else {}
         )
+        if clear_subagent_model_config:
+            spawn_policy.pop("model_config", None)
+        elif subagent_model is not None or subagent_reasoning_effort is not None:
+            model_config = dict(spawn_policy.get("model_config") or {})
+            if subagent_model is not None:
+                model_config["model"] = subagent_model
+            if subagent_reasoning_effort is not None:
+                model_config["reasoning_effort"] = subagent_reasoning_effort
+            spawn_policy["model_config"] = validate_subagent_model_config(model_config)
         if multi_subagent_feature == "enabled":
             spawn_policy["mode"] = MULTI_SUBAGENT_ORCHESTRATION_MODE
             spawn_policy["allowed"] = True

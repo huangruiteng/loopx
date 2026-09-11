@@ -312,3 +312,55 @@ durable leader from a temporary coordination event.
 The result is parallel execution without a permanent leader: durable agents
 remain peers, while task coordination and host-child relationships stay bounded
 to the work that requires them.
+
+## Child Model Preferences And Read-Heavy Work
+
+Persist child launch preferences on the existing Goal orchestration policy:
+
+```bash
+loopx configure-goal --goal-id example-peer-task-goal \
+  --multi-subagent-feature enabled --max-children 2 \
+  --subagent-model gpt-5.6-luna --subagent-reasoning-effort max --execute
+loopx --format json configure-goal --goal-id example-peer-task-goal
+```
+
+Read back `after.orchestration.model_config` (or the current configuration
+summary) and `quota_should_run.goal_boundary.orchestration.model_config`.
+The registry stores this under `spawn_policy.model_config`. The current
+registry wins over an older project-asset model snapshot. Clearing the setting
+cannot resurrect a model preference from that snapshot.
+
+This is a per-Goal preference, not a global vendor default. Existing Goals with
+no model configuration retain their previous behavior. Setting a model alone
+does not enable spawning, change the coordinator model, register a peer, or
+supply a host capability. Disabling spawning retains the preference for later
+use. Remove both model and effort with:
+
+```bash
+loopx configure-goal --goal-id example-peer-task-goal \
+  --clear-subagent-model-config --execute
+```
+
+The native launch is still owned by the host/task coordinator. Before launch,
+read the model configuration and pass the model and effort explicitly through
+that host's supported arguments. Verify support against the host catalog;
+unsupported combinations must be reported instead of silently substituting
+the coordinator's model. Configuration readback proves persistence, not a model
+execution receipt. These instructions are coordinator guidance, not interception
+of arbitrary host tool calls. Automatic typed-driver argument propagation is
+not implemented by this configuration change.
+
+For read-heavy research, prefer fresh contexts with disjoint evidence questions:
+provide the exact source/period, allowed paths, claim to challenge, a bounded
+reading budget and a compact expected result. A worker returns source citations,
+units, calculations, counterevidence and unknowns; it does not edit the plan,
+spend quota or contact third parties. The coordinator verifies decisive claims
+against original sources and accepts or rejects the result. Two worker opinions
+are not two independent market observations. Record requested model/effort,
+worker reference and accepted evidence separately; do not infer the executed
+model from response style.
+
+中文操作要点：示例显式配置 Luna/max，仅作用于当前 Goal 的子任务偏好；
+未配置的 Goal 不改变默认行为。宿主启动时仍须显式传参并核验支持情况，
+不支持时不能悄悄继承主模型。只读研究拆分不同证据问题，子任务返回来源、
+反证和未知项，主任务复核并决定是否采纳。配置生效不等于研究结果有效。

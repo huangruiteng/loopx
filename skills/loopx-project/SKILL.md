@@ -1060,3 +1060,16 @@ Report in Chinese when the user is reviewing:
 
 Never include credentials, private docs, raw internal links, production task
 ids, or raw local evidence in public repo docs or examples.
+
+## Child Model Configuration
+
+For an authorized child-worker task, read
+`goal_boundary.orchestration.model_config` when present and explicitly pass
+its `model` and optional `reasoning_effort` through the native host's supported
+launch arguments. Check host support before launch; report unavailable settings
+instead of silently inheriting or substituting the coordinator model. Persist
+preferences through `configure-goal --subagent-model <id>
+--subagent-reasoning-effort <effort> --execute`, and remove them together with
+`--clear-subagent-model-config`. These preferences do not enable spawning or
+widen authority. See `docs/integrations/codex-subagent-orchestration.md` for
+read-heavy briefs, configuration readback, and the host enforcement boundary.
