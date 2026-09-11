@@ -2133,10 +2133,13 @@ summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promote
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
-T2 monitor successor 的路由 owner 已由 preflight、legacy effect adapter 和回执校验
-共享。其结果仅证明规范化 intent，不证明 actor authority、provider commit 或
-monitor-plus-successor 原子持久化；事务闭合前继续保留 monitor writer fence 与
-promotion hold。
+T2 的无 lease 原生 Monitor 观察与独立后继现由同一 canonical CAS／receipt 提交；
+route planner 本身仍不授予权限。CLI 将已提交回执交给既有 journal/outbox renderer，
+展示失败标为 pending，不回滚提交、不重新生成后继；quota 继续消费同一 v0 业务回执
+完成独立记账。验证覆盖真实 CLI 的缺失 display、renderer 失败后的 operation 重放，
+及 File／NoKV／真实隔离 PostgreSQL 的复杂数据、并发和丢回执恢复。
+带 lease Monitor、跨 owner claim 等未闭合能力仍明确拒绝；此切片不改变 provider
+默认、writer fence 或 promotion 审批，也不替代三臂 legacy 对照及 D2 soak。
 
 - 从 `loopx/control_plane/todos/provider_projection.py`、既有 Todo-section renderer、
   canonical journal/outbox 入手。复用 #4097 已有的缺失 Todo section 恢复及

@@ -138,7 +138,7 @@ test("production-scale snapshot remains immutable while each monitor gets an iso
     const result = planMonitorMetadata(request({existing: todo, enforce_boundedness: false,
       observation: observation({target_key: null, cadence: "1h"}),
     }));
-    assert.equal(result.metadata.material_change_generation, "1");
+    assert.equal(result.metadata.material_change_generation, String(Number(todo.material_change_generation ?? 0) + 1));
     assert.equal(result.metadata.consecutive_no_change, "0");
     assert.equal(result.metadata.claimed_by, undefined);
     assert.equal(result.metadata.status, undefined);

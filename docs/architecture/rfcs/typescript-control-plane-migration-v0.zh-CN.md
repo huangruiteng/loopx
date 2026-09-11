@@ -346,10 +346,25 @@ guard/resolver 及 TS 回执端独立的默认值／capability 解释。非法 c
 action/claim/capability 别名和 Git transport 在回执核对时指向同一路由。v0 replay
 digest 仍绑定原始 wire observation，不能因规范化而悄悄使 pending receipt 失效。
 无需 Node 的 repository/bootstrap codec 暂留并做跨运行时对照，不引入启动依赖。
-这**不是** T2 原子事务：monitor mutation 和 successor 写入仍通过既有 fenced effect
-执行；跨 effect crash 恢复、native writer 闭合及整 Goal promotion 仍未放行。
+原生 `coordination.local_authority.monitor_poll` 现将无 lease Monitor 的观察及请求的
+独立后继，绑定同一个 canonical revision，以一次 CAS 和持久 operation receipt
+提交。它组合已有 generation、successor route、User authoring scope 和 Todo create
+planner；单项 create 与 Monitor 批次共用创建准入／语义去重，legacy preflight 与
+native commit 共用目标选择。Python 只路由意图并交付既有 projection outbox。
 
-- 盘点 `monitor_poll_writeback.py` 及 event/Todo/lease caller，复用 monitor
+明确的语义修正：拒绝已完成／归档的 Monitor；target-key 选择排除结束的历史项，
+但多个活跃匹配仍要求显式 id；创建后继必须实际推进 material-change
+generation，不能对相同证据重复声明 `material_change=true` 就继续生成任务。
+原 operation 重试恢复原后继，不创建新工作；不附带后继的新 observation 仍可接受。
+User gate 复用既有 actor-bound scope，不推导全局 gate。
+
+尚未闭合：原生操作遇到任何保留的 Monitor lease 仍 fail closed，不隐式授权跨 owner
+的 successor claim；未 promotion Goal 仍走旧 writer。Quota 记账继续使用现有
+preflight/writeback/settlement 协议，沿用 v0 回执形状及原始 observation identity。
+Canonical 提交成功独立于 Markdown delivery pending。这不代表全部 T2 命令或整 Goal
+promotion 已完成。
+
+- 继续闭合 `monitor_poll_writeback.py` 保留的 lease 与 event caller，复用 monitor
   generation、独立 successor 和 settlement owner，组成一笔事务，不建第二套引擎。
 - 保持 unchanged poll/reschedule、generation fence、material-change successor
   去重和可归属 settlement。Monitor 不是 delivery 执行任务；独立 advancement Todo

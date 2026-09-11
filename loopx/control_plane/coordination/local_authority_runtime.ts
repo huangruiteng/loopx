@@ -3,6 +3,8 @@ import { ShadowManagementError, requireShadowPrimaryWriteAllowed, shadowMaintena
 import { isAbsolute, join } from "node:path";
 
 import type { JsonObject } from "../effect_program.ts";
+import {executeCoordinationMonitorPoll, COORDINATION_MONITOR_POLL_REQUEST_SCHEMA,
+  COORDINATION_MONITOR_POLL_RESULT_SCHEMA} from "./todo_monitor_poll.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
 import {
   LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
@@ -105,6 +107,34 @@ async function withCanonicalWriter<T>(root: string, goalId: string, dryRun: bool
     await requireShadowPrimaryWriteAllowed(root, goalId);
     return await write();
   });
+}
+
+/** Monitor observation and successors share the existing writer/fence lifetime. */
+export async function pollLocalCoordinationMonitor(value: unknown,
+  dependencies: LocalAuthorityRuntimeDependencies = {}): Promise<JsonObject> {
+  const evidence = {source_authority: "file_v0", decision_read_from_provider: true, legacy_fallback_used: false};
+  try {
+    const input = requireJsonObject(value, "local Monitor poll request");
+    if (input.schema_version !== COORDINATION_MONITOR_POLL_REQUEST_SCHEMA) throw new TypeError("Monitor poll schema mismatch");
+    const root = runtimeRoot(input.runtime_root);
+    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
+    if (!Array.isArray(input.registered_agents)) throw new TypeError("registered_agents must be an array");
+    const registered = input.registered_agents.map(agent => claimAgentValue(agent, "registered agent"));
+    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => ({
+      ...await executeCoordinationMonitorPoll(dependencies.createStore?.(authorityDirectory(root), goalId) ??
+        new FileAuthorityStore(authorityDirectory(root), goalId), {
+        goal_id: goalId, operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
+        actor_agent_id: input.actor_agent_id == null ? null : claimAgentValue(input.actor_agent_id, "actor_agent_id"),
+        registered_agents: registered, dry_run: input.dry_run as boolean,
+        observation: requireJsonObject(input.observation, "Monitor observation"),
+        intent: requireJsonObject(input.intent, "Monitor successor intent"),
+      }), ...evidence,
+    }));
+  } catch (error) {
+    return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status: "failed", changed: false,
+      reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_monitor_poll_request",
+      reason: error instanceof Error ? error.message : String(error), ...evidence};
+  }
 }
 
 interface LocalAuthorityRuntimeDependencies {

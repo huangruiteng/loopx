@@ -166,6 +166,26 @@ function createCandidate(
   };
 }
 
+/** In-process create planning for a caller-owned canonical transaction. Never
+ * commits or authorizes the enclosing operation; single create and Monitor
+ * batches share record admission, attribution and semantic duplicate rules. */
+export function planCoordinationTodoCreate(
+  rawInput: CoordinationTodoCreateInput,
+  todos: ReadonlyMap<string, JsonObject>,
+  readModelSchema: unknown,
+): CoordinationTodoCreateResult {
+  const input = normalizeCreateInput(rawInput);
+  const duplicate = [...todos.values()].find((todo) =>
+    todo.role === input.todo.role && todo.archive_state === "active" &&
+    todo.status !== "done" && todo.status !== "deferred" && todo.text === input.todo.text);
+  if (duplicate !== undefined) return semanticDuplicateResult(input.todo, duplicate, null, null);
+  if (todos.has(String(input.todo.todo_id))) {
+    return failure("todo_already_exists", "Todo id already exists in canonical authority", {todo_id: input.todo.todo_id});
+  }
+  return {schema_version: COORDINATION_TODO_CREATE_RESULT_SCHEMA, status: "planned",
+    changed: true, todo_id: input.todo.todo_id, todo: createCandidate(input, readModelSchema)};
+}
+
 async function commitCreate(
   store: AuthorityStore,
   input: CoordinationTodoCreateInput,
@@ -241,18 +261,10 @@ export async function executeCoordinationTodoCreate(
     );
   }
   const todoId = requireAuthorityStoreId(input.todo.todo_id, "todo id");
-  const duplicate = [...projection.todos.values()].find((todo) =>
-    todo.role === input.todo.role && todo.archive_state === "active" &&
-    todo.status !== "done" && todo.status !== "deferred" && todo.text === input.todo.text
-  );
-  if (duplicate !== undefined) {
-    return semanticDuplicateResult(input.todo, duplicate, head.provider_revision, head.cursor);
-  }
-  if (projection.todos.has(todoId)) {
-    return failure("todo_already_exists", "Todo id already exists in canonical authority", {todo_id: todoId});
-  }
   const readModel = canonicalAuthorityObject(head.head.todo_read_model, "Todo read model");
-  const created = createCandidate(input, readModel.schema_version);
+  const plan = planCoordinationTodoCreate(input, projection.todos, readModel.schema_version);
+  if (plan.status !== "planned") return {...plan, provider_revision: head.provider_revision, cursor: head.cursor};
+  const created = canonicalAuthorityObject(plan.todo, "created Todo");
   if (input.dry_run) {
     return {
       schema_version: COORDINATION_TODO_CREATE_RESULT_SCHEMA,

@@ -89,6 +89,15 @@ function todoRecords(
     if (role === "agent" && status !== "done" && status !== "deferred") {
       record.claimed_by = index % 2 === 0 ? "agent-a" : "agent-b";
     }
+    if (record.task_class === "continuous_monitor") {
+      // Durable mixed-source observation shapes: bounded and watch-only,
+      // untouched and previously changed, with cadence and retained generation.
+      Object.assign(record, {target_key: `synthetic-watch-${index}`, cadence: "1h",
+        last_checked_at: observedAt(index), next_due_at: "2025-02-01T00:00:00Z",
+        result_hash: `synthetic-result-${index}`, material_change_generation: index % 3,
+        consecutive_no_change: String(index % 5), material_change: String(index % 3 === 0),
+        ...(index % 8 === 0 ? {watch_only: "true"} : {max_no_change_before_replan: "5"})});
+    }
     if (role === "agent" && status === "done" && index < 3) {
       record.successor_todo_ids = [todoId("agent", envelope.completion_target_index + index)];
       record.completion_continuation = "successor";

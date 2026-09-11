@@ -449,11 +449,30 @@ are compared as the same route at readback. The original wire observation still
 owns the v0 replay digest; normalization must not silently invalidate pending
 receipts. The node-independent repository/bootstrap codec remains separately
 characterized, not replaced by a runtime dependency.
-This is **not** the T2 atomic transaction: monitor mutation and successor writes
-still use existing fenced effects. Cross-effect crash recovery, native writer
-closure and whole-Goal promotion remain held; do not infer them from a route plan.
+The native `coordination.local_authority.monitor_poll` transaction now commits a
+lease-free Monitor observation and its requested independent successors against
+one canonical revision, with one CAS and durable operation receipt. It composes
+the existing generation, successor-route, User authoring-scope and Todo-create
+planners. Public create and Monitor batches share create admission/duplicate
+planning; target selection is shared by legacy preflight and native commit.
+Python only routes provider intent and drains the existing projection outbox.
 
-- Inventory `monitor_poll_writeback.py` and its event/Todo/lease callers.
+Explicit semantic corrections: completed/archived Monitor targets are rejected;
+target-key selection ignores finished history but never guesses between live matches;
+successor authoring requires an actually advanced material-change generation,
+not merely a repeated `material_change=true` assertion for the same evidence.
+Retrying the original operation recovers the original successors instead of
+creating new work. A fresh observation with no successor remains valid. User
+gates use the existing actor-bound scope, never an inferred global gate.
+
+Boundaries still open: any retained Monitor lease fails closed in this native
+operation; cross-owner successor claims are not implicitly authorized. Unpromoted
+Goals retain their legacy writer. Quota accounting stays in its existing
+preflight/writeback/settlement protocol and reuses the v0 receipt shape and raw
+observation identity. Canonical commit success is independent of pending Markdown
+delivery. This does not finish all T2 commands or authorize whole-Goal promotion.
+
+- Finish the retained lease and event callers of `monitor_poll_writeback.py`.
   Reuse existing monitor generation, independent-successor and settlement
   owners. Compose one transaction rather than adding a second monitor engine.
 - Preserve unchanged polling/reschedule behavior, generation fences,

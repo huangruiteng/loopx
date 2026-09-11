@@ -2691,10 +2691,17 @@ source paths, authorize monitor writeback, or change provider/promotion holds.
 
 **D1 — qualify permanent projection delivery; may overlap T1/T2.**
 
-The T2 monitor successor route owner is now shared across preflight, the legacy
-effect adapter and receipt checks. Its result proves only normalized intent,
-not actor authority, provider commit or atomic monitor-plus-successor durability.
-Keep the monitor writer fence and promotion hold until that transaction closes.
+T2 now commits a lease-free native Monitor observation and its independent
+successors in one canonical CAS/receipt; the route planner alone still grants
+no authority. The CLI delivers committed state through the existing journal/
+outbox renderer: display failure is pending, not rollback or successor recreation.
+Quota consumes the same v0 business receipt for its separate settlement.
+Validation covers the real CLI with missing display, operation replay after a
+renderer failure, and complex-data concurrency/lost-acknowledgement recovery on
+File, NoKV and isolated real PostgreSQL. Retained Monitor leases and cross-owner
+successor claims remain explicitly unsupported. This slice changes neither the
+provider default, writer fence nor promotion approval, and does not replace the
+independent legacy three-arm comparison or D2 soak.
 
 - Start from `loopx/control_plane/todos/provider_projection.py`, the existing
   Todo-section renderer and canonical journal/outbox. #4097 already recovers

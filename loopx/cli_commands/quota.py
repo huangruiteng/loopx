@@ -45,6 +45,7 @@ from ..control_plane.quota.turn_envelope import build_turn_envelope
 from ..control_plane.coordination.legacy_writer_fence import (
     LegacyCoordinationWriterFenced,
 )
+from ..control_plane.coordination.local_authority import LocalCoordinationAuthorityUnavailable
 from ..control_plane.effect_runtime import EffectRuntimeRejected
 from ..control_plane.scheduler.execution_context import (
     GUIDED_START_TURN_RUNTIME_PROFILES,
@@ -241,7 +242,7 @@ def _quota_failure_payload(
         )
         if error.agent_id is not None:
             payload["agent_id"] = error.agent_id
-    elif isinstance(error, LegacyCoordinationWriterFenced):
+    elif isinstance(error, (LegacyCoordinationWriterFenced, LocalCoordinationAuthorityUnavailable)):
         payload.update(
             {
                 "error_code": error.code,
