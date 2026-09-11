@@ -17,7 +17,7 @@ READ_TOOL = {
     "name": TOOL_NAME,
     "description": (
         "Read authorized LoopX Core evidence on demand: the global Goal portfolio, "
-        "one Goal's current Todos, or recorded deliveries. Use concrete evidence "
+        "one Goal's current Todos, recorded deliveries, or handoff receipt status. Use concrete evidence "
         "to answer progress and priority questions. Paginate with next_offset. "
         "No shell, writes, raw files, or additional Goal authorization."
     ),
@@ -25,8 +25,16 @@ READ_TOOL = {
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "view": {"type": "string", "enum": ["portfolio", "todos", "deliveries"]},
+            "view": {
+                "type": "string",
+                "enum": ["portfolio", "todos", "deliveries", "handoffs"],
+            },
             "goal_id": {"type": "string"},
+            "request_id": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "Handoffs only: exact request receipt ID.",
+            },
             "include_stopped": {
                 "type": "boolean",
                 "description": "Portfolio only: include stopped Goals for an explicit historical question.",
@@ -78,6 +86,7 @@ class ManagerInspection:
         owner_scope: bool,
         scope_valid: Callable[[], bool],
         record: Callable[[dict[str, Any]], None],
+        channel_id: str | None = None,
     ) -> None:
         self.context = context
         self.registry_path = registry_path
@@ -85,17 +94,26 @@ class ManagerInspection:
         self.owner_scope = owner_scope
         self.scope_valid = scope_valid
         self.record = record
+        self.channel_id = channel_id
 
     def read(self, tool: str, arguments: Any) -> dict[str, Any]:
         if tool != TOOL_NAME or not isinstance(arguments, dict):
             return {"ok": False, "error": "unsupported_read_tool"}
-        if set(arguments) - {"view", "goal_id", "offset", "limit", "include_stopped"}:
+        if set(arguments) - {
+            "view",
+            "goal_id",
+            "offset",
+            "limit",
+            "include_stopped",
+            "request_id",
+        }:
             return {"ok": False, "error": "invalid_arguments"}
         view, goal_id = arguments.get("view"), arguments.get("goal_id")
         offset, limit = arguments.get("offset", 0), arguments.get("limit", 8)
         include_stopped = arguments.get("include_stopped", False)
         if (
-            view not in {"portfolio", "todos", "deliveries"}
+            view not in {"portfolio", "todos", "deliveries", "handoffs"}
+            or ("request_id" in arguments and view != "handoffs")
             or type(include_stopped) is not bool
             or ("include_stopped" in arguments and view != "portfolio")
             or type(offset) is not int
@@ -107,7 +125,7 @@ class ManagerInspection:
             return {"ok": False, "error": "invalid_arguments"}
         goals = {r["goal_id"]: r for r in self.context.get("goals", [])}
         if (goal_id is not None and goal_id not in goals) or (
-            view != "portfolio" and not goal_id
+            view not in {"portfolio", "handoffs"} and not goal_id
         ):
             return {"ok": False, "error": "goal_outside_available_scope"}
         if not self.scope_valid():
@@ -123,6 +141,24 @@ class ManagerInspection:
             }
             page = rows[offset : offset + limit]
             matched = len(rows)
+        elif view == "handoffs":
+            from .tracking import query
+
+            try:
+                source = query(
+                    self.runtime_root,
+                    self.registry_path,
+                    goal_ids=[goal_id] if goal_id else list(goals),
+                    owner_scope=self.owner_scope,
+                    channel_id=self.channel_id,
+                    request_id=arguments.get("request_id"),
+                    offset=offset,
+                    limit=limit,
+                )
+            except (OSError, ValueError, TypeError):
+                return {"ok": False, "error": "handoff_query_unavailable_or_invalid"}
+            page = source.pop("rows")
+            matched = source.pop("matched")
         elif view == "todos":
             source = read_manager_goal_details(
                 self.registry_path,
@@ -183,7 +219,15 @@ class ManagerInspection:
             "next_offset": end
             if isinstance(matched, int) and page and end < matched
             else None,
-            "unknown": matched is None,
+            "unknown": matched is None
+            or (
+                view == "handoffs"
+                and (
+                    not source["coverage"]["scan_complete"]
+                    or not source["coverage"]["legacy_audience_scan_complete"]
+                    or bool(source["coverage"]["unreadable"])
+                )
+            ),
             "oversized_rows": oversized,
             "initial_snapshot_id": self.context.get("snapshot_id"),
         }

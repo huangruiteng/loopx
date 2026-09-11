@@ -17,7 +17,8 @@ def register_manager_inbox(subparsers, add_format):
     )
     add_format(parser)
     parser.add_argument(
-        "manager_inbox_action", choices=("read", "acknowledge", "configure-read-scope")
+        "manager_inbox_action",
+        choices=("read", "acknowledge", "link", "status", "configure-read-scope"),
     )
     parser.add_argument("--goal-id")
     parser.add_argument("--agent-id")
@@ -25,6 +26,10 @@ def register_manager_inbox(subparsers, add_format):
     parser.add_argument("--read-goal-id", action="append", default=[])
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--request-id")
+    parser.add_argument("--related-todo-id", action="append", default=[])
+    parser.add_argument("--evidence-id", action="append", default=[])
+    parser.add_argument("--offset", type=int, default=0)
+    parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--decision", choices=("adopt", "defer", "reject", "no_change"))
     parser.add_argument("--reason")
 
@@ -49,6 +54,40 @@ def handle_manager_inbox(args, registry_path, runtime_root):
             raise ValueError("recipient is not registered")
         if args.manager_inbox_action == "read":
             result = pending(runtime_root, args.goal_id, args.agent_id)
+            from ..capabilities.manager_context.tracking import record_read
+
+            record_read(runtime_root, result["items"])
+            result["followthrough"] = (
+                "After deciding, use manager-inbox link with --related-todo-id and/or --evidence-id (sha256) to associate Core work; do not copy progress into the inbox."
+            )
+        elif args.manager_inbox_action == "link":
+            from ..capabilities.manager_context.tracking import link
+
+            result = link(
+                runtime_root,
+                registry_path,
+                args.goal_id,
+                args.agent_id,
+                args.request_id or "",
+                args.related_todo_id,
+                args.evidence_id,
+            )
+        elif args.manager_inbox_action == "status":
+            from ..capabilities.manager_context.tracking import query
+
+            result = {
+                "ok": True,
+                **query(
+                    runtime_root,
+                    registry_path,
+                    goal_ids=[args.goal_id],
+                    owner_scope=True,
+                    request_id=args.request_id,
+                    agent_id=args.agent_id,
+                    offset=args.offset,
+                    limit=args.limit,
+                ),
+            }
         else:
             result = acknowledge(
                 runtime_root,

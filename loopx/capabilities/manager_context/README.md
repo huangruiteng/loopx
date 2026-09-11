@@ -91,7 +91,42 @@ recent delivery window is still yesterday through now; arbitrary artifact paths
 and external links are not fetched. Existing non-Codex adapters retain their
 context projection until they implement an equivalent tool contract.
 
-Manager context version 6 starts a fresh upstream session for older manager
+Manager context version 7 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support
 uses the Codex app-server dynamic tool protocol; explicit upstream terminal
-errors remain errors and are not retried as part of inspection.
+errors remain errors and are not retried as part of inspection. The version
+change registers the expanded handoff tool schema on existing installations;
+resuming an old upstream thread would retain its previous dynamic tools.
+
+
+## Track a delegated request
+
+The default receiver hook checks for pending context. `manager-inbox read`
+records that its output supplied the original message to the receiver; a quota
+peek does not record a read. New delivery and decision records carry event
+timestamps. Historical records retain unknown times rather than using file
+modification time as a fabricated event.
+
+The receiver associates canonical work after deciding:
+
+```sh
+loopx manager-inbox link --goal-id research --agent-id worker \
+  --request-id <request-id> --related-todo-id <core-todo-id> \
+  --evidence-id sha256:<evidence-digest>
+loopx manager-inbox status --goal-id research --agent-id worker \
+  --request-id <request-id>
+```
+
+Links are bounded, additive and idempotent. Todo links must belong to the
+receiving Agent, and their current titles/statuses come from Core, not a copy in
+the inbox. Evidence links are receiver assertions, not independently verified
+artifacts. The inbox does not assign priority or declare overall completion.
+
+In frontend or Lark Chat, ask the manager whether a request was delivered/read,
+what decision was recorded, and which work it links to. Both entrances use
+`loopx_manager_read` with `view=handoffs`. External reads require the current
+Goal evidence grant and exact originating audience; they omit original message
+bodies and private decision reasons. Legacy audience recovery uses only the
+provider-recorded ingress, and ambiguous/missing provenance stays hidden.
+Revocation is checked before and after query. This does not append a message to
+an unrelated host session or create another scheduler.

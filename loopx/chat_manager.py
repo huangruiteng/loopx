@@ -83,7 +83,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 6
+MANAGER_CONTEXT_VERSION = 7
 
 
 def manager_skill_text() -> str:

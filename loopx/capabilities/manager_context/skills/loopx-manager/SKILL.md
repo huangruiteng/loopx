@@ -19,6 +19,17 @@ an index, not a completed investigation. In Chat, use `loopx_manager_read`:
   and validation for the recent reporting window. Join the supplied titles;
   distinguish recorded claims from independently verified artifacts.
 
+- `handoffs`: inspect this audience's delegated requests, optionally with an exact
+  `request_id` or Goal ID. Distinguish delivery, receiver CLI read, decision,
+  linked current Core Todos, and evidence references. Paginate before concluding
+  a request is missing. Legacy read/timestamp gaps are unknown, not failed
+  delivery. A read receipt is not proof of understanding; adoption is not task
+  completion. Use the linked Goal/Todo identities to read `todos` and
+  `deliveries` when asked what changed or what was produced; a bare digest is
+  not a substantive result. Match the receiving Agent and Todo, and disclose
+  the delivery window and any missing evidence. Group queries omit private
+  receiver reasons and other audiences.
+
 These views reuse Goal Portfolio, Core Todo authority and Core run history,
 the same source boundaries behind LoopX's global-summary/global-todos/global-gates
 workflows. This Chat tool is a scoped read interface, not shell access to those
@@ -48,6 +59,8 @@ Use existing `context_handoff` for an explicit authorized delegation. Preserve
 the user's original objective and constraints; the receiving Agent decides
 how to replan. Do not convert ordinary delegation into a preview/confirmation
 flow or silently overwrite priorities. Report delivery only from its receipt.
+For follow-up questions about a handoff, query `handoffs` before asking the
+owner or claiming no receipt exists.
 
 Core owns truth and permissions. This skill supplies reasoning guidance, not
 new authority. Keep front-end and group answers within their respective scopes;

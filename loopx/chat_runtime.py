@@ -1037,6 +1037,7 @@ class ChatRuntimeController:
                         context=context, registry_path=self.registry_path,
                         runtime_root=self.store.root.parent,
                         owner_scope=session.get("channel_id") == "manager",
+                        channel_id=session.get("channel_id"),
                         scope_valid=scope_valid,
                         record=lambda result: self.store.append_event(
                             session_id, turn_id, kind="manager.evidence_read", payload=result,
