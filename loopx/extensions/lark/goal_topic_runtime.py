@@ -45,6 +45,34 @@ ProcessFactory = Callable[[list[str]], Any]
 HealthSink = Callable[[Mapping[str, Any]], None]
 
 
+class LarkGoalTopicTurnFailed(RuntimeError):
+    """A terminal runtime receipt, without copying arbitrary upstream details."""
+
+    def __init__(self, error_code: str, effect_receipt: Mapping[str, Any]) -> None:
+        super().__init__("Lark Goal Topic turn did not complete")
+        self.error_code = error_code
+        self.effect_receipt = effect_receipt
+
+
+def _manager_failure_reply(error: Exception) -> tuple[str, str]:
+    labels = {
+        "cyber_policy": "上游安全策略拦截",
+        "misalignment_policy_violation": "上游策略拦截",
+        "usage_limit_exceeded": "上游用量限制",
+        "rate_limit_exceeded": "上游请求频率限制",
+        "context_window_exceeded": "上下文超限",
+        "unauthorized": "上游身份验证失败",
+        "idle_timeout": "等待上游响应超时",
+        "hard_timeout": "处理超过时间限制",
+        "interrupted": "处理已中断",
+        "manager_authorization_unavailable": "当前连接的授权范围不可用",
+    }
+    raw_code = error.error_code if isinstance(error, LarkGoalTopicTurnFailed) else ""
+    code = raw_code if raw_code in labels else "processing_failed"
+    label = labels.get(code, "管家处理失败")
+    return code, f"已收到你的消息，但本次未能完成：{label}。没有生成完整答复，本次请求不会自动重放。"
+
+
 _EVENT_PROJECTION = (
     '{schema_version:"lark_event_inbox_event_v0",'
     "event_id:(.event_id // .message_id // .id),"
@@ -67,6 +95,21 @@ _EVENT_EXIT_REASON = re.compile(r"\(reason: (limit|timeout|signal)\)$")
 def _opaque_digest(*values: Any) -> str:
     joined = "\0".join(str(value or "") for value in values)
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
+
+
+def _session_turn_effect(route: Mapping[str, Any]) -> dict[str, Any]:
+    # Committed means the runtime has persisted a terminal receipt, not that
+    # the model succeeded. Response verification remains a separate ACK gate.
+    return {
+        "schema_version": EFFECT_RECEIPT_SCHEMA_VERSION,
+        "event_id": str(route.get("event_id") or route.get("message_id") or ""),
+        "effect_id": "session-turn-" + _opaque_digest(
+            route.get("session_id"), route.get("message_id"),
+            route.get("topic_root_message_id"),
+        ),
+        "effect_kind": ExternalEffectKind.WORKING_SESSION_TURN.value,
+        "status": "committed",
+    }
 
 
 def _active_profile_configs(snapshot: Mapping[str, Any]) -> dict[str, dict[str, str]]:
@@ -610,20 +653,7 @@ class LarkGoalTopicRuntimeService:
                     )
                     return {
                         "response_text": response_text,
-                        "effect_receipt": {
-                            "schema_version": EFFECT_RECEIPT_SCHEMA_VERSION,
-                            "event_id": str(
-                                route.get("event_id") or route.get("message_id") or ""
-                            ),
-                            "effect_id": "session-turn-"
-                            + _opaque_digest(
-                                route.get("session_id"),
-                                route.get("message_id"),
-                                route.get("topic_root_message_id"),
-                            ),
-                            "effect_kind": ExternalEffectKind.WORKING_SESSION_TURN.value,
-                            "status": "committed",
-                        },
+                        "effect_receipt": _session_turn_effect(route),
                     }
 
                 result = stream_lark_goal_topic_profile(
@@ -854,7 +884,11 @@ def answer_lark_goal_topic(
         turn_id=str(turn["turn_id"]),
     )
     if completed.get("status") != "completed":
-        raise RuntimeError(str(completed.get("error") or "Lark Goal Topic turn failed"))
+        if completed.get("status") not in {"failed", "timed_out", "interrupted"}:
+            raise RuntimeError("Lark Goal Topic turn has no terminal receipt")
+        raise LarkGoalTopicTurnFailed(
+            str(completed.get("error_code") or ""), _session_turn_effect(route),
+        )
     response = completed.get("response")
     reply_text = (
         str(response.get("message") or "") if isinstance(response, Mapping) else ""
@@ -1029,7 +1063,14 @@ def process_lark_goal_topic_event(
             logging.getLogger(__name__).warning("Lark manager received reaction was not verified")
     # Sender provenance comes from the provider event, never the model response.
     route = {**route, "source_sender_id": str(canonical.get("sender_id") or "")}
-    answer_result = answer(route, canonical["content"])
+    failure_code = None
+    try:
+        answer_result = answer(route, canonical["content"])
+    except LarkGoalTopicTurnFailed as exc:
+        if route.get("conversation_kind") != "manager":
+            raise
+        failure_code, failure_text = _manager_failure_reply(exc)
+        answer_result = {"response_text": failure_text, "effect_receipt": exc.effect_receipt}
     connector = route.get("connector")
     connector = connector if isinstance(connector, Mapping) else None
     effect_receipt: Mapping[str, Any] | None = None
@@ -1108,8 +1149,10 @@ def process_lark_goal_topic_event(
     )
 
     return {
-        "ok": True,
-        "status": "replied_and_acknowledged",
+        "ok": failure_code is None,
+        "status": "processing_failed" if failure_code else "replied_and_acknowledged",
+        **({"reason": failure_code, "failure_reply_verified": True,
+            "source_acknowledged": True} if failure_code else {}),
         "received_reaction_status": (received_reaction or {}).get("status"),
         "goal_id": route["goal_id"],
         "inbox_config_ref": config_ref,

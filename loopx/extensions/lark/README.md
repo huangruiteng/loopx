@@ -351,7 +351,13 @@ recorded separately from its logical identity.
 A manager connection uses `conversation_kind=manager`. Preview has no session
 creation side effect. On apply, the Chat service opens or resumes the manager's
 exact audience session and binds `session_queue`; delivery waits for that turn
-and its verified reply, without waiting for a scheduled Agent wakeup. Group-root
+and its verified reply, without waiting for a scheduled Agent wakeup. When a
+manager Turn ends in a persisted failure, the same verified-reply path sends a
+bounded failure notice before acknowledging the source. Unknown upstream
+details are not copied into the group. The connection keeps its processing
+failure state; delivery of that notice is not a successful model answer.
+An unverified outbound notice leaves the source pending, and a verified notice
+prevents duplicate source events from replaying the failed request. Group-root
 mentions and addressed replies can reach the manager without an invented Topic
 root. Exact worker Topics retain their own routing, and ambiguous manager
 bindings fail closed.
