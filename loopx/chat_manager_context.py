@@ -30,6 +30,7 @@ def manager_turn_context(
     runtime_root: Path,
     *,
     authorized_goal_ids: list[str] | None = None,
+    include_details: bool = True,
 ) -> dict[str, Any]:
     owner_scope = session.get("channel_id") == "manager"
     scope = None if owner_scope else authorized_goal_ids
@@ -42,6 +43,7 @@ def manager_turn_context(
         runtime_root_override=str(runtime_root),
         goal_ids=scope,
         limit=128,
+        include_stopped=False,
     )
     labels: dict[str, str] = {}
     try:
@@ -67,10 +69,14 @@ def manager_turn_context(
         pass
     rows = []
     for row in portfolio.get("goals", []):
-        history = read_manager_delivery_history(runtime_root, row["goal_id"])
+        read_details = include_details and row.get("activation_state") != "stopped"
+        history = read_manager_delivery_history(runtime_root, row["goal_id"]) if read_details else {
+            "status": "not_read", "deliveries": [],
+        }
         rows.append(
             {
                 "goal_id": row["goal_id"],
+                "activation_state": row.get("activation_state", "unknown"),
                 "host_id": row.get("host_id"),
                 "project_id": row.get("project_id"),
                 "agent_coverage": row.get("agent_coverage"),
@@ -94,7 +100,7 @@ def manager_turn_context(
                 "current_todos": read_manager_goal_details(
                     registry_path, runtime_root, row["goal_id"], owner_scope=owner_scope,
                     completed_todo_ids={r["todo_id"] for r in history["deliveries"]},
-                ),
+                ) if read_details else {"status": "not_read", "todos": []},
             }
         )
     result = {
@@ -133,9 +139,10 @@ def collect_manager_turn_context(
     session: dict[str, Any],
     runtime_root: Path,
     scope_resolver: Callable[[dict[str, Any]], list[str] | None] | None = None,
+    *, include_details: bool = True,
 ) -> dict[str, Any]:
     if session.get("channel_id") == "manager":
-        return manager_turn_context(registry_path, session, runtime_root)
+        return manager_turn_context(registry_path, session, runtime_root, include_details=include_details)
 
     def resolve() -> list[str] | None:
         try:
@@ -154,6 +161,7 @@ def collect_manager_turn_context(
         session,
         runtime_root,
         authorized_goal_ids=before,
+        include_details=include_details,
     )
     if before != resolve():
         return unavailable_manager_context("external_authorization_changed")

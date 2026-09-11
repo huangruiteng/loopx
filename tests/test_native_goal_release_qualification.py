@@ -29,12 +29,19 @@ def test_native_spawn_preserves_isolated_profile_and_secret_free_shell(monkeypat
     monkeypatch.setenv("SSH_AUTH_SOCK", "synthetic-forbidden-socket")
     launcher = tmp_path / "bin/loopx"
     monkeypatch.setattr(runner, "setup", lambda _: (tmp_path, tmp_path / "runtime", launcher))
-    monkeypatch.setattr(runner, "cli", lambda *_: {"task_body": "Synthetic task"})
+    prompt_loads = []
+    def current_cli(_launcher, *arguments):
+        if arguments[0] == "heartbeat-prompt":
+            assert "--bootstrap" in arguments
+            prompt_loads.append(arguments)
+        return {"task_body": "Synthetic task"}
+    monkeypatch.setattr(runner, "cli", current_cli)
 
     class InspectedSpawn(Exception):
         pass
 
     def inspect(command, **kwargs):
+        assert len(prompt_loads) == 1
         env = kwargs["env"]
         assert "UNRELATED_AUTH_TOKEN" not in env and "SSH_AUTH_SOCK" not in env
         settings = tomllib.loads((Path(env["CODEX_HOME"]) / "config.toml").read_text())

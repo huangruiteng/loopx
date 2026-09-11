@@ -18,6 +18,10 @@ def register_heartbeat_control_commands(
     )
     add_subcommand_format(heartbeat_prompt_parser)
     heartbeat_prompt_parser.add_argument(
+        "--bootstrap", action="store_true",
+        help="Generate a stable host entrypoint that reloads installed rules; no persisted Turn identity.",
+    )
+    heartbeat_prompt_parser.add_argument(
         "--goal-id", required=True, help="Stable LoopX goal id."
     )
     heartbeat_prompt_parser.add_argument(

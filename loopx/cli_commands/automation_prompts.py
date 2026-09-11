@@ -5,19 +5,18 @@ import argparse
 import json
 import sqlite3
 from pathlib import Path
-import subprocess
-import sys
 
 from loopx.control_plane.heartbeat.automation_upgrade import (
     SCHEMA, _atomic, apply_offline, build_plan, recover_offline,
 )
 from loopx.upgrade import codex_home
+from loopx.control_plane.heartbeat.installed_prompt_update import require_closed_app as _require_offline
 
 
 def register_automation_prompts(subparsers, add_format) -> None:
     parser = subparsers.add_parser("automation-prompts", help="Preview and migrate existing Codex heartbeats to live LoopX rules.")
     add_format(parser)
-    parser.add_argument("action", choices=("plan", "apply", "recover", "rollback"))
+    parser.add_argument("action", choices=("plan", "apply", "recover", "rollback", "sync-installed"))
     parser.add_argument("--codex-home", type=Path, help="One explicit host home; never discovers or migrates other homes.")
     parser.add_argument("--plan-file", type=Path, help="Private reviewed plan file; plan saves it, apply reads it.")
     parser.add_argument("--automation-id", action="append", default=[])
@@ -26,17 +25,20 @@ def register_automation_prompts(subparsers, add_format) -> None:
     parser.add_argument("--offline", action="store_true", help="Acknowledge the Codex App is closed; use its automation API while running.")
 
 
-def _require_offline() -> None:
-    if sys.platform != "darwin":
-        raise ValueError("offline adapter is qualified only on macOS; use the App automation API")
-    for name in ("Codex", "ChatGPT"):
-        observed = subprocess.run(["/usr/bin/pgrep", "-x", name], capture_output=True, check=False)
-        if observed.returncode != 1:
-            raise ValueError("close the Codex/ChatGPT App before offline migration; otherwise use automation_update")
-
-
 def run(args: argparse.Namespace, registry: Path) -> dict:
     home = (args.codex_home or codex_home()).expanduser().resolve()
+    if args.action == "sync-installed":
+        from loopx.control_plane.heartbeat.installed_prompt_update import reconcile, snapshot
+        if not args.execute:
+            return snapshot(registry=registry, home=home, runtime_root=args.runtime_root, cli_bin=args.cli_bin)
+        if not args.plan_file:
+            raise ValueError("sync-installed --execute requires the private pre-update --plan-file")
+        before = json.loads(args.plan_file.read_text())
+        if args.automation_id:
+            before["entries"] = [entry for entry in before.get("entries", [])
+                                 if entry["automation_id"] in args.automation_id]
+        return reconcile(before=before, registry=registry,
+                         home=home, runtime_root=args.runtime_root, cli_bin=args.cli_bin)
     if args.action == "plan":
         if args.execute:
             raise ValueError("plan cannot execute")

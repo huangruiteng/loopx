@@ -85,6 +85,24 @@ def test_sync_commit_uses_main_as_cli_output_base() -> None:
     assert selected == "origin/main"
 
 
+@pytest.mark.parametrize("row_kind", ["surface", "variant"])
+@pytest.mark.parametrize("mode", ["thin", "brief", "compact"])
+def test_host_safety_restoration_budget_is_one_time_bounded_and_prompt_only(row_kind, mode):
+    from loopx.control_plane.testing.cli_output_differential import _compare_row
+    from loopx.control_plane.testing.cli_output_semantics import host_prompt_static_safety_revision
+    from loopx.control_plane.heartbeat.rules import HOST_LOOP_SAFETY_RULE
+    assert host_prompt_static_safety_revision(HOST_LOOP_SAFETY_RULE) == "host_prompt_static_safety_v1"
+    assert host_prompt_static_safety_revision(HOST_LOOP_SAFETY_RULE.replace("requires explicit authorization", "is always allowed")) is None
+    base = _row(row_id=f"{row_kind}/heartbeat_prompt_{mode}/small/json")
+    current = {**base, "chars": base["chars"] + 500,
+               "host_prompt_static_safety_revision": "host_prompt_static_safety_v1"}
+    assert not _compare_row(base, current)["failures"]
+    assert _compare_row(base, {**current, "chars": base["chars"] + 513})["failures"]
+    assert _compare_row(current, {**current, "chars": current["chars"] + 500})["failures"]
+    assert _compare_row({**base, "row_id": "surface/status/small/json"},
+                        {**current, "row_id": "surface/status/small/json"})["failures"]
+
+
 def test_regular_integration_pr_keeps_requested_cli_output_base() -> None:
     ancestors = {
         ("origin/main", "HEAD"),

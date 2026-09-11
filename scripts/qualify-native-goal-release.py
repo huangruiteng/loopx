@@ -192,7 +192,7 @@ def qualify(root: Path, codex: str, timeout: int) -> dict:
     )
 
     project, runtime, launcher = setup(root)
-    prompt = cli(launcher, "heartbeat-prompt", "--runtime-profile", "codex_cli",
+    prompt = cli(launcher, "heartbeat-prompt", "--bootstrap", "--runtime-profile", "codex_cli",
                  "--goal-id", GOAL, "--agent-id", AGENT, "--cli-bin", str(launcher))
     cli(launcher, "quota", "should-run", "--runtime-profile", "codex_cli",
         "--goal-id", GOAL, "--agent-id", AGENT)

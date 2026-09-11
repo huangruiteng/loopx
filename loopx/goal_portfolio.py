@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_registry import registered_agent_ids_for_goal
+from .control_plane.goals.activation import goal_activation_state
 from .control_plane.quota.should_run import build_quota_should_run
 from .global_todos import _classify_goal_todos
 from .paths import resolve_runtime_root
@@ -269,6 +270,7 @@ def build_goal_portfolio(
     limit: int = 8,
     max_age_hours: float = 24,
     now: datetime | None = None,
+    include_stopped: bool = True,
 ) -> dict[str, Any]:
     """Read only the requested registry scope; never derive inventory from chat."""
     if not 1 <= limit <= 128 or not 0 < max_age_hours <= 8760:
@@ -299,6 +301,16 @@ def build_goal_portfolio(
     if any(_identity(g) is None for g in requested):
         raise ValueError("requested Goal IDs must be safe exact identifiers")
     selected = sorted(requested & inventory.keys())
+    activation = {}
+    for goal_id in selected:
+        try:
+            activation[goal_id] = goal_activation_state(inventory[goal_id]).value
+        except ValueError:
+            activation[goal_id] = "unknown"
+    stopped = {g for g in selected if not include_stopped
+               and activation[g] == "stopped" and counts[g] == 1}
+    inspected = [g for g in selected if g not in stopped]
+    positions = {g: i for i, g in enumerate(inspected)}
     runtime_root = resolve_runtime_root(
         registry, runtime_root_override, registry_path=registry_path
     )
@@ -308,23 +320,27 @@ def build_goal_portfolio(
     before = {}
     if (
         goal_ids is None
-        and 1 < len(selected) <= limit
-        and all(counts[g] == 1 for g in selected)
+        and 1 < len(inspected) <= limit
+        and all(counts[g] == 1 for g in inspected)
     ):
-        before = {g: _source_versions(inventory[g], runtime_root) for g in selected}
+        before = {g: _source_versions(inventory[g], runtime_root) for g in inspected}
         try:
             shared_status = collect_status(
                 registry_path=registry_path,
                 runtime_root_override=runtime_root_override,
                 scan_roots=[],
-                limit=max(8, len(selected)),
+                limit=max(8, len(inspected)),
                 include_public_boundary_scan=False,
+                **({"activation_state_filter": "active"} if not include_stopped else {}),
             )
         except (OSError, ValueError, KeyError, TypeError, RuntimeError):
             shared_status = {"ok": False}
     rows = []
-    for index, goal_id in enumerate(selected):
-        if counts[goal_id] > 1:
+    for goal_id in selected:
+        if goal_id in stopped:
+            rows.append({"goal_id": goal_id, "quality": "omitted", "progress": "unknown",
+                         "warnings": ["stopped_goal_excluded"]})
+        elif counts[goal_id] > 1:
             rows.append(
                 {
                     "goal_id": goal_id,
@@ -333,7 +349,7 @@ def build_goal_portfolio(
                     "warnings": ["duplicate_registry_identity"],
                 }
             )
-        elif index >= limit:
+        elif positions[goal_id] >= limit:
             rows.append(
                 {
                     "goal_id": goal_id,
@@ -355,14 +371,15 @@ def build_goal_portfolio(
                     source_versions_before=before.get(goal_id),
                 )
             )
+        rows[-1]["activation_state"] = activation[goal_id]
     try:
         changed = registry_path.read_bytes() != registry_bytes
     except OSError:
         changed = True
     if changed:
         for row in rows:
-            if row["quality"] != "omitted":
-                row.update(quality="conflicting", progress="unknown")
+            if row["quality"] != "omitted" or row["goal_id"] in stopped:
+                row.update(quality="conflicting", progress="unknown", activation_state="unknown")
                 row["warnings"].append("inventory_changed_during_collection")
     qualities = Counter(r["quality"] for r in rows)
     missing = sorted(requested - inventory.keys())
@@ -386,6 +403,7 @@ def build_goal_portfolio(
         "coverage": {
             "discovered": len(selected),
             "attempted": sum("source" in r for r in rows),
+            "stopped_excluded": len(stopped) if not changed else 0,
             **{q.value: qualities[q.value] for q in SourceQuality},
             "invalid_registry_entries": invalid,
             "complete": bool(selected)

@@ -544,6 +544,9 @@ def _heartbeat_commands(
             **renderer_binding,
         ),
     }
+    if agent_type in {"codex-app", "codex-app-ssh", "codex-cli", "codex-ide-plugin",
+                      "ark-managed-agent"}:
+        commands = {key: command + " --bootstrap" for key, command in commands.items()}
     if renderer_binding:
         commands["visible_goal_prompt_json"] = commands["heartbeat_prompt_json"]
     return commands

@@ -49,6 +49,16 @@ def run_cli(
     )
 
 
+def load_bootstrap(packet: dict, cli_bin: str, home: Path) -> dict:
+    assert packet["ok"] and packet["bootstrap"]
+    assert packet["interface_budget"]["within_budget"]
+    loader = shlex.split(packet["task_body"].split("```sh\n", 1)[1].split("\n```", 1)[0])
+    assert "--bootstrap" not in loader
+    loader[0] = cli_bin
+    return json.loads(subprocess.run(loader, env={**os.environ, "HOME": str(home)},
+        check=True, text=True, capture_output=True, timeout=120).stdout)
+
+
 def main() -> int:
     catalog = build_agent_type_catalog()
     agent_types = {item["agent_type"] for item in catalog["canonical_agent_types"]}
@@ -423,6 +433,7 @@ def main() -> int:
         )
         app_ssh_prompt = json.loads(app_ssh_prompt_run.stdout)
         assert app_ssh_prompt["ok"] is True, app_ssh_prompt
+        app_ssh_prompt = load_bootstrap(app_ssh_prompt, cli_bin, home)
         assert app_ssh_prompt["interface_budget"]["mode"] == "visible_goal", app_ssh_prompt
         assert app_ssh_prompt["interface_budget"]["max_chars"] == 4_000, app_ssh_prompt
         assert app_ssh_prompt["interface_budget"]["within_budget"] is True, app_ssh_prompt
@@ -500,6 +511,7 @@ def main() -> int:
             timeout=120,
         )
         cli_prompt = json.loads(cli_prompt_run.stdout)
+        cli_prompt = load_bootstrap(cli_prompt, cli_bin, home)
         assert cli_prompt["interface_budget"]["mode"] == "visible_goal", cli_prompt
         assert "--turn-instance-id" not in cli_prompt["quota_guard_command"], cli_prompt
         assert "--source visible-goal" in cli_prompt["quota_spend_command"], cli_prompt

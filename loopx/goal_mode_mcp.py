@@ -148,6 +148,15 @@ class GoalModeMCPControlPlane:
     def list_todos(self) -> str:
         return self.should_run()
 
+    def host_prompt(self) -> str:
+        from .claude_goal_mode.scripts.goalmode_cmd import loop_execution_content
+        state = self.state()
+        goal_id, agent_id = state.get("goal_id"), state.get("agent_id")
+        if not goal_id or not agent_id:
+            return json.dumps({"ok": False, "error": "bound Goal and agent are required"})
+        return json.dumps({"ok": True, "goal_id": goal_id, "agent_id": agent_id,
+                           "task_body": loop_execution_content(goal_id, agent_id)})
+
     def claim_task(self, todo_id: str, agent_id: str) -> str:
         goal_id, _ = self.context()
         if not goal_id:
@@ -258,6 +267,12 @@ def create_fastmcp_server(
 
     control = GoalModeMCPControlPlane(config, context_resolver)
     server = FastMCP(config.server_name)
+
+    if config.legacy_host_surface == "claude_code":
+        @server.tool()
+        def host_prompt() -> str:
+            """Read current Claude Goal execution rules for this server's bound identity."""
+            return control.host_prompt()
 
     @server.tool()
     def should_run() -> str:

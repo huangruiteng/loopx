@@ -746,6 +746,22 @@ independent acceptance oracle, completed Todos, unique bound spends, durable
 writeback readback, and terminal no-follow-up quota. This is not a benchmark
 score or evidence of universal model reliability.
 
+The Codex release arm requests the shipped bootstrap, not an injected private
+work recipe. Deterministic regressions execute the saved CLI loader, change its
+registry inputs, and prove fresh loading, non-recursion, preserved explicit
+policy and removed-agent rejection. Claude's stdio regression loads
+`host_prompt` through the real MCP transport and verifies the same bound Goal.
+These tests are free of model calls; passing them is not a live model pass.
+
+Upgrade regression uses real temporary SQLite/TOML stores, a second connection,
+writer-lock contention, injected mirror failure, journal recovery and stale or
+custom-input rejection. New-runtime reconciliation is exercised through the
+real CLI, while package installation is substituted in that focused test.
+Running-App deployment additionally needs a selected owner-authorized canary
+and delayed readback; synthetic SQLite tests alone do not qualify App caches.
+The output differential permits a bounded one-time transition to the exact
+static-safety marker, not permanent growth allowances or relaxed quota budgets.
+
 ```bash
 # No model invocation, no token cost; explicit skipped result, exit 0.
 python3 scripts/qualify-native-goal-release.py

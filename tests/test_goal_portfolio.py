@@ -329,3 +329,46 @@ def test_full_inventory_reuses_one_authoritative_collection(tmp_path, reads):
     assert result['coverage']['verified'] == 45
     assert result['coverage']['omitted'] == 0
     assert {g['goal_id'] for g in result['goals']} == set(ids)
+
+
+def test_stopped_goals_skip_core_reads_without_hiding_stale_active(monkeypatch, tmp_path):
+    path = registry(tmp_path, ('a-stopped', 'b-stale', 'c-active'))
+    data = json.loads(path.read_text())
+    data['goals'][0]['activation'] = {'state': 'stopped'}
+    path.write_text(json.dumps(data))
+    calls, reads = [], []
+    monkeypatch.setattr(portfolio, 'collect_status', lambda **kw: calls.append(kw) or {})
+    def read(goal, **kwargs):
+        reads.append(goal['id'])
+        return {'goal_id': goal['id'], 'quality': 'stale', 'progress': 'unknown', 'warnings': [], 'source': {}}
+    monkeypatch.setattr(portfolio, '_read_goal', read)
+    result = portfolio.build_goal_portfolio(registry_path=path, include_stopped=False)
+    assert reads == ['b-stale', 'c-active']
+    assert calls[0]['activation_state_filter'] == 'active'
+    assert result['coverage']['stopped_excluded'] == 1
+    assert result['coverage']['attempted'] == 2
+    assert result['goals'][0]['activation_state'] == 'stopped'
+    assert result['goals'][1]['quality'] == 'stale'
+    reads.clear()
+    # Stopped entries do not consume the active read limit.
+    portfolio.build_goal_portfolio(registry_path=path, include_stopped=False, limit=1)
+    assert reads == ['b-stale']
+    reads.clear()
+    portfolio.build_goal_portfolio(registry_path=path, include_stopped=True)
+    assert 'a-stopped' in reads
+
+
+def test_activation_change_during_collection_is_not_silently_hidden(monkeypatch, tmp_path):
+    path = registry(tmp_path, ('alpha', 'beta'))
+    data = json.loads(path.read_text())
+    data['goals'][0]['activation'] = {'state': 'stopped'}
+    path.write_text(json.dumps(data))
+    def read(goal, **kwargs):
+        data['goals'][0]['activation']['state'] = 'active'
+        path.write_text(json.dumps(data))
+        return {'goal_id': goal['id'], 'quality': 'stale', 'progress': 'unknown', 'warnings': []}
+    monkeypatch.setattr(portfolio, '_read_goal', read)
+    result = portfolio.build_goal_portfolio(registry_path=path, include_stopped=False)
+    assert result['coverage']['stopped_excluded'] == 0
+    assert result['goals'][0]['activation_state'] == 'unknown'
+    assert result['goals'][0]['quality'] == 'conflicting'

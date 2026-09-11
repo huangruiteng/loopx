@@ -58,7 +58,7 @@ def slug(name: str) -> str:
     return f"cc-{s}"[:48]
 
 
-def loop_md_content(goal_id, agent_id) -> str:
+def loop_execution_content(goal_id, agent_id) -> str:
     """The per-iteration protocol that native `/loop` runs (written to
     .claude/loop.md). loopx's should_run is the deterministic per-tick gate; the
     agent uses the wired loopx MCP tools, never raw CLI guessing.
@@ -91,6 +91,16 @@ def loop_md_content(goal_id, agent_id) -> str:
         "Repair entrypoint errors within authority; an unavailable/incomplete contract\n"
         "permits neither work nor spending and must not be reported as completion.\n"
     )
+
+
+def loop_md_content(goal_id, agent_id) -> str:
+    from loopx.control_plane.heartbeat.bootstrap_prompt import BOOTSTRAP_INSTRUCTION
+    armed = json.dumps({"goal_id": goal_id, "agent_id": agent_id})
+    return (f"<!-- loopx:armed {armed} -->\nLoopX managed MCP bootstrap v1\n"
+            "Each entry/resume: call the bound LoopX `host_prompt` MCP tool, "
+            "verify its goal_id and agent_id match the armed binding above, "
+            "then read its complete task_body. Do not create another Goal or scheduler.\n"
+            f"{BOOTSTRAP_INSTRUCTION}\n")
 
 
 def write_loop_md(proj: Path, goal_id, agent_id) -> Path:
