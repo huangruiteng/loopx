@@ -244,7 +244,7 @@ def drain(root, registry, store, external_sender, *, now=None, cancelled=lambda:
                             continue
                         raise ValueError("return_transport_unavailable")
                     transport = {
-                        "provider_receipt": sent.get("receipt"),
+                        "provider_receipt": sent.get("idempotency_key"),
                         "reply_verified": True,
                     }
                 _write(

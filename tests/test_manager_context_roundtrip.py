@@ -341,7 +341,7 @@ def test_background_service_delivers_without_another_agent_or_query(flow):
 
     def transport(*_):
         sent.set()
-        return {"reply_verified": True, "receipt": "sha256:provider-proof"}
+        return {"reply_verified": True, "idempotency_key": "sha256:provider-proof"}
 
     service = ReturnService(root, registry, store, transport)
     service.start()

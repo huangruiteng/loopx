@@ -95,8 +95,8 @@ Manager context version 8 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support
 uses the Codex app-server dynamic tool protocol; explicit upstream terminal
 errors remain errors and are not retried as part of inspection. The version
-change registers the expanded handoff tool schema on existing installations;
-resuming an old upstream thread would retain its previous dynamic tools.
+change refreshes the operating contract on existing installations;
+resuming an old upstream thread would retain its previous instructions.
 
 
 ## A delegation returns automatically
