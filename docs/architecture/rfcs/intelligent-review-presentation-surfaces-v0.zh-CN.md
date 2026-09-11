@@ -670,6 +670,11 @@ reviewed 路径；远端 SSH 生命周期入口仍使用其自身的绑定与读
 没有新增入口。验证入口为 Dashboard 的 `smoke:action-review-plan`、
 `smoke:personal-workspace` 与 `smoke:personal-workspace-packaged`。
 
+
+生命周期 preview/apply 返回值会核对请求的 Goal、操作与 proposal 身份。
+其他动作暂缓后即使保留历史 gate，仍保持原有重试入口。失败展示使用 Chat
+错误码和提案状态，不再按错误文案推测 stale 状态。
+
 ### Stage 2：Attention 与 Disclosure Plan
 
 - 编译 material attention-queue deltas；

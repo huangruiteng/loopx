@@ -1196,10 +1196,14 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
         const proposal = { ...actionProposals.get(apply[1]),
           status: outcome === "stale" ? "stale" : "applied",
           stale: outcome === "stale" ? { current_state_fingerprint: "fixture-r2" } : null,
-          receipt: outcome === "stale" ? null : { projection_verified: false },
+          receipt: outcome === "stale" ? null : { projection_verified: outcome.startsWith("mismatch-") },
+          ...(outcome === "mismatch-id" ? { proposal_id: "another-proposal" } : {}),
+          ...(outcome === "mismatch-goal" ? { normalized_parameters: { goal_id: "other-goal", operation: "stop" } } : {}),
+          ...(outcome === "mismatch-operation" ? { normalized_parameters: { goal_id: "product-release", operation: "resume" } } : {}),
         };
         actionProposals.set(apply[1], proposal);
-        await route.fulfill({ contentType: "application/json", json: { ok: true, proposal } });
+        await route.fulfill({ contentType: "application/json", status: outcome === "stale" ? 409 : 200,
+          json: outcome === "stale" ? { ok: false, error_code: "action_stale", error: "Source state changed", proposal } : { ok: true, proposal } });
         return;
       }
       let acceptedTurn = null;
@@ -1332,14 +1336,14 @@ async function main() {
       await reviewPage.getByRole("button", { name: "停止 Product Release", exact: true }).click();
       await reviewPage.getByText("预览目标与请求的 Goal 或操作不一致", { exact: false }).waitFor({ state: "visible" });
       if (reviewApi.actionApplies.length !== beforeMismatch) throw new Error("Mismatched response target was applied");
-      for (const outcome of ["stale", "unverified"]) {
+      for (const outcome of ["stale", "unverified", "mismatch-id", "mismatch-goal", "mismatch-operation"]) {
         reviewApi.nextLifecycleApplyOutcome = outcome;
         if (width < 640) await reviewPage.locator(".personal-mobile-menu").click();
         await reviewPage.getByRole("button", { name: "停止 Product Release", exact: true }).click();
         await reviewPage.locator(`[data-action-review="${outcome === "stale" ? "refresh" : "repair"}"]`).waitFor({ state: "visible" });
         if (await reviewPage.getByText("已应用，LoopX 状态将刷新。", { exact: true }).count()) throw new Error("Unverified or stale apply displayed completion");
         if (reviewApi.goalActivationStates.get("product-release") !== "active") throw new Error("Failed apply lost rollback");
-        if (outcome === "unverified" && await reviewPage.getByText("应用失败，没有写入任何变更。", { exact: true }).count()) throw new Error("Unverified readback falsely claimed no write");
+        if (outcome !== "stale" && await reviewPage.getByText("应用失败，没有写入任何变更。", { exact: true }).count()) throw new Error("Unverified readback falsely claimed no write");
         await reviewPage.screenshot({ path: resolve(outputDir, `action-review-${width}-${outcome}.png`), fullPage: false, animations: "disabled" });
         await reviewPage.getByRole("button", { name: "关闭", exact: true }).click();
       }

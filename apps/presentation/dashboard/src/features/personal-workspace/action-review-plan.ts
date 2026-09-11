@@ -14,9 +14,11 @@ export function compileActionReviewPlan(proposal: TypedActionProposal): ActionRe
   };
   const held = (interaction: "gated" | "refresh" | "repair" | "pending" | "completed" | "inactive", reason: ActionReviewReason): ActionReviewPlan =>
     ({ ...identity, interaction, reason, canApply: false });
-  // Contradictory gate/stale facts take precedence over a nominally ready status.
-  if (proposal.gate != null || proposal.status === "gated") return held("gated", "authority_gate");
-  if (proposal.stale != null || proposal.status === "stale") return held("refresh", "stale_proposal");
+  const lifecycle = proposal.action_kind === "goal.lifecycle";
+  // Lifecycle uses conservative fact precedence. Generic deferred proposals may
+  // retain a historical gate; their existing status-based retry path is preserved.
+  if ((lifecycle && proposal.gate != null) || proposal.status === "gated") return held("gated", "authority_gate");
+  if ((lifecycle && proposal.stale != null) || proposal.status === "stale") return held("refresh", "stale_proposal");
   if (proposal.status === "applied") return proposal.receipt?.projection_verified === true
     ? held("completed", "readback_verified") : held("repair", "readback_unverified");
   if (proposal.status === "applying") return held("pending", "apply_pending");
@@ -37,4 +39,11 @@ export function compileActionReviewPlan(proposal: TypedActionProposal): ActionRe
   const reason = lifecycleReviewReasons[operation];
   if (reason === "ready_stop" && proposal.status === "preview_ready") return { ...identity, interaction: "direct", reason, canApply: true };
   return reviewed(reason === "ready_stop" ? "action_review" : reason);
+}
+
+/** The existing Chat error envelope, not translated prose, identifies stale state. */
+export function isStaleActionFailure(payload: Record<string, unknown>): boolean {
+  if (payload.error_code === "action_stale" || payload.error_code === "action_conflict") return true;
+  const proposal = payload.proposal;
+  return proposal !== null && typeof proposal === "object" && "status" in proposal && proposal.status === "stale";
 }

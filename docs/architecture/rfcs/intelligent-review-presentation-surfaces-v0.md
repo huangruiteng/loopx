@@ -839,6 +839,12 @@ CLI and Lark gain no new entry points. Validation uses Dashboard's
 `smoke:action-review-plan`, `smoke:personal-workspace`, and
 `smoke:personal-workspace-packaged` scripts.
 
+
+Lifecycle preview and apply responses are checked against the requested Goal,
+operation and proposal identity. Generic deferred actions retain the existing retry
+path when the store carries a historical gate. Failure presentation uses Chat error
+codes and proposal status instead of classifying translated error messages.
+
 ### Stage 2: attention and disclosure plan
 
 - compile material attention-queue deltas;

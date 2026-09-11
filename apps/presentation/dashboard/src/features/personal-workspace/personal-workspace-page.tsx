@@ -1,4 +1,4 @@
-import { compileActionReviewPlan } from "./action-review-plan";
+import { compileActionReviewPlan, isStaleActionFailure } from "./action-review-plan";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import { AlertCircle, Bot, CalendarClock, FileText, ListPlus, MessageCircleQuestion, Paperclip, Plus, RefreshCw, Send, X } from "lucide-react";
 
@@ -1286,6 +1286,14 @@ export function PersonalWorkspacePage({
         return;
       }
       const result = await applyTypedAction(proposal.previewId);
+      if (result.proposal.proposal_id !== proposal.previewId
+        || result.proposal.action_kind !== proposal.actionKind
+        || (proposal.actionKind === "goal.lifecycle" && (
+          result.proposal.normalized_parameters.goal_id !== proposal.goalId
+          || lifecycleOperationFor(result.proposal) !== proposal.lifecycleOperation
+        ))) {
+        throw new ChatApiError(t("actionReview.targetChanged"), { error_code: "action_response_mismatch" });
+      }
       const applied = workspaceProposal(result.proposal, t);
       setProposals((current) => ({ ...current, [proposal.previewId]: applied }));
       if (showDrawer) setSelection({ item: applied, kind: "proposal" });
@@ -1345,10 +1353,11 @@ export function PersonalWorkspacePage({
         }
         return;
       }
-      const stale = error instanceof Error && /stale|状态.*变化|conflict/i.test(error.message);
+      const stale = error instanceof ChatApiError && isStaleActionFailure(error.payload);
+      const readbackMismatch = error instanceof ChatApiError && error.payload.error_code === "action_response_mismatch";
       const failed = {
         ...proposal,
-        reviewPlan: proposal.reviewPlan ? { ...proposal.reviewPlan, interaction: stale ? "refresh" as const : "repair" as const, reason: stale ? "stale_proposal" as const : "apply_failed" as const, canApply: false as const } : undefined,
+        reviewPlan: proposal.reviewPlan ? { ...proposal.reviewPlan, interaction: stale ? "refresh" as const : "repair" as const, reason: readbackMismatch ? "readback_unverified" as const : stale ? "stale_proposal" as const : "apply_failed" as const, canApply: false as const } : undefined,
         errorMessage: error instanceof Error ? error.message : String(error),
         status: (stale ? "stale" : "error") as "stale" | "error",
       };

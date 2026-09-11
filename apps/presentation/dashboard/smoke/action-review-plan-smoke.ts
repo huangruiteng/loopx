@@ -1,4 +1,4 @@
-import { compileActionReviewPlan } from "../src/features/personal-workspace/action-review-plan.js";
+import { compileActionReviewPlan, isStaleActionFailure } from "../src/features/personal-workspace/action-review-plan.js";
 import type { TypedActionProposal } from "../src/data/chat.js";
 
 const proposal: TypedActionProposal = {
@@ -43,6 +43,7 @@ for (const action_kind of ["goal.create", "goal.update", "todo.create", "todo.up
   for (const status of ["preview_ready", "deferred"] as const) {
     const result = compile({ action_kind, status, validation_evidence: [] });
     check(result.interaction === "review" && result.canApply, `${action_kind} keeps existing reviewed behavior`);
+    if (status === "deferred") check(compile({ action_kind, status, gate: { kind: "previous_gate" } }).canApply, "Generic deferred retries retain historical gate without losing the apply path");
   }
 }
 check(compile().sourceFingerprint === "revision-1" && compile().proposalId === "preview-1", "Preserve exact identity and fingerprint");
@@ -50,3 +51,8 @@ const frozen = JSON.stringify(proposal);
 check(JSON.stringify(compile()) === JSON.stringify(compile()), "Deterministic compilation");
 check(JSON.stringify(proposal) === frozen, "No input mutation");
 console.log("PASS: action review parity, negative fact mutations, state precedence and verified readback");
+
+check(isStaleActionFailure({ error_code: "action_stale" }), "Typed stale errors offer refresh");
+check(isStaleActionFailure({ error_code: "action_conflict" }), "Typed conflicts offer refresh");
+check(isStaleActionFailure({ proposal: { status: "stale" } }), "Typed stale proposal survives error wrapping");
+check(!isStaleActionFailure({ error_code: "canonical_action_failed", error: "conflict with unrelated external service" }), "Error wording cannot classify source state");
