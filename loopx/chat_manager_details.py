@@ -19,7 +19,7 @@ def _text(value: object, limit: int = 420) -> str:
 
 def read_manager_goal_details(
     registry_path: Path, runtime_root: Path, goal_id: str, *, owner_scope: bool,
-    limit: int = 48, completed_todo_ids: set[str] | None = None,
+    limit: int = 48, completed_todo_ids: set[str] | None = None, offset: int = 0,
 ) -> dict[str, Any]:
     """Use Core's canonical-first read; never parse a private project document."""
     observed_at = datetime.now(timezone.utc).isoformat()
@@ -35,7 +35,7 @@ def read_manager_goal_details(
         # Owner decisions first, then declared priority; do not invent urgency.
         active.sort(key=lambda r: (r.get("role") != "user", str(r.get("priority") or "Z")))
         rows = []
-        for record in active[:limit]:
+        for record in active[offset:offset + limit]:
             row = {
                 k: _text(record[k], 160)
                 for k in ("todo_id", "role", "status", "priority", "task_class",

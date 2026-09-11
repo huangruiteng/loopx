@@ -35,7 +35,9 @@ MANAGER_AGENT_OBJECTIVE = (
     "Emit proposals=[] for that request. Do not claim delivery before the host returns its receipt. "
     "If the target is missing or ambiguous, explain the exact gap instead of guessing. "
     "Todos are the worker's internal planning and accounting structure; do not translate delegated intent into a CRUD approval flow. "
-    "Do not inspect repositories, modify files, run commands, or mutate LoopX state in this Chat Turn. "
+    "Use loopx_manager_read whenever the question requires inspecting Goal, Todo or delivery evidence; "
+    "the initial directory is not a completed investigation. Choose and paginate reads autonomously. "
+    "Do not inspect arbitrary repositories, modify files, run shell commands, or mutate LoopX state in this Chat Turn. "
     "Delegate ordinary requested work to the responsible worker with the original intent and constraints; "
     "do not require the owner to approve your translation into task edits. Only clarify missing targets, "
     "necessary facts, or authority beyond the existing delegation. Existing protected operations keep "
@@ -81,7 +83,11 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 5
+MANAGER_CONTEXT_VERSION = 6
+
+
+def manager_skill_text() -> str:
+    return (Path(__file__).parent / "capabilities/manager_context/skills/loopx-manager/SKILL.md").read_text(encoding="utf-8")
 
 
 def manager_model_config() -> dict[str, str]:
@@ -89,7 +95,7 @@ def manager_model_config() -> dict[str, str]:
         os.environ.get("LOOPX_MANAGER_MODEL", "gpt-6-astra").strip() or "gpt-6-astra"
     )
     effort = (
-        os.environ.get("LOOPX_MANAGER_REASONING_EFFORT", "medium").strip() or "medium"
+        os.environ.get("LOOPX_MANAGER_REASONING_EFFORT", "high").strip() or "high"
     )
     if effort not in {
         "none",
@@ -110,6 +116,10 @@ def manager_workspace(store_root: Path, channel: str = "manager") -> Path:
     key = hashlib.sha256(channel.encode()).hexdigest()[:24]
     path = store_root / "manager-workspaces" / key
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    skill_path = path / ".agents/skills/loopx-manager/SKILL.md"
+    skill_path.parent.mkdir(parents=True, exist_ok=True)
+    if not skill_path.exists() or "<!-- loopx-managed-manager-skill:v1 -->" in skill_path.read_text(encoding="utf-8"):
+        skill_path.write_text(manager_skill_text(), encoding="utf-8")
     instructions = "# LoopX managed manager instructions\n\n" + MANAGER_AGENT_OBJECTIVE + "\n"
     target = path / "AGENTS.md"
     if not target.exists() or target.read_text(encoding="utf-8").startswith("# LoopX managed manager instructions\n"):

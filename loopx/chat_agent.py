@@ -302,6 +302,7 @@ class CodexChatAgentSession:
     next_request_id: int = 5
     current_turn_id: str = ""
     model_catalog_compatibility_applied: bool = False
+    read_tool_handler: Callable[[str, Any], dict[str, Any]] | None = field(default=None, repr=False)
     _pending_events: "queue.Queue[dict[str, Any]]" = field(default_factory=queue.Queue, repr=False)
     _response_waiters: dict[int, "queue.Queue[dict[str, Any]]"] = field(
         default_factory=dict,
@@ -328,6 +329,7 @@ class CodexChatAgentSession:
         codex_home: Path | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        dynamic_tools: list[dict[str, Any]] | None = None,
         _compatibility_catalog_path: Path | None = None,
     ) -> "CodexChatAgentSession":
         resolved = shutil.which(codex_bin)
@@ -416,6 +418,7 @@ class CodexChatAgentSession:
                     **({"config": {"model_reasoning_effort": reasoning_effort}} if reasoning_effort else {}),
                     "sandbox": "workspace-write" if execution_mode else "read-only",
                     "approvalPolicy": "never",
+                    **({"dynamicTools": dynamic_tools} if dynamic_tools and not resume_thread_id else {}),
                 },
                 request_id=2,
             )
@@ -452,6 +455,7 @@ class CodexChatAgentSession:
                     codex_home=runtime_home,
                     model=model,
                     reasoning_effort=reasoning_effort,
+                    dynamic_tools=dynamic_tools,
                     _compatibility_catalog_path=catalog_path,
                 )
         except Exception:
@@ -497,7 +501,7 @@ class CodexChatAgentSession:
 
     def _route_response(self, message: dict[str, Any]) -> bool:
         response_id = message.get("id")
-        if not isinstance(response_id, int):
+        if message.get("method") or not isinstance(response_id, int):
             return False
         with self._response_waiters_lock:
             waiter = self._response_waiters.get(response_id)
@@ -518,12 +522,31 @@ class CodexChatAgentSession:
                     continue
                 return message
 
-    def _check_server_gate(self, message: dict[str, Any]) -> None:
+    def _check_server_gate(self, message: dict[str, Any]) -> bool:
+        if message.get("id") is not None and message.get("method") == "item/tool/call" and self.read_tool_handler:
+            params = message.get("params") or {}
+            valid = (
+                isinstance(params, dict) and params.get("threadId") == self.thread_id
+                and bool(self.current_turn_id) and params.get("turnId") == self.current_turn_id
+                and params.get("namespace") is None
+            )
+            try:
+                result = self.read_tool_handler(params.get("tool", ""), params.get("arguments")) if valid else {
+                    "ok": False, "error": "tool_turn_mismatch",
+                }
+            except Exception:
+                result = {"ok": False, "error": "read_tool_unavailable"}
+            self._write({"id": message["id"], "result": {
+                "contentItems": [{"type": "inputText", "text": json.dumps(result, ensure_ascii=False)}],
+                "success": result.get("ok") is True,
+            }})
+            return True
         if message.get("id") is not None and message.get("method"):
             raise CodexChatAgentError(
                 "Codex app-server requested host approval",
                 gate=_approval_gate("Codex requested host approval during a read-only chat turn."),
             )
+        return False
 
     def _request(
         self,
@@ -566,13 +589,16 @@ class CodexChatAgentSession:
                                     "Codex app-server returned an unreadable response."
                                 )
                             message = raw
+                            if message.get("method") and self._check_server_gate(message):
+                                continue
                             if (
                                 message.get("id") != request_id
                                 and self._route_response(message)
                             ):
                                 continue
                             if message.get("id") != request_id:
-                                self._check_server_gate(message)
+                                if self._check_server_gate(message):
+                                    continue
                                 self._pending_events.put(message)
                                 continue
                 if message.get("id") == request_id:
@@ -704,7 +730,8 @@ class CodexChatAgentSession:
                     )
                 raise
             last_activity_at = time.monotonic()
-            self._check_server_gate(message)
+            if self._check_server_gate(message):
+                continue
             event_thread_id = _event_thread_id(message)
             event_turn_id = _event_turn_id(message)
             if event_thread_id and event_thread_id != self.thread_id:

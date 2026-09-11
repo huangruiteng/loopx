@@ -73,7 +73,7 @@ def _recorded_details(run):
 
 
 def read_manager_delivery_history(
-    runtime_root: Path, goal_id: str, *, now=None, limit=24
+    runtime_root: Path, goal_id: str, *, now=None, limit=24, offset=None
 ):
     now = now or datetime.now().astimezone()
     start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -160,6 +160,8 @@ def read_manager_delivery_history(
             day_counts[day] = day_counts.get(day, 0) + 1
             if day_counts[day] <= limit:
                 included.append(row)
+        if offset is not None:
+            included = rows[offset:offset + limit]
         return {
             **base,
             "status": "read",
@@ -172,7 +174,8 @@ def read_manager_delivery_history(
                 "included": len(included),
                 "omitted": len(rows) - len(included),
                 "matched_by_day": day_counts,
-                "limit_per_day": limit,
+                "limit_per_day": limit if offset is None else None,
+                **({"offset": offset} if offset is not None else {}),
                 "invalid_delivery_records": invalid,
             },
             "limitations": [

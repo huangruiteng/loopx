@@ -67,3 +67,31 @@ help explain recorded deliveries; archive coverage and omitted rows are explicit
 Reported outcomes and evidence-bearing receipts remain distinct, and neither
 means the referenced artifact was inspected. Lark text replies preserve paragraphs
 and use plain-text report formatting.
+
+### Manager-directed Core inspection
+
+The Codex Chat manager defaults to Astra with high reasoning effort (explicit
+model/effort environment overrides remain supported). It receives a compact
+authorized Goal directory, then uses
+`loopx_manager_read` to choose portfolio, current Todo and recent delivery reads.
+The packaged `loopx-manager` skill is installed in its dedicated workspace and
+included in its operating instructions. This reuses Core providers and the
+existing manager-context delegation contract; it does not create another source
+of progress or expose a general shell.
+
+Routine inspection excludes Goals explicitly stopped in Core, before status
+collection and detail reads. Coverage reports how many were skipped. Stale or
+unknown progress remains eligible. An explicit historical question can discover
+stopped identities using the portfolio tool and then read the selected Goal.
+
+Each read checks the current audience grant before and after provider access,
+returns source revisions and pagination, and records a `manager.evidence_read`
+receipt. Unavailable sources and oversized rows remain explicit unknowns. The
+recent delivery window is still yesterday through now; arbitrary artifact paths
+and external links are not fetched. Existing non-Codex adapters retain their
+context projection until they implement an equivalent tool contract.
+
+Manager context version 6 starts a fresh upstream session for older manager
+contexts. The logical Chat session and its receipts remain intact. Runtime support
+uses the Codex app-server dynamic tool protocol; explicit upstream terminal
+errors remain errors and are not retried as part of inspection.

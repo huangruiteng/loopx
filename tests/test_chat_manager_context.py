@@ -17,7 +17,7 @@ def test_manager_defaults_are_independent_of_worker_configuration(monkeypatch):
     monkeypatch.delenv("LOOPX_MANAGER_REASONING_EFFORT", raising=False)
     assert manager_model_config() == {
         "model": "gpt-6-astra",
-        "reasoning_effort": "medium",
+        "reasoning_effort": "high",
     }
     monkeypatch.setenv("LOOPX_MANAGER_MODEL", "fixture-model")
     monkeypatch.setenv("LOOPX_MANAGER_REASONING_EFFORT", "low")
@@ -122,7 +122,7 @@ def test_legacy_manager_migrates_without_project_and_refreshes_each_turn(
     assert "global LoopX manager" in starts[0]["objective"]
     snapshots = []
 
-    def fresh(*args):
+    def fresh(*args, **kwargs):
         snapshot = {
             "snapshot_id": f"evidence-{len(snapshots)}",
             "coverage": {"discovered": len(snapshots) + 1},
