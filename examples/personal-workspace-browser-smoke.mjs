@@ -19,6 +19,7 @@ const dashboardDir = resolve(repoRoot, "apps/presentation/dashboard");
 const outputDir = resolve(repoRoot, "output/playwright/personal-workspace");
 const port = Number(process.env.LOOPX_PERSONAL_WORKSPACE_PORT ?? "5196");
 const packaged = process.env.LOOPX_PERSONAL_WORKSPACE_PACKAGED === "1";
+const collectCoverage = process.env.LOOPX_DASHBOARD_COVERAGE === "1";
 
 const periodicReportProjection = {
   schema_version: "periodic_report_workspace_projection_v0",
@@ -1275,6 +1276,7 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
 }
 
 async function main() {
+  if (collectCoverage && packaged) throw new Error("Source coverage requires the development smoke with source maps");
   const { chromium } = loadPlaywright();
   await mkdir(outputDir, { recursive: true });
   const results = new Map(Array.from({ length: 24 }, (_, index) => [index + 1, { status: "UNTESTED", note: "" }]));
@@ -1306,6 +1308,15 @@ async function main() {
     }
     await capabilityOffPage.close();
     const page = await browser.newPage({ viewport: { width: 1512, height: 982 } });
+    const coverageEntries = [];
+    if (collectCoverage) await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    async function checkpointCoverage() {
+      if (!collectCoverage) return;
+      // V8 may discard old execution contexts on reload. Preserve their real
+      // counters before navigating, then merge all intervals by source file.
+      coverageEntries.push(...await page.coverage.stopJSCoverage());
+      await page.coverage.startJSCoverage({ resetOnNavigation: false });
+    }
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
     page.on("console", (message) => {
@@ -1356,6 +1367,7 @@ async function main() {
     const expectedOrder = [initialOrder[1], initialOrder[2], initialOrder[0], ...initialOrder.slice(3)];
     if (JSON.stringify(await readOrder()) !== JSON.stringify(expectedOrder)) throw new Error('Pointer Goal reorder failed');
     if (page.url() !== beforeDragUrl) throw new Error('Dragging accidentally selected a Goal');
+    await checkpointCoverage();
     await page.reload({ waitUntil: 'networkidle' });
     if (JSON.stringify(await readOrder()) !== JSON.stringify(expectedOrder)) throw new Error('Goal order did not survive reload');
     // Escape cancels rather than committing a partially completed gesture.
@@ -1676,6 +1688,7 @@ async function main() {
     if (await page.locator("html").getAttribute("lang") !== "en") throw new Error("Language switch did not update the document locale");
     if (await page.evaluate(() => localStorage.getItem("loopx-pw-locale")) !== "en") throw new Error("English locale was not persisted");
     await page.screenshot({ path: resolve(outputDir, "desktop-settings-english.png"), fullPage: false, animations: "disabled" });
+    await checkpointCoverage();
     await page.reload({ waitUntil: "networkidle" });
     await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
     await page.getByText("LoopX Manager", { exact: true }).first().waitFor({ state: "visible" });
@@ -2416,6 +2429,7 @@ async function main() {
       throw new Error(`Lark route mismatch API readback mismatch: ${JSON.stringify(mismatchReadback)}`);
     }
     await page.getByRole("button", { name: "返回工作区", exact: true }).click();
+    await checkpointCoverage();
     await page.reload({ waitUntil: "networkidle" });
     await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
     await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -2861,6 +2875,7 @@ async function main() {
     if (!recoveryTurn) throw new Error("Active recovery Turn was not accepted");
 
     try {
+      await checkpointCoverage();
       await page.reload({ waitUntil: "networkidle" });
       await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
       await page.locator(".personal-goal-link").first().click();
@@ -3080,6 +3095,7 @@ async function main() {
     await page.screenshot({ path: resolve(outputDir, "desktop-settings-loopx-theme.png"), fullPage: false, animations: "disabled" });
     await page.getByRole("button", { name: "返回工作区", exact: true }).click();
     if (await page.locator(".personal-workspace-shell").getAttribute("data-pw-theme") !== "loopx") throw new Error("Workspace did not apply the LoopX standard theme readback");
+    await checkpointCoverage();
     await page.reload({ waitUntil: "networkidle" });
     await page.getByTestId("personal-goal-home").waitFor({ state: "visible" });
     if (await page.locator(".personal-workspace-shell").getAttribute("data-pw-theme") !== "loopx") throw new Error("LoopX standard theme did not survive reload");
@@ -3091,6 +3107,13 @@ async function main() {
     if (!(await page.locator(".personal-digest-card").isVisible().catch(() => false))) throw new Error("Morning digest card did not render on the manager home");
     pass(17, "Manager home keeps the morning digest while omitting the redundant Agent worker strip.");
     pass(20, "Empty and populated Tasks boards keep identical width and four equal columns at desktop and wide desktop viewports.");
+    if (collectCoverage) {
+      const { writeDashboardBrowserCoverage } = await import("./dashboard-browser-coverage.mjs");
+      coverageEntries.push(...await page.coverage.stopJSCoverage());
+      await writeDashboardBrowserCoverage(coverageEntries, {
+        repoRoot, dashboardDir, outputDir: resolve(repoRoot, "coverage/dashboard"),
+      });
+    }
     const report = { criteria: Object.fromEntries(results), observations };
     await writeFile(resolve(outputDir, "acceptance-results.json"), `${JSON.stringify(report, null, 2)}\n`, "utf8");
     console.log(`personal-workspace-browser-smoke (${packaged ? "packaged" : "development"}): ok\npreview=${url}\nscreenshot=${resolve(outputDir, "desktop-first-screen.png")}`);

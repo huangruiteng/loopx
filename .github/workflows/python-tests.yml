@@ -102,6 +102,16 @@ jobs:
           npm run test:control-plane:coverage
           npm run test:dashboard:coverage
 
+      - name: Measure dashboard browser interactions
+        env:
+          LOOPX_DASHBOARD_COVERAGE: "1"
+          LOOPX_PLAYWRIGHT_PACKAGE: ${{ github.workspace }}/apps/presentation/dashboard/node_modules/playwright
+        run: |
+          npm ci --ignore-scripts --prefix apps/presentation/dashboard
+          cd apps/presentation/dashboard
+          npx playwright install --with-deps chromium --only-shell
+          node ../../../examples/personal-workspace-browser-smoke.mjs
+
       - name: Upload TypeScript control-plane coverage
         uses: actions/upload-artifact@v7
         with:
@@ -114,7 +124,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dashboard-coverage
-          path: coverage/dashboard/lcov.info
+          path: coverage/dashboard/*.info
           if-no-files-found: error
           retention-days: 3
 
