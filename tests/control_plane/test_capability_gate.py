@@ -183,3 +183,25 @@ def test_target_capability_is_repair_output_instead_of_prerequisite() -> None:
 
 def test_requirement_free_candidate_does_not_invent_capability_gate() -> None:
     assert _gate({"executable_backlog_items": [_todo("todo_plain", index=1)]}) is None
+
+
+def test_resolution_binding_uses_highest_priority_not_first_display_row() -> None:
+    low = {**_todo("todo_low", index=1, required=["credentials"]), "priority": "P2"}
+    high = {**_todo("todo_high", index=2, required=["credentials"]), "priority": "P0"}
+    gate = _gate({"executable_backlog_items": [low, high]})
+    binding = gate["resolution_bindings"][0]
+    assert binding["primary_blocked_todo_id"] == "todo_high"
+    assert binding["priority"] == "P0"
+    assert set(binding["blocked_todo_ids"]) == {"todo_low", "todo_high"}
+
+
+def test_one_todo_identity_is_not_duplicated_by_display_text() -> None:
+    todo = _todo("todo_one", index=1, required=["network"])
+    gate = _gate({"active_next_action_executable_items": [todo],
+                  "executable_backlog_items": [{**todo, "text": "A longer display rendering"}]})
+    assert len(gate["blocked_candidates"]) == 1
+
+
+def test_authoritative_empty_backlog_does_not_revive_stale_first_item() -> None:
+    assert _gate({"executable_backlog_items": [], "first_executable_items": [
+        _todo("todo_stale", index=1, required=["network"])]}) is None

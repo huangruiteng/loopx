@@ -4,6 +4,7 @@ import { requireJsonObject, requireBoolean, requireInteger, requireStringArray,
   optionalNonEmptyString } from "../runtime_decode.ts";
 import { projectTodoResumePlanning } from "./resume_planning.ts";
 import { gateAddressesAgent } from "./gate_scope.ts";
+import { missingRequiredCapabilities } from "../agents/capability_gate.ts";
 
 interface Row {
   payload: JsonObject; display: JsonObject; claim: string | null;
@@ -13,7 +14,7 @@ interface Row {
   profileRank: number; missing: readonly string[]; rawClaimed: boolean;
 }
 
-function decodeRow(value: unknown): Row {
+function decodeRow(value: unknown, available?: readonly string[]): Row {
   const raw = requireJsonObject(value, "quota selection row");
   const payload = requireJsonObject(raw.payload, "payload");
   const boolean = (key: string) => requireBoolean(raw[key], key);
@@ -25,12 +26,14 @@ function decodeRow(value: unknown): Row {
     gate: boolean("gate"), removed: boolean("removed"), actionable: boolean("actionable"),
     due: boolean("due"), taskClass: optional("task_class") ?? "advancement_task",
     priority: integer("priority"), index: integer("index"), profileRank: integer("profile_rank"),
-    missing: requireStringArray(raw.missing, "missing"), rawClaimed: boolean("raw_claimed")};
+    missing: available === undefined ? requireStringArray(raw.missing, "missing") :
+      missingRequiredCapabilities(requireStringArray(raw.required, "required"), requireStringArray(raw.targets, "targets"), available),
+    rawClaimed: boolean("raw_claimed")};
 }
 
-function rows(value: unknown): Row[] {
+function rows(value: unknown, available?: readonly string[]): Row[] {
   if (!Array.isArray(value)) throw new EffectRuntimeRequestError("quota rows must be an array");
-  return value.map(decodeRow);
+  return value.map(row => decodeRow(row, available));
 }
 const payloads = (items: readonly Row[]) => items.map(row => row.payload);
 const compact = (items: readonly Row[], limit: number) => items.slice(0, limit).map(row => row.display);
@@ -119,7 +122,8 @@ function claimScope(source: readonly Row[], selected: readonly Row[], agent: str
 
 export function projectQuotaSelection(value: unknown): JsonObject {
   const request = requireJsonObject(value, "quota selection");
-  const source = rows(request.items), active = rows(request.active_items), activeExecutable = rows(request.active_executable_items);
+  const available = request.available === undefined ? undefined : requireStringArray(request.available, "available");
+  const source = rows(request.items, available), active = rows(request.active_items, available), activeExecutable = rows(request.active_executable_items, available);
   const agent = optionalNonEmptyString(request.agent_id, "agent_id");
   const userMode = requireBoolean(request.user_gate_scope, "user_gate_scope");
   const supported = requireBoolean(request.monitor_supported, "monitor_supported");
@@ -173,7 +177,10 @@ export function projectQuotaSelection(value: unknown): JsonObject {
 /** One quota read boundary composes scope/claim selection and existing resume rules. */
 export function projectTodoQuotaPlanning(value: unknown): JsonObject {
   const request = requireJsonObject(value, "quota planning");
-  if (request.schema_version !== "todo_quota_planning_request_v0") throw new EffectRuntimeRequestError("quota planning schema mismatch");
+  if (!["todo_quota_planning_request_v0", "todo_quota_planning_request_v1"].includes(String(request.schema_version))) throw new EffectRuntimeRequestError("quota planning schema mismatch");
+  if (request.schema_version === "todo_quota_planning_request_v1") {
+    requireStringArray(requireJsonObject(request.selection, "selection").available, "available");
+  }
   return {schema_version: "todo_quota_planning_v0", resume_planning: projectTodoResumePlanning(request.resume),
     ...projectQuotaSelection(request.selection)};
 }

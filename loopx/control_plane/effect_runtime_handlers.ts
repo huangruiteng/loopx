@@ -146,6 +146,7 @@ import {
 import { evaluateCoordinationTodoArchiveSelection } from "./coordination/todo_archive_selection.ts";
 import {evaluateStandingDecisionProjection} from "./todos/standing_decision.ts";
 import {evaluateDecisionScope} from "./todos/decision_scope.ts";
+import {evaluateCapabilityGate} from "./agents/capability_gate.ts";
 import {captureArchivedTodoDependencies} from "./todos/archive_capture.ts";
 import { evaluateCoordinationTodoSuccessorDerivation } from "./coordination/todo_successor_derivation.ts";
 import {
@@ -381,6 +382,7 @@ export function createEffectRuntimeHandlers(
     ["todo.public_update.plan", planPublicTodoUpdate],
     ["todo.standing_decision.project", evaluateStandingDecisionProjection],
     ["todo.decision_scope.evaluate", evaluateDecisionScope],
+    ["agent.capability_gate.evaluate", evaluateCapabilityGate],
     ["todo.archive.capture_dependencies", captureArchivedTodoDependencies],
     ["todo.monitor_metadata.plan", planMonitorMetadata],
     ["todo.authoring_scope.plan", planTodoAuthoringScope],
