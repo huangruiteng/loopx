@@ -292,6 +292,12 @@ def qualify_replan_writeback(
     )
     obligation = context.get("replan_obligation")
     if not obligation:
+        # A validated Todo transition can discharge the read-model obligation
+        # before refresh. Preserve that evidence in this run so periodic review
+        # starts a new window rather than counting the same history again.
+        transition_ack = context.get("replan_transition_ack") or {}
+        if transition_ack.get("recorded") is True:
+            return None, transition_ack.get("semantic_delta")
         return None, None
     if _obligation_was_created_by_current_completion(
         obligation,
@@ -362,6 +368,11 @@ def enforce_open_replan_writeback(
         todo_fields=todo_fields,
     )
     if not obligation:
+        if isinstance(semantic_delta, dict) and semantic_delta.get("accepted") is True:
+            if not guard_scoped or semantic_delta.get("obligation_id") == (
+                guard_semantic_replan_obligation_id
+            ):
+                return semantic_delta
         return None
     if guard_scoped and str(obligation.get("obligation_id") or "").strip() != str(
         guard_semantic_replan_obligation_id or ""
