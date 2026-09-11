@@ -665,13 +665,8 @@ Durable report 与 living document 还必须携带 artifact identity、source li
 不可用，不能视为完成，也不再提供决定操作。仅当同一来源、同一 Goal 中有明确的
 `superseded_by` 目标时提供跳转。阅读不会关闭 gate。现有普通事项仍沿用受控预览。
 
-This Dashboard slice renders existing public Todo facts in the selected attention
-detail. It preserves source/Goal identity, refreshes selected records, and fences
-inactive or missing items without inferring completion or authority from absence.
-It does not implement a cross-channel disclosure compiler, read acknowledgments,
-authorization classification, or automatic deduplication. This is partial Stage 2
-delivery; CLI and Lark contracts are unchanged.
-
+此切片尚未实现跨渠道披露编译器、已读回执、授权分类或自动去重，属于 Stage 2 的部分
+交付。CLI 和 Lark 契约保持不变。
 
 - 编译 material attention-queue deltas；
 - 分离 selection、delivery、interaction 与 density；

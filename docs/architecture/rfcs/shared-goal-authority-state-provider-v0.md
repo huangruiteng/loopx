@@ -2664,6 +2664,14 @@ The original direction remains; execution cards expand these stages rather than 
 
 #### Durability execution cards
 
+The T3 decision-dependency read policy now shares one TS owner for scope coverage,
+exact links and consistency diagnostics. Explicit gate recipients are independent
+of claim attribution; conflicting exact targets request repair rather than grant
+approval. This removes duplicate consumer knowledge, not provider transactions.
+It does not qualify D1/D2, alter the default provider, or relax D3 promotion holds.
+Markdown remains the permanent one-way display; the remaining execution cards
+below are unchanged.
+
 Use the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
 for command inventory, update/monitor transactions and consumer deletion. Do not
 repeat that plan in a second implementation or treat a merged read-policy PR

@@ -65,8 +65,9 @@ calendar day through collection time, separate from current Todo freshness.
 Accounting rows are excluded before the presentation cap. Completed Todo titles
 help explain recorded deliveries; archive coverage and omitted rows are explicit.
 Reported outcomes and evidence-bearing receipts remain distinct, and neither
-means the referenced artifact was inspected. Lark text replies preserve paragraphs
-and use plain-text report formatting.
+means the referenced artifact was inspected. Manager Lark replies preserve paragraphs,
+lists and emphasis through Markdown posts. Structured mentions and posts exceeding
+the rich-message request limit retain the existing text path without truncation.
 
 ### Manager-directed Core inspection
 

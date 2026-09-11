@@ -528,7 +528,21 @@ no active receipt. Explicit user-gate metadata replaces notification heuristics
 for this authority surface. These corrections are disclosed in the
 [decision-scope contract](../../reference/protocols/decision-scope-v0.md#decision-chronology-not-display-order).
 Legacy all-undated source-order compatibility remains; native display order is
-not authority. Scope coverage and open-gate routing are not migrated by this slice.
+not authority.
+
+Decision dependency consumer closure: `todos/decision_scope.ts` now owns scope
+coverage, exact-target relations, standing-receipt scoping and consistency
+diagnostics. Quota selection shares its explicit gate-recipient predicate:
+`global_gate` / `blocks_agent` take precedence over claim attribution. An exact
+link to a different Todo cannot silently satisfy a broad scope dependency; it
+produces a repair diagnostic, not approval or automatic retargeting. Python keeps
+legacy decoding and repair presentation, not a second rule implementation.
+Agent fallback, global Todo and summary consumers batch their candidate relations
+to avoid one RPC per pair. Legacy completion still uses the shared coverage rule.
+Validation covers the production-scale fixture, complete provider reads beyond
+display limits, stale/missing display, and isolated real-state snapshot parity.
+Remaining T3 work includes legacy action-token fallback routing and consumers
+that reconstruct diagnostics from compact summaries; do not call those migrated.
 This does not close T1/T2, all T3 consumers, or any durability/promotion hold.
 
 The list-filter consumer now uses `compact_evaluated_todo_group` instead of

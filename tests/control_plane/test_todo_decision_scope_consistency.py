@@ -24,6 +24,39 @@ SCOPE = {
 }
 
 
+def test_explicit_gate_scope_is_not_cancelled_by_another_claimant() -> None:
+    gate = {"todo_id": "todo_scoped_gate", "status": "open", "task_class": "user_gate",
+            "blocks_agent": AGENT_ID, "claimed_by": "agent-b", "decision_scope": SCOPE}
+    result = build_required_decision_scope_consistency(
+        _agent_summary(), _user_summary(gate), agent_id=AGENT_ID,
+        registered_agent_ids=[AGENT_ID, "agent-b"],
+    )
+    assert result["ok"] is True
+    assert result["errors"] == []
+
+
+def test_exact_link_to_other_work_cannot_satisfy_a_required_scope() -> None:
+    gate = {"todo_id": "todo_scoped_gate", "status": "open", "task_class": "user_gate",
+            "blocks_agent": AGENT_ID, "unblocks_todo_id": "todo_different_work", "decision_scope": SCOPE}
+    result = build_required_decision_scope_consistency(
+        _agent_summary(), _user_summary(gate), agent_id=AGENT_ID,
+    )
+    assert result["ok"] is False
+    assert result["errors"][0]["reason_code"] == "required_decision_scope_target_mismatch"
+    hint = build_required_decision_scope_repair_hint(result)
+    assert "owner intent" in hint["repair_focus"]
+    assert "invent approval" in hint["repair_focus"]
+
+
+def test_standing_scope_legacy_codec_is_retained() -> None:
+    authority = {"entries": [{"active": True, "global_gate": "yes", "decision_scope": "direction:action:publish_quality_contract"}]}
+    scoped = standing_decision_authority_for_agent(authority, agent_id=AGENT_ID)
+    assert scoped["active_count"] == 1
+    assert build_required_decision_scope_consistency(
+        _agent_summary(), {}, agent_id=AGENT_ID, standing_decision_authority=authority,
+    )["standing_authority_match_count"] == 1
+
+
 def _agent_summary() -> dict:
     return {
         "first_open_items": [
