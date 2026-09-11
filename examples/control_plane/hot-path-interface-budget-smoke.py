@@ -25,7 +25,10 @@ from loopx.extensions.presentation import (  # noqa: E402
     publish_extension_projection,
 )
 from loopx.extensions.runtime import install_extension  # noqa: E402
-from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.heartbeat_prompt import (  # noqa: E402
+    build_heartbeat_prompt,
+    project_heartbeat_agent_input,
+)
 from loopx.interface_budget import build_interface_budget_cadence  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
@@ -390,10 +393,12 @@ def main() -> int:
         )
         review_packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
         handoff_payload = review_packet_handoff_only_payload(review_packet)
-        heartbeat_payload = build_heartbeat_prompt(
-            goal_id=GOAL_ID,
-            thin=True,
-            runtime_profile="codex_app_heartbeat",
+        heartbeat_payload = project_heartbeat_agent_input(
+            build_heartbeat_prompt(
+                goal_id=GOAL_ID,
+                thin=True,
+                runtime_profile="codex_app_heartbeat",
+            )
         )
         # Real automations normally bind an agent; the unbound fixture alone
         # misses repeated identity/scope arguments in the generator envelope.

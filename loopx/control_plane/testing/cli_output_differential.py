@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from ..heartbeat.agent_input import HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
 from ..quota.turn_envelope import (
     ACTION_SIGNATURE_COVERAGE_V0,
     ACTION_SIGNATURE_COVERAGE_V1,
@@ -461,6 +462,20 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
     if candidate.get("format") != output_format:
         failures.append("format changed")
 
+    base_output_contract = base.get("output_contract_version")
+    candidate_output_contract = candidate.get("output_contract_version")
+    heartbeat_agent_input_migration = bool(
+        row_id.startswith("surface/heartbeat_prompt_thin/")
+        and output_format == "json"
+        and base_output_contract is None
+        and candidate_output_contract == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
+    )
+    if (
+        candidate_output_contract != base_output_contract
+        and not heartbeat_agent_input_migration
+    ):
+        failures.append("output_contract_version changed")
+
     migration = _schema_migration_state(
         base,
         candidate,
@@ -538,12 +553,21 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
         if delta > allowance:
             failures.append(f"{metric} grew by {delta}; allowance is {allowance}")
 
-    for field in ("semantic_json_keys",):
-        missing = _removed(base, candidate, field)
+    if output_format == "json":
+        missing = _removed(base, candidate, "semantic_json_keys")
         if missing:
             preview = ", ".join(missing[:5])
             suffix = f" (+{len(missing) - 5} more)" if len(missing) > 5 else ""
-            failures.append(f"{field} removed: {preview}{suffix}")
+            message = f"semantic_json_keys removed: {preview}{suffix}"
+            if heartbeat_agent_input_migration:
+                review_signals.append(message)
+            else:
+                failures.append(message)
+
+    if heartbeat_agent_input_migration:
+        review_signals.append(
+            "output contract migrated: generator payload -> heartbeat_agent_input_v1"
+        )
 
     for field in ("json_shape_paths", "markdown_headings"):
         missing = _removed(base, candidate, field)

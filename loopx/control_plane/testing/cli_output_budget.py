@@ -4,6 +4,9 @@ import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from loopx.control_plane.heartbeat.agent_input import (
+    HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION,
+)
 from loopx.control_plane.testing.cli_output_semantics import (
     action_signature_semantic_sha256,
     json_shape_paths as collect_json_shape_paths,
@@ -40,6 +43,7 @@ class CliOutputBudgetSpec:
     max_lines: dict[str, dict[OutputFormat, int]]
     scale_axis: str | None = None
     max_json_growth_chars_per_unit: int | None = None
+    output_contract_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -250,21 +254,28 @@ CLI_OUTPUT_BUDGET_SPECS: tuple[CliOutputBudgetSpec, ...] = (
         owner="heartbeat automation",
         consumer_action="wake and route one bounded turn",
         qualification_policy="absolute_hot_path",
-        cold_path="heartbeat-prompt --compact or --full",
-        semantic_json_keys=("task_body", "quota_guard_command", "interface_budget"),
+        cold_path=(
+            "heartbeat-prompt Markdown diagnostics, --compact, or --full"
+        ),
+        semantic_json_keys=(
+            "schema_version",
+            "task_body",
+            "interface_budget",
+        ),
         markdown_anchor="# Heartbeat Automation Prompt",
         max_chars={
-            "small": {"json": 6_000, "markdown": 5_100},
-            "crowded": {"json": 6_000, "markdown": 5_100},
-            "multi_agent": {"json": 6_000, "markdown": 5_100},
+            "small": {"json": 3_400, "markdown": 5_100},
+            "crowded": {"json": 3_400, "markdown": 5_100},
+            "multi_agent": {"json": 3_400, "markdown": 5_100},
         },
         max_lines={
-            "small": {"json": 58, "markdown": 72},
-            "crowded": {"json": 58, "markdown": 72},
-            "multi_agent": {"json": 58, "markdown": 72},
+            "small": {"json": 18, "markdown": 72},
+            "crowded": {"json": 18, "markdown": 72},
+            "multi_agent": {"json": 18, "markdown": 72},
         },
         scale_axis="todo_count",
         max_json_growth_chars_per_unit=4,
+        output_contract_version=HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION,
     ),
     CliOutputBudgetSpec(
         surface_id="todo_list",

@@ -766,23 +766,22 @@ def main() -> int:
         )
         payload = json.loads(cli.stdout)
         assert payload["ok"] is True, payload
-        assert payload["quota_guard_command"] == (
+        assert payload["schema_version"] == "heartbeat_agent_input_v1", payload
+        expected_quota_guard = (
             'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
             'quota should-run --goal-id installer-smoke-goal '
             '--turn-instance-id "${LOOPX_TURN:?}"'
-        ), payload
-        assert payload["quota_spend_command"] == (
-            'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" '
-            "quota spend-slot --goal-id installer-smoke-goal --slots 1 --source heartbeat --execute"
-        ), payload
-        assert payload["thin"] is True, payload
+        )
+        assert expected_quota_guard in payload["task_body"], payload
         assert payload["interface_budget"]["mode"] == "thin", payload
         assert payload["interface_budget"]["within_budget"] is True, payload
-        assert "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>" in payload["progress_refresh_state_command"], payload
-        assert "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>" in payload["progress_refresh_state_command"], payload
-        assert "--delivery-batch-scale multi_surface" not in payload["progress_refresh_state_command"], payload
-        assert "--delivery-outcome outcome_progress" not in payload["progress_refresh_state_command"], payload
-        assert "<PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in payload["progress_refresh_state_command"], payload
+        for generator_only_field in (
+            "quota_guard_command",
+            "quota_spend_command",
+            "progress_refresh_state_command",
+            "cli_bin",
+        ):
+            assert generator_only_field not in payload, payload
         assert normal_turns_use_cli_interaction_contract(payload["task_body"]), payload
         assert not normal_turns_use_cli_interaction_contract(
             "Normal turns use the runtime skill; recovery may inspect CLI `interaction_contract`."
@@ -794,7 +793,6 @@ def main() -> int:
         assert "not a command-prefix assignment" in payload["task_body"], payload
         assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
         assert "no-change=`surface_only`/no spend" in payload["task_body"], payload
-        assert payload["cli_bin"] == "loopx", payload
 
         canary_cli = subprocess.run(
             [

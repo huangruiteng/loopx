@@ -26,6 +26,7 @@ from ..heartbeat_prequota import (
 from ..heartbeat_prompt import (
     build_heartbeat_prompt,
     build_heartbeat_prompt_error_payload,
+    project_heartbeat_agent_input,
     render_heartbeat_prompt_markdown,
 )
 from ..kiro_cli_goal_mode import KIRO_CLI_BIN
@@ -507,6 +508,11 @@ def handle_support_control_command(
         active_state_source = None
         registered_agents = None
         effective_agent_id = args.agent_id
+        requested_runtime_profile = (
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
+            if args.codex_app
+            else args.runtime_profile
+        )
         try:
             active_state, resolved_active_state, active_state_source = (
                 resolve_heartbeat_active_state(
@@ -562,11 +568,7 @@ def handle_support_control_command(
                     "--runtime-profile cannot be combined with --host-surface, "
                     "--scheduler-owner, or --execution-mode"
                 )
-            runtime_profile = (
-                SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
-                if args.codex_app
-                else args.runtime_profile
-            )
+            runtime_profile = requested_runtime_profile
             payload = build_heartbeat_prompt(
                 goal_id=args.goal_id,
                 active_state=active_state,
@@ -644,7 +646,27 @@ def handle_support_control_command(
                 registered_agents=registered_agents,
                 available_capabilities=args.available_capabilities,
             )
-        print_payload(payload, output_format(args), render_heartbeat_prompt_markdown)
+        selected_output_format = output_format(args)
+        recurring_runtime_profile = requested_runtime_profile in {
+            None,
+            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value,
+            SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP.value,
+        }
+        recurring_thin_surface = bool(
+            recurring_runtime_profile and args.visible_goal_host is None
+        )
+        output_payload = (
+            project_heartbeat_agent_input(payload)
+            if selected_output_format == "json"
+            and payload.get("thin") is True
+            and recurring_thin_surface
+            else payload
+        )
+        print_payload(
+            output_payload,
+            selected_output_format,
+            render_heartbeat_prompt_markdown,
+        )
         return 0 if payload.get("ok") else 1
 
     supervisor_result = handle_supervisor_control_command(

@@ -13,11 +13,25 @@ and size/count budgets.
 | `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 13000` | `nested_keys <= 330` | `top_level_keys <= 52` |
 | `dashboard_status_json` | operator dashboard | render first-screen operator state | `history`, run artifacts, or project-local adapter output | `json_chars <= 18500` | `nested_keys <= 260` | `top_level_keys <= 25` |
 
-These four budgets measure compact in-memory machine payloads. They do not
-measure the exact text written to stdout: JSON indentation, compatibility
-projections, repeated commands, and Markdown wrappers can make emitted output
-materially larger. The emitted-output qualification matrix below measures that
-separate boundary through the real CLI entry point.
+These four budgets measure compact machine payloads. For
+`heartbeat_prompt_json`, the measured payload is the actual
+`heartbeat_agent_input_v1` projection emitted by the recurring-host
+`heartbeat-prompt --thin --format json` path, not the richer internal
+generator payload. Visible one-shot Goal hosts retain their host-specific
+activation packet. The other payloads are measured before stdout formatting. JSON
+indentation and Markdown wrappers can make emitted output materially larger;
+the emitted-output qualification matrix below measures that separate boundary
+through the real CLI entry point.
+
+The successful thin heartbeat projection contains only `schema_version`,
+`ok`, `goal_id`, optional `agent_id`, `task_body`, and the compact
+`interface_budget`; exact Turn identity and `bootstrap=true` are included only
+when requested. Generator provenance, resolved paths, mode booleans, policy
+source strings, runtime diagnostics, and command copies already embedded in
+`task_body` stay out of the Agent input. A failed projection contains the
+schema, `ok=false`, Goal/optional Agent identity, and the actionable `error`.
+Use Markdown output for human generator diagnostics or a non-thin JSON mode
+for the richer generator packet; neither is the recurring Agent hot path.
 
 The heartbeat envelope ceiling covers the unbound and representative agent/scope-bound
 Codex App thin fixtures. It includes generator metadata and repeated bound commands,
@@ -46,7 +60,7 @@ details and command prefixes still belong in compact references or cold paths.
 | `status --goal-id` | absolute hot path | todo-count growth; task graph excluded by default | `--include-task-graph`, `history`, run artifacts |
 | `diagnose --goal-id` | explicit-limit cold path | `--limit 5` fixture matrix | status plus goal-specific quota/todo reads |
 | `review-packet --handoff-only` | absolute hot path | todo-count growth plus handoff semantic anchors | full `review-packet`, run artifacts |
-| `heartbeat-prompt --thin` | absolute hot path | agent scope and multi-agent fixture matrix | `--compact`, `--full` |
+| `heartbeat-prompt --thin` | absolute hot path | agent scope, multi-agent fixture matrix, and exact Agent-input field allowlist | Markdown diagnostics, `--compact`, `--full` |
 | `todo list` | baseline and growth | todo-count growth and agent filtering semantics | `--thin`, `--limit N`, role/status filters, direct todo-id lifecycle commands |
 | `history --limit 5` | explicit-limit cold path | returned-run bound | individual run JSON/Markdown artifacts |
 | `evidence-log --thin --limit 5` | explicit-limit cold path | returned-evidence bound | referenced run-history and rollout-event artifacts |

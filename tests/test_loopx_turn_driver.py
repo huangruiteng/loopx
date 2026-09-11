@@ -1436,8 +1436,9 @@ def test_heartbeat_cli_codex_app_alias_reaches_generated_quota_guard(
 
     payload = json.loads(output.getvalue())
     assert exit_code == 0, payload
-    assert payload["runtime_profile"] == "codex_app_heartbeat"
-    assert "--codex-app" in payload["quota_guard_command"]
+    assert payload["schema_version"] == "heartbeat_agent_input_v1"
+    assert "runtime_profile" not in payload
+    assert "quota_guard_command" not in payload
     assert "--codex-app" in payload["task_body"]
 
 
