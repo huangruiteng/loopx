@@ -7,6 +7,7 @@ import {
   type SettlementIdentity,
 } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
+import { normalizeVisionUnchangedReason } from "../goals/vision_checkpoint.ts";
 import { projectMcpInteraction } from "./host_interaction.ts";
 import {
   requireBoolean,
@@ -127,7 +128,7 @@ function decodeRequest(
   const optionalText = (field: string): string | null => value[field] == null
     ? null : requireNonEmptyString(value[field], field);
   const visionPath = optionalText("vision_path");
-  const unchanged = optionalText("vision_unchanged_reason");
+  const unchanged = normalizeVisionUnchangedReason(optionalText("vision_unchanged_reason"));
   if (visionPath && unchanged) {
     throw new EffectRuntimeRequestError("choose a vision patch or an unchanged reason, not both");
   }

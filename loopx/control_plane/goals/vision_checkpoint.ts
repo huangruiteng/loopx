@@ -652,7 +652,7 @@ function deliveryBoundary(value: unknown): DeliveryBoundary {
   throw new EffectRuntimeRequestError("delivery_boundary is unsupported");
 }
 
-function normalizeVisionUnchangedReason(value: unknown): string | null {
+export function normalizeVisionUnchangedReason(value: unknown): string | null {
   const unchanged = compactText(value);
   if (!unchanged) return null;
   validatePublicSafeText("vision_unchanged_reason", unchanged);

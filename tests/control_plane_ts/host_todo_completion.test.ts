@@ -37,6 +37,26 @@ test("vision decisions require v1 and cannot combine patch with unchanged", () =
   assert.deepEqual(prepare({schema_version: HOST_TODO_VISION_TRANSACTION_SCHEMA_VERSION}), base);
 });
 
+test("unchanged vision authoring is validated before completion or recovery effects", () => {
+  for (const phase of ["prepare", "vision_refresh"] as const) {
+    const authored = {
+      schema_version: HOST_TODO_VISION_TRANSACTION_SCHEMA_VERSION,
+      phase,
+      vision_unchanged_reason: "x".repeat(241),
+    };
+    assert.throws(() => evaluateHostTodoCompletion(request("prepare", authored)),
+      /vision_unchanged_reason exceeds 240 chars/);
+    const reduced = evaluateHostTodoCompletion(request("prepare", {
+      ...authored, vision_unchanged_reason: `  ${"x".repeat(240)}  `,
+    }));
+    const args = phase === "vision_refresh" ? reduced.args :
+      (reduced.provider_effect as {steps: {step_kind: string; args: string[]}[]})
+        .steps.find(step => step.step_kind === "durable_writeback")!.args;
+    const command = args as string[];
+    assert.equal(command[command.indexOf("--vision-unchanged-reason") + 1], "x".repeat(240));
+  }
+});
+
 test("vision-aware Todo closeout never certifies Goal termination", () => {
   const reduced = finalize(providerOutcomes(identityFrom(prepare())), {schema_version: HOST_TODO_VISION_TRANSACTION_SCHEMA_VERSION,
     vision_path: "vision.json"});

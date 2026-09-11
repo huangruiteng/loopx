@@ -130,6 +130,48 @@ def test_bad_vision_is_rejected_before_todo_completion_and_can_be_corrected(tmp_
     assert len(spends(runtime)) == 1
 
 
+@pytest.mark.parametrize("length", [240, 241])
+def test_unchanged_reason_preflight_precedes_all_completion_effects(tmp_path, monkeypatch, length):
+    control, project, runtime = control_at(tmp_path)
+    monkeypatch.chdir(project)
+    first = json.loads(control.complete_task("todo_reducer", fixture.AGENT, "Synthetic acceptance",
+        successor_todo_ids=["todo_cli"], agent_vision=vision("vision_patch_proposed")))
+    assert first["ok"] is True, first
+    state = project / "ACTIVE_GOAL_STATE.md"
+    before = state.read_bytes()
+    index = runtime / "goals" / fixture.GOAL / "runs/index.jsonl"
+    before_index = index.read_bytes()
+    calls = []
+    original = control.run_cli
+
+    def recorded(args, **kwargs):
+        calls.append(args)
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(control, "run_cli", recorded)
+    if length == 241:
+        with pytest.raises(ValueError, match="vision_unchanged_reason exceeds 240 chars"):
+            control.complete_task("todo_cli", fixture.AGENT, "Synthetic acceptance",
+                no_follow_up=True, vision_unchanged_reason="x" * length)
+        assert calls == []  # No lifecycle, writeback or spend command was executed.
+        assert state.read_bytes() == before
+        assert index.read_bytes() == before_index
+        assert len(spends(runtime)) == 1
+    # Both valid initial authoring and correcting a rejected request take the
+    # real CLI/MCP path. Whitespace is normalized by the same TS owner as refresh.
+    result = json.loads(control.complete_task("todo_cli", fixture.AGENT, "Synthetic acceptance",
+        no_follow_up=True, vision_unchanged_reason="  " + "x" * 240 + "  "))
+    assert result["ok"] is True, result
+    checkpoint = result["settlement"]["durable_writeback"]["vision_checkpoint"]
+    assert checkpoint["decision"] == "unchanged_with_reason"
+    assert checkpoint["unchanged_reason"] == "x" * 240
+    assert len(spends(runtime)) == 2
+    replay = json.loads(control.complete_task("todo_cli", fixture.AGENT, "Synthetic acceptance",
+        no_follow_up=True, vision_unchanged_reason="x" * 240))
+    assert replay["ok"] is True, replay
+    assert len(spends(runtime)) == 2
+
+
 def test_legacy_partial_completion_retries_corrected_vision_without_extra_spend(tmp_path, monkeypatch):
     import loopx.control_plane.host_adapter_settlement as adapter
 
