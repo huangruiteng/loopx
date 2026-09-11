@@ -38,6 +38,8 @@ def test_missing_environment_skips_but_attempted_failure_fails(monkeypatch, caps
 
 
 def test_provider_binding_does_not_inherit_another_anthropic_account(monkeypatch, tmp_path):
+    for key in ("UNRELATED_TOKEN", "GH_TOKEN", "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK", "OPENAI_API_KEY"):
+        monkeypatch.setenv(key, "synthetic-unrelated-secret")
     monkeypatch.setenv("ARK_API_KEY", "synthetic-ark-key")
     monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "synthetic-other-provider-key")
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://example.com")
@@ -47,6 +49,13 @@ def test_provider_binding_does_not_inherit_another_anthropic_account(monkeypatch
     assert env["ANTHROPIC_BASE_URL"] == runner.ARK_ANTHROPIC_BASE
     assert env["ANTHROPIC_MODEL"] == "doubao-seed-evolving"
     assert "ANTHROPIC_AUTH_TOKEN" not in env and "CLAUDE_CODE_OAUTH_TOKEN" not in env
+    assert "ARK_API_KEY" not in env
+    assert "synthetic-unrelated-secret" not in env.values()
+    assert env["HOME"] == str(tmp_path / "home")
+    assert env["CODEX_HOME"] == str(tmp_path / "codex")
+    result = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                            env=env, text=True, capture_output=True, check=True)
+    assert "synthetic-unrelated-secret" not in result.stdout
     assert os.environ["ANTHROPIC_AUTH_TOKEN"] == "synthetic-other-provider-key"
 
 

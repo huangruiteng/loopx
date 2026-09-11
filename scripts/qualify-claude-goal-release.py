@@ -64,7 +64,7 @@ def prerequisite_failure(claude: str) -> str | None:
 
 def host_environment(root: Path, launcher: Path) -> dict[str, str]:
     # No user settings, OAuth/keychain import or persistent host installation.
-    env = {k: v for k, v in os.environ.items() if not k.startswith(("ANTHROPIC_", "CLAUDE_"))}
+    env = shared.isolated_environment(root, launcher)
     env.update(
         ANTHROPIC_API_KEY=os.environ["ARK_API_KEY"],
         ANTHROPIC_BASE_URL=ARK_ANTHROPIC_BASE,

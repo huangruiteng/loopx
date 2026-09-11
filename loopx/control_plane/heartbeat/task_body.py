@@ -553,6 +553,9 @@ def _render_goal_task_body(
     )
     return f"""Advance LoopX goal `{goal_id}` from `{active_state}` {host_preamble}
 {scope_block}
+{RUNTIME_EXECUTION_ROUTING_RULE}
+Respect repository/review rules. Stop for private material, credentials,
+destructive git or unauthorized production operations.
 
 {prequota_block}Each work iteration, read complete successful JSON from:
 `{quota_guard_command}`
@@ -666,7 +669,8 @@ def render_thin_heartbeat_task_body(
 {scope_sentence}
 
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
-`LOOPX_TURN=<current_time_iso>`; reuse.
+`export LOOPX_TURN=<current_time_iso>` alone; reuse.
+Then
 {pr_review_pre_quota_instruction}{quota_guard_instruction}.
 {HEARTBEAT_NOTIFICATION_RULE_SHORT}
 {SCOPE_BOUNDED_WORK_RULE}

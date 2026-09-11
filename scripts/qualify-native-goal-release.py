@@ -22,6 +22,39 @@ AGENT = "worker-a"
 TODOS = {"todo_reducer", "todo_cli"}
 
 
+def isolated_environment(root: Path, launcher: Path) -> dict[str, str]:
+    """Only execution essentials cross into a release model's process tree."""
+    env = {key: os.environ[key] for key in ("PATH", "LANG", "LC_ALL", "SYSTEMROOT", "WINDIR")
+           if key in os.environ}
+    for key, directory in {
+        "HOME": "home", "USERPROFILE": "home", "XDG_CONFIG_HOME": "config",
+        "XDG_CACHE_HOME": "cache", "XDG_DATA_HOME": "data", "TMPDIR": "tmp",
+        "TMP": "tmp", "TEMP": "tmp",
+        "CODEX_HOME": "codex", "CLAUDE_CONFIG_DIR": "claude-config",
+    }.items():
+        path = root / directory
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        env[key] = str(path)
+    env.update(PATH=str(launcher.parent) + os.pathsep + env.get("PATH", ""),
+               PYTHONPATH=str(REPO))
+    return env
+
+
+def host_environment(root: Path, launcher: Path) -> dict[str, str]:
+    env = isolated_environment(root, launcher)
+    # Copy only the selected Codex authentication, never user config, MCP
+    # servers, history or unrelated provider credentials.
+    if os.environ.get("OPENAI_API_KEY"):
+        env["OPENAI_API_KEY"] = os.environ["OPENAI_API_KEY"]
+    else:
+        source = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "auth.json"
+        if source.is_file():
+            target = Path(env["CODEX_HOME"]) / "auth.json"
+            target.write_bytes(source.read_bytes())
+            target.chmod(0o600)
+    return env
+
+
 def prerequisite_failure(codex: str) -> str | None:
     for executable in (codex, "git", "node"):
         if not shutil.which(executable):
@@ -161,10 +194,14 @@ def qualify(root: Path, codex: str, timeout: int) -> dict:
         sandbox_policy={"type": "workspaceWrite", "writableRoots": [str(root)],
                         "networkAccess": True},  # Local TS worker needs loopback.
     )
-    command = [codex, "--enable", "goals", "-c", 'shell_environment_policy.inherit="all"',
+    env = host_environment(root, launcher)
+    shell_env = {key: value for key, value in env.items() if key != "OPENAI_API_KEY"}
+    shell_settings = "{" + ", ".join(f"{key}={json.dumps(value)}" for key, value in shell_env.items()) + "}"
+    command = [codex, "--enable", "goals", "-c", 'shell_environment_policy.inherit="none"',
+               "-c", f"shell_environment_policy.set={shell_settings}",
                "-c", "project_doc_max_bytes=0", "app-server", "--stdio"]
     with tempfile.TemporaryFile(mode="w+") as stderr:
-        with StdioNativeGoalTransport.spawn(command, cwd=str(project), env=dict(os.environ),
+        with StdioNativeGoalTransport.spawn(command, cwd=str(project), env=env,
                                             stderr=stderr) as transport:
             turn = run_native_goal_until_terminal(transport, config, timeout_sec=timeout)
     assert turn.post_goal_status == "complete", "native_goal_did_not_complete"

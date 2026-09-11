@@ -39,8 +39,11 @@ def fixture(tmp_path: Path):
     return home, path, database, registry, prompt
 
 
-def test_real_sqlite_upgrade_preserves_schedule_binding_model_and_history(tmp_path):
+@pytest.mark.parametrize("backing_kind", ["heartbeat", "cron"])
+def test_real_sqlite_upgrade_preserves_schedule_binding_model_and_history(tmp_path, backing_kind):
     home, path, database, registry, prompt = fixture(tmp_path)
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE automations SET kind=?", (backing_kind,))
     original = path.read_text()
     plan = upgrade.build_plan(registry=registry, home=home)
     item = plan["entries"][0]
@@ -61,6 +64,17 @@ def test_real_sqlite_upgrade_preserves_schedule_binding_model_and_history(tmp_pa
     assert path.read_text() == original
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT * FROM automations").fetchone() == before
+
+
+@pytest.mark.parametrize("manifest_kind,binding", [("cron", "thread-a"), ("heartbeat", None)])
+def test_standalone_cron_cannot_adopt_heartbeat_policy(tmp_path, manifest_kind, binding):
+    home, path, database, _, _ = fixture(tmp_path)
+    path.write_text(path.read_text().replace('kind = "heartbeat"', f'kind = "{manifest_kind}"'))
+    with sqlite3.connect(database) as connection:
+        connection.execute("UPDATE automations SET kind='cron', target_thread_id=?", (binding,))
+        connection.row_factory = sqlite3.Row
+        with pytest.raises(ValueError):
+            upgrade._read(home, "watch", connection)
 
 
 def test_bootstrap_reads_real_current_cli_thin_contract(tmp_path):
@@ -114,7 +128,7 @@ def test_divergence_never_mutates_host(tmp_path, reason):
         if reason == "missing_row":
             connection.execute("DELETE FROM automations")
         elif reason == "wrong_kind":
-            connection.execute("UPDATE automations SET kind='cron'")
+            connection.execute("UPDATE automations SET kind='unsupported'")
         elif reason == "metadata":
             connection.execute("UPDATE automations SET status='ACTIVE'")
         else:

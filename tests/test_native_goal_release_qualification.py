@@ -2,6 +2,9 @@
 
 import importlib.util
 import json
+import subprocess
+import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +16,58 @@ spec = importlib.util.spec_from_file_location(
 )
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+
+
+def test_native_spawn_and_shell_receive_only_allowed_environment(monkeypatch, tmp_path):
+    from loopx.capabilities.benchmark_toolkit.native_codex_goal import StdioNativeGoalTransport
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-selected-key")
+    monkeypatch.setenv("UNRELATED_AUTH_TOKEN", "synthetic-forbidden-key")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "synthetic-forbidden-socket")
+    launcher = tmp_path / "bin/loopx"
+    monkeypatch.setattr(runner, "setup", lambda _: (tmp_path, tmp_path / "runtime", launcher))
+    monkeypatch.setattr(runner, "cli", lambda *_: {"task_body": "Synthetic task"})
+
+    class InspectedSpawn(Exception):
+        pass
+
+    def inspect(command, **kwargs):
+        env = kwargs["env"]
+        assert "UNRELATED_AUTH_TOKEN" not in env and "SSH_AUTH_SOCK" not in env
+        settings = tomllib.loads("\n".join(command[i + 1] for i, arg in enumerate(command) if arg == "-c"))
+        policy = settings["shell_environment_policy"]
+        assert policy["inherit"] == "none"
+        assert "OPENAI_API_KEY" not in policy["set"]
+        child = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                               env=policy["set"], capture_output=True, text=True, check=True)
+        assert "synthetic-selected-key" not in child.stdout
+        assert "synthetic-forbidden" not in child.stdout
+        raise InspectedSpawn
+
+    monkeypatch.setattr(StdioNativeGoalTransport, "spawn", inspect)
+    with pytest.raises(InspectedSpawn):
+        runner.qualify(tmp_path, "synthetic-codex", 10)
+
+
+def test_native_environment_copies_only_selected_auth(monkeypatch, tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "auth.json").write_text('{"synthetic_auth":true}')
+    (source / "config.toml").write_text('unrelated = "sentinel"')
+    monkeypatch.setenv("CODEX_HOME", str(source))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    for key in ("UNRELATED_TOKEN", "ARK_API_KEY", "SSH_AUTH_SOCK", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.setenv(key, "synthetic-unrelated-secret")
+    root = tmp_path / "isolated"
+    env = runner.host_environment(root, root / "bin/loopx")
+    assert "synthetic-unrelated-secret" not in env.values()
+    assert env["HOME"] == str(root / "home")
+    assert (root / "codex/auth.json").read_bytes() == (source / "auth.json").read_bytes()
+    assert not (root / "codex/config.toml").exists()
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-selected-key")
+    other = tmp_path / "api"
+    env = runner.host_environment(other, other / "bin/loopx")
+    assert env["OPENAI_API_KEY"] == "synthetic-selected-key"
+    assert not (other / "codex/auth.json").exists()
 
 
 def test_default_does_not_even_probe_model_environment(monkeypatch, capsys):

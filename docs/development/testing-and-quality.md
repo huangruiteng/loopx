@@ -749,7 +749,7 @@ score or evidence of universal model reliability.
 ```bash
 # No model invocation, no token cost; explicit skipped result, exit 0.
 python3 scripts/qualify-native-goal-release.py
-# Release operator opt-in only; uses the existing configured Codex model/auth.
+# Release operator opt-in only; uses selected Codex authentication in an isolated home.
 python3 scripts/qualify-native-goal-release.py --release-live
 ```
 
@@ -762,11 +762,22 @@ blocked/unfinished Goals and deadline expiry fail with exit 1. The default
 deadline is 1,200 seconds; this is a wall-clock ceiling, not a token budget.
 
 仅 release 前显式开启，避免默认消耗开发者 token。CI/本机环境不支持时跳过且不阻塞，
-但保留 `skipped` 标记；真实执行后失败不能冒充环境跳过。复用当前 Codex 的模型与登录，
-不复制凭据或会话、不修改活跃 Goal/automation。任务、registry、runtime 与 Git worktree
+但保留 `skipped` 标记；真实执行后失败不能冒充环境跳过。Codex 优先使用显式
+`OPENAI_API_KEY`，否则仅复制当前 `auth.json` 到权限受限的一次性 Codex 目录；
+不继承用户配置、MCP 配置、会话或其他提供商凭据，不修改活跃 Goal/automation。
+任务、registry、runtime 与 Git worktree
 在一次性目录内；沙箱允许该目录及本地 TS worker 所需的网络能力，
 这不是网络隔离，任务不授权外部操作。回归脚本不采集或上传原始对话/工具日志，
-公开结果仅包含状态、计数和错误类别；Codex 自身仍按当前 host 配置保存会话。
+公开结果仅包含状态、计数和错误类别；Codex 会话也保存在一次性目录中。
+
+Both release hosts use an explicit environment allowlist and isolated home,
+configuration, cache and temporary directories. Codex receives only the selected
+API key or a private temporary copy of its authentication file; user model/MCP
+configuration is not imported. Its shell tools receive an explicit environment
+without the API key. Claude receives the Ark key only as `ANTHROPIC_API_KEY`,
+not also as `ARK_API_KEY`; unrelated tokens and authentication sockets are not
+forwarded. These are process-environment boundaries, not filesystem or network
+isolation guarantees for the model's tools.
 
 ### Claude Code and release coverage / Claude Code 与发布覆盖
 

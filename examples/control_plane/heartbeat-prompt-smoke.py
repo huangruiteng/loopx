@@ -567,7 +567,7 @@ def main() -> int:
     assert live_peer_budget["within_budget"] is True, live_peer_budget
     assert len(str(live_peer_payload["task_body"])) <= int(live_peer_budget["max_chars"]), live_peer_budget
     assert "correctness.." not in live_peer_task, live_peer_task
-    assert live_peer_task.index("`LOOPX_TURN=<current_time_iso>`") < live_peer_task.index(
+    assert live_peer_task.index("`export LOOPX_TURN=<current_time_iso>`") < live_peer_task.index(
         "quota should-run"
     ), live_peer_task
     for phrase in (

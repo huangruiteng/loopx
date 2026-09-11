@@ -169,8 +169,10 @@ def _read(home: Path, automation_id: str, connection: sqlite3.Connection) -> tup
     if row is None or item.get("id") != automation_id:
         raise ValueError("automation identity missing or mismatched")
     row = dict(row)
-    if item.get("kind") != "heartbeat" or row["kind"] != "heartbeat":
+    if item.get("kind") != "heartbeat" or row["kind"] not in {"heartbeat", "cron"}:
         raise ValueError("only existing heartbeat automations are supported")
+    if row["kind"] == "cron" and not row.get("target_thread_id"):
+        raise ValueError("heartbeat scheduler backing requires a target thread")
     if item.get("status") == "DELETED" or row["status"] == "DELETED":
         raise ValueError("deleted automation cannot be upgraded")
     for key in ("prompt", "status", "target_thread_id"):
