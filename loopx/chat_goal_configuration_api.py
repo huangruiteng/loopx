@@ -46,20 +46,25 @@ def _boolean_configuration(
     return value
 
 
-def _multi_subagent_options(config: Mapping[str, Any]) -> dict[str, Any]:
-    model_options = {}
-    if "model" in config or "reasoning_effort" in config:
-        model = config.get("model", "")
-        effort = config.get("reasoning_effort", "")
-        if not isinstance(model, str) or not isinstance(effort, str):
-            raise ValueError("child model and reasoning effort must be strings")
-        if not model and effort:
+def _subagent_model_options(config: Mapping[str, Any]) -> dict[str, Any]:
+    if "model" not in config and "reasoning_effort" not in config:
+        return {}
+    model = config.get("model", "")
+    effort = config.get("reasoning_effort", "")
+    if not isinstance(model, str) or not isinstance(effort, str):
+        raise ValueError("child model and reasoning effort must be strings")
+    if not model:
+        if effort:
             raise ValueError("child reasoning effort requires a model")
-        model_options = subagent_model_configuration_options(
-            {"model": model, **({"reasoning_effort": effort} if effort else {})}
-            if model
-            else None
-        )
+        return subagent_model_configuration_options(None)
+    preference = {"model": model}
+    if effort:
+        preference["reasoning_effort"] = effort
+    return subagent_model_configuration_options(preference)
+
+
+def _multi_subagent_options(config: Mapping[str, Any]) -> dict[str, Any]:
+    model_options = _subagent_model_options(config)
     if not _boolean_configuration("multi_subagent", config, "enabled"):
         return {"multi_subagent_feature": "off", **model_options}
     max_children = config.get("max_children", 4)

@@ -39,6 +39,14 @@ import { localizedAttentionAge, localizedGoalState, localizedSessionStatus, useW
 import { formatCostUsd, formatDurationMs, formatTokenCount, formatUsageValue } from "./personal-workspace-model";
 import { todoResumeWhenFromMessage } from "./personal-workspace-router";
 
+function subagentModelRequest(include: boolean, model: string, effort: string) {
+  if (!include) return {};
+  if (!model.trim()) return { modelConfig: null };
+  const modelConfig: { model: string; reasoning_effort?: string } = { model: model.trim() };
+  if (effort) modelConfig.reasoning_effort = effort;
+  return { modelConfig };
+}
+
 const focusableSelector = [
   "a[href]",
   "button:not([disabled])",
@@ -404,7 +412,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
       enabled,
       goalId: selection.item.goalId,
       maxChildren: enabled ? subagentMaxChildren : 0,
-      ...(includeModel ? { modelConfig: subagentModel.trim() ? { model: subagentModel.trim(), ...(subagentEffort ? { reasoning_effort: subagentEffort } : {}) } : null } : {}),
+      ...subagentModelRequest(includeModel, subagentModel, subagentEffort),
     };
     setSubagentMutationState("previewing");
     setSubagentFeedback(t("drawer.subagentPreviewing"));

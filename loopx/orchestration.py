@@ -179,6 +179,28 @@ def orchestration_policy_summary(policy: dict[str, Any] | None) -> str:
     return summary
 
 
+def _update_subagent_model_preference(
+    spawn_policy: dict[str, Any],
+    *,
+    subagent_model: str | None,
+    subagent_reasoning_effort: str | None,
+    clear_subagent_model_config: bool,
+) -> None:
+    """Update only the model preference; leaving it absent preserves host defaults."""
+    if clear_subagent_model_config:
+        spawn_policy.pop("model_config", None)
+    elif subagent_model is not None or subagent_reasoning_effort is not None:
+        model_config = dict(spawn_policy.get("model_config") or {})
+        if subagent_model is not None:
+            model_config["model"] = subagent_model
+        if subagent_reasoning_effort is not None:
+            if subagent_reasoning_effort:
+                model_config["reasoning_effort"] = subagent_reasoning_effort
+            else:
+                model_config.pop("reasoning_effort", None)
+        spawn_policy["model_config"] = validate_subagent_model_config(model_config)
+
+
 def update_spawn_execution_policy(
     spawn_policy: dict[str, Any],
     *,
@@ -194,18 +216,12 @@ def update_spawn_execution_policy(
     default_max_children: int,
 ) -> None:
     """Apply validated execution options to the caller's transaction-local policy."""
-    if clear_subagent_model_config:
-        spawn_policy.pop("model_config", None)
-    elif subagent_model is not None or subagent_reasoning_effort is not None:
-        model_config = dict(spawn_policy.get("model_config") or {})
-        if subagent_model is not None:
-            model_config["model"] = subagent_model
-        if subagent_reasoning_effort is not None:
-            if subagent_reasoning_effort:
-                model_config["reasoning_effort"] = subagent_reasoning_effort
-            else:
-                model_config.pop("reasoning_effort", None)
-        spawn_policy["model_config"] = validate_subagent_model_config(model_config)
+    _update_subagent_model_preference(
+        spawn_policy,
+        subagent_model=subagent_model,
+        subagent_reasoning_effort=subagent_reasoning_effort,
+        clear_subagent_model_config=clear_subagent_model_config,
+    )
     if multi_subagent_feature == "enabled":
         spawn_policy["mode"] = MULTI_SUBAGENT_ORCHESTRATION_MODE
         spawn_policy["allowed"] = True

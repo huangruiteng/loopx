@@ -196,3 +196,75 @@ def test_capability_editor_model_roundtrip_and_clear(registry: Path) -> None:
         _goal_capability_options(
             "multi_subagent", {"enabled": False, "model": "", "reasoning_effort": "max"}
         )
+
+
+@pytest.mark.parametrize("config", [
+    {"model": 42},
+    {"model": "example", "reasoning_effort": True},
+])
+def test_capability_model_rejects_non_string_inputs(config: dict) -> None:
+    from loopx.chat_goal_configuration_api import _goal_capability_options
+
+    with pytest.raises(ValueError, match="must be strings"):
+        _goal_capability_options("multi_subagent", {"enabled": False, **config})
+
+
+def test_goal_drawer_preview_binding_and_model_roundtrip(registry: Path) -> None:
+    from types import SimpleNamespace
+
+    from loopx.chat_goal_subagent_api import GoalSubagentConfigurationRequestMixin
+
+    class Handler(GoalSubagentConfigurationRequestMixin):
+        def __init__(self) -> None:
+            self.server = SimpleNamespace(
+                registry_path=registry,
+                runtime_root_override=str(registry.parent / "runtime"),
+            )
+            self.body = {}
+            self.response = {}
+
+        def _registry_and_goal(self, goal_id):
+            payload = json.loads(registry.read_text())
+            return payload, next(g for g in payload["goals"] if g["id"] == goal_id)
+
+        def _read_json(self):
+            return self.body
+
+        def _send_json(self, payload, *, status=200):
+            self.response = {"status": status, **payload}
+
+        def _send_error(self, message, **kwargs):
+            self.response = {"error": message, **kwargs}
+
+    handler = Handler()
+    base = {"goal_id": "example", "enabled": False}
+    preference = {"model": "gpt-5.6-luna", "reasoning_effort": "max"}
+    # A preview cannot be reused for a different model; no partial write occurs.
+    handler.body = {**base, "model_config": preference}
+    before = registry.read_bytes()
+    handler._goal_subagent_configuration(apply=False)
+    assert handler.response["status"] == 200
+    assert registry.read_bytes() == before
+    preview_id = handler.response["preview_id"]
+    handler.body = {**base, "model_config": None, "preview_id": preview_id}
+    handler._goal_subagent_configuration(apply=True)
+    assert handler.response["status"] == 409
+    assert registry.read_bytes() == before
+
+    # Exercise the actual API owner and file-backed writer for set, preserve,
+    # effort removal and clear. Execution stays off throughout.
+    for fields, expected in [
+        ({"model_config": preference}, preference),
+        ({}, preference),
+        ({"model_config": {"model": "gpt-5.6-luna"}}, {"model": "gpt-5.6-luna"}),
+        ({"model_config": None}, None),
+    ]:
+        handler.body = {**base, **fields}
+        handler._goal_subagent_configuration(apply=False)
+        assert handler.response["status"] == 200
+        handler.body["preview_id"] = handler.response["preview_id"]
+        handler._goal_subagent_configuration(apply=True)
+        assert handler.response["status"] == 200, handler.response
+        actual = json.loads(registry.read_text())["goals"][0]["spawn_policy"]
+        assert actual.get("model_config") == expected
+        assert actual["allowed"] is False
