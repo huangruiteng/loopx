@@ -1,3 +1,4 @@
+import { evaluateSubagentContext, describeSubagentContext } from "./subagent_context.ts";
 import {
   effectIdsMatch,
   effectProgramFromOrderedSteps,
@@ -536,6 +537,14 @@ export function createEffectRuntimeHandlers(
     [
       "governed_capability.settlement_status",
       (params) => governedCapabilitySettlementStatus(params.failure),
+    ],
+    [
+      "capability_hook.agent_context.describe",
+      () => describeSubagentContext(),
+    ],
+    [
+      "capability_hook.agent_context.project",
+      (params) => evaluateSubagentContext(params),
     ],
     [
       "capability_hook.interaction_projection.validate_registration",

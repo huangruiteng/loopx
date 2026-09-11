@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ...quota import build_quota_should_run
+from ..agent_context import project_agent_context
 from ..capability_hooks import (
     InteractionProjectionHookRegistration,
     dispatch_interaction_projection_hooks,
@@ -493,6 +494,19 @@ def build_live_quota_should_run_decision(
         payload["capability_hook_dispatch"] = {
             key: value for key, value in hook_dispatch.items() if key != "projections"
         }
+    interaction = payload.get("interaction_contract")
+    if isinstance(interaction, dict) and goal_id and agent_id:
+        context = project_agent_context(
+            phase="before_plan",
+            scope={
+                "goal_id": goal_id,
+                "agent_id": agent_id,
+                "todo_id": (payload.get("selected_todo") or {}).get("todo_id"),
+            },
+            orchestration=(payload.get("goal_boundary") or {}).get("orchestration") or {},
+        )
+        if context is not None:
+            interaction["agent_context"] = context
     bind_scheduler_followup_cli_routes(
         payload,
         registry_path=registry_path,

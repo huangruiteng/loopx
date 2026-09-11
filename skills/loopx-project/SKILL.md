@@ -1061,7 +1061,33 @@ Report in Chinese when the user is reviewing:
 Never include credentials, private docs, raw internal links, production task
 ids, or raw local evidence in public repo docs or examples.
 
-## Child Model Configuration
+## Capability Context And Child Models
+
+Read `interaction_contract.agent_context` at planning time (or
+`turn_envelope.agent_context` in LoopX Turn). Enabled capabilities contribute
+bounded guidance for the coordinator, including independent evidence questions,
+the work to retain locally, and parent validation obligations. Consider useful
+read-heavy delegation within a single Todo; do not manufacture persistent Todos
+or duplicate research to trigger parallelism. Respect the existing admission
+and authorization boundaries.
+
+When using native child tools outside LoopX Turn, read the same capability
+context at each boundary, using the current registry, Goal and Agent:
+
+```bash
+loopx agent-context --goal-id <goal> --agent-id <agent> --phase before_delegate
+# Launch the bounded child work; continue useful coordinator work; collect results.
+loopx agent-context --goal-id <goal> --agent-id <agent> --phase after_delegate_result
+```
+
+These are read-only calls, not new turns or quota spends. Read `before_plan`
+through this command too if the host did not supply an interaction contract.
+LoopX Turn already carries `delegation_context` in its host request and
+`agent_context` in its reconciled result. Apply the relevant guidance once per
+boundary, not on every poll. Validate returned evidence, explain acceptance or
+rejection and link accepted work to the plan/deliverable. A context packet's
+`delivery: projected` proves generation only, not model reading, execution or
+adoption. Native CLI reads cannot certify host receipts.
 
 For an authorized child-worker task, read
 `goal_boundary.orchestration.model_config` when present and explicitly pass

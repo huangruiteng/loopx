@@ -15,6 +15,7 @@ export const ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
 export const ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1";
 export const ACTION_SIGNATURE_COVERAGE_V2 = "turn_envelope_action_dimensions_v2";
 export const ACTION_SIGNATURE_COVERAGE_V3 = "turn_envelope_action_dimensions_v3";
+export const ACTION_SIGNATURE_COVERAGE_V4 = "turn_envelope_action_dimensions_v4";
 export const ACTION_SIGNATURE_COVERAGE = ACTION_SIGNATURE_COVERAGE_V0;
 
 const EXECUTABLE_CLI_ARGS_MAX_ITEMS = 64;
@@ -619,6 +620,8 @@ function actionProjection(payload: JsonObject, protocolActionFields: JsonObject)
   projection.contract_capsule = contractCapsule(
     payload, action, user, schedulerValue, protocolActionFields,
   );
+  const context = object(interaction.agent_context);
+  if (Object.keys(context).length > 0) projection.agent_context = context;
   const orchestration = object(payload.task_orchestration_contract);
   if (Object.keys(orchestration).length > 0) projection.task_orchestration_contract = orchestration;
   const plan = responsePlan(interaction);
@@ -630,18 +633,31 @@ function turnActionProjection(payload: JsonObject, protocolActionFields: JsonObj
   const projection = actionProjection(payload, protocolActionFields);
   const action = object(projection.action);
   const horizon = object(action.planning_horizon);
-  if (Object.keys(horizon).length === 0 || Object.keys(object(horizon.detail_refs)).length === 0) {
-    return projection;
+  if (Object.keys(object(horizon.detail_refs)).length > 0) {
+    const compactHorizon = { ...horizon };
+    delete compactHorizon.detail_refs;
+    compactHorizon.detail_refs_ref = PLANNING_HORIZON_DETAIL_REFS_REF;
+    action.planning_horizon = compactHorizon;
+    projection.action = action;
   }
-  const compactHorizon = { ...horizon };
-  delete compactHorizon.detail_refs;
-  compactHorizon.detail_refs_ref = PLANNING_HORIZON_DETAIL_REFS_REF;
-  action.planning_horizon = compactHorizon;
-  projection.action = action;
+  const context = object(projection.agent_context);
+  // Guidance must not crowd out the actionable contract. Preserve a signed
+  // content reference to the existing full-decision route under budget pressure.
+  if (Object.keys(context).length > 0
+    && Buffer.byteLength(JSON.stringify(projection), "utf8") > TURN_ENVELOPE_BUDGET_BYTES - 1_400) {
+    projection.agent_context = {
+      schema_version: context.schema_version, phase: context.phase, scope: context.scope,
+      target: "coordinator", authority: "guidance_only", delivery: "projected",
+      content_hash: canonicalHash(context),
+      detail_ref: "full_decision.interaction_contract.agent_context",
+      instruction: "Use the envelope detail_ref command to read capability context before planning.",
+    };
+  }
   return projection;
 }
 
 function signatureCoverage(envelope: JsonObject, responsePlanValue: unknown): string {
+  if (Object.keys(object(envelope.agent_context)).length > 0) return ACTION_SIGNATURE_COVERAGE_V4;
   const action = object(envelope.action);
   if (Object.keys(object(action.planning_horizon)).length > 0) return ACTION_SIGNATURE_COVERAGE_V3;
   if (Object.keys(object(action.action_portfolio)).length > 0) return ACTION_SIGNATURE_COVERAGE_V2;
@@ -662,6 +678,9 @@ export function turnEnvelopeActionSignatureDocument(value: unknown): JsonObject 
     "writeback", "scheduler", "contract_capsule", "task_orchestration_contract",
   ]) {
     signature[field] = envelope[field] ?? null;
+  }
+  if (Object.keys(object(envelope.agent_context)).length > 0) {
+    signature.agent_context = object(envelope.agent_context);
   }
   if (Object.keys(object(responsePlanValue)).length > 0) {
     signature.response_plan = { ...object(responsePlanValue) };
