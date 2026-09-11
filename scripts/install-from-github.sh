@@ -37,7 +37,16 @@ if [[ -z "$archive_url" ]]; then
     echo "loopx installer error: LOOPX_REPO must use GitHub owner/name syntax" >&2
     exit 2
   fi
-  commit_api_url="$("$python_bin" - "$repo" "$ref" <<'PY'
+  if [[ "$ref" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    # Immutable inputs need no branch-resolution service (or GitHub API quota).
+    resolved_commit="$(printf '%s' "$ref" | tr '[:upper:]' '[:lower:]')"
+    if [[ -n "${LOOPX_RESOLVED_SOURCE_GIT_COMMIT:-}" \
+      && "$(printf '%s' "$LOOPX_RESOLVED_SOURCE_GIT_COMMIT" | tr '[:upper:]' '[:lower:]')" != "$resolved_commit" ]]; then
+      echo "loopx installer error: resolved commit disagrees with the requested full SHA" >&2
+      exit 2
+    fi
+  else
+    commit_api_url="$("$python_bin" - "$repo" "$ref" <<'PY'
 from urllib.parse import quote
 import sys
 
@@ -49,22 +58,50 @@ print(
 )
 PY
 )"
-  curl -fsSL \
+    if ! curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 --retry-max-time 45 \
     -H 'Accept: application/vnd.github+json' \
     -H 'User-Agent: LoopX-installer' \
-    "$commit_api_url" -o "$tmp_dir/commit.json"
-  resolved_commit="$("$python_bin" - "$tmp_dir/commit.json" <<'PY'
+      "$commit_api_url" -o "$tmp_dir/commit.json"; then
+      # Reuse an existing login when available; never request credentials or
+      # fall back to a different branch. Keep both transport and capture bounded.
+      echo "loopx installer: public commit lookup failed; trying existing GitHub CLI authentication" >&2
+      "$python_bin" - "$commit_api_url" "$tmp_dir/commit.json" <<'PY'
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+from urllib.parse import urlsplit
+
+gh = shutil.which("gh")
+if gh:
+    try:
+        with Path(sys.argv[2]).open("wb") as output:
+            result = subprocess.run(
+                [gh, "api", "--hostname", "github.com", urlsplit(sys.argv[1]).path],
+                stdout=output, stderr=subprocess.DEVNULL, timeout=30, check=False,
+            )
+        if result.returncode == 0:
+            raise SystemExit(0)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+raise SystemExit("Commit lookup failed. Retry with LOOPX_REF=<verified full commit SHA>; "
+                 "no runtime was installed and no alternate ref was selected.")
+PY
+    fi
+    resolved_commit="$("$python_bin" - "$tmp_dir/commit.json" <<'PY'
 import json
+import re
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     payload = json.load(handle)
 sha = payload.get("sha")
-if not isinstance(sha, str) or len(sha) != 40:
+if not isinstance(sha, str) or re.fullmatch(r"[0-9a-fA-F]{40}", sha) is None:
     raise SystemExit("GitHub commit response did not include a full SHA")
-print(sha)
+print(sha.lower())
 PY
 )"
+  fi
   export LOOPX_RESOLVED_SOURCE_GIT_COMMIT="$resolved_commit"
   archive_url="https://codeload.github.com/$repo/tar.gz/$resolved_commit"
 fi
@@ -75,7 +112,8 @@ extract_dir="$tmp_dir/extract"
 mkdir -p "$extract_dir"
 
 echo "loopx installer: downloading $archive_url" >&2
-curl -fsSL "$archive_url" -o "$archive_path"
+curl -fsSL --connect-timeout 10 --max-time 120 --retry 2 --retry-max-time 150 \
+  "$archive_url" -o "$archive_path"
 archive_sha256="$("$python_bin" - "$archive_path" <<'PY'
 from pathlib import Path
 import hashlib

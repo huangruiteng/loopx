@@ -189,12 +189,14 @@ def test_runtime_update_invokes_new_cli_and_migrates_only_managed_prompts(tmp_pa
         runtime_update=lambda payload, **_: {**payload, "ok": True, "changes_applied": True})
     assert len(invoked) == 1 and result["ok"]
     report = result["automation_prompt_upgrade"]
+    assert result["upgrade_complete"] is managed_v1
     assert report["status"] == ("current" if managed_v1 else "attention_required")
     assert report["results"] == [{"automation_id": "watch", "status": "updated" if managed_v1 else "review_required"}]
     if managed_v1:
         assert "snapshot_file" not in report
     else:
         assert Path(report["snapshot_file"]).exists()
+        assert result["next_action"]["requires_explicit_approval"] is True
     after_manifest = tomllib.loads(path.read_text())
     assert after_manifest == {**manifest, "prompt": desired if managed_v1 else manifest["prompt"]}
     with sqlite3.connect(database) as connection:
@@ -217,6 +219,40 @@ def test_failed_install_never_attempts_prompt_writes(tmp_path, monkeypatch):
         timeout_seconds=1, runtime_update=lambda payload, **_: {"ok": False})
     assert result["automation_prompt_upgrade"]["status"] == "skipped_runtime_update_failed"
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("install_code,doctor_code,changes_applied,expected_status", [
+    (0, 0, True, "attention_required"),
+    (1, 0, True, "skipped_runtime_update_failed"),
+    (0, 1, True, "skipped_runtime_update_failed"),
+    (0, 0, False, "skipped_runtime_update_failed"),
+])
+def test_prompt_reconciliation_is_independent_of_optional_extension_health(
+    tmp_path, monkeypatch, install_code, doctor_code, changes_applied, expected_status,
+):
+    from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle
+    home, path, _, registry, _ = fixture(tmp_path)
+    monkeypatch.setattr("loopx.upgrade.codex_home", lambda: home)
+    real_run = subprocess.run
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        # Exercise real new-runtime CLI and SQLite/TOML readback.
+        return real_run(command, capture_output=True, text=True, timeout=60)
+    monkeypatch.setattr(lifecycle.subprocess, "run", run)
+    runtime_result = {"ok": False, "changes_applied": changes_applied,
+        "execution": {"install_returncode": install_code, "doctor_returncode": doctor_code,
+                      "extension_doctor_returncode": 1},
+        "next_action": {"kind": "review_or_rollback"}, "recommended_action": "Inspect optional extensions"}
+    result = lifecycle.update_with_prompts(
+        {"install_lifecycle": {"execution_driver": "python_pip"}}, registry=registry,
+        runtime_root=None, timeout_seconds=60, runtime_update=lambda *_, **__: runtime_result)
+    assert result["automation_prompt_upgrade"]["status"] == expected_status
+    assert len(calls) == (1 if expected_status == "attention_required" else 0)
+    assert not result["ok"] and not result["upgrade_complete"]
+    assert result["next_action"] == {"kind": "review_or_rollback"}
+    assert result["recommended_action"] == "Inspect optional extensions"
+    assert "bootstrap" not in tomllib.loads(path.read_text())["prompt"]
 
 
 def test_update_identifies_owned_legacy_body_and_migrates_without_changing_schedule(tmp_path, monkeypatch):

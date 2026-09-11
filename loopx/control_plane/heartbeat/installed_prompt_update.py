@@ -87,6 +87,8 @@ def reconcile(*, before: dict, registry: Path, home: Path,
             result["status"] = "missing"
         elif now["status"] in {"current", "unmanaged", "blocked"}:
             result["status"] = now["status"]
+            if now.get("reason"):
+                result["reason"] = now["reason"]
         elif any(old.get(key) != now.get(key) for key in
                  ("source_sha256", "prompt_sha256", "target_thread_id", "goal_id", "agent_id")):
             result["status"] = "changed_since_snapshot"
@@ -143,12 +145,24 @@ def update_with_prompts(payload: dict, *, registry: Path, runtime_root: str | No
     except (ValueError, OSError, sqlite3.Error) as error:
         before = {"ok": False, "status": "discovery_failed", "reason": str(error)}
     updated = runtime_update(payload, timeout_seconds=timeout_seconds)
-    if not updated.get("ok"):
+    # Optional extension qualification is not binary installation readiness.
+    # Do not strand managed prompts after a successful install + core doctor,
+    # but preserve the failed aggregate result and its original repair action.
+    runtime_ready = bool(updated.get("ok"))
+    execution = updated.get("execution", {})
+    installed = runtime_ready or (updated.get("changes_applied") is True
+        and execution.get("install_returncode") == 0
+        and execution.get("doctor_returncode") == 0)
+    updated["upgrade_complete"] = False
+    if not installed:
         updated["automation_prompt_upgrade"] = {"status": "skipped_runtime_update_failed"}
         return updated
     if not before.get("ok") or not before.get("entries"):
         updated["automation_prompt_upgrade"] = {
             key: value for key, value in before.items() if key in {"ok", "status", "reason"}}
+        updated["upgrade_complete"] = runtime_ready and before.get("ok") is True
+        if not before.get("ok") and runtime_ready:
+            updated["recommended_action"] = "Runtime updated; automation discovery failed. Review automation-prompts plan through the App before adopting prompts."
         return updated
     directory = Path(tempfile.mkdtemp(prefix="loopx-prompt-update-"))
     plan_file = directory / "before.json"
@@ -176,13 +190,16 @@ def update_with_prompts(payload: dict, *, registry: Path, runtime_root: str | No
         report = {"ok": False, "status": "reconciliation_failed"}
     if not report.get("ok"):
         report["snapshot_file"] = str(plan_file)
-        updated["recommended_action"] = "Runtime updated; review pending automation prompts using the App API, or retry the saved snapshot with the App closed."
-        updated["next_action"] = {"kind": "apply_host_prompt_updates", "mutating": True,
-            "requires_explicit_approval": False,
-            "reason": "Only byte-exact managed prompts have automatic adoption authority; custom entries require separate review.",
-            "api_updates": report.get("api_updates", [])}
+        if runtime_ready:
+            updated["recommended_action"] = "Runtime updated; review pending automation prompts using the App API, or retry sync-installed with the saved snapshot. Custom prompts and alternate loader bindings require explicit review."
+            updated["next_action"] = {"kind": "apply_host_prompt_updates", "mutating": True,
+                "requires_explicit_approval": any(row.get("status") == "review_required"
+                    for row in report.get("results", [])),
+                "reason": "Only byte-exact managed prompts have automatic adoption authority; custom entries require separate review.",
+                "api_updates": report.get("api_updates", [])}
     else:
         plan_file.unlink()
         directory.rmdir()
     updated["automation_prompt_upgrade"] = report
+    updated["upgrade_complete"] = runtime_ready and report.get("ok") is True
     return updated

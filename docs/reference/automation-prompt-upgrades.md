@@ -35,14 +35,32 @@ not Todo, quota or scheduler authority.
 
 ## Automatic upgrade and manual adoption
 
-`loopx update --apply` now captures an owner-only snapshot **before** replacing
+`loopx update apply` now captures an owner-only snapshot **before** replacing
 the runtime and invokes `automation-prompts sync-installed` in the **new**
 runtime afterward. Exact recognized managed bootstraps and byte-identical
 prompts reproduced by the old installed generator may migrate automatically.
 An automation name, matching prose or Goal id alone never authorizes adoption.
 Custom instructions remain `review_required`; a canary executable, different
 registry/home or changed preview is not silently retargeted. Binary-install
-success and prompt-migration success are reported separately.
+success and prompt-migration success are reported separately. `upgrade_complete`
+is true only when runtime qualification and prompt reconciliation both succeed;
+the existing `ok` field retains its runtime-result meaning. A successful install
+and core doctor still run prompt reconciliation when an optional extension
+fails its doctor, without clearing that extension failure or its repair action.
+Failed installation or core doctor never starts prompt writes.
+
+Upgrading from a CLI that predates this hook cannot retroactively capture its
+old template evidence. After installation, run the new `automation-prompts plan`
+and review/adopt the selected tasks through the App. Never interpret absence of
+a migration report as proof of migration, or loosen exact-template ownership
+to make a historical custom prompt appear automatically eligible.
+
+Archive updates pinned with `--ref <full-commit-SHA>` download that exact archive
+without a GitHub commit-API lookup. Symbolic refs still require resolution to a
+full hexadecimal SHA. If the public API fails, the installer can reuse existing
+`gh` authentication for the same GitHub repository/ref under a bounded timeout;
+it neither logs in nor selects another ref. If both routes fail, retry with an
+independently verified full SHA. Downloads have bounded timeouts and retries.
 
 **Exact managed v1 wrappers upgrade to v2 automatically through this path;
 they do not require per-task approval.** `automation-prompts plan` is only a
@@ -173,6 +191,11 @@ thin 指令；之后升级 LoopX 即可让下一轮采用新版规则，无需�
 仅完整匹配的托管指令可自动更新；自定义内容不猜测合并、不自动删除。macOS
 已匹配的 heartbeat 存储支持 App 运行中直接写入，仅改 prompt，持有数据库写锁
 直到 TOML 交付和读回完成。两种存储并非一个原子事务；冲突或异常保留私有日志，
-不伪报成功。日程、暂停状态、模型、线程、通知偏好和历史均不迁移。
+不伪报成功。`upgrade_complete` 同时覆盖 runtime 与 prompt；可选扩展检查失败
+不阻止已经通过安装和核心 doctor 的 runtime 继续迁移 prompt，扩展故障仍保留。
+首次从不含迁移钩子的旧 CLI 升级，应再用新版 plan 审阅并采用旧任务，不能把
+缺少迁移报告当作已迁移。完整 SHA 下载不依赖提交查询；分支查询失败可复用已有
+gh 登录，仍失败则明确要求已核验 SHA，不切换分支或静默覆盖自定义指令。
+日程、暂停状态、模型、线程、通知偏好和历史均不迁移。
 不支持的存储仍需原生 API；运行中的本轮不热切换。普通测试不消耗模型 token，
 真实模型发布资格仍需独立评测，不能由迁移成功推断。
