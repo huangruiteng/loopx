@@ -87,6 +87,10 @@ function multiSubagentCapability({ current } = {}) {
   const effective = current ?? fallback;
   return {
     capability_id: "multi_subagent",
+    context_contribution: {
+      supported_phases: ["before_plan", "before_delegate", "after_delegate_result"],
+      target: "coordinator", activation: "with_capability", receipt_required: true,
+    },
     display_name: "Adaptive child capacity",
     description: "Bound child-agent capacity and eligible responsibility domains.",
     available_scopes: ["goal"],
@@ -2262,6 +2266,20 @@ async function main() {
 
     await page.getByRole("button", { name: /自适应子 Agent 容量/u }).click();
     await page.getByRole("heading", { level: 2, name: /^自适应子 Agent 容量/ }).waitFor({ state: "visible" });
+    const contextHelp = page.getByTestId("capability-context-phases");
+    await contextHelp.locator("summary").click();
+    for (const phase of ["before_plan", "before_delegate", "after_delegate_result"]) {
+      await contextHelp.getByText(phase, { exact: true }).waitFor({ state: "visible" });
+    }
+    await contextHelp.getByText(/不能证明某次运行已读取或采纳/u).waitFor({ state: "visible" });
+    await page.screenshot({ path: resolve(outputDir, "capability-context-phases-desktop.png"), fullPage: false, animations: "disabled" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) {
+      throw new Error("Capability lifecycle guidance overflows mobile viewport");
+    }
+    await page.screenshot({ path: resolve(outputDir, "capability-context-phases-mobile.png"), fullPage: false, animations: "disabled" });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await contextHelp.locator("summary").click();
     const multiSubagentEnabled = page.getByLabel(/^启用$/u);
     const multiSubagentMaxChildren = page.getByLabel(/^最大子 Agent 数/u);
     const multiSubagentDomains = page.getByLabel(/^允许的职责域/u);

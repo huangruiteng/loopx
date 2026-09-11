@@ -114,6 +114,11 @@ def test_goal_configuration_uses_the_shared_capability_catalog() -> None:
         for item in shared["capabilities"]
         if item["capability_id"] == "multi_subagent"
     )
+    assert multi_subagent["context_contribution"] == {
+        "supported_phases": ["before_plan", "before_delegate", "after_delegate_result"],
+        "target": "coordinator", "activation": "with_capability", "receipt_required": True,
+    }
+    assert "context_contribution" not in multi_subagent["current"]
     assert multi_subagent["default"] == {
         "enabled": False,
         "max_children": 3,
