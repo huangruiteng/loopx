@@ -1115,7 +1115,9 @@ _TODO_METADATA_FIELD_SCHEMA = (
         _TodoMetadataField(
             key,
             _nonempty_metadata_text,
-            write_normalizer=_truthy_value,
+            write_normalizer=normalize_todo_generation
+            if key == "material_change_generation"
+            else _truthy_value,
         )
         for key in TODO_MONITOR_METADATA_FIELDS
     ),

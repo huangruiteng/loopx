@@ -54,6 +54,7 @@ from .settlement import (
 from .transaction import (
     LOOPX_TURN_EXECUTION_SCHEMA_VERSION,
     LOOPX_TURN_RESULT_SCHEMA_VERSION,
+    STOP_RESULT_KINDS as STOP_HOST_RESULT_KINDS,
     TRANSACTION_PHASES,
     LoopXTurnResultKind,
     build_loopx_turn_transaction_plan,
@@ -79,10 +80,6 @@ MATERIAL_HOST_RESULT_KINDS = {
     LoopXTurnResultKind.VALIDATED_COMPLETION,
     LoopXTurnResultKind.REPAIR_REQUIRED,
     LoopXTurnResultKind.REPLAN_REQUIRED,
-}
-STOP_HOST_RESULT_KINDS = {
-    LoopXTurnResultKind.USER_ACTION_REQUIRED,
-    LoopXTurnResultKind.WAIT,
 }
 HOST_RESULT_FIELDS = {
     "schema_version",

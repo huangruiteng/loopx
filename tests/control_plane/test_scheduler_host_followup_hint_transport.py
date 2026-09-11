@@ -12,6 +12,7 @@ from loopx.control_plane.scheduler.scheduler_hint import (
     build_codex_app_scheduler_ack_hint,
     build_codex_app_scheduler_failure_hint,
 )
+from loopx.control_plane.runtime.public_safety import SECRET_LIKE_SURFACE_PATTERN
 
 FACTS_FLAG = "--scheduler-host-facts-chunk"
 
@@ -176,14 +177,13 @@ def test_oversized_native_facts_fail_instead_of_falling_back_to_python() -> None
         )
 
 
-def test_native_facts_bind_dash_prefixed_chunks_as_option_values(
+def test_native_facts_chunks_do_not_look_like_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    encoded = ("A" * 384 + "-tail").encode("ascii")
     monkeypatch.setattr(
-        scheduler_hint.base64,
-        "urlsafe_b64encode",
-        lambda _value: encoded,
+        scheduler_hint.zlib,
+        "compress",
+        lambda _value, *, level: base64.urlsafe_b64decode("-ak-"),
     )
 
     args = scheduler_hint._scheduler_host_followup_transport_args(
@@ -192,11 +192,8 @@ def test_native_facts_bind_dash_prefixed_chunks_as_option_values(
         use_current_hint=True,
     )
 
-    assert args == [
-        FACTS_FLAG,
-        "A" * 384,
-        f"{FACTS_FLAG}=-tail",
-    ]
+    assert args == [FACTS_FLAG, "+ak+"]
+    assert SECRET_LIKE_SURFACE_PATTERN.search(args[-1]) is None
 
 
 def test_legacy_hint_builder_without_host_facts_keeps_the_compatibility_route() -> None:

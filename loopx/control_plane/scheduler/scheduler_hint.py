@@ -269,20 +269,14 @@ def _scheduler_host_followup_transport_args(
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
-    encoded = base64.urlsafe_b64encode(zlib.compress(raw, level=9)).decode("ascii")
+    encoded = base64.b64encode(zlib.compress(raw, level=9)).decode("ascii")
     encoded = encoded.rstrip("=")
     if len(encoded) > SCHEDULER_HOST_FACTS_MAX_ENCODED_CHARS:
         raise ValueError("scheduler host facts exceed the native CLI transport bound")
     result: list[str] = []
     for index in range(0, len(encoded), SCHEDULER_HOST_FACTS_CHUNK_CHARS):
         chunk = encoded[index : index + SCHEDULER_HOST_FACTS_CHUNK_CHARS]
-        if chunk.startswith("-"):
-            # argparse treats a separate value beginning with "-" as another
-            # option. Bind only that ambiguous chunk with ``=``; retain the
-            # established two-argument shape for ordinary chunks.
-            result.append(f"{SCHEDULER_HOST_FACTS_CHUNK_FLAG}={chunk}")
-        else:
-            result.extend([SCHEDULER_HOST_FACTS_CHUNK_FLAG, chunk])
+        result.extend([SCHEDULER_HOST_FACTS_CHUNK_FLAG, chunk])
     return result
 
 

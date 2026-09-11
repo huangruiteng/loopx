@@ -48,6 +48,7 @@ ACCEPTED_RESULT_KINDS = {
     "replan_required",
     "user_action_required",
     "wait",
+    "iteration_failed",
 }
 MATERIAL_KINDS = {"validated_progress", "repair_required", "replan_required"}
 
@@ -150,7 +151,7 @@ def render_prompt(authority: Mapping[str, Any]) -> str:
         "When finished, return only one JSON object (no Markdown fence) with "
         "these public-safe fields:\n"
         "- result_kind: one of validated_progress | repair_required | "
-        "replan_required | user_action_required | wait\n"
+        "replan_required | user_action_required | wait | iteration_failed\n"
         "- classification: short label (<=120 chars)\n"
         "- summary: what changed or why stopped (<=400 chars)\n"
         "- recommended_action: the bounded follow-up recommendation (<=1200 chars)\n"
@@ -158,7 +159,9 @@ def render_prompt(authority: Mapping[str, Any]) -> str:
         "- vision_unchanged_reason: why the goal path is unchanged (<=240 chars)\n"
         "Use repair_required when the task is sound but a recoverable defect "
         "blocks it, replan_required when this route is exhausted, and "
-        "wait/user_action_required when no material write is safe. "
+        "wait/user_action_required when no material write is safe, and "
+        "iteration_failed when this iteration failed without authorizing a "
+        "retry or successor. "
         "Do not include raw transcripts, credentials, or absolute local paths."
     )
 
@@ -529,6 +532,16 @@ class DshHostConfig:
 
 
 def _derive_session_id(request: Mapping[str, Any], turn_key: str) -> str:
+    planned_session = _mapping(request.get("session"))
+    context_policy = _mapping(planned_session.get("context_policy"))
+    if context_policy.get("mode") == "fresh":
+        # A fresh context is scoped to one LoopX iteration. The turn key is
+        # stable for retries of that iteration but changes for the next one,
+        # so dsh cannot silently resume an earlier iteration's local session.
+        return "dsh-iteration-v1-" + _canonical_hash(
+            [turn_key]
+        ).removeprefix("sha256:")
+
     # Keep the opaque dsh session keyed by the same (goal, agent, todo) lineage
     # LoopX already uses for the Turn transaction. The exact value is a local
     # adapter concern and must not enter public LoopX state. Encode every

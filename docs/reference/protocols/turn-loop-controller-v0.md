@@ -62,12 +62,13 @@ Exactly one typed disposition:
 | --- | --- | --- |
 | `run_now` | fresh decision allows the next delivery Turn | no spend by the controller |
 | `wait` | quiet cadence or blocked delivery | no spend |
+| `stop` | the current iteration ended without authorizing a retry or successor | no spend |
 | `user_action_required` | a concrete user action is projected by receipt or decision | no spend |
 | `repair` | repair-class recovery is required before any successor Turn | no spend |
 | `replan` | replan-class recovery; see continuation boundary below | no spend |
 | `terminal` | fresh Goal frontier plus durable no-follow-up prove Goal closure | no spend |
 
-The output space is exactly these six dispositions. There is no
+The output space is exactly these seven dispositions. There is no
 `contract_error` disposition: contract failures are rejected at the typed-input
 boundary. Every payload carries `spends_quota=false`, `launches_host=false`,
 and `writes_state=false`.
@@ -92,6 +93,8 @@ and `writes_state=false`.
 | durable `no_followup` + fresh terminal frontier + decision user action | — | `terminal` (proven Goal closure wins) |
 | continuing completion + decision user action | — | `user_action_required` |
 | `wait` | any | `wait` |
+| `iteration_failed` | no decision user action | `stop` (iteration-scoped, not Goal terminal) |
+| `iteration_failed` | decision user action | `user_action_required` (fresh decision precedence) |
 | retryable `host_failure`, attempt budget remains | delivery or wait | `wait` with a same-Turn bounded-backoff continuation |
 | retryable `host_failure`, attempt budget exhausted | any | `repair` |
 | non-retryable or legacy `host_failure` / `validation_failed` / `writeback_failed` / `quota_spend_failed` | any | `repair` (route before any successor Turn) |
@@ -126,6 +129,10 @@ and `writes_state=false`.
   scheduler may wake that same failed Turn with explicit retry authority after
   the delay. Once the attempt budget is exhausted, the controller returns
   `repair`; legacy or malformed failure metadata cannot opt into retry.
+- `iteration_failed` is an ordinary bounded-loop outcome, not an infrastructure
+  failure. It stops only the current iteration, sets neither retry nor replan
+  continuation, creates no successor, and does not claim Goal terminal closure.
+  A later iteration starts only through a new explicit controller decision.
 - The fresh decision must satisfy the shared Turn envelope contract
   (`loopx_turn_envelope_v0` schema, non-empty equal signature hashes, and an
   in-budget compaction) via the same typed route the Turn plan driver uses;
@@ -135,8 +142,8 @@ and `writes_state=false`.
   `ValueError` instead of guessing an unbounded continuation. Budget
   exhaustion routes to `replan`, not `terminal`, because a bounded Turn chain
   ending is not evidence that the Goal ended.
-- Input validity is enforced at the typed-input boundary, not encoded as a
-  seventh disposition. The transition output space is always one of the six
+- Input validity is enforced at the typed-input boundary, not encoded as an
+  eighth disposition. The transition output space is always one of the seven
   dispositions above.
 
 ## Replan Continuation Boundary

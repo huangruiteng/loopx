@@ -2372,11 +2372,14 @@ def test_material_result_cannot_use_not_required_validation_receipt(
     assert calls == {"writeback": 0, "spend": 0, "scheduler": 0}
 
 
-def test_run_once_stops_without_writeback_or_spend(tmp_path: Path) -> None:
+@pytest.mark.parametrize("result_kind", ["wait", "iteration_failed"])
+def test_run_once_stops_without_writeback_or_spend(
+    tmp_path: Path, result_kind: str
+) -> None:
     plan = _plan()
     result_path = tmp_path / "result.json"
     result_path.write_text(
-        json.dumps(_host_result(plan, kind="wait")), encoding="utf-8"
+        json.dumps(_host_result(plan, kind=result_kind)), encoding="utf-8"
     )
     calls = {"writeback": 0, "spend": 0, "scheduler": 0}
     writeback, spend, scheduler = _callbacks(calls)

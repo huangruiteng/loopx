@@ -226,6 +226,16 @@ def _add_turn_decision_arguments(
         ),
     )
     parser.add_argument(
+        "--iteration-context",
+        choices=["fresh", "resume-if-available"],
+        default="resume-if-available",
+        help=(
+            "Host context policy for this iteration. fresh starts a clean "
+            "session even when a compatible prior session exists; "
+            "resume-if-available preserves the existing continuation behavior."
+        ),
+    )
+    parser.add_argument(
         "--resume-goal-id",
         help="Goal identity bound to an available opaque host session.",
     )

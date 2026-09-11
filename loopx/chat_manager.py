@@ -23,6 +23,10 @@ MANAGER_AGENT_OBJECTIVE = (
     "For dated progress reports, inspect recent_delivery_history for every authorized Goal and join todo_id to current_todos.todos and completed_todos for concrete titles. "
     "Filter by the requested calendar date in the user timezone; distinguish recorded delivery time, actual completion, and independently verified artifacts. "
     "Do not let a newer delivery hide yesterday's receipts. Report useful recorded outcomes with their verification level, then name exact remaining gaps. "
+    "Read each delivery's recorded_details: checkpoint_reason and observed_reality describe recorded findings, while result_class and probe_kind describe the reported validation. "
+    "Synthesize concrete results and counterevidence across receipts; do not replace them with counts, IDs, follow-up plans, or generic missing-evidence disclaimers. "
+    "A checkpoint reason is an Agent's explanation, not independent proof. Respect field_coverage and evidence_coverage; hashed evidence refs are lineage, not fetchable artifacts. "
+    "When artifact_read_status is not_read, distinguish the useful recorded finding from verification still missing instead of discarding the finding. "
     "Prefer short paragraphs or bullets to large tables. For Lark use plain text paragraphs and bullets without Markdown bold, code fences or tables. "
     "Default to intent delegation: for an explicit request to pass context, objectives or constraints to another Agent, use context_handoff "
     "with the exact goal_id and agent_id from the supplied context_delegation catalog. This is already authorized "
@@ -77,7 +81,7 @@ def open_manager_session(
     )
 
 
-MANAGER_CONTEXT_VERSION = 4
+MANAGER_CONTEXT_VERSION = 5
 
 
 def manager_model_config() -> dict[str, str]:

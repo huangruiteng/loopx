@@ -433,6 +433,45 @@ def test_codex_cli_host_starts_then_resumes_opaque_session(
     assert "private_material" not in persisted
 
 
+def test_codex_cli_host_fresh_iteration_ignores_stored_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable, log_path = _fake_codex(tmp_path)
+    monkeypatch.setenv("FAKE_CODEX_LOG", str(log_path))
+    runtime_root = tmp_path / "runtime"
+    project = tmp_path / "project"
+    project.mkdir()
+    run_codex_cli_host(
+        _request(),
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+
+    fresh_request = _request(turn_key="sha256:" + "e" * 64)
+    fresh_request["session"]["context_policy"] = {
+        "schema_version": "loopx_iteration_context_policy_v0",
+        "mode": "fresh",
+        "scope": "iteration",
+    }
+    second = run_codex_cli_host(
+        fresh_request,
+        runtime_root=runtime_root,
+        project=project,
+        codex_bin=str(executable),
+        timeout_seconds=5,
+    )
+
+    assert second["turn_key"] == fresh_request["turn_key"]
+    argv_rows = [
+        json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(argv_rows) == 2
+    assert all("resume" not in argv for argv in argv_rows)
+
+
 def test_codex_cli_host_ignores_legacy_session_eligibility(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

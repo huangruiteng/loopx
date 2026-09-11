@@ -92,6 +92,18 @@ unknown. Collection is capped at 128 Goals and eight agents per Goal, with
 explicit omissions. Recorded evidence references identify Core receipts, not
 independent artifact verification.
 
+Each dated delivery now includes bounded `recorded_details` from the same Core
+run index: the Agent's checkpoint explanation, observed reality, path outcome,
+result class, probe kind and surface identity. Missing, malformed and truncated
+fields are explicit. Evidence identifiers are hashed into stable lineage refs,
+with included/omitted counts; they are not artifact access capabilities.
+The manager should explain these concrete recorded findings and counterevidence,
+joined to the task title, rather than return only receipt IDs and future plans.
+These facts retain `recorded_claim_not_independent_verification` and
+`artifact_read_status=not_read`. No repository, arbitrary path, URL or transcript
+reader is added. Existing owner/external scope checks and snapshot identity
+cover this hydration; there is no second progress store or extra history scan.
+
 ## A bounded portfolio with explicit coverage
 
 Discover Goals from the authorized registry inventory, including unavailable

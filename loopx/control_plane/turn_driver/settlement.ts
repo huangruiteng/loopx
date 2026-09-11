@@ -54,6 +54,7 @@ export const TURN_RESULT_KINDS = [
   "replan_required",
   "user_action_required",
   "wait",
+  "iteration_failed",
   "host_failure",
   "validation_failed",
   "writeback_failed",
@@ -292,6 +293,11 @@ function validateTurnOutcomeKind(
 ): void {
   const kind = request.turn_result_kind;
   if (kind === null) return;
+  if (kind === "iteration_failed") {
+    throw new Error(
+      "Turn settlement cannot run for iteration stop result_kind iteration_failed",
+    );
+  }
   if (FAILED_TURN_RESULT_KINDS.includes(kind as (typeof FAILED_TURN_RESULT_KINDS)[number])) {
     throw new Error(
       `Turn settlement cannot complete with failed result_kind ${kind}`,

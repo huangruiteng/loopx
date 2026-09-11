@@ -104,7 +104,11 @@ _FAILURE_PHASES = {
         "quota_spend",
     ),
 }
-_STOP_KINDS = {LoopXTurnResultKind.WAIT, LoopXTurnResultKind.USER_ACTION_REQUIRED}
+_STOP_KINDS = {
+    LoopXTurnResultKind.WAIT,
+    LoopXTurnResultKind.USER_ACTION_REQUIRED,
+    LoopXTurnResultKind.ITERATION_FAILED,
+}
 
 
 def _validated_receipt(
@@ -596,6 +600,23 @@ def test_wait_receipt_waits() -> None:
     _assert_markers(payload, "wait")
 
 
+def test_iteration_failure_stops_without_retry_or_successor() -> None:
+    receipt = _validated_receipt(result_kind=LoopXTurnResultKind.ITERATION_FAILED)
+    payload = decide_loop_disposition(
+        turn_receipt=receipt,
+        quota_decision=_envelope(
+            should_run=True, predecessor_turn_key=receipt.turn_key
+        ),
+    )
+
+    _assert_markers(payload, "stop")
+    assert payload["stop_scope"] == "iteration"
+    assert payload["goal_terminal"] is False
+    assert payload["continuation_required"] is False
+    assert "retry_continuation" not in payload
+    assert "replan_continuation" not in payload
+
+
 @pytest.mark.parametrize(
     "failure_kind",
     ["host_failure", "validation_failed", "writeback_failed", "quota_spend_failed"],
@@ -949,12 +970,13 @@ def test_delivery_blocked_decision_waits() -> None:
     _assert_markers(payload, "wait")
 
 
-def test_disposition_enum_has_exactly_six_values() -> None:
+def test_disposition_enum_has_exactly_seven_values() -> None:
     from loopx.control_plane.turn_driver.loop_controller import LoopDisposition
 
     assert {d.value for d in LoopDisposition} == {
         "run_now",
         "wait",
+        "stop",
         "user_action_required",
         "repair",
         "replan",

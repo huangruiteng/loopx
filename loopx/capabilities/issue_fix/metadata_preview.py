@@ -204,6 +204,8 @@ def fetch_github_issue_metadata_payload(
             jq_filter,
         ],
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=timeout_seconds,

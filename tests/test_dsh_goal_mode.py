@@ -149,6 +149,24 @@ def test_dsh_session_id_preserves_missing_lineage_component_positions() -> None:
     ) == "dsh-" + "0" * 24
 
 
+def test_dsh_fresh_iteration_session_id_is_scoped_to_the_turn_key() -> None:
+    request = _lineage_request(goal_id="goal", agent_id="agent", todo_id="todo")
+    request["session"] = {
+        "context_policy": {
+            "schema_version": "loopx_iteration_context_policy_v0",
+            "mode": "fresh",
+            "scope": "iteration",
+        }
+    }
+    first_key = "sha256:" + "1" * 64
+    second_key = "sha256:" + "2" * 64
+
+    first_id = turn_host_adapter._derive_session_id(request, first_key)
+    assert first_id.startswith("dsh-iteration-v1-")
+    assert first_id == turn_host_adapter._derive_session_id(request, first_key)
+    assert first_id != turn_host_adapter._derive_session_id(request, second_key)
+
+
 def test_dsh_host_passes_lineage_session_id_to_the_runner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -235,6 +253,7 @@ def test_prompt_requests_one_typed_public_safe_json_result() -> None:
     assert "primary_action" in prompt
     assert "result_kind" in prompt
     assert "validated_progress" in prompt
+    assert "iteration_failed" in prompt
     # Boundary discipline stays in the prompt text.
     assert "write_scope" in prompt
     assert "credentials" in prompt
@@ -268,6 +287,23 @@ def test_build_result_rejects_unsupported_result_kinds() -> None:
     )
     assert result["result_kind"] == "wait"
     assert result["classification"] == "unsupported_host_result_kind"
+
+
+def test_build_result_preserves_iteration_failed_as_a_typed_stop() -> None:
+    request = _signed_request()
+    result = turn_host_adapter.build_result(
+        request,
+        {
+            "result_kind": "iteration_failed",
+            "classification": "iteration check failed",
+            "summary": "the bounded attempt did not validate",
+            "next_action": "start a new controller-authorized iteration",
+        },
+    )
+
+    assert result["result_kind"] == "iteration_failed"
+    assert result["classification"] == "iteration check failed"
+    assert "delivery_outcome" not in result
 
 
 def test_build_result_shapes_material_results_with_required_fields() -> None:

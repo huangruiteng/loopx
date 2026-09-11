@@ -156,6 +156,27 @@ CASES.extend([
         "tests/control_plane/test_shadow_drain_e2e.py::test_primary_sigkill_preserves_complete_bytes_and_proves_before_marker[before_replace]"),
 ])
 
+# Ladder parity-half rows (s2c2.*) drive the same lifecycle through the public
+# CLI; these mutants remove one operator-visible truth each and must turn the
+# corresponding row red.
+LADDER_ROW = "tests/control_plane/test_shared_goal_authority_e2e.py::test_ladder_row_passes_or_is_declared_unverified"
+CASES.extend([
+    Case("status_hides_prepared_only", ((COORDINATION + "local_authority_shadow_outbox.py", replacement(
+        '            "committed_pending": sum(1 for entry in entries if entry.is_committed),\n'
+        '            "prepared_only": sum(1 for entry in entries if not entry.is_committed),',
+        '            "committed_pending": len(entries),\n'
+        '            "prepared_only": 0,')),),
+        LADDER_ROW + "[s2c2.sigkill_between_primary_write_and_drain]"),
+    Case("qualification_ignores_drift", ((COORDINATION + "runtime_shadow.ts", replacement(
+        "const matched = localAuthorityShadowHeadDigest(request.projection) === localAuthorityShadowHeadDigest(lineage.head.head);",
+        "const matched = true;")),),
+        LADDER_ROW + "[s2c2.parity_divergent_detects_foreign_edit]"),
+    Case("replay_counted_as_delivery", ((COORDINATION + "local_authority_shadow_adapter.py", replacement(
+        '                    self._result.replayed += 1\n                    self._result.no_op += int(receipt["no_op"])',
+        '                    self._result.delivered += 1\n                    self._result.no_op += int(receipt["no_op"])')),),
+        LADDER_ROW + "[s2c2.sigkill_mid_drain]"),
+])
+
 
 def remove_fence(source: str) -> str:
     function = next(node for node in ast.parse(source).body

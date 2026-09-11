@@ -1948,6 +1948,33 @@ Per stage, this increment implements:
   follow-up capture, and a leased completion in one store identity while the
   registry root gains neither a candidate lineage nor lease state; and
   `migrate-state` seeds a fresh lineage without legacy bytes.
+- Stage 2C parity half: ten `s2c2.*` rows drive one explicitly enabled
+  `coordination.runtime_shadow` goal through the public CLI and assert only
+  through `authority-shadow status|drain`, `coordination-shadow
+  bootstrap|inspect|qualify|read-candidate|rollback` and `migrate-state`,
+  reading history through the retained TypeScript store. A Python Todo writer
+  and a TypeScript lease writer leave prepared records with committed markers
+  that one drain delivers once; bounded drains are cumulative, an idle drain
+  changes nothing and a writer replay mints no entry; a SIGKILL around the
+  primary replace settles as `abandoned` or `committed_proven_by_readback`,
+  and a SIGKILL inside the inline drain is recovered from exact receipts
+  without a second delivery; rollback archives pending entries, holds capture
+  as `bootstrap_required`, rebootstraps a fresh lineage and replays; three
+  cycles of interleaved writers (add, note update with a no-change repeat,
+  explicit exclusion set and clear with a no-change repeat, acquire, renew,
+  transfer, leased complete and supersede with their fence closes,
+  capture-followups) keep every bounded qualification matched with
+  `sustained_parity_verdict=not_evaluated`; a
+  direct primary edit reports `shadow_projection_drift`, a later write holds
+  on `source_partition_continuity_unproved`, and only rollback plus rebootstrap
+  recovers; an event-only Todo source holds `inspect`, `qualify` and
+  `read-candidate` with `event_log_writer_not_bound` while the primary keeps
+  committing; `migrate-state` refuses an active capture source with
+  `shadow_source_replacement_requires_rebootstrap` until rollback and disabled
+  capture, after which the migrated goal bootstraps a fresh lineage that
+  drains; and ten transactions measure file-v0 history growth with complete
+  projections retained, per-transaction growth accelerating by at most one
+  live record, and no capacity horizon claimed.
 
 Live rows are environment-gated (`LOOPX_TEST_POSTGRES_URL`;
 `NOKV_COORDINATION_LIVE=1` plus the `NOKV_*` stack variables;
@@ -1966,12 +1993,17 @@ relaxes.
 
 Delivery boundary: test-only. No production entry point constructs any store;
 the ladder adds no product path and reads the candidate only through the
-retained TypeScript store. The Stage 2C parity half
-(`s2c2.*`: outbox entries, idempotent drain, SIGKILL before and during drain,
-rollback with pending entries, parity equal and divergent,
-migration seed-and-drain, growth measurement) are declared as pending rows,
-not claimed. This subsection records executable evidence for the stages above;
-it does not promote any provider or complete the Stage 2C promotion.
+retained TypeScript store. The Stage 2C parity half executes through the ten
+`s2c2.*` rows above; two declarations stay pending.
+`s2c2.archive_after_leased_completion_parity` records a capture gap the parity
+row exposed: `todo archive-completed` on a Todo holding a released lease record
+keeps that lease in the candidate head while the source projection drops the
+orphaned lease, so bounded qualification reports `shadow_projection_drift`.
+`s2c2.sustained_parity_soak` is the >=10-day synthetic-goal soak owned by
+Section 7.2 and lane L, and bounded qualification keeps reporting
+`sustained_parity_verdict=not_evaluated`. This subsection records executable
+evidence for the stages above; it does not promote any provider or complete
+the Stage 2C promotion.
 
 ### 11.3 Remaining qualification and promotion plan
 

@@ -122,8 +122,40 @@ def cli(
     return command(registry_path, "task-lease", *args, check=check)
 
 
+def lifecycle_cli(
+    registry_path: Path,
+    action: str,
+    owner: str,
+    idempotency_key: str,
+    expected_version: int,
+    *,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return cli(
+        registry_path,
+        action,
+        "--goal-id",
+        GOAL_ID,
+        "--todo-id",
+        TODO_A,
+        "--owner",
+        owner,
+        "--idempotency-key",
+        idempotency_key,
+        "--expected-version",
+        str(expected_version),
+        check=check,
+    )
+
+
 def payload(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
+
+
+def inspected_lease(registry_path: Path, todo_id: str) -> dict[str, Any]:
+    return payload(
+        cli(registry_path, "inspect", "--goal-id", GOAL_ID, "--todo-id", todo_id)
+    )
 
 
 def main() -> int:
@@ -223,21 +255,19 @@ def main() -> int:
             conflict_payload
         )
         assert conflict_payload["conflicts"][0]["todo_id"] == TODO_A, conflict_payload
+        after_scope_conflict = inspected_lease(registry_path, TODO_A)
+        assert after_scope_conflict["lease"] == first["lease"], after_scope_conflict
+        rejected_scope = inspected_lease(registry_path, TODO_C)
+        assert rejected_scope["active"] is False, rejected_scope
+        assert rejected_scope["lease"] is None, rejected_scope
 
         renewed = payload(
-            cli(
+            lifecycle_cli(
                 registry_path,
                 "renew",
-                "--goal-id",
-                GOAL_ID,
-                "--todo-id",
-                TODO_A,
-                "--owner",
                 "codex-main-control",
-                "--idempotency-key",
                 "turn-1",
-                "--expected-version",
-                "1",
+                1,
             )
         )
         assert renewed["ok"] is True and renewed["lease"]["version"] == 2, renewed
@@ -291,24 +321,59 @@ def main() -> int:
         assert transferred["lease"]["version"] == 3, transferred
         assert transferred["lease"]["lease_epoch"] == 2, transferred
 
+        stale_owner = lifecycle_cli(
+            registry_path,
+            "renew",
+            "codex-main-control",
+            "turn-1",
+            3,
+            check=False,
+        )
+        assert stale_owner.returncode == 1, stale_owner.stdout
+        assert payload(stale_owner)["error_code"] == "lease_cas_mismatch"
+        after_stale_owner = inspected_lease(registry_path, TODO_A)
+        assert after_stale_owner["lease"] == transferred["lease"], after_stale_owner
+
+        renewed_after_transfer = payload(
+            lifecycle_cli(
+                registry_path,
+                "renew",
+                "codex-side-bypass",
+                "side-transfer",
+                3,
+            )
+        )
+        assert renewed_after_transfer["lease"]["owner"] == "codex-side-bypass"
+        assert renewed_after_transfer["lease"]["version"] == 4
+        assert renewed_after_transfer["lease"]["lease_epoch"] == 2
+
+        stale_version = lifecycle_cli(
+            registry_path,
+            "release",
+            "codex-side-bypass",
+            "side-transfer",
+            3,
+            check=False,
+        )
+        assert stale_version.returncode == 1, stale_version.stdout
+        assert payload(stale_version)["error_code"] == "version_mismatch"
+        after_stale_version = inspected_lease(registry_path, TODO_A)
+        assert after_stale_version["lease"] == renewed_after_transfer["lease"], (
+            after_stale_version
+        )
+
         released = payload(
-            cli(
+            lifecycle_cli(
                 registry_path,
                 "release",
-                "--goal-id",
-                GOAL_ID,
-                "--todo-id",
-                TODO_A,
-                "--owner",
                 "codex-side-bypass",
-                "--idempotency-key",
                 "side-transfer",
-                "--expected-version",
-                "3",
+                4,
             )
         )
         assert released["released"] is True, released
         assert released["lease"]["status"] == "released", released
+        assert released["lease"]["version"] == 4, released
         assert released["lease"]["lease_epoch"] == 2, released
         assert released["lease"]["released_at"] == released["lease"]["updated_at"], (
             released
@@ -320,19 +385,12 @@ def main() -> int:
         assert inspected["lease"]["status"] == "released", inspected
 
         release_replay = payload(
-            cli(
+            lifecycle_cli(
                 registry_path,
                 "release",
-                "--goal-id",
-                GOAL_ID,
-                "--todo-id",
-                TODO_A,
-                "--owner",
                 "codex-side-bypass",
-                "--idempotency-key",
                 "side-transfer",
-                "--expected-version",
-                "3",
+                4,
             )
         )
         assert release_replay["released"] is True, release_replay
@@ -376,7 +434,7 @@ def main() -> int:
                 "loopx/**",
             )
         )
-        assert next_generation["lease"]["version"] == 4, next_generation
+        assert next_generation["lease"]["version"] == 5, next_generation
         assert next_generation["lease"]["lease_epoch"] == 3, next_generation
 
         stale_completion = command(
@@ -392,7 +450,7 @@ def main() -> int:
             "--task-lease-idempotency-key",
             "side-transfer",
             "--task-lease-expected-version",
-            "3",
+            "4",
             "--evidence",
             "stale execution must not commit",
             "--no-follow-up",
@@ -415,7 +473,7 @@ def main() -> int:
                 "--task-lease-idempotency-key",
                 "side-next-generation",
                 "--task-lease-expected-version",
-                "4",
+                "5",
                 "--evidence",
                 "current execution committed",
                 "--no-follow-up",

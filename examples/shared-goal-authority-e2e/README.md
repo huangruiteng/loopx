@@ -9,9 +9,10 @@ candidate only through the production TypeScript `FileAuthorityStore`, and
 never reports green while a selected row is unverified.
 
 ```bash
-python examples/shared-goal-authority-e2e/ladder.py            # exit 1 here: live rows unverified, parity rows pending
+python examples/shared-goal-authority-e2e/ladder.py            # exit 1 here: live rows unverified, the soak row pending
 python examples/shared-goal-authority-e2e/ladder.py --allow-unverified --allow-pending
 python examples/shared-goal-authority-e2e/ladder.py --stage 2c1 --report-json ladder-report.json
+python examples/shared-goal-authority-e2e/ladder.py --stage 2c2 --allow-pending --report-json ladder-report.json
 python examples/shared-goal-authority-e2e/ladder.py --list
 ```
 
@@ -22,7 +23,10 @@ skips on Windows. Five `s2c1.*` rows whose assertions
 through the same product path (configure round trip, default-off isolation,
 candidate failure, crash gap, dual runtime root) are skipped in the default CI
 projection to stay within the pytest job budget; `LOOPX_LADDER_FULL=1` runs
-them in pytest, and the example runner always runs every row.
+them in pytest, and the example runner always runs every row. The ten
+`s2c2.*` rows carry the `stage2c_e2e` marker, so CI runs them in the stage2c
+correctness job next to the other real-CLI, process-death and recovery
+suites rather than in the pytest shards.
 
 ## Rows
 
@@ -40,14 +44,38 @@ them in pytest, and the example runner always runs every row.
 | `s2c1.crash_gap_loses_observation` | 2c1 | real_cli | deterministic (POSIX) | a writer SIGKILLed while the observation lock is held commits its todo but leaves no candidate document; the next write captures the full two-todo snapshot without claiming an outbox or correlation |
 | `s2c1.dual_runtime_root_consistency` | 2c1 | real_cli | deterministic | with `common_runtime_root` different from `--runtime-root`, todo add, task-lease acquire, todo update, capture-followups, and a leased completion all observe into one store identity; the head holds both todos and the released lease; the registry root gains neither a candidate lineage nor lease state |
 | `s2c1.migration_seeds_new_lineage` | 2c1 | real_cli | deterministic | `migrate-state` dry run plans the seed without writing; execute seeds one fresh `file:` lineage at cursor `1` that carries no legacy identity, revision, source path, or private byte |
+| `s2c2.outbox_prepared_then_committed_entries` | 2c2 | real_cli | deterministic | with the maintenance lock held, `todo add` (Python) and `task-lease acquire` (TypeScript) report `drain_deferred/drain_lock_busy`, `status` shows one `committed_pending` entry per partition with one prepared record and one committed marker on disk; one `drain` delivers both (`delivered=2`), history holds the bootstrap plus two committed receipts from both writer runtimes, and the next write delivers inline at cursor `4` |
+| `s2c2.drain_idempotent` | 2c2 | real_cli | deterministic | three deferred entries: `drain --max-entries 1` delivers one (`pending_after=2`, `budget_exhausted`), the next `drain` delivers two, an idle `drain` reports `nothing_pending` with unchanged cursor, `head_digest` and `provider_revision`; receipts settle sequences 1..3; an idempotent same-key re-acquire carries no capture evidence and adds no transaction |
+| `s2c2.sigkill_between_primary_write_and_drain` | 2c2 | real_cli | deterministic (POSIX) | `todo add` SIGKILLed at `before_replace`, `after_replace` and `before_marker` leaves one prepared-only entry each; `drain` settles it as `abandoned` (no-op, primary unchanged) or `committed_proven_by_readback`, the projection equals the primary, and `inspect` ends `matched` |
+| `s2c2.sigkill_mid_drain` | 2c2 | real_cli | deterministic (POSIX) | `todo add` SIGKILLed at `before_commit`, `after_commit`, `after_cursor` and `between_unlinks`: the next `drain` delivers the uncommitted entry once or replays the committed one (`replayed=1, delivered=0`), history holds exactly one delivery, only the cursor remains, and a further drain is idle |
+| `s2c2.rollback_with_pending_entries` | 2c2 | real_cli | deterministic (POSIX) | with one committed-pending and one prepared-only entry, `inspect` reports `outbox_pending` at the exact revision, a rollback preview writes nothing, `rollback --execute` applies and archives the outbox with both entries, the marker, the cursor and the manifest; capture then reports `bootstrap_required` while primary writes continue, a rebootstrap starts a new lineage from the current primary (three todos), and the historical rollback replays against it |
+| `s2c2.parity_equal` | 2c2 | real_cli | deterministic | three cycles interleave Python Markdown writers (add, note update plus a no-change repeat, explicit exclusion set and clear plus a no-change repeat, complete, supersede, capture-followups) with TypeScript lease writers (acquire, renew, transfer, and the fence close of a leased complete or supersede); after each cycle `inspect` is `matched`, `qualify` with every required write class is `qualified` with `operation_count` equal to the delivered mutations, `read-candidate` returns the anchor todo, and `sustained_parity_verdict` stays `not_evaluated` |
+| `s2c2.parity_divergent_detects_foreign_edit` | 2c2 | real_cli | deterministic | a direct edit of the primary makes `inspect` report `drifted/shadow_projection_drift`, `qualify` and `read-candidate` reject, a later `todo add` commits but its capture holds on `source_partition_continuity_unproved`; restoring the bytes does not requalify (`outbox_pending`), `drain` stays `stopped`, and only `rollback --execute` plus a fresh bootstrap qualifies again |
+| `s2c2.event_only_todo_source_holds` | 2c2 | real_cli | deterministic | an event-only Todo appended to the goal's state event log makes `inspect`, `qualify` and `read-candidate` fail closed with `event_log_writer_not_bound`, `status` stays readable, a Markdown write still commits with its capture held, the event log is untouched; removing the event source does not requalify, and rollback plus rebootstrap recovers |
+| `s2c2.migration_seeds_and_drains` | 2c2 | real_cli | deterministic | `migrate-state` previews an actively captured goal without writing, refuses `--execute` with `shadow_source_replacement_requires_rebootstrap` (also when capture is merely disabled), and executes only after `rollback`; the migrated goal carries its disabled capture configuration, plans no observation seed, requires its own `bootstrap`, then captures a write to cursor `2` and qualifies on it while the legacy archive is retained |
+| `s2c2.growth_measurement_gate` | 2c2 | real_cli | deterministic | ten fixed-size `todo add` writes: the cursor advances by one each time, `store_bytes` grows monotonically, the per-transaction delta accelerates by at most 2048 bytes (one live record), every retained transaction carries its complete projection, `retention_pressure` stays false; the report carries final and cumulative publication bytes and claims no capacity horizon (`capacity_verdict=not_evaluated`) |
 
 Pending rows are declared in the report as `pending`, never counted as pass,
-and they block a green exit unless `--allow-pending` is passed. The Stage 2C
-parity rows are pending: `s2c2.outbox_prepared_then_committed_entries`, `s2c2.drain_idempotent`,
-`s2c2.sigkill_between_primary_write_and_drain`, `s2c2.sigkill_mid_drain`,
-`s2c2.rollback_with_pending_entries`, `s2c2.parity_equal`, `s2c2.parity_divergent_detects_foreign_edit`,
-`s2c2.migration_seeds_and_drains`, `s2c2.growth_measurement_gate` (until the
-Stage 2C parity PRs land).
+and they block a green exit unless `--allow-pending` is passed. Two
+declarations remain. `s2c2.archive_after_leased_completion_parity` records a
+capture gap found while building the parity row: `todo archive-completed` on a
+Todo that holds a released lease record leaves that lease in the candidate
+head while the source projection drops the now-orphaned lease, so `inspect`
+reports `shadow_projection_drift`; the parity row therefore archives nothing
+and the gap stays visible until the archive writer captures the lease it
+orphans. `s2c2.sustained_parity_soak` is the >=10-day synthetic-goal soak of
+the selected local profile owned by RFC Section 7.2 (lane L). Bounded
+qualification reports `sustained_parity_verdict=not_evaluated`, and no
+`s2c2.*` row promotes a provider or completes the Stage 2C promotion.
+
+The `s2c2.*` rows use two scheduling-only seams outside every product decision:
+holding the stable maintenance lock, which makes a writer report
+`drain_deferred/drain_lock_busy` and leave its committed entry pending, and a
+POSIX crash worker that pauses one real CLI process at a named persistence
+window so the row can SIGKILL it there. Neither substitutes a result or edits a
+byte; every assertion still goes through `status`, `drain`, `inspect`,
+`qualify`, `read-candidate`, `rollback`, `migrate-state` and the retained
+TypeScript store read.
 
 ## Gates and environment variables
 
@@ -73,7 +101,7 @@ Exit code is `0` iff `fail == 0` and `privacy_violations == 0` and
 (`unverified == 0` or `--allow-unverified`) and (`pending == 0` or
 `--allow-pending`): a selected
 row that never executed, whether gated or declared pending, is an unmet
-obligation, so `--row s2c2.parity_equal` exits 1 with zero executions, and a
+obligation, so `--row s2c2.sustained_parity_soak` exits 1 with zero executions, and a
 mixed selection exits 1 even when its executable rows pass. `--list` only
 prints the registry and never claims verification. A privacy scan runs over
 the finished report: any occurrence of a temporary root, the home directory,
@@ -94,10 +122,11 @@ boundaries. [Installed-package E2E](installed.py) repeats the public lifecycle
 outside the checkout for both wheel and sdist. [Negative controls](mutants.py)
 deliberately remove correctness checks in disposable source copies.
 
-These checks do not change the nine pending `s2c2.*` ladder declarations above.
-Sustained production parity, the migration/growth gates, and promotion remain
-separate obligations. A bounded qualification result reports
-`sustained_parity_verdict=not_evaluated`.
+The ten `s2c2.*` ladder rows above exercise the same lifecycle through the
+public interfaces and read history only through the retained TypeScript store.
+Sustained (elapsed-time) parity and promotion remain separate obligations: the
+soak and the archive-after-lease capture gap stay pending declarations, and a
+bounded qualification result reports `sustained_parity_verdict=not_evaluated`.
 
 Future ladder rows must use the actual product interfaces:
 

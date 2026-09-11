@@ -75,7 +75,8 @@ function hintPayload(): Record<string, unknown> {
 
 function chunks(value: unknown): string[] {
   const encoded = deflateSync(Buffer.from(JSON.stringify(value), "utf8"))
-    .toString("base64url");
+    .toString("base64")
+    .replace(/=+$/, "");
   return encoded.match(/.{1,384}/g) ?? [];
 }
 

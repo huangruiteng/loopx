@@ -1009,7 +1009,9 @@ def test_actionable_sequence_excludes_valid_merged_exact_head(monkeypatch) -> No
     forced_row = forced["pull_requests"][0]
     assert forced_row["review_action_kind"] == "audit_pull_request_exact_head"
     assert forced_row["fresh_audit_requested"] is True
-    assert forced_row["review_plan"]["target"]["exact_head_key"] == f"4141@{reviewed_head}"
+    assert (
+        forced_row["review_plan"]["target"]["exact_head_key"] == f"4141@{reviewed_head}"
+    )
     assert forced_row["review_template"]["sections"]
     assert forced_row["evidence_commands"]
     assert forced["review_sequence"][0]["number"] == 4141
@@ -1128,3 +1130,80 @@ def test_community_author_self_review_does_not_satisfy_maintainer_queue(
     assert independently_reviewed["review_action_kind"] == (
         "qualify_pull_request_merge_readiness"
     )
+
+
+def test_github_transport_preserves_utf8_under_gbk_locale(monkeypatch):
+    import json
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    payload = {"title": "修复中文标题 café 🚀"}
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    run = subprocess.run
+
+    def child(_args, **kwargs):
+        return run(
+            [sys.executable, "-c", f"import sys; sys.stdout.buffer.write({raw!r})"],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "gbk")
+    monkeypatch.setattr(
+        pr_review_module, "subprocess", SimpleNamespace(run=child, PIPE=subprocess.PIPE)
+    )
+    assert pr_review_module._run_gh_json(["pr", "view", "1"]) == payload
+
+
+def test_github_transport_keeps_json_and_process_failures(monkeypatch):
+    import json
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    import pytest
+
+    run = subprocess.run
+    source = "import sys; sys.stdout.buffer.write(b'not-json')"
+
+    def child(_args, **kwargs):
+        return run([sys.executable, "-c", source], **kwargs)
+
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "gbk")
+    monkeypatch.setattr(
+        pr_review_module, "subprocess", SimpleNamespace(run=child, PIPE=subprocess.PIPE)
+    )
+    with pytest.raises(json.JSONDecodeError):
+        pr_review_module._run_gh_json(["pr", "view", "1"])
+    source = (
+        "import sys; sys.stderr.buffer.write('请求失败'.encode('utf-8')); sys.exit(2)"
+    )
+    with pytest.raises(subprocess.CalledProcessError) as raised:
+        pr_review_module._run_gh_json(["pr", "view", "1"])
+    assert raised.value.returncode == 2
+    assert raised.value.stderr == "请求失败"
+
+
+def test_github_transport_replaces_malformed_utf8(monkeypatch):
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    run = subprocess.run
+
+    def child(_args, **kwargs):
+        return run(
+            [
+                sys.executable,
+                "-c",
+                r"""import sys; sys.stdout.buffer.write(b'{"title":"broken\xff"}')""",
+            ],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(
+        pr_review_module, "subprocess", SimpleNamespace(run=child, PIPE=subprocess.PIPE)
+    )
+    assert pr_review_module._run_gh_json(["pr", "view", "1"]) == {
+        "title": "broken\ufffd"
+    }

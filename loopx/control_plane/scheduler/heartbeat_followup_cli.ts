@@ -148,7 +148,7 @@ function decodeSchedulerHostFactsChunks(chunks: string[]): Record<string, unknow
   if (
     chunks.length === 0 ||
     encoded.length > MAX_ENCODED_FACTS_CHARS ||
-    !/^[A-Za-z0-9_-]+$/.test(encoded)
+    !/^[A-Za-z0-9_+\/-]+$/.test(encoded)
   ) {
     throw new EffectRuntimeRequestError(
       "scheduler host facts are missing or exceed the encoded boundary",
