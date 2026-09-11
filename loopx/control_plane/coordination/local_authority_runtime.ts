@@ -120,20 +120,23 @@ export async function pollLocalCoordinationMonitor(value: unknown,
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     if (!Array.isArray(input.registered_agents)) throw new TypeError("registered_agents must be an array");
     const registered = input.registered_agents.map(agent => claimAgentValue(agent, "registered agent"));
-    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => ({
-      ...await executeCoordinationMonitorPoll(dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId), {
+    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
+      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
+        await openLocalAuthorityStore(root, goalId);
+      evidence.source_authority = sourceAuthorityFor(store);
+      return {...await executeCoordinationMonitorPoll(store, {
         goal_id: goalId, operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
         actor_agent_id: input.actor_agent_id == null ? null : claimAgentValue(input.actor_agent_id, "actor_agent_id"),
         registered_agents: registered, dry_run: input.dry_run as boolean,
         observation: requireJsonObject(input.observation, "Monitor observation"),
         intent: requireJsonObject(input.intent, "Monitor successor intent"),
-      }), ...evidence,
-    }));
+      }), ...evidence};
+    });
   } catch (error) {
     return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status: "failed", changed: false,
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_monitor_poll_request",
-      reason: error instanceof Error ? error.message : String(error), ...evidence};
+      reason: error instanceof Error ? error.message : String(error), ...evidence,
+      ...localAuthorityOpenFailure(error)};
   }
 }
 

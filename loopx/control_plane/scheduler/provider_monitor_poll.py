@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from ...agent_registry import registered_agent_ids_from_registry
 from ..coordination.local_authority import (
+    LOCAL_AUTHORITY_SOURCES,
     LocalCoordinationAuthorityUnavailable,
     local_authority_is_promoted,
     read_canonical_todos_if_promoted,
@@ -37,7 +38,7 @@ def poll_canonical_monitor_if_promoted(
     })
     if (not isinstance(result, dict)
         or result.get("status") not in {"applied", "replayed", "recovered", "planned"}
-        or result.get("source_authority") != "file_v0"
+        or result.get("source_authority") not in LOCAL_AUTHORITY_SOURCES
         or result.get("decision_read_from_provider") is not True
         or result.get("legacy_fallback_used") is not False
         or not isinstance(result.get("writeback"), dict)):
@@ -50,7 +51,7 @@ def poll_canonical_monitor_if_promoted(
     payload = {**result, "dry_run": not execute}
     settled = settle_canonical_todo_projection(payload=payload, registry_path=registry_path,
         runtime_root=runtime_root, goal_id=goal_id)
-    return {**result["writeback"], "source_authority": "file_v0",
+    return {**result["writeback"], "source_authority": result["source_authority"],
         "provider_revision": result.get("provider_revision"),
         "projection_delivery": settled.get("projection_delivery"),
         "projection_outbox": settled.get("projection_outbox")}

@@ -1,6 +1,5 @@
 """Real CLI consumers with SQLite authority and no Markdown source."""
 import hashlib
-import os
 import json
 import subprocess
 import sys
@@ -10,18 +9,10 @@ import pytest
 
 from loopx.control_plane.effect_runtime import effect_runtime_result
 
-from canonical_authority_fixture import initialize_canonical_authority
+from canonical_authority_fixture import initialize_canonical_authority, isolate_sqlite_runtime
 from loopx.control_plane.coordination.runtime_shadow import build_todo_runtime_shadow_projection
 from loopx.control_plane.coordination.coordination_state_contract import TODO_DOMAIN_READ_RECORD_SCHEMA_VERSION, TODO_DOMAIN_RECORD_FIELDS
 from loopx.control_plane.coordination.local_authority_shadow_projection import canonical_bytes
-
-
-def isolate_sqlite_runtime(tmp_path, monkeypatch):
-    monkeypatch.setenv("NODE_OPTIONS", os.environ.get("NODE_OPTIONS", "") + " --experimental-sqlite")
-    # Do not reuse an Effect runtime started by the minimum-Node CI step.
-    # Each CLI subprocess resolves its own tempfile root from this environment.
-    for variable in ("TMPDIR", "TEMP", "TMP"):
-        monkeypatch.setenv(variable, str(tmp_path))
 
 
 def test_sqlite_cli_reopens_updates_and_recovers_missing_markdown(tmp_path, monkeypatch):

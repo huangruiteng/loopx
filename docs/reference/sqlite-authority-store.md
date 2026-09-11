@@ -136,10 +136,13 @@ The failure-path regression matrix covers:
 
 | Boundary | Evidence checked |
 | --- | --- |
-| Selector/database open | List, exact read, mutation, create, claim, native/planning update, compatibility edit, terminal, archive, ACK and promotion retain typed source/reason, no fallback and unchanged authority bytes. |
+| Selector/database open | List, exact read, mutation, create, claim, native/planning update, compatibility edit, terminal, monitor poll, archive, ACK and promotion retain typed source/reason, no fallback and unchanged authority bytes. |
 | Fence readback | Missing, malformed and mismatched fences do not establish verified fencing; an open failure cannot infer it from an existing marker. |
 | After verified fence | Missing/invalid shadow and rejected qualification preserve verified fencing without canonical writes. |
 | Existing promotion readback | Exact receipt/first-commit lineage permits replay; missing receipts or mismatched lineage reject without modifying authority. |
+
+The matrix is typed against every exported runtime entrypoint so adding a new
+entrypoint requires an explicit failure fixture.
 
 These tests use disposable file/SQLite stores and the production runtime
 entrypoints. They preserve the current qualification gate: mirrored file shadow

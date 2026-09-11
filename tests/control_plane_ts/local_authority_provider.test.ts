@@ -62,7 +62,7 @@ for (const [fault, source, reason] of [
         assert.equal(result.reason_code, reason, name);
         assert.equal(result.legacy_fallback_used, false, name);
         assert.equal(result.decision_read_from_provider, false, name);
-        if (name === "promotion") assert.equal(result.legacy_writer_fenced, false);
+        if (name === "promoteLocalCoordinationAuthority") assert.equal(result.legacy_writer_fenced, false);
         if (fault === "database_metadata") assert.equal(result.provider_reason_code, "provider_protocol_violation");
         if (fault === "database_identity") assert.equal(result.provider_reason_code, undefined);
         assert.deepEqual(await Promise.all([bytes(store.path), bytes(marker)]), before, name);
@@ -94,21 +94,28 @@ function providerCalls(directory: string, revision: string, dryRun: boolean) {
     registered_agents: ["agent-a"], actor_agent_id: "agent-a", claimed_by: "agent-a",
     observed_at: "2026-09-08T01:00:00Z", clear_fields: [], patch: {text: "Correction"},
     lifecycle_grants: [], successor_intents: [], linked_successor_todo_ids: []};
-  return [
-    ["list", () => runtime.listLocalCoordinationTodos({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA})],
-    ["read", () => runtime.readLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA})],
-    ["mutate", () => runtime.mutateLocalCoordinationAuthority({...input, schema_version: runtime.LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
-      mutations: [{kind: "todo_remove", todo_id: "todo-a"}]})],
-    ["create", () => runtime.createLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_create_request_v0", todo: {}})],
-    ["claim", () => runtime.claimLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA})],
-    ["update", () => runtime.updateLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_update_request_v0"})],
-    ["planning", () => runtime.updateLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_update_request_v1", planning_intent: {status: "blocked"}})],
-    ["edit", () => runtime.editLocalCoordinationTodo({...input})],
-    ["terminal", () => runtime.terminalLifecycleLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA})],
-    ["archive", () => runtime.archiveLocalCoordinationTodos({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, max_active_done: 0})],
-    ["archive_ack", () => runtime.acknowledgeLocalCoordinationTodoArchive({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA})],
-    ["promotion", () => runtime.promoteLocalCoordinationAuthority(promotionRequest(directory, {}, "file:synthetic:1"))],
-  ] as const;
+  type Entrypoint = {[K in keyof typeof runtime]: typeof runtime[K] extends
+    (value: unknown) => Promise<unknown> ? K : never}[keyof typeof runtime];
+  // A new exported runtime action must deliberately enter this failure matrix.
+  const requests = {
+    listLocalCoordinationTodos: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA}],
+    readLocalCoordinationTodo: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA}],
+    mutateLocalCoordinationAuthority: [{...input, schema_version: runtime.LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
+      mutations: [{kind: "todo_remove", todo_id: "todo-a"}]}],
+    createLocalCoordinationTodo: [{...input, schema_version: "loopx_local_coordination_todo_create_request_v0", todo: {}}],
+    claimLocalCoordinationTodo: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA}],
+    updateLocalCoordinationTodo: [
+      {...input, schema_version: "loopx_local_coordination_todo_update_request_v0"},
+      {...input, schema_version: "loopx_local_coordination_todo_update_request_v1", planning_intent: {status: "blocked"}}],
+    editLocalCoordinationTodo: [input],
+    terminalLifecycleLocalCoordinationTodo: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA}],
+    archiveLocalCoordinationTodos: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, max_active_done: 0}],
+    acknowledgeLocalCoordinationTodoArchive: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA}],
+    promoteLocalCoordinationAuthority: [promotionRequest(directory, {}, "file:synthetic:1")],
+    pollLocalCoordinationMonitor: [{...input, schema_version: "loopx_coordination_monitor_poll_request_v0", observation: {}, intent: {}}],
+  } satisfies Record<Entrypoint, unknown[]>;
+  return Object.entries(requests).flatMap(([name, values]) => values.map(value =>
+    [name, () => runtime[name as Entrypoint](value)] as const));
 }
 
 async function root(t: test.TestContext) {

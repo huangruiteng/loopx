@@ -6,6 +6,7 @@ does not claim that a shadow qualification can promote canonical authority.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -39,3 +40,11 @@ def initialize_canonical_authority(runtime_root: Path, goal_id: str, projection:
     result = json.loads(process.stdout)
     assert result["status"] == "applied", result
     return result
+
+
+def isolate_sqlite_runtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODE_OPTIONS", os.environ.get("NODE_OPTIONS", "") + " --experimental-sqlite")
+    # Do not reuse an Effect runtime started by the minimum-Node CI step.
+    # Each CLI subprocess resolves its own tempfile root from this environment.
+    for variable in ("TMPDIR", "TEMP", "TMP"):
+        monkeypatch.setenv(variable, str(tmp_path))
