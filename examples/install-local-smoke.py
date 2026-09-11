@@ -822,13 +822,14 @@ def main() -> int:
         assert "loopx-canary --format json" in canary_payload["quota_guard_command"], canary_payload
         assert "loopx-canary heartbeat-prompt --compact" in canary_payload["task_body"], canary_payload
         canary_task_body = canary_payload["task_body"]
-        progress_command = canary_payload["progress_refresh_state_command"]
-        spend_command = canary_payload["quota_spend_command"]
-        assert progress_command in canary_task_body, canary_payload
-        assert spend_command in canary_task_body, canary_payload
-        assert canary_task_body.index(progress_command) < canary_task_body.index(
-            spend_command
-        ), canary_payload
+        # Brief mode renders one bounded guard block: it deliberately omits the
+        # accountable refresh/spend pair, which belongs to the full and compact
+        # modes. Assert the brief contract instead of the retired sequence.
+        assert canary_payload["quota_guard_command"] in canary_task_body, canary_payload
+        assert canary_payload["progress_refresh_state_command"] not in canary_task_body, canary_payload
+        assert canary_payload["quota_spend_command"] not in canary_task_body, canary_payload
+        assert "```bash\n" in canary_task_body and "LOOPX_TURN=<current_time_iso>" in canary_task_body, canary_payload
+        assert "not a command-prefix assignment" in canary_task_body, canary_payload
 
         fresh_install = run_install(env, "install-smoke-fresh")
         assert "loopx installed locally" in fresh_install.stdout, fresh_install.stdout

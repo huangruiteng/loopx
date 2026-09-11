@@ -21,6 +21,9 @@ NODE24_ACTION_MAJORS = {
 PRIMARY_NODE_VERSION = "24"
 MINIMUM_NODE_VERSION = "22.6"
 FORWARD_NODE_VERSION = "26"
+# SQLite conformance requires qualified statement finalization (22.14+), so the
+# two SQLite integration jobs pin an intermediate runtime above the minimum.
+SQLITE_NODE_VERSION = "22.14"
 
 
 def declared_major(reference: str) -> str:
@@ -60,7 +63,7 @@ def main() -> int:
         if not versions:
             continue
         expected = (
-            {PRIMARY_NODE_VERSION, MINIMUM_NODE_VERSION, FORWARD_NODE_VERSION}
+            {PRIMARY_NODE_VERSION, MINIMUM_NODE_VERSION, FORWARD_NODE_VERSION, SQLITE_NODE_VERSION}
             if name == "python-tests.yml"
             else {PRIMARY_NODE_VERSION}
         )
@@ -69,12 +72,13 @@ def main() -> int:
     python_versions = declared_versions["python-tests.yml"]
     assert python_versions.count(MINIMUM_NODE_VERSION) == 1, python_versions
     assert python_versions.count(FORWARD_NODE_VERSION) == 1, python_versions
+    assert python_versions.count(SQLITE_NODE_VERSION) == 2, python_versions
     assert PRIMARY_NODE_VERSION in python_versions, python_versions
 
     python_workflow = workflows["python-tests.yml"]
     assert "node-forward-compatibility:" in python_workflow
     assert "continue-on-error: true" in python_workflow
-    assert "needs: [changes, pytest, node-minimum-compatibility," in python_workflow
+    assert "needs: [changes, checks, pytest, node-minimum-compatibility," in python_workflow
 
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert package["engines"]["node"] == f">={MINIMUM_NODE_VERSION}"
