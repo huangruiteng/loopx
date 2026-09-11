@@ -54,6 +54,7 @@ export type WorkspaceRepositoryContext = {
 };
 
 export type WorkspaceGoalSubagentConfiguration = {
+  modelConfig?: { model: string; reasoning_effort?: string } | null;
   allowedDomains: string[];
   domainCandidates?: Array<{
     domain: string;

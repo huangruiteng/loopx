@@ -1244,6 +1244,7 @@ function buildPersonalHomeModel(
             && goal.spawn_policy.spawn_allowed === true
             && goal.spawn_policy.max_children > 0,
           maxChildren: goal.spawn_policy?.max_children ?? 0,
+          modelConfig: goal.spawn_policy?.model_config,
         },
       } : {}),
       title: personalGoalTitle(goal.id, goal.display_name),
@@ -2704,6 +2705,7 @@ function PersonalGoalHome({
                 allowedDomains: preview.after.orchestration.allowed_domains,
                 enabled: preview.feature_summary.multi_subagent === "enabled",
                 maxChildren: preview.after.orchestration.max_children,
+                modelConfig: preview.after.orchestration.model_config,
               },
               previewId: preview.preview_id,
             };
@@ -2714,6 +2716,7 @@ function PersonalGoalHome({
               allowedDomains: result.after.orchestration.allowed_domains,
               enabled: result.feature_summary.multi_subagent === "enabled",
               maxChildren: result.after.orchestration.max_children,
+              modelConfig: result.after.orchestration.model_config,
             };
           },
           } : {}),

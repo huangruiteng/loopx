@@ -116,7 +116,7 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
     )
     configure_goal_parser.add_argument(
         "--subagent-reasoning-effort",
-        help="Persist child reasoning effort; requires an explicit or already configured child model.",
+        help="Persist child reasoning effort; requires a configured child model. An empty string clears only effort.",
     )
     configure_goal_parser.add_argument(
         "--clear-subagent-model-config",

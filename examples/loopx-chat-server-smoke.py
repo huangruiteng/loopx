@@ -563,6 +563,35 @@ def main() -> None:
                 "max_children": 0,
             }, disabled_goal
 
+            for model_config in (
+                {"model": "gpt-5.6-luna", "reasoning_effort": "max"},
+                {"model": "gpt-5.6-luna"},
+                None,
+            ):
+                model_request = {"goal_id": GOAL_ID, "enabled": False, "model_config": model_config}
+                before_model_preview = registry.read_bytes()
+                code, model_preview = request_json(
+                    f"{base_url}/api/chat/goal-subagents/dry-run", method="POST", body=model_request,
+                )
+                assert code == 200, model_preview
+                assert registry.read_bytes() == before_model_preview
+                code, tampered_model = request_json(
+                    f"{base_url}/api/chat/goal-subagents/apply", method="POST",
+                    body={**model_request, "model_config": {"model": "another-model"}, "preview_id": model_preview["preview_id"]},
+                )
+                assert code == 409, tampered_model
+                assert registry.read_bytes() == before_model_preview
+                code, model_applied = request_json(
+                    f"{base_url}/api/chat/goal-subagents/apply", method="POST",
+                    body={**model_request, "preview_id": model_preview["preview_id"]},
+                )
+                assert code == 200, model_applied
+                assert model_applied["after"]["orchestration"].get("model_config") == model_config
+                model_status = wait_for_json(f"{base_url}/status.json")
+                model_goal = next(item for item in model_status["run_history"]["goals"] if item["id"] == GOAL_ID)
+                assert model_goal["spawn_policy"].get("model_config") == model_config
+                assert model_goal["spawn_policy"]["spawn_allowed"] is False
+
             code, created = request_json(
                 f"{base_url}/api/chat/sessions",
                 method="POST",

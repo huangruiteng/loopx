@@ -364,3 +364,18 @@ model from response style.
 未配置的 Goal 不改变默认行为。宿主启动时仍须显式传参并核验支持情况，
 不支持时不能悄悄继承主模型。只读研究拆分不同证据问题，子任务返回来源、
 反证和未知项，主任务复核并决定是否采纳。配置生效不等于研究结果有效。
+
+### Frontend configuration
+
+Goal settings → Goal details exposes child model and reasoning effort next to
+the existing execution boundary. “Use Luna / max” fills the draft only; use
+“Preview configuration update” to save it, including while execution is off.
+Clearing the preference returns to host defaults after applying the preview.
+Turning execution off retains the saved model preference.
+
+The Goal capability editor exposes the same fields through the existing
+`multi_subagent` capability. Both UI routes use the same registry policy and
+preview/readback validation; a model change invalidates an older preview.
+The model field is a preference, not a discovery menu or an execution receipt.
+The CLI accepts an empty `--subagent-reasoning-effort ''` to clear effort while
+retaining the model; `--clear-subagent-model-config` clears both.

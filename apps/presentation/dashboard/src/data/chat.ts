@@ -200,6 +200,8 @@ export const todoApplyResultSchema = z.object({
 });
 
 const goalSubagentOrchestrationSchema = z.object({
+  model_config: z.object({ model: z.string(), reasoning_effort: z.string().optional() }).optional(),
+
   mode: z.string(),
   spawn_allowed: z.boolean(),
   max_children: z.number().int().nonnegative(),
@@ -231,6 +233,7 @@ export const goalSubagentConfigurationResultSchema = z.object({
 export type GoalSubagentConfigurationResult = z.infer<typeof goalSubagentConfigurationResultSchema>;
 
 export type GoalSubagentConfigurationRequest = {
+  modelConfig?: { model: string; reasoning_effort?: string } | null;
   allowedDomains: string[];
   enabled: boolean;
   goalId: string;
@@ -867,6 +870,7 @@ function goalSubagentConfigurationBody(request: GoalSubagentConfigurationRequest
   return {
     goal_id: request.goalId,
     enabled: request.enabled,
+    ...(request.modelConfig !== undefined ? { model_config: request.modelConfig } : {}),
     ...(request.enabled ? {
       max_children: request.maxChildren,
       allowed_domains: request.allowedDomains,
@@ -883,6 +887,7 @@ function verifyGoalSubagentConfigurationResult(
   const enabled = result.feature_summary.multi_subagent === "enabled";
   const matchesRequest = result.goal_id === request.goalId
     && enabled === request.enabled
+    && (request.modelConfig === undefined || JSON.stringify(orchestration.model_config ?? null) === JSON.stringify(request.modelConfig))
     && (request.enabled
       ? orchestration.max_children === request.maxChildren
         && JSON.stringify(orchestration.allowed_domains) === JSON.stringify(expectedDomains)

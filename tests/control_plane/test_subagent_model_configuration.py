@@ -168,3 +168,31 @@ def test_unconfigured_shape_and_unrecognized_model_availability() -> None:
     }
     with pytest.raises(ValueError):
         validate_subagent_model_config({"model": "example", "fallback": "parent"})
+
+
+def test_capability_editor_model_roundtrip_and_clear(registry: Path) -> None:
+    from loopx.chat_goal_configuration_api import _goal_capability_options
+
+    for config, expected in [
+        (
+            {"enabled": False, "model": "gpt-5.6-luna", "reasoning_effort": "max"},
+            {"model": "gpt-5.6-luna", "reasoning_effort": "max"},
+        ),
+        (
+            {"enabled": False, "model": "gpt-5.6-luna", "reasoning_effort": ""},
+            {"model": "gpt-5.6-luna"},
+        ),
+        ({"enabled": False, "model": "", "reasoning_effort": ""}, None),
+    ]:
+        result = configure_goal(
+            registry_path=registry,
+            goal_id="example",
+            execute=True,
+            **_goal_capability_options("multi_subagent", config),
+        )
+        assert result["after"]["orchestration"].get("model_config") == expected
+        assert result["after"]["orchestration"]["spawn_allowed"] is False
+    with pytest.raises(ValueError):
+        _goal_capability_options(
+            "multi_subagent", {"enabled": False, "model": "", "reasoning_effort": "max"}
+        )

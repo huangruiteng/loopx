@@ -7,6 +7,7 @@ from typing import Any
 from .control_plane.goals.configure_goal_service import configure_goal_with_global_sync
 from .control_plane.todos.contract import normalize_todo_task_domain
 from .status_server import configure_goal_preview_id
+from .orchestration import subagent_model_configuration_options
 
 
 CHAT_GOAL_SUBAGENT_DRY_RUN_PATH = "/api/chat/goal-subagents/dry-run"
@@ -33,11 +34,11 @@ def add_goal_subagent_routes(
     handler: Any,
 ) -> None:
     if goal_subagent_configuration_enabled(handler.server):
-        routes[CHAT_GOAL_SUBAGENT_DRY_RUN_PATH] = (
-            lambda: handler._goal_subagent_configuration(apply=False)
+        routes[CHAT_GOAL_SUBAGENT_DRY_RUN_PATH] = lambda: (
+            handler._goal_subagent_configuration(apply=False)
         )
-        routes[CHAT_GOAL_SUBAGENT_APPLY_PATH] = (
-            lambda: handler._goal_subagent_configuration(apply=True)
+        routes[CHAT_GOAL_SUBAGENT_APPLY_PATH] = lambda: (
+            handler._goal_subagent_configuration(apply=True)
         )
 
 
@@ -64,7 +65,13 @@ class GoalSubagentConfigurationRequestMixin:
         *,
         apply: bool,
     ) -> dict[str, Any]:
-        allowed = {"goal_id", "enabled", "max_children", "allowed_domains"}
+        allowed = {
+            "goal_id",
+            "enabled",
+            "max_children",
+            "allowed_domains",
+            "model_config",
+        }
         if apply:
             allowed.add("preview_id")
         unknown = sorted(set(body) - allowed)
@@ -121,6 +128,11 @@ class GoalSubagentConfigurationRequestMixin:
             "multi_subagent_feature": "enabled" if enabled else "off",
             "max_children": max_children,
             "allowed_domains": allowed_domains,
+            **(
+                subagent_model_configuration_options(body["model_config"])
+                if "model_config" in body
+                else {}
+            ),
         }
 
     def _goal_subagent_configuration_payload(
@@ -138,6 +150,15 @@ class GoalSubagentConfigurationRequestMixin:
             multi_subagent_feature=values["multi_subagent_feature"],
             max_children=values["max_children"],
             allowed_domains=values["allowed_domains"],
+            **{
+                key: values[key]
+                for key in (
+                    "subagent_model",
+                    "subagent_reasoning_effort",
+                    "clear_subagent_model_config",
+                )
+                if key in values
+            },
             execute=execute,
         )
 

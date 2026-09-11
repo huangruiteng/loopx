@@ -988,7 +988,10 @@ def configure_goal(
             if subagent_model is not None:
                 model_config["model"] = subagent_model
             if subagent_reasoning_effort is not None:
-                model_config["reasoning_effort"] = subagent_reasoning_effort
+                if subagent_reasoning_effort:
+                    model_config["reasoning_effort"] = subagent_reasoning_effort
+                else:
+                    model_config.pop("reasoning_effort", None)
             spawn_policy["model_config"] = validate_subagent_model_config(model_config)
         if multi_subagent_feature == "enabled":
             spawn_policy["mode"] = MULTI_SUBAGENT_ORCHESTRATION_MODE

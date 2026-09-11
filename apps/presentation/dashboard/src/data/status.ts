@@ -41,6 +41,8 @@ export const controlPlaneSchema = z.object({
 }).passthrough();
 
 export const orchestrationPolicySchema = z.object({
+  model_config: z.object({ model: z.string(), reasoning_effort: z.string().optional() }).optional(),
+
   mode: z.string().optional().default("default"),
   orchestration_mode: z.string().optional().nullable(),
   spawn_allowed: z.boolean().optional().default(false),

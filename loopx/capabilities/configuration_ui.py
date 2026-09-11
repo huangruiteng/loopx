@@ -108,6 +108,18 @@ def capability_configuration_editor(
             "fields": [
                 _field("enabled", "Enabled", "boolean"),
                 _field(
+                    "model",
+                    "Child model",
+                    "text",
+                    description="For example gpt-5.6-luna. Blank clears the child model preference.",
+                ),
+                _field(
+                    "reasoning_effort",
+                    "Child reasoning effort",
+                    "text",
+                    description="For example max. Host support is checked at launch; requires a child model.",
+                ),
+                _field(
                     "max_children",
                     "Maximum children",
                     "number",

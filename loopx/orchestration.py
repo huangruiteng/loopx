@@ -50,6 +50,17 @@ def validate_subagent_model_config(value: Any) -> dict[str, str]:
     return result
 
 
+def subagent_model_configuration_options(value: Any) -> dict[str, Any]:
+    """Translate a complete UI preference: null clears, an object replaces."""
+    if value is None:
+        return {"clear_subagent_model_config": True}
+    config = validate_subagent_model_config(value)
+    return {
+        "subagent_model": config["model"],
+        "subagent_reasoning_effort": config.get("reasoning_effort", ""),
+    }
+
+
 def _int_number(value: Any, *, default: int = 0) -> int:
     if isinstance(value, bool):
         return default
