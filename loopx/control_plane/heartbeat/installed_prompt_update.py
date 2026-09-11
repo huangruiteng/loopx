@@ -154,7 +154,9 @@ def update_with_prompts(payload: dict, *, registry: Path, runtime_root: str | No
     plan_file = directory / "before.json"
     save_snapshot(plan_file, before)
     driver = payload.get("install_lifecycle", {}).get("execution_driver")
-    command = ([sys.executable, "-m", "loopx.cli"] if driver == "python_pip"
+    if driver is None and isinstance(payload.get("source"), dict):
+        driver = "archive_snapshot"
+    command = ([sys.executable, "-m", "loopx.cli"] if driver in {"python_pip", "python_pipx"}
                else [str(Path.home() / ".local/bin/loopx")] if driver == "archive_snapshot"
                else ["loopx"])
     command += ["--format", "json", "--registry", str(registry.resolve())]

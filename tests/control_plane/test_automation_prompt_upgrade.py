@@ -152,7 +152,8 @@ def _set_fixture_prompt(path, database, prompt):
         connection.execute("UPDATE automations SET prompt=?", (prompt,))
 
 
-def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferral(tmp_path, monkeypatch):
+@pytest.mark.parametrize("driver", ["python_pip", "python_pipx"])
+def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferral(tmp_path, monkeypatch, driver):
     from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle
     from loopx.self_update import render_update_plan_markdown
     home, _, _, registry, _ = fixture(tmp_path)
@@ -162,6 +163,7 @@ def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferr
     def run(command, **kwargs):
         invoked.append(command)
         assert "PYTHONPATH" not in kwargs["env"]
+        assert command[:3] == [sys.executable, "-m", "loopx.cli"]
         assert "sync-installed" in command and "--execute" in command
         plan_file = Path(command[command.index("--plan-file") + 1])
         assert plan_file.stat().st_mode & 0o077 == 0
@@ -171,7 +173,7 @@ def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferr
             capture_output=True, text=True, timeout=60)
     monkeypatch.setattr(lifecycle.subprocess, "run", run)
     result = lifecycle.update_with_prompts(
-        {"install_lifecycle": {"execution_driver": "python_pip"}}, registry=registry,
+        {"install_lifecycle": {"execution_driver": driver}}, registry=registry,
         runtime_root=None, timeout_seconds=60,
         runtime_update=lambda payload, **_: {**payload, "ok": True, "changes_applied": True})
     assert len(invoked) == 1 and result["ok"]
