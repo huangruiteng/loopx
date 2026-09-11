@@ -53,6 +53,44 @@ def _approval_gate(summary: str) -> dict[str, str]:
     }
 
 
+def _terminal_turn_error(error: Any, fallback: str) -> CodexChatAgentError:
+    """Project only the app-server's typed error, never its arbitrary prose."""
+    info = error.get("codexErrorInfo") if isinstance(error, dict) else None
+    # App-server v2 exposes camel-case discriminators. Unknown/new variants
+    # retain the generic failure; message/additionalDetails are not evidence
+    # of a policy decision and may contain private upstream content.
+    known = {
+        "cyberPolicy": ("cyber_policy", "Codex 上游返回了安全策略拦截，本轮未完成。"),
+        "misalignmentPolicyViolation": (
+            "misalignment_policy_violation", "Codex 上游返回了策略违规拦截，本轮未完成。",
+        ),
+        "usageLimitExceeded": ("usage_limit_exceeded", "Codex 上游用量已达限制，本轮未完成。"),
+        "rateLimitExceeded": ("rate_limit_exceeded", "Codex 上游请求频率受限，本轮未完成。"),
+        "contextWindowExceeded": ("context_window_exceeded", "Codex 上下文超过限制，本轮未完成。"),
+        "unauthorized": ("unauthorized", "Codex 上游身份验证失败，本轮未完成。"),
+    }
+    selected = known.get(info) if isinstance(info, str) else None
+    if selected is None:
+        return CodexChatAgentError(
+            fallback,
+            gate=_host_tool_gate(fallback, "Inspect the Codex host error before continuing."),
+        )
+    code, summary = selected
+    policy = info in {"cyberPolicy", "misalignmentPolicyViolation"}
+    return CodexChatAgentError(
+        summary,
+        error_code=code,
+        gate={
+            "kind": "policy_gate" if policy else "host_tool_gate",
+            "summary": summary,
+            "next_action": (
+                "本轮已终止，不会自动重放；请查看上游说明。"
+                if policy else "请处理对应的上游限制后再继续。"
+            ),
+        },
+    )
+
+
 def _is_legacy_model_catalog_error(value: Any) -> bool:
     # App-server currently reports catalog schema failures only as JSON-RPC
     # prose. Keep this compatibility classifier bound to its three stable
@@ -721,7 +759,10 @@ class CodexChatAgentSession:
                 turn = params.get("turn") if isinstance(params, dict) else None
                 turn_status = str(turn.get("status") or "") if isinstance(turn, dict) else ""
                 if turn_status == "failed":
-                    raise self._runtime_error("Codex app-server reported a terminal turn failure.")
+                    raise _terminal_turn_error(
+                        turn.get("error"),
+                        "Codex app-server reported a terminal turn failure.",
+                    )
                 if turn_status == "interrupted":
                     raise CodexChatAgentError(
                         "Codex app-server reported an interrupted turn.",
@@ -740,7 +781,10 @@ class CodexChatAgentSession:
                             {"label": "Codex 正在重试", "method": method},
                         )
                     continue
-                raise self._runtime_error("Codex app-server reported a turn error.")
+                raise _terminal_turn_error(
+                    params.get("error") if isinstance(params, dict) else None,
+                    "Codex app-server reported a turn error.",
+                )
         visible_tail = display_filter.finish()
         if visible_tail and on_event:
             visible_delta_count += 1

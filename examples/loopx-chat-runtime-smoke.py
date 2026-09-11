@@ -47,6 +47,10 @@ for line in sys.stdin:
         active_turn = f"durable-turn-{turn_count}"
         print(json.dumps({"method": "turn/started", "params": {"threadId": "durable-thread", "turn": {"id": active_turn}}}), flush=True)
         print(json.dumps({"id": request_id, "result": {"turn": {"id": active_turn, "status": "running"}}}), flush=True)
+        if "typed terminal failure" in json.dumps(request.get("params") or {}):
+            print(json.dumps({"method": "item/agentMessage/delta", "params": {"threadId": "durable-thread", "turnId": active_turn, "delta": "Partial answer."}}), flush=True)
+            print(json.dumps({"method": "turn/completed", "params": {"threadId": "durable-thread", "turn": {"id": active_turn, "status": "failed", "error": {"codexErrorInfo": "cyberPolicy", "message": "private-fixture-upstream-detail"}}}}), flush=True)
+            continue
         if "wait for interrupt" in json.dumps(request.get("params") or {}) or "wait for steer" in json.dumps(request.get("params") or {}):
             continue
         response = 'Visible runtime response.\n<loopx-review-json>' + json.dumps({
@@ -156,6 +160,18 @@ def main() -> None:
         assert created is True
         completed = first.wait_for_turn(session_id=session_id, turn_id=turn["turn_id"], timeout_sec=3)
         assert completed["status"] == "completed", completed
+        failed, created = first.submit_turn(
+            session_id=session_id, client_turn_id="typed-failure-client",
+            message="typed terminal failure", work_dir=root, objective="Keep errors attributable.",
+        )
+        assert created is True
+        failed = first.wait_for_turn(session_id=session_id, turn_id=failed["turn_id"], timeout_sec=3)
+        assert failed["status"] == "failed" and failed["error_code"] == "cyber_policy", failed
+        assert failed.get("response") is None, failed
+        assert "private-fixture-upstream-detail" not in str(failed), failed
+        assert store.load_session(session_id)["active_turn_id"] is None
+        assert store.load_session(session_id)["last_error_code"] == "cyber_policy"
+        assert store.messages(session_id)[-1]["role"] == "error"
         first.close()
 
         second = ChatRuntimeController(store=store, codex_bin=str(fake))
@@ -167,6 +183,12 @@ def main() -> None:
             mode="resume_latest",
         )
         assert resumed is True and restored["session_id"] == session_id, restored
+        duplicate, created = second.submit_turn(
+            session_id=session_id, client_turn_id="typed-failure-client",
+            message="typed terminal failure", work_dir=root, objective="Keep errors attributable.",
+        )
+        assert created is False and duplicate["turn_id"] == failed["turn_id"], duplicate
+        assert duplicate["status"] == "failed" and duplicate["error_code"] == "cyber_policy", duplicate
         slow, created = second.submit_turn(
             session_id=session_id,
             client_turn_id="interrupt-client-turn",
