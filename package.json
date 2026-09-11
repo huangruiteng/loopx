@@ -8,10 +8,10 @@
     "node": ">=22.6"
   },
   "scripts": {
-    "test:control-plane": "node --no-warnings --experimental-strip-types --test tests/control_plane_ts/*.test.ts",
-    "test:control-plane:coverage": "c8 --all --include=loopx/control_plane/**/*.ts --exclude=loopx/control_plane/**/*.generated.ts --reporter=lcov --reporter=text --reports-dir=coverage/control-plane node --no-warnings --experimental-strip-types --test tests/control_plane_ts/*.test.ts",
+    "test:control-plane": "node --no-warnings --experimental-sqlite --experimental-strip-types --test tests/control_plane_ts/*.test.ts",
+    "test:control-plane:coverage": "c8 --all --include=loopx/control_plane/**/*.ts --exclude=loopx/control_plane/**/*.generated.ts --reporter=lcov --reporter=text --reports-dir=coverage/control-plane node --no-warnings --experimental-sqlite --experimental-strip-types --test tests/control_plane_ts/*.test.ts",
     "test:dashboard:coverage": "tsc --ignoreConfig --target ES2022 --module ES2022 --moduleResolution Bundler --skipLibCheck --strict --sourceMap --inlineSources --outDir apps/presentation/dashboard/node_modules/.cache/loopx-agent-family apps/presentation/dashboard/src/features/personal-workspace/agent-family.ts && c8 --exclude-node-modules=false --include=apps/presentation/dashboard/node_modules/.cache/loopx-agent-family/agent-family.js --reporter=lcov --reporter=text --reports-dir=coverage/dashboard node apps/presentation/dashboard/src/features/personal-workspace/agent-family.test.mjs",
-    "test:postgresql-authority-store": "node --no-warnings --experimental-strip-types --test tests/control_plane_ts/postgresql_authority_store.integration.test.ts",
+    "test:postgresql-authority-store": "node --no-warnings --experimental-sqlite --experimental-strip-types --test tests/control_plane_ts/postgresql_authority_store.integration.test.ts",
     "typecheck:control-plane": "tsc --project tsconfig.control-plane.json --noEmit"
   },
   "devDependencies": {

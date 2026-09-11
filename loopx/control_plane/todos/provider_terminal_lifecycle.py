@@ -17,6 +17,7 @@ from typing import Any
 from ...agent_registry import load_goal_from_registry, registered_agent_ids_for_goal
 from ...state_refresh import now_local
 from ..coordination.local_authority import (
+    LOCAL_AUTHORITY_SOURCES,
     LocalCoordinationAuthorityRejection,
     LocalCoordinationAuthorityUnavailable,
     read_canonical_todos_if_promoted,
@@ -451,7 +452,7 @@ def terminal_canonical_todo_if_promoted(
         )
     if (
         payload.get("status") not in _ACCEPTED
-        or payload.get("source_authority") != "file_v0"
+        or payload.get("source_authority") not in LOCAL_AUTHORITY_SOURCES
         or payload.get("decision_read_from_provider") is not True
         or payload.get("legacy_fallback_used") is not False
     ):
