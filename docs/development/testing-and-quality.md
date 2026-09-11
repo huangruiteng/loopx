@@ -794,6 +794,26 @@ deadline is 1,200 seconds; this is a wall-clock ceiling, not a token budget.
 
 ### Claude Code and release coverage / Claude Code 与发布覆盖
 
+For focused thin/brief prompt-decision regression, use
+`python3 scripts/qualify-host-prompt-release.py --release-live` only during
+explicit release qualification. It defaults to no calls; missing credentials
+report `skipped`, not a live pass. With securely injected `ARK_API_KEY`, it uses
+Doubao evolving for two independent repetitions of quiet-work, notifying-wait,
+quiet-wait and required-vision-replan cases in each mode. Expected decisions
+remain outside model input. All attempts must pass; no answer correction or
+retry-until-pass is used. Ordinary pytest only checks the probe and negative
+oracles with scripted responses, without provider calls.
+
+This is a synthetic decision-level probe using current generated prompts,
+not proof of tool execution, host scheduling, upgrade delivery or full-Goal
+completion. Keep the Codex/Claude live Goal arms and real CLI/MCP/SQLite tests
+as separate evidence. Only hashes and pass/fail receipts are emitted, not raw
+prompts/responses. Model transport failures fail qualification rather than
+becoming environment skips.
+
+仅发布前显式执行，普通 CI 不调用模型。检查静默不等于空转、等待不能擅自执行、
+vision replan 未关闭时不能提前结束 Goal；这不是完整 Claude/Codex 行为验收的替代。
+
 ```bash
 # No provider call by default. Explicit release opt-in uses ARK_API_KEY from the environment.
 python3 scripts/qualify-claude-goal-release.py --release-live
