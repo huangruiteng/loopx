@@ -21,6 +21,7 @@ ACTION_SIGNATURE_COVERAGE_V0 = "turn_envelope_action_dimensions_v0"
 ACTION_SIGNATURE_COVERAGE_V1 = "turn_envelope_action_dimensions_v1"
 ACTION_SIGNATURE_COVERAGE_V2 = "turn_envelope_action_dimensions_v2"
 ACTION_SIGNATURE_COVERAGE_V3 = "turn_envelope_action_dimensions_v3"
+ACTION_SIGNATURE_COVERAGE_V4 = "turn_envelope_action_dimensions_v4"
 ACTION_SIGNATURE_COVERAGE = ACTION_SIGNATURE_COVERAGE_V0
 PLANNING_HORIZON_DETAIL_REFS_REF = "$.detail_ref"
 

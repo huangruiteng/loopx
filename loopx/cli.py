@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .cli_commands.agent_context import register_agent_context, handle_agent_context
 from .cli_commands.manager_inbox import register_manager_inbox, handle_manager_inbox
 
 from .capabilities.content_ops.cli import (
@@ -325,6 +326,7 @@ def build_parser() -> LoopXArgumentParser:
     register_project_lifecycle_commands(sub, add_subcommand_format)
     register_goal_channel_commands(sub, add_subcommand_format)
     register_manager_inbox(sub, add_subcommand_format)
+    register_agent_context(sub, add_subcommand_format)
     register_lark_inbox_commands(sub, add_subcommand_format)
     register_lark_kanban_commands(sub, add_subcommand_format)
 
@@ -753,6 +755,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     if lark_kanban_result is not None:
         return lark_kanban_result
+
+    if args.command == "agent-context":
+        return handle_agent_context(args, registry_path, print_payload, output_format)
 
     if args.command == "manager-inbox":
         return handle_manager_inbox(args, registry_path, effective_runtime_root(registry_path, args.runtime_root))
