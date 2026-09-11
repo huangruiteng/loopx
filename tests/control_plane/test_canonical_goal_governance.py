@@ -45,6 +45,28 @@ def _alignment(paths):
     return project_shared_goal_alignment(goal_id=GOAL_ID, agent_id="agent-a", project=paths["project"])
 
 
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("display", ["stale", "missing"])
+def test_quota_diagnoses_exact_gate_conflict_from_complete_provider(tmp_path, native, display):
+    scope = {"schema_version": "decision_scope_v0", "kind": "write_scope", "granularity": "action", "scope_key": "release"}
+    records = [_record(f"todo_unrelated_{index}", claimed_by="agent-a") for index in range(40)]
+    records.extend([
+        _record("todo_required", claimed_by="agent-a", required_decision_scopes=[scope]),
+        _record("todo_gate", role="user", source_section="User Todo", task_class="user_gate",
+                blocks_agent="agent-a", decision_scope=scope, unblocks_todo_id="todo_unrelated_0"),
+    ])
+    paths = _canonical(tmp_path, records, native=native)
+    if display == "missing":
+        paths["state_file"].unlink()
+    before = paths["state_file"].read_bytes() if paths["state_file"].exists() else None
+    code, result = run_json_cli_result("quota", "should-run", "--goal-id", GOAL_ID,
+        "--agent-id", "agent-a", registry_path=paths["registry"])
+    assert code == 0, result
+    assert result["effective_action"] == "todo_decision_scope_projection_repair", result
+    assert "required_decision_scope_target_mismatch" in json.dumps(result)
+    assert (paths["state_file"].read_bytes() if paths["state_file"].exists() else None) == before
+
+
 def _mutate_provider(paths):
     root = Path(__file__).resolve().parents[2]
     store = (root / "loopx/control_plane/coordination/file_authority_store.ts").as_uri()

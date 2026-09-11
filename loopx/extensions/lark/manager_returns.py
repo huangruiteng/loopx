@@ -85,6 +85,7 @@ def send_return(
         config_path=config_path,
         message_id=message_id,
         text=text,
+        content_format="markdown",
         execute=True,
         before_send=before_send,
         **({"runner": runner} if runner else {}),

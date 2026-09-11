@@ -1106,6 +1106,8 @@
 .personal-md-heading.is-h2 { font-size: 14.5px; }
 .personal-md-heading.is-h3, .personal-md-heading.is-h4 { font-size: 13.5px; }
 .personal-md-list { display: grid; gap: 4px; margin: 0; padding-left: 20px; }
+.personal-md ul.personal-md-list { list-style-type: disc; }
+.personal-md ol.personal-md-list { list-style-type: decimal; }
 .personal-md-list li { padding-left: 2px; overflow-wrap: anywhere; }
 .personal-md-list li::marker { color: var(--pw-faint); }
 .personal-md-code { padding: 1px 5px; border: 1px solid var(--pw-line); border-radius: 6px; background: #f5f4f1; font: 12px/1.5 "SF Mono", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }

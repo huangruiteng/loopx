@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .control_plane.runtime.time import now_utc_iso
-from .control_plane.todos.decision_scope import todo_gate_relation
+from .control_plane.todos.decision_scope import todo_gate_relations
 from .control_plane.todos.user_gate import open_user_gate_todo_items
 from .presentation.markdown import as_dict, as_list
 from .presentation.public_safety import public_safe_boundary, redact_public_text
@@ -200,12 +200,13 @@ def _verified_blocked_ids(
             blocked_ids.add(todo_id)
 
     user_summary = as_dict(payload.get("user_todo_summary"))
-    for gate in open_user_gate_todo_items(user_summary):
+    gates = open_user_gate_todo_items(user_summary)
+    relations = todo_gate_relations(gates, [as_dict(record.get("item")) for record in records.values()])
+    for gate, gate_relations in zip(gates, relations, strict=True):
         exact_todo_id = str(gate.get("unblocks_todo_id") or "").strip()
         if exact_todo_id in records:
             blocked_ids.add(exact_todo_id)
-        for todo_id, record in records.items():
-            relation = todo_gate_relation(gate, as_dict(record.get("item")))
+        for todo_id, relation in zip(records, gate_relations, strict=True):
             if relation and relation.get("state") in {
                 "gate_targets_todo",
                 "gate_covers_action",

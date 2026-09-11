@@ -407,7 +407,17 @@ Canonical 读取在生成展示 index 前使用完整 Todo 快照，包括保留
 通知文案启发式。上述有意语义修正见
 [decision-scope 协议](../../reference/protocols/decision-scope-v0.md#decision-chronology-not-display-order)。
 全部无时间的 legacy 决策保留源顺序兼容，native 展示顺序不充当授权证据；本批不迁移
-scope coverage 和 open-gate routing，不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
+scope coverage 和 open-gate routing。
+
+后续 decision dependency consumer 闭合：`todos/decision_scope.ts` 统一作用域覆盖、
+精确目标关系、standing receipt 的 Agent 作用域与一致性诊断。Quota selection 共用
+显式 gate 接收者规则：`global_gate` / `blocks_agent` 优先于 claim 归属。精确链接指向
+别的 Todo 时，不能用宽 scope 静默满足当前依赖；输出修复诊断，不产生批准或自动改绑。
+Python 保留 legacy 解码和修复展示，删除第二套规则。Agent fallback、global Todo、
+summary 对候选关系批量调用，避免每对 Todo 一次 RPC；legacy completion 也复用覆盖规则。
+验证覆盖复杂容量 fixture、展示上限之外的完整 provider 来源、陈旧／缺失展示和隔离真实
+状态快照 parity。T3 仍需处理旧 action-token fallback 路由及从压缩 summary 重建诊断的
+消费者，不把它们列为已迁移；不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
 
 列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
 初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值

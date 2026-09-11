@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .control_plane.runtime.time import now_utc, now_utc_iso
-from .control_plane.todos.decision_scope import todo_gate_relation
+from .control_plane.todos.decision_scope import todo_gate_relations
 from .control_plane.todos.user_gate import open_user_gate_todo_items
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
@@ -245,8 +245,8 @@ def _blocked_refs_for_gate(
     exact_todo_id = str(gate_item.get("unblocks_todo_id") or "").strip()
     if exact_todo_id:
         return [exact_todo_id]
-    for agent_item in _agent_todo_candidates(quota_payload):
-        relation = todo_gate_relation(gate_item, agent_item)
+    candidates = _agent_todo_candidates(quota_payload)
+    for agent_item, relation in zip(candidates, todo_gate_relations([gate_item], candidates)[0], strict=True):
         if not relation or relation.get("state") not in {
             "gate_targets_todo",
             "gate_covers_action",
