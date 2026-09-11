@@ -42,7 +42,10 @@ def _decode_facts(chunks: list[str]) -> dict[str, Any]:
     try:
         if sum(map(len, chunks)) > _MAX_ENCODED_CHARS:
             raise ValueError("encoded boundary")
-        encoded = "".join(chunks)
+        # Native follow-up accepts current standard Base64 and legacy base64url.
+        # Normalize only this validation copy; all bounds, canonical pad bits
+        # and decoded-content scanning remain mandatory.
+        encoded = "".join(chunks).replace("+", "-").replace("/", "_")
         if not encoded or not re.fullmatch(r"[A-Za-z0-9_-]+", encoded):
             raise ValueError("encoded alphabet")
         compressed = base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True)

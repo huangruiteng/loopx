@@ -175,13 +175,14 @@ def _scheduler_wire(operation: str = "ack") -> bytes:
 
 
 def _scheduler_transport_packet(
-    arm: str, operation: str, *, inline: bool = False, compressed: bytes | None = None,
+    arm: str, operation: str, *, inline: bool = False, compressed: bytes | None = None, alphabet: str = "urlsafe",
 ) -> tuple[dict[str, Any], list[str]]:
     if compressed is None:
         # Frozen public synthetic wire bytes keep the collision independent of
         # the platform's zlib encoder. Hex storage is not a secret-shaped value.
         compressed = _scheduler_wire(operation)
-    encoded = base64.urlsafe_b64encode(compressed).decode().rstrip("=")
+    encode = base64.b64encode if alphabet == "standard" else base64.urlsafe_b64encode
+    encoded = encode(compressed).decode().rstrip("=")
     command = "scheduler-ack-current" if operation == "ack" else "scheduler-fail-current"
     args = ["quota", command, "--goal-id", "goal-native-followup", "--agent-id", "agent-native-followup"]
     for offset in range(0, len(encoded), 384):
@@ -203,11 +204,15 @@ def _scheduler_transport_packet(
     ("full_packet", "ack"), ("full_packet", "host_failure"), ("candidate_packet", "ack"),
 ])
 @pytest.mark.parametrize("inline", [False, True])
+@pytest.mark.parametrize("alphabet", ["urlsafe", "standard"])
 def test_actor_request_scans_decoded_scheduler_facts_without_changing_wire(
-    arm: str, operation: str, inline: bool,
+    arm: str, operation: str, inline: bool, alphabet: str,
 ) -> None:
-    packet, args = _scheduler_transport_packet(arm, operation, inline=inline)
-    assert any(SECRET_LIKE_SURFACE_PATTERN.search(arg) for arg in args)
+    packet, args = _scheduler_transport_packet(arm, operation, inline=inline, alphabet=alphabet)
+    if alphabet == "urlsafe":
+        assert any(SECRET_LIKE_SURFACE_PATTERN.search(arg) for arg in args)
+    else:
+        assert any("+" in arg or "/" in arg for arg in args)
     before = json.dumps(packet, sort_keys=True)
 
     request = build_model_behavior_actor_request(packet, qualification_id="public-wire-collision", arm=arm)
@@ -221,8 +226,9 @@ def test_actor_request_scans_decoded_scheduler_facts_without_changing_wire(
     ("full_packet", "ack"), ("full_packet", "host_failure"), ("candidate_packet", "ack"),
 ])
 @pytest.mark.parametrize("location", ["before", "host_facts", "extension"])
+@pytest.mark.parametrize("alphabet", ["urlsafe", "standard"])
 def test_actor_rejects_private_material_inside_encoded_scheduler_facts(
-    arm: str, operation: str, location: str,
+    arm: str, operation: str, location: str, alphabet: str,
 ) -> None:
     payload = json.loads(zlib.decompress(_scheduler_wire(operation)))
     if location == "before":
@@ -232,7 +238,7 @@ def test_actor_rejects_private_material_inside_encoded_scheduler_facts(
     else:
         payload[location] = [{"nested": ["token" + "=abcdefghijklmnop"]}]
     packet, _ = _scheduler_transport_packet(arm, operation, inline=True,
-        compressed=zlib.compress(json.dumps(payload).encode()))
+        compressed=zlib.compress(json.dumps(payload).encode()), alphabet=alphabet)
     before = json.dumps(packet, sort_keys=True)
     with pytest.raises(ValueError, match="credential-shaped field|local absolute path|credential-like value"):
         build_model_behavior_actor_request(packet, qualification_id="encoded-private", arm=arm)
@@ -243,7 +249,8 @@ def test_actor_rejects_private_material_inside_encoded_scheduler_facts(
     "bad_json", "utf8", "root_array", "duplicate_key", "nonfinite", "hint_schema", "facts_schema",
     "before_shape", "current_hint_shape", "truncated", "trailing", "concatenated", "bomb", "encoded_limit",
 ])
-def test_actor_rejects_malformed_or_unbounded_scheduler_wire(case: str) -> None:
+@pytest.mark.parametrize("alphabet", ["urlsafe", "standard"])
+def test_actor_rejects_malformed_or_unbounded_scheduler_wire(case: str, alphabet: str) -> None:
     payload = json.loads(zlib.decompress(_scheduler_wire()))
     if case == "hint_schema":
         payload["schema_version"] = "future_hint"
@@ -275,7 +282,7 @@ def test_actor_rejects_malformed_or_unbounded_scheduler_wire(case: str) -> None:
         compressed += zlib.compress(b"{}")
     elif case == "encoded_limit":
         compressed = b"x" * 3_073
-    packet, _ = _scheduler_transport_packet("full_packet", "ack", compressed=compressed)
+    packet, _ = _scheduler_transport_packet("full_packet", "ack", compressed=compressed, alphabet=alphabet)
     with pytest.raises(ValueError, match="scheduler host facts"):
         build_model_behavior_actor_request(packet, qualification_id="invalid-wire", arm="full_packet")
 
