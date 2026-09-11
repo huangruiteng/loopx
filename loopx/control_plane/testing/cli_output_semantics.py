@@ -5,6 +5,18 @@ import json
 import re
 from typing import Any
 
+def host_prompt_static_safety_revision(text: str) -> str | None:
+    """Exact renderer evidence for the one-time static-safety budget transition.
+
+    This is test-output attribution, never a runtime permission classifier.
+    Keep the full invariant block, not a substring such as 'safe' or 'LoopX'.
+    """
+    block = (
+        "Follow user authority and repository rules. Protect credentials/private material; "
+        "publish public-safe evidence. Destructive Git/production requires explicit authorization. "
+        "Gate only the affected path; continue independent allowed work."
+    )
+    return "host_prompt_static_safety_v1" if block in text else None
 
 _MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+.+$")
 _RUNTIME_ROOT_COMMAND_ROUTE = re.compile(

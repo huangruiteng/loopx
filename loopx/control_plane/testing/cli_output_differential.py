@@ -471,6 +471,14 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
         # do not relax quota or other agent-facing surfaces with this allowance.
         if row_id.startswith("surface/heartbeat_prompt_thin/") and metric == "utf8_bytes":
             allowance = max(allowance, 192)
+        if (row_id.startswith(("surface/heartbeat_prompt_thin/", "surface/heartbeat_prompt_brief/", "surface/heartbeat_prompt_compact/"))
+                and base.get("host_prompt_static_safety_revision") is None
+                and candidate.get("host_prompt_static_safety_revision") == "host_prompt_static_safety_v1"):
+            # Authorized static safety + executable shell bootstrap restoration.
+            # Absolute ceilings stay enforced by the probe; once merged, v1->v1
+            # receives no allowance. Quota/status and other surfaces are excluded.
+            allowance = max(allowance, {"chars": 512, "utf8_bytes": 640,
+                                       "lines": 5, "compact_payload_chars": 512}[metric])
         if migration.portfolio_growth_migration:
             allowance = max(
                 allowance,
