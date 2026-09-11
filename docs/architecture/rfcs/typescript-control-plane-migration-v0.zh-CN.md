@@ -449,6 +449,19 @@ Todo，同一 Todo 的不同展示不重复计算，权威空 backlog 不再复�
 target capability 是修复产出，不是安装或授权。没有新 provider／inventory／enablement／
 promotion；压缩候选来源的上限和其余 T3 consumer 仍需分别闭合。
 
+Advancement-frontier checkpoint 闭合：`todos/frontier_revision.ts` 现统一 Agent
+选择、完整度、实质内容哈希、长链阈值与精确 ACK/rearm 分类。Python 保留 v0 字段清单
+与 legacy JSON/metadata codec，使合法且未变化的 frontier 保持已有指纹；删除旧 Python
+revision builder、index selector 和分两步执行的长链决策。终态 advancement 仍影响
+实质身份；仅更新时间不重新触发。阈值仍是 15 项 advancement，或存在 advancement
+时的 20 项可选 open Todo。被排除的 unclaimed 工作不再改变该 Agent 的 checkpoint，
+包括没有 claimed Todo 的 Agent；取消 exclusion 后，该工作重新相关。选中 frontier
+中的重复 ID、重复匹配的 index lane 与不完整时间不能提供完整 checkpoint 或压制
+replan。这些是明确的只读语义修正，不是执行授权。既有 canonical source 在展示截断前
+生成 index。复杂 fixture 经真实 provider 验证 accepted ACK、excluded/eligible 修改、
+新可用工作及陈旧／缺失展示；私有快照只读对照结果不公开原始数据。
+本批闭合一个 T3 规则组，不代表其余 consumer 或 T1/T2/D1–D3 完成。
+
 列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
 初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值
 条件，不能把归档中的已完成依赖变成丢失。共享合成 fixture 增补“有 scope 无 outcome”

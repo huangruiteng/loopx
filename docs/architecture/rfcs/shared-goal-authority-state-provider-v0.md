@@ -2655,6 +2655,14 @@ and retired Python selectors. Real FileAuthorityStore CLI tests cover missing an
 stale display without writing it back. This is consumer-rule consolidation, not
 a transaction/store change, provider qualification or whole-Goal cutover.
 
+Long-chain checkpoint reads now use one typed frontier revision/ACK policy across
+legacy and canonical sources (TS RFC T3). The index is built before display limits;
+excluded work cannot spuriously rearm another Agent, and an incomplete or ambiguous
+checkpoint cannot acknowledge the chain. Python keeps the persisted v0 codec, not
+a second revision/threshold policy. This is a consumer change: it adds no provider,
+commit receipt, promotion route or Markdown writer. Existing CAS/replay, permanent
+projection and D1–D3 qualification remain unchanged.
+
 The original direction remains; execution cards expand these stages rather than cancel them:
 
 1. **Close TS transactions and consumers.** Follow [T0–T3](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack) to consolidate rules and delete duplicate decisions.

@@ -2102,6 +2102,13 @@ selector 见 TS RFC 的 T3 卡。真实 FileAuthorityStore CLI 测试覆盖展�
 不写回。这是 consumer 规则收拢，不是 transaction/store 改造、provider 资格化或
 整 Goal cutover。
 
+长链 checkpoint 读取现由同一 typed frontier revision/ACK 策略处理 legacy 与 canonical
+来源（TS RFC T3）。Index 在展示限制之前生成；被排除工作不能误触发该 Agent，
+不完整或有歧义的 checkpoint 不能确认长链已处理。Python 保留持久 v0 codec，
+不再持有第二套 revision/threshold 策略。这是 consumer 改造，不新增 provider、
+commit receipt、promotion 路由或 Markdown writer。既有 CAS/replay、永久投影与
+D1–D3 资格化要求保持不变。
+
 以下规划保留原有方向；执行卡是它们的展开，不是替代或取消：
 
 1. **闭合 TS 事务与 consumer。** 按 [T0–T3](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡) 收口规则并删除重复决策。

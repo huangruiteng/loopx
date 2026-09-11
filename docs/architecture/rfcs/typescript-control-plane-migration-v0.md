@@ -588,6 +588,24 @@ read or resume evaluation is added. Remaining T3 work includes consumers that
 reconstruct diagnostics from compact summaries; do not call those migrated.
 This does not close T1/T2, all T3 consumers, or any durability/promotion hold.
 
+Advancement-frontier checkpoint closure: `todos/frontier_revision.ts` now owns
+agent selection, completeness, material hashing, long-chain thresholds and exact
+ACK/rearm classification. Python retains the v0 field manifest and legacy JSON/
+metadata codecs so unchanged legal frontiers retain their persisted fingerprints;
+the old Python revision builder, index selector and two-step long-chain decision
+are retired. Terminal advancement rows still affect material identity, while
+timestamp-only maintenance does not rearm it. Thresholds remain 15 advancement
+Todos or 20 selectable open Todos with advancement work. Excluded unclaimed work
+no longer changes that Agent's checkpoint, including Agents with no claimed rows;
+removing the exclusion makes that work relevant again. Duplicate identities in a
+selected frontier, duplicate matching index lanes and incomplete timestamps cannot
+provide a complete checkpoint or suppress replanning. These are explicit read
+corrections, not new execution permissions. The existing canonical source feeds
+the index before display truncation. Complex-fixture tests replay accepted ACKs,
+excluded/eligible edits and newly available work through a real provider with
+stale/missing display; a read-only private-snapshot comparison remains private.
+This closes one T3 rule group, not the remaining consumers or T1/T2/D1–D3.
+
 The list-filter consumer now uses `compact_evaluated_todo_group` instead of
 re-running resume evaluation on active-only rows. Initial parsing/canonical reads
 still evaluate against the full source through the TS owner; filtering requires
