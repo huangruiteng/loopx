@@ -1893,13 +1893,20 @@ async function main() {
     const returnText = "处理结论：已核验新约束并关联现有计划，无需再次追问。";
     page.__loopxRuntime.messages.get(returnSessionId).push({
       message_id: "handoff.browser-fixture", turn_id: "original-delegation",
-      role: "agent", origin: "manager_followup", text: returnText,
+      role: "agent", origin: "manager_followup", text: `${returnText}\n\n- **已完成**：核验新约束\n- 下一步：继续现有计划`,
       created_at: "2026-08-13T01:00:03Z",
     });
     await page.getByText(returnText, { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
+    const richConclusion = page.locator(".personal-channel-timeline .personal-message").filter({ hasText: returnText });
+    if (await richConclusion.locator("ul > li").count() !== 2
+      || await richConclusion.locator(".personal-md strong").innerText() !== "已完成") {
+      throw new Error("Worker conclusion displayed raw Markdown instead of a list and emphasis");
+    }
+    await richConclusion.scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(outputDir, "manager-automatic-conclusion.png"), fullPage: false, animations: "disabled" });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByText(returnText, { exact: true }).waitFor({ state: "visible" });
+    await richConclusion.scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(outputDir, "manager-automatic-conclusion-mobile.png"), fullPage: false, animations: "disabled" });
     await new Promise((resolveWait) => setTimeout(resolveWait, 3500));
     if (await page.getByText(returnText, { exact: true }).count() !== 1) throw new Error("Worker conclusion duplicated on the next transcript refresh");

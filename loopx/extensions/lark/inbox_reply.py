@@ -15,7 +15,11 @@ from .event_inbox import (
 )
 from .inbox_reactions import complete_lark_event_inbox_reactions
 from .outbound import (
+    LARK_POST_REQUEST_MAX_BYTES,
     expected_lark_mention_identities,
+    lark_markdown_post_content,
+    lark_markdown_preview_matches,
+    lark_markdown_readback_matches,
     lark_member_identities,
     lark_provider_preview_matches_outbound,
     lark_readback_matches_outbound,
@@ -198,6 +202,7 @@ def _deliver_lark_inbox_outbound(
     config_path: str | Path,
     message_id: str | None,
     text: str,
+    content_format: str = "text",
     execute: bool = False,
     provider_preflight: bool = False,
     runner: CommandRunner = _default_runner,
@@ -230,8 +235,13 @@ def _deliver_lark_inbox_outbound(
         raise ValueError(
             "lark inbox reply source message is not captured by this inbox"
         )
+    if content_format not in {"text", "markdown"}:
+        raise ValueError("unsupported Lark reply content format")
+    # Structured mentions retain the existing identity-verified text transport.
+    markdown = content_format == "markdown" and not expected_lark_mention_identities(text)
     reply_text = normalize_lark_outbound_text(
         text, limit=None if source_event is not None else 1200,
+        preserve_format=markdown,
     )
     # Reject an oversized content lower bound before building a CLI argument.
     # The full rendered request body is checked again after provider preview.
@@ -269,6 +279,7 @@ def _deliver_lark_inbox_outbound(
                 "message_id": source_message_id,
                 "placement": placement,
                 "text": reply_text,
+                **({"content_format": "markdown"} if markdown else {}),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -394,14 +405,17 @@ def _deliver_lark_inbox_outbound(
                 format_preflight_passed=True,
             )
 
+    content_args = (
+        ["--msg-type", "post", "--content", lark_markdown_post_content(reply_text)]
+        if markdown else ["--text", reply_text]
+    )
     destination = (
         [
             "im",
             "+messages-send",
             "--chat-id",
             chat_id,
-            "--text",
-            reply_text,
+            *content_args,
         ]
         if placement == "chat_root"
         else [
@@ -409,8 +423,7 @@ def _deliver_lark_inbox_outbound(
             "+messages-reply",
             "--message-id",
             source_message_id,
-            "--text",
-            reply_text,
+            *content_args,
             "--reply-in-thread",
         ]
     )
@@ -429,9 +442,11 @@ def _deliver_lark_inbox_outbound(
     preview = _call(runner, provider_args + ["--dry-run"])
     provider_preview_verified = bool(
         preview.get("returncode") == 0
-        and lark_provider_preview_matches_outbound(
-            outbound_text=reply_text,
-            payload=_json_object(preview.get("stdout")),
+        and (
+            lark_markdown_preview_matches(text=reply_text, payload=_json_object(preview.get("stdout")))
+            if markdown else lark_provider_preview_matches_outbound(
+                outbound_text=reply_text, payload=_json_object(preview.get("stdout")),
+            )
         )
     )
     if not provider_preview_verified:
@@ -455,6 +470,17 @@ def _deliver_lark_inbox_outbound(
     for call in api_calls if isinstance(api_calls, list) else []:
         if isinstance(call, Mapping) and isinstance(call.get("body"), Mapping):
             validate_lark_text_request_size(call["body"])
+            body_bytes = len(json.dumps(call["body"], ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            if markdown and body_bytes > LARK_POST_REQUEST_MAX_BYTES:
+                # No write has occurred. Preserve the full answer via the existing
+                # larger text transport rather than truncate or retry after send.
+                result = _deliver_lark_inbox_outbound(
+                    project=project, config_path=config_path, message_id=message_id,
+                    text=text, content_format="text", execute=execute,
+                    provider_preflight=provider_preflight, runner=runner, before_send=before_send,
+                )
+                result.update(content_format="text", format_fallback="post_size_limit")
+                return result
     guidance = None
     if before_send is not None:
         # Bind review to destination/profile as well as content and placement.
@@ -552,7 +578,8 @@ def _deliver_lark_inbox_outbound(
     verified = bool(
         readback.get("returncode") == 0
         and readback_message is not None
-        and lark_readback_matches_outbound(
+        and (lark_markdown_readback_matches(text=reply_text, message=readback_message)
+             if markdown else lark_readback_matches_outbound(
             outbound_text=reply_text,
             message=readback_message,
             # mget may report a bot's app_id instead of its member_id. Only
@@ -562,7 +589,7 @@ def _deliver_lark_inbox_outbound(
                 for app_id, identities in bot_alias_candidates.items()
                 if len(identities) == 1 and next(iter(identities)) in expected_mentions
             },
-        )
+        ))
     )
     reaction_cleanup = (
         complete_lark_event_inbox_reactions(
@@ -621,6 +648,7 @@ def reply_lark_event_inbox(
     config_path: str | Path,
     message_id: str,
     text: str,
+    content_format: str = "text",
     execute: bool = False,
     provider_preflight: bool = False,
     runner: CommandRunner = _default_runner,
@@ -628,16 +656,21 @@ def reply_lark_event_inbox(
 ) -> dict[str, Any]:
     """Reply with the explicit inbox-configured bot and placement policy."""
 
-    return _deliver_lark_inbox_outbound(
+    result = _deliver_lark_inbox_outbound(
         project=project,
         config_path=config_path,
         message_id=message_id,
         text=text,
+        content_format=content_format,
         execute=execute,
         provider_preflight=provider_preflight,
         runner=runner,
         before_send=before_send,
     )
+
+    result.setdefault("content_format", "markdown" if content_format == "markdown"
+                      and not expected_lark_mention_identities(text) else "text")
+    return result
 
 
 def send_lark_inbox_message(

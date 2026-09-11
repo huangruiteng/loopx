@@ -1114,6 +1114,7 @@ def process_lark_goal_topic_event(
             config_path=config_path,
             message_id=message_id,
             text=reply_text,
+            content_format="markdown" if route.get("conversation_kind") == "manager" else "text",
             execute=True,
             runner=reply_runner,
         )

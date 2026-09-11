@@ -114,14 +114,16 @@ def test_original_source_reply_waits_for_ack_and_rechecks_authority(
             data = {"data": {"items": [{"app_id": fixtures.APP_ID}]}}
         elif "+messages-reply" in args:
             assert args[args.index("--message-id") + 1] == "om_return_source"
-            text = args[args.index("--text") + 1]
+            assert args[args.index("--msg-type") + 1] == "post"
+            content = args[args.index("--content") + 1]
+            assert json.loads(content)["zh_cn"]["content"][0][0] == {"tag": "md", "text": "Concrete conclusion"}
             if "--dry-run" in args:
                 if revoke_before_send:
                     _write(
                         _root(root) / "policy.json",
                         {"schema_version": POLICY_SCHEMA, "sources": {}},
                     )
-                data = {"api": [{"body": {"content": json.dumps({"text": text})}}]}
+                data = {"api": [{"body": {"msg_type": "post", "content": content}}]}
             else:
                 sent.append(args)
                 data = {"data": {"message_id": "om_return_result"}}
@@ -131,9 +133,8 @@ def test_original_source_reply_waits_for_ack_and_rechecks_authority(
                     "items": [
                         {
                             "message_id": "om_return_result",
-                            "body": {
-                                "content": json.dumps({"text": "Concrete conclusion"})
-                            },
+                            "msg_type": "post",
+                            "content": "Concrete conclusion",
                         }
                     ]
                 }

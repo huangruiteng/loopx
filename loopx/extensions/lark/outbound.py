@@ -149,13 +149,17 @@ def normalized_lark_lines(value: Any) -> str:
 # Text request bodies: https://open.feishu.cn/document/server-docs/im-v1/message/reply
 # Use decimal KB conservatively; count UTF-8 JSON bytes, not display characters.
 LARK_TEXT_REQUEST_MAX_BYTES = 150_000
+# Rich post messages have a separate provider request-body limit.
+LARK_POST_REQUEST_MAX_BYTES = 30_000
 
 
 class LarkOutboundTextError(ValueError):
     """A local text-format failure before any provider write."""
 
 
-def normalize_lark_outbound_text(value: Any, *, limit: int | None = 1200) -> str:
+def normalize_lark_outbound_text(
+    value: Any, *, limit: int | None = 1200, preserve_format: bool = False,
+) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     outside_code = FENCED_CODE_PATTERN.sub("", text)
     if r"\n" in outside_code:
@@ -175,7 +179,7 @@ def normalize_lark_outbound_text(value: Any, *, limit: int | None = 1200) -> str
             "Lark outbound notification contains a literal @ mention; resolve the "
             "member identity and use a structured <at ...> node"
         )
-    normalized = normalized_lark_lines(text)
+    normalized = text.strip() if preserve_format else normalized_lark_lines(text)
     if limit is not None and len(normalized) > limit:
         raise LarkOutboundTextError(
             f"Lark outbound text exceeds the {limit}-character delivery limit"
@@ -282,3 +286,63 @@ def lark_readback_matches_outbound(
             return False
         actual_text = actual_text.replace(rendered_candidates[0], token)
     return normalized_lark_lines(actual_text) == expected_text
+
+
+def lark_markdown_post_content(text: str) -> str:
+    """Preserve authored Markdown without the CLI's image-fetch/rewrite pass."""
+    return json.dumps({"zh_cn": {"content": [[{"tag": "md", "text": text}]]}},
+                      ensure_ascii=False, separators=(",", ":"))
+
+
+def _single_markdown_post(value: Any) -> str | None:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, Mapping) or set(value) != {"zh_cn"}:
+        return None
+    locale = value["zh_cn"]
+    if not isinstance(locale, Mapping) or set(locale) - {"title", "content"}:
+        return None
+    if locale.get("title", "") != "":
+        return None
+    rows = locale.get("content")
+    if not isinstance(rows, list) or len(rows) != 1:
+        return None
+    row = rows[0]
+    if not isinstance(row, list) or len(row) != 1:
+        return None
+    node = row[0]
+    if not isinstance(node, Mapping) or set(node) != {"tag", "text"}:
+        return None
+    return node["text"] if node["tag"] == "md" and isinstance(node["text"], str) else None
+
+
+def lark_markdown_preview_matches(*, text: str, payload: Mapping[str, Any]) -> bool:
+    data = payload.get("data")
+    calls = payload.get("api")
+    if calls is None and isinstance(data, Mapping):
+        calls = data.get("api")
+    if not isinstance(calls, list) or len(calls) != 1:
+        return False
+    call = calls[0]
+    body = call.get("body") if isinstance(call, Mapping) else None
+    return (isinstance(body, Mapping) and body.get("msg_type") == "post"
+            and _single_markdown_post(body.get("content")) == text)
+
+
+def lark_markdown_readback_matches(*, text: str, message: Mapping[str, Any]) -> bool:
+    """Accept the raw post or CLI's md text, never a plain-text lookalike."""
+    if message.get("msg_type", message.get("message_type")) != "post":
+        return False
+    if message.get("mentions") not in (None, []):
+        return False
+    body = message.get("body")
+    if isinstance(body, Mapping):
+        actual = _single_markdown_post(body.get("content"))
+    else:
+        actual = message.get("content")
+        if not isinstance(actual, str):
+            actual = _single_markdown_post(actual)
+    return isinstance(actual, str) and actual.replace("\r\n", "\n").strip() == text
