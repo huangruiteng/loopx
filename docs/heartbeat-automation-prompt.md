@@ -57,6 +57,17 @@ automation contract.
 
 ### Native Goal bootstrap and live execution instructions
 
+New supported host activations use `heartbeat-prompt --bootstrap`: a saved
+loader requests the installed rules rather than freezing a long execution body.
+The loader and automation bootstrap share rendering and successful-response
+checks. Registry-derived state is resolved at load time; explicitly supplied
+policy remains bound. The inner command does not request another bootstrap.
+Claude Code loads its inner body through the bound MCP `host_prompt` tool.
+TraeX's separate capability projection remains separate, not embedded by this
+loader. See [prompt upgrade lifecycle](reference/automation-prompt-upgrades.md)
+for automatic exact-managed adoption during `update --apply`, including the
+qualified running-App SQLite/TOML adapter and conflict recovery boundary.
+
 #### Static semantics retained across hosts
 
 Thinning removes duplicated recipes, not authority boundaries. The shared

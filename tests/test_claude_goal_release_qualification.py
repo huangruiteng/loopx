@@ -67,10 +67,13 @@ def test_child_environment_allowlist_drops_unrelated_secrets_and_operator_home(m
 
 
 def test_claude_loop_uses_current_contract_not_segment_or_empty_list_stop():
-    from loopx.claude_goal_mode.scripts.goalmode_cmd import loop_md_content
+    from loopx.claude_goal_mode.scripts.goalmode_cmd import loop_execution_content, loop_md_content
     from loopx.control_plane.heartbeat.rules import SCOPE_BOUNDED_WORK_RULE
 
-    prompt = loop_md_content("goal-a", "agent-a")
+    bootstrap = loop_md_content("goal-a", "agent-a")
+    assert "host_prompt" in bootstrap and "loopx:armed" in bootstrap
+    assert "writeback/spend" not in bootstrap
+    prompt = loop_execution_content("goal-a", "agent-a")
     assert SCOPE_BOUNDED_WORK_RULE in prompt
     assert "interaction_contract" in prompt and "notification" in prompt
     assert "ONE bounded segment" not in prompt and "no open todos remain" not in prompt
@@ -138,7 +141,13 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = await session.list_tools()
-                assert {"should_run", "claim_task", "complete_task"} <= {t.name for t in tools.tools}
+                assert {"host_prompt", "should_run", "claim_task", "complete_task"} <= {t.name for t in tools.tools}
+                loaded = await session.call_tool("host_prompt", {})
+                current = json.loads(loaded.content[0].text)
+                assert current["ok"] and current["goal_id"] == runner.shared.GOAL
+                assert current["agent_id"] == runner.shared.AGENT
+                assert "complete_task" in current["task_body"]
+                assert "call the bound LoopX `host_prompt`" not in current["task_body"]
                 complete = next(t for t in tools.tools if t.name == "complete_task")
                 assert "successor_todo_ids" in complete.inputSchema["properties"]
                 guard = await session.call_tool("should_run", {})

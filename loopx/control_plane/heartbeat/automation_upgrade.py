@@ -1,7 +1,7 @@
 """Installed prompt lifecycle; execution policy stays in heartbeat-prompt.
 
-The App API is the preferred writer. The SQLite writer is an explicit offline
-compatibility adapter, not a public Codex API or a scheduler implementation.
+The App API is the preferred interactive writer. The journaled store writer is
+a qualified local compatibility adapter, not a public Codex storage API.
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ import tempfile
 import tomllib
 from typing import Any
 
+from .bootstrap_prompt import BOOTSTRAP_INSTRUCTION, host_bootstrap_binding, render_bootstrap
+
 from loopx.upgrade import (
     codex_home, infer_agent_id_from_prompt, infer_goal_id_from_prompt,
     infer_available_capabilities_from_prompt,
@@ -29,11 +31,7 @@ _LEGACY_INSTRUCTION = (
     "读取完整结果；仅 ok=true 时按本次 task_body 执行，不复用旧指令；"
     "失败或结果不完整则停止并报告，不执行任务或记账。"
 )
-_BOOTSTRAP_INSTRUCTION = (
-    "读取完整结果；仅 ok=true 时按本次 task_body 推进，不复用旧指令。"
-    "一次操作不代表结束；通知与执行分开，等待按当前调度契约，不反复空查。"
-    "入口异常先做权限内恢复；契约仍不可用时不执行任务或记账，并报告阻塞。"
-)
+_BOOTSTRAP_INSTRUCTION = BOOTSTRAP_INSTRUCTION
 
 
 def digest(value: str) -> str:
@@ -53,12 +51,7 @@ def bootstrap_prompt(*, registry: Path, goal_id: str, agent_id: str,
         args += ["--cli-bin", cli_bin]
     for capability in capabilities or []:
         args += ["--available-capability", capability]
-    return (
-        f"{BOOTSTRAP}\n"
-        "每次唤醒先执行：\n"
-        f"```sh\n{shlex.join(args)}\n```\n"
-        f"{_BOOTSTRAP_INSTRUCTION}"
-    )
+    return render_bootstrap(args, title=BOOTSTRAP, entry="每次唤醒先执行：")
 
 
 def _atomic(path: Path, text: str) -> None:
@@ -176,7 +169,7 @@ def _read(home: Path, automation_id: str, connection: sqlite3.Connection) -> tup
         )
     if item.get("status") == "DELETED" or row["status"] == "DELETED":
         raise ValueError("deleted automation cannot be upgraded")
-    for key in ("prompt", "status", "target_thread_id"):
+    for key in ("prompt", "status", "target_thread_id", "rrule"):
         if item.get(key) != row.get(key):
             raise ValueError(f"automation stores disagree on {key}; reconcile through the App")
     return source, item, row
@@ -209,6 +202,13 @@ def build_plan(*, registry: Path, home: Path | None = None,
                     desired = bootstrap_prompt(registry=registry, goal_id=goal_id, agent_id=agent_id,
                         runtime_root=runtime_root, capabilities=infer_available_capabilities_from_prompt(prompt),
                         cli_bin=cli_bin)
+                    loaded_binding = host_bootstrap_binding(prompt)
+                    if (loaded_binding and loaded_binding["registry"].resolve() == registry.resolve()
+                            and (loaded_binding.get("codex_app") or
+                                 loaded_binding.get("runtime_profile") == "codex_app_heartbeat")):
+                        # Already dynamically loaded, including explicit owner
+                        # policy. Do not replace it with a narrower old wrapper.
+                        desired = prompt
                     entry.update(status="current" if prompt == desired else "adoption_required",
                         goal_id=goal_id, agent_id=agent_id, prompt_sha256=digest(prompt),
                         current_prompt=prompt,
@@ -223,11 +223,14 @@ def build_plan(*, registry: Path, home: Path | None = None,
 
 
 def apply_offline(*, home: Path, automation_id: str, expected_prompt_sha256: str,
-                  desired_prompt: str) -> dict[str, Any]:
-    """Explicit offline fallback. Persist recovery before either host-store write.
+                  desired_prompt: str, expected_source_sha256: str | None = None) -> dict[str, Any]:
+    """Journaled prompt-only write, also used by qualified update-time migration.
 
-    Scheduler/thread/history tables are never touched. The caller must close
-    the App: its external TOML writes cannot join this SQLite transaction.
+    Keep the SQLite writer lock through mirror replacement and readback. TOML
+    cannot join that transaction: a crash is explicitly journal-recoverable,
+    not falsely advertised as an atomic two-store commit. Concurrent external
+    edits detected at either boundary fail instead of being retried blindly.
+    The historical Python name is retained for the explicit offline CLI.
     """
     home = home.expanduser().resolve()
     journal = home / "loopx-automation-backups" / (automation_id + ".json")
@@ -236,6 +239,9 @@ def apply_offline(*, home: Path, automation_id: str, expected_prompt_sha256: str
     with closing(_connect(home, writable=True)) as connection:
         connection.execute("BEGIN IMMEDIATE")
         source, item, row = _read(home, automation_id, connection)
+        path = home / "automations" / automation_id / "automation.toml"
+        if expected_source_sha256 is not None and digest(source) != expected_source_sha256:
+            raise ValueError("automation metadata changed after preview; no writes performed")
         if digest(item["prompt"]) != expected_prompt_sha256:
             raise ValueError("prompt changed after preview; no writes performed")
         if item["prompt"] == desired_prompt:
@@ -246,12 +252,21 @@ def apply_offline(*, home: Path, automation_id: str, expected_prompt_sha256: str
         # Entire originals stay private for recovery; no raw prompts in receipts.
         _atomic(journal, json.dumps({"schema_version": SCHEMA, "automation_id": automation_id,
             "before": source, "after": replacement, "row": row}, ensure_ascii=False))
-        connection.execute("UPDATE automations SET prompt=? WHERE id=? AND prompt=?",
-                           (desired_prompt, automation_id, item["prompt"]))
-        connection.commit()
-    _atomic(home / "automations" / automation_id / "automation.toml", replacement)
-    with closing(_connect(home)) as connection:
+        if path.read_text(encoding="utf-8") != source:
+            raise ValueError("automation manifest changed during migration; journal retained")
+        changed = connection.execute("UPDATE automations SET prompt=? WHERE id=? AND prompt=?",
+                                     (desired_prompt, automation_id, item["prompt"]))
+        if changed.rowcount != 1:
+            raise ValueError("automation prompt compare-and-swap failed")
+        _atomic(path, replacement)
+        if path.read_text(encoding="utf-8") != replacement:
+            raise ValueError("automation manifest changed during readback; journal retained")
         _read(home, automation_id, connection)
+        connection.commit()
+    with closing(_connect(home)) as connection:
+        final_source, _, final_row = _read(home, automation_id, connection)
+        if final_source != replacement or final_row["prompt"] != desired_prompt:
+            raise ValueError("automation changed after commit; inspect the retained journal")
     return {"ok": True, "status": "updated", "automation_id": automation_id,
             "backup": str(journal), "future_policy": "read installed heartbeat-prompt on every wake"}
 

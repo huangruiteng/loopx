@@ -646,6 +646,18 @@ def handle_support_control_command(
                 turn_granularity=turn_granularity,
                 turn_instance_id=args.turn_instance_id,
             )
+            if args.bootstrap and payload.get("ok"):
+                from ..control_plane.heartbeat.bootstrap_prompt import goal_bootstrap
+                from ..control_plane.heartbeat.budget import build_interface_budget
+                body = goal_bootstrap(args, registry=agent_registry_path)
+                payload["task_body"] = body
+                payload["bootstrap"] = True
+                payload["interface_budget"] = build_interface_budget(
+                    task_body=body, goal_id=args.goal_id,
+                    active_state=str(payload.get("active_state") or ""), thin=True,
+                )
+                if not payload["interface_budget"]["within_budget"]:
+                    raise ValueError("bootstrap exceeds the thin budget; move lengthy policy into registered state")
         except Exception as exc:
             fallback_active_state = active_state
             fallback_resolved_active_state = resolved_active_state
@@ -822,8 +834,11 @@ def handle_support_control_command(
                 if update_action is UpdateAction.APPLY and payload.get("plan", {}).get(
                     "apply_supported"
                 ):
-                    payload = execute_update_plan(
-                        payload, timeout_seconds=args.timeout_seconds
+                    from ..control_plane.heartbeat.installed_prompt_update import update_with_prompts
+                    payload = update_with_prompts(
+                        payload, registry=(registry_path if registry_was_supplied else explicit_global_registry(args.runtime_root)),
+                        runtime_root=args.runtime_root,
+                        timeout_seconds=args.timeout_seconds, runtime_update=execute_update_plan,
                     )
         except Exception as exc:
             payload = {
