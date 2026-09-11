@@ -13,6 +13,65 @@ from .control_plane.work_items.delivery_outcome import PROGRESS_DELIVERY_OUTCOME
 from .history import STATUS_NEUTRAL_CLASSIFICATIONS, load_index
 
 
+def _recorded_details(run):
+    """Hydrate existing Core fields; never dereference artifact paths or URLs."""
+    observation = run.get("progress_observation")
+    checkpoint = run.get("vision_checkpoint")
+    vision = run.get("agent_vision")
+    observation = observation if isinstance(observation, dict) else {}
+    checkpoint = checkpoint if isinstance(checkpoint, dict) else {}
+    vision = vision if isinstance(vision, dict) else {}
+    delta = vision.get("path_delta")
+    delta = delta if isinstance(delta, dict) else {}
+    fields = {
+        "checkpoint_reason": (checkpoint.get("unchanged_reason"), 600),
+        "observed_reality": (delta.get("observed_reality"), 420),
+        "path_outcome": (delta.get("outcome"), 40),
+        "result_class": (observation.get("result_class"), 80),
+        "probe_kind": (observation.get("probe_kind"), 160),
+        "surface_id": (observation.get("surface_id"), 160),
+    }
+    values = {
+        key: _text(value, limit)
+        for key, (value, limit) in fields.items()
+        if isinstance(value, str) and value.strip()
+    }
+    evidence = observation.get("evidence_ids")
+    valid_evidence = isinstance(evidence, list) and all(
+        isinstance(item, str) and item.strip() for item in evidence
+    )
+    # Stable references preserve lineage without exposing file locations or
+    # treating arbitrary evidence identifiers as fetch instructions.
+    refs = [
+        "sha256:" + hashlib.sha256(item.encode()).hexdigest()
+        for item in evidence[:8]
+    ] if valid_evidence else []
+    return {
+        "source": "core_run_index",
+        "verification": "recorded_claim_not_independent_verification",
+        "artifact_read_status": "not_read",
+        **values,
+        "field_coverage": {
+            "missing": [key for key in fields if key not in values],
+            "truncated": [
+                key for key, (value, limit) in fields.items()
+                if isinstance(value, str) and len(value.strip()) > limit
+            ],
+            "invalid": [
+                key for key, (value, _) in fields.items()
+                if value is not None and not isinstance(value, str)
+            ],
+        },
+        "evidence_refs": refs,
+        "evidence_coverage": {
+            "status": "read" if valid_evidence else "missing_or_invalid",
+            "known": len(evidence) if valid_evidence else None,
+            "included": len(refs),
+            "omitted": max(0, len(evidence) - len(refs)) if valid_evidence else None,
+        },
+    }
+
+
 def read_manager_delivery_history(
     runtime_root: Path, goal_id: str, *, now=None, limit=24
 ):
@@ -67,7 +126,7 @@ def read_manager_delivery_history(
             evidence = any(
                 a.get("latest_evidence_delivery_run") for a in semantic["agents"]
             )
-            observation = run.get("progress_observation") or {}
+            details = _recorded_details(run)
             rows.append(
                 {
                     "recorded_at": at.isoformat(),
@@ -80,7 +139,8 @@ def read_manager_delivery_history(
                     "verification": "core_recorded_evidence_refs"
                     if evidence
                     else "agent_reported_outcome",
-                    "evidence_count": len(observation.get("evidence_ids") or []),
+                    "recorded_details": details,
+                    "evidence_count": details["evidence_coverage"]["known"],
                     "source_ref": "sha256:"
                     + hashlib.sha256(
                         json.dumps(run, sort_keys=True).encode()

@@ -105,6 +105,59 @@ def test_new_day_does_not_evict_previous_day(tmp_path):
     assert any(r["recorded_at"].startswith("2026-01-01") for r in x["deliveries"])
 
 
+def test_report_retains_concrete_findings_without_fetching_artifacts(tmp_path):
+    p = tmp_path / "goals" / "alpha" / "runs" / "index.jsonl"
+    p.parent.mkdir(parents=True)
+    row = {
+        "generated_at": "2026-01-01T12:00:00+00:00",
+        "goal_id": "alpha", "agent_id": "worker", "todo_id": "todo_check",
+        "classification": "comparison_validated",
+        "delivery_outcome": "outcome_progress",
+        "json_path": str(tmp_path / "must-not-read.json"),
+        "vision_checkpoint": {"unchanged_reason": "The new result disproves the initial assumption."},
+        "agent_vision": {"path_delta": {
+            "outcome": "replan", "observed_reality": "Two controls passed; the third remained inconclusive."
+        }},
+        "progress_observation": {
+            "result_class": "advanced", "probe_kind": "paired-control",
+            "surface_id": "comparison",
+            "evidence_ids": [str(tmp_path / "private-artifact")] * 10,
+        },
+    }
+    p.write_text(json.dumps(row))
+    result = read_manager_delivery_history(
+        tmp_path, "alpha", now=datetime(2026, 1, 2, 3, tzinfo=timezone.utc)
+    )
+    detail = result["deliveries"][0]["recorded_details"]
+    assert detail["checkpoint_reason"] == row["vision_checkpoint"]["unchanged_reason"]
+    assert detail["observed_reality"].startswith("Two controls passed")
+    assert detail["probe_kind"] == "paired-control"
+    assert detail["verification"] == "recorded_claim_not_independent_verification"
+    assert detail["artifact_read_status"] == "not_read"
+    assert detail["evidence_coverage"] == {"status": "read", "known": 10, "included": 8, "omitted": 2}
+    assert all(ref.startswith("sha256:") for ref in detail["evidence_refs"])
+    assert "private-artifact" not in json.dumps(result)
+    assert "must-not-read" not in json.dumps(result)
+
+
+def test_detail_missing_invalid_truncated_and_redacted_are_explicit():
+    from loopx.chat_manager_history import _recorded_details
+
+    detail = _recorded_details({
+        "vision_checkpoint": {"unchanged_reason": "x" * 1000},
+        "agent_vision": {"path_delta": {"observed_reality": {"unexpected": "payload"}}},
+        "progress_observation": {"evidence_ids": "not-a-list", "probe_kind": "api_key=private-value"},
+    })
+    assert detail["field_coverage"]["truncated"] == ["checkpoint_reason"]
+    assert detail["field_coverage"]["invalid"] == ["observed_reality"]
+    assert "result_class" in detail["field_coverage"]["missing"]
+    assert "private-value" not in json.dumps(detail)
+    assert "unexpected" not in json.dumps(detail)
+    assert detail["evidence_coverage"]["known"] is None
+    assert detail["evidence_refs"] == []
+    assert _recorded_details({})["field_coverage"]["missing"]
+
+
 def test_local_scope_configuration_validates_goals_and_preserves_targets(tmp_path):
     import pytest
     from loopx.capabilities.manager_context import configure_evidence_scope
