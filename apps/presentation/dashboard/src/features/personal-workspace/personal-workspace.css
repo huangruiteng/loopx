@@ -57,7 +57,9 @@
 .personal-status-source-meta > span.is-loading i { background: #e5a33d; }
 .personal-status-source-meta > span.is-error i { background: #dd5b47; }
 .personal-status-source-meta small { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.personal-status-source-meta button { margin-left: auto; width: 22px; height: 22px; color: var(--pw-faint); }
+.personal-status-source-meta .personal-status-source-actions { display: inline-flex; flex: 0 0 auto; gap: 2px; margin-left: auto; }
+.personal-status-source-meta .personal-status-source-actions button { width: 22px; height: 22px; color: var(--pw-faint); }
+.personal-status-source-meta .personal-status-source-actions button:disabled { cursor: progress; opacity: .45; }
 .personal-status-source-error { margin: 0 3px; color: var(--pw-red); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
 .personal-status-source-form { position: absolute; z-index: 12; top: calc(100% - 4px); left: 12px; right: 12px; display: grid; gap: 10px; padding: 13px; border: 1px solid var(--pw-line-strong); border-radius: 12px; background: #fff; box-shadow: 0 12px 32px rgb(30 28 20 / 14%); }
 .personal-status-source-form > header { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }

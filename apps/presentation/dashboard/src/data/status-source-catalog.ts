@@ -1,9 +1,11 @@
 import { resolveFrontstageOpsStatusUrl } from "./local-status-query";
+import { isConfiguredSshHostAlias } from "./ssh-host-catalog";
 
 export const defaultLocalStatusSourceUrl = "/status.json";
 export const statusSourceCatalogStorageKey = "loopx-status-source-catalog-v1";
 
 export type StatusSource = {
+  hostAlias?: string;
   id: string;
   kind: "local" | "ssh_tunnel";
   label: string;
@@ -63,7 +65,11 @@ function parseStoredSource(value: unknown, baseHref: string): StatusSource | nul
   const label = candidate.label.trim();
   const resolved = normalizedTunnelUrl(candidate.statusUrl, baseHref);
   if (!label || label.length > 48 || !("url" in resolved)) return null;
+  const hostAlias = isConfiguredSshHostAlias(candidate.hostAlias)
+    ? candidate.hostAlias.trim()
+    : undefined;
   return {
+    ...(hostAlias ? { hostAlias } : {}),
     id: sourceId(resolved.url),
     kind: "ssh_tunnel",
     label,
@@ -102,9 +108,31 @@ export function saveStatusSourceCatalog(storage: StatusSourceStorage, catalog: S
   }));
 }
 
+export function bindConfiguredSshHostAliases(
+  catalog: StatusSourceCatalog,
+  hostAliases: string[],
+): StatusSourceCatalog {
+  const configuredAliases = new Set(
+    hostAliases.filter(isConfiguredSshHostAlias).map((alias) => alias.trim()),
+  );
+  let changed = false;
+  const sources = catalog.sources.map((source) => {
+    if (
+      source.kind !== "ssh_tunnel"
+      || source.hostAlias
+      || !configuredAliases.has(source.label)
+    ) {
+      return source;
+    }
+    changed = true;
+    return { ...source, hostAlias: source.label };
+  });
+  return changed ? { ...catalog, sources } : catalog;
+}
+
 export function addSshTunnelStatusSource(
   catalog: StatusSourceCatalog,
-  input: { label: string; statusUrl: string },
+  input: { hostAlias?: string; label: string; statusUrl: string },
   baseHref: string,
 ): AddStatusSourceResult {
   const label = input.label.trim();
@@ -115,7 +143,12 @@ export function addSshTunnelStatusSource(
   if (catalog.sources.some((source) => source.statusUrl === resolved.url)) {
     return { error: "这个状态 URL 已经在来源目录中。" };
   }
+  if (input.hostAlias !== undefined && !isConfiguredSshHostAlias(input.hostAlias)) {
+    return { error: "请选择有效的 SSH Host。" };
+  }
+  const hostAlias = input.hostAlias?.trim();
   const source: StatusSource = {
+    ...(hostAlias ? { hostAlias } : {}),
     id: sourceId(resolved.url),
     kind: "ssh_tunnel",
     label,

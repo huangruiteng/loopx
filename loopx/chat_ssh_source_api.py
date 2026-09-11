@@ -2,19 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
-from .control_plane.status.ssh_tunnel import ensure_ssh_source
+from .control_plane.status.ssh_tunnel import ensure_ssh_source, pause_ssh_source
 from .status_server import is_loopback_host
 
 
 SSH_SOURCE_ENSURE_PATH = "/api/ssh-source/ensure"
+SSH_SOURCE_PAUSE_PATH = "/api/ssh-source/pause"
 
 
 class SshSourceRequestMixin:
     """Serve the owner-local SSH source ensure endpoint."""
 
     server: Any
+
+    def _ssh_source_post_routes(self) -> dict[str, Callable[[], None]]:
+        return {
+            SSH_SOURCE_ENSURE_PATH: self._ssh_source_ensure,
+            SSH_SOURCE_PAUSE_PATH: self._ssh_source_pause,
+        }
 
     def _read_json(self) -> dict[str, Any]:
         raise NotImplementedError
@@ -39,9 +47,36 @@ class SshSourceRequestMixin:
             return
         try:
             body = self._read_json()
+            local_port = body.get("local_port")
+            if isinstance(local_port, bool) or not isinstance(local_port, int):
+                raise TypeError("local tunnel port must be an integer in 1024..65535")
             result = ensure_ssh_source(
                 str(body.get("host_alias") or ""),
-                body.get("local_port"),
+                local_port,
+                ssh_config_path=getattr(self.server, "ssh_config_path", None),
+            )
+        except (ValueError, TypeError) as exc:
+            self._send_error(str(exc), status=400)
+            return
+        self._send_json(result)
+
+    def _ssh_source_pause(self) -> None:
+        if not is_loopback_host(str(self.server.server_address[0])):
+            self._send_error(
+                "SSH source management requires a loopback LoopX Chat server.",
+                status=403,
+            )
+            return
+        if not self._require_loopback_origin():
+            return
+        try:
+            body = self._read_json()
+            local_port = body.get("local_port")
+            if isinstance(local_port, bool) or not isinstance(local_port, int):
+                raise TypeError("local tunnel port must be an integer in 1024..65535")
+            result = pause_ssh_source(
+                str(body.get("host_alias") or ""),
+                local_port,
                 ssh_config_path=getattr(self.server, "ssh_config_path", None),
             )
         except (ValueError, TypeError) as exc:

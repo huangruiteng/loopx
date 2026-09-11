@@ -11,6 +11,10 @@ export type ConfiguredSshHostCatalog = {
 
 const safeAliasPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 
+export function isConfiguredSshHostAlias(value: unknown): value is string {
+  return typeof value === "string" && safeAliasPattern.test(value.trim());
+}
+
 export function parseConfiguredSshHostCatalog(value: unknown): ConfiguredSshHostCatalog {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("SSH Host 列表响应无效。");
@@ -23,7 +27,7 @@ export function parseConfiguredSshHostCatalog(value: unknown): ConfiguredSshHost
   const hosts = payload.hosts.flatMap((value) => {
     if (!value || typeof value !== "object" || Array.isArray(value)) return [];
     const alias = String((value as Record<string, unknown>).alias ?? "").trim();
-    if (!safeAliasPattern.test(alias) || seen.has(alias)) return [];
+    if (!isConfiguredSshHostAlias(alias) || seen.has(alias)) return [];
     seen.add(alias);
     return [{ alias }];
   });
@@ -41,13 +45,14 @@ export async function fetchConfiguredSshHosts(
 
 export function configuredSshTunnelDraft(hostAlias: string, localPortValue: string) {
   const alias = hostAlias.trim();
-  if (!safeAliasPattern.test(alias)) return { error: "请选择有效的 SSH Host。" } as const;
+  if (!isConfiguredSshHostAlias(alias)) return { error: "请选择有效的 SSH Host。" } as const;
   const localPort = Number(localPortValue);
   if (!Number.isInteger(localPort) || localPort < 1024 || localPort > 65535) {
     return { error: "本地端口必须是 1024–65535 之间的整数。" } as const;
   }
   return {
     command: `ssh -N -L ${localPort}:127.0.0.1:8766 ${alias}`,
+    hostAlias: alias,
     label: alias,
     statusUrl: `http://127.0.0.1:${localPort}/status.json`,
   } as const;
@@ -55,12 +60,21 @@ export function configuredSshTunnelDraft(hostAlias: string, localPortValue: stri
 
 
 export const defaultSshSourceEnsureUrl = "/api/ssh-source/ensure";
+export const defaultSshSourcePauseUrl = "/api/ssh-source/pause";
 
 export type EnsureSshSourceResult = {
   ok: true;
   status_url: string;
   tunnel_required: boolean;
+  managed_by_loopx: boolean;
   remote_started: boolean;
+};
+
+export type PauseSshSourceResult = {
+  already_paused: boolean;
+  ok: true;
+  status_url: string;
+  stopped: boolean;
 };
 
 export async function ensureSshSource(
@@ -80,6 +94,27 @@ export async function ensureSshSource(
   }
   if (!payload?.ok) {
     throw new Error("无法建立 SSH 隧道来源。");
+  }
+  return payload;
+}
+
+export async function pauseSshSource(
+  hostAlias: string,
+  localPort: string | number,
+): Promise<PauseSshSourceResult> {
+  const response = await fetch(defaultSshSourcePauseUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ host_alias: hostAlias, local_port: Number(localPort) }),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | (PauseSshSourceResult & { error?: string })
+    | null;
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "无法暂停 SSH 隧道来源。");
+  }
+  if (!payload?.ok) {
+    throw new Error("无法暂停 SSH 隧道来源。");
   }
   return payload;
 }

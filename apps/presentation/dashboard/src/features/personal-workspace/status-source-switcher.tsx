@@ -1,4 +1,4 @@
-import { Copy, Plus, RotateCw, Server, Trash2, X } from "lucide-react";
+import { Copy, Pause, Plus, RotateCw, Server, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import type { StatusSource } from "../../data/status-source-catalog";
@@ -16,7 +16,9 @@ export type StatusSourceControl = {
   activeSource: StatusSource;
   connectionState: StatusSourceConnectionState;
   errorMessage?: string | null;
-  onAdd: (input: { ensureTunnel?: boolean; label: string; statusUrl: string }) => { error?: string };
+  onAdd: (input: { hostAlias?: string; label: string; statusUrl: string }) => { error?: string };
+  onConfiguredHostsLoaded: (hostAliases: string[]) => void;
+  onPause: (sourceId: string) => void | Promise<void>;
   onRemove: (sourceId: string) => void;
   onSelect: (sourceId: string) => void;
   sources: StatusSource[];
@@ -27,6 +29,8 @@ export function StatusSourceSwitcher({
   connectionState,
   errorMessage,
   onAdd,
+  onConfiguredHostsLoaded,
+  onPause,
   onRemove,
   onSelect,
   sources,
@@ -42,6 +46,7 @@ export function StatusSourceSwitcher({
   const [hostAlias, setHostAlias] = useState("");
   const [label, setLabel] = useState("");
   const [localPort, setLocalPort] = useState("8876");
+  const [pausing, setPausing] = useState(false);
   const [statusUrl, setStatusUrl] = useState("");
   const quickAddPrefix = "configured:";
   const sourceOptions = [
@@ -71,6 +76,7 @@ export function StatusSourceSwitcher({
     try {
       const catalog = await fetchConfiguredSshHosts();
       setConfiguredHosts(catalog.hosts);
+      onConfiguredHostsLoaded(catalog.hosts.map((host) => host.alias));
       setHostAlias((current) => current || catalog.hosts[0]?.alias || "");
       if (!catalog.hosts.length) setConfiguredHostsError(t("source.hostEmpty"));
     } catch (caught) {
@@ -113,7 +119,7 @@ export function StatusSourceSwitcher({
       setError(configuredDraft.error ?? t("source.invalid"));
       return;
     }
-    const result = onAdd({ ensureTunnel: true, label: configuredDraft.label, statusUrl: configuredDraft.statusUrl });
+    const result = onAdd({ hostAlias: configuredDraft.hostAlias, label: configuredDraft.label, statusUrl: configuredDraft.statusUrl });
     if (result.error) {
       setError(result.error);
       return;
@@ -142,7 +148,7 @@ export function StatusSourceSwitcher({
       setError(draft.error ?? t("source.invalid"));
       return;
     }
-    const result = onAdd({ ensureTunnel: true, label: draft.label, statusUrl: draft.statusUrl });
+    const result = onAdd({ hostAlias: draft.hostAlias, label: draft.label, statusUrl: draft.statusUrl });
     if (result.error) setError(result.error);
     else setError(null);
     setLocalPort(freePort);
@@ -159,6 +165,18 @@ export function StatusSourceSwitcher({
       setError(null);
     } catch {
       setError(t("source.copyError"));
+    }
+  }
+
+  async function pauseActiveSource() {
+    setPausing(true);
+    setError(null);
+    try {
+      await onPause(activeSource.id);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : t("source.pauseError"));
+    } finally {
+      setPausing(false);
     }
   }
 
@@ -186,10 +204,16 @@ export function StatusSourceSwitcher({
         <span className={`is-${connectionState}`}><i />{connectionState === "loading" ? t("source.connecting") : connectionState === "error" ? t("source.notAvailable") : t("source.connected")}</span>
         <small>{activeSource.readOnly ? t("source.readOnly") : t("source.localInteractive")}</small>
         {activeSource.kind === "ssh_tunnel" ? (
-          <button aria-label={t("source.remove", { source: activeSource.label })} onClick={() => onRemove(activeSource.id)} title={t("source.removeCurrent")} type="button"><Trash2 size={12} /></button>
+          <span className="personal-status-source-actions">
+            {activeSource.hostAlias ? (
+              <button aria-label={t(pausing ? "source.pausing" : "source.pause", { source: activeSource.label })} disabled={pausing} onClick={() => void pauseActiveSource()} title={t("source.pauseCurrent")} type="button"><Pause size={12} /></button>
+            ) : null}
+            <button aria-label={t("source.remove", { source: activeSource.label })} onClick={() => onRemove(activeSource.id)} title={t("source.removeCurrent")} type="button"><Trash2 size={12} /></button>
+          </span>
         ) : null}
       </div>
       {errorMessage ? <p className="personal-status-source-error" role="alert">{errorMessage}</p> : null}
+      {!adding && error ? <p className="personal-status-source-error" role="alert">{error}</p> : null}
       {adding ? (
         <div className="personal-status-source-form">
           <header><strong>{t("source.addSsh")}</strong><button aria-label={t("source.closeForm")} onClick={closeForm} type="button"><X size={13} /></button></header>

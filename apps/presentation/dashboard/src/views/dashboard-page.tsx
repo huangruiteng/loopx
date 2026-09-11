@@ -136,9 +136,10 @@ function semanticProtectedActionPreview(
   };
 }
 import type { StatusSourceControl } from "../features/personal-workspace/status-source-switcher";
-import { ensureSshSource } from "../data/ssh-host-catalog";
+import { ensureSshSource, pauseSshSource } from "../data/ssh-host-catalog";
 import {
   addSshTunnelStatusSource,
+  bindConfiguredSshHostAliases,
   defaultLocalStatusSourceUrl,
   loadStatusSourceCatalog,
   localStatusSource,
@@ -2851,6 +2852,8 @@ export function DashboardPage() {
   const [statusSourceCatalog, setStatusSourceCatalog] = useState(() =>
     loadStatusSourceCatalog(window.localStorage, window.location.href)
   );
+  const statusSourceCatalogRef = useRef(statusSourceCatalog);
+  statusSourceCatalogRef.current = statusSourceCatalog;
   const [statusUrl, setStatusUrl] = useState(search.statusUrl);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -3038,7 +3041,7 @@ export function DashboardPage() {
     }
   }
 
-  function selectStatusSource(nextSource: StatusSource, options: { ensureTunnel?: boolean } = {}) {
+  function selectStatusSource(nextSource: StatusSource) {
     progressiveAbortRef.current?.abort();
     const selectionRevision = reserveStatusSourceSelection(
       statusRequestFenceRef.current,
@@ -3050,11 +3053,11 @@ export function DashboardPage() {
     setIsLoading(true);
     setLoadError(null);
     void (async () => {
-      if (options.ensureTunnel && nextSource.kind === "ssh_tunnel") {
+      if (nextSource.kind === "ssh_tunnel" && nextSource.hostAlias) {
         const port = new URL(nextSource.statusUrl, window.location.href).port;
         if (port) {
           try {
-            await ensureSshSource(nextSource.label, port);
+            await ensureSshSource(nextSource.hostAlias, port);
           } catch {
             // The tunnel may already exist; the status fetch reports the authoritative result.
           }
@@ -3066,6 +3069,7 @@ export function DashboardPage() {
   }
 
   function persistStatusSourceCatalog(nextCatalog: typeof statusSourceCatalog) {
+    statusSourceCatalogRef.current = nextCatalog;
     setStatusSourceCatalog(nextCatalog);
     try {
       saveStatusSourceCatalog(window.localStorage, nextCatalog);
@@ -3088,8 +3092,23 @@ export function DashboardPage() {
       const result = addSshTunnelStatusSource(statusSourceCatalog, input, window.location.href);
       if ("error" in result) return { error: result.error };
       persistStatusSourceCatalog(result.catalog);
-      selectStatusSource(result.source, { ensureTunnel: input.ensureTunnel });
+      selectStatusSource(result.source);
       return {};
+    },
+    onConfiguredHostsLoaded: (hostAliases) => {
+      const currentCatalog = statusSourceCatalogRef.current;
+      const nextCatalog = bindConfiguredSshHostAliases(currentCatalog, hostAliases);
+      if (nextCatalog !== currentCatalog) persistStatusSourceCatalog(nextCatalog);
+    },
+    onPause: async (sourceId) => {
+      const sourceToPause = statusSourceCatalog.sources.find((candidate) => candidate.id === sourceId);
+      if (!sourceToPause?.hostAlias) {
+        throw new Error("Only a configured LoopX-managed SSH source can be paused.");
+      }
+      const port = new URL(sourceToPause.statusUrl, window.location.href).port;
+      if (!port) throw new Error("The SSH source does not have a local tunnel port.");
+      await pauseSshSource(sourceToPause.hostAlias, port);
+      if (activeStatusSource.id === sourceId) selectStatusSource(localStatusSource);
     },
     onRemove: (sourceId) => {
       const nextCatalog = removeStatusSource(statusSourceCatalog, sourceId);
@@ -3099,7 +3118,7 @@ export function DashboardPage() {
     onSelect: (sourceId) => {
       const nextSource = statusSourceCatalog.sources.find((candidate) => candidate.id === sourceId);
       if (!nextSource) return;
-      selectStatusSource(nextSource, { ensureTunnel: nextSource.kind === "ssh_tunnel" });
+      selectStatusSource(nextSource);
     },
     sources: activeStatusSource.id === "temporary"
       ? [...statusSourceCatalog.sources, activeStatusSource]

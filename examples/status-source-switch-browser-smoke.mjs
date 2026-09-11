@@ -75,6 +75,7 @@ async function main() {
     const state = {
       ensureGates: new Map(),
       ensureStartedByHost: new Map(),
+      pauseWrites: [],
       statusGates: new Map(),
       statusRequestsByPort: new Map(),
       statusStartedByPort: new Map(),
@@ -90,14 +91,14 @@ async function main() {
       localStorage.setItem("loopx-status-source-catalog-v1", JSON.stringify({
         schemaVersion: 1,
         sources: [
-          { kind: "ssh_tunnel", label: "Remote A", statusUrl: "http://127.0.0.1:8876/status.json" },
-          { kind: "ssh_tunnel", label: "Remote B", statusUrl: "http://127.0.0.1:8976/status.json" },
+          { kind: "ssh_tunnel", label: "Remote-A", statusUrl: "http://127.0.0.1:8876/status.json" },
+          { kind: "ssh_tunnel", label: "Remote-B", statusUrl: "http://127.0.0.1:8976/status.json" },
         ],
       }));
     });
     await page.route(`http://127.0.0.1:${port}/ssh-hosts`, (route) => route.fulfill({
       contentType: "application/json",
-      json: { ok: true, schema_version: "ssh_host_catalog_v0", hosts: [] },
+      json: { ok: true, schema_version: "ssh_host_catalog_v0", hosts: [{ alias: "Remote-A" }, { alias: "Remote-B" }] },
       status: 200,
     }));
     await page.route(`http://127.0.0.1:${port}/api/ssh-source/ensure`, async (route) => {
@@ -107,7 +108,16 @@ async function main() {
       await state.ensureGates.get(host);
       await route.fulfill({
         contentType: "application/json",
-        json: { ok: true, remote_started: true, status_url: `http://127.0.0.1:${body.local_port}/status.json`, tunnel_required: true },
+        json: { managed_by_loopx: true, ok: true, remote_started: true, status_url: `http://127.0.0.1:${body.local_port}/status.json`, tunnel_required: true },
+        status: 200,
+      });
+    });
+    await page.route(`http://127.0.0.1:${port}/api/ssh-source/pause`, async (route) => {
+      const body = route.request().postDataJSON();
+      state.pauseWrites.push(body);
+      await route.fulfill({
+        contentType: "application/json",
+        json: { already_paused: false, ok: true, status_url: `http://127.0.0.1:${body.local_port}/status.json`, stopped: true },
         status: 200,
       });
     });
@@ -134,9 +144,9 @@ async function main() {
     const remoteAStatusStarted = deferred();
     state.statusGates.set("8876", remoteAStatusGate.promise);
     state.statusStartedByPort.set("8876", remoteAStatusStarted.resolve);
-    await selectSource(page, sourceSelect, "Remote A");
+    await selectSource(page, sourceSelect, "Remote-A");
     await remoteAStatusStarted.promise;
-    await selectSource(page, sourceSelect, "Remote B");
+    await selectSource(page, sourceSelect, "Remote-B");
     await page.getByText("Remote B Goal Only", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
     const remoteAResponse = page.waitForResponse(
       (response) => response.url().startsWith("http://127.0.0.1:8876/status.json"),
@@ -144,7 +154,7 @@ async function main() {
     remoteAStatusGate.resolve();
     await remoteAResponse;
     await page.evaluate(() => new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
-    if (await selectedSourceLabel(sourceSelect) !== "Remote B") throw new Error("A stale status response moved the source selector away from Remote B");
+    if (await selectedSourceLabel(sourceSelect) !== "Remote-B") throw new Error("A stale status response moved the source selector away from Remote B");
     if (await page.getByText("Remote A Goal Only", { exact: true }).count()) throw new Error("A stale Remote A payload replaced Remote B goals");
     if (!new URL(page.url()).searchParams.get("statusUrl")?.includes("8976")) throw new Error(`The route did not retain Remote B: ${page.url()}`);
 
@@ -152,9 +162,9 @@ async function main() {
     state.statusRequestsByPort.set("8876", 0);
     const remoteAEnsureGate = deferred();
     const remoteAEnsureStarted = deferred();
-    state.ensureGates.set("Remote A", remoteAEnsureGate.promise);
-    state.ensureStartedByHost.set("Remote A", remoteAEnsureStarted.resolve);
-    await selectSource(page, sourceSelect, "Remote A");
+    state.ensureGates.set("Remote-A", remoteAEnsureGate.promise);
+    state.ensureStartedByHost.set("Remote-A", remoteAEnsureStarted.resolve);
+    await selectSource(page, sourceSelect, "Remote-A");
     await remoteAEnsureStarted.promise;
     await selectSource(page, sourceSelect, "本机");
     await page.getByText("Local Goal Only", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
@@ -165,6 +175,15 @@ async function main() {
     if (await selectedSourceLabel(sourceSelect) !== "本机") throw new Error("A late SSH ensure completion overrode the newer local selection");
     if ((state.statusRequestsByPort.get("8876") ?? 0) !== 0) throw new Error("A superseded SSH selection still started its status request");
     if (await page.getByText("Remote A Goal Only", { exact: true }).count()) throw new Error("A superseded SSH selection replaced local goals");
+
+    await selectSource(page, sourceSelect, "Remote-B");
+    await page.getByText("Remote B Goal Only", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
+    await page.getByRole("button", { name: "暂停远端来源 Remote-B" }).click();
+    await page.getByText("Local Goal Only", { exact: true }).first().waitFor({ state: "visible", timeout: 10_000 });
+    if (await selectedSourceLabel(sourceSelect) !== "本机") throw new Error("Pausing an active SSH source did not return to the local control plane");
+    if (JSON.stringify(state.pauseWrites) !== JSON.stringify([{ host_alias: "Remote-B", local_port: 8976 }])) throw new Error(`Pause did not target the exact managed tunnel: ${JSON.stringify(state.pauseWrites)}`);
+    const persistedSources = JSON.parse(await page.evaluate(() => localStorage.getItem("loopx-status-source-catalog-v1"))).sources;
+    if (!persistedSources.some((source) => source.hostAlias === "Remote-B")) throw new Error("Pausing removed the reusable SSH source from the catalog");
     await page.screenshot({ path: resolve(outputDir, "local-after-races.png"), fullPage: false, animations: "disabled" });
     console.log(`status source switch browser smoke (${packaged ? "packaged" : "development"}): ok`);
   } finally {

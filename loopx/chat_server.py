@@ -34,7 +34,7 @@ from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, is_manager_channel,
     manager_workspace, manager_model_config,
 )
-from .chat_ssh_source_api import SSH_SOURCE_ENSURE_PATH, SshSourceRequestMixin
+from .chat_ssh_source_api import SshSourceRequestMixin
 from .chat_store import ChatSessionStore
 from .control_plane.status.ssh_host_catalog import (
     SSH_HOST_CATALOG_PATH,
@@ -1344,7 +1344,7 @@ class ChatRequestHandler(
             CHAT_LARK_APP_SETUPS_PATH: self._lark_setup_start,
             CHAT_LARK_CONNECTIONS_PATH: self._lark_connect,
             **self._configuration_post_routes(),
-            SSH_SOURCE_ENSURE_PATH: self._ssh_source_ensure,
+            **self._ssh_source_post_routes(),
         }
         add_goal_subagent_routes(post_dispatch, handler=self)
         if path in post_dispatch:
