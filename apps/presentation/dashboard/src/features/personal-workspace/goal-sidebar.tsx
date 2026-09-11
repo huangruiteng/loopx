@@ -22,6 +22,7 @@ export function GoalSidebar({
   goals,
   goalArchiveLoadState = { error: null, phase: "ready" },
   lifecycleBusyGoalIds,
+  goalLifecycleOperations,
   onRequestGoalCreate,
   onOpenSettings,
   onRetryGoalArchive,
@@ -34,6 +35,7 @@ export function GoalSidebar({
   goals: WorkspaceGoal[];
   goalArchiveLoadState?: WorkspaceGoalArchiveLoadState;
   lifecycleBusyGoalIds?: ReadonlySet<string>;
+  goalLifecycleOperations?: readonly ("stop" | "resume" | "delete")[];
   onRequestGoalCreate?: () => void;
   onOpenSettings?: () => void;
   onRetryGoalArchive?: () => void;
@@ -47,6 +49,10 @@ export function GoalSidebar({
   const ordering = useGoalOrder(goals.filter((goal) => goal.activationState !== "stopped"), statusSourceControl?.activeSource.statusUrl ?? "/status.json");
   const activeGoals = ordering.sorted;
   const stoppedGoals = goals.filter((goal) => goal.activationState === "stopped");
+  const lifecycleOperationEnabled = (operation: "stop" | "resume" | "delete") => (
+    Boolean(onRequestGoalLifecycle)
+    && (!goalLifecycleOperations || goalLifecycleOperations.includes(operation))
+  );
   const goalRow = (goal: WorkspaceGoal, stopped: boolean) => (
     <div className={`personal-goal-row${ordering.target?.id === goal.goalId ? ordering.target.after ? " is-drop-after" : " is-drop-before" : ""}`} key={goal.goalId} data-reorder-goal={stopped ? undefined : goal.goalId} data-load-error={goal.loadError}>
       <button
@@ -68,7 +74,7 @@ export function GoalSidebar({
         <button type="button" aria-label={t("sidebar.moveUp", { goal: goal.title })} disabled={activeGoals[0]?.goalId === goal.goalId} onClick={() => ordering.moveBy(goal.goalId, -1)}><ArrowUp aria-hidden="true" size={13} /></button>
         <button type="button" aria-label={t("sidebar.moveDown", { goal: goal.title })} disabled={activeGoals.at(-1)?.goalId === goal.goalId} onClick={() => ordering.moveBy(goal.goalId, 1)}><ArrowDown aria-hidden="true" size={13} /></button>
       </div> : null}
-      {onRequestGoalLifecycle ? (
+      {onRequestGoalLifecycle && lifecycleOperationEnabled(stopped ? "resume" : "stop") ? (
         <>
           <button
             aria-label={`${stopped ? t("sidebar.resume") : t("sidebar.stop")} ${goal.title}`}
@@ -83,7 +89,7 @@ export function GoalSidebar({
               ? <LoaderCircle size={13} />
               : stopped ? <RotateCcw size={13} /> : <Pause size={13} />}
           </button>
-          {stopped ? (
+          {stopped && lifecycleOperationEnabled("delete") ? (
             <button
               aria-label={`${t("sidebar.delete")} ${goal.title}`}
               className="personal-goal-lifecycle personal-goal-delete"

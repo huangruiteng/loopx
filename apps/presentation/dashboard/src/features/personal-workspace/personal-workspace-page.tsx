@@ -1094,6 +1094,25 @@ export function PersonalWorkspacePage({
         setActionFeedback(t("feedback.applying", { title: summaryByOperation.stop }));
         callbacks.onGoalActivationStateChange?.(goal.goalId, "stopped");
       }
+      if (callbacks.onExecuteGoalLifecycle) {
+        if (operation === "delete") {
+          throw new Error("The selected status source does not authorize Goal deletion.");
+        }
+        const result = await callbacks.onExecuteGoalLifecycle({
+          goalId: goal.goalId,
+          operation,
+          reason: reasonByOperation[operation],
+        });
+        if (!result.projectionVerified) {
+          throw new Error("Goal lifecycle projection did not verify.");
+        }
+        projectionOwnedByApply = true;
+        callbacks.onGoalActivationStateChange?.(goal.goalId, result.activationState);
+        setActionFeedback(t("feedback.completed", { title: summaryByOperation[operation] }));
+        if (operation === "stop") selectGoal(null);
+        await (callbacks.onReconcileStatus ?? callbacks.onRefresh)?.();
+        return;
+      }
       const proposal = await createPreview({
         actionKind: "goal.lifecycle",
         context: { kind: "goal_directory", goal_id: goal.goalId },
@@ -1932,9 +1951,12 @@ export function PersonalWorkspacePage({
           attentionCount={managerNeedsYouCount}
           goals={workspaceGoals}
           goalArchiveLoadState={goalArchiveLoadState}
+          goalLifecycleOperations={callbacks.onExecuteGoalLifecycle ? ["stop", "resume"] : undefined}
           lifecycleBusyGoalIds={lifecycleBusyGoalIds}
           onRequestGoalCreate={readOnly ? undefined : requestGoalCreate}
-          onRequestGoalLifecycle={readOnly ? undefined : (goal, operation) => void requestGoalLifecycle(goal, operation)}
+          onRequestGoalLifecycle={readOnly && !callbacks.onExecuteGoalLifecycle
+            ? undefined
+            : (goal, operation) => void requestGoalLifecycle(goal, operation)}
           onRetryGoalArchive={callbacks.onRetryGoalArchive || callbacks.onRefresh
             ? () => void (callbacks.onRetryGoalArchive ?? callbacks.onRefresh)?.()
             : undefined}

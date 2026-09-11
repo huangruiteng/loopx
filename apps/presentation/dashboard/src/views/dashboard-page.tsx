@@ -136,7 +136,7 @@ function semanticProtectedActionPreview(
   };
 }
 import type { StatusSourceControl } from "../features/personal-workspace/status-source-switcher";
-import { ensureSshSource, pauseSshSource } from "../data/ssh-host-catalog";
+import { applyRemoteGoalLifecycle, ensureSshSource } from "../data/ssh-host-catalog";
 import {
   addSshTunnelStatusSource,
   bindConfiguredSshHostAliases,
@@ -1354,6 +1354,9 @@ function PersonalGoalHome({
   toggleTheme: () => void;
 }) {
   const readOnly = statusSourceControl.activeSource.readOnly;
+  const remoteGoalLifecycleHost = statusSourceControl.activeSource.kind === "ssh_tunnel"
+    ? statusSourceControl.activeSource.hostAlias
+    : undefined;
   const { t } = useWorkspaceI18n();
   const [runtimeAgents, setRuntimeAgents] = useState<Array<{
     adapter_kind: string;
@@ -2714,6 +2717,20 @@ function PersonalGoalHome({
             };
           },
           } : {}),
+          ...(remoteGoalLifecycleHost ? {
+            onExecuteGoalLifecycle: async ({ goalId, operation, reason }) => {
+              const result = await applyRemoteGoalLifecycle(
+                remoteGoalLifecycleHost,
+                goalId,
+                operation,
+                reason,
+              );
+              return {
+                activationState: result.activation_state,
+                projectionVerified: result.projection_verified,
+              };
+            },
+          } : {}),
           onGoalActivationStateChange,
           onGoalDeleted,
           onReconcileStatus,
@@ -3041,7 +3058,7 @@ export function DashboardPage() {
     }
   }
 
-  function selectStatusSource(nextSource: StatusSource) {
+  function selectStatusSource(nextSource: StatusSource, options: { ensureTunnel?: boolean } = {}) {
     progressiveAbortRef.current?.abort();
     const selectionRevision = reserveStatusSourceSelection(
       statusRequestFenceRef.current,
@@ -3053,11 +3070,11 @@ export function DashboardPage() {
     setIsLoading(true);
     setLoadError(null);
     void (async () => {
-      if (nextSource.kind === "ssh_tunnel" && nextSource.hostAlias) {
+      if (options.ensureTunnel && nextSource.kind === "ssh_tunnel") {
         const port = new URL(nextSource.statusUrl, window.location.href).port;
         if (port) {
           try {
-            await ensureSshSource(nextSource.hostAlias, port);
+            await ensureSshSource(nextSource.label, port);
           } catch {
             // The tunnel may already exist; the status fetch reports the authoritative result.
           }
@@ -3092,23 +3109,13 @@ export function DashboardPage() {
       const result = addSshTunnelStatusSource(statusSourceCatalog, input, window.location.href);
       if ("error" in result) return { error: result.error };
       persistStatusSourceCatalog(result.catalog);
-      selectStatusSource(result.source);
+      selectStatusSource(result.source, { ensureTunnel: input.ensureTunnel });
       return {};
     },
     onConfiguredHostsLoaded: (hostAliases) => {
       const currentCatalog = statusSourceCatalogRef.current;
       const nextCatalog = bindConfiguredSshHostAliases(currentCatalog, hostAliases);
       if (nextCatalog !== currentCatalog) persistStatusSourceCatalog(nextCatalog);
-    },
-    onPause: async (sourceId) => {
-      const sourceToPause = statusSourceCatalog.sources.find((candidate) => candidate.id === sourceId);
-      if (!sourceToPause?.hostAlias) {
-        throw new Error("Only a configured LoopX-managed SSH source can be paused.");
-      }
-      const port = new URL(sourceToPause.statusUrl, window.location.href).port;
-      if (!port) throw new Error("The SSH source does not have a local tunnel port.");
-      await pauseSshSource(sourceToPause.hostAlias, port);
-      if (activeStatusSource.id === sourceId) selectStatusSource(localStatusSource);
     },
     onRemove: (sourceId) => {
       const nextCatalog = removeStatusSource(statusSourceCatalog, sourceId);
@@ -3118,7 +3125,7 @@ export function DashboardPage() {
     onSelect: (sourceId) => {
       const nextSource = statusSourceCatalog.sources.find((candidate) => candidate.id === sourceId);
       if (!nextSource) return;
-      selectStatusSource(nextSource);
+      selectStatusSource(nextSource, { ensureTunnel: nextSource.kind === "ssh_tunnel" });
     },
     sources: activeStatusSource.id === "temporary"
       ? [...statusSourceCatalog.sources, activeStatusSource]

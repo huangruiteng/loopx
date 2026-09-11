@@ -117,11 +117,7 @@ export function bindConfiguredSshHostAliases(
   );
   let changed = false;
   const sources = catalog.sources.map((source) => {
-    if (
-      source.kind !== "ssh_tunnel"
-      || source.hostAlias
-      || !configuredAliases.has(source.label)
-    ) {
+    if (source.kind !== "ssh_tunnel" || source.hostAlias || !configuredAliases.has(source.label)) {
       return source;
     }
     changed = true;

@@ -60,21 +60,13 @@ export function configuredSshTunnelDraft(hostAlias: string, localPortValue: stri
 
 
 export const defaultSshSourceEnsureUrl = "/api/ssh-source/ensure";
-export const defaultSshSourcePauseUrl = "/api/ssh-source/pause";
+export const defaultSshGoalLifecycleUrl = "/api/ssh-source/goal-lifecycle";
 
 export type EnsureSshSourceResult = {
   ok: true;
   status_url: string;
   tunnel_required: boolean;
-  managed_by_loopx: boolean;
   remote_started: boolean;
-};
-
-export type PauseSshSourceResult = {
-  already_paused: boolean;
-  ok: true;
-  status_url: string;
-  stopped: boolean;
 };
 
 export async function ensureSshSource(
@@ -98,23 +90,45 @@ export async function ensureSshSource(
   return payload;
 }
 
-export async function pauseSshSource(
+export type RemoteGoalLifecycleResult = {
+  activation_state: "active" | "stopped";
+  changed: boolean;
+  goal_id: string;
+  host_alias: string;
+  ok: true;
+  operation: "stop" | "resume";
+  projection_verified: true;
+  schema_version: "loopx_remote_goal_lifecycle_v1";
+};
+
+export async function applyRemoteGoalLifecycle(
   hostAlias: string,
-  localPort: string | number,
-): Promise<PauseSshSourceResult> {
-  const response = await fetch(defaultSshSourcePauseUrl, {
+  goalId: string,
+  operation: "stop" | "resume",
+  reason: string,
+  fetcher: typeof fetch = fetch,
+): Promise<RemoteGoalLifecycleResult> {
+  const response = await fetcher(defaultSshGoalLifecycleUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ host_alias: hostAlias, local_port: Number(localPort) }),
+    body: JSON.stringify({ goal_id: goalId, host_alias: hostAlias, operation, reason }),
   });
   const payload = (await response.json().catch(() => null)) as
-    | (PauseSshSourceResult & { error?: string })
+    | (RemoteGoalLifecycleResult & { error?: string })
     | null;
   if (!response.ok) {
-    throw new Error(payload?.error ?? "无法暂停 SSH 隧道来源。");
+    throw new Error(payload?.error ?? "无法更新远端 Goal 生命周期。");
   }
-  if (!payload?.ok) {
-    throw new Error("无法暂停 SSH 隧道来源。");
+  if (
+    !payload?.ok
+    || payload.schema_version !== "loopx_remote_goal_lifecycle_v1"
+    || payload.goal_id !== goalId
+    || payload.host_alias !== hostAlias
+    || payload.operation !== operation
+    || payload.activation_state !== (operation === "stop" ? "stopped" : "active")
+    || payload.projection_verified !== true
+  ) {
+    throw new Error("远端 Goal 生命周期回读未验证。");
   }
   return payload;
 }

@@ -52,6 +52,7 @@ equal(projectedStatusSourceForUrl(initial, "/api/status.json", baseHref).readOnl
 equal(projectedStatusSourceForUrl(initial, "http://127.0.0.1:9999/status.json", baseHref).readOnly, true, "an unregistered loopback port does not inherit local authority");
 
 const added = addSshTunnelStatusSource(initial, {
+  hostAlias: "remote-lab",
   label: "Remote lab",
   statusUrl: "http://localhost:8876/status.json",
 }, baseHref);
@@ -59,6 +60,7 @@ assert("catalog" in added, "a valid tunnel source is accepted");
 equal(added.source.kind, "ssh_tunnel", "the source keeps its typed provider kind");
 equal(added.source.readOnly, true, "a tunneled source cannot inherit local write authority");
 equal(added.source.statusUrl, "http://localhost:8876/status.json", "the tunnel URL is canonicalized");
+equal(added.source.hostAlias, "remote-lab", "a configured source retains its remote write routing identity");
 equal(statusSourceForUrl(added.catalog, added.source.statusUrl, baseHref)?.id, added.source.id, "URL lookup preserves source identity");
 
 const publicSource = addSshTunnelStatusSource(initial, {
@@ -74,14 +76,12 @@ const duplicate = addSshTunnelStatusSource(added.catalog, {
 assert("error" in duplicate, "one tunnel URL has one stable source identity");
 
 const secondTunnel = addSshTunnelStatusSource(added.catalog, {
-  hostAlias: "remote-build",
   label: "Remote build host",
   statusUrl: "http://127.0.0.1:8976/status.json",
 }, baseHref);
 assert("catalog" in secondTunnel, "a catalog accepts more than one named SSH tunnel");
 equal(secondTunnel.catalog.sources.length, 3, "local and multiple SSH sources coexist");
 assert(secondTunnel.source.id !== added.source.id, "each tunnel keeps an independent stable identity");
-equal(secondTunnel.source.hostAlias, "remote-build", "a configured tunnel retains its lifecycle owner after selection");
 
 const storage = new MemoryStorage();
 saveStatusSourceCatalog(storage, secondTunnel.catalog);
@@ -90,16 +90,17 @@ stored.sources[0].readOnly = false;
 storage.setItem(statusSourceCatalogStorageKey, JSON.stringify(stored));
 const restored = loadStatusSourceCatalog(storage, baseHref);
 equal(restored.sources[1].readOnly, true, "persisted input cannot downgrade a tunnel to writable");
-equal(restored.sources[2].hostAlias, "remote-build", "the configured Host alias survives catalog reload for pause and resume");
+equal(restored.sources[1].hostAlias, "remote-lab", "configured routing identity survives catalog reload");
 
-const legacyConfigured = addSshTunnelStatusSource(initial, {
-  label: "remote-lab",
-  statusUrl: "http://127.0.0.1:9076/status.json",
-}, baseHref);
-assert("catalog" in legacyConfigured, "a legacy configured source fixture is accepted");
-const boundLegacy = bindConfiguredSshHostAliases(legacyConfigured.catalog, ["remote-lab", "unrelated-host"]);
-equal(boundLegacy.sources[1].hostAlias, "remote-lab", "configured Host discovery upgrades a legacy source to the managed lifecycle");
-equal(bindConfiguredSshHostAliases(added.catalog, ["remote-lab"]).sources[1].hostAlias, undefined, "a custom display label is never guessed into a configured Host alias");
+const legacyStorage = new MemoryStorage();
+legacyStorage.setItem(statusSourceCatalogStorageKey, JSON.stringify({
+  schemaVersion: 1,
+  sources: [{ kind: "ssh_tunnel", label: "remote-lab", statusUrl: "http://127.0.0.1:9076/status.json" }],
+}));
+const migrated = bindConfiguredSshHostAliases(loadStatusSourceCatalog(legacyStorage, baseHref), ["remote-lab"]);
+equal(migrated.sources[1].hostAlias, "remote-lab", "an exact configured alias upgrades an older read-only source for remote Goal lifecycle");
+const unbound = bindConfiguredSshHostAliases(loadStatusSourceCatalog(legacyStorage, baseHref), ["other-host"]);
+equal(unbound.sources[1].hostAlias, undefined, "a display label never gains remote write authority without an exact configured alias");
 
 const withoutTunnel = removeStatusSource(restored, restored.sources[1].id);
 equal(withoutTunnel.sources.length, 2, "removing one tunnel preserves the other named source");
@@ -120,7 +121,6 @@ deepEqual(configuredHosts.hosts, [{ alias: "remote-lab" }, { alias: "jump_box" }
 const configuredDraft = configuredSshTunnelDraft("remote-lab", "8876");
 assert("command" in configuredDraft, "a configured Host and valid local port produce a tunnel draft");
 equal(configuredDraft.command, "ssh -N -L 8876:127.0.0.1:8766 remote-lab", "the UI generates one exact OpenSSH command");
-equal(configuredDraft.hostAlias, "remote-lab", "the configured draft carries the validated lifecycle identity");
 equal(configuredDraft.statusUrl, "http://127.0.0.1:8876/status.json", "the selected Host maps to the loopback-only status source");
 assert("error" in configuredSshTunnelDraft("remote-lab", "22"), "privileged local ports fail closed");
 

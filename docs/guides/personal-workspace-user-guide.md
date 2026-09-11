@@ -117,6 +117,11 @@ loopx goal-lifecycle --goal-id <goal-id> --operation resume --execute
 
 执行时，LoopX 会写入权威 source registry、同步全局 registry，并验证两端 readback；任一端未验证成功时不会宣称操作完成。
 
+切换到 SSH 状态来源后，只有来源与本机 OpenSSH 配置中的精确 Host alias 绑定时，
+侧边栏才显示停止/恢复按钮。操作通过 SSH 在目标主机执行同一个
+`goal-lifecycle` typed contract，并验证远端投影；不会回退修改本机同名 Goal。
+手工 URL 以及创建、删除、Todo、会话等其他远端操作继续保持只读。
+
 ---
 
 ## 🎯 4. Goal 深度工作区

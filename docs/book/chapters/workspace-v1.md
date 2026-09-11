@@ -25,8 +25,9 @@ Gate、事件、配置和回执仍由控制面事实源拥有。
 | Context / Settings | 当前 repository、Session、Goal Channel 和可选功能如何配置？ | 写入必须 preview、apply 并 read back |
 
 这不是一套新的事实源。浏览器不能绕开 Kernel 直接修改 registry、Todo、quota 或 Host
-automation；远端 SSH source 也保持只读。Stage 2C authority 与其他候选 Provider 仍按阶段提升，
-1.0 标签不代表所有 tenant 已经迁移。
+automation；远端 SSH 投影仍保持只读，唯一例外是通过精确匹配的已配置 Host alias
+路由 Goal 的 stop/resume；手工 URL 不会获得该权限。Stage 2C authority 与其他候选
+Provider 仍按阶段提升，1.0 标签不代表所有 tenant 已经迁移。
 
 发布事实以 [LoopX v1.0.0 release](https://github.com/huangruiteng/loopx/releases/tag/v1.0.0)
 为准；界面细节与恢复路径见

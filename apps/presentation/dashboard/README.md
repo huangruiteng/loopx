@@ -275,11 +275,13 @@ Wildcard hosts, negated patterns, `IdentityFile`, `ProxyCommand`, hostnames,
 credentials, and config paths are never projected to the browser. The manual
 loopback-URL path remains available for custom forwarding setups.
 
-The browser catalog stores only the selected alias label and loopback URL;
-LoopX does not store SSH credentials or open the tunnel. The active source
-reports its connection health. Local stays interactive, while every custom
-SSH-tunnel source is explicitly read-only even though its forwarded URL is
-loopback.
+The browser catalog stores the selected alias, label, and loopback URL; LoopX
+does not store SSH credentials or open the tunnel. The active source reports
+its connection health. Local stays interactive. A source bound to an exact
+configured alias may stop or resume a Goal through the same typed
+`goal-lifecycle` contract on that remote host. Manual URLs and all other
+remote controls stay read-only; remote lifecycle never falls back to a local
+Goal with the same id.
 
 The switcher intentionally has no synthetic **All** source. Independent status
 feeds do not yet share authority, identity, or deduplication semantics, so
