@@ -146,11 +146,20 @@ def normalized_lark_lines(value: Any) -> str:
     return "\n".join(lines)
 
 
-def normalize_lark_outbound_text(value: Any, *, limit: int = 1200) -> str:
+# Text request bodies: https://open.feishu.cn/document/server-docs/im-v1/message/reply
+# Use decimal KB conservatively; count UTF-8 JSON bytes, not display characters.
+LARK_TEXT_REQUEST_MAX_BYTES = 150_000
+
+
+class LarkOutboundTextError(ValueError):
+    """A local text-format failure before any provider write."""
+
+
+def normalize_lark_outbound_text(value: Any, *, limit: int | None = 1200) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     outside_code = FENCED_CODE_PATTERN.sub("", text)
     if r"\n" in outside_code:
-        raise ValueError(
+        raise LarkOutboundTextError(
             "Lark outbound text contains a literal backslash-n outside fenced code; "
             "pass real newlines"
         )
@@ -158,20 +167,26 @@ def normalize_lark_outbound_text(value: Any, *, limit: int = 1200) -> str:
     if "<at" in without_structured_mentions.lower() or "</at>" in (
         without_structured_mentions.lower()
     ):
-        raise ValueError(
+        raise LarkOutboundTextError(
             "Lark outbound text contains a malformed or unsupported <at> node"
         )
     if LITERAL_MENTION_PATTERN.search(without_structured_mentions):
-        raise ValueError(
+        raise LarkOutboundTextError(
             "Lark outbound notification contains a literal @ mention; resolve the "
             "member identity and use a structured <at ...> node"
         )
     normalized = normalized_lark_lines(text)
-    if len(normalized) > limit:
-        raise ValueError(
+    if limit is not None and len(normalized) > limit:
+        raise LarkOutboundTextError(
             f"Lark outbound text exceeds the {limit}-character delivery limit"
         )
     return normalized
+
+
+def validate_lark_text_request_size(body: Mapping[str, Any]) -> None:
+    size = len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if size > LARK_TEXT_REQUEST_MAX_BYTES:
+        raise LarkOutboundTextError("Lark text request exceeds the 150 KB provider limit")
 
 
 def lark_provider_preview_matches_outbound(

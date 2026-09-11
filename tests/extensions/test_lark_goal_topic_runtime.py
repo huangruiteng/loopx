@@ -1482,3 +1482,75 @@ def test_manager_terminal_failure_replies_once_before_ack(
     else:
         assert any(x["message_id"] == "om_incoming" for x in pending["items"])
         assert not result.get("source_acknowledged")
+
+
+@pytest.mark.parametrize("body", ["完整报告" * 400, "x" * 6001, "测" * 40000, "测" * 50000, r"private\nformat"])
+@pytest.mark.parametrize("reply_ok", [True, False])
+def test_manager_report_delivery_preserves_body_and_reports_format_failure(
+    tmp_path, monkeypatch, body, reply_ok,
+):
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+    from loopx.extensions.lark.inbox_reply import send_lark_inbox_message
+    from loopx.extensions.lark.outbound import LarkOutboundTextError
+
+    target_path, binding_path = tmp_path / "targets.json", tmp_path / "bindings.json"
+    _seed_legacy_topic(target_path, binding_path)
+    original_decide = runtime.decide_lark_topic_event
+
+    def manager_decision(**kw):
+        result = original_decide(**kw)
+        result["route"].update(
+            conversation_kind="manager", ingress_mode="session_queue",
+            event_id=kw["event"]["event_id"],
+            connector={"response_policy": "topic_reply"},
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", manager_decision)
+    monkeypatch.setattr(runtime, "ensure_lark_event_inbox_received_reaction",
+                        lambda **kw: {"ok": True, "status": "already_received"})
+    state, answered = {}, []
+    runner = _reply_runner(state)
+
+    def answer(route, text):
+        answered.append(text)
+        return {"response_text": body, "effect_receipt": runtime._session_turn_effect(route)}
+
+    def reply(args):
+        if not reply_ok and "+messages-reply" in args and "--dry-run" not in args:
+            return {"returncode": 1}
+        return runner(args)
+
+    kwargs = dict(
+        target_payload=read_goal_channel_targets(target_path),
+        binding_payloads={"goal-alpha": read_goal_channel_binding(binding_path)},
+        event={"event_id": "evt_incoming", "message_id": "om_incoming",
+               "chat_id": "oc_public_fixture", "root_id": "om_topic_alpha",
+               "create_time": "2026-08-14T21:00:00Z", "content": "@linkmacbot report",
+               "mentioned": True, "sender_type": "user"},
+        runtime_root=tmp_path / "runtime", answer=answer, reply_runner=reply,
+    )
+    result = runtime.process_lark_goal_topic_event(**kwargs)
+    valid = len(body.encode("utf-8")) < 150_000 and body != r"private\nformat"
+    if valid:
+        assert state["reply_text"] == body  # No truncation, including the last character.
+        assert result["ok"] is reply_ok
+    else:
+        assert body not in state["reply_text"]
+        assert "正文尚未送达" in state["reply_text"]
+        assert result["ok"] is False
+        if reply_ok:
+            assert result["reason"] == "reply_format_invalid"
+            assert result["failure_reply_verified"]
+    pending = inspect_lark_event_inbox(project=kwargs["runtime_root"],
+                                      config_path=Path(result["inbox_config_ref"]))
+    if reply_ok:
+        assert pending["items"] == []
+        assert runtime.process_lark_goal_topic_event(**kwargs)["status"] == "already_acknowledged"
+        assert len(answered) == 1
+    else:
+        assert any(x["message_id"] == "om_incoming" for x in pending["items"])
+    # Root notifications retain their existing compact limit.
+    with pytest.raises(LarkOutboundTextError):
+        send_lark_inbox_message(project=kwargs["runtime_root"],
+                               config_path=result["inbox_config_ref"], text="x" * 1201)

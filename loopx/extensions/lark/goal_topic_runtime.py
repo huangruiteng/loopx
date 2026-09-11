@@ -33,6 +33,7 @@ from .goal_channel_contracts import LarkTopicEventDecisionReason, bindings_for_g
 from .goal_channel_targets import goal_channel_target_for_name
 from .goal_topic_connections import decide_lark_topic_event
 from .inbox_reply import CommandRunner, reply_lark_event_inbox
+from .outbound import LarkOutboundTextError
 from .inbox_reactions import (
     _create_reaction, _delete_reaction, ensure_lark_event_inbox_received_reaction,
 )
@@ -1075,13 +1076,13 @@ def process_lark_goal_topic_event(
     connector = connector if isinstance(connector, Mapping) else None
     effect_receipt: Mapping[str, Any] | None = None
     if isinstance(answer_result, Mapping):
-        reply_text = str(answer_result.get("response_text") or "").strip()[:6000]
+        reply_text = str(answer_result.get("response_text") or "").strip()
         candidate_receipt = answer_result.get("effect_receipt")
         effect_receipt = (
             candidate_receipt if isinstance(candidate_receipt, Mapping) else None
         )
     else:
-        reply_text = str(answer_result or "").strip()[:6000]
+        reply_text = str(answer_result or "").strip()
     if not reply_text:
         return {
             "ok": False,
@@ -1103,14 +1104,31 @@ def process_lark_goal_topic_event(
                 "inbox_config_ref": config_ref,
                 "ack_decision": effect_decision,
             }
-    reply = reply_lark_event_inbox(
-        project=root,
-        config_path=config_path,
-        message_id=message_id,
-        text=reply_text,
-        execute=True,
-        runner=reply_runner,
-    )
+    try:
+        reply = reply_lark_event_inbox(
+            project=root,
+            config_path=config_path,
+            message_id=message_id,
+            text=reply_text,
+            execute=True,
+            runner=reply_runner,
+        )
+    except LarkOutboundTextError:
+        if route.get("conversation_kind") != "manager":
+            raise
+        # The persisted answer remains intact. A format failure is not a model
+        # failure, and must not strand the source or silently truncate its reply.
+        failure_code = "reply_format_invalid"
+        reply = reply_lark_event_inbox(
+            project=root,
+            config_path=config_path,
+            message_id=message_id,
+            text=("回答已生成并保存，但长度或格式不符合飞书发送要求，正文尚未送达。"
+                  "请在 LoopX 前端同一管家会话查看完整回答。"
+                  "管家不会自动重新运行这条请求。"),
+            execute=True,
+            runner=reply_runner,
+        )
     if not reply.get("ok"):
         return {
             "ok": False,
