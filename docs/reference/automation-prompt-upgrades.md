@@ -75,6 +75,12 @@ readback completes. Restart afterward. This adapter targets the observed local
 schema, **not an official stable Codex storage API**; no Windows/cloud support
 is claimed. Use the native API if the host changes its storage contract.
 
+A legacy TOML heartbeat label with a SQLite `cron` row is not enough to prove
+thread ownership. In particular, a missing database thread binding must not be
+filled from TOML by a prompt-only migration. Such records require App-mediated
+reconciliation first; the offline adapter reports that action explicitly and
+does not convert scheduler kind, infer a thread, or offer an executable upgrade.
+
 ## Recovery and rollback
 
 The fallback stores a private per-task journal before writing. SQLite commit

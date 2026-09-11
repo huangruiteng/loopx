@@ -396,8 +396,8 @@ def test_goal_hosts_enter_live_contract_without_a_mandatory_skill_detour(
     task_body = " ".join(payload["task_body"].split())
 
     assert "Use the current `interaction_contract`, not remembered commands" in task_body
-    assert "loopx-project" not in task_body
-    assert "loopx-self-repair" not in task_body
+    assert "loopx-project" in task_body
+    assert "loopx-self-repair" in task_body
     assert "Progress is not a new Goal boundary" in task_body
     assert "do not create a new host Goal merely to continue" in task_body
 

@@ -57,6 +57,35 @@ automation contract.
 
 ### Native Goal bootstrap and live execution instructions
 
+#### Static semantics retained across hosts
+
+Thinning removes duplicated recipes, not authority boundaries. The shared
+runtime body keeps repository rules, credential/private-material protection,
+explicit authorization for destructive Git/production actions, and exception
+routes (`loopx-project` for lifecycle/registry, `loopx-self-repair` for drift).
+These routes are conditional, not mandatory skill calls on every iteration.
+Ordinary Claude MCP iterations still use MCP; the CLI route is not a second
+accounting path.
+
+| Semantic | Owner after thinning |
+| --- | --- |
+| Privacy, repository rules, dangerous-action authority | Shared static safety rule; a trusted host is not blanket permission |
+| Lifecycle or projection repair | Conditional static repair route; repair does not bypass gates |
+| Selection, claims, vision replan, exact settlement identities/order | Current successful interaction contract, not saved command recipes |
+| Blocked path vs whole Goal | Gate only the affected path; continue independent admitted work; only terminal no-follow-up completes the Goal |
+| Git branch/worktree/PR policy | User and repository rules; no generic `No project branches` restriction |
+| Prompt authoring/maintenance advice | Documentation, not per-iteration executor instructions |
+
+For heartbeat shells, assign `LOOPX_TURN` in a separate statement before the
+guard, in the same shell invocation. A command-prefix assignment does not make
+the variable available to argument expansion in Bash/zsh. Reuse the same value
+on retries. Native Goal entry remains host-specific and does not inherit this
+heartbeat bootstrap.
+
+Thin's ceiling is 2,500 characters (previously 1,900), and compact's is 6,500
+(previously 6,200): the additional room covers shared safety and an executable
+Turn/guard block rather than omitting identities or static obligations.
+
 The automation lifecycle is the reference for shared execution, not a wrapper
 around native Goal behavior. Thin automation and Codex CLI/SSH, TraeX and Ark
 Managed Agent Goal bodies share quota dispatch: selection/re-entry, admitted work
@@ -343,11 +372,6 @@ Replace the placeholders before installing the automation:
 
 ```text
 Advance the goal described in <ACTIVE_GOAL_STATE_PATH>.
-
-Generic LoopX lifecycle. Keep project-specific branching out of the
-automation prompt. Put local policy in registry, active-state sections, adapter
-output, quota should-run.goal_boundary, or boundary rules; if a lifecycle rule
-is needed, update loopx heartbeat-prompt so all projects inherit it.
 
 Before spending delivery compute, first make the LoopX CLI reachable in
 this automation shell, then run the quota guard:
