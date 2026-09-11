@@ -2,6 +2,10 @@
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -44,6 +48,30 @@ def test_attempted_release_failure_is_not_converted_to_skip(monkeypatch, capsys)
 def test_release_timeout_must_be_positive():
     with pytest.raises(SystemExit):
         runner.main(["--timeout-seconds", "0"])
+
+
+def test_isolated_codex_profile_never_imports_operator_config_or_shell_secrets(monkeypatch, tmp_path):
+    for suffix, value in {"API_KEY": "synthetic-key", "MODEL": "fixture-model",
+                          "BASE_URL": "https://example.com/v1"}.items():
+        monkeypatch.setenv("LOOPX_CODEX_QUALIFICATION_" + suffix, value)
+    forbidden = ("ARK_API_KEY", "GH_TOKEN", "CUSTOM_AUTH", "SSH_AUTH_SOCK", "NODE_OPTIONS", "BASH_ENV")
+    for key in forbidden:
+        monkeypatch.setenv(key, "synthetic-unrelated-value")
+    env = runner.configure_codex(tmp_path, tmp_path / "bin/loopx")
+    assert all(key not in env for key in forbidden)
+    config = tomllib.loads((tmp_path / "codex/config.toml").read_text())
+    assert "synthetic-key" not in (tmp_path / "codex/config.toml").read_text()
+    assert config["model"] == "fixture-model"
+    policy = config["shell_environment_policy"]
+    assert policy["inherit"] == "none"
+    result = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                            env=policy["set"], capture_output=True, text=True, check=True)
+    actual = json.loads(result.stdout)
+    assert "LOOPX_CODEX_QUALIFICATION_API_KEY" not in actual
+    assert all(key not in actual for key in forbidden)
+    assert actual["HOME"] == str(tmp_path / "home")
+    assert env["CODEX_HOME"] == str(tmp_path / "codex")
+    assert os.environ["GH_TOKEN"] == "synthetic-unrelated-value"
 
 
 def test_synthetic_fixture_real_cli_projects_identity_reentry(tmp_path):

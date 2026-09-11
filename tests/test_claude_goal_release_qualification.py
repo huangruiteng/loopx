@@ -50,6 +50,22 @@ def test_provider_binding_does_not_inherit_another_anthropic_account(monkeypatch
     assert os.environ["ANTHROPIC_AUTH_TOKEN"] == "synthetic-other-provider-key"
 
 
+def test_child_environment_allowlist_drops_unrelated_secrets_and_operator_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("ARK_API_KEY", "synthetic-provider-key")
+    forbidden = ("GH_TOKEN", "DATABASE_URL", "CUSTOM_AUTH", "SSH_AUTH_SOCK",
+                 "AWS_SECRET_ACCESS_KEY", "NODE_OPTIONS", "BASH_ENV", "CODEX_HOME")
+    for key in forbidden:
+        monkeypatch.setenv(key, "synthetic-unrelated-value")
+    env = runner.host_environment(tmp_path, tmp_path / "bin/loopx")
+    # Execute a real child, not just an assertion on a builder's keys.
+    result = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                            env=env, capture_output=True, text=True, check=True)
+    actual = json.loads(result.stdout)
+    assert all(key not in actual for key in (*forbidden, "ARK_API_KEY"))
+    assert actual["HOME"] == str(tmp_path / "home")
+    assert actual["ANTHROPIC_API_KEY"] == "synthetic-provider-key"
+
+
 def test_claude_loop_uses_current_contract_not_segment_or_empty_list_stop():
     from loopx.claude_goal_mode.scripts.goalmode_cmd import loop_md_content
     from loopx.control_plane.heartbeat.rules import SCOPE_BOUNDED_WORK_RULE
@@ -115,8 +131,7 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
     params = StdioServerParameters(
         command=sys.executable,
         args=[str(REPO / "loopx/claude_goal_mode/mcp/loopx_mcp.py")],
-        cwd=str(project), env={**os.environ, "PYTHONPATH": str(REPO),
-                              "PATH": str(launcher.parent) + os.pathsep + os.environ["PATH"]},
+        cwd=str(project), env=runner.shared.host_environment(tmp_path, launcher),
     )
     async def exercise():
         async with stdio_client(params) as (read, write):

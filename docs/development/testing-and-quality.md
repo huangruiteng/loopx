@@ -749,24 +749,32 @@ score or evidence of universal model reliability.
 ```bash
 # No model invocation, no token cost; explicit skipped result, exit 0.
 python3 scripts/qualify-native-goal-release.py
-# Release operator opt-in only; uses the existing configured Codex model/auth.
+# Release operator opt-in only; explicit isolated API profile (Responses API).
+# Supply LOOPX_CODEX_QUALIFICATION_API_KEY securely in this process, plus:
+export LOOPX_CODEX_QUALIFICATION_MODEL='<selected-model>'
+export LOOPX_CODEX_QUALIFICATION_BASE_URL='https://example.com/v1'
 python3 scripts/qualify-native-goal-release.py --release-live
 ```
 
 Do not add the live command to default pytest, PR CI, per-diff canaries, or
 ordinary developer iteration. The deterministic runner-policy tests may run
 there; they never opt into real model execution. Missing CLI, native Goals or
-Codex authentication returns `skipped` and exit 0, not a claimed live pass.
+the explicit Codex API profile returns `skipped` and exit 0, not a claimed live pass.
 Once qualification is attempted, failed acceptance, incomplete settlement,
 blocked/unfinished Goals and deadline expiry fail with exit 1. The default
 deadline is 1,200 seconds; this is a wall-clock ceiling, not a token budget.
 
 仅 release 前显式开启，避免默认消耗开发者 token。CI/本机环境不支持时跳过且不阻塞，
-但保留 `skipped` 标记；真实执行后失败不能冒充环境跳过。复用当前 Codex 的模型与登录，
-不复制凭据或会话、不修改活跃 Goal/automation。任务、registry、runtime 与 Git worktree
+但保留 `skipped` 标记；真实执行后失败不能冒充环境跳过。使用操作者显式选择的 API
+模型、地址与密钥，不导入日常 Codex 配置、登录或会话，不修改活跃 Goal/automation。
+任务、registry、runtime 与 Git worktree
 在一次性目录内；沙箱允许该目录及本地 TS worker 所需的网络能力，
 这不是网络隔离，任务不授权外部操作。回归脚本不采集或上传原始对话/工具日志，
-公开结果仅包含状态、计数和错误类别；Codex 自身仍按当前 host 配置保存会话。
+公开结果仅包含状态、计数和错误类别；Codex 会话仅留在一次性隔离目录内。
+两个 runner 均从允许列表创建环境并隔离 HOME、配置和缓存；不透传其他 token、
+认证 socket、shell 启动变量或原始 ARK_API_KEY。Codex 工具 shell 从空环境注入必要
+运行变量，不继承 host API key。Claude host 仅接收所选 provider 的映射密钥；这不是
+对同用户进程或 Claude Bash 的凭据隔离沙箱，不能把真实业务秘密加入测试任务。
 
 ### Claude Code and release coverage / Claude Code 与发布覆盖
 
