@@ -155,6 +155,20 @@ the first viewport. Do not move the review gate into a PR comment, todo note, or
 final summary after the fact. It must happen before the public first-screen
 change is finalized.
 
+## Product Delivery Completeness
+
+For product changes, identify affected user entry points (frontend, Lark, CLI)
+while planning. Inspect existing settings and capability editors before calling
+a configuration change backend-only; include necessary companion work in the
+same delivery plan, reusing the existing configuration owner and projection.
+
+Before PR handoff, verify the affected user interaction, state readback and
+feedback, including the packaged frontend when shipped. State which entry
+points changed and the validation performed. If no frontend change is needed,
+give a concrete, verified reason; if companion work remains, label delivery
+partial and link it. These are agent-owned completion checks, not new approval
+gates.
+
 ## UI Design Standard
 
 Before changing or reproducing any LoopX UI, read and follow the repository-root
