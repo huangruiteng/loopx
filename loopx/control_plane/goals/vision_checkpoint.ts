@@ -19,7 +19,8 @@ export const VISION_CHECKPOINT_SCHEMA_VERSION = "vision_checkpoint_v0";
 const GOAL_VISION_REPLAN_SCHEMA_VERSION = "goal_vision_replan_contract_v0";
 const GOAL_PATH_DELTA_SCHEMA_VERSION = "goal_path_delta_v0";
 const GOAL_VISION_BUDGET_ERROR = "vision_budget_exceeded";
-const GOAL_VISION_TOTAL_LIMIT = 1_200;
+// Direction and evidence-linked path changes share one bounded packet.
+const GOAL_VISION_TOTAL_LIMIT = 1_800;
 const VISION_UNCHANGED_REASON_LIMIT = 240;
 const VISION_BUDGET_SUGGESTION_LIMIT = 96;
 
@@ -47,8 +48,8 @@ const GOAL_PATH_DELTA_OUTCOMES = [
   "wait",
 ] as const;
 const GOAL_PATH_DELTA_SCALAR_LIMITS = {
-  prior_assumption: 220,
-  observed_reality: 220,
+  prior_assumption: 320,
+  observed_reality: 320,
   reentry_condition: 180,
 } as const;
 const GOAL_PATH_DELTA_LIST_LIMITS = {

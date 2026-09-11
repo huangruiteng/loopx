@@ -91,6 +91,30 @@ test("prepare owns packet normalization, budgets, and path delta", () => {
   });
 });
 
+test("structured replans have a bounded 1800-character budget including path evidence", () => {
+  for (const character of ["x", "界"]) {
+    // Independent boundary oracle: 420 + 420 + 280 + 320 + 320 + 6 + 34.
+    const packet = {
+      vision_patch: {vision_summary: character.repeat(420), acceptance_summary: character.repeat(420),
+        role_scope: character.repeat(280)},
+      path_delta: {outcome: "replan", prior_assumption: character.repeat(320),
+        observed_reality: character.repeat(320), changed: [character.repeat(34)]},
+    };
+    const accepted = buildVisionCheckpoint(prepareRequest({agent_vision_packet: packet}));
+    const vision = accepted.agent_vision as Record<string, unknown>;
+    const budget = vision.vision_budget as Record<string, unknown>;
+    assert.equal(budget.total_usage, 1800);
+    assert.equal(budget.total_limit, 1800);
+    assert.equal((vision.path_delta as Record<string, unknown>).observed_reality, character.repeat(320));
+    assert.throws(() => buildVisionCheckpoint(prepareRequest({agent_vision_packet: {
+      ...packet, path_delta: {...packet.path_delta, observed_reality: character.repeat(321)},
+    }})), /path_delta.observed_reality uses 321 chars; limit is 320/);
+    assert.throws(() => buildVisionCheckpoint(prepareRequest({agent_vision_packet: {
+      ...packet, path_delta: {...packet.path_delta, changed: [character.repeat(35)]},
+    }})), /total_agent_vision uses 1801 chars; limit is 1800/);
+  }
+});
+
 test("prepare preserves v0 JSON-to-text compatibility", () => {
   const result = buildVisionCheckpoint(prepareRequest({
     agent_vision_packet: {

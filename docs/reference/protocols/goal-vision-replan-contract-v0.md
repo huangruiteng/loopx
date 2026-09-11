@@ -42,7 +42,19 @@ agent pane. Long reasoning belongs in evidence artifacts or design docs.
 | `replan_trigger_summary` | 240 | Why the latest replan is required. |
 | `dreaming_policy` | 240 | Whether advisory dreaming can propose a patch. |
 | `last_patch_summary` | 240 | What changed in the latest bounded vision patch. |
-| `total_agent_vision` | 1200 | Aggregate budget for one agent's active vision packet. |
+| `total_agent_vision` | 1800 | Aggregate budget for one agent's active vision packet, including path delta and fallback declarations. |
+
+The aggregate allowance was raised from 1,200 to 1,800 characters to accommodate
+direction, acceptance and evidence-linked replanning together. This is additional
+authoring headroom, not a target length or a larger quota-response budget. Summary
+field limits, list cardinalities and the 240-character unchanged reason remain
+unchanged; concise evidence references still replace long reports. Older packets
+remain valid. Older runtimes may reject newly admitted larger packets, so use an
+updated runtime for writes and preserve the original intent when correcting input.
+
+整包预算从 1,200 提升到 1,800 字符，让方向、验收与路径调整能够共同表达；
+这不是要求填满的长度，也不扩大 quota 输出预算。摘要字段、列表数量及
+240 字符的 unchanged reason 限制不变，旧数据继续可读，较大新包需使用新版运行时写入。
 
 Required write-path behavior:
 
@@ -124,8 +136,9 @@ public-safe evidence ids. The enclosing
 vision packet's `agent_id` records who made the comparison; `evidence_refs`
 point to evidence instead of copying long rationale or raw artifacts.
 
-The path delta shares the existing 1,200-character `total_agent_vision` budget.
-Scalar fields are bounded to 180-220 characters; keep/change/stop lists accept
+The path delta shares the 1,800-character `total_agent_vision` budget.
+`prior_assumption` and `observed_reality` each allow 320 characters (previously
+220); `reentry_condition` remains limited to 180. Keep/change/stop lists accept
 at most three 120-character items, unresolved questions at most two
 140-character items, and evidence refs at most four 140-character items. The
 write path rejects excess data instead of silently truncating it. This is a

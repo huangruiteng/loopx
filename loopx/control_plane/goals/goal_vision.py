@@ -26,8 +26,8 @@ GOAL_PATH_DELTA_OUTCOMES = frozenset(
     {"continue", "replan", "wait", "no_change", "ask_human", "stop"}
 )
 GOAL_PATH_DELTA_SCALAR_LIMITS: dict[str, int] = {
-    "prior_assumption": 220,
-    "observed_reality": 220,
+    "prior_assumption": 320,
+    "observed_reality": 320,
     "reentry_condition": 180,
 }
 GOAL_PATH_DELTA_LIST_LIMITS: dict[str, tuple[int, int]] = {
