@@ -1012,9 +1012,11 @@ Qualify an **embedded transactional store, with SQLite as the first candidate**,
 behind the existing TypeScript `AuthorityStore` owner. A local goal must not
 require a PostgreSQL service. The file-v0 provider remains a conformance/import
 baseline; no general-purpose ten-day promotion may rely on its full-history
-rewrite. SQLite is a design preference pending durability, dependency/package,
-Windows/macOS/Linux and supported Node-version qualification, not a new shipped
-provider id or default flip. A segmented file log remains the comparison option;
+rewrite. [PR #4121](https://github.com/huangruiteng/loopx/pull/4121) supplies an
+opt-in SQLite conformance candidate behind that owner; it does not by itself
+qualify long-goal durability or change the default. Dependency/package,
+Windows/macOS/Linux and supported Node-profile evidence remain explicit gates.
+A segmented file log remains the comparison option;
 PostgreSQL remains the independent shared-service path.
 
 A database swap alone is insufficient. The complete slice must:
@@ -1110,6 +1112,53 @@ not qualify wall-clock endurance; publishing this RFC starts no soak or monitor.
 A code PR can land while soak evidence remains pending, with promotion held.
 Promotion requires both exits, explicit import/fencing/export rehearsal and
 maintainer review. Publish compact reproducible evidence, not raw private logs.
+
+#### SQLite-for-file transition milestones (proposal)
+
+The proposed destination is SQLite as the normal primary store for **qualified
+local Goals**, not removal of every file artifact or a replacement for PostgreSQL
+shared-service authority. Keep file-v0 as an inspectable reference/import/export
+option. Markdown remains a derived display after canonical promotion. Delivery
+is gated by evidence below, not by calendar dates or this PR's merge status.
+
+| Milestone | Required evidence / exit | Default and authority boundary |
+| --- | --- | --- |
+| Candidate conformance | Review #4121's atomic commits, original receipts, cursor/digest integrity, typed provider-open failures, real CLI and OS/runtime tests. | Candidate only. File remains default; no live migration or promotion. |
+| Bounded local profile (L) | Meet this section's unchanged workload/budget matrix, including 64 KiB matched 10k/100k runs, 1 MiB and 300k headroom, cold startup, lock wait, RSS and logical write growth. Qualify bounded checkpoints/deltas and receipt lookup while preserving exact historical scans. | No default flip. Keep integrity checks; if their cost grows beyond the profile, fix the design or narrow the explicitly supported profile. |
+| Fenced migration and recovery (I/F prerequisites) | On disposable Goals, prove file-to-SQLite import, exact receipt/replay equivalence, consumer cursor/outbox preservation, crash/disk-full recovery and reverse export/rollback. Include the required independent legacy/file/PostgreSQL read-only rehearsal where shared routing or projections change. | Tooling and migration manifest must be reviewed first. Today's empty-goal selector is not an existing-goal migration API. Never test on an active user's Goal. |
+| Elapsed qualification and opt-in canary | Complete an actual >=10-day synthetic soak, including the specified restart, sleep, day-1 retry and 24 h consumer-lag cases. Then request separate authorization for a small opt-in operator canary with recorded stop/rollback criteria. | All C/I and selected-provider holds still apply. Evidence from accelerated volume cannot replace elapsed time; a canary does not authorize a general default. |
+| New-Goal default decision (F) | Maintainers accept the qualified profile and canary results, operational diagnostics, backup/restore procedure, release instructions and default-disable path. Ship the default change in a separate disclosed release change. | Apply only to newly created eligible local Goals. Existing explicit file selections remain pinned. Unsupported runtimes/filesystems require an explicit supported choice; no silent backend switch on open failure. |
+| Existing-Goal migration and file retirement | Migrate opt-in cohorts using the reviewed fenced workflow; reconcile receipts, history, projections and rollback after each cohort. Inventory the last file-primary callers and compatibility windows before removing any path. | Each Goal needs explicit migration authority. Retire file as the ordinary primary only after that evidence; retain reference/import/export support until its own callers and retention duties end. |
+
+**Current evidence position.** #4121 is the first milestone, pending maintainer
+acceptance; it is not completion of lane L. Its head pointer is bounded and
+operation/cursor lookups are indexed, but it retains full historical projections
+and counts a covering index for continuity. That count grows with history;
+current/accessed-row digests are checked, not every historical payload per read.
+The published fixed-4-KiB microbenchmark lacks the 64-KiB matched profile, p99,
+RSS, logical-WAL-write, recovery and elapsed-soak evidence required above. It
+must not be reported as meeting the <=2 history-growth ratio or the ten-day
+target. Node 22.14 is the current SQLite qualification runtime; preserve separate
+file-backed minimum-Node coverage until the supported profile changes explicitly.
+
+**Migration decision points.** Before the first existing-Goal cutover, freeze
+one exact source lineage/revision under the authority writer fence, import a
+complete authoritative snapshot and retained proof, and independently compare
+original receipt fields, operation/digest conflicts and ordered scans. Provider
+revision tokens are opaque: any required translation belongs in a versioned
+migration manifest, never a reinterpretation of old receipts. Bind the target
+incarnation and durably publish the selected-provider change only after
+validation and consumer reconciliation. Exactly one provider may accept writes;
+keep the source fenced as rollback evidence, not as an active dual writer.
+
+Before the selector switch, abort leaves the source authoritative and discards
+only the unpromoted candidate through reviewed tooling. After target commits,
+rollback must fence the target and export/reconcile its newer committed proof
+before resuming any source writer. Deleting the selector, restoring an old file
+snapshot, or enabling fallback is not rollback. Missing proof, wrong incarnation,
+failed digest/lineage checks, unexplained parity differences or breached recovery
+budgets stop the cohort and hold further default expansion. This proposal creates
+no migration command, starts no soak, and grants no live cutover authority.
 
 ## 8. Local Mode Stays the Default; Shared Mode Is an Explicit Migration
 
