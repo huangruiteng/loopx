@@ -9,6 +9,7 @@ from uuid import uuid4
 from ...agent_registry import registered_agent_ids_from_registry
 from ...state_refresh import now_local
 from ..coordination.local_authority import (
+    LOCAL_AUTHORITY_SOURCES,
     LocalCoordinationAuthorityUnavailable,
     read_canonical_todos_if_promoted,
 )
@@ -96,7 +97,7 @@ def create_canonical_todo_if_promoted(
     )
     if not isinstance(result, dict) or result.get("status") not in {
         "applied", "recovered", "replayed", "no_change", "planned",
-    } or result.get("source_authority") != "file_v0" or (
+    } or result.get("source_authority") not in LOCAL_AUTHORITY_SOURCES or (
         result.get("decision_read_from_provider") is not True
         or result.get("legacy_fallback_used") is not False
     ):

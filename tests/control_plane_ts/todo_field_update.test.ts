@@ -46,7 +46,10 @@ test("resume generation belongs only to the monitor condition", () => {
     assert.equal(updates.resume_when, condition);
     assert.equal(updates.resume_monitor_generation, generation);
   }
-  assert.throws(() => plan({resume_when: "free text"}), /unsupported Todo resume/);
+  assert.throws(
+    () => plan({resume_when: "free text"}),
+    /supported conditions are:.*todo_done:.*monitor_changed:.*pr_merged:.*capacity_available:/,
+  );
   assert.throws(() => plan({resume_when: "todo_done:todo_dependency", clear_resume_when: true}), /not both/);
   assert.throws(() => plan({status: "deferred", clear_resume_when: true}), /cannot clear/);
 });

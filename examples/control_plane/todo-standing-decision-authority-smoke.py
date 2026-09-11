@@ -23,8 +23,10 @@ from loopx.control_plane.todos.completed_archive import (  # noqa: E402
 )
 from loopx.control_plane.todos.decision_scope import (  # noqa: E402
     build_required_decision_scope_consistency,
-    build_standing_decision_authority,
     standing_decision_authority_for_agent,
+)
+from loopx.control_plane.todos.standing_decision import (  # noqa: E402
+    build_standing_decision_authority,
 )
 from loopx.quota import build_quota_should_run  # noqa: E402
 

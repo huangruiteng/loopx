@@ -5,7 +5,7 @@ import pytest
 import hashlib
 import json
 
-from canonical_authority_fixture import initialize_canonical_authority
+from canonical_authority_fixture import initialize_canonical_authority, isolate_sqlite_runtime
 from test_monitor_followthrough_contract import _write_fixture, _add_monitor, GOAL_ID, AGENT_ID
 from loopx.control_plane.coordination.runtime_shadow import build_todo_runtime_shadow_projection
 from loopx.control_plane.coordination.local_authority import read_canonical_todos_if_promoted
@@ -14,7 +14,7 @@ from loopx.control_plane.testing.canary_harness import run_json_cli
 from loopx.todos import list_goal_todos
 
 
-def _canonical(tmp_path, native=False):
+def _canonical(tmp_path, native=False, provider="file"):
     registry, runtime, state = _write_fixture(tmp_path)
     monitor = _add_monitor(registry, text="Observe a public target", target_key="public-watch",
         next_due_at="2000-01-01T00:00:00Z")
@@ -29,13 +29,15 @@ def _canonical(tmp_path, native=False):
         projection["todo_read_model"] = {"schema_version": "loopx_todo_domain_read_record_v0",
             "todo_count": len(records), "records_sha256": hashlib.sha256(canonical_bytes(records)).hexdigest(),
             "contract_fields": list(TODO_DOMAIN_RECORD_FIELDS)}
-    initialize_canonical_authority(runtime, GOAL_ID, projection, state_path=state)
+    initialize_canonical_authority(runtime, GOAL_ID, projection, state_path=state, provider=provider)
     return registry, runtime, state, monitor
 
 
+@pytest.mark.parametrize("provider", ["file", "sqlite"])
 @pytest.mark.parametrize("native", [False, True])
-def test_public_cli_native_monitor_settles_with_independent_successor(tmp_path, native):
-    registry, runtime, state, monitor = _canonical(tmp_path, native=native)
+def test_public_cli_native_monitor_settles_with_independent_successor(tmp_path, monkeypatch, native, provider):
+    isolate_sqlite_runtime(tmp_path, monkeypatch)
+    registry, runtime, state, monitor = _canonical(tmp_path, native=native, provider=provider)
     # No Markdown business source survives cutover. The existing renderer may
     # recreate its Todo-only view, but neither preflight nor commit requires it.
     state.unlink()
@@ -52,12 +54,15 @@ def test_public_cli_native_monitor_settles_with_independent_successor(tmp_path, 
     assert successor["unblocks_todo_id"] == monitor["todo_id"]
     assert successor["continuation_policy"] == "independent_handoff"
     readback = read_canonical_todos_if_promoted(runtime_root=runtime, goal_id=GOAL_ID)
+    assert readback["source_authority"] == ("sqlite_v0" if provider == "sqlite" else "file_v0")
     assert len(readback["todos"]) == 2
     assert state.exists()
 
 
-def test_native_monitor_retry_and_projection_failure_do_not_repeat_business(tmp_path, monkeypatch):
-    registry, runtime, state, monitor = _canonical(tmp_path)
+@pytest.mark.parametrize("provider", ["file", "sqlite"])
+def test_native_monitor_retry_and_projection_failure_do_not_repeat_business(tmp_path, monkeypatch, provider):
+    isolate_sqlite_runtime(tmp_path, monkeypatch)
+    registry, runtime, state, monitor = _canonical(tmp_path, provider=provider)
     import loopx.control_plane.todos.provider_projection as delivery
 
     def unavailable(**kwargs):
@@ -71,6 +76,7 @@ def test_native_monitor_retry_and_projection_failure_do_not_repeat_business(tmp_
         next_agent_todo="Validate observed change", next_action_kind="validate")
     first = write_monitor_poll_todo_state(**args)
     repeated = write_monitor_poll_todo_state(**args)
+    assert first["source_authority"] == ("sqlite_v0" if provider == "sqlite" else "file_v0")
     assert first["projection_delivery"] == "pending"
     assert repeated["provider_replayed"] is True
     assert repeated["next_todos"] == first["next_todos"]

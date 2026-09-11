@@ -322,7 +322,7 @@ def main() -> int:
         choice_run = subprocess.run(
             shlex.split(selected_choice["activation_input_command"]),
             cwd=REPO_ROOT,
-            env={**os.environ, "HOME": str(home)},
+            env={**os.environ, "HOME": str(home), "LOOPX_PYTHON": sys.executable},
             check=True,
             text=True,
             capture_output=True,
@@ -425,7 +425,7 @@ def main() -> int:
         app_ssh_prompt_run = subprocess.run(
             shlex.split(app_ssh_activation["activation_input_command"]),
             cwd=REPO_ROOT,
-            env={**os.environ, "HOME": str(home)},
+            env={**os.environ, "HOME": str(home), "LOOPX_PYTHON": sys.executable},
             check=True,
             text=True,
             capture_output=True,
@@ -477,7 +477,7 @@ def main() -> int:
         app_ssh_quota_run = subprocess.run(
             app_ssh_quota_argv,
             cwd=project,
-            env={**os.environ, "HOME": str(home)},
+            env={**os.environ, "HOME": str(home), "LOOPX_PYTHON": sys.executable},
             check=True,
             text=True,
             capture_output=True,
@@ -504,7 +504,7 @@ def main() -> int:
                 cli_onboarding["host_loop_activation"]["activation_input_command"]
             ),
             cwd=REPO_ROOT,
-            env={**os.environ, "HOME": str(home)},
+            env={**os.environ, "HOME": str(home), "LOOPX_PYTHON": sys.executable},
             check=True,
             text=True,
             capture_output=True,

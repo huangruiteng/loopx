@@ -84,6 +84,14 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Set up, inspect, sync, or notify the provider channel bound to one goal.",
             },
             {
+                "command": "loopx goal-portfolio --help",
+                "purpose": "Read bounded, source-covered evidence across explicitly selected Goals.",
+            },
+            {
+                "command": "loopx manager-inbox --help",
+                "purpose": "Read source-bound Manager context and record the receiving Agent's decision.",
+            },
+            {
                 "command": "loopx goal-lifecycle --help",
                 "purpose": "Preview, stop, or resume a Goal without deleting its history, todos, or evidence.",
             },
@@ -295,6 +303,7 @@ COMMAND_GROUPS: list[dict[str, object]] = [
 MANPAGE_COMMAND_HELP_ONLY = frozenset(
     {
         "archive-runtime",
+        "automation-prompts",
         "authority-shadow",
         "backup-state",
         "capability",

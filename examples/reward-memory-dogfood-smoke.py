@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import os
 import sys
 import json
 import subprocess
@@ -582,6 +583,7 @@ def main() -> None:
             check=True,
             capture_output=True,
             text=True,
+            env={**os.environ, "LOOPX_PYTHON": sys.executable},
         )
         cli_packet = json.loads(completed.stdout)
         assert cli_packet["status"] == "ready_for_bounded_issue_fix_pilot"
@@ -631,6 +633,7 @@ def main() -> None:
             check=True,
             capture_output=True,
             text=True,
+            env={**os.environ, "LOOPX_PYTHON": sys.executable},
         )
         control_packet = json.loads(completed.stdout)
         assert control_packet["status"] == "control_ready"

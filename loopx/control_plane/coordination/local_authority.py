@@ -34,6 +34,9 @@ LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA = (
 LOCAL_COORDINATION_TODO_CLAIM_METHOD = "coordination.local_authority.todo_claim"
 
 
+LOCAL_AUTHORITY_SOURCES = ("file_v0", "sqlite_v0")
+
+
 class LocalCoordinationAuthorityUnavailable(RuntimeError):
     """Canonical coordination state cannot safely answer a post-cutover read."""
 
@@ -154,7 +157,7 @@ def claim_canonical_todo_if_promoted(
         )
     if (
         payload.get("status") not in accepted
-        or payload.get("source_authority") != "file_v0"
+        or payload.get("source_authority") not in LOCAL_AUTHORITY_SOURCES
         or payload.get("decision_read_from_provider") is not True
         or payload.get("legacy_fallback_used") is not False
     ):
@@ -210,7 +213,7 @@ def read_canonical_todos_if_promoted(
     todo_read_model = payload.get("todo_read_model")
     if (
         payload.get("status") != "loaded"
-        or payload.get("source_authority") != "file_v0"
+        or payload.get("source_authority") not in LOCAL_AUTHORITY_SOURCES
         or payload.get("decision_read_from_provider") is not True
         or payload.get("legacy_fallback_used") is not False
         or not isinstance(todos, list)

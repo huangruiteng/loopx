@@ -717,7 +717,9 @@ def test_skill_slash_fallback_contract() -> None:
     assert "pull_requests[review_action_kind!=null].review_template" in pr_review_skill_text
     assert "pull_requests[review_action_kind!=null].evidence_commands" in pr_review_skill_text
     assert "Do not pipe the only copy through `jq`" in pr_review_skill_text
-    assert "review_groups" in pr_review_skill_text
+    assert "`review_groups`" in pr_review_skill_text
+    assert "ranked actionable `review_sequence`" in pr_review_skill_text
+    assert "must not appear in `review_sequence`" in pr_review_skill_text
     assert "The five sections are output structure, while the execution contract is the evidence authority" in pr_review_normalized
 
 

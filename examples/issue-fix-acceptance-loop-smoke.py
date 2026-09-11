@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -45,6 +47,7 @@ def _run_caller_repo_json_command(
     *,
     issue_branch: str = "codex/issue-123-public-metadata-fixture",
     expect_success: bool = True,
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     result = subprocess.run(
         [
@@ -74,6 +77,7 @@ def _run_caller_repo_json_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=expect_success,
+        env=env,
     )
     if not expect_success and result.returncode == 0:
         raise AssertionError("caller repo branch mode unexpectedly succeeded")
@@ -346,18 +350,30 @@ def main() -> int:
         _run_git(repo_path, ["commit", "-m", "Prepare a later base revision"])
         later_revision = _git_output(repo_path, ["rev-parse", "HEAD"])
         _run_git(repo_path, ["checkout", "-b", "caller-start", "main"])
-        hook = repo_path / ".git" / "hooks" / "post-checkout"
-        hook.write_text(
+        real_git = shutil.which("git")
+        assert real_git is not None
+        shim_dir = fixture_root / "git-shim"
+        shim_dir.mkdir()
+        git_shim = shim_dir / "git"
+        git_shim.write_text(
             "#!/bin/sh\n"
-            f"git update-ref refs/heads/main {later_revision}\n",
+            f"{shlex.quote(real_git)} \"$@\"\n"
+            "status=$?\n"
+            "if [ \"$status\" -eq 0 ] && [ \"$1\" = checkout ] && "
+            "[ \"$2\" = -b ] && [ \"$3\" = codex/issue-123-pinned-base ]; then\n"
+            f"  {shlex.quote(real_git)} update-ref refs/heads/main {later_revision}\n"
+            "fi\n"
+            "exit \"$status\"\n",
             encoding="utf-8",
         )
-        hook.chmod(0o755)
-        _run_git(repo_path, ["config", "core.hooksPath", ".git/hooks"])
-
+        git_shim.chmod(0o755)
         pinned_payload = _run_caller_repo_json_command(
             repo_path,
             issue_branch="codex/issue-123-pinned-base",
+            env={
+                **os.environ,
+                "PATH": str(shim_dir) + os.pathsep + os.environ.get("PATH", ""),
+            },
         )
         pinned_branch = pinned_payload["caller_repo_branch"]
         assert pinned_branch["base_snapshot"]["base_revision"] == approved_revision

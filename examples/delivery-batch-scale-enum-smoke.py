@@ -25,8 +25,10 @@ from loopx.control_plane.work_items.delivery_batch_scale import (  # noqa: E402
     normalize_delivery_batch_scale,
     require_delivery_batch_scale,
 )
+from loopx.control_plane.work_items.delivery_history import (  # noqa: E402
+    project_delivery_history,
+)
 from loopx.state_refresh import refresh_state_run  # noqa: E402
-from loopx.status import delivery_batch_scale_for_run  # noqa: E402
 
 
 GOAL_ID = "delivery-batch-scale-enum-fixture"
@@ -205,9 +207,14 @@ def assert_refresh_state_enforces_enum(registry_path: Path) -> None:
     assert alias_payload["delivery_batch_scale"] == DeliveryBatchScale.SINGLE_SURFACE.value, alias_payload
 
 
-def assert_status_uses_enum_not_raw_value() -> None:
+def projected_delivery_batch_scale(run: dict[str, object]) -> str:
+    projection = project_delivery_history([run])
+    return str(projection["runs"][0]["delivery_batch_scale"])
+
+
+def assert_delivery_history_uses_enum_not_raw_value() -> None:
     assert (
-        delivery_batch_scale_for_run(
+        projected_delivery_batch_scale(
             {
                 "classification": "runner_batch_fixture",
                 "delivery_batch_scale": DeliveryBatchScale.MULTI_SURFACE.value,
@@ -216,7 +223,7 @@ def assert_status_uses_enum_not_raw_value() -> None:
         == DeliveryBatchScale.MULTI_SURFACE.value
     )
     assert (
-        delivery_batch_scale_for_run(
+        projected_delivery_batch_scale(
             {
                 "classification": "runner_batch_fixture",
                 "delivery_batch_scale": "batch_plus_raw_logs",
@@ -225,11 +232,11 @@ def assert_status_uses_enum_not_raw_value() -> None:
         == UNKNOWN_DELIVERY_BATCH_SCALE
     )
     assert (
-        delivery_batch_scale_for_run({"classification": "owner_handoff_consumer_test"})
+        projected_delivery_batch_scale({"classification": "owner_handoff_consumer_test"})
         == UNKNOWN_DELIVERY_BATCH_SCALE
     )
     assert (
-        delivery_batch_scale_for_run(
+        projected_delivery_batch_scale(
             {
                 "classification": "owner_handoff_consumer_test",
                 "delivery_batch_scale": DeliveryBatchScale.TEST_ONLY.value,
@@ -244,7 +251,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="delivery-batch-scale-enum-") as tmp:
         registry_path, _runtime = write_fixture(Path(tmp))
         assert_refresh_state_enforces_enum(registry_path)
-    assert_status_uses_enum_not_raw_value()
+    assert_delivery_history_uses_enum_not_raw_value()
     print("delivery batch scale enum smoke ok")
     return 0
 

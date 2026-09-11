@@ -13,6 +13,7 @@ from uuid import uuid4
 from ...agent_registry import registered_agent_ids_from_registry
 from ...state_refresh import now_local
 from ..coordination.local_authority import (
+    LOCAL_AUTHORITY_SOURCES,
     LocalCoordinationAuthorityUnavailable,
     local_authority_is_promoted,
 )
@@ -64,7 +65,7 @@ def update_canonical_todo_if_promoted(
             raise ValueError("Todo does not have the requested role")
     if isinstance(result, dict) and (
         result.get("status") == "missing"
-        and result.get("source_authority") == "file_v0"
+        and result.get("source_authority") in LOCAL_AUTHORITY_SOURCES
         and result.get("decision_read_from_provider") is True
         and result.get("legacy_fallback_used") is False
     ):
@@ -83,7 +84,7 @@ def update_canonical_todo_if_promoted(
         )
     if not isinstance(result, dict) or result.get("status") not in {
         "applied", "recovered", "replayed", "no_change", "planned",
-    } or result.get("source_authority") != "file_v0" or (
+    } or result.get("source_authority") not in LOCAL_AUTHORITY_SOURCES or (
         result.get("decision_read_from_provider") is not True
         or result.get("legacy_fallback_used") is not False
     ):

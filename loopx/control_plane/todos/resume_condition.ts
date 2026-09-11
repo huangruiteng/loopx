@@ -34,6 +34,11 @@ export const TODO_RESUME_KINDS = [
   "monitor_changed",
 ] as const;
 
+export const UNSUPPORTED_TODO_RESUME_CONDITION_MESSAGE =
+  "unsupported Todo resume condition; supported conditions are: " +
+  "todo_done:<todo_id>, monitor_changed:<monitor_todo_id>, " +
+  "pr_merged:[owner/repo]#<number>, or capacity_available:<capability>";
+
 type TodoResumeKind = typeof TODO_RESUME_KINDS[number];
 
 const TODO_ID_PATTERN = /^todo_[a-z\d_-]{3,64}$/;

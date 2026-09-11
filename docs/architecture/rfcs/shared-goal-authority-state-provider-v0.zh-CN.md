@@ -798,9 +798,10 @@ projection 后的累计重写。这是 payload 解析估算，不是 SSD 物理�
 
 在既有 TypeScript `AuthorityStore` owner 后资格化**嵌入式事务存储，首选候选为
 SQLite**。本地 goal 不应依赖 PostgreSQL 服务。file-v0 保留作 conformance/import
-基线，通用十天 goal 晋升不能依靠其全历史重写。SQLite 是待验证耐久性、依赖／打包、
-Windows/macOS/Linux 和受支持 Node 版本后的设计偏好，不是已交付 provider id 或默认
-切换。分段文件日志作为比较候选；PostgreSQL 继续走独立的共享服务路线。
+基线，通用十天 goal 晋升不能依靠其全历史重写。[PR #4121](https://github.com/huangruiteng/loopx/pull/4121)
+在该 owner 后提供显式 opt-in 的 SQLite conformance 候选；它本身不证明长程耐久性，
+也不切换默认值。依赖／打包、Windows/macOS/Linux 与受支持 Node profile 的证据仍是
+显式门禁。分段文件日志作为比较候选；PostgreSQL 继续走独立的共享服务路线。
 
 只替换数据库不够。完整切片必须：
 
@@ -872,6 +873,43 @@ crash、disk-full、backup/restore lineage，以及一次受支持 upgrade/rollb
 代码 PR 可在 soak 证据待补时合入，但 promotion 继续 hold。两个出口、显式 import/
 fencing/export 演练与 maintainer review 都通过才可晋升。发布紧凑可复现证据，不发布
 原始私有日志。
+
+#### SQLite 替换 file 的阶段节点（提案）
+
+拟议终点是让 SQLite 成为**已资格化本地 Goal** 的常规 primary store，而不是删除所有
+文件产物或替代 PostgreSQL 的共享服务 authority。file-v0 继续作为可检查的参考、导入／
+导出选项；canonical promotion 后 Markdown 仍是派生显示。交付以以下证据为节点，
+不以日历日期或本 PR 是否合并作为默认切换依据。
+
+| 节点 | 所需证据／出口 | 默认值与权限边界 |
+| --- | --- | --- |
+| 候选 conformance | 评审 #4121 的原子提交、原始 receipt、cursor/digest 完整性、typed provider-open 失败、真实 CLI 与 OS/runtime 测试。 | 仅候选。file 仍默认；不迁移活跃 Goal，不授予 promotion。 |
+| 有界本地 profile（L） | 满足本节不变的负载与预算矩阵：64 KiB 下匹配的 10k/100k、1 MiB 与 300k 余量、冷启动、锁等待、RSS、逻辑写入增长；资格化有界 checkpoint/delta 和 receipt 查询，同时保留精确历史 scan。 | 不切默认。保留完整性校验；成本超出 profile 时修正设计或明确缩小支持范围。 |
+| 带 fence 的迁移与恢复（I/F 前置） | 在一次性 Goal 上证明 file→SQLite 导入、原始 receipt/replay 等价、consumer cursor/outbox 保留、crash/disk-full 恢复和反向导出／回滚；共享路由或投影变化时纳入要求的独立 legacy/file/PostgreSQL 只读演练。 | 先评审工具与 migration manifest。当前空 Goal selector 不是已有 Goal 的迁移 API；不得用活跃用户 Goal 做测试。 |
+| 自然时间资格化与 opt-in canary | 完成真实 >=10 天合成 soak，覆盖本节规定的重启、休眠、第 1 天 retry、24 h consumer lag；随后单独申请小规模 opt-in operator canary，记录停止与回滚条件。 | C/I 与所选 provider 的全部 hold 仍有效。加速容量不替代自然时间；canary 不授权通用默认。 |
+| 新 Goal 默认决策（F） | 维护者接受合格 profile、canary 结果、运维诊断、backup/restore 流程、发布操作说明和关闭默认的路径；在独立且明确披露的发布改动中切默认。 | 仅适用于新建且符合条件的本地 Goal；已有显式 file 选择保持固定。不受支持的 runtime/filesystem 需显式选择支持方案，打开失败不能静默切 backend。 |
+| 已有 Goal 迁移与 file 退役 | 按已评审的 fenced workflow 逐批 opt-in 迁移，每批核对 receipt、历史、投影和回滚；删除路径前列清最后的 file-primary caller 与兼容窗口。 | 每个 Goal 需要明确迁移权限；证据满足后才退役常规 primary 角色。参考／导入／导出支持保留到其 caller 与保留责任分别结束。 |
+
+**当前证据位置。** #4121 对应第一个节点，仍待维护者接受，不代表 lane L 完成。
+其 head pointer 有界，operation/cursor 查询有索引，但保留完整历史 projection，连续性
+校验还会统计覆盖索引，因此该成本随历史增长。它验证当前及访问到的 row digest，
+不是每次读取都审计全部历史 payload。已发布的固定 4 KiB 微基准尚缺上述 64 KiB 匹配
+profile、p99、RSS、逻辑 WAL 写入、恢复及自然时间 soak 证据，不能宣称满足 <=2 的历史
+增长比值或十天目标。Node 22.14 是当前 SQLite 资格化 runtime；支持 profile 明确变化前，
+独立保留 file-backed 最低 Node 版本验证。
+
+**迁移决策点。** 首次迁移已有 Goal 前，先在 authority writer fence 下冻结精确的源
+lineage/revision，导入完整权威快照与保留证明，并独立比较原始 receipt 字段、operation/
+digest 冲突及有序 scan。provider revision token 是不透明值；所需转换必须写入版本化
+migration manifest，不能重新解释旧 receipt。绑定目标 incarnation，只有验证与 consumer
+对账完成后才耐久发布 selected-provider 切换；任意时刻只能有一个 provider 接受写入。
+源端继续 fenced，仅作回滚证据，不能成为同时写入的另一份 authority。
+
+selector 切换前中止时，源端保持权威，只能通过已评审工具丢弃未 promotion 的候选。
+目标已有新 commit 后，回滚必须 fence 目标并导出／对账新增提交证明，之后才能恢复
+源端 writer。删除 selector、恢复旧 file 快照或启用 fallback 都不是回滚。证明缺失、
+incarnation 错误、digest/lineage 失败、不明原因的 parity 差异或恢复预算超限，都应停止
+该批次并暂停扩大默认范围。本提案不创造迁移命令、不启动 soak、不授予活跃切换权限。
 
 ## 8. 默认本地模式不变，共享模式必须显式迁移
 

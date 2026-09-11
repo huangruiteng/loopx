@@ -32,6 +32,8 @@ import {
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
 import { FileAuthorityStore } from "./file_authority_store.ts";
+import { SqliteAuthorityStore } from "./sqlite_authority_store.ts";
+import { openLocalAuthorityStore, localAuthorityOpenFailure } from "./local_authority_provider.ts";
 import {
   decodeLegacyCoordinationWriterFence,
   LEGACY_COORDINATION_WRITER_FENCE_SCHEMA,
@@ -95,6 +97,10 @@ export {
 } from "./coordination_state_contract.generated.ts";
 export { LEGACY_COORDINATION_WRITER_FENCE_SCHEMA } from "./legacy_writer_fence.ts";
 
+function sourceAuthorityFor(store: AuthorityStore): "sqlite_v0" | "file_v0" {
+  return store instanceof SqliteAuthorityStore ? "sqlite_v0" : "file_v0";
+}
+
 async function withCanonicalWriter<T>(root: string, goalId: string, dryRun: boolean, write: () => Promise<T>): Promise<T> {
   if (dryRun) return await write();
   return await withFileMutationLock(shadowMaintenanceLockPath(root, goalId), async () => {
@@ -114,20 +120,23 @@ export async function pollLocalCoordinationMonitor(value: unknown,
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     if (!Array.isArray(input.registered_agents)) throw new TypeError("registered_agents must be an array");
     const registered = input.registered_agents.map(agent => claimAgentValue(agent, "registered agent"));
-    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => ({
-      ...await executeCoordinationMonitorPoll(dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId), {
+    return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
+      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
+        await openLocalAuthorityStore(root, goalId);
+      evidence.source_authority = sourceAuthorityFor(store);
+      return {...await executeCoordinationMonitorPoll(store, {
         goal_id: goalId, operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
         actor_agent_id: input.actor_agent_id == null ? null : claimAgentValue(input.actor_agent_id, "actor_agent_id"),
         registered_agents: registered, dry_run: input.dry_run as boolean,
         observation: requireJsonObject(input.observation, "Monitor observation"),
         intent: requireJsonObject(input.intent, "Monitor successor intent"),
-      }), ...evidence,
-    }));
+      }), ...evidence};
+    });
   } catch (error) {
     return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status: "failed", changed: false,
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_monitor_poll_request",
-      reason: error instanceof Error ? error.message : String(error), ...evidence};
+      reason: error instanceof Error ? error.message : String(error), ...evidence,
+      ...localAuthorityOpenFailure(error)};
   }
 }
 
@@ -312,6 +321,7 @@ function promotionResult(
   request: LocalCoordinationPromotionRequest,
   status: "applied" | "replayed" | "recovered",
   readback: Awaited<ReturnType<typeof promotionReadback>>,
+  canonicalAuthority: string,
 ): JsonObject {
   return {
     schema_version: LOCAL_COORDINATION_PROMOTION_RESULT_SCHEMA,
@@ -323,7 +333,7 @@ function promotionResult(
     source_projection_sha256: request.expected_shadow_projection_sha256,
     writer_fence_id: request.writer_fence.fence_id,
     source_version: request.writer_fence.source_version,
-    canonical_authority: "file_v0",
+    canonical_authority: canonicalAuthority,
     legacy_writer_fenced: true,
     legacy_fallback_used: false,
   };
@@ -377,18 +387,22 @@ export async function promoteLocalCoordinationAuthority(
     };
   }
 
-  const shadow = dependencies.createShadowStore?.(
-    shadowDirectory(request.runtime_root),
-    request.goal_id,
-  ) ?? new FileAuthorityStore(shadowDirectory(request.runtime_root), request.goal_id);
-  const canonical = dependencies.createCanonicalStore?.(
-    authorityDirectory(request.runtime_root),
-    request.goal_id,
-  ) ?? dependencies.createStore?.(
-    authorityDirectory(request.runtime_root),
-    request.goal_id,
-  ) ?? new FileAuthorityStore(authorityDirectory(request.runtime_root), request.goal_id);
+  // Provider opening can fail before durable fence readback. Report only
+  // evidence this invocation actually verified, including in the outer catch.
+  let writerFenceVerified = false;
   try {
+    const shadow = dependencies.createShadowStore?.(
+      shadowDirectory(request.runtime_root),
+      request.goal_id,
+    ) ?? new FileAuthorityStore(shadowDirectory(request.runtime_root), request.goal_id);
+    const canonical = dependencies.createCanonicalStore?.(
+      authorityDirectory(request.runtime_root),
+      request.goal_id,
+    ) ?? dependencies.createStore?.(
+      authorityDirectory(request.runtime_root),
+      request.goal_id,
+    ) ?? await openLocalAuthorityStore(request.runtime_root, request.goal_id);
+    const canonicalAuthority = sourceAuthorityFor(canonical);
     const persistedFence = await loadLegacyCoordinationWriterFence(
       request.runtime_root,
       request.goal_id,
@@ -410,11 +424,12 @@ export async function promoteLocalCoordinationAuthority(
       legacy_writer_fenced: false,
       legacy_fallback_used: false,
     };
+    writerFenceVerified = true;
     const existing = await canonical.loadAuthority();
     if (existing.status === "loaded") {
       const readback = await promotionReadback(canonical, request);
       return readback.matched
-        ? promotionResult(request, "replayed", readback)
+        ? promotionResult(request, "replayed", readback, canonicalAuthority)
         : {
           schema_version: LOCAL_COORDINATION_PROMOTION_RESULT_SCHEMA,
           status: "failed",
@@ -500,7 +515,7 @@ export async function promoteLocalCoordinationAuthority(
         events: [{
           ...identity,
           schema_version: "loopx_local_coordination_promotion_event_v0",
-          mode_transition: "legacy_canonical_to_file_v0",
+          mode_transition: `legacy_canonical_to_${canonicalAuthority}`,
         }],
         next_projection: finalShadowHead.head,
         receipts: [identity],
@@ -508,7 +523,7 @@ export async function promoteLocalCoordinationAuthority(
       if (committed.status === "applied") {
         const readback = await promotionReadback(canonical, request);
         return readback.matched
-          ? promotionResult(request, "applied", readback)
+          ? promotionResult(request, "applied", readback, canonicalAuthority)
           : {
             schema_version: LOCAL_COORDINATION_PROMOTION_RESULT_SCHEMA,
             status: "failed",
@@ -524,6 +539,7 @@ export async function promoteLocalCoordinationAuthority(
           request,
           committed.status === "ambiguous" ? "recovered" : "replayed",
           readback,
+          canonicalAuthority,
         );
       }
       return {
@@ -540,8 +556,9 @@ export async function promoteLocalCoordinationAuthority(
       status: "failed",
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "local_authority_promotion_unavailable",
       reason: error instanceof Error ? error.message : "promotion unavailable",
-      legacy_writer_fenced: true,
+      legacy_writer_fenced: writerFenceVerified,
       legacy_fallback_used: false,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
@@ -589,6 +606,7 @@ export async function mutateLocalCoordinationAuthority(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   try {
     const input = requireJsonObject(value, "local coordination mutation request");
     if (input.schema_version !== LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA) {
@@ -598,7 +616,8 @@ export async function mutateLocalCoordinationAuthority(
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, false, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
       const result = await commitCoordinationProjectionMutation(store, {
         goal_id: goalId,
         operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
@@ -611,7 +630,7 @@ export async function mutateLocalCoordinationAuthority(
       return {
         schema_version: LOCAL_COORDINATION_MUTATION_RESULT_SCHEMA,
         ...result,
-        source_authority: "file_v0",
+        source_authority: sourceAuthority,
         decision_read_from_provider: true,
         legacy_fallback_used: false,
       };
@@ -622,18 +641,20 @@ export async function mutateLocalCoordinationAuthority(
       status: "failed",
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_coordination_mutation_request",
       reason: error instanceof Error ? error.message : "invalid mutation request",
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
 
-/** Local file-provider adapter for the provider-neutral Todo claim transaction. */
+/** Local provider adapter for the provider-neutral Todo claim transaction. */
 export async function claimLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   try {
     const input = requireJsonObject(value, "local coordination Todo claim request");
     if (input.schema_version !== LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA) {
@@ -646,7 +667,8 @@ export async function claimLocalCoordinationTodo(
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
       if (!Array.isArray(input.registered_agents)) {
         throw new Error("registered_agents must be a JSON array");
       }
@@ -689,7 +711,7 @@ export async function claimLocalCoordinationTodo(
       });
       return {
         ...result,
-        source_authority: "file_v0",
+        source_authority: sourceAuthority,
         decision_read_from_provider: true,
         legacy_fallback_used: false,
       };
@@ -700,20 +722,22 @@ export async function claimLocalCoordinationTodo(
       status: "failed",
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_coordination_todo_claim_request",
       reason: error instanceof Error ? error.message : "invalid Todo claim request",
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
 
-/** Local file-provider adapter for the provider-neutral work-item create transaction. */
+/** Local provider adapter for the provider-neutral work-item create transaction. */
 export async function createLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   const providerEvidence = {
-    source_authority: "file_v0",
+    source_authority: sourceAuthority,
     decision_read_from_provider: true,
     legacy_fallback_used: false,
   };
@@ -729,7 +753,9 @@ export async function createLocalCoordinationTodo(
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
+      providerEvidence.source_authority = sourceAuthority;
       if (!Array.isArray(input.registered_agents)) {
         throw new TypeError("registered_agents must be a JSON array");
       }
@@ -758,16 +784,18 @@ export async function createLocalCoordinationTodo(
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_coordination_todo_create_request",
       reason: error instanceof Error ? error.message : "invalid Todo create request",
       ...providerEvidence,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
 
-/** Local file-provider adapter for one provider-neutral metadata mutation. */
+/** Local provider adapter for one provider-neutral metadata mutation. */
 export async function updateLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
-  const providerEvidence = {source_authority: "file_v0",
+  let sourceAuthority = "file_v0";
+  const providerEvidence = {source_authority: sourceAuthority,
     decision_read_from_provider: true, legacy_fallback_used: false};
   try {
     const input = requireJsonObject(value, "local coordination Todo update request");
@@ -788,7 +816,9 @@ export async function updateLocalCoordinationTodo(
         throw new TypeError("registered_agents and clear_fields must be JSON arrays");
       }
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
+      providerEvidence.source_authority = sourceAuthority;
       return {...await executeCoordinationTodoUpdate(store, {
         goal_id: goalId, todo_id: requireAuthorityStoreId(input.todo_id, "todo id"),
         expected_role: input.role === null || input.role === undefined ? null :
@@ -812,16 +842,19 @@ export async function updateLocalCoordinationTodo(
     return {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA, status: "failed",
       changed: false, reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_coordination_todo_update_request",
       reason: error instanceof Error ? error.message : "invalid Todo update request",
-      ...providerEvidence};
+      ...providerEvidence,
+      ...localAuthorityOpenFailure(error),
+    };
   }
 }
 
-/** Local file-provider adapter for the provider-neutral terminal transaction. */
+/** Local provider adapter for the provider-neutral terminal transaction. */
 export async function terminalLifecycleLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
-  const providerEvidence = {source_authority: "file_v0",
+  let sourceAuthority = "file_v0";
+  const providerEvidence = {source_authority: sourceAuthority,
     decision_read_from_provider: true, legacy_fallback_used: false};
   try {
     const input = requireJsonObject(value, "local coordination Todo terminal request");
@@ -852,7 +885,9 @@ export async function terminalLifecycleLocalCoordinationTodo(
       requireJsonObject(intent, `successor_intents[${index}]`));
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
+      providerEvidence.source_authority = sourceAuthority;
       return {...await executeCoordinationTodoTerminalLifecycle(store, {
         goal_id: goalId,
         todo_id: requireAuthorityStoreId(input.todo_id, "todo id"),
@@ -913,16 +948,19 @@ export async function terminalLifecycleLocalCoordinationTodo(
       reason_code: error instanceof ShadowManagementError ? error.reason_code :
         "invalid_local_coordination_todo_terminal_lifecycle_request",
       reason: error instanceof Error ? error.message : "invalid local Todo terminal request",
-      ...providerEvidence};
+      ...providerEvidence,
+      ...localAuthorityOpenFailure(error),
+    };
   }
 }
 
-/** Local file-provider adapter for provider-owned completed-Todo compaction. */
+/** Local provider adapter for provider-owned completed-Todo compaction. */
 export async function archiveLocalCoordinationTodos(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
-  const providerEvidence = {source_authority: "file_v0",
+  let sourceAuthority = "file_v0";
+  const providerEvidence = {source_authority: sourceAuthority,
     decision_read_from_provider: true, legacy_fallback_used: false};
   try {
     const input = requireJsonObject(value, "local coordination Todo archive request");
@@ -943,7 +981,9 @@ export async function archiveLocalCoordinationTodos(
     const now = claimObservedAt(input.observed_at);
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
+      providerEvidence.source_authority = sourceAuthority;
       return {...await executeLocalArchiveAttempt(store, root, {
         goal_id: goalId,
         role,
@@ -960,7 +1000,9 @@ export async function archiveLocalCoordinationTodos(
       reason_code: error instanceof ShadowManagementError ? error.reason_code :
         "invalid_local_coordination_todo_archive_request",
       reason: error instanceof Error ? error.message : "invalid local Todo archive request",
-      ...providerEvidence};
+      ...providerEvidence,
+      ...localAuthorityOpenFailure(error),
+    };
   }
 }
 
@@ -980,7 +1022,7 @@ export async function acknowledgeLocalCoordinationTodoArchive(
     const operationId = requireAuthorityStoreId(input.operation_id, "operation id");
     return await withCanonicalWriter(root, goalId, false, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
       return acknowledgeLocalArchiveAttempt(store, root, goalId, role, operationId);
     });
   } catch (error) {
@@ -990,15 +1032,17 @@ export async function acknowledgeLocalCoordinationTodoArchive(
       reason_code: error instanceof ShadowManagementError ? error.reason_code :
         "invalid_local_coordination_todo_archive_ack_request",
       reason: error instanceof Error ? error.message : "invalid archive acknowledgement",
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
 
-/** Embedded file adapter; no Markdown input or projection write is accepted. */
+/** Embedded provider adapter; no Markdown input or projection write is accepted. */
 export async function editLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   try {
     const input = requireJsonObject(value, "local compatibility edit");
     const {runtime_root, ...request} = input;
@@ -1006,14 +1050,17 @@ export async function editLocalCoordinationTodo(
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
       const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        new FileAuthorityStore(authorityDirectory(root), goalId);
+        await openLocalAuthorityStore(root, goalId);
+      sourceAuthority = sourceAuthorityFor(store);
       return {...await editCoordinationTodo(store, request),
-        source_authority: "file_v0", decision_read_from_provider: true, legacy_fallback_used: false};
+        source_authority: sourceAuthority, decision_read_from_provider: true, legacy_fallback_used: false};
     });
   } catch (error) {
     return {schema_version: TODO_COMPATIBILITY_EDIT_RESULT_SCHEMA, status: "failed",
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_local_compatibility_edit", changed: false,
-      reason: error instanceof Error ? error.message : "invalid local compatibility edit"};
+      reason: error instanceof Error ? error.message : "invalid local compatibility edit",
+      ...localAuthorityOpenFailure(error),
+    };
   }
 }
 
@@ -1022,6 +1069,7 @@ export async function readLocalCoordinationTodo(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   try {
     const input = requireJsonObject(value, "local coordination Todo read request");
     if (input.schema_version !== LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA) {
@@ -1031,13 +1079,14 @@ export async function readLocalCoordinationTodo(
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     const todoId = requireAuthorityStoreId(input.todo_id, "todo id");
     const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-      new FileAuthorityStore(authorityDirectory(root), goalId);
+      await openLocalAuthorityStore(root, goalId);
+    sourceAuthority = sourceAuthorityFor(store);
     const head = await store.loadAuthority();
     if (head.status !== "loaded") {
       return {
         schema_version: LOCAL_COORDINATION_TODO_READ_RESULT_SCHEMA,
         ...head,
-        source_authority: "file_v0",
+        source_authority: sourceAuthority,
         decision_read_from_provider: true,
         legacy_fallback_used: false,
       };
@@ -1053,7 +1102,7 @@ export async function readLocalCoordinationTodo(
       todo_ids: projection.todo_ids,
       provider_revision: head.provider_revision,
       cursor: head.cursor,
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
     };
@@ -1063,9 +1112,10 @@ export async function readLocalCoordinationTodo(
       status: "failed",
       reason_code: "invalid_local_coordination_todo_read_request",
       reason: error instanceof Error ? error.message : "invalid Todo read request",
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }
@@ -1075,6 +1125,7 @@ export async function listLocalCoordinationTodos(
   value: unknown,
   dependencies: LocalAuthorityRuntimeDependencies = {},
 ): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
   try {
     const input = requireJsonObject(value, "local coordination Todo list request");
     if (input.schema_version !== LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA) {
@@ -1086,13 +1137,14 @@ export async function listLocalCoordinationTodos(
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-      new FileAuthorityStore(authorityDirectory(root), goalId);
+      await openLocalAuthorityStore(root, goalId);
+    sourceAuthority = sourceAuthorityFor(store);
     const head = await store.loadAuthority();
     if (head.status !== "loaded") {
       return {
         schema_version: LOCAL_COORDINATION_TODO_LIST_RESULT_SCHEMA,
         ...head,
-        source_authority: "file_v0",
+        source_authority: sourceAuthority,
         decision_read_from_provider: true,
         legacy_fallback_used: false,
       };
@@ -1112,7 +1164,7 @@ export async function listLocalCoordinationTodos(
       }),
       provider_revision: head.provider_revision,
       cursor: head.cursor,
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
     };
@@ -1122,9 +1174,10 @@ export async function listLocalCoordinationTodos(
       status: "failed",
       reason_code: "invalid_local_coordination_todo_list_request",
       reason: error instanceof Error ? error.message : "invalid Todo list request",
-      source_authority: "file_v0",
+      source_authority: sourceAuthority,
       decision_read_from_provider: true,
       legacy_fallback_used: false,
+      ...localAuthorityOpenFailure(error),
     };
   }
 }

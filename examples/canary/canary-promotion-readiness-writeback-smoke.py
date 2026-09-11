@@ -116,6 +116,7 @@ def main() -> int:
             "LOOPX_RELEASES_DIR": str(root / "releases"),
             "LOOPX_SHELL_PROFILE": str(home / ".zshrc"),
             "LOOPX_REGISTRY": str(registry_path),
+            "LOOPX_PYTHON": sys.executable,
             "PYTHONPATH": str(REPO_ROOT),
             "SHELL": "/bin/zsh",
         }

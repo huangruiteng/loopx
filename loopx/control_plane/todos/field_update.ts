@@ -9,7 +9,12 @@ import {
   buildTodoCompletionMetadataUpdates,
   TODO_COMPLETION_STATE_REQUEST_SCHEMA,
 } from "./completion_state.ts";
-import { normalizeTodoResumeWhen, TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION } from "./resume_condition.ts";
+import { validateLegacyContinuationPolicyRepair } from "./legacy_continuation_policy_migration.ts";
+import {
+  normalizeTodoResumeWhen,
+  TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION,
+  UNSUPPORTED_TODO_RESUME_CONDITION_MESSAGE,
+} from "./resume_condition.ts";
 import { MONITOR_METADATA_FIELDS, planMonitorMetadata, TODO_MONITOR_METADATA_REQUEST_SCHEMA } from "./monitor_metadata.ts";
 
 export const TODO_FIELD_UPDATE_REQUEST_SCHEMA = "loopx_todo_field_update_request_v0";
@@ -72,19 +77,6 @@ function validateIntent(value: unknown): JsonObject {
     optionalString(intent[field], field);
   }
   return intent;
-}
-
-function validateRepair(block: JsonObject, intent: JsonObject, todoId: string): void {
-  const removed = stripPythonWhitespace(String(block.removed_continuation_policy ?? "")).toLowerCase();
-  if (removed !== "primary_review" && removed !== "review_handoff") return;
-  const prefix = `todo_id '${todoId}' uses removed continuation_policy=${removed}; `;
-  if (intent.claim_only) throw new EffectRuntimeRequestError(prefix + "repair it before claiming");
-  const repair = stripPythonWhitespace(String(intent.continuation_policy ?? "")).toLowerCase();
-  const exclusions = Array.isArray(intent.excluded_agents) ? intent.excluded_agents : [];
-  if (repair !== "independent_handoff" || !exclusions.some(agent => existingAgent(agent) !== null)) {
-    throw new EffectRuntimeRequestError(prefix +
-      "repair it explicitly with continuation_policy=independent_handoff and excluded_agents=<author>");
-  }
 }
 
 function bindingUpdates(block: JsonObject, intent: JsonObject, todoId: string): JsonObject {
@@ -150,11 +142,13 @@ export function planTodoFieldUpdate(value: unknown): TodoFieldUpdatePlan {
   const resumeWhen = intent.resume_when ? normalizeTodoResumeWhen({
     schema_version: TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION, resume_when: intent.resume_when,
   }) : null;
-  if (intent.resume_when && !resumeWhen) throw new EffectRuntimeRequestError("unsupported Todo resume condition");
+  if (intent.resume_when && !resumeWhen) {
+    throw new EffectRuntimeRequestError(UNSUPPORTED_TODO_RESUME_CONDITION_MESSAGE);
+  }
   if (resumeWhen && intent.clear_resume_when) {
     throw new EffectRuntimeRequestError("todo update accepts either resume_when or clear_resume_when, not both");
   }
-  validateRepair(block, intent, todoId);
+  validateLegacyContinuationPolicyRepair(block, intent, todoId);
   const status = intent.status ? stripPythonWhitespace(String(intent.status)).toLowerCase() : null;
   if (status !== null && !STATUS.includes(status as Status)) {
     throw new EffectRuntimeRequestError("todo status must be one of: open, done, blocked, deferred");

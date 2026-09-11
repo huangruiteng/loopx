@@ -83,6 +83,18 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --disable-pip-version-check -e ".[test]"
 
+      - name: Verify file authority on the core runtime
+        run: >-
+          node --no-warnings --experimental-strip-types --test
+          tests/control_plane_ts/authority_store.test.ts
+          tests/control_plane_ts/local_authority_runtime.test.ts
+          tests/control_plane_ts/sqlite_runtime_admission.test.ts
+
+      - name: Set up the qualified SQLite runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.14"
+
       - name: Qualify the TypeScript Effect core
         run: |
           npm ci --ignore-scripts
@@ -139,7 +151,16 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run typecheck:control-plane
-          npm run test:control-plane
+          # SQLite conformance requires qualified statement finalization (22.14+).
+          # Retain admission rejection and all default file/runtime tests here.
+          tests=()
+          for test in tests/control_plane_ts/*.test.ts; do
+            case "$test" in
+              */sqlite_authority_store.test.ts|*/local_authority_provider.test.ts) continue ;;
+            esac
+            tests+=("$test")
+          done
+          node --no-warnings --experimental-sqlite --experimental-strip-types --test "${tests[@]}"
 
   node-forward-compatibility:
     needs: changes
@@ -378,11 +399,22 @@ jobs:
           tests/test_self_update_runtime_activation.py
           tests/test_windows_install.py
 
-      - name: Run native scheduler facade tests
+      - name: Set up the qualified SQLite runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.14"
+
+      - name: Run SQLite CLI integration
+        run: python -m pytest -q tests/control_plane/test_sqlite_authority_cli.py
+
+      - name: Run native scheduler and SQLite authority tests
         run: >-
-          node --no-warnings --experimental-strip-types --test
+          node --no-warnings --experimental-sqlite --experimental-strip-types --test
           tests/control_plane_ts/scheduler_heartbeat_commit.test.ts
           tests/control_plane_ts/scheduler_heartbeat_commit_cli.test.ts
+          tests/control_plane_ts/sqlite_authority_store.test.ts
+          tests/control_plane_ts/local_authority_provider.test.ts
+          tests/control_plane_ts/sqlite_runtime_admission.test.ts
 
   merge-gate:
     # Always publish one stable outcome, including documentation-only PRs.

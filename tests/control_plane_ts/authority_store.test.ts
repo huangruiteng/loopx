@@ -43,7 +43,7 @@ test("file provider persists object keys in deterministic Unicode order", async 
 test("provider profiles map one logical contract onto different backend primitives", () => {
   assert.equal(AUTHORITY_STORE_REQUIRED_GUARANTEES.length, 6);
   assert.deepEqual(Object.keys(AUTHORITY_STORE_PROVIDER_PROFILES), [
-    "file", "nokv", "postgresql",
+    "sqlite", "file", "nokv", "postgresql",
   ]);
   assert.equal(AUTHORITY_STORE_PROVIDER_PROFILES.file.stage, "stage1_implemented");
   assert.equal(

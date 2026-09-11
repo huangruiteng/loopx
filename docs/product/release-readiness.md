@@ -554,6 +554,14 @@ path, and canary route rather than as a user-facing release baseline.
   and frozen bundles install the same version-bound workflow skills as package
   distributions. The exact-tag Python, PyPI, macOS, Windows, signed-update,
   public-smoke, and live-model gates passed before `stable` fast-forwarded.
+- `v1.0.2` on 2026-09-09 11:22 +08:00: single-owner Todo authority and
+  recovery release at the matching `v1.0.2` tag (`a5374d5b`). Promoted Todo
+  terminal transitions commit through one TypeScript-owned provider
+  transaction; missing generated Todo projections recover without making
+  Markdown authoritative; and long-history, Desktop, DSH, and managed-skill
+  paths gain bounded reads and clearer recovery diagnostics. The published
+  wheel, source distribution, macOS, Windows, checksum, update, and PyPI
+  artifacts were verified against the exact release source before promotion.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.

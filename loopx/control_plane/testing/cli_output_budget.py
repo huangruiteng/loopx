@@ -658,6 +658,18 @@ CLI_OUTPUT_COMMAND_CLASSIFICATIONS: tuple[CliOutputCommandClassification, ...] =
         rationale="explicit provider setup, sync, doctor, and gate-notification command family",
     ),
     CliOutputCommandClassification(
+        command_id="goal-portfolio",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="explicit manager-scoped evidence read with caller-provided goal bounds",
+    ),
+    CliOutputCommandClassification(
+        command_id="manager-inbox",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="explicit manager-context read and acknowledgement command family",
+    ),
+    CliOutputCommandClassification(
         command_id="goal-lifecycle",
         qualification="explicit_cold_path_exception",
         surface_id=None,

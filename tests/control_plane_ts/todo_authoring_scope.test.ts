@@ -86,6 +86,10 @@ test("deferred state requires a supported condition and clears remain explicit",
   const reopened = plan({status: "open", clear_resume_when: true}, {command: "update", role: "agent", todo});
   assert.equal(reopened.effective_resume_when, null);
   assert.throws(() => plan({resume_when: "todo_done:todo_dependency", clear_resume_when: true}, {command: "update", role: "agent", todo}), /not both/);
+  assert.throws(
+    () => plan({resume_when: "free text"}, {command: "update", role: "agent", todo}),
+    /supported conditions are:.*todo_done:.*monitor_changed:.*pr_merged:.*capacity_available:/,
+  );
 });
 
 test("resolved successor scope is checked without using draft defaults", () => {

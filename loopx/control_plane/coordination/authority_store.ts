@@ -18,7 +18,7 @@ export const AUTHORITY_STORE_REQUIRED_GUARANTEES = [
 export type AuthorityStoreRequiredGuarantee =
   (typeof AUTHORITY_STORE_REQUIRED_GUARANTEES)[number];
 
-export type AuthorityStoreProviderKind = "file" | "nokv" | "postgresql";
+export type AuthorityStoreProviderKind = "file" | "nokv" | "postgresql" | "sqlite";
 export type AuthorityStoreProviderStage =
   | "stage1_implemented"
   | "stage2a_candidate"
@@ -39,6 +39,15 @@ export interface AuthorityStoreProviderProfile {
  * failure or transaction models into a fictional universal database.
  */
 export const AUTHORITY_STORE_PROVIDER_PROFILES = {
+  sqlite: {
+    stage: "stage2b_candidate",
+    revision_primitive: "database_incarnation_and_locked_sequence",
+    atomic_commit_mapping: "sqlite_transaction_over_head_and_commit_outbox",
+    receipt_and_cursor_mapping: "unique_operation_index_and_integer_cursor",
+    store_lineage_mapping: "persistent_database_incarnation",
+    trust_boundary: "trusted_local_process_and_private_directory",
+    qualification_holds: ["ten_day_soak", "retention_and_compaction", "authority_source_promotion"],
+  },
   file: {
     stage: "stage1_implemented",
     revision_primitive: "locked_document_revision_chain",
