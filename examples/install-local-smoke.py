@@ -790,7 +790,8 @@ def main() -> int:
         assert not normal_turns_use_cli_interaction_contract(
             "Normal turns use the runtime skill and repair contract."
         )
-        assert "`LOOPX_TURN=<current_time_iso>`; reuse." in payload["task_body"], payload
+        assert "```sh\nLOOPX_TURN=<current_time_iso>\n" in payload["task_body"], payload
+        assert "not a command-prefix assignment" in payload["task_body"], payload
         assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
         assert "no-change=`surface_only`/no spend" in payload["task_body"], payload
         assert payload["cli_bin"] == "loopx", payload

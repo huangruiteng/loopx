@@ -19,6 +19,39 @@ runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
 
 
+def test_native_spawn_preserves_isolated_profile_and_secret_free_shell(monkeypatch, tmp_path):
+    from loopx.capabilities.benchmark_toolkit.native_codex_goal import StdioNativeGoalTransport
+
+    for suffix, value in {"API_KEY": "synthetic-selected-key", "MODEL": "fixture-model",
+                          "BASE_URL": "https://example.com/v1"}.items():
+        monkeypatch.setenv("LOOPX_CODEX_QUALIFICATION_" + suffix, value)
+    monkeypatch.setenv("UNRELATED_AUTH_TOKEN", "synthetic-forbidden-key")
+    monkeypatch.setenv("SSH_AUTH_SOCK", "synthetic-forbidden-socket")
+    launcher = tmp_path / "bin/loopx"
+    monkeypatch.setattr(runner, "setup", lambda _: (tmp_path, tmp_path / "runtime", launcher))
+    monkeypatch.setattr(runner, "cli", lambda *_: {"task_body": "Synthetic task"})
+
+    class InspectedSpawn(Exception):
+        pass
+
+    def inspect(command, **kwargs):
+        env = kwargs["env"]
+        assert "UNRELATED_AUTH_TOKEN" not in env and "SSH_AUTH_SOCK" not in env
+        settings = tomllib.loads((Path(env["CODEX_HOME"]) / "config.toml").read_text())
+        policy = settings["shell_environment_policy"]
+        assert policy["inherit"] == "none"
+        assert "LOOPX_CODEX_QUALIFICATION_API_KEY" not in policy["set"]
+        child = subprocess.run([sys.executable, "-c", "import os,json; print(json.dumps(dict(os.environ)))"],
+                               env=policy["set"], capture_output=True, text=True, check=True)
+        assert "synthetic-selected-key" not in child.stdout
+        assert "synthetic-forbidden" not in child.stdout
+        raise InspectedSpawn
+
+    monkeypatch.setattr(StdioNativeGoalTransport, "spawn", inspect)
+    with pytest.raises(InspectedSpawn):
+        runner.qualify(tmp_path, "synthetic-codex", 10)
+
+
 def test_default_does_not_even_probe_model_environment(monkeypatch, capsys):
     def forbidden(*args):
         raise AssertionError("default must not touch a model host")
