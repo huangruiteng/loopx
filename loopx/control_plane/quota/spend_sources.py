@@ -5,9 +5,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from ..scheduler.execution_context import (
-    NATIVE_GOAL_RUNTIME_PROFILES,
     SchedulerExecutionContextResolution,
     SchedulerRuntimeProfile,
+    VISIBLE_GOAL_SETTLEMENT_RUNTIME_PROFILES,
     scheduler_runtime_profile_for_execution_context,
 )
 from ..todos.contract import normalize_todo_id, normalize_todo_replan_obligation_id
@@ -41,7 +41,7 @@ def quota_spend_source_for_execution_context(
     value: Mapping[str, Any] | SchedulerExecutionContextResolution | None,
 ) -> str:
     profile = scheduler_runtime_profile_for_execution_context(value)
-    if profile in NATIVE_GOAL_RUNTIME_PROFILES:
+    if profile in VISIBLE_GOAL_SETTLEMENT_RUNTIME_PROFILES:
         return VISIBLE_GOAL_SLOT_SPEND_SOURCE
     return DEFAULT_SLOT_SPEND_SOURCE
 
@@ -62,14 +62,16 @@ def host_goal_turn_reentry_action(
     selected = selected_value if isinstance(selected_value, Mapping) else {}
     replan_value = payload.get("replan_action_packet")
     replan = replan_value if isinstance(replan_value, Mapping) else {}
+    replan_obligation_id = normalize_todo_replan_obligation_id(
+        replan.get("obligation_id")
+    )
     has_settlement_binding = bool(
         normalize_todo_id(selected.get("todo_id"))
-        or normalize_todo_replan_obligation_id(replan.get("obligation_id"))
+        or replan_obligation_id
     )
+    requires_turn_reentry = profile in VISIBLE_GOAL_SETTLEMENT_RUNTIME_PROFILES
     if (
-        (profile in NATIVE_GOAL_RUNTIME_PROFILES
-         or (profile is SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE
-             and normalize_todo_replan_obligation_id(replan.get("obligation_id"))))
+        requires_turn_reentry
         and has_settlement_binding
         and settlement_plan is None
         and turn_instance_id is None

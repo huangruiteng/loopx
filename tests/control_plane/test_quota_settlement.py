@@ -732,6 +732,46 @@ def test_turn_bound_native_goal_preserves_visible_goal_settlement(profile) -> No
         assert f"--turn-instance-id {turn_instance_id}" in command
 
 
+def test_claude_visible_goal_reenters_before_exposing_bound_settlement() -> None:
+    payload = {
+        "goal_id": GOAL_ID,
+        "agent_identity": {"agent_id": AGENT_ID},
+        "selected_todo": {"todo_id": TODO_ID},
+    }
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE
+    )
+
+    unbound = interaction_next_cli_actions(
+        payload,
+        mode="bounded_delivery",
+        scheduler_execution_context=context,
+    )
+
+    assert len(unbound) == 1
+    assert unbound[0].startswith("loopx --format json quota should-run")
+    assert "--runtime-profile claude_code" in unbound[0]
+    assert "--turn-instance-id" in unbound[0]
+    assert "refresh-state" not in unbound[0]
+    assert "spend-slot" not in unbound[0]
+
+    turn_instance_id = "claude-visible-goal-turn-1"
+    bound = interaction_next_cli_actions(
+        payload,
+        mode="bounded_delivery",
+        scheduler_execution_context=context,
+        turn_instance_id=turn_instance_id,
+    )
+
+    assert len(bound) == 2
+    assert bound[0].startswith("loopx refresh-state")
+    assert bound[1].startswith("loopx quota spend-slot")
+    assert "--source visible-goal" in bound[1]
+    for command in bound:
+        assert f"--todo-id {TODO_ID}" in command
+        assert f"--turn-instance-id {turn_instance_id}" in command
+
+
 def test_codex_app_external_observation_settles_only_substantive_writeback() -> None:
     todo_id = "todo_external_observation"
     actions = interaction_next_cli_actions(

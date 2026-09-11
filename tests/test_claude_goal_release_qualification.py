@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 import sys
@@ -168,7 +169,40 @@ def test_real_claude_stdio_mcp_binding_and_identity_gate(tmp_path):
     assert state.read_bytes() == before
 
 
-def test_replan_fixture_has_real_settlement_but_unfinished_business_acceptance(tmp_path):
+def _run_projected_action(
+    action: str,
+    *,
+    launcher: Path,
+    project: Path,
+    replacements: dict[str, str] | None = None,
+) -> dict:
+    rendered = action
+    for source, target in (replacements or {}).items():
+        rendered = rendered.replace(source, target)
+    argv = shlex.split(rendered)
+    assert argv[0] == "loopx"
+    argv[0] = str(launcher)
+    if "--format" not in argv:
+        command_index = next(
+            index
+            for index, token in enumerate(argv)
+            if token in {"quota", "refresh-state"}
+        )
+        argv[command_index:command_index] = ["--format", "json"]
+    result = subprocess.run(
+        argv,
+        cwd=project,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    payload = json.loads(result.stdout)
+    assert result.returncode == 0, payload.get("error") or payload
+    assert payload["ok"] is True
+    return payload
+
+
+def test_replan_fixture_reentry_executes_bound_vision_settlement_once(tmp_path):
     project, runtime, launcher = runner.setup_replan(tmp_path)
     todos = runner.shared.cli(launcher, "todo", "list", "--goal-id", runner.shared.GOAL, "--role", "agent")["todos"]
     assert len(todos) == 1
@@ -183,6 +217,106 @@ def test_replan_fixture_has_real_settlement_but_unfinished_business_acceptance(t
     assert len(actions) == 1
     assert "--turn-instance-id" in actions[0]
     assert "spend-slot" not in actions[0]
+
+    turn_instance_id = "claude-replan-turn-1"
+    bound = runner.shared.cli(
+        launcher,
+        "quota",
+        "should-run",
+        "--goal-id",
+        runner.shared.GOAL,
+        "--agent-id",
+        runner.shared.AGENT,
+        "--runtime-profile",
+        "claude_code",
+        "--turn-instance-id",
+        turn_instance_id,
+    )
+    obligation_id = quota["replan_action_packet"]["obligation_id"]
+    assert bound["replan_action_packet"]["obligation_id"] == obligation_id
+    channel = bound["interaction_contract"]["cli_channel"]
+    identity = channel["settlement_plan"]["identity"]
+    assert identity["turn_instance_id"] == turn_instance_id
+    assert identity["replan_obligation_id"] == obligation_id
+    assert identity["binding_kind"] == "autonomous_replan"
+    bound_actions = channel["next_cli_actions"]
+    assert len(bound_actions) == 2
+    refresh_action = next(action for action in bound_actions if "refresh-state" in action)
+    spend_action = next(action for action in bound_actions if "spend-slot" in action)
+    for action in bound_actions:
+        assert f"--replan-obligation-id {obligation_id}" in action
+        assert f"--turn-instance-id {turn_instance_id}" in action
+    assert "--agent-vision-json" in refresh_action
+    assert "--progress-result-class" not in refresh_action
+    assert "--source visible-goal" in spend_action
+
+    vision_path = project / "next-vision.json"
+    vision_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "goal_vision_replan_contract_v0",
+                "state": "vision_patch_proposed",
+                "vision_patch": {
+                    "vision_summary": "Verify asset contents and deliver a durable integrity manifest.",
+                    "role_scope": "Implement and independently validate the bounded manifest integrity stage.",
+                    "acceptance_summary": "Every expected asset has a verified byte size and SHA-256 digest.",
+                    "advancement_policy": "repeat_until_closed",
+                    "replan_trigger_summary": "Create runnable integrity work when the manifest is incomplete.",
+                    "last_patch_summary": "The filename inventory is retained while content integrity becomes the active stage.",
+                },
+                "path_delta": {
+                    "schema_version": "goal_path_delta_v0",
+                    "outcome": "replan",
+                    "prior_assumption": "A filename inventory was sufficient for the current stage.",
+                    "observed_reality": "The active acceptance also requires content size and digest verification.",
+                    "retained": ["Keep the verified list of expected asset paths."],
+                    "changed": ["Add byte-size and SHA-256 verification for every asset."],
+                    "evidence_refs": ["evidence:task-acceptance-review"],
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    refresh = _run_projected_action(
+        refresh_action,
+        launcher=launcher,
+        project=project,
+        replacements={
+            "<path-to-evidence-linked-goal-vision-replan-contract-v0.json>": str(
+                vision_path
+            )
+        },
+    )
+    assert refresh["settlement_result"]["ok"] is True
+    assert refresh["autonomous_replan_ack"]["semantic_delta"]["accepted"] is True
+    assert refresh["autonomous_replan_ack"]["semantic_delta"][
+        "satisfying_outcomes"
+    ] == ["fresh_vision_path_outcome"]
+
+    spend = _run_projected_action(
+        spend_action,
+        launcher=launcher,
+        project=project,
+    )
+    assert spend["settlement_result"]["ok"] is True
+    replay = _run_projected_action(
+        spend_action,
+        launcher=launcher,
+        project=project,
+    )
+    assert replay["settlement_result"]["ok"] is True
+    rows = [
+        json.loads(line)
+        for line in (
+            runtime / "goals" / runner.shared.GOAL / "runs/index.jsonl"
+        ).read_text().splitlines()
+    ]
+    assert sum(
+        row.get("classification") == "quota_slot_spent"
+        and row.get("replan_obligation_id") == obligation_id
+        for row in rows
+    ) == 1
     with pytest.raises(AssertionError, match="manifest_acceptance_failed"):
         runner.verify_manifest_delivery(project)
 

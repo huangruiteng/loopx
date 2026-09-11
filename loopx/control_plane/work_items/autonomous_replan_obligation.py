@@ -147,13 +147,27 @@ def build_autonomous_replan_cli_actions(
             "execute replan_action_packet.writeback_contract.successor_command",
             "on host_action=end_current_heartbeat: stop",
         ]
-    typed_progress_args = (
-        "--progress-result-class "
-        "<advanced|blocked|exploration_exhausted|no_followup> "
-        "--progress-surface-id <surface-id> "
-        "--progress-hypothesis-id <hypothesis-id> "
-        "--progress-probe-kind <probe-kind> "
-        "--progress-evidence-id <evidence-id>"
+    raw_obligation = payload.get("autonomous_replan_obligation")
+    obligation: Mapping[str, Any] = (
+        raw_obligation if isinstance(raw_obligation, Mapping) else {}
+    )
+    vision_successor_required = any(
+        isinstance(trigger, Mapping)
+        and trigger.get("kind") == "vision_successor_required"
+        for trigger in obligation.get("triggers") or []
+    )
+    semantic_delta_args = (
+        "--agent-vision-json "
+        "'<path-to-evidence-linked-goal-vision-replan-contract-v0.json>'"
+        if vision_successor_required
+        else (
+            "--progress-result-class "
+            "<advanced|blocked|exploration_exhausted|no_followup> "
+            "--progress-surface-id <surface-id> "
+            "--progress-hypothesis-id <hypothesis-id> "
+            "--progress-probe-kind <probe-kind> "
+            "--progress-evidence-id <evidence-id>"
+        )
     )
     delivery_args = (
         "--delivery-batch-scale single_surface "
@@ -166,7 +180,7 @@ def build_autonomous_replan_cli_actions(
         f"{cli_prefix} --format json refresh-state --goal-id {goal_id} "
         "--progress-scope agent_lane "
         "--classification bounded_replan_progress "
-        f"{delivery_args}{typed_progress_args}"
+        f"{delivery_args}{semantic_delta_args}"
         f"{settlement_args}{scoped_cli_args}"
     )
     if not settlement_chain_ready:

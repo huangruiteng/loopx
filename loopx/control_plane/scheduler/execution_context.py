@@ -73,6 +73,17 @@ NATIVE_GOAL_RUNTIME_PROFILES = frozenset(
     }
 )
 
+# Interactive hosts in this set can carry one explicit Turn identity through
+# accountable writeback and visible-Goal quota settlement. Claude's ordinary
+# Todo delivery remains MCP-owned; this shared contract also permits its
+# Todo-less replan re-entry to finish once a Turn has been supplied.
+VISIBLE_GOAL_SETTLEMENT_RUNTIME_PROFILES = frozenset(
+    {
+        *NATIVE_GOAL_RUNTIME_PROFILES,
+        SchedulerRuntimeProfile.CLAUDE_CODE_VISIBLE,
+    }
+)
+
 GUIDED_START_TURN_RUNTIME_PROFILES = frozenset(
     {
         SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
