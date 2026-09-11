@@ -123,6 +123,12 @@ coverage. 新的前端豁免由目标分支已审阅的策略控制；CI 自身�
 PRs opened before activation may need a branch update to produce the new
 required check; an old green suite alone does not supply a missing aggregate.
 
+Browser waits must target the intended surface: a visible pending-message label
+and an accessibility live region may contain the same words. Use a scoped or
+exact locator and retain the bounded completion assertion; do not suppress a
+strict-mode ambiguity with a retry or a longer timeout. 浏览器等待应区分消息提示与
+无障碍播报，不能把定位歧义误报成恢复超时，也不能通过删掉播报来让测试通过。
+
 ### Refactor Real-Path Gate / 重构真实路径门
 
 The PR review capability's `observable_semantics` evidence gate applies to
