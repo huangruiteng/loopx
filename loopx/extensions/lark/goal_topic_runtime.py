@@ -938,6 +938,9 @@ def _inbox_config(
             "chat_id": chat_id,
             "placement_policy": "source_context",
             "editorial_style": "bullet_points_preferred",
+            "received_reaction_policy": (
+                "retain" if route.get("conversation_kind") == "manager" else "transient"
+            ),
         },
     }
     config_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -1045,7 +1048,8 @@ def process_lark_goal_topic_event(
             "inbox_config_ref": config_ref,
         }
     # Receipt ACK is visible while the synchronous manager is reasoning. The
-    # private reaction ledger makes retries idempotent; final reply owns cleanup.
+    # private reaction ledger makes retries idempotent. Manager received ACKs
+    # remain visible; final reply only clears transient processing indicators.
     # A cosmetic reaction failure must not suppress the actual answer.
     received_reaction = None
     if route.get("conversation_kind") == "manager":

@@ -255,9 +255,10 @@ messages; use `configured_chat_all` for complete collaboration threads:
 For every reply-enabled Inbox, a missing `reply.received_reaction_emoji`
 defaults to `Get`. Set it explicitly to the empty string to disable this
 provider write. The reaction belongs to the same explicit sender boundary as
-source-thread replies, but only the Agent's turn-start hook may create it:
-realtime collection persists events without reacting, and the hook writes the
-reaction only after it has read and confirmed a still-pending human message.
+source-thread replies. The Agent's turn-start hook creates it after reading and
+confirming a still-pending human message; the synchronous manager route creates
+it immediately before invoking the manager. Realtime collection alone persists
+events without reacting.
 The receipt therefore means "read into the Agent processing chain"; it does not
 mean "collector stored the event", "the Bot was mentioned", "a reply is due",
 or "processing completed". Mention, reply, question, and material-review
@@ -284,9 +285,16 @@ received reaction. The default `Get` satisfies that requirement; when the read
 acknowledgement is explicitly disabled, processing reaction must also be
 disabled. When both are configured, the host should run
 `lark-inbox processing` immediately before interpreting an actionable item.
-LoopX first adds the processing reaction and then removes the received
-reaction. A verified source-thread reply removes any remaining lifecycle
-reaction. If the provider cannot delete a reaction, the operation fails with a
+`reply.received_reaction_policy` selects `transient` (the generic Inbox default)
+or `retain`. With `transient`, LoopX first adds the processing reaction and then
+removes the received reaction; a verified source-thread reply removes remaining
+lifecycle reactions. With `retain`, the received reaction remains visible during
+processing and after the answer; completion removes only processing reactions.
+Generated manager routes default to `retain`, so their `Get` receipt does not
+disappear when the answer arrives. Bound Goal routes keep `transient` behavior.
+Retention uses the existing private reaction ledger across restart and replay;
+it neither recreates reactions on historical messages nor means work completed.
+If the provider cannot delete a transient reaction, the operation fails with a
 retryable cleanup status instead of claiming completion.
 
 Reaction ids are stored only in an owner-private receipt ledger under the

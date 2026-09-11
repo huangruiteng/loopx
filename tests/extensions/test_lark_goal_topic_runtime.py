@@ -1416,7 +1416,15 @@ def test_manager_receives_reaction_before_answer_and_preserves_sender(tmp_path, 
     result = runtime.process_lark_goal_topic_event(**kwargs)
     assert result["ok"], result
     assert result["status"] == "replied_and_acknowledged"
-    assert ("cleanup" in stages) == bool(reaction_ok)
+    assert "cleanup" not in stages  # Manager receipt ACK survives its answer.
+    if reaction_ok:
+        from loopx.extensions.lark.event_inbox import load_lark_event_inbox_config
+        from loopx.extensions.lark.inbox_reactions import lark_inbox_reaction_receipts
+        config = load_lark_event_inbox_config(
+            project=kwargs["runtime_root"], config_path=result["inbox_config_ref"])
+        assert config["reply"]["received_reaction_policy"] == "retain"
+        assert lark_inbox_reaction_receipts(
+            inbox=config["inbox_path"], message_id="om_incoming")["received"]["emoji_type"] == "Get"
     before = list(stages)
     assert runtime.process_lark_goal_topic_event(**kwargs)["status"] == "already_acknowledged"
     assert stages == before

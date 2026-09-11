@@ -892,7 +892,7 @@ def _mark_lark_event_inbox_processing_locked(
         created_count = 1
 
     deleted_count = 0
-    if received is not None:
+    if received is not None and config["reply"].get("received_reaction_policy") != "retain":
         if not _delete_reaction(
             runner=runner,
             profile=profile,
@@ -964,6 +964,10 @@ def _complete_lark_event_inbox_reactions_locked(
         inbox=inbox,
         message_id=normalized,
     )
+    # A received ACK records consumption, not unfinished processing. Retention
+    # keeps that provider receipt visible after the answer and across replay.
+    if config["reply"].get("received_reaction_policy") == "retain":
+        receipts = {phase: row for phase, row in receipts.items() if phase != "received"}
     configured = bool(
         config["reply"].get("received_reaction_emoji")
         or config["reply"].get("processing_reaction_emoji")

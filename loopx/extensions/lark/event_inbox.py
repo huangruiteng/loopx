@@ -146,6 +146,9 @@ def load_lark_event_inbox_config(
         ).strip()
     else:
         received_reaction_emoji = "Get" if reply_enabled else ""
+    received_reaction_policy = reply_payload.get("received_reaction_policy", "transient")
+    if received_reaction_policy not in ("transient", "retain"):
+        raise ValueError("lark inbox received_reaction_policy must be transient or retain")
     processing_reaction_emoji = str(
         reply_payload.get("processing_reaction_emoji") or ""
     ).strip()
@@ -222,6 +225,7 @@ def load_lark_event_inbox_config(
             "placement_policy": placement_policy,
             "editorial_style": editorial_style,
             "received_reaction_emoji": received_reaction_emoji,
+            "received_reaction_policy": received_reaction_policy,
             "processing_reaction_emoji": processing_reaction_emoji,
         },
         "material_review": {
