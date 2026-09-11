@@ -100,10 +100,10 @@ function ManagerHomeBoard({
   const currentGoals = goals.filter((goal) => goal.activationState === "active");
   const failedCount = currentGoals.filter((goal) => goal.loadState === "error").length;
   const activeHomeLanes = [
-    { description: t("home.lane.needsYouDescription"), key: "needs_you", label: t("home.lane.needsYou") },
-    { description: t("home.lane.runningDescription"), key: "running", label: t("home.lane.running") },
-    { description: t("home.lane.observingDescription"), key: "observing", label: t("home.lane.observing") },
-    { description: t("home.lane.scheduledDescription"), key: "scheduled", label: t("home.lane.scheduled") },
+    { key: "needs_you", label: t("home.lane.needsYou") },
+    { key: "running", label: t("home.lane.running") },
+    { key: "observing", label: t("home.lane.observing") },
+    { key: "scheduled", label: t("home.lane.scheduled") },
   ] as const;
   const active = Object.fromEntries(activeHomeLanes.map((lane) => [lane.key, [] as WorkspaceGoal[]])) as Record<(typeof activeHomeLanes)[number]["key"], WorkspaceGoal[]>;
   const history: WorkspaceGoal[] = [];
@@ -152,7 +152,6 @@ function ManagerHomeBoard({
         {activeHomeLanes.map((lane) => (
           <section className={`personal-home-lane is-${lane.key}`} data-testid={`personal-home-lane-${lane.key}`} key={lane.key}>
             <header><span><i />{lane.label}</span><b>{active[lane.key].length}</b></header>
-            <p>{lane.description}</p>
             <div className="personal-home-lane-list">
               {active[lane.key].length ? active[lane.key].map(goalCard) : <span className="personal-home-empty">{t("home.empty")}</span>}
             </div>
@@ -306,7 +305,6 @@ function SessionRecordHeader({ onClose, onOpenDetails, run }: {
       </header>
       <div>
         <strong>{run.title}</strong>
-        <p>{t("session.recordDescription")}</p>
       </div>
       <dl>
         <div><dt>Agent</dt><dd>{run.agentLabel}</dd></div>

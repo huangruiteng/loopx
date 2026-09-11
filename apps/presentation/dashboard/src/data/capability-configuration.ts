@@ -35,3 +35,16 @@ export function projectEditableCapabilityConfiguration(
     return [];
   }));
 }
+
+/** JSON editing has the same registered-field authority as the form. */
+export function parseEditableCapabilityJson(
+  editor: CapabilityConfigurationEditorDescriptor,
+  text: string,
+): Record<string, unknown> | null {
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { return null; }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const allowed = new Set(editor.fields.map((field) => field.key));
+  if (Object.keys(value).some((key) => !allowed.has(key))) return null;
+  return value as Record<string, unknown>;
+}

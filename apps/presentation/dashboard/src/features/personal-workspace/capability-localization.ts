@@ -12,6 +12,7 @@ type FieldCopy = Record<string, Readonly<{ description?: string; label: string }
 
 const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
   en: {
+    todo_replan_cadence: { displayName: "Goal review cadence", description: "Configures the Goal review cadence." },
     change_quality_qualification: {
       displayName: "Change quality qualification",
       description: "Prepares a provider-neutral review packet, allows at most one policy-authorized safe-fix pass, and can require an exact-diff receipt.",
@@ -56,6 +57,7 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
     },
   },
   "zh-CN": {
+    todo_replan_cadence: { displayName: "Goal 复核周期", description: "配置 Goal 的复核周期。" },
     change_quality_qualification: {
       displayName: "变更质量验证",
       description: "生成与 Provider 无关的审阅包，最多允许一次策略授权的安全修复，并可要求精确 diff 回执。",

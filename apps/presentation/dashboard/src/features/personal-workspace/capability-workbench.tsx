@@ -1,8 +1,8 @@
 import { AlertTriangle, ShieldCheck, SlidersHorizontal } from "lucide-react";
 
 import type { CapabilityConfigurationCatalog } from "../../data/chat";
-import type { WorkspaceLocale, WorkspaceTranslate } from "./i18n";
-import { localizeCapability } from "./capability-localization";
+import { useWorkspaceI18n, type WorkspaceLocale, type WorkspaceTranslate } from "./i18n";
+import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
 
 type CapabilityDescriptor = CapabilityConfigurationCatalog["capabilities"][number];
 
@@ -27,7 +27,7 @@ export function CapabilityConfigurationSummary({ values, t }: Readonly<{
   </details>;
 }
 
-export function CapabilityEffectiveSource({ source, t }: Readonly<{
+function CapabilityEffectiveSource({ source, t }: Readonly<{
   source?: NonNullable<CapabilityDescriptor["effective_configuration"]>["source"];
   t: WorkspaceTranslate;
 }>) {
@@ -88,7 +88,7 @@ export function CapabilityCatalogNavigation({
   t: WorkspaceTranslate;
 }>) {
   return (
-    <nav aria-label={t(scope === "goal" ? "capabilities.catalog" : "machine.capabilityCatalog")} className="personal-capability-list">
+    <nav aria-label={t(scope === "goal" ? "capabilities.catalog" : "machine.capabilityCatalog")} className="personal-capability-list" tabIndex={0}>
       {orderCapabilitiesForPresentation(capabilities, locale).map((rawCapability) => {
         const capability = localizeCapability(rawCapability, locale);
         return (
@@ -100,7 +100,6 @@ export function CapabilityCatalogNavigation({
           >
             <span>
               <strong>{capability.display_name}</strong>
-              <small>{capability.capability_id}</small>
             </span>
             <em>{t(capability.available_scopes.includes(scope)
               ? scope === "goal" ? "capabilities.goalScope" : "capabilities.machineScope"
@@ -112,18 +111,30 @@ export function CapabilityCatalogNavigation({
   );
 }
 
-export function CapabilityDetailHeader({ capability, locale }: Readonly<{
+export function CapabilityDetailHeader({ capability, locale, source }: Readonly<{
   capability: CapabilityDescriptor;
   locale: WorkspaceLocale;
+  source?: NonNullable<CapabilityDescriptor["effective_configuration"]>["source"];
 }>) {
+  const { t } = useWorkspaceI18n();
   const localized = localizeCapability(capability, locale);
   return (
     <header>
       <span className="personal-settings-icon"><SlidersHorizontal aria-hidden size={18} /></span>
       <div>
-        <small>{localized.capability_id}</small>
-        <h2>{localized.display_name}</h2>
-        <p>{localized.description}</p>
+        <div className="personal-capability-heading-row">
+          <h2>{localized.display_name}</h2>
+          <CapabilityEffectiveSource source={source} t={t} />
+        </div>
+        <details className="personal-capability-help" key={capability.capability_id}>
+          <summary>{locale === "zh-CN" ? "配置说明" : "Configuration help"}</summary>
+          <p>{localized.description}</p>
+          <dl>{capability.configuration_editor.fields.map((field) => {
+            const copy = localizedCapabilityFieldCopy(locale)[field.key];
+            const description = copy?.description ?? field.description;
+            return description ? <div key={field.key}><dt>{copy?.label ?? field.label}</dt><dd>{description}</dd></div> : null;
+          })}</dl>
+        </details>
       </div>
     </header>
   );

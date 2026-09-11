@@ -102,7 +102,7 @@ export function GoalSidebar({
     <div className="personal-goal-directory">
       <div className="personal-sidebar-brand">
         <span className="personal-brand-mark"><Bot size={18} /></span>
-        <span><strong>LoopX</strong><small>{t("sidebar.product")}</small></span>
+        <span><strong>LoopX</strong></span>
       </div>
 
       {statusSourceControl ? <StatusSourceSwitcher {...statusSourceControl} /> : null}
@@ -159,7 +159,7 @@ export function GoalSidebar({
         {onOpenSettings ? (
           <button aria-label={t("settings.open")} className="personal-sidebar-utility" onClick={onOpenSettings} type="button">
             <span className="personal-sidebar-utility-icon"><Settings2 size={17} /></span>
-            <span className="personal-sidebar-utility-copy"><strong>{t("settings.open")}</strong><small>{t("settings.eyebrow")}</small></span>
+            <span className="personal-sidebar-utility-copy"><strong>{t("settings.open")}</strong></span>
             <ChevronRight aria-hidden="true" size={15} />
           </button>
         ) : null}

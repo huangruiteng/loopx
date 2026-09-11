@@ -2141,22 +2141,24 @@ async function main() {
     await capabilityMenuItem.click();
     await page.getByRole("heading", { level: 1, name: "Goal 能力", exact: true }).waitFor({ state: "visible" });
     if (await page.locator(".personal-workspace-shell").count()) throw new Error("Unified Goal capability action did not open the Settings surface");
-    await page.getByRole("heading", { level: 2, name: "周期报告", exact: true }).waitFor({ state: "visible" });
-    const goalCapabilityOrder = await page.locator(".personal-capability-list button small").allTextContents();
+    await page.getByRole("heading", { level: 2, name: /^周期报告/ }).waitFor({ state: "visible" });
+    const goalCapabilityOrder = await page.locator(".personal-capability-list button strong").allTextContents();
     if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable Goal settings must not show internal editor-contract notices");
     const expectedGoalCapabilities = [
-      "change_quality_qualification", "explore_graph", "explore_harness", "lark_event_inbox",
-      "lark_kanban_heartbeat_sync", "local_authority_shadow", "multi_subagent",
-      "peer_task_coordination", "periodic_report", "reward_memory",
+      "变更质量验证", "探索图谱", "探索 Harness", "飞书事件收件箱",
+      "飞书看板心跳同步", "本地 Authority 影子观测", "自适应子 Agent 容量",
+      "已注册 Peer 任务协调", "周期报告", "Reward Memory 实验",
     ];
-    if (JSON.stringify([...goalCapabilityOrder].sort()) !== JSON.stringify(expectedGoalCapabilities)) {
+    if (JSON.stringify([...goalCapabilityOrder].sort()) !== JSON.stringify(expectedGoalCapabilities.sort())) {
       throw new Error(`Goal capability workbench did not render the complete catalog: ${JSON.stringify(goalCapabilityOrder)}`);
     }
-    const capabilityIndex = (capabilityId) => goalCapabilityOrder.indexOf(capabilityId);
-    if (capabilityIndex("periodic_report") >= capabilityIndex("explore_harness")
-      || capabilityIndex("multi_subagent") <= capabilityIndex("explore_harness")
-      || capabilityIndex("multi_subagent") >= capabilityIndex("local_authority_shadow")
-      || capabilityIndex("multi_subagent") >= capabilityIndex("reward_memory")) {
+    const selectedCapabilityName = await page.locator('.personal-capability-list button[aria-current="page"] strong').innerText();
+    if (selectedCapabilityName !== goalCapabilityOrder[0]) throw new Error("Default capability selection must match the first visible catalog entry");
+    const capabilityIndex = (name) => goalCapabilityOrder.indexOf(name);
+    if (capabilityIndex("周期报告") >= capabilityIndex("探索 Harness")
+      || capabilityIndex("自适应子 Agent 容量") <= capabilityIndex("探索 Harness")
+      || capabilityIndex("自适应子 Agent 容量") >= capabilityIndex("本地 Authority 影子观测")
+      || capabilityIndex("自适应子 Agent 容量") >= capabilityIndex("Reward Memory 实验")) {
       throw new Error(`Goal capability maturity ordering drifted: ${JSON.stringify(goalCapabilityOrder)}`);
     }
     for (const label of [/^启用$/u, /^报告 Profile/u, /^Goal Channel 路由/u, /^时区/u]) {
@@ -2170,6 +2172,25 @@ async function main() {
     if (JSON.stringify(projectedKeys) !== JSON.stringify(["enabled", "profile_preset", "route_ref", "timezone"])) {
       throw new Error(`Goal configuration preview leaked hidden machine fields: ${JSON.stringify(goalConfigurationPreview)}`);
     }
+    await page.getByRole("button", { name: "编辑 JSON", exact: true }).click();
+    const goalJson = page.locator("#goal-configuration-json");
+    const originalGoalJson = await goalJson.inputValue();
+    const goalPreviewButton = page.getByRole("button", { name: "预览变更", exact: true });
+    const goalApplyButton = page.getByRole("button", { name: "应用此预览", exact: true });
+    if (!(await goalApplyButton.isDisabled())) throw new Error("Switching editors retained a stale Goal preview");
+    for (const invalid of ["{", '{"schema_version":"hidden"}']) {
+      await goalJson.fill(invalid);
+      if (!(await goalPreviewButton.isDisabled()) || !(await goalApplyButton.isDisabled())) {
+        throw new Error("Invalid or unregistered Goal JSON enabled configuration mutation");
+      }
+    }
+    await goalJson.fill(JSON.stringify({ ...JSON.parse(originalGoalJson), timezone: "Asia/Shanghai" }));
+    await page.getByRole("button", { name: "返回表单", exact: true }).click();
+    await waitForInputValue(page.getByLabel(/^时区/u), "Asia/Shanghai");
+    await goalPreviewButton.click();
+    await page.getByText("锁定 revision 的变更预览", { exact: true }).waitFor({ state: "visible" });
+    const jsonPreview = api.goalConfigurationRequests.filter((item) => item.phase === "preview").at(-1);
+    if (jsonPreview?.configuration?.timezone !== "Asia/Shanghai") throw new Error("Goal JSON changes did not reach the reviewed preview");
     await page.getByRole("button", { name: "应用此预览", exact: true }).click();
     await page.getByText("Goal 值已保存；共享投影仍需修复", { exact: true }).waitFor({ state: "visible" });
     if (!(await page.getByText(/loopx sync-global --goal-id/u).isVisible())) throw new Error("Partial Goal write did not expose its reconciliation action");
@@ -2177,7 +2198,7 @@ async function main() {
     if (goalConfigurationApply?.expected_plan_revision !== "sha256:goal-plan-periodic_report") throw new Error("Goal configuration apply lost its reviewed plan revision");
 
     await page.getByRole("button", { name: /自适应子 Agent 容量/u }).click();
-    await page.getByRole("heading", { level: 2, name: "自适应子 Agent 容量", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { level: 2, name: /^自适应子 Agent 容量/ }).waitFor({ state: "visible" });
     const multiSubagentEnabled = page.getByLabel(/^启用$/u);
     const multiSubagentMaxChildren = page.getByLabel(/^最大子 Agent 数/u);
     const multiSubagentDomains = page.getByLabel(/^允许的职责域/u);
@@ -2223,14 +2244,14 @@ async function main() {
 
     await page.getByRole("button", { name: /机器配置/ }).click();
     await page.getByRole("heading", { level: 1, name: "机器配置", exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("heading", { level: 2, name: "周期报告", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { level: 2, name: /^周期报告/ }).waitFor({ state: "visible" });
     const machineCatalog = page.getByRole("navigation", { name: "机器能力目录" });
     if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable machine settings must not show internal editor-contract notices");
     if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length) {
       throw new Error("Machine settings hid Goal-only capabilities from the shared catalog");
     }
     const requestsBeforeReadOnly = api.machineConfigurationRequests.length;
-    await machineCatalog.getByRole("button", { name: /multi_subagent/ }).click();
+    await machineCatalog.getByRole("button", { name: /^自适应子 Agent 容量/ }).click();
     await page.getByText(/此能力目前仅支持 Goal 级配置/u).waitFor({ state: "visible" });
     if (await page.getByRole("button", { name: "预览变更", exact: true }).count()
         || await page.locator("#machine-configuration-json").count()
@@ -2238,12 +2259,32 @@ async function main() {
         || api.machineConfigurationRequests.length !== requestsBeforeReadOnly) {
       throw new Error("Goal-only capability exposed a machine mutation path");
     }
-    await machineCatalog.getByRole("button", { name: /periodic_report/ }).click();
+    await machineCatalog.getByRole("button", { name: /^周期报告/ }).click();
     for (const label of [/^启用$/u, /^报告 Profile/u, /^Goal Channel 路由/u, /^时区/u]) {
       await page.getByLabel(label).waitFor({ state: "visible" });
     }
     await page.getByText("开启后将在已验证的阶段节点自动投递", { exact: true }).waitFor({ state: "visible" });
+    await page.getByText("开启后将在已验证的阶段节点自动投递", { exact: true }).click();
     await page.getByText(/启用此订阅即授予持续投递权/u).waitFor({ state: "visible" });
+    await page.locator(".personal-capability-help > summary").click();
+    const settingsScrollBounds = await page.evaluate(() => {
+      const detail = document.querySelector(".personal-capability-detail");
+      const catalog = document.querySelector(".personal-capability-list");
+      return {
+        viewportHeight: window.innerHeight,
+        documentHeight: document.documentElement.scrollHeight,
+        detailOverflow: getComputedStyle(detail).overflowY,
+        catalogOverflow: getComputedStyle(catalog).overflowY,
+        detailBottom: detail.getBoundingClientRect().bottom,
+      };
+    });
+    if (settingsScrollBounds.documentHeight > settingsScrollBounds.viewportHeight + 1
+      || settingsScrollBounds.detailBottom > settingsScrollBounds.viewportHeight + 1
+      || settingsScrollBounds.detailOverflow !== "auto"
+      || settingsScrollBounds.catalogOverflow !== "auto") {
+      throw new Error(`Settings escaped their viewport scroll boundaries: ${JSON.stringify(settingsScrollBounds)}`);
+    }
+    await page.locator(".personal-capability-help > summary").click();
     await page.getByRole("button", { name: "预览变更", exact: true }).click();
     await page.getByText("审阅机器配置变更", { exact: true }).waitFor({ state: "visible" });
     const machineConfigurationPreview = api.machineConfigurationRequests.find((item) => item.phase === "preview");

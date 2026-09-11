@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Code2, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
 
 import {
   applyGoalConfiguration,
@@ -10,11 +10,11 @@ import {
   type GoalConfigurationPreview,
   type GoalConfigurationPartialWrite,
 } from "../../data/chat";
-import { projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
+import { parseEditableCapabilityJson, projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
 import { useWorkspaceI18n } from "./i18n";
 import { CapabilityConfigurationFields } from "./capability-configuration-fields";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
-import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, CapabilityEffectiveSource } from "./capability-workbench";
+import { orderCapabilitiesForPresentation, canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus } from "./capability-workbench";
 
 type CapabilityCatalogProps = Readonly<{
   catalog: CapabilityConfigurationCatalog;
@@ -42,8 +42,15 @@ function useCapabilityMutation({ goalId, onApplied, selected, t }: Readonly<{
     preview: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [editorMode, setEditorMode] = useState<"guided" | "json">("guided");
+  const [jsonDraft, setJsonDraft] = useState("");
+  const parsedJson = useMemo(() => selected
+    ? parseEditableCapabilityJson(selected.configuration_editor, jsonDraft) : null, [selected, jsonDraft]);
+  const jsonValid = editorMode === "guided" || parsedJson !== null;
 
   useEffect(() => {
+    setEditorMode("guided");
+    setJsonDraft("");
     setMutation({
       busy: null,
       draft: projectEditableCapabilityConfiguration(
@@ -60,7 +67,7 @@ function useCapabilityMutation({ goalId, onApplied, selected, t }: Readonly<{
   }, [selected]);
 
   async function preview(configuration: Record<string, unknown> | null) {
-    if (!selected || mutation.busy) return;
+    if (!selected || mutation.busy || !jsonValid) return;
     setMutation((current) => ({ ...current, busy: "preview", partialWrite: null }));
     setError(null);
     try {
@@ -74,7 +81,7 @@ function useCapabilityMutation({ goalId, onApplied, selected, t }: Readonly<{
   }
 
   async function apply() {
-    if (!selected || !mutation.preview || mutation.busy) return;
+    if (!selected || !mutation.preview || mutation.busy || !jsonValid) return;
     setMutation((current) => ({ ...current, busy: "apply" }));
     setError(null);
     try {
@@ -112,7 +119,24 @@ function useCapabilityMutation({ goalId, onApplied, selected, t }: Readonly<{
     setError(null);
   }
 
-  return { apply, changeDraft, error, mutation, preview };
+  function changeJson(text: string) {
+    if (!selected || mutation.busy) return;
+    setJsonDraft(text);
+    const parsed = parseEditableCapabilityJson(selected.configuration_editor, text);
+    setMutation((current) => ({ ...current, preview: null, draft: parsed
+      ? projectEditableCapabilityConfiguration(selected.configuration_editor, parsed, selected.default)
+      : current.draft }));
+    setError(null);
+  }
+
+  function changeMode() {
+    if (mutation.busy || !jsonValid) return;
+    if (editorMode === "guided") setJsonDraft(JSON.stringify(mutation.draft, null, 2));
+    setEditorMode(editorMode === "guided" ? "json" : "guided");
+    setMutation((current) => ({ ...current, preview: null }));
+  }
+
+  return { apply, changeDraft, changeJson, changeMode, editorMode, jsonDraft, jsonValid, error, mutation, preview };
 }
 
 function CapabilityMutationFeedback({ mutationError, onApplied, partialWrite, preview }: Readonly<{
@@ -149,20 +173,24 @@ function CapabilityMutationFeedback({ mutationError, onApplied, partialWrite, pr
 
 function CapabilityCatalog({ catalog, goalId, onApplied }: CapabilityCatalogProps) {
   const { locale, t } = useWorkspaceI18n();
+  const orderedCapabilities = useMemo(
+    () => orderCapabilitiesForPresentation(catalog.capabilities, locale),
+    [catalog.capabilities, locale],
+  );
   const [selectedCapabilityId, setSelectedCapabilityId] = useState(
-    catalog.capabilities[0]?.capability_id ?? "",
+    () => orderedCapabilities[0]?.capability_id ?? "",
   );
   const selected = useMemo(
-    () => catalog.capabilities.find((capability) => capability.capability_id === selectedCapabilityId)
-      ?? catalog.capabilities[0],
-    [catalog.capabilities, selectedCapabilityId],
+    () => orderedCapabilities.find((capability) => capability.capability_id === selectedCapabilityId)
+      ?? orderedCapabilities[0],
+    [orderedCapabilities, selectedCapabilityId],
   );
   const localizedSelected = useMemo(
     () => selected ? localizeCapability(selected, locale) : undefined,
     [locale, selected],
   );
   const capabilityMutation = useCapabilityMutation({ goalId, onApplied, selected: localizedSelected, t });
-  const { apply, changeDraft, error: mutationError, mutation, preview: requestPreview } = capabilityMutation;
+  const { apply, changeDraft, changeJson, changeMode, editorMode, jsonDraft, jsonValid, error: mutationError, mutation, preview: requestPreview } = capabilityMutation;
   const { busy, draft, partialWrite, preview } = mutation;
 
   if (!selected || !localizedSelected) {
@@ -175,7 +203,7 @@ function CapabilityCatalog({ catalog, goalId, onApplied }: CapabilityCatalogProp
     ?? (!supportsGoal ? t("capabilities.machineOnly") : t("capabilities.previewOnly"));
 
   async function createPreview() {
-    if (!localizedSelected || !editorAvailable || busy) return;
+    if (!localizedSelected || !editorAvailable || busy || !jsonValid) return;
     const writableDraft = projectEditableCapabilityConfiguration(
       localizedSelected.configuration_editor,
       draft,
@@ -200,37 +228,46 @@ function CapabilityCatalog({ catalog, goalId, onApplied }: CapabilityCatalogProp
         t={t}
       />
 
-      <article className="personal-capability-detail">
-        <CapabilityDetailHeader capability={selected} locale={locale} />
-
-        <CapabilityEffectiveSource source={localizedSelected.effective_configuration?.source} t={t} />
+      <article aria-label={localizedSelected.display_name} className="personal-capability-detail" tabIndex={0}>
+        <CapabilityDetailHeader capability={selected} locale={locale}
+          source={localizedSelected.effective_configuration?.source} />
         <CapabilityEditorStatus available={editorAvailable} t={t}
           description={readOnlyReason} />
 
-        {editorAvailable ? (
-          <section className="personal-capability-field-summary">
-            <strong>{t("capabilities.fields")}</strong>
+        {editorAvailable ? <>
+          {editorMode === "json" || !localizedSelected.configuration_editor.fields.some((field) => field.key === "enabled" && field.input_kind === "boolean") ? (
+            <div className="personal-capability-editor-mode">
+              <button disabled={Boolean(busy) || !jsonValid} onClick={changeMode} type="button"><Code2 aria-hidden size={14} />{t(editorMode === "guided" ? "machine.editJson" : "machine.backToForm")}</button>
+            </div>
+          ) : null}
+          {editorMode === "guided" ? <section className="personal-capability-field-summary">
             <CapabilityConfigurationFields
               disabled={Boolean(busy)}
               copy={localizedCapabilityFieldCopy(locale)}
               editor={localizedSelected.configuration_editor}
               onChange={changeDraft}
               value={draft}
+              enabledAction={<button className="personal-capability-edit-json" onClick={changeMode} type="button"><Code2 aria-hidden size={14} />{t("machine.editJson")}</button>}
             />
-          </section>
-        ) : null}
+          </section> : <label className="personal-capability-json-editor" htmlFor="goal-configuration-json">
+            <span>{t("capabilities.jsonConfiguration")}</span>
+            <textarea id="goal-configuration-json" aria-describedby="goal-configuration-json-help" disabled={Boolean(busy)} onChange={(event) => changeJson(event.target.value)} rows={12} spellCheck={false} value={jsonDraft} />
+            <small id="goal-configuration-json-help">{t("capabilities.jsonHelp")}</small>
+            {!jsonValid ? <span className="personal-machine-validation" role="alert">{t("capabilities.jsonInvalid")}</span> : null}
+          </label>}
+        </> : null}
         <CapabilityMutationFeedback mutationError={mutationError} onApplied={onApplied} partialWrite={partialWrite} preview={preview} />
         {editorAvailable ? (
           <footer className="personal-capability-actions">
             {localizedSelected.current && localizedSelected.available_scopes.includes("machine") ? (
-              <button disabled={Boolean(busy)} onClick={() => void createClearPreview()} type="button">
+              <button disabled={Boolean(busy) || !jsonValid} onClick={() => void createClearPreview()} type="button">
                 {t("capabilities.restoreInheritance")}
               </button>
             ) : null}
-            <button disabled={Boolean(busy)} onClick={() => void createPreview()} type="button">
+            <button disabled={Boolean(busy) || !jsonValid} onClick={() => void createPreview()} type="button">
               {busy === "preview" ? t("common.loading") : t("capabilities.previewChanges")}
             </button>
-            <button className="is-primary" disabled={Boolean(busy) || !preview} onClick={() => void apply()} type="button">
+            <button className="is-primary" disabled={Boolean(busy) || !preview || !jsonValid} onClick={() => void apply()} type="button">
               {busy === "apply" ? t("common.loading") : t("capabilities.applyPreview")}
             </button>
           </footer>
@@ -281,10 +318,10 @@ export function GoalCapabilitySettings({ goalId }: Readonly<{ goalId?: string | 
 
   return (
     <section className="personal-capability-settings" data-revision={inspection.revision}>
-      <div className="personal-capability-scope-note">
-        <ShieldCheck aria-hidden size={17} />
-        <p><strong>{t("capabilities.atomicOverride")}</strong>{t("capabilities.atomicOverrideDescription")}</p>
-      </div>
+      <details className="personal-capability-scope-note">
+        <summary><ShieldCheck aria-hidden size={17} />{t("capabilities.atomicOverride")}</summary>
+        <p>{t("capabilities.atomicOverrideDescription")}</p>
+      </details>
       <CapabilityCatalog catalog={inspection.capability_catalog} goalId={goalId} onApplied={load} />
     </section>
   );

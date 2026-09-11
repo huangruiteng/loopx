@@ -172,12 +172,18 @@ Do not mix marketing pills and application squares in the same control group.
 - Use precise grids rather than masonry.
 - Avoid decorative cards with no information or action.
 
+- Theme and language choices use the same two-column grid in every workspace theme.
+- Omit secondary descriptive lines under workspace page titles, navigation labels, and display choices. Preserve operational status, errors, and action outcomes.
+- Capability navigation shows the localized name and a compact Goal or machine scope badge; omit the secondary internal identifier. Configuration forms use shared spacing and a full-width switch row; optional capability and field explanations live in a collapsed configuration-help section. Keep activation consequences and read-only restrictions visible. Goal and machine editors share the enable-row JSON entry point. Goal JSON accepts only registered editable fields and invalidates the previous preview whenever edited; applying still requires a new reviewed preview.
+
 ### Forms
 
 - White surface, ink text, hairline border, 6px radius.
 - Labels remain visible; placeholders do not replace labels.
 - Focus uses the blue link/focus token with sufficient contrast.
 - Errors use text and iconography in addition to color.
+
+- Settings titles omit eyebrow text. Settings occupy the dynamic viewport height. Capability detail cards shrink to their content and are capped by the available panel height. The settings sidebar, capability catalog, and capability detail scroll independently with contained overscroll. Other settings content scrolls inside the main panel. Narrow screens use a bounded horizontal capability catalog above the detail panel.
 
 ### Code And Terminal Surfaces
 

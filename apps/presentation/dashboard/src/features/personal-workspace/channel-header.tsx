@@ -87,11 +87,9 @@ export function ChannelHeader({
       <button aria-expanded={mobileNavigationOpen ?? false} aria-label={t("header.openGoalNavigation")} className="personal-icon-button personal-mobile-menu" onClick={onOpenNavigation} type="button"><Menu size={18} /></button>
       <div className="personal-channel-title">
         <h1>{selectedGoal?.title ?? t("header.manager")}</h1>
-        <p>{selectedGoal
-          ? selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : `${selectedGoal.agentLaneCount && selectedGoal.agentLaneCount > 1
+        {selectedGoal ? <p>{selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : `${selectedGoal.agentLaneCount && selectedGoal.agentLaneCount > 1
             ? t("header.workAgentCount", { count: selectedGoal.agentLaneCount })
-            : selectedGoal.agentLabel ?? selectedGoal.agentId} · ${(selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : localizedGoalState(selectedGoal.state, locale))}${selectedGoalUsageLabel ? ` · ${selectedGoalUsageLabel}` : ""} · ${selectedGoal.nextSentence}`
-          : t("header.managerDescription")}</p>
+            : selectedGoal.agentLabel ?? selectedGoal.agentId} · ${(selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : localizedGoalState(selectedGoal.state, locale))}${selectedGoalUsageLabel ? ` · ${selectedGoalUsageLabel}` : ""} · ${selectedGoal.nextSentence}`}</p> : null}
       </div>
       {selectedGoal ? (
         <nav aria-label={t("header.goalView")} className="personal-goal-tabs">
@@ -126,11 +124,11 @@ export function ChannelHeader({
               <fieldset aria-label={t("header.goalSettings")} className="personal-goal-tools-menu">
                 <button onClick={() => runGoalTool(onOpenGoalDetail)} type="button">
                   <Info aria-hidden size={17} />
-                  <span><strong>{t("header.goalDetails")}</strong><small>{t("header.goalDetailsDescription")}</small></span>
+                  <span><strong>{t("header.goalDetails")}</strong></span>
                 </button>
                 <button onClick={() => runGoalTool(onOpenGoalCapabilities)} type="button">
                   <SlidersHorizontal aria-hidden size={17} />
-                  <span><strong>{t("header.goalCapabilities")}</strong><small>{t("header.goalCapabilitiesDescription")}</small></span>
+                  <span><strong>{t("header.goalCapabilities")}</strong></span>
                 </button>
               </fieldset>
             ) : null}

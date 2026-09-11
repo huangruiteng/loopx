@@ -186,7 +186,6 @@ export function NotificationSettingsPanel({
     <section className="personal-detail-card personal-notification-settings">
       <small>{t("notifications.title")}</small>
       <h3>{t("notifications.settings")}</h3>
-      <p>{t("notifications.description")}</p>
       {targetsError ? <p className="personal-notification-error">{targetsError}</p> : null}
       <ul className="personal-notification-list">
         {goals.map((goal) => (

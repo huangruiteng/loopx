@@ -18,7 +18,7 @@ import {
 import { projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
 import { CapabilityConfigurationFields } from "./capability-configuration-fields";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
-import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, CapabilityEffectiveSource } from "./capability-workbench";
+import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus } from "./capability-workbench";
 import { useWorkspaceI18n } from "./i18n";
 
 type CapabilityDescriptor = CapabilityConfigurationCatalog["capabilities"][number];
@@ -284,42 +284,37 @@ export function MachineConfigurationSettings() {
 
   return (
     <section className="personal-capability-settings" data-revision={inspection?.revision}>
-      <div className="personal-capability-scope-note">
-        <ShieldCheck aria-hidden size={17} />
-        <p><strong>{t("machine.liveDefault")}</strong>{t("machine.liveDefaultDescription")}</p>
-      </div>
+      <details className="personal-capability-scope-note">
+        <summary><ShieldCheck aria-hidden size={17} />{t("machine.liveDefault")}</summary>
+        <p>{t("machine.liveDefaultDescription")}</p>
+      </details>
 
       <div className="personal-capability-layout">
         <CapabilityCatalogNavigation capabilities={capabilities} locale={locale} onSelect={setSelectedCapabilityId} scope="machine" selectedCapabilityId={selected.capability_id} t={t} />
 
-        <article className="personal-capability-detail">
-          <CapabilityDetailHeader capability={selectedRaw} locale={locale} />
-
-          {selected.available_scopes.includes("machine") ? <CapabilityEffectiveSource
-            source={configured ? "machine_default" : "capability_default"} t={t}
-          /> : null}
+        <article aria-label={selected.display_name} className="personal-capability-detail" tabIndex={0}>
+          <CapabilityDetailHeader capability={selectedRaw} locale={locale}
+            source={selected.available_scopes.includes("machine") ? configured ? "machine_default" : "capability_default" : undefined} />
           <CapabilityEditorStatus available={editorAvailable} t={t} description={!selected.available_scopes.includes("machine") ? t("machine.goalOnly")
               : t("machine.editorUnavailableDescription")} />
 
           {selected.capability_id === "periodic_report" ? (
             <section className="personal-capability-behavior-note">
               <ShieldCheck aria-hidden size={18} />
-              <div><strong>{t("machine.periodicReportActivation")}</strong><p>{t("machine.periodicReportActivationDescription")}</p></div>
+              <details><summary>{t("machine.periodicReportActivation")}</summary><p>{t("machine.periodicReportActivationDescription")}</p></details>
             </section>
           ) : null}
 
-          {editorAvailable ? <><div className="personal-capability-editor-mode">
-            <span>{t("machine.editorMode")}</span>
-            <div role="group" aria-label={t("machine.editorMode")}>
-              <button aria-pressed={editorMode === "guided"} disabled={!editorAvailable} onClick={() => changeMode("guided")} type="button">{t("machine.visualEditor")}</button>
-              <button aria-pressed={editorMode === "json"} onClick={() => changeMode("json")} type="button"><Code2 aria-hidden size={14} />{t("machine.jsonEditor")}</button>
-            </div>
-          </div>
+          {editorAvailable ? <>{editorMode === "json" || !selected.configuration_editor.fields.some((field) => field.key === "enabled" && field.input_kind === "boolean") ? <div className="personal-capability-editor-mode">
+            <button onClick={() => changeMode(editorMode === "guided" ? "json" : "guided")} type="button">
+              <Code2 aria-hidden size={14} />{t(editorMode === "guided" ? "machine.editJson" : "machine.backToForm")}
+            </button>
+          </div> : null}
 
           {editorMode === "guided" ? (
             <section className="personal-capability-field-summary">
-              <strong>{t("capabilities.fields")}</strong>
-              <CapabilityConfigurationFields copy={localizedCapabilityFieldCopy(locale)} disabled={Boolean(busy)} editor={selected.configuration_editor} onChange={changeDraft} value={draft} />
+              <CapabilityConfigurationFields copy={localizedCapabilityFieldCopy(locale)} disabled={Boolean(busy)} editor={selected.configuration_editor} onChange={changeDraft} value={draft}
+                enabledAction={<button className="personal-capability-edit-json" onClick={() => changeMode("json")} type="button"><Code2 aria-hidden size={14} />{t("machine.editJson")}</button>} />
               {!editorValid ? <p className="personal-machine-validation" role="alert">{t("machine.requiredFields")}</p> : null}
             </section>
           ) : (

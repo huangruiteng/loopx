@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { projectEditableCapabilityConfiguration } from "../src/data/capability-configuration.js";
+import { parseEditableCapabilityJson, projectEditableCapabilityConfiguration } from "../src/data/capability-configuration.js";
 
 const periodicReportEditor = {
   fields: [
@@ -58,4 +58,10 @@ assert.deepEqual(
   "typed editors must replace non-editable null projections with capability defaults",
 );
 
-console.log("capability configuration projection smoke: ok");
+
+assert.deepEqual(parseEditableCapabilityJson(periodicReportEditor, '{"enabled":false,"timezone":"UTC"}'), { enabled: false, timezone: "UTC" });
+for (const invalid of ['{', 'null', '[]', 'true', '{"schema_version":"injected"}', '{"enabled":true,"status":"active"}', '{"__proto__":{}}']) {
+  assert.equal(parseEditableCapabilityJson(periodicReportEditor, invalid), null, `reject invalid or unregistered JSON fields: ${invalid}`);
+}
+
+console.log("capability configuration projection and JSON boundary smoke: ok");

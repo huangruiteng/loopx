@@ -179,7 +179,7 @@ export function GoalTasksView({
   return (
     <section aria-label={t("header.tasks")} className={`personal-task-board${listView ? " is-list-view" : ""}`}>
       <header className="personal-task-view-toolbar">
-        <div><strong>{t("header.tasks")}</strong><span>{t("tasks.viewDescription")}</span></div>
+        <div><strong>{t("header.tasks")}</strong></div>
         <div className="personal-task-view-switch" role="group" aria-label={t("tasks.viewLabel")}>
           <button type="button" aria-pressed={listView} onClick={() => setListView(true)}>{t("tasks.listView")}</button>
           <button type="button" aria-pressed={!listView} onClick={() => setListView(false)}>{t("tasks.boardView")}</button>
@@ -189,7 +189,7 @@ export function GoalTasksView({
         <section aria-label={t("tasks.agentLaneFilter")} className="personal-task-lane-filter">
           <div>
             <Bot size={15} />
-            <span><strong>{t("tasks.agentLane")}</strong><small>{t("tasks.agentLaneDescription")}</small></span>
+            <span><strong>{t("tasks.agentLane")}</strong></span>
           </div>
           <label>
             <span className="sr-only">{t("tasks.agentLaneFilter")}</span>

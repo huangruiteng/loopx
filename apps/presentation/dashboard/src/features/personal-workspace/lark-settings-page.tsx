@@ -479,7 +479,6 @@ export function LarkSettingsPage({
           <div>
             <small>{t("settings.goalConnections")}</small>
             <h1>Lark</h1>
-            <p>{t("lark.description")}</p>
           </div>
           <button aria-label={t("lark.closeSettings")} className="personal-icon-button" onClick={onClose} type="button"><X size={18} /></button>
         </header>
