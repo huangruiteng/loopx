@@ -122,6 +122,31 @@ These failures set both `decision_read_from_provider=false` and
 `legacy_fallback_used=false`. Successful responses and unrelated request/domain
 errors retain their existing contracts.
 
+## Promotion failure evidence
+
+`legacy_writer_fenced` reports whether this promotion invocation verified the
+exact persisted fence against the request. Provider opening precedes that
+verification so opening errors retain their selected-provider diagnostics.
+Such early failures report `false`, even if a fence exists but was not read and
+matched. This is not proof that legacy writes are allowed; callers must consult
+the durable writer guard. After successful fence verification, later failures
+retain `true`. Request fields alone never establish fencing evidence.
+
+The failure-path regression matrix covers:
+
+| Boundary | Evidence checked |
+| --- | --- |
+| Selector/database open | List, exact read, mutation, create, claim, native/planning update, compatibility edit, terminal, archive, ACK and promotion retain typed source/reason, no fallback and unchanged authority bytes. |
+| Fence readback | Missing, malformed and mismatched fences do not establish verified fencing; an open failure cannot infer it from an existing marker. |
+| After verified fence | Missing/invalid shadow and rejected qualification preserve verified fencing without canonical writes. |
+| Existing promotion readback | Exact receipt/first-commit lineage permits replay; missing receipts or mismatched lineage reject without modifying authority. |
+
+These tests use disposable file/SQLite stores and the production runtime
+entrypoints. They preserve the current qualification gate: mirrored file shadow
+health alone does not authorize a new canonical cutover. Shared store conformance
+separately covers transactional CAS, commit ambiguity, receipt reconciliation and
+projection replay. No active Goal is needed for this validation.
+
 ## Stop and recovery boundary
 
 To stop using the candidate, stop the owning goal/host runtime and retain its

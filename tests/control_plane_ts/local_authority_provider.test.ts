@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, rename, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -8,6 +8,9 @@ import { SqliteAuthorityStore } from "../../loopx/control_plane/coordination/sql
 import { FileAuthorityStore } from "../../loopx/control_plane/coordination/file_authority_store.ts";
 import { createRequire } from "node:module";
 import { authorityStoreCommitFixture } from "./authority_store_conformance.ts";
+import * as runtime from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
+import { qualifiedShadow, promotionRequest, engageFence } from "./local_promotion_fixture.ts";
+import { loadLegacyCoordinationWriterFence, legacyCoordinationWriterFencePath } from "../../loopx/control_plane/coordination/legacy_writer_fence.ts";
 import { acknowledgeLocalCoordinationTodoArchive, archiveLocalCoordinationTodos, listLocalCoordinationTodos, mutateLocalCoordinationAuthority } from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 
 for (const [fault, source, reason] of [
@@ -15,14 +18,15 @@ for (const [fault, source, reason] of [
   ["database_corrupt", "sqlite_v0", "local_authority_provider_open_failed"],
   ["database_identity", "sqlite_v0", "local_authority_provider_identity_mismatch"],
   ["database_metadata", "sqlite_v0", "local_authority_provider_open_failed"],
+  ["selector_unavailable", null, "local_authority_selector_unavailable"],
   ["selector_corrupt", null, "local_authority_selector_invalid"],
   ["selector_wrong_goal", null, "local_authority_selector_invalid"],
   ["selector_missing", null, "local_authority_selector_missing"],
 ] as const) {
-  test(`selected provider ${fault} has accurate read/write failure and no fallback`, async t => {
+  test(`selected provider ${fault} has accurate failure across runtime entrypoints and no fallback`, async t => {
     const directory = await root(t);
-    await selectLocalSqliteAuthority(directory, "goal", true);
-    const store = await openLocalAuthorityStore(directory, "goal");
+    await selectLocalSqliteAuthority(directory, "goal-a", true);
+    const store = await openLocalAuthorityStore(directory, "goal-a");
     assert.ok(store instanceof SqliteAuthorityStore);
     const identity = await store.storeIdentity();
     assert.equal(identity.status, "available"); if (identity.status !== "available") return;
@@ -36,6 +40,7 @@ for (const [fault, source, reason] of [
       db.prepare("UPDATE metadata SET store_identity=?").run(fault === "database_identity" ? "sqlite:" + "0".repeat(32) : "invalid-identity");
       db.close();
     }
+    if (fault === "selector_unavailable") { await rm(marker); await mkdir(marker); }
     if (fault === "selector_corrupt") await writeFile(marker, "{");
     if (fault === "selector_wrong_goal") {
       const config = JSON.parse(await readFile(marker, "utf8"));
@@ -44,29 +49,66 @@ for (const [fault, source, reason] of [
     if (fault === "selector_missing") await rm(marker);
     const bytes = async (path: string) => readFile(path).catch(error => {
       if (error.code === "ENOENT") return null;
+      if (error.code === "EISDIR" || error.code === "EPERM") return "unreadable";
       throw error;
     });
     const before = await Promise.all([bytes(store.path), bytes(marker)]);
-    await assert.rejects(openLocalAuthorityStore(directory, "goal"), {reasonCode: reason, sourceAuthority: source});
-    const input = {runtime_root: directory, goal_id: "goal"};
-    const read = await listLocalCoordinationTodos({...input, schema_version: "loopx_local_coordination_todo_list_request_v0"});
-    const write = await mutateLocalCoordinationAuthority({...input, schema_version: "loopx_local_coordination_mutation_request_v0",
-      operation_id: "open-failure", expected_provider_revision: `${identity.store_identity}:1`, mutations: [{kind: "todo_remove", todo_id: "todo-a"}]});
-    const ack = await acknowledgeLocalCoordinationTodoArchive({...input,
-      schema_version: "loopx_local_coordination_todo_archive_ack_request_v0",
-      role: "agent", operation_id: "archive-a"});
-    for (const result of [read, write, ack]) {
-      assert.equal(result.status, "failed");
-      assert.equal(result.source_authority, source);
-      assert.equal(result.reason_code, reason);
-      assert.equal(result.legacy_fallback_used, false);
-      assert.equal(result.decision_read_from_provider, false);
-      if (fault === "database_metadata") assert.equal(result.provider_reason_code, "provider_protocol_violation");
-      if (fault === "database_identity") assert.equal(result.provider_reason_code, undefined);
+    await assert.rejects(openLocalAuthorityStore(directory, "goal-a"), {reasonCode: reason, sourceAuthority: source});
+    for (const dryRun of [false, true]) {
+      for (const [name, invoke] of providerCalls(directory, `${identity.store_identity}:1`, dryRun)) {
+        const result: Record<string, unknown> = await invoke();
+        assert.equal(result.status, "failed", name);
+        assert.equal(result.source_authority, source, name);
+        assert.equal(result.reason_code, reason, name);
+        assert.equal(result.legacy_fallback_used, false, name);
+        assert.equal(result.decision_read_from_provider, false, name);
+        if (name === "promotion") assert.equal(result.legacy_writer_fenced, false);
+        if (fault === "database_metadata") assert.equal(result.provider_reason_code, "provider_protocol_violation");
+        if (fault === "database_identity") assert.equal(result.provider_reason_code, undefined);
+        assert.deepEqual(await Promise.all([bytes(store.path), bytes(marker)]), before, name);
+      }
     }
+    assert.equal((await loadLegacyCoordinationWriterFence(directory, "goal-a")).status, "missing");
+    // Even an existing fence cannot be claimed as verified if opening fails
+    // first. Its independent existence does not replace this call's readback.
+    const promotion = promotionRequest(directory, {}, "file:synthetic:1");
+    await writeFile(join(directory, "ACTIVE_GOAL_STATE.md"), "# Synthetic source\n");
+    await engageFence(promotion);
+    const fenced = await loadLegacyCoordinationWriterFence(directory, "goal-a");
+    assert.equal(fenced.status, "loaded");
+    const failedPromotion = await runtime.promoteLocalCoordinationAuthority(promotion);
+    assert.equal(failedPromotion.reason_code, reason);
+    assert.equal(failedPromotion.legacy_writer_fenced, false);
+    assert.deepEqual(await loadLegacyCoordinationWriterFence(directory, "goal-a"), fenced);
+
     assert.deepEqual(await Promise.all([bytes(store.path), bytes(marker)]), before);
     assert.equal((await readdir(join(directory, "authority"))).includes("file-v0"), false);
   });
+}
+
+// Valid transport to each owning runtime entrypoint; failed opening must be
+// independent of dry-run, command family, and the caller's requested mutation.
+function providerCalls(directory: string, revision: string, dryRun: boolean) {
+  const input = {runtime_root: directory, goal_id: "goal-a", todo_id: "todo-a", role: "agent",
+    operation_id: "open-failure", expected_provider_revision: revision, dry_run: dryRun,
+    registered_agents: ["agent-a"], actor_agent_id: "agent-a", claimed_by: "agent-a",
+    observed_at: "2026-09-08T01:00:00Z", clear_fields: [], patch: {text: "Correction"},
+    lifecycle_grants: [], successor_intents: [], linked_successor_todo_ids: []};
+  return [
+    ["list", () => runtime.listLocalCoordinationTodos({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA})],
+    ["read", () => runtime.readLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA})],
+    ["mutate", () => runtime.mutateLocalCoordinationAuthority({...input, schema_version: runtime.LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,
+      mutations: [{kind: "todo_remove", todo_id: "todo-a"}]})],
+    ["create", () => runtime.createLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_create_request_v0", todo: {}})],
+    ["claim", () => runtime.claimLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_CLAIM_REQUEST_SCHEMA})],
+    ["update", () => runtime.updateLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_update_request_v0"})],
+    ["planning", () => runtime.updateLocalCoordinationTodo({...input, schema_version: "loopx_local_coordination_todo_update_request_v1", planning_intent: {status: "blocked"}})],
+    ["edit", () => runtime.editLocalCoordinationTodo({...input})],
+    ["terminal", () => runtime.terminalLifecycleLocalCoordinationTodo({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_TERMINAL_LIFECYCLE_REQUEST_SCHEMA})],
+    ["archive", () => runtime.archiveLocalCoordinationTodos({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA, max_active_done: 0})],
+    ["archive_ack", () => runtime.acknowledgeLocalCoordinationTodoArchive({...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA})],
+    ["promotion", () => runtime.promoteLocalCoordinationAuthority(promotionRequest(directory, {}, "file:synthetic:1"))],
+  ] as const;
 }
 
 async function root(t: test.TestContext) {
@@ -158,3 +200,64 @@ test("SQLite archive acknowledgement retires the accepted attempt without changi
   assert.deepEqual(await store.loadAuthority(), before);
   assert.equal((await readdir(join(directory, "authority"))).includes("file-v0"), false);
 });
+
+
+for (const provider of ["file", "sqlite"] as const) {
+  for (const phase of ["fence_missing", "fence_corrupt", "fence_mismatch", "shadow_missing",
+    "shadow_invalid", "qualification", "replay", "receipt_missing", "lineage_mismatch"] as const) {
+    test(`${provider} promotion evidence follows verified state at ${phase}`, async t => {
+      const directory = await root(t);
+      if (provider === "sqlite") await selectLocalSqliteAuthority(directory, "goal-a", true);
+      const canonical = await openLocalAuthorityStore(directory, "goal-a");
+      const shadow = await qualifiedShadow(directory);
+      const shadowStore = new FileAuthorityStore(join(directory, "authority-shadow", "file-v0"), "goal-a");
+      const request = promotionRequest(directory, shadow.projection, shadow.providerRevision);
+      if (phase === "shadow_invalid") {
+        // A valid store row can still contain an invalid domain projection.
+        const projection = {...shadow.projection, goal_id: "different-goal"};
+        const committed = await shadowStore.commitAuthority({operation_id: "invalid-domain",
+          expected_provider_revision: shadow.providerRevision, next_projection: projection, receipts: [], events: []});
+        assert.equal(committed.status, "applied"); if (committed.status !== "applied") return;
+        Object.assign(request, promotionRequest(directory, projection, committed.provider_revision));
+      }
+      if (phase !== "fence_missing") await engageFence(request);
+      const fencePath = legacyCoordinationWriterFencePath(directory, "goal-a");
+      if (phase === "fence_corrupt") await writeFile(fencePath, "{");
+      if (phase === "fence_mismatch") {
+        await writeFile(fencePath, JSON.stringify({...request.writer_fence, fence_id: "different-fence"}));
+      }
+      if (phase === "shadow_missing") await rm(join(directory, "authority-shadow", "file-v0"), {recursive: true});
+      if (["replay", "receipt_missing", "lineage_mismatch"].includes(phase)) {
+        // Seed an already-committed qualification fixture; this does not grant
+        // permission for a new cutover through the current qualification gate.
+        const receipt = {schema_version: runtime.LOCAL_COORDINATION_PROMOTION_RECEIPT_SCHEMA,
+          operation_id: request.operation_id, goal_id: request.goal_id,
+          source_shadow_provider_revision: request.expected_shadow_provider_revision,
+          source_projection_sha256: request.expected_shadow_projection_sha256,
+          writer_fence_id: request.writer_fence.fence_id, source_version: request.writer_fence.source_version};
+        const seeded = await canonical.commitAuthority({operation_id: phase === "receipt_missing" ? "other-operation" : request.operation_id,
+          expected_provider_revision: null, next_projection: phase === "lineage_mismatch" ?
+            {...shadow.projection, extra: "different snapshot"} : shadow.projection,
+          receipts: phase === "receipt_missing" ? [] : [receipt], events: []});
+        assert.equal(seeded.status, "applied");
+      }
+      const before = await canonical.loadAuthority();
+      const fenceBefore = await loadLegacyCoordinationWriterFence(directory, "goal-a");
+      const result = await runtime.promoteLocalCoordinationAuthority(request);
+      const verified = !["fence_missing", "fence_corrupt", "fence_mismatch"].includes(phase);
+      assert.equal(result.legacy_writer_fenced, verified, JSON.stringify(result));
+      assert.equal(result.legacy_fallback_used, false);
+      assert.equal(result.status, phase === "replay" ? "replayed" : "failed", JSON.stringify(result));
+      const reasons = {fence_missing: "local_authority_writer_fence_not_verified",
+        fence_corrupt: "legacy_writer_fence_read_failed", fence_mismatch: "local_authority_writer_fence_not_verified",
+        shadow_missing: "local_authority_shadow_missing", shadow_invalid: "local_authority_promotion_unavailable",
+        qualification: "local_authority_shadow_not_qualified", receipt_missing: "local_authority_promotion_receipt_missing",
+        lineage_mismatch: "local_authority_promotion_lineage_mismatch"};
+      if (phase !== "replay") assert.equal(result.reason_code, reasons[phase]);
+      else assert.equal(result.canonical_authority, provider === "sqlite" ? "sqlite_v0" : "file_v0");
+      assert.deepEqual(await canonical.loadAuthority(), before);
+      assert.deepEqual(await loadLegacyCoordinationWriterFence(directory, "goal-a"), fenceBefore);
+      if (provider === "sqlite") assert.equal((await readdir(join(directory, "authority"))).includes("file-v0"), false);
+    });
+  }
+}

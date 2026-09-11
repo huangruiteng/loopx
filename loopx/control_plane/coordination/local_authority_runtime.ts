@@ -354,6 +354,9 @@ export async function promoteLocalCoordinationAuthority(
     };
   }
 
+  // Provider opening can fail before durable fence readback. Report only
+  // evidence this invocation actually verified, including in the outer catch.
+  let writerFenceVerified = false;
   try {
     const shadow = dependencies.createShadowStore?.(
       shadowDirectory(request.runtime_root),
@@ -388,6 +391,7 @@ export async function promoteLocalCoordinationAuthority(
       legacy_writer_fenced: false,
       legacy_fallback_used: false,
     };
+    writerFenceVerified = true;
     const existing = await canonical.loadAuthority();
     if (existing.status === "loaded") {
       const readback = await promotionReadback(canonical, request);
@@ -519,7 +523,7 @@ export async function promoteLocalCoordinationAuthority(
       status: "failed",
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "local_authority_promotion_unavailable",
       reason: error instanceof Error ? error.message : "promotion unavailable",
-      legacy_writer_fenced: true,
+      legacy_writer_fenced: writerFenceVerified,
       legacy_fallback_used: false,
       ...localAuthorityOpenFailure(error),
     };

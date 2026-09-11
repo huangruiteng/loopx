@@ -4,6 +4,11 @@ import os
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
+
+from loopx.control_plane.effect_runtime import effect_runtime_result
 
 from canonical_authority_fixture import initialize_canonical_authority
 from loopx.control_plane.coordination.runtime_shadow import build_todo_runtime_shadow_projection
@@ -11,12 +16,16 @@ from loopx.control_plane.coordination.coordination_state_contract import TODO_DO
 from loopx.control_plane.coordination.local_authority_shadow_projection import canonical_bytes
 
 
-def test_sqlite_cli_reopens_updates_and_recovers_missing_markdown(tmp_path, monkeypatch):
+def isolate_sqlite_runtime(tmp_path, monkeypatch):
     monkeypatch.setenv("NODE_OPTIONS", os.environ.get("NODE_OPTIONS", "") + " --experimental-sqlite")
     # Do not reuse an Effect runtime started by the minimum-Node CI step.
     # Each CLI subprocess resolves its own tempfile root from this environment.
     for variable in ("TMPDIR", "TEMP", "TMP"):
         monkeypatch.setenv(variable, str(tmp_path))
+
+
+def test_sqlite_cli_reopens_updates_and_recovers_missing_markdown(tmp_path, monkeypatch):
+    isolate_sqlite_runtime(tmp_path, monkeypatch)
     runtime, state, registry = tmp_path / "runtime", tmp_path / "state.md", tmp_path / "registry.json"
     state.write_text("# Synthetic goal\n\n## Agent Todo\n")
     registry.write_text(json.dumps({"common_runtime_root": str(runtime), "goals": [{
@@ -86,3 +95,50 @@ def test_sqlite_cli_reopens_updates_and_recovers_missing_markdown(tmp_path, monk
         assert result["decision_read_from_provider"] is False
     assert not state.exists()
     assert not databases[0].exists()
+
+
+@pytest.mark.parametrize("fault,reason", [
+    ("selector_corrupt", "local_authority_selector_invalid"),
+    ("selector_missing", "local_authority_selector_missing"),
+    ("database_missing", "local_authority_provider_missing"),
+    ("database_corrupt", "local_authority_provider_open_failed"),
+])
+def test_promotion_failure_evidence_survives_real_python_runtime(tmp_path, monkeypatch, fault, reason):
+    isolate_sqlite_runtime(tmp_path, monkeypatch)
+    runtime = tmp_path / "runtime"
+    selector_cli = Path(__file__).resolve().parents[2] / "loopx/control_plane/coordination/local_authority_provider.ts"
+    process = subprocess.run(["node", "--no-warnings", "--experimental-strip-types", str(selector_cli),
+        "--runtime-root", str(runtime), "--goal-id", "sqlite-goal", "--execute"],
+        capture_output=True, text=True, timeout=45)
+    assert process.returncode == 0, process.stdout + process.stderr
+    marker = next((runtime / "authority").glob("provider-*.json"))
+    database = next((runtime / "authority/sqlite-v0").glob("*.sqlite"))
+    if fault == "selector_corrupt":
+        marker.write_text("{")
+    elif fault == "selector_missing":
+        marker.unlink()
+    elif fault == "database_missing":
+        database.rename(database.with_suffix(".saved"))
+    else:
+        database.write_text("invalid SQLite")
+    def durable_bytes():
+        return {str(path.relative_to(runtime)): path.read_bytes()
+                for path in runtime.rglob("*") if path.is_file()}
+    before = durable_bytes()
+    result = effect_runtime_result("coordination.local_authority.promote", {
+        "schema_version": "loopx_local_coordination_promotion_request_v0",
+        "runtime_root": str(runtime), "goal_id": "sqlite-goal", "operation_id": "promotion-negative",
+        "expected_shadow_provider_revision": "file:synthetic:1",
+        "expected_shadow_projection_sha256": "a" * 64, "minimum_operations": 1,
+        "required_event_kinds": ["todo_claim"], "writer_fence": {
+            "schema_version": "loopx_legacy_coordination_writer_fence_v0", "state": "engaged",
+            "goal_id": "sqlite-goal", "fence_id": "unverified-fence", "source_version": "state:1",
+            "source_projection_sha256": "a" * 64, "expected_shadow_provider_revision": "file:synthetic:1",
+        },
+    })
+    assert result["status"] == "failed" and result["reason_code"] == reason
+    assert result["legacy_writer_fenced"] is False
+    assert result["source_authority"] == (None if fault.startswith("selector") else "sqlite_v0")
+    assert result["decision_read_from_provider"] is False and result["legacy_fallback_used"] is False
+    assert durable_bytes() == before
+    assert not list((runtime / "authority-transition").rglob("legacy-writer-fence-*.json"))
