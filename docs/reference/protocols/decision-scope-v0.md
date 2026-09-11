@@ -214,8 +214,8 @@ unscoped multi-agent decisions never grant standing authority.
    later authoring field.
 3. **Projection:** surface the fields in status, quota, review packets, and
    frontstage local ops mode.
-4. **Hot path:** make status/quota prefer structured scope relation over text
-   inference.
+4. **Hot path:** status/quota fallback uses structured scope relations, then
+   exact legacy action labels; title/body word overlap is not dependency authority.
 5. **Lint fallback:** keep regex and optional LLM proposals as projection-gap
    repair helpers, not runtime authority.
 
@@ -240,6 +240,47 @@ still means waiting for a decision, not permission to execute.
 Legacy metadata codecs and operator repair copy remain in Python. Candidate-pair
 consumers use batched relations. No provider commit, lease, source promotion or
 Markdown writeback authority is added by this read-only contract.
+
+### Scoped fallback selection
+
+The same typed owner now selects fallback candidates, rather than letting Python
+reinterpret a relation matrix with token-overlap heuristics. It applies these
+rules in order:
+
+1. Explicit `global_gate=true` still blocks fallback for every addressed lane.
+2. Exact Todo links and decision scopes retain their existing precedence,
+   including contradictory-target diagnostics. Explicit independence is not
+   overridden by matching action labels.
+3. Only when neither relation exists, two nonempty legacy `action_kind` values
+   are compared as complete trimmed, case-normalized keys. Equal keys retain
+   blocking compatibility; distinct keys do **not** prove independence (for
+   example, `approve_release` versus `release`). This is not a new permission
+   scope or an approval receipt. Use explicit dependencies when authoring gates.
+4. Distinct or missing keys do not prove independence: that candidate cannot be advertised
+   as safe fallback. This does not rewrite the gate or promote it to global scope.
+
+Intentional correction: word overlap no longer claims a known dependency,
+and disjoint words no longer claim safe independence. English and Chinese task
+prose cannot alter the relation. Without structural scope, both remain unproven
+for safe fallback; adding an explicit exact link or decision scope makes the
+intended boundary readable without teaching the Agent a naming convention.
+This may withhold previously offered legacy fallback until its scope is
+clarified. It never removes, retargets or automatically broadens a User gate.
+
+Selection rejects completed, archived, blocked, removed-continuation and
+actor-ineligible candidate rows. A ready deferred row retains its separate replan
+meaning, not permission to execute deferred work. Priority and persisted index
+retain precedence; Monitor debt only prefers advancement at equal priority, and
+source position breaks remaining ties. Deduplication retains the first source
+identity. An authoritative empty capability result is never refilled from backlog;
+due Monitor and evaluated deferred lanes keep their separate existing contracts.
+All supplied candidates are considered before the three-item diagnostic limit.
+The adapter returns existing compact display rows, without another provider read,
+wait evaluation, Todo mutation, permission grant or notification-policy change.
+
+The inputs are evaluated quota lanes, not a claim that every compact-summary
+consumer now reads the complete inventory. Missing/stale display is handled by
+the existing canonical source adapter; permanent Markdown remains a projection.
 
 - Missing structured fields on legacy state: fall back to compatibility lint
   and emit a projection-gap repair hint.

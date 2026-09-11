@@ -2142,6 +2142,12 @@ T3 decision-dependency 读取策略现由同一 TS owner 解释 scope coverage�
 不改变默认 provider 或放宽 D3 promotion hold。Markdown 继续作为永久单向展示，
 后续执行卡与退役条件保留。
 
+Scoped fallback 的选择与门禁关系也已复用同一 TS decision owner，删除 Python
+词语重合匹配和选择循环。显式依赖及 global gate 保留，旧完整 action key 相同仅
+保留阻塞兼容；键不同或缺少事实不能证明独立性。这是披露语义变化的 T3 consumer 闭合，
+不是新 provider，也不代表 D1–D3 已资格化。来源适配、永久投影和 promotion hold
+不变；具体规则见 TS 执行卡及 decision-scope 协议。
+
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
 能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，

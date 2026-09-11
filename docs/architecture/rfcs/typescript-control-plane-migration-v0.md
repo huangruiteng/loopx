@@ -576,8 +576,16 @@ Agent fallback, global Todo and summary consumers batch their candidate relation
 to avoid one RPC per pair. Legacy completion still uses the shared coverage rule.
 Validation covers the production-scale fixture, complete provider reads beyond
 display limits, stale/missing display, and isolated real-state snapshot parity.
-Remaining T3 work includes legacy action-token fallback routing and consumers
-that reconstruct diagnostics from compact summaries; do not call those migrated.
+Scoped fallback selection now shares that TS owner for eligibility, priority,
+deduplication and gate relations. The Python action-token gate matcher and
+selection loop are retired. Explicit dependencies/global gates take precedence;
+equal legacy action labels retain blocking compatibility, not word-overlap
+authority. Different or missing labels cannot certify safe independence. This
+deliberately removes inferred overlap dependencies and unjustified safe bypass;
+see the [fallback contract](../../reference/protocols/decision-scope-v0.md#scoped-fallback-selection).
+Python retains lane source adaptation and compact presentation; no new provider
+read or resume evaluation is added. Remaining T3 work includes consumers that
+reconstruct diagnostics from compact summaries; do not call those migrated.
 This does not close T1/T2, all T3 consumers, or any durability/promotion hold.
 
 The list-filter consumer now uses `compact_evaluated_todo_group` instead of

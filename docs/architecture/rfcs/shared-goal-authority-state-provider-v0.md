@@ -2680,6 +2680,14 @@ It does not qualify D1/D2, alter the default provider, or relax D3 promotion hol
 Markdown remains the permanent one-way display; the remaining execution cards
 below are unchanged.
 
+Scoped fallback now consumes the same typed decision owner for selection and
+gate relations, retiring the Python token-overlap matcher and selection loop.
+Exact dependency authority and explicit global gates remain; equal legacy action
+keys retain blocking compatibility, while different/missing keys cannot prove independence. This
+is a T3 consumer closure with disclosed semantics, not a new provider or a D1–D3
+qualification. Source adaptation, permanent projection and all promotion holds
+remain unchanged; see the TS card and decision-scope contract for the exact rules.
+
 Use the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
 for command inventory, update/monitor transactions and consumer deletion. Do not
 repeat that plan in a second implementation or treat a merged read-policy PR

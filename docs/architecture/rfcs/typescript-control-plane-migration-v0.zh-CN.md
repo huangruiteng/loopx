@@ -431,7 +431,13 @@ scope coverage 和 open-gate routing。
 Python 保留 legacy 解码和修复展示，删除第二套规则。Agent fallback、global Todo、
 summary 对候选关系批量调用，避免每对 Todo 一次 RPC；legacy completion 也复用覆盖规则。
 验证覆盖复杂容量 fixture、展示上限之外的完整 provider 来源、陈旧／缺失展示和隔离真实
-状态快照 parity。T3 仍需处理旧 action-token fallback 路由及从压缩 summary 重建诊断的
+状态快照 parity。Scoped fallback 的资格、优先级、去重和门禁关系现已收拢到同一 TS
+owner，删除 Python action-token 门禁匹配和选择循环。显式依赖及 global gate 优先；
+旧 action_kind 相同仅保留阻塞兼容，不再以词语重合推断依赖。键不同或缺少依赖事实时，
+不能证明候选是安全 fallback。这有意移除词语推断和无证据的安全绕行，详见
+[fallback 协议](../../reference/protocols/decision-scope-v0.md#scoped-fallback-selection)。
+Python 保留 lane 来源适配和展示压缩，不增加 provider 读取或 resume 重算。
+T3 仍需处理从压缩 summary 重建诊断的
 消费者，不把它们列为已迁移；不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
 
 能力缺口与修复路由现由 `agents/capability_gate.ts` 统一解释执行前提、修复产出、
