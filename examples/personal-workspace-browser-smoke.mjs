@@ -1893,7 +1893,7 @@ async function main() {
     const returnText = "处理结论：已核验新约束并关联现有计划，无需再次追问。";
     page.__loopxRuntime.messages.get(returnSessionId).push({
       message_id: "handoff.browser-fixture", turn_id: "original-delegation",
-      role: "agent", origin: "manager_followup", text: `${returnText}\n\n- **已完成**：核验新约束\n- 下一步：继续现有计划`,
+      role: "agent", origin: "manager_followup", text: `${returnText}\n\n- **已完成**：核验新约束\n- 下一步：继续现有计划\n\n1. 核对证据\n2. 汇报结论`,
       created_at: "2026-08-13T01:00:03Z",
     });
     await page.getByText(returnText, { exact: true }).waitFor({ state: "visible", timeout: 10_000 });
@@ -1901,6 +1901,14 @@ async function main() {
     if (await richConclusion.locator("ul > li").count() !== 2
       || await richConclusion.locator(".personal-md strong").innerText() !== "已完成") {
       throw new Error("Worker conclusion displayed raw Markdown instead of a list and emphasis");
+    }
+    const listStyles = await richConclusion.locator(".personal-md").evaluate((node) => ({
+      unordered: getComputedStyle(node.querySelector("ul")).listStyleType,
+      ordered: getComputedStyle(node.querySelector("ol")).listStyleType,
+      itemDisplay: getComputedStyle(node.querySelector("li")).display,
+    }));
+    if (listStyles.unordered !== "disc" || listStyles.ordered !== "decimal" || listStyles.itemDisplay !== "list-item") {
+      throw new Error(`Markdown list markers were reset by global styles: ${JSON.stringify(listStyles)}`);
     }
     await richConclusion.scrollIntoViewIfNeeded();
     await page.screenshot({ path: resolve(outputDir, "manager-automatic-conclusion.png"), fullPage: false, animations: "disabled" });
