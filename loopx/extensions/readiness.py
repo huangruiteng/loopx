@@ -24,7 +24,8 @@ class ResolvedRuntimeEntrypoint:
 
 
 def runtime_process_environment(
-    path_prefix: str | None, base: Mapping[str, str] | None = None,
+    path_prefix: str | None,
+    base: Mapping[str, str] | None = None,
 ) -> Mapping[str, str] | None:
     if path_prefix is None:
         return base
@@ -66,12 +67,22 @@ def _file_identity(path: Path, *, executable: bool) -> tuple[Path, str] | None:
 def resolved_entrypoint_identity(command: str) -> tuple[Path, str] | None:
     if "/" in command or "\\" in command:
         path = Path(command).expanduser()
+        if not path.is_absolute():
+            path = Path(os.path.abspath(path))
     else:
         resolved = shutil.which(command)
         if resolved is None:
             return None
         path = Path(resolved)
-    return _file_identity(path, executable=True)
+    identified = _file_identity(path, executable=True)
+    if identified is None:
+        return None
+    # Hash the final executable artifact, but retain the launcher path selected
+    # by the operator. Package managers commonly expose console scripts through
+    # a shared symlink directory; sibling tools in that directory must remain
+    # available to the provider subprocess even when the link target lives in
+    # an isolated package environment.
+    return path, identified[1]
 
 
 def resolve_runtime_entrypoint(
@@ -135,6 +146,7 @@ def extension_doctor(
     elif available and not execute:
         status = "probe_required"
     elif available:
+        assert identity_before is not None
         argv = [
             *identity_before.argv_prefix,
             *[str(value) for value in runtime.get("args") or []],
@@ -177,7 +189,11 @@ def extension_doctor(
         "status": status,
         "available": available,
         "verified": verified,
-        "entrypoint_identity": identity_before.identity if verified else None,
+        "entrypoint_identity": (
+            identity_before.identity
+            if verified and identity_before is not None
+            else None
+        ),
         "failure_kind": failure_kind,
         "external_writes_performed": False,
     }

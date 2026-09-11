@@ -904,15 +904,17 @@ declarative and does not import the module.
 
 ### Local executable locations
 
-Successful executable install/upgrade and doctor operations save the resolved
-absolute entrypoint in the host-local revision state, separately from the
-portable manifest. Enable, rollback, update-time revalidation and invocation use
-that revision's saved location instead of rediscovering a same-named executable
-on the current shell PATH. File-identity checks remain mandatory; a missing
-saved executable does not fall back to another PATH entry. Package upgrades
-resolve and verify the new revision's executable through the explicit upgrade
-workflow. Bundled `python_module` providers continue using the current LoopX
-interpreter and retain their existing identity checks.
+Successful executable install/upgrade and doctor operations save the selected
+absolute launcher path in the host-local revision state, separately from the
+portable manifest. When that launcher is a symlink, identity checks still hash
+the final executable artifact while the launcher directory remains the child
+process PATH prefix. Enable, rollback, update-time revalidation and invocation
+use that revision's saved location instead of rediscovering a same-named
+executable on the current shell PATH. File-identity checks remain mandatory; a
+missing saved executable does not fall back to another PATH entry. Package
+upgrades resolve and verify the new revision's executable through the explicit
+upgrade workflow. Bundled `python_module` providers continue using the current
+LoopX interpreter and retain their existing identity checks.
 
 For executable providers, only the child process prepends the executable's
 directory to PATH, so tools installed in the same environment remain available.

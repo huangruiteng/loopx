@@ -1944,6 +1944,44 @@ def test_executable_location_survives_path_changes_upgrade_and_rollback(tmp_path
     assert missing["status"] == "entrypoint_missing"  # Never switch to the unrelated PATH copy.
 
 
+def test_executable_location_preserves_launcher_directory_for_sibling_tools(
+    tmp_path, monkeypatch,
+):
+    launcher_bin = tmp_path / "launcher-bin"
+    package_bin = tmp_path / "package-bin"
+    unrelated = tmp_path / "unrelated"
+    for directory in (launcher_bin, package_bin, unrelated):
+        directory.mkdir()
+    package_provider = _provider(package_bin / "provider")
+    launcher_provider = launcher_bin / "provider"
+    launcher_provider.symlink_to(package_provider)
+    companion = _provider(launcher_bin / "companion")
+    package_provider.write_text(package_provider.read_text().replace(
+        "import json",
+        f"import shutil\nassert shutil.which('companion') == {str(companion)!r}\nimport json",
+    ))
+    manifest = _standalone_manifest(
+        tmp_path / "manifest.toml", entrypoint=Path("provider"),
+    )
+    state_file = tmp_path / "state.json"
+
+    monkeypatch.setenv("PATH", str(launcher_bin))
+    install_extension(manifest, state_file=state_file, execute=True)
+    state = json.loads(state_file.read_text())
+    revision = state["extensions"]["test-standalone-extension"]["revisions"][0]
+    assert revision["entrypoint_path"] == str(launcher_provider)
+
+    monkeypatch.setenv("PATH", str(unrelated))
+    assert doctor_installed_extension(
+        "test-standalone-extension", state_file=state_file, execute=True,
+    )["verified"]
+    result = run_standalone_extension(
+        "test-standalone-extension", state_file=state_file,
+        request={"schema_version": "test_extension_request_v0"}, execute=True,
+    )
+    assert result["status"] == "succeeded"
+
+
 def test_legacy_doctor_captures_location_only_after_success(tmp_path, monkeypatch):
     provider = _provider(tmp_path / "provider")
     manifest = _standalone_manifest(tmp_path / "manifest.toml", entrypoint=Path("provider"))
