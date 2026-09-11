@@ -1,131 +1,88 @@
-# CI Impact Selection / CI 影响范围选择
+# CI job exemptions / 按职责免跑重型 CI
 
-## Current rollout: shadow, not selective merge authority
+## Policy, not a hand-maintained test selection
 
-The PR workflow retains its full core qualification for every executable,
-policy, runtime-prompt or unknown change. The existing documentation-only
-exemption is unchanged. `scripts/ci/impact_plan.py` now also proposes a bounded
-candidate test profile and explains why it was selected. A candidate never
-authorizes skipping the full suite in this rollout.
+Every PR receives the same stable merge gate. The classifier reads the complete
+NUL-delimited Git diff at immutable base/head revisions; a PR title, label or
+author description cannot claim that runtime changes are “just UI”.
 
-当前先交付 **shadow 对照阶段**：不是用一次绿灯就宣布可以安全跳过全量。
-原有文档豁免不变，代码和未知改动仍跑全量；额外实际运行候选集合、比较测试身份
-和结果、记录耗时。此阶段增加少量并行工作，尚不承诺降低 PR 的总体耗时。
+| Whole PR | Common TS/lint/contracts | Full Python / Windows | Stage2c | Packaged Dashboard |
+| --- | --- | --- | --- | --- |
+| Existing Markdown-only documentation exemption | Skip | Skip | Skip | Existing Frontstage workflow |
+| Client Dashboard source/assets only, optionally with docs | Run | Skip | Skip | Required build, freshness and browser smoke |
+| Backend, prompt, tests, dependency, build, CI policy, mixed or unknown | Run | Run | Run | Also run for CI-policy rehearsal or forced-full UI |
+| main push / manual run | Run | Run | Run | Existing surface workflows; CI-policy rehearsal when applicable |
 
-```text
-merge-base … exact PR head
-  → NUL-delimited Git changes (renames appear as deletion + addition)
-  → candidate + reason + immutable revisions
-      ├── existing full qualification + full coverage
-      └── selected Python tests + real CLI smokes (shadow only)
-             ↓
-       compare exact collected test identities and outcomes
-             ↓
-       stable merge-gate: full success AND required shadow success
-```
+The presentation boundary is deliberately small: Dashboard `src/`, `public/`
+and packaged `loopx/web/chat/`, with explicit client-code/image/font extensions.
+Package manifests, Vite/build configuration, native desktop code, backend Python
+and arbitrary JSON are not exempt. Both sides of renames are classified; moving
+runtime code into a UI directory stays full. Symlinks/type changes cannot qualify.
 
-## First reviewed boundary: vision checkpoint
+The new exemption is available only when the selector, gate and workflow blobs
+match the already-reviewed target branch. Changing CI policy cannot exempt its
+own PR. Missing policy or uncertain ownership runs full; missing Git revisions
+fail classification. The pre-existing documentation exemption remains supported.
 
-The initial `vision` profile recognizes exact existing source/test/smoke paths,
-not filenames containing “vision”. Its Python inventory spans checkpoint
-authoring, readback, refresh recovery/isolation, public safety, replan admission,
-terminal succession, quota and settlement. Real CLI smokes exercise bounded
-write/read behavior, closed-vision successor routing and status/quota latency.
-Full TS tests/typechecking and CLI output-budget qualification remain common
-checks; they are not duplicated into another test framework.
+本方案不是为每类 PR 维护一套测试清单，而是明确重型 job 的职责。纯前端变化不需要
+重跑后端持久化与崩溃恢复矩阵，但前端自己的实际构建与浏览器验收成为必需项。
+预算、静态宿主 prompt 和 Python/TS 逻辑暂不享受免跑；它们仍可能改变核心行为。
+新增一种豁免只需审阅其业务边界和保留的验收，不要求列举全部替代测试文件。
 
-This is the cross-domain behavior demonstrated by the vision authoring-budget
-change, not a claim that every goal-domain edit can use the same slice. A new
-profile needs its own reviewed owning boundary and caller inventory.
+## Four complete Python shards
 
-首批只选择边界明确的 vision checkpoint。它的消费者横跨 refresh、quota、终态与
-结算，所以不能只跑同目录测试。测试目标复用仓库已有测试和 smoke；canary 的风险
-目录可辅助维护清单，但自由文本关键词匹配、`max_checks` 截断不能作为 CI 免责依据。
+Full Python qualification uses four runners with two xdist workers each:
+`--splits 4 --group N --splitting-algorithm least_duration`. It still partitions
+the whole collection, excluding only the separately executed Stage2c marker.
+No tests are removed. Without timing history the splitter uses equal weights;
+four-way parallelism is not a claim of perfect duration balancing.
 
-| Change | Candidate / execution |
-| --- | --- |
-| Allowlisted Markdown only | `docs`; existing explicit core skips |
-| Only recognized vision boundary paths | `vision`; full suite plus shadow |
-| Known new test within that complete inventory | `vision`; that test is included |
-| Runtime additions/deletions, renames, type changes | `full` |
-| Shared decoder/dispatcher/schema, dependencies, fixtures outside the inventory | `full` |
-| CI policy/workflow changes | `full` plus candidate rehearsal |
-| Empty diff, non-PR execution or any unmapped path | `full` |
-| Missing Git base or malformed input | Classification fails; no successful exemption |
+The aggregate requires every shard to succeed and all four coverage files to
+exist before combining them. The existing full-suite coverage floor remains.
+No Python coverage artifact or Sonar run is manufactured when Python is exempt.
 
-Both sides of renames count. A mixed PR takes the conservative union: one
-unmapped code path makes the whole candidate full. Noncanonical paths and
-unrecognized Git statuses cannot become documentation exemptions. GitHub
-outputs contain only closed profile names and booleans, never changed filenames
-or shell commands supplied by a PR.
+全量 Python 从 2 个分片扩大到 4 个，每片仍为 2 个 worker，不提高单机进程争抢。
+真实 pytest-split/xdist/coverage 回归覆盖分片集合互斥、并集完整、四份报告合并以及
+缺失任意报告时拒绝通过。分片增加会增加安装开销与同时占用的 runner；应看实际
+critical path 和 runner-minutes，而不是宣称“4 片必然快一倍”。
 
-## Evidence and gate semantics
+## Override and evidence
 
-Each workflow run publishes:
+Add the **`ci:full`** PR label to force full qualification. Label addition/removal
+reruns the workflow. Manually dispatching Python Tests also runs full. The label
+can only add checks, never waive them. Main retains full qualification.
 
-- `ci-impact-plan`: base/head/merge-base/tested-checkout revisions, changed
-  paths, complete selected inventory, reason and actual execution mode.
-- `ci-impact-selected` when applicable: JUnit outcomes and a bounded execution
-  receipt with command exit codes, elapsed seconds and a digest of the plan.
-- `python-junit-1` and `python-junit-2`: full-shard outcomes.
-- `ci-impact-comparison` when applicable: selected/full counts, missing cases,
-  outcome differences and failures outside the selected set. It does not copy
-  failure text, stdout or private runtime evidence into its summary.
+The `ci-impact-plan` artifact and job summary report exact revisions, change kind,
+per-job execution flags, reason and coverage scope. The merge gate requires
+success for required jobs and an explicit skip for exempt ones; failure,
+cancellation, missing outputs, contradictory flags or unexpected skips fail.
 
-The runner rejects stale checkout identities, changed inventories, missing
-checks and attempts to reinterpret shadow as selective authority. The audit
-requires both full reports, unique test identities, nonempty collection from
-every selected file, successful selected tests (a skip is not a pass), matching
-full outcomes, successful CLI smokes and no failure outside the selected set.
-Any failed/cancelled/missing required job keeps the stable `merge-gate` red.
+Stage2c retains all correctness cases: its E2E lane uses two runners with two
+workers each, while mutants and installed-package lanes remain separate. The
+small pytest plugin assigns whole modules using deterministic largest-first
+test-count balancing and retains collection order within each module. It does
+not split a stateful module across machines or workers. This is not timing-based
+optimal scheduling: one very large module can still dominate a shard.
 
-Coverage remains unambiguous: only the two **full** Python shards feed the
-existing coverage floor and Sonar report. Shadow runs neither upload partial
-coverage under full-suite artifact names nor borrow coverage from another SHA.
-Plan/rehearsal artifacts are diagnostics, not a replacement for full coverage.
+Stage2c E2E 从单 runner 的 4 个 worker 改为两个 runner 各 2 个 worker；总 worker
+数不增加，但不再挤在同一台机器。按完整模块分片，并保留 loadfile 与模块内顺序。
+真实回归以共享状态、顺序敏感的模块验证两路并集完整且互斥，避免盲目按单测试分片。
 
-覆盖率仍由同一版本的两个全量分片产生；精简集合的“绿”不能冒充完整覆盖率，
-也不能用旧版本 coverage 补齐。shadow 通过只证明本次实际执行与对照成立，不证明
-未来永远不会漏测。缺失、跳过、取消、结果不一致都必须明确失败，不能转成免责。
+The first implementation retains minimum-Node checks and removes the earlier vision selected-test runner,
+selected/full comparison machinery and its extra shadow workload. The prior
+shadow results remain historical evidence, not a permanent extra CI obligation.
 
-## Qualify locally
+## Qualification
 
 ```bash
 python -m unittest discover -s scripts/ci -p 'test_*.py'
+python -m pytest tests/test_python_ci_workflow.py tests/test_sonarcloud_workflow.py -q
 python scripts/ci/review_gate.py classify --base origin/main --head HEAD --plan impact-plan.json
-python scripts/ci/impact_shadow.py run --plan impact-plan.json
-python scripts/ci/impact_shadow.py audit --plan impact-plan.json --full-dir full-reports
+python scripts/ci/review_gate.py classify --base origin/main --head HEAD --force-full --plan impact-plan.json
 ```
 
-Run the selected commands only for plans with `shadow_profile=vision`. Install
-the repository test dependencies and supported Node runtime first. The audit
-expects `full-reports/python-junit-{1,2}/junit.xml` downloaded from the same
-workflow run; missing reports are not a local pass. Keep generated plans,
-JUnit files and receipts outside tracked source files.
-
-## Activation and expansion criteria
-
-Before a follow-up enables selective-only PR execution for a profile:
-
-1. Review successful shadow evidence across representative changes to its write
-   rule, read projection and cross-domain semantics, not just a constant edit.
-2. Prove sensitivity with deliberately omitted checks, changed outcomes and
-   real-entrypoint semantic regressions. Investigate failures outside the
-   candidate instead of mechanically accepting the observed selection.
-3. Run both old/full and proposed selective workflow paths, including docs,
-   mixed changes, missing reports, renamed/deleted tests and merge aggregation.
-4. Bind execution to the exact plan/checkout; evaluate exemption rules from a
-   trusted base policy. A PR that changes the selector or its test inventory
-   must qualify fully and cannot approve its own narrower exemption.
-5. Preserve full qualification on main and existing full-public nightly/release
-   sweeps. Keep a force-full escape hatch; paid model behavior tests remain
-   explicitly activated release/manual work, not ordinary PR discovery.
-
-Then expand one proven domain at a time. UI, installer, provider and scheduler
-changes still require full qualification here. In particular, provider changes
-retain their real-backend requirements; this planner never waives PostgreSQL
-qualification or other authority-boundary evidence.
-
-下一阶段先依据证据启用一个范围，再扩展到 UI、安装器等领域；不预先添加尚未验证
-的免责。未知仍全量、selector 自身变更仍全量、主干与低频全量兜底保留。付费模型
-测试的触发频率不变，本功能也不修改 LoopX Goal、Todo、runtime 或 automation。
+Use repository-supported Python/test dependencies. Keep generated plans and
+JUnit/coverage artifacts outside tracked source. Hosted CI must qualify the real
+workflow after policy changes; unit checks do not prove runner scheduling or
+latency. Paid model tests remain release/manual only. No Goal, automation,
+authority provider, runtime permission or live state is changed by this policy.

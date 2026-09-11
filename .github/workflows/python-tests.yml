@@ -2,6 +2,8 @@ name: Python Tests
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -32,8 +34,10 @@ jobs:
     timeout-minutes: 3
     outputs:
       core_tests: ${{ steps.classify.outputs.core_tests }}
-      impact_profile: ${{ steps.classify.outputs.impact_profile }}
-      shadow_profile: ${{ steps.classify.outputs.shadow_profile }}
+      change_kind: ${{ steps.classify.outputs.change_kind }}
+      python_tests: ${{ steps.classify.outputs.python_tests }}
+      stage2c_tests: ${{ steps.classify.outputs.stage2c_tests }}
+      presentation_tests: ${{ steps.classify.outputs.presentation_tests }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,11 +54,14 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           CHECKOUT_SHA: ${{ github.sha }}
+          FORCE_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
         shell: bash
         run: |
           set -euo pipefail
+          extra=()
+          if [[ "$FORCE_FULL" == true ]]; then extra+=(--force-full); fi
           if [[ "$EVENT_NAME" == pull_request ]]; then
-            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" --plan impact-plan.json >> "$GITHUB_OUTPUT"
+            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" --plan impact-plan.json "${extra[@]}" >> "$GITHUB_OUTPUT"
           else
             python scripts/ci/review_gate.py classify --base "$CHECKOUT_SHA" --head "$CHECKOUT_SHA" --non-pr --plan impact-plan.json >> "$GITHUB_OUTPUT"
           fi
@@ -63,10 +70,11 @@ jobs:
           from pathlib import Path
           plan = json.loads(Path("impact-plan.json").read_text())
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-              summary.write("## CI impact plan (shadow rollout)\n\n")
-              summary.write(f"Candidate: **{plan['candidate_profile']}**; execution: **{plan['execution_mode']}**.\n\n")
+              summary.write("## CI job exemptions\n\n")
+              summary.write(f"Change kind: **{plan['change_kind']}**; Python shards: **{plan['python_shards']}**.\n\n")
               summary.write(plan['reason'] + ".\n\n")
-              summary.write("Full-suite checks and coverage remain authoritative. See the plan artifact for the exact revisions and selected files.\n")
+              summary.write(f"Python: {plan['python_tests']}; Stage2c: {plan['stage2c_tests']}; frontend: {plan['presentation_tests']}.\n\n")
+              summary.write(plan["coverage_scope"] + ". Unknown/mixed changes and main run full. Label ci:full forces full qualification.\n")
           PY
       - uses: actions/upload-artifact@v7
         with:
@@ -212,13 +220,13 @@ jobs:
 
   test-shard:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
+    if: needs.changes.outputs.python_tests == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -242,7 +250,7 @@ jobs:
         # Each runner retains the measured two-worker pool.
         run: >-
           python -m pytest -q -n 2 -m "not stage2c_e2e"
-          --splits 2 --group ${{ matrix.shard }}
+          --splits 4 --group ${{ matrix.shard }}
           --splitting-algorithm least_duration
           --durations=25 --durations-min=1
           --junitxml=junit.xml
@@ -265,85 +273,9 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  impact-tests:
-    needs: changes
-    if: needs.changes.outputs.shadow_profile == 'vision'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-          cache: pip
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - run: |
-          python -m pip install --disable-pip-version-check -e ".[test]"
-          npm ci --ignore-scripts
-      - uses: actions/download-artifact@v7
-        with:
-          name: ci-impact-plan
-      - name: Execute the complete candidate profile without full-suite coverage claims
-        run: python scripts/ci/impact_shadow.py run --plan impact-plan.json
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ci-impact-selected
-          path: impact-results/
-          if-no-files-found: error
-          retention-days: 7
-
-  impact-shadow:
-    needs: [changes, impact-tests, test-shard]
-    if: always() && needs.changes.outputs.shadow_profile == 'vision'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require candidate execution
-        env:
-          SELECTED_RESULT: ${{ needs.impact-tests.result }}
-        run: |
-          test "$SELECTED_RESULT" = success
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - uses: actions/download-artifact@v7
-        with:
-          name: ci-impact-plan
-      - uses: actions/download-artifact@v7
-        with:
-          name: ci-impact-selected
-          path: impact-results
-      - uses: actions/download-artifact@v7
-        with:
-          pattern: python-junit-*
-          path: full-reports
-      - name: Compare exact test identities and outcomes
-        run: python scripts/ci/impact_shadow.py audit --plan impact-plan.json
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: ci-impact-comparison
-          path: impact-comparison.json
-          if-no-files-found: error
-          retention-days: 7
-      - name: Full execution failures cannot qualify the shadow
-        env:
-          FULL_RESULT: ${{ needs.test-shard.result }}
-        run: test "$FULL_RESULT" = success
-
   pytest:
     # Keep the required check name; a skipped/failed shard must not turn it green.
-    if: always() && needs.changes.outputs.core_tests == 'true'
+    if: always() && needs.changes.outputs.python_tests == 'true'
     needs: [changes, checks, test-shard]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -367,9 +299,13 @@ jobs:
           path: coverage-shards
       - name: Combine complete coverage and enforce the existing floor
         run: |
-          test -s coverage-shards/python-coverage-1/.coverage
-          test -s coverage-shards/python-coverage-2/.coverage
-          python -m coverage combine coverage-shards/python-coverage-1/.coverage coverage-shards/python-coverage-2/.coverage
+          shards=()
+          for shard in 1 2 3 4; do
+            path="coverage-shards/python-coverage-${shard}/.coverage"
+            test -s "$path"
+            shards+=("$path")
+          done
+          python -m coverage combine "${shards[@]}"
           python -m coverage report --fail-under=19.6
           python -m coverage xml -o coverage.xml
       - uses: actions/upload-artifact@v7
@@ -387,14 +323,18 @@ jobs:
 
   stage2c-suite:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
-    name: stage2c (${{ matrix.suite }})
+    if: needs.changes.outputs.stage2c_tests == 'true'
+    name: stage2c (${{ matrix.suite }} ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        suite: [e2e, mutants, installed]
+        include:
+          - {suite: e2e, shard: 1}
+          - {suite: e2e, shard: 2}
+          - {suite: mutants, shard: 0}
+          - {suite: installed, shard: 0}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -436,7 +376,7 @@ jobs:
         env:
           LOOPX_SHADOW_COMPARISON_OUTPUT: .local/stage2c-observables
         # Keep each module's shared workspace and ordered parity rows on one worker.
-        run: python -m pytest -q -n 4 --dist loadfile -m stage2c_e2e --durations=20 --junitxml=stage2c-e2e.xml
+        run: python -m pytest -q -n 2 --dist loadfile -m stage2c_e2e -p scripts.ci.module_shard --ci-module-shards 2 --ci-module-shard ${{ matrix.shard }} --durations=20 --junitxml=stage2c-e2e.xml
       - name: Reject deliberate correctness regressions
         if: matrix.suite == 'mutants'
         run: python examples/shared-goal-authority-e2e/mutants.py --output .local/stage2c-mutants
@@ -453,7 +393,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stage2c-correctness-evidence-${{ matrix.suite }}
+          name: stage2c-correctness-evidence-${{ matrix.suite }}-${{ matrix.shard }}
           include-hidden-files: true
           if-no-files-found: error
           path: |
@@ -465,7 +405,7 @@ jobs:
 
   stage2c-correctness-e2e:
     # Preserve the public check name and reject failed, cancelled or skipped lanes.
-    if: always() && needs.changes.outputs.core_tests == 'true'
+    if: always() && needs.changes.outputs.stage2c_tests == 'true'
     needs: [changes, stage2c-suite]
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -477,7 +417,7 @@ jobs:
 
   windows-powershell:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
+    if: needs.changes.outputs.python_tests == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -530,10 +470,39 @@ jobs:
           tests/control_plane_ts/local_authority_provider.test.ts
           tests/control_plane_ts/sqlite_runtime_admission.test.ts
 
+  presentation:
+    needs: changes
+    if: needs.changes.outputs.presentation_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/presentation/dashboard/package-lock.json
+      - run: python -m pip install --disable-pip-version-check -e ".[test]"
+      - name: Build and test the actual packaged Dashboard
+        working-directory: apps/presentation/dashboard
+        run: |
+          npm ci --ignore-scripts
+          npm run build:chat
+          if [[ -n "$(git -C ../../.. status --short --untracked-files=all -- loopx/web/chat)" ]]; then
+            echo "Packaged Dashboard differs from its source build." >&2
+            exit 1
+          fi
+          ./node_modules/.bin/playwright install --with-deps chromium
+          npm run smoke:personal-workspace-packaged
+
   merge-gate:
     # Always publish one stable outcome, including documentation-only PRs.
     if: always()
-    needs: [changes, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell, impact-shadow]
+    needs: [changes, checks, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell, presentation]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -544,4 +513,4 @@ jobs:
       - name: Reject incomplete or unsuccessful qualification
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-        run: python scripts/ci/review_gate.py verify --shadow
+        run: python scripts/ci/review_gate.py verify
