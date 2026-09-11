@@ -1369,7 +1369,18 @@ async function main() {
     if (page.url() !== beforeDragUrl) throw new Error('Dragging accidentally selected a Goal');
     await checkpointCoverage();
     await page.reload({ waitUntil: 'networkidle' });
-    if (JSON.stringify(await readOrder()) !== JSON.stringify(expectedOrder)) throw new Error('Goal order did not survive reload');
+    // Network idleness does not establish React/status-projection readiness.
+    // Wait for the persisted order itself, retaining a bounded failure when it
+    // is lost or wrong rather than accepting whichever rows happen to render.
+    try {
+      await page.waitForFunction((expected) => {
+        const actual = [...document.querySelectorAll('.personal-goal-list:not(.is-stopped) .personal-goal-row')]
+          .map((row) => row.getAttribute('data-reorder-goal'));
+        return JSON.stringify(actual) === JSON.stringify(expected);
+      }, expectedOrder, { timeout: 6_000 });
+    } catch (error) {
+      throw new Error(`Goal order did not survive reload: expected=${JSON.stringify(expectedOrder)} actual=${JSON.stringify(await readOrder())}`, { cause: error });
+    }
     // Escape cancels rather than committing a partially completed gesture.
     const cancelStart = await activeRows.first().locator('.personal-goal-link').boundingBox();
     const cancelEnd = await activeRows.nth(2).boundingBox();
