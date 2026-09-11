@@ -50,7 +50,7 @@ def test_cadence_configuration_previews_persists_and_restores_default(tmp_path):
     )
     assert feature["current"] == {"completed_todos": 3}
     editor = feature["configuration_editor"]
-    assert editor["writable_scopes"] == ["goal"]
+    assert editor["writable_scopes"] == ["machine", "goal"]
     assert editor["fields"][0]["input_kind"] == "number"
     assert editor["fields"][0]["minimum"] == 1
     assert editor["fields"][0]["maximum"] == 5
@@ -58,12 +58,27 @@ def test_cadence_configuration_previews_persists_and_restores_default(tmp_path):
         registry_path=registry,
         goal_id="example",
         execute=True,
-        execution_replan_after_todos=5,
+        clear_execution_replan_after_todos=True,
     )
     assert (
         json.loads(registry.read_text())["goals"][0]["execution_profile"]
         == build_execution_profile()
     )
+
+
+def test_clearing_an_absent_cadence_override_is_a_noop(tmp_path):
+    registry = tmp_path / "registry.json"
+    registry.write_text(json.dumps({"goals": [{"id": "example", "status": "active"}]}))
+
+    result = configure_goal(
+        registry_path=registry,
+        goal_id="example",
+        clear_execution_replan_after_todos=True,
+        execute=True,
+    )
+
+    assert result["changed"] is False
+    assert "execution_profile" not in json.loads(registry.read_text())["goals"][0]
 
 
 def test_cli_cadence_roundtrip_syncs_to_an_isolated_runtime(tmp_path):

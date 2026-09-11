@@ -401,7 +401,11 @@ def test_canonical_machine_config_cli_uses_the_same_store_and_projection(
     assert main([*common, "describe"]) == 0
     catalog = json.loads(capsys.readouterr().out)
     assert catalog["schema_version"] == "machine_configuration_catalog_v0"
-    assert [item["namespace"] for item in catalog["namespaces"]] == ["periodic_report"]
+    assert [item["namespace"] for item in catalog["namespaces"]] == [
+        "change_quality_qualification",
+        "periodic_report",
+        "todo_replan_cadence",
+    ]
 
     assert (
         main(

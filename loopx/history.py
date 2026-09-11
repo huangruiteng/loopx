@@ -10,6 +10,11 @@ from typing import Any
 
 from .authority import goal_authority_registry_summary
 from .control_plane import compact_control_plane_policy
+from .control_plane.goals.activation import (
+    GoalActivationState,
+    goal_activation_state,
+    normalize_goal_activation_state,
+)
 from .control_plane.quota.monitor_poll import QUOTA_MONITOR_POLL_CLASSIFICATION
 from .control_plane.quota.slot_accounting import (
     QUOTA_SLOT_SPENT_CLASSIFICATION,
@@ -34,11 +39,6 @@ from .control_plane.runtime.run_index_rebuild import (
     build_collision_rebuild_plan,
     collision_review_groups,
     validate_reviewed_collision_plan,
-)
-from .control_plane.goals.activation import (
-    GoalActivationState,
-    goal_activation_state,
-    normalize_goal_activation_state,
 )
 from .control_plane.runtime.time import now_local_iso, parse_timestamp
 from .doctor import PROMOTION_READINESS_CLASSIFICATIONS
@@ -110,7 +110,9 @@ def write_reserved_run_artifacts(
     render_markdown: Callable[[dict[str, Any]], str],
 ) -> None:
     from .control_plane.quota.usage_collector import ingest_usage_into_run_record
-    from .control_plane.work_items.delivery_history import require_consistent_delivery_claim
+    from .control_plane.work_items.delivery_history import (
+        require_consistent_delivery_claim,
+    )
 
     require_consistent_delivery_claim(record)
     require_consistent_delivery_claim(index_record)
@@ -251,8 +253,23 @@ def collect_history(
     include_runtime_goals: bool = True,
     activation_state_filter: GoalActivationState | str | None = None,
 ) -> dict[str, Any]:
+    from .capabilities.machine_configuration.builtins import (
+        build_builtin_machine_configuration_registry,
+        project_goal_with_builtin_machine_configuration,
+    )
+    from .capabilities.machine_configuration.store import read_machine_configuration
+
     registry = load_registry(registry_path)
-    goal_meta = {str(goal.get("id")): goal for goal in registry_goals(registry)}
+    machine_configuration = read_machine_configuration(
+        runtime_root,
+        registry=build_builtin_machine_configuration_registry(),
+    )
+    goal_meta = {
+        str(goal.get("id")): project_goal_with_builtin_machine_configuration(
+            goal, machine_configuration
+        )
+        for goal in registry_goals(registry)
+    }
     activation_filter = (
         normalize_goal_activation_state(activation_state_filter)
         if activation_state_filter is not None

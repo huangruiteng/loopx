@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import http.client
+import json
 import threading
 from collections.abc import Mapping
 from pathlib import Path
@@ -193,28 +193,31 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
 
     response = handler.responses[0]
     assert response["status"] == "absent"
-    assert response["available_namespaces"] == ["periodic_report"]
-    assert response["namespace_catalog"] == {
-        "schema_version": "machine_configuration_catalog_v0",
-        "namespaces": [
-            {
-                "namespace": "periodic_report",
-                "title": "Periodic reports",
-                "description": (
-                    "Live default for Goals without an explicit periodic-report "
-                    "override. Goal overrides remain fixed; changing or removing "
-                    "this policy updates inherited behavior on the next plan."
-                ),
-                "schema_versions": ["periodic_report_machine_defaults_v0"],
-                "configuration_template": {
-                    "schema_version": "periodic_report_machine_defaults_v0",
-                    "enabled": False,
-                    "inheritance": "live_machine_default",
-                    "timezone": "UTC",
-                },
-                "template_status": "ready",
-            }
-        ],
+    assert response["available_namespaces"] == [
+        "change_quality_qualification",
+        "periodic_report",
+        "todo_replan_cadence",
+    ]
+    namespace_catalog = {
+        item["namespace"]: item for item in response["namespace_catalog"]["namespaces"]
+    }
+    assert namespace_catalog["periodic_report"]["configuration_template"] == {
+        "schema_version": "periodic_report_machine_defaults_v0",
+        "enabled": False,
+        "inheritance": "live_machine_default",
+        "timezone": "UTC",
+    }
+    assert namespace_catalog["todo_replan_cadence"]["configuration_template"] == {
+        "schema_version": "todo_replan_cadence_machine_defaults_v0",
+        "completed_todos": 5,
+    }
+    assert namespace_catalog["change_quality_qualification"][
+        "configuration_template"
+    ] == {
+        "schema_version": "change_quality_machine_defaults_v0",
+        "enabled": False,
+        "safe_fix": False,
+        "strict_receipt": False,
     }
     capability_catalog = response["capability_catalog"]
     assert capability_catalog["schema_version"] == "capability_configuration_catalog_v0"
@@ -227,7 +230,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
     assert capability["machine_namespace"] == "periodic_report"
     assert (
         capability["default"]
-        == response["namespace_catalog"]["namespaces"][0]["configuration_template"]
+        == namespace_catalog["periodic_report"]["configuration_template"]
     )
     assert capability["configuration_editor"]["supported_scopes"] == [
         "machine",
@@ -274,11 +277,19 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
     for capability_id, item in machine.items():
         assert "current" not in item
         assert "commands" not in item
-        if capability_id != "periodic_report":
+        if capability_id not in {
+            "periodic_report",
+            "todo_replan_cadence",
+            "change_quality_qualification",
+        }:
             assert item["available_scopes"] == ["goal"]
             assert "machine_namespace" not in item
             assert "machine" not in item["configuration_editor"]["writable_scopes"]
             assert item["effective_configuration"]["source"] == "not_configured"
+        else:
+            assert item["available_scopes"] == ["machine", "goal"]
+            assert item["machine_namespace"] == capability_id
+            assert "machine" in item["configuration_editor"]["writable_scopes"]
 
     rejected = _Handler(
         tmp_path,

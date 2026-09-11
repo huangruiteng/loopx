@@ -54,11 +54,12 @@ depending on the executor:
 
 ## Completed-Todo Review Cadence
 
-`execution_profile.replan_after_completed_todos` is a Goal-level integer
-hyperparameter, default **5** in both standard and fine-grained Turn modes.
-Set it to 2 or 3 for earlier review. Supported values are 1–5: the current
-agent projection retains five recent completions, so larger values are rejected.
-Restoring 5 removes the override and preserves the existing default behavior.
+`execution_profile.replan_after_completed_todos` is an integer hyperparameter,
+default **5** in both standard and fine-grained Turn modes. It may be set as a
+live machine default, while an explicit Goal value remains pinned until it is
+cleared. Set it to 2 or 3 for earlier review. Supported values are 1–5: the
+current agent projection retains five recent completions, so larger values are
+rejected.
 
 ```bash
 # Preview, apply, and read back the Goal setting.
@@ -66,13 +67,17 @@ loopx configure-goal --goal-id example --execution-replan-after-todos 3
 loopx configure-goal --goal-id example --execution-replan-after-todos 3 --execute
 loopx configure-goal --goal-id example
 
-# Restore the default cadence.
-loopx configure-goal --goal-id example --execution-replan-after-todos 5 --execute
+# Restore live machine-default inheritance.
+loopx configure-goal --goal-id example --clear-execution-replan-after-todos --execute
 ```
 
-The Dashboard's Goal configuration catalog exposes **Goal review cadence** as
-an integer field through the existing preview/apply flow. This is a setting of
-the built-in goal control plane, with no provider or plugin installation.
+The Dashboard exposes **Goal review cadence** in both Machine Configuration and
+Goal capability settings. Machine changes are revision-locked and affect every
+Goal without an explicit override at its next quota/frontier evaluation. A Goal
+override is a complete value, not a field merge; clearing it restores live
+inheritance. Removing the machine namespace restores the capability default of
+5. This is a setting of the built-in control plane, with no provider or plugin
+installation. It does not create host turns, spend quota, or grant authority.
 
 The count includes completed advancement Todos claimed by the same Agent, with
 valid completion timestamps, after the latest qualifying outcome checkpoint.

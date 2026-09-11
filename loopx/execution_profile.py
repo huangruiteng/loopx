@@ -207,11 +207,52 @@ def configure_execution_profile(
     normalized = compact_execution_profile(profile)
     if turn_granularity is not None:
         normalized = execution_profile_with_turn_granularity(normalized, turn_granularity)
-    if replan_after_completed_todos is not None:
-        normalized["replan_after_completed_todos"] = normalize_completed_todo_replan_threshold(
-            replan_after_completed_todos
+    configured_threshold = (
+        normalize_completed_todo_replan_threshold(replan_after_completed_todos)
+        if replan_after_completed_todos is not None
+        else None
+    )
+    if configured_threshold is not None:
+        normalized["replan_after_completed_todos"] = configured_threshold
+    configured = compact_execution_profile(normalized)
+    if configured_threshold is not None:
+        # The default value still represents an explicit Goal override. Keep the
+        # field so a machine default can change without silently changing this Goal.
+        configured["replan_after_completed_todos"] = configured_threshold
+    return configured
+
+
+def apply_goal_execution_profile_change(
+    goal: dict[str, Any],
+    *,
+    turn_granularity: str | None,
+    replan_after_completed_todos: int | None,
+    clear_replan_after_completed_todos: bool,
+) -> None:
+    if (
+        clear_replan_after_completed_todos
+        and replan_after_completed_todos is not None
+    ):
+        raise ValueError(
+            "--clear-execution-replan-after-todos cannot be combined with "
+            "--execution-replan-after-todos"
         )
-    return compact_execution_profile(normalized)
+    raw = goal.get("execution_profile")
+    profile = dict(raw) if isinstance(raw, dict) else {}
+    override_present = "replan_after_completed_todos" in profile
+    if clear_replan_after_completed_todos:
+        profile.pop("replan_after_completed_todos", None)
+    if (
+        turn_granularity is None
+        and replan_after_completed_todos is None
+        and not override_present
+    ):
+        return
+    goal["execution_profile"] = configure_execution_profile(
+        profile,
+        turn_granularity=turn_granularity,
+        replan_after_completed_todos=replan_after_completed_todos,
+    )
 
 
 def normalize_turn_granularity(value: Any) -> str:

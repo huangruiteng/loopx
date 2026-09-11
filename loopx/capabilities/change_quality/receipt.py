@@ -22,7 +22,6 @@ from .result import (
 )
 from .scope import build_change_quality_scope, resolve_git_root
 
-
 CHANGE_QUALITY_PREPARE_SCHEMA_VERSION = "change_quality_prepare_packet_v2"
 CHANGE_QUALITY_RECEIPT_SCHEMA_VERSION = "change_quality_receipt_v2"
 CHANGE_QUALITY_VERIFY_SCHEMA_VERSION = "change_quality_receipt_verification_v2"
@@ -74,7 +73,12 @@ _PR_EVIDENCE_BY_STATUS = {
 }
 
 
-def _goal_from_registry(registry_path: Path, goal_id: str) -> dict[str, Any]:
+def _goal_from_registry(
+    registry_path: Path,
+    goal_id: str,
+    *,
+    runtime_root: Path | None = None,
+) -> dict[str, Any]:
     registry = read_json(registry_path)
     goal = next(
         (
@@ -86,6 +90,20 @@ def _goal_from_registry(registry_path: Path, goal_id: str) -> dict[str, Any]:
     )
     if goal is None:
         raise ValueError(f"goal_id not found in registry: {goal_id}")
+    if runtime_root is not None:
+        from ..machine_configuration.builtins import (
+            build_builtin_machine_configuration_registry,
+            project_goal_with_builtin_machine_configuration,
+        )
+        from ..machine_configuration.store import read_machine_configuration
+
+        machine_configuration = read_machine_configuration(
+            runtime_root,
+            registry=build_builtin_machine_configuration_registry(),
+        )
+        return project_goal_with_builtin_machine_configuration(
+            goal, machine_configuration
+        )
     return goal
 
 
@@ -142,8 +160,11 @@ def build_change_quality_prepare_packet(
     goal_id: str,
     repo_path: Path,
     base_ref: str = "origin/main",
+    runtime_root: Path | None = None,
 ) -> dict[str, Any]:
-    goal = _goal_from_registry(registry_path, goal_id)
+    goal = _goal_from_registry(
+        registry_path, goal_id, runtime_root=runtime_root
+    )
     policy = change_quality_goal_policy(goal)
     scope = build_change_quality_scope(repo_path=repo_path, base_ref=base_ref)
     repository_context = build_change_quality_repository_context(
@@ -238,7 +259,9 @@ def record_change_quality_receipt(
     base_ref: str = "origin/main",
     execute: bool = False,
 ) -> dict[str, Any]:
-    goal = _goal_from_registry(registry_path, goal_id)
+    goal = _goal_from_registry(
+        registry_path, goal_id, runtime_root=runtime_root
+    )
     policy = change_quality_goal_policy(goal)
     if not policy["enabled"]:
         raise ValueError("change-quality qualification is disabled for this goal")
@@ -390,7 +413,9 @@ def verify_change_quality_receipt(
     repo_path: Path,
     base_ref: str = "origin/main",
 ) -> dict[str, Any]:
-    goal = _goal_from_registry(registry_path, goal_id)
+    goal = _goal_from_registry(
+        registry_path, goal_id, runtime_root=runtime_root
+    )
     policy = change_quality_goal_policy(goal)
     scope = build_change_quality_scope(repo_path=repo_path, base_ref=base_ref)
     if not policy["enabled"]:

@@ -15,9 +15,10 @@ from .boundary_authority import (
     build_checkpointed_boundary_authority_entry,
     checkpointed_boundary_authority_summary,
 )
-from .capabilities.change_quality.policy import (
-    CHANGE_QUALITY_POLICY_SCHEMA_VERSION,
-    change_quality_goal_policy_summary,
+from .capabilities.change_quality import goal_configuration as change_quality_config
+from .capabilities.change_quality.policy import change_quality_goal_policy_summary
+from .capabilities.machine_configuration.builtins import (
+    builtin_machine_inheritable_goal_overrides,
 )
 from .capabilities.periodic_report import goal_configuration as periodic_report_config
 from .configuration_catalog import (
@@ -51,8 +52,8 @@ from .control_plane.todos.mutation_authority import (
     normalize_todo_lifecycle_authority,
 )
 from .execution_profile import (
+    apply_goal_execution_profile_change,
     compact_execution_profile,
-    configure_execution_profile,
 )
 from .explore_graph import compact_explore_graph_policy
 from .orchestration import (
@@ -424,6 +425,7 @@ def configure_goal(
     quota_window_hours: float | None = None,
     execution_turn_granularity: str | None = None,
     execution_replan_after_todos: int | None = None,
+    clear_execution_replan_after_todos: bool = False,
     self_repair_enabled: bool | None = None,
     self_repair_health: bool | None = None,
     self_repair_waiting_projection: bool | None = None,
@@ -431,6 +433,7 @@ def configure_goal(
     change_quality_enabled: bool | None = None,
     change_quality_safe_fix: bool | None = None,
     change_quality_strict_receipt: bool | None = None,
+    clear_change_quality_configuration: bool = False,
     multi_subagent_feature: str | None = None,
     orchestration_mode: str | None = None,
     spawn_allowed: bool | None = None,
@@ -663,6 +666,12 @@ def configure_goal(
     periodic_report_change = periodic_report_config.normalize_change(
         periodic_report_configuration, clear=clear_periodic_report_configuration
     )
+    change_quality_change = change_quality_config.normalize_change(
+        change_quality_enabled,
+        change_quality_safe_fix,
+        change_quality_strict_receipt,
+        clear=clear_change_quality_configuration,
+    )
     payload = read_json(registry_path)
     goals = registry_goals(payload)
     goal = next((item for item in goals if str(item.get("id")) == goal_id), None)
@@ -773,12 +782,12 @@ def configure_goal(
 
     before_goal = deepcopy(goal)
     before = _settings_summary(before_goal)
-    if execution_turn_granularity is not None or execution_replan_after_todos is not None:
-        goal["execution_profile"] = configure_execution_profile(
-            goal.get("execution_profile"),
-            turn_granularity=execution_turn_granularity,
-            replan_after_completed_todos=execution_replan_after_todos,
-        )
+    apply_goal_execution_profile_change(
+        goal,
+        turn_granularity=execution_turn_granularity,
+        replan_after_completed_todos=execution_replan_after_todos,
+        clear_replan_after_completed_todos=clear_execution_replan_after_todos,
+    )
     legacy_hierarchy_before = legacy_agent_hierarchy_present(before_goal)
     expected_migration_id = peer_agent_runtime_migration_id(goal_id, before_goal)
     completed_migration_before = completed_peer_agent_runtime_migration(before_goal)
@@ -849,32 +858,7 @@ def configure_goal(
             )
         control_plane["self_repair"] = self_repair
     periodic_report_config.apply_change(goal, periodic_report_change)
-    if (
-        change_quality_enabled is not None
-        or change_quality_safe_fix is not None
-        or change_quality_strict_receipt is not None
-    ):
-        control_plane = _mutable_control_plane(goal)
-        current = change_quality_goal_policy_summary(goal)
-        change_quality = {
-            "schema_version": CHANGE_QUALITY_POLICY_SCHEMA_VERSION,
-            "enabled": (
-                change_quality_enabled
-                if change_quality_enabled is not None
-                else current["enabled"]
-            ),
-            "safe_fix": (
-                change_quality_safe_fix
-                if change_quality_safe_fix is not None
-                else current["safe_fix"]
-            ),
-            "strict_receipt": (
-                change_quality_strict_receipt
-                if change_quality_strict_receipt is not None
-                else current["strict_receipt"]
-            ),
-        }
-        control_plane["change_quality_qualification"] = change_quality
+    change_quality_config.apply_change(goal, change_quality_change)
     if (
         issue_fix_reviewer_notification_config is not None
         or clear_issue_fix_reviewer_notification_config
@@ -1248,7 +1232,11 @@ def configure_goal(
         # Some local-private control-plane bindings intentionally project only
         # counts and booleans. Rebinding one enabled provider to another can
         # therefore preserve the public summary while still requiring a write.
-        changed_fields = ["control_plane"]
+        changed_fields = [
+            field
+            for field in ("execution_profile", "control_plane")
+            if before_goal.get(field) != goal.get(field)
+        ] or ["control_plane"]
     dry_run = not execute
     model_changed = bool(
         before.get("legacy_hierarchy_present")
@@ -1327,6 +1315,9 @@ def configure_goal(
             feature_summary=feature_summary,
             default_multi_subagent_max_children=DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN,
             explore_harness_profiles=EXPLORE_HARNESS_PROFILES,
+            machine_inheritable_goal_overrides=(
+                builtin_machine_inheritable_goal_overrides(goal)
+            ),
         ),
         "heartbeat_prompt_migration": _build_heartbeat_prompt_migration(
             goal_id=goal_id,

@@ -11,6 +11,7 @@ from loopx.chat_goal_configuration_api import (
     CHAT_GOAL_CONFIGURATION_PATH,
     CHAT_GOAL_CONFIGURATION_PREVIEW_PATH,
     GoalConfigurationRequestMixin,
+    _goal_capability_options,
 )
 from loopx.control_plane.goals import configure_goal_service
 
@@ -303,6 +304,15 @@ def test_goal_configuration_merges_live_machine_defaults_without_goal_override()
     assert periodic["machine_current"]["route_ref"] == "loopx-manager"
     assert periodic["effective_configuration"]["source"] == "machine_default"
     assert periodic["effective_configuration"]["inherited"] is True
+
+
+def test_machine_inheritable_goal_capabilities_can_clear_their_overrides() -> None:
+    assert _goal_capability_options("todo_replan_cadence", None) == {
+        "clear_execution_replan_after_todos": True
+    }
+    assert _goal_capability_options("change_quality_qualification", None) == {
+        "clear_change_quality_configuration": True
+    }
 
 
 def test_goal_configuration_inspection_requires_one_goal_id() -> None:

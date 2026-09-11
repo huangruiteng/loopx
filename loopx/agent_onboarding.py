@@ -19,8 +19,10 @@ from .kiro_cli_goal_mode import (
     KIRO_CLI_GOAL_CLEAR_COMMAND,
     KIRO_CLI_GOAL_COMPLETION_TOOL,
     KIRO_CLI_GOAL_DEFAULT_MAX_ITERATIONS,
-    SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
     kiro_cli_goal_invocation,
+)
+from .kiro_cli_goal_mode import (
+    SKILLS_ROOT_LABEL as KIRO_CLI_SKILLS_ROOT_LABEL,
 )
 from .project_prompt import (
     render_available_capability_args,
@@ -431,6 +433,24 @@ def build_agent_onboarding_packet(
             if str(item.get("id") or "") == resolved_goal_id
         ),
         {},
+    )
+    from .capabilities.machine_configuration.builtins import (
+        build_builtin_machine_configuration_registry,
+        project_goal_with_builtin_machine_configuration,
+    )
+    from .capabilities.machine_configuration.store import read_machine_configuration
+    from .paths import resolve_runtime_root
+
+    runtime_root = resolve_runtime_root(
+        registry,
+        registry_path=registry_path,
+    )
+    goal = project_goal_with_builtin_machine_configuration(
+        goal,
+        read_machine_configuration(
+            runtime_root,
+            registry=build_builtin_machine_configuration_registry(),
+        ),
     )
     active_project_skill_ids = (
         [CHANGE_QUALITY_SKILL_ID]

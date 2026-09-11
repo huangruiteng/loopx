@@ -21,7 +21,10 @@ from ..thread_agent_binding import (
     unbind_thread_agent_in_registry,
 )
 from ..upgrade import build_upgrade_plan
-from .goal_lifecycle import handle_goal_lifecycle_command, register_goal_lifecycle_command
+from .goal_lifecycle import (
+    handle_goal_lifecycle_command,
+    register_goal_lifecycle_command,
+)
 from .registry_admin_configure import register_configure_goal_command
 from .registry_admin_lifecycle import (
     REGISTRY_LIFECYCLE_COMMANDS,
@@ -456,12 +459,18 @@ def handle_registry_admin_command(
                 quota_window_hours=args.quota_window_hours,
                 execution_turn_granularity=args.execution_turn_granularity,
                 execution_replan_after_todos=args.execution_replan_after_todos,
+                clear_execution_replan_after_todos=bool(
+                    args.clear_execution_replan_after_todos
+                ),
                 self_repair_enabled=args.self_repair_enabled,
                 self_repair_health=args.self_repair_health,
                 self_repair_waiting_projection=args.self_repair_waiting_projection,
                 change_quality_enabled=args.change_quality_enabled,
                 change_quality_safe_fix=args.change_quality_safe_fix,
                 change_quality_strict_receipt=args.change_quality_strict_receipt,
+                clear_change_quality_configuration=bool(
+                    args.clear_change_quality_configuration
+                ),
                 multi_subagent_feature=args.multi_subagent_feature,
                 orchestration_mode=args.orchestration_mode,
                 spawn_allowed=args.spawn_allowed,

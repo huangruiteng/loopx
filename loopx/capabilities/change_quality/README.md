@@ -1,15 +1,17 @@
 # Change Quality Qualification
 
 Change Quality Qualification gives a LoopX-managed goal a provider-neutral
-final-diff review contract. It is default-off. A project opts in through goal
-policy and chooses two independent controls:
+final-diff review contract. It is default-off. A machine may define a live
+default policy, and a Goal may pin a complete override. The selected policy
+chooses two independent controls:
 
 | Policy | Meaning |
 | --- | --- |
 | `safe_fix` | Permit one bounded repair pass before the final review receipt |
 | `strict_receipt` | Require a passing receipt for the exact current diff at premerge |
 
-`safe_fix` grants limited mutation authority; `strict_receipt` grants none.
+`safe_fix` permits a bounded repair only inside authority the caller already
+holds; it does not grant mutation authority. `strict_receipt` grants none.
 Projects may enable either, both, or neither after enabling the capability.
 
 ## Configure A Goal
@@ -43,7 +45,20 @@ loopx configure-goal \
   --execute
 ```
 
-Absence of this policy is equivalent to all three values being false.
+To return a Goal to live machine-default inheritance:
+
+```bash
+loopx configure-goal \
+  --goal-id <goal-id> \
+  --clear-change-quality-configuration \
+  --execute
+```
+
+Machine defaults use the same Dashboard preview/apply/rollback flow as other
+machine namespaces. An explicit Goal policy always wins as one complete value;
+clearing it restores live inheritance. Removing the machine namespace restores
+the capability default, where all three values are false. Neither scope grants
+file, permission, or merge authority.
 
 ## Protocol
 

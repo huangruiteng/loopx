@@ -59,8 +59,8 @@ def capability_configuration_editor(
 
     definitions: dict[str, dict[str, Any]] = {
         "todo_replan_cadence": {
-            "supported_scopes": ["goal"],
-            "writable_scopes": ["goal"],
+            "supported_scopes": ["machine", "goal"],
+            "writable_scopes": ["machine", "goal"],
             "fields": [
                 _field(
                     "completed_todos",
@@ -71,7 +71,8 @@ def capability_configuration_editor(
                     required=True,
                     description=(
                         "Default 5 in both turn modes. Use 2 or 3 for earlier review; "
-                        "5 restores the default. Counts this Agent's advancement work."
+                        "the Goal editor writes an explicit override. Counts this "
+                        "Agent's advancement work."
                     ),
                 ),
             ],
@@ -165,8 +166,8 @@ def capability_configuration_editor(
             ],
         },
         "change_quality_qualification": {
-            "supported_scopes": ["goal"],
-            "writable_scopes": ["goal"],
+            "supported_scopes": ["machine", "goal"],
+            "writable_scopes": ["machine", "goal"],
             "fields": [
                 _field("enabled", "Enabled", "boolean"),
                 _field("safe_fix", "Allow one bounded safe-fix pass", "boolean"),

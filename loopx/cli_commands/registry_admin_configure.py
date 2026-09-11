@@ -41,7 +41,16 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
         help=(
             "Require goal review after this many same-agent advancement Todo completions "
             "without a covering outcome checkpoint. Default 5; use 2 or 3 for earlier "
-            "review, or 5 to restore the default. Applies to standard and fine modes."
+            "review. This writes a Goal override; use the clear flag to inherit the "
+            "machine default. Applies to standard and fine modes."
+        ),
+    )
+    configure_goal_parser.add_argument(
+        "--clear-execution-replan-after-todos",
+        action="store_true",
+        help=(
+            "Remove the Goal review-cadence override and restore live machine-default "
+            "inheritance."
         ),
     )
     configure_goal_parser.add_argument(
@@ -87,6 +96,14 @@ def register_configure_goal_command(subparsers: argparse._SubParsersAction) -> N
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Require a valid exact-scope quality receipt at premerge.",
+    )
+    configure_goal_parser.add_argument(
+        "--clear-change-quality-configuration",
+        action="store_true",
+        help=(
+            "Remove the complete Goal change-quality override and restore live "
+            "machine-default inheritance."
+        ),
     )
     configure_goal_parser.add_argument(
         "--multi-subagent-feature",

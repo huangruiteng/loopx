@@ -4,8 +4,8 @@ import shlex
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .control_plane.agent_context import agent_context_descriptor
 from .capabilities.configuration_ui import build_capability_configuration_catalog
+from .control_plane.agent_context import agent_context_descriptor
 from .control_plane.goals.goal_vision_policy import completed_todo_replan_threshold
 
 DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN = 2
@@ -49,6 +49,9 @@ def build_goal_configuration_catalog(
     feature_summary: Mapping[str, Any],
     default_multi_subagent_max_children: int,
     explore_harness_profiles: Sequence[str],
+    machine_inheritable_goal_overrides: Mapping[
+        str, Mapping[str, Any]
+    ] | None = None,
 ) -> dict[str, Any]:
     """Build the on-demand configuration read model for optional features."""
 
@@ -111,7 +114,7 @@ def build_goal_configuration_catalog(
         "generic",
     )
 
-    catalog = {
+    catalog: dict[str, Any] = {
         "schema_version": "loopx_goal_configuration_catalog_v0",
         "scope": "default_off_optional_capabilities",
         "all_settings_help_command": "loopx configure-goal --help",
@@ -155,10 +158,10 @@ def build_goal_configuration_catalog(
                         goal_id, "--execution-replan-after-todos", "3", execute=True
                     ),
                     "preview_disable": _configure_command(
-                        goal_id, "--execution-replan-after-todos", "5"
+                        goal_id, "--clear-execution-replan-after-todos"
                     ),
                     "apply_disable": _configure_command(
-                        goal_id, "--execution-replan-after-todos", "5", execute=True
+                        goal_id, "--clear-execution-replan-after-todos", execute=True
                     ),
                     "verify": [inspect_command],
                 },
@@ -768,6 +771,19 @@ def build_goal_configuration_catalog(
             "documentation": {},
         }
     )
+    overrides = machine_inheritable_goal_overrides or {}
+    for feature in catalog["features"]:
+        feature_id = str(feature.get("feature_id") or "")
+        if feature_id not in {
+            "todo_replan_cadence",
+            "change_quality_qualification",
+        }:
+            continue
+        explicit = overrides.get(feature_id)
+        if isinstance(explicit, Mapping):
+            feature["current"] = dict(explicit)
+        else:
+            feature.pop("current", None)
     catalog["capability_catalog"] = build_capability_configuration_catalog(
         goal_features=catalog["features"],
         explore_harness_profiles=explore_harness_profiles,

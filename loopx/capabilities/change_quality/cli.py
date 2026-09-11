@@ -12,7 +12,6 @@ from .receipt import (
     verify_change_quality_receipt,
 )
 
-
 PrintPayload = Callable[
     [dict[str, object], str, Callable[[dict[str, object]], str]],
     None,
@@ -144,7 +143,10 @@ def handle_change_quality_command(
     }
     try:
         if args.change_quality_command == "prepare":
-            payload = build_change_quality_prepare_packet(**common)
+            payload = build_change_quality_prepare_packet(
+                **common,
+                runtime_root=runtime_root,
+            )
         elif args.change_quality_command == "record":
             payload = record_change_quality_receipt(
                 **common,

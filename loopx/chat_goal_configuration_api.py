@@ -19,11 +19,11 @@ from .configuration_transaction import (
     require_expected_configuration_plan_revision,
 )
 from .configure_goal import configure_goal
-from .orchestration import subagent_model_configuration_options
 from .control_plane.goals.configure_goal_service import configure_goal_with_global_sync
 from .control_plane.goals.goal_vision_policy import (
     normalize_completed_todo_replan_threshold,
 )
+from .orchestration import subagent_model_configuration_options
 
 CHAT_GOAL_CONFIGURATION_PATH = "/api/chat/goal-configuration"
 CHAT_GOAL_CONFIGURATION_PREVIEW_PATH = f"{CHAT_GOAL_CONFIGURATION_PATH}/preview"
@@ -131,6 +131,10 @@ def _goal_capability_options(
     if configuration is None:
         if capability_id == "periodic_report":
             return {"clear_periodic_report_configuration": True}
+        if capability_id == "todo_replan_cadence":
+            return {"clear_execution_replan_after_todos": True}
+        if capability_id == "change_quality_qualification":
+            return {"clear_change_quality_configuration": True}
         raise ValueError(f"Goal capability cannot be cleared: {capability_id}")
     config = dict(configuration)
     allowed: dict[str, set[str]] = {
