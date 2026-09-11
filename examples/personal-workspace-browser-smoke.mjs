@@ -270,6 +270,8 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
   const turnMessages = runtime.turnMessages;
   const actionKinds = new Map(Array.from(actionProposals.values(), (proposal) => [proposal.proposal_id, proposal.action_kind]));
   const state = {
+    nextLifecycleProposalPatch: null,
+    nextLifecycleApplyOutcome: null,
     actionApplies: [],
     actionCancels: [],
     actionPreviews: [],
@@ -1155,6 +1157,10 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
         validation_evidence: ["fixture validation"], available_transitions: ["apply", "cancel"],
         status: "preview_ready", receipt: null, stale: null, created_at: "2026-08-13T01:00:00Z", updated_at: "2026-08-13T01:00:00Z",
       };
+      if (body.action_kind === "goal.lifecycle" && state.nextLifecycleProposalPatch) {
+        Object.assign(proposal, state.nextLifecycleProposalPatch);
+        state.nextLifecycleProposalPatch = null;
+      }
       actionProposals.set(proposal_id, proposal);
       await route.fulfill({ contentType: "application/json", json: { ok: true, proposal }, status: 201 });
       return;
@@ -1185,6 +1191,18 @@ async function installApi(page, { goalSubagentConfigurationEnabled = true } = {}
           },
           status: 409,
         });
+        return;
+      }
+      if (actionKind === "goal.lifecycle" && state.nextLifecycleApplyOutcome) {
+        const outcome = state.nextLifecycleApplyOutcome;
+        state.nextLifecycleApplyOutcome = null;
+        const proposal = { ...actionProposals.get(apply[1]),
+          status: outcome === "stale" ? "stale" : "applied",
+          stale: outcome === "stale" ? { current_state_fingerprint: "fixture-r2" } : null,
+          receipt: outcome === "stale" ? null : { projection_verified: false },
+        };
+        actionProposals.set(apply[1], proposal);
+        await route.fulfill({ contentType: "application/json", json: { ok: true, proposal } });
         return;
       }
       let acceptedTurn = null;
@@ -1289,6 +1307,47 @@ async function main() {
     const url = `http://127.0.0.1:${port}/${packaged ? "chat/" : ""}?statusUrl=/status.json`;
     await waitForHttp(url);
     browser = await launchBrowser(chromium);
+    // Real Goal button -> typed preview -> compiler -> drawer/apply, with only
+    // the service boundary controlled. No test computes the plan under review.
+    for (const width of [1512, 390]) {
+      const reviewPage = await browser.newPage({ viewport: { width, height: 982 } });
+      const reviewApi = await installApi(reviewPage);
+      await reviewPage.goto(url, { waitUntil: "networkidle" });
+      await reviewPage.getByTestId("personal-goal-home").waitFor({ state: "visible" });
+      for (const [patch, mode] of [
+        [{ permission_classification: "protected" }, "review"],
+        [{ validation_evidence: [] }, "refresh"],
+        [{ stale: { current_state_fingerprint: "fixture-r2" } }, "refresh"],
+      ]) {
+        const before = reviewApi.actionApplies.length;
+        reviewApi.nextLifecycleProposalPatch = patch;
+        if (width < 640) await reviewPage.locator(".personal-mobile-menu").click();
+        await reviewPage.getByRole("button", { name: "停止 Product Release", exact: true }).click();
+        await reviewPage.locator(`[data-action-review="${mode}"]`).waitFor({ state: "visible" });
+        if (reviewApi.actionApplies.length !== before) throw new Error("Unsafe lifecycle preview applied directly");
+        if (reviewApi.goalActivationStates.get("product-release") !== "active") throw new Error("Unsafe preview changed state");
+        if (mode === "refresh" && !(await reviewPage.getByRole("button", { name: "停止 Goal", exact: true }).isDisabled())) throw new Error("Incomplete or stale preview remained applicable");
+        await reviewPage.getByRole("button", { name: "关闭", exact: true }).click();
+      }
+      reviewApi.nextLifecycleProposalPatch = { normalized_parameters: { goal_id: "other-goal", operation: "stop" }, context: { goal_id: "other-goal" } };
+      const beforeMismatch = reviewApi.actionApplies.length;
+      if (width < 640) await reviewPage.locator(".personal-mobile-menu").click();
+      await reviewPage.getByRole("button", { name: "停止 Product Release", exact: true }).click();
+      await reviewPage.getByText("预览目标与请求的 Goal 或操作不一致", { exact: false }).waitFor({ state: "visible" });
+      if (reviewApi.actionApplies.length !== beforeMismatch) throw new Error("Mismatched response target was applied");
+      for (const outcome of ["stale", "unverified"]) {
+        reviewApi.nextLifecycleApplyOutcome = outcome;
+        if (width < 640) await reviewPage.locator(".personal-mobile-menu").click();
+        await reviewPage.getByRole("button", { name: "停止 Product Release", exact: true }).click();
+        await reviewPage.locator(`[data-action-review="${outcome === "stale" ? "refresh" : "repair"}"]`).waitFor({ state: "visible" });
+        if (await reviewPage.getByText("已应用，LoopX 状态将刷新。", { exact: true }).count()) throw new Error("Unverified or stale apply displayed completion");
+        if (reviewApi.goalActivationStates.get("product-release") !== "active") throw new Error("Failed apply lost rollback");
+        if (outcome === "unverified" && await reviewPage.getByText("应用失败，没有写入任何变更。", { exact: true }).count()) throw new Error("Unverified readback falsely claimed no write");
+        await reviewPage.screenshot({ path: resolve(outputDir, `action-review-${width}-${outcome}.png`), fullPage: false, animations: "disabled" });
+        await reviewPage.getByRole("button", { name: "关闭", exact: true }).click();
+      }
+      await reviewPage.close();
+    }
     const capabilityOffPage = await browser.newPage({ viewport: { width: 1512, height: 982 } });
     const startupErrors = [];
     capabilityOffPage.on("pageerror", (error) => startupErrors.push(error.message));
@@ -1438,6 +1497,7 @@ async function main() {
     await page.getByRole("button", { name: "恢复 Product Release", exact: true }).click();
     await page.getByText("确认执行", { exact: true }).waitFor({ state: "visible" });
     const resumePreview = api.actionPreviews.findLast((preview) => preview.action_kind === "goal.lifecycle" && preview.normalized_parameters.operation === "resume");
+    await page.locator('[data-action-review="review"]').filter({ hasText: "恢复自动调度前需要确认" }).waitFor({ state: "visible" });
     if (!resumePreview || resumePreview.normalized_parameters.goal_id !== "product-release") throw new Error("Goal resume did not create the expected typed preview");
     if (api.durableWriteCount !== writesBeforeLifecyclePreview + 1) throw new Error("Goal resume preview wrote state before owner confirmation");
     api.nextLifecycleApplyDelayMs = 900;

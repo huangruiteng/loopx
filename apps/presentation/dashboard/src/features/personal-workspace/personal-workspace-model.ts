@@ -1,3 +1,4 @@
+import type { ActionReviewPlan } from "./action-review-plan";
 import type { WorkspaceLoadError } from "../../data/workspace-progressive-status";
 export type WorkspaceGoalState =
   | "需修复"
@@ -195,6 +196,7 @@ export type WorkspaceSchedule = {
 };
 
 export type WorkspaceActionPreview = {
+  reviewPlan?: ActionReviewPlan;
   actionKind:
     | "goal.create"
     | "goal.update"
