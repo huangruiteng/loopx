@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shlex
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1429,7 +1430,14 @@ def test_collection_growth_and_bootstrap_duplication_are_explicit(tmp_path: Path
 
 
 def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> None:
-    project, runtime, registry_path, state_file = _write_fixture(tmp_path, SCENARIOS[0])
+    # Match the other budget scenarios: runner/xdist path length is not a
+    # prompt revision. Exercise real long paths separately below.
+    with _stable_budget_fixture_root(tmp_path / "variants") as root:
+        _assert_mode_variant_budgets(root)
+
+
+def _assert_mode_variant_budgets(root: Path, *, only: str | None = None) -> None:
+    project, runtime, registry_path, state_file = _write_fixture(root, SCENARIOS[0])
     for output_format in ("json", "markdown"):
         commands = _mode_variant_commands(
             project=project,
@@ -1439,6 +1447,8 @@ def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> 
             output_format=output_format,
         )
         for variant_id, command in commands.items():
+            if only is not None and variant_id != only:
+                continue
             spec = CLI_OUTPUT_MODE_VARIANT_BY_ID[variant_id]
             if output_format not in spec.output_formats:
                 continue
@@ -1451,6 +1461,20 @@ def test_explicit_compact_and_detail_modes_are_characterized(tmp_path: Path) -> 
                 text=text,
                 measurement=measurement,
             )
+
+
+def test_brief_budget_retains_full_commands_on_real_long_paths() -> None:
+    # A reproducible 128-character absolute root, independent of pytest's
+    # ever-growing temp/worker prefix. Do not shorten rendered paths or raise
+    # the absolute output ceiling to make this case pass.
+    parent = Path(tempfile.gettempdir()).resolve()
+    # tempfile contributes an eight-character random suffix. Hold input size
+    # constant across Linux /tmp and macOS's longer temporary-directory root.
+    prefix = "loopx-brief-".ljust(128 - len(str(parent)) - 1 - 8, "p")
+    with tempfile.TemporaryDirectory(prefix=prefix, dir=parent) as directory:
+        root = Path(directory).resolve()
+        assert len(str(root)) == 128
+        _assert_mode_variant_budgets(root, only="heartbeat_prompt_brief")
 
 
 def test_todo_list_explicit_limit_stays_bounded_and_default_path_unchanged(

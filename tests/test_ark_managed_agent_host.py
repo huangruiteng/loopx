@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 from pathlib import Path
 
@@ -146,9 +147,9 @@ def test_host_activation_submits_one_goal_without_turn_or_automation() -> None:
         "runtime_capability_reentry_v0" in step and "do not rewrite task_body" in step
         for step in packet["activation_steps"]
     )
-    assert packet["commands"]["heartbeat_prompt"].endswith(
-        "--runtime-profile ark_managed_agent_goal"
-    )
+    prompt_args = shlex.split(packet["commands"]["heartbeat_prompt"])
+    assert prompt_args[prompt_args.index("--runtime-profile") + 1] == "ark_managed_agent_goal"
+    assert prompt_args.count("--bootstrap") == 1
     assert "automation_update" not in str(packet)
     assert "loopx turn run-once" not in str(packet).lower()
 

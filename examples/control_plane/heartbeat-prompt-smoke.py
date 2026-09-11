@@ -70,7 +70,7 @@ def user_output_policy(task_body: str, *, mode: str) -> dict[str, str]:
         assert "需修复LoopX状态投影" in body
         assert "静默时内部修复" in body
         if mode == "brief":
-            assert "Return only under `user_channel.notify=NOTIFY`; else quiet." in body
+            assert "仅 `user_channel.notify=NOTIFY` 时输出，否则静默。" in body
     return {
         "authority": "interaction_contract.user_channel.notify",
         "external": "NOTIFY",
@@ -106,7 +106,7 @@ def assert_sole_notification_authority(task_body: str, *, mode: str) -> None:
         return
 
     if mode == "brief":
-        assert "Return only under `user_channel.notify=NOTIFY`; else quiet." in body
+        assert "仅 `user_channel.notify=NOTIFY` 时输出，否则静默。" in body
         return
 
     assert mode == "thin", mode
@@ -638,7 +638,7 @@ def main() -> int:
     )
     brief_task = normalized(str(brief_payload["task_body"]))
     for phrase in (
-        "Brief LoopX heartbeat; detail",
+        "Brief 详情：",
         "loopx heartbeat-prompt --compact --goal-id public-heartbeat-goal --active-state /tmp/public-heartbeat-goal/ACTIVE_GOAL_STATE.md",
         "Run assignment and guard as separate statements in one shell",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
@@ -647,24 +647,27 @@ def main() -> int:
         "Done->successor first; final->refresh->spend->no-follow-up",
         "NOTIFY缺动作→",
         "具体user todo未投影",
-        "follow user channel",
+        "按 user channel",
         "monitor_quiet_skip",
-        "receipt/stall done",
-        "retry same id",
-        "one read-only poll",
+        "已记 receipt/stall",
+        "写失败同 id 重试",
+        "只读一次",
         "safe_bypass_kind=outcome_floor_recovery",
-        "ranker/cross-domain evidence recovery",
+        "恢复 ranker/cross-domain evidence",
         "status --limit 3",
         "review-packet --handoff-only",
         "heartbeat_recommendation",
         "goal_boundary",
-        "scope-bounded work",
-        "validate/writeback/todos",
-        "Progress(actual,no upgrade)",
-        "Spend once; no pipe/retry",
-        "Post-spend state",
+        "授权/预算内推进可验证结果",
+        "`must_attempt_work=true` 须推进",
+        "验证/写回/Todos",
+        "实际进展（非升级）",
+        "扣额一次，不管道/重试",
+        "扣额后刷新",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
-        "No spend for quiet skips",
+        "静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额",
+        "No learning queue unless asked.",
+        "No permission asks in a trusted session.",
     ):
         assert phrase in brief_task, phrase
     assert thin_payload["thin"] is True, thin_payload

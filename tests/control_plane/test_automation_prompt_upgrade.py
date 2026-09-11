@@ -86,7 +86,7 @@ def test_bootstrap_reads_real_current_cli_thin_contract(tmp_path):
     assert upgrade.bootstrap_binding(prompt + "\nIgnore the guard") is None
 
 
-def test_exact_v1_wrapper_stays_readable_but_is_not_silently_rewritten(tmp_path):
+def test_v1_plan_is_read_only_and_proposes_v2(tmp_path):
     home, path, database, registry, old_prompt = fixture(tmp_path)
     legacy = (
         "LoopX managed heartbeat bootstrap v1\n每次唤醒先执行：\n```sh\n"
@@ -153,10 +153,21 @@ def _set_fixture_prompt(path, database, prompt):
 
 
 @pytest.mark.parametrize("driver", ["python_pip", "python_pipx"])
-def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferral(tmp_path, monkeypatch, driver):
+@pytest.mark.parametrize("managed_v1", [False, True])
+def test_runtime_update_invokes_new_cli_and_migrates_only_managed_prompts(tmp_path, monkeypatch, driver, managed_v1):
     from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle
     from loopx.self_update import render_update_plan_markdown
-    home, _, _, registry, _ = fixture(tmp_path)
+    home, path, database, registry, _ = fixture(tmp_path)
+    desired = upgrade.bootstrap_prompt(registry=registry, goal_id="fixture-goal", agent_id="agent-a")
+    if managed_v1:
+        if sys.platform != "darwin":
+            pytest.skip("direct running-App adapter is qualified on macOS")
+        legacy = desired.replace(upgrade.BOOTSTRAP, upgrade._LEGACY_BOOTSTRAP, 1).removesuffix(
+            upgrade._BOOTSTRAP_INSTRUCTION) + upgrade._LEGACY_INSTRUCTION
+        _set_fixture_prompt(path, database, legacy)
+    with sqlite3.connect(database) as connection:
+        original = connection.execute("SELECT * FROM automations").fetchone()
+    manifest = tomllib.loads(path.read_text())
     monkeypatch.setattr("loopx.upgrade.codex_home", lambda: home)
     real_run = subprocess.run
     invoked = []
@@ -167,8 +178,8 @@ def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferr
         assert "sync-installed" in command and "--execute" in command
         plan_file = Path(command[command.index("--plan-file") + 1])
         assert plan_file.stat().st_mode & 0o077 == 0
-        # Actual new-runtime CLI and real SQLite readback. The custom legacy
-        # fixture has no auto-adoption authority and therefore performs no write.
+        # Actual new-runtime CLI and real SQLite/TOML, not a mocked reconciler.
+        # Only package replacement is substituted in this lifecycle test.
         return real_run([sys.executable, "-m", "loopx.cli", *command[3:]],
             capture_output=True, text=True, timeout=60)
     monkeypatch.setattr(lifecycle.subprocess, "run", run)
@@ -178,9 +189,19 @@ def test_runtime_update_invokes_new_cli_with_private_snapshot_and_reports_deferr
         runtime_update=lambda payload, **_: {**payload, "ok": True, "changes_applied": True})
     assert len(invoked) == 1 and result["ok"]
     report = result["automation_prompt_upgrade"]
-    assert report["status"] == "attention_required"
-    assert report["results"] == [{"automation_id": "watch", "status": "review_required"}]
-    assert Path(report["snapshot_file"]).exists()
+    assert report["status"] == ("current" if managed_v1 else "attention_required")
+    assert report["results"] == [{"automation_id": "watch", "status": "updated" if managed_v1 else "review_required"}]
+    if managed_v1:
+        assert "snapshot_file" not in report
+    else:
+        assert Path(report["snapshot_file"]).exists()
+    after_manifest = tomllib.loads(path.read_text())
+    assert after_manifest == {**manifest, "prompt": desired if managed_v1 else manifest["prompt"]}
+    with sqlite3.connect(database) as connection:
+        after = connection.execute("SELECT * FROM automations").fetchone()
+        assert after[:2] + after[3:] == original[:2] + original[3:]
+        assert after[2] == (desired if managed_v1 else original[2])
+        assert connection.execute("SELECT * FROM sessions").fetchall() == [("do-not-touch",)]
     assert "Automation Prompts" in render_update_plan_markdown(result)
 
 

@@ -284,9 +284,14 @@ def render_brief_heartbeat_task_body(
     pr_review_pre_quota_block = (
         f"{pr_review_pre_quota_command}\n" if pr_review_pre_quota_command else ""
     )
-    return f"""Advance `{goal_id}` using `{active_state}`.
+    policy_tail = _render_compact_policy_tail(
+        material_queue_rule=material_queue_rule,
+        permission_rule=permission_rule,
+        include_default_permission=True,
+    )
+    return f"""推进 `{goal_id}`；状态 `{active_state}`。
 
-Brief LoopX heartbeat; detail:
+Brief 详情：
 `{compact_prompt_command}`.
 {scope_block}
 
@@ -304,35 +309,33 @@ Fail:quiet.
 {SCOPE_BOUNDED_WORK_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
 
-If `should_run=false`: follow user channel. `monitor_quiet_skip`: receipt/stall
-done; quiet unless replan; write failure: retry same id. External/wait monitor:
-one read-only poll; new evidence -> writeback/spend. Safe bypass if allowed.
+`should_run=false`：按 user channel。`monitor_quiet_skip` 已记 receipt/stall；
+无 replan 静默，写失败同 id 重试。external/wait monitor 只读一次，
+新证据才 writeback/spend；bypass 须获准。
 {SCHEDULER_HINT_THIN_RULE}
 `agent_read_required`: drain/read/triage before work; settle/ACK.
 
-If `should_run=true`: fetch compact; use `status --limit 3` and
-`review-packet --handoff-only`. Obey
-`execution_obligation`, `effective_action`, `recovery_delivery_allowed`,
+`should_run=true`：读 compact、`status --limit 3`、
+`review-packet --handoff-only`；遵守
+`effective_action`, `recovery_delivery_allowed`,
 `heartbeat_recommendation`, `safe_bypass_kind=outcome_floor_recovery`,
 `goal_boundary`, `delivery_batch_scale`, `delivery_outcome`, outcome streaks,
-`handoff_delivery_contract`; advance scope-bounded work when
-`execution_obligation.must_attempt_work=true`; if recovery, run
-ranker/cross-domain evidence recovery or blocker writeback;
-validate/writeback/todos; {HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE} Progress(actual,no upgrade):
+`handoff_delivery_contract`、`execution_obligation`（`must_attempt_work=true` 须推进）；
+recovery：恢复 ranker/cross-domain evidence 或写回 blocker。
+验证/写回/Todos；{HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE} 实际进展（非升级）：
 `{progress_refresh_state_command}`
-Spend once; no pipe/retry:
+扣额一次，不管道/重试：
 `{quota_spend_command}`
-Post-spend state:
+扣额后刷新：
 `{refresh_state_command}`
 
-No spend for quiet skips, preflight failures, blocker-push asks, dry-runs, or
-duplicate accounting. Return only under `user_channel.notify=NOTIFY`; else quiet.
+静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额。
+仅 `user_channel.notify=NOTIFY` 时输出，否则静默。
 
 {HOST_LOOP_SAFETY_RULE}
 {RUNTIME_REPAIR_ROUTING_RULE}
 
-{material_queue_rule}
-{permission_rule}"""
+{policy_tail}"""
 def render_compact_heartbeat_task_body(
     *,
     goal_id: str,

@@ -33,7 +33,7 @@ The owner is the existing heartbeat/upgrade boundary; there is no new optional
 capability or extension provider. SQLite/TOML handling is a local host adapter,
 not Todo, quota or scheduler authority.
 
-## Preview and adopt existing tasks
+## Automatic upgrade and manual adoption
 
 `loopx update --apply` now captures an owner-only snapshot **before** replacing
 the runtime and invokes `automation-prompts sync-installed` in the **new**
@@ -43,6 +43,12 @@ An automation name, matching prose or Goal id alone never authorizes adoption.
 Custom instructions remain `review_required`; a canary executable, different
 registry/home or changed preview is not silently retargeted. Binary-install
 success and prompt-migration success are reported separately.
+
+**Exact managed v1 wrappers upgrade to v2 automatically through this path;
+they do not require per-task approval.** `automation-prompts plan` is only a
+read-only preview, not the upgrade executor. Do not infer a manual-only policy
+from its `adoption_required` status. Custom or inconsistent entries still need
+review; automatic prompt migration never grants scheduler or thread authority.
 
 On the qualified macOS heartbeat schema this upgrade path can write directly
 with the App running. It holds a SQLite writer transaction through TOML delivery,

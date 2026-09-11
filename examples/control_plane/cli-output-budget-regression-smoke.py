@@ -26,6 +26,7 @@ DIFFERENTIAL_SMOKE = (
 def _run_budget_checks() -> None:
     tests = runpy.run_path(str(TEST_PATH))
     tests["test_manifest_covers_the_declared_agent_facing_surface_set"]()
+    tests["test_brief_budget_retains_full_commands_on_real_long_paths"]()
     with tempfile.TemporaryDirectory(prefix="loopx-cli-output-budget-") as temp_dir:
         root = Path(temp_dir)
         tests["test_real_cli_output_stays_inside_the_characterized_baseline"](
