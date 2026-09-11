@@ -10,6 +10,16 @@ description: Inspect authorized LoopX Goals, Todos and deliveries to explain pro
 Choose reads according to the user's question. The initial Goal directory is
 an index, not a completed investigation. In Chat, use `loopx_manager_read`:
 
+- `sources`: discover configured and audience-authorized evidence sources.
+  For a remote/SSH question, select the matching `source_id` (for example
+  `ssh:research-host`) for portfolio, Todo and delivery reads. Never substitute
+  local tasks mentioning SSH for a report from the remote registry. An empty
+  declared `host_id` is not a reason to skip an available SSH source: the read
+  supplies `source_host` and source-qualified Goal identity. Report each source's
+  actual coverage and failures. Configuration/discovery alone is not a read.
+  For an all-host report, inspect authorized sources and disclose any not reached;
+  do not present a local-only read as coverage of all machines.
+
 - `portfolio`: discover authorized Goals, source quality and coverage. Stopped
   Goals are excluded by default. Use `include_stopped: true` only for an
   explicit historical/stopped-Goal question; a specific Goal ID can then be read.
@@ -18,6 +28,10 @@ an index, not a completed investigation. In Chat, use `loopx_manager_read`:
 - `deliveries` with a Goal ID: inspect recorded findings, evidence references
   and validation for the recent reporting window. Join the supplied titles;
   distinguish recorded claims from independently verified artifacts.
+  When asked for latest known progress rather than only yesterday, use `days`
+  (1..90) to inspect older recorded deliveries and state their actual dates.
+  Current Todo reads and historical outcomes remain useful even when live
+  execution status is stale; do not present old records as newly executed work.
 
 - `handoffs`: inspect this audience's delegated requests, optionally with an exact
   `request_id` or Goal ID. Distinguish delivery, receiver CLI read, decision,

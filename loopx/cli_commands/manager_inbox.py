@@ -25,11 +25,13 @@ def register_manager_inbox(subparsers, add_format):
             "report",
             "status",
             "configure-read-scope",
+            "configure-ssh-read-scope",
         ),
     )
     parser.add_argument("--goal-id")
     parser.add_argument("--agent-id")
     parser.add_argument("--channel-id")
+    parser.add_argument("--ssh-host")
     parser.add_argument("--read-goal-id", action="append", default=[])
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--request-id")
@@ -47,6 +49,12 @@ def register_manager_inbox(subparsers, add_format):
 
 def handle_manager_inbox(args, registry_path, runtime_root):
     try:
+        if args.manager_inbox_action == "configure-ssh-read-scope":
+            from ..capabilities.manager_context.ssh_evidence import configure
+            result = configure(runtime_root, channel=args.channel_id or "", host=args.ssh_host,
+                               goal_ids=args.read_goal_id, execute=args.execute)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         if args.manager_inbox_action == "configure-read-scope":
             result = configure_evidence_scope(
                 runtime_root,

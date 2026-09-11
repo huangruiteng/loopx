@@ -27,8 +27,10 @@ READ_TOOL = {
         "properties": {
             "view": {
                 "type": "string",
-                "enum": ["portfolio", "todos", "deliveries", "handoffs"],
+                "enum": ["sources", "portfolio", "todos", "deliveries", "handoffs"],
             },
+            "source_id": {"type": "string", "description": "Default local. For SSH use an exact source_id from view=sources; local Goal IDs do not discover remote Goals."},
+            "days": {"type": "integer", "minimum": 1, "maximum": 90, "description": "Deliveries lookback; expand for latest known progress older than yesterday."},
             "goal_id": {"type": "string"},
             "request_id": {
                 "type": "string",
@@ -72,6 +74,8 @@ def manager_index(context: dict[str, Any]) -> dict[str, Any]:
             if row.get("activation_state") != "stopped"
         ],
         "context_delegation": context.get("context_delegation"),
+        "evidence_sources": context.get("evidence_sources", [])[:12],
+        "evidence_source_count": len(context.get("evidence_sources", [])),
         "read_tool": TOOL_NAME,
     }
 
@@ -87,6 +91,8 @@ class ManagerInspection:
         scope_valid: Callable[[], bool],
         record: Callable[[dict[str, Any]], None],
         channel_id: str | None = None,
+        remote_runner=None,
+        ssh_config_path=None,
     ) -> None:
         self.context = context
         self.registry_path = registry_path
@@ -95,6 +101,12 @@ class ManagerInspection:
         self.scope_valid = scope_valid
         self.record = record
         self.channel_id = channel_id
+        self.remote_runner = remote_runner
+        self.ssh_config_path = ssh_config_path
+
+    def sources(self):
+        from .ssh_evidence import sources
+        return sources(self.runtime_root, self.channel_id, self.owner_scope, self.ssh_config_path)
 
     def read(self, tool: str, arguments: Any) -> dict[str, Any]:
         if tool != TOOL_NAME or not isinstance(arguments, dict):
@@ -106,13 +118,15 @@ class ManagerInspection:
             "limit",
             "include_stopped",
             "request_id",
+            "source_id",
+            "days",
         }:
             return {"ok": False, "error": "invalid_arguments"}
         view, goal_id = arguments.get("view"), arguments.get("goal_id")
         offset, limit = arguments.get("offset", 0), arguments.get("limit", 8)
         include_stopped = arguments.get("include_stopped", False)
         if (
-            view not in {"portfolio", "todos", "deliveries", "handoffs"}
+            view not in {"sources", "portfolio", "todos", "deliveries", "handoffs"}
             or ("request_id" in arguments and view != "handoffs")
             or type(include_stopped) is not bool
             or ("include_stopped" in arguments and view != "portfolio")
@@ -121,8 +135,31 @@ class ManagerInspection:
             or type(limit) is not int
             or not 1 <= limit <= 12
             or (goal_id is not None and not isinstance(goal_id, str))
+            or ("days" in arguments and (view != "deliveries" or type(arguments["days"]) is not int or not 1 <= arguments["days"] <= 90))
+            or not isinstance(arguments.get("source_id", "local"), str)
         ):
             return {"ok": False, "error": "invalid_arguments"}
+        if not self.scope_valid():
+            return {"ok": False, "error": "authorization_changed"}
+        source_id = arguments.get("source_id", "local")
+        if view == "sources":
+            rows = self.sources()
+            if not self.scope_valid():
+                return {"ok": False, "error": "authorization_changed"}
+            result = {"ok": True, "view": view, "rows": rows[offset:offset + limit],
+                      "matched": len(rows), "next_offset": offset + limit if offset + limit < len(rows) else None,
+                      "note": "Configured sources are not yet read. Select source_id for remote evidence; an empty local host_id does not imply missing remote Goals."}
+            self.record(result)
+            return result
+        if source_id != "local":
+            if not source_id.startswith("ssh:") or view == "handoffs" or (view != "portfolio" and not goal_id):
+                return {"ok": False, "error": "invalid_remote_read"}
+            from .ssh_evidence import read_remote
+            result = read_remote(self.runtime_root, self.channel_id, self.owner_scope, arguments,
+                                 self.scope_valid, config_path=self.ssh_config_path,
+                                 **({"runner": self.remote_runner} if self.remote_runner else {}))
+            self.record(result)
+            return result
         goals = {r["goal_id"]: r for r in self.context.get("goals", [])}
         if (goal_id is not None and goal_id not in goals) or (
             view not in {"portfolio", "handoffs"} and not goal_id
@@ -174,7 +211,7 @@ class ManagerInspection:
             matched = source.get("coverage", {}).get("active")
         else:
             source = read_manager_delivery_history(
-                self.runtime_root, goal_id, limit=limit, offset=offset
+                self.runtime_root, goal_id, limit=limit, offset=offset, lookback_days=arguments.get("days", 1)
             )
             page = source.pop("deliveries", [])
             matched = source.get("coverage", {}).get("matched")
@@ -230,6 +267,8 @@ class ManagerInspection:
             ),
             "oversized_rows": oversized,
             "initial_snapshot_id": self.context.get("snapshot_id"),
+            "source_id": "local",
+            "source_host": "local",
         }
         self.record(result)
         return result

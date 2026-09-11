@@ -16,9 +16,14 @@ from .goal_portfolio import build_goal_portfolio
 from .chat import redact_local_paths
 
 
-def manager_authorization_scope_id(goal_ids: list[str]) -> str:
+def manager_authorization_scope_id(goal_ids: list[str], *, runtime_root=None, channel_id=None) -> str:
     """Opaque identity for the exact external Goal evidence scope."""
     normalized = sorted(set(goal_ids))
+    if runtime_root is not None and channel_id:
+        from .capabilities.manager_context.ssh_evidence import grants
+        remote = grants(runtime_root, channel_id)
+        if remote:
+            normalized.append("ssh_evidence:" + json.dumps(remote, sort_keys=True))
     return hashlib.sha256(
         json.dumps(normalized, separators=(",", ":")).encode()
     ).hexdigest()
@@ -121,7 +126,7 @@ def manager_turn_context(
         json.dumps(result, ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()
     if not owner_scope:
-        result["authorization_scope_id"] = manager_authorization_scope_id(scope or [])
+        result["authorization_scope_id"] = manager_authorization_scope_id(scope or [], runtime_root=runtime_root, channel_id=session.get("channel_id"))
     return result
 
 

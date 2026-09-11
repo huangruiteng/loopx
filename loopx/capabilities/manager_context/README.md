@@ -91,12 +91,41 @@ recent delivery window is still yesterday through now; arbitrary artifact paths
 and external links are not fetched. Existing non-Codex adapters retain their
 context projection until they implement an equivalent tool contract.
 
-Manager context version 8 starts a fresh upstream session for older manager
+Manager context version 9 starts a fresh upstream session for older manager
 contexts. The logical Chat session and its receipts remain intact. Runtime support
 uses the Codex app-server dynamic tool protocol; explicit upstream terminal
 errors remain errors and are not retried as part of inspection. The version
 change refreshes the operating contract on existing installations;
 resuming an old upstream thread would retain its previous instructions.
+
+### Remote evidence sources
+
+The manager discovers SSH aliases through the same host catalog as the frontend
+source switcher. `loopx_manager_read view=sources` lists eligible sources; select
+`source_id=ssh:<alias>` for portfolio, Todo or delivery reads. Reads execute a
+fixed, bounded CLI projection on the selected host, using its global registry,
+not local tasks whose titles mention SSH. Source host and Goal ID jointly identify
+the evidence; a missing declared execution `host_id` does not erase source provenance.
+
+Owner-local conversations may inspect configured hosts on demand. External
+conversations require a persistent, exact host/Goal read grant from the local
+operator, in addition to their live connection authorization:
+
+```sh
+loopx manager-inbox configure-ssh-read-scope --channel-id manager.external.0123456789abcdef01234567 --ssh-host research-host --read-goal-id project-a --execute
+```
+
+Omit `--execute` for a preview; pass no Goals to revoke that host. This grants
+summary reads only, not delegation, shell commands or remote writes. Changed
+grants invalidate upstream manager context; revocation during a read discards
+the result. No remote connections occur merely to list sources. Offline hosts,
+older unsupported remote runtimes and missing Goals remain explicit unknowns.
+
+The remote CLI uses `goal-portfolio --manager-view portfolio|todos|deliveries`
+and the same Core readers as the local manager. Pagination remains explicit.
+Delivery reads support `days=1..90` so latest known historical outcomes can be
+explained alongside fresh current Todos without pretending stale execution is
+current. Both hosts need the updated LoopX runtime.
 
 
 ## A delegation returns automatically

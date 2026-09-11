@@ -70,6 +70,10 @@ def register_summary_all_command(
         "goal-portfolio", help="Read scoped Goal evidence with explicit source coverage."
     )
     add_subcommand_format(portfolio)
+    portfolio.add_argument("--manager-view", choices=("portfolio", "todos", "deliveries"), help="Export an audience-safe manager evidence page from this registry.")
+    portfolio.add_argument("--offset", type=int, default=0)
+    portfolio.add_argument("--days", type=int, default=1)
+    portfolio.add_argument("--include-stopped", action="store_true")
     portfolio.add_argument(
         "--goal-id", action="append", dest="portfolio_goal_ids",
         help="Exact registered Goal to include; repeat to narrow scope.",
@@ -169,6 +173,15 @@ def handle_summary_all_command(
     }:
         return None
     if args.command == "goal-portfolio":
+        if args.manager_view:
+            from ..capabilities.manager_context.evidence_export import export_page
+            try:
+                payload = export_page(registry_path, runtime_root_arg, args)
+            except (OSError, ValueError, TypeError):
+                payload = {"ok": False, "error": "manager_evidence_unavailable_or_invalid", "rows": []}
+            import json
+            print_payload(payload, output_format(args), lambda p: json.dumps(p, ensure_ascii=False, indent=2))
+            return 0 if payload.get("ok") else 1
         try:
             payload = build_goal_portfolio(
                 registry_path=registry_path,

@@ -73,10 +73,12 @@ def _recorded_details(run):
 
 
 def read_manager_delivery_history(
-    runtime_root: Path, goal_id: str, *, now=None, limit=24, offset=None
+    runtime_root: Path, goal_id: str, *, now=None, limit=24, offset=None, lookback_days=1
 ):
     now = now or datetime.now().astimezone()
-    start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    if type(lookback_days) is not int or not 1 <= lookback_days <= 90:
+        raise ValueError("lookback_days must be 1..90")
+    start = (now - timedelta(days=lookback_days)).replace(hour=0, minute=0, second=0, microsecond=0)
     path = runtime_root / "goals" / goal_id / "runs" / "index.jsonl"
     base = {
         "window_start": start.isoformat(),
