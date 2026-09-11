@@ -221,6 +221,26 @@ unscoped multi-agent decisions never grant standing authority.
 
 ## Failure Semantics
 
+### Shared read-policy owner
+
+`control_plane/todos/decision_scope.ts` evaluates coverage, exact-target relations
+and consistency from decoded source facts. `global_gate=true` addresses all
+agents; otherwise an explicit `blocks_agent` determines the recipient even when
+`claimed_by` names another agent. Claim attribution is not a veto on that explicit
+recipient. With neither explicit field, the existing claim-scoped compatibility
+rule remains; multi-agent gates without explicit scope still require repair.
+
+A gate whose scope covers work A but whose `unblocks_todo_id` names work B produces
+`required_decision_scope_target_mismatch`. Another matching gate does not erase
+the contradictory record. Repair must reconcile owner intent; it cannot silently
+retarget the gate, remove the requirement or synthesize approval. This deliberately
+replaces a formerly false `consistent` diagnostic. A consistent open dependency
+still means waiting for a decision, not permission to execute.
+
+Legacy metadata codecs and operator repair copy remain in Python. Candidate-pair
+consumers use batched relations. No provider commit, lease, source promotion or
+Markdown writeback authority is added by this read-only contract.
+
 - Missing structured fields on legacy state: fall back to compatibility lint
   and emit a projection-gap repair hint.
 - Conflicting structured fields: fail closed with a concrete blocker.
