@@ -2328,6 +2328,7 @@ async function main() {
       throw new Error(`${error.message}; body=${(await page.locator("body").innerText()).slice(0, 4000)}`);
     }
     const connectedRow = page.locator(".personal-lark-table-row", { hasText: "Product group" });
+    await page.getByText("1 条 Lark 路由尚未验证", { exact: true }).waitFor({ state: "visible" });
     if (!(await connectedRow.getByText("事件订阅待验证", { exact: false }).isVisible())) throw new Error("A zero-event listener was presented as automatic-reply ready");
     if (!(await connectedRow.getByRole("link", { name: "查看飞书事件配置" }).isVisible())) throw new Error("An unverified Lark event subscription lacked repair guidance");
     if (api.larkWrites.length !== 1 || api.larkWrites[0].execute !== true) throw new Error("Lark connect did not perform exactly one approved external write");
@@ -2376,6 +2377,7 @@ async function main() {
     await batchDialog.getByRole("button", { name: "一键连接 2 个 Agent", exact: true }).click();
     await batchDialog.waitFor({ state: "hidden" });
     if (api.larkWrites.length !== 3 || api.larkConnections.length !== 2) throw new Error("Per-Agent App batch did not preserve both Agent routes");
+    await page.getByText("2 条 Lark 路由尚未验证", { exact: true }).waitFor({ state: "visible" });
     const perAgentAppWrites = Object.fromEntries(api.larkWrites.slice(1).map((item) => [item.agent_id, item.app_ref]));
     if (perAgentAppWrites["codex-older-lane"] !== "mew-research" || perAgentAppWrites["codex-latest-lane"] !== "mew") throw new Error(`Per-Agent App selection was not preserved: ${JSON.stringify(perAgentAppWrites)}`);
     if (!api.larkConnections.some((item) => item.agent_id === "codex-older-lane") || !api.larkConnections.some((item) => item.agent_id === "codex-latest-lane")) throw new Error("One-click Goal Channel lost a peer Agent route");

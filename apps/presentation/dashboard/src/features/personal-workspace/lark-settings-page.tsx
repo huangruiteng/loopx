@@ -35,6 +35,12 @@ import type { WorkspaceGoal } from "./personal-workspace-model";
 
 type Tab = "apps" | "connections";
 
+type LarkConnectionHealth = {
+  detail: string;
+  label: string;
+  state: "ready" | "unverified" | "not_ready";
+};
+
 function ingressPresentation(mode: LarkIngressMode, t: WorkspaceTranslate): { label: string; detail: string } {
   return {
     live_steering: {
@@ -56,44 +62,44 @@ function ingressPresentation(mode: LarkIngressMode, t: WorkspaceTranslate): { la
   }[mode];
 }
 
-function larkConnectionHealth(connection: LarkGoalConnection, t: WorkspaceTranslate): { label: string; detail: string; ready: boolean } {
+function larkConnectionHealth(connection: LarkGoalConnection, t: WorkspaceTranslate): LarkConnectionHealth {
   if (connection.listener_status === "starting") {
-    return { label: t("lark.health.starting"), detail: t("lark.health.startingDetail"), ready: false };
+    return { label: t("lark.health.starting"), detail: t("lark.health.startingDetail"), state: "not_ready" };
   }
   if (connection.listener_status === "retrying" && connection.listener_error_code === "lark_event_source_disconnected") {
-    return { label: t("lark.health.sourceDisconnected"), detail: t("lark.health.sourceDisconnectedDetail"), ready: false };
+    return { label: t("lark.health.sourceDisconnected"), detail: t("lark.health.sourceDisconnectedDetail"), state: "not_ready" };
   }
   if (connection.listener_status === "retrying") {
-    return { label: t("lark.health.retrying"), detail: t("lark.health.retryingDetail"), ready: false };
+    return { label: t("lark.health.retrying"), detail: t("lark.health.retryingDetail"), state: "not_ready" };
   }
   if (connection.listener_status === "stopped" || connection.listener_status === null) {
-    return { label: t("lark.health.notStarted"), detail: t("lark.health.notStartedDetail"), ready: false };
+    return { label: t("lark.health.notStarted"), detail: t("lark.health.notStartedDetail"), state: "not_ready" };
   }
   if (connection.last_event_status === "message_context_permission_required") {
-    return { label: t("lark.health.messageContextPermission"), detail: t("lark.health.messageContextPermissionDetail"), ready: false };
+    return { label: t("lark.health.messageContextPermission"), detail: t("lark.health.messageContextPermissionDetail"), state: "not_ready" };
   }
   if (connection.last_event_status === "processing_failed") {
-    return { label: t("lark.health.processingFailed"), detail: t("lark.health.processingFailedDetail"), ready: false };
+    return { label: t("lark.health.processingFailed"), detail: t("lark.health.processingFailedDetail"), state: "not_ready" };
   }
   if (connection.health_error_code === "invalid_routing_state") {
-    return { label: t("lark.health.invalidRouting"), detail: t("lark.health.invalidRoutingDetail"), ready: false };
+    return { label: t("lark.health.invalidRouting"), detail: t("lark.health.invalidRoutingDetail"), state: "not_ready" };
   }
   if (connection.last_event_status === "queued_for_agent") {
     return {
       label: t("lark.health.queued"),
       detail: t("lark.health.queuedDetail", { agent: connection.agent_id ?? t("lark.targetAgent") }),
-      ready: true,
+      state: "ready",
     };
   }
   if (connection.last_event_status === "ignored" && connection.last_event_reason === "not_addressed") {
     return {
       label: t("lark.health.notAddressed"),
       detail: t("lark.health.notAddressedDetail"),
-      ready: true,
+      state: "ready",
     };
   }
   if (connection.last_event_status === "ignored" && connection.last_event_reason === "self_message") {
-    return { label: t("lark.health.listening"), detail: t("lark.health.ignoredSelf"), ready: true };
+    return { label: t("lark.health.listening"), detail: t("lark.health.ignoredSelf"), state: "ready" };
   }
   if (
     connection.health_error_code === "lark_event_route_mismatch"
@@ -106,30 +112,30 @@ function larkConnectionHealth(connection: LarkGoalConnection, t: WorkspaceTransl
       detail: connection.last_event_reason === "route_ambiguous"
         ? t("lark.health.routeAmbiguousDetail")
         : t("lark.health.routeMismatchDetail"),
-      ready: false,
+      state: "not_ready",
     };
   }
   if (["invalid_event", "binding_unavailable"].includes(connection.last_event_reason ?? "")) {
     return {
       label: t("lark.health.routeUnavailable"),
       detail: t("lark.health.routeUnavailableDetail"),
-      ready: false,
+      state: "not_ready",
     };
   }
   if (connection.last_event_status === "replied_and_acknowledged") {
-    return { label: t("lark.health.listening"), detail: t("lark.health.eventProcessed", { events: connection.event_count, replies: connection.replied_count }), ready: true };
+    return { label: t("lark.health.listening"), detail: t("lark.health.eventProcessed", { events: connection.event_count, replies: connection.replied_count }), state: "ready" };
   }
   if (connection.health_error_code === "lark_event_delivery_unverified" || connection.event_count === 0) {
     return {
       label: t("lark.health.eventUnverified"),
       detail: t("lark.health.eventUnverifiedDetail"),
-      ready: false,
+      state: "unverified",
     };
   }
   return {
     label: connection.reply_ready ? t("lark.health.listening") : t("lark.health.unavailable"),
     detail: t("lark.health.lastStatus", { status: connection.last_event_status ?? t("lark.health.waiting") }),
-    ready: connection.reply_ready,
+    state: connection.reply_ready ? "ready" : "not_ready",
   };
 }
 
@@ -342,6 +348,10 @@ export function LarkSettingsPage({
       connection.topic_name,
     ].some((value) => value.toLocaleLowerCase().includes(keyword)));
   }, [connections, query]);
+  const unverifiedRouteCount = useMemo(
+    () => connections.filter((connection) => larkConnectionHealth(connection, t).state === "unverified").length,
+    [connections, t],
+  );
 
   function openConnect(goal?: WorkspaceGoal) {
     const nextGoal = goal ?? goals.find((item) => item.goalId === initialGoalId) ?? goals[0];
@@ -511,19 +521,23 @@ export function LarkSettingsPage({
 
       {!loading && tab === "connections" ? (
         <div className="personal-lark-connections">
+          {unverifiedRouteCount > 0 ? (
+            <p className="personal-lark-route-readiness" role="status"><MessageSquareText size={15} />{t("lark.routesUnverified", { count: unverifiedRouteCount })}</p>
+          ) : null}
           <div className="personal-lark-toolbar">
             <label><Search size={16} /><input aria-label={t("lark.searchConnections")} onChange={(event) => setQuery(event.target.value)} placeholder={t("lark.searchPlaceholder")} type="search" value={query} /></label>
             <button className="personal-primary-action" disabled={apps.length === 0 || goals.length === 0} onClick={() => openConnect()} type="button"><Plus size={16} />{t("lark.connectApp")}</button>
           </div>
           <div className="personal-lark-table" role="table" aria-label={t("lark.goalTopicConnections")}>
             <div className="personal-lark-table-head" role="row"><span>{t("lark.connection")}</span><span>{t("common.goal")}</span><span>{t("lark.capture")}</span><span>{t("lark.processing")}</span><span>{t("common.actions")}</span></div>
-            {filteredConnections.map((connection) => (
-              <div className="personal-lark-table-row" key={connection.connection_id} role="row">
+            {filteredConnections.map((connection) => {
+              const health = larkConnectionHealth(connection, t);
+              return <div className="personal-lark-table-row" key={connection.connection_id} role="row">
                 <span>
                   <strong>{connection.chat_name}</strong>
-                  <small>{connection.app_label} · {larkConnectionHealth(connection, t).label}</small>
-                  <small>{larkConnectionHealth(connection, t).detail}</small>
-                  {connection.health_error_code === "lark_event_delivery_unverified" ? (
+                  <small>{connection.app_label} · {health.label}</small>
+                  <small>{health.detail}</small>
+                  {health.state === "unverified" ? (
                     <a href="https://open.feishu.cn/document/server-docs/im-v1/message/events/receive?lang=zh-CN" rel="noreferrer" target="_blank"><ExternalLink size={12} />{t("lark.openEventSettings")}</a>
                   ) : null}
                   {larkGroupHistoryPermissionUrl(connection) ? (
@@ -537,8 +551,8 @@ export function LarkSettingsPage({
                   <button aria-label={t("lark.settingsConfigure", { goal: connection.goal_title })} onClick={() => openConnectionEditor(connection)} type="button"><Settings2 size={15} /></button>
                   <button aria-label={t("lark.settingsDisconnect", { goal: connection.goal_title })} className={disconnectConnectionId === connection.connection_id ? "is-confirm" : ""} onClick={() => void disconnect(connection.goal_id, connection.connection_id)} type="button"><Unlink size={15} />{disconnectConnectionId === connection.connection_id ? t("common.confirm") : null}</button>
                 </span>
-              </div>
-            ))}
+              </div>;
+            })}
             {filteredConnections.length === 0 ? <p className="personal-lark-empty">{t("lark.noConnections")}</p> : null}
           </div>
         </div>

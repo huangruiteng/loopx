@@ -359,6 +359,10 @@ assert.match(workspaceSettings, /key: "language"/, "Settings expose a language t
 assert.match(workspaceSettings, /key: "machine"/, "Settings expose generic machine configuration");
 assert.match(workspaceSettings, /<MachineConfigurationSettings/, "Settings mount the machine configuration registry");
 assert.match(workspaceSettings, /<LarkSettingsPage[\s\S]*embedded/, "Settings embed the Lark management page");
+assert.match(larkSettings, /state: "ready" \| "unverified" \| "not_ready"/, "Lark readiness keeps unverified routes separate from actual failures");
+assert.match(larkSettings, /lark\.routesUnverified[\s\S]*unverifiedRouteCount/, "Lark settings summarize only unverified routes with their exact count");
+assert.match(i18n, /\{count\} Lark routes pending verification/, "English Lark readiness copy names routes instead of extensions");
+assert.match(i18n, /\{count\} 条 Lark 路由尚未验证/, "Chinese Lark readiness copy names routes instead of extensions");
 assert.match(workspaceSettings, /t\("settings\.back"\)/, "Settings page has a localized back action");
 assert.match(styles, /personal-settings-sidebar/, "Settings page owns its own sidebar navigation");
 assert.match(styles, /personal-settings-page\[data-pw-theme="brutal"\]/, "Settings page owns its high-contrast theme styles");
