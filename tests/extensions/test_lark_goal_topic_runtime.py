@@ -95,16 +95,21 @@ def _reply_runner(state: dict[str, Any]):
         elif args[3:6] == ["im", "chats", "get"]:
             payload = {"data": {"chat_id": "oc_public_fixture"}}
         elif "+messages-reply" in args:
-            state["reply_text"] = args[args.index("--text") + 1]
+            if "--content" in args:
+                state["reply_content"] = args[args.index("--content") + 1]
+                state["reply_type"] = "post"
+                state["reply_text"] = json.loads(state["reply_content"])["zh_cn"]["content"][0][0]["text"]
+            else:
+                state["reply_text"] = args[args.index("--text") + 1]
+                state["reply_content"] = json.dumps({"text": state["reply_text"]}, ensure_ascii=False)
+                state["reply_type"] = "text"
             payload = (
                 {
                     "api": [
                         {
                             "body": {
-                                "content": json.dumps(
-                                    {"text": state["reply_text"]},
-                                    ensure_ascii=False,
-                                )
+                                "msg_type": state["reply_type"],
+                                "content": state["reply_content"]
                             }
                         }
                     ]
@@ -118,7 +123,8 @@ def _reply_runner(state: dict[str, Any]):
                     "items": [
                         {
                             "message_id": "om_reply_fixture",
-                            "body": {"content": state["reply_text"]},
+                            "msg_type": state["reply_type"],
+                            "body": {"content": state["reply_content"]},
                         }
                     ]
                 }
@@ -1492,7 +1498,7 @@ def test_manager_terminal_failure_replies_once_before_ack(
         assert not result.get("source_acknowledged")
 
 
-@pytest.mark.parametrize("body", ["完整报告" * 400, "x" * 6001, "测" * 40000, "测" * 50000, r"private\nformat"])
+@pytest.mark.parametrize("body", ["完整报告" * 400, "x" * 6001, "测" * 40000, "测" * 50000, r"private\nformat"], ids=["report", "long-ascii", "long-unicode", "oversize", "invalid-newlines"])
 @pytest.mark.parametrize("reply_ok", [True, False])
 def test_manager_report_delivery_preserves_body_and_reports_format_failure(
     tmp_path, monkeypatch, body, reply_ok,

@@ -548,6 +548,21 @@ inside that source topic. Existing configs without the field retain the legacy
 `source_thread` policy. `reply.editorial_style=bullet_points_preferred` projects
 an operator hint for structured replies; the command preserves line breaks.
 
+Manager answers and delegated conclusions use a rich `post` with one Markdown
+node, preserving paragraphs, lists and code indentation. The extension supplies
+exact JSON to the existing CLI transport: it does not fetch Markdown images or
+rewrite the source text. Preview and readback verify the post type and content;
+plain-text lookalikes do not count as rich delivery. The frontend continues to
+render the same stored Markdown through its existing message renderer.
+
+Ordinary inbox CLI replies/notifications retain their text behavior. Structured
+mentions keep the existing identity-verified text path. If the provider preview
+exceeds the 30 KB rich-post request limit, the manager falls back **before any
+send** to the existing 150 KB text transport and reports `format_fallback` as
+`post_size_limit`; it does not truncate the answer. Format is bound into rich
+reply idempotency keys. This changes presentation only, not conversation scope,
+reply placement, authorization or ACK semantics.
+
 ```bash
 loopx lark-inbox reply \
   --project . \

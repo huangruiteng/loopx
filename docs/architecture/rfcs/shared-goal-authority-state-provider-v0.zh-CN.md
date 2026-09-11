@@ -2131,6 +2131,12 @@ summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promote
 缺失且不写回的场景。这不代表所有 quota source 路径已闭合，不授予 monitor 写回
 权限，也不改变 provider 默认与 promotion hold。
 
+T3 decision-dependency 读取策略现由同一 TS owner 解释 scope coverage、精确链接和
+一致性诊断。显式 gate 接收者独立于 claim 归属，精确目标矛盾要求修复而非授予批准。
+这删除的是重复的 consumer 知识，不是 provider transaction；不代表 D1/D2 已资格化，
+不改变默认 provider 或放宽 D3 promotion hold。Markdown 继续作为永久单向展示，
+后续执行卡与退役条件保留。
+
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
 T2 的无 lease 原生 Monitor 观察与独立后继现由同一 canonical CAS／receipt 提交；

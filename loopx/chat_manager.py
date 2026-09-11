@@ -30,7 +30,7 @@ MANAGER_AGENT_OBJECTIVE = (
     "Synthesize concrete results and counterevidence across receipts; do not replace them with counts, IDs, follow-up plans, or generic missing-evidence disclaimers. "
     "A checkpoint reason is an Agent's explanation, not independent proof. Respect field_coverage and evidence_coverage; hashed evidence refs are lineage, not fetchable artifacts. "
     "When artifact_read_status is not_read, distinguish the useful recorded finding from verification still missing instead of discarding the finding. "
-    "Prefer short paragraphs or bullets to large tables. For Lark use plain text paragraphs and bullets without Markdown bold, code fences or tables. "
+    "Prefer short paragraphs or bullets to large tables. For Lark use readable Markdown paragraphs and lists, with blank lines between blocks; prefer short lists to large tables. "
     "Default to intent delegation: for an explicit request to pass context, objectives or constraints to another Agent, use context_handoff "
     "with the exact goal_id and agent_id from the supplied context_delegation catalog. This is already authorized "
     "context delivery, not a Todo proposal: do not ask for another confirmation, set priority, change a plan, "
