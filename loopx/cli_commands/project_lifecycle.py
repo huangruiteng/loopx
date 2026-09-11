@@ -65,6 +65,11 @@ from .post_writeback import (
     PostWritebackProjectionBuilder,
     dispatch_committed_cli_post_writeback_hooks,
 )
+from .project_lifecycle_inputs import (
+    inline_agent_vision_packet,
+    inline_progress_observation,
+    reject_non_standard_json_constant,
+)
 from .project_lifecycle_sinks import (
     apply_external_sink_postcondition,
     lark_explore_graph_syncer,
@@ -83,93 +88,6 @@ PROJECT_LIFECYCLE_COMMANDS = {
     "reward",
     "operator-gate",
 }
-
-INLINE_VISION_FIELDS = {
-    "vision_summary": "vision_summary",
-    "vision_role_scope": "role_scope",
-    "vision_acceptance": "acceptance_summary",
-    "vision_advancement_policy": "advancement_policy",
-    "vision_replan_trigger": "replan_trigger_summary",
-    "vision_dreaming_policy": "dreaming_policy",
-    "vision_last_patch": "last_patch_summary",
-}
-
-
-def _inline_agent_vision_packet(args: argparse.Namespace) -> dict[str, object] | None:
-    patch = {
-        field: str(value).strip()
-        for attr, field in INLINE_VISION_FIELDS.items()
-        for value in [getattr(args, attr, None)]
-        if str(value or "").strip()
-    }
-    todo_delta = [
-        str(item or "").strip()
-        for item in (getattr(args, "vision_todo_delta", None) or [])
-        if str(item or "").strip()
-    ]
-    state = str(getattr(args, "vision_state", None) or "").strip()
-    if not patch and not todo_delta and not state:
-        return None
-    if not str(getattr(args, "agent_id", None) or "").strip():
-        raise ValueError("inline agent vision requires --agent-id")
-    if not patch:
-        raise ValueError("inline agent vision requires at least one --vision-* patch field")
-    packet: dict[str, object] = {
-        "schema_version": "goal_vision_replan_contract_v0",
-        "vision_patch": patch,
-        "todo_delta": todo_delta,
-    }
-    if state:
-        packet["state"] = state
-    return packet
-
-
-def _reject_non_standard_json_constant(name: str) -> object:
-    # json.loads would otherwise accept NaN/Infinity/-Infinity, which json.dump
-    # then re-emits as non-standard JSON that breaks strict ledger consumers.
-    raise ValueError(
-        f"--usage-json must be strict JSON; non-standard constant {name} is not allowed"
-    )
-
-
-def _inline_progress_observation(
-    args: argparse.Namespace,
-) -> dict[str, object] | None:
-    fields = {
-        "surface_id": getattr(args, "progress_surface_id", None),
-        "hypothesis_id": getattr(args, "progress_hypothesis_id", None),
-        "probe_kind": getattr(args, "progress_probe_kind", None),
-        "result_class": getattr(args, "progress_result_class", None),
-        "blocker_id": getattr(args, "progress_blocker_id", None),
-        "coverage_scope_id": getattr(args, "progress_coverage_scope_id", None),
-        "coverage_complete": getattr(args, "progress_coverage_complete", None),
-    }
-    evidence_ids = list(getattr(args, "progress_evidence_ids", None) or [])
-    if not any(value is not None for value in fields.values()) and not evidence_ids:
-        return None
-    if not fields["result_class"]:
-        raise ValueError("typed progress observation requires --progress-result-class")
-    if fields["result_class"] in {
-        ProgressResultClass.EXPLORATION_EXHAUSTED.value,
-        ProgressResultClass.NO_FOLLOWUP.value,
-    } and not fields["coverage_scope_id"]:
-        raise ValueError(
-            f"--progress-result-class {fields['result_class']} requires "
-            "--progress-coverage-scope-id"
-        )
-    if (
-        fields["result_class"] == ProgressResultClass.EXPLORATION_EXHAUSTED.value
-        and fields["coverage_complete"] is not True
-    ):
-        raise ValueError(
-            "--progress-result-class exploration_exhausted requires "
-            "--progress-coverage-complete"
-        )
-    return {
-        "schema_version": "typed_progress_observation_v0",
-        **{key: value for key, value in fields.items() if value is not None},
-        "evidence_ids": evidence_ids,
-    }
 
 
 def register_project_lifecycle_commands(
@@ -601,8 +519,8 @@ def handle_project_lifecycle_command(
         progress_observation: dict[str, object] | None = None
         merge_agent_vision_patch = False
         try:
-            inline_agent_vision_packet = _inline_agent_vision_packet(args)
-            if args.agent_vision_json and inline_agent_vision_packet:
+            inline_vision_packet = inline_agent_vision_packet(args)
+            if args.agent_vision_json and inline_vision_packet:
                 raise ValueError(
                     "--agent-vision-json cannot be combined with inline --vision-* fields"
                 )
@@ -610,15 +528,15 @@ def handle_project_lifecycle_command(
                 agent_vision_packet = json.loads(
                     Path(args.agent_vision_json).expanduser().read_text(encoding="utf-8")
                 )
-            elif inline_agent_vision_packet:
-                agent_vision_packet = inline_agent_vision_packet
+            elif inline_vision_packet:
+                agent_vision_packet = inline_vision_packet
                 merge_agent_vision_patch = True
-            progress_observation = _inline_progress_observation(args)
+            progress_observation = inline_progress_observation(args)
             usage_measurement: dict[str, object] | None = None
             if getattr(args, "usage_json", None):
                 loaded_usage = json.loads(
                     args.usage_json,
-                    parse_constant=_reject_non_standard_json_constant,
+                    parse_constant=reject_non_standard_json_constant,
                 )
                 if not isinstance(loaded_usage, dict):
                     raise ValueError("--usage-json must be a JSON object")
