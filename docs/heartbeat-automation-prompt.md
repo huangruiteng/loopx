@@ -57,6 +57,19 @@ automation contract.
 
 ### Native Goal bootstrap and live execution instructions
 
+Brief automation now uses the same fully qualified notification/execution rule
+as thin, including `heartbeat_recommendation.agent_must_attempt` and
+`execution_obligation.must_attempt_work`. Brief no longer embeds a second
+static refresh/spend sequence: after validated work it follows the current
+`interaction_contract.cli_channel.settlement_plan.ordered_steps`, or current
+`next_cli_actions` when there is no plan. Generator command fields remain for
+compatibility, not as a stale fallback. Todo acceptance alone is not Turn
+settlement or terminal vision closure. The brief budget remains 3,500 characters.
+
+Brief 与 thin 共用完整执行义务路径；这次有意移除 brief 固定结算配方，而不是
+删除结算义务。真实 App preflight、registry scope、完整 guard 和静态安全规则
+均保留；结算顺序与身份以本轮动态 contract 为准，vision replan 不由历史成功清账。
+
 New supported host activations use `heartbeat-prompt --bootstrap`: a saved
 loader requests the installed rules rather than freezing a long execution body.
 The loader and automation bootstrap share rendering and successful-response

@@ -83,3 +83,34 @@ def test_saved_goal_bootstrap_reloads_changed_state_and_rejects_removed_agent(re
 def test_bootstrap_rejects_persisted_turn_and_invalid_binding(registry):
     assert not cli(registry, "--bootstrap", "--codex-app", "--turn-instance-id", "fixed-turn")["ok"]
     assert not cli(registry, "--bootstrap", "--codex-app", "--runtime-profile", "codex_cli")["ok"]
+
+
+def test_app_brief_with_registry_profile_keeps_budget_and_current_settlement(registry):
+    scopes = [
+        "Maintain shared runtime contracts and validate compatibility across hosts. "
+        "Use isolated worktrees and exercise public entrypoints.",
+        "Record evidence, leave unrelated work untouched and coordinate peer-owned "
+        "tasks through their owners.",
+    ]
+    saved = json.loads(registry.read_text())
+    saved["goals"][0]["coordination"] = {
+        "registered_agents": ["worker-a"], "agent_model": "peer_v1",
+        "agent_profiles": {"worker-a": {"schema_version": "agent_profile_v1", "scopes": scopes}},
+    }
+    registry.write_text(json.dumps(saved))
+    packet = cli(registry, "--brief", "--codex-app")
+    assert packet["ok"], packet.get("error")
+    body = packet["task_body"]
+    assert all(scope.rstrip(".!?") in body for scope in scopes)
+    assert packet["agent_scope_source"] == "agent_profile_v1"
+    assert packet["interface_budget"]["max_chars"] == 3500
+    assert packet["interface_budget"]["within_budget"], packet["interface_budget"]
+    assert packet["cli_preflight"] in body
+    assert "--codex-app" in body
+    assert "execution_obligation.must_attempt_work" in body
+    assert "heartbeat_recommendation.agent_must_attempt" in body
+    assert "interaction_contract.cli_channel.settlement_plan.ordered_steps" in body
+    assert "terminal no-follow-up" in body
+    assert packet["quota_spend_command"] not in body
+    assert packet["progress_refresh_state_command"] not in body
+    assert packet["refresh_state_command"] not in body

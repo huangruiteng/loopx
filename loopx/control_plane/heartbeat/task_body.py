@@ -9,7 +9,6 @@ from .rules import (
     DEFAULT_MATERIAL_QUEUE_RULE,
     DEFAULT_PERMISSION_RULE,
     HEARTBEAT_NOTIFICATION_RULE_SHORT,
-    HEARTBEAT_NOTIFICATION_RULE_THIN,
     HEARTBEAT_TURN_BOOTSTRAP_RULE,
     HEARTBEAT_VISION_WRITEBACK_RULE_SHORT,
     HOST_LOOP_QUOTA_DISPATCH_RULE,
@@ -305,7 +304,7 @@ LOOPX_TURN=<current_time_iso>
 
 Fail:quiet.
 
-{HEARTBEAT_NOTIFICATION_RULE_THIN}
+{HEARTBEAT_NOTIFICATION_RULE_SHORT}
 {SCOPE_BOUNDED_WORK_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
 
@@ -316,18 +315,12 @@ Fail:quiet.
 `agent_read_required`: drain/read/triage before work; settle/ACK.
 
 `should_run=true`：读 compact、`status --limit 3`、
-`review-packet --handoff-only`；遵守
-`effective_action`, `recovery_delivery_allowed`,
-`heartbeat_recommendation`, `safe_bypass_kind=outcome_floor_recovery`,
-`goal_boundary`, `delivery_batch_scale`, `delivery_outcome`, outcome streaks,
-`handoff_delivery_contract`、`execution_obligation`（`must_attempt_work=true` 须推进）；
-recovery：恢复 ranker/cross-domain evidence 或写回 blocker。
-验证/写回/Todos；{HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE} 实际进展（非升级）：
-`{progress_refresh_state_command}`
-扣额一次，不管道/重试：
-`{quota_spend_command}`
-扣额后刷新：
-`{refresh_state_command}`
+`review-packet --handoff-only`；遵守本轮 quota/contract 的权限、交付规模/结果、
+历史约束与 handoff；outcome-floor recovery 须恢复 ranker/cross-domain evidence 或写回 blocker。
+{HOST_LOOP_QUOTA_DISPATCH_RULE}
+交付并验证后，按当前 `interaction_contract.cli_channel.settlement_plan.ordered_steps`
+的精确 identity/effect 顺序结算；无 plan 时按当前 `next_cli_actions`，不使用旧 refresh/spend 配方。
+Todo 验收不等于 Turn 结算或 Goal 完成；仅 terminal no-follow-up 才能收尾，保留 vision replan。
 
 静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额。
 仅 `user_channel.notify=NOTIFY` 时输出，否则静默。

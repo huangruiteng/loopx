@@ -329,7 +329,6 @@ def main() -> int:
     for prompt_label, prompt_payload in (
         ("full", payload),
         ("compact", compact_payload),
-        ("brief", brief_payload),
     ):
         task_body = str(prompt_payload["task_body"])
         progress_refresh = str(prompt_payload["progress_refresh_state_command"])
@@ -644,7 +643,7 @@ def main() -> int:
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
         "Due/peer非用户动作",
-        "Done->successor first; final->refresh->spend->no-follow-up",
+        "Todo 验收不等于 Turn 结算或 Goal 完成",
         "NOTIFY缺动作→",
         "具体user todo未投影",
         "按 user channel",
@@ -652,24 +651,25 @@ def main() -> int:
         "已记 receipt/stall",
         "写失败同 id 重试",
         "只读一次",
-        "safe_bypass_kind=outcome_floor_recovery",
+        "outcome-floor recovery",
         "恢复 ranker/cross-domain evidence",
         "status --limit 3",
         "review-packet --handoff-only",
-        "heartbeat_recommendation",
-        "goal_boundary",
+        "heartbeat_recommendation.agent_must_attempt",
+        "遵守本轮 quota/contract 的权限、交付规模/结果",
         "授权/预算内推进可验证结果",
-        "`must_attempt_work=true` 须推进",
-        "验证/写回/Todos",
-        "实际进展（非升级）",
-        "扣额一次，不管道/重试",
-        "扣额后刷新",
-        'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
+        "execution_obligation.must_attempt_work",
+        "interaction_contract.cli_channel.settlement_plan.ordered_steps",
+        "精确 identity/effect 顺序结算",
+        "不使用旧 refresh/spend 配方",
+        "仅 terminal no-follow-up 才能收尾，保留 vision replan",
         "静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额",
         "No learning queue unless asked.",
         "No permission asks in a trusted session.",
     ):
         assert phrase in brief_task, phrase
+    for command_key in ("quota_spend_command", "refresh_state_command", "progress_refresh_state_command"):
+        assert brief_payload[command_key] not in brief_payload["task_body"]
     assert thin_payload["thin"] is True, thin_payload
     assert thin_payload["brief"] is False, thin_payload
     assert thin_payload["compact"] is False, thin_payload
@@ -951,7 +951,7 @@ def main() -> int:
     assert "If false/0, allow quiet/no-user-todo" not in compact_generated, compact_generated
 
     assert_ordered(
-        doc,
+        doc[doc.index("Before spending delivery compute, first make the LoopX CLI reachable"):],
         (
             "Before spending delivery compute, first make the LoopX CLI reachable",
             'export PATH="$HOME/.local/bin:$PATH"',

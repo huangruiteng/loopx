@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from loopx.control_plane.heartbeat.rules import (
     HEARTBEAT_NOTIFICATION_RULE_SHORT,
-    HEARTBEAT_NOTIFICATION_RULE_THIN,
 )
 from loopx.control_plane.heartbeat.task_body import (
     render_brief_heartbeat_task_body,
@@ -42,11 +41,11 @@ def test_short_rule_qualifies_dont_notify_as_output_only() -> None:
     assert "execution_obligation.must_attempt_work" in rule
 
 
-def test_short_rules_keep_projection_repair_and_quiet_boundary() -> None:
-    for rule in (HEARTBEAT_NOTIFICATION_RULE_SHORT, HEARTBEAT_NOTIFICATION_RULE_THIN):
-        assert "NOTIFY缺动作→具体user todo未投影" in rule
-        assert "需修复LoopX状态投影" in rule
-        assert "静默时内部修复" in rule
+def test_shared_rule_keeps_projection_repair_and_quiet_boundary() -> None:
+    rule = HEARTBEAT_NOTIFICATION_RULE_SHORT
+    assert "NOTIFY缺动作→具体user todo未投影" in rule
+    assert "需修复LoopX状态投影" in rule
+    assert "静默时内部修复" in rule
 
 
 def test_rendered_task_bodies_keep_execution_obligation_authority() -> None:
@@ -70,7 +69,7 @@ def test_rendered_task_bodies_keep_execution_obligation_authority() -> None:
     )
     for renderer in (render_thin_heartbeat_task_body, render_brief_heartbeat_task_body):
         body = renderer(**kwargs)
-        assert "agent_must_attempt" in body
+        assert "heartbeat_recommendation.agent_must_attempt" in body
         assert "execution_obligation.must_attempt_work" in body
         assert "OUTPUT only" in body
         assert "需修复LoopX状态投影" in body

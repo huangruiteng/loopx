@@ -21,12 +21,6 @@ HEARTBEAT_NOTIFICATION_RULE_SHORT = (
     "Due/peer非用户动作；NOTIFY缺动作→"
     "具体user todo未投影，需修复LoopX状态投影；静默时内部修复。"
 )
-HEARTBEAT_NOTIFICATION_RULE_THIN = (
-    "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; "
-    "DONT_NOTIFY=安静输出。执行义务看 `agent_must_attempt`/`must_attempt_work`。"
-    "Due/peer非用户动作；NOTIFY缺动作→"
-    "具体user todo未投影，需修复LoopX状态投影；静默时内部修复。"
-)
 HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
     "writeback: no-change=`surface_only`/no spend; "
     "unchanged->`--vision-unchanged-reason`; material->actual outcome."
