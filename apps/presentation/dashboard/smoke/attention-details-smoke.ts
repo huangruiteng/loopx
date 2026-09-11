@@ -1,5 +1,5 @@
 import { todoItemSchema } from "../src/data/status";
-import { attentionDetails, attentionSuccessor, canReviewAttention, refreshAttention } from "../src/features/personal-workspace/attention-details";
+import { attentionDetails, attentionSuccessor, canReviewAttention, refreshAttention, sourceAttention } from "../src/features/personal-workspace/attention-details";
 import { normalizePersonalHomeModel, type WorkspaceAttention } from "../src/features/personal-workspace/personal-workspace-model";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -47,3 +47,11 @@ assert(attentionDetails({ ...source, decision_scope: { kind: "direction" } }).de
 assert(attentionDetails({}).lifecycle === "unknown", "missing state never means open or completed");
 assert(source.status === "open" && !source.done, "projection has no mutation side effects");
 console.log("attention-details-smoke: ok");
+
+const failedSource = sourceAttention(row, "source-a", false, "Current Goal title");
+assert(failedSource.goalTitle === "Current Goal title", "current source preserves display title");
+assert(failedSource.details?.lifecycle === "unavailable" && !canReviewAttention(failedSource), "retained row from failed source cannot preview");
+const healthySource = sourceAttention(row, "source-b", true, "Healthy Goal");
+assert(canReviewAttention(refreshAttention(healthySource, [failedSource, healthySource])), "another source failure cannot fence healthy source");
+const healthyGoal = sourceAttention({ ...row, goalId: "healthy-goal" }, "source-a", true);
+assert(canReviewAttention(refreshAttention(healthyGoal, [failedSource, healthyGoal])), "another Goal read failure cannot fence healthy Goal");

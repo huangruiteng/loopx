@@ -37,6 +37,14 @@ export function attentionDetails(todo: Record<string, unknown>): AttentionDetail
   };
 }
 
+/** Stamp only the source/Goal being observed; unrelated failed reads cannot fence it. */
+export function sourceAttention(item: WorkspaceAttention, sourceId: string, sourceReady: boolean, goalTitle?: string): WorkspaceAttention {
+  return {
+    ...item, sourceId, goalTitle: goalTitle ?? item.goalTitle,
+    details: sourceReady ? item.details : { ...(item.details ?? attentionDetails({})), lifecycle: "unavailable" },
+  };
+}
+
 export function refreshAttention(selected: WorkspaceAttention, current: WorkspaceAttention[]): WorkspaceAttention {
   const match = current.find((item) => item.sourceId === selected.sourceId
     && item.goalId === selected.goalId && item.todoId === selected.todoId);

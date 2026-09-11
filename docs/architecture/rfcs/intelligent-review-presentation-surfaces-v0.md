@@ -829,8 +829,10 @@ linked Todo/Agent, declared decision scope, and supersession relationship alread
 present in the public Todo projection. Only explicit `user_gate` records are
 labeled as decisions; other records do not infer reading or authorization from
 prose. Selected details refresh from their current source. An item absent from
-the current projection is unavailable, not completed, and no longer offers
-decision actions. Replacement navigation requires an explicit `superseded_by`
+the current projection, or retained while its source read is failing, is
+unavailable rather than completed and no longer offers decision actions. Loading
+and failures are scoped to the current source and affected Goal. Replacement
+navigation requires an explicit `superseded_by`
 target in the same source and Goal. Reading does not resolve a gate; ordinary
 items retain their existing governed preview.
 

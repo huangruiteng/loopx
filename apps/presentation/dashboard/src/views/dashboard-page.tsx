@@ -1,4 +1,4 @@
-import { attentionDetails } from "../features/personal-workspace/attention-details";
+import { attentionDetails, sourceAttention } from "../features/personal-workspace/attention-details";
 import type { AttentionDetails } from "../features/personal-workspace/attention-details";
 import { directoryStatusPayload, fetchWorkspaceDirectory, loadWorkspaceGoalSnapshots, type WorkspaceProgress, type WorkspaceLoadError } from "../data/workspace-progressive-status";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -2579,10 +2579,16 @@ function PersonalGoalHome({
       },
     }] : []),
   ];
+  const sourceIsReady = statusSourceControl.connectionState === "connected";
+  const goalTitles = new Map(model.goals.map((goal) => [goal.goalId, goal.title]));
+  const attentionForWorkspace = (item: PersonalNeedsYouItem) => sourceAttention(
+    item, statusSourceControl.activeSource.statusUrl,
+    sourceIsReady && !progress?.errors[item.goalId], goalTitles.get(item.goalId),
+  );
   const workspaceModel = {
     ...normalizePersonalHomeModel(model),
-    userTodos: model.userTodos.map((item) => ({ ...item, sourceId: statusSourceControl.activeSource.statusUrl })),
-    attentionHistory: (model.attentionHistory ?? model.userTodos).map((item) => ({ ...item, sourceId: statusSourceControl.activeSource.statusUrl })),
+    userTodos: model.userTodos.map(attentionForWorkspace),
+    attentionHistory: (model.attentionHistory ?? model.userTodos).map(attentionForWorkspace),
     periodicReports: {
       error: periodicReportError,
       loading: periodicReportLoading,
