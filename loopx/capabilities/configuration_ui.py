@@ -340,7 +340,7 @@ def _merge_goal_feature(
     entry["available_scopes"] = [*entry["available_scopes"], "goal"]
     entry["goal_feature_id"] = capability_id
     entry["availability"] = feature.get("availability")
-    for field in ("default", "current", "documentation"):
+    for field in ("default", "current", "documentation", "context_contribution"):
         if isinstance(feature.get(field), Mapping):
             entry[field] = deepcopy(feature[field])
     entry["configuration_editor"] = capability_configuration_editor(

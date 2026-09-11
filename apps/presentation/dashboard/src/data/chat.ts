@@ -1129,6 +1129,12 @@ export const capabilityConfigurationCatalogSchema = z.object({
       effective_revision: z.string(),
     }).optional(),
     documentation: z.record(z.string(), z.unknown()).optional(),
+    context_contribution: z.object({
+      supported_phases: z.array(z.enum(["before_plan", "before_delegate", "after_delegate_result"])),
+      target: z.literal("coordinator"),
+      activation: z.literal("with_capability"),
+      receipt_required: z.literal(true),
+    }).optional(),
     configuration_editor: capabilityConfigurationEditorSchema,
   })),
 });

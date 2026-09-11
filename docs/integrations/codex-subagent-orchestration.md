@@ -367,6 +367,12 @@ model from response style.
 
 ### Frontend configuration
 
+The capability detail page also lists **Coordinator workflow guidance** in
+English / **主 Agent 协作指导** in Chinese. It shows the three supported phases
+and their purpose, using the shared capability catalog. It is read-only metadata,
+not a per-run delivery indicator. The existing capability switch controls this
+guidance together with child capacity; there is no second enable switch.
+
 Goal settings → Goal details exposes child model and reasoning effort next to
 the existing execution boundary. “Use Luna / max” fills the draft only; use
 “Preview configuration update” to save it, including while execution is off.
@@ -379,3 +385,55 @@ preview/readback validation; a model change invalidates an older preview.
 The model field is a preference, not a discovery menu or an execution receipt.
 The CLI accepts an empty `--subagent-reasoning-effort ''` to clear effort while
 retaining the model; `--clear-subagent-model-config` clears both.
+
+### Capability context lifecycle
+
+An enabled `multi_subagent` capability contributes to the coordinator through
+the generic bounded provider contract in `control_plane/agent_context.ts`.
+The capability owns its guidance in `control_plane/subagent_context.ts`; other
+capabilities can implement the same typed provider interface and register with
+their runtime owner. This initial version registers this built-in provider,
+not arbitrary manifest scripts or external plugins.
+
+| Phase | Managed LoopX Turn call site | Coordinator responsibility |
+| --- | --- | --- |
+| `before_plan` | Live quota decision → `interaction_contract.agent_context` → signed `turn_envelope.agent_context` | Prefer parallel delegation for read-heavy tasks with independent questions, within the configured child limit; keep useful validation and integration work with the parent. |
+| `before_delegate` | Admitted child operations → plan and host request `delegation_context` | Bound briefs, expected evidence and model preferences before selecting/launching children. |
+| `after_delegate_result` | Host receipt reconciliation → journal `host_result.agent_context` → executor result `agent_context` | Validate receipts and original evidence, then accept/defer/reject and link outcomes. |
+
+Planning guidance does not require two persistent Todos. Managed automatic
+child-lane admission still requires its existing prerequisites; this change
+does not grant spawning rights or force concurrency. Disabling the capability
+omits the context. Model preferences alone do not enable it.
+
+For a native-tool host such as a Codex App session, the LoopX project skill reads
+the same interface at delegation and result boundaries:
+
+```bash
+loopx agent-context --goal-id example-peer-task-goal --agent-id coordinator \
+  --phase before_delegate --format json
+loopx agent-context --goal-id example-peer-task-goal --agent-id coordinator \
+  --phase after_delegate_result --format json
+```
+
+The coordinator must be registered. The command reads current registry policy
+without writing a Todo, starting a turn or spending quota. It has no native
+execution receipt input; return-phase facts explicitly say `not_supplied`.
+LoopX cannot transparently intercept arbitrary host tools. The managed return
+packet is returned to the caller, not automatically sent as another model turn.
+
+Each packet binds Goal/Agent/optional Todo, phase, provider revision and a stable
+content ID. When the envelope approaches its existing budget, it carries a
+signed content hash and a read instruction pointing to the existing full-decision
+route instead of duplicating all guidance. Providers return only guidance, bounded facts and source references;
+they cannot replace action, permission or priority fields. Per-provider and
+aggregate limits are 2,048 and 3,072 UTF-8 bytes. Failures are isolated and
+diagnostic text excludes raw provider errors. These scoped context projections
+are not a new progress store and should not be exported as public evidence.
+`delivery: projected` means generated, not delivered/read/adopted. Read actual
+host receipts and parent validation evidence for those conclusions. Replaying
+a journal preserves the same packet; no new execution is inferred.
+
+中文：三个阶段已落到真实控制面接口，开启 capability 自动提供主 Agent
+协作指导。原生工具通过 skill 在边界读取同一接口，不声称拦截宿主工具。
+关闭 capability 即停止提供；前端展示支持范围，执行、采纳仍须看实际证据。

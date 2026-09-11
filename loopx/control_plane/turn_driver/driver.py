@@ -6,6 +6,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Any
 
+from ..agent_context import envelope_agent_context
 from .subagent_host_adapter import (
     project_child_context_adapter,
     supported_child_context_modes,
@@ -478,6 +479,13 @@ def build_loopx_turn_plan(
     }
     if child_operations:
         payload["child_operations"] = child_operations
+        context = envelope_agent_context(
+            envelope,
+            phase="before_delegate",
+            observations={"child_count": len(child_operations)},
+        )
+        if context is not None:
+            payload["delegation_context"] = context
     if execution_topology:
         payload["subagent_execution_topology"] = execution_topology
     return payload
