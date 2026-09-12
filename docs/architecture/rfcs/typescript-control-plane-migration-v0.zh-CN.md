@@ -15,6 +15,12 @@
 
 ## 当前实现检查点
 
+投影交付阶段现已闭合跨语言边界：typed TypeScript mutation 结果与 Python
+兼容 provider 共用四态契约（`pending`、`delivered`、`current`、`not_required`）。
+Provider readback 在 acknowledgement 决策前进行校验，端到端因果链由共享组合
+fixture 覆盖。这是一个已完成的交付阶段，不代表 Markdown 晋升，也不声称其余
+lifecycle writer 已全部迁移。
+
 Native update 现通过 `todos/public_update.ts` 组合有界的非终态 planning intent
 （status、evidence/reason、resume/clear、successor links），使用权限检查与 CAS
 同一份完整 canonical head。独立 intent 命名空间不扩大原 text/note patch allowlist，

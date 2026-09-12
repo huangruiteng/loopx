@@ -16,6 +16,14 @@
 
 ## Current implementation checkpoint
 
+The projection-delivery stage now closes the cross-language boundary: typed
+TypeScript mutation results and the Python compatibility provider share the
+same four-state contract (`pending`, `delivered`, `current`, `not_required`).
+Provider readback is validated before acknowledgement decisions, and the
+end-to-end causal chain is covered by a shared composition fixture. This is a
+completed delivery stage, not a promotion of Markdown or a claim that the
+remaining lifecycle writers have migrated.
+
 Native update now composes `todos/public_update.ts` for a bounded nonterminal
 planning intent (status, evidence/reason, resume/clear and successor links),
 against the same complete canonical head used for authority checks and CAS.

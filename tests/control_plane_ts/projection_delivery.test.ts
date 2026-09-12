@@ -26,3 +26,10 @@ test("composition fixture keeps mutation and provider states distinct", async ()
     assert.equal(item.requires_ack, actual === "delivered" || actual === "current", item.name);
   }
 });
+
+test("end-to-end fixture preserves delivery causal chain", async () => {
+  const fixture = JSON.parse(await readFile("tests/fixtures/control_plane/projection_delivery_e2e_v1.json", "utf8"));
+  const observed = fixture.transitions.map((item: { changed?: boolean; readback?: unknown }) =>
+    item.readback === undefined ? projectionDelivery(item.changed === true) : parseProjectionDelivery(item.readback));
+  assert.deepEqual(observed, ["pending", "delivered", "current", "not_required", "pending"]);
+});
