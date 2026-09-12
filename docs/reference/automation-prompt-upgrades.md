@@ -68,14 +68,17 @@ read-only preview, not the upgrade executor. Do not infer a manual-only policy
 from its `adoption_required` status. Custom or inconsistent entries still need
 review; automatic prompt migration never grants scheduler or thread authority.
 
-On the qualified macOS heartbeat schema this upgrade path can write directly
-with the App running. It holds a SQLite writer transaction through TOML delivery,
+On the qualified macOS heartbeat schema, direct migration requires the App
+closed. The adapter holds a SQLite writer transaction through TOML delivery,
 compares the entire previewed manifest, preserves every non-prompt field, and
-reads both stores back. It neither pauses tasks nor kills the App. A scheduler
-invocation that already loaded its prompt is not rewritten; the next invocation
-can load the new prompt. This is a local storage compatibility adapter, not an
-official Codex API or a guarantee against every possible external filesystem
-race. Uncoordinated TOML writes cannot participate in the SQLite transaction;
+reads both stores back. Keep the App closed through readback, then restart it.
+A running App caches automation state and can overwrite both stores after a
+disk-only update; a transaction or immediate readback cannot invalidate that
+cache. Running hosts must use the native `automation_update` API. The CLI reports
+that required host action instead of claiming the upgrade is complete.
+
+This is a local storage compatibility adapter, not an official Codex API.
+Uncoordinated TOML writes cannot participate in the SQLite transaction;
 detected changes/crashes retain the private journal and require reconciliation.
 
 Unsupported platforms/schemas, custom prompts and conflicts are reported per

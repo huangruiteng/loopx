@@ -1181,3 +1181,23 @@ def test_ambiguous_codex_requires_app_ide_or_cli_selection() -> None:
         "codex-ide-plugin",
         "codex-cli",
     ]
+
+
+def test_codex_app_startup_saves_v2_and_loads_the_current_contract(tmp_path: Path) -> None:
+    goal_id = "app-bootstrap-fixture"
+    project, home = _write_onboarding_goal(
+        tmp_path, goal_id=goal_id, registered_agents=["worker-a"])
+    packet = build_agent_onboarding_packet(
+        project=project, agent_type="codex-app", goal_id=goal_id,
+        agent_id="worker-a", cli_bin=str(REPO_ROOT / "scripts" / "loopx"))
+    initial = _run_activation_command(packet["host_loop_activation"]["activation_input_command"], home=home)
+    assert initial["ok"] and initial["bootstrap"]
+    prompt = initial["task_body"]
+    assert prompt.startswith("LoopX managed heartbeat bootstrap v2\n每次唤醒先执行：\n")
+    command = prompt.split("```sh\n", 1)[1].split("\n```", 1)[0]
+    tokens = shlex.split(command)
+    assert "--bootstrap" not in tokens and "--codex-app" in tokens
+    assert tokens[tokens.index("--agent-id") + 1] == "worker-a"
+    loaded = _run_activation_command(command, home=home)
+    assert loaded["ok"] and not loaded.get("bootstrap")
+    assert "interaction_contract" in loaded["task_body"]

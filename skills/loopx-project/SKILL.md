@@ -513,68 +513,44 @@ limit. It uses an interactive `agent_cli_loop` scheduler context, omits
 heartbeat turn receipts, and must not create/update automations, apply RRULE
 cadence, or invent `LOOPX_TURN`.
 
-When a user or controller wants a recurring Codex App heartbeat for a connected
-goal, prefer the generator instead of hand-copying the quota lifecycle:
+For a recurring Codex App heartbeat, save the stable bootstrap returned by:
 
 ```bash
-loopx heartbeat-prompt --goal-id <STABLE_GOAL_ID>
+loopx --format json --registry <GLOBAL_REGISTRY> heartbeat-prompt \
+  --bootstrap --thin --codex-app --goal-id <STABLE_GOAL_ID> \
+  --agent-id <REGISTERED_AGENT_ID>
 ```
 
-The default generated body is thin when the target Codex agent can inspect
-LoopX state and CLI output itself. Passing `--thin` remains accepted and
-explicit:
+Read the complete JSON and require `ok=true`. Store its `task_body`, headed
+`LoopX managed heartbeat bootstrap v2`, with the App's `automation_update` tool.
+The saved command must load `heartbeat-prompt --thin --codex-app` on each wake;
+it must not include `--bootstrap` recursively. Do not persist the expanded
+thin/compact/brief/full execution body: those are current-turn or audit output,
+not the installed automation contract. `$loopx` startup follows the returned
+host activation command and saves this same bootstrap.
 
-```bash
-loopx heartbeat-prompt --thin --goal-id <STABLE_GOAL_ID>
-```
+Preserve the exact goal, registered agent, current task, schedule and
+notification setting. Never copy the example identity from another task.
+Connected goals resolve active state and agent scope from the registry on each
+wake; pass `--active-state` or `--agent-scope` only for an explicit override.
+An unregistered or missing identity must fail closed before task execution or
+accounting. A successful load is not permission to create another goal or take
+over another scheduler.
 
-Use the compact body after reviewing the full generated contract when the
-installed prompt should carry more lifecycle detail inline:
+For an existing automation, inspect `loopx automation-prompts plan --codex-home
+<ACTIVE_CODEX_HOME>` and apply its reviewed `desired_prompt` through the App
+`automation_update` tool. Read back the same automation, including its preserved
+binding and scheduling fields. Direct SQLite/TOML migration requires the App to
+be closed: a running host can overwrite disk edits from cached state. Do not
+claim completion from a changed file or a replaced CLI alone. Never copy
+sessions or rebind another Codex home's tasks to make its API reachable.
 
-```bash
-loopx heartbeat-prompt --compact --goal-id <STABLE_GOAL_ID>
-```
-
-If the installed automation body still needs to be smaller, use the brief body:
-
-```bash
-loopx heartbeat-prompt --brief --goal-id <STABLE_GOAL_ID>
-```
-
-For a shared-control-plane goal with `coordination.registered_agents`, always
-include the registered identity and scope in the installed automation prompt:
-
-```bash
-loopx heartbeat-prompt --thin --goal-id <STABLE_GOAL_ID> \
-  --agent-id <REGISTERED_AGENT_ID> \
-  --agent-scope "<THIS_AGENT_SCOPE>"
-```
-
-Once agents are registered, an unscoped `heartbeat-prompt` call fails closed so
-stale automations surface an upgrade error instead of running without identity.
-
-For connected goals, omit `--active-state`; the CLI resolves the active state
-from the registry goal `state_file`, which keeps installed automations from
-pinning a stale path. Pass `--active-state <ACTIVE_GOAL_STATE_PATH>` only for
-detached state files, migration checks, or compatibility tests.
-
-Copy the generated task body into the Codex App heartbeat automation. The thin
-body is the installed default for trusted local workers: it keeps the automation
-prompt project-agnostic and tells Codex to re-read registry/global quota truth,
-active state, status/run history, repo state, and project signals on each
-wakeup. Use `--full` for the expanded audit source. The compact body is useful
-when context pressure matters but the installed prompt should still carry the
-quota, gate, blocker-push, recommendation, steering-audit, writeback, refresh,
-and spend lifecycle inline. The brief body keeps only preflight/guard, core
-invariants, and spend accounting in the installed prompt while delegating
-detailed branches back to the generated compact/full contracts.
-The generated guard and spend commands explicitly use the shared global
-registry so project heartbeats read the same operator gates and user todos as
-the dashboard, regardless of their current repo. Completed heartbeat delivery
-spends through `quota spend-slot --source heartbeat --execute`, not through a
-natural-language report. Quota slots are minute-granularity by default: minute
-heartbeats spend `--slots 1`, while coarser fixed-interval automations should
-spend the scheduler minutes consumed by that completed turn.
+Each wake reads the full fresh result and follows only its current `task_body`
+when `ok=true`. Separate notification from execution, follow the current waiting
+contract, and attempt recovery within existing authority when loading fails.
+If the contract remains unavailable, do not execute or account for work; report
+the blocker. The loaded contract owns quota settlement and runtime turn identity;
+never freeze a turn id in the saved bootstrap.
 
 Keep project-specific behavior out of the automation prompt. Encode local
 differences in the project registry, `.codex/goals/<goal-id>/ACTIVE_GOAL_STATE.md`,

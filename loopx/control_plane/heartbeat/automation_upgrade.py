@@ -16,11 +16,13 @@ import sqlite3
 import tempfile
 import tomllib
 from typing import Any
+from types import SimpleNamespace
 
 from .bootstrap_prompt import (
     HEARTBEAT_BOOTSTRAP,
     BOOTSTRAP_INSTRUCTION,
     host_bootstrap_binding,
+    goal_bootstrap,
     render_heartbeat_bootstrap,
 )
 
@@ -211,9 +213,9 @@ def build_plan(*, registry: Path, home: Path | None = None,
                     if (loaded_binding and loaded_binding["registry"].resolve() == registry.resolve()
                             and (loaded_binding.get("codex_app") or
                                  loaded_binding.get("runtime_profile") == "codex_app_heartbeat")):
-                        # Already dynamically loaded, including explicit owner
-                        # policy. Do not replace it with a narrower old wrapper.
-                        desired = prompt
+                        # Upgrade the wrapper while retaining explicit owner
+                        # policy and scheduler inputs from the exact loader.
+                        desired = goal_bootstrap(SimpleNamespace(**loaded_binding), registry=registry)
                     entry.update(status="current" if prompt == desired else "adoption_required",
                         goal_id=goal_id, agent_id=agent_id, prompt_sha256=digest(prompt),
                         current_prompt=prompt,

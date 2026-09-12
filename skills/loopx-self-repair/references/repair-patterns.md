@@ -241,3 +241,6 @@ validation:
 
 Keep this packet compact and public-safe. Store only summaries in public docs;
 raw logs and private traces stay in ignored local paths.
+
+| A prompt migration reports success but the App restores the old body | A running host caches automation rows; disk CAS cannot invalidate scheduler memory. Use native automation_update and read back through that host, or close the host for offline migration and verify after restart. | Keep update-time reconciliation fail-closed while the App runs, and cover unchanged SQLite/TOML plus a complete native update request. |
+| A newly started heartbeat persists execution rules despite a successful runtime update | Startup and migration used different renderers, and installed skill guidance still told the agent to save raw thin output. Generate the v2 loader from the activation command and replace stale lifecycle instructions. | Exercise onboarding to bootstrap to one-level fresh CLI load, authentic legacy migration, and absent/duplicate-command rejection. |

@@ -161,7 +161,7 @@ def test_runtime_update_invokes_new_cli_and_migrates_only_managed_prompts(tmp_pa
     desired = upgrade.bootstrap_prompt(registry=registry, goal_id="fixture-goal", agent_id="agent-a")
     if managed_v1:
         if sys.platform != "darwin":
-            pytest.skip("direct running-App adapter is qualified on macOS")
+            pytest.skip("offline adapter is qualified on macOS")
         legacy = desired.replace(upgrade.BOOTSTRAP, upgrade._LEGACY_BOOTSTRAP, 1).removesuffix(
             upgrade._BOOTSTRAP_INSTRUCTION) + upgrade._LEGACY_INSTRUCTION
         _set_fixture_prompt(path, database, legacy)
@@ -180,8 +180,11 @@ def test_runtime_update_invokes_new_cli_and_migrates_only_managed_prompts(tmp_pa
         assert plan_file.stat().st_mode & 0o077 == 0
         # Actual new-runtime CLI and real SQLite/TOML, not a mocked reconciler.
         # Only package replacement is substituted in this lifecycle test.
-        return real_run([sys.executable, "-m", "loopx.cli", *command[3:]],
-            capture_output=True, text=True, timeout=60)
+        return real_run([sys.executable, "-c",
+            "import sys; from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle; "
+            "lifecycle.require_closed_app = lambda: None; "
+            "from loopx.cli import main; sys.argv = ['loopx', *sys.argv[1:]]; main()",
+            *command[3:]], capture_output=True, text=True, timeout=60)
     monkeypatch.setattr(lifecycle.subprocess, "run", run)
     result = lifecycle.update_with_prompts(
         {"install_lifecycle": {"execution_driver": driver}}, registry=registry,
@@ -331,7 +334,7 @@ def test_mirror_failure_rolls_back_db_and_is_journal_recoverable(tmp_path, monke
     assert upgrade.recover_offline(home=home, automation_id="watch")["status"] == "recovered"
 
 
-def test_upgrade_migrates_with_running_app_without_process_or_schedule_mutations(tmp_path, monkeypatch):
+def test_running_app_defers_to_native_api_without_touching_cached_scheduler(tmp_path, monkeypatch):
     from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle
     home, path, database, registry, _ = fixture(tmp_path)
     prompt = upgrade.bootstrap_prompt(registry=registry, goal_id="fixture-goal", agent_id="agent-a")
@@ -340,16 +343,24 @@ def test_upgrade_migrates_with_running_app_without_process_or_schedule_mutations
     _set_fixture_prompt(path, database, legacy)
     before = lifecycle.snapshot(registry=registry, home=home)
     monkeypatch.setattr(lifecycle.sys, "platform", "darwin")
-    def forbidden():
-        raise AssertionError("the App is running; upgrade must not close or pause it")
-    monkeypatch.setattr(lifecycle, "require_closed_app", forbidden)
+    probes = []
+    def running(command, **kwargs):
+        probes.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=b"123\n")
+    monkeypatch.setattr(lifecycle.subprocess, "run", running)
+    original = path.read_bytes()
     with sqlite3.connect(database) as observer:
-        metadata = observer.execute("SELECT status, target_thread_id, rrule, model, updated_at, next_run_at FROM automations").fetchone()
+        row = observer.execute("SELECT * FROM automations").fetchone()
         result = lifecycle.reconcile(before=before, registry=registry, home=home)
-        assert result["ok"] and result["results"][0]["status"] == "updated"
-        assert observer.execute("SELECT prompt FROM automations").fetchone()[0] == prompt
-        assert observer.execute("SELECT status, target_thread_id, rrule, model, updated_at, next_run_at FROM automations").fetchone() == metadata
-    assert tomllib.loads(path.read_text())["prompt"] == prompt
+        assert not result["ok"] and result["results"][0]["status"] == "deferred"
+        assert observer.execute("SELECT * FROM automations").fetchone() == row
+    assert path.read_bytes() == original
+    assert probes and all(command[:2] == ["/usr/bin/pgrep", "-x"] for command in probes)
+    request = result["api_updates"][0]["arguments"]
+    assert request["prompt"] == prompt
+    assert request["id"] == "watch" and request["targetThreadId"] == "thread-a"
+    assert request["status"] == "PAUSED"
+    assert not (home / "loopx-automation-backups").exists()
 
 
 def test_concurrent_manifest_change_before_write_is_not_overwritten(tmp_path, monkeypatch):
@@ -499,3 +510,30 @@ def test_ambiguous_discovery_is_not_replacement_authority(tmp_path):
     entry = upgrade.build_plan(registry=registry, home=home)["entries"][0]
     assert entry["status"] == "blocked"
     assert "desired_prompt" not in entry
+
+
+def test_exact_legacy_host_loader_upgrades_to_v2_without_dropping_explicit_policy(tmp_path, monkeypatch):
+    from loopx.control_plane.heartbeat import installed_prompt_update as lifecycle
+    from loopx.control_plane.heartbeat.bootstrap_prompt import host_bootstrap_binding
+    home, path, database, registry, _ = fixture(tmp_path)
+    # Independent historical fixture, including an explicitly bound policy.
+    command = ["loopx", "--format", "json", "--registry", str(registry),
+               "heartbeat-prompt", "--goal-id", "fixture-goal", "--agent-id", "agent-a",
+               "--permission-rule", "Read only", "--codex-app", "--thin"]
+    import shlex
+    legacy = ("LoopX managed host bootstrap v1\n"
+              "每次进入或恢复本 Goal 时先加载当前规则；升级后重新加载，不创建新 Goal、不接管宿主调度：\n"
+              "```sh\n" + shlex.join(command) + "\n```\n" + upgrade.BOOTSTRAP_INSTRUCTION)
+    _set_fixture_prompt(path, database, legacy)
+    before = lifecycle.snapshot(registry=registry, home=home)
+    entry = before["entries"][0]
+    assert entry["status"] == "adoption_required" and entry["automatic_eligible"]
+    assert entry["desired_prompt"].startswith("LoopX managed heartbeat bootstrap v2\n")
+    assert host_bootstrap_binding(entry["desired_prompt"])["permission_rule"] == "Read only"
+    monkeypatch.setattr(lifecycle, "require_closed_app", lambda: None)
+    assert lifecycle.reconcile(before=before, registry=registry, home=home)["ok"]
+    assert lifecycle.snapshot(registry=registry, home=home)["entries"][0]["status"] == "current"
+    malformed = legacy.replace("heartbeat-prompt ", "")
+    _set_fixture_prompt(path, database, malformed)
+    rejected = lifecycle.snapshot(registry=registry, home=home)["entries"][0]
+    assert rejected["status"] != "current" and not rejected["automatic_eligible"]

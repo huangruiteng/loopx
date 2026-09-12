@@ -15,6 +15,7 @@ import sys
 import tempfile
 
 from .automation_upgrade import SCHEMA, _atomic, apply_offline, bootstrap_binding, build_plan
+from .bootstrap_prompt import host_bootstrap_binding
 
 
 def require_closed_app() -> None:
@@ -28,7 +29,7 @@ def require_closed_app() -> None:
 
 def _owned(entry: dict, registry: Path, runtime_root: str | None, cli_bin: str) -> bool:
     prompt = entry.get("current_prompt", "")
-    binding = bootstrap_binding(prompt)
+    binding = bootstrap_binding(prompt) or host_bootstrap_binding(prompt)
     if binding is not None:
         # Never retarget a canary binary, home, registry or runtime implicitly.
         return (binding["registry"].resolve() == registry.resolve()
@@ -94,8 +95,10 @@ def reconcile(*, before: dict, registry: Path, home: Path,
             result["status"] = "changed_since_snapshot"
         elif old.get("automatic_eligible") is True:
             try:
-                if sys.platform != "darwin":
-                    raise ValueError("direct update adapter is qualified only on macOS; use the App API")
+                # The desktop host caches automation rows and can overwrite both
+                # mirrors after a direct SQLite update. CAS only fences disk
+                # writers; it does not invalidate the host's live scheduler.
+                require_closed_app()
                 applied = apply_offline(home=home, automation_id=identifier,
                     expected_prompt_sha256=old["prompt_sha256"], desired_prompt=now["desired_prompt"],
                     expected_source_sha256=old["source_sha256"])

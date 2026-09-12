@@ -35,7 +35,7 @@ def render_heartbeat_bootstrap(command: list[str]) -> str:
     )
 
 
-def goal_bootstrap(args, *, registry: Path) -> str:
+def _goal_command(args, *, registry: Path, legacy: bool) -> list[str]:
     """Preserve explicit caller inputs, not yesterday's resolved registry values.
 
     The loaded command deliberately omits --bootstrap: one load cannot recurse.
@@ -52,10 +52,11 @@ def goal_bootstrap(args, *, registry: Path) -> str:
     mode = next((mode for mode in ("full", "compact", "brief", "thin") if getattr(args, mode)), "thin")
     # The v2 contract puts the wake-up mode and host identity immediately
     # after the subcommand.  This is also the exact command shape emitted by
-    # automation-prompts, so every host entrypoint reloads the same contract.
-    command.append("--" + mode)
-    if args.codex_app:
-        command.append("--codex-app")
+    # automation-prompts. Native Goal loaders retain their historical contract.
+    if not legacy:
+        command.append("--" + mode)
+        if args.codex_app:
+            command.append("--codex-app")
     command += ["--goal-id", args.goal_id]
     for field, flag in (
         ("agent_id", "--agent-id"), ("active_state", "--active-state"),
@@ -75,7 +76,21 @@ def goal_bootstrap(args, *, registry: Path) -> str:
             command += [flag, value]
     if args.cli_bin != "loopx":
         command += ["--cli-bin", args.cli_bin]
-    return render_heartbeat_bootstrap(command)
+    if legacy:
+        if args.codex_app:
+            command.append("--codex-app")
+        command.append("--" + mode)
+    return command
+
+
+def goal_bootstrap(args, *, registry: Path) -> str:
+    """Use the heartbeat wrapper only for an App heartbeat scheduler."""
+    heartbeat = args.codex_app or getattr(args, "runtime_profile", None) == "codex_app_heartbeat"
+    command = _goal_command(args, registry=registry, legacy=not heartbeat)
+    if heartbeat:
+        return render_heartbeat_bootstrap(command)
+    return render_bootstrap(command, title=LEGACY_HOST_BOOTSTRAP,
+                            entry=LEGACY_HOST_BOOTSTRAP_ENTRY)
 
 
 def host_bootstrap_binding(prompt: str) -> dict | None:
@@ -117,7 +132,7 @@ def host_bootstrap_binding(prompt: str) -> dict | None:
         expected = goal_bootstrap(SimpleNamespace(**values), registry=registry)
         if prompt.startswith(LEGACY_HOST_BOOTSTRAP + "\n"):
             expected = render_bootstrap(
-                command,
+                _goal_command(SimpleNamespace(**values), registry=registry, legacy=True),
                 title=LEGACY_HOST_BOOTSTRAP,
                 entry=LEGACY_HOST_BOOTSTRAP_ENTRY,
             )
