@@ -29,6 +29,7 @@ const envelope = JSON.parse(readFileSync(new URL(
   supersede_target_index: number;
   semantic_cases: Record<string, Record<string, unknown>>;
   presentation_cases: Record<string, Record<string, unknown>>;
+  update_cases: Record<string, Record<string, unknown>>;
 };
 
 export const PRODUCTION_SCALE_FIXTURE_SCHEMA =
@@ -56,6 +57,7 @@ export interface ProductionScaleCoordinationFixture {
   readonly expected_standing_user_decision_count: number;
   readonly semantic_cases: Readonly<Record<string, Record<string, unknown>>>;
   readonly presentation_cases: Readonly<Record<string, Record<string, unknown>>>;
+  readonly update_cases: Readonly<Record<string, Record<string, unknown>>>;
 }
 
 function statusSeries(
@@ -239,6 +241,7 @@ export function productionScaleCoordinationFixture(
     expected_standing_user_decision_count: expectedStanding,
     semantic_cases: envelope.semantic_cases,
     presentation_cases: envelope.presentation_cases,
+    update_cases: envelope.update_cases,
   };
 }
 
