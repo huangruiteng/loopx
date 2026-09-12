@@ -860,8 +860,14 @@ export const typedActionsScenario = {
 
       await page.getByRole("button", { name: /机器配置/ }).click();
       await page.getByRole("heading", { level: 1, name: "机器配置", exact: true }).waitFor({ state: "visible" });
-      await page.getByRole("heading", { level: 2, name: /^变更质量验证/ }).waitFor({ state: "visible" });
       const machineCatalog = page.getByRole("navigation", { name: "机器能力目录" });
+      const firstMachineCapability = machineCatalog.getByRole("button").filter({ hasText: "机器" }).first();
+      await firstMachineCapability.waitFor({ state: "visible" });
+      const initialMachineTitle = await firstMachineCapability.locator("strong").innerText();
+      await page.getByRole("heading", { level: 2, name: initialMachineTitle, exact: true }).waitFor({ state: "visible" });
+      if (await firstMachineCapability.getAttribute("aria-current") !== "page") {
+        throw new Error("Initial machine selection must follow the visible catalog order, not the API source order");
+      }
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable machine settings must not show internal editor-contract notices");
       if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length) {
         throw new Error("Machine settings hid Goal-only capabilities from the shared catalog");

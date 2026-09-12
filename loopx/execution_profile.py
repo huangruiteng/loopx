@@ -207,9 +207,14 @@ def configure_execution_profile(
     normalized = compact_execution_profile(profile)
     if turn_granularity is not None:
         normalized = execution_profile_with_turn_granularity(normalized, turn_granularity)
-    configured_threshold = (
-        normalize_completed_todo_replan_threshold(replan_after_completed_todos)
+    requested_threshold = (
+        replan_after_completed_todos
         if replan_after_completed_todos is not None
+        else profile.get("replan_after_completed_todos") if isinstance(profile, dict) else None
+    )
+    configured_threshold = (
+        normalize_completed_todo_replan_threshold(requested_threshold)
+        if requested_threshold is not None
         else None
     )
     if configured_threshold is not None:
@@ -239,15 +244,14 @@ def apply_goal_execution_profile_change(
         )
     raw = goal.get("execution_profile")
     profile = dict(raw) if isinstance(raw, dict) else {}
-    override_present = "replan_after_completed_todos" in profile
-    if clear_replan_after_completed_todos:
-        profile.pop("replan_after_completed_todos", None)
     if (
         turn_granularity is None
         and replan_after_completed_todos is None
-        and not override_present
+        and not (clear_replan_after_completed_todos and "replan_after_completed_todos" in profile)
     ):
         return
+    if clear_replan_after_completed_todos:
+        profile.pop("replan_after_completed_todos", None)
     goal["execution_profile"] = configure_execution_profile(
         profile,
         turn_granularity=turn_granularity,

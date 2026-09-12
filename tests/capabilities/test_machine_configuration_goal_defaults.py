@@ -155,6 +155,19 @@ def test_machine_defaults_reach_real_history_and_change_quality_paths(
     assert prepared["policy"]["enabled"] is True
 
 
+@pytest.mark.parametrize("update", [{}, {"change_quality_enabled": False}, {"execution_turn_granularity": "fine"}])
+def test_unrelated_configuration_preserves_explicit_default_cadence(tmp_path: Path, update) -> None:
+    _repo, registry_path, runtime_root = _fixture(tmp_path)
+    configure_goal(
+        registry_path=registry_path, goal_id=GOAL_ID,
+        execution_replan_after_todos=5, execute=True,
+    )
+    configure_goal(registry_path=registry_path, goal_id=GOAL_ID, execute=True, **update)
+    persisted = json.loads(registry_path.read_text(encoding="utf-8"))["goals"][0]
+    assert persisted["execution_profile"]["replan_after_completed_todos"] == 5
+    assert completed_todo_replan_threshold(_history_goal(registry_path, runtime_root)["execution_profile"]) == 5
+
+
 def test_goal_overrides_win_and_clearing_restores_live_machine_defaults(
     tmp_path: Path,
 ) -> None:

@@ -18,7 +18,7 @@ import {
 import { projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
 import { CapabilityConfigurationFields } from "./capability-configuration-fields";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
-import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus } from "./capability-workbench";
+import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, orderCapabilitiesForPresentation } from "./capability-workbench";
 import { useWorkspaceI18n } from "./i18n";
 
 type CapabilityDescriptor = CapabilityConfigurationCatalog["capabilities"][number];
@@ -95,10 +95,12 @@ export function MachineConfigurationSettings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const capabilities = inspection?.capability_catalog.capabilities ?? [];
+  const capabilities = useMemo(() => orderCapabilitiesForPresentation(
+    inspection?.capability_catalog.capabilities ?? [], locale,
+  ), [inspection, locale]);
   const selectedRaw = capabilities.find(
     (capability) => capability.capability_id === selectedCapabilityId,
-  ) ?? capabilities[0];
+  ) ?? capabilities.find((capability) => canEditCapability(capability, "machine")) ?? capabilities[0];
   const selected = selectedRaw ? localizeCapability(selectedRaw, locale) : undefined;
   const selectedCurrent = currentConfiguration(inspection, selected);
   const configured = Boolean(selected?.machine_namespace && selectedCurrent);
@@ -125,9 +127,6 @@ export function MachineConfigurationSettings() {
       .then((next) => {
         if (!active) return;
         setInspection(next);
-        setSelectedCapabilityId(next.capability_catalog.capabilities.find(
-          (capability) => capability.available_scopes.includes("machine"),
-        )?.capability_id ?? "");
       })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : t("machine.loadError"));
