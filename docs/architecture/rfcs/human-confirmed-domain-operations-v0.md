@@ -8,6 +8,10 @@
 - **Implementation baseline:** `72e557586`
 - **Related contracts:** [Extensions](../../reference/extensions.md),
   [Effect interpreter](agent-loop-effect-interpreter-v0.md)
+- **Language mirror:** [中文版](human-confirmed-domain-operations-v0.zh-CN.md)
+
+The English and Chinese versions are semantic mirrors. Update both when changing
+the contract; a difference in their requirements or boundaries is a defect.
 
 Sections 1–11 define the proposed contract, not shipped commands. Section 12
 records unresolved implementation choices. This document changes no runtime,

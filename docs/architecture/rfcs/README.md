@@ -49,6 +49,7 @@ changes.
 ## Control-Plane Kernel, State, And Migration
 
 - [Human-confirmed domain operations v0](human-confirmed-domain-operations-v0.md)
+  ([中文版](human-confirmed-domain-operations-v0.zh-CN.md))
   - **RFC status:** Draft.
   - **Delivery on `main`:** Proposal only.
   - **Current boundary:** Separates generic authenticated interaction, optional
