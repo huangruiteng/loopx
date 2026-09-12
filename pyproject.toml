@@ -11,12 +11,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "LICENSE-MIT"]
 authors = [{ name = "LoopX contributors" }]
-dependencies = [
-  # Windows does not ship the IANA database used by zoneinfo; keep the
-  # cross-platform periodic-report default (UTC) and explicit IANA zones
-  # valid in installed releases as well as source checkouts.
-  "tzdata>=2024.1",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://huangruiteng.github.io/loopx/"

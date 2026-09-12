@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 
@@ -19,6 +20,7 @@ from loopx.capabilities.periodic_report.machine_defaults import (
     resolve_goal_periodic_report_subscription,
     select_goal_periodic_report_executor,
 )
+import loopx.capabilities.periodic_report.machine_defaults as machine_defaults_module
 from loopx.capabilities.periodic_report.machine_store import (
     configure_periodic_report_machine_defaults,
 )
@@ -94,6 +96,20 @@ def test_machine_defaults_require_a_route_when_weekly_reports_are_enabled() -> N
 
     with pytest.raises(ValueError, match="route_ref is required"):
         normalize_loopx_machine_defaults(payload)
+
+
+def test_utc_default_does_not_require_a_platform_timezone_database(monkeypatch) -> None:
+    """Windows source installs must accept the built-in UTC default."""
+
+    def missing_timezone(_name: str) -> None:
+        raise ZoneInfoNotFoundError("test timezone database unavailable")
+
+    monkeypatch.setattr(machine_defaults_module, "ZoneInfo", missing_timezone)
+    payload = _defaults(enabled=False)
+    payload["namespaces"]["periodic_report"]["timezone"] = "UTC"
+
+    normalized = normalize_loopx_machine_defaults(payload)
+    assert normalized["namespaces"]["periodic_report"]["timezone"] == "UTC"
 
 
 def test_goal_override_beats_machine_default() -> None:
