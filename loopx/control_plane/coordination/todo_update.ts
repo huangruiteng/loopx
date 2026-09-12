@@ -191,7 +191,12 @@ function targetRejection(
   }
   const actorRejection = registeredTodoMutationRejection(todo, input.actor_agent_id, input.registered_agents);
   if (actorRejection !== null) {
-    return failure(actorRejection === "claim_owner_mismatch" ? "update_owner_mismatch" : actorRejection,
+    if (actorRejection === "claim_owner_mismatch") {
+      // Keep the public adapter's stable diagnostic while the typed predicate
+      // remains provider-neutral and reusable by lifecycle admission.
+      return failure("update_owner_mismatch", "Todo update cannot edit another claim owner's work");
+    }
+    return failure(actorRejection,
       "Todo update requires a registered, non-excluded actor within the existing owner/binding scope");
   }
   const lease = leases.get(input.todo_id);
