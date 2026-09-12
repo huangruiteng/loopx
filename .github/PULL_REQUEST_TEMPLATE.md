@@ -43,6 +43,27 @@ baseline/head comparison and a failing-before or mutation check, not just test c
 
 See [validation disclosure guidance](https://github.com/huangruiteng/loopx/blob/main/CONTRIBUTING.md#validation-disclosure).
 
+## Frontend / Visual Evidence
+
+<!--
+Required for dashboard, website, desktop, documentation chrome, or any other
+user-visible UI change. Attach public-safe screenshots that let reviewers judge
+the changed state, not only a happy-path landing screen. For an existing surface,
+show both before and after. For a new surface, write "Before: N/A" and show the
+after view. Include desktop and mobile when responsive layout changes, and include
+loading, empty, error, permission, or gated states when those states changed. Add
+a short recording only when still images cannot explain the interaction.
+
+Use synthetic or public fixture data only. Do not upload live/private screenshots,
+even when the underlying access was authorized.
+-->
+
+- UI impact: <!-- choose one: none | changed -->
+- Before:
+- After:
+- States and viewports shown:
+- Source data: <!-- choose one: none | synthetic | public_fixture -->
+
 ## Type of Change
 
 <!-- Mark the applicable options. -->
@@ -97,4 +118,5 @@ than attaching private fixtures, snapshot identifiers, raw output or infrastruct
 - [ ] Neither the diff nor this PR body/comments/attachments disclose private state, credentials, raw traces or verifier output, internal links, or local machine paths (including `.loopx/`, `.codex/goals/`, and live `ACTIVE_GOAL_STATE.md`).
 - [ ] I did not duplicate maintainer-owned benchmark work unless a maintainer split out a public issue for it.
 - [ ] I kept the change scoped to the linked issue/task.
+- [ ] I completed the visual evidence section for UI changes, or marked UI impact `none`.
 - [ ] Every commit includes a DCO `Signed-off-by` trailer (`git commit -s`).
