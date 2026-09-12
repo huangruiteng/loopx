@@ -9,10 +9,12 @@ import { planPublicTodoUpdate, TODO_PUBLIC_UPDATE_REQUEST_SCHEMA } from "./publi
 import { normalizeTodoWorkRequirements, TODO_WORK_REQUIREMENT_FIELDS } from "./work_requirements.ts";
 import {normalizeTodoOwnershipIntent, TODO_OWNERSHIP_INTENT_FIELDS} from "./authoring_scope.ts";
 
-const STRINGS = new Set(["status", "evidence", "reason", "resume_when", "unblocks_todo_id"]);
-const BOOLEANS = new Set(["clear_resume_when", "no_followup"]);
-const FIELDS = new Set([...STRINGS, ...BOOLEANS, "successor_todo_ids", ...TODO_WORK_REQUIREMENT_FIELDS,
-  ...TODO_OWNERSHIP_INTENT_FIELDS]);
+const STRINGS = new Set(["status", "evidence", "reason", "task_class", "continuation_policy",
+  "resume_when", "unblocks_todo_id", "bound_agent", "blocks_agent"]);
+const BOOLEANS = new Set(["clear_resume_when", "no_followup", "goal_bound", "clear_blocks_agent",
+  "global_gate", "clear_global_gate"]);
+const FIELDS = new Set([...STRINGS, ...BOOLEANS, "successor_todo_ids",
+  ...TODO_WORK_REQUIREMENT_FIELDS, ...TODO_OWNERSHIP_INTENT_FIELDS]);
 
 /** A separate intent namespace preserves the shipped text/note patch and its
  * historical receipt encoding. Raw field patches do not gain new authority. */
@@ -24,11 +26,16 @@ export function normalizeNativePlanningIntent(value: unknown): JsonObject {
     if (!FIELDS.has(field)) throw new AuthorityStoreProtocolError(`Todo planning update does not own ${field}`);
     if ((TODO_WORK_REQUIREMENT_FIELDS as readonly string[]).includes(field)) continue;
     if ((TODO_OWNERSHIP_INTENT_FIELDS as readonly string[]).includes(field)) continue;
-    if (value === null) continue;
+    if (value === null) {
+      // Null is an explicit clear for scalar planning metadata.  Ownership
+      // fields use their dedicated clear switches and are normalized above.
+      if (STRINGS.has(field)) intent[field] = null;
+      continue;
+    }
     if (STRINGS.has(field)) {
       if (typeof value !== "string") throw new AuthorityStoreProtocolError(`${field} must be a string`);
       const text = compactPythonWhitespace(value);
-      if (text) intent[field] = field === "unblocks_todo_id" ? normalizeTodoId(text, field) : text;
+      intent[field] = field === "unblocks_todo_id" && text ? normalizeTodoId(text, field) : text;
     } else if (BOOLEANS.has(field)) {
       if (typeof value !== "boolean") throw new AuthorityStoreProtocolError(`${field} must be a boolean`);
       if (field !== "clear_resume_when" || value) intent[field] = value;

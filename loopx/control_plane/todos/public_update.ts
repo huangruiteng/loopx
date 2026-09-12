@@ -61,7 +61,11 @@ export function planPublicTodoUpdate(value: unknown): JsonObject {
   const role = context.role;
   const effectiveIntent = {...intent,
     bound_agent: role === "user" ? scope.bound_agent : null,
-    goal_bound: role === "user" && scope.goal_bound ? true : null,
+    // Carry an explicit false when a gate changes from goal-wide to an
+    // agent-bound continuation; omission would leave stale goal_bound=true in
+    // the canonical record.
+    goal_bound: role === "user" && scope.goal_bound !== null
+      ? scope.goal_bound : null,
     clear_user_binding: scope.clear_user_binding,
     resume_when: scope.normalized_resume_when,
     resume_monitor_generation: metadata?.resume_monitor_generation ?? null};
