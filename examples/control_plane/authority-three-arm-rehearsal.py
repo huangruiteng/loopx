@@ -135,6 +135,20 @@ try {
     assert.equal(loaded.status, 'loaded', `${name} readback failed`);
     const receipt = await store.readReceipt(`${name}-three-arm-archive`);
     assert.equal(receipt.status, 'found', `${name} receipt missing`);
+    const firstPage = await store.scanCommitted(null, 1);
+    assert.equal(firstPage.status, 'page', `${name} first journal page failed`);
+    assert.equal(firstPage.has_more, true);
+    assert.deepEqual(firstPage.transactions[0].projection, request.initial);
+    const finalPage = await store.scanCommitted(firstPage.next_cursor, 1);
+    assert.equal(finalPage.status, 'page', `${name} final journal page failed`);
+    assert.equal(finalPage.has_more, false);
+    assert.deepEqual(finalPage.transactions[0].projection, loaded.head);
+    assert.equal(finalPage.transactions[0].provider_revision, loaded.provider_revision);
+    assert.deepEqual(finalPage.transactions[0].receipts, receipt.receipts);
+    const end = await store.scanCommitted(finalPage.next_cursor, 1);
+    assert.deepEqual(end, {status: 'page', transactions: [],
+      next_cursor: finalPage.next_cursor, has_more: false});
+    assert.deepEqual(await store.loadAuthority(), loaded, 'journal reads changed authority');
     results[name] = {archived, head: loaded.head};
   }
 
@@ -231,6 +245,7 @@ try {
     active_lease_count_after: activeLeases.length,
     moved_ids_sha256_prefix: movedDigest.slice(0, 16),
     provider_heads_exact: true,
+    journal_pages_exact: true,
     legacy_active_semantics_exact: true,
     relative_order_exact: true,
     non_target_semantics_unchanged: true,

@@ -129,6 +129,64 @@ if (database && installed) {
     };
   });
 
+  test("PostgreSQL scan binds head and rows to one snapshot during concurrent commit", async t => {
+    await installed;
+    const options = {tenant_id: `tenant-${randomUUID()}`, goal_id: `goal-${randomUUID()}`};
+    t.after(() => cleanScope(options.tenant_id, options.goal_id));
+    const writer = new PostgreSqlAuthorityStore(database, options);
+    const first = await writer.commitAuthority(commit(null, "snapshot-first", 1, 1));
+    assert.equal(first.status, "applied");
+    if (first.status !== "applied") return;
+    let interleaved = false;
+    const reader = new PostgreSqlAuthorityStore({connect: async () => {
+      const connection = await database.connect();
+      return {...connection, query: async (sql, values) => {
+        const result = await connection.query(sql, values);
+        if (!interleaved && sql.includes("FROM loopx_control_plane.authority_heads")) {
+          interleaved = true;
+          assert.equal((await writer.commitAuthority(commit(first.provider_revision,
+            "snapshot-second", 2, 2))).status, "applied");
+        }
+        return result;
+      }};
+    }}, options);
+    const page = await reader.scanCommitted(null, 10);
+    assert.equal(interleaved, true);
+    assert.equal(page.status, "page", JSON.stringify(page));
+    if (page.status !== "page") return;
+    assert.deepEqual(page.transactions.map(row => row.operation_id), ["snapshot-first"]);
+    assert.equal(page.has_more, false);
+    const next = await reader.scanCommitted(page.next_cursor, 10);
+    assert.equal(next.status, "page");
+    if (next.status === "page") assert.deepEqual(next.transactions.map(row => row.operation_id), ["snapshot-second"]);
+  });
+
+  for (const removedCursor of [2, 3]) {
+    test(`PostgreSQL scan rejects a missing retained row at cursor ${removedCursor}`, async t => {
+      await installed;
+      const options = {tenant_id: `tenant-${randomUUID()}`, goal_id: `goal-${randomUUID()}`};
+      t.after(() => cleanScope(options.tenant_id, options.goal_id));
+      const store = new PostgreSqlAuthorityStore(database, options);
+      let revision: string | null = null;
+      for (let index = 1; index <= 3; index++) {
+        const result = await store.commitAuthority(commit(revision, `gap-${index}`, index, index));
+        assert.equal(result.status, "applied");
+        if (result.status !== "applied") return;
+        revision = result.provider_revision;
+      }
+      await pool!.query("DELETE FROM loopx_control_plane.authority_commits WHERE tenant_id=$1 AND goal_id=$2 AND cursor=$3",
+        [options.tenant_id, options.goal_id, removedCursor]);
+      for (const limit of [1, 10]) {
+        const result = await store.scanCommitted(removedCursor === 3 ? "1" : null, limit);
+        assert.equal(result.status, "failed", JSON.stringify(result));
+        if (result.status === "failed") assert.equal(result.reason_code, "provider_protocol_violation");
+      }
+      const head = await store.loadAuthority();
+      assert.equal(head.status, "loaded");
+      if (head.status === "loaded") assert.equal(head.provider_revision, revision);
+    });
+  }
+
   test("PostgreSQL provider scopes identical goals and operations by tenant", async (t) => {
     await installed;
     const goalId = `goal-${randomUUID()}`;

@@ -8,7 +8,6 @@ import { withFileMutationLock } from "../effect_runtime_io.ts";
 import type {
   AuthorityStore,
   AuthorityStoreCommit,
-  AuthorityStoreCommittedTransaction,
   AuthorityStoreCommitResult,
   AuthorityStoreIdentityResult,
   AuthorityStoreLoadResult,
@@ -20,27 +19,22 @@ import {
   AuthorityStoreProtocolError,
   isAuthorityJsonObject,
   hasExactAuthorityKeys,
-  canonicalAuthorityObjectList,
-  canonicalAuthorityObject,
-  authorityUnicodeCompare,
   canonicalAuthorityBytes,
   normalizeAuthorityStoreCommit,
-  parseAuthorityCursor,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
-import { cloneAuthorityTransaction, decodeAuthorityTransaction, transactionForRevision } from "./authority_store_transactions.ts";
+import {appendRetainedAuthorityJournal, decodeRetainedAuthorityJournal,
+  type RetainedAuthorityJournal, transactionForRevision} from "./authority_store_transactions.ts";
+import {AuthorityJournalScan} from "./authority_journal_scan.ts";
 
 const FILE_AUTHORITY_STORE_SCHEMA = "loopx_file_authority_store_v0";
 const STORE_IDENTITY_PATTERN = /^file:[0-9a-f]{32}$/;
 
-interface FileAuthorityStoreDocument extends JsonObject {
+interface FileAuthorityStoreDocument extends JsonObject, RetainedAuthorityJournal {
   schema_version: typeof FILE_AUTHORITY_STORE_SCHEMA;
   goal_id: string;
-  provider_revision: string;
-  cursor: string;
   store_identity: string;
-  head: JsonObject;
-  committed: AuthorityStoreCommittedTransaction[];
+
 }
 
 class FileStoreUnavailableError extends Error {}
@@ -127,51 +121,9 @@ function decodeDocument(
   if (value.store_identity !== storeIdentity) {
     throw new AuthorityStoreProtocolError("file authority store lineage mismatch");
   }
-  const revision = requireAuthorityStoreId(value.provider_revision, "provider revision");
-  const cursor = requireAuthorityStoreId(value.cursor, "provider cursor");
-  const head = canonicalAuthorityObject(value.head, "file authority store head");
-  if (!Array.isArray(value.committed)) {
-    throw new AuthorityStoreProtocolError("file authority store history is invalid");
-  }
-  const committed = value.committed.map(decodeAuthorityTransaction);
-  if (committed.length === 0 || parseAuthorityCursor(cursor) !== BigInt(committed.length)) {
-    throw new AuthorityStoreProtocolError("file authority store lineage is invalid");
-  }
-  let previousRevision: string | null = null;
-  const operationIds = new Set<string>();
-  for (const [index, entry] of committed.entries()) {
-    if (parseAuthorityCursor(entry.cursor) !== BigInt(index + 1)) {
-      throw new AuthorityStoreProtocolError("file authority store cursor lineage is invalid");
-    }
-    if (operationIds.has(entry.operation_id)) {
-      throw new AuthorityStoreProtocolError("file authority store operation identity is duplicated");
-    }
-    operationIds.add(entry.operation_id);
-    const expectedRevision = providerRevision(
-      goalId,
-      storeIdentity,
-      previousRevision,
-      transactionForRevision(entry),
-    );
-    if (entry.provider_revision !== expectedRevision) {
-      throw new AuthorityStoreProtocolError("file authority store revision lineage is invalid");
-    }
-    previousRevision = entry.provider_revision;
-  }
-  const last = committed.at(-1)!;
-  if (
-    last.cursor !== cursor || last.provider_revision !== revision ||
-    !canonicalAuthorityBytes(last.projection).equals(canonicalAuthorityBytes(head))
-  ) throw new AuthorityStoreProtocolError("file authority store head lineage is invalid");
-  return {
-    schema_version: FILE_AUTHORITY_STORE_SCHEMA,
-    goal_id: goalId,
-    store_identity: storeIdentity,
-    provider_revision: revision,
-    cursor,
-    head,
-    committed,
-  };
+  return {schema_version: FILE_AUTHORITY_STORE_SCHEMA, goal_id: goalId, store_identity: storeIdentity,
+    ...decodeRetainedAuthorityJournal(value, "file authority store", (previous, transaction) =>
+      providerRevision(goalId, storeIdentity, previous, transaction))};
 }
 
 function readFailure(error: unknown): AuthorityStoreReadFailure {
@@ -345,33 +297,11 @@ export class FileAuthorityStore implements AuthorityStore {
             current_cursor: current.cursor,
           };
         }
-        const cursor = (parseAuthorityCursor(current?.cursor ?? null) + 1n).toString();
-        const base = {
-          cursor,
-          operation_id: normalized.operation_id,
-          events: normalized.events,
-          projection: normalized.next_projection,
-          receipts: normalized.receipts,
-        };
-        const revision = providerRevision(
-          this.goalId,
-          identity,
-          current?.provider_revision ?? null,
-          base,
-        );
-        const transaction: AuthorityStoreCommittedTransaction = {
-          ...base,
-          provider_revision: revision,
-        };
-        const document: FileAuthorityStoreDocument = {
-          schema_version: FILE_AUTHORITY_STORE_SCHEMA,
-          goal_id: this.goalId,
-          store_identity: identity,
-          provider_revision: revision,
-          cursor,
-          head: normalized.next_projection,
-          committed: [...(current?.committed ?? []), transaction],
-        };
+        const journal = appendRetainedAuthorityJournal(current, normalized, (previous, transaction) =>
+          providerRevision(this.goalId, identity, previous, transaction));
+        const {cursor, provider_revision: revision} = journal;
+        const document: FileAuthorityStoreDocument = {schema_version: FILE_AUTHORITY_STORE_SCHEMA,
+          goal_id: this.goalId, store_identity: identity, ...journal};
         try {
           await this.replaceDurably(this.path, canonicalAuthorityBytes(document));
         } catch (error) {
@@ -423,43 +353,16 @@ export class FileAuthorityStore implements AuthorityStore {
   }
 
   async scanCommitted(afterCursor: string | null, limit: number): Promise<AuthorityStoreScanResult> {
-    let offset: bigint;
-    try {
-      offset = parseAuthorityCursor(afterCursor);
-      if (!Number.isSafeInteger(limit) || limit < 1) {
-        throw new AuthorityStoreProtocolError("scan limit must be a positive safe integer");
-      }
-    } catch (error) {
-      return {
-        status: "failed",
-        reason_code: "invalid_scan_request",
-        reason: error instanceof Error ? error.message : "invalid scan request",
-      };
-    }
+    const scan = AuthorityJournalScan.prepare(afterCursor, limit);
+    if (!(scan instanceof AuthorityJournalScan)) return scan;
     try {
       const document = await this.readDocument();
-      if (!document) {
-        return { status: "page", transactions: [], next_cursor: afterCursor, has_more: false };
-      }
-      const headCursor = parseAuthorityCursor(document.cursor);
-      if (offset > headCursor || offset > BigInt(Number.MAX_SAFE_INTEGER)) {
-        return {
-          status: "failed",
-          reason_code: "scan_cursor_out_of_range",
-          reason: "scan cursor is ahead of the provider head",
-        };
-      }
-      const start = Number(offset);
-      const transactions = document.committed.slice(start, start + limit).map(cloneAuthorityTransaction);
-      return {
-        status: "page",
-        transactions,
-        next_cursor: transactions.at(-1)?.cursor ?? afterCursor,
-        has_more: start + transactions.length < document.committed.length,
-      };
-    } catch (error) {
-      return readFailure(error);
-    }
+      if (!document) return scan.page([], null);
+      const range = scan.rangeFailure(document.cursor);
+      if (range) return range;
+      const start = Number(scan.offset);
+      return scan.page(document.committed.slice(start, start + limit + 1), document);
+    } catch (error) { return readFailure(error); }
   }
 
   /**
