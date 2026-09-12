@@ -11,6 +11,12 @@ from ..cli_rollout import append_cli_rollout_event
 from ..capabilities.explore.composition_frontier import (
     project_live_explore_composition_frontier,
 )
+from ..capabilities.agent_turn_recall import (
+    run_configured_agent_turn_recall_fail_open,
+)
+from ..capabilities.reward_memory import (
+    run_configured_turn_outcome_ingest_fail_open,
+)
 from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
 from ..capabilities.periodic_report.pending_intent import periodic_report_pending_intent_interaction_hook
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
@@ -220,6 +226,28 @@ def handle_turn_command(
             turn_instance_id=args.turn_instance_id,
             iteration_context_policy=args.iteration_context.replace("-", "_"),
         )
+        if (
+            args.turn_command == "run-once"
+            and args.execute
+            and (payload.get("route") or {}).get("would_invoke_host") is True
+        ):
+            transaction = payload.get("transaction")
+            transaction = transaction if isinstance(transaction, Mapping) else {}
+            turn_instance_id = str(
+                transaction.get("turn_instance_id")
+                or transaction.get("turn_key")
+                or ""
+            )
+            payload["reward_memory_recall"] = (
+                run_configured_agent_turn_recall_fail_open(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                    quota_decision=decision,
+                    turn_instance_id=turn_instance_id,
+                    execute=True,
+                )
+            )
         capability_action = payload.get("capability_action")
         if isinstance(capability_action, dict):
             # Bind the adapter handoff to this invocation, while leaving the
@@ -979,6 +1007,24 @@ def handle_turn_command(
                     workspace=project,
                 )
 
+            def post_settlement_reward_memory(
+                plan: Mapping[str, Any],
+                result: Mapping[str, Any],
+                settlement_evidence: Mapping[str, Any],
+            ) -> Mapping[str, Any]:
+                transaction = plan.get("transaction")
+                transaction = (
+                    transaction if isinstance(transaction, Mapping) else {}
+                )
+                return run_configured_turn_outcome_ingest_fail_open(
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                    turn_key=str(transaction.get("turn_key") or ""),
+                    host_result=result,
+                    settlement_evidence=settlement_evidence,
+                )
+
             payload = run_loopx_turn_once(
                 payload,
                 host_argv=raw_argv,
@@ -1002,6 +1048,11 @@ def handle_turn_command(
                     terminal_closeout_resolver if args.execute else None
                 ),
                 scheduler=scheduler if args.execute else None,
+                post_settlement=(
+                    post_settlement_reward_memory
+                    if args.execute and args.host == "codex-cli"
+                    else None
+                ),
             )
         else:
             raise ValueError("turn requires the `plan` or `run-once` subcommand")

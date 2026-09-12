@@ -25,6 +25,19 @@ HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
     "writeback: no-change=`surface_only`/no spend; "
     "unchanged->`--vision-unchanged-reason`; material->actual outcome."
 )
+REWARD_MEMORY_OUTCOME_RULE = (
+    "When `reward_memory_recall.experiment.automatic_ingest=true` and a Todo-bound "
+    "outcome has reusable evidence, add `--reward-memory-reflection-json "
+    "<turn_reward_memory_reflection_v0 JSON>` to its accountable refresh. LoopX "
+    "stages it privately; provider ingest requires the caller-declared Todo validator "
+    "to attest the exact reflection digest and evidence, followed by exact writeback "
+    "and spend readback. Missing attestation stays awaiting with zero provider calls. "
+    "Never include raw chat or private material."
+)
+REWARD_MEMORY_OUTCOME_COMPACT_RULE = (
+    "`--reward-memory-reflection-json`: Todo validator exact digest/evidence; "
+    "otherwise zero provider calls; exclude raw/private."
+)
 SCHEDULER_HINT_APPLICATION_RULE = (
     "`scheduler_hint` no-spend. host_action=pause_or_delete_current_heartbeat -> "
     "automation_update stop once, verify, end; else apply_needed -> RRULE via "

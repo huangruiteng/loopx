@@ -612,6 +612,8 @@ def _agent_reward_memory_projection(
         "automatic_recall",
         "fail_open",
         "automation_projection_source",
+        "automation_intent",
+        "host_coverage",
         "isolation_mode",
         "enablement_receipt_status",
         "actor_binding_verified",

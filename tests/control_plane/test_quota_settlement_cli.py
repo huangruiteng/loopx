@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pytest
 
@@ -604,6 +605,150 @@ def test_gitless_goal_refresh_and_quota_spend_settle_end_to_end(
     assert spend["delivery_workspace_validated"] is True
     assert spend["delivery_workspace"]["workspace_identity"] == f"loopx:{GOAL_ID}"
     assert _spend_run_count(runtime) == 1
+
+
+def test_codex_app_refresh_stages_validated_memory_and_spend_finalizes_hook(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    validator = project / "validate_reward_memory.py"
+    validator.write_text(
+        "import json, sys\n"
+        "text = sys.stdin.read()\n"
+        "if text:\n"
+        "  request = json.loads(text)\n"
+        "  print(json.dumps({\n"
+        "    'schema_version': 'reward_memory_reflection_validation_v0',\n"
+        "    'status': 'validated',\n"
+        "    'reflection_digest': request['reflection_digest'],\n"
+        "    'evidence_refs': request['reflection']['evidence_refs'],\n"
+        "  }))\n",
+        encoding="utf-8",
+    )
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_text = state_path.read_text(encoding="utf-8")
+    validation_argv = quote(
+        json.dumps([sys.executable, str(validator)], separators=(",", ":")),
+        safe="",
+    )
+    state_path.write_text(
+        state_text.replace(
+            "action_kind=validate -->",
+            "action_kind=validate "
+            f"validation_command_argv={validation_argv} "
+            "validation_label=reward-memory-app-fixture -->",
+        ),
+        encoding="utf-8",
+    )
+    turn_id = "turn-reward-memory-app"
+    binding = (
+        "--agent-id",
+        AGENT_ID,
+        "--todo-id",
+        TODO_ID,
+        "--turn-instance-id",
+        turn_id,
+    )
+    reflection = json.dumps(
+        {
+            "schema_version": "turn_reward_memory_reflection_v0",
+            "status": "eligible",
+            "surface_id": "agent_workflow.turn_admission",
+            "outcome_kind": "engineering",
+            "content_summary": "Reuse the exact settlement identity on retries.",
+            "reasoning_summary": "The declared validator covered the bound outcome.",
+            "confidence": "high",
+            "evidence_refs": ["artifact:app-settlement", "receipt:validator"],
+        },
+        separators=(",", ":"),
+    )
+
+    guard_rc, guard = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        *binding,
+        "--scan-path",
+        str(project),
+        cwd=project,
+    )
+    assert guard_rc == 0, guard
+
+    complete_rc, complete = _run_cli(
+        registry_path,
+        runtime,
+        "todo",
+        "complete",
+        "--goal-id",
+        GOAL_ID,
+        *binding,
+        "--claimed-by",
+        AGENT_ID,
+        "--evidence",
+        "reward memory app fixture validated",
+        "--next-agent-todo",
+        "Continue after the reward memory fixture.",
+        "--next-claimed-by",
+        AGENT_ID,
+        "--next-action-kind",
+        "implement",
+        cwd=project,
+    )
+    assert complete_rc == 0, complete
+
+    refresh_rc, refresh = _run_cli(
+        registry_path,
+        runtime,
+        "refresh-state",
+        "--goal-id",
+        GOAL_ID,
+        "--classification",
+        "reward_memory_app_progress",
+        "--delivery-batch-scale",
+        "single_surface",
+        "--delivery-outcome",
+        "outcome_progress",
+        "--reward-memory-reflection-json",
+        reflection,
+        *binding,
+        "--no-global-sync",
+        "--suppress-external-sinks",
+        cwd=project,
+    )
+    assert refresh_rc == 0, refresh.get("error") or refresh
+    candidate = refresh["reward_memory_outcome_candidate"]
+    assert candidate["status"] == "validation_bound"
+    assert candidate["validation_bound"] is True
+    assert candidate["raw_content_projected"] is False
+    assert "content_summary" not in json.dumps(candidate)
+
+    spend_rc, spend = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "spend-slot",
+        "--goal-id",
+        GOAL_ID,
+        "--slots",
+        "1",
+        "--source",
+        "heartbeat",
+        "--execute",
+        *binding,
+        "--scan-path",
+        str(project),
+        cwd=project,
+    )
+    assert spend_rc == 0, spend
+    assert spend["settlement_result"]["ok"] is True
+    assert spend["reward_memory_ingest"]["host_wiring"] == (
+        "codex_app_refresh_spend_post_settlement"
+    )
+    assert spend["reward_memory_ingest"]["external_writes_performed"] is False
 
 
 def test_typed_outcome_gap_settles_exact_turn_without_becoming_progress(

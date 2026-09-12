@@ -87,6 +87,10 @@ from .quota_monitor_poll import record_quota_monitor_poll_for_cli
 from .quota_registration import (
     register_quota_command as register_quota_command,  # noqa: PLC0414
 )
+from .quota_reward_memory import (
+    attach_reward_memory_ingest_after_spend,
+    attach_reward_memory_recall_after_should_run,
+)
 from .quota_scheduler_followup import build_scheduler_followup_payload
 
 PrintPayload = Callable[
@@ -548,16 +552,29 @@ def handle_quota_command(
             ),
             force_projection_refresh=turn_start_mutated,
         )
-        heartbeat_turn_id = context.heartbeat_turn_id
-        detail_sections = context.detail_sections
-        runtime_root = context.runtime_root
-        scan_roots = context.scan_roots
-        status_limit = context.status_limit
-        status_goal_id = context.status_goal_id
-        status_payload = context.status_payload
-        cache_metadata = context.cache_metadata
-        scheduler_context = context.scheduler_context
-        operator_inbox_urgency_projector = context.operator_inbox_urgency_projector
+        (
+            heartbeat_turn_id,
+            detail_sections,
+            runtime_root,
+            scan_roots,
+            status_limit,
+            status_goal_id,
+            status_payload,
+            cache_metadata,
+            scheduler_context,
+            operator_inbox_urgency_projector,
+        ) = (
+            context.heartbeat_turn_id,
+            context.detail_sections,
+            context.runtime_root,
+            context.scan_roots,
+            context.status_limit,
+            context.status_goal_id,
+            context.status_payload,
+            context.cache_metadata,
+            context.scheduler_context,
+            context.operator_inbox_urgency_projector,
+        )
         if args.quota_command == "should-run":
             interaction_projection_hooks = (
                 repository_delivery_interaction_hook(repo_path=Path.cwd()),
@@ -936,6 +953,25 @@ def handle_quota_command(
                     turn_instance_id=spend_turn_instance_id,
                     replan_obligation_id=rollout_replan_obligation_id,
                 )
+                attach_reward_memory_ingest_after_spend(
+                    payload,
+                    execute=bool(args.execute),
+                    runtime_root=runtime_root,
+                    registry_path=registry_path,
+                    goal_id=args.goal_id,
+                    agent_id=args.agent_id,
+                    todo_id=rollout_todo_id,
+                    turn_instance_id=spend_turn_instance_id,
+                    replan_obligation_id=rollout_replan_obligation_id,
+                )
+    attach_reward_memory_recall_after_should_run(
+        payload,
+        quota_command=args.quota_command,
+        heartbeat_turn_id=heartbeat_turn_id,
+        registry_path=registry_path,
+        goal_id=args.goal_id,
+        agent_id=args.agent_id,
+    )
     if bool(getattr(args, "turn_envelope", False)):
         payload = _render_turn_envelope_payload(
             payload,

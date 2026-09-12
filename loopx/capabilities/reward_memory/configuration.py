@@ -57,6 +57,15 @@ def plan_reward_memory_goal_configuration(
             project=project,
             config_path=config_path,
         )
+        config_digest = local_private_config_digest(
+            project=project,
+            config_path=config_path,
+        )
+        if not config_digest:
+            raise ValueError(
+                "Reward Memory config must remain readable through its exact "
+                "repo-relative pointer during enablement"
+            )
         preflight = preflight_reward_memory_experiment_config(
             config,
             goal_id=goal_id,
@@ -81,18 +90,24 @@ def plan_reward_memory_goal_configuration(
             "enabled": True,
             "experimental": True,
             "config_path": config_path,
+            "config_digest": config_digest,
             "enabled_agents": agents,
+            "automation": deepcopy(config["automation"]),
+            "automation_intent": deepcopy(config["automation_intent"]),
         }
+        if (
+            not execute
+            and existing["config_path"] == config_path
+            and existing["config_digest"] == config_digest
+        ):
+            preserved_receipts = {
+                agent_id: deepcopy(existing["enablement_receipts"][agent_id])
+                for agent_id in agents
+                if agent_id in existing["enablement_receipts"]
+            }
+            if preserved_receipts:
+                policy["enablement_receipts"] = preserved_receipts
         if execute:
-            config_digest = local_private_config_digest(
-                project=project,
-                config_path=config_path,
-            )
-            if not config_digest:
-                raise ValueError(
-                    "Reward Memory config must remain readable through its exact "
-                    "repo-relative pointer during enablement"
-                )
             for receipt in preflight["agent_receipts"].values():
                 receipt["config_digest"] = config_digest
             policy.update(

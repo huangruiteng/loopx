@@ -135,6 +135,8 @@ def _goal_capability_options(
             return {"clear_execution_replan_after_todos": True}
         if capability_id == "change_quality_qualification":
             return {"clear_change_quality_configuration": True}
+        if capability_id == "reward_memory":
+            return {"clear_reward_memory_config": True}
         raise ValueError(f"Goal capability cannot be cleared: {capability_id}")
     config = dict(configuration)
     allowed: dict[str, set[str]] = {
@@ -153,6 +155,7 @@ def _goal_capability_options(
         "local_authority_shadow": {"enabled"},
         "lark_kanban_heartbeat_sync": {"enabled"},
         "periodic_report": {"enabled", "profile_preset", "route_ref", "timezone", "schedule"},
+        "reward_memory": {"config_path", "enabled_agents"},
     }
     if capability_id not in allowed:
         raise ValueError(f"Goal capability is read-only in Dashboard: {capability_id}")
@@ -172,6 +175,20 @@ def _goal_capability_options(
         }
     if capability_id == "periodic_report":
         return {"periodic_report_configuration": config}
+    if capability_id == "reward_memory":
+        config_path = config.get("config_path")
+        if config_path is not None and not isinstance(config_path, str):
+            raise TypeError("reward_memory.config_path must be a string")
+        enabled_agents = config.get("enabled_agents")
+        if enabled_agents is not None and (
+            not isinstance(enabled_agents, list)
+            or any(not isinstance(value, str) for value in enabled_agents)
+        ):
+            raise TypeError("reward_memory.enabled_agents must be a string list")
+        return {
+            "reward_memory_config": str(config_path or "").strip() or None,
+            "reward_memory_agents": enabled_agents,
+        }
     if capability_id == "peer_task_coordination":
         return _peer_task_coordination_options(config)
     if capability_id == "explore_graph":

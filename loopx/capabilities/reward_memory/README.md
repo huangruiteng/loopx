@@ -65,12 +65,13 @@ OpenViking user.
 New private writes must use
 `viking://user/{user_id}/peers/{canonical_peer}/memories/...`; the request's
 `actor_peer_id` must equal the URI peer before any provider call. LoopX rejects
-`viking://agent/...` for writes because OpenViking v0.4.19 defines it as a
-shared, read-only legacy compatibility scope. It also rejects user-private
-paths without an actor-bound peer for an Agent-private corpus. Private peer
+`viking://agent/...` as a Reward Memory write target because OpenViking v0.4.19
+keeps durable memories in the current User or actor-bound Peer namespace; the
+Agent scope is not the durable per-peer memory root. LoopX also rejects
+user-private paths without an actor-bound peer for an Agent-private corpus. Private peer
 reads/writes require CLI `>=0.4.18` and server `>=0.4.19`. See OpenViking's
 [multi-tenant model](https://github.com/volcengine/OpenViking/blob/main/docs/en/concepts/11-multi-tenant.md)
-and [URI migration](https://github.com/volcengine/OpenViking/blob/main/docs/en/migration/01-user-peer-model.md).
+and [context types](https://github.com/volcengine/OpenViking/blob/main/docs/en/concepts/02-context-types.md).
 
 Config v1 can bind one private Goal-scoped Agent only. Supplying several Agents
 with one private provider binding is rejected instead of silently sharing a
@@ -129,15 +130,17 @@ provider/corpus identity are still checked independently for every corpus.
     }
   ],
   "automation": {
-    "automatic_recall": false,
-    "automatic_ingest": false,
+    "automatic_recall": true,
+    "automatic_ingest": true,
     "fail_open": true
   }
 }
 ```
 
 The abbreviated corpus and standing-policy objects above represent the full
-existing record contracts. `configure-goal` preview now calls the provider
+existing record contracts. These `true` values show the new-enable default;
+an explicit `false` remains the supported per-hook opt-out. `configure-goal`
+preview now calls the provider
 preflight and reports `preflight_ready`, `preflight_incomplete`, or
 `unavailable`; it never reports a provider write as merely `planned`. Preview
 does not prove writability. Apply must complete the fresh canary write and
@@ -168,8 +171,43 @@ remain responsible for exact actor/project/surface/action scope. The shared
 hook reuses deterministic candidate identity, activation, provider sync, exact
 readback, and an ingest receipt. It does not collect chats, parse tool logs,
 store raw content, or infer new authority. Repeated events remain idempotent.
-Both flags default to false, and the explicit `ingest-event` command remains an
-explicit operator/caller path rather than a compatibility fallback.
+When either automation field is omitted from a newly enabled v1 config it
+defaults to `true`; an explicit `false` remains disabled and is projected with
+`explicit` intent provenance. Existing false values are never silently
+reinterpreted. The explicit `ingest-event` command remains an operator/caller
+path rather than a compatibility fallback.
+
+The production Codex CLI Turn performs recall after quota/Todo admission and
+accepts outcome ingestion only after independent validation, durable writeback,
+and quota settlement. A reflection must use `turn_reward_memory_reflection_v0`
+and include an exact configured surface, a distinct research/simulation/real/
+engineering source kind, and opaque evidence refs; an ordinary Turn summary is
+not evidence. Ambiguous provider commits and unverified readbacks remain in a
+mode-0600 Goal+Agent+event sidecar. The next executing Turn retries the same
+deterministic event before recall, so the provider can deduplicate it and LoopX
+can require exact readback. Explicit disable suppresses reconciliation and all
+provider calls.
+
+The Codex App uses the same settlement boundary without copying the raw
+reflection into run indexes, rollout events, or public projections. For a
+Todo-bound accountable refresh, the caller may add
+`--reward-memory-reflection-json <turn_reward_memory_reflection_v0 JSON>`.
+LoopX stores that candidate only in a mode-0600 Goal+Agent+candidate sidecar and
+runs the exact completion-validation command already declared by that Todo. The
+validator must return `reward_memory_reflection_validation_v0` with the exact
+reflection digest and evidence references; an ordinary successful validation
+exit is insufficient. The later matching `quota spend-slot --execute` finalizes
+ingestion only after exact refresh/writeback and spend readback. A missing,
+failed, or non-attesting validation remains `awaiting_evidence_validation` and
+makes zero provider calls. The App does not need a separate manual
+`reward-memory ingest-event` command for this lifecycle. DSH currently carries
+recall context but does not claim this post-settlement ingest boundary.
+
+Dashboard, CLI/status, and Lark projections reuse the same capability owner and
+public receipt. Dashboard writes only an ignored config pointer and registered
+Goal-local Agent allowlist through the existing preview/apply/readback
+transaction. It returns an opaque binding revision, effective automation and
+intent provenance, never the local-private path or provider scope.
 
 An allowlisted agent supplies only the compact event at runtime:
 

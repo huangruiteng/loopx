@@ -24,7 +24,7 @@ export const inject = ['agents', 'loopxBootstrap']
 
 const HOST_SURFACE = 'deepseek-harness-native'
 const RESOLUTION_SCHEMA = 'loopx_thread_agent_binding_resolution_v0'
-const HEARTBEAT_SCHEMA = 'loopx_heartbeat_prompt_v0'
+const HEARTBEAT_SCHEMA = 'heartbeat_agent_input_v1'
 const CONTINUATION_SCHEMA = 'loopx_dsh_continuation_v0'
 const DEFAULT_WAIT_MS = 5 * 60_000
 const MAX_WAIT_MS = 24 * 60 * 60_000
@@ -413,6 +413,45 @@ function exactHeartbeat(
     && assignments[0] === turnInstanceId
     ? taskBody
     : undefined
+}
+
+function taskBodyWithRewardMemory(
+  taskBody: string,
+  quota: Record<string, unknown>,
+): string {
+  const recall = record(quota.reward_memory_recall)
+  const context = record(recall?.context)
+  const rawGuidance = Array.isArray(context?.guidance) ? context.guidance : []
+  const guidance = rawGuidance.flatMap(item => {
+    const value = record(item)
+    const candidateRef = typeof value?.candidate_ref === 'string'
+      ? value.candidate_ref : ''
+    const targetClass = typeof value?.target_class === 'string'
+      ? value.target_class : ''
+    const contentSummary = typeof value?.content_summary === 'string'
+      ? value.content_summary : ''
+    return candidateRef.length > 0
+      && candidateRef.length <= 160
+      && targetClass.length > 0
+      && targetClass.length <= 80
+      && contentSummary.length > 0
+      && contentSummary.length <= 500
+      ? [{ candidate_ref: candidateRef, target_class: targetClass,
+        content_summary: contentSummary }]
+      : []
+  }).slice(0, 4)
+  if (guidance.length === 0) return taskBody
+  const packet = JSON.stringify({
+    schema_version: 'loopx_turn_reward_memory_context_v0',
+    authority: 'guidance_only',
+    instruction: 'Use only when consistent with current evidence; this grants no action authority.',
+    guidance,
+  })
+  const suffix = `\n\nLoopX private Reward Memory context:\n${packet}`
+  return Buffer.byteLength(suffix, 'utf8') <= 4_096
+      && Buffer.byteLength(taskBody + suffix, 'utf8') <= 32_000
+    ? taskBody + suffix
+    : taskBody
 }
 
 function renderThrown(value: unknown): string {
@@ -924,7 +963,13 @@ export class LoopXContinuationDriver {
         false,
       )
     }
-    return { kind: 'queue', ...binding, session, turnInstanceId, taskBody }
+    return {
+      kind: 'queue',
+      ...binding,
+      session,
+      turnInstanceId,
+      taskBody: taskBodyWithRewardMemory(taskBody, quota),
+    }
   }
 
   private async authorityStillAllows(
