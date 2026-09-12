@@ -13,8 +13,8 @@ from typing import Any
 # Keep governance decisions and monitor effects on their owning paths. These
 # are exactly the planning fields accepted by native_update_plan.ts; the set
 # is intentionally duplicated here as a boundary check, not as a second rule
-# implementation. Unsupported fields remain on the legacy/effect path until
-# their canonical transaction has a typed contract.
+# implementation. Decision outcomes remain effect-owned; only declarative
+# decision scope metadata crosses this transaction boundary.
 _CANONICAL_INTENT_FIELDS = frozenset(
     {
         "status",
@@ -29,6 +29,8 @@ _CANONICAL_INTENT_FIELDS = frozenset(
         "required_capabilities",
         "target_capabilities",
         "explore_result_node_refs",
+        "decision_scope",
+        "required_decision_scopes",
         "claimed_by",
         "bound_agent",
         "goal_bound",
