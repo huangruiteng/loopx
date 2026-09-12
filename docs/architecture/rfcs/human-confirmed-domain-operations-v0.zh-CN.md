@@ -147,6 +147,22 @@ adapter 将凭据保存在单独配置的私有凭据设施中，返回标准化
 中间进展可以更新同一操作卡。通过现有 manager roundtrip 回传一次有界最终结论，
 不要为每次成交覆盖其不可变结论。后续监测是独立且关联的工作流。
 
+### M1 实现接缝
+
+首个实现必须作为一个跨入口完整切片共同审阅：
+
+- 只在 `loopx/chat_action_store.py` 和 `loopx/chat_actions.py` 背后的规范
+  typed-action 权威中扩展垂域无关的操作信封；
+- 在 `loopx/extensions/lark/event_collector.py` 的文字监听路径旁增加独立、
+  经认证的 `card.action.trigger` 消费者，保持现有 WebSocket 监督和回调确认契约；
+- 在 `apps/presentation/dashboard/src/data/chat.ts` 及其所属视图接入操作投影，
+  不另建订单存储或只在本地页面实现；
+- 在可选 finance 执行发行包中放模拟金融消费者及订单/结果 schema，不调用交易平台或签名器；
+- `manager_context` 只负责原会话结果回传和投递重试，不能成为确认账本或金融账本。
+
+如果缺少前端、飞书、模拟消费者或回执恢复中的任一部分，M1 都是不完整的；
+仅完成后端的 PR 必须明确标记为 partial。
+
 ## 7. 替代方案与隐私
 
 - 只有参数化工具还不够：它缺少持久的用户身份、请求绑定、提交歧义恢复和独立于传输的

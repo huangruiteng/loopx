@@ -187,6 +187,26 @@ Return one bounded final conclusion through existing manager roundtrip; do not
 overwrite its immutable conclusion for each fill. Subsequent monitoring is a
 separate linked workflow.
 
+### M1 implementation map
+
+The first implementation must be reviewed as one cross-entrypoint slice:
+
+- extend the canonical typed-action owner behind `loopx/chat_action_store.py`
+  and `loopx/chat_actions.py` only with a provider-neutral operation envelope;
+- add a separate authenticated `card.action.trigger` consumer beside the
+  text-only path in `loopx/extensions/lark/event_collector.py`, preserving the
+  existing WebSocket supervision and callback acknowledgement contract;
+- add the operation projection to the existing chat data/details path in
+  `apps/presentation/dashboard/src/data/chat.ts` and its owning view, rather
+  than a second order store or a local-only page;
+- put the simulated financial consumer and its order/result schemas in the
+  optional finance execution distribution, with no exchange or signer calls;
+- use `manager_context` only for the original-conversation result return and
+  delivery retry. It must not become the confirmation or financial ledger.
+
+M1 is incomplete if any of the frontend, Lark, simulated consumer, or receipt
+recovery parts is missing. A backend-only PR must be labelled partial.
+
 ## 7. Alternatives and privacy
 
 - A parameterized tool alone is insufficient: it lacks durable human identity,
