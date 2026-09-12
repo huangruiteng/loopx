@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-10
+- Last revised：2026-09-12
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -151,9 +151,47 @@ replay、concurrency、归档压力与 hard-lease fence。该 fixture 是持久�
 声明 fixture 影响、覆盖所有受影响的 provider arm，并把只读三臂演练保留为独立的
 promotion gate。
 
+### Provider-neutral projection conformance 检查点（2026-09-12）
+
+conformance 边界现在为 legacy v0 与 native Todo record 共用一个 projection-fixture
+builder。它统一负责确定性的 Unicode 排序、read-model digest/field 构造，以及仅限
+兼容层的转换；provider 测试不再手工重建这些字段。规模 envelope 显式声明 status
+顺序并校验计数，因此 JSON key 顺序变化不会静默改变哪个 Todo 获得 lease、successor
+或 archive 角色。
+
+File、SQLite 与 NoKV suite 现在会在两种 record shape 上执行同一组生产规模 terminal
+case。另有独立 parity harness，使用三个隔离 provider 重放同一条 seed、observation、
+lease 序列，并在忽略 provider-specific revision token 后比较 logical head 以及已提交
+的 event/projection/receipt trace。这是 conformance 证据，不是新的 authority writer、
+provider 默认值或 promotion 声明；PostgreSQL 仍受现有真实服务资格化 gate 约束。
+
 旧 v0 consumer manifest 继续可读，并保留所有已有字段。默认 Markdown capture 仍
 输出 v0；本 PR 不改写已存 head，也不自动晋升 goal。schema 分层不等于允许后续迁移
 丢失 v0 provenance 或改变旧排序。
+
+### Canonical Todo 展示检查点（2026-09-12）
+
+authority 边界现在把 presentation 作为一等 projection contract，而不再把它命名为
+`legacy_projection`。共享的 TS presentation normalizer 会把 v0 wire shape 的
+`source_section`／`index` 映射为 `display_section`／`display_order`；native record
+则根据 domain 的 role／archive state 推导展示 section，绝不伪造持久化 index。两种
+wire shape 共用同一份 normalized presentation contract，wire 坐标不构成第二套 Todo
+state machine。
+
+Todo creation、terminal successor materialization、projection validation、
+standing-decision ordering 与 archive ordering 现在共用同一个 presentation owner。
+两种 wire shape 共用 canonical domain validator，v0 record 只是从已校验 domain
+record 经过 adapter 生成。这统一了语义 owner，但不重写 v0 head 或 receipt。
+
+Python read caller 现在直接导入语义 owner；兼容 facade 不再是内部依赖。Python 的
+展示排序在存在 source `index` 时保持其顺序，在 native record 上使用完成／更新时间
+加 Todo identity 做确定性排序，因此兼容 shape 不会泄漏进业务 eligibility 或 lifecycle
+decision。
+
+后续迁移可以持久化可选的 canonical `presentation` object，但必须先证明导入的
+section 到底是 provenance 还是当前 display intent，并资格化稳定的 display-order
+策略。在此之前，native display position 仍在 renderer 边界派生，不能参与 authority
+lifecycle decision。
 
 ### 长程持久化也是迁移收益的一部分
 
