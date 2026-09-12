@@ -57,7 +57,7 @@ CASES = [
     Case('todo_successor_scope_unbound', (('loopx/control_plane/todos/authoring_scope.ts', replacement(
         'if (blocks && (goal || !bound || bound !== blocks)) return "agent_binding_conflict";', '')),),
          'tests/control_plane_ts/todo_authoring_scope.test.ts', 'resolved successor scope'),
-    Case('monitor_route_drops_invalid_capability', (('loopx/control_plane/scheduler/monitor_successor.ts', replacement(
+    Case('monitor_route_drops_invalid_capability', (('loopx/control_plane/todos/work_requirements.ts', replacement(
         '      throw new EffectRuntimeRequestError(`${label} must contain public-safe capability tokens; invalid entries cannot be dropped`);',
         '      continue;')),),
          'tests/control_plane_ts/monitor_successor.test.ts', 'invalid successor intent is rejected'),
