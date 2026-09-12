@@ -79,6 +79,11 @@ REQUIRED_INSTALLED_SKILL_PHRASES = {
         "Repair at the lowest durable layer",
     ),
 }
+CORE_LOOPX_SKILL_PHRASES = (
+    "Treat this as the LoopX `/loopx` explicit LoopX command skill.",
+    "Identify the exact current host surface",
+    "`goal_start_contract` as authoritative",
+)
 
 
 class GitRevisionRelation(str, Enum):
@@ -458,11 +463,14 @@ def build_install_freshness(
     if release_time:
         age_hours = round(max(0, (reference - release_time.astimezone(timezone.utc)).total_seconds()) / 3600, 2)
 
-    skills_ready = bool(skills) and all(
+    required_skills = [
+        skill for skill in skills.values() if skill.get("required", True)
+    ]
+    skills_ready = bool(required_skills) and all(
         skill.get("exists")
         and skill.get("required_phrases")
         and not skill.get("route_conflict")
-        for skill in skills.values()
+        for skill in required_skills
     )
     distribution_install = (
         python_distribution
@@ -470,7 +478,7 @@ def build_install_freshness(
         else None
     )
     externally_managed_skills = skills_ready and any(
-        skill.get("managed_externally") for skill in skills.values()
+        skill.get("managed_externally") for skill in required_skills
     )
     skill_problem = require_installed_skills and not skills_ready
     if command_path is None:
@@ -772,6 +780,35 @@ def installed_skill_summary(skills_roots: tuple[Path, ...]) -> dict[str, dict[st
     return summaries
 
 
+def core_skill_summary(skills_roots: tuple[Path, ...]) -> dict[str, Any]:
+    """Summarize the generated core ``loopx`` entry independently of rich workflows."""
+
+    if not skills_roots:
+        raise ValueError("at least one Codex skill root is required")
+    primary_root = skills_roots[0]
+    candidates = [
+        (root, root / "loopx" / "SKILL.md")
+        for root in skills_roots
+        if (root / "loopx" / "SKILL.md").exists()
+    ]
+    selected = candidates[0] if len(candidates) == 1 else None
+    selected_root = selected[0] if selected else None
+    skill_path = selected[1] if selected else primary_root / "loopx" / "SKILL.md"
+    return {
+        "path": str(skill_path),
+        "candidate_paths": [str(path) for _, path in candidates],
+        "route_count": len(candidates),
+        "route_conflict": len(candidates) > 1,
+        "source_root": str(selected_root) if selected_root else None,
+        "managed_externally": bool(selected_root and selected_root != primary_root),
+        "exists": bool(candidates),
+        "required_phrases": bool(
+            selected and skill_has_required_phrases(skill_path, CORE_LOOPX_SKILL_PHRASES)
+        ),
+        "required": True,
+    }
+
+
 def installed_skill_check(
     check_id: str,
     *,
@@ -942,15 +979,22 @@ def collect_doctor(
     local_bin = user_local_bin()
     skill_roots = codex_skill_roots()
     skills = installed_skill_summary(skill_roots)
-    project_skill = skills["loopx-project"]
-    skill_path = Path(str(project_skill["path"]))
+    skills["loopx"] = core_skill_summary(skill_roots)
     project_scoped_skill_ids = discover_project_scoped_skill_ids(
         repo_root / "skills"
     )
+    for skill_name in project_scoped_skill_ids:
+        if skill_name in skills:
+            skills[skill_name]["required"] = False
+    core_skill = skills["loopx"]
+    skill_path = Path(str(core_skill["path"]))
     globally_visible_project_skills = [
         skill_name
         for skill_name in project_scoped_skill_ids
-        if any((root / skill_name).exists() for root in skill_roots)
+        if any(
+            (root / skill_name / ".loopx-skill-scope").is_file()
+            for root in skill_roots
+        )
     ]
     default_release = command_root_summary(
         command_path,
@@ -1027,15 +1071,18 @@ def collect_doctor(
     externally_managed_skills = bool(
         install_freshness.get("externally_managed_skills")
     )
+    required_skill_values = [
+        skill for skill in skills.values() if skill.get("required", True)
+    ]
     external_skill_delivery = externally_managed_skills and all(
-        skill.get("managed_externally") for skill in skills.values()
+        skill.get("managed_externally") for skill in required_skill_values
     )
     if installed_skills_required:
         skill_delivery_status = (
             "ready"
             if all(
                 skill.get("exists") and skill.get("required_phrases")
-                for skill in skills.values()
+                for skill in required_skill_values
             )
             else "repair_recommended"
         )
@@ -1175,19 +1222,19 @@ def collect_doctor(
         },
         installed_skill_check(
             "installed_skill_exists",
-            actual_ok=bool(project_skill.get("exists")),
+            actual_ok=bool(core_skill.get("exists")),
             detail=str(skill_path),
             applicable=installed_skills_required,
         ),
         installed_skill_check(
             "installed_skill_delivery_hints",
-            actual_ok=bool(project_skill.get("required_phrases")),
+            actual_ok=bool(core_skill.get("required_phrases")),
             detail=str(skill_path),
             applicable=installed_skills_required,
         ),
         installed_skill_check(
             "installed_required_skills",
-            actual_ok=all(skill.get("exists") for skill in skills.values()),
+            actual_ok=all(skill.get("exists") for skill in required_skill_values),
             detail=",".join(sorted(skills)),
             applicable=installed_skills_required,
         ),
@@ -1195,7 +1242,7 @@ def collect_doctor(
             "installed_required_skill_routes",
             actual_ok=all(
                 skill.get("required_phrases") and not skill.get("route_conflict")
-                for skill in skills.values()
+                for skill in required_skill_values
             ),
             detail=",".join(
                 f"{name}=valid:{skill.get('required_phrases')};"
@@ -1297,10 +1344,10 @@ def collect_doctor(
         "upgrade_hint": install_freshness,
         "skill": {
             "path": str(skill_path),
-            "exists": bool(project_skill.get("exists")),
-            "delivery_hints": bool(project_skill.get("required_phrases")),
-            "route_conflict": bool(project_skill.get("route_conflict")),
-            "candidate_paths": list(project_skill.get("candidate_paths") or []),
+            "exists": bool(core_skill.get("exists")),
+            "delivery_hints": bool(core_skill.get("required_phrases")),
+            "route_conflict": bool(core_skill.get("route_conflict")),
+            "candidate_paths": list(core_skill.get("candidate_paths") or []),
         },
         "skill_delivery": skill_delivery,
         "skills": skills,

@@ -80,9 +80,7 @@ def main() -> int:
         assert f"- executable: {bin_dir / 'loopx'}" in install.stdout, install.stdout
         assert f"- manpage: {man_root / 'man1' / 'loopx.1.gz'}" in install.stdout, install.stdout
         assert f"- canary executable: {bin_dir / 'loopx-canary'}" in install.stdout, install.stdout
-        assert f"- skill: {codex_home / 'skills' / 'loopx-project'}" in install.stdout, install.stdout
-        assert f"- skill: {codex_home / 'skills' / 'loopx-pr-program'}" in install.stdout, install.stdout
-        assert f"- skill: {codex_home / 'skills' / 'loopx-pr-review'}" in install.stdout, install.stdout
+        assert f"- generated skill: {codex_home / 'skills' / 'loopx'}" in install.stdout, install.stdout
         assert "promotion-readiness evidence is missing" in install.stderr, install.stderr
         assert "non-blocking" in install.stderr, install.stderr
 
@@ -100,10 +98,17 @@ def main() -> int:
         assert 'export MANPATH="$HOME/.local/share/man:${MANPATH:-}"' in profile.read_text(
             encoding="utf-8"
         )
-        assert (codex_home / "skills" / "loopx-project" / "SKILL.md").is_file()
-        assert (codex_home / "skills" / "loopx-pr-program" / "SKILL.md").is_file()
-        assert (codex_home / "skills" / "loopx-pr-review" / "SKILL.md").is_file()
-        assert (codex_home / "skills" / "loopx-self-repair" / "SKILL.md").is_file()
+        assert (codex_home / "skills" / "loopx" / "SKILL.md").is_file()
+        for skill_id in (
+            "loopx-project",
+            "loopx-pr-program",
+            "loopx-pr-review",
+            "loopx-self-repair",
+        ):
+            assert (release_root / "skills" / skill_id / "SKILL.md").is_file()
+            assert not (
+                codex_home / "skills" / skill_id / ".loopx-skill-scope"
+            ).exists()
 
         cli_env = {**env, "PATH": f"{bin_dir}:{env['PATH']}"}
         doctor = run_loopx("doctor", cwd=root, env=cli_env)
@@ -114,10 +119,14 @@ def main() -> int:
         assert doctor["install_freshness"]["schema_version"] == "loopx_install_freshness_v0", doctor
         assert doctor["install_freshness"]["status"] == "unknown", doctor
         assert "huangruiteng.github.io/loopx/install.sh" in doctor["install_freshness"]["upgrade_command"], doctor
-        assert doctor["skills"]["loopx-project"]["exists"] is True, doctor
-        assert doctor["skills"]["loopx-pr-program"]["exists"] is True, doctor
-        assert doctor["skills"]["loopx-pr-review"]["exists"] is True, doctor
-        assert doctor["skills"]["loopx-self-repair"]["exists"] is True, doctor
+        assert doctor["skills"]["loopx"]["exists"] is True, doctor
+        for skill_id in (
+            "loopx-project",
+            "loopx-pr-program",
+            "loopx-pr-review",
+            "loopx-self-repair",
+        ):
+            assert doctor["skills"][skill_id]["required"] is False, doctor
 
         project = root / "sample-project"
         project.mkdir()

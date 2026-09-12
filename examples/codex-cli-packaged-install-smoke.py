@@ -116,6 +116,7 @@ def main() -> None:
         assert manifest["source"]["archive_sha256"], manifest
         assert manifest["skills"]["digest"], manifest
 
+        assert (home / ".codex" / "skills" / "loopx" / "SKILL.md").exists()
         for skill in (
             "loopx-project",
             "loopx-pr-program",
@@ -124,7 +125,10 @@ def main() -> None:
             "loopx-benchmark",
             "loopx-self-repair",
         ):
-            assert (home / ".codex" / "skills" / skill / "SKILL.md").exists(), skill
+            assert (release_root / "skills" / skill / "SKILL.md").exists(), skill
+            assert not (
+                home / ".codex" / "skills" / skill / ".loopx-skill-scope"
+            ).exists(), skill
         assert not (
             home / ".codex" / "skills" / "loopx-change-quality"
         ).exists()

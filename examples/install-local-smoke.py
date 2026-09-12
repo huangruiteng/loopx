@@ -245,10 +245,9 @@ def main() -> int:
             f"- legacy command disabled: {bin_dir / 'goal-harness-canary.legacy-disabled'}"
             in install.stdout
         ), install.stdout
-        for skill_id in PACKAGED_HOST_SKILL_IDS:
-            assert (
-                f"- skill: {codex_home / 'skills' / skill_id}" in install.stdout
-            ), install.stdout
+        assert (
+            f"- generated skill: {codex_home / 'skills' / 'loopx'}" in install.stdout
+        ), install.stdout
         assert "project skill source:" in install.stdout, install.stdout
         assert "install explicitly per project" in install.stdout, install.stdout
         assert f"codex skills: {codex_home / 'skills'}" in install.stdout, install.stdout
@@ -348,8 +347,9 @@ def main() -> int:
             text=True,
         )
 
-        skill = codex_home / "skills" / "loopx-project" / "SKILL.md"
-        assert not skill.parent.is_symlink(), skill.parent
+        entry_skill = codex_home / "skills" / "loopx" / "SKILL.md"
+        assert entry_skill.is_file(), entry_skill
+        assert not entry_skill.parent.is_symlink(), entry_skill.parent
         skill_readback = json.loads(
             (codex_home / "skills" / ".loopx-skill-install.json").read_text(
                 encoding="utf-8"
@@ -357,44 +357,21 @@ def main() -> int:
         )
         assert skill_readback["integration_mode"] == "fixed_install_script"
         assert skill_readback["source"]["revision"] == source_commit
-        assert set(skill_readback["materialized_skill_ids"]) == {
-            "loopx",
-            *PACKAGED_HOST_SKILL_IDS,
-        }
-        skill_text = skill.read_text(encoding="utf-8")
+        assert set(skill_readback["materialized_skill_ids"]) == {"loopx"}
+        skill_text = entry_skill.read_text(encoding="utf-8")
         compact_skill_text = " ".join(skill_text.split())
         for phrase in (
-            "Set Up Recurring Heartbeats",
-            "loopx heartbeat-prompt",
-            "run a short steering audit before choosing work",
-            "at least three plausible next-action candidates",
-            "continuation check",
-            "compute quota separate from focus quota",
-            "Register Project Authority And Material Sources",
-            "doc-registry skill trigger",
-            "Diagnose For The User",
-            "loopx diagnose",
-            "Use those signals as evidence",
-            "Identify the target project and goal first",
-            "loopx register-authority-source",
-            "loopx import-doc-registry-authority",
-            "--source heartbeat --execute",
-            "Generate A Review Packet",
-            "loopx review-packet --goal-id",
-            "loopx review-packet --goal-id <STABLE_GOAL_ID> --handoff-only",
-            "loopx --format json review-packet --goal-id",
-            "target project agent must not run this draft",
-            "This command is read-only",
-            "JSON output returns a minimized handoff payload with `handoff_text` instead of the full operator packet",
-            "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>",
-            "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>",
-            "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>",
-            "Never default or upgrade a smaller/preparatory turn",
-            "do not infer scale/outcome from the classification name",
+            "Treat this as the LoopX `/loopx` explicit LoopX command skill.",
+            "Identify the exact current host surface",
+            "`goal_start_contract` as authoritative",
+            "complete visible command arguments unchanged as one value",
+            "Consume the turn-start quota JSON packet exactly once",
+            "Keep public/private boundaries intact",
         ):
             assert phrase in compact_skill_text, phrase
         assert "JSON output still keeps the full payload" not in compact_skill_text, compact_skill_text
-        pr_review_skill = codex_home / "skills" / "loopx-pr-review" / "SKILL.md"
+        packaged_skills = release_root / "skills"
+        pr_review_skill = packaged_skills / "loopx-pr-review" / "SKILL.md"
         pr_review_text = " ".join(pr_review_skill.read_text(encoding="utf-8").split())
         for phrase in (
             "loopx --format json pr-review --state all",
@@ -413,7 +390,7 @@ def main() -> int:
         ):
             assert phrase in pr_review_text, phrase
         assert "Do not use this skill to approve" not in pr_review_text, pr_review_text
-        pr_program_skill = codex_home / "skills" / "loopx-pr-program" / "SKILL.md"
+        pr_program_skill = packaged_skills / "loopx-pr-program" / "SKILL.md"
         pr_program_text = " ".join(pr_program_skill.read_text(encoding="utf-8").split())
         for phrase in (
             "one `continuous_monitor` todo",
@@ -433,7 +410,7 @@ def main() -> int:
             in pr_review_metadata_text
         ), pr_review_metadata_text
         assert "Guide agentloop" not in pr_review_metadata_text, pr_review_metadata_text
-        auto_research_skill = codex_home / "skills" / "loopx-auto-research" / "SKILL.md"
+        auto_research_skill = packaged_skills / "loopx-auto-research" / "SKILL.md"
         assert not auto_research_skill.exists(), auto_research_skill
         material_skill = codex_home / "skills" / "loopx-material" / "SKILL.md"
         assert not material_skill.exists(), material_skill
@@ -451,7 +428,7 @@ def main() -> int:
         assert 'display_name: "LoopX"' in loopx_openai_metadata_text, loopx_openai_metadata_text
         assert 'display_name: "LoopX /loopx"' not in loopx_openai_metadata_text, loopx_openai_metadata_text
         assert "allow_implicit_invocation: false" in loopx_openai_metadata_text, loopx_openai_metadata_text
-        loopx_project_metadata = codex_home / "skills" / "loopx-project" / "agents" / "openai.yaml"
+        loopx_project_metadata = packaged_skills / "loopx-project" / "agents" / "openai.yaml"
         loopx_project_metadata_text = loopx_project_metadata.read_text(encoding="utf-8")
         assert 'display_name: "LoopX Project"' in loopx_project_metadata_text, loopx_project_metadata_text
         assert 'display_name: "LoopX"' not in loopx_project_metadata_text, loopx_project_metadata_text
@@ -464,7 +441,7 @@ def main() -> int:
         assert not (home / ".claude" / "settings.json").exists(), (
             "default installer must not install Claude adapter hooks/settings"
         )
-        doc_registry_skill = codex_home / "skills" / "loopx-doc-registry" / "SKILL.md"
+        doc_registry_skill = packaged_skills / "loopx-doc-registry" / "SKILL.md"
         doc_registry_text = " ".join(doc_registry_skill.read_text(encoding="utf-8").split())
         doc_registry_metadata = doc_registry_skill.parent / "agents" / "openai.yaml"
         doc_registry_metadata_text = doc_registry_metadata.read_text(encoding="utf-8")
@@ -477,7 +454,7 @@ def main() -> int:
             "loopx --registry .loopx/registry.json register-authority-source",
         ):
             assert phrase in doc_registry_text, phrase
-        benchmark_skill = codex_home / "skills" / "loopx-benchmark" / "SKILL.md"
+        benchmark_skill = packaged_skills / "loopx-benchmark" / "SKILL.md"
         benchmark_text = " ".join(
             benchmark_skill.read_text(encoding="utf-8").split()
         )
@@ -487,7 +464,7 @@ def main() -> int:
         assert 'display_name: "LoopX Benchmark"' in benchmark_metadata.read_text(
             encoding="utf-8"
         )
-        self_repair_skill = codex_home / "skills" / "loopx-self-repair" / "SKILL.md"
+        self_repair_skill = packaged_skills / "loopx-self-repair" / "SKILL.md"
         self_repair_text = " ".join(self_repair_skill.read_text(encoding="utf-8").split())
         for phrase in (
             "Build a compact evidence packet",
@@ -501,8 +478,7 @@ def main() -> int:
         ):
             assert phrase in self_repair_text, phrase
         self_repair_patterns = (
-            codex_home
-            / "skills"
+            packaged_skills
             / "loopx-self-repair"
             / "references"
             / "repair-patterns.md"
@@ -512,8 +488,7 @@ def main() -> int:
         assert "`skill_cli_contract_drift`" in self_repair_patterns_text, self_repair_patterns_text
         assert "`tiny_turn_under_delivery`" in self_repair_patterns_text, self_repair_patterns_text
         self_repair_issue_escalation = (
-            codex_home
-            / "skills"
+            packaged_skills
             / "loopx-self-repair"
             / "references"
             / "upstream-issue-escalation.md"
@@ -525,16 +500,12 @@ def main() -> int:
         assert "gh issue list" in self_repair_issue_escalation_text
         assert "gh issue create" in self_repair_issue_escalation_text
         assert (
-            codex_home / "skills" / "loopx-self-repair" / "agents" / "openai.yaml"
+            packaged_skills / "loopx-self-repair" / "agents" / "openai.yaml"
         ).is_file()
-        for implicit_skill_name in PACKAGED_HOST_SKILL_IDS:
-            implicit_metadata = codex_home / "skills" / implicit_skill_name / "agents" / "openai.yaml"
-            if implicit_metadata.exists():
-                implicit_metadata_text = implicit_metadata.read_text(encoding="utf-8")
-                assert "allow_implicit_invocation: false" not in implicit_metadata_text, (
-                    implicit_skill_name,
-                    implicit_metadata_text,
-                )
+        for project_skill_id in PACKAGED_HOST_SKILL_IDS:
+            assert not (
+                codex_home / "skills" / project_skill_id / ".loopx-skill-scope"
+            ).exists()
 
         cli_env = {**env, "PATH": f"{bin_dir}:{env['PATH']}"}
         runtime_run_dir = home / ".codex" / "loopx" / "goals" / "loopx-meta" / "runs"
@@ -583,7 +554,7 @@ def main() -> int:
             doctor_payload["release_manifest"]["manifest"]["source"]["git_commit"] == source_commit
         ), doctor_payload
         assert doctor_payload["release_manifest"]["manifest"]["skills"]["digest"] == release_manifest["skills"]["digest"], doctor_payload
-        assert doctor_payload["skill"]["path"] == str(skill), doctor_payload
+        assert doctor_payload["skill"]["path"] == str(entry_skill), doctor_payload
         assert doctor_payload["skill"]["exists"] is True, doctor_payload
         assert doctor_payload["skill"]["delivery_hints"] is True, doctor_payload
         assert "loopx-auto-research" not in doctor_payload["skills"], doctor_payload
@@ -595,10 +566,7 @@ def main() -> int:
         }.issubset(set(doctor_payload["project_scoped_skill_ids"])), doctor_payload
         assert doctor_payload["globally_visible_project_skills"] == [], doctor_payload
         for skill_id in PACKAGED_HOST_SKILL_IDS:
-            assert doctor_payload["skills"][skill_id]["exists"] is True, doctor_payload
-            assert (
-                doctor_payload["skills"][skill_id]["required_phrases"] is True
-            ), doctor_payload
+            assert doctor_payload["skills"][skill_id]["required"] is False, doctor_payload
         provenance = doctor_payload["release_provenance"]
         assert provenance["default_release"]["root"] == str(release_root), provenance
         assert provenance["default_release"]["release_id"] == release_root.name, provenance
@@ -643,7 +611,7 @@ def main() -> int:
         assert "installed_skill_delivery_hints: `True`" in doctor_markdown, doctor_markdown
         assert (
             "installed_required_skills: "
-            f"`{','.join(sorted(PACKAGED_HOST_SKILL_IDS))}`"
+            f"`{','.join(sorted(['loopx', *PACKAGED_HOST_SKILL_IDS]))}`"
             in doctor_markdown
         ), doctor_markdown
         assert "loopx_canary_realpath:" in doctor_markdown, doctor_markdown

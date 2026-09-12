@@ -516,12 +516,14 @@ The checkout installer creates:
 - `~/.local/bin/loopx-canary`, pointing at the live checkout;
 - `~/.local/share/man/man1/loopx.1.gz`, so `man loopx` opens the short
   operator manual after the shell profile reloads;
-- reusable global LoopX Codex skills under `~/.codex/skills`;
+- the generated core LoopX Codex skill under `~/.codex/skills/loopx`;
 - canonical sources for project-scoped skills, which are not installed globally.
 
-Those global skills are the intended product surface for reusable LoopX
+The generated global entry is the intended product surface for reusable LoopX
 connection and control-plane behavior. Capability workflows that should only
-exist in selected repositories use managed project skills instead.
+exist in selected repositories stay in the release as canonical sources and
+use managed project skills instead; their source copies do not enter the
+global skill root.
 Project-specific state and private decisions stay in the local registry and
 active goal files.
 
