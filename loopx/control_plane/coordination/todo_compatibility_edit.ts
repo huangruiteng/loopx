@@ -2,6 +2,7 @@ import type { JsonObject } from "../effect_program.ts";
 import type { AuthorityStore } from "./authority_store.ts";
 import { canonicalAuthorityBytes, canonicalAuthorityObject, canonicalAuthoritySha256, requireAuthorityStoreId } from "./authority_store_codec.ts";
 import { prepareCoordinationProjectionCommit, indexCoordinationProjection, validateCoordinationTodoReadModel } from "./coordination_projection.ts";
+import { projectionDelivery } from "../todos/projection_delivery.ts";
 
 export const TODO_COMPATIBILITY_EDIT_SCHEMA = "loopx_todo_compatibility_edit_request_v0";
 export const TODO_COMPATIBILITY_EDIT_RESULT_SCHEMA = "loopx_todo_compatibility_edit_result_v0";
@@ -75,7 +76,7 @@ export async function editCoordinationTodo(
         status: status === "applied" && !original.changed ? "no_change" : status,
         changed: status !== "replayed" && original.changed,
         provider_revision: receipt.provider_revision, cursor: receipt.cursor,
-        projection_delivery: original.changed ? "pending" : "not_required",
+        projection_delivery: projectionDelivery(original.changed),
         projection_source: "committed_authority_journal",
       };
     };
