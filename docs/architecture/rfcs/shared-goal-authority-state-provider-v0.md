@@ -2680,6 +2680,14 @@ It does not qualify D1/D2, alter the default provider, or relax D3 promotion hol
 Markdown remains the permanent one-way display; the remaining execution cards
 below are unchanged.
 
+Optional fallback advice now consumes a single source snapshot, including direct
+archived prerequisites, and delegates dispositions to the existing typed resume
+semantics. This retires per-Todo source reads and Python wait/aggregation rules;
+it does not add a provider, relax a fence, qualify durability, or make Markdown
+authoritative after promotion. Read failure remains uncertainty, never permission
+to consult stale display. See the TS RFC's T3 consumer notes for the intentional
+alternative-resolution corrections; D1–D3 and the permanent projection plan stay.
+
 Use the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
 for command inventory, update/monitor transactions and consumer deletion. Do not
 repeat that plan in a second implementation or treat a merged read-policy PR

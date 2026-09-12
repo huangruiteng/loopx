@@ -2137,6 +2137,12 @@ T3 decision-dependency 读取策略现由同一 TS owner 解释 scope coverage�
 不改变默认 provider 或放宽 D3 promotion hold。Markdown 继续作为永久单向展示，
 后续执行卡与退役条件保留。
 
+可选 fallback 提示改为消费一次来源快照（含直接归档依赖），由 TS 复用既有 resume
+语义判断去向，退役逐 Todo 来源读取与 Python 等待／聚合规则。没有新增 provider、
+放宽 fence 或完成持久化资格化；promotion 后 Markdown 不恢复 authority。读取失败
+仍为 uncertainty，不能回退陈旧展示。候选去向的有意修正见 TS RFC 的 T3 说明；
+D1–D3 与永久投影规划不变。
+
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
 能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，

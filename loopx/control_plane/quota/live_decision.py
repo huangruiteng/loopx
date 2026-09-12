@@ -7,6 +7,7 @@ from typing import Any
 
 from ...quota import build_quota_should_run
 from ..agent_context import project_agent_context
+from ..goals.goal_frontier.fallback_source import live_fallback_authority_items
 from ..capability_hooks import (
     InteractionProjectionHookRegistration,
     dispatch_interaction_projection_hooks,
@@ -441,6 +442,13 @@ def build_live_quota_should_run_decision(
     fresh_operator_inbox_read = _fresh_operator_inbox_read_required(
         turn_start_hook_dispatch
     )
+    authoritative_fallback_todo_items = live_fallback_authority_items(
+        decision_status_payload,
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
     payload = build_quota_should_run(
         decision_status_payload,
         goal_id=goal_id,
@@ -466,6 +474,7 @@ def build_live_quota_should_run_decision(
         receipt_bound_replan_obligation_id=receipt_bound_replan_obligation_id,
         turn_instance_id=turn_instance_id,
         runtime_root=runtime_root,
+        authoritative_fallback_todo_items=authoritative_fallback_todo_items,
     )
     if route_source.startswith("loopx_turn_"):
         payload["runtime_root"] = str(runtime_root)

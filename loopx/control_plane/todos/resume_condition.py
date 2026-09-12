@@ -297,15 +297,15 @@ def normalize_todo_resume_when_via_runtime(value: Any) -> str | None:
     return result
 
 
-def evaluate_todo_resume_conditions(
+def build_todo_resume_evaluation_request(
     items: list[dict[str, Any]],
     *,
     source_items: list[dict[str, Any]],
     rollout_events: list[dict[str, Any]] | None = None,
     available_capabilities: Any = None,
     kinds: list[str] | None = None,
-) -> dict[str, dict[str, Any]]:
-    """Return TS-owned resume conditions keyed by the waiting Todo id."""
+) -> dict[str, Any]:
+    """Encode bounded resume facts for direct or composed typed projections."""
 
     request: dict[str, Any] = {
         "schema_version": TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
@@ -328,6 +328,22 @@ def evaluate_todo_resume_conditions(
         )
     if kinds is not None:
         request["kinds"] = kinds
+    return request
+
+
+def evaluate_todo_resume_conditions(
+    items: list[dict[str, Any]],
+    *,
+    source_items: list[dict[str, Any]],
+    rollout_events: list[dict[str, Any]] | None = None,
+    available_capabilities: Any = None,
+    kinds: list[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Return TS-owned resume conditions keyed by the waiting Todo id."""
+    request = build_todo_resume_evaluation_request(
+        items, source_items=source_items, rollout_events=rollout_events,
+        available_capabilities=available_capabilities, kinds=kinds,
+    )
     try:
         result = effect_runtime_result("todo.resume_condition.evaluate", request)
     except EffectRuntimeRejected as exc:
