@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
-import {projectionDelivery} from "../todos/projection_delivery.ts";
+import {CoordinationCommandReceipt, commandReceiptResult} from "./command_receipt.ts";
 
 import type { JsonObject } from "../effect_program.ts";
 import type {
   AuthorityStore,
   AuthorityStoreCommit,
-  AuthorityStoreReceiptResult,
 } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -46,7 +45,6 @@ import {
   normalizeAgent,
   normalizeWriteScopes,
 } from "../work_items/task_lease_acquire.ts";
-import { selectCoordinationTodoArchive } from "./todo_archive_selection.ts";
 import { userTodoScopeConflict, USER_TODO_TASK_CLASSES } from "../todos/authoring_scope.ts";
 import {
   deriveCoordinationTodoSuccessorProposals,
@@ -57,11 +55,6 @@ export const COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA =
   "loopx_coordination_todo_terminal_lifecycle_result_v0";
 export const COORDINATION_TODO_TERMINAL_LIFECYCLE_RECEIPT_SCHEMA =
   "loopx_coordination_todo_terminal_lifecycle_receipt_v0";
-export const COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA =
-  "loopx_coordination_todo_archive_result_v0";
-export const COORDINATION_TODO_ARCHIVE_RECEIPT_SCHEMA =
-  "loopx_coordination_todo_archive_receipt_v0";
-
 const TERMINAL_COMMANDS = ["complete", "supersede"] as const;
 const TODO_ROLES = ["agent", "user"] as const;
 const DECISION_OUTCOMES = ["approve", "reject", "cancel"] as const;
@@ -105,23 +98,9 @@ export interface CoordinationTodoTerminalLifecycleInput {
   readonly now: Date;
 }
 
-export interface CoordinationTodoArchiveInput {
-  readonly goal_id: string;
-  readonly role: TodoRole;
-  readonly max_active_done: number;
-  readonly operation_id: string;
-  readonly expected_provider_revision?: string;
-  readonly dry_run: boolean;
-  readonly now: Date;
-}
-
 export type CoordinationTodoTerminalLifecycleResult = JsonObject & {
   readonly schema_version: typeof COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA;
 };
-export type CoordinationTodoArchiveResult = JsonObject & {
-  readonly schema_version: typeof COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA;
-};
-
 type CoordinationTodoTerminalFailureKind =
   | "decision_rejection"
   | "protocol_failure";
@@ -368,16 +347,6 @@ function terminalFailure(
   };
 }
 
-function archiveFailure(code: string, reason: string): CoordinationTodoArchiveResult {
-  return {
-    schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
-    status: "failed",
-    changed: false,
-    reason_code: code,
-    reason,
-  };
-}
-
 function terminalRequestSha(input: CoordinationTodoTerminalLifecycleInput): string {
   const completionPolicyIdentity = input.completion_policy_request === null
     ? null
@@ -416,45 +385,14 @@ function terminalRequestSha(input: CoordinationTodoTerminalLifecycleInput): stri
   });
 }
 
-function replayTerminal(
-  receipt: AuthorityStoreReceiptResult,
-  input: CoordinationTodoTerminalLifecycleInput,
-  requestSha: string,
-  status: "replayed" | "applied" | "recovered",
-): CoordinationTodoTerminalLifecycleResult | null {
-  if (receipt.status === "missing") return null;
-  if (receipt.status !== "found") {
-    return {
-      schema_version: COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
-      ...receipt,
-      changed: false,
-    };
-  }
-  const original = receipt.receipts[0];
-  if (receipt.receipts.length !== 1 ||
-      original?.schema_version !== COORDINATION_TODO_TERMINAL_LIFECYCLE_RECEIPT_SCHEMA ||
-      original.operation_id !== input.operation_id || original.goal_id !== input.goal_id ||
-      original.todo_id !== input.todo_id || original.command !== input.command ||
-      original.request_sha256 !== requestSha) {
-    return terminalFailure(
-      "coordination_operation_identity_mismatch",
-      "operation id already names a different Todo terminal lifecycle request",
-      {},
-      "decision_rejection",
-    );
-  }
-  const result = canonicalAuthorityObject(original.result, "terminal lifecycle receipt result");
-  return {
-    ...result,
-    schema_version: COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
-    status: status === "applied" && result.changed === false ? "no_change" : status,
-    changed: status !== "replayed" && result.changed === true,
-    provider_revision: receipt.provider_revision,
-    cursor: receipt.cursor,
-    original_receipt: original,
-    projection_delivery: projectionDelivery(result.changed === true),
-    projection_source: "committed_authority_journal",
-  };
+function terminalReceipt(input: CoordinationTodoTerminalLifecycleInput, requestSha: string) {
+  return new CoordinationCommandReceipt({result_schema: COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
+    identity: {schema_version: COORDINATION_TODO_TERMINAL_LIFECYCLE_RECEIPT_SCHEMA,
+      operation_id: input.operation_id, goal_id: input.goal_id, todo_id: input.todo_id,
+      command: input.command, request_sha256: requestSha},
+    failure: (code, reason) => terminalFailure(code, reason, {},
+      code === "coordination_operation_identity_mismatch" ? "decision_rejection" : "protocol_failure"),
+    decode: commandReceiptResult});
 }
 
 async function commitTerminalResult(
@@ -499,24 +437,7 @@ async function commitTerminalResult(
     request_sha256: requestSha,
     result,
   }];
-  const committed = await store.commitAuthority(commit);
-  const readback = replayTerminal(
-    await store.readReceipt(input.operation_id),
-    input,
-    requestSha,
-    committed.status === "applied" ? "applied" : "recovered",
-  );
-  if (readback !== null) return readback;
-  return committed.status === "applied"
-    ? terminalFailure(
-      "coordination_commit_readback_mismatch",
-      "applied terminal lifecycle mutation lacks its durable receipt",
-    )
-    : {
-      schema_version: COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
-      ...committed,
-      changed: false,
-    };
+  return terminalReceipt(input, requestSha).commit(store, commit);
 }
 
 function todoFact(todo: JsonObject): JsonObject {
@@ -744,12 +665,7 @@ export async function executeCoordinationTodoTerminalLifecycle(
     );
   }
   const requestSha = terminalRequestSha(input);
-  const replay = replayTerminal(
-    await store.readReceipt(input.operation_id),
-    input,
-    requestSha,
-    "replayed",
-  );
+  const replay = await terminalReceipt(input, requestSha).read(store);
   if (replay !== null) return replay;
 
   const head = await store.loadAuthority();
@@ -1084,185 +1000,4 @@ export async function executeCoordinationTodoTerminalLifecycle(
     ...(released === null ? [] : [{kind: "lease_upsert" as const, lease: released}]),
   ] : [];
   return commitTerminalResult(store, input, requestSha, head, result, mutations);
-}
-
-function normalizeArchiveInput(raw: CoordinationTodoArchiveInput): CoordinationTodoArchiveInput {
-  if (!Number.isSafeInteger(raw.max_active_done) || raw.max_active_done < 0) {
-    throw new AuthorityStoreProtocolError("max_active_done must be a non-negative safe integer");
-  }
-  return {
-    ...raw,
-    goal_id: requireAuthorityStoreId(raw.goal_id, "goal id"),
-    role: requireLiteral(raw.role, TODO_ROLES, "role"),
-    operation_id: requireAuthorityStoreId(raw.operation_id, "operation id"),
-    ...(raw.expected_provider_revision === undefined ? {} : {
-      expected_provider_revision: requireAuthorityStoreId(
-        raw.expected_provider_revision, "expected provider revision",
-      ),
-    }),
-    dry_run: requireBoolean(raw.dry_run, "dry_run"),
-    now: requireDate(raw.now, "now"),
-  };
-}
-
-function replayArchive(
-  receipt: AuthorityStoreReceiptResult,
-  input: CoordinationTodoArchiveInput,
-  requestSha: string,
-  status: "replayed" | "applied" | "recovered",
-): CoordinationTodoArchiveResult | null {
-  if (receipt.status === "missing") return null;
-  if (receipt.status !== "found") {
-    return {schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA, ...receipt, changed: false};
-  }
-  const original = receipt.receipts[0];
-  if (receipt.receipts.length !== 1 ||
-      original?.schema_version !== COORDINATION_TODO_ARCHIVE_RECEIPT_SCHEMA ||
-      original.operation_id !== input.operation_id || original.goal_id !== input.goal_id ||
-      original.request_sha256 !== requestSha) {
-    return archiveFailure(
-      "coordination_operation_identity_mismatch",
-      "operation id already names a different Todo archive request",
-    );
-  }
-  const result = canonicalAuthorityObject(original.result, "Todo archive receipt result");
-  return {
-    ...result,
-    schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
-    operation_id: input.operation_id,
-    status,
-    changed: status !== "replayed" && result.changed === true,
-    provider_revision: receipt.provider_revision,
-    cursor: receipt.cursor,
-    original_receipt: original,
-    projection_delivery: projectionDelivery(result.changed === true),
-    projection_source: "committed_authority_journal",
-  };
-}
-
-/** Archive the oldest canonical completed records while preserving standing decisions. */
-export async function executeCoordinationTodoArchiveCompleted(
-  store: AuthorityStore,
-  rawInput: CoordinationTodoArchiveInput,
-): Promise<CoordinationTodoArchiveResult> {
-  let input: CoordinationTodoArchiveInput;
-  try {
-    input = normalizeArchiveInput(rawInput);
-  } catch (error) {
-    return archiveFailure(
-      "invalid_coordination_todo_archive",
-      error instanceof Error ? error.message : "invalid Todo archive request",
-    );
-  }
-  const requestSha = canonicalAuthoritySha256({
-    goal_id: input.goal_id,
-    role: input.role,
-    max_active_done: input.max_active_done,
-    dry_run: input.dry_run,
-    ...(input.expected_provider_revision === undefined ? {} : {
-      expected_provider_revision: input.expected_provider_revision,
-    }),
-  });
-  // Preview observes the current snapshot without consuming or replaying a
-  // durable operation identity. Historical receipts precede current-head CAS.
-  if (!input.dry_run) {
-    const replay = replayArchive(
-      await store.readReceipt(input.operation_id), input, requestSha, "replayed",
-    );
-    if (replay !== null) return replay;
-  }
-  const head = await store.loadAuthority();
-  if (head.status !== "loaded") {
-    return {schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA, ...head, changed: false};
-  }
-  if (input.expected_provider_revision !== undefined &&
-      head.provider_revision !== input.expected_provider_revision) {
-    return {
-      schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
-      status: "conflict", changed: false,
-      conflict_kind: "provider_revision_mismatch",
-      current_provider_revision: head.provider_revision,
-      current_cursor: head.cursor,
-    };
-  }
-  let projection: ReturnType<typeof indexCoordinationProjection>;
-  try {
-    projection = indexCoordinationProjection(head.head, input.goal_id);
-    validateCoordinationTodoReadModel(head.head, input.goal_id);
-  } catch (error) {
-    return archiveFailure(
-      "invalid_coordination_projection",
-      error instanceof Error ? error.message : "invalid coordination projection",
-    );
-  }
-  const selection = selectCoordinationTodoArchive({
-    role: input.role,
-    max_active_done: input.max_active_done,
-    todos: projection.todo_ids.map((todoId) => projection.todos.get(todoId)!),
-  });
-  const moved = selection.moved_todo_ids.map((todoId) => projection.todos.get(todoId)!);
-  const updatedAt = input.now.toISOString().replace(/\.\d{3}Z$/u, "Z");
-  const result: JsonObject = {
-    role: selection.role,
-    operation_id: input.operation_id,
-    changed: moved.length > 0,
-    active_done_before: selection.active_done_before,
-    active_done_after: selection.active_done_after,
-    max_active_done: selection.max_active_done,
-    moved_count: selection.moved_count,
-    moved_todo_ids: selection.moved_todo_ids,
-    retained_standing_decision_count: selection.retained_standing_decision_count,
-  };
-  if (input.dry_run) {
-    return {
-      ...result,
-      schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
-      status: moved.length > 0 ? "planned" : "no_change",
-      dry_run: true,
-      provider_revision: head.provider_revision,
-      cursor: head.cursor,
-    };
-  }
-  if (moved.length === 0) {
-    return {
-      ...result,
-      schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
-      status: "no_change",
-      dry_run: false,
-      provider_revision: head.provider_revision,
-      cursor: head.cursor,
-    };
-  }
-  const mutations: CoordinationProjectionMutation[] = moved.map((todo) => ({
-    kind: "todo_upsert",
-    todo: {...todo, archive_state: "archive", updated_at: updatedAt},
-  }));
-  const commit: AuthorityStoreCommit = prepareCoordinationProjectionCommit({
-    goal_id: input.goal_id,
-    operation_id: input.operation_id,
-    expected_provider_revision: head.provider_revision,
-    projection: head.head,
-    mutations,
-  });
-  commit.receipts = [{
-    schema_version: COORDINATION_TODO_ARCHIVE_RECEIPT_SCHEMA,
-    operation_id: input.operation_id,
-    goal_id: input.goal_id,
-    request_sha256: requestSha,
-    result,
-  }];
-  const committed = await store.commitAuthority(commit);
-  const readback = replayArchive(
-    await store.readReceipt(input.operation_id),
-    input,
-    requestSha,
-    committed.status === "applied" ? "applied" : "recovered",
-  );
-  if (readback !== null) return readback;
-  return committed.status === "applied"
-    ? archiveFailure(
-      "coordination_commit_readback_mismatch",
-      "applied Todo archive mutation lacks its durable receipt",
-    )
-    : {schema_version: COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA, ...committed, changed: false};
 }

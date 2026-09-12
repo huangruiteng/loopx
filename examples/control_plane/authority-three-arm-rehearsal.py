@@ -43,7 +43,7 @@ import {join} from 'node:path';
 import {Pool} from 'pg';
 import {FileAuthorityStore} from '__FILE_STORE__';
 import {PostgreSqlAuthorityStore, installPostgreSqlAuthorityStoreSchema} from '__PG_STORE__';
-import {executeCoordinationTodoArchiveCompleted} from '__TERMINAL__';
+import {executeCoordinationTodoArchiveCompleted} from '__ARCHIVE__';
 import {canonicalAuthorityBytes} from '__CODEC__';
 import {evaluateTodoResumeConditions} from '__RESUME__';
 
@@ -117,17 +117,35 @@ try {
       next_projection: request.initial,
     });
     assert.equal(initialized.status, 'applied', `${name} initialization failed`);
-    const archived = await executeCoordinationTodoArchiveCompleted(store, {
+    // Lose the response after the actual backend commit. Recovery must read
+    // the original receipt rather than attempt the archive a second time.
+    let commitCount = 0;
+    const responseLostStore = {
+      storeIdentity: () => store.storeIdentity(),
+      loadAuthority: () => store.loadAuthority(),
+      readReceipt: (id) => store.readReceipt(id),
+      scanCommitted: (cursor, limit) => store.scanCommitted(cursor, limit),
+      commitAuthority: async (request) => {
+        commitCount++;
+        const committed = await store.commitAuthority(request);
+        assert.equal(committed.status, 'applied');
+        return {status: 'ambiguous', reason_code: 'synthetic_response_loss',
+          reason: 'isolated rehearsal discarded the commit response'};
+      },
+    };
+    const archiveRequest = {
       goal_id: request.goal_id,
       role: request.role,
       max_active_done: request.max_active_done,
       operation_id: `${name}-three-arm-archive`,
       dry_run: false,
       now: new Date('2026-01-01T00:00:00Z'),
-    });
+    };
+    const archived = await executeCoordinationTodoArchiveCompleted(responseLostStore, archiveRequest);
+    assert.equal(commitCount, 1);
     assert.equal(
       archived.status,
-      'applied',
+      'recovered',
       `${name} archive failed (${String(archived.reason_code ?? 'unknown')}:` +
         `${archiveFailureCategory(archived)})`,
     );
@@ -135,6 +153,10 @@ try {
     assert.equal(loaded.status, 'loaded', `${name} readback failed`);
     const receipt = await store.readReceipt(`${name}-three-arm-archive`);
     assert.equal(receipt.status, 'found', `${name} receipt missing`);
+    const replay = await executeCoordinationTodoArchiveCompleted(store, archiveRequest);
+    assert.equal(replay.status, 'replayed');
+    assert.equal(replay.cursor, archived.cursor);
+    assert.deepEqual(await store.loadAuthority(), loaded);
     results[name] = {archived, head: loaded.head};
   }
 
@@ -275,10 +297,10 @@ def _node_script(repository: Path) -> str:
             ),
         )
         .replace(
-            "__TERMINAL__",
+            "__ARCHIVE__",
             _module_uri(
                 repository,
-                "loopx/control_plane/coordination/todo_terminal_lifecycle.ts",
+                "loopx/control_plane/coordination/todo_archive.ts",
             ),
         )
         .replace(

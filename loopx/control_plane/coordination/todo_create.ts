@@ -1,6 +1,6 @@
 import type { JsonObject } from "../effect_program.ts";
-import {projectionDelivery} from "../todos/projection_delivery.ts";
-import type { AuthorityStore, AuthorityStoreReceiptResult } from "./authority_store.ts";
+import {CoordinationCommandReceipt} from "./command_receipt.ts";
+import type { AuthorityStore } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
   canonicalAuthorityObject,
@@ -49,38 +49,16 @@ function failure(code: string, reason: string, detail: JsonObject = {}): Coordin
   };
 }
 
-function replayCreate(
-  receipt: AuthorityStoreReceiptResult,
-  input: CoordinationTodoCreateInput,
-  requestSha: string,
-  status: "replayed" | "applied" | "recovered",
-): CoordinationTodoCreateResult | null {
-  if (receipt.status === "missing") return null;
-  if (receipt.status !== "found") {
-    return {schema_version: COORDINATION_TODO_CREATE_RESULT_SCHEMA, ...receipt};
-  }
-  const original = receipt.receipts[0];
-  if (receipt.receipts.length !== 1 ||
-      original?.schema_version !== COORDINATION_TODO_CREATE_RECEIPT_SCHEMA ||
-      original.operation_id !== input.operation_id || original.goal_id !== input.goal_id ||
-      original.request_sha256 !== requestSha || original.todo_id !== input.todo.todo_id) {
-    return failure(
-      "coordination_operation_identity_mismatch",
-      "operation id already names a different Todo create request",
-    );
-  }
-  return {
-    schema_version: COORDINATION_TODO_CREATE_RESULT_SCHEMA,
-    status,
-    changed: status !== "replayed",
-    todo_id: original.todo_id,
-    todo: original.todo,
-    provider_revision: receipt.provider_revision,
-    cursor: receipt.cursor,
-    original_receipt: original,
-    projection_delivery: projectionDelivery(true),
-    projection_source: "committed_authority_journal",
-  };
+function createReceipt(input: CoordinationTodoCreateInput, requestSha: string) {
+  return new CoordinationCommandReceipt({result_schema: COORDINATION_TODO_CREATE_RESULT_SCHEMA,
+    identity: {schema_version: COORDINATION_TODO_CREATE_RECEIPT_SCHEMA,
+      operation_id: input.operation_id, goal_id: input.goal_id, todo_id: String(input.todo.todo_id),
+      request_sha256: requestSha}, failure,
+    decode(original) {
+      const todo = canonicalAuthorityObject(original.todo, "created Todo receipt");
+      if (todo.todo_id !== input.todo.todo_id) throw new AuthorityStoreProtocolError("created Todo receipt identity mismatch");
+      return {fields: {todo_id: original.todo_id, todo, original_receipt: original}, changed: true};
+    }});
 }
 
 function normalizeCreateInput(rawInput: CoordinationTodoCreateInput): CoordinationTodoCreateInput {
@@ -210,15 +188,7 @@ async function commitCreate(
     todo_id: todoId,
     todo: created,
   }];
-  const committed = await store.commitAuthority(commit);
-  const readback = replayCreate(
-    await store.readReceipt(input.operation_id), input, requestSha,
-    committed.status === "applied" ? "applied" : "recovered",
-  );
-  if (readback !== null) return readback;
-  return committed.status === "applied"
-    ? failure("coordination_commit_readback_mismatch", "applied create lacks its durable receipt")
-    : {schema_version: COORDINATION_TODO_CREATE_RESULT_SCHEMA, ...committed, changed: false};
+  return createReceipt(input, requestSha).commit(store, commit);
 }
 
 /** Create one canonical work item through the provider transaction and outbox. */
@@ -242,9 +212,7 @@ export async function executeCoordinationTodoCreate(
     actor_agent_id: input.actor_agent_id,
     dry_run: input.dry_run,
   });
-  const existing = replayCreate(
-    await store.readReceipt(input.operation_id), input, requestSha, "replayed",
-  );
+  const existing = await createReceipt(input, requestSha).read(store);
   if (existing !== null) return existing;
 
   const head = await store.loadAuthority();
