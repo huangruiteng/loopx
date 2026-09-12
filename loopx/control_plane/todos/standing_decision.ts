@@ -4,7 +4,7 @@ import type {JsonObject} from "../effect_program.ts";
 import {requireJsonObject} from "../runtime_decode.ts";
 import {parseTodoTimestampMicros} from "../runtime_timestamp.ts";
 import {authorityUnicodeCompare} from "../coordination/authority_store_codec.ts";
-import {TODO_DOMAIN_ITEM_SCHEMA} from "../coordination/coordination_state_contract.ts";
+import {todoPresentationMetadata} from "../coordination/todo_presentation.ts";
 
 export const STANDING_DECISION_REQUEST_SCHEMA = "standing_decision_projection_request_v0";
 const SCOPE_KINDS = new Set(["private_read", "write_scope", "resource", "production", "public_claim", "direction", "other"]);
@@ -66,11 +66,15 @@ function latest(candidates: readonly Candidate[], legacySourceOrder: boolean): C
     if (legacySourceOrder) return candidates.at(-1)!;
     // v0 records can retain actual source positions; never use synthetic
     // display indexes assigned to native records by a downstream adapter.
-    const indexed = candidates.every(c => c.item.schema_version !== TODO_DOMAIN_ITEM_SCHEMA &&
-      Number.isSafeInteger(c.item.index) && Number(c.item.index) > 0 && text(c.item.source_section));
-    if (indexed && new Set(candidates.map(c => c.item.source_section)).size === 1 &&
-        new Set(candidates.map(c => c.item.index)).size === candidates.length) {
-      return [...candidates].sort((a, b) => Number(a.item.index) - Number(b.item.index)).at(-1)!;
+    const presentation = candidates.map(c => todoPresentationMetadata(c.item));
+    const indexed = presentation.every(metadata =>
+      (metadata.order_source === "source_index" || metadata.order_source === "legacy_index") &&
+      metadata.display_order !== null);
+    if (indexed && new Set(presentation.map(metadata => metadata.display_section)).size === 1 &&
+        new Set(presentation.map(metadata => metadata.display_order)).size === candidates.length) {
+      return [...candidates].sort((a, b) =>
+        todoPresentationMetadata(a.item).display_order! -
+        todoPresentationMetadata(b.item).display_order!).at(-1)!;
     }
   }
   // Missing, invalid or mixed chronology cannot silently choose approval.

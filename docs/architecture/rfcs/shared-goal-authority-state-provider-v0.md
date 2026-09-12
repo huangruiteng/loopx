@@ -3,7 +3,7 @@
 - Status: Draft, under maintainer review
 - Initially proposed by: NoKV Lab
 - Widened by: LoopX maintainers
-- Date: 2026-08-05; revised 2026-09-07
+- Date: 2026-08-05; revised 2026-09-12
 - Scope: one provider-neutral LoopX authority contract with built-in file,
   optional NoKV, and optional PostgreSQL provider profiles, complementing
   [`host-integration-surface-v0`](../../reference/protocols/host-integration-surface-v0.md)
@@ -2597,6 +2597,32 @@ goals retain their existing provider transactions and unsupported-field fences.
 The planner neither reads a provider nor grants a lease, CAS receipt, or write
 permission. This checkpoint closes one rule owner, not the remaining mutation
 inventory or local-store/promotion qualification.
+
+### Cross-RFC semantic and presentation conformance checkpoint (2026-09-12)
+
+The TypeScript migration and this provider RFC now share one explicit Todo
+semantic boundary. Python production callers import `todos/todo_semantics.py`
+directly; `todos/projection.py` is retained only as an import-compatible facade
+for external integrations. This is an ownership cleanup, not a second kernel.
+The typed TypeScript `projection_delivery` union also owns the distinction
+between mutation intent (`pending`/`not_required`) and provider readback
+(`delivered`/`current`); unknown states fail closed before acknowledgement.
+
+Presentation is canonical at the projection layer, not in the domain record.
+`source_section` and `index` are the v0 wire shape's display coordinates, while
+native records derive the same display section from role/archive state and use
+timestamp plus Todo identity as a deterministic fallback instead of a fake
+persistent index. The normalized presentation metadata is therefore one
+contract even when the wire shapes differ. The same rule is exercised by the
+production-scale fixture and by File, SQLite, and NoKV conformance arms.
+Provider revision tokens remain provider-owned and are compared only for the
+provider-specific replay rules; they are not normalized into Todo semantics.
+
+This checkpoint changes read/ordering and compatibility-adapter semantics only:
+it does not promote a provider, add a writer, alter the transaction decoder
+delivered by #4280, or make Markdown a second authority. The shared RFC still
+owns durable truth, recovery, cutover, and projection delivery; the TS RFC owns
+business-rule ownership and caller deletion.
 
 ### Next delivery and parallel provider work
 

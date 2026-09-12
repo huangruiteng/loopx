@@ -3,7 +3,7 @@
 - Status: Accepted, transaction-payoff phase in progress
 - Proposed by: LoopX maintainers
 - Date: 2026-08-15
-- Last revised: 2026-09-10
+- Last revised: 2026-09-12
 - Scope: an incremental, replacement-first migration of the LoopX control-plane
   core from Python to TypeScript without maintaining two semantic
   implementations
@@ -192,10 +192,55 @@ this RFC follows the
 It declares fixture impact, exercises every affected provider arm, and keeps
 the read-only three-arm rehearsal as a separate promotion gate.
 
+### Provider-neutral projection conformance checkpoint (2026-09-12)
+
+The conformance boundary now has one projection-fixture builder for both the
+legacy v0 and native Todo record shapes. It owns deterministic Unicode ordering,
+read-model digest/field construction, and the compatibility-only conversion;
+provider tests no longer hand-rebuild those fields. The scale envelope declares
+status ordering explicitly and validates its counts, so changing JSON key order
+cannot silently change which Todo receives a lease, successor, or archive role.
+
+The File, SQLite, and NoKV suites now execute the same production-scale terminal
+cases in both record shapes. A separate parity harness replays one seed,
+observation, and lease sequence through all three isolated providers and compares
+the logical head plus committed event/projection/receipt trace while ignoring
+provider-specific revision tokens. This is conformance evidence, not a new
+authority writer, provider default, or promotion claim; PostgreSQL remains under
+its existing real-service qualification gate.
+
 The old v0 consumer manifest remains readable and retains all existing fields.
 Default Markdown capture still emits v0; this PR neither rewrites stored heads
 nor auto-promotes a goal. The schema split is not permission to drop v0
 provenance or change legacy ordering during a later migration.
+
+### Canonical Todo presentation checkpoint (2026-09-12)
+
+The authority boundary now treats presentation as a first-class projection
+contract rather than naming it `legacy_projection`. A shared TS presentation
+normalizer maps the v0 wire shape's `source_section`/`index` to
+`display_section`/`display_order`, while native records derive their display
+section from domain role/archive state and never receive a fake persisted
+index. The normalized presentation contract is shared; the wire coordinate is
+not a second Todo state machine.
+
+Todo creation, terminal successor materialization, projection validation,
+standing-decision ordering, and archive ordering all use the same presentation
+owner. The canonical domain validator is shared by both wire shapes, and the
+v0 record is produced by an adapter from a validated domain record. This
+unifies the semantic owner without rewriting v0 heads or receipts.
+
+Python read callers now import the semantic owner directly; the compatibility
+facade is no longer an internal dependency. Python presentation sorting keeps
+source `index` order when it is present and uses completion/update time plus
+Todo identity for native records, so the compatibility shape cannot leak into
+business eligibility or lifecycle decisions.
+
+The next migration may persist an optional canonical `presentation` object, but
+only after proving whether an imported section is provenance or current display
+intent and after qualifying a stable display-order policy. Until then, native
+display positions remain derived at the renderer boundary and must not affect
+authority lifecycle decisions.
 
 ### Long-goal persistence is part of the migration payoff
 

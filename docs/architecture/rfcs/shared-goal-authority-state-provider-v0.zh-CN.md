@@ -3,7 +3,7 @@
 - 状态：Draft，正在接受 maintainer review
 - 最初提案方：NoKV Lab
 - 扩展修订方：LoopX maintainer
-- 日期：2026-08-05；修订于 2026-09-07
+- 日期：2026-08-05；修订于 2026-09-12
 - 范围：一个 provider-neutral 的 LoopX 权威合同，支持内置 file、可选 NoKV
   与可选 PostgreSQL provider profile，用来补充
   [`host-integration-surface-v0`](../../reference/protocols/host-integration-surface-v0.md)
@@ -2058,6 +2058,28 @@ Legacy lifecycle 的字段组装现在调用唯一 TS field planner，详见
 unsupported-field fence。planner 不读取 provider，也不授予 lease、CAS receipt 或
 写权限。该检查点闭合的是一个规则 owner，不是剩余 mutation inventory 或本地
 store／promotion 资格化。
+
+### 跨 RFC 的语义与展示 conformance 检查点（2026-09-12）
+
+TypeScript 重构 RFC 与本 provider RFC 现在共享一个显式的 Todo 语义边界。
+Python 生产 caller 直接从 `todos/todo_semantics.py` 导入；`todos/projection.py`
+只作为外部集成所需的 import 兼容 facade 保留，不再是第二个 kernel。这是 owner
+收敛，不是新增一套规则。TypeScript 的 typed `projection_delivery` union 也明确区分
+mutation intent（`pending`/`not_required`）与 provider readback（`delivered`/`current`）；
+未知状态在 acknowledgement 之前 fail closed。
+
+展示语义属于 projection 层，而不是 domain record。`source_section` 与 `index` 是 v0
+wire shape 的展示坐标；native record 根据 role/archive state 推导相同的展示 section，
+并以时间戳和 Todo identity 做确定性回退，不制造假的持久 index。因此即使 wire shape
+不同，normalized presentation metadata 仍只有一份 contract。同一规则由
+production-scale fixture 以及 File、SQLite、NoKV conformance arm 共同覆盖。Provider
+自己的 revision token 仍由各自 provider 管理，只用于 provider-specific replay 规则，
+不被归一成 Todo 语义。
+
+本检查点只改变 read/ordering 与兼容 adapter 语义：不晋升 provider、不增加 writer，
+不改动 #4280 交付的 transaction decoder，也不把 Markdown 变成第二权威。共享 RFC
+继续负责 durable truth、恢复、cutover 与 projection delivery；TS RFC 负责业务规则
+owner 与 caller 删除。
 
 ### 下一步交付与并行 provider 工作
 

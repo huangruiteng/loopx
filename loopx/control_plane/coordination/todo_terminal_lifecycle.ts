@@ -14,12 +14,12 @@ import {
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
 import {
+  TODO_CANONICAL_READ_RECORD_SCHEMA,
   TODO_DOMAIN_ITEM_SCHEMA,
   TODO_DOMAIN_READ_RECORD_SCHEMA,
-  TODO_ITEM_SCHEMA,
-  canonicalCoordinationTodoRecord,
   canonicalTodoDomainRecord,
 } from "./coordination_state_contract.ts";
+import {canonicalTodoRecord, materializeTodoRecordForSchema} from "./todo_presentation.ts";
 import {
   indexCoordinationProjection,
   prepareCoordinationProjectionCommit,
@@ -618,11 +618,13 @@ function successorCandidate(
     delete candidate.claimed_by;
   }
   const created = canonicalTodoDomainRecord(candidate, "terminal successor");
-  return domainReadModel ? created : canonicalCoordinationTodoRecord({
-    ...created,
-    schema_version: TODO_ITEM_SCHEMA,
-    source_section: created.role === "agent" ? "Agent Todo" : "User Todo",
-  }, "terminal successor compatibility record");
+  return domainReadModel
+    ? created
+    : materializeTodoRecordForSchema(
+      created,
+      TODO_CANONICAL_READ_RECORD_SCHEMA,
+      "terminal successor compatibility record",
+    );
 }
 
 function generatedSuccessorId(
@@ -705,11 +707,7 @@ function terminalTarget(
     delete next.claimed_by;
     clearFields.push("claimed_by");
   }
-  if (todo.schema_version === TODO_DOMAIN_ITEM_SCHEMA) {
-    canonicalTodoDomainRecord(next, "terminal Todo");
-  } else {
-    canonicalCoordinationTodoRecord(next, "terminal Todo");
-  }
+  canonicalTodoRecord(next, "terminal Todo");
   return {todo: next, clear_fields: clearFields};
 }
 
