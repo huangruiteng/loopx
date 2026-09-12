@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import loopx.doctor as doctor
 from loopx import __version__
 from loopx.doctor import (
     REQUIRED_INSTALLED_SKILL_PHRASES,
@@ -324,6 +325,31 @@ def test_external_skill_fallback_requires_every_project_skill() -> None:
     assert external_skill_set_ready(
         skills, ("loopx-project", "loopx-pr-review")
     ) is False
+
+
+def test_collect_doctor_accepts_external_fixed_skill_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    _write_required_skills(home / ".agents" / "skills")
+    command = tmp_path / "bin" / "loopx"
+    command.parent.mkdir(parents=True)
+    command.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("CODEX_HOME", str(home / ".codex"))
+    monkeypatch.setattr(doctor, "DEFAULT_RUNTIME_ROOT", tmp_path / "runtime")
+    monkeypatch.setattr(
+        doctor,
+        "resolve_command_path",
+        lambda name: command if name == "loopx" else None,
+    )
+
+    payload = doctor.collect_doctor()
+
+    assert payload["skill_delivery"]["status"] == "ready"
+    assert payload["skill_delivery"]["owner"] == "external_skill_manager"
+    assert payload["install_freshness"]["externally_managed_skills"] is True
 
 
 def test_duplicate_skill_routes_fail_closed(tmp_path: Path) -> None:
