@@ -109,15 +109,19 @@ def handle_turn_command(
             registry_path=registry_path,
             runtime_root_override=runtime_root_arg,
         )
-        turn_start_hook_dispatch = dispatch_goal_lark_turn_start_hooks(
-            registry_path=registry_path,
-            runtime_root_arg=runtime_root,
-            goal_id=args.goal_id,
-            agent_id=args.agent_id,
-        )
-        turn_start_hook_dispatch = extend_cadence_turn_start_dispatch(
-            turn_start_hook_dispatch, registry_path=registry_path, runtime_root=runtime_root,
-            goal_id=args.goal_id, agent_id=args.agent_id)
+        # Planning and dry-run execution inspect existing admitted intents.
+        # Only an executing wake may sync inboxes or reserve a calendar window.
+        turn_start_hook_dispatch = {}
+        if args.turn_command == "run-once" and args.execute:
+            turn_start_hook_dispatch = dispatch_goal_lark_turn_start_hooks(
+                registry_path=registry_path,
+                runtime_root_arg=runtime_root,
+                goal_id=args.goal_id,
+                agent_id=args.agent_id,
+            )
+            turn_start_hook_dispatch = extend_cadence_turn_start_dispatch(
+                turn_start_hook_dispatch, registry_path=registry_path, runtime_root=runtime_root,
+                goal_id=args.goal_id, agent_id=args.agent_id)
         operator_inbox_urgency_projector = build_lark_operator_inbox_urgency_projector(
             runtime_root_arg=runtime_root,
         )

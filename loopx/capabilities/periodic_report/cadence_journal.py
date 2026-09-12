@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -94,6 +94,7 @@ def read_cadence_journal(*, runtime_root: Path, goal_id: str) -> dict[str, Any] 
 def admit_cadence_window(
     *, runtime_root: Path, goal_id: str, agent_id: str,
     subscription: Mapping[str, Any], now: datetime,
+    subscription_resolver: Callable[[], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """Freeze the latest due interval, preserving unfinished prepared work.
 
@@ -108,6 +109,25 @@ def admit_cadence_window(
     if not _ID.fullmatch(agent_id):
         raise ValueError("cadence Agent identity is invalid")
     path = cadence_journal_path(runtime_root, goal_id)
+    if subscription_resolver is None and (
+        subscription.get("enabled") is not True or subscription.get("schedule") is None
+    ):
+        return {"status": "disabled", "mutated": False, "window": None}
+    with exclusive_file_lock(path, policy=LockAcquisitionPolicy.MUTATION,
+                             agent_id=agent_id, operation="periodic_report_cadence_admission"):
+        # Live callers resolve current registration/configuration only after
+        # acquiring admission ownership; a constructed hook is not authority.
+        current = subscription_resolver() if subscription_resolver else subscription
+        if current is None:
+            return {"status": "disabled", "mutated": False, "window": None}
+        return _admit_cadence_window_locked(runtime_root=runtime_root, goal_id=goal_id,
+            agent_id=agent_id, subscription=current, now=now, path=path)
+
+
+def _admit_cadence_window_locked(
+    *, runtime_root: Path, goal_id: str, agent_id: str,
+    subscription: Mapping[str, Any], now: datetime, path: Path,
+) -> dict[str, Any]:
     if subscription.get("enabled") is not True or subscription.get("schedule") is None:
         return {"status": "disabled", "mutated": False, "window": None}
     calculated = report_cadence_window(subscription["schedule"], now=now)
@@ -130,55 +150,53 @@ def admit_cadence_window(
     }
     proposed["window_id"] = "cadence_" + _digest(proposed).split(":")[1]
     validate_cadence_window(proposed)
-    with exclusive_file_lock(path, policy=LockAcquisitionPolicy.MUTATION,
-                             agent_id=agent_id, operation="periodic_report_cadence_admission"):
-        previous = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
-        mutated = False
-        supersedes = None
-        if previous is not None:
-            old = previous["window"]
-            if previous["publication"] is None:
-                # Import lazily to keep the pure calendar evaluator independent
-                # of subscription and generation composition.
-                from .incremental import read_periodic_report_publication_cursor
-                from .post_writeback_hook import evaluate_periodic_report_trigger_evaluation_intent
-                cursor = read_periodic_report_publication_cursor(runtime_root=runtime_root, goal_id=goal_id, agent_id=old["agent_id"])
-                trigger = evaluate_periodic_report_trigger_evaluation_intent(cadence_intent(old))
-                if cursor and trigger["selected_trigger_id"] in cursor["covered_trigger_ids"]:
-                    previous["publication"] = {key: cursor[key] for key in (
-                        "cursor_id", "publication_id", "delivered_at")}
-                    atomic_write_json(path, previous)
-                    mutated = True
+    previous = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
+    mutated = False
+    supersedes = None
+    if previous is not None:
+        old = previous["window"]
+        if previous["publication"] is None:
+            # Import lazily to keep the pure calendar evaluator independent
+            # of subscription and generation composition.
+            from .incremental import read_periodic_report_publication_cursor
+            from .post_writeback_hook import evaluate_periodic_report_trigger_evaluation_intent
+            cursor = read_periodic_report_publication_cursor(runtime_root=runtime_root, goal_id=goal_id, agent_id=old["agent_id"])
+            trigger = evaluate_periodic_report_trigger_evaluation_intent(cadence_intent(old))
+            if cursor and trigger["selected_trigger_id"] in cursor["covered_trigger_ids"]:
+                previous["publication"] = {key: cursor[key] for key in (
+                    "cursor_id", "publication_id", "delivered_at")}
+                atomic_write_json(path, previous)
+                mutated = True
+            else:
+                if old["subscription_revision"] == proposed["subscription_revision"]:
+                    return {"status": "pending", "mutated": False, "window": old}
+                from .pending_intent import _attempt_dir
+                # Admission and consumption share this lock. Once any
+                # editorial/generation artifact exists, preserve the old
+                # window rather than silently replacing its authority.
+                if _attempt_dir(runtime_root, goal_id, cadence_intent(old)).exists():
+                    return {"status": "configuration_changed", "mutated": False, "window": old}
+                archive = path.parent / "superseded-cadence" / (old["window_id"] + ".json")
+                if archive.exists():
+                    if json.loads(archive.read_text(encoding="utf-8")) != previous:
+                        raise ValueError("cadence predecessor archive conflicts with active window")
                 else:
-                    if old["subscription_revision"] == proposed["subscription_revision"]:
-                        return {"status": "pending", "mutated": False, "window": old}
-                    from .pending_intent import _attempt_dir
-                    # Admission and consumption share this lock. Once any
-                    # editorial/generation artifact exists, preserve the old
-                    # window rather than silently replacing its authority.
-                    if _attempt_dir(runtime_root, goal_id, cadence_intent(old)).exists():
-                        return {"status": "configuration_changed", "mutated": False, "window": old}
-                    archive = path.parent / "superseded-cadence" / (old["window_id"] + ".json")
-                    if archive.exists():
-                        if json.loads(archive.read_text(encoding="utf-8")) != previous:
-                            raise ValueError("cadence predecessor archive conflicts with active window")
-                    else:
-                        atomic_write_json(archive, previous)
-                    # Archive first. A crash before the replacement is written
-                    # can safely repeat admission without creating two reports.
-                    supersedes = old["window_id"]
-            # A route/profile edit is not a second report for the same due
-            # boundary. Clock rollback likewise cannot replay a delivered one.
-            if supersedes is None and old["due_at"] >= proposed["due_at"]:
-                return {"status": "already_published", "mutated": mutated, "window": old}
-        entry = {
-            "schema_version": JOURNAL_SCHEMA, "goal_id": goal_id,
-            "window": proposed, "admitted_at": now.astimezone(timezone.utc).isoformat(),
-            "publication": None,
-            **({"supersedes": supersedes} if supersedes else {}),
-        }
-        atomic_write_json(path, entry)
-        return {"status": "pending", "mutated": True, "window": proposed}
+                    atomic_write_json(archive, previous)
+                # Archive first. A crash before the replacement is written
+                # can safely repeat admission without creating two reports.
+                supersedes = old["window_id"]
+        # A route/profile edit is not a second report for the same due
+        # boundary. Clock rollback likewise cannot replay a delivered one.
+        if supersedes is None and old["due_at"] >= proposed["due_at"]:
+            return {"status": "already_published", "mutated": mutated, "window": old}
+    entry = {
+        "schema_version": JOURNAL_SCHEMA, "goal_id": goal_id,
+        "window": proposed, "admitted_at": now.astimezone(timezone.utc).isoformat(),
+        "publication": None,
+        **({"supersedes": supersedes} if supersedes else {}),
+    }
+    atomic_write_json(path, entry)
+    return {"status": "pending", "mutated": True, "window": proposed}
 
 
 def cadence_intent(window: Mapping[str, Any]) -> dict[str, Any]:

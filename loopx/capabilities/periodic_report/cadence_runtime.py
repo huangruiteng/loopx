@@ -44,17 +44,39 @@ def periodic_report_cadence_hooks(
         return ()
 
     def produce():
+        current_reporters = []
+
+        def resolve_current_subscription():
+            nonlocal current_reporters
+            current_goal = find_registry_goal(read_json(registry_path), goal_id)
+            if not isinstance(current_goal, dict) or current_goal.get("status") in {"stopped", "paused", "archived"}:
+                return None
+            current_reporters = registered_agent_ids_for_goal(current_goal)
+            if not current_reporters or agent_id not in current_reporters:
+                return None
+            current_journal = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
+            reporter = (current_journal["window"]["agent_id"]
+                if current_journal and current_journal["publication"] is None else current_reporters[0])
+            selected = select_goal_periodic_report_executor(
+                reporting_agent_id=reporter, eligible_agent_ids=current_reporters)
+            if selected["selected_agent_id"] != agent_id:
+                return None
+            return resolve_goal_periodic_report_subscription(
+                current_goal, read_periodic_report_machine_defaults(runtime_root))
+
         admission = admit_cadence_window(runtime_root=runtime_root, goal_id=goal_id,
-            agent_id=agent_id, subscription=subscription, now=now or datetime.now(timezone.utc))
+            agent_id=agent_id, subscription=subscription, now=now or datetime.now(timezone.utc),
+            subscription_resolver=resolve_current_subscription)
+        window = admission["window"]
         error_code = (
-            "cadence_pending_reporter_unavailable" if admission["window"]["agent_id"] not in reporters
+            "cadence_pending_reporter_unavailable" if window and window["agent_id"] not in current_reporters
             else "cadence_pending_configuration_changed"
             if admission["status"] == "configuration_changed" else None
         )
         conflict = error_code is not None
         from .pending_intent import pending_periodic_report_intents
-        actionable = not conflict and any(
-            intent["source_receipt_id"] == admission["window"]["window_id"]
+        actionable = bool(window) and not conflict and any(
+            intent["source_receipt_id"] == window["window_id"]
             for intent in pending_periodic_report_intents(registry_path=registry_path,
                 runtime_root=runtime_root, goal_id=goal_id, agent_id=agent_id)
         )

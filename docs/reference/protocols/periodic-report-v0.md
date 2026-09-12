@@ -74,6 +74,8 @@ A Goal override is a complete configuration: clearing its calendar does not
 silently inherit the machine calendar. **Restore machine defaults** removes
 the whole Goal override. Disabling the subscription prevents automatic
 generation and delivery, including when a calendar remains saved.
+Stopped, paused and archived Goals likewise have no active standing delivery
+subscription; an already-admitted calendar cannot reactivate their work.
 
 The first eligible wake freezes the latest completed calendar interval. An
 unfinished interval remains unchanged across restarts and later wakeups; after
@@ -88,6 +90,8 @@ supersede an unprepared window: admission archives the predecessor before
 replacing it, under the same lock used by editorial preparation. Restarting
 between those writes repeats the replacement safely; it does not record a
 publication. The replacement uses the current subscription and elected reporter.
+Admission resolves registration, lifecycle and subscription again under its
+journal lock; a previously constructed hook is not current authority.
 
 Once any editorial or generation artifact exists, a subscription change or
 reporter removal produces an explicit unavailable state and preserves the old
@@ -96,6 +100,12 @@ removal alone also preserves an unprepared window until the subscription is
 updated or the reporter restored. The runtime never silently retargets prepared
 work. Invalid journal or conflicting predecessor contents fail closed rather
 than starting a second report.
+
+Explicit requests retain first priority, followed by validated stage reports,
+then automatic calendar work. A calendar waiting for authored text cannot hide
+an existing request or stage intent. A corrupt calendar fails its own hook and
+does not suppress other valid report intents; when none remain, the consumer
+surfaces the calendar error rather than claiming an empty healthy queue.
 
 Calendar source coverage currently includes readable facts for the reporting
 Agent, with completed facts restricted to the frozen interval. Reports must
@@ -111,10 +121,13 @@ CLI includes a command/argv handoff bound to the invoked registry and runtime.
 The command is part of the signed action projection and cannot be replaced by
 an older replan command during envelope compaction.
 
-Live preflight can journal the first calendar admission even for `turn plan`.
-The CLI reports `effects.state_written: true` and `boundary.read_only: false`
-when a turn-start hook made that private-state write. The pure plan builder
-remains effect-free; admission is not generation, delivery, or quota spend.
+`turn plan` and `turn run-once` without `--execute` inspect already-admitted
+intents without dispatching mutating inbox/calendar hooks. They do not reserve
+a new due window. An executing wake (`quota should-run` or
+`turn run-once --execute`) admits it and recomputes the live decision before
+host work. When that preflight writes private state, its plan reports
+`effects.state_written: true` and `boundary.read_only: false`; admission is not
+generation, delivery, or quota spend.
 
 This is a capability adapter handoff, not a completed report or a user approval
 gate. Even `turn run-once --execute` does not execute this command as a shell

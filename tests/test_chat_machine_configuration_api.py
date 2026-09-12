@@ -241,6 +241,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "profile_preset",
         "route_ref",
         "timezone",
+        "schedule",
     ]
     effective = capability["effective_configuration"]
     assert effective["source"] == "capability_default"

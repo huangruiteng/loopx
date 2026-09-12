@@ -256,7 +256,7 @@ def _active_delivery_subscription(
 
     registry = read_json(registry_path)
     goal = find_registry_goal(registry, goal_id)
-    if not isinstance(goal, Mapping):
+    if not isinstance(goal, Mapping) or goal.get("status") in {"stopped", "paused", "archived"}:
         return None
     subscription = resolve_goal_periodic_report_subscription(
         goal,
@@ -363,20 +363,6 @@ def pending_periodic_report_intents(
     if not _IDENTITY_RE.fullmatch(goal_id) or not _IDENTITY_RE.fullmatch(agent_id):
         return []
     pending: list[dict[str, Any]] = []
-    cadence = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
-    if cadence is not None and cadence["publication"] is None and cadence["window"]["agent_id"] == agent_id:
-        subscription = _active_delivery_subscription(registry_path=registry_path,
-            runtime_root=runtime_root, goal_id=goal_id)
-        if subscription and subscription.get("schedule") is not None and (
-            subscription["effective_revision"] == cadence["window"]["subscription_revision"]
-        ):
-            intent = cadence_intent(cadence["window"])
-            actionable, _revision = _next_attempt_revision(registry_path=registry_path,
-                runtime_root=runtime_root, goal_id=goal_id, agent_id=agent_id, intent=intent)
-            # A delivery-ready window already has a delivery Todo. Do not
-            # regenerate it or project a consume command that masks that Todo.
-            if actionable:
-                pending.append(intent)
     for intent in periodic_report_request_intents(
         runtime_root=runtime_root,
         goal_id=goal_id,
@@ -430,6 +416,28 @@ def pending_periodic_report_intents(
             )
             if actionable:
                 pending.append(sidecar_intent)
+    # Explicit requests and validated stage reports precede automatic calendars.
+    subscription = _active_delivery_subscription(registry_path=registry_path,
+        runtime_root=runtime_root, goal_id=goal_id)
+    cadence = None
+    if subscription and subscription.get("schedule") is not None:
+        try:
+            cadence = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
+        except (OSError, ValueError):
+            if not pending:
+                raise
+            # Turn-start still reports the failure; other valid work can run.
+    if cadence is not None and cadence["publication"] is None and cadence["window"]["agent_id"] == agent_id:
+        if subscription and subscription.get("schedule") is not None and (
+            subscription["effective_revision"] == cadence["window"]["subscription_revision"]
+        ):
+            intent = cadence_intent(cadence["window"])
+            actionable, _revision = _next_attempt_revision(registry_path=registry_path,
+                runtime_root=runtime_root, goal_id=goal_id, agent_id=agent_id, intent=intent)
+            # A delivery-ready window already has a delivery Todo. Do not
+            # regenerate it or project a consume command that masks that Todo.
+            if actionable:
+                pending.append(intent)
     deduplicated: dict[str, dict[str, Any]] = {}
     for intent in pending:
         deduplicated.setdefault(str(intent.get("idempotency_key") or ""), intent)
