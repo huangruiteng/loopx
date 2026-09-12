@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -52,6 +53,27 @@ def assert_pwa_bundle(label: str, bundle: Path, manifest_href: str) -> None:
     )
 
 
+def assert_bounded_chat_assets() -> None:
+    retention = json.loads(
+        (CHAT_BUNDLE / "asset-retention.json").read_text(encoding="utf-8")
+    )
+    assert retention["schema_version"] == "loopx_chat_asset_retention_v1"
+    generations = retention["generations"]
+    assert 1 <= len(generations) <= 2, generations
+    retained = {asset for generation in generations for asset in generation}
+    referenced = set(
+        re.findall(
+            r'(?:src|href)="/chat/(assets/[^"]+)"',
+            (CHAT_BUNDLE / "index.html").read_text(encoding="utf-8"),
+        )
+    )
+    assert referenced <= set(generations[0]), (referenced, generations[0])
+    assert retained == {
+        f"assets/{path.name}" for path in (CHAT_BUNDLE / "assets").iterdir()
+    }
+    assert all((CHAT_BUNDLE / asset).is_file() for asset in retained)
+
+
 def main() -> int:
     # The full-public suite is Python-only and starts from a clean checkout, so
     # the ignored Vite output is not guaranteed to exist. Always validate the
@@ -66,6 +88,7 @@ def main() -> int:
     if ROOT_BUNDLE.is_dir():
         assert_pwa_bundle("root dashboard bundle", ROOT_BUNDLE, "manifest.webmanifest")
     assert_pwa_bundle("chat dashboard", CHAT_BUNDLE, "/chat/manifest.webmanifest")
+    assert_bounded_chat_assets()
     print("dashboard-pwa-bundle-smoke ok")
     return 0
 
