@@ -1076,6 +1076,21 @@ def process_lark_goal_topic_event(
             raise
         failure_code, failure_text = _manager_failure_reply(exc)
         answer_result = {"response_text": failure_text, "effect_receipt": exc.effect_receipt}
+    except Exception as exc:
+        # A synchronous manager route must leave a user-visible, bounded
+        # receipt even when the worker raises an untyped exception.  The
+        # exception itself may contain private provider details, so only its
+        # type is logged and the public reply uses the generic failure label.
+        if route.get("conversation_kind") != "manager":
+            raise
+        logging.getLogger(__name__).warning(
+            "Lark manager answer failed with %s", type(exc).__name__
+        )
+        failure_code, failure_text = _manager_failure_reply(exc)
+        answer_result = {
+            "response_text": failure_text,
+            "effect_receipt": _session_turn_effect(route),
+        }
     connector = route.get("connector")
     connector = connector if isinstance(connector, Mapping) else None
     effect_receipt: Mapping[str, Any] | None = None
@@ -1088,12 +1103,23 @@ def process_lark_goal_topic_event(
     else:
         reply_text = str(answer_result or "").strip()
     if not reply_text:
-        return {
-            "ok": False,
-            "status": "answer_empty",
-            "goal_id": route["goal_id"],
-            "inbox_config_ref": config_ref,
-        }
+        if route.get("conversation_kind") == "manager":
+            # Empty model output is a terminal, non-replayable failure for a
+            # manager request.  Reply through the same inbox path so the
+            # source is ACKed only after provider verification.
+            failure_code = "answer_empty"
+            reply_text = (
+                "已收到你的消息，但本次没有生成可发送的完整答复。"
+                "请求不会自动重放；请在 LoopX 管家会话查看状态或重新发起。"
+            )
+            effect_receipt = effect_receipt or _session_turn_effect(route)
+        else:
+            return {
+                "ok": False,
+                "status": "answer_empty",
+                "goal_id": route["goal_id"],
+                "inbox_config_ref": config_ref,
+            }
     if connector is not None:
         effect_decision = decide_external_event_ack(
             event_id=canonical["event_id"],
