@@ -390,6 +390,15 @@ promotion 已完成。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+Task graph topology 与 inventory/horizon 共用 `work_items/planning_relations.ts`。
+一轮纯 TS 请求拥有关系发现、稳定有界遍历、边去重与缺失/截断完整度；删除
+Python 的前驱索引、条件拆解和遍历。Python 保留 status 来源适配及节点、
+evidence/handoff 的脱敏展示。明确的语义修正：successor 谱系不再冒充完成
+依赖，unblocks 方向修正，补 Monitor generation 条件，上限处保留平行关系
+和菱形汇合边。详见[图协议](../../reference/protocols/task-graph-projection-v0.md#typed-todo-topology)。
+不改变生命周期准入、claim/lease 或默认 provider。来源仍可能不完整：本批
+闭合一个 T3 解释边界，不宣称所有图来源交付或 T1–T4 已完成。
+
 Quota 的 scope/claim 消费者现通过每个 source 一次 `todo.quota_planning.project`，
 组合选择、有限展示与既有 resume planner。`quota_selection.ts` 替代 Python
 claim-visibility 模块及 Agent-scope 中独立的 User gate/action 过滤器。Python

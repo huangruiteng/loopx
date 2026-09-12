@@ -508,6 +508,18 @@ delivery. This does not finish all T2 commands or authorize whole-Goal promotion
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Task-graph topology now shares `work_items/planning_relations.ts` with inventory
+and horizon. One pure TS request owns relationship discovery, deterministic
+bounded traversal, edge deduplication and missing/truncated completeness; the
+Python predecessor indexes, condition parser and traversal are retired. Python
+retains status source adaptation and public-safe node/evidence/handoff rendering.
+This intentionally distinguishes successor lineage from completion dependencies,
+corrects unblocks direction, includes Monitor generation conditions and preserves
+parallel/diamond edges at the node cap. See the [graph contract](../../reference/protocols/task-graph-projection-v0.md#typed-todo-topology).
+It does not change lifecycle admission, claim/lease semantics or default provider.
+The status source can still be incomplete: this closes one T3 interpretation
+boundary, not all graph source delivery or the remaining T1–T4 work.
+
 Capability resolution now shares `agents/capability_gate.ts`: missing prerequisites,
 repair outputs, owner/agent resolution and blocked-Todo bindings have one typed
 owner. Quota planning v1 passes normalized requirements, not Python-computed

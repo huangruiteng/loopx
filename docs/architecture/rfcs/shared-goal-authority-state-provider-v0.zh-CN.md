@@ -2111,6 +2111,12 @@ selector 见 TS RFC 的 T3 卡。真实 FileAuthorityStore CLI 测试覆盖展�
 
 #### 持久化执行卡
 
+Task graph 的 T3 topology consumer 现共用 inventory/horizon 关系目录，消费
+一次已提供的 status 快照。缺失/截断指标描述读取完整度，不代表 canonical
+有效性或 promotion 资格。File/SQLite 在 Markdown 展示缺失时的 reader 回放
+必须只读：图不修复展示，也不改变 authority。本批删除 Python 重复关系与
+遍历知识，不改变以下 D1–D3 门禁。
+
 命令清单、update/monitor 事务和 consumer 删除统一按
 [TS 执行卡](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡)
 推进，不在这里复制第二套实现路线，也不把 read-policy PR 合并视为存储就绪。

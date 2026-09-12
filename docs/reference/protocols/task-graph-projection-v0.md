@@ -131,7 +131,46 @@ compact blocker or validation writebacks:
 - `audits` says compact run-history evidence reviews, checks, or bounds a
   selected work lane.
 - `continues` says compact run-history evidence is a continuation of a selected
-  work lane.
+  work lane, or a Todo follows a predecessor through explicit successor lineage.
+
+### Typed Todo topology
+
+Planning inventory, horizon and task graph share the TS `planning_relations`
+catalog. The graph is a different **read lens**, not another lifecycle reducer:
+
+| Persisted relation | Graph direction and label | Meaning |
+| --- | --- | --- |
+| A has successor B | B → A, `continues` | Lineage only; does not require A to complete |
+| A is superseded by B | B → A, `supersedes` | Lineage only; does not authorize a transition |
+| A unblocks B | B → A, `depends_on` | Typed lifecycle link, not the reverse dependency |
+| A resumes when B is done | A → B, `depends_on` | Completion condition; the resume evaluator owns readiness |
+| A resumes when Monitor M changes | A → M, `depends_on` | Generation-change condition, not Monitor completion |
+
+These are intentional corrections to the old graph, which collapsed successor
+lineage into dependencies, reversed unblocks discovery, and omitted Monitor
+conditions. Parallel lineage and condition edges are retained. Opaque route,
+capability and unknown-condition suffixes must not be interpreted as Todo IDs
+by either graph or horizon. Existing read-only node kinds, status normalization,
+claim presentation and evidence/handoff renderers are unchanged.
+
+The predecessor lens expands the selected Todo and completed predecessors;
+open predecessors are visible boundaries, not recursive traversal roots.
+It admits at most four predecessor nodes, in deterministic breadth-first and
+Todo-ID order. Cycles do not duplicate nodes. Reaching the node cap must not
+discard another edge between already admitted nodes (including diamond joins).
+
+`limits.missing_predecessor_count` counts unique referenced predecessors absent
+from the supplied renderable snapshot. `source_truncated` records upstream
+omission; `predecessor_truncated` records display-limit omission. The additive
+`topology_complete` flag is true only if none of those conditions applies,
+**within this expansion policy**, not for the entire Goal graph. No missing
+target creates a phantom node, a provider read, a repair write, or an execution
+permission. No extra complete-state read is introduced: status supplies its
+existing source, and an incomplete summary stays explicitly incomplete.
+
+中文：谱系不等于依赖；Monitor 的 generation 条件不等于完成 Monitor。
+节点上限不应吞掉已展示节点间的边。完整度只针对上述有界展开策略，不能
+把缺失、上游裁剪或展示裁剪说成完整 Goal 图；图始终没有写入或准入权限。
 
 These relations may help a dashboard or reviewer explain why a work item is
 still active, stale, repaired, or safe to hand off. They must not create a graph

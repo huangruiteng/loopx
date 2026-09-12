@@ -2664,6 +2664,13 @@ The original direction remains; execution cards expand these stages rather than 
 
 #### Durability execution cards
 
+The task graph's T3 topology consumer now shares the inventory/horizon relation
+catalog and consumes one supplied status snapshot. Its missing/truncated metrics
+describe read completeness, not canonical validity or promotion qualification.
+File/SQLite reader replay with a missing Markdown display must remain read-only;
+the graph never repairs display or changes authority. This retires duplicate
+Python relationship/traversal knowledge without changing the D1–D3 gates below.
+
 Capability-gap consumers now share the TS requirement/resolution owner across
 legacy and canonical inputs, including quota's Monitor capability partition.
 The old Python missing-set and owner/repair decision builders are removed;
