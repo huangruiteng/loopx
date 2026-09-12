@@ -1,3 +1,4 @@
+import {executeTodoContinuation} from "./todo_continuation.ts";
 import { withFileMutationLock } from "../effect_runtime_io.ts";
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed, shadowMaintenanceLockPath } from "./shadow_management.ts";
 import { isAbsolute, join } from "node:path";
@@ -1179,5 +1180,29 @@ export async function listLocalCoordinationTodos(
       legacy_fallback_used: false,
       ...localAuthorityOpenFailure(error),
     };
+  }
+}
+
+/** The explicit local CLI continuation uses the existing promoted writer fence. */
+export async function continueLocalTodo(value: unknown): Promise<JsonObject> {
+  const evidence = {source_authority: "file_v0", decision_read_from_provider: true, legacy_fallback_used: false};
+  try {
+    const input = requireJsonObject(value, "Todo continuation request");
+    const root = runtimeRoot(input.runtime_root);
+    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
+    return await withCanonicalWriter(root, goalId, false, async () => {
+      const store = await openLocalAuthorityStore(root, goalId);
+      evidence.source_authority = sourceAuthorityFor(store);
+      const fence = await loadLegacyCoordinationWriterFence(root, goalId);
+      if (fence.status !== "loaded") return {ok: false, status: "rejected",
+        reason_code: "continuation_requires_canonical_authority",
+        reason: "Use an explicitly promoted local file authority; this command never promotes or falls back to Markdown"};
+      return {...await executeTodoContinuation(store, input), ...evidence};
+    });
+  } catch (error) {
+    return {ok: false, status: "failed",
+      reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_continuation_request",
+      reason: error instanceof Error ? error.message : "Invalid continuation request", ...evidence,
+      ...localAuthorityOpenFailure(error)};
   }
 }

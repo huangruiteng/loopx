@@ -329,6 +329,9 @@ def test_product_cli_loses_capture_between_commit_and_observer_then_refreshes_sn
         )
     )
 
+    # Allow the OS to release the observation lock fully before the recovery write.
+    time.sleep(0.1)
+
     recovered = _add_todo(
         registry,
         runtime_root,

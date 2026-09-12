@@ -10,6 +10,8 @@ import type { AuthorityStoreCommit } from "../../loopx/control_plane/coordinatio
 import {
   AuthorityStoreProtocolError,
   canonicalAuthorityBytes,
+  canonicalAuthorityObject,
+  canonicalAuthoritySha256,
 } from "../../loopx/control_plane/coordination/authority_store_codec.ts";
 import { normalizeTodoAgent } from "../../loopx/control_plane/coordination/todo_agents.ts";
 import {
@@ -40,6 +42,7 @@ import {
   COORDINATION_TODO_CLAIM_RESULT_SCHEMA,
   evaluateCoordinationTodoClaimDecision,
 } from "../../loopx/control_plane/coordination/todo_claim.ts";
+import {computeContinuationTodoFacts} from "../../loopx/control_plane/coordination/continuation_note.ts";
 import {
   checkLegacyCoordinationWriteAllowed,
   engageLegacyCoordinationWriterFence,
@@ -86,6 +89,11 @@ function todoRecord(overrides: Record<string, unknown> = {}): Record<string, unk
     source_section: "Agent Todo",
     ...overrides,
   };
+}
+
+function noteFacts(note: unknown): string {
+  const parsed = canonicalAuthorityObject(JSON.parse(String(note)), "continuation note");
+  return canonicalAuthoritySha256(parsed);
 }
 
 async function claimSeededTodo(
@@ -558,7 +566,6 @@ test("the shared claim decision rejects every pre-commit lifecycle boundary", ()
     [{ role: "user" }, { expected_role: "user" }, "todo_not_agent"],
     [{ removed_continuation_policy: "author_reviewer_handoff" }, {},
       "removed_continuation_policy"],
-    [{ claimed_by: "agent-b" }, {}, "claim_owner_mismatch"],
     [{}, { actor_agent_id: "agent-b" }, "claim_actor_mismatch"],
     [{}, { actor_agent_id: null }, "actor_required"],
   ];
@@ -570,6 +577,251 @@ test("the shared claim decision rejects every pre-commit lifecycle boundary", ()
     assert.equal(result.status, "rejected", code);
     assert.equal(result.reason_code, code);
   }
+});
+
+test("cross-agent claim without transfer grant is rejected (default behavior preserved)", () => {
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b" }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("cross-agent claim with valid transfer grant is accepted (handoff boundary)", () => {
+  // The note must carry the correct loopx-explicit-continuation marker and
+  // todo_facts matching the current Todo. The shared validateContinuationNote
+  // enforces this invariant in the final claim decision.
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-a",
+        todo_id: "todo_a",
+        expected_revision: "rev-123",
+        continuation_note_facts: noteFacts(note),
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "accepted");
+});
+
+test("transfer grant with mismatched continuation_note_facts is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-a",
+        todo_id: "todo_a",
+        expected_revision: "rev-123",
+        continuation_note_facts: "tampered-facts-hash",
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("transfer grant with wrong source agent is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-c",
+        target_agent_id: "agent-a",
+        todo_id: "todo_a",
+        expected_revision: "rev-123",
+        continuation_note_facts: noteFacts(note),
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("transfer grant with wrong target agent is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-c",
+        todo_id: "todo_a",
+        expected_revision: "rev-123",
+        continuation_note_facts: noteFacts(note),
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("transfer grant with wrong todo_id is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-a",
+        todo_id: "todo_b",
+        expected_revision: "rev-123",
+        continuation_note_facts: noteFacts(note),
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("transfer grant with wrong expected_revision is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v0",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-a",
+        todo_id: "todo_a",
+        expected_revision: "rev-456",
+        continuation_note_facts: noteFacts(note),
+      },
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
+});
+
+test("transfer grant with wrong schema_version is rejected", () => {
+  const todo = todoRecord({ claimed_by: "agent-b" });
+  const note = JSON.stringify({kind: "loopx-explicit-continuation", source_session: "s1",
+    rationale: "handoff", source_refs: ["artifact:decision.md"],
+    todo_facts: computeContinuationTodoFacts(todo)});
+  const result = evaluateCoordinationTodoClaimDecision(
+    todoRecord({ claimed_by: "agent-b", note }),
+    {
+      goal_id: "goal-a",
+      todo_id: "todo_a",
+      claimed_by: "agent-a",
+      actor_agent_id: "agent-a",
+      expected_role: "agent",
+      registered_agents: ["agent-a", "agent-b"],
+      operation_id: "handoff",
+      expected_provider_revision: "rev-123",
+      transfer_grant: {
+        schema_version: "todo_transfer_grant_v99",
+        source_agent_id: "agent-b",
+        target_agent_id: "agent-a",
+        todo_id: "todo_a",
+        expected_revision: "rev-123",
+        continuation_note_facts: noteFacts(note),
+      } as unknown as Parameters<typeof evaluateCoordinationTodoClaimDecision>[1]["transfer_grant"],
+      dry_run: true,
+      now: new Date(0),
+    },
+  );
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason_code, "claim_owner_mismatch");
 });
 
 test("promoted claim rejection preserves the public result envelope", async () => {

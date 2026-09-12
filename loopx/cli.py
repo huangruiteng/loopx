@@ -4,8 +4,8 @@ import argparse
 import sys
 
 from .cli_commands.agent_context import register_agent_context, handle_agent_context
+from .cli_commands.todo_continuation import register_todo_continuation, handle_todo_continuation
 from .cli_commands.manager_inbox import register_manager_inbox, handle_manager_inbox
-
 from .capabilities.content_ops.cli import (
     handle_content_ops_command,
     register_content_ops_commands,
@@ -343,6 +343,7 @@ def build_parser() -> LoopXArgumentParser:
     register_coordination_shadow_command(sub, add_subcommand_format)
     register_task_lease_command(sub, add_subcommand_format)
     register_authority_shadow_command(sub, add_subcommand_format)
+    register_todo_continuation(sub, add_subcommand_format)
     register_handoff_mode_command(sub, add_subcommand_format)
     register_shared_goal_alignment_command(sub, add_subcommand_format)
     register_goal_amendment_proposal_command(sub, add_subcommand_format)
@@ -865,6 +866,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     if authority_shadow_result is not None:
         return authority_shadow_result
+
+    continuation_result = handle_todo_continuation(
+        args, registry_path=registry_path, runtime_root_arg=args.runtime_root,
+        output_format=output_format, print_payload=print_payload,
+    )
+    if continuation_result is not None:
+        return continuation_result
 
     handoff_mode_result = handle_handoff_mode_command(
         args,
