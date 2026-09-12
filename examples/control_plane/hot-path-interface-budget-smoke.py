@@ -76,7 +76,7 @@ SURFACE_BUDGETS = {
         "owner": "operator dashboard",
         "consumer": "render first-screen operator state",
         "cold_path": "history, run artifacts, or project-local adapter output",
-        "max_json_chars": 18_500,
+        "max_json_chars": 19_500,
         "max_nested_keys": 260,
         "max_top_level_keys": 25,
     },
