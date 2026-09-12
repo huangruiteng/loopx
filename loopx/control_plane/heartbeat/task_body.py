@@ -313,15 +313,13 @@ Fail:quiet.
 {SCOPE_BOUNDED_WORK_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
 
-`should_run=false`：按 user channel。`monitor_quiet_skip` 已记 receipt/stall；
-无 replan 静默，写失败同 id 重试。external/wait monitor 只读一次，
-新证据才 writeback/spend；bypass 须获准。
+`should_run=false`：按 user channel；`monitor_quiet_skip` 记 receipt/stall；
+wait 只读一次，新证据才 writeback/spend，同 id 重试。
 {SCHEDULER_HINT_THIN_RULE}
 `agent_read_required`: drain/read/triage before work; settle/ACK.
 
-`should_run=true`：读 compact、`status --limit 3`、
-`review-packet --handoff-only`；遵守本轮 quota/contract 的权限、交付规模/结果、
-历史约束与 handoff；outcome-floor recovery 须恢复 ranker/cross-domain evidence 或写回 blocker。
+`should_run=true`：读 compact、`status --limit 3`、`review-packet --handoff-only`；
+遵守 quota 权限/结果/handoff；outcome-floor recovery 推进 evidence 或写 blocker。
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
 {REWARD_MEMORY_OUTCOME_COMPACT_RULE}
 交付并验证后，按当前 `interaction_contract.cli_channel.settlement_plan.ordered_steps`

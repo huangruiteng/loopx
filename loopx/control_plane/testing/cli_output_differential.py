@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -175,6 +176,30 @@ _REWARD_MEMORY_OUTCOME_PROMPT_V1_MIGRATION_ALLOWANCE: dict[Metric, int] = {
     "lines": 5,
     "compact_payload_chars": 640,
 }
+
+
+def _reward_memory_outcome_prompt_allowance(
+    row_id: str,
+    base: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    metric: Metric,
+) -> int:
+    surface = row_id.partition("/")[2].partition("/")[0]
+    if (
+        row_id.startswith(("surface/", "variant/"))
+        and surface
+        in {
+            "heartbeat_prompt_thin",
+            "heartbeat_prompt_brief",
+            "heartbeat_prompt_compact",
+            "heartbeat_prompt_full",
+        }
+        and base.get("reward_memory_outcome_prompt_revision") is None
+        and candidate.get("reward_memory_outcome_prompt_revision")
+        == "reward_memory_outcome_prompt_v1"
+    ):
+        return _REWARD_MEMORY_OUTCOME_PROMPT_V1_MIGRATION_ALLOWANCE[metric]
+    return 0
 
 # loopx_guided_todo_delta_v0 adds the continuation-aware Todo authoring
 # decision contract (reuse/update/link_successor/add_new plus a bounded
@@ -507,11 +532,19 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
             allowances[metric] = None
             continue
         delta = candidate_value - base_value
-        allowance = _growth_limit(
-            policy=policy,
-            output_format=output_format,
-            metric=metric,
-            base=base_value,
+        allowance = max(
+            _growth_limit(
+                policy=policy,
+                output_format=output_format,
+                metric=metric,
+                base=base_value,
+            ),
+            _reward_memory_outcome_prompt_allowance(
+                row_id,
+                base,
+                candidate,
+                metric,
+            ),
         )
         # Thin installed prompts contain bilingual lifecycle instructions. A
         # small character-level clarification can cost three bytes per CJK
@@ -529,23 +562,6 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
             # receives no allowance. Quota/status and other surfaces are excluded.
             allowance = max(allowance, {"chars": 512, "utf8_bytes": 640,
                                        "lines": 5, "compact_payload_chars": 512}[metric])
-        if (
-            row_id.startswith(("surface/", "variant/"))
-            and row_id.partition("/")[2].partition("/")[0]
-            in {
-                "heartbeat_prompt_thin",
-                "heartbeat_prompt_brief",
-                "heartbeat_prompt_compact",
-                "heartbeat_prompt_full",
-            }
-            and base.get("reward_memory_outcome_prompt_revision") is None
-            and candidate.get("reward_memory_outcome_prompt_revision")
-            == "reward_memory_outcome_prompt_v1"
-        ):
-            allowance = max(
-                allowance,
-                _REWARD_MEMORY_OUTCOME_PROMPT_V1_MIGRATION_ALLOWANCE[metric],
-            )
         if migration.portfolio_growth_migration:
             allowance = max(
                 allowance,
