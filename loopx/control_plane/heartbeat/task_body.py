@@ -320,7 +320,8 @@ Fail:quiet.
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
 交付并验证后，按当前 `interaction_contract.cli_channel.settlement_plan.ordered_steps`
 的精确 identity/effect 顺序结算；无 plan 时按当前 `next_cli_actions`，不使用旧 refresh/spend 配方。
-Todo 验收不等于 Turn 结算或 Goal 完成；仅 terminal no-follow-up 才能收尾，保留 vision replan。
+Todo验收非结算；external wait=open+monitor_changed:<monitor>+successor→重跑/继续，
+no-spend；仅terminal no-follow-up收尾。
 
 静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额。
 仅 `user_channel.notify=NOTIFY` 时输出，否则静默。
@@ -660,7 +661,7 @@ LOOPX_TURN=<current_time_iso>
 {RUNTIME_CAPABILITY_PROJECTION_THIN_RULE}
 {SCHEDULER_HINT_THIN_RULE}
 {HEARTBEAT_VISION_WRITEBACK_RULE_SHORT}
-Done->todo/rationale; guard receipt; 2 stalls->replan.
+{HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE} Guard receipt; 2 stalls->replan.
 `agent_read_required`: drain/read/triage before work; settle/ACK.
 
 P0 blocked: safe P1/P2; monitor quiet/no-spend.

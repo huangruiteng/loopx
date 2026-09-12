@@ -308,6 +308,12 @@ whose capabilities are known when the automation is installed.
   in the same completion. Add a separate `continuous_monitor` for the PR
   lifecycle when merge/readback must be observed. Do not turn review latency
   into a gate;
+- when an open advancement Todo reaches an external-only wait before completion,
+  do not end the heartbeat after polling it. Keep it open and atomically bind
+  `resume_when=monitor_changed:<monitor-todo-id>` plus an independent runnable
+  `--successor-todo-id`, rerun quota, and continue the successor. The typed wait
+  transition is a no-spend lifecycle repair; only later validated delivery is
+  accountable work;
 - use `user_gate` only for an exact authority boundary such as approval to merge
   an aggregate branch into `main`, release, launch a benchmark, or perform a
   protected action;
@@ -583,6 +589,10 @@ If the result says should_run=true:
    Use `--role agent` for project-agent follow-up work.
    For non-trivial feature slices, complete the current todo only after adding
    a successor todo, or include a compact no-follow-up rationale.
+   If the selected advancement Todo now has only an external lifecycle wait,
+   keep it open and bind `resume_when=monitor_changed:<monitor-todo-id>` with an
+   independent runnable successor before any quiet return. Rerun quota and
+   continue the successor; do not spend quota for the wait transition.
    For the full field contract, see `docs/project-agent-todo-contract.md` in
    the LoopX checkout.
 8. After validation and other writeback complete, record this turn's accountable

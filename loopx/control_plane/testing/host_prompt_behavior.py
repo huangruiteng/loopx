@@ -14,10 +14,11 @@ def cases() -> list[dict]:
     # required vision replan is not terminal closure. Never send expected to
     # the model, or derive it from the renderer being qualified.
     rows = (
-        ("quiet_work", True, False, False, "work"),
-        ("notifying_wait", False, True, False, "wait"),
-        ("quiet_wait", False, False, False, "wait"),
-        ("vision_replan", True, False, True, "replan"),
+        ("quiet_work", True, False, False, False, "work"),
+        ("notifying_wait", False, True, False, False, "wait"),
+        ("quiet_wait", False, False, False, False, "wait"),
+        ("vision_replan", True, False, True, False, "replan"),
+        ("external_wait_transition", True, False, False, True, "external_wait"),
     )
     return [{
         "id": name,
@@ -28,6 +29,13 @@ def cases() -> list[dict]:
             "execution_obligation": {"must_attempt_work": work},
             "heartbeat_recommendation": {"agent_must_attempt": work},
             "autonomous_replan_obligation": {"required": replan},
+            "external_wait_observation": ({
+                "schema_version": "typed_external_wait_observation_v0",
+                "selected_todo_id": "todo_waiting",
+                "monitor_todo_id": "todo_monitor",
+                "independent_successor_todo_id": "todo_successor",
+                "state": "external_review_pending",
+            } if external_wait else None),
             "interaction_contract": {
                 "user_channel": {"notify": "NOTIFY" if notify else "DONT_NOTIFY"},
                 "agent_channel": {"delivery_allowed": work and not replan},
@@ -37,7 +45,7 @@ def cases() -> list[dict]:
             "run_history": {"latest_runs": [{"delivery_outcome": "outcome_progress"}]},
         },
         "expected": {"action": action, "notify": notify, "finish_goal": False},
-    } for name, work, notify, replan, action in rows]
+    } for name, work, notify, replan, external_wait, action in rows]
 
 
 def probe_messages(mode: str, packet: dict) -> list[dict]:
@@ -55,8 +63,11 @@ def probe_messages(mode: str, packet: dict) -> list[dict]:
             "This is a decision-only host simulation; no tools or side effects are available. "
             "The current quota result has already been read. Decide the next action using "
             "the supplied host instructions and result. Return only JSON with exactly "
-            "action (work, wait, replan or stop), notify (boolean), finish_goal (boolean). "
+            "action (work, wait, replan, external_wait or stop), notify (boolean), "
+            "finish_goal (boolean). "
             "work means advancing ordinary delivery; replan means revising the frontier; "
+            "external_wait means authoring the typed wait transition and continuing its "
+            "independent successor; "
             "wait means no delivery now; stop means terminate the Goal."
         )},
         {"role": "user", "content": prompt["task_body"]},

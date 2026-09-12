@@ -13,6 +13,7 @@ ANSWERS = [
     {"action": "wait", "notify": True, "finish_goal": False},
     {"action": "wait", "notify": False, "finish_goal": False},
     {"action": "replan", "notify": False, "finish_goal": False},
+    {"action": "external_wait", "notify": False, "finish_goal": False},
 ]
 
 
@@ -26,7 +27,7 @@ class ScriptedClient:
 
     def next_final_content(self, messages):
         assert "expected" not in json.dumps(messages)
-        answer = dict(ANSWERS[(self.count // self.repeats) % 4])
+        answer = dict(ANSWERS[(self.count // self.repeats) % len(ANSWERS)])
         self.count += 1
         if self.mutation:
             answer.update(self.mutation)
@@ -40,6 +41,7 @@ def test_probe_uses_current_production_prompts_and_hidden_independent_oracle():
             body = messages[1]["content"]
             assert "execution_obligation.must_attempt_work" in body
             assert "heartbeat_recommendation.agent_must_attempt" in body
+            assert "monitor_changed:<monitor>" in body
             assert "--codex-app" in body
             assert "LOOPX_TURN=<current_time_iso>" in body
             assert case["id"] not in json.dumps(messages)
@@ -47,7 +49,7 @@ def test_probe_uses_current_production_prompts_and_hidden_independent_oracle():
     client = ScriptedClient()
     report = run_probe(client, repeats=1)
     assert report["qualification_passed"]
-    assert client.count == report["provider_call_count"] == 8
+    assert client.count == report["provider_call_count"] == 10
     assert not report["host_execution_qualified"]
 
 
@@ -66,7 +68,7 @@ def test_later_success_does_not_erase_a_failed_independent_attempt():
             return super().next_final_content(messages)
 
     report = run_probe(FailOnce(repeats=2), repeats=2)
-    assert report["provider_call_count"] == 16
+    assert report["provider_call_count"] == 20
     assert not report["qualification_passed"]
     assert sum(not row["passed"] for row in report["results"]) == 1
 

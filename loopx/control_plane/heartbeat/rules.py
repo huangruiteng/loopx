@@ -66,10 +66,15 @@ HOST_LOOP_QUOTA_DISPATCH_RULE = (
 )
 HOST_LOOP_TODO_CLOSEOUT_RULE = (
     "Done -> successor first; final -> accountable refresh, spend, then "
-    "no-follow-up completion."
+    "no-follow-up completion. External-only wait -> keep the advancement Todo "
+    "open, bind `resume_when=monitor_changed:<monitor>` plus an independent "
+    "runnable successor, rerun quota, and continue that successor before a quiet "
+    "return; the wait transition does not spend quota."
 )
 HOST_LOOP_TODO_CLOSEOUT_COMPACT_RULE = (
-    "Done->successor first; final->refresh->spend->no-follow-up."
+    "Done->successor first; final->refresh->spend->no-follow-up. "
+    "External-only wait->open+`monitor_changed:<monitor>`+independent successor; "
+    "rerun quota/continue successor before quiet return; no wait spend."
 )
 CODEX_NATIVE_GOAL_UNCHANGED_WAIT_RULE = (
     "\n\nNative Codex `/goal` owns blocked state. Recheck quota at the "
