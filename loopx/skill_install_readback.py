@@ -107,6 +107,16 @@ def external_skill_set_ready(
     )
 
 
+def external_skill_fallback_path(skills: Mapping[str, Mapping[str, Any]]) -> str | None:
+    """Return the external root's canonical core path for compatibility readback."""
+
+    for skill in skills.values():
+        source_root = skill.get("source_root")
+        if skill.get("managed_externally") and isinstance(source_root, str) and source_root:
+            return str(Path(source_root) / "loopx" / "SKILL.md")
+    return None
+
+
 def _user_home() -> Path:
     return Path.home().expanduser()
 
