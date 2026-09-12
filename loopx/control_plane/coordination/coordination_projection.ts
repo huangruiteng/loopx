@@ -15,19 +15,45 @@ import {
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
 import {
-  canonicalCoordinationTodoRecord,
-  canonicalTodoDomainRecord,
   TODO_DOMAIN_READ_RECORD_SCHEMA,
   TODO_DOMAIN_RECORD_CONTRACT,
   TODO_CANONICAL_READ_RECORD_FIELDS,
   TODO_CANONICAL_READ_RECORD_SCHEMA,
 } from "./coordination_state_contract.ts";
+import {canonicalTodoRecord} from "./todo_presentation.ts";
 
 export const COORDINATION_PROJECTION_MUTATION_EVENT_SCHEMA =
   "loopx_coordination_projection_mutation_event_v0";
 export const COORDINATION_PROJECTION_MUTATION_RECEIPT_SCHEMA =
   "loopx_coordination_projection_mutation_receipt_v0";
 export { TODO_CANONICAL_READ_RECORD_FIELDS, TODO_CANONICAL_READ_RECORD_SCHEMA };
+
+/**
+ * Build the revision-bound Todo read model carried by a canonical projection.
+ *
+ * The read model is projection metadata, not another source of Todo meaning.
+ * Keeping its construction beside validation prevents shadow capture, native
+ * transactions, and conformance fixtures from drifting on schema fields or
+ * digest inputs.  Callers still choose the legacy/native schema explicitly;
+ * this helper never performs a compatibility conversion.
+ */
+export function coordinationTodoReadModel(
+  records: readonly JsonObject[],
+  schemaVersion: unknown,
+): JsonObject {
+  const isNative = schemaVersion === TODO_DOMAIN_READ_RECORD_SCHEMA;
+  if (!isNative && schemaVersion !== TODO_CANONICAL_READ_RECORD_SCHEMA) {
+    throw new AuthorityStoreProtocolError("coordination Todo read-model schema mismatch");
+  }
+  return {
+    schema_version: schemaVersion,
+    todo_count: records.length,
+    records_sha256: canonicalAuthoritySha256(records),
+    contract_fields: [...(isNative
+      ? TODO_DOMAIN_RECORD_CONTRACT.fields
+      : TODO_CANONICAL_READ_RECORD_FIELDS)],
+  };
+}
 
 export interface CoordinationTodoProjectionIndex {
   readonly todos: ReadonlyMap<string, JsonObject>;
@@ -155,20 +181,10 @@ export function validateCoordinationTodoReadModel(
   )) {
     throw new AuthorityStoreProtocolError("coordination Todo read-model field contract mismatch");
   }
-  const validateRecord = domain ? canonicalTodoDomainRecord : canonicalCoordinationTodoRecord;
   for (const [recordIndex, record] of records.entries()) {
-    validateRecord(record, `coordination Todo read record ${recordIndex}`);
+    canonicalTodoRecord(record, `coordination Todo read record ${recordIndex}`);
   }
   return readModel;
-}
-
-function todoReadModel(records: readonly JsonObject[], previous: JsonObject): JsonObject {
-  return {
-    schema_version: previous.schema_version,
-    contract_fields: previous.contract_fields,
-    todo_count: records.length,
-    records_sha256: canonicalAuthoritySha256(records),
-  };
 }
 
 function requireCompleteTodoReplacement(
@@ -323,7 +339,7 @@ export function reduceCoordinationProjection(
     leases: sortedIds(leases.keys()).map((todoId) => leases.get(todoId)!),
     ...(readModel === undefined
       ? {}
-      : { todo_read_model: todoReadModel(nextTodos, readModel) }),
+      : { todo_read_model: coordinationTodoReadModel(nextTodos, readModel.schema_version) }),
   }, "coordination projection");
   if (value.todo_read_model !== undefined) {
     validateCoordinationTodoReadModel(reduced, expectedGoalId);

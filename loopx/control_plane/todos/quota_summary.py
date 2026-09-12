@@ -12,10 +12,10 @@ from .contract import (
 from .quota_selection import project_quota_planning
 from .frontier_deadline import todo_summary_frontier_deadline
 from .handoff_gate import build_todo_handoff_gate_lanes
-from .projection import (
+from .todo_semantics import (
     todo_item_is_watch_only_monitor,
     todo_item_task_class,
-    todo_projection_sort_key,
+    todo_presentation_sort_key,
     todo_summary_monitor_schedule_gap_items,
     todo_summary_monitor_writeback_contract,
 )
@@ -341,7 +341,7 @@ def summarize_user_todos_for_quota(
     source_completeness, closure_intent = validate_todo_source_contract(value)
     all_open_items = sorted(
         todo_summary_source_items(value),
-        key=todo_projection_sort_key,
+        key=todo_presentation_sort_key,
     )
     planning = project_quota_planning(
         value,
@@ -784,7 +784,7 @@ def summarize_project_asset_todos_for_quota(
 
     all_open_items = sorted(
         todo_summary_source_items(value),
-        key=todo_projection_sort_key,
+        key=todo_presentation_sort_key,
     )
     if not all_open_items:
         next_text = str(value.get("next") or "").strip()

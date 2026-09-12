@@ -9,11 +9,10 @@ import {
 } from "./authority_store_codec.ts";
 import {normalizeRegisteredTodoAgents, normalizeTodoAgent} from "./todo_agents.ts";
 import {
-  TODO_DOMAIN_READ_RECORD_SCHEMA,
   TODO_DOMAIN_ITEM_SCHEMA,
-  TODO_ITEM_SCHEMA,
   canonicalTodoDomainRecord,
 } from "./coordination_state_contract.ts";
+import {materializeTodoRecordForSchema} from "./todo_presentation.ts";
 import {
   indexCoordinationProjection,
   prepareCoordinationProjectionCommit,
@@ -159,12 +158,7 @@ function createCandidate(
     last_actor_agent_id: input.actor_agent_id,
     updated_at: input.now.toISOString().replace(/\.\d{3}Z$/u, "Z"),
   }, "created Todo");
-  if (readModelSchema === TODO_DOMAIN_READ_RECORD_SCHEMA) return domainCreated;
-  return {
-    ...domainCreated,
-    schema_version: TODO_ITEM_SCHEMA,
-    source_section: domainCreated.role === "agent" ? "Agent Todo" : "User Todo",
-  };
+  return materializeTodoRecordForSchema(domainCreated, readModelSchema, "created Todo");
 }
 
 /** In-process create planning for a caller-owned canonical transaction. Never

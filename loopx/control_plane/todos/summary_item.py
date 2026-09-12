@@ -18,7 +18,7 @@ from .contract import (
 )
 from .handoff_gate import handoff_ready_successor_todo_ids
 from .handoff_note import attach_todo_handoff_note, compact_todo_continuation_hint
-from .projection import todo_item_task_class
+from .todo_semantics import todo_item_task_class
 
 TODO_SUMMARY_COMPACT_FIELDS = (
     "schema_version",

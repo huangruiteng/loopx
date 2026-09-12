@@ -14,7 +14,7 @@ from .contract import (
     normalize_todo_required_decision_scopes,
 )
 from .user_gate import is_user_gate_todo_item
-from .projection import todo_projection_sort_key, todo_item_task_class, todo_item_has_removed_continuation_policy
+from .todo_semantics import todo_projection_sort_key, todo_item_task_class, todo_item_has_removed_continuation_policy
 
 TODO_GATE_BLOCKING_STATES = frozenset(
     {"gate_targets_todo", "gate_covers_action", "projection_repair_required"}

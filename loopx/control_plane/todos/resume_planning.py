@@ -12,7 +12,7 @@ from .contract import (
     normalize_todo_status, normalize_todo_task_class, normalize_todo_excluded_agents,
 )
 from .compact_projection import compact_todo_projection_item
-from .projection import todo_projection_sort_key
+from .todo_semantics import todo_projection_sort_key
 
 _SOURCE_KEYS = (
     "items", "backlog_items", "first_open_items", "deferred_items",
