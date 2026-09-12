@@ -48,8 +48,8 @@ class Case:
 
 CASES = [
     Case('todo_global_gate_inferred', (('loopx/control_plane/todos/authoring_scope.ts', replacement(
-        'intent.global_gate ? true : todo.global_gate',
-        '(intent.global_gate || intent.goal_bound) ? true : todo.global_gate')),),
+        '      : todo.global_gate as boolean | null ?? null;',
+        '      : (todo.global_gate || intent.goal_bound) as boolean | null ?? null;')),),
          'tests/control_plane_ts/todo_authoring_scope.test.ts', 'global blocking is never inferred'),
     Case('todo_explicit_scope_overwritten', (('loopx/control_plane/todos/authoring_scope.ts', replacement(
         'if (requestedBound) fail(', 'if (false) fail(')),),
@@ -96,8 +96,8 @@ CASES = [
         '  if (todo.claimed_by === null || todo.claimed_by !== actor) return "claim_owner_mismatch";')),),
          'tests/control_plane/test_shadow_observable_native_e2e.py::test_native_unclaimed_edit_and_explicit_note_clear[disabled]'),
     Case('native_diagnostic_truncated', ((COORDINATION + 'todo_update.ts', replacement(
-        'return failure("update_owner_mismatch", "Todo update cannot edit another claim owner\'s work");',
-        'return failure("update_owner_mismatch", "Update rejected");')),),
+        '? "Todo update cannot edit another claim owner\'s work"',
+        '? "Update rejected"')),),
          'tests/control_plane/test_shadow_observable_native_e2e.py::test_canonical_argument_intent_and_atomic_claim[disabled]'),
     Case('cursor_baseline_digest', ((COORDINATION + 'local_authority_shadow_adapter.py', replacement(
         '        return None if marker is None else marker["partition_digest"]',

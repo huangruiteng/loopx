@@ -203,7 +203,12 @@ function targetRejection(
     const decisionCode = String(authorityDecision.code ?? "mutation_rejected");
     const code = decisionCode === "claim_owner_mismatch"
       ? "update_owner_mismatch" : decisionCode;
-    return failure(code, "Todo update is outside the actor's registered owner/binding scope");
+    // Keep the public owner-mismatch diagnostic stable while other shared
+    // admission failures use a provider-neutral explanation.
+    const reason = code === "update_owner_mismatch"
+      ? "Todo update cannot edit another claim owner's work"
+      : "Todo update is outside the actor's registered owner/binding scope";
+    return failure(code, reason);
   }
   // Preserve the single-agent compatibility path only for genuinely
   // unowned work. An empty registry is not evidence that an arbitrary actor
