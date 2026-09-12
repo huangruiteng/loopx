@@ -96,13 +96,14 @@ def external_skill_set_ready(
 ) -> bool:
     """Recognize a complete externally managed project-skill set."""
 
-    return bool(required_ids) and all(
+    known_ids = [skill_id for skill_id in required_ids if skill_id in skills]
+    return bool(known_ids) and all(
         isinstance(skill := skills.get(skill_id), Mapping)
         and bool(skill.get("exists"))
         and bool(skill.get("required_phrases"))
         and bool(skill.get("managed_externally"))
         and not bool(skill.get("route_conflict"))
-        for skill_id in required_ids
+        for skill_id in known_ids
     )
 
 

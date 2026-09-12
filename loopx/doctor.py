@@ -469,7 +469,7 @@ def build_install_freshness(
     required_skills = [
         skill for skill in skills.values() if skill.get("required", True)
     ]
-    readiness_skills = required_skills or list(skills.values())
+    readiness_skills = required_skills or [skill for skill in skills.values() if skill.get("exists")]
     skills_ready = bool(readiness_skills) and all(
         skill.get("exists")
         and skill.get("required_phrases")
