@@ -1498,7 +1498,80 @@ def test_manager_terminal_failure_replies_once_before_ack(
         assert not result.get("source_acknowledged")
 
 
-@pytest.mark.parametrize("body", ["完整报告" * 400, "x" * 6001, "测" * 40000, "测" * 50000, r"private\nformat"], ids=["report", "long-ascii", "long-unicode", "oversize", "invalid-newlines"])
+@pytest.mark.parametrize("answer_value", ["raise", "empty"])
+def test_manager_untyped_or_empty_answer_gets_bounded_failure_receipt(
+    tmp_path, monkeypatch, answer_value,
+):
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+
+    target_path, binding_path = tmp_path / "targets.json", tmp_path / "bindings.json"
+    _seed_legacy_topic(target_path, binding_path)
+    original_decide = runtime.decide_lark_topic_event
+
+    def manager_decision(**kw):
+        result = original_decide(**kw)
+        result["route"].update(
+            conversation_kind="manager", ingress_mode="session_queue",
+            event_id=kw["event"]["event_id"],
+            connector={"response_policy": "topic_reply"},
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", manager_decision)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_lark_event_inbox_received_reaction",
+        lambda **kw: {"ok": True, "status": "already_received"},
+    )
+    state, answer_calls = {}, []
+
+    def answer(route, text):
+        answer_calls.append(text)
+        if answer_value == "raise":
+            raise ValueError("private provider detail")
+        return ""
+
+    kwargs = {
+        "target_payload": read_goal_channel_targets(target_path),
+        "binding_payloads": {"goal-alpha": read_goal_channel_binding(binding_path)},
+        "event": {
+            "event_id": "evt_incoming",
+            "message_id": "om_incoming",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_topic_alpha",
+            "create_time": "2026-08-14T21:00:00Z",
+            "content": "@linkmacbot report",
+            "mentioned": True,
+            "sender_type": "user",
+        },
+        "runtime_root": tmp_path / "runtime",
+        "answer": answer,
+        "reply_runner": _reply_runner(state),
+    }
+
+    result = runtime.process_lark_goal_topic_event(**kwargs)
+
+    assert result["ok"] is False
+    assert result["status"] == "processing_failed"
+    assert result["failure_reply_verified"] is True
+    assert result["source_acknowledged"] is True
+    assert "不会自动重放" in state["reply_text"]
+    assert "private provider detail" not in state["reply_text"]
+    assert len(answer_calls) == 1
+    pending = inspect_lark_event_inbox(
+        project=kwargs["runtime_root"],
+        config_path=Path(result["inbox_config_ref"]),
+    )
+    assert pending["items"] == []
+    assert runtime.process_lark_goal_topic_event(**kwargs)["status"] == "already_acknowledged"
+    assert len(answer_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["完整报告" * 400, "x" * 6001, "测" * 40000, "测" * 50000, r"private\nformat"],
+    ids=["report", "long-ascii", "long-unicode", "oversize", "invalid-newlines"],
+)
 @pytest.mark.parametrize("reply_ok", [True, False])
 def test_manager_report_delivery_preserves_body_and_reports_format_failure(
     tmp_path, monkeypatch, body, reply_ok,
