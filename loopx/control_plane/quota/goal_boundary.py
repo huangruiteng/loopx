@@ -355,6 +355,12 @@ def goal_boundary(
                     "automation_projection_source": (
                         "reward_memory_experiment_status_v1"
                     ),
+                    "automation_intent": dict(
+                        reward_memory_experiment_status.get("automation_intent") or {}
+                    ),
+                    "host_coverage": list(
+                        reward_memory_experiment_status.get("host_coverage") or []
+                    ),
                 }
             )
             reward_capability.update(

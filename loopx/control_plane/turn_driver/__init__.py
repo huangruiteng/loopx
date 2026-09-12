@@ -23,6 +23,7 @@ from .executor import (
     build_loopx_turn_host_request,
     inspect_loopx_turn_journal,
     normalize_host_argv,
+    reward_memory_reflection_digest,
     run_loopx_turn_once,
     validate_loopx_turn_host_result,
 )
@@ -81,6 +82,7 @@ __all__ = [
     "loopx_turn_execution_has_durable_effects",
     "loopx_turn_execution_recovery_required",
     "normalize_host_argv",
+    "reward_memory_reflection_digest",
     "run_codex_cli_host",
     "run_loopx_turn_once",
     "selected_turn_todo",

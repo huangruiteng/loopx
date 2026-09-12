@@ -164,6 +164,18 @@ _RUNTIME_ROOT_COMMAND_ROUTE_GROWTH_PER_ROUTE: dict[Metric, int] = {
     "compact_payload_chars": 160,
 }
 
+# Automatic Reward Memory adds one fail-closed reflection/validation contract
+# to the installed heartbeat body.  The allowance is bound to an exact
+# none-to-v1 prompt revision, applies only to heartbeat rows, and keeps the
+# absolute surface ceilings intact.  Once v1 is the baseline, normal budgets
+# apply again.
+_REWARD_MEMORY_OUTCOME_PROMPT_V1_MIGRATION_ALLOWANCE: dict[Metric, int] = {
+    "chars": 640,
+    "utf8_bytes": 640,
+    "lines": 5,
+    "compact_payload_chars": 640,
+}
+
 # loopx_guided_todo_delta_v0 adds the continuation-aware Todo authoring
 # decision contract (reuse/update/link_successor/add_new plus a bounded
 # runnable-frontier summary) to the guided start-goal packet when an
@@ -517,6 +529,23 @@ def _compare_row(base: dict[str, Any], candidate: dict[str, Any]) -> dict[str, A
             # receives no allowance. Quota/status and other surfaces are excluded.
             allowance = max(allowance, {"chars": 512, "utf8_bytes": 640,
                                        "lines": 5, "compact_payload_chars": 512}[metric])
+        if (
+            row_id.startswith(("surface/", "variant/"))
+            and row_id.partition("/")[2].partition("/")[0]
+            in {
+                "heartbeat_prompt_thin",
+                "heartbeat_prompt_brief",
+                "heartbeat_prompt_compact",
+                "heartbeat_prompt_full",
+            }
+            and base.get("reward_memory_outcome_prompt_revision") is None
+            and candidate.get("reward_memory_outcome_prompt_revision")
+            == "reward_memory_outcome_prompt_v1"
+        ):
+            allowance = max(
+                allowance,
+                _REWARD_MEMORY_OUTCOME_PROMPT_V1_MIGRATION_ALLOWANCE[metric],
+            )
         if migration.portfolio_growth_migration:
             allowance = max(
                 allowance,

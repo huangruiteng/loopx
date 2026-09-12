@@ -1426,6 +1426,21 @@ def append_attention_queue_project_asset_markdown(
             f"runtime_scope={markdown_scalar(config_runtime_route.get('runtime_scope') or '')} "
             f"exact_readback={config_runtime_route.get('exact_readback_verified')}"
         )
+        host_coverage = agent_reward_memory.get("host_coverage")
+        if isinstance(host_coverage, list):
+            coverage_parts = [
+                (
+                    f"{item.get('host_id')}:"
+                    f"recall={item.get('automatic_recall')},"
+                    f"ingest={item.get('automatic_ingest')}"
+                )
+                for item in host_coverage
+                if isinstance(item, dict) and item.get("host_id")
+            ]
+            if coverage_parts:
+                lines.append(
+                    "    - reward_memory_host_coverage: " + "; ".join(coverage_parts)
+                )
 
     _append_project_asset_agent_lane_markdown(
         lines,

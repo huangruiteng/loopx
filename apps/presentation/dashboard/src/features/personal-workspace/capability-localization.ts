@@ -52,8 +52,7 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
     },
     reward_memory: {
       displayName: "Reward Memory experiment",
-      description: "Runs an opt-in, provider-bound retrieval experiment over an explicitly allowlisted memory corpus.",
-      readOnlyReason: "This capability requires a reviewed local-private provider binding and an explicit Agent allowlist. Configure it through the capability CLI.",
+      description: "Configures a reviewed local-private provider binding for Goal-scoped Agent recall and evidence-backed outcome learning.",
     },
   },
   "zh-CN": {
@@ -97,8 +96,7 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
     },
     reward_memory: {
       displayName: "Reward Memory 实验",
-      description: "在明确 allowlist 的记忆语料上运行可选、Provider 绑定的检索实验。",
-      readOnlyReason: "此能力依赖经过审阅的本机私有 Provider 绑定和明确的 Agent allowlist，请通过 capability CLI 配置。",
+      description: "为 Goal 内 Agent 的召回与证据化结果学习配置经过审阅的本机私有 Provider 绑定。",
     },
   },
 };
@@ -119,6 +117,8 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     strict_receipt: { label: "Require an exact-diff receipt" },
     timezone: { label: "Timezone", description: "Use an IANA timezone, for example Asia/Shanghai." },
     schedule: { label: "Calendar reports", description: "Optional daily or weekly reports; no schedule preserves stage-only delivery." },
+    config_path: { label: "Local-private configuration path", description: "Repo-relative ignored JSON under .loopx/config/. Leave blank to retain the current binding; the path is never returned." },
+    enabled_agents: { label: "Enabled Goal Agents", description: "Enter one registered Goal-local Agent id per line. A private binding currently accepts exactly one Agent." },
   },
   "zh-CN": {
     completed_todos: { label: "两次 Goal 复核间的已完成 Todo 数", description: "可设置 1–5；机器默认值可被 Goal 显式覆盖。" },
@@ -135,6 +135,8 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     strict_receipt: { label: "要求精确 diff 回执" },
     timezone: { label: "时区", description: "使用 IANA 时区，例如 Asia/Shanghai。" },
     schedule: { label: "日历汇报", description: "可选每日或每周计划；未设置时保持阶段结束汇报。" },
+    config_path: { label: "本机私有配置路径", description: "填写 .loopx/config/ 下、相对仓库且被忽略的 JSON；留空保留当前绑定，路径不会被回传。" },
+    enabled_agents: { label: "已启用的 Goal Agent", description: "每行填写一个已注册的 Goal 内 Agent ID；私有绑定当前只接受一个 Agent。" },
   },
 };
 

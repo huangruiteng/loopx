@@ -105,6 +105,9 @@ def _receipt_row(
             semantics.runtime_root_command_route_count(text)
         ),
         "host_prompt_static_safety_revision": semantics.host_prompt_static_safety_revision(text),
+        "reward_memory_outcome_prompt_revision": (
+            semantics.reward_memory_outcome_prompt_revision(text)
+        ),
         "guided_todo_delta_schema_versions": (
             semantics.guided_todo_delta_schema_versions(payload)
             if isinstance(payload, dict)

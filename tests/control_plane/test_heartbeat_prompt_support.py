@@ -182,6 +182,25 @@ def test_sizing_guidance_survives_prompt_compaction(mode: str) -> None:
     assert "--fine-grained" not in payload["quota_guard_command"]
 
 
+@pytest.mark.parametrize("mode", ["full", "compact", "brief", "thin"])
+def test_reward_memory_outcome_gate_survives_app_prompt_compaction(mode: str) -> None:
+    payload = build_heartbeat_prompt(
+        goal_id="reward-memory-app-fixture",
+        agent_id="agent-a",
+        registered_agents=["agent-a"],
+        runtime_profile="codex_app_heartbeat",
+        **{mode: True},
+    )
+    body = payload["task_body"]
+    assert "--reward-memory-reflection-json" in body
+    assert "Todo validator" in body
+    assert "exact" in body and "digest" in body and "evidence" in body
+    assert "zero provider calls" in body
+    assert "raw" in body and "private" in body
+    if mode != "full":
+        assert payload["interface_budget"]["within_budget"] is True
+
+
 @pytest.mark.parametrize("profile", ["codex_cli", "ark_managed_agent_goal"])
 def test_goal_hosts_preserve_sizing_and_terminal_boundary(profile: str) -> None:
     payload = build_heartbeat_prompt(goal_id="sizing-fixture", runtime_profile=profile)

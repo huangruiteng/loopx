@@ -282,6 +282,7 @@ function runnerFixture(options: {
   readonly quotaTurnInstanceId?: string
   readonly heartbeatTurnInstanceId?: string
   readonly heartbeatTaskBody?: string
+  readonly rewardMemoryGuidance?: string
   readonly typedQuotaFailure?: boolean
   readonly bindingStatus?: 'bound' | 'missing' | (() => 'bound' | 'missing')
 } = {}): RunnerFixture {
@@ -386,6 +387,20 @@ function runnerFixture(options: {
               },
             } : {}),
             scheduler_hint: schedulerHint,
+            ...(options.rewardMemoryGuidance === undefined ? {} : {
+              reward_memory_recall: {
+                schema_version: 'agent_turn_recall_v0',
+                status: 'applied',
+                context: {
+                  schema_version: 'agent_turn_recall_context_v0',
+                  guidance: [{
+                    candidate_ref: 'candidate:reviewed',
+                    target_class: 'soft_preference',
+                    content_summary: options.rewardMemoryGuidance,
+                  }],
+                },
+              },
+            }),
           }),
           stderr: '',
         }
@@ -403,7 +418,7 @@ function runnerFixture(options: {
           exitCode: 0,
           stdout: JSON.stringify({
             ok: true,
-            schema_version: 'loopx_heartbeat_prompt_v0',
+            schema_version: 'heartbeat_agent_input_v1',
             goal_id: goalId,
             agent_id: agentId,
             turn_instance_id: turnInstanceId,
@@ -554,6 +569,25 @@ describe('same-session LoopX driver', () => {
     await waitFor(() => host.nextTurn.length === 1)
 
     expect(fixture.heartbeatCalls).toBe(1)
+    await driver.dispose()
+  })
+
+  it('injects reviewed Reward Memory guidance into the admitted task body', async () => {
+    const fixture = runnerFixture({
+      rewardMemoryGuidance: 'Reuse the verified exact-readback sequence.',
+    })
+    const host = fakeAgent()
+    const driver = makeDriver(fixture)
+
+    observeActivated(driver, host)
+    await waitFor(() => host.nextTurn.length === 1)
+
+    const content = host.nextTurn[0]?.content
+    expect(Array.isArray(content)).toBe(true)
+    const text = (content?.[0] as { text?: string } | undefined)?.text ?? ''
+    expect(text).toContain('LoopX private Reward Memory context:')
+    expect(text).toContain('Reuse the verified exact-readback sequence.')
+    expect(text).toContain('guidance_only')
     await driver.dispose()
   })
 

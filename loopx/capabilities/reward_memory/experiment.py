@@ -10,7 +10,10 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from ...agent_registry import normalize_registered_agents
-from ...control_plane.reward_memory import reward_memory_goal_policy
+from ...control_plane.reward_memory import (
+    reward_memory_goal_policy,
+    reward_memory_host_coverage,
+)
 from ...control_plane.operator_inbox_binding import local_private_config_digest
 from ...control_plane.todos.contract import normalize_todo_claimed_by
 from ..context_providers import build_context_provider
@@ -245,6 +248,10 @@ def validate_reward_memory_goal_agent_scope(
         if peer_ref != f"agent:{normalized_agent}":
             raise ValueError(
                 "private Reward Memory corpus peer_ref must match the enabled Agent"
+            )
+        if (corpus.get("scope") or {}).get("session_ref"):
+            raise ValueError(
+                "private Goal/Agent Reward Memory cannot be session-scoped"
             )
         if binding.get("actor_peer_id") != expected_actor:
             raise ValueError(
@@ -665,9 +672,13 @@ def _normalize_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
         )
 
     automation = _strict_object(
-        raw.get("automation"), label="automation", allowed=_AUTOMATION_FIELDS
+        raw.get("automation", {}), label="automation", allowed=_AUTOMATION_FIELDS
     )
-    fail_open = _boolean(automation.get("fail_open"), "automation.fail_open")
+    fail_open = (
+        _boolean(automation.get("fail_open"), "automation.fail_open")
+        if "fail_open" in automation
+        else True
+    )
     if not fail_open:
         raise ValueError("reward-memory automation must be fail-open")
     normalized = {
@@ -680,14 +691,29 @@ def _normalize_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
         "corpora": corpora,
         "surfaces": surfaces,
         "automation": {
-            "automatic_recall": _boolean(
-                automation.get("automatic_recall"), "automation.automatic_recall"
+            "automatic_recall": (
+                _boolean(
+                    automation.get("automatic_recall"),
+                    "automation.automatic_recall",
+                )
+                if "automatic_recall" in automation
+                else True
             ),
-            "automatic_ingest": _boolean(
-                automation.get("automatic_ingest"), "automation.automatic_ingest"
+            "automatic_ingest": (
+                _boolean(
+                    automation.get("automatic_ingest"),
+                    "automation.automatic_ingest",
+                )
+                if "automatic_ingest" in automation
+                else True
             ),
             "fail_open": True,
         },
+        "automation_intent": {
+            field: "explicit" if field in automation else "default_enabled_new_config"
+            for field in ("automatic_recall", "automatic_ingest")
+        }
+        | {"fail_open": "explicit" if "fail_open" in automation else "default"},
     }
     return normalized
 
@@ -816,6 +842,7 @@ def resolve_reward_memory_experiment(
         "fail_open": True,
         "config_runtime_route": config_runtime_route,
         "external_writes_performed": False,
+        "host_coverage": reward_memory_host_coverage(),
     }
     if not policy["enabled"]:
         return base | {"status": "disabled", "available": False}, None
@@ -920,6 +947,7 @@ def resolve_reward_memory_experiment(
         ],
         "automatic_ingest": automation["automatic_ingest"],
         "automatic_recall": automation["automatic_recall"],
+        "automation_intent": dict(config["automation_intent"]),
         "fail_open": automation["fail_open"],
         "config_runtime_route": config_runtime_route
         | {

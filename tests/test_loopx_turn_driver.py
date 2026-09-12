@@ -6,7 +6,9 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -26,6 +28,7 @@ from loopx.control_plane.turn_driver import (
     build_loopx_turn_plan,
     codex_cli_session_binding,
     loopx_turn_execution_committed,
+    reward_memory_reflection_digest,
     run_loopx_turn_once,
 )
 from loopx.control_plane.turn_driver.codex_cli import _store_codex_cli_session
@@ -831,6 +834,36 @@ def test_turn_host_request_carries_typed_child_operations() -> None:
         "requires_session": False,
     }
     assert request["result_contract"]["stdout"] == "one public-safe JSON object"
+
+
+def test_turn_host_request_carries_reward_memory_decision_context() -> None:
+    plan = build_loopx_turn_plan(
+        _adaptive_envelope(),
+        host="codex-cli",
+        execution_mode="interactive-visible",
+    )
+    plan["reward_memory_recall"] = {
+        "schema_version": "agent_turn_recall_v0",
+        "status": "applied",
+        "context": {
+            "schema_version": "agent_turn_recall_context_v0",
+            "guidance": [
+                {
+                    "candidate_ref": "candidate:reviewed",
+                    "target_class": "soft_preference",
+                    "content_summary": "Reuse the verified validation sequence.",
+                }
+            ],
+        },
+        "grants_new_action_authority": False,
+    }
+
+    request = build_loopx_turn_host_request(plan)
+
+    assert request["reward_memory_recall"] == plan["reward_memory_recall"]
+    assert request["reward_memory_recall"]["context"]["guidance"][0][
+        "content_summary"
+    ]
 
 
 def test_turn_help_omits_legacy_agent_loop_entrypoint() -> None:
@@ -2608,6 +2641,35 @@ def test_turn_run_once_commits_independently_validated_progress(
             "delivery_outcome": "outcome_progress",
             "vision_unchanged_reason": "The fixture objective remains open.",
             "summary": "One intermediate fixture step passed validation.",
+            "reward_memory_reflection_json": json.dumps(
+                {
+                    "schema_version": "turn_reward_memory_reflection_v0",
+                    "status": "eligible",
+                    "surface_id": "agent_workflow.turn_admission",
+                    "outcome_kind": "engineering",
+                    "content_summary": "Reuse the verified fixture sequence.",
+                    "reasoning_summary": "The independent validator passed.",
+                    "confidence": "high",
+                    "evidence_refs": ["artifact:fixture-validation"],
+                }
+            ),
+        }
+
+    observed_reflections: list[str] = []
+    observed_settlement_evidence: list[Mapping[str, Any]] = []
+
+    def post_settlement(
+        _plan: Mapping[str, Any],
+        result: Mapping[str, Any],
+        settlement_evidence: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        observed_reflections.append(str(result["reward_memory_reflection_json"]))
+        observed_settlement_evidence.append(settlement_evidence)
+        return {
+            "ok": True,
+            "schema_version": "turn_reward_memory_ingest_v0",
+            "status": "activated",
+            "source_event_id": "fixture-event",
         }
 
     execution = run_loopx_turn_once(
@@ -2618,11 +2680,19 @@ def test_turn_run_once_commits_independently_validated_progress(
         goal_id="fixture-goal",
         timeout_seconds=10,
         execute=True,
-        task_validator=lambda _plan, _result: {
+        task_validator=lambda _plan, result: {
             "status": "progress",
             "validator_kind": "fixture",
             "summary": "intermediate fixture progress is independently valid",
             "exit_code": 10,
+            "reward_memory_reflection_validation": {
+                "schema_version": "reward_memory_reflection_validation_v0",
+                "status": "validated",
+                "reflection_digest": reward_memory_reflection_digest(
+                    result["reward_memory_reflection_json"]
+                ),
+                "evidence_refs": ["artifact:fixture-validation"],
+            },
         },
         writeback=lambda _result: {"ok": True, "appended": True},
         spend=lambda: {"ok": True, "appended": True, "slots": 1},
@@ -2632,13 +2702,61 @@ def test_turn_run_once_commits_independently_validated_progress(
             "acknowledged": False,
             "apply_needed": False,
         },
+        post_settlement=post_settlement,
     )
 
     assert execution["status"] == "committed"
     assert execution["validation"]["status"] == "progress"
     assert execution["validation"]["exit_code"] == 10
     assert execution["quota_slot_spend_count"] == 1
+    assert execution["post_settlement"]["status"] == "activated"
+    assert len(observed_reflections) == 1
+    assert observed_settlement_evidence == [
+        {
+            "schema_version": "turn_post_settlement_evidence_v0",
+            "task_validation": execution["validation"],
+            "writeback": {"ok": True, "appended": True},
+            "quota_spend": {"ok": True, "appended": True, "slots": 1},
+        }
+    ]
     assert loopx_turn_execution_committed(execution) is True
+
+    replay = run_loopx_turn_once(
+        plan,
+        host_runner=host_runner,
+        project=tmp_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id="fixture-goal",
+        timeout_seconds=10,
+        execute=True,
+        task_validator=lambda _plan, result: {
+            "status": "progress",
+            "validator_kind": "fixture",
+            "summary": "intermediate fixture progress is independently valid",
+            "exit_code": 10,
+            "reward_memory_reflection_validation": {
+                "schema_version": "reward_memory_reflection_validation_v0",
+                "status": "validated",
+                "reflection_digest": reward_memory_reflection_digest(
+                    result["reward_memory_reflection_json"]
+                ),
+                "evidence_refs": ["artifact:fixture-validation"],
+            },
+        },
+        writeback=lambda _result: {"ok": True, "appended": True},
+        spend=lambda: {"ok": True, "appended": True, "slots": 1},
+        scheduler=lambda _spend: {
+            "disposition": "outer_controller_owned",
+            "completed": True,
+            "acknowledged": False,
+            "apply_needed": False,
+        },
+        post_settlement=post_settlement,
+    )
+    assert replay["replayed"] is True
+    assert replay["post_settlement"]["status"] == "activated"
+    assert len(observed_reflections) == 1
+    assert len(observed_settlement_evidence) == 1
 
 
 def test_turn_run_once_cli_rejects_unproven_host_claim_before_writeback(
@@ -2896,6 +3014,128 @@ def test_turn_run_once_cli_uses_built_in_codex_host_and_typed_writeback(
     assert "Run one revised public fixture check" in state
     if result_kind != "validated_progress":
         assert f"LoopX%20Turn%20{result_kind}" in state
+
+
+def test_turn_run_once_codex_cli_wires_validated_reflection_post_settlement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, runtime, registry = _write_live_fixture(tmp_path)
+    reflection = json.dumps(
+        {
+            "schema_version": "turn_reward_memory_reflection_v0",
+            "status": "eligible",
+            "surface_id": "agent_workflow.turn_admission",
+            "outcome_kind": "engineering",
+            "content_summary": "Reuse the validated Codex CLI sequence.",
+            "reasoning_summary": "The independent validator passed.",
+            "confidence": "high",
+            "evidence_refs": ["receipt:codex-cli-validator"],
+        },
+        separators=(",", ":"),
+    )
+    validator = project / "validate_codex_cli_reflection.py"
+    validator.write_text(
+        "import hashlib, json, sys\n"
+        "result = json.load(sys.stdin)\n"
+        "reflection = json.loads(result['reward_memory_reflection_json'])\n"
+        "canonical = json.dumps(reflection, sort_keys=True, separators=(',', ':'))\n"
+        "json.dump({\n"
+        "  'schema_version': 'reward_memory_reflection_validation_v0',\n"
+        "  'status': 'validated',\n"
+        "  'reflection_digest': 'sha256:' + hashlib.sha256(canonical.encode()).hexdigest(),\n"
+        "  'evidence_refs': reflection['evidence_refs'],\n"
+        "}, sys.stdout)\n",
+        encoding="utf-8",
+    )
+
+    def fake_codex_host(
+        request: Mapping[str, Any],
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        return {
+            "schema_version": "loopx_turn_result_v0",
+            "turn_key": request["turn_key"],
+            "result_kind": "validated_progress",
+            "completed_phases": ["host_execute", "typed_result"],
+            "classification": "codex_cli_reward_memory_progress",
+            "recommended_action": "Continue the public fixture",
+            "next_action": "Run the next bounded fixture Turn",
+            "delivery_batch_scale": "single_surface",
+            "delivery_outcome": "outcome_progress",
+            "vision_unchanged_reason": "The fixture objective remains open.",
+            "summary": "One Codex CLI fixture step passed validation.",
+            "reward_memory_reflection_json": reflection,
+        }
+
+    observed: list[dict[str, Any]] = []
+
+    def fake_ingest(**kwargs: object) -> dict[str, object]:
+        observed.append(dict(kwargs))
+        return {
+            "ok": True,
+            "schema_version": "turn_reward_memory_ingest_v0",
+            "status": "activated",
+            "host_wiring": "codex_cli_turn_post_settlement",
+            "provider_sync_count": 1,
+            "exact_readback_verified": True,
+        }
+
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.run_codex_cli_host",
+        fake_codex_host,
+    )
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.run_configured_turn_outcome_ingest_fail_open",
+        fake_ingest,
+    )
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exit_code = cli_main(
+            [
+                "--registry",
+                str(registry),
+                "--runtime-root",
+                str(runtime),
+                "--format",
+                "json",
+                "turn",
+                "run-once",
+                "--goal-id",
+                "loopx-turn-fixture",
+                "--agent-id",
+                "codex-fixture",
+                "--host",
+                "codex-cli",
+                "--project",
+                str(project),
+                "--validation-command-json",
+                json.dumps([sys.executable, str(validator)]),
+                "--scan-root",
+                str(project),
+                "--no-global-sync",
+                "--execute",
+            ]
+        )
+
+    payload = json.loads(output.getvalue())
+    assert exit_code == 0, payload
+    assert payload["post_settlement"] == {
+        "ok": True,
+        "schema_version": "turn_reward_memory_ingest_v0",
+        "status": "activated",
+        "host_wiring": "codex_cli_turn_post_settlement",
+        "provider_sync_count": 1,
+        "exact_readback_verified": True,
+    }
+    assert len(observed) == 1
+    assert observed[0]["host_result"]["reward_memory_reflection_json"] == reflection
+    evidence = observed[0]["settlement_evidence"]
+    assert evidence["task_validation"]["reward_memory_reflection_validation"][
+        "status"
+    ] == "validated"
+    assert evidence["writeback"]["appended"] is True
+    assert evidence["quota_spend"]["appended"] is True
 
 
 def test_turn_run_once_cli_resumes_session_from_recoverable_failed_turn(

@@ -540,10 +540,19 @@ def build_goal_configuration_catalog(
                         "config_pointer_registered"
                     )
                     is True,
+                    "binding_revision": str(
+                        reward_memory.get("binding_revision") or ""
+                    ),
                     "enabled_agents": list(reward_memory.get("enabled_agents") or []),
                     "enablement_verified_agents": list(
                         reward_memory.get("enablement_verified_agents") or []
                     ),
+                    "automatic_ingest": reward_memory.get("automatic_ingest"),
+                    "automatic_recall": reward_memory.get("automatic_recall"),
+                    "automation_intent": dict(
+                        reward_memory.get("automation_intent") or {}
+                    ),
+                    "host_coverage": list(reward_memory.get("host_coverage") or []),
                 },
                 "required_inputs": {
                     "ignored-reward-memory-config": (
@@ -566,7 +575,7 @@ def build_goal_configuration_catalog(
                 "does_not": [
                     "make any provider a global LoopX feature or dependency",
                     "install, authenticate, or configure the selected provider",
-                    "enable every agent, automatically ingest feedback, or automatically recall",
+                    "enable every agent or treat an unvalidated Turn summary as evidence",
                     "bypass scope, authority, freshness, conflict, or exact-readback guards",
                 ],
                 "commands": {

@@ -313,6 +313,28 @@ def test_machine_inheritable_goal_capabilities_can_clear_their_overrides() -> No
     assert _goal_capability_options("change_quality_qualification", None) == {
         "clear_change_quality_configuration": True
     }
+    assert _goal_capability_options("reward_memory", None) == {
+        "clear_reward_memory_config": True
+    }
+
+
+def test_reward_memory_goal_editor_reuses_the_capability_owned_configurator() -> None:
+    assert _goal_capability_options(
+        "reward_memory",
+        {
+            "config_path": ".loopx/config/reward-memory/private.json",
+            "enabled_agents": ["researcher"],
+        },
+    ) == {
+        "reward_memory_config": ".loopx/config/reward-memory/private.json",
+        "reward_memory_agents": ["researcher"],
+    }
+    assert _goal_capability_options(
+        "reward_memory", {"enabled_agents": ["researcher"]}
+    ) == {
+        "reward_memory_config": None,
+        "reward_memory_agents": ["researcher"],
+    }
 
 
 def test_goal_configuration_inspection_requires_one_goal_id() -> None:

@@ -18,6 +18,29 @@ def host_prompt_static_safety_revision(text: str) -> str | None:
     )
     return "host_prompt_static_safety_v1" if block in text else None
 
+
+def reward_memory_outcome_prompt_revision(text: str) -> str | None:
+    """Attribute the one-time automatic outcome lifecycle prompt transition.
+
+    This is qualification evidence for the exact fail-closed contract.  It is
+    not a runtime detector and deliberately requires every safety invariant.
+    """
+
+    required = (
+        "--reward-memory-reflection-json",
+        "Todo validator",
+        "digest",
+        "evidence",
+        "zero provider calls",
+        "raw",
+        "private",
+    )
+    return (
+        "reward_memory_outcome_prompt_v1"
+        if all(fragment in text for fragment in required)
+        else None
+    )
+
 _MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+.+$")
 _RUNTIME_ROOT_COMMAND_ROUTE = re.compile(
     r"(?m)(?:^|[\"'`])[^\r\n\S]*loopx\s+--runtime-root\s+"
