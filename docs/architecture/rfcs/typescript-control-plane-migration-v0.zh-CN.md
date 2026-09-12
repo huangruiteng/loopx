@@ -486,6 +486,16 @@ Todo，同一 Todo 的不同展示不重复计算，权威空 backlog 不再复�
 target capability 是修复产出，不是安装或授权。没有新 provider／inventory／enablement／
 promotion；压缩候选来源的上限和其余 T3 consumer 仍需分别闭合。
 
+运行时能力重入现在复用同一个 TS owner：验证目标选择、owner 权限排除、推荐与已绑定
+Turn 的区分，以及无持久授权的恢复合同由 `agents/capability_gate.ts` 负责。Python 删除
+旧目标查找与过滤规则，仅适配 host/scheduler 参数、调用一次 typed reducer 并渲染 shell
+argv；同一 interaction packet 复用结果，健康路径不增加 runtime 调用。修正行为是：显式
+选择前，可执行的低优先级推荐不能隐藏受阻任务的真实能力验证；验证成功在原 Turn 重入，
+失败后仍可显式选择其他工作。已提交 receipt 的 Todo 不变。该观察属于 host-local read
+plan，遵循 shared-authority RFC 第 3 节边界；不增加 capability lease、共享 grant 或
+provider 写入。CLI/managed Turn 复用已有重入字段，生成的 `/loopx` skill 明确要求核对
+缺失声明；没有新增前端配置或第二份 UI 状态。
+
 Advancement-frontier checkpoint 闭合：`todos/frontier_revision.ts` 现统一 Agent
 选择、完整度、实质内容哈希、长链阈值与精确 ACK/rearm 分类。Python 保留 v0 字段清单
 与 legacy JSON/metadata codec，使合法且未变化的 frontier 保持已有指纹；删除旧 Python

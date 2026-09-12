@@ -167,6 +167,8 @@ def test_codex_install_upgrades_managed_loopx_facade(tmp_path: Path) -> None:
     assert "never pipe a `--begin-turn` call" not in skill_text
     assert "passes its own `--turn-instance-id`" in skill_text
     assert "interaction_contract.cli_channel.selection_command" in skill_text
+    assert "Read capability_gate.repair_missing even when should_run is true" in skill_text
+    assert "do not claim a missing declaration proves a missing tool" in skill_text
     assert "do not return merely after setup, planning, or claim" not in skill_text
     metadata_text = metadata.read_text(encoding="utf-8")
     assert 'display_name: "LoopX"' in metadata_text

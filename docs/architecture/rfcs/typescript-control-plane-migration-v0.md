@@ -636,6 +636,18 @@ read or resume evaluation is added. Remaining T3 work includes consumers that
 reconstruct diagnostics from compact summaries; do not call those migrated.
 This does not close T1/T2, all T3 consumers, or any durability/promotion hold.
 
+Runtime capability re-entry now uses that same TS owner for verification-target selection,
+owner-authority exclusion, advisory versus bound Turn handling, and the recovery contract
+without durable grants. Python removes the former target lookup/filter rules and only adapts
+host/scheduler facts, calls one typed reducer, and renders shell argv. One interaction packet
+reuses the result; a healthy path adds no runtime call. The intentional correction is that an
+eligible fallback recommendation cannot hide a blocked task's real capability check before
+explicit selection. Success re-enters the same Turn; failure still allows explicit fallback
+selection. A committed receipt's Todo remains bound. This is a host-local read plan under
+section 3 of the shared-authority RFC, not a capability lease, shared grant, or provider write.
+CLI/managed Turn reuse the existing re-entry fields; the generated `/loopx` skill requires
+checking missing declarations. No frontend configuration or second UI state is introduced.
+
 Advancement-frontier checkpoint closure: `todos/frontier_revision.ts` now owns
 agent selection, completeness, material hashing, long-chain thresholds and exact
 ACK/rearm classification. Python retains the v0 field manifest and legacy JSON/

@@ -1,6 +1,6 @@
 /** Read policy only: requirements are not enablement, credentials or write authority. */
 import type {JsonObject} from "../effect_program.ts";
-import {requireJsonObject, requireStringArray, requireInteger, requireNonEmptyString} from "../runtime_decode.ts";
+import {requireJsonObject, requireStringArray, requireInteger, requireNonEmptyString, requireBoolean, optionalNonEmptyString} from "../runtime_decode.ts";
 
 const DEFAULT_AVAILABLE = ["shell", "filesystem_read", "filesystem_write"];
 const OWNER_HELD = new Set(["credentials", "production_access"]);
@@ -112,10 +112,76 @@ export function projectCapabilityGate(request: JsonObject): JsonObject | null {
     reason: "all visible executable todo candidates require unavailable capabilities"};
 }
 
+/** Host-local read plan: never writes a grant or changes a committed Turn binding. */
+export function projectRuntimeCapabilityReentry(request: JsonObject): JsonObject | null {
+  const gate = requireJsonObject(request.gate, "gate");
+  const observed = unique(requireStringArray(request.available, "available").filter(c => !OWNER_HELD.has(c)));
+  const selectionRequired = requireBoolean(request.selection_required, "selection_required");
+  const selectedId = optionalNonEmptyString(request.selected_todo_id, "selected_todo_id");
+  const receiptId = optionalNonEmptyString(request.receipt_todo_id, "receipt_todo_id");
+  // A receipt remains binding even if an inconsistent advisory flag accompanies it.
+  const boundId = receiptId ?? (selectionRequired ? null : selectedId);
+  const baseArgs = requireStringArray(request.command_prefix, "command_prefix");
+  const schedulerArgs = requireStringArray(request.scheduler_args, "scheduler_args");
+  const missing = requireStringArray(gate.repair_missing ?? [], "repair_missing")
+    .filter(c => !OWNER_HELD.has(c) && !observed.includes(c));
+  const resolutions = list(gate.resolution_bindings ?? []).map(value => {
+    const row = requireJsonObject(value, "resolution binding");
+    return {
+      owner: requireNonEmptyString(row.owner, "owner"),
+      capability: requireNonEmptyString(row.capability, "capability"),
+      primary: optionalNonEmptyString(row.primary_blocked_todo_id, "primary_blocked_todo_id"),
+      ids: requireStringArray(row.blocked_todo_ids ?? [], "blocked_todo_ids"),
+    };
+  });
+  const blocked = list(gate.blocked_candidates ?? []).map(value => {
+    const row = requireJsonObject(value, "blocked candidate");
+    return {
+      id: optionalNonEmptyString(row.todo_id, "todo_id"),
+      instruction: optionalNonEmptyString(row.text, "text"),
+      action: optionalNonEmptyString(row.action_kind, "action_kind") ?? "unspecified",
+      target: optionalNonEmptyString(row.target_key, "target_key"),
+      required: requireStringArray(row.required_capabilities ?? [], "required_capabilities"),
+    };
+  });
+  if (!schedulerArgs.length) return null;
+  const candidates: JsonObject[] = [];
+  for (const capability of unique(missing)) {
+    const bindings = resolutions.filter(row => row.owner === "agent" && row.capability === capability);
+    const ids = new Set(bindings.flatMap(row => row.ids.length ? row.ids : row.primary ? [row.primary] : []));
+    const eligible = blocked.filter(row => row.id && ids.has(row.id) && row.instruction &&
+      row.required.includes(capability) && (!boundId || row.id === boundId));
+    // Prefer the gate's highest-priority target, not incidental display order.
+    const target = eligible.find(row => bindings.some(binding => binding.primary === row.id)) ?? eligible[0];
+    if (!target) continue;
+    candidates.push({
+      capability, verification_required: "successful_real_callsite_observation",
+      verification_target: {todo_id: target.id!, action_kind: target.action, instruction: target.instruction!,
+        ...(target.target ? {target_ref: target.target} : {})},
+      command_argv: [...baseArgs, ...observed.flatMap(c => ["--available-capability", c]),
+        "--available-capability", capability, ...schedulerArgs],
+    });
+  }
+  if (!candidates.length) return null;
+  return {
+    schema_version: "runtime_capability_reentry_v0", state: "verification_required",
+    source: "quota_should_run.capability_gate.repair_missing", candidates,
+    verification_contract: {scope: "real_task_facing_callsite_for_blocked_todo", ordinary_delivery_allowed: false,
+      advancement_checkpoint: false, settles_turn: false,
+      on_success: "rerun_quota_in_same_turn_then_continue_if_allowed",
+      on_failure: "record_exact_blocker_without_capability_flag"},
+    inheritance_contract: {source_invocation: "verified quota should-run reentry",
+      propagates_to: ["interaction_contract.cli_channel.next_cli_actions", "quota spend-slot", "quota monitor-poll"],
+      session_scoped: true, durable_grant_written: false},
+    failure_policy: "Do not add the capability flag when the real callsite check fails; continue the capability repair or record the concrete blocker.",
+  };
+}
+
 export function evaluateCapabilityGate(value: unknown): JsonObject {
   const request = requireJsonObject(value, "capability gate request");
   if (request.schema_version !== "capability_gate_request_v0") throw new TypeError("capability gate request schema mismatch");
   if (request.operation === "project") return {schema_version: "capability_gate_result_v0", result: projectCapabilityGate(request)};
+  if (request.operation === "reentry") return {schema_version: "capability_gate_result_v0", result: projectRuntimeCapabilityReentry(request)};
   if (request.operation === "missing") {
     const available = requireStringArray(request.available, "available");
     return {schema_version: "capability_gate_result_v0", result: list(request.items).map(item => {

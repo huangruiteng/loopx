@@ -667,6 +667,7 @@ def interaction_next_cli_actions(
         Mapping[str, Any] | SchedulerExecutionContextResolution | None
     ) = None,
     capability_reentry: dict[str, Any] | None = None,
+    capability_reentry_resolved: bool = False,
     settlement_plan: Mapping[str, Any] | None = None,
     turn_instance_id: str | None = None,
     runtime_root: str | None = None,
@@ -763,7 +764,7 @@ def interaction_next_cli_actions(
             else None
         ),
     )
-    if capability_reentry is None:
+    if capability_reentry is None and not capability_reentry_resolved:
         capability_reentry = build_runtime_capability_reentry_packet(
             payload,
             available_capabilities=available_capabilities,
@@ -1172,6 +1173,14 @@ def _build_interaction_agent_channel(
         channel["action_portfolio_ref"] = "$.action_portfolio"
     selection.apply_action_selection_agent_gate(channel, payload)
     if capability_reentry is not None:
+        if selection.action_portfolio_requires_explicit_selection(payload):
+            channel["primary_action"] = (
+                "before choosing a fallback Todo, verify the projected missing "
+                "runtime capability at its real task-facing callsite; on success "
+                "run next_cli_actions[0] in this same Turn, then select a Todo; "
+                "on failure record the concrete blocker and select eligible work "
+                "with selection_command without adding a capability flag"
+            )
         candidate = capability_reentry["candidates"][0]
         target = candidate["verification_target"]
         channel["next_task_action"] = {
@@ -1269,14 +1278,6 @@ def _build_interaction_cli_channel(
     runtime_root: str | None = None,
 ) -> dict[str, Any]:
     spend_after_selection = selection.delivery_spend_allowed(payload, spend_after_validation)
-    if capability_reentry is None:
-        capability_reentry = build_runtime_capability_reentry_packet(
-            payload,
-            available_capabilities=available_capabilities,
-            scheduler_execution_context=scheduler_execution_context,
-            turn_instance_id=turn_instance_id,
-            runtime_root=runtime_root,
-        )
     settlement_plan, replan_settlement_contract = (
         _turn_scoped_cli_settlement_context(
             payload,
@@ -1293,6 +1294,7 @@ def _build_interaction_cli_channel(
             available_capabilities=available_capabilities,
             scheduler_execution_context=scheduler_execution_context,
             capability_reentry=capability_reentry,
+            capability_reentry_resolved=True,
             settlement_plan=settlement_plan,
             turn_instance_id=turn_instance_id,
             runtime_root=runtime_root,
@@ -1313,6 +1315,12 @@ def _build_interaction_cli_channel(
         channel["replan_settlement_contract"] = replan_settlement_contract
     if capability_reentry is not None:
         channel["runtime_capability_reentry"] = capability_reentry
+        if selection.action_portfolio_requires_explicit_selection(payload):
+            # Keep selection_command for fallback after a failed verification.
+            # The task-facing action points at this same-turn re-entry command.
+            channel["next_cli_actions"] = [
+                candidate["command"] for candidate in capability_reentry["candidates"]
+            ]
     selected_todo = (
         payload.get("selected_todo")
         if isinstance(payload.get("selected_todo"), Mapping)

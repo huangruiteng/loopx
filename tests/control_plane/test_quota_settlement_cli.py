@@ -1583,15 +1583,16 @@ def test_visible_goal_continuation_begins_turn_and_executes_returned_selection(
     assert _heartbeat_receipt_count(runtime, turn_instance_id) == 2
 
 
+@pytest.mark.parametrize("fallback_available", [False, True])
 def test_visible_goal_capability_reentry_preserves_turn_through_selection(
-    tmp_path: Path,
+    tmp_path: Path, fallback_available: bool,
 ) -> None:
     project, runtime, registry_path = _write_fixture(
         tmp_path,
-        required_capability="network",
+        required_capability=None if fallback_available else "network",
     )
     _configure_runtime_capability_reentry_fixture(project)
-    _configure_selectable_alternative(project, required_capability="network")
+    _configure_selectable_alternative(project, required_capability=None if fallback_available else "network")
     prompt = build_heartbeat_prompt(
         goal_id=GOAL_ID,
         agent_id=AGENT_ID,
@@ -1610,6 +1611,11 @@ def test_visible_goal_capability_reentry_preserves_turn_through_selection(
 
     assert first_rc == 0, first
     turn_instance_id = first["heartbeat_receipt"]["turn_instance_id"]
+    if fallback_available:
+        assert first["interaction_contract"]["cli_channel"]["selection_required"] is True
+        assert first["selected_todo"]["todo_id"] == TODO_ID
+        assert first["interaction_contract"]["agent_channel"]["next_task_action"]["kind"] == "capability_verification"
+        assert first["interaction_contract"]["cli_channel"]["next_cli_actions"][0] == first["runtime_capability_reentry"]["candidates"][0]["command"]
     reentry_command = first["runtime_capability_reentry"]["candidates"][0][
         "command"
     ]

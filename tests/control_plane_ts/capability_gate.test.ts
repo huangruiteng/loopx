@@ -6,7 +6,7 @@ import {projectTodoQuotaPlanning, projectQuotaSelection} from "../../loopx/contr
 import {productionScaleCoordinationFixture} from "./production_scale_coordination_fixture.ts";
 
 const row = (id: string, required: string[] = [], targets: string[] = [], priority = 1): JsonObject => ({
-  payload: {todo_id: id, priority: `P${priority}`}, required, targets, rank: [0, 1, priority, 1, 1, 1],
+  payload: {todo_id: id, text: `Inspect ${id}`, priority: `P${priority}`}, required, targets, rank: [0, 1, priority, 1, 1, 1],
 });
 const project = (candidates: JsonObject[], fields: JsonObject = {}) => projectCapabilityGate({
   source: "fixture", candidates, available: [], candidate_order_policy: "claim_then_priority_then_active_next_then_repair", ...fields,
@@ -89,4 +89,47 @@ test("runtime decoder rejects malformed facts rather than treating a requirement
   assert.throws(() => evaluateCapabilityGate({...request, items: [{required: "network", targets: []}]}), /required/);
   assert.throws(() => evaluateCapabilityGate({...request, operation: "enable"}), /unknown/);
   assert.throws(() => project([ {...row("a"), rank: [1]}]), /six/);
+});
+
+const reentry = (fields: JsonObject = {}) => evaluateCapabilityGate({
+  schema_version: "capability_gate_request_v0", operation: "reentry",
+  gate: project([row("p0", ["network"], [], 0), row("fallback", ["shell"], [], 1)]),
+  available: ["shell"], selection_required: true, selected_todo_id: "fallback", receipt_todo_id: null,
+  command_prefix: ["loopx", "--format", "json", "quota", "should-run", "--goal-id", "fixture", "--turn-instance-id", "same-turn"],
+  scheduler_args: ["--codex-app"], ...fields,
+}).result as JsonObject | null;
+
+test("an advisory fallback cannot hide the blocked runtime check; bound work cannot switch", () => {
+  const plan = reentry()!;
+  const candidate = (plan.candidates as JsonObject[])[0]!;
+  assert.equal((candidate.verification_target as JsonObject).todo_id, "p0");
+  assert.deepEqual((candidate.command_argv as string[]).slice(-5), ["--available-capability", "shell", "--available-capability", "network", "--codex-app"]);
+  assert.ok((candidate.command_argv as string[]).includes("same-turn"));
+  assert.equal(reentry({selection_required: false}), null);
+  assert.equal(reentry({receipt_todo_id: "fallback"}), null);
+  assert.equal(reentry({available: ["network"]}), null);
+  assert.equal(reentry({scheduler_args: []}), null);
+});
+
+test("verification target honors primary priority and an exact binding even after another target", () => {
+  const gate = project([row("low", ["network"], [], 2), row("high", ["network"], [], 0)])!;
+  const target = (plan: JsonObject) => ((plan.candidates as JsonObject[])[0]!.verification_target as JsonObject).todo_id;
+  assert.equal(target(reentry({gate})!), "high");
+  assert.equal(target(reentry({gate, receipt_todo_id: "low"})!), "low");
+});
+
+test("verification never converts owner authority into runtime availability", () => {
+  assert.equal(reentry({gate: project([row("private", ["credentials", "production_access"])])}), null);
+  const plan = reentry({available: ["shell", "credentials", "production_access"]})!;
+  const args = (plan.candidates as JsonObject[])[0]!.command_argv as string[];
+  assert.ok(!args.includes("credentials") && !args.includes("production_access"));
+  assert.equal((plan.inheritance_contract as JsonObject).durable_grant_written, false);
+  assert.equal((plan.verification_contract as JsonObject).ordinary_delivery_allowed, false);
+});
+
+test("reentry decoder rejects malformed selection and requirement facts", () => {
+  assert.throws(() => reentry({selection_required: "false"}), /selection_required/);
+  assert.throws(() => reentry({receipt_todo_id: 3}), /receipt_todo_id/);
+  assert.throws(() => reentry({gate: {repair_missing: "network"}}), /repair_missing/);
+  assert.throws(() => reentry({gate: {blocked_candidates: [{required_capabilities: "network"}]}}), /required_capabilities/);
 });
