@@ -113,6 +113,7 @@
     "tests/control_plane_ts/task_lease_acquire_cli.test.ts",
     "tests/control_plane_ts/legacy_writer_fence_caller_parity_support.ts",
     "tests/control_plane_ts/legacy_writer_fence_caller_parity.test.ts",
+    "tests/control_plane_ts/legacy_writer_fence_read_error.test.ts",
     "tests/control_plane_ts/turn_journal.test.ts",
     "tests/control_plane_ts/turn_journal_effects.test.ts",
     "tests/control_plane_ts/vision_checkpoint.test.ts",
