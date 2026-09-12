@@ -763,7 +763,8 @@ def test_current_obligation_runnable_successor_is_the_semantic_receipt() -> None
     )
 
     assert after_transition is None
-    assert semantic_delta is None
+    assert semantic_delta["accepted"] is True
+    assert semantic_delta["obligation_id"] == obligation["obligation_id"]
 
 
 def test_rearmed_vision_obligation_accepts_only_its_fresh_successor_id() -> None:
@@ -810,7 +811,8 @@ def test_rearmed_vision_obligation_accepts_only_its_fresh_successor_id() -> None
 
     assert rearmed_id != original_id
     assert remaining is None
-    assert semantic_delta is None
+    assert semantic_delta["accepted"] is True
+    assert semantic_delta["obligation_id"] == rearmed_id
 
 
 def test_completed_or_wrong_obligation_successor_cannot_close_rotated_duty() -> None:

@@ -53,7 +53,8 @@ test("repository transport aliases match the retained node-independent codec", (
 
 test("unsafe repository routes cannot be silently repaired by URL parsing", () => {
   for (const repo of ["https://github.com/example/../other", "git:github.com/example/./repo",
-    "https://user:password@example.invalid/repo", "https://example.invalid/repo?credential=value",
+    "https://user:password@example.invalid/repo", "user:password@example.invalid:repo",
+    "https://example.invalid/repo?credential=value",
     "https://example.invalid/repo#fragment", "file:///repo", "https://example.invalid/", "not a repository",
     "https://example.invalid\\other/repo", "https://example.invalid/a%2fb", "https://example.invalid/a b"]) {
     assert.throws(() => plan({next_task_repository: repo}));

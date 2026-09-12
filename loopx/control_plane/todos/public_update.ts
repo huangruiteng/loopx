@@ -6,6 +6,7 @@ import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA } from "./authoring_scope.ts";
 import { planTodoFieldUpdate, TODO_FIELD_UPDATE_REQUEST_SCHEMA } from "./field_update.ts";
 import { planTodoExternalWaitTransition, TODO_EXTERNAL_WAIT_REQUEST_SCHEMA_VERSION } from "./resume_condition.ts";
+import { normalizeTodoWorkRequirements, TODO_WORK_REQUIREMENT_FIELDS } from "./work_requirements.ts";
 
 export const TODO_PUBLIC_UPDATE_REQUEST_SCHEMA = "todo_public_update_request_v0";
 
@@ -42,7 +43,10 @@ export function planPublicTodoUpdate(value: unknown): JsonObject {
     throw new EffectRuntimeRequestError("public Todo update schema mismatch");
   }
   const todo = requireJsonObject(request.todo, "public Todo update source");
-  const intent = requireJsonObject(request.intent, "public Todo update intent");
+  const rawIntent = requireJsonObject(request.intent, "public Todo update intent");
+  const intent: JsonObject = {...rawIntent};
+  for (const field of TODO_WORK_REQUIREMENT_FIELDS) delete intent[field];
+  Object.assign(intent, normalizeTodoWorkRequirements(rawIntent));
   const context = requireJsonObject(request.context, "public Todo update context");
   const scope = planTodoAuthoringScope({schema_version: TODO_AUTHORING_SCOPE_REQUEST_SCHEMA,
     command: "update", role: context.role, todo,

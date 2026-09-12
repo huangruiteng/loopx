@@ -562,6 +562,19 @@ path, and canary route rather than as a user-facing release baseline.
   paths gain bounded reads and clearer recovery diagnostics. The published
   wheel, source distribution, macOS, Windows, checksum, update, and PyPI
   artifacts were verified against the exact release source before promotion.
+- `v1.0.3` on 2026-09-11 11:53 +08:00: native monitor observation and consumer
+  closure release at the matching `v1.0.3` tag (`0496975e`). Native monitor
+  observations and their successors commit atomically through one typed
+  transaction, and completed history stays out of target-key selection (#4187);
+  quota unifies typed scope selection without erasing user gates, and the
+  scheduler hint accepts canonical Base64 transport; archived history preserves
+  decision and resume semantics (#4184); the manager keeps concrete Core
+  findings in progress reports behind scoped evidence reads (#4213, #4218);
+  Goal Channels extract runtime command ownership (#4154) and deliver manager
+  terminal failure receipts (#4217); and iteration-fresh host dispatch plus
+  typed upstream terminal errors land through #4126 and #4215. The published
+  wheel, source distribution, macOS, Windows, checksum, update, and PyPI
+  artifacts were verified against the exact release source before promotion.
 
 When a new public release is promoted, add it here only after the matching tag,
 release note, stable ref, update path, and focused release canary agree.

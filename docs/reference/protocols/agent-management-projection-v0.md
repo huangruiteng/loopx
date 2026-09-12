@@ -157,6 +157,32 @@ The row may be rendered as a "task" card for operator familiarity, but API and
 state names should keep `todo` terminology to avoid implying a second runtime
 model.
 
+### Capability prerequisites and repair outputs
+
+The read-only capability gate distinguishes `required_capabilities` (execution
+prerequisites) from `target_capabilities` (what a repair task aims to provide).
+A target is not its own prerequisite, but declaring it neither enables it nor
+grants credentials, production access, write scope, a claim or a lease. A task
+repairing `network` can therefore be runnable while another task requiring
+`network` stays blocked until availability is observed.
+
+`agents/capability_gate.ts` owns missing-set evaluation, resolution responsibility
+and impacted-Todo bindings. Unknown missing capabilities retain Agent repair
+routing; `credentials` and `production_access` retain owner routing. Other runnable
+work remains available when one candidate is blocked. A shared capability binding
+uses the highest-priority affected Todo rather than whichever display row appears
+first, while preserving all affected Todo IDs. Display variants of one ID do not
+become separate tasks. An explicitly empty evaluated backlog is authoritative;
+the older first-item source is used only when the backlog field is absent.
+
+Quota's v1 planning request carries normalized requirement facts, so the same TS
+rule partitions due Monitors without per-Todo RPCs or trusting stale precomputed
+missing lists. Candidate source/eligibility and profile ranking remain adapters;
+this does not claim complete-inventory selection or change Monitor due/writeback
+and deferred-replan rules. Use `quota should-run --include-detail agent-todos` to
+inspect the existing full capability-gate detail; the default CLI keeps its
+compact representation. No configuration, UI control or storage migration is added.
+
 ## Handoff Notes
 
 Inter-agent handoff should appear as a typed note attached to existing todo,

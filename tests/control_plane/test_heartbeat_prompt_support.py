@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import runpy
+from pathlib import Path
+
 import pytest
 
 from loopx.control_plane.heartbeat.agent import (
@@ -57,6 +60,43 @@ def test_interface_budget_uses_visible_goal_mode() -> None:
     assert budget["mode"] == "visible_goal"
     assert budget["max_chars"] == 4000
     assert budget["within_budget"] is True
+
+
+@pytest.mark.parametrize("mode,limit", [("thin", 2500), ("visible_goal", 4000)])
+def test_prompt_body_limit_remains_independent_of_json_envelope(mode: str, limit: int) -> None:
+    for size in (limit, limit + 1):
+        budget = build_interface_budget(
+            task_body="x" * size,
+            goal_id="fixture-goal",
+            active_state="fixture-state",
+            native_goal_host=mode == "visible_goal",
+        )
+        assert budget["max_chars"] == limit
+        assert budget["within_budget"] is (size <= limit)
+
+
+def test_heartbeat_envelope_and_body_overflow_are_both_rejected() -> None:
+    smoke = runpy.run_path(str(
+        Path(__file__).resolve().parents[2]
+        / "examples/control_plane/hot-path-interface-budget-smoke.py"
+    ))
+    check = smoke["assert_surface"]
+    payload = build_heartbeat_prompt(
+        goal_id="interface-budget-goal", thin=True,
+        runtime_profile="codex_app_heartbeat", agent_id="worker-a",
+        agent_scopes=["implementation", "review"],
+    )
+    check("heartbeat_prompt_json", payload)
+    # Passing the inner body check cannot hide extra envelope metadata.
+    envelope = {**payload, "extra": ""}
+    envelope["extra"] = "x" * (4800 - smoke["json_size"](envelope))
+    check("heartbeat_prompt_json", envelope)
+    envelope["extra"] += "x"
+    with pytest.raises(AssertionError):
+        check("heartbeat_prompt_json", envelope)
+    # A small envelope cannot waive the independently evaluated body budget.
+    with pytest.raises(AssertionError):
+        check("heartbeat_prompt_json", {"interface_budget": {"within_budget": False}})
 
 
 def test_agent_scope_normalization_dedupes_and_rejects_angle_brackets() -> None:

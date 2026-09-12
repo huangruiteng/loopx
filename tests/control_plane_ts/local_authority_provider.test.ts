@@ -113,6 +113,9 @@ function providerCalls(directory: string, revision: string, dryRun: boolean) {
     acknowledgeLocalCoordinationTodoArchive: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_ARCHIVE_ACK_REQUEST_SCHEMA}],
     promoteLocalCoordinationAuthority: [promotionRequest(directory, {}, "file:synthetic:1")],
     pollLocalCoordinationMonitor: [{...input, schema_version: "loopx_coordination_monitor_poll_request_v0", observation: {}, intent: {}}],
+    continueLocalTodo: [{...input, schema_version: "loopx_local_coordination_todo_continuation_request_v0",
+      todo_id: "todo-a", agent_id: "agent-a", session_id: "session-1", action: "inspect",
+      registered_agents: ["agent-a", "agent-b"]}],
   } satisfies Record<Entrypoint, unknown[]>;
   return Object.entries(requests).flatMap(([name, values]) => values.map(value =>
     [name, () => runtime[name as Entrypoint](value)] as const));

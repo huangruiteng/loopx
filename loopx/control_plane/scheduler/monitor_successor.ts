@@ -3,8 +3,9 @@
 import { createHash } from "node:crypto";
 import type { JsonObject } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
-import { optionalNonEmptyString, requireBoolean, requireJsonObject, requireStringArray } from "../runtime_decode.ts";
-import { compactPythonWhitespace, normalizeTodoAgent, stripPythonWhitespace } from "../coordination/todo_agents.ts";
+import { optionalNonEmptyString, requireBoolean, requireJsonObject } from "../runtime_decode.ts";
+import { normalizeTodoAgent, stripPythonWhitespace } from "../coordination/todo_agents.ts";
+import { normalizeTodoRepository, normalizeTodoCapabilities } from "../todos/work_requirements.ts";
 
 export const MONITOR_SUCCESSOR_REQUEST_SCHEMA = "loopx_monitor_successor_plan_request_v0";
 export const MONITOR_SUCCESSOR_RESULT_SCHEMA = "loopx_monitor_successor_plan_result_v0";
@@ -47,55 +48,7 @@ function text(value: unknown, field: string): string | null {
   return raw === null ? null : stripPythonWhitespace(raw) || null;
 }
 
-// The node-independent repository/bootstrap codec remains in repository_identity.py.
-// This pure transport codec is characterized against that public contract; do
-// not use WHATWG's normalized pathname, which silently removes dot segments.
-function repository(value: unknown): string | null {
-  let raw = text(value, "next_task_repository");
-  if (!raw) return null;
-  if (/[\\\s\u0000-\u001f\u007f]/u.test(raw)) {
-    throw new EffectRuntimeRequestError("--next-task-repository must be a credential-free Git remote without control characters or backslashes");
-  }
-  let host: string, path: string;
-  const canonical = /^git:([a-z0-9.-]+(?::[0-9]{1,5})?)\/([A-Za-z0-9._~+/-]+)$/.exec(raw);
-  if (canonical) [host, path] = [canonical[1], canonical[2]];
-  else {
-    const scp = /^(?:[^@/]+@)?([^:/]+):(.+)$/.exec(raw);
-    if (scp && !raw.includes("://")) raw = `ssh://${scp[1]}/${scp[2]}`;
-    try {
-      const url = new URL(raw);
-      if (!["git:", "http:", "https:", "ssh:"].includes(url.protocol) ||
-        !url.hostname || url.password || url.search || url.hash) throw new Error();
-      host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-      const port = Number(url.port);
-      if (port && !((["http:", "git:"].includes(url.protocol) && port === 80) ||
-        (["https:", "ssh:"].includes(url.protocol) && [22, 443].includes(port)))) host += `:${port}`;
-      const pathMatch = /^[^:]+:\/\/[^/?#]*([^?#]*)/.exec(raw);
-      if (!pathMatch) throw new Error();
-      path = pathMatch[1];
-    } catch {
-      throw new EffectRuntimeRequestError("--next-task-repository must be a credential-free Git remote or canonical git:<host>/<path> identity");
-    }
-  }
-  path = path.replace(/\/+/g, "/").replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
-  if (!/^[A-Za-z0-9._~+/-]+$/.test(path) || !/^[a-z0-9.-]+(?::[0-9]{1,5})?$/.test(host) ||
-    path.split("/").some(part => part === "." || part === "..")) {
-    throw new EffectRuntimeRequestError("--next-task-repository must include a safe repository path");
-  }
-  return `git:${host}/${path}`;
-}
-
-export function monitorSuccessorCapabilities(value: unknown, label: string): string[] {
-  const result: string[] = [];
-  for (const raw of requireStringArray(value ?? [], label)) {
-    const token = compactPythonWhitespace(raw).toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
-    if (!/^[a-z][a-z0-9_:-]{0,63}$/.test(token)) {
-      throw new EffectRuntimeRequestError(`${label} must contain public-safe capability tokens; invalid entries cannot be dropped`);
-    }
-    if (!result.includes(token)) result.push(token);
-  }
-  return result;
-}
+// Shared with public Todo metadata updates; no second route codec here.
 
 export interface MonitorSuccessorIntent extends JsonObject {
   next_agent_todo: string | null;
@@ -121,8 +74,8 @@ export function monitorSuccessorIntent(value: unknown): MonitorSuccessorIntent {
   const policy = text(input.next_continuation_policy, "next_continuation_policy")?.toLowerCase() ?? null;
   const target = text(input.next_target_key, "next_target_key");
   const claim = text(input.next_claimed_by, "next_claimed_by");
-  const repo = repository(input.next_task_repository);
-  const capabilities = monitorSuccessorCapabilities(input.next_required_capabilities, "--next-required-capability");
+  const repo = normalizeTodoRepository(input.next_task_repository, "--next-task-repository");
+  const capabilities = normalizeTodoCapabilities(input.next_required_capabilities, "--next-required-capability");
   if (!agentTodo && (action || policy || target || claim || repo || capabilities.length)) {
     throw new EffectRuntimeRequestError("monitor successor routing options require --next-agent-todo");
   }

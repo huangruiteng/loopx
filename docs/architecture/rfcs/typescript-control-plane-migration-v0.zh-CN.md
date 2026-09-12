@@ -325,6 +325,21 @@ field codec 仍有真实 caller，不引入公开 update 限制。Native metadat
 T2 原子后续动作尚未全部闭合。Lease-edit PR #4152 已合入；有界规划更新复用该
 fence 及既有 CAS/receipt 事务。下一步继续剩余字段/effect 清单，不另建 update engine。
 
+工作要求编辑现已闭合：没有保留 lease 的非 Monitor Agent Todo，可通过既有 v1
+planning 事务更新 `action_kind`、`task_domain`、`task_repository`、
+`required_write_scopes`、`required_capabilities`、`target_capabilities` 和
+`explore_result_node_refs`。公开 legacy 编辑与 native planning 共用
+`todos/work_requirements.ts`；Monitor successor authoring 与 receipt verification
+复用其仓库／capability codec，删除 scheduler 私有副本，不增加 RPC 或 store。
+省略／空白标量保留原值，显式空集合清除要求。有意修正：非法成员、不安全仓库和超出
+容量的 Explore 引用使整笔公开更新拒绝，不再静默丢掉要求或截断引用；纯文案编辑不会
+重新审查无关历史字段。SCP 风格的含密码 userinfo 同样拒绝，包括 Monitor 后继路由；
+仅带用户名的 Git transport 仍合法。仓库／capability 别名保持同一规范化 replay identity。
+要求不是授权：ownership、决策结果、任意 raw patch、Monitor 编辑及带 lease 的要求
+变化仍受限。Python 读取／bootstrap codec 与 legacy writer 仍有真实调用者，本批
+不退役它们，也不宣称完整 T1。下一步结合 lifecycle admission 与 validation effect
+闭合 ownership／decision metadata，再推进 T2 剩余带 lease Monitor 事务。
+
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
   字段，也不让 generic patch 获得 terminal transition 权限。
@@ -418,6 +433,15 @@ summary 对候选关系批量调用，避免每对 Todo 一次 RPC；legacy comp
 验证覆盖复杂容量 fixture、展示上限之外的完整 provider 来源、陈旧／缺失展示和隔离真实
 状态快照 parity。T3 仍需处理旧 action-token fallback 路由及从压缩 summary 重建诊断的
 消费者，不把它们列为已迁移；不宣称 T1/T2、全部 T3 或持久化／promotion 完成。
+
+能力缺口与修复路由现由 `agents/capability_gate.ts` 统一解释执行前提、修复产出、
+owner/Agent 责任和受阻 Todo 绑定。Quota planning v1 传归一化的要求，而不是 Python
+算好的 missing；Monitor 分流在 TS 进程内复用同一规则。公共 gate 一次批处理，精确目标
+恢复调用保留有界、只缓存归一化值的桥接，不保留第二套判断。Python 继续负责 legacy
+codec、候选来源／资格和共享 profile/rank 适配。明确修正：共享缺口绑定最高优先级受阻
+Todo，同一 Todo 的不同展示不重复计算，权威空 backlog 不再复活陈旧 first-item。
+target capability 是修复产出，不是安装或授权。没有新 provider／inventory／enablement／
+promotion；压缩候选来源的上限和其余 T3 consumer 仍需分别闭合。
 
 列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
 初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值

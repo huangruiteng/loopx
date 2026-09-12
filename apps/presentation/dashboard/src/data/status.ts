@@ -1,6 +1,8 @@
 import rawStatus from "../../../../../examples/status.example.json";
 import { z } from "zod";
 
+import { goalAcceptanceObservationSchema } from "./goal-acceptance-observation";
+
 import { goalChannelProjectionSchema } from "./goal-channel-frontstage";
 
 export const quotaSchema = z.object({
@@ -481,6 +483,7 @@ export const runRecordSchema = z.object({
 });
 
 export const runGoalSchema = z.object({
+  acceptance_observation: goalAcceptanceObservationSchema.optional().nullable().catch(null),
   id: z.string(),
   activation_state: z.enum(["active", "stopped"]).optional().default("active"),
   display_name: z.string().optional().nullable(),

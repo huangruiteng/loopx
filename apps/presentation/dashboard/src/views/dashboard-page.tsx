@@ -1,3 +1,6 @@
+import type { GoalAcceptanceObservation } from "../data/goal-acceptance-observation";
+import { attentionDetails, sourceAttention } from "../features/personal-workspace/attention-details";
+import type { AttentionDetails } from "../features/personal-workspace/attention-details";
 import { directoryStatusPayload, fetchWorkspaceDirectory, loadWorkspaceGoalSnapshots, type WorkspaceProgress, type WorkspaceLoadError } from "../data/workspace-progressive-status";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, Moon, RefreshCw, Sun } from "lucide-react";
@@ -439,6 +442,7 @@ type PersonalRunEvidence = {
 };
 
 type PersonalGoalItem = {
+  acceptanceObservation?: GoalAcceptanceObservation | null;
   loadState?: "loading" | "error";
   loadError?: WorkspaceLoadError;
   activationState: "active" | "stopped";
@@ -470,6 +474,7 @@ type PersonalGoalItem = {
 };
 
 type PersonalNeedsYouItem = {
+  details?: AttentionDetails;
   actionKind?: string | null;
   blocking: boolean;
   goalId: string;
@@ -485,6 +490,7 @@ type PersonalHomeModel = {
   goals: PersonalGoalItem[];
   openUserTodoCount: number;
   systemHealth?: WorkspaceSystemHealth;
+  attentionHistory?: PersonalNeedsYouItem[];
   userTodos: PersonalNeedsYouItem[];
   visibleUserTodos: PersonalNeedsYouItem[];
   workers?: WorkspaceWorker[];
@@ -1136,12 +1142,13 @@ function buildPersonalHomeModel(
   );
   const usageById = shareUsageById(payload.usage_summary);
   const agentRows = buildAgentManagementRows(rows, payload.todo_index, payload.agent_management_projection);
-  const projectedUserTodos = payload.attention_queue.items.flatMap((item, sourceOrder) => {
+  const attentionHistory = payload.attention_queue.items.flatMap((item, sourceOrder) => {
     if (stoppedGoalIds.has(item.goal_id)) return [];
     const blocking = ["user_or_controller", "controller"].includes(item.waiting_on);
     return (personalTodosForQueueItem(item, "user")?.items ?? [])
-      .filter((todo) => !todo.done)
-      .map((todo, todoOrder): PersonalNeedsYouItem & { sourceOrder: number; todoOrder: number } => ({
+      .map((todo, todoOrder): PersonalNeedsYouItem & { sourceOrder: number; todoOrder: number; projectedDone: boolean } => ({
+        projectedDone: todo.done,
+        details: attentionDetails(todo),
         actionKind: todo.action_kind ?? null,
         blocking,
         goalId: item.goal_id,
@@ -1153,10 +1160,12 @@ function buildPersonalHomeModel(
         updatedAt: todo.updated_at ?? null,
       }));
   });
+  const projectedUserTodos = attentionHistory.filter((todo) => !todo.projectedDone);
   const projectedGoalIds = new Set(projectedUserTodos.map((todo) => todo.goalId));
   const pendingOperatorGates = rows.flatMap((row, rowOrder) => {
     if (stoppedGoalIds.has(row.goal.id) || projectedGoalIds.has(row.goal.id) || !personalGoalHasPendingOperatorGate(row)) return [];
     return [{
+      details: attentionDetails({ task_class: "user_gate", status: "open", note: row.latestRun?.operator_gate?.reason_summary }),
       actionKind: "gate.resolve",
       blocking: true,
       goalId: row.goal.id,
@@ -1226,6 +1235,7 @@ function buildPersonalHomeModel(
       agentSentence: personalAgentSentence(payload, row, state, t),
       agentTodos: [...goalAgentTodos, ...agentTodoFacts.recentCompleted],
       doneTodoCount: agentTodoFacts.doneTodoCount,
+      acceptanceObservation: goal.acceptance_observation,
       goalId: goal.id,
       latestActivity: row.latestRun?.generated_at ?? "",
       needsYou,
@@ -1310,6 +1320,7 @@ function buildPersonalHomeModel(
     goals,
     openUserTodoCount: allUserTodos.length,
     systemHealth,
+    attentionHistory: [...attentionHistory, ...pendingOperatorGates],
     userTodos: allUserTodos,
     visibleUserTodos: allUserTodos.slice(0, 5),
     workers: (payload.agent_management_projection?.agents ?? []).map((agent) => ({
@@ -1390,7 +1401,7 @@ function PersonalGoalHome({
     const incomplete = goals.some((goal) => goal.activationState === "active" && goal.loadState);
     const issues = [...new Set(models.flatMap((item) => item.systemHealth?.issues ?? []))];
     return {
-      ...base, goals, userTodos, visibleUserTodos: userTodos.slice(0, 5),
+      ...base, goals, userTodos, attentionHistory: models.flatMap((item) => item.attentionHistory ?? item.userTodos), visibleUserTodos: userTodos.slice(0, 5),
       openUserTodoCount: userTodos.length, blockingTodoCount: userTodos.filter((todo) => todo.blocking).length,
       workers: [...new Map(models.flatMap((item) => item.workers ?? []).map((worker) => [worker.agentId, worker])).values()],
       goalNotifications: models.flatMap((item) => item.goalNotifications ?? []),
@@ -2571,8 +2582,16 @@ function PersonalGoalHome({
       },
     }] : []),
   ];
+  const sourceIsReady = statusSourceControl.connectionState === "connected";
+  const goalTitles = new Map(model.goals.map((goal) => [goal.goalId, goal.title]));
+  const attentionForWorkspace = (item: PersonalNeedsYouItem) => sourceAttention(
+    item, statusSourceControl.activeSource.statusUrl,
+    sourceIsReady && !progress?.errors[item.goalId], goalTitles.get(item.goalId),
+  );
   const workspaceModel = {
     ...normalizePersonalHomeModel(model),
+    userTodos: model.userTodos.map(attentionForWorkspace),
+    attentionHistory: (model.attentionHistory ?? model.userTodos).map(attentionForWorkspace),
     periodicReports: {
       error: periodicReportError,
       loading: periodicReportLoading,

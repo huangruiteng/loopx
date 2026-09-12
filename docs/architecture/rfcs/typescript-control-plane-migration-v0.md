@@ -420,6 +420,27 @@ atomic follow-up are not fully closed. Lease-edit PR #4152 is merged; bounded
 planning updates now reuse that fence and the existing CAS/receipt transaction.
 Continue with the remaining field/effect inventory, not another update engine.
 
+Work-requirement editing is now closed for non-Monitor Agent Todos without a
+retained lease: `action_kind`, `task_domain`, `task_repository`,
+`required_write_scopes`, `required_capabilities`, `target_capabilities` and
+`explore_result_node_refs` use the existing v1 planning transaction. Public
+legacy edits and native planning share `todos/work_requirements.ts`; Monitor
+successor authoring and receipt verification reuse its repository/capability
+codecs instead of retaining scheduler-owned copies. No new RPC or store is added.
+Omitted/blank scalar input preserves state; explicit empty collections clear
+requirements. Deliberate correction: invalid members, unsafe repository routes
+and over-capacity Explore references reject the whole public update rather than
+silently dropping requirements or truncating references.
+SCP-style password-bearing userinfo is rejected too, including Monitor successor
+routes; username-only Git transports remain valid. Unrelated historical
+fields are not revalidated by a copy edit. Repository/capability aliases retain
+one normalized replay identity. Requirements declare needed work, not a grant:
+ownership, decision outcomes, generic raw patches, Monitor edits and leased
+requirement changes remain fenced. The Python reader/bootstrap codec and legacy
+writer still have real callers; this slice does not retire them or complete T1.
+Next close ownership/decision metadata with their lifecycle admission and
+validation effects, then the remaining leased Monitor transaction in T2.
+
 - Reuse the current provider text/note transaction, lifecycle admission,
   field-plan and completion rules. Enumerate actual public metadata edits and
   explicit-clear behavior before implementation; this is not permission to
@@ -486,6 +507,20 @@ delivery. This does not finish all T2 commands or authorize whole-Goal promotion
   never fall back to a Markdown business write.
 
 **T3 — close remaining structured consumers, then remove their old reads.**
+
+Capability resolution now shares `agents/capability_gate.ts`: missing prerequisites,
+repair outputs, owner/agent resolution and blocked-Todo bindings have one typed
+owner. Quota planning v1 passes normalized requirements, not Python-computed
+missing lists; Monitor partitioning invokes the same rule in-process. The public
+gate uses one batch; exact-target recovery callers retain a bounded value-only
+cached bridge to that rule, not a second implementation. Python keeps legacy
+codecs, candidate source/eligibility and the shared profile/rank adapter.
+Disclosed corrections: a shared resolution binding names the highest-priority
+blocked Todo, display variants deduplicate by Todo identity, and an authoritative
+empty backlog never revives stale first-item diagnostics. Target capabilities
+remain repair outputs, not permission or installed capabilities. No new provider,
+source inventory, enablement or promotion is introduced; compact candidate-source
+limits and the remaining T3 consumers still require their own closure.
 
 Quota's scope/claim consumer now composes selection, bounded visibility and the
 existing resume planner in one `todo.quota_planning.project` call per source.

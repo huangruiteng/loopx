@@ -1,3 +1,4 @@
+import { goalAcceptanceObservationSchema } from "../src/data/goal-acceptance-observation.js";
 import {
   exampleStatusPayload,
   parseStatusPayload,
@@ -330,3 +331,14 @@ verifyProjectionFetchContract()
     console.error(error);
     throw error;
   });
+
+// This bounded observation must not claim the distinct full lifecycle RFC id.
+const acceptanceObservation = {
+  schema_version: "goal_acceptance_observation_projection_v0",
+  goal_id: "synthetic-goal", read_only: true, acceptance_assessed: false,
+  coverage: "partial", missing_sources: [], truncated: false,
+  historical_progress: [], acceptance_gaps: [], guards: [],
+  next_action: null, next_action_source: null,
+};
+assert(goalAcceptanceObservationSchema.safeParse(acceptanceObservation).success, "acceptance observation v0 must parse");
+assert(!goalAcceptanceObservationSchema.safeParse({ ...acceptanceObservation, schema_version: "goal_artifact_lifecycle_projection_v0" }).success, "full lifecycle v0 is a distinct contract, not an observation alias");

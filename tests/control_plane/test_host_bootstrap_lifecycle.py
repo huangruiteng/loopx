@@ -41,7 +41,11 @@ def test_bootstrap_real_cli_load_is_one_level_and_retains_host(registry, flags):
     body = json.loads(loaded.stdout)
     direct = cli(registry, *flags)
     assert body["task_body"] == direct["task_body"]
-    assert body["runtime_profile"] == direct["runtime_profile"]
+    if flags == ["--codex-app"]:
+        assert body["schema_version"] == direct["schema_version"] == "heartbeat_agent_input_v1"
+        assert "runtime_profile" not in body
+    else:
+        assert body["runtime_profile"] == direct["runtime_profile"]
     assert body.get("bootstrap") is not True
     assert "interaction_contract" in body["task_body"]
 

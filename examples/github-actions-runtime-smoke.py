@@ -21,6 +21,9 @@ NODE24_ACTION_MAJORS = {
 PRIMARY_NODE_VERSION = "24"
 MINIMUM_NODE_VERSION = "22.6"
 FORWARD_NODE_VERSION = "26"
+# SQLite conformance requires qualified statement finalization (22.14+), so the
+# SQLite qualification lanes pin an intermediate runtime above the minimum.
+SQLITE_NODE_VERSION = "22.14"
 
 
 def declared_major(reference: str) -> str:
@@ -52,15 +55,16 @@ def main() -> int:
         assert references, f"missing workflow reference for {action}"
         assert all(declared_major(reference) == major for reference in references), references
 
+    node_version_pattern = re.compile(r'^\s*node-version:\s*["\']([^"\']+)["\']\s*$', re.MULTILINE)
     declared_versions = {
-        name: re.findall(r'^\s*node-version:\s*["\']([^"\']+)["\']\s*$', text, re.MULTILINE)
+        name: node_version_pattern.findall(text)
         for name, text in workflows.items()
     }
     for name, versions in declared_versions.items():
         if not versions:
             continue
         expected = (
-            {PRIMARY_NODE_VERSION, MINIMUM_NODE_VERSION, FORWARD_NODE_VERSION}
+            {PRIMARY_NODE_VERSION, MINIMUM_NODE_VERSION, FORWARD_NODE_VERSION, SQLITE_NODE_VERSION}
             if name == "python-tests.yml"
             else {PRIMARY_NODE_VERSION}
         )
@@ -72,9 +76,15 @@ def main() -> int:
     assert PRIMARY_NODE_VERSION in python_versions, python_versions
 
     python_workflow = workflows["python-tests.yml"]
+    jobs = dict(re.findall(
+        r"^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
+        python_workflow, re.MULTILINE | re.DOTALL,
+    ))
+    for name in ("kernel-static-checks", "dashboard-acceptance", "windows-powershell"):
+        assert SQLITE_NODE_VERSION in node_version_pattern.findall(jobs[name]), name
     assert "node-forward-compatibility:" in python_workflow
     assert "continue-on-error: true" in python_workflow
-    assert "needs: [changes, pytest, node-minimum-compatibility," in python_workflow
+    assert "needs: [changes, checks, pytest, node-minimum-compatibility," in python_workflow
 
     package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert package["engines"]["node"] == f">={MINIMUM_NODE_VERSION}"

@@ -5,8 +5,8 @@ tool. You do not need to read the LoopX Kernel source or learn every CLI subcomm
 
 ## What you will accomplish
 
-The first six chapters establish one control-plane model. The book then branches into two independent
-practice paths:
+Six numbered chapters plus one state-machine map establish one control-plane model. The book then
+branches into two independent practice paths:
 
 ```text
 Control-plane foundations
@@ -23,6 +23,8 @@ The foundation sequence covers:
 2. which state belongs to an agent session, a Host Goal, and LoopX;
 3. canonical state, workbenches, events, and read-only projections;
 4. Todo graphs, Gates, claims, leases, authority, and peer collaboration;
+   then [Core state machines and transitions](./core-state-machines.md) connects source state, derived
+   decisions, projections, and the nine cooperating state-machine families in one map;
 5. how one governed Turn is decided, executed, validated, and written back;
 6. retry, replan, self-repair, terminal closure, and runtime boundaries.
 
@@ -51,10 +53,12 @@ Developers ready to enter Kernel implementation can go directly to the
   [Lesson 1: Harness is the effectful program](/loopx/docs/development/control-plane-course/01-agent-loop-effectful-program/),
   and [Lesson 2](/loopx/docs/development/control-plane-course/02-goal-control-plane-architecture/), then walk
   through a real Loop in [Lesson 3](/loopx/docs/development/control-plane-course/03-first-real-loop/).
-- **Who owns state, the work graph, and authority?** Read Chapters 3 and 4, then descend into
+- **Who owns state, the work graph, and authority?** Read Chapters 3 and 4 plus
+  [Core state machines and transitions](./core-state-machines.md), then descend into
   [Lesson 4](/loopx/docs/development/control-plane-course/04-state-substrate/) and
   [Lesson 5](/loopx/docs/development/control-plane-course/05-work-graph-and-peers/).
-- **Which rule wins when a Gate, Monitor, and Replan coexist?** Read Chapter 5, then descend into
+- **Which rule wins when a Gate, Monitor, and Replan coexist?** Read
+  [Core state machines and transitions](./core-state-machines.md) and Chapter 5, then descend into
   [Lesson 6](/loopx/docs/development/control-plane-course/06-quota-decision-kernel/) and
   [Lesson 7](/loopx/docs/development/control-plane-course/07-host-scheduler-and-heartbeat/).
 - **How does long-running work avoid drift and local loops?** Read Chapter 6, then descend into

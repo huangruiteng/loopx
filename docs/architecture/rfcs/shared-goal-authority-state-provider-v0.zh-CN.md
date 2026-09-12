@@ -2125,6 +2125,11 @@ wire，不改变 provider 默认或 promotion。这仍是有界的非 terminal p
 不是通用 native metadata 支持；Active lease 下的状态变化及 Monitor 规划/effect 仍不
 支持。准入结果和 lease-fence 结果都不是 commit receipt；兑现删除收益时，provider
 CAS/replay 与既有 writer 持锁生命周期不变。
+同一事务现通过共享公开 TS planner 接受有界工作要求声明，字段清单和有意拒绝变化见
+T1。File、NoKV、SQLite 与 PostgreSQL conformance 覆盖别名、显式清空、后续编辑后
+的旧操作重放、非法输入原子性和 lease 拒绝；复杂容量 fixture 携带工作要求验证其他
+lifecycle 操作不会丢字段。这不资格化新 profile、不扩大 execution grant，也不改变
+D1–D3／promotion hold；Markdown 继续作为独立的永久投影。
 等待/恢复 lane 选择现由 quota、vision-wait、agent-scope、replan 共用一个 TS 读取
 策略 owner，删除旧 Python selector 模块。适配层在 promotion 后消费同一 canonical
 summary，之前消费 legacy summary；真实 CLI 覆盖容量变化和 promoted display
@@ -2138,6 +2143,12 @@ T3 decision-dependency 读取策略现由同一 TS owner 解释 scope coverage�
 后续执行卡与退役条件保留。
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
+
+能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，
+包括 quota 的 Monitor 能力分流。删除 Python missing-set 与 owner/repair 决策 builder，
+保留来源适配和只读候选排序。这是披露修复优先级、空来源和 identity 修正的 T3 读取
+规则收拢，不是能力启用、持久权限回执或 D1–D3 资格化。永久 Markdown 投影与 cutover
+门禁不变。
 
 T2 的无 lease 原生 Monitor 观察与独立后继现由同一 canonical CAS／receipt 提交；
 route planner 本身仍不授予权限。CLI 将已提交回执交给既有 journal/outbox renderer，

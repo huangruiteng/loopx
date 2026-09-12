@@ -369,7 +369,7 @@ export const typedActionsScenario = {
       await page.getByRole("group", { name: "Goal settings" }).getByRole("button", { name: /Goal details/ }).click();
       await page.getByText("Repository", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("Execution Session", { exact: true }).waitFor({ state: "visible" });
-      await page.getByText("Read only", { exact: true }).waitFor({ state: "visible" });
+      await page.locator(".personal-goal-repository").getByText("Read only", { exact: true }).waitFor({ state: "visible" });
       await page.getByRole("button", { name: /Close details/ }).click();
       const englishGoalNavigation = page.getByRole("navigation", { name: "Goal view" });
       await englishGoalNavigation.getByRole("button", { name: "Chat", exact: true }).click();
@@ -847,7 +847,7 @@ export const typedActionsScenario = {
       await page.getByRole("group", { name: "Goal 设置" }).getByRole("button", { name: /Goal 详情/ }).click();
       await page.getByText("仓库", { exact: true }).waitFor({ state: "visible" });
       await page.getByText("执行 Session", { exact: true }).waitFor({ state: "visible" });
-      await page.getByText("只读", { exact: true }).waitFor({ state: "visible" });
+      await page.locator(".personal-goal-repository").getByText("只读", { exact: true }).waitFor({ state: "visible" });
       if (!(await page.getByText("loopx-ai/loopx", { exact: true }).isVisible())) throw new Error("Goal drawer did not show the read-only repository context");
       await page.getByRole("button", { name: /关闭详情/ }).click();
 

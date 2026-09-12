@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..agents.capability_gate import missing_required_capabilities
 from ..agents.profile import agent_profile_candidate_rank
 from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
 from .contract import (
     normalize_todo_claimed_by, normalize_todo_bound_agent, normalize_todo_blocks_agent,
     normalize_todo_excluded_agents, normalize_todo_global_gate,
+    normalize_required_capabilities, normalize_target_capabilities,
 )
 from .projection import (
     todo_item_has_removed_continuation_policy, todo_item_is_actionable_open,
@@ -49,7 +49,8 @@ def project_quota_planning(
             "task_class": todo_item_task_class(item),
             "priority": priority, "index": index,
             "profile_rank": agent_profile_candidate_rank(item, agent_profile=profile),
-            "missing": missing_required_capabilities(item, available_capabilities=available_capabilities),
+            "required": normalize_required_capabilities(item.get("required_capabilities")),
+            "targets": normalize_target_capabilities(item.get("target_capabilities")),
             "raw_claimed": bool(item.get("claimed_by")),
         }
 
@@ -59,10 +60,11 @@ def project_quota_planning(
 
     try:
         result = effect_runtime_result("todo.quota_planning.project", {
-            "schema_version": "todo_quota_planning_request_v0",
+            "schema_version": "todo_quota_planning_request_v1",
             "resume": build_todo_resume_planning_request(value, agent_id=agent, item_limit=8,
                 available_capabilities=(available_capabilities or []) if resolve_capacity else None),
             "selection": {
+                "available": normalize_required_capabilities(available_capabilities),
                 "items": [encode(item) for item in all_open_items],
                 "active_items": active("active_next_action_items"),
                 "active_executable_items": active("active_next_action_executable_items"),

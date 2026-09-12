@@ -23,6 +23,7 @@
     "loopx/control_plane/post_writeback_hook_transaction.ts",
     "loopx/control_plane/coordination/authority_store.ts",
     "loopx/control_plane/coordination/authority_store_codec.ts",
+    "loopx/control_plane/coordination/continuation_note.ts",
     "loopx/control_plane/coordination/coordination_projection.ts",
     "loopx/control_plane/coordination/coordination_state_contract.ts",
     "loopx/control_plane/coordination/coordination_state_contract.generated.ts",

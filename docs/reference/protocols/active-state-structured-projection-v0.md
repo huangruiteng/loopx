@@ -199,7 +199,7 @@ machine-owned `Completed Work Archive` region (created when needed) and retain
 their original `role`. Unknown canonical fields and unsafe region ownership
 continue to fail closed.
 
-For promoted provider-first Todo create, claim, and narrow text/note update,
+For promoted provider-first Todo create, claim, and supported text/planning updates,
 the committed authority journal is the transaction-bound projection outbox:
 the canonical mutation, complete head, cursor, revision, and receipt land in
 one provider transaction. After that commit, the Python compatibility adapter
@@ -208,6 +208,18 @@ renderer/write failure leaves typed `pending` delivery
 evidence without reversing or hiding the canonical commit. A later successful
 mutation or `todo project-markdown --execute` replays the current head
 idempotently. This is projection recovery, not a second authority path.
+
+Supported non-Monitor Agent updates include action/domain/repository and required
+write scopes, required/target capabilities and Explore node references. These
+declarations use the same canonical planning transaction, not a direct Markdown
+edit. Invalid supplied members reject the entire update; empty collections clear
+the declaration. They do not grant execution rights, change a lease, or approve
+a User decision. Work-requirement edits with a retained lease remain unsupported.
+
+非 Monitor Agent Todo 的 action/domain/repository、写入范围、required/target
+capability 和 Explore 引用声明复用同一 canonical planning 事务，不直接编辑
+Markdown。非法输入整笔拒绝，空集合明确清除；声明不授予执行权、不变更 lease，
+也不批准 User 决策。带保留 lease 的工作要求编辑仍不支持。
 
 ### Generated display recovery / 生成式展示恢复
 

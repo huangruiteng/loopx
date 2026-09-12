@@ -681,6 +681,16 @@ reviewed 路径；远端 SSH 生命周期入口仍使用其自身的绑定与读
 
 ### Stage 2：Attention 与 Disclosure Plan
 
+当前 Dashboard 切片：从「需要你」进入事项详情，可查看已有 Todo 投影中的原因、证据、
+目标 Todo/Agent、声明的决策范围和替代关系。只有明确的 `user_gate` 显示为需要决定；
+其他事项不从文案推断阅读或授权含义。已选详情随当前来源更新；来源已无该事项时显示
+不可用；来源读取中或失败时保留的历史事项同样不能视为当前有效，也不再提供决定
+操作。来源与 Goal 的失效状态不会传播到其他健康来源或 Goal。仅当同一来源、同一 Goal 中有明确的
+`superseded_by` 目标时提供跳转。阅读不会关闭 gate。现有普通事项仍沿用受控预览。
+
+此切片尚未实现跨渠道披露编译器、已读回执、授权分类或自动去重，属于 Stage 2 的部分
+交付。CLI 和 Lark 契约保持不变。
+
 - 编译 material attention-queue deltas；
 - 分离 selection、delivery、interaction 与 density；
 - 复用 planning completeness/detail refs；

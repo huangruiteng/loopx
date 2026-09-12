@@ -325,7 +325,9 @@ def test_heartbeat_cli_reads_sticky_fine_mode_from_registry(tmp_path: Path) -> N
     )
     payload = json.loads(completed.stdout)
 
-    assert payload["turn_mode"] == "fine_grained"
+    assert payload["schema_version"] == "heartbeat_agent_input_v1"
+    assert "turn_mode" not in payload
+    assert "turn_granularity" not in payload
     assert FINE_GRAINED_TURN_RULE in payload["task_body"]
 
 

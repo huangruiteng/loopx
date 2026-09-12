@@ -1,3 +1,6 @@
+import { GoalAcceptanceObservationCard } from "./goal-acceptance-observation-card";
+import { AttentionDetailCard } from "./attention-detail-card";
+import { attentionSuccessor, canReviewAttention } from "./attention-details";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -99,8 +102,10 @@ function subagentConfigurationsMatch(
 
 type ContextDrawerSelection = Exclude<WorkspaceDrawerSelection, { kind: "settings" }>;
 
-export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals = [], inspectorExpanded = false, larkConnections = [], onClose, onToggleInspectorSize, readOnly = false, runs = [], selection }: {
+export function ContextDrawer({ agents, attentionHistory = [], onSelectAttention, callbacks, goalNotifications = [], goals = [], inspectorExpanded = false, larkConnections = [], onClose, onToggleInspectorSize, readOnly = false, runs = [], selection }: {
   agents: WorkspaceAgentOption[];
+  attentionHistory?: WorkspaceAttention[];
+  onSelectAttention?: (item: WorkspaceAttention) => void;
   callbacks: PersonalWorkspaceCallbacks;
   goalNotifications?: WorkspaceGoalNotification[];
   goals?: WorkspaceGoal[];
@@ -318,6 +323,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
   }
 
   async function previewDecision(attention: WorkspaceAttention, decision: "approve" | typeof decisionTransitions[number]["resolution"], label: string) {
+    if (readOnly || !canReviewAttention(attention)) return;
     await callbacks.onPreviewAction?.({
       actionKind: "gate.resolve",
       context: { goal_id: attention.goalId, kind: "todo", todo_id: attention.todoId },
@@ -513,11 +519,11 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
                 <div><dt>Goal</dt><dd>{selection.item.goalTitle ?? selection.item.goalId}</dd></div>
                 <div><dt>{t("drawer.priority")}</dt><dd>{selection.item.priority ?? "medium"}</dd></div>
                 {attentionAge ? <div><dt>{t("common.waiting")}</dt><dd>{t("tasks.waitingAge", { age: attentionAge })}</dd></div> : null}
-                <div><dt>{t("drawer.reason")}</dt><dd>{selection.item.explanation ?? t("drawer.decisionDefaultReason")}</dd></div>
-                <div><dt>{t("drawer.evidence")}</dt><dd>{selection.item.evidence ?? t("drawer.decisionDefaultEvidence")}</dd></div>
+
               </dl>
             </section>
-            {!readOnly ? <>
+            <AttentionDetailCard item={selection.item} onSelect={onSelectAttention} successor={attentionSuccessor(selection.item, attentionHistory)} />
+            {!readOnly && canReviewAttention(selection.item) ? <>
               <button className="personal-primary-action" onClick={() => void previewDecision(selection.item, "approve", t("common.confirm"))} type="button"><Check size={17} />{t("drawer.decisionReview")}</button>
               <details className="personal-compact-menu">
                 <summary><MoreHorizontal size={17} />{t("drawer.decisionMore")}</summary>
@@ -610,6 +616,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
                 <div><dt>{t("drawer.duration")}</dt><dd>{formatUsageValue(selection.item.usage?.durationMs24h, t("drawer.usageNotMeasured"), formatDurationMs)} / {formatUsageValue(selection.item.usage?.durationMs7d, t("drawer.usageNotMeasured"), formatDurationMs)}</dd></div>
               </dl>
             </section>
+            <GoalAcceptanceObservationCard goal={selection.item} />
             {(() => {
               const notification = goalNotifications.find((row) => row.goalId === selection.item.goalId);
               const connection = larkConnections.find((row) => row.goal_id === selection.item.goalId);

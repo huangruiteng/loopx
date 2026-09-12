@@ -71,6 +71,7 @@ nav:
       - 2. 会话、Codex Goal 与 LoopX: chapters/02-session-goal-loopx.md
       - 3. 持久状态与只读投影: chapters/state-substrate.md
       - 4. 工作图、权限与 Peer 协作: chapters/work-graph-and-authority.md
+      - 专题：主要状态机与流转: chapters/core-state-machines.md
       - 5. 一轮受治理的工作: chapters/03-one-turn.md
       - 6. 恢复、自修复与运行边界: chapters/04-runtime-boundaries.md
   - 第二部分：接入现有项目:

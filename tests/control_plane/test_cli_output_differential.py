@@ -236,6 +236,78 @@ def test_shrink_with_semantic_shape_retained_passes() -> None:
     assert compare_cli_output_receipts(base, candidate)["ok"] is True
 
 
+def test_heartbeat_agent_input_contract_migration_is_explicit_and_reviewable() -> None:
+    base = _row(
+        row_id="surface/heartbeat_prompt_thin/small/json",
+        surface_id="heartbeat_prompt_thin",
+        semantic_json_keys=["task_body", "quota_guard_command"],
+    )
+    candidate = _row(
+        row_id="surface/heartbeat_prompt_thin/small/json",
+        surface_id="heartbeat_prompt_thin",
+        chars=20_000,
+        utf8_bytes=20_000,
+        lines=500,
+        compact_payload_chars=10_000,
+        semantic_json_keys=["schema_version", "task_body", "interface_budget"],
+        output_contract_version="heartbeat_agent_input_v1",
+    )
+
+    result = compare_cli_output_receipts(_receipt(base), _receipt(candidate))
+
+    assert result["ok"] is True
+    assert result["review_required"] is True
+    assert result["rows"][0]["review_signals"] == [
+        "semantic_json_keys removed: quota_guard_command",
+        "output contract migrated: generator payload -> heartbeat_agent_input_v1",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("row_id", "base_contract", "candidate_contract"),
+    [
+        ("surface/status/small/json", None, "heartbeat_agent_input_v1"),
+        (
+            "surface/heartbeat_prompt_thin/small/json",
+            "heartbeat_agent_input_v0",
+            "heartbeat_agent_input_v1",
+        ),
+        (
+            "surface/heartbeat_prompt_thin/small/json",
+            None,
+            "heartbeat_agent_input_v2",
+        ),
+    ],
+)
+def test_output_contract_change_outside_declared_migration_fails_closed(
+    row_id: str,
+    base_contract: str | None,
+    candidate_contract: str,
+) -> None:
+    base = _row(
+        row_id=row_id,
+        output_contract_version=base_contract,
+    )
+    candidate = _row(
+        row_id=row_id,
+        chars=20_000,
+        utf8_bytes=20_000,
+        lines=500,
+        compact_payload_chars=10_000,
+        semantic_json_keys=["status_contract"],
+        output_contract_version=candidate_contract,
+    )
+
+    result = compare_cli_output_receipts(_receipt(base), _receipt(candidate))
+
+    assert result["ok"] is False
+    assert "output_contract_version changed" in result["rows"][0]["failures"]
+    assert any(
+        failure.startswith("semantic_json_keys removed")
+        for failure in result["rows"][0]["failures"]
+    )
+
+
 @pytest.mark.parametrize(
     ("candidate", "failure_fragment"),
     [
@@ -698,6 +770,21 @@ def test_markdown_heading_removal_requires_review() -> None:
     assert result["ok"] is True
     assert result["review_required"] is True
     assert "markdown_headings removed" in result["rows"][0]["review_signals"][0]
+
+
+def test_markdown_rows_ignore_json_only_semantic_metadata() -> None:
+    base = _row(
+        row_id="surface/status/small/markdown",
+        format="markdown",
+        semantic_json_keys=["legacy_json_key"],
+    )
+    candidate = copy.deepcopy(base)
+    candidate["semantic_json_keys"] = []
+
+    result = compare_cli_output_receipts(_receipt(base), _receipt(candidate))
+
+    assert result["ok"] is True
+    assert result["review_required"] is False
 
 
 def test_candidate_only_row_is_allowed_but_base_row_removal_fails() -> None:

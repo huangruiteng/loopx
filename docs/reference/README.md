@@ -16,3 +16,7 @@ High-traffic read paths:
 
 - [agent_scoped_evidence_ledger_v0](protocols/agent-scoped-evidence-ledger-v0.md):
   thin, per-agent evidence chronology used before replan or handoff.
+- [Goal acceptance observations](goal-acceptance-observations.md): bounded,
+  read-only Goal acceptance gaps, pending gates, and historical progress
+  read from `run_history.goals[].acceptance_observation`, and the Dashboard entry
+  that renders them. Partial observations never certify acceptance.

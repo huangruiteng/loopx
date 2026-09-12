@@ -1,4 +1,6 @@
 import type { ActionReviewPlan } from "./action-review-plan-types";
+import type { GoalAcceptanceObservation } from "../../data/goal-acceptance-observation";
+import type { AttentionDetails } from "./attention-details";
 import type { WorkspaceLoadError } from "../../data/workspace-progressive-status";
 export type WorkspaceGoalState =
   | "需修复"
@@ -66,6 +68,7 @@ export type WorkspaceGoalSubagentConfiguration = {
 };
 
 export type WorkspaceGoal = {
+  acceptanceObservation?: GoalAcceptanceObservation | null;
   loadState?: "loading" | "error";
   loadError?: WorkspaceLoadError;
   activationState: "active" | "stopped";
@@ -95,6 +98,8 @@ export type WorkspaceGoal = {
 };
 
 export type WorkspaceAttention = {
+  details?: AttentionDetails;
+  sourceId?: string;
   blocking: boolean;
   evidence?: string | null;
   explanation?: string | null;
@@ -290,6 +295,7 @@ export type WorkspaceModel = {
   };
   systemHealth?: WorkspaceSystemHealth;
   timeline?: WorkspaceTimelineItem[];
+  attentionHistory?: WorkspaceAttention[];
   userTodos: WorkspaceAttention[];
   workers?: WorkspaceWorker[];
 };
@@ -329,6 +335,7 @@ export type PersonalHomeCompatibleModel = {
   goals: WorkspaceGoal[];
   openUserTodoCount: number;
   systemHealth?: WorkspaceSystemHealth;
+  attentionHistory?: WorkspaceAttention[];
   userTodos: WorkspaceAttention[];
   workers?: WorkspaceWorker[];
 };
@@ -411,6 +418,7 @@ export function normalizePersonalHomeModel(model: PersonalHomeCompatibleModel): 
     goals: model.goals,
     openUserTodoCount: model.openUserTodoCount,
     systemHealth: model.systemHealth,
+    attentionHistory: model.attentionHistory,
     userTodos: model.userTodos,
     workers: model.workers,
   };

@@ -41,7 +41,12 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       const request = {goal_id: goal, todo_id: "todo_aaa_target", expected_role: "agent", actor_agent_id: "agent-a",
         registered_agents: ["agent-a", "agent-b"], operation_id: "wait",
         patch: {text: "Synthetic planning record"}, clear_fields: [],
-        planning_intent: {resume_when: "monitor_changed:todo_zzz_monitor", reason: "Await material change"},
+        planning_intent: {resume_when: "monitor_changed:todo_zzz_monitor", reason: "Await material change",
+          action_kind: "IMPLEMENT", task_domain: "Code.Review",
+          task_repository: "git@github.com:example/project.git",
+          required_capabilities: ["Code-Review", "code_review"],
+          target_capabilities: ["Delivery"], required_write_scopes: ["src/**"],
+          explore_result_node_refs: ["Node:alpha"]},
         dry_run: false, now: new Date("2026-09-10T00:00:00Z")};
       const before = await head(store);
       const preview = await executeCoordinationTodoUpdate(store, {...request, dry_run: true});
@@ -52,6 +57,13 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       let current = await head(store);
       let target = (current.head.todos as JsonObject[])[0]!;
       assert.equal(target.resume_monitor_generation, 7);
+      assert.equal(target.action_kind, "implement");
+      assert.equal(target.task_repository, "git:github.com/example/project");
+      assert.equal(target.task_domain, "code.review");
+      assert.deepEqual(target.required_capabilities, ["code_review"]);
+      assert.deepEqual(target.target_capabilities, ["delivery"]);
+      assert.deepEqual(target.required_write_scopes, ["src/**"]);
+      assert.deepEqual(target.explore_result_node_refs, ["Node:alpha"]);
       assert.deepEqual((current.head.todos as JsonObject[]).slice(1), todos.slice(1));
       // Simulate an independent observation at a new canonical revision.
       const observed = structuredClone(current.head);
@@ -81,7 +93,8 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
         commitAuthority: async input => {await store.commitAuthority(input); return {
           status: "ambiguous", reason_code: "lost_response", reason: "Synthetic lost response"};}};
       const cleared = await executeCoordinationTodoUpdate(lostResponse, {...request, operation_id: "clear",
-        planning_intent: {clear_resume_when: true, successor_todo_ids: [], no_followup: false}});
+        planning_intent: {clear_resume_when: true, successor_todo_ids: [], no_followup: false,
+          required_capabilities: [], target_capabilities: [], required_write_scopes: [], explore_result_node_refs: []}});
       assert.equal(cleared.status, "recovered", JSON.stringify(cleared));
       target = ((await head(store)).head.todos as JsonObject[])[0]!;
       assert.equal(target.resume_when, undefined);
@@ -90,6 +103,26 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       assert.equal(target.no_followup, false);
       assert.equal(target.claimed_by, "agent-a");
       assert.equal(target.note, "retained");
+      assert.deepEqual(target.required_capabilities, []);
+      const aliasReplay = await executeCoordinationTodoUpdate(store, {...request, planning_intent: {
+        ...request.planning_intent, required_capabilities: ["code_review"],
+        task_repository: "https://github.com/example/project", action_kind: "implement",
+      }});
+      assert.equal(aliasReplay.status, "replayed", JSON.stringify(aliasReplay));
+      assert.deepEqual(((await head(store)).head.todos as JsonObject[])[0], target,
+        "replaying the original declaration must not restore requirements subsequently cleared");
+      for (const planning_intent of [
+        {required_capabilities: ["valid", "bad/token"]}, {required_write_scopes: ["src/**", "../escape"]},
+        {task_repository: "https://user:password@example.com/project"},
+        {decision_outcome: "approve"}, {required_decision_scopes: []},
+      ]) {
+        const beforeInvalid = await head(store);
+        const result = await executeCoordinationTodoUpdate(store, {...request,
+          operation_id: "invalid-requirement", planning_intent});
+        assert.equal(result.status, "failed", JSON.stringify(result));
+        assert.deepEqual(await head(store), beforeInvalid);
+        assert.equal((await store.readReceipt("invalid-requirement")).status, "missing");
+      }
 
       // Force a canonical-head race between plan and CAS; do not recompute against a stale dependency.
       const racing: AuthorityStore = {...lostResponse, commitAuthority: async input => {
@@ -132,6 +165,7 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
     for (const [operation_id, change] of [
       ["no-proof", {lease_idempotency_key: null, lease_expected_version: null}],
       ["status-change", {planning_intent: {status: "deferred", resume_when: "pr_merged:#123"}}],
+      ["requirements-change", {planning_intent: {required_write_scopes: ["new/**"]}}],
       ["wrong-owner", {actor_agent_id: "agent-b"}],
     ] as const) {
       const result = await executeCoordinationTodoUpdate(store, {...request, operation_id, ...change});

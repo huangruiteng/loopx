@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import { TODO_WORK_REQUIREMENT_FIELDS } from "../todos/work_requirements.ts";
 import type { AuthorityStore, AuthorityStoreCommit, AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -44,6 +45,7 @@ export interface CoordinationTodoUpdateInput {
   readonly actor_agent_id: string | null;
   readonly registered_agents: readonly string[];
   readonly operation_id: string;
+  readonly expected_provider_revision?: string;
   readonly patch: JsonObject;
   readonly clear_fields: readonly string[];
   readonly dry_run: boolean;
@@ -143,6 +145,8 @@ function updateRequestSha(input: CoordinationTodoUpdateInput): string {
   return canonicalAuthoritySha256({goal_id: input.goal_id,
     todo_id: input.todo_id, expected_role: input.expected_role,
     actor_agent_id: input.actor_agent_id, patch: input.patch,
+    ...(input.expected_provider_revision === undefined ? {} :
+      {expected_provider_revision: input.expected_provider_revision}),
     clear_fields: input.clear_fields, dry_run: input.dry_run,
     ...(Object.keys(input.planning_intent ?? {}).length ? {planning_intent: input.planning_intent} : {}),
     // Preserve receipt identity for pre-proof requests already persisted in v0.
@@ -227,6 +231,11 @@ function targetRejection(
         return failure("update_owner_mismatch", "Leased Todo update requires the current claim owner");
       }
       const status = input.planning_intent?.status;
+      if (lease !== undefined && TODO_WORK_REQUIREMENT_FIELDS.some(field =>
+        Object.hasOwn(input.planning_intent ?? {}, field))) {
+        return failure("update_lease_requirements_transition_unsupported",
+          "Changing leased work requirements requires a new execution grant; metadata update leaves the lease unchanged");
+      }
       if (lease !== undefined && typeof status === "string" && status.toLowerCase() !== todo.status) {
         return failure("update_lease_status_transition_unsupported",
           "Changing a leased Todo status requires an atomic lifecycle operation; planning update leaves the lease unchanged");
@@ -308,6 +317,11 @@ export async function executeCoordinationTodoUpdate(
   if (head.status !== "loaded") {
     return {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA, ...head, changed: false};
   }
+  if (input.expected_provider_revision !== undefined &&
+      input.expected_provider_revision !== head.provider_revision) {
+    return failure("provider_revision_mismatch", "Current revision changed; inspect again before continuing");
+  }
+
   const target = loadUpdateTarget(head.head, input);
   if (isFailure(target)) return target;
   const rejected = targetRejection(head.head, target.todo, target.leases, input);

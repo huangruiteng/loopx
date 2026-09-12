@@ -1666,3 +1666,8 @@
   .personal-lark-tabs { gap: 18px; margin-top: 20px; }
   .personal-settings-card > header, .personal-language-options { padding-right: 15px; padding-left: 15px; }
 }
+
+.personal-goal-acceptance h4 { margin: 16px 0 8px; font-size: 14px; }
+.personal-goal-acceptance .personal-acceptance-observation { border-top: 1px solid var(--color-border, #ebebeb); padding: 8px 0; }
+.personal-goal-acceptance dd, .personal-goal-acceptance p { overflow-wrap: anywhere; }
+.personal-goal-acceptance details { margin-top: 16px; }
