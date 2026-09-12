@@ -9,11 +9,7 @@ import {
   canonicalAuthoritySha256,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
-import {
-  TODO_DOMAIN_ITEM_SCHEMA,
-  canonicalCoordinationTodoRecord,
-  canonicalTodoDomainRecord,
-} from "./coordination_state_contract.ts";
+import {canonicalTodoRecord} from "./todo_presentation.ts";
 import {
   indexCoordinationProjection,
   prepareCoordinationProjectionCommit,
@@ -283,11 +279,7 @@ function prepareUpdatedTodo(
       }
       next.done = next.status === "done" || next.status === "deferred";
     }
-    if (todo.schema_version === TODO_DOMAIN_ITEM_SCHEMA) {
-      canonicalTodoDomainRecord(next, "updated Todo");
-    } else {
-      canonicalCoordinationTodoRecord(next, "updated Todo");
-    }
+    canonicalTodoRecord(next, "updated Todo");
   } catch (error) {
     return failure("invalid_coordination_todo_update",
       error instanceof Error ? error.message : "invalid updated Todo");

@@ -20,7 +20,7 @@ import type {
 } from "./authority_store.ts";
 import { authorityUnicodeCompare, canonicalAuthorityBytes, canonicalAuthoritySha256 } from "./authority_store_codec.ts";
 import {
-  TODO_CANONICAL_READ_RECORD_FIELDS,
+  coordinationTodoReadModel,
   validateCoordinationTodoReadModel,
 } from "./coordination_projection.ts";
 import { FileAuthorityStore } from "./file_authority_store.ts";
@@ -688,15 +688,6 @@ function partitionsOf(head: JsonObject | null): JsonObject {
   return partitions;
 }
 
-function todoReadModel(todos: readonly JsonObject[]): JsonObject {
-  return {
-    schema_version: "loopx_todo_canonical_read_record_v0",
-    todo_count: todos.length,
-    records_sha256: createHash("sha256").update(canonicalAuthorityBytes(todos)).digest("hex"),
-    contract_fields: [...TODO_CANONICAL_READ_RECORD_FIELDS],
-  };
-}
-
 /**
  * Fold one partition into the candidate head. A v0 head (whole-snapshot
  * observation) is accepted as the starting point with no partition markers.
@@ -732,7 +723,10 @@ export function composeLocalAuthorityShadowHead(
     handoff_mode: handoffMode,
     todos,
     leases,
-    todo_read_model: todoReadModel(todos),
+    todo_read_model: coordinationTodoReadModel(
+      todos,
+      "loopx_todo_canonical_read_record_v0",
+    ),
     partitions,
     ...(base.capture_profile === undefined ? {} : {
       capture_profile: base.capture_profile,

@@ -9,7 +9,7 @@ from .contract import (
 )
 from .compact_projection import compact_todo_projection_item, projection_task_class
 from .handoff_gate import todo_summary_handoff_gates
-from .projection import todo_projection_sort_key
+from .todo_semantics import todo_presentation_sort_key
 
 
 TODO_ROUTE_CONTINUATION_SELECTION_POLICY = (
@@ -76,7 +76,7 @@ def todo_summary_route_continuation_candidates(
         if item.get("route_key") is not None:
             compact["route_key"] = item.get("route_key")
         candidates.append(compact)
-    return sorted(candidates, key=todo_projection_sort_key)
+    return sorted(candidates, key=todo_presentation_sort_key)
 
 
 def route_continuation_candidate_matches_agent(

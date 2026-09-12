@@ -48,7 +48,7 @@ from .completion_validation_projection import project_completion_validation_auth
 from .frontier_revision import attach_advancement_frontier_revision_index
 from .handoff_gate import build_todo_handoff_gate_states
 from .handoff_note import attach_todo_handoff_note
-from .projection import (
+from .todo_semantics import (
     todo_claimed_visibility_items as projection_todo_claimed_visibility_items,
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
     todo_item_is_deferred as projection_todo_item_is_deferred,
@@ -60,6 +60,7 @@ from .projection import (
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_priority_parts as projection_todo_priority_parts,
     todo_priority_rank as projection_todo_priority_rank,
+    todo_presentation_sort_key as projection_todo_presentation_sort_key,
     todo_projection_sort_key as projection_todo_projection_sort_key,
 )
 from .succession_warning import (
@@ -626,8 +627,8 @@ def open_todo_items(
             compact["text"] = text
             result.append(compact)
             if len(result) >= limit:
-                return sorted(result, key=todo_projection_sort_key)
-    return sorted(result, key=todo_projection_sort_key)
+                return sorted(result, key=projection_todo_presentation_sort_key)
+    return sorted(result, key=projection_todo_presentation_sort_key)
 
 
 def todo_lane_items(
@@ -965,8 +966,11 @@ def _todo_group_lanes(
     terminal_items = [item for item in items if item.get("done")]
     deferred_items = [item for item in terminal_items if todo_item_is_deferred(item)]
     done_items = [item for item in terminal_items if not todo_item_is_deferred(item)]
-    projected_open_items = sorted(open_items, key=todo_projection_sort_key)
-    projected_deferred_items = sorted(deferred_items, key=todo_projection_sort_key)
+    projected_open_items = sorted(open_items, key=projection_todo_presentation_sort_key)
+    projected_deferred_items = sorted(
+        deferred_items,
+        key=projection_todo_presentation_sort_key,
+    )
     budgeted_items = [
         *projected_open_items,
         *projected_deferred_items,

@@ -14,6 +14,9 @@ from ..scheduler.monitor_todo import (
     monitor_todo_next_due_at,
     monitor_todo_task_class,
 )
+from ..coordination.coordination_state_contract_generated import (
+    COORDINATION_STATE_CONTRACT,
+)
 from .contract import (
     TODO_STATUS_DEFERRED,
     TODO_TASK_CLASS_ADVANCEMENT,
@@ -34,6 +37,13 @@ TODO_PRIORITY_PREFIX_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TODO_PRIORITY_LABEL_PATTERN = re.compile(r"\bP([0-4])\b", re.IGNORECASE)
+TODO_PRESENTATION_METADATA_SCHEMA = "loopx_todo_presentation_metadata_v0"
+TODO_LEGACY_ITEM_SCHEMA = str(
+    COORDINATION_STATE_CONTRACT["todo_read_record"]["item_schema_version"]
+)
+TODO_NATIVE_ITEM_SCHEMA = str(
+    COORDINATION_STATE_CONTRACT["todo_domain_record"]["item_schema_version"]
+)
 
 
 def todo_item_is_watch_only_monitor(item: dict[str, Any]) -> bool:
@@ -93,6 +103,89 @@ def todo_index_rank(item: dict[str, Any]) -> int:
         return int(raw_index) if raw_index is not None else TODO_MISSING_INDEX
     except (TypeError, ValueError):
         return TODO_MISSING_INDEX
+
+
+def todo_presentation_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    """Project one Todo's display address without making it domain state.
+
+    The v0 ``source_section``/``index`` pair is the wire shape's canonical
+    presentation coordinate. Native domain records derive a section from role
+    and archival state and intentionally receive no synthetic persisted index.
+    """
+
+    if not isinstance(item, dict):
+        raise ValueError("Todo presentation input must be an object")
+    schema = item.get("schema_version")
+    has_section = isinstance(item.get("source_section"), str) and bool(
+        item["source_section"].strip()
+    )
+    if schema not in {None, TODO_LEGACY_ITEM_SCHEMA, TODO_NATIVE_ITEM_SCHEMA}:
+        raise ValueError(f"unsupported Todo presentation schema: {schema!r}")
+    legacy = schema == TODO_LEGACY_ITEM_SCHEMA or (schema is None and has_section)
+    if legacy:
+        section = item.get("source_section") if has_section else None
+        raw_index = item.get("index")
+        display_order = (
+            int(raw_index)
+            if isinstance(raw_index, int) and not isinstance(raw_index, bool) and raw_index >= 0
+            else None
+        )
+        order_source = "source_index" if display_order is not None else "todo_id"
+    else:
+        section = None
+        display_order = None
+        order_source = "todo_id"
+    if not section:
+        section = (
+            "Completed Work Archive"
+            if item.get("archive_state") == "archive"
+            else "Agent Todo"
+            if item.get("role") == "agent"
+            else "User Todo"
+        )
+    return {
+        "schema_version": TODO_PRESENTATION_METADATA_SCHEMA,
+        "todo_id": str(item.get("todo_id") or ""),
+        "display_section": section,
+        "display_order": display_order,
+        "order_source": order_source,
+    }
+
+
+def todo_presentation_sort_key(
+    item: dict[str, Any],
+    *,
+    text_mode: str = "label",
+) -> tuple[int, int, str, str]:
+    """Sort display rows while preserving source coordinates and native determinism.
+
+    Legacy rows with an equal priority/index retain Python's stable input order.
+    Native rows have no fabricated index, so timestamp and Todo identity provide
+    a deterministic tie-break that matches the TypeScript presentation adapter.
+    """
+
+    priority = todo_priority_rank(item, text_mode=text_mode)
+    try:
+        metadata = todo_presentation_metadata(item)
+    except ValueError:
+        # Compact display envelopes can carry their own outer schema marker.
+        # They are not authority records, so ordering may use the untyped
+        # compatibility fields without weakening the strict boundary helper.
+        metadata = {
+            "display_order": (
+                int(item["index"])
+                if isinstance(item.get("index"), int)
+                and not isinstance(item.get("index"), bool)
+                and item["index"] >= 0
+                else None
+            ),
+        }
+    display_order = metadata["display_order"]
+    if display_order is not None:
+        return (priority, display_order, "", "")
+    timestamp = str(item.get("completed_at") or item.get("updated_at") or "")
+    todo_id = str(item.get("todo_id") or "")
+    return (priority, TODO_MISSING_INDEX, timestamp, todo_id)
 
 
 def todo_projection_sort_key(

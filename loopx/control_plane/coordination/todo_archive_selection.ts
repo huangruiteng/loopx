@@ -1,10 +1,10 @@
 import type { JsonObject } from "../effect_program.ts";
 import {isStandingDecisionReceipt} from "../todos/standing_decision.ts";
 import {
-  authorityUnicodeCompare,
   canonicalAuthorityObject,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
+import {compareTodoPresentation} from "./todo_presentation.ts";
 
 export const COORDINATION_TODO_ARCHIVE_SELECTION_SCHEMA =
   "loopx_coordination_todo_archive_selection_v0";
@@ -45,21 +45,7 @@ function archiveLimit(value: unknown): number {
 }
 
 function archiveOrder(left: JsonObject, right: JsonObject): number {
-  const leftIndex = Number.isSafeInteger(left.index) && Number(left.index) >= 0
-    ? Number(left.index) : null;
-  const rightIndex = Number.isSafeInteger(right.index) && Number(right.index) >= 0
-    ? Number(right.index) : null;
-  if (leftIndex !== null || rightIndex !== null) {
-    if (leftIndex === null) return 1;
-    if (rightIndex === null) return -1;
-    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
-  }
-  const leftTime = typeof left.completed_at === "string"
-    ? left.completed_at : typeof left.updated_at === "string" ? left.updated_at : "";
-  const rightTime = typeof right.completed_at === "string"
-    ? right.completed_at : typeof right.updated_at === "string" ? right.updated_at : "";
-  if (leftTime !== rightTime) return authorityUnicodeCompare(leftTime, rightTime);
-  return authorityUnicodeCompare(String(left.todo_id), String(right.todo_id));
+  return compareTodoPresentation(left, right);
 }
 
 /** Select completed Todo ids without owning storage or applying mutations. */

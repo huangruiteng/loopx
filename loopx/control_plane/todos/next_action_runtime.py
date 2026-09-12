@@ -11,7 +11,7 @@ from .contract import (
     normalize_todo_id_list,
     normalize_todo_status,
 )
-from .projection import todo_priority_label
+from .todo_semantics import todo_priority_label
 
 
 TODO_NEXT_ACTION_REQUEST_SCHEMA = "loopx_todo_next_action_transition_v1"

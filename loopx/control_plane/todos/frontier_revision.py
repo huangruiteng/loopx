@@ -9,7 +9,7 @@ from typing import Any
 
 from ..effect_runtime import effect_runtime_result
 from .contract import normalize_todo_claimed_by, normalize_todo_excluded_agents
-from .projection import todo_item_task_class
+from .todo_semantics import todo_item_task_class
 
 
 TODO_FRONTIER_REVISION_SCHEMA_VERSION = "todo_frontier_revision_v0"

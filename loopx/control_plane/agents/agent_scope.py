@@ -33,7 +33,7 @@ from ..todos.todo_semantics import (
     todo_item_is_actionable_open,
     todo_item_is_deferred,
     todo_item_task_class,
-    todo_projection_sort_key,
+    todo_presentation_sort_key,
 )
 from ..todos.summary_item import compact_todo_summary_item
 from ..todos.user_gate import (
@@ -103,8 +103,8 @@ def _attach_agent_identity_contracts(
 
 def _todo_task_class(item: dict[str, Any]) -> str:
     return todo_item_task_class(item)
-def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    return todo_projection_sort_key(item)
+def _todo_projection_sort_key(item: dict[str, Any]) -> tuple[int, int, str, str]:
+    return todo_presentation_sort_key(item)
 
 
 def _todo_item_is_actionable_open(item: dict[str, Any]) -> bool:

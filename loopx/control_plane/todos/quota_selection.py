@@ -11,7 +11,7 @@ from .contract import (
     normalize_todo_excluded_agents, normalize_todo_global_gate,
     normalize_required_capabilities, normalize_target_capabilities,
 )
-from .projection import (
+from .todo_semantics import (
     todo_item_has_removed_continuation_policy, todo_item_is_actionable_open,
     todo_item_is_due_monitor, todo_item_task_class, todo_projection_sort_key,
     todo_summary_monitor_writeback_supported,

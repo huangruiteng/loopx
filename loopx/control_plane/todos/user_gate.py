@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .contract import TODO_TASK_CLASS_USER_GATE
-from .projection import todo_item_task_class
+from .todo_semantics import todo_item_task_class
 
 
 USER_GATE_ACTION_KIND_HINTS = (
