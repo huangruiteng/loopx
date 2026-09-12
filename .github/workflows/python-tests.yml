@@ -2,6 +2,8 @@ name: Python Tests
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -32,6 +34,10 @@ jobs:
     timeout-minutes: 3
     outputs:
       core_tests: ${{ steps.classify.outputs.core_tests }}
+      change_kind: ${{ steps.classify.outputs.change_kind }}
+      python_tests: ${{ steps.classify.outputs.python_tests }}
+      stage2c_tests: ${{ steps.classify.outputs.stage2c_tests }}
+      presentation_tests: ${{ steps.classify.outputs.presentation_tests }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,23 +46,44 @@ jobs:
         with:
           python-version: "3.11"
       - name: Validate merge gate semantics
-        run: python -m unittest discover -s scripts/ci -p 'test_review_gate.py'
+        run: python -m unittest discover -s scripts/ci -p 'test_*.py'
       - name: Classify the exact pull-request change
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHECKOUT_SHA: ${{ github.sha }}
+          FORCE_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
         shell: bash
         run: |
           set -euo pipefail
+          extra=()
+          if [[ "$FORCE_FULL" == true ]]; then extra+=(--force-full); fi
           if [[ "$EVENT_NAME" == pull_request ]]; then
-            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+            python scripts/ci/review_gate.py classify --base "$BASE_SHA" --head "$HEAD_SHA" --plan impact-plan.json "${extra[@]}" >> "$GITHUB_OUTPUT"
           else
-            echo 'core_tests=true' >> "$GITHUB_OUTPUT"
+            python scripts/ci/review_gate.py classify --base "$CHECKOUT_SHA" --head "$CHECKOUT_SHA" --non-pr --plan impact-plan.json >> "$GITHUB_OUTPUT"
           fi
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          plan = json.loads(Path("impact-plan.json").read_text())
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## CI job exemptions\n\n")
+              summary.write(f"Change kind: **{plan['change_kind']}**; Python shards: **{plan['python_shards']}**.\n\n")
+              summary.write(plan['reason'] + ".\n\n")
+              summary.write(f"Python: {plan['python_tests']}; Stage2c: {plan['stage2c_tests']}; frontend: {plan['presentation_tests']}.\n\n")
+              summary.write(plan["coverage_scope"] + ". Unknown/mixed changes and main run full. Label ci:full forces full qualification.\n")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-impact-plan
+          path: impact-plan.json
+          if-no-files-found: error
+          retention-days: 7
 
-  checks:
+  kernel-static-checks:
     needs: changes
     if: needs.changes.outputs.core_tests == 'true'
     runs-on: ubuntu-latest
@@ -100,31 +127,12 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck:control-plane
           npm run test:control-plane:coverage
-          npm run test:dashboard:coverage
-
-      - name: Measure dashboard browser interactions
-        env:
-          LOOPX_DASHBOARD_COVERAGE: "1"
-          LOOPX_PLAYWRIGHT_PACKAGE: ${{ github.workspace }}/apps/presentation/dashboard/node_modules/playwright
-        run: |
-          npm ci --ignore-scripts --prefix apps/presentation/dashboard
-          cd apps/presentation/dashboard
-          npx playwright install --with-deps chromium --only-shell
-          node ../../../examples/personal-workspace-browser-smoke.mjs
 
       - name: Upload TypeScript control-plane coverage
         uses: actions/upload-artifact@v7
         with:
           name: typescript-control-plane-coverage
           path: coverage/control-plane/lcov.info
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Upload dashboard coverage
-        uses: actions/upload-artifact@v7
-        with:
-          name: dashboard-coverage
-          path: coverage/dashboard/*.info
           if-no-files-found: error
           retention-days: 3
 
@@ -144,6 +152,62 @@ jobs:
         env:
           LOOPX_CLI_OUTPUT_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
         run: python examples/control_plane/cli-output-budget-regression-smoke.py
+
+  dashboard-acceptance:
+    needs: changes
+    if: needs.changes.outputs.core_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up the qualified Node.js runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.14"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/presentation/dashboard/package-lock.json
+
+      - name: Install Dashboard and coverage dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --ignore-scripts --prefix apps/presentation/dashboard
+
+      - name: Measure Dashboard unit and browser interactions
+        env:
+          LOOPX_DASHBOARD_COVERAGE: "1"
+          LOOPX_PLAYWRIGHT_PACKAGE: ${{ github.workspace }}/apps/presentation/dashboard/node_modules/playwright
+        run: |
+          npm run test:dashboard:coverage
+          cd apps/presentation/dashboard
+          npx playwright install --with-deps chromium --only-shell
+          node ../../../examples/personal-workspace-browser-smoke.mjs
+
+      - name: Upload Dashboard coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: dashboard-coverage
+          path: coverage/dashboard/*.info
+          if-no-files-found: error
+          retention-days: 3
+
+  checks:
+    # Preserve the required check name while exposing independent failure lanes.
+    if: always() && needs.changes.outputs.core_tests == 'true'
+    needs: [changes, kernel-static-checks, dashboard-acceptance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require kernel and Dashboard qualification
+        env:
+          DASHBOARD_RESULT: ${{ needs.dashboard-acceptance.result }}
+          KERNEL_RESULT: ${{ needs.kernel-static-checks.result }}
+        run: |
+          test "$KERNEL_RESULT" = success
+          test "$DASHBOARD_RESULT" = success
 
   node-minimum-compatibility:
     needs: changes
@@ -193,13 +257,13 @@ jobs:
 
   test-shard:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
+    if: needs.changes.outputs.python_tests == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -223,11 +287,20 @@ jobs:
         # Each runner retains the measured two-worker pool.
         run: >-
           python -m pytest -q -n 2 -m "not stage2c_e2e"
-          --splits 2 --group ${{ matrix.shard }}
+          --splits 4 --group ${{ matrix.shard }}
           --splitting-algorithm least_duration
           --durations=25 --durations-min=1
+          --junitxml=junit.xml
           --cov=loopx
           --cov-report=term
+      - name: Upload full-shard outcomes for selection audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-junit-${{ matrix.shard }}
+          path: junit.xml
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload shard coverage
         uses: actions/upload-artifact@v7
         with:
@@ -239,7 +312,7 @@ jobs:
 
   pytest:
     # Keep the required check name; a skipped/failed shard must not turn it green.
-    if: always() && needs.changes.outputs.core_tests == 'true'
+    if: always() && needs.changes.outputs.python_tests == 'true'
     needs: [changes, checks, test-shard]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -263,9 +336,13 @@ jobs:
           path: coverage-shards
       - name: Combine complete coverage and enforce the existing floor
         run: |
-          test -s coverage-shards/python-coverage-1/.coverage
-          test -s coverage-shards/python-coverage-2/.coverage
-          python -m coverage combine coverage-shards/python-coverage-1/.coverage coverage-shards/python-coverage-2/.coverage
+          shards=()
+          for shard in 1 2 3 4; do
+            path="coverage-shards/python-coverage-${shard}/.coverage"
+            test -s "$path"
+            shards+=("$path")
+          done
+          python -m coverage combine "${shards[@]}"
           python -m coverage report --fail-under=19.6
           python -m coverage xml -o coverage.xml
       - uses: actions/upload-artifact@v7
@@ -283,14 +360,18 @@ jobs:
 
   stage2c-suite:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
-    name: stage2c (${{ matrix.suite }})
+    if: needs.changes.outputs.stage2c_tests == 'true'
+    name: stage2c (${{ matrix.suite }} ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        suite: [e2e, mutants, installed]
+        include:
+          - {suite: e2e, shard: 1}
+          - {suite: e2e, shard: 2}
+          - {suite: mutants, shard: 0}
+          - {suite: installed, shard: 0}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -332,7 +413,7 @@ jobs:
         env:
           LOOPX_SHADOW_COMPARISON_OUTPUT: .local/stage2c-observables
         # Keep each module's shared workspace and ordered parity rows on one worker.
-        run: python -m pytest -q -n 4 --dist loadfile -m stage2c_e2e --durations=20 --junitxml=stage2c-e2e.xml
+        run: python -m pytest -q -n 2 --dist loadfile -m stage2c_e2e -p scripts.ci.module_shard --ci-module-shards 2 --ci-module-shard ${{ matrix.shard }} --durations=20 --junitxml=stage2c-e2e.xml
       - name: Reject deliberate correctness regressions
         if: matrix.suite == 'mutants'
         run: python examples/shared-goal-authority-e2e/mutants.py --output .local/stage2c-mutants
@@ -349,7 +430,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stage2c-correctness-evidence-${{ matrix.suite }}
+          name: stage2c-correctness-evidence-${{ matrix.suite }}-${{ matrix.shard }}
           include-hidden-files: true
           if-no-files-found: error
           path: |
@@ -361,7 +442,7 @@ jobs:
 
   stage2c-correctness-e2e:
     # Preserve the public check name and reject failed, cancelled or skipped lanes.
-    if: always() && needs.changes.outputs.core_tests == 'true'
+    if: always() && needs.changes.outputs.stage2c_tests == 'true'
     needs: [changes, stage2c-suite]
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -373,7 +454,7 @@ jobs:
 
   windows-powershell:
     needs: changes
-    if: needs.changes.outputs.core_tests == 'true'
+    if: needs.changes.outputs.python_tests == 'true'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -426,10 +507,39 @@ jobs:
           tests/control_plane_ts/local_authority_provider.test.ts
           tests/control_plane_ts/sqlite_runtime_admission.test.ts
 
+  presentation:
+    needs: changes
+    if: needs.changes.outputs.presentation_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/presentation/dashboard/package-lock.json
+      - run: python -m pip install --disable-pip-version-check -e ".[test]"
+      - name: Build and test the actual packaged Dashboard
+        working-directory: apps/presentation/dashboard
+        run: |
+          npm ci --ignore-scripts
+          npm run build:chat
+          if [[ -n "$(git -C ../../.. status --short --untracked-files=all -- loopx/web/chat)" ]]; then
+            echo "Packaged Dashboard differs from its source build." >&2
+            exit 1
+          fi
+          ./node_modules/.bin/playwright install --with-deps chromium
+          npm run smoke:personal-workspace-packaged
+
   merge-gate:
     # Always publish one stable outcome, including documentation-only PRs.
     if: always()
-    needs: [changes, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell]
+    needs: [changes, checks, pytest, node-minimum-compatibility, stage2c-correctness-e2e, windows-powershell, presentation]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

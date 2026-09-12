@@ -1,35 +1,25 @@
-"""Conservative PR classification and fail-closed core CI aggregation."""
+"""Per-job qualification: an intentional exemption is not an accidental skip."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
-from pathlib import PurePosixPath
-import subprocess
+from impact_plan import Change, OUTPUTS, candidate, job_flags, plan, write_plan
 
-
-CORE_JOBS = (
-    "pytest",
-    "node-minimum-compatibility",
-    "stage2c-correctness-e2e",
-    "windows-powershell",
-)
-ROOT_DOCS = {"README.md", "README.zh-CN.md", "CHANGELOG.md", "CONTRIBUTING.md"}
+JOB_OUTPUT = {
+    "checks": "core_tests",
+    "pytest": "python_tests",
+    "node-minimum-compatibility": "core_tests",
+    "stage2c-correctness-e2e": "stage2c_tests",
+    "windows-powershell": "python_tests",
+    "presentation": "presentation_tests",
+}
+CORE_JOBS = tuple(JOB_OUTPUT)
 
 
 def requires_core_tests(paths: list[str]) -> bool:
-    # Unknown paths, executable documentation, policy and runtime prompts run CI.
-    # Disable rename detection at the caller so both old and new paths count.
-    if not paths:
-        return True
-    return any(
-        not (
-            path in ROOT_DOCS
-            or (path.startswith("docs/") and PurePosixPath(path).suffix == ".md")
-        )
-        for path in paths
-    )
+    return candidate([Change("M", path) for path in paths])[0] != "docs"
 
 
 def verify(needs: object) -> None:
@@ -39,14 +29,17 @@ def verify(needs: object) -> None:
     if not isinstance(changes, dict) or changes.get("result") != "success":
         raise ValueError("change classification did not succeed")
     outputs = changes.get("outputs")
-    classification = outputs.get("core_tests") if isinstance(outputs, dict) else None
-    if classification not in ("true", "false"):
-        raise ValueError("missing or invalid core-test classification")
-    expected = "success" if classification == "true" else "skipped"
-    for name in CORE_JOBS:
+    if not isinstance(outputs, dict) or any(outputs.get(key) not in {"true", "false"} for key in OUTPUTS):
+        raise ValueError("missing or invalid job classification")
+    kind = outputs.get("change_kind")
+    expected = job_flags(kind, presentation=kind == "full" and outputs["presentation_tests"] == "true")
+    if any(outputs[key] != str(value).lower() for key, value in expected.items()):
+        raise ValueError("contradictory job exemptions")
+    for name, output in JOB_OUTPUT.items():
+        required = "success" if outputs[output] == "true" else "skipped"
         job = needs[name]
-        if not isinstance(job, dict) or job.get("result") != expected:
-            raise ValueError(f"{name} must be {expected}")
+        if not isinstance(job, dict) or job.get("result") != required:
+            raise ValueError(f"{name} must be {required}")
 
 
 def main() -> None:
@@ -55,19 +48,20 @@ def main() -> None:
     classify = sub.add_parser("classify")
     classify.add_argument("--base", required=True)
     classify.add_argument("--head", required=True)
+    classify.add_argument("--plan")
+    classify.add_argument("--non-pr", action="store_true")
+    classify.add_argument("--force-full", action="store_true")
     sub.add_parser("verify")
     args = parser.parse_args()
     if args.command == "classify":
-        # SHAs come through environment variables, never interpolated shell code.
-        # Git failure propagates; it must never become a documentation-only pass.
-        base = subprocess.check_output(
-            ["git", "merge-base", args.base, args.head], text=True
-        ).strip()
-        raw = subprocess.check_output(
-            ["git", "diff", "--name-only", "--no-renames", "-z", base, args.head, "--"]
-        )
-        paths = [os.fsdecode(path) for path in raw.split(b"\0") if path]
-        print(f"core_tests={str(requires_core_tests(paths)).lower()}")
+        packet = plan(args.base, args.head, pull_request=not args.non_pr, force_full=args.force_full)
+        if args.plan:
+            write_plan(packet, args.plan)
+            print(f"change_kind={packet['change_kind']}")
+            for key in OUTPUTS:
+                print(f"{key}={str(packet[key]).lower()}")
+        else:
+            print(f"core_tests={str(packet['core_tests']).lower()}")
     else:
         verify(json.loads(os.environ["NEEDS_JSON"]))
         print("merge-gate: qualification complete")
