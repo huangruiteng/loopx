@@ -1,3 +1,4 @@
+import {registerAuthorityScanConformance} from "./authority_scan_conformance.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -220,6 +221,7 @@ export function registerAuthorityStoreConformance(
   providerName: string,
   factory: AuthorityStoreConformanceFactory,
 ): void {
+  registerAuthorityScanConformance(providerName, factory);
   registerNativePlanningUpdateConformance(providerName, factory);
   for (const native of [false, true]) test(`${providerName} conformance: standing revocation survives canonical ordering and archive (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
