@@ -40,6 +40,24 @@ Parallelize when it reduces uncertainty or latency:
 - run an independent review or validation pass;
 - inspect separate adapter, evidence, or boundary questions.
 
+The enabled capability also guides **coordinator participation** at its existing
+context phases. Before planning, reserve a distinct decision-relevant evidence
+question for the coordinator when useful independent work exists. Before
+launch, identify that question and its dependencies alongside the child briefs;
+continue it while children work. After results return, validate decisive sources,
+reconcile findings and revisit uncovered questions. Reviewing children is still
+necessary, but does not replace the coordinator's own parallel investigation.
+Wait when the remaining useful work depends on child results; do not invent
+work, require a minimum child count, or duplicate evidence to fill capacity.
+These are guidance-only instructions, not a new scheduler or completion gate.
+
+启用能力后，现有三个上下文阶段也引导主 Agent 参与研究：规划前保留一个
+独立、影响决策的证据问题；委派前说明自己的问题、依赖和子任务边界，并在
+子 Agent 工作期间推进；回收后核验原件、整合结果、重审尚未覆盖的问题。
+核验子任务不能替代主 Agent 自己的并行研究。剩余工作确实依赖子任务时可以
+等待，不要求凑满并发、重复取证或制造工作。这些是引导，不是新增调度器或
+完成门禁；等待某一候选也不意味着其他可执行研究必须停止。
+
 Keep tightly coupled decisions in one peer lane. Do not launch workers merely
 to make the activity graph look busy, and never let worker count override
 quota, user gates, write scope, or repository policy.
