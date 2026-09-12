@@ -11,6 +11,7 @@ import {planMonitorMetadata, TODO_MONITOR_METADATA_REQUEST_SCHEMA} from "../todo
 import {planMonitorSuccessor, selectMonitorTodo, MONITOR_SUCCESSOR_REQUEST_SCHEMA} from "../scheduler/monitor_successor.ts";
 import {optionalNonEmptyString, requireBoolean} from "../runtime_decode.ts";
 import {planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA} from "../todos/authoring_scope.ts";
+import {projectionDelivery} from "../todos/projection_delivery.ts";
 
 export const COORDINATION_MONITOR_POLL_REQUEST_SCHEMA = "loopx_coordination_monitor_poll_request_v0";
 export const COORDINATION_MONITOR_POLL_RESULT_SCHEMA = "loopx_coordination_monitor_poll_result_v0";
@@ -42,7 +43,7 @@ function replay(receipt: AuthorityStoreReceiptResult, input: CoordinationMonitor
   return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status,
     changed: status !== "replayed", provider_revision: receipt.provider_revision, cursor: receipt.cursor,
     writeback: {...canonicalAuthorityObject(original.writeback, "Monitor writeback"), provider_replayed: status === "replayed"},
-    projection_delivery: "pending", projection_source: "committed_authority_journal"};
+    projection_delivery: projectionDelivery(true), projection_source: "committed_authority_journal"};
 }
 
 function normalize(raw: CoordinationMonitorPollInput): CoordinationMonitorPollInput {

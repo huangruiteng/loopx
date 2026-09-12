@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import {projectionDelivery} from "../todos/projection_delivery.ts";
 
 import type { JsonObject } from "../effect_program.ts";
 import type {
@@ -451,7 +452,7 @@ function replayTerminal(
     provider_revision: receipt.provider_revision,
     cursor: receipt.cursor,
     original_receipt: original,
-    projection_delivery: result.changed === true ? "pending" : "not_required",
+    projection_delivery: projectionDelivery(result.changed === true),
     projection_source: "committed_authority_journal",
   };
 }
@@ -1134,7 +1135,7 @@ function replayArchive(
     provider_revision: receipt.provider_revision,
     cursor: receipt.cursor,
     original_receipt: original,
-    projection_delivery: result.changed === true ? "pending" : "not_required",
+    projection_delivery: projectionDelivery(result.changed === true),
     projection_source: "committed_authority_journal",
   };
 }

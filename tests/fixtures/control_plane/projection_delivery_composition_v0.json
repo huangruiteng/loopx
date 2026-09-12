@@ -1,0 +1,9 @@
+{
+  "schema_version": "todo_projection_delivery_composition_v0",
+  "cases": [
+    {"name": "mutation_changed", "changed": true, "expected": "pending"},
+    {"name": "mutation_noop", "changed": false, "expected": "not_required"},
+    {"name": "provider_ack", "readback": "delivered", "expected": "delivered"},
+    {"name": "provider_already_current", "readback": "current", "expected": "current"}
+  ]
+}
