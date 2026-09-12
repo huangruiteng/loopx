@@ -501,7 +501,9 @@ def test_real_resolver_sender_configuration_boundary(
         raw = turn.raw_config()
     if state == "scope_mismatch":
         raw["corpora"][0]["corpus"]["scope"]["peer_ref"] = "agent:other"
-    (tmp_path / "memory.json").write_text(json.dumps(raw))
+    memory_path = tmp_path / "memory.json"
+    memory_path.write_text(json.dumps(raw))
+    config_digest = f"sha256:{hashlib.sha256(memory_path.read_bytes()).hexdigest()}"
     registry = tmp_path / "registry.json"
     registry.write_text(
         json.dumps(
@@ -521,6 +523,23 @@ def test_real_resolver_sender_configuration_boundary(
                                 "config_path": None
                                 if state == "missing"
                                 else "memory.json",
+                                "config_digest": config_digest,
+                                "enablement_receipts": {
+                                    "pilot": {
+                                        "schema_version": (
+                                            "reward_memory_enablement_receipt_v0"
+                                        ),
+                                        "status": "verified",
+                                        "goal_id": "goal",
+                                        "agent_id": "pilot",
+                                        "config_digest": config_digest,
+                                        "provider_id": "openviking",
+                                        "isolation_mode": ("goal_scoped_agent_private"),
+                                        "actor_binding_verified": True,
+                                        "writability_verified": True,
+                                        "exact_readback_verified": True,
+                                    }
+                                },
                             }
                         },
                     }

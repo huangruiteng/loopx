@@ -25,6 +25,9 @@ _RETRIEVAL_RECEIPT_FIELDS = {
     "provider",
     "namespace",
     "visibility",
+    "target_scope_kind",
+    "actor_binding_verified",
+    "provider_preflight_performed",
     "status",
     "reason_code",
     "provider_version",
@@ -159,8 +162,7 @@ def _retrieval_counts(
     if requested_limit and result_count > requested_limit:
         raise ValueError("retrieval_receipt exceeds its requested result limit")
     if any(
-        not isinstance(result, Mapping)
-        or set(result) != _RETRIEVAL_RESULT_FIELDS
+        not isinstance(result, Mapping) or set(result) != _RETRIEVAL_RESULT_FIELDS
         for result in results
     ):
         raise ValueError("retrieval_receipt results must use the canonical projection")
@@ -168,7 +170,9 @@ def _retrieval_counts(
     if not isinstance(telemetry, Mapping) or set(telemetry) != (
         _RETRIEVAL_TELEMETRY_FIELDS
     ):
-        raise ValueError("retrieval_receipt telemetry must use the canonical projection")
+        raise ValueError(
+            "retrieval_receipt telemetry must use the canonical projection"
+        )
     if result_count and (
         packet.get("search_performed") is not True
         or packet.get("read_performed") is not True
@@ -219,8 +223,7 @@ def build_decision_outcome_feedback(
         and item["evidence_ref"] == evidence["packet_ref"]
     ]
     current_source_revisions = sum(
-        revision["freshness"] == "current"
-        for revision in evidence["source_revisions"]
+        revision["freshness"] == "current" for revision in evidence["source_revisions"]
     )
     (
         discovered_result_count,
@@ -321,9 +324,7 @@ def build_decision_outcome_feedback(
         "outcome_telemetry": {
             "verification_status": outcome["verification_status"],
             "linked_verified_outcome_count": len(linked_verified_outcomes),
-            "invalidated_assumption_count": len(
-                outcome["invalidated_assumptions"]
-            ),
+            "invalidated_assumption_count": len(outcome["invalidated_assumptions"]),
             "resulting_transition_count": len(outcome["resulting_transitions"]),
         },
         "reward_memory": {

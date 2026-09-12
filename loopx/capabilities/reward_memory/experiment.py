@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from ...agent_registry import normalize_registered_agents
 from ...control_plane.reward_memory import reward_memory_goal_policy
+from ...control_plane.operator_inbox_binding import local_private_config_digest
 from ...control_plane.todos.contract import normalize_todo_claimed_by
+from ..context_providers import build_context_provider
+from ..context_providers.base import ContextProvider
+from ..context_providers.openviking import classify_openviking_scope
 from .application import TOKEN_RE, normalize_reward_memory_provider_binding
 from .ingestion import normalize_reward_memory_standing_policy
 from .registry import MAX_CORPORA, normalize_reward_memory_corpus
@@ -51,6 +59,32 @@ _SURFACE_FIELDS = {
 _RECALL_PROFILE_FIELDS = {"profile_id", "mode", "max_queries", "limit"}
 _AUTOMATION_FIELDS = {"automatic_recall", "automatic_ingest", "fail_open"}
 _RECALL_MODES = {"function_boundary", "bounded_agentic_search"}
+
+
+def canonical_reward_memory_actor_peer_id(*, goal_id: str, agent_id: str) -> str:
+    """Return one OpenViking-safe actor for a Goal-scoped LoopX Agent.
+
+    LoopX Agent names are only unique inside one Goal. The readable prefixes
+    aid operations while the digest makes normalization collisions and reuse of
+    the same local Agent name across Goals harmless.
+    """
+
+    normalized_agent = normalize_todo_claimed_by(agent_id)
+    goal_value = str(goal_id or "").strip()
+    if not normalized_agent or not goal_value:
+        raise ValueError("goal_id and a registered agent_id are required")
+
+    def segment(value: str, *, fallback: str) -> str:
+        result = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+        return (result or fallback)[:40].rstrip("-")
+
+    digest = hashlib.sha256(
+        f"{goal_value}\0{normalized_agent}".encode("utf-8")
+    ).hexdigest()[:20]
+    return (
+        f"loopx-{segment(goal_value, fallback='goal')}-"
+        f"{segment(normalized_agent, fallback='agent')}-{digest}"
+    )
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
@@ -165,6 +199,249 @@ def _materialize_provider_binding(
     }
     raw.update({"corpus_id": corpus["corpus_id"], "scope_ref": scope_ref})
     return normalize_reward_memory_provider_binding(raw, corpus)
+
+
+def validate_reward_memory_goal_agent_scope(
+    config: Mapping[str, Any], *, goal_id: str, agent_id: str
+) -> dict[str, Any]:
+    """Bind private provider storage to the owning Agent and attributed Goal.
+
+    LoopX Agent names are Goal-local. The OpenViking actor peer is therefore a
+    deterministic identity derived from ``(goal_id, agent_id)``, while Goal
+    remains an explicit path/receipt attribution check. Neither value is
+    inferred from the provider URI.
+    """
+
+    normalized_agent = normalize_todo_claimed_by(agent_id)
+    if not normalized_agent:
+        raise ValueError("agent_id must be a public-safe registered agent id")
+    goal_segment = str(goal_id or "").strip()
+    if not goal_segment or "/" in goal_segment:
+        raise ValueError("goal_id must be a safe provider path segment")
+    expected_actor = canonical_reward_memory_actor_peer_id(
+        goal_id=goal_segment,
+        agent_id=normalized_agent,
+    )
+    corpora = config.get("corpora")
+    if not isinstance(corpora, Mapping):
+        raise ValueError("reward-memory config is not normalized")
+    private_count = 0
+    for entry in corpora.values():
+        if not isinstance(entry, Mapping):
+            raise ValueError("reward-memory corpus entry is invalid")
+        corpus = entry.get("corpus")
+        binding = entry.get("provider_binding")
+        if not isinstance(corpus, Mapping) or not isinstance(binding, Mapping):
+            raise ValueError("reward-memory corpus route is incomplete")
+        privacy = corpus.get("privacy")
+        if not isinstance(privacy, Mapping) or privacy.get("visibility") != "private":
+            continue
+        private_count += 1
+        if binding.get("provider_id") != "openviking":
+            raise ValueError(
+                "private Goal/Agent Reward Memory currently requires OpenViking"
+            )
+        peer_ref = str((corpus.get("scope") or {}).get("peer_ref") or "")
+        if peer_ref != f"agent:{normalized_agent}":
+            raise ValueError(
+                "private Reward Memory corpus peer_ref must match the enabled Agent"
+            )
+        if binding.get("actor_peer_id") != expected_actor:
+            raise ValueError(
+                "private Reward Memory actor_peer_id must be the canonical "
+                "Goal-scoped Agent actor"
+            )
+        provider_scope = classify_openviking_scope(str(binding.get("scope_ref") or ""))
+        if (
+            provider_scope.visibility != "private"
+            or provider_scope.actor_scope_id != expected_actor
+        ):
+            raise ValueError(
+                "private Reward Memory requires the canonical actor-bound peer scope"
+            )
+        segments = str(binding["scope_ref"]).rstrip("/").split("/")
+        if not any(
+            left == "goals" and right == goal_segment
+            for left, right in zip(segments, segments[1:])
+        ):
+            raise ValueError(
+                "private Reward Memory provider scope must contain the exact Goal segment"
+            )
+    return {
+        "schema_version": "reward_memory_goal_agent_scope_v1",
+        "goal_id": goal_segment,
+        "agent_id": normalized_agent,
+        "isolation_mode": (
+            "goal_scoped_agent_private" if private_count else "explicit_shared"
+        ),
+        "private_corpus_count": private_count,
+        "actor_binding_verified": private_count > 0,
+        "actor_peer_id": expected_actor if private_count else None,
+    }
+
+
+def preflight_reward_memory_experiment_config(
+    config: Mapping[str, Any],
+    *,
+    goal_id: str,
+    agent_ids: Sequence[str],
+    observed_at: str,
+    execute: bool,
+    provider: ContextProvider | None = None,
+) -> dict[str, Any]:
+    """Probe every configured corpus and return a restart-safe public receipt.
+
+    ``execute=False`` performs provider/service and target-access checks only.
+    ``execute=True`` writes a fresh non-memory probe through the exact route,
+    then requires provider exact readback before enablement may commit.
+    """
+
+    corpora = config.get("corpora")
+    if not isinstance(corpora, Mapping):
+        raise ValueError("reward-memory config is not normalized")
+    private_config = any(
+        isinstance(entry, Mapping)
+        and isinstance(entry.get("corpus"), Mapping)
+        and isinstance(entry["corpus"].get("privacy"), Mapping)
+        and entry["corpus"]["privacy"].get("visibility") == "private"
+        for entry in corpora.values()
+    )
+    if private_config and len(agent_ids) != 1:
+        raise ValueError(
+            "one private Reward Memory config must bind exactly one Goal-scoped Agent"
+        )
+    receipts: dict[str, dict[str, Any]] = {}
+    probe_run_id = uuid.uuid4().hex[:16]
+    for raw_agent_id in agent_ids:
+        agent_id = normalize_todo_claimed_by(raw_agent_id)
+        if not agent_id:
+            raise ValueError("reward-memory preflight requires registered Agent ids")
+        isolation = validate_reward_memory_goal_agent_scope(
+            config, goal_id=goal_id, agent_id=agent_id
+        )
+        sync_packets: list[dict[str, Any]] = []
+        with TemporaryDirectory(prefix="loopx-reward-memory-preflight-") as temp_root:
+            for corpus_id, entry in sorted(corpora.items()):
+                if not isinstance(entry, Mapping):
+                    raise ValueError("reward-memory corpus entry is invalid")
+                binding = entry.get("provider_binding")
+                if not isinstance(binding, Mapping):
+                    raise ValueError("reward-memory provider binding is unavailable")
+                digest = hashlib.sha256(
+                    f"{goal_id}\n{agent_id}\n{corpus_id}\n{probe_run_id}".encode(
+                        "utf-8"
+                    )
+                ).hexdigest()[:16]
+                filename = f"loopx-writability-probe-{digest}.json"
+                source_path = Path(temp_root) / filename
+                source_path.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": (
+                                "reward_memory_provider_writability_probe_v0"
+                            ),
+                            "goal_id": goal_id,
+                            "agent_id": agent_id,
+                            "corpus_id": corpus_id,
+                            "recallable": False,
+                            "raw_content_captured": False,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                configured_provider = provider or build_context_provider(
+                    {
+                        "provider": binding["provider_id"],
+                        "provider_binary": binding.get("provider_binary"),
+                        "minimum_provider_version": binding.get(
+                            "minimum_provider_version"
+                        ),
+                        "actor_peer_id": binding.get("actor_peer_id"),
+                    }
+                )
+                sync = configured_provider.sync(
+                    namespace=str(binding["namespace"]),
+                    resources=[
+                        (
+                            str(source_path),
+                            f"{str(binding['scope_ref']).rstrip('/')}/{filename}",
+                        )
+                    ],
+                    timeout_seconds=float(binding["timeout_seconds"]),
+                    observed_at=observed_at,
+                    execute=execute,
+                )
+                sync_packets.append(sync.public_packet())
+        all_verified = bool(sync_packets) and all(
+            packet.get("status") == "completed"
+            and packet.get("writability_verified") is True
+            and int(packet.get("write_count") or 0) == 1
+            for packet in sync_packets
+        )
+        preview_ready = bool(sync_packets) and all(
+            packet.get("status") == "preflight_ready" for packet in sync_packets
+        )
+        status = (
+            "verified"
+            if execute and all_verified
+            else "ready_for_apply"
+            if not execute and preview_ready
+            else "blocked"
+        )
+        receipts[agent_id] = {
+            "schema_version": "reward_memory_enablement_receipt_v0",
+            "status": status,
+            "goal_id": goal_id,
+            "agent_id": agent_id,
+            "provider_id": str(
+                (config.get("project_provider_binding") or {}).get("provider_id") or ""
+            ),
+            "isolation_mode": isolation["isolation_mode"],
+            "actor_binding_verified": isolation["actor_binding_verified"],
+            "writability_verified": all_verified,
+            "exact_readback_verified": all_verified,
+            "probe_count": len(sync_packets),
+            "write_count": sum(
+                int(packet.get("write_count") or 0) for packet in sync_packets
+            ),
+            "external_writes_performed": any(
+                packet.get("external_writes_performed") is True
+                for packet in sync_packets
+            ),
+            "observed_at": observed_at,
+            "probe_records_recallable": False,
+            "provider_preflight_performed": all(
+                packet.get("provider_preflight_performed") is True
+                for packet in sync_packets
+            ),
+            "reason_codes": sorted(
+                {
+                    str(packet["reason_code"])
+                    for packet in sync_packets
+                    if packet.get("reason_code")
+                }
+            ),
+        }
+    expected_status = "verified" if execute else "ready_for_apply"
+    ok = bool(receipts) and all(
+        receipt["status"] == expected_status for receipt in receipts.values()
+    )
+    return {
+        "ok": ok,
+        "schema_version": "reward_memory_enablement_preflight_v0",
+        "status": expected_status if ok else "blocked",
+        "goal_id": goal_id,
+        "agent_count": len(receipts),
+        "agent_receipts": receipts,
+        "external_writes_performed": any(
+            receipt["external_writes_performed"] for receipt in receipts.values()
+        ),
+        "raw_content_captured": False,
+        "raw_provider_payload_captured": False,
+    }
 
 
 def _normalize_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -560,6 +837,67 @@ def resolve_reward_memory_experiment(
             "config_runtime_route": config_runtime_route
             | {"readback_status": "rejected"},
         }, None
+    try:
+        isolation = validate_reward_memory_goal_agent_scope(
+            config,
+            goal_id=goal_id,
+            agent_id=normalized_agent,
+        )
+    except ValueError:
+        return base | {
+            "status": "config_invalid",
+            "available": False,
+            "reason_code": "goal_agent_provider_scope_mismatch",
+            "config_runtime_route": config_runtime_route
+            | {"readback_status": "rejected"},
+        }, None
+    actual_digest = local_private_config_digest(
+        project=project,
+        config_path=policy["config_path"],
+    )
+    receipt = policy["enablement_receipts"].get(normalized_agent) or {}
+    digest_matches = bool(actual_digest) and all(
+        value == actual_digest
+        for value in (policy["config_digest"], receipt.get("config_digest"))
+    )
+    if not digest_matches:
+        return base | {
+            "status": "enablement_stale",
+            "available": False,
+            "reason_code": "config_digest_missing_or_drifted",
+            "isolation_mode": isolation["isolation_mode"],
+            "actor_binding_verified": isolation["actor_binding_verified"],
+            "writability_verified": False,
+            "exact_readback_verified": False,
+            "config_runtime_route": config_runtime_route
+            | {"readback_status": "drifted"},
+        }, None
+    private_actor_required = isolation["private_corpus_count"] > 0
+    receipt_verified = (
+        receipt.get("status") == "verified"
+        and receipt.get("goal_id") == goal_id
+        and receipt.get("agent_id") == normalized_agent
+        and receipt.get("provider_id")
+        == config["project_provider_binding"]["provider_id"]
+        and receipt.get("isolation_mode") == isolation["isolation_mode"]
+        and receipt.get("writability_verified") is True
+        and receipt.get("exact_readback_verified") is True
+        and (
+            not private_actor_required or receipt.get("actor_binding_verified") is True
+        )
+    )
+    if not receipt_verified:
+        return base | {
+            "status": "enablement_unverified",
+            "available": False,
+            "reason_code": "provider_write_preflight_missing_or_unverified",
+            "isolation_mode": isolation["isolation_mode"],
+            "actor_binding_verified": isolation["actor_binding_verified"],
+            "writability_verified": False,
+            "exact_readback_verified": False,
+            "config_runtime_route": config_runtime_route
+            | {"readback_status": "unverified"},
+        }, None
     corpora = config["corpora"]
     surfaces = config["surfaces"]
     automation = config["automation"]
@@ -589,6 +927,15 @@ def resolve_reward_memory_experiment(
             "exact_readback_verified": True,
         },
         "raw_content_captured": False,
+        "isolation_mode": isolation["isolation_mode"],
+        "actor_binding_verified": (
+            receipt.get("actor_binding_verified") is True
+            if private_actor_required
+            else isolation["actor_binding_verified"]
+        ),
+        "writability_verified": True,
+        "exact_readback_verified": True,
+        "enablement_receipt_status": "verified",
     }
     if len(surfaces) == 1:
         route = resolve_reward_memory_surface_config(config, next(iter(surfaces)))

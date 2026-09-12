@@ -47,6 +47,20 @@ class FakeProvider:
     def sync(self, **kwargs: Any) -> ContextProviderSync:
         self.sync_calls += 1
         source, target = kwargs["resources"][0]
+        if kwargs["execute"] is not True:
+            return ContextProviderSync(
+                provider=self.provider_id,
+                namespace=str(kwargs["namespace"]),
+                status="preflight_ready",
+                observed_at=str(kwargs["observed_at"]),
+                requested_count=1,
+                completed_count=0,
+                reason_code="execute_required_for_verified_write",
+                retry_disposition="execute_required",
+                provider_preflight_performed=True,
+                target_access_preflight_verified=True,
+                writability_verified=False,
+            )
         content = Path(source).read_text(encoding="utf-8")
         write_count = 0
         if target in self.resources:
@@ -306,19 +320,21 @@ def test_atomic_ingest_accepts_exact_descendant_materialization() -> None:
     assert receipt["memory_available_for_recall"] is True
 
 
-def test_dry_run_needs_no_provider_call() -> None:
+def test_dry_run_preflights_provider_without_writing_or_recalling() -> None:
     provider = FakeProvider()
 
     receipt = ingest(provider, execute=False)
 
-    assert receipt["status"] == "planned"
-    assert receipt["write"]["status"] == "planned"
+    assert receipt["status"] == "preflight_ready"
+    assert receipt["write"]["status"] == "preflight_ready"
+    assert receipt["write"]["provider_preflight_performed"] is True
+    assert receipt["write"]["writability_verified"] is False
     assert receipt["memory_available_for_recall"] is False
     assert receipt["execution_evidence"]["verified_result"] == (
         "ingest_provider_not_called"
     )
     assert receipt["execution_evidence"]["minimum_evidence"]["provider_call_count"] == 0
-    assert provider.sync_calls == 0
+    assert provider.sync_calls == 1
     assert provider.retrieve_calls == 0
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 
@@ -16,7 +17,8 @@ def experiment(tmp_path):
     project = tmp_path / "project"
     config = project / ".loopx/config/reward-memory/experiment.json"
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(json.dumps(raw_config()))
+    config.write_text(json.dumps(raw_config(goal_id="reward-memory-goal")))
+    config_digest = f"sha256:{hashlib.sha256(config.read_bytes()).hexdigest()}"
     registry = tmp_path / "registry.json"
     registry.write_text(
         json.dumps(
@@ -33,6 +35,23 @@ def experiment(tmp_path):
                                 "experimental": True,
                                 "enabled_agents": ["pilot"],
                                 "config_path": ".loopx/config/reward-memory/experiment.json",
+                                "config_digest": config_digest,
+                                "enablement_receipts": {
+                                    "pilot": {
+                                        "schema_version": (
+                                            "reward_memory_enablement_receipt_v0"
+                                        ),
+                                        "status": "verified",
+                                        "goal_id": "reward-memory-goal",
+                                        "agent_id": "pilot",
+                                        "config_digest": config_digest,
+                                        "provider_id": "openviking",
+                                        "isolation_mode": ("goal_scoped_agent_private"),
+                                        "actor_binding_verified": True,
+                                        "writability_verified": True,
+                                        "exact_readback_verified": True,
+                                    }
+                                },
                             }
                         },
                     }
@@ -41,6 +60,15 @@ def experiment(tmp_path):
         )
     )
     return registry, project, config
+
+
+def _refresh_binding(registry, config):
+    payload = json.loads(registry.read_text())
+    digest = f"sha256:{hashlib.sha256(config.read_bytes()).hexdigest()}"
+    binding = payload["goals"][0]["control_plane"]["reward_memory"]
+    binding["config_digest"] = digest
+    binding["enablement_receipts"]["pilot"]["config_digest"] = digest
+    registry.write_text(json.dumps(payload))
 
 
 def hint(registry, **overrides):
@@ -59,13 +87,14 @@ def test_hint_reuses_explicit_route_without_automation_or_provider(
     tmp_path, monkeypatch, automatic
 ):
     registry, _, config = experiment(tmp_path)
-    raw = raw_config()
+    raw = raw_config(goal_id="reward-memory-goal")
     raw["automation"] = {
         "automatic_recall": automatic,
         "automatic_ingest": automatic,
         "fail_open": True,
     }
     config.write_text(json.dumps(raw))
+    _refresh_binding(registry, config)
 
     def forbidden(*a, **kw):
         pytest.fail("a hint must not construct a memory provider")
@@ -124,7 +153,7 @@ def test_hint_reuses_explicit_route_without_automation_or_provider(
 def test_ineligible_routes_produce_no_hint(tmp_path, condition):
     registry, _, config = experiment(tmp_path)
     overrides = {}
-    raw = raw_config()
+    raw = raw_config(goal_id="reward-memory-goal")
     if condition == "disabled":
         payload = json.loads(registry.read_text())
         payload["goals"][0]["control_plane"]["reward_memory"]["enabled"] = False
@@ -142,7 +171,10 @@ def test_ineligible_routes_produce_no_hint(tmp_path, condition):
     elif condition == "invalid_config":
         raw = {}
     elif condition == "wrong_peer":
-        raw = raw_config(peer_ref="agent:meta")
+        raw = raw_config(
+            peer_ref="agent:meta",
+            goal_id="reward-memory-goal",
+        )
     elif condition == "unsupported_adapter":
         raw["surfaces"][0]["adapter"] = "issue_fix_maintainer_feedback"
     elif condition == "policy_disabled":
@@ -188,7 +220,10 @@ def test_generated_command_previews_reviewed_event_and_rejects_scope_expansion(
     path = tmp_path / "compact-event.json"
     command = shlex.split(result["preview_command"])[1:]
     command[-1] = str(path)
-    for peer, expected in [("agent:pilot", "planned"), ("agent:meta", "guard_blocked")]:
+    for peer, expected in [
+        ("agent:pilot", "unavailable"),
+        ("agent:meta", "guard_blocked"),
+    ]:
         event["peer_ref"] = peer
         path.write_text(
             json.dumps(

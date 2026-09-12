@@ -295,9 +295,7 @@ def run_reward_memory_automatic_ingest_hook(
     status = str(receipt.get("status") or "not_available")
     provider_statuses = {"provider_unavailable", "committed_pending"}
     provider_sync_attempted = bool(
-        execute
-        and status not in {"guard_blocked", "planned"}
-        and isinstance(receipt.get("write"), Mapping)
+        status not in {"guard_blocked"} and isinstance(receipt.get("write"), Mapping)
     )
     return base | {
         "status": status,

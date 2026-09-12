@@ -21,6 +21,11 @@ from .capabilities.machine_configuration.builtins import (
     builtin_machine_inheritable_goal_overrides,
 )
 from .capabilities.periodic_report import goal_configuration as periodic_report_config
+from .capabilities.reward_memory.configuration import (
+    apply_reward_memory_goal_configuration,
+    plan_reward_memory_goal_configuration,
+    reward_memory_preflight_markdown_lines,
+)
 from .configuration_catalog import (
     DEFAULT_MULTI_SUBAGENT_MAX_CHILDREN,
     build_goal_configuration_catalog,
@@ -44,7 +49,6 @@ from .control_plane.coordination import local_authority_shadow_observation as sh
 from .control_plane.coordination.configuration import normalize_goal_write_scope
 from .control_plane.operator_inbox_binding import local_private_config_digest
 from .control_plane.reward_memory import (
-    reward_memory_goal_policy,
     reward_memory_goal_policy_summary,
 )
 from .control_plane.todos.contract import normalize_todo_claimed_by
@@ -702,38 +706,16 @@ def configure_goal(
             "--peer-task-coordinator must name an agent already registered for "
             f"this goal: {peer_task_coordinator}"
         )
-    existing_reward_memory = reward_memory_goal_policy(goal)
-    effective_reward_memory_agents = (
-        reward_memory_agents
-        if reward_memory_agents is not None
-        else existing_reward_memory["enabled_agents"]
+    reward_memory_plan = plan_reward_memory_goal_configuration(
+        goal=goal,
+        goal_id=goal_id,
+        registered_agents=effective_registered_agents,
+        requested_config_path=reward_memory_config,
+        requested_agents=reward_memory_agents,
+        clear=clear_reward_memory_config,
+        observed_at=_now_iso(),
+        execute=execute,
     )
-    if reward_memory_config is not None or reward_memory_agents is not None:
-        effective_reward_memory_config = (
-            reward_memory_config or existing_reward_memory["config_path"]
-        )
-        if not effective_reward_memory_config:
-            raise ValueError(
-                "--reward-memory-agent requires an existing or supplied "
-                "--reward-memory-config"
-            )
-        if not effective_reward_memory_agents:
-            raise ValueError(
-                "enabling Reward Memory requires at least one --reward-memory-agent"
-            )
-    unknown_reward_memory_agents = sorted(
-        set(effective_reward_memory_agents) - set(effective_registered_agents)
-    )
-    reward_memory_remains_enabled = not clear_reward_memory_config and (
-        existing_reward_memory["enabled"]
-        or reward_memory_config is not None
-        or reward_memory_agents is not None
-    )
-    if reward_memory_remains_enabled and unknown_reward_memory_agents:
-        raise ValueError(
-            "Reward Memory agents must already be registered for this goal: "
-            + ", ".join(unknown_reward_memory_agents)
-        )
     normalized_agent_profiles: dict[str, dict[str, Any]] = {}
     for raw_profile in agent_profiles or []:
         if not isinstance(raw_profile, Mapping):
@@ -923,24 +905,7 @@ def configure_goal(
         lark_kanban["heartbeat_sync_enabled"] = lark_kanban_heartbeat_sync
         control_plane["lark_kanban"] = lark_kanban
 
-    if (
-        reward_memory_config is not None
-        or reward_memory_agents is not None
-        or clear_reward_memory_config
-    ):
-        control_plane = _mutable_control_plane(goal)
-        if clear_reward_memory_config:
-            control_plane.pop("reward_memory", None)
-        else:
-            current_reward_memory = reward_memory_goal_policy(goal)
-            control_plane["reward_memory"] = {
-                "enabled": True,
-                "experimental": True,
-                "config_path": (
-                    reward_memory_config or current_reward_memory["config_path"]
-                ),
-                "enabled_agents": list(effective_reward_memory_agents),
-            }
+    apply_reward_memory_goal_configuration(goal, reward_memory_plan)
 
     if explore_graph_enabled is not None:
         goal["explore_graph"] = {"enabled": explore_graph_enabled}
@@ -1278,7 +1243,8 @@ def configure_goal(
     }
 
     return {
-        "ok": True,
+        "ok": reward_memory_plan["preflight"] is None
+        or reward_memory_plan["preflight"].get("ok") is True,
         "dry_run": dry_run,
         "execute": execute,
         "registry": str(registry_path),
@@ -1289,6 +1255,7 @@ def configure_goal(
         "before": before,
         "after": after,
         "written": bool(execute and changed_fields),
+        "reward_memory_enablement_preflight": deepcopy(reward_memory_plan["preflight"]),
         "automation_prompt_migration": {
             "migration_id": automation_prompt_migration_ack,
             "status": (
@@ -1356,6 +1323,11 @@ def render_configure_goal_markdown(payload: dict[str, Any]) -> str:
         return "\n".join(lines)
     fields = payload.get("changed_fields") or []
     lines.append(f"- changed_fields: `{', '.join(fields) if fields else 'none'}`")
+    lines.extend(
+        reward_memory_preflight_markdown_lines(
+            payload.get("reward_memory_enablement_preflight")
+        )
+    )
     global_sync = payload.get("global_sync")
     if isinstance(global_sync, dict):
         selected_target = (
