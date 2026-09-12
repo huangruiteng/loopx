@@ -28,7 +28,9 @@ from .skill_install_readback import (
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
     configured_host_skills_dir,
     inspect_skill_install_readback,
+    skill_has_required_phrases,
     skill_install_doctor_checks,
+    summarize_skill_routes,
 )
 
 
@@ -743,70 +745,16 @@ def add_promotion_readiness_freshness(
     return result
 
 
-def skill_has_required_phrases(skill_path: Path, phrases: tuple[str, ...]) -> bool:
-    if not skill_path.exists():
-        return False
-    text = " ".join(skill_path.read_text(encoding="utf-8").split())
-    return all(phrase in text for phrase in phrases)
-
-
 def installed_skill_summary(skills_roots: tuple[Path, ...]) -> dict[str, dict[str, Any]]:
-    if not skills_roots:
-        raise ValueError("at least one Codex skill root is required")
-    primary_root = skills_roots[0]
-    summaries: dict[str, dict[str, Any]] = {}
-    for skill_name, phrases in REQUIRED_INSTALLED_SKILL_PHRASES.items():
-        candidates = [
-            (root, root / skill_name / "SKILL.md")
-            for root in skills_roots
-            if (root / skill_name / "SKILL.md").exists()
-        ]
-        selected = candidates[0] if len(candidates) == 1 else None
-        selected_root = selected[0] if selected else None
-        skill_path = selected[1] if selected else primary_root / skill_name / "SKILL.md"
-        route_conflict = len(candidates) > 1
-        summaries[skill_name] = {
-            "path": str(skill_path),
-            "candidate_paths": [str(path) for _, path in candidates],
-            "route_count": len(candidates),
-            "route_conflict": route_conflict,
-            "source_root": str(selected_root) if selected_root else None,
-            "managed_externally": bool(selected_root and selected_root != primary_root),
-            "exists": bool(candidates),
-            "required_phrases": bool(
-                selected and skill_has_required_phrases(skill_path, phrases)
-            ),
-        }
-    return summaries
+    return {
+        name: summarize_skill_routes(skills_roots, name, phrases, required=True)
+        for name, phrases in REQUIRED_INSTALLED_SKILL_PHRASES.items()
+    }
 
 
 def core_skill_summary(skills_roots: tuple[Path, ...]) -> dict[str, Any]:
     """Summarize the generated core ``loopx`` entry independently of rich workflows."""
-
-    if not skills_roots:
-        raise ValueError("at least one Codex skill root is required")
-    primary_root = skills_roots[0]
-    candidates = [
-        (root, root / "loopx" / "SKILL.md")
-        for root in skills_roots
-        if (root / "loopx" / "SKILL.md").exists()
-    ]
-    selected = candidates[0] if len(candidates) == 1 else None
-    selected_root = selected[0] if selected else None
-    skill_path = selected[1] if selected else primary_root / "loopx" / "SKILL.md"
-    return {
-        "path": str(skill_path),
-        "candidate_paths": [str(path) for _, path in candidates],
-        "route_count": len(candidates),
-        "route_conflict": len(candidates) > 1,
-        "source_root": str(selected_root) if selected_root else None,
-        "managed_externally": bool(selected_root and selected_root != primary_root),
-        "exists": bool(candidates),
-        "required_phrases": bool(
-            selected and skill_has_required_phrases(skill_path, CORE_LOOPX_SKILL_PHRASES)
-        ),
-        "required": True,
-    }
+    return summarize_skill_routes(skills_roots, "loopx", CORE_LOOPX_SKILL_PHRASES, required=True)
 
 
 def installed_skill_check(

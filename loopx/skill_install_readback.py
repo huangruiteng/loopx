@@ -51,6 +51,46 @@ ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS = [
 ]
 
 
+def skill_has_required_phrases(skill_path: Path, phrases: tuple[str, ...]) -> bool:
+    if not skill_path.exists():
+        return False
+    text = " ".join(skill_path.read_text(encoding="utf-8").split())
+    return all(phrase in text for phrase in phrases)
+
+
+def summarize_skill_routes(
+    skills_roots: tuple[Path, ...],
+    skill_name: str,
+    phrases: tuple[str, ...],
+    *,
+    required: bool,
+) -> dict[str, Any]:
+    """Return one host-neutral read model for a skill across discovery roots."""
+
+    if not skills_roots:
+        raise ValueError("at least one Codex skill root is required")
+    primary_root = skills_roots[0]
+    candidates = [
+        (root, root / skill_name / "SKILL.md")
+        for root in skills_roots
+        if (root / skill_name / "SKILL.md").exists()
+    ]
+    selected = candidates[0] if len(candidates) == 1 else None
+    selected_root = selected[0] if selected else None
+    skill_path = selected[1] if selected else primary_root / skill_name / "SKILL.md"
+    return {
+        "path": str(skill_path),
+        "candidate_paths": [str(path) for _, path in candidates],
+        "route_count": len(candidates),
+        "route_conflict": len(candidates) > 1,
+        "source_root": str(selected_root) if selected_root else None,
+        "managed_externally": bool(selected_root and selected_root != primary_root),
+        "exists": bool(candidates),
+        "required_phrases": bool(selected and skill_has_required_phrases(skill_path, phrases)),
+        "required": required,
+    }
+
+
 def _user_home() -> Path:
     return Path.home().expanduser()
 
