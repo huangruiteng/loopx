@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from loopx.control_plane.testing.quota_fixtures import quota_status_payload
+from loopx.control_plane.work_items.work_lane import (
+    preserve_heartbeat_receipt_bound_work_lane,
+)
 from loopx.control_plane.work_items.work_lane_context import (
     item_progress_scope,
     latest_run_progress_scope,
@@ -87,6 +90,38 @@ def test_due_monitor_preempts_lower_priority_advancement() -> None:
     assert lane["monitor_due_count"] == 1
     assert lane["selected_todo_id"]
     assert guard["recommended_action"] == "[P0] Monitor one overdue dependency."
+
+
+def test_receipt_bound_advancement_retains_auxiliary_due_monitor_context() -> None:
+    due_monitor = {
+        "todo_id": "todo_due_monitor",
+        "task_class": "continuous_monitor",
+        "status": "open",
+    }
+    preserved = preserve_heartbeat_receipt_bound_work_lane(
+        {
+            "schema_version": "work_lane_contract_v1",
+            "lane": "continuous_monitor",
+            "obligation": "attempt_due_monitor",
+            "must_attempt_work": True,
+            "monitor_kind": "todo_monitor_due",
+            "monitor_due_count": 1,
+            "monitor_due_items": [due_monitor],
+        },
+        selected_todo={
+            "todo_id": "todo_bound_advancement",
+            "task_class": "advancement_task",
+            "selection_binding": "heartbeat_receipt",
+        },
+    )
+
+    assert preserved is not None
+    assert preserved["selected_todo_id"] == "todo_bound_advancement"
+    assert preserved["monitor_due_items"] == [due_monitor]
+    assert "auxiliary_monitor_observation_allowed" in preserved["reason_codes"]
+    assert preserved["monitor_policy"] == (
+        "auxiliary_no_spend_observation_then_continue_bound_todo"
+    )
 
 
 def test_quiet_monitor_explains_blocked_non_monitor_todos() -> None:

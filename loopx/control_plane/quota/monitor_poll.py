@@ -195,6 +195,7 @@ def _observation_packet(
     *,
     before: dict[str, Any],
     agent_id: str | None,
+    settlement_todo_id: str | None,
     reason_summary: str | None,
     todo_id: str | None,
     target_key: str | None,
@@ -215,6 +216,7 @@ def _observation_packet(
     return {
         "actor_agent_id": normalize_todo_claimed_by(agent_id)
         or quota_decision_agent_id(before),
+        "settlement_todo_id": settlement_todo_id,
         "reason_summary": reason_summary,
         "todo_id": todo_id,
         "target_key": target_key,
@@ -327,6 +329,7 @@ def build_quota_monitor_poll_event(
     observation = _observation_packet(
         before=before,
         agent_id=None,
+        settlement_todo_id=None,
         reason_summary=reason_summary,
         todo_id=safe_todo_id,
         target_key=safe_target_key,
@@ -605,6 +608,7 @@ def record_quota_monitor_poll_for_decision(
     source: str = DEFAULT_SLOT_SPEND_SOURCE,
     reason_summary: str | None = None,
     agent_id: str | None = None,
+    settlement_todo_id: str | None = None,
     todo_id: str | None = None,
     target_key: str | None = None,
     result_hash: str | None = None,
@@ -660,6 +664,7 @@ def record_quota_monitor_poll_for_decision(
     observation = _observation_packet(
         before=before,
         agent_id=agent_id,
+        settlement_todo_id=settlement_todo_id,
         reason_summary=reason_summary,
         todo_id=safe_todo_id,
         target_key=safe_target_key,

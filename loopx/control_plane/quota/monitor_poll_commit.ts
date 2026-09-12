@@ -85,6 +85,7 @@ interface MonitorDecision extends JsonObject {
 
 interface MonitorObservation extends JsonObject {
   actor_agent_id: string | null;
+  settlement_todo_id: string | null;
   reason_summary: string | null;
   todo_id: string | null;
   target_key: string | null;
@@ -311,6 +312,10 @@ function observationObject(value: unknown): MonitorObservation {
       observation.actor_agent_id,
       "observation.actor_agent_id",
     )?.trim() ?? null,
+    settlement_todo_id: normalizedTodoId(
+      observation.settlement_todo_id,
+      "observation.settlement_todo_id",
+    ),
     reason_summary: optionalString(
       observation.reason_summary,
       "observation.reason_summary",
@@ -712,6 +717,7 @@ function buildRecord(request: MonitorRequest): JsonObject {
     monitor_target: target,
     reason_summary: request.observation.reason_summary ?? defaultReason,
     material_change: material,
+    settlement_todo_id: request.observation.settlement_todo_id,
     todo_id: request.observation.todo_id,
     target_key: request.observation.target_key,
     result_hash: request.observation.result_hash,
@@ -726,6 +732,7 @@ function buildRecord(request: MonitorRequest): JsonObject {
       request.decision.reason,
     health_check: healthCheck,
     delivery_outcome: material ? "outcome_progress" : "surface_only",
+    settlement_todo_id: request.observation.settlement_todo_id,
     monitor_target: target,
     monitor_event: event,
   };
@@ -758,6 +765,8 @@ function requestDigest(request: MonitorRequest): string {
   // Admission evidence is intentionally absent: Todo writeback changes the
   // projected decision during a retry, while the logical observation remains
   // the same effect. Mutable phase/CAS/provider fields are fenced separately.
+  const observation: JsonObject = { ...request.observation };
+  if (!observation.settlement_todo_id) delete observation.settlement_todo_id;
   return sha256(pythonJson({
     schema_version: request.schema_version,
     effect_id: request.effect_id,
@@ -765,7 +774,7 @@ function requestDigest(request: MonitorRequest): string {
     goal_id: request.goal_id,
     source: request.source,
     turn_instance_id: request.turn_instance_id,
-    observation: request.observation,
+    observation,
   }));
 }
 
@@ -1301,6 +1310,7 @@ function indexRecordFor(
   for (const [field, value] of Object.entries({
     agent_id: record.agent_id,
     turn_instance_id: record.turn_instance_id,
+    settlement_todo_id: event.settlement_todo_id,
     todo_id: event.todo_id,
     target_key: event.target_key,
     material_change: event.material_change === true ? true : null,
@@ -1335,6 +1345,7 @@ function monitorMarkdown(record: JsonObject): string {
     `- source: \`${pyValue(event.source)}\``,
     `- effective_action: \`${pyValue(before.effective_action)}\``,
     `- monitor_target: \`${pyValue(target.target_id)}\``,
+    `- settlement_todo_id: \`${pyValue(event.settlement_todo_id ?? "")}\``,
     `- todo_id: \`${pyValue(event.todo_id ?? "")}\``,
     `- target_key: \`${pyValue(event.target_key ?? "")}\``,
     `- material_change: \`${pyValue(event.material_change)}\``,
@@ -1385,6 +1396,7 @@ function payloadFor(
     classification: QUOTA_MONITOR_POLL_CLASSIFICATION,
     generated_at: record.generated_at,
     agent_id: record.agent_id ?? null,
+    settlement_todo_id: event.settlement_todo_id ?? null,
     todo_id: event.todo_id ?? null,
     target_key: event.target_key ?? null,
     material_change: event.material_change === true,

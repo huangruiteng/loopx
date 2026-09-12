@@ -26,8 +26,11 @@ def register_quota_monitor_poll_request_arguments(
         "--todo-id",
         help=(
             "For Codex App `quota should-run`, select one currently projected "
-            "eligible action through typed same-turn qualification; otherwise "
-            "name the accountable Todo settlement target."
+            "eligible action through typed same-turn qualification. For "
+            "`quota monitor-poll`, name the observed monitor Todo; a committed "
+            "advancement settlement Todo remains separate under the auxiliary "
+            "no-spend observation contract. Otherwise name the accountable "
+            "Todo settlement target."
         ),
     )
     quota_parser.add_argument("--target-key", help="Stable monitor target key for `quota monitor-poll` metadata writeback.")

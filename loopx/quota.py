@@ -34,6 +34,7 @@ from .control_plane.quota.policy_constants import (
 from .control_plane.quota.monitor_poll import (
     QUOTA_MONITOR_POLL_CLASSIFICATION as QUOTA_MONITOR_POLL_CLASSIFICATION,
     build_quota_monitor_poll_event as build_quota_monitor_poll_event,
+    find_quota_monitor_poll_turn,
     record_quota_monitor_poll_for_decision,
 )
 from .control_plane.quota.recent_runs import (
@@ -95,6 +96,8 @@ from .control_plane.scheduler.state import (
     CODEX_APP_SURFACE,
 )
 from .control_plane.todos.contract import (
+    TODO_TASK_CLASS_ADVANCEMENT,
+    TODO_TASK_CLASS_MONITOR,
     normalize_todo_claimed_by,
     normalize_todo_id,
 )
@@ -1077,17 +1080,6 @@ def record_quota_monitor_poll(
     normalized_receipt_todo_id = (
         normalize_todo_id(receipt_bound_todo_id) if receipt_bound_todo_id else None
     )
-    if (
-        normalized_receipt_todo_id
-        and normalized_requested_todo_id
-        and normalized_requested_todo_id != normalized_receipt_todo_id
-    ):
-        raise HeartbeatReceiptIdentityConflictError(
-            "turn-scoped monitor-poll Todo conflicts with the committed "
-            "heartbeat receipt: expected "
-            f"{normalized_receipt_todo_id}, requested {normalized_requested_todo_id}"
-        )
-    effective_todo_id = normalized_requested_todo_id or normalized_receipt_todo_id
 
     def should_run(current_status: dict[str, Any]) -> dict[str, Any]:
         decision_status = current_status
@@ -1116,6 +1108,75 @@ def record_quota_monitor_poll(
         )
 
     before = should_run(status_payload)
+    if (
+        normalized_receipt_todo_id
+        and normalized_requested_todo_id
+        and normalized_requested_todo_id != normalized_receipt_todo_id
+    ):
+        selected = (
+            before.get("selected_todo")
+            if isinstance(before.get("selected_todo"), Mapping)
+            else {}
+        )
+        lane = (
+            before.get("work_lane_contract")
+            if isinstance(before.get("work_lane_contract"), Mapping)
+            else {}
+        )
+        summary = (
+            before.get("agent_todo_summary")
+            if isinstance(before.get("agent_todo_summary"), Mapping)
+            else {}
+        )
+        candidate_values = [
+            *(lane.get("monitor_due_items") or []),
+            *(summary.get("monitor_due_items") or []),
+        ]
+        normalized_agent_id = normalize_todo_claimed_by(agent_id)
+        auxiliary_due_monitor = any(
+            isinstance(candidate, Mapping)
+            and normalize_todo_id(candidate.get("todo_id"))
+            == normalized_requested_todo_id
+            and candidate.get("task_class") == TODO_TASK_CLASS_MONITOR
+            and normalize_todo_claimed_by(candidate.get("claimed_by"))
+            in {None, normalized_agent_id}
+            for candidate in candidate_values
+        )
+        raw_runtime_root = status_payload.get("runtime_root")
+        existing_observation = (
+            find_quota_monitor_poll_turn(
+                Path(str(raw_runtime_root)).expanduser(),
+                goal_id=safe_goal_id,
+                agent_id=normalized_agent_id or "",
+                turn_instance_id=str(turn_instance_id or ""),
+            )
+            if raw_runtime_root and agent_id and turn_instance_id
+            else None
+        )
+        auxiliary_replay = bool(
+            isinstance(existing_observation, Mapping)
+            and normalize_todo_id(existing_observation.get("todo_id"))
+            == normalized_requested_todo_id
+            and normalize_todo_id(
+                existing_observation.get("settlement_todo_id")
+            )
+            == normalized_receipt_todo_id
+        )
+        auxiliary_observation_allowed = bool(
+            normalize_todo_id(selected.get("todo_id"))
+            == normalized_receipt_todo_id
+            and selected.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
+            and selected.get("selection_binding") == "heartbeat_receipt"
+            and (auxiliary_due_monitor or auxiliary_replay)
+        )
+        if not auxiliary_observation_allowed:
+            raise HeartbeatReceiptIdentityConflictError(
+                "turn-scoped monitor-poll Todo conflicts with the committed "
+                "heartbeat receipt: expected settlement Todo "
+                f"{normalized_receipt_todo_id}, requested observation Todo "
+                f"{normalized_requested_todo_id}"
+            )
+    effective_todo_id = normalized_requested_todo_id or normalized_receipt_todo_id
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,
@@ -1127,6 +1188,7 @@ def record_quota_monitor_poll(
         source=source,
         reason_summary=reason_summary,
         agent_id=agent_id,
+        settlement_todo_id=normalized_receipt_todo_id,
         todo_id=effective_todo_id,
         target_key=target_key,
         result_hash=result_hash,
