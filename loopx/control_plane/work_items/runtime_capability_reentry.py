@@ -101,3 +101,52 @@ def build_runtime_capability_reentry_packet(
     for candidate in result["candidates"]:
         candidate["command"] = shlex.join(candidate.pop("command_argv"))
     return result
+
+
+def apply_agent_channel_projection(
+    channel: dict[str, Any],
+    capability_reentry: Mapping[str, Any],
+    *,
+    selection_required: bool,
+) -> None:
+    """Adapt the typed re-entry plan to the existing agent-channel shape."""
+
+    if selection_required:
+        channel["primary_action"] = (
+            "before choosing a fallback Todo, verify the projected missing "
+            "runtime capability at its real task-facing callsite; on success "
+            "run next_cli_actions[0] in this same Turn, then select a Todo; "
+            "on failure record the concrete blocker and select eligible work "
+            "with selection_command without adding a capability flag"
+        )
+    candidate = capability_reentry["candidates"][0]
+    target = candidate["verification_target"]
+    channel["next_task_action"] = {
+        "kind": "capability_verification",
+        "capability": candidate["capability"],
+        "todo_id": target["todo_id"],
+        "action_kind": target["action_kind"],
+        "operation": target["action_kind"],
+        "instruction": target["instruction"],
+        "preflight_allowed": False,
+        "advancement_checkpoint": False,
+        "settles_turn": False,
+        "continuation_cli_action_index": 0,
+    }
+    if target.get("target_ref"):
+        channel["next_task_action"]["target_ref"] = target["target_ref"]
+
+
+def apply_cli_channel_projection(
+    channel: dict[str, Any],
+    capability_reentry: Mapping[str, Any],
+    *,
+    selection_required: bool,
+) -> None:
+    """Adapt the typed plan while retaining selection as the failure fallback."""
+
+    channel["runtime_capability_reentry"] = capability_reentry
+    if selection_required:
+        channel["next_cli_actions"] = [
+            candidate["command"] for candidate in capability_reentry["candidates"]
+        ]
