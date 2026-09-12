@@ -6,6 +6,7 @@ import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,9 +24,113 @@ OPENVIKING_PROVIDER_ID = "openviking"
 MAX_OPENVIKING_RESULTS = 6
 MAX_OPENVIKING_SYNC_RESOURCES = 24
 DEFAULT_MINIMUM_VERSION = "0.4.9"
-ACTOR_PEER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$")
+# OpenViking v0.4.19 rejects identity segments containing path separators,
+# dot segments, colons, or plus signs. Keep the client-side boundary at least
+# as strict as the current server contract.
+OPENVIKING_IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+PEER_SCOPE_MINIMUM_VERSION = "0.4.18"
+PEER_SCOPE_MINIMUM_SERVER_VERSION = "0.4.19"
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+@dataclass(frozen=True)
+class OpenVikingScope:
+    """Public-safe classification of one exact OpenViking URI."""
+
+    visibility: str
+    scope_kind: str
+    write_strategy: str
+    user_scope_id: str | None = None
+    actor_scope_id: str | None = None
+
+    @property
+    def actor_binding_required(self) -> bool:
+        return self.actor_scope_id is not None
+
+
+def classify_openviking_scope(scope_ref: str) -> OpenVikingScope:
+    """Classify supported public/private storage without inferring identity.
+
+    OpenViking resource ingestion is valid only below a ``resources`` root.
+    Structured Reward Memory records under a memory root use the filesystem
+    content-write API instead.  Agent/peer identity is returned to the caller
+    for an explicit equality check against ``actor_peer_id``.
+    """
+
+    value = str(scope_ref or "").strip().rstrip("/")
+    if not value.startswith("viking://"):
+        raise ValueError("OpenViking scope_ref must use viking://")
+    segments = value[len("viking://") :].split("/")
+    if not segments or any(
+        not segment or segment in {".", ".."} for segment in segments
+    ):
+        raise ValueError("OpenViking scope_ref must use safe non-empty path segments")
+    if segments[0] == "resources":
+        return OpenVikingScope(
+            visibility="public",
+            scope_kind="account_resources",
+            write_strategy="resource_ingest",
+        )
+    if (
+        segments[0] == "~"
+        and len(segments) >= 2
+        and segments[1]
+        in {
+            "resources",
+            "memories",
+        }
+    ):
+        return OpenVikingScope(
+            visibility="private",
+            scope_kind=f"current_user_{segments[1]}",
+            write_strategy=(
+                "resource_ingest" if segments[1] == "resources" else "content_write"
+            ),
+        )
+    if segments[0] == "agent":
+        raise ValueError(
+            "viking://agent is a shared read-only compatibility scope in "
+            "OpenViking v0.4.19; use an explicit user/peer target"
+        )
+    if segments[0] != "user" or len(segments) < 3:
+        raise ValueError(
+            "OpenViking scope_ref must select account resources or a supported "
+            "user/peer private collection"
+        )
+    user_id = segments[1]
+    if not OPENVIKING_IDENTITY_RE.fullmatch(user_id):
+        raise ValueError("OpenViking user scope must use a safe user id")
+    if segments[2] in {"resources", "memories"}:
+        return OpenVikingScope(
+            visibility="private",
+            scope_kind=f"user_{segments[2]}",
+            write_strategy=(
+                "resource_ingest" if segments[2] == "resources" else "content_write"
+            ),
+            user_scope_id=user_id,
+        )
+    if (
+        len(segments) >= 5
+        and segments[2] == "peers"
+        and segments[4] in {"resources", "memories"}
+    ):
+        actor_id = segments[3]
+        if not OPENVIKING_IDENTITY_RE.fullmatch(actor_id):
+            raise ValueError("OpenViking peer scope must use a safe actor id")
+        return OpenVikingScope(
+            visibility="private",
+            scope_kind=f"peer_{segments[4]}",
+            write_strategy=(
+                "resource_ingest" if segments[4] == "resources" else "content_write"
+            ),
+            user_scope_id=user_id,
+            actor_scope_id=actor_id,
+        )
+    raise ValueError(
+        "OpenViking private scope_ref must select user resources/memories or "
+        "one explicit peer collection"
+    )
 
 
 def _compact(value: Any, *, limit: int) -> str:
@@ -114,6 +219,21 @@ def _read_content(value: Any) -> str:
     return ""
 
 
+def _provider_error_code(text: str) -> str | None:
+    """Read only the typed provider error code from compact CLI output."""
+
+    try:
+        payload = _extract_json(text)
+    except ValueError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    error = payload.get("error")
+    if not isinstance(error, Mapping):
+        return None
+    return _compact(error.get("code"), limit=80) or None
+
+
 class OpenVikingContextProvider:
     """Bounded OpenViking CLI integration with compact, fail-open outputs."""
 
@@ -129,7 +249,7 @@ class OpenVikingContextProvider:
         runner: CommandRunner = subprocess.run,
     ) -> None:
         normalized_actor_peer_id = str(actor_peer_id or "").strip()
-        if normalized_actor_peer_id and not ACTOR_PEER_ID_RE.fullmatch(
+        if normalized_actor_peer_id and not OPENVIKING_IDENTITY_RE.fullmatch(
             normalized_actor_peer_id
         ):
             raise ValueError("actor_peer_id must be a compact public-safe token")
@@ -139,6 +259,38 @@ class OpenVikingContextProvider:
         self.env = dict(env) if env is not None else dict(os.environ)
         self.runner = runner
 
+    def _validated_scope(self, scope_ref: str) -> OpenVikingScope:
+        scope = classify_openviking_scope(scope_ref)
+        if scope.actor_binding_required and not self.actor_peer_id:
+            raise ValueError("peer-private OpenViking scope requires actor_peer_id")
+        if (
+            scope.actor_scope_id is not None
+            and self.actor_peer_id != scope.actor_scope_id
+        ):
+            raise ValueError(
+                "actor_peer_id must match the peer-private OpenViking scope"
+            )
+        return scope
+
+    @staticmethod
+    def _scope_metadata(scopes: Sequence[OpenVikingScope]) -> dict[str, object]:
+        visibilities = {scope.visibility for scope in scopes}
+        kinds = {scope.scope_kind for scope in scopes}
+        strategies = {scope.write_strategy for scope in scopes}
+        return {
+            "visibility": next(iter(visibilities))
+            if len(visibilities) == 1
+            else "mixed",
+            "target_scope_kind": next(iter(kinds)) if len(kinds) == 1 else "mixed",
+            "write_strategy": (
+                next(iter(strategies)) if len(strategies) == 1 else "mixed"
+            ),
+            "actor_binding_verified": all(
+                scope.visibility == "public" or scope.actor_scope_id is not None
+                for scope in scopes
+            ),
+        }
+
     def _run(
         self,
         args: Sequence[str],
@@ -146,7 +298,16 @@ class OpenVikingContextProvider:
         timeout_seconds: float,
     ) -> subprocess.CompletedProcess[str]:
         command = [self.executable]
-        if self.actor_peer_id and args and args[0] not in {"--version", "status"}:
+        if (
+            self.actor_peer_id
+            and args
+            and args[0]
+            not in {
+                "--version",
+                "status",
+                "version",
+            }
+        ):
             command.extend(["--actor-peer-id", self.actor_peer_id])
         command.extend(args)
         return self.runner(
@@ -159,7 +320,12 @@ class OpenVikingContextProvider:
             check=False,
         )
 
-    def _preflight(self, *, timeout_seconds: float) -> tuple[str | None, str | None]:
+    def _preflight(
+        self,
+        *,
+        timeout_seconds: float,
+        peer_scope_required: bool = False,
+    ) -> tuple[str | None, str | None]:
         try:
             version_result = self._run(["--version"], timeout_seconds=timeout_seconds)
         except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -168,10 +334,38 @@ class OpenVikingContextProvider:
             return None, "provider_version_preflight_failed"
         version = _compact(version_result.stdout, limit=80)
         try:
-            if _version_tuple(version) < _version_tuple(self.minimum_version):
+            configured_minimum = _version_tuple(self.minimum_version)
+            required_minimum = (
+                max(configured_minimum, _version_tuple(PEER_SCOPE_MINIMUM_VERSION))
+                if peer_scope_required
+                else configured_minimum
+            )
+            if _version_tuple(version) < required_minimum:
                 return version, "provider_version_incompatible"
         except ValueError:
             return version, "provider_version_unparseable"
+        if peer_scope_required:
+            try:
+                server_version_result = self._run(
+                    ["version"], timeout_seconds=timeout_seconds
+                )
+            except subprocess.TimeoutExpired:
+                return version, "provider_server_version_timeout"
+            if server_version_result.returncode != 0:
+                return version, "provider_server_version_unavailable"
+            server_match = re.search(
+                r"Server:\s*(\d+\.\d+\.\d+)",
+                server_version_result.stdout,
+                flags=re.IGNORECASE,
+            )
+            if not server_match:
+                return version, "provider_server_version_unparseable"
+            server_version = server_match.group(1)
+            version = f"{version}; server {server_version}"
+            if _version_tuple(server_version) < _version_tuple(
+                PEER_SCOPE_MINIMUM_SERVER_VERSION
+            ):
+                return version, "provider_server_version_incompatible"
         try:
             status_result = self._run(
                 ["status", "-o", "json", "-c", "true"],
@@ -204,10 +398,15 @@ class OpenVikingContextProvider:
         )
         if not namespace or not query or not query_summary:
             raise ValueError("namespace, query, and query_summary are required")
-        if not scope_ref.startswith("viking://"):
-            raise ValueError("OpenViking scope_ref must use viking://")
+        scope = self._validated_scope(scope_ref)
+        actor_binding_verified = (
+            scope.visibility == "public" or scope.actor_scope_id is not None
+        )
 
-        version, blocker = self._preflight(timeout_seconds=timeout_seconds)
+        version, blocker = self._preflight(
+            timeout_seconds=timeout_seconds,
+            peer_scope_required=scope.actor_binding_required,
+        )
         if blocker:
             return ContextProviderRetrieval(
                 provider=self.provider_id,
@@ -221,6 +420,10 @@ class OpenVikingContextProvider:
                 provider_version=version,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 requested_limit=requested_limit,
+                visibility=scope.visibility,
+                target_scope_kind=scope.scope_kind,
+                actor_binding_verified=actor_binding_verified,
+                provider_preflight_performed=True,
             )
 
         try:
@@ -266,6 +469,10 @@ class OpenVikingContextProvider:
                 provider_version=version,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 requested_limit=requested_limit,
+                visibility=scope.visibility,
+                target_scope_kind=scope.scope_kind,
+                actor_binding_verified=actor_binding_verified,
+                provider_preflight_performed=True,
             )
         try:
             rows = _mapping_candidates(_extract_json(search_result.stdout))
@@ -282,6 +489,10 @@ class OpenVikingContextProvider:
                 provider_version=version,
                 latency_ms=int((time.monotonic() - started) * 1000),
                 requested_limit=requested_limit,
+                visibility=scope.visibility,
+                target_scope_kind=scope.scope_kind,
+                actor_binding_verified=actor_binding_verified,
+                provider_preflight_performed=True,
             )
 
         items: list[ContextProviderItem] = []
@@ -357,6 +568,10 @@ class OpenVikingContextProvider:
             provider_version=version,
             latency_ms=int((time.monotonic() - started) * 1000),
             requested_limit=requested_limit,
+            visibility=scope.visibility,
+            target_scope_kind=scope.scope_kind,
+            actor_binding_verified=actor_binding_verified,
+            provider_preflight_performed=True,
         )
 
     def _reconcile_uncertain_sync_write(
@@ -486,29 +701,20 @@ class OpenVikingContextProvider:
             raise ValueError("namespace is required")
         if not bounded:
             raise ValueError("at least one resource is required")
+        scopes: list[OpenVikingScope] = []
         for source, target in bounded:
             source_path = Path(source).expanduser()
             if not source_path.is_file():
                 raise ValueError("every sync source must be an existing file")
-            if not target.startswith("viking://resources/"):
-                raise ValueError("sync targets must stay under viking://resources/")
+            scopes.append(self._validated_scope(target))
             if source_path.name != target.rstrip("/").rsplit("/", 1)[-1]:
                 raise ValueError("sync target basename must match source basename")
-        if not execute:
-            return ContextProviderSync(
-                provider=self.provider_id,
-                namespace=namespace,
-                status="planned",
-                observed_at=observed_at,
-                requested_count=len(bounded),
-                completed_count=0,
-                write_count=0,
-                reason_code="execute_required_for_resource_write",
-                latency_ms=int((time.monotonic() - started) * 1000),
-                retry_disposition="execute_required",
-            )
+        scope_metadata = self._scope_metadata(scopes)
 
-        version, blocker = self._preflight(timeout_seconds=timeout_seconds)
+        version, blocker = self._preflight(
+            timeout_seconds=timeout_seconds,
+            peer_scope_required=any(scope.actor_binding_required for scope in scopes),
+        )
         if blocker:
             return ContextProviderSync(
                 provider=self.provider_id,
@@ -521,6 +727,79 @@ class OpenVikingContextProvider:
                 reason_code=blocker,
                 provider_version=version,
                 latency_ms=int((time.monotonic() - started) * 1000),
+                provider_preflight_performed=True,
+                **scope_metadata,
+            )
+
+        if not execute:
+            target_access_count = 0
+            preflight_reason: str | None = None
+            for index, (_source, target) in enumerate(bounded):
+                remaining = max(1.0, timeout_seconds - (time.monotonic() - started))
+                try:
+                    existing = self._run(
+                        ["read", target, "-o", "json", "-c", "true"],
+                        timeout_seconds=remaining,
+                    )
+                except subprocess.TimeoutExpired:
+                    preflight_reason = "provider_sync_target_preflight_timeout"
+                    break
+                if existing.returncode == 0:
+                    target_access_count += 1
+                    continue
+                parent = target.rstrip("/").rsplit("/", 1)[0]
+                try:
+                    parent_probe = self._run(
+                        ["ls", parent, "-n", "1", "-o", "json", "-c", "true"],
+                        timeout_seconds=remaining,
+                    )
+                except subprocess.TimeoutExpired:
+                    preflight_reason = "provider_sync_target_preflight_timeout"
+                    break
+                if parent_probe.returncode != 0:
+                    if (
+                        scopes[index].write_strategy == "content_write"
+                        and _provider_error_code(parent_probe.stdout) == "NOT_FOUND"
+                    ):
+                        # OpenViking v0.4.19 content-write create mode creates
+                        # missing parent directories. A typed NOT_FOUND proves
+                        # absence, not a permission failure; apply still has to
+                        # perform the canary write and exact readback before
+                        # enablement is committed.
+                        target_access_count += 1
+                        continue
+                    preflight_reason = "provider_sync_target_parent_unavailable"
+                    break
+                target_access_count += 1
+            target_access_verified = target_access_count == len(bounded)
+            return ContextProviderSync(
+                provider=self.provider_id,
+                namespace=namespace,
+                status=(
+                    "preflight_ready"
+                    if target_access_verified
+                    else "preflight_incomplete"
+                ),
+                observed_at=observed_at,
+                requested_count=len(bounded),
+                completed_count=0,
+                write_count=0,
+                reason_code=(
+                    "execute_required_for_verified_write"
+                    if target_access_verified
+                    else preflight_reason or "provider_sync_target_preflight_incomplete"
+                ),
+                provider_version=version,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                retry_disposition=(
+                    "execute_required"
+                    if target_access_verified
+                    else "repair_target_scope"
+                ),
+                provider_preflight_performed=True,
+                target_access_preflight_verified=target_access_verified,
+                writability_verified=False,
+                **scope_metadata,
             )
 
         completed_refs: list[str] = []
@@ -529,7 +808,7 @@ class OpenVikingContextProvider:
         sync_reason: str | None = None
         reconciliation_performed = False
         retry_disposition = "no_retry"
-        for source, target in bounded:
+        for (source, target), scope in zip(bounded, scopes, strict=True):
             parent = target.rstrip("/").rsplit("/", 1)[0]
             try:
                 source_content = Path(source).read_text(encoding="utf-8")
@@ -556,137 +835,153 @@ class OpenVikingContextProvider:
                     break
                 completed_refs.append(target)
                 continue
-            try:
-                tree_result = self._run(
-                    ["tree", target, "-L", "3", "-o", "json", "-c", "true"],
-                    timeout_seconds=remaining,
-                )
-            except subprocess.TimeoutExpired:
-                sync_reason = "provider_sync_timeout"
-                break
-            tree_refs: list[str] = []
-            if tree_result.returncode == 0:
+            if scope.write_strategy == "resource_ingest":
                 try:
-                    tree_refs = [
-                        ref
-                        for row in _mapping_candidates(
-                            _extract_json(tree_result.stdout)
+                    tree_result = self._run(
+                        ["tree", target, "-L", "3", "-o", "json", "-c", "true"],
+                        timeout_seconds=remaining,
+                    )
+                except subprocess.TimeoutExpired:
+                    sync_reason = "provider_sync_timeout"
+                    break
+                tree_refs: list[str] = []
+                if tree_result.returncode == 0:
+                    try:
+                        tree_refs = [
+                            ref
+                            for row in _mapping_candidates(
+                                _extract_json(tree_result.stdout)
+                            )
+                            if (ref := _resource_ref(row))
+                        ]
+                    except ValueError:
+                        sync_reason = "provider_sync_tree_parse_failed"
+                        break
+                tree_contents: list[str] = []
+                for tree_ref in tree_refs:
+                    try:
+                        tree_read = self._run(
+                            ["read", tree_ref, "-o", "json", "-c", "true"],
+                            timeout_seconds=remaining,
                         )
-                        if (ref := _resource_ref(row))
-                    ]
-                except ValueError:
-                    sync_reason = "provider_sync_tree_parse_failed"
+                    except subprocess.TimeoutExpired:
+                        sync_reason = "provider_sync_timeout"
+                        break
+                    if tree_read.returncode != 0:
+                        continue
+                    try:
+                        tree_content = _read_content(_extract_json(tree_read.stdout))
+                    except ValueError:
+                        continue
+                    tree_contents.append(tree_content)
+                if sync_reason:
                     break
-            tree_contents: list[str] = []
-            for tree_ref in tree_refs:
-                try:
-                    tree_read = self._run(
-                        ["read", tree_ref, "-o", "json", "-c", "true"],
-                        timeout_seconds=remaining,
-                    )
-                except subprocess.TimeoutExpired:
-                    sync_reason = "provider_sync_timeout"
-                    break
-                if tree_read.returncode != 0:
-                    continue
-                try:
-                    tree_content = _read_content(_extract_json(tree_read.stdout))
-                except ValueError:
-                    continue
-                tree_contents.append(tree_content)
-            if sync_reason:
-                break
-            source_lines = set(canonical_context_lines(source_content))
-            matched_source_lines = {
-                line
-                for content in tree_contents
-                for line in canonical_context_lines(content)
-                if line in source_lines
-            }
-            coverage = len(matched_source_lines) / max(1, len(source_lines))
-            if (
-                tree_contents
-                and all(
-                    canonical_context_matches(content, source_content)
+                source_lines = set(canonical_context_lines(source_content))
+                matched_source_lines = {
+                    line
                     for content in tree_contents
-                )
-                and coverage >= 0.8
-            ):
-                completed_refs.append(target)
-                continue
-            if tree_refs:
-                sync_reason = "provider_sync_revision_conflict"
-                break
-            try:
-                parent_probe = self._run(
-                    ["ls", parent, "-n", "1", "-o", "json", "-c", "true"],
-                    timeout_seconds=remaining,
-                )
-            except subprocess.TimeoutExpired:
-                sync_reason = "provider_sync_timeout"
-                break
-            if parent_probe.returncode != 0:
+                    for line in canonical_context_lines(content)
+                    if line in source_lines
+                }
+                coverage = len(matched_source_lines) / max(1, len(source_lines))
+                if (
+                    tree_contents
+                    and all(
+                        canonical_context_matches(content, source_content)
+                        for content in tree_contents
+                    )
+                    and coverage >= 0.8
+                ):
+                    completed_refs.append(target)
+                    continue
+                if tree_refs:
+                    sync_reason = "provider_sync_revision_conflict"
+                    break
                 try:
-                    mkdir_result = self._run(
-                        ["mkdir", parent, "-o", "json", "-c", "true"],
+                    parent_probe = self._run(
+                        ["ls", parent, "-n", "1", "-o", "json", "-c", "true"],
                         timeout_seconds=remaining,
                     )
                 except subprocess.TimeoutExpired:
                     sync_reason = "provider_sync_timeout"
                     break
-                if mkdir_result.returncode != 0:
-                    sync_reason = "provider_sync_parent_create_failed"
-                    break
+                if parent_probe.returncode != 0:
+                    try:
+                        mkdir_result = self._run(
+                            ["mkdir", parent, "-o", "json", "-c", "true"],
+                            timeout_seconds=remaining,
+                        )
+                    except subprocess.TimeoutExpired:
+                        sync_reason = "provider_sync_timeout"
+                        break
+                    if mkdir_result.returncode != 0:
+                        sync_reason = "provider_sync_parent_create_failed"
+                        break
             reserve = min(15.0, max(1.0, remaining * 0.2))
             write_timeout = max(1.0, remaining - reserve)
+            write_args = (
+                [
+                    "add-resource",
+                    source,
+                    "--to",
+                    target,
+                    "--wait",
+                    "--timeout",
+                    str(max(1, int(write_timeout))),
+                    "-o",
+                    "json",
+                    "-c",
+                    "true",
+                ]
+                if scope.write_strategy == "resource_ingest"
+                else [
+                    "write",
+                    target,
+                    "--from-file",
+                    source,
+                    "--mode",
+                    "create",
+                    "--wait",
+                    "--timeout",
+                    str(max(1, int(write_timeout))),
+                    "-o",
+                    "json",
+                    "-c",
+                    "true",
+                ]
+            )
             try:
-                result = self._run(
-                    [
-                        "add-resource",
-                        source,
-                        "--to",
-                        target,
-                        "--wait",
-                        "--timeout",
-                        str(max(1, int(write_timeout))),
-                        "-o",
-                        "json",
-                        "-c",
-                        "true",
-                    ],
-                    timeout_seconds=write_timeout,
-                )
+                result = self._run(write_args, timeout_seconds=write_timeout)
             except subprocess.TimeoutExpired:
                 result = None
-            if result is None or result.returncode != 0:
-                reconciliation_performed = True
-                reconciliation = self._reconcile_uncertain_sync_write(
-                    target=target,
-                    source_content=source_content,
-                    timeout_seconds=reserve,
+            reconciliation_performed = True
+            reconciliation = self._reconcile_uncertain_sync_write(
+                target=target,
+                source_content=source_content,
+                timeout_seconds=reserve,
+            )
+            if reconciliation == "verified_success":
+                completed_refs.append(target)
+                write_count += 1
+                continue
+            if reconciliation == "committed_pending":
+                pending_refs.append(target)
+                write_count += 1
+                retry_disposition = "wait_and_reconcile"
+                continue
+            if reconciliation == "absent_safe_to_retry":
+                sync_reason = (
+                    "provider_sync_write_timeout_absent"
+                    if result is None
+                    else "provider_sync_write_failed_absent"
+                    if result.returncode != 0
+                    else "provider_sync_success_readback_absent"
                 )
-                if reconciliation == "verified_success":
-                    completed_refs.append(target)
-                    write_count += 1
-                    continue
-                if reconciliation == "committed_pending":
-                    pending_refs.append(target)
-                    write_count += 1
-                    retry_disposition = "wait_and_reconcile"
-                    continue
-                if reconciliation == "absent_safe_to_retry":
-                    sync_reason = (
-                        "provider_sync_write_timeout_absent"
-                        if result is None
-                        else "provider_sync_write_failed_absent"
-                    )
-                    retry_disposition = "safe_to_retry"
-                else:
-                    sync_reason = "provider_sync_reconciliation_unavailable"
-                    retry_disposition = "manual_reconcile"
-                break
-            completed_refs.append(target)
-            write_count += 1
+                retry_disposition = "safe_to_retry"
+            else:
+                sync_reason = "provider_sync_reconciliation_unavailable"
+                retry_disposition = "manual_reconcile"
+            break
 
         accounted_count = len(completed_refs) + len(pending_refs)
         if len(completed_refs) == len(bounded):
@@ -715,6 +1010,10 @@ class OpenVikingContextProvider:
             pending_count=len(pending_refs),
             reconciliation_performed=reconciliation_performed,
             retry_disposition=retry_disposition,
+            provider_preflight_performed=True,
+            target_access_preflight_verified=(status == "completed"),
+            writability_verified=(status == "completed"),
+            **scope_metadata,
         )
 
 

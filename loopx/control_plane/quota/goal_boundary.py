@@ -194,6 +194,19 @@ def _registry_boundary_projection(goal: Mapping[str, Any]) -> dict[str, Any]:
     return boundary
 
 
+def _reward_memory_enablement_projection(
+    status: Mapping[str, Any],
+) -> dict[str, Any]:
+    fields = (
+        "isolation_mode",
+        "enablement_receipt_status",
+        "actor_binding_verified",
+        "writability_verified",
+        "exact_readback_verified",
+    )
+    return {field: status[field] for field in fields if field in status}
+
+
 def goal_boundary(
     goal: dict[str, Any],
     item: dict[str, Any] | None = None,
@@ -343,6 +356,9 @@ def goal_boundary(
                         "reward_memory_experiment_status_v1"
                     ),
                 }
+            )
+            reward_capability.update(
+                _reward_memory_enablement_projection(reward_memory_experiment_status)
             )
             if reward_memory_experiment_status.get("config_schema_version"):
                 reward_capability["config_schema_version"] = str(

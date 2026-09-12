@@ -66,7 +66,7 @@
       "retirement_authority": "openviking_reward_memory_owner"
     },
     "privacy": {
-      "visibility": "private",
+      "visibility": "public_safe",
       "raw_content_in_registry": false
     },
     "provider_scope_ref_digest": "0f998976780e6786"

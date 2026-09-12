@@ -11,7 +11,6 @@ from typing import Any
 from ..context_providers import build_context_provider
 from ..context_providers.base import (
     ContextProvider,
-    ContextProviderSync,
     canonical_context_text,
     opaque_provider_ref,
 )
@@ -285,19 +284,6 @@ def _policy_guard(
     }
 
 
-def _planned_sync(binding: Mapping[str, Any], observed_at: str) -> ContextProviderSync:
-    return ContextProviderSync(
-        provider=str(binding["provider_id"]),
-        namespace=str(binding["namespace"]),
-        status="planned",
-        observed_at=observed_at,
-        requested_count=1,
-        completed_count=0,
-        reason_code="execute_required_for_resource_write",
-        retry_disposition="execute_required",
-    )
-
-
 def _freshness_context(
     corpus: Mapping[str, Any], revision_ref: object
 ) -> dict[str, Any]:
@@ -398,11 +384,9 @@ def ingest_reward_memory_candidate(
         namespace=binding["namespace"],
         resource_ref=target_ref,
     )
-    planned = _planned_sync(binding, observed_at)
     prepared = base | {
         "activation_ref": active["activation_ref"],
         "provider_ref": target_public_ref,
-        "write": planned.public_packet(),
         "next_recall": {
             "corpus_id": normalized_corpus["corpus_id"],
             "surface_ids": surfaces,
@@ -410,9 +394,6 @@ def ingest_reward_memory_candidate(
             "automatic_recall": False,
         },
     }
-    if not execute:
-        return prepared | {"status": "planned"}
-
     configured_provider: ContextProvider
     try:
         configured_provider = provider or build_context_provider(
@@ -431,7 +412,7 @@ def ingest_reward_memory_candidate(
                 resources=[(str(source_path), target_ref)],
                 timeout_seconds=float(binding["timeout_seconds"]),
                 observed_at=observed_at,
-                execute=True,
+                execute=execute,
             )
     except Exception:  # noqa: BLE001 - provider execution is a fail-open boundary
         return prepared | {
@@ -445,6 +426,11 @@ def ingest_reward_memory_candidate(
         "deduplicated": sync.status == "completed" and sync.write_count == 0,
         "external_writes_performed": sync.write_count > 0,
     }
+    if not execute:
+        return synced | {
+            "status": sync.status,
+            "reason_codes": [sync.reason_code] if sync.reason_code else [],
+        }
     if sync.status == "committed_pending":
         return synced | {
             "status": "committed_pending",

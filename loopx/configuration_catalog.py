@@ -49,9 +49,7 @@ def build_goal_configuration_catalog(
     feature_summary: Mapping[str, Any],
     default_multi_subagent_max_children: int,
     explore_harness_profiles: Sequence[str],
-    machine_inheritable_goal_overrides: Mapping[
-        str, Mapping[str, Any]
-    ] | None = None,
+    machine_inheritable_goal_overrides: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the on-demand configuration read model for optional features."""
 
@@ -543,6 +541,9 @@ def build_goal_configuration_catalog(
                     )
                     is True,
                     "enabled_agents": list(reward_memory.get("enabled_agents") or []),
+                    "enablement_verified_agents": list(
+                        reward_memory.get("enablement_verified_agents") or []
+                    ),
                 },
                 "required_inputs": {
                     "ignored-reward-memory-config": (
@@ -550,8 +551,8 @@ def build_goal_configuration_catalog(
                         "config under .loopx/config/."
                     ),
                     "agent-id": (
-                        "Replace the placeholder with one registered agent lane. "
-                        "Repeat --reward-memory-agent for another explicit lane."
+                        "Replace the placeholder with one registered Agent lane. "
+                        "A private config binds exactly one Goal-scoped Agent."
                     ),
                 },
                 "consider_when": (

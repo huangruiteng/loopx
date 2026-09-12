@@ -1421,6 +1421,8 @@ def append_attention_queue_project_asset_markdown(
             f"status={markdown_scalar(agent_reward_memory.get('experiment_status') or '')} "
             f"automatic_ingest={agent_reward_memory.get('automatic_ingest')} "
             f"automatic_recall={agent_reward_memory.get('automatic_recall')} "
+            f"isolation={markdown_scalar(agent_reward_memory.get('isolation_mode') or '')} enablement={markdown_scalar(agent_reward_memory.get('enablement_receipt_status') or '')} "
+            f"writability={agent_reward_memory.get('writability_verified')} "
             f"runtime_scope={markdown_scalar(config_runtime_route.get('runtime_scope') or '')} "
             f"exact_readback={config_runtime_route.get('exact_readback_verified')}"
         )

@@ -16,6 +16,7 @@ from ..context_providers.base import (
     canonical_context_text,
     opaque_provider_ref,
 )
+from ..context_providers.openviking import classify_openviking_scope
 from .candidate_review import REWARD_MEMORY_REVIEW_SCHEMA_VERSION
 from .registry import IDENTITY_SCOPE_FIELDS, normalize_reward_memory_corpus
 
@@ -468,6 +469,33 @@ def normalize_reward_memory_provider_binding(
             raise ValueError("actor_peer_id must match the peer-scoped provider URI")
     if actor_peer_id:
         binding["actor_peer_id"] = actor_peer_id
+    if binding["provider_id"] == "openviking":
+        provider_scope = classify_openviking_scope(binding["scope_ref"])
+        visibility = str((corpus.get("privacy") or {}).get("visibility") or "")
+        peer_ref = str((corpus.get("scope") or {}).get("peer_ref") or "")
+        agent_ref = (
+            peer_ref.removeprefix("agent:") if peer_ref.startswith("agent:") else ""
+        )
+        if visibility == "private" and provider_scope.visibility != "private":
+            raise ValueError(
+                "private Reward Memory cannot bind to public OpenViking resources"
+            )
+        if visibility == "private" and not provider_scope.actor_binding_required:
+            raise ValueError(
+                "private Reward Memory requires an actor-bound peer OpenViking scope"
+            )
+        if visibility == "private" and not agent_ref:
+            raise ValueError(
+                "private Reward Memory corpus requires scope.peer_ref=agent:<agent_id>"
+            )
+        if (
+            agent_ref
+            and provider_scope.actor_scope_id is not None
+            and provider_scope.actor_scope_id != actor_peer_id
+        ):
+            raise ValueError(
+                "private Reward Memory provider scope must match actor_peer_id"
+            )
     return binding
 
 

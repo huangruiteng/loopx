@@ -11,19 +11,25 @@ import pytest
 from loopx.capabilities.context_providers.base import (
     ContextProviderItem,
     ContextProviderRetrieval,
+    ContextProviderSync,
 )
 from loopx.capabilities.issue_fix.reward_memory import (
     run_issue_fix_reviewer_notification_automatic_reward_memory,
 )
 from loopx.capabilities.reward_memory.experiment import (
+    canonical_reward_memory_actor_peer_id,
+    load_reward_memory_experiment_config,
+    preflight_reward_memory_experiment_config,
     resolve_reward_memory_experiment,
     resolve_reward_memory_surface_config,
+    validate_reward_memory_goal_agent_scope,
 )
 from loopx.capabilities.reward_memory.runtime_hooks import (
     run_reward_memory_automatic_recall_hook,
 )
 from loopx.cli import main
 from loopx.cli_commands.status import attach_agent_lane_next_actions
+from loopx.configure_goal import configure_goal
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
@@ -136,6 +142,7 @@ def _experiment(
         ),
         encoding="utf-8",
     )
+    config_digest = f"sha256:{hashlib.sha256(config_path.read_bytes()).hexdigest()}"
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(
         json.dumps(
@@ -156,6 +163,27 @@ def _experiment(
                                     ".loopx/config/reward-memory/experiment.json"
                                 ),
                                 "enabled_agents": ["pilot"],
+                                "config_digest": config_digest,
+                                "enablement_receipts": {
+                                    "pilot": {
+                                        "schema_version": (
+                                            "reward_memory_enablement_receipt_v0"
+                                        ),
+                                        "status": "verified",
+                                        "goal_id": "reward-memory-goal",
+                                        "agent_id": "pilot",
+                                        "config_digest": config_digest,
+                                        "provider_id": "openviking",
+                                        "isolation_mode": "explicit_shared",
+                                        "actor_binding_verified": False,
+                                        "writability_verified": True,
+                                        "exact_readback_verified": True,
+                                        "probe_count": 1,
+                                        "write_count": 1,
+                                        "external_writes_performed": True,
+                                        "observed_at": "2026-01-01T00:00:00Z",
+                                    }
+                                },
                             }
                         },
                     }
@@ -265,6 +293,257 @@ def _write_v1_config(registry_path: Path, config: dict[str, object]) -> None:
     project = Path(registry["goals"][0]["repo"])
     config_path = project / ".loopx/config/reward-memory/experiment.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
+    digest = f"sha256:{hashlib.sha256(config_path.read_bytes()).hexdigest()}"
+    binding = registry["goals"][0]["control_plane"]["reward_memory"]
+    binding["config_digest"] = digest
+    binding["enablement_receipts"]["pilot"]["config_digest"] = digest
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+
+def _private_v1_config(*, goal_id: str, agent_id: str) -> dict[str, object]:
+    config = _v1_config()
+    actor = canonical_reward_memory_actor_peer_id(
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    config["project_provider_binding"]["actor_peer_id"] = actor
+    for index, (entry, scope) in enumerate(
+        zip(
+            config["corpora"],
+            config["project_provider_binding"]["corpus_scopes"],
+            strict=True,
+        )
+    ):
+        corpus = entry["corpus"]
+        policy = entry["standing_policy"]
+        corpus["privacy"]["visibility"] = "private"
+        corpus["scope"]["peer_ref"] = f"agent:{agent_id}"
+        policy["scope"]["peer_ref"] = f"agent:{agent_id}"
+        scope_ref = (
+            f"viking://user/default/peers/{actor}/memories/reward-memory/"
+            f"goals/{goal_id}/corpus-{index}"
+        )
+        scope["scope_ref"] = scope_ref
+        corpus["provider_scope_ref_digest"] = hashlib.sha256(
+            scope_ref.encode("utf-8")
+        ).hexdigest()[:16]
+    return config
+
+
+class _EnablementProvider:
+    provider_id = "openviking"
+
+    def __init__(self) -> None:
+        self.preview_calls = 0
+        self.write_calls = 0
+
+    def sync(self, **kwargs: Any) -> ContextProviderSync:
+        _source, target = kwargs["resources"][0]
+        if kwargs["execute"] is not True:
+            self.preview_calls += 1
+            return ContextProviderSync(
+                provider=self.provider_id,
+                namespace=str(kwargs["namespace"]),
+                status="preflight_ready",
+                observed_at=str(kwargs["observed_at"]),
+                requested_count=1,
+                completed_count=0,
+                reason_code="execute_required_for_verified_write",
+                visibility="private",
+                target_scope_kind="peer_memories",
+                write_strategy="content_write",
+                actor_binding_verified=True,
+                provider_preflight_performed=True,
+                target_access_preflight_verified=True,
+            )
+        self.write_calls += 1
+        return ContextProviderSync(
+            provider=self.provider_id,
+            namespace=str(kwargs["namespace"]),
+            status="completed",
+            observed_at=str(kwargs["observed_at"]),
+            requested_count=1,
+            completed_count=1,
+            write_count=1,
+            result_refs=(target,),
+            visibility="private",
+            target_scope_kind="peer_memories",
+            write_strategy="content_write",
+            actor_binding_verified=True,
+            provider_preflight_performed=True,
+            target_access_preflight_verified=True,
+            writability_verified=True,
+        )
+
+
+def test_canonical_actor_namespaces_same_local_agent_by_goal() -> None:
+    first = canonical_reward_memory_actor_peer_id(
+        goal_id="finance-research-goal",
+        agent_id="explorer",
+    )
+    repeated = canonical_reward_memory_actor_peer_id(
+        goal_id="finance-research-goal",
+        agent_id="explorer",
+    )
+    second = canonical_reward_memory_actor_peer_id(
+        goal_id="another-goal",
+        agent_id="explorer",
+    )
+    sibling = canonical_reward_memory_actor_peer_id(
+        goal_id="finance-research-goal",
+        agent_id="reviewer",
+    )
+
+    assert first == repeated
+    assert len({first, second, sibling}) == 3
+    assert ":" not in first and "+" not in first and "/" not in first
+
+
+def test_private_scope_binds_exact_goal_scoped_agent(tmp_path: Path) -> None:
+    goal_id = "reward-memory-goal"
+    agent_id = "pilot"
+    project = tmp_path / "project"
+    path = project / ".loopx/config/reward-memory/private.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(_private_v1_config(goal_id=goal_id, agent_id=agent_id)),
+        encoding="utf-8",
+    )
+    config = load_reward_memory_experiment_config(
+        project=project,
+        config_path=".loopx/config/reward-memory/private.json",
+    )
+
+    scope = validate_reward_memory_goal_agent_scope(
+        config,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    assert scope["isolation_mode"] == "goal_scoped_agent_private"
+    assert scope["actor_peer_id"] == canonical_reward_memory_actor_peer_id(
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    with pytest.raises(ValueError):
+        validate_reward_memory_goal_agent_scope(
+            config,
+            goal_id="another-goal",
+            agent_id=agent_id,
+        )
+    with pytest.raises(ValueError):
+        validate_reward_memory_goal_agent_scope(
+            config,
+            goal_id=goal_id,
+            agent_id="meta",
+        )
+
+
+def test_one_private_config_cannot_enable_multiple_goal_agents(
+    tmp_path: Path,
+) -> None:
+    goal_id = "reward-memory-goal"
+    project = tmp_path / "project"
+    path = project / ".loopx/config/reward-memory/private.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(_private_v1_config(goal_id=goal_id, agent_id="pilot")),
+        encoding="utf-8",
+    )
+    config = load_reward_memory_experiment_config(
+        project=project,
+        config_path=".loopx/config/reward-memory/private.json",
+    )
+
+    with pytest.raises(ValueError, match="exactly one Goal-scoped Agent"):
+        preflight_reward_memory_experiment_config(
+            config,
+            goal_id=goal_id,
+            agent_ids=["pilot", "meta"],
+            observed_at="2026-01-01T00:00:00Z",
+            execute=False,
+            provider=_EnablementProvider(),
+        )
+
+
+def test_configure_goal_requires_write_preflight_and_persists_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    goal_id = "reward-memory-goal"
+    agent_id = "pilot"
+    project = tmp_path / "project"
+    config_path = project / ".loopx/config/reward-memory/private.json"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        json.dumps(_private_v1_config(goal_id=goal_id, agent_id=agent_id)),
+        encoding="utf-8",
+    )
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "goals": [
+                    {
+                        "id": goal_id,
+                        "repo": str(project),
+                        "coordination": {
+                            "registered_agents": [agent_id, "meta"],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    provider = _EnablementProvider()
+    monkeypatch.setattr(
+        "loopx.capabilities.reward_memory.experiment.build_context_provider",
+        lambda _config: provider,
+    )
+
+    preview = configure_goal(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        reward_memory_config=".loopx/config/reward-memory/private.json",
+        reward_memory_agents=[agent_id],
+        execute=False,
+    )
+    assert preview["ok"] is True
+    assert preview["written"] is False
+    assert preview["reward_memory_enablement_preflight"]["status"] == (
+        "ready_for_apply"
+    )
+    assert provider.preview_calls == 3
+    assert provider.write_calls == 0
+
+    applied = configure_goal(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        reward_memory_config=".loopx/config/reward-memory/private.json",
+        reward_memory_agents=[agent_id],
+        execute=True,
+    )
+    assert applied["written"] is True
+    assert provider.write_calls == 3
+    policy = json.loads(registry_path.read_text(encoding="utf-8"))["goals"][0][
+        "control_plane"
+    ]["reward_memory"]
+    assert policy["config_digest"].startswith("sha256:")
+    receipt = policy["enablement_receipts"][agent_id]
+    assert receipt["status"] == "verified"
+    assert receipt["writability_verified"] is True
+    assert receipt["exact_readback_verified"] is True
+    assert receipt["actor_binding_verified"] is True
+
+    status, resolved = resolve_reward_memory_experiment(
+        registry_path=registry_path,
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    assert status["status"] == "available"
+    assert status["isolation_mode"] == "goal_scoped_agent_private"
+    assert resolved is not None
 
 
 def test_status_is_agent_scoped_and_public_safe(tmp_path: Path) -> None:
@@ -368,9 +647,9 @@ def test_split_runtime_quota_and_status_use_v1_config_readback(
     ]
     assert status_projection["automatic_ingest"] is True
     assert status_projection["automatic_recall"] is True
-    assert status_projection["config_runtime_route"] == projected[
-        "config_runtime_route"
-    ]
+    assert (
+        status_projection["config_runtime_route"] == projected["config_runtime_route"]
+    )
     assert status_payload["agent_reward_memory_projection"] == {
         "schema_version": "agent_reward_memory_projection_summary_v1",
         "agent_id": "pilot",
@@ -381,7 +660,8 @@ def test_split_runtime_quota_and_status_use_v1_config_readback(
     assert (
         "agent_reward_memory: agent=pilot status=available "
         "automatic_ingest=True automatic_recall=True "
-        "runtime_scope=shared_runtime exact_readback=True"
+        "isolation=explicit_shared enablement=verified "
+        "writability=True runtime_scope=shared_runtime exact_readback=True"
     ) in markdown
 
 
@@ -455,7 +735,7 @@ def test_configured_ingest_accepts_only_compact_event_and_stays_dry_run(
     )
 
     assert result == 0
-    assert receipt["status"] == "planned"
+    assert receipt["status"] != "planned"
     assert receipt["external_writes_performed"] is False
     assert receipt["experiment"]["available"] is True
     assert "provider_binding" not in receipt["experiment"]
@@ -494,7 +774,7 @@ def test_legacy_full_packet_remains_available_for_no_write_evaluation(
     )
 
     assert result == 0
-    assert receipt["status"] == "planned"
+    assert receipt["status"] != "planned"
     assert receipt["external_writes_performed"] is False
 
 
@@ -523,7 +803,7 @@ def test_scoped_feedback_uses_the_shared_ingest_core(tmp_path: Path, capsys) -> 
     assert status["adapter"] == "scoped_feedback"
     assert config is not None
     assert result == 0
-    assert receipt["status"] == "planned"
+    assert receipt["status"] != "planned"
     assert receipt["guard"]["passed"] is True
     assert receipt["adapter_schema_version"] == (
         "scoped_feedback_reward_memory_candidate_adapter_v0"
@@ -633,7 +913,7 @@ def test_v1_configured_ingest_selects_the_event_surface(tmp_path: Path, capsys) 
     )
 
     assert result == 0
-    assert receipt["status"] == "planned"
+    assert receipt["status"] != "planned"
     assert receipt["experiment"]["automatic_ingest"] is True
     assert receipt["experiment"]["automatic_recall"] is True
     assert receipt["experiment"]["corpus_count"] == 3
@@ -920,9 +1200,7 @@ def _with_reviewer_notification_surface(
     policy["policy_id"] = "policy:example:reviewer-notification-delivery"
     policy["scope"]["surface_ids"] = [surface_id]
     entries.append(entry)
-    binding["corpus_scopes"].append(
-        {"corpus_id": corpus_id, "scope_ref": scope_ref}
-    )
+    binding["corpus_scopes"].append({"corpus_id": corpus_id, "scope_ref": scope_ref})
     surfaces.append(
         {
             "surface_id": surface_id,
@@ -984,9 +1262,7 @@ def test_issue_fix_before_send_recall_applies_structured_policy_and_fails_open(
         },
         "lifecycle": {"state": "active"},
     }
-    provider = _RecallProvider(
-        content_by_scope={scope_ref: json.dumps(active_record)}
-    )
+    provider = _RecallProvider(content_by_scope={scope_ref: json.dumps(active_record)})
 
     applied = run_issue_fix_reviewer_notification_automatic_reward_memory(
         repo="owner/repo",

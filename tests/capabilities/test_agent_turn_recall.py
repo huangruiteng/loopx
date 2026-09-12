@@ -31,13 +31,23 @@ from loopx.capabilities.context_providers.base import (
     ContextProviderRetrieval,
 )
 from loopx.capabilities.reward_memory.experiment import (
+    canonical_reward_memory_actor_peer_id,
     load_reward_memory_experiment_config,
     resolve_reward_memory_surface_config,
 )
 
 
 SURFACE = "agent_workflow.turn_admission"
-SCOPE_REF = "viking://user/example/memories/preferences"
+DEFAULT_GOAL_ID = "goal"
+DEFAULT_AGENT_ID = "pilot"
+DEFAULT_ACTOR_PEER_ID = canonical_reward_memory_actor_peer_id(
+    goal_id=DEFAULT_GOAL_ID,
+    agent_id=DEFAULT_AGENT_ID,
+)
+SCOPE_REF = (
+    f"viking://user/example/peers/{DEFAULT_ACTOR_PEER_ID}/memories/"
+    f"reward-memory/goals/{DEFAULT_GOAL_ID}/preferences"
+)
 
 
 class RecallProvider:
@@ -119,7 +129,20 @@ def situation(
     )
 
 
-def raw_config(*, peer_ref: str = "agent:pilot") -> dict[str, Any]:
+def raw_config(
+    *,
+    peer_ref: str = "agent:pilot",
+    goal_id: str = DEFAULT_GOAL_ID,
+    agent_id: str = DEFAULT_AGENT_ID,
+) -> dict[str, Any]:
+    actor_peer_id = canonical_reward_memory_actor_peer_id(
+        goal_id=goal_id,
+        agent_id=agent_id,
+    )
+    scope_ref = (
+        f"viking://user/example/peers/{actor_peer_id}/memories/reward-memory/"
+        f"goals/{goal_id}/preferences"
+    )
     scope = {
         "workspace_ref": "workspace:example",
         "project_ref": "github:example/repo",
@@ -150,7 +173,7 @@ def raw_config(*, peer_ref: str = "agent:pilot") -> dict[str, Any]:
         },
         "privacy": {"visibility": "private", "raw_content_in_registry": False},
         "provider_scope_ref_digest": hashlib.sha256(
-            SCOPE_REF.encode("utf-8")
+            scope_ref.encode("utf-8")
         ).hexdigest()[:16],
     }
     policy = {
@@ -174,9 +197,10 @@ def raw_config(*, peer_ref: str = "agent:pilot") -> dict[str, Any]:
             "provider_id": "openviking",
             "namespace": "reward_memory",
             "timeout_seconds": 30,
-            "minimum_provider_version": "0.4.9",
+            "minimum_provider_version": "0.4.18",
+            "actor_peer_id": actor_peer_id,
             "corpus_scopes": [
-                {"corpus_id": corpus["corpus_id"], "scope_ref": SCOPE_REF}
+                {"corpus_id": corpus["corpus_id"], "scope_ref": scope_ref}
             ],
         },
         "corpora": [{"corpus": corpus, "standing_policy": policy}],

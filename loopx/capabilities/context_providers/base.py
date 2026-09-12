@@ -73,6 +73,10 @@ class ContextProviderRetrieval:
     latency_ms: int = 0
     requested_limit: int = 0
     provider_readiness: Mapping[str, object] | None = None
+    visibility: str = "public"
+    target_scope_kind: str = "provider_defined"
+    actor_binding_verified: bool = False
+    provider_preflight_performed: bool = False
 
     def public_results(self) -> list[dict[str, object]]:
         return [
@@ -95,7 +99,8 @@ class ContextProviderRetrieval:
         content_may_instruct: bool,
     ) -> list[dict[str, object]]:
         return [
-            public | {
+            public
+            | {
                 "content": item.content,
                 "content_trust": content_trust,
                 "content_may_instruct": content_may_instruct,
@@ -109,7 +114,10 @@ class ContextProviderRetrieval:
             "ok": self.status == "completed",
             "provider": self.provider,
             "namespace": self.namespace,
-            "visibility": "public",
+            "visibility": self.visibility,
+            "target_scope_kind": self.target_scope_kind,
+            "actor_binding_verified": self.actor_binding_verified,
+            "provider_preflight_performed": self.provider_preflight_performed,
             "status": self.status,
             "reason_code": self.reason_code,
             "provider_version": self.provider_version,
@@ -148,14 +156,27 @@ class ContextProviderSync:
     pending_count: int = 0
     reconciliation_performed: bool = False
     retry_disposition: str = "no_retry"
+    visibility: str = "public"
+    target_scope_kind: str = "provider_defined"
+    write_strategy: str = "provider_defined"
+    actor_binding_verified: bool = False
+    provider_preflight_performed: bool = False
+    target_access_preflight_verified: bool = False
+    writability_verified: bool = False
 
     def public_packet(self) -> dict[str, object]:
         return {
             "schema_version": CONTEXT_PROVIDER_SYNC_SCHEMA_VERSION,
-            "ok": self.status in {"completed", "planned", "committed_pending"},
+            "ok": self.status in {"completed", "preflight_ready"},
             "provider": self.provider,
             "namespace": self.namespace,
-            "visibility": "public",
+            "visibility": self.visibility,
+            "target_scope_kind": self.target_scope_kind,
+            "write_strategy": self.write_strategy,
+            "actor_binding_verified": self.actor_binding_verified,
+            "provider_preflight_performed": self.provider_preflight_performed,
+            "target_access_preflight_verified": (self.target_access_preflight_verified),
+            "writability_verified": self.writability_verified,
             "status": self.status,
             "reason_code": self.reason_code,
             "provider_version": self.provider_version,
