@@ -60,6 +60,7 @@ test("planning intent cannot smuggle terminal, decision or observation writes", 
   const {store, request} = await seeded({task_class: "advancement_task"});
   for (const planning_intent of [
     {status: "done"}, {decision_outcome: "approve"},
+    {decision_scope: {kind: "direction", granularity: "goal", scope_key: "release"}},
     {global_gate: true}, {monitor_metadata: {material_change: "true"}},
     {completion_metadata_updates_override: {completion_continuation: "no_followup"}},
     {status: "deferred"}, {successor_todo_ids: "todo_other"},
