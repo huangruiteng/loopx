@@ -462,6 +462,11 @@ replan。这些是明确的只读语义修正，不是执行授权。既有 cano
 新可用工作及陈旧／缺失展示；私有快照只读对照结果不公开原始数据。
 本批闭合一个 T3 规则组，不代表其余 consumer 或 T1/T2/D1–D3 完成。
 
+来源 facts 超过 512 KiB 时使用无损 deflate/base64 传输，保留精确 v0 内容和共享
+2 MiB 请求边界。TS 拒绝畸形载荷及解压超过 64 MiB 的输入，不截断 Todo，也不
+静默退回 Python 决策。真实 completed-history HTTP 和完整 checkpoint 尾项变更
+回归保护传输容量语义。
+
 列表过滤现改用 `compact_evaluated_todo_group`，不再用仅活动项重算 resume。
 初始解析／canonical 读取仍通过 TS owner 在完整来源上求值；过滤要求匹配的已求值
 条件，不能把归档中的已完成依赖变成丢失。共享合成 fixture 增补“有 scope 无 outcome”

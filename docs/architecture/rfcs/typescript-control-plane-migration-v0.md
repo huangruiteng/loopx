@@ -606,6 +606,12 @@ excluded/eligible edits and newly available work through a real provider with
 stale/missing display; a read-only private-snapshot comparison remains private.
 This closes one T3 rule group, not the remaining consumers or T1/T2/D1–D3.
 
+Large source facts use lossless deflate/base64 transport above 512 KiB, retaining
+the exact v0 material bytes and the shared 2 MiB request boundary. The TS decoder
+rejects malformed payloads and inflation beyond 64 MiB; it never truncates rows
+or silently falls back to Python decisions. Real completed-history HTTP reads
+and complete-checkpoint tail edits guard against transport-size regressions.
+
 The list-filter consumer now uses `compact_evaluated_todo_group` instead of
 re-running resume evaluation on active-only rows. Initial parsing/canonical reads
 still evaluate against the full source through the TS owner; filtering requires
