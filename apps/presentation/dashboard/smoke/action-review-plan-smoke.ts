@@ -1,5 +1,5 @@
 import { compileActionReviewPlan, isStaleActionFailure } from "../src/features/personal-workspace/action-review-plan.js";
-import type { TypedActionProposal } from "../src/data/chat.js";
+import { typedActionProposalSchema, type TypedActionProposal } from "../src/data/chat.js";
 
 const proposal: TypedActionProposal = {
   schema_version: "loopx_chat_action_proposal_v1", proposal_id: "preview-1",
@@ -13,6 +13,12 @@ const proposal: TypedActionProposal = {
 function check(condition: boolean, description: string) { if (!condition) throw new Error(description); }
 const compile = (patch: Partial<TypedActionProposal> = {}) => compileActionReviewPlan({ ...proposal, ...patch });
 check(compile().interaction === "direct", "A validated ready stop preserves the direct path");
+for (const validation_evidence of [[null], [""], [" \t"], [{}], ["valid", null], ["valid", {}], ["valid", ""]]) {
+  const raw = { ...proposal, validation_evidence };
+  check(!typedActionProposalSchema.safeParse(raw).success, "Transport must reject every malformed evidence element");
+  check(compileActionReviewPlan(raw as unknown as TypedActionProposal).interaction !== "direct", "Unparsed malformed evidence cannot become direct");
+}
+check(typedActionProposalSchema.parse({ ...proposal, validation_evidence: ["  Canonical validation  "] }).validation_evidence[0] === "  Canonical validation  ", "Validation preserves evidence text");
 for (const operation of ["resume", "delete"]) {
   const result = compile({ normalized_parameters: { goal_id: "sample-goal", operation } });
   check(result.interaction === "review" && result.canApply, `${operation} requires review`);

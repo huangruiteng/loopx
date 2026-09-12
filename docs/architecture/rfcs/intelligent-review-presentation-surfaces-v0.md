@@ -829,7 +829,12 @@ compiles proposals already validated by the Chat transport schema into an intern
 catalog. The Goal directory consumes `direct` for stop and the existing proposal
 drawer consumes the explanation and apply state. Resume and delete remain reviewed;
 incomplete, unknown-permission or stale lifecycle proposals offer recheck rather
-than direct execution. Backend preview/apply, fingerprint and reducers are unchanged.
+than direct execution. The shared Chat transport schema requires every validation
+evidence item to be non-blank text, preserving the original string. Malformed or
+mixed arrays fail parsing and show an execution error without calling apply. The
+compiler reuses the same schema for direct invocations; only lifecycle completeness
+requires a nonempty array, preserving generic actions with empty evidence arrays.
+Backend preview/apply, fingerprint and reducers are unchanged.
 
 This slice also corrects failed-readback presentation: an `applied` proposal without
 `projection_verified: true` cannot display completion. Failed direct actions open

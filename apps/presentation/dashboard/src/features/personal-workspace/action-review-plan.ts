@@ -1,4 +1,4 @@
-import type { TypedActionProposal } from "../../data/chat";
+import { typedActionProposalSchema, type TypedActionProposal } from "../../data/chat.js";
 
 import type { ActionReviewIdentity, ActionReviewPlan, ActionReviewReason } from "./action-review-plan-types";
 
@@ -29,6 +29,7 @@ export function compileActionReviewPlan(proposal: TypedActionProposal): ActionRe
   // Other action owners keep their existing reviewed path in this lifecycle slice.
   if (proposal.action_kind !== "goal.lifecycle") return reviewed(proposal.permission_classification === "protected" ? "protected_action" : "action_review");
   const complete = hasText(proposal.proposal_id) && hasText(proposal.expected_state_fingerprint)
+    && typedActionProposalSchema.shape.validation_evidence.safeParse(proposal.validation_evidence).success
     && proposal.validation_evidence.length > 0 && proposal.available_transitions.includes("apply");
   if (!complete) return held("refresh", "incomplete_proposal");
   const { operation, goal_id: goalId } = proposal.normalized_parameters;

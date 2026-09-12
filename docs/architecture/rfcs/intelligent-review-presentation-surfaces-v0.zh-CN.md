@@ -662,7 +662,11 @@ Durable report 与 living document 还必须携带 artifact identity、source li
 `action_review_plan_v0` union；它不是新的公开 wire contract 或合法动作目录。
 Goal 列表的暂停入口消费 `direct`，现有动作抽屉消费解释与可执行状态。
 恢复与删除仍需 review；不完整、未知权限或 stale 的生命周期提案停止直接执行，
-提供重新检查入口。后端 preview/apply、fingerprint 与 reducer 不变。
+提供重新检查入口。共享 Chat transport schema 要求每条 validation evidence
+均为非空白字符串，保留原文本；无效或混合证据数组拒绝解析并显示执行失败，
+不会触发 apply。编译器复用同一 schema 校验直接调用的输入；仅生命周期直接
+执行额外要求数组非空，其他动作原有的空数组审阅路径保持兼容。
+后端 preview/apply、fingerprint 与 reducer 不变。
 
 本切片同时修正失败读回的展示：`applied` 但无 `projection_verified: true`
 不能显示已完成，直接操作也会打开异常详情并回滚乐观显示。其他动作保留原有

@@ -305,7 +305,8 @@ export const typedActionProposalSchema = z.object({
   context: z.record(z.string(), z.unknown()),
   expected_state_fingerprint: z.string().min(1),
   permission_classification: z.string().min(1),
-  validation_evidence: z.array(z.unknown()),
+  // ChatActionService emits textual validation facts for every action kind.
+  validation_evidence: z.array(z.string().refine((value) => value.trim().length > 0, "Validation evidence must be non-blank text")),
   available_transitions: z.array(z.enum(["apply", "cancel", "regenerate", "reject", "defer"])),
   status: z.enum(["preview_ready", "applying", "gated", "failed", "rejected", "deferred", "cancelled", "stale", "applied"]),
   receipt: z.record(z.string(), z.unknown()).nullable(),
