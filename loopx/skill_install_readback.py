@@ -94,7 +94,10 @@ def summarize_skill_routes(
 def external_skill_set_ready(
     skills: Mapping[str, Mapping[str, Any]], required_ids: Sequence[str]
 ) -> bool:
-    """Recognize a complete externally managed project-skill set."""
+    """Recognize a complete externally managed project-skill set.
+
+    Callers pass the fixed-install summary IDs, not every source marker.
+    """
 
     return bool(required_ids) and all(
         isinstance(skill := skills.get(skill_id), Mapping)

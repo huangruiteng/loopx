@@ -938,7 +938,7 @@ def collect_doctor(
         if skill_name in skills:
             skills[skill_name]["required"] = False
     core_skill = skills["loopx"]
-    if not core_skill.get("exists") and external_skill_set_ready(skills, project_scoped_skill_ids) and (fallback_path := external_skill_fallback_path(skills)):
+    if not core_skill.get("exists") and external_skill_set_ready(skills, tuple(skill_id for skill_id in project_scoped_skill_ids if skill_id in skills)) and (fallback_path := external_skill_fallback_path(skills)):
         core_skill.update(required=False, path=fallback_path)
     skill_path = Path(str(core_skill["path"]))
     globally_visible_project_skills = [
