@@ -30,6 +30,9 @@ test("decision metadata normalizes compact and object forms without duplicate sc
   assert.deepEqual(normalizeTodoDecisionScope(scope), {
     schema_version: "decision_scope_v0", kind: "direction", granularity: "goal", scope_key: "release",
   });
+  assert.deepEqual(normalizeTodoDecisionScope("direction:goal:repo:release"), {
+    schema_version: "decision_scope_v0", kind: "direction", granularity: "goal", scope_key: "repo:release",
+  });
   assert.deepEqual(normalizeTodoRequiredDecisionScopes([
     "direction:goal:release", {kind: "DIRECTION", granularity: "GOAL", scope_key: "release"},
     {kind: "write_scope", granularity: "action", scope_key: "publish"},

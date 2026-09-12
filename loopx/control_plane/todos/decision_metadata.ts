@@ -36,8 +36,8 @@ function fail(message: string): never {
 function scopeObject(value: unknown, label: string): JsonObject {
   if (typeof value === "string") {
     const parts = compactPythonWhitespace(value).toLowerCase().split(":");
-    if (parts.length !== 3) fail(`${label} must use kind:granularity:scope_key`);
-    return {kind: parts[0], granularity: parts[1], scope_key: parts[2]};
+    if (parts.length < 3) fail(`${label} must use kind:granularity:scope_key`);
+    return {kind: parts[0], granularity: parts[1], scope_key: parts.slice(2).join(":")};
   }
   return requireJsonObject(value, label);
 }
