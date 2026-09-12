@@ -54,6 +54,16 @@ def _fake_run_gh_json(args: list[str], *, cwd: Path | None = None):
             ]
         )
         return {
+            "body": f"Body for PR {number}",
+            "files": [
+                {
+                    "path": f"src/pr_{number}.py",
+                    "additions": int(number),
+                    "deletions": 0,
+                }
+            ],
+            "reviewDecision": "REVIEW_REQUIRED",
+            "mergeStateStatus": "CLEAN",
             "createdAt": "2026-08-11T00:00:00Z",
             "commits": [
                 {
@@ -84,6 +94,10 @@ def test_pr_list_keeps_nested_details_in_bounded_per_pr_reads(monkeypatch) -> No
     list_call = next(args for args in calls if args[0] == "pr" and args[1] == "list")
     json_fields = list_call[list_call.index("--json") + 1].split(",")
     assert "statusCheckRollup" not in json_fields
+    assert "body" not in json_fields
+    assert "files" not in json_fields
+    assert "reviewDecision" not in json_fields
+    assert "mergeStateStatus" not in json_fields
     assert "createdAt" in json_fields
     assert {"commits", "reviews"}.isdisjoint(json_fields)
 
@@ -99,9 +113,16 @@ def test_pr_list_keeps_nested_details_in_bounded_per_pr_reads(monkeypatch) -> No
     detail_calls = [args for args in calls if args[:2] == ["pr", "view"]]
     assert [args[2] for args in detail_calls] == ["1", "2"]
     assert all(
-        args[args.index("--json") + 1] == "createdAt,commits,reviews,statusCheckRollup"
+        args[args.index("--json") + 1]
+        == "body,files,reviewDecision,mergeStateStatus,createdAt,commits,reviews,statusCheckRollup"
         for args in detail_calls
     )
+    assert rows[0]["body"] == "Body for PR 1"
+    assert rows[0]["files"] == [
+        {"path": "src/pr_1.py", "additions": 1, "deletions": 0}
+    ]
+    assert rows[0]["reviewDecision"] == "REVIEW_REQUIRED"
+    assert rows[0]["mergeStateStatus"] == "CLEAN"
     assert rows[0]["commits"][0]["committedDate"] == "2026-08-12T00:00:00Z"
     assert rows[0]["reviews"] == []
 
