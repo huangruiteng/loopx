@@ -895,8 +895,8 @@ fencing/export 演练与 maintainer review 都通过才可晋升。发布紧凑�
 校验还会统计覆盖索引，因此该成本随历史增长。它验证当前及访问到的 row digest，
 不是每次读取都审计全部历史 payload。已发布的固定 4 KiB 微基准尚缺上述 64 KiB 匹配
 profile、p99、RSS、逻辑 WAL 写入、恢复及自然时间 soak 证据，不能宣称满足 <=2 的历史
-增长比值或十天目标。Node 22.14 是当前 SQLite 资格化 runtime；支持 profile 明确变化前，
-独立保留 file-backed 最低 Node 版本验证。
+增长比值或十天目标。Node 22.18 是公开最低版本，也是当前 SQLite 资格化 runtime；支持
+profile 明确变化前，继续保留 Node 24 主 runtime 与 Node 26 非阻塞 forward probe。
 
 **迁移决策点。** 首次迁移已有 Goal 前，先在 authority writer fence 下冻结精确的源
 lineage/revision，导入完整权威快照与保留证明，并独立比较原始 receipt 字段、operation/

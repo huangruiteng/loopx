@@ -1138,8 +1138,9 @@ current/accessed-row digests are checked, not every historical payload per read.
 The published fixed-4-KiB microbenchmark lacks the 64-KiB matched profile, p99,
 RSS, logical-WAL-write, recovery and elapsed-soak evidence required above. It
 must not be reported as meeting the <=2 history-growth ratio or the ten-day
-target. Node 22.14 is the current SQLite qualification runtime; preserve separate
-file-backed minimum-Node coverage until the supported profile changes explicitly.
+target. Node 22.18 is the public minimum and current SQLite qualification runtime;
+preserve the Node 24 primary lane and Node 26 non-blocking forward probe until
+the supported profile changes explicitly.
 
 **Migration decision points.** Before the first existing-Goal cutover, freeze
 one exact source lineage/revision under the authority writer fence, import a

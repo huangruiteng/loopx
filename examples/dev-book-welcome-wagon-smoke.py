@@ -61,7 +61,7 @@ SHARED_COMMANDS = (
 
 SHARED_BOUNDARY_MARKERS = (
     "Python 3.11+",
-    "Node.js 22.6+",
+    "Node.js 22.18.0+",
     ".loopx/",
     ".codex/goals/",
     ".local/",

@@ -72,12 +72,11 @@ outside this slice's qualification boundary.
 ## Explicit selection
 
 Use an isolated qualification runtime and an empty, unpromoted goal. Set
-`RUNTIME_ROOT` to that runtime's absolute directory. SQLite qualification uses Node 22.14. The provider checks that
+`RUNTIME_ROOT` to that runtime's absolute directory. SQLite qualification uses the public minimum Node 22.18 runtime. The provider checks that
 `DatabaseSync.close()` finalizes prepared statements synchronously before
 opening an authority file; older experimental drivers are rejected. In
-particular, Node 22.6 leaves closed database handles alive until GC on Windows
-and is not supported for this provider. File-backed LoopX still supports Node
-22.6 and needs no SQLite flag. The module loads SQLite only after opt-in.
+older Node 22 releases leave closed database handles alive until GC on Windows
+and are not supported for this provider. The module loads SQLite only after opt-in.
 
 From the repository checkout, preview selection:
 
@@ -96,7 +95,7 @@ destination. Do not bypass those gates to enable a live goal.
 
 The process starting the managed Effect runtime must use the qualified Node
 runtime too. Stop a previously running managed runtime normally before changing
-its Node executable. Adding an experimental flag to Node 22.6 does not fix its
+its Node executable. Adding an experimental flag to an older Node 22 release does not fix its
 statement lifecycle.
 
 After separately admitted canonical initialization, ordinary `loopx todo`
