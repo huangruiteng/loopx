@@ -403,6 +403,13 @@ the shared plan, not another per-agent checklist database.
 
 **T1 — close the public Todo update transaction.**
 
+The current ownership slice closes promoted claim transfer, claim clearing and
+executor-exclusion edits through this typed update planner. Normalization is
+part of request identity, so replay cannot restore a superseded claim. A
+lease-bearing ownership change remains a lifecycle operation, not metadata
+authority; the legacy writer remains for unpromoted Goals. This is a bounded T1
+closure, not completion of all Todo fields or Goal promotion.
+
 Bounded prerequisite: `todos/public_update.ts` now composes authoring scope,
 external-wait topology and Monitor/field planning over one locked source.
 The public Python writer no longer sequences their leaf RPCs or derives the
