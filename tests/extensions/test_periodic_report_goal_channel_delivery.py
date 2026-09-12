@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -25,9 +26,13 @@ from loopx.capabilities.periodic_report.machine_defaults import (
     resolve_goal_periodic_report_subscription,
 )
 from loopx.extensions.lark.periodic_report_delivery import (
+    ANNOUNCEMENT_IDEMPOTENCY_SCHEMA,
     DELIVERY_INTENT_SCHEMA,
     GOAL_CHANNEL_DELIVERY_REQUEST_SCHEMA,
     deliver_periodic_report_to_goal_channel,
+)
+from loopx.extensions.lark.presentation.message_card import (
+    build_lark_markdown_reply_card,
 )
 from loopx.capabilities.periodic_report.incremental import (
     build_periodic_report_publication_candidate,
@@ -35,11 +40,18 @@ from loopx.capabilities.periodic_report.incremental import (
     write_periodic_report_publication_candidate,
 )
 from loopx.extensions.lark import periodic_report_cli
+from loopx.extensions.manifest import load_extension_manifest
 from loopx.presentation.renderers.periodic_report_markdown import (
     periodic_report_markdown_renderer_adapter,
 )
 
 
+ROOT = Path(__file__).resolve().parents[2]
+LARK_EXTENSION_VERSION = str(
+    load_extension_manifest(ROOT / "loopx/extensions/lark/extension.toml")["provider"][
+        "version"
+    ]
+)
 GOAL_ID = "goal-public-fixture"
 CHAT_ID = "oc_public_fixture"
 APP_ID = "cli_public_fixture"
@@ -52,7 +64,22 @@ def _generation_bundle(*, period_window: dict[str, str] | None = None) -> dict[s
         source_kind="project_progress",
         status="complete",
         observed_at="2026-08-30T09:00:00Z",
-        sections=[],
+        sections=[
+            {
+                "section_id": "next_actions",
+                "title": "下一步",
+                "order": 40,
+                "items": [
+                    {
+                        "item_id": "next_action",
+                        "title": "推进下一个已验证步骤",
+                        "summary": "完成事实复核后推进下一个明确步骤。",
+                        "content_kind": "next_action",
+                        "value_rank": 90,
+                    }
+                ],
+            }
+        ],
     )
     document = build_periodic_report_document(
         title="阶段分析周报",
@@ -141,7 +168,7 @@ def _extension_activation() -> dict[str, Any]:
     return {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.6.0",
+        "provider_version": LARK_EXTENSION_VERSION,
         "revision": "publicfixture123",
         "enabled": True,
         "doctor_verified": True,
@@ -386,8 +413,15 @@ def test_explicit_goal_channel_binding_cannot_redirect_authorized_route(
     assert calls == []
 
 
-def _runner(calls: list[list[str]], *, normalized_readback: bool = False):
-    sent_cards: dict[str, dict[str, Any]] = {}
+def _runner(
+    calls: list[list[str]],
+    *,
+    normalized_readback: bool = False,
+    initial_cards: dict[str, dict[str, Any]] | None = None,
+    provider_messages_by_key: dict[str, str] | None = None,
+):
+    sent_cards: dict[str, dict[str, Any]] = dict(initial_cards or {})
+    provider_cache = dict(provider_messages_by_key or {})
 
     def run(
         args: list[str],
@@ -432,8 +466,12 @@ def _runner(calls: list[list[str]], *, normalized_readback: bool = False):
                 "has_more": False,
             }
         elif "+messages-send" in args:
-            message_id = f"{MESSAGE_ID}_{len(sent_cards) + 1}"
-            sent_cards[message_id] = json.loads(args[args.index("--content") + 1])
+            provider_key = args[args.index("--idempotency-key") + 1]
+            message_id = provider_cache.get(provider_key)
+            if message_id is None:
+                message_id = f"{MESSAGE_ID}_{len(sent_cards) + 1}"
+                sent_cards[message_id] = json.loads(args[args.index("--content") + 1])
+                provider_cache[provider_key] = message_id
             payload = {"ok": True, "data": {"message_id": message_id}}
         elif "+messages-mget" in args:
             message_id = args[args.index("--message-ids") + 1]
@@ -503,6 +541,11 @@ def test_goal_channel_delivery_accepts_normalized_cli_card_readback(
     assert result["ok"] is True
     assert result["status"] == "satisfied"
     assert result["sink_result"]["readback_verified"] is True
+    send_calls = [args for args in calls if "+messages-send" in args]
+    hosted_card = json.loads(send_calls[0][send_calls[0].index("--content") + 1])
+    hosted_markdown = hosted_card["elements"][0]["text"]["content"]
+    assert "下一步：完成事实复核后推进下一个明确步骤。" in hosted_markdown
+    assert "https://example.com/reports/stage-1" in hosted_markdown
     assert len(result["sink_result"]["message_results"]) == 2
 
 
@@ -547,6 +590,120 @@ def test_goal_channel_delivery_uses_only_the_bound_project_bot(
         assert send[send.index("--as") + 1] == "bot"
         assert "--profile" in send
         assert "project-reporter" in send
+        provider_key = send[send.index("--idempotency-key") + 1]
+        assert provider_key.startswith("loopx-")
+    assert sent["boundary"]["rendered_announcement_idempotency_bound"] is True
+
+
+def test_goal_channel_provider_keys_are_bound_to_rendered_announcement(
+    tmp_path: Path,
+) -> None:
+    registry_path = tmp_path / ".loopx" / "registry.json"
+    _write_registry(registry_path)
+    _write_binding(registry_path)
+    calls: list[list[str]] = []
+    runner = _runner(calls)
+
+    deliver_periodic_report_to_goal_channel(
+        _request(),
+        registry_path=registry_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        extension_activation=_extension_activation(),
+        execute=True,
+        runner=runner,
+    )
+    first_keys = [
+        args[args.index("--idempotency-key") + 1]
+        for args in calls
+        if "+messages-send" in args
+    ]
+
+    changed = _request()
+    next_action = changed["generation_bundle"]["document"]["sections"][0]["items"][0]
+    next_action["summary"] = "完成事实复核后执行新版明确步骤。"
+    changed["generation_bundle"] = build_periodic_report_generation_bundle(
+        document=changed["generation_bundle"]["document"],
+        artifacts=[
+            periodic_report_markdown_renderer_adapter().render(
+                changed["generation_bundle"]["document"]
+            )
+        ],
+    )
+    deliver_periodic_report_to_goal_channel(
+        changed,
+        registry_path=registry_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        extension_activation=_extension_activation(),
+        execute=True,
+        runner=runner,
+    )
+    all_keys = [
+        args[args.index("--idempotency-key") + 1]
+        for args in calls
+        if "+messages-send" in args
+    ]
+
+    assert ANNOUNCEMENT_IDEMPOTENCY_SCHEMA.endswith("_v1")
+    assert len(first_keys) == 2
+    assert len(all_keys) == 3
+    assert all_keys[2] != first_keys[0]
+    assert len(set(all_keys)) == 3
+
+
+def test_upgraded_retry_does_not_reuse_legacy_key_for_changed_hosted_card(
+    tmp_path: Path,
+) -> None:
+    registry_path = tmp_path / ".loopx" / "registry.json"
+    _write_registry(registry_path)
+    _write_binding(registry_path)
+    calls: list[list[str]] = []
+    footer = "LoopX periodic report · Goal Channel"
+    old_hosted_id = f"{MESSAGE_ID}_legacy_hosted"
+    old_lark_id = f"{MESSAGE_ID}_legacy_lark"
+    old_cards = {
+        old_hosted_id: build_lark_markdown_reply_card(
+            "本期阶段周报已发布。\n\n[查看周报](https://example.com/reports/stage-1)",
+            title="阶段周报",
+            footer=footer,
+        ),
+        old_lark_id: build_lark_markdown_reply_card(
+            "配套 Lark 文档已同步。\n\n"
+            "[查看 Lark 文档](https://example.larksuite.com/docx/stage-1)",
+            title="配套 Lark 文档",
+            footer=footer,
+        ),
+    }
+    legacy_semantic_key = "periodic-report:goal-public-fixture:stage-1:hosted_report"
+    legacy_provider_key = (
+        "loopx-" + hashlib.sha256(legacy_semantic_key.encode()).hexdigest()[:32]
+    )
+    runner = _runner(
+        calls,
+        initial_cards=old_cards,
+        provider_messages_by_key={legacy_provider_key: old_hosted_id},
+    )
+
+    recovered = deliver_periodic_report_to_goal_channel(
+        _request(),
+        registry_path=registry_path,
+        runtime_root=tmp_path / "runtime",
+        goal_id=GOAL_ID,
+        extension_activation=_extension_activation(),
+        execute=True,
+        runner=runner,
+    )
+
+    sends = [args for args in calls if "+messages-send" in args]
+    assert len(sends) == 1
+    new_provider_key = sends[0][sends[0].index("--idempotency-key") + 1]
+    assert new_provider_key != legacy_provider_key
+    assert recovered["status"] == "satisfied"
+    assert [
+        item["semantic_dedupe_status"]
+        for item in recovered["sink_result"]["message_results"]
+    ] == ["no_existing_exact_message", "existing_exact_message"]
 
 
 def test_goal_channel_delivery_reuses_exact_messages_after_interrupted_readback(

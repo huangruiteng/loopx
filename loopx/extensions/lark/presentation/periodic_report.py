@@ -22,6 +22,7 @@ from ....capabilities.periodic_report.bindings import (
     _normalize_periodic_report_release_readback,
 )
 from ....capabilities.periodic_report.core import _reject_raw_keys
+from ..goal_channel_delivery_contract import goal_channel_delivery_route
 from .message_card import build_lark_markdown_reply_card
 
 LarkSendEffect = Callable[
@@ -43,10 +44,6 @@ _LARK_RENDERED_MENTION_RE = re.compile(
     r"^<at\b[^>]*>[^<>]*</at>$",
     re.IGNORECASE,
 )
-_GOAL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
-_LARK_CHAT_ID_RE = re.compile(r"^oc_[A-Za-z0-9_-]+$")
-_LARK_APP_ID_RE = re.compile(r"^cli_[A-Za-z0-9_-]+$")
-_LARK_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 _CALLER_IDENTITY_OVERRIDE_KEYS = frozenset(
     {
         "bot_app_id",
@@ -116,50 +113,7 @@ def _goal_channel_delivery_route(
     goal_id: object,
     resolve_goal_channel: LarkGoalChannelResolver,
 ) -> dict[str, Any]:
-    safe_goal_id = _required_text(goal_id, "goal_id")
-    if not _GOAL_ID_RE.fullmatch(safe_goal_id):
-        raise ValueError("goal_id must be a stable LoopX Goal id")
-    binding = dict(resolve_goal_channel(safe_goal_id))
-    channel = binding.get("channel")
-    identity = binding.get("identity")
-    if (
-        binding.get("goal_id") != safe_goal_id
-        or binding.get("provider") != "lark"
-        or binding.get("enabled") is not True
-        or not isinstance(channel, Mapping)
-        or not isinstance(identity, Mapping)
-    ):
-        raise ValueError(
-            "periodic report delivery requires the enabled Lark Goal Channel binding"
-        )
-    chat_id = str(channel.get("chat_id") or "").strip()
-    sender_profile = str(identity.get("sender_profile") or "").strip()
-    sender_identity = str(identity.get("sender_identity") or "").strip()
-    bot_app_id = str(identity.get("bot_app_id") or "").strip()
-    bot_display_name = str(identity.get("bot_display_name") or "").strip()
-    cli_bin = str(identity.get("cli_bin") or "lark-cli").strip()
-    if (
-        identity.get("mode") != "project_bot"
-        or sender_identity != "bot"
-        or not _LARK_CHAT_ID_RE.fullmatch(chat_id)
-        or not _LARK_PROFILE_RE.fullmatch(sender_profile)
-        or sender_profile.lower() == "default"
-        or not _LARK_APP_ID_RE.fullmatch(bot_app_id)
-        or not bot_display_name
-        or not cli_bin
-    ):
-        raise ValueError(
-            "periodic report delivery requires a complete project_bot Goal Channel identity"
-        )
-    return {
-        "goal_id": safe_goal_id,
-        "chat_id": chat_id,
-        "sender_profile": sender_profile,
-        "sender_identity": sender_identity,
-        "bot_app_id": bot_app_id,
-        "bot_display_name": bot_display_name,
-        "cli_bin": cli_bin,
-    }
+    return goal_channel_delivery_route(goal_id, resolve_goal_channel)
 
 
 def _https_url(value: object, label: str) -> str:

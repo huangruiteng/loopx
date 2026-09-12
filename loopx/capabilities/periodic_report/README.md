@@ -266,6 +266,10 @@ fails closed without a user/default-Bot fallback. Retries first scan the complet
 Goal Channel history from the frozen generation time and reuse only an exact card,
 chat, and Bot-sender match. Incomplete history fails closed instead of risking a
 duplicate; the stable provider idempotency key closes the concurrent-send race.
+When the normalized report contains a primary typed `next_action`, the hosted
+report announcement also carries its public-safe summary as a compact `下一步`
+prompt. The hosted artifact remains authoritative, while the Channel card gives
+an immediate direction and the same exact-card readback verifies that prompt.
 
 This is a built-in capability, not an extension: callers need the trigger,
 idempotency, retry, and receipt contract even when no provider is installed.

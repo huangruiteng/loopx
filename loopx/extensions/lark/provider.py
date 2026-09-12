@@ -28,8 +28,10 @@ REQUIRED_EXPORTS = {
     ),
     "loopx.extensions.lark.reviewer_notification": ("lark_reviewer_notification_sink",),
     "loopx.extensions.lark.goal_channel": (
+        "deliver_goal_channel_payload",
         "doctor_lark_goal_channel",
         "notify_lark_goal_channel_gate",
+        "prepare_goal_channel_payload",
         "setup_lark_goal_channel",
         "sync_lark_goal_channel",
     ),

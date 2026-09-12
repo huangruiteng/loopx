@@ -14,6 +14,10 @@ from .goal_channel_runtime import (
     sync_lark_goal_channel,
 )
 from .goal_channel_setup import setup_lark_goal_channel
+from .goal_channel_payload import (
+    deliver_goal_channel_payload,
+    prepare_goal_channel_payload,
+)
 from .goal_channel_targets import (
     GOAL_CHANNEL_TARGETS_SCHEMA_VERSION,
     add_lark_goal_channel_target,
@@ -34,7 +38,9 @@ __all__ = [
     "default_goal_channel_binding_path",
     "default_goal_channel_target_path",
     "doctor_lark_goal_channel",
+    "deliver_goal_channel_payload",
     "notify_lark_goal_channel_gate",
+    "prepare_goal_channel_payload",
     "goal_channel_target_for_name",
     "list_goal_channel_targets",
     "read_goal_channel_binding",

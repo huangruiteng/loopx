@@ -241,7 +241,10 @@ independently idempotent messages and each one must pass exact readback. Before
 each write, the provider scans the complete Goal Channel history from the frozen
 generation time and reuses an exact card, chat, and Bot-sender match. An incomplete
 history read fails closed; the provider's stable one-hour idempotency key covers
-the remaining concurrent-send race. The command does not accept a chat, profile,
+the remaining concurrent-send race. That provider key is versioned and bound to
+the final announcement kind, title, body, and footer, so a renderer change after
+an interrupted send cannot return an older, semantically different card under
+the new retry. The command does not accept a chat, profile,
 App identity, or sender override. Instead,
 the Lark extension resolves the current Goal's local-private Goal Channel
 binding and requires `mode=project_bot`, Bot sender identity, a non-default

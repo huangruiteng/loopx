@@ -2105,6 +2105,99 @@ def test_cli_global_registry_routes_binding_to_source_registry_from_any_cwd(
     assert not (unrelated_two / ".loopx").exists()
 
 
+def test_cli_prepare_payload_uses_source_registry_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "canonical-project"
+    source_registry_path = project / ".loopx" / "registry.json"
+    source_registry_path.parent.mkdir(parents=True)
+    source_registry = _registry(project)
+    source_registry["goals"][0]["repo"] = str(project)
+    source_registry_path.write_text(json.dumps(source_registry), encoding="utf-8")
+    source_runtime = project / "runtime"
+    shared_runtime = tmp_path / "shared-runtime"
+    global_registry_path = shared_runtime / "registry.global.json"
+    global_registry_path.parent.mkdir(parents=True)
+    global_registry = {
+        **source_registry,
+        "registry_role": "global-local",
+        "common_runtime_root": str(shared_runtime),
+    }
+    global_registry["goals"] = [
+        {
+            **source_registry["goals"][0],
+            "source_registry": str(source_registry_path),
+        }
+    ]
+    global_registry_path.write_text(json.dumps(global_registry), encoding="utf-8")
+    request_path = tmp_path / "payload.json"
+    request_path.write_text(
+        json.dumps({"schema_version": "goal_channel_frozen_payload_request_v0"}),
+        encoding="utf-8",
+    )
+    captured: dict[str, Any] = {}
+    printed: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        goal_channel_cli,
+        "resolve_extension_activation",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    monkeypatch.setattr(goal_channel_cli, "_binding_target_name", lambda *args: "")
+
+    def capture_prepare(request: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        captured["request"] = request
+        return {
+            "ok": True,
+            "goal_id": GOAL_ID,
+            "provider": "lark",
+            "operation": "prepare_payload",
+            "status": "pending_execution",
+            "execute": False,
+            "external_write_performed": False,
+            "readback_verified": False,
+            "public_summary": "validated",
+        }
+
+    monkeypatch.setattr(
+        goal_channel_cli, "prepare_goal_channel_payload", capture_prepare
+    )
+    result = goal_channel_cli.handle_goal_channel_command(
+        argparse.Namespace(
+            command="goal-channel",
+            goal_channel_command="prepare-payload",
+            goal_id=GOAL_ID,
+            agent_id="codex-public-delivery",
+            request_json=str(request_path),
+            binding_path=None,
+            target_path=None,
+            execute=False,
+            subcommand_format="json",
+            format=None,
+        ),
+        registry_path=global_registry_path,
+        runtime_root_arg=None,
+        print_payload=lambda payload, fmt, renderer: printed.update(payload),
+        output_format=lambda args: "json",
+    )
+
+    assert result == 0
+    assert printed["ok"] is True
+    assert captured["registry_path"] == source_registry_path.resolve()
+    assert captured["runtime_root"] == source_runtime.resolve()
+    assert captured["binding_path"] == project / ".loopx" / "goal-channel.json"
+    assert (
+        captured["target_path"]
+        == (source_runtime / "goal-channel-targets.json").resolve()
+    )
+    assert captured["agent_id"] == "codex-public-delivery"
+    assert captured["request"] == {
+        "schema_version": "goal_channel_frozen_payload_request_v0"
+    }
+
+
 @pytest.mark.parametrize(
     ("remote_record_ids", "expected_ok", "expected_blocker"),
     [

@@ -42,6 +42,7 @@ scanning a chronological list.
 - [`peer_agent_runtime_v1`](peer-agent-runtime-v1.md): Peer agent runtime v1
 - [`peer_supervisor_v0`](peer-supervisor-v0.md): Peer supervisor v0
 - [`periodic_report_v0`](periodic-report-v0.md): Periodic report v0
+- [`goal_channel_frozen_payload_v0`](goal-channel-frozen-payload-v0.md): exact-approval delivery of one frozen capability payload through a bound Goal Channel
 - [`review_batch_v0`](review-batch-v0.md): Review batch v0
 - [`reward_memory_architecture_v0`](../../../loopx/capabilities/reward_memory/README.md): Reward memory architecture v0
 - [`reward_memory_architecture_v0`](../../../loopx/capabilities/reward_memory/README.zh-CN.md): Reward memory architecture v0 (中文)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -15,6 +16,7 @@ from loopx.capabilities.periodic_report import (
     build_periodic_report_source_result,
 )
 from loopx.cli import main
+from loopx.extensions.manifest import load_extension_manifest
 from loopx.extensions.lark.miaoda_report import (
     DELIVERY_INTENT_SCHEMA,
     LarkCliMiaodaProvider,
@@ -28,6 +30,14 @@ from loopx.presentation.renderers.periodic_report_html import (
 )
 from loopx.presentation.renderers.periodic_report_markdown import (
     periodic_report_markdown_renderer_adapter,
+)
+
+
+ROOT = Path(__file__).resolve().parents[2]
+LARK_EXTENSION_VERSION = str(
+    load_extension_manifest(ROOT / "loopx/extensions/lark/extension.toml")["provider"][
+        "version"
+    ]
 )
 
 
@@ -105,7 +115,7 @@ def _delivery_request() -> dict[str, Any]:
                     },
                     "extension": {
                         "extension_id": "loopx-lark",
-                        "extension_version": "1.6.0",
+                        "extension_version": LARK_EXTENSION_VERSION,
                         "protocol": "periodic_report_sink_v0",
                     },
                 }
@@ -127,7 +137,7 @@ def _extension_activation() -> dict[str, Any]:
     return {
         "schema_version": "loopx_extension_activation_v0",
         "extension_id": "loopx-lark",
-        "provider_version": "1.6.0",
+        "provider_version": LARK_EXTENSION_VERSION,
         "revision": "publicfixture123",
         "enabled": True,
         "doctor_verified": True,
@@ -147,7 +157,7 @@ def _sent_miaoda_delivery_receipt_inputs() -> tuple[
         extension_receipts=[
             {
                 "extension_id": "loopx-lark",
-                "extension_version": "1.6.0",
+                "extension_version": LARK_EXTENSION_VERSION,
                 "protocol": "periodic_report_sink_v0",
                 "status": "ready",
                 "readback_verified": True,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -14,10 +15,12 @@ from ..extensions.lark.goal_channel import (
     configure_lark_goal_channel_automation,
     default_goal_channel_binding_path,
     default_goal_channel_target_path,
+    deliver_goal_channel_payload,
     doctor_lark_goal_channel,
     goal_channel_target_for_name,
     list_goal_channel_targets,
     notify_lark_goal_channel_gate,
+    prepare_goal_channel_payload,
     read_goal_channel_binding,
     read_goal_channel_targets,
     setup_lark_goal_channel,
@@ -201,6 +204,31 @@ def register_goal_channel_commands(
     )
     notify.add_argument("--execute", action="store_true")
 
+    prepare = sub.add_parser(
+        "prepare-payload",
+        help=(
+            "Freeze one capability-owned public payload and create its exact "
+            "approval successor. Dry-run unless --execute."
+        ),
+    )
+    add_subcommand_format(prepare)
+    _add_common_args(prepare)
+    prepare.add_argument("--agent-id", required=True)
+    prepare.add_argument("--request-json", required=True)
+    prepare.add_argument("--execute", action="store_true")
+
+    deliver = sub.add_parser(
+        "deliver-payload",
+        help=(
+            "Deliver one exactly approved frozen payload through the bound "
+            "project Bot. Dry-run unless --execute."
+        ),
+    )
+    add_subcommand_format(deliver)
+    _add_common_args(deliver)
+    deliver.add_argument("--receipt-id", required=True)
+    deliver.add_argument("--execute", action="store_true")
+
     register_goal_channel_runtime_commands(sub, add_subcommand_format)
 
 
@@ -270,7 +298,7 @@ def _source_context(
     registry_path: Path,
     goal_id: str,
     binding_path_arg: str | None = None,
-) -> tuple[dict[str, Any], Path, Path]:
+) -> tuple[dict[str, Any], Path, Path, Path]:
     source_route = resolve_goal_source_runtime_route(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -288,7 +316,8 @@ def _source_context(
         if binding_path_arg
         else default_goal_channel_binding_path(source_registry_path)
     )
-    return source_registry, source_registry_path, binding_path
+    source_runtime_root = Path(str(source_route["source_runtime_root"]))
+    return source_registry, source_registry_path, binding_path, source_runtime_root
 
 
 def _attach_goals(
@@ -327,7 +356,7 @@ def _attach_goals(
     external_write_performed = False
     readback_verified = True
     for goal_id in unique_goal_ids:
-        source_registry, source_registry_path, binding_path = _source_context(
+        source_registry, source_registry_path, binding_path, _ = _source_context(
             registry=registry,
             registry_path=registry_path,
             goal_id=goal_id,
@@ -428,7 +457,7 @@ def handle_goal_channel_command(
     )
     if command == "runtime":
         assert goal_id is not None
-        source_registry, source_registry_path, _ = _source_context(
+        source_registry, source_registry_path, _, _ = _source_context(
             registry=registry,
             registry_path=registry_path,
             goal_id=goal_id,
@@ -440,7 +469,7 @@ def handle_goal_channel_command(
         return 0 if payload.get("ok") else 1
     if command == "configure" and bool(args.auto_notify_human_gates):
         assert goal_id is not None
-        _, source_registry_path, binding_path = _source_context(
+        _, source_registry_path, binding_path, _ = _source_context(
             registry=registry,
             registry_path=registry_path,
             goal_id=goal_id,
@@ -471,7 +500,7 @@ def handle_goal_channel_command(
         return 1
     if command == "configure" and not bool(args.auto_notify_human_gates):
         assert goal_id is not None
-        source_registry, _, binding_path = _source_context(
+        source_registry, _, binding_path, _ = _source_context(
             registry=registry,
             registry_path=registry_path,
             goal_id=goal_id,
@@ -559,12 +588,19 @@ def handle_goal_channel_command(
                     )
             else:
                 assert goal_id is not None
-                source_registry, source_registry_path, binding_path = _source_context(
+                (
+                    source_registry,
+                    source_registry_path,
+                    binding_path,
+                    source_runtime_root,
+                ) = _source_context(
                     registry=registry,
                     registry_path=registry_path,
                     goal_id=goal_id,
                     binding_path_arg=getattr(args, "binding_path", None),
                 )
+                if command in {"prepare-payload", "deliver-payload"}:
+                    target_path = _target_path(args, source_runtime_root)
                 target_name = str(getattr(args, "target", None) or "")
                 if not target_name:
                     target_name = _binding_target_name(binding_path, goal_id)
@@ -654,6 +690,33 @@ def handle_goal_channel_command(
                             goal_id=goal_id,
                             agent_id=args.agent_id,
                         ),
+                        execute=execute,
+                    )
+                elif command == "prepare-payload":
+                    request_path = Path(str(args.request_json)).expanduser()
+                    request = json.loads(request_path.read_text(encoding="utf-8"))
+                    if not isinstance(request, dict):
+                        raise ValueError(
+                            "Goal Channel payload request must be an object"
+                        )
+                    payload = prepare_goal_channel_payload(
+                        request,
+                        registry_path=source_registry_path,
+                        runtime_root=source_runtime_root,
+                        binding_path=binding_path,
+                        target_path=target_path,
+                        goal_id=goal_id,
+                        agent_id=args.agent_id,
+                        execute=execute,
+                    )
+                elif command == "deliver-payload":
+                    payload = deliver_goal_channel_payload(
+                        receipt_id=args.receipt_id,
+                        registry_path=source_registry_path,
+                        runtime_root=source_runtime_root,
+                        binding_path=binding_path,
+                        target_path=target_path,
+                        goal_id=goal_id,
                         execute=execute,
                     )
                 else:

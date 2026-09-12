@@ -11,7 +11,7 @@ evidence, or recovery authority.
 | `lark-event-inbox` | Collect, inspect, reply to, and acknowledge bounded project feedback | [`event_inbox.py`](event_inbox.py), [`event_collector.py`](event_collector.py) |
 | `lark-reviewer-notification` | Send and verify a reviewer notification through a project-dedicated Lark app | [`reviewer_notification.py`](reviewer_notification.py) |
 | `lark-kanban-projection` | Render public-safe LoopX todo and control-plane projections into Lark Base | [`presentation/kanban.py`](presentation/kanban.py) |
-| `lark-goal-channel` | Bind one verified Lark group and projection surface to one LoopX goal | [`goal_channel.py`](goal_channel.py), [`goal_channel_setup.py`](goal_channel_setup.py) |
+| `lark-goal-channel` | Bind one verified Lark group and projection surface to one LoopX goal, including exact-approval delivery of frozen capability payloads | [`goal_channel.py`](goal_channel.py), [`goal_channel_payload.py`](goal_channel_payload.py) |
 | `lark-explore-projection` | Project canonical Explore results into Lark tables, cards, and whiteboards | [`presentation/explore_results.py`](presentation/explore_results.py) |
 | `lark-periodic-report-announcement` | Deliver a periodic report through the current Goal Channel's verified project Bot while mentioning only recipients selected by its typed audience plan | [`periodic_report_delivery.py`](periodic_report_delivery.py) |
 | `lark-periodic-report-source` | Bind and settle one exact Agent-selected Goal Channel source for a typed report action without classifying message text | [`periodic_report_request.py`](periodic_report_request.py) |
@@ -70,6 +70,57 @@ The [event inbox guide](docs/lark-event-inbox.md) documents the complete
 collector, processing, reply, reaction, and acknowledgement lifecycle. The
 [Lark Kanban integration guide](../../../docs/integrations/lark-kanban-control-plane-adapter.md)
 documents projection configuration and lineage.
+
+### Exact-approval capability payloads
+
+Any capability may hand LoopX one already public-safe Markdown result without
+becoming coupled to Lark. The capability owns domain semantics, citations, and
+redaction, and attests `public_safe=true`; LoopX freezes the final card, stores
+it only in owner-local runtime state, and creates a blocked delivery Todo plus
+an exact user gate. The public Todo stores only an opaque receipt id, digest,
+and decision scope.
+
+Prepare a payload from a local request file:
+
+```bash
+loopx goal-channel prepare-payload \
+  --goal-id <goal-id> \
+  --agent-id <registered-agent-id> \
+  --request-json <payload-request.json>
+
+loopx goal-channel prepare-payload \
+  --goal-id <goal-id> \
+  --agent-id <registered-agent-id> \
+  --request-json <payload-request.json> \
+  --execute
+```
+
+The request uses `goal_channel_frozen_payload_request_v0` and supplies one
+capability id, opaque payload ref, title, Markdown body, footer, and an exact
+`public_claim:action:<scope>` decision scope. It cannot select a chat, profile,
+Bot, sender, or mention recipient. Complete the generated user gate with
+`decision_outcome=approve`, then preview and execute the receipt returned by
+prepare:
+
+```bash
+loopx goal-channel deliver-payload \
+  --goal-id <goal-id> \
+  --receipt-id gcp_<digest>
+
+loopx goal-channel deliver-payload \
+  --goal-id <goal-id> \
+  --receipt-id gcp_<digest> \
+  --execute
+```
+
+Delivery fails before any provider write when the exact gate is not approved,
+the frozen card changes, or the Goal Channel binding changes. Execution uses
+only the bound project Bot, scans complete Bot-visible history for the exact
+card before sending, and requires provider-native sender, chat, and content
+readback. An exact retry therefore reuses the existing message instead of
+sending a duplicate. Periodic reports keep their separate standing-subscription
+authority and existing two-announcement workflow; they are not routed through
+this one-shot approval contract.
 
 ### Bounded group-history catch-up
 
@@ -193,6 +244,10 @@ execute resolves only selected recipients and omits unrelated recipients. Raw
 The Goal Channel delivery command accepts exactly two ordered HTTPS entries
 (hosted report, then Lark document), emits two independently idempotent
 messages, and verifies the native sender App plus exact chat for each readback.
+Each provider idempotency key binds the base delivery identity to the rendered
+announcement kind, title, body, footer, and an explicit semantic version. A
+renderer change therefore cannot make an upgraded retry reuse an older card
+under the same provider key.
 
 Installation controls discoverability and provider lifecycle only. Every
 private chat, app, group, Base, document, or Miaoda target remains in ignored
