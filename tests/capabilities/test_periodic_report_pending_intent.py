@@ -46,6 +46,203 @@ GOAL_ID = "report-goal"
 AGENT_ID = "report-agent"
 
 
+def _calendar_fixture(tmp_path):
+    registry, runtime = _fixture(tmp_path)
+    for path in (runtime / "goals" / GOAL_ID / "post_writeback_hooks").glob("*.json"):
+        path.unlink()
+    config = json.loads(registry.read_text())
+    config["goals"][0]["control_plane"]["periodic_report"]["schedule"] = {
+        "schema_version": "periodic_report_schedule_v0", "schedule_id": "weekly-report",
+        "rrule": "FREQ=WEEKLY;BYDAY=FR;BYHOUR=18", "timezone": "Asia/Shanghai",
+    }
+    registry.write_text(json.dumps(config))
+    return registry, runtime
+
+
+def test_calendar_actual_cli_preserves_capability_action_without_host(tmp_path, capsys, monkeypatch):
+    from loopx.cli import main
+    from loopx.control_plane.turn_driver.loop_controller import decide_loop_disposition
+
+    registry, runtime = _calendar_fixture(tmp_path)
+
+    def no_host(*args, **kwargs):
+        pytest.fail("capability action must not invoke a normal host transaction")
+
+    monkeypatch.setattr("loopx.cli_commands.turn.run_loopx_turn_once", no_host)
+    prefix = ["--registry", str(registry), "--runtime-root", str(runtime), "--format", "json"]
+    scope = ["--goal-id", GOAL_ID, "--agent-id", AGENT_ID, "--scan-path", str(tmp_path)]
+    main([*prefix, "turn", "plan", *scope, "--host", "generic-cli",
+          "--execution-mode", "isolated-headless"])
+    cold_plan = json.loads(capsys.readouterr().out)
+    assert cold_plan["route"]["kind"] == "capability_action_required"
+    assert cold_plan["effects"] == {"host_invoked": False, "state_written": True,
+                                    "scheduler_acknowledged": False, "quota_spent": False}
+    assert cold_plan["boundary"]["read_only"] is False
+    assert cold_plan["capability_action"]["executed"] is False
+    main([*prefix, "quota", "should-run", *scope])
+    quota = json.loads(capsys.readouterr().out)
+    command = quota["pending_capability_intent"]["command"]
+    for action, execute, host in [("plan", False, "generic-cli"),
+        ("run-once", False, "generic-cli"), ("run-once", True, "generic-cli"),
+        ("run-once", True, "codex-cli")]:
+        extras = ["--project", str(registry.parent)] if action == "run-once" else []
+        code = main([*prefix, "turn", action, *scope, "--host", host,
+                     "--execution-mode", "isolated-headless", *extras,
+                     *(["--execute"] if execute else [])])
+        turn = json.loads(capsys.readouterr().out)
+        assert code == 0, {"action": action, "host": host, "error": turn.get("error"),
+                          "route": turn.get("route"), "envelope": turn.get("turn_envelope")}
+        assert turn["route"]["kind"] == "capability_action_required"
+        assert turn["route"]["would_invoke_host"] is False
+        assert turn["capability_action"]["intent"]["command"] == command
+        assert turn["capability_action"]["command_argv"][:5] == ["loopx", "--registry", str(registry), "--runtime-root", str(runtime)]
+        assert turn["capability_action"]["executed"] is False
+        assert turn["turn_envelope"]["writeback"]["next_cli_actions"] == [command]
+        assert turn["turn_envelope"]["replan_action_packet"] is None
+        assert not any(turn["effects"].values())
+        disposition = decide_loop_disposition(turn_receipt=None, quota_decision=turn["turn_envelope"])
+        assert disposition["disposition"] == "capability_action_required"
+        assert not disposition["launches_host"]
+    assert not list((runtime / "goals" / GOAL_ID / "periodic_reports").glob("*/editorial_request.json"))
+
+
+def test_calendar_hook_to_editorial_to_delivery_todo_preserves_window(tmp_path: Path) -> None:
+    from datetime import datetime
+    from loopx.capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
+    from loopx.capabilities.periodic_report.cadence_journal import read_cadence_journal
+
+    registry, runtime = _calendar_fixture(tmp_path)
+    config = json.loads(registry.read_text())
+    config["goals"][0]["coordination"]["registered_agents"].append("second-peer")
+    registry.write_text(json.dumps(config))
+    kwargs = dict(registry_path=registry, runtime_root=runtime, goal_id=GOAL_ID,
+                  now=datetime.fromisoformat("2026-09-11T10:00:00+00:00"))
+    assert extend_cadence_turn_start_dispatch({}, **kwargs, agent_id="second-peer")["invoked_count"] == 0
+    dispatch = extend_cadence_turn_start_dispatch({}, **kwargs, agent_id=AGENT_ID)
+    assert not dispatch["failures"]
+    assert dispatch["invoked_count"] == 1
+    assert dispatch["results"][0]["local_private_state_mutated"] is True
+    config["goals"][0]["coordination"]["registered_agents"].reverse()
+    registry.write_text(json.dumps(config))
+    assert extend_cadence_turn_start_dispatch({}, **kwargs, agent_id="second-peer")["invoked_count"] == 0
+    assert extend_cadence_turn_start_dispatch({}, **kwargs, agent_id=AGENT_ID)["results"][0]["agent_read_required"] is True
+    # Removal is explicitly unavailable, never an empty/healthy projection or
+    # a fresh generation under another peer's authority.
+    frozen = read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)
+    config["goals"][0]["coordination"]["registered_agents"] = ["second-peer"]
+    registry.write_text(json.dumps(config))
+    removed = extend_cadence_turn_start_dispatch({}, **kwargs, agent_id="second-peer")
+    assert removed["results"][0]["error_code"] == "cadence_pending_reporter_unavailable"
+    assert removed["results"][0]["agent_read_required"] is False
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID) == frozen
+    config["goals"][0]["coordination"]["registered_agents"].append(AGENT_ID)
+    registry.write_text(json.dumps(config))
+    required = consume_pending_periodic_report_intent(registry_path=registry,
+        runtime_root=runtime, goal_id=GOAL_ID, agent_id=AGENT_ID, execute=True)
+    assert required["status"] == "editorial_required"
+    request = json.loads(Path(required["editorial_request_path"]).read_text())
+    assert request["actual_work_window"]["start_at"] == "2026-09-04T10:00:00Z"
+    assert request["actual_work_window"]["end_at"] == "2026-09-11T10:00:00Z"
+    assert "2026-09-04 18:00" in request["actual_work_window"]["period_label"]
+    assert all(fact["status"] != "done" for fact in request["facts"])
+    assert request["facts"][0]["status"] == "unknown"  # August completion is not this week's output.
+    _write_editorial_response(required)
+    ready = consume_pending_periodic_report_intent(registry_path=registry,
+        runtime_root=runtime, goal_id=GOAL_ID, agent_id=AGENT_ID, execute=True)
+    assert ready["status"] == "delivery_ready"
+    assert ready["external_writes_performed"] is False
+    # Generation is not delivery. Do not overwrite the next week or produce
+    # another consume request while the existing delivery Todo is outstanding.
+    before = read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)
+    assert before["publication"] is None
+    kwargs["now"] = datetime.fromisoformat("2026-09-18T10:15:00+00:00")
+    repeated = extend_cadence_turn_start_dispatch({}, **kwargs, agent_id=AGENT_ID)
+    assert not repeated["failures"]
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID) == before
+    assert pending_periodic_report_intents(registry_path=registry, runtime_root=runtime,
+        goal_id=GOAL_ID, agent_id=AGENT_ID) == []
+    candidate = json.loads(Path(ready["artifacts"]["publication_candidate_path"]).read_text())
+    commit_periodic_report_publication_cursor(runtime_root=runtime, candidate=candidate,
+        publication_id="fixture-verified-publication", delivered_at="2026-09-11T10:05:00Z",
+        covered_until="2026-09-11T10:00:00Z")
+    kwargs["now"] = datetime.fromisoformat("2026-09-11T10:15:00+00:00")
+    recovered = extend_cadence_turn_start_dispatch({}, **kwargs, agent_id=AGENT_ID)
+    assert not recovered["failures"]
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)["publication"]["publication_id"] == "fixture-verified-publication"
+
+
+@pytest.mark.parametrize("prepared", [False, True])
+def test_calendar_reporter_replacement_uses_admitted_window_state(tmp_path, prepared):
+    from datetime import datetime
+    from loopx.capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
+    from loopx.capabilities.periodic_report.cadence_journal import read_cadence_journal
+
+    registry, runtime = _calendar_fixture(tmp_path)
+    kwargs = dict(registry_path=registry, runtime_root=runtime, goal_id=GOAL_ID,
+                  now=datetime.fromisoformat("2026-09-11T10:00:00+00:00"))
+    extend_cadence_turn_start_dispatch({}, **kwargs, agent_id=AGENT_ID)
+    original = read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)
+    if prepared:
+        assert consume_pending_periodic_report_intent(registry_path=registry,
+            runtime_root=runtime, goal_id=GOAL_ID, agent_id=AGENT_ID,
+            execute=True)["status"] == "editorial_required"
+    config = json.loads(registry.read_text())
+    config["goals"][0]["coordination"]["registered_agents"] = ["replacement-peer"]
+    config["goals"][0]["control_plane"]["periodic_report"]["schedule"]["rrule"] = "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17"
+    registry.write_text(json.dumps(config))
+    dispatch = extend_cadence_turn_start_dispatch({}, **kwargs, agent_id="replacement-peer")
+    assert not dispatch["failures"]
+    result = dispatch["results"][0]
+    current = read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)
+    if prepared:
+        assert result["error_code"] == "cadence_pending_reporter_unavailable"
+        assert result["agent_read_required"] is False
+        assert current == original
+    else:
+        assert result["error_code"] is None
+        assert result["agent_read_required"] is True
+        assert current["supersedes"] == original["window"]["window_id"]
+        assert current["window"]["agent_id"] == "replacement-peer"
+        assert current["publication"] is None
+
+
+def test_calendar_revision_change_serializes_with_editorial_preparation(tmp_path, monkeypatch):
+    from datetime import datetime
+    from threading import Event
+    import loopx.capabilities.periodic_report.pending_intent as consumer
+    from loopx.capabilities.periodic_report.cadence_journal import admit_cadence_window, read_cadence_journal
+    from loopx.capabilities.periodic_report.machine_defaults import resolve_goal_periodic_report_subscription
+
+    registry, runtime = _calendar_fixture(tmp_path)
+    config = json.loads(registry.read_text())
+    subscription = resolve_goal_periodic_report_subscription(config["goals"][0], None)
+    kwargs = dict(runtime_root=runtime, goal_id=GOAL_ID, agent_id=AGENT_ID,
+                  now=datetime.fromisoformat("2026-09-11T10:00:00+00:00"))
+    frozen = admit_cadence_window(**kwargs, subscription=subscription)["window"]
+    entered, release, attempted = Event(), Event(), Event()
+    original_facts = consumer._progress_facts
+    def paused_facts(**kwargs):
+        entered.set()
+        assert release.wait(3)
+        return original_facts(**kwargs)
+    monkeypatch.setattr(consumer, "_progress_facts", paused_facts)
+    def change_configuration():
+        attempted.set()
+        return admit_cadence_window(**kwargs, subscription={**subscription,
+            "effective_revision": "sha256:" + "b" * 64})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        consuming = pool.submit(consume_pending_periodic_report_intent,
+            registry_path=registry, runtime_root=runtime, goal_id=GOAL_ID,
+            agent_id=AGENT_ID, execute=True)
+        assert entered.wait(3)
+        changing = pool.submit(change_configuration)
+        assert attempted.wait(3)
+        release.set()
+        assert consuming.result(timeout=5)["status"] == "editorial_required"
+        assert changing.result(timeout=5)["status"] == "configuration_changed"
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)["window"] == frozen
+
+
 def test_delivery_binding_ref_is_valid_when_generation_digest_starts_with_digit() -> (
     None
 ):

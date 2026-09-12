@@ -152,7 +152,7 @@ def _goal_capability_options(
         "change_quality_qualification": {"enabled", "safe_fix", "strict_receipt"},
         "local_authority_shadow": {"enabled"},
         "lark_kanban_heartbeat_sync": {"enabled"},
-        "periodic_report": {"enabled", "profile_preset", "route_ref", "timezone"},
+        "periodic_report": {"enabled", "profile_preset", "route_ref", "timezone", "schedule"},
     }
     if capability_id not in allowed:
         raise ValueError(f"Goal capability is read-only in Dashboard: {capability_id}")

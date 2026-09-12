@@ -118,6 +118,7 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     safe_fix: { label: "Allow one bounded safe-fix pass" },
     strict_receipt: { label: "Require an exact-diff receipt" },
     timezone: { label: "Timezone", description: "Use an IANA timezone, for example Asia/Shanghai." },
+    schedule: { label: "Calendar reports", description: "Optional daily or weekly reports; no schedule preserves stage-only delivery." },
   },
   "zh-CN": {
     completed_todos: { label: "两次 Goal 复核间的已完成 Todo 数", description: "可设置 1–5；机器默认值可被 Goal 显式覆盖。" },
@@ -133,6 +134,7 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     safe_fix: { label: "允许一次有界安全修复" },
     strict_receipt: { label: "要求精确 diff 回执" },
     timezone: { label: "时区", description: "使用 IANA 时区，例如 Asia/Shanghai。" },
+    schedule: { label: "日历汇报", description: "可选每日或每周计划；未设置时保持阶段结束汇报。" },
   },
 };
 

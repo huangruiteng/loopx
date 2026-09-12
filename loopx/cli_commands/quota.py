@@ -475,6 +475,9 @@ def _dispatch_quota_turn_start_hooks(
             dispatch[key] = list(dispatch.get(key) or []) + list(context_dispatch.get(key) or [])
         for key in ("registered_count", "invoked_count"):
             dispatch[key] = int(dispatch.get(key) or 0) + int(context_dispatch.get(key) or 0)
+        from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
+        dispatch = extend_cadence_turn_start_dispatch(dispatch, registry_path=registry_path,
+            runtime_root=root, goal_id=args.goal_id, agent_id=args.agent_id)
     local_private_state_mutated = any(
         isinstance(result, Mapping)
         and result.get("local_private_state_mutated") is True

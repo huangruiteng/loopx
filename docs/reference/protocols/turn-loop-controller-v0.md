@@ -61,6 +61,7 @@ Exactly one typed disposition:
 | disposition | meaning | quota |
 | --- | --- | --- |
 | `run_now` | fresh decision allows the next delivery Turn | no spend by the controller |
+| `capability_action_required` | a signed capability intent requires its adapter before a host Turn | no spend |
 | `wait` | quiet cadence or blocked delivery | no spend |
 | `stop` | the current iteration ended without authorizing a retry or successor | no spend |
 | `user_action_required` | a concrete user action is projected by receipt or decision | no spend |
@@ -68,16 +69,24 @@ Exactly one typed disposition:
 | `replan` | replan-class recovery; see continuation boundary below | no spend |
 | `terminal` | fresh Goal frontier plus durable no-follow-up prove Goal closure | no spend |
 
-The output space is exactly these seven dispositions. There is no
+The output space is exactly these eight dispositions. There is no
 `contract_error` disposition: contract failures are rejected at the typed-input
 boundary. Every payload carries `spends_quota=false`, `launches_host=false`,
 and `writes_state=false`.
+
+The capability handoff carries the signed intent and does not require a
+selected Todo or create a host transaction. If it follows committed progress
+or completion, predecessor and Goal/Agent identity are still checked. It does
+not consume a host-turn budget or authorize another host invocation. The
+adapter must return its own receipt and re-enter planning; a missing adapter
+must remain explicit rather than turning into `wait` or a successful delivery.
 
 ## Decision Table
 
 | receipt | fresh decision | disposition |
 | --- | --- | --- |
 | none | delivery allowed | `run_now` |
+| none / validated progress or completion | pending capability intent | `capability_action_required` |
 | none | quiet / cadence-only | `wait` |
 | none | fresh `terminal_no_followup` Goal frontier | `terminal` |
 | `validated_completion` + durable `successor` | selected Todo is a declared successor | route the fresh decision (`run_now`, `wait`, `repair`, `replan`, or user action) |
@@ -137,13 +146,13 @@ and `writes_state=false`.
   (`loopx_turn_envelope_v0` schema, non-empty equal signature hashes, and an
   in-budget compaction) via the same typed route the Turn plan driver uses;
   forged or truncated envelopes raise `ValueError`, never `run_now`.
-- `validated_progress` may continue only with a proven `BoundedTurnBudget`
+- `validated_progress` may continue to another host Turn only with a proven `BoundedTurnBudget`
   whose lineage matches the fresh decision; without it the controller raises
   `ValueError` instead of guessing an unbounded continuation. Budget
   exhaustion routes to `replan`, not `terminal`, because a bounded Turn chain
   ending is not evidence that the Goal ended.
 - Input validity is enforced at the typed-input boundary, not encoded as an
-  eighth disposition. The transition output space is always one of the seven
+  separate error disposition. The transition output space is always one of the eight
   dispositions above.
 
 ## Replan Continuation Boundary

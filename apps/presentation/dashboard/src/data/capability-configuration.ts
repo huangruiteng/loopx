@@ -1,5 +1,6 @@
 export type CapabilityConfigurationFieldDescriptor = {
   key: string;
+  nullable?: boolean;
 };
 
 export type CapabilityConfigurationEditorDescriptor = {
@@ -27,10 +28,12 @@ export function projectEditableCapabilityConfiguration(
 ): Record<string, unknown> {
   const primary = configurationObject(value);
   const defaults = configurationObject(fallback);
-  return Object.fromEntries(editor.fields.flatMap(({ key }) => {
+  return Object.fromEntries(editor.fields.flatMap(({ key, nullable }) => {
     const primaryValue = primary[key];
     const defaultValue = defaults[key];
-    if (Object.hasOwn(primary, key) && primaryValue != null) return [[key, primaryValue]];
+    // Explicit null clears an optional value; it must not resurrect a default
+    // when switching between guided and JSON editors.
+    if (Object.hasOwn(primary, key) && (primaryValue != null || (nullable && primaryValue === null))) return [[key, primaryValue]];
     if (Object.hasOwn(defaults, key) && defaultValue != null) return [[key, defaultValue]];
     return [];
   }));

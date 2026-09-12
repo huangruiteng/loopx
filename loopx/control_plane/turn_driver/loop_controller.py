@@ -7,11 +7,11 @@ spends quota. `loopx turn run-once` remains the only delivery transaction;
 scheduler process management, host wake APIs, and operator presentation belong
 to later adapters (see the Turn Loop Controller plan in docs/development/contributor-tasks).
 
-The transition output space is exactly seven dispositions:
-``run_now | wait | stop | user_action_required | repair | replan | terminal``.
+The transition output includes host delivery, capability-adapter handoff,
+waiting, stopping, user action, repair, replan, and terminal closure.
 
 Input validity is enforced at the typed-input boundary, not encoded as an
-eighth disposition. ``decide_loop_disposition`` raises ``ValueError`` when a
+separate error disposition. ``decide_loop_disposition`` raises ``ValueError`` when a
 receipt, envelope, or budget cannot be proven against the shared Turn
 contracts, so the caller is responsible for feeding only validated, fresh
 inputs.
@@ -56,6 +56,7 @@ _MATERIAL_RECEIPT_ORDER = (
 
 class LoopDisposition(str, Enum):
     RUN_NOW = "run_now"
+    CAPABILITY_ACTION_REQUIRED = "capability_action_required"
     WAIT = "wait"
     STOP = "stop"
     USER_ACTION_REQUIRED = "user_action_required"
@@ -125,6 +126,7 @@ def _envelope_route(decision: Mapping[str, Any]) -> LoopXTurnRoute:
 def _route_to_disposition(route: LoopXTurnRoute) -> LoopDisposition:
     return {
         LoopXTurnRoute.READY_FOR_HOST: LoopDisposition.RUN_NOW,
+        LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED: LoopDisposition.CAPABILITY_ACTION_REQUIRED,
         LoopXTurnRoute.REPLAN_REQUIRED: LoopDisposition.REPLAN,
         LoopXTurnRoute.REPAIR_REQUIRED: LoopDisposition.REPAIR,
         LoopXTurnRoute.USER_ACTION_REQUIRED: LoopDisposition.USER_ACTION_REQUIRED,
@@ -502,7 +504,7 @@ def decide_loop_disposition(
 
     The function is pure: it launches no host, writes no state, and spends no
     quota. Invalid or stale input raises ``ValueError`` at the typed-input
-    boundary; the transition output space is always one of the six
+    boundary; the transition output space is always one of the declared
     :class:`LoopDisposition` values.
     """
 
@@ -511,6 +513,19 @@ def decide_loop_disposition(
     if not decision_lineage["goal_id"] or not decision_lineage["agent_id"]:
         raise ValueError(
             "fresh quota decision is missing goal/agent lineage"
+        )
+
+    if route is LoopXTurnRoute.CAPABILITY_ACTION_REQUIRED and (
+        turn_receipt is None or turn_receipt.result_kind in _MATERIAL_PROGRESS_KINDS
+    ):
+        if turn_receipt is not None:
+            _assert_predecessor_binding(receipt=turn_receipt, predecessor_turn_key=predecessor_turn_key)
+            _assert_goal_agent_match(receipt_lineage=turn_receipt.lineage, decision_lineage=decision_lineage)
+        return _disposition(
+            LoopDisposition.CAPABILITY_ACTION_REQUIRED,
+            reason="fresh capability intent requires its adapter before a host turn",
+            lineage=decision_lineage,
+            extra={"capability_action": _mapping(_mapping(quota_decision.get("action")).get("capability_intent"))},
         )
 
     if turn_receipt is None:

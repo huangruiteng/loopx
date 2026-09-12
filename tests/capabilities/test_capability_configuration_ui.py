@@ -21,6 +21,7 @@ def test_periodic_report_editor_is_shared_across_machine_and_goal_scopes() -> No
         "profile_preset",
         "route_ref",
         "timezone",
+        "schedule",
     ]
 
 

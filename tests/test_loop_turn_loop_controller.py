@@ -269,6 +269,26 @@ def _budget(
     )
 
 
+def test_capability_handoff_after_progress_keeps_predecessor_and_actor_binding() -> None:
+    receipt = _validated_receipt(result_kind=LoopXTurnResultKind.VALIDATED_PROGRESS)
+    envelope = _envelope(should_run=True, effective_action="governed_capability_intent",
+                         selected_todo_id=None, predecessor_turn_key=receipt.turn_key)
+    envelope["action"]["capability_intent"] = {
+        "schema_version": "pending_capability_intent_projection_v0",
+        "goal_id": envelope["goal_id"], "agent_id": envelope["agent_id"],
+        "command": "fixture capability command",
+    }
+    result = decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+    _assert_markers(result, "capability_action_required")
+    envelope["predecessor_turn_key"] = "stale-predecessor"
+    with pytest.raises(ValueError):
+        decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+    envelope["predecessor_turn_key"] = receipt.turn_key
+    envelope["action"]["capability_intent"]["agent_id"] = "another-agent"
+    with pytest.raises(ValueError):
+        decide_loop_disposition(turn_receipt=receipt, quota_decision=envelope)
+
+
 def decide_loop_disposition(
     *,
     turn_receipt: ValidatedTurnReceipt | None,
@@ -970,11 +990,12 @@ def test_delivery_blocked_decision_waits() -> None:
     _assert_markers(payload, "wait")
 
 
-def test_disposition_enum_has_exactly_seven_values() -> None:
+def test_disposition_enum_includes_explicit_capability_adapter_handoff() -> None:
     from loopx.control_plane.turn_driver.loop_controller import LoopDisposition
 
     assert {d.value for d in LoopDisposition} == {
         "run_now",
+        "capability_action_required",
         "wait",
         "stop",
         "user_action_required",

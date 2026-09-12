@@ -426,6 +426,31 @@ def evaluate_periodic_report_trigger_evaluation_intent(
         trigger_policy, Mapping
     ):
         raise ValueError("periodic-report trigger intent is missing typed facts")
+    if "cadence_window" in payload:
+        from .cadence_journal import validate_cadence_window
+
+        if "report_request" in payload or "stage_completion" in payload:
+            raise ValueError("cadence intent cannot also claim a request or stage")
+        window = validate_cadence_window(payload["cadence_window"])
+        if profile_ref != window["profile_ref"] or trigger_policy != window["trigger_policy"]:
+            raise ValueError("cadence profile differs from its frozen window")
+        if intent.get("source_receipt_id") != window["window_id"] or intent.get(
+            "idempotency_key"
+        ) != "periodic-report:" + window["window_id"]:
+            raise ValueError("cadence intent identity does not match its window")
+        return build_periodic_report_trigger_decision({
+            "schema_version": "periodic_report_trigger_request_v0",
+            "evaluated_at": window["due_at"],
+            "profile": {"profile_id": profile_ref.get("profile_id"),
+                        "profile_version": profile_ref.get("profile_version")},
+            "trigger_policy": dict(trigger_policy),
+            "candidates": [{
+                "trigger_kind": "cadence_due", "observed_at": window["due_at"],
+                "source_ref": "cadence:" + window["window_id"],
+                "evidence_digest": "sha256:" + window["window_id"].removeprefix("cadence_"),
+                "facts": {"due": True},
+            }],
+        })
     report_request = payload.get("report_request")
     if isinstance(report_request, Mapping):
         expected = {

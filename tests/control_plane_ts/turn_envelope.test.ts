@@ -10,6 +10,7 @@ import {
   turnEnvelopeActionSignatureDocument,
 } from "../../loopx/control_plane/quota/turn_envelope.ts";
 import { EffectRuntimeRequestError } from "../../loopx/control_plane/effect_runtime_errors.ts";
+import type { JsonObject } from "../../loopx/control_plane/effect_program.ts";
 
 function payload(): Record<string, unknown> {
   return {
@@ -69,6 +70,33 @@ const protocolActionFields = {
   llm: "no_api",
   agent_action: "advance one bounded segment",
 };
+
+test("pending capability action outranks stale replan commands and remains signed", () => {
+  const source = payload();
+  const command = "loopx periodic-report consume-pending --goal-id goal-turn-envelope --agent-id agent-ts --execute";
+  source.effective_action = "governed_capability_intent";
+  source.pending_capability_intent = {
+    schema_version: "pending_capability_intent_projection_v0",
+    capability_id: "periodic-report", intent_kind: "periodic_report.trigger_evaluation",
+    idempotency_key: "periodic-report:fixture", intent_digest: "sha256:" + "a".repeat(64),
+    goal_id: "goal-turn-envelope", agent_id: "agent-ts", state: "pending",
+    action_kind: "consume_periodic_report_intent", action_summary: "Prepare one report",
+    command, generation_authorized: true, external_delivery_authorized: true,
+    agent_read_required: true,
+  };
+  source.replan_action_packet = {
+    schema_version: "fixture-replan", decision: "replan",
+    writeback_contract: { successor_command: "loopx todo add --goal-id goal-turn-envelope" },
+  };
+  const envelope = buildTurnEnvelope({payload: source, protocol_action_fields: protocolActionFields, scheduler_execution_args: ""});
+  assert.equal(envelope.replan_action_packet, null);
+  assert.deepEqual((envelope.writeback as JsonObject).next_cli_actions, [command]);
+  const signed = turnEnvelopeActionSignatureDocument(envelope);
+  assert.deepEqual((signed.action as JsonObject).capability_intent, source.pending_capability_intent);
+  (source.pending_capability_intent as JsonObject).command = "untrusted replacement";
+  assert.throws(() => buildTurnEnvelope({payload: source, protocol_action_fields: protocolActionFields,
+    scheduler_execution_args: ""}), /action is unsupported/);
+});
 
 test("Turn envelope transaction owns compaction and signature construction", () => {
   const source = payload();

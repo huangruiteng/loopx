@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,8 @@ from ..cli_rollout import append_cli_rollout_event
 from ..capabilities.explore.composition_frontier import (
     project_live_explore_composition_frontier,
 )
+from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
+from ..capabilities.periodic_report.pending_intent import periodic_report_pending_intent_interaction_hook
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
 from ..control_plane.quota.heartbeat_receipt import (
     ensure_turn_heartbeat_settlement_receipt,
@@ -112,6 +115,9 @@ def handle_turn_command(
             goal_id=args.goal_id,
             agent_id=args.agent_id,
         )
+        turn_start_hook_dispatch = extend_cadence_turn_start_dispatch(
+            turn_start_hook_dispatch, registry_path=registry_path, runtime_root=runtime_root,
+            goal_id=args.goal_id, agent_id=args.agent_id)
         operator_inbox_urgency_projector = build_lark_operator_inbox_urgency_projector(
             runtime_root_arg=runtime_root,
         )
@@ -148,6 +154,9 @@ def handle_turn_command(
                 ),
                 requested_action_todo_id=requested_action_todo_id,
                 turn_start_hook_dispatch=turn_start_hook_dispatch,
+                interaction_projection_hooks=(periodic_report_pending_intent_interaction_hook(
+                    registry_path=registry_path, runtime_root=runtime_root,
+                    goal_id=args.goal_id, agent_id=args.agent_id),),
             )
 
         decision = build_turn_decision()
@@ -195,6 +204,7 @@ def handle_turn_command(
             args.turn_command == "run-once"
             and args.host == "codex-cli"
             and not supplied_resume_fields
+            and turn_envelope.get("effective_action") != "governed_capability_intent"
         ):
             session_binding = codex_cli_session_binding(runtime_root, turn_envelope)
         payload = build_loopx_turn_plan(
@@ -206,10 +216,26 @@ def handle_turn_command(
             turn_instance_id=args.turn_instance_id,
             iteration_context_policy=args.iteration_context.replace("-", "_"),
         )
+        capability_action = payload.get("capability_action")
+        if isinstance(capability_action, dict):
+            # Bind the adapter handoff to this invocation, while leaving the
+            # signed, provider-neutral intent untouched. This only projects
+            # argv; the Turn driver never executes a projected shell string.
+            command = shlex.split(capability_action["intent"]["command"])
+            capability_action["command_argv"] = [command[0], "--registry", str(registry_path),
+                "--runtime-root", str(runtime_root), *command[1:]]
+            capability_action["command"] = shlex.join(capability_action["command_argv"])
         if turn_start_hook_dispatch.get("registered_count") or (
             turn_start_hook_dispatch.get("failures")
         ):
             payload["turn_start_capability_hook_dispatch"] = turn_start_hook_dispatch
+            if any(isinstance(result, Mapping) and result.get("local_private_state_mutated") is True
+                   for result in turn_start_hook_dispatch.get("results", [])):
+                # The pure plan builder has no effects, but live preflight
+                # hooks may journal an inbox or calendar admission. Disclose
+                # that write without claiming a host turn or report ran.
+                payload["effects"]["state_written"] = True
+                payload["boundary"]["read_only"] = False
         if args.turn_command == "plan":
             if not args.include_transaction_detail:
                 payload.pop("session", None)
@@ -247,6 +273,14 @@ def handle_turn_command(
                     raise ValueError(
                         "LoopX Turn resume journal belongs to another agent"
                     )
+            if payload.get("route", {}).get("kind") == "capability_action_required":
+                # The normal host transaction forbids Core mutations. A
+                # capability may prepare artifacts and require authored input;
+                # never run its command as an arbitrary host/shell adapter.
+                payload.update(mode="run_once", status="capability_action_required",
+                               execute=bool(args.execute), executed=False)
+                print_payload(payload, output_format(args), _render_loopx_turn_plan_markdown)
+                return 0
             project = Path(args.project).expanduser().resolve()
             planned_host = (
                 payload.get("host") if isinstance(payload.get("host"), dict) else {}

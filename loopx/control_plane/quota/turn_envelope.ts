@@ -6,6 +6,7 @@ import {
 } from "../effect_program.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
+import { projectPendingCapabilityIntent } from "../work_items/pending_capability_intent.ts";
 
 export const TURN_ENVELOPE_SCHEMA_VERSION = "loopx_turn_envelope_v0";
 export const TURN_ENVELOPE_BUDGET_BYTES = 8_192;
@@ -541,7 +542,11 @@ function actionProjection(payload: JsonObject, protocolActionFields: JsonObject)
   const interaction = object(payload.interaction_contract);
   const agentChannel = object(interaction.agent_channel);
   const cliChannel = object(interaction.cli_channel);
-  const replanPacket = replanActionPacket(payload);
+  const capabilityIntent = payload.effective_action === "governed_capability_intent"
+    ? projectPendingCapabilityIntent(payload.pending_capability_intent) : null;
+  // A governed capability action has already won the live decision. Stale
+  // replan/host-reentry projections must not replace its exact command.
+  const replanPacket = capabilityIntent ? null : replanActionPacket(payload);
   const recommendedAction = replanPacket
     ? "apply replan_action_packet and emit one required semantic outcome"
     : text(turn.observation.recommended_action || payload.recommended_action, 480);
@@ -555,6 +560,7 @@ function actionProjection(payload: JsonObject, protocolActionFields: JsonObject)
     quiet_noop_allowed: Boolean(agentChannel.quiet_noop_allowed),
     selected_todo: selectedTodo(payload, recommendedAction),
   };
+  if (capabilityIntent) action.capability_intent = capabilityIntent;
   if (turn.observation.action_portfolio !== null) {
     action.action_portfolio = { ...turn.observation.action_portfolio };
   }
@@ -563,7 +569,9 @@ function actionProjection(payload: JsonObject, protocolActionFields: JsonObject)
   }
   const user = userChannel(interaction, payload);
   const schedulerValue = scheduler(payload, turn);
-  let nextCliActions = [...turn.next_effect.cli_actions];
+  let nextCliActions = capabilityIntent
+    ? [scalarString(capabilityIntent.command, "pending capability intent command")]
+    : [...turn.next_effect.cli_actions];
   if (nextCliActions.length === 0 && Array.isArray(cliChannel.next_cli_actions)) {
     nextCliActions = [...cliChannel.next_cli_actions].map(pythonString);
   }

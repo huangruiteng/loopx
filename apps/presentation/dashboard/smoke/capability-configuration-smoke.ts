@@ -8,6 +8,7 @@ const periodicReportEditor = {
     { key: "profile_preset" },
     { key: "route_ref" },
     { key: "timezone" },
+    { key: "schedule", nullable: true },
   ],
 };
 
@@ -65,3 +66,10 @@ for (const invalid of ['{', 'null', '[]', 'true', '{"schema_version":"injected"}
 }
 
 console.log("capability configuration projection and JSON boundary smoke: ok");
+
+const schedule = { schema_version: "periodic_report_schedule_v0", schedule_id: "weekly",
+  rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=18;BYMINUTE=0", timezone: "Asia/Shanghai" };
+assert.deepEqual(projectEditableCapabilityConfiguration(periodicReportEditor, { schedule }), { schedule });
+assert.deepEqual(parseEditableCapabilityJson(periodicReportEditor, JSON.stringify({ schedule })), { schedule });
+assert.deepEqual(projectEditableCapabilityConfiguration(periodicReportEditor, { schedule: null }, { schedule }), { schedule: null },
+  "explicit nullable clear must not restore the inherited schedule on editor mode changes");

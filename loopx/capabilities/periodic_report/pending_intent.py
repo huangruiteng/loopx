@@ -23,6 +23,7 @@ from ...registry import (
     resolve_state_file,
 )
 from ...todos import add_goal_todo
+from ...file_lock import LockAcquisitionPolicy, exclusive_file_lock
 from ...presentation.renderers.periodic_report_html import render_periodic_report_html
 from ...presentation.renderers.periodic_report_markdown import (
     render_periodic_report_markdown,
@@ -54,6 +55,7 @@ from .machine_defaults import (
     resolve_goal_periodic_report_subscription,
 )
 from .machine_store import read_periodic_report_machine_defaults
+from .cadence_journal import cadence_intent, cadence_journal_path, read_cadence_journal
 from .workspace import (
     build_periodic_report_workspace_projection,
     write_periodic_report_workspace_projection,
@@ -361,6 +363,20 @@ def pending_periodic_report_intents(
     if not _IDENTITY_RE.fullmatch(goal_id) or not _IDENTITY_RE.fullmatch(agent_id):
         return []
     pending: list[dict[str, Any]] = []
+    cadence = read_cadence_journal(runtime_root=runtime_root, goal_id=goal_id)
+    if cadence is not None and cadence["publication"] is None and cadence["window"]["agent_id"] == agent_id:
+        subscription = _active_delivery_subscription(registry_path=registry_path,
+            runtime_root=runtime_root, goal_id=goal_id)
+        if subscription and subscription.get("schedule") is not None and (
+            subscription["effective_revision"] == cadence["window"]["subscription_revision"]
+        ):
+            intent = cadence_intent(cadence["window"])
+            actionable, _revision = _next_attempt_revision(registry_path=registry_path,
+                runtime_root=runtime_root, goal_id=goal_id, agent_id=agent_id, intent=intent)
+            # A delivery-ready window already has a delivery Todo. Do not
+            # regenerate it or project a consume command that masks that Todo.
+            if actionable:
+                pending.append(intent)
     for intent in periodic_report_request_intents(
         runtime_root=runtime_root,
         goal_id=goal_id,
@@ -493,6 +509,7 @@ def periodic_report_pending_intent_interaction_hook(
         projection_slots=("pending_capability_intent",),
         requested_read_scope=(
             "periodic_report_request_journal",
+            "periodic_report_cadence_journal",
             "post_writeback_intent_journal",
         ),
         producer=produce,
@@ -507,6 +524,7 @@ def _progress_facts(
     agent_id: str,
     completed_at: str,
     available_capabilities: Any = None,
+    allow_empty: bool = False,
 ) -> list[dict[str, Any]]:
     from ...control_plane.todos.todo_index import (
         MAX_TODO_INDEX_ROLLOUT_EVENTS_PER_GOAL,
@@ -525,6 +543,8 @@ def _progress_facts(
         ),
     )
     if not isinstance(snapshot, Mapping):
+        if snapshot is None and allow_empty:
+            return []
         raise ValueError("periodic-report has no public-safe progress items")
     return _progress_facts_from_snapshot(
         snapshot,
@@ -649,6 +669,15 @@ def _build_editorial_request(
             else None
         ),
     )
+    cadence_window = intent.get("payload", {}).get("cadence_window")
+    if isinstance(cadence_window, Mapping):
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(cadence_window["schedule"]["timezone"])
+        start = datetime.fromisoformat(cadence_window["start_at"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(cadence_window["due_at"].replace("Z", "+00:00"))
+        work_window = {"start_at": cadence_window["start_at"], "end_at": cadence_window["due_at"],
+            "period_label": f"{start.astimezone(zone):%Y-%m-%d %H:%M} — {end.astimezone(zone):%Y-%m-%d %H:%M}（{zone.key}）",
+            "source": "frozen_calendar_window"}
     request: dict[str, Any] = {
         "schema_version": EDITORIAL_REQUEST_SCHEMA,
         "goal_id": goal_id,
@@ -988,6 +1017,29 @@ def _build_authored_source(
 
 
 def consume_pending_periodic_report_intent(
+    *, registry_path: Path, runtime_root: Path, goal_id: str, agent_id: str,
+    execute: bool, provider_request_ports: PeriodicReportRequestPorts | None = None,
+) -> dict[str, Any]:
+    kwargs = dict(registry_path=registry_path, runtime_root=runtime_root,
+                  goal_id=goal_id, agent_id=agent_id, execute=execute,
+                  provider_request_ports=provider_request_ports)
+    # Leave effect-free/empty reads unchanged. Re-read under the same lock as
+    # calendar admission before any preparation, generation, or Todo write.
+    if not execute:
+        return _consume_pending_periodic_report_intent(**kwargs)
+    if not pending_periodic_report_intents(
+        registry_path=registry_path, runtime_root=runtime_root,
+        goal_id=goal_id, agent_id=agent_id,
+    ):
+        return {"ok": True, "schema_version": CONSUMPTION_RECEIPT_SCHEMA,
+                "status": "no_pending_intent", "external_writes_performed": False}
+    with exclusive_file_lock(cadence_journal_path(runtime_root, goal_id),
+            policy=LockAcquisitionPolicy.MUTATION, agent_id=agent_id,
+            operation="periodic_report_intent_consumption"):
+        return _consume_pending_periodic_report_intent(**kwargs)
+
+
+def _consume_pending_periodic_report_intent(
     *,
     registry_path: Path,
     runtime_root: Path,
@@ -1036,11 +1088,14 @@ def consume_pending_periodic_report_intent(
         else None
     )
     stage = payload.get("stage_completion")
+    cadence_window = payload.get("cadence_window")
     completed_at = str(
         report_request.get("requested_at")
         if isinstance(report_request, Mapping)
         else stage.get("completed_at")
         if isinstance(stage, Mapping)
+        else cadence_window.get("due_at")
+        if isinstance(cadence_window, Mapping)
         else ""
     )
     project_progress = payload.get("project_progress")
@@ -1114,8 +1169,21 @@ def consume_pending_periodic_report_intent(
             agent_id=agent_id,
             completed_at=completed_at,
             available_capabilities=fallback_capabilities,
+            allow_empty=isinstance(cadence_window, Mapping),
         )
     )
+    if isinstance(cadence_window, Mapping):
+        start = datetime.fromisoformat(cadence_window["start_at"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(cadence_window["due_at"].replace("Z", "+00:00"))
+        facts = [fact for fact in facts if fact.get("status") != "done" or (
+            start < datetime.fromisoformat(str(fact["completed_at"]).replace("Z", "+00:00")) <= end
+        )]
+        facts.append({
+            "fact_id": "calendar_coverage", "title": "本期证据覆盖范围",
+            "summary": "仅核对当前可读的本 Agent 任务记录，并按记录时间筛选本期交付；未验证完整历史和其他 Agent。空结果不能证明本期没有进展。",
+            "status": "unknown", "content_kind": "risk",
+            "source_ref": "cadence:" + cadence_window["window_id"],
+        })
     request_path = _editorial_request_path(
         runtime_root,
         goal_id,

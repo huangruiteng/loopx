@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .cadence import normalize_report_cadence
+
 from ...control_plane.todos.contract import normalize_todo_claimed_by
 from ..configuration_ui import resolve_capability_configuration
 from ..machine_configuration.contract import (
@@ -108,6 +110,7 @@ def normalize_periodic_report_machine_defaults(
             "profile_preset",
             "route_ref",
             "timezone",
+            "schedule",
         },
         label="periodic_report",
     )
@@ -155,6 +158,11 @@ def normalize_periodic_report_machine_defaults(
                     value,
                     f"periodic_report.{field}",
                 )
+    schedule = normalize_report_cadence(periodic.get("schedule"))
+    if schedule is not None:
+        if schedule["timezone"] != timezone:
+            raise ValueError("schedule.timezone must match periodic_report.timezone")
+        normalized_periodic["schedule"] = schedule
     return normalized_periodic
 
 
@@ -277,6 +285,11 @@ def _normalized_goal_subscription(
         "route_ref": route_ref,
         "timezone": timezone_name,
     }
+    schedule = normalize_report_cadence(config.get("schedule"))
+    if schedule is not None:
+        if schedule["timezone"] != timezone_name:
+            raise ValueError("schedule.timezone must match periodic_report.timezone")
+        subscription["schedule"] = schedule
     subscription["effective_revision"] = _digest(subscription)
     return subscription
 
@@ -285,6 +298,12 @@ def _invalid_goal_subscription_fields(config: Mapping[str, Any]) -> tuple[str, .
     """Identify invalid typed fields without interpreting exception prose."""
 
     invalid: list[str] = []
+    try:
+        schedule = normalize_report_cadence(config.get("schedule"))
+        if schedule is not None and schedule["timezone"] != str(config.get("timezone") or "UTC"):
+            invalid.append("schedule")
+    except (TypeError, ValueError):
+        invalid.append("schedule")
     enabled = config.get("enabled")
     if not isinstance(enabled, bool):
         invalid.append("enabled")

@@ -30,6 +30,7 @@ def _field(
     *,
     description: str = "",
     required: bool = False,
+    nullable: bool = False,
     minimum: int | None = None,
     maximum: int | None = None,
     options: Sequence[str] = (),
@@ -47,6 +48,8 @@ def _field(
         field["maximum"] = maximum
     if options:
         field["options"] = list(options)
+    if nullable:
+        field["nullable"] = True
     return field
 
 
@@ -100,6 +103,13 @@ def capability_configuration_editor(
                     "text",
                     description="IANA timezone, for example Asia/Shanghai.",
                     required=True,
+                ),
+                _field(
+                    "schedule",
+                    "Calendar reports",
+                    "periodic_report_schedule",
+                    nullable=True,
+                    description="Optional daily or weekly schedule. Unset preserves stage-only reports.",
                 ),
             ],
         },

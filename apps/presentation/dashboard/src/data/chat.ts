@@ -1057,6 +1057,13 @@ export async function configureGoalChannelAutoNotify(options: { autoNotify: bool
   );
 }
 
+export const periodicReportScheduleSchema = z.object({
+  schema_version: z.literal("periodic_report_schedule_v0"),
+  schedule_id: z.string(),
+  rrule: z.string(),
+  timezone: z.string(),
+});
+
 export const periodicReportMachineConfigurationSchema = z.object({
   schema_version: z.literal("periodic_report_machine_defaults_v0"),
   enabled: z.boolean(),
@@ -1064,6 +1071,7 @@ export const periodicReportMachineConfigurationSchema = z.object({
   profile_preset: z.string().optional(),
   route_ref: z.string().optional(),
   timezone: z.string(),
+  schedule: periodicReportScheduleSchema.nullable().optional(),
 });
 
 export const machineConfigurationSchema = z.object({
@@ -1089,7 +1097,8 @@ export const capabilityConfigurationFieldSchema = z.object({
   key: z.string(),
   label: z.string(),
   description: z.string(),
-  input_kind: z.enum(["boolean", "number", "select", "string_list", "text"]),
+  input_kind: z.enum(["boolean", "number", "select", "string_list", "text", "periodic_report_schedule"]),
+  nullable: z.boolean().optional(),
   required: z.boolean(),
   minimum: z.number().int().optional(),
   maximum: z.number().int().optional(),

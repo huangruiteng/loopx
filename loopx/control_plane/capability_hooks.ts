@@ -429,7 +429,9 @@ export function validateTurnStartHookRegistration(
     const containsControlCharacter = /[\u0000-\u001f\u007f]/;
     if (
       !TOKEN_RE.test(kind) ||
-      new TextEncoder().encode(command).byteLength > 360 ||
+      // Bound explicit registry/runtime routes too; two legitimate absolute
+      // paths can exceed the old 360-byte display-oriented budget.
+      new TextEncoder().encode(command).byteLength > 1024 ||
       reason.length > 240 ||
       containsControlCharacter.test(command) ||
       containsControlCharacter.test(reason)

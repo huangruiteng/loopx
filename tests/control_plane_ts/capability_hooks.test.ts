@@ -16,6 +16,7 @@ import {
   validatePostWritebackHookInvocation,
   validatePostWritebackHookReceipt,
   validateTurnStartHookInvocation,
+  validateTurnStartHookRegistration,
 } from "../../loopx/control_plane/capability_hooks.ts";
 
 function postWritebackRegistration(overrides: Record<string, unknown> = {}) {
@@ -462,6 +463,18 @@ function turnStartResult(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("turn-start read commands retain explicit routes with a bounded byte budget", () => {
+  const read = {kind: "capability_intent", reason: "Read due report facts", ordering: "before_work"};
+  const command = `loopx --registry /${"project/".repeat(35)}registry.json --runtime-root /${"runtime/".repeat(35)}state periodic-report consume-pending --goal-id example --agent-id reporter`;
+  assert.ok(command.length > 360 && command.length < 1024);
+  validateTurnStartHookRegistration(turnStartRegistration({required_read: {...read, command}}));
+  for (const invalid of ["x".repeat(1025), "界".repeat(342), "loopx\nother-command"]) {
+    assert.throws(() => validateTurnStartHookRegistration(turnStartRegistration({
+      required_read: {...read, command: invalid},
+    })), /outside the admitted envelope/);
+  }
+});
 
 test("turn-start observations require Agent reading without returning private content", () => {
   const observed = validateTurnStartHookInvocation({

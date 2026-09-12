@@ -1,10 +1,11 @@
 import { useId, type ReactNode } from "react";
 
 import type { CapabilityConfigurationEditor } from "../../data/chat";
+import { PeriodicReportScheduleField } from "./periodic-report-schedule-field";
 
 type FieldCopy = Record<string, { description?: string; label?: string }>;
 type ConfigurationField = CapabilityConfigurationEditor["fields"][number];
-type FieldValue = boolean | number | string | string[];
+type FieldValue = boolean | number | string | string[] | Record<string, unknown> | null;
 type FieldChange = (key: string, value: FieldValue) => void;
 
 type ConfigurationFieldProps = Readonly<{
@@ -13,11 +14,17 @@ type ConfigurationFieldProps = Readonly<{
   id: string;
   onChange?: FieldChange;
   value: unknown;
+  timezone: string;
 }>;
 
-function ConfigurationFieldControl({ copy, field, id, onChange, value }: ConfigurationFieldProps) {
+function ConfigurationFieldControl({ copy, field, id, onChange, value, timezone }: ConfigurationFieldProps) {
   const label = copy[field.key]?.label ?? field.label;
   const readOnly = !onChange;
+
+  if (field.input_kind === "periodic_report_schedule") {
+    return <PeriodicReportScheduleField id={id} value={value} timezone={timezone}
+      onChange={onChange ? (schedule) => onChange(field.key, schedule) : undefined} />;
+  }
 
   if (field.input_kind === "boolean") {
     return (
@@ -96,6 +103,7 @@ export function CapabilityConfigurationFields({
           key={field.key}
           onChange={onChange}
           value={value[field.key]}
+          timezone={String(value.timezone ?? "UTC")}
         />;
         return field.key === "enabled" && field.input_kind === "boolean"
           ? <div className="personal-capability-enabled-row" key={field.key}>{control}{enabledAction}</div>

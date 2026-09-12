@@ -17,6 +17,7 @@ import {
 } from "../../data/chat";
 import { projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
 import { CapabilityConfigurationFields } from "./capability-configuration-fields";
+import { withReportScheduleTimezone } from "./periodic-report-schedule-field";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
 import { canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus, orderCapabilitiesForPresentation } from "./capability-workbench";
 import { useWorkspaceI18n } from "./i18n";
@@ -154,8 +155,9 @@ export function MachineConfigurationSettings() {
     setRollbackPlan(null);
   }, [inspection, selectedCapabilityId, locale]);
 
-  function changeDraft(key: string, value: boolean | number | string | string[]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+  function changeDraft(key: string, value: unknown) {
+    setDraft((current) => selected?.capability_id === "periodic_report"
+      ? withReportScheduleTimezone(current, key, value) : { ...current, [key]: value });
     setPreview(null);
     setPreviewOperation("upsert");
     setError(null);
@@ -300,7 +302,13 @@ export function MachineConfigurationSettings() {
           {selected.capability_id === "periodic_report" ? (
             <section className="personal-capability-behavior-note">
               <ShieldCheck aria-hidden size={18} />
-              <div><strong>{t("machine.periodicReportActivation")}</strong><p>{t("machine.periodicReportActivationDescription")}</p></div>
+              <div><strong>{selectedCurrent?.schedule
+                ? (locale === "zh-CN" ? "日历与阶段汇报" : "Calendar and stage reports")
+                : t("machine.periodicReportActivation")}</strong><p>{selectedCurrent?.schedule
+                ? selectedCurrent.enabled === true
+                  ? (locale === "zh-CN" ? "已配置日历计划，由现有唤醒检查；是否送达请核对报告回执。" : "A calendar schedule is configured and checked by existing wakes. Verify delivery in the report receipt.")
+                  : (locale === "zh-CN" ? "日历计划已保存；启用此能力后才会检查和投递。" : "The schedule is saved; enable this capability to check and deliver reports.")
+                : t("machine.periodicReportActivationDescription")}</p></div>
             </section>
           ) : null}
 

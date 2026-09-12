@@ -13,6 +13,7 @@ import {
 import { parseEditableCapabilityJson, projectEditableCapabilityConfiguration } from "../../data/capability-configuration";
 import { useWorkspaceI18n } from "./i18n";
 import { CapabilityConfigurationFields } from "./capability-configuration-fields";
+import { withReportScheduleTimezone } from "./periodic-report-schedule-field";
 import { localizeCapability, localizedCapabilityFieldCopy } from "./capability-localization";
 import { orderCapabilitiesForPresentation, canEditCapability, CapabilityCatalogNavigation, CapabilityConfigurationSummary, CapabilityDetailHeader, CapabilityEditorStatus } from "./capability-workbench";
 
@@ -110,10 +111,12 @@ function useCapabilityMutation({ goalId, onApplied, selected, t }: Readonly<{
     }
   }
 
-  function changeDraft(key: string, value: boolean | number | string | string[]) {
+  function changeDraft(key: string, value: unknown) {
     setMutation((current) => ({
       ...current,
-      draft: { ...current.draft, [key]: value },
+      draft: selected?.capability_id === "periodic_report"
+        ? withReportScheduleTimezone(current.draft, key, value)
+        : { ...current.draft, [key]: value },
       preview: null,
     }));
     setError(null);
