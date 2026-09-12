@@ -1,6 +1,8 @@
+import {executeCoordinationTodoArchiveCompleted} from "../../loopx/control_plane/coordination/todo_archive.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import {registerCoordinationReceiptConformance} from "./coordination_receipt_conformance.ts";
 import {registerNativePlanningUpdateConformance} from "./native_planning_update_conformance.ts";
 
 import type {
@@ -31,7 +33,6 @@ import {projectStandingDecisions} from "../../loopx/control_plane/todos/standing
 import {evaluateTodoResumeConditions} from "../../loopx/control_plane/todos/resume_condition.ts";
 import type {JsonObject} from "../../loopx/control_plane/effect_program.ts";
 import {
-  executeCoordinationTodoArchiveCompleted,
   executeCoordinationTodoTerminalLifecycle,
 } from "../../loopx/control_plane/coordination/todo_terminal_lifecycle.ts";
 import { editCoordinationTodo, TODO_COMPATIBILITY_EDIT_SCHEMA } from "../../loopx/control_plane/coordination/todo_compatibility_edit.ts";
@@ -221,6 +222,7 @@ export function registerAuthorityStoreConformance(
   factory: AuthorityStoreConformanceFactory,
 ): void {
   registerNativePlanningUpdateConformance(providerName, factory);
+  registerCoordinationReceiptConformance(providerName, factory);
   for (const native of [false, true]) test(`${providerName} conformance: standing revocation survives canonical ordering and archive (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
     const goal = "goal-standing";

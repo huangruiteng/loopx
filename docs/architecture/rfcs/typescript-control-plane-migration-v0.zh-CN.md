@@ -296,6 +296,42 @@ generation fence、claim/exclusion、capacity 和 PR 等待语义保持。非法
 准入。普通 add/update 准入及覆盖全部非法条件的通用修复动作仍是独立范围；不能宣称
 全量零行为变化或全部 Todo writer 已闭合。
 
+#### 命令回执与恢复的统一所有者
+
+在基线 `bfd1ec8db`，create、claim、update、complete/supersede、archive 与
+Monitor poll 分别重复 envelope 匹配、结果投影和 CAS 后回读。
+现在由 `coordination/command_receipt.ts` 统一这些语义；各命令继续拥有请求
+规范化／摘要、准入、回执业务载荷校验及状态变更。
+`coordination/todo_archive.ts` 单独拥有归档保留事务，与终态校验和 lease
+释放分离。内部调用方直接导入新 owner，旧模块不保留无实际用途的 re-export。
+
+这些 canonical 命令路径有以下明确的可观察变化：
+
+- 提交已 applied 或 ambiguous、但回执不可读时，结果保留为 `ambiguous`，
+  携带 `recovery.operation_id` 和 `retry_with_same_operation_id=true`。
+  读取失败不能抹掉可能已经持久化的事实。提交响应抛异常后只查一次回执，
+  不自动再次写入。
+- 明确的 CAS conflict 或提交失败，不再被随后的诊断读取失败覆盖。精确的
+  历史回执仍优先返回；applied 响应却缺少回执，仍然是协议失败。
+- create／Monitor 结果对象、update／terminal／archive 的变更判定损坏时，返回
+  `invalid_coordination_command_receipt`，不能通过隐式转换变成成功 replay／
+  no-op，也不能直接逸出为未处理的解码异常。Claim 保留原回执错误码和历史
+  省略 changed 字段的兼容解析。
+- 读取失败统一携带 `changed=false`；当 status 为 `ambiguous` 时，它表示
+  尚无成功结果证明，**不表示**已证明没有写入。身份冲突与回执缺失的错误消息
+  采用统一 coordination 措辞，原 reason code 保持不变。
+
+原请求摘要、回执 schema、成功载荷、no-op 身份消耗、lease／grant 校验、永久
+Markdown 投递和默认 provider 保持兼容。完整生产规模 fixture 现在覆盖七种
+命令的正常提交、响应丢失、回读不可用、响应抛异常，以及插入其他提交后的
+历史重放。真实 File／SQLite／PostgreSQL 和 NoKV transport conformance
+共用该矩阵。三路只读源演练还在真实 File／PostgreSQL 归档提交后丢弃响应。
+
+本次删除重复的 TS 事务权威，不宣称删除 Python 业务 writer；没有新增 bridge
+或 RPC，跨运行时调用数不变。T1 的 metadata／effect 闭合、T2 的带 lease
+Monitor 和 D1–D3 资格验证仍待后续；兼容编辑器及其他命令保留各自的回执合同。
+本次不代表 Goal promotion。
+
 #### 当前 stack 合入后的执行卡
 
 这是**条件式执行规划**，不是所有阶段已完成的声明。2026-09-09 核查时，#4053、#4117、

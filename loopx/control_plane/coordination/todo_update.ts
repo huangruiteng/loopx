@@ -1,7 +1,7 @@
 import type { JsonObject } from "../effect_program.ts";
 import { TODO_WORK_REQUIREMENT_FIELDS } from "../todos/work_requirements.ts";
 import { TODO_OWNERSHIP_INTENT_FIELDS } from "../todos/authoring_scope.ts";
-import type { AuthorityStore, AuthorityStoreCommit, AuthorityStoreReceiptResult } from "./authority_store.ts";
+import type { AuthorityStore, AuthorityStoreCommit } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
   canonicalAuthorityBytes,
@@ -27,7 +27,7 @@ import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_
 import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 import { normalizeNativePlanningIntent, planNativeTodoUpdate } from "../todos/native_update_plan.ts";
-import { projectionDelivery } from "../todos/projection_delivery.ts";
+import {CoordinationCommandReceipt} from "./command_receipt.ts";
 
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
@@ -118,30 +118,15 @@ function normalizeInput(raw: CoordinationTodoUpdateInput): CoordinationTodoUpdat
     patch, clear_fields: clearFields};
 }
 
-function replayUpdate(
-  receipt: AuthorityStoreReceiptResult, input: CoordinationTodoUpdateInput,
-  requestSha: string, status: "replayed" | "applied" | "recovered",
-): CoordinationTodoUpdateResult | null {
-  if (receipt.status === "missing") return null;
-  if (receipt.status !== "found") {
-    return {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA, ...receipt, changed: false};
-  }
-  const original = receipt.receipts[0];
-  if (receipt.receipts.length !== 1 ||
-      original?.schema_version !== COORDINATION_TODO_UPDATE_RECEIPT_SCHEMA ||
-      original.operation_id !== input.operation_id || original.goal_id !== input.goal_id ||
-      original.todo_id !== input.todo_id || original.request_sha256 !== requestSha ||
-      typeof original.changed !== "boolean") {
-    return failure("coordination_operation_identity_mismatch",
-      "operation id already names a different Todo update request");
-  }
-  return {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA,
-    status: status === "applied" && !original.changed ? "no_change" : status,
-    changed: status !== "replayed" && original.changed,
-    todo_id: input.todo_id, provider_revision: receipt.provider_revision,
-    cursor: receipt.cursor, original_receipt: original,
-    projection_delivery: projectionDelivery(original.changed),
-    projection_source: "committed_authority_journal"};
+function updateReceipt(input: CoordinationTodoUpdateInput, requestSha: string) {
+  return new CoordinationCommandReceipt({result_schema: COORDINATION_TODO_UPDATE_RESULT_SCHEMA,
+    identity: {schema_version: COORDINATION_TODO_UPDATE_RECEIPT_SCHEMA,
+      operation_id: input.operation_id, goal_id: input.goal_id, todo_id: input.todo_id,
+      request_sha256: requestSha}, failure,
+    decode(original) {
+      if (typeof original.changed !== "boolean") throw new AuthorityStoreProtocolError("update receipt changed must be boolean");
+      return {fields: {todo_id: input.todo_id, original_receipt: original}, changed: original.changed};
+    }});
 }
 
 function updateRequestSha(input: CoordinationTodoUpdateInput): string {
@@ -317,7 +302,8 @@ export async function executeCoordinationTodoUpdate(
       error instanceof Error ? error.message : "invalid Todo update");
   }
   const requestSha = updateRequestSha(input);
-  const replay = replayUpdate(await store.readReceipt(input.operation_id), input, requestSha, "replayed");
+  const receipt = updateReceipt(input, requestSha);
+  const replay = await receipt.read(store);
   if (replay !== null) return replay;
   if (input.actor_agent_id === null || !input.registered_agents.includes(input.actor_agent_id)) {
     return failure("actor_not_registered", "Todo update requires a registered actor");
@@ -351,11 +337,5 @@ export async function executeCoordinationTodoUpdate(
   commit.receipts = [{schema_version: COORDINATION_TODO_UPDATE_RECEIPT_SCHEMA,
     operation_id: input.operation_id, goal_id: input.goal_id,
     todo_id: input.todo_id, request_sha256: requestSha, changed}];
-  const committed = await store.commitAuthority(commit);
-  const readback = replayUpdate(await store.readReceipt(input.operation_id), input, requestSha,
-    committed.status === "applied" ? "applied" : "recovered");
-  if (readback !== null) return readback;
-  return committed.status === "applied"
-    ? failure("coordination_commit_readback_mismatch", "applied update lacks its durable receipt")
-    : {schema_version: COORDINATION_TODO_UPDATE_RESULT_SCHEMA, ...committed, changed: false};
+  return receipt.commit(store, commit);
 }

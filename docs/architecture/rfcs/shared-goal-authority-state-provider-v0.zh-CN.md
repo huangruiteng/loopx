@@ -453,11 +453,18 @@ Operation identity 标识调用方的一次逻辑尝试，不是参数组合。�
 存储成本，但优化时必须保留 identity consumption、重放与冲突校验。
 
 当前本地 facade 在 managed-runtime retry 内复用生成的 id。两次独立 CLI 调用不会
-自动视为同一尝试：claim 提供 `--claim-operation-id`，create 和 text/note update
-目前没有等价的跨进程恢复 key。这是 caller recovery 的限制，不证明业务效果重复，
+自动视为同一尝试：claim 提供 `--claim-operation-id`，update 提供
+`--update-operation-id`，create 目前没有等价的跨进程恢复 key。这是 caller recovery 的限制，不证明业务效果重复，
 也不能宣称通用 exactly-once。扩展前应先定义重试边界、区分 retry 与新 intent，再
 决定是否需要 key 或耐久 attempt tracking。用丢响应与中间插入其他写入来验证，
 而不是用禁止 UUID 构造的源码扫描代替语义测试。
+
+Canonical Todo 命令现在共用一个 TS 回执恢复 owner。本地结果合同将提交后未能
+确认的回读保留为 `ambiguous`，并指出恢复所需的原 operation；不能从回执不可用
+推断未写入，也不会自动重试 CAS。明确的诊断变化及完整 fixture 矩阵见
+[命令恢复检查点](typescript-control-plane-migration-v0.zh-CN.md#命令回执与恢复的统一所有者)。
+历史回执身份和单向 Markdown 投递保持不变。这是命令恢复验证，不代表存储保留、
+服务可用性或 promotion 已获资格。
 
 对每个 request，authority 执行以下顺序：
 

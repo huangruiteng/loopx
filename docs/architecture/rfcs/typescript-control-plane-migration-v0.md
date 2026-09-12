@@ -384,6 +384,49 @@ rewrite or new writer admission is implied. General add/update admission and a
 generic repair action for every invalid condition remain separate scopes; this
 is not a claim of zero behavior change or full Todo writer closure.
 
+#### Command receipt and recovery ownership
+
+At baseline `bfd1ec8db`, create, claim, update, complete/supersede, archive and
+Monitor poll repeated envelope matching, result projection and post-CAS
+readback. `coordination/command_receipt.ts` now owns those shared semantics;
+command modules retain request normalization/digests, admission, payload
+validation and mutations. `coordination/todo_archive.ts` owns retention,
+separate from terminal validation and lease release. Internal callers import
+that owner directly; the old module does not retain an unused re-export.
+
+Intentional observable changes on these canonical command paths:
+
+- An applied/ambiguous commit followed by unreadable receipt remains
+  `ambiguous`, with `recovery.operation_id` and
+  `retry_with_same_operation_id=true`. A read failure cannot erase possible
+  durable acceptance. A thrown commit response receives one receipt lookup,
+  never an automatic second write.
+- A conclusive CAS conflict or failed commit remains that result if diagnostic
+  readback fails. An exact historical receipt still takes precedence. An
+  applied response with a missing receipt remains a protocol failure.
+- Malformed create/Monitor result objects and update/terminal/archive change decisions
+  fail with `invalid_coordination_command_receipt`; they cannot become successful
+  replay/no-op through coercion or escape as an unchecked decoder error. Claim
+  retains its existing receipt-error code and historical omitted-change codec.
+- Read failures consistently include `changed=false`; this with an `ambiguous`
+  status means no proven successful result, **not** proof that nothing was written.
+  Identity-conflict and missing-receipt messages use shared coordination wording;
+  their existing reason codes remain stable.
+
+Existing request digests, receipt schemas, success payloads, no-op consumption,
+lease/grant checks, permanent Markdown delivery and provider defaults remain
+compatible. The production-scale fixture now drives all seven command operations
+through normal, lost-response, unreadable-readback and thrown-response cases,
+including replay after an intervening commit. Real File/SQLite/PostgreSQL and
+NoKV transport conformance share that matrix. The three-arm read-only source
+rehearsal also loses archive responses on actual File/PostgreSQL commits.
+
+This removes duplicated TS transaction authority, not Python business writers:
+no new bridge or RPC is introduced, and cross-runtime calls are unchanged.
+T1 metadata/effect closure, T2 retained Monitor leases and D1–D3 qualification
+remain separate work; the compatibility editor and other command protocols
+retain their distinct receipt contracts. No Goal promotion is implied.
+
 #### Execution cards after the current stack
 
 This is a **conditional execution plan**, not a merged-status declaration.
