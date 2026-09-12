@@ -23,7 +23,7 @@ function sqliteDriver(): typeof import("node:sqlite") {
   if (qualifiedSqlite) return qualifiedSqlite;
   let sqlite: typeof import("node:sqlite");
   try { sqlite = require("node:sqlite") as typeof import("node:sqlite"); }
-  catch { return protocol("SQLite authority requires a qualified node:sqlite runtime (Node 22.14 or newer recommended)"); }
+  catch { return protocol("SQLite authority requires a qualified node:sqlite runtime (Node 22.18.0 or newer)"); }
   // Early experimental drivers defer statement finalization until GC, leaving
   // closed file handles locked on Windows. Probe in memory before touching any
   // authority path; never force GC or hide the leak with cleanup retries.
@@ -33,7 +33,7 @@ function sqliteDriver(): typeof import("node:sqlite") {
   let finalized = false;
   try { statement.get(); }
   catch (error) { finalized = (error as NodeJS.ErrnoException).code === "ERR_INVALID_STATE"; }
-  if (!finalized) protocol("SQLite authority requires synchronous statement finalization on close; use Node 22.14 or newer. File authority still supports Node 22.6");
+  if (!finalized) protocol("SQLite authority requires synchronous statement finalization on close; use Node 22.18.0 or newer");
   qualifiedSqlite = sqlite;
   return sqlite;
 }

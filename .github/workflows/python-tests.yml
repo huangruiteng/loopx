@@ -120,7 +120,7 @@ jobs:
       - name: Set up the qualified SQLite runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.14"
+          node-version: "22.18.0"
 
       - name: Qualify the TypeScript Effect core
         run: |
@@ -165,7 +165,7 @@ jobs:
       - name: Set up the qualified Node.js runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.14"
+          node-version: "22.18.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -218,23 +218,16 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: "22.6"
+          node-version: "22.18.0"
           cache: npm
           cache-dependency-path: package-lock.json
       - name: Qualify the public minimum Node.js runtime
         run: |
           npm ci --ignore-scripts
           npm run typecheck:control-plane
-          # SQLite conformance requires qualified statement finalization (22.14+).
-          # Retain admission rejection and all default file/runtime tests here.
-          tests=()
-          for test in tests/control_plane_ts/*.test.ts; do
-            case "$test" in
-              */sqlite_authority_store.test.ts|*/local_authority_provider.test.ts) continue ;;
-            esac
-            tests+=("$test")
-          done
-          node --no-warnings --experimental-sqlite --experimental-strip-types --test "${tests[@]}"
+          # The public minimum is qualified for every TypeScript control-plane
+          # provider, including SQLite statement finalization.
+          node --no-warnings --experimental-sqlite --experimental-strip-types --test tests/control_plane_ts/*.test.ts
 
   node-forward-compatibility:
     needs: changes
@@ -493,7 +486,7 @@ jobs:
       - name: Set up the qualified SQLite runtime
         uses: actions/setup-node@v6
         with:
-          node-version: "22.14"
+          node-version: "22.18.0"
 
       - name: Run SQLite CLI integration
         run: python -m pytest -q tests/control_plane/test_sqlite_authority_cli.py
