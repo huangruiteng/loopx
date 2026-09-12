@@ -14,6 +14,7 @@ import os
 import json
 import stat
 import tempfile
+from enum import StrEnum
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,28 @@ from .completion_validation_store import load_completion_validation_declarations
 
 
 TODO_PROJECTION_DELIVERY_SCHEMA = "loopx_todo_projection_delivery_v0"
+
+
+class ProjectionDeliveryStatus(StrEnum):
+    """Stable cross-language states for canonical Todo display delivery."""
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    CURRENT = "current"
+    NOT_REQUIRED = "not_required"
+
+
+def parse_projection_delivery(value: object) -> ProjectionDeliveryStatus:
+    try:
+        return ProjectionDeliveryStatus(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"unsupported projection_delivery: {value!r}") from error
+
+
+def projection_delivery_requires_ack(value: object) -> bool:
+    return parse_projection_delivery(value) in {
+        ProjectionDeliveryStatus.DELIVERED,
+        ProjectionDeliveryStatus.CURRENT,
+    }
 
 
 def _read_text_exact(path: Path) -> str:
@@ -202,10 +225,10 @@ def settle_canonical_todo_projection(
     """Drain the committed provider head, preserving a successful mutation."""
 
     if payload.get("dry_run") is True or payload.get("status") == "planned":
-        payload["projection_delivery"] = "not_required"
+        payload["projection_delivery"] = ProjectionDeliveryStatus.NOT_REQUIRED.value
         payload["projection_outbox"] = {
             "schema_version": TODO_PROJECTION_DELIVERY_SCHEMA,
-            "status": "not_required",
+            "status": ProjectionDeliveryStatus.NOT_REQUIRED.value,
             "source": "committed_authority_journal",
         }
         return payload
@@ -246,13 +269,16 @@ def settle_canonical_todo_projection(
         delivery["trigger_provider_revision"] = trigger_revision
     if isinstance(trigger_cursor, str) and trigger_cursor:
         delivery["trigger_cursor"] = trigger_cursor
-    payload["projection_delivery"] = delivery["status"]
+    payload["projection_delivery"] = parse_projection_delivery(delivery["status"]).value
     payload["projection_outbox"] = delivery
     return payload
 
 
 __all__ = [
     "TODO_PROJECTION_DELIVERY_SCHEMA",
+    "ProjectionDeliveryStatus",
+    "parse_projection_delivery",
+    "projection_delivery_requires_ack",
     "project_current_canonical_todos",
     "settle_canonical_todo_projection",
 ]

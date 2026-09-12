@@ -36,7 +36,7 @@ from .completion_validation import (
 from .contract import resolve_next_user_task_class
 from .mutation_authority import normalize_todo_lifecycle_authority
 from .path_resolution import resolve_todo_state_path
-from .provider_projection import settle_canonical_todo_projection
+from .provider_projection import projection_delivery_requires_ack, settle_canonical_todo_projection
 from .successor_derivation import build_successor_intents
 
 _TERMINAL_REQUEST_SCHEMA = "loopx_local_coordination_todo_terminal_lifecycle_request_v0"
@@ -564,7 +564,7 @@ def archive_canonical_todos_if_promoted(
     if (
         not dry_run
         and response.get("moved_count", 0) > 0
-        and response.get("projection_delivery") in {"delivered", "current"}
+        and projection_delivery_requires_ack(response.get("projection_delivery"))
     ):
         # The native owner retains the attempt until its external projection
         # provider succeeds. An ACK failure must preserve the committed result
