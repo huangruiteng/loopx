@@ -12,7 +12,7 @@ export function projectionDelivery(changed: boolean): TodoProjectionDelivery {
 /** Decode provider readback without letting ad-hoc strings cross the boundary. */
 export function parseProjectionDelivery(value: unknown): TodoProjectionDelivery {
   if (typeof value === "string" && PROJECTION_DELIVERY_VALUES.has(value as TodoProjectionDelivery)) {
-    return value;
+    return value as TodoProjectionDelivery;
   }
   throw new Error(`projection_delivery is unsupported: ${String(value)}`);
 }
