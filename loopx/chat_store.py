@@ -1320,6 +1320,9 @@ class ChatSessionStore:
                 try:
                     with exclusive_file_lock(path, agent_id="loopx-chat", operation="append_chat_events"):
                         rows = self._event_rows_locked(session_id, turn_id)
+                        # Allocate after the last persisted sequence and append under the
+                        # same file lock: row order stays strictly increasing by sequence.
+                        # Compaction preserves this order but may leave sequence gaps.
                         sequence = int(rows[-1].get("sequence") or 0) if rows else 0
                         for event in pending:
                             sequence += 1
@@ -1355,6 +1358,8 @@ class ChatSessionStore:
         if rows is None:
             with exclusive_file_lock(path, agent_id="loopx-chat", operation="read_chat_events"):
                 rows = self._event_rows_locked(session_id, turn_id)
+        # Relies on the sequence ordering maintained by flush_events and compaction;
+        # gaps are valid, but inserting or rewriting rows must preserve that order.
         start = bisect_right(
             rows,
             after,
