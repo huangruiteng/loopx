@@ -8,6 +8,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cleanupBrowserSmoke, launchBrowser, loadPlaywright, waitForHttp } from "./dashboard-browser-smoke-support.mjs";
 const root = fileURLToPath(new URL("../", import.meta.url));
+process.env.LOOPX_PLAYWRIGHT_PACKAGE ??= resolve(root, "apps/presentation/dashboard/node_modules/playwright");
 const require = createRequire(import.meta.url);
 const port = Number(process.env.LOOPX_PROGRESSIVE_PORT ?? "5204");
 const origin = `http://127.0.0.1:${port}`;
@@ -27,7 +28,9 @@ const slowGate = new Promise((done) => { releaseSlow = done; });
 try {
   await waitForHttp(`${origin}/chat/`);
   browser = process.env.LOOPX_PROGRESSIVE_ENGINE === "webkit"
-    ? await loadPlaywright().webkit.launch({ headless: true }) : await launchBrowser(loadPlaywright().chromium);
+    ? await loadPlaywright().webkit.launch({ headless: true })
+    : process.platform === "win32" ? await loadPlaywright().chromium.launch({ headless: true })
+    : await launchBrowser(loadPlaywright().chromium);
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -61,6 +64,7 @@ try {
   await page.locator('.personal-goal-link').filter({ hasText: "retry project" }).click();
   await page.getByTestId("goal-status-loading").getByRole("button").waitFor();
   assert.ok(requested.includes("retry"), "a blocked first Goal must not block the queue");
+  assert.equal(requested.filter((id) => id === "retry").length, 3, "ordinary 5xx retains three attempts");
   const out = resolve(root, "output/playwright/workspace-progressive");
   await mkdir(out, { recursive: true });
   await page.screenshot({ path: resolve(out, "partial-desktop.png") });
@@ -88,7 +92,47 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: resolve(out, "ready-mobile.png") });
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, directory_ms: directoryMs, peak_concurrent_requests: peak, checks: ["directory-before-slow-goal", "ready-peer-usable", "queue-progress", "isolated-failure", "registry-revision-fence", "retry", "service-restart-recovery", "lazy-stopped-goals", "mobile", "no-render-errors"] }));
+  for (const locale of ["zh-CN", "en"]) {
+    const accessPage = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+    await accessPage.addInitScript((value) => localStorage.setItem("loopx-pw-locale", value), locale);
+    accessPage.on("pageerror", (error) => errors.push(error.message));
+    const accessDirectory = { ...directory, goals: ["ready", "access"].map((id) => ({
+      id, display_name: `${id} project`, activation_state: "active", registry_member: true,
+    })) };
+    const counts = { ready: 0, access: 0 };
+    let denied = true;
+    await accessPage.route("**/status.json*", (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.has("view")) return route.fulfill({ json: accessDirectory });
+      const id = url.searchParams.get("goal_id");
+      assert.ok(id in counts);
+      counts[id]++;
+      return route.fulfill(id === "access" && denied
+        ? { status: 500, json: { ok: false, error_code: "workspace_status_access_denied" } }
+        : { json: snapshot(id) });
+    });
+    await accessPage.route("**/api/**", (route) => route.fulfill({ status: 503, json: { ok: false } }));
+    await accessPage.goto(`${origin}/chat/?statusUrl=${encodeURIComponent(origin + "/status.json")}`);
+    await accessPage.locator(".personal-goal-link").filter({ hasText: "ready project" }).click();
+    await accessPage.getByTestId("goal-status-loading").waitFor({ state: "hidden" });
+    await accessPage.locator(".personal-goal-link").filter({ hasText: "access project" }).click();
+    const panel = accessPage.getByTestId("goal-status-loading");
+    await panel.getByRole("button").waitFor();
+    assert.match(await panel.innerText(), locale === "en" ? /account running that source/ : /来源运行账户/);
+    await accessPage.screenshot({ path: resolve(out, `access-${locale}-desktop.png`) });
+    await accessPage.setViewportSize({ width: 390, height: 844 });
+    await accessPage.screenshot({ path: resolve(out, `access-${locale}-mobile.png`) });
+    // Outwait the first backoff: terminal access failures must not retry themselves.
+    await accessPage.waitForTimeout(1_200);
+    assert.deepEqual(counts, { ready: 1, access: 1 });
+    denied = false;
+    await panel.getByRole("button").click();
+    await panel.waitFor({ state: "hidden" });
+    assert.deepEqual(counts, { ready: 1, access: 2 }, "manual retry preserves successful peers at the same revision");
+    await accessPage.close();
+  }
+  assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ ok: true, directory_ms: directoryMs, peak_concurrent_requests: peak, checks: ["directory-before-slow-goal", "ready-peer-usable", "queue-progress", "isolated-failure", "registry-revision-fence", "retry", "service-restart-recovery", "lazy-stopped-goals", "access-no-auto-retry", "access-manual-recovery-preserves-peers", "bilingual-access", "mobile", "no-render-errors"] }));
 } finally {
   releaseSlow();
   await cleanupBrowserSmoke({ browser, server, fixturePaths: [] });

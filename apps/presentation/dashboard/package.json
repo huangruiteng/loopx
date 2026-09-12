@@ -5,6 +5,8 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "smoke:workspace-progressive-loader": "node smoke/workspace-progressive-status-smoke.mjs",
+    "smoke:workspace-progressive": "node ../../../examples/workspace-progressive-loading-browser-smoke.mjs",
     "build": "tsc --noEmit && vite build && vite build --config vite.chat.config.ts",
     "build:chat": "tsc --noEmit && vite build --config vite.chat.config.ts",
     "build:desktop": "tsc --noEmit && vite build",

@@ -13,7 +13,7 @@ const directorySchema = z.object({
   })),
 });
 export type WorkspaceDirectory = z.infer<typeof directorySchema>;
-export type WorkspaceLoadError = "timeout" | "network" | "service" | "revision" | "scope" | "invalid";
+export type WorkspaceLoadError = "timeout" | "network" | "service" | "access" | "revision" | "scope" | "invalid";
 export type WorkspaceProgress = {
   directory: WorkspaceDirectory;
   snapshots: Record<string, StatusPayload>;
@@ -51,6 +51,39 @@ export function directoryStatusPayload(directory: WorkspaceDirectory): StatusPay
   });
 }
 
+async function statusFailure(response: Response, signal: AbortSignal): Promise<"access" | "service"> {
+  if (!response.body) return "service";
+  const reader = response.body.getReader();
+  const cancel = () => { void reader.cancel().catch(() => {}); };
+  signal.addEventListener("abort", cancel, { once: true });
+  // Error bodies may come from older servers or proxies. Never buffer them unboundedly.
+  const bytes = new Uint8Array(16 * 1024);
+  let size = 0;
+  try {
+    signal.throwIfAborted();
+    while (true) {
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) break;
+      if (size + value.byteLength > bytes.byteLength) return "service";
+      bytes.set(value, size);
+      size += value.byteLength;
+    }
+    const payload: unknown = JSON.parse(new TextDecoder().decode(bytes.subarray(0, size)));
+    return payload !== null && typeof payload === "object" && !Array.isArray(payload)
+      && "error_code" in payload && payload.error_code === "workspace_status_access_denied"
+      ? "access" : "service";
+  } catch {
+    // Parsing/transport errors after 5xx headers stay service errors; aborts keep their meaning.
+    signal.throwIfAborted();
+    return "service";
+  } finally {
+    signal.removeEventListener("abort", cancel);
+    cancel();
+    reader.releaseLock();
+  }
+}
+
 /** Bounded fan-out: a slow/failed Goal cannot block the directory or its peers. */
 export async function loadWorkspaceGoalSnapshots(
   url: string,
@@ -83,7 +116,9 @@ export async function loadWorkspaceGoalSnapshots(
           cache: "no-store", signal: controller.signal,
         });
         if (!response.ok) {
-          failure = response.status === 409 ? "revision" : response.status >= 500 ? "service" : "scope";
+          failure = response.status === 409 ? "revision" : response.status >= 500
+            ? await statusFailure(response, controller.signal) : "scope";
+          controller.signal.throwIfAborted();
         } else {
           const raw = await response.json();
           if (raw.workspace_registry_revision !== directory.registry_revision) failure = "revision";

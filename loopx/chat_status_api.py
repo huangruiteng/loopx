@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -9,11 +10,53 @@ from urllib.parse import parse_qs, urlparse
 from .chat import redact_local_paths
 from .chat_goal_subagent_api import goal_subagent_configuration_enabled
 from .chat_workspace_directory import workspace_goal_directory
+from .control_plane.effect_runtime import (
+    EffectRuntimePermanentIOError,
+    EffectRuntimeRemoteError,
+    EffectRuntimeStartupError,
+)
 from .feedback import validate_goal_id
 from .history import load_registry
 from .registry import registry_goals
 from .status import collect_status
 from .status_server import parse_goal_activation_filter
+
+
+def _status_access_denied(error: BaseException) -> bool:
+    """Recognize permission causes without reclassifying unrelated I/O failures."""
+    current: BaseException | None = error
+    seen: set[int] = set()
+    for _ in range(8):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        if isinstance(current, EffectRuntimeRemoteError):
+            return (
+                isinstance(current, EffectRuntimePermanentIOError)
+                and current.diagnostic_code == "io_permission_denied"
+            )
+        if isinstance(current, OSError):
+            winerror = getattr(current, "winerror", None)
+            if winerror is not None:
+                # Windows also maps sharing/lock violations to PermissionError.
+                return type(winerror) is int and winerror in {5, 65}
+            if isinstance(current, PermissionError) or current.errno in {
+                errno.EACCES, errno.EPERM,
+            }:
+                return True
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif (
+            isinstance(current, EffectRuntimeStartupError)
+            and current.diagnostic_code in {
+                "runtime_launch_failed", "runtime_request_failed",
+            }
+            and not current.__suppress_context__
+        ):
+            current = current.__context__
+        else:
+            break
+    return False
 
 
 class ChatStatusRequestMixin:
@@ -98,10 +141,17 @@ class ChatStatusRequestMixin:
                     protected_paths=protected_paths,
                 )
             )
-        except Exception:  # noqa: BLE001 - do not expose local projection failures.
+        except Exception as exc:  # noqa: BLE001 - do not expose local projection failures.
             self._send_error(
                 "LoopX status could not be projected for the workspace.",
                 status=500,
+                error_code=(
+                    "workspace_status_access_denied"
+                    if requested_goals is not None
+                    and views is None
+                    and _status_access_denied(exc)
+                    else None
+                ),
             )
             return
         self._send_json(projection)
