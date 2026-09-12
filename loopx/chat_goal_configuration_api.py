@@ -18,8 +18,10 @@ from .configuration_transaction import (
     goal_capability_configuration_revision,
     require_expected_configuration_plan_revision,
 )
-from .configure_goal import configure_goal
-from .control_plane.goals.configure_goal_service import configure_goal_with_global_sync
+from .control_plane.goals.configure_goal_service import (
+    configure_goal_with_global_sync,
+    read_goal_configuration_with_source_route,
+)
 from .control_plane.goals.goal_vision_policy import (
     normalize_completed_todo_replan_threshold,
 )
@@ -379,7 +381,7 @@ class GoalConfigurationRequestMixin:
         raise NotImplementedError
 
     def _goal_configuration_reader(self) -> GoalConfigurationReader:
-        return configure_goal
+        return read_goal_configuration_with_source_route
 
     def _goal_configuration_writer(self) -> GoalConfigurationWriter:
         return configure_goal_with_global_sync

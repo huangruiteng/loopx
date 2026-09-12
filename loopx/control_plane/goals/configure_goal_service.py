@@ -18,6 +18,7 @@ from ...registry import registry_goals
 from ...registry_writability import probe_registry_write_path
 from ..runtime.runtime_projection_route import (
     compact_runtime_projection_route,
+    resolve_goal_source_runtime_route,
     resolve_runtime_projection_route,
 )
 
@@ -43,6 +44,53 @@ def _goal(payload: dict[str, Any], goal_id: str) -> dict[str, Any] | None:
             if str(item.get("id") or "") == goal_id
         ),
         None,
+    )
+
+
+def _resolve_authoritative_source_registry(
+    *, registry_path: Path, goal_id: str
+) -> Path:
+    """Resolve a goal write to its project registry.
+
+    The shared registry is a read model. A caller may still provide its path
+    when a Dashboard or CLI process is configured against the shared runtime,
+    so route that request before previewing, locking, or applying the Goal.
+    ``runtime_root_override`` is deliberately absent here: that option chooses
+    the projection target and must not change source authority.
+    """
+
+    invoked_registry = registry_path.expanduser().resolve()
+    route = resolve_goal_source_runtime_route(
+        registry_path=invoked_registry,
+        goal_id=goal_id,
+    )
+    source_text = str(route.get("source_registry") or "").strip()
+    if not source_text:
+        raise ValueError(
+            f"goal {goal_id!r} source registry route did not resolve; refusing to configure"
+        )
+    return Path(source_text).expanduser().resolve()
+
+
+def read_goal_configuration_with_source_route(
+    *, registry_path: Path, goal_id: str, execute: bool = False
+) -> dict[str, Any]:
+    """Read Goal configuration from the canonical source registry.
+
+    ``execute`` is accepted to preserve the shared reader callable shape; a
+    read route never performs a write.
+    """
+
+    if execute:
+        raise ValueError("Goal configuration reads cannot execute a write")
+    source_registry_path = _resolve_authoritative_source_registry(
+        registry_path=registry_path,
+        goal_id=goal_id,
+    )
+    return configure_goal(
+        registry_path=source_registry_path,
+        goal_id=goal_id,
+        execute=False,
     )
 
 
@@ -372,21 +420,25 @@ def configure_goal_with_global_sync(
     section across concurrent Dashboard and CLI configuration requests.
     """
 
+    source_registry_path = _resolve_authoritative_source_registry(
+        registry_path=registry_path,
+        goal_id=goal_id,
+    )
     if not execute:
         return _configure_goal_with_global_sync_unlocked(
-            registry_path=registry_path,
+            registry_path=source_registry_path,
             goal_id=goal_id,
             runtime_root_override=runtime_root_override,
             execute=False,
             **configure_options,
         )
     with exclusive_file_lock(
-        registry_path,
+        source_registry_path,
         operation="configure_goal_with_global_sync",
     ):
         if expected_goal_configuration_revision is not None:
             current = configure_goal(
-                registry_path=registry_path,
+                registry_path=source_registry_path,
                 goal_id=goal_id,
                 execute=False,
             )
@@ -405,7 +457,7 @@ def configure_goal_with_global_sync(
             if actual_revision != expected_goal_configuration_revision:
                 raise ValueError("Goal configuration changed; preview again")
         return _configure_goal_with_global_sync_unlocked(
-            registry_path=registry_path,
+            registry_path=source_registry_path,
             goal_id=goal_id,
             runtime_root_override=runtime_root_override,
             execute=True,
