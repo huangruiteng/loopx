@@ -20,7 +20,7 @@ def test_update_intent_keeps_explicit_clears_and_empty_scalars() -> None:
     }
 
 
-def test_update_route_only_promotes_fields_owned_by_native_transaction() -> None:
+def test_update_route_promotes_declarative_decision_metadata() -> None:
     supported = build_canonical_update_intent(
         action_kind="publish",
         task_domain="delivery",
@@ -36,12 +36,12 @@ def test_update_route_only_promotes_fields_owned_by_native_transaction() -> None
         status=None,
     )
 
-    # Decision-scope governance remains on its owning effect path. It must
-    # not be silently reinterpreted as an ordinary metadata transaction.
+    # Declarative scope metadata now crosses the same typed planning
+    # transaction; terminal outcomes remain on their effect-owned path.
     governance = build_canonical_update_intent(
-        decision_scope={"kind": "write_scope", "granularity": "action"},
+        decision_scope={"kind": "write_scope", "granularity": "action", "scope_key": "release"},
     )
-    assert not canonical_update_is_supported(
+    assert canonical_update_is_supported(
         text=None,
         note=None,
         intent=governance,

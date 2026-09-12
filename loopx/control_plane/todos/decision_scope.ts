@@ -3,10 +3,14 @@
 import type {JsonObject} from "../effect_program.ts";
 import {requireJsonObject, optionalNonEmptyString, requireBoolean, requireInteger} from "../runtime_decode.ts";
 import {gateAddressesAgent} from "./gate_scope.ts";
+import {
+  TODO_DECISION_SCOPE_GRANULARITY_SET,
+  TODO_DECISION_SCOPE_KEY_PATTERN,
+  TODO_DECISION_SCOPE_KIND_SET,
+} from "./decision_metadata.ts";
 
 export const DECISION_SCOPE_REQUEST_SCHEMA = "todo_decision_scope_request_v0";
 const RANK: Readonly<Record<string, number>> = {action: 0, lane: 1, goal: 2, project: 3, global: 4};
-const KINDS = new Set(["private_read", "write_scope", "resource", "production", "public_claim", "direction", "other"]);
 const object = (value: unknown): value is JsonObject => value !== null && typeof value === "object" && !Array.isArray(value);
 const rows = (value: unknown): JsonObject[] => {
   if (!Array.isArray(value)) throw new TypeError("decision scope rows must be an array");
@@ -16,8 +20,10 @@ const text = (value: unknown): string | null => typeof value === "string" && val
 
 export function decisionScopeCovers(gate: unknown, required: unknown): boolean {
   if (!object(gate) || !object(required)) return false;
-  const valid = (scope: JsonObject) => KINDS.has(String(scope.kind)) && Object.hasOwn(RANK, String(scope.granularity)) &&
-    typeof scope.scope_key === "string" && /^(?:\*|[a-z0-9][a-z0-9_.:@*/-]{0,95})$/u.test(scope.scope_key);
+  const valid = (scope: JsonObject) => TODO_DECISION_SCOPE_KIND_SET.has(String(scope.kind)) &&
+    TODO_DECISION_SCOPE_GRANULARITY_SET.has(String(scope.granularity)) &&
+    Object.hasOwn(RANK, String(scope.granularity)) && typeof scope.scope_key === "string" &&
+    TODO_DECISION_SCOPE_KEY_PATTERN.test(scope.scope_key);
   return valid(gate) && valid(required) && gate.kind === required.kind &&
     (gate.scope_key === "*" || gate.scope_key === required.scope_key) && RANK[String(gate.granularity)] >= RANK[String(required.granularity)];
 }

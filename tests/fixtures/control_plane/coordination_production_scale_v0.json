@@ -94,6 +94,37 @@
       "registered_agents": ["agent-a", "agent-b"],
       "intent": {"reason": ""},
       "expected": {"status": "applied", "reason": null}
+    },
+    "decision_scope_user_gate": {
+      "todo_id": "todo_fixture_update_decision_gate",
+      "role": "user",
+      "status": "open",
+      "task_class": "user_gate",
+      "goal_bound": true,
+      "global_gate": true,
+      "actor_agent_id": "agent-a",
+      "registered_agents": ["agent-a", "agent-b"],
+      "intent": {"decision_scope": "direction:goal:release"},
+      "expected": {"status": "applied", "decision_scope": {
+        "schema_version": "decision_scope_v0", "kind": "direction",
+        "granularity": "goal", "scope_key": "release"
+      }}
+    },
+    "required_decision_scopes_agent": {
+      "todo_id": "todo_fixture_update_decision_agent",
+      "role": "agent",
+      "status": "open",
+      "task_class": "advancement_task",
+      "claimed_by": "agent-a",
+      "actor_agent_id": "agent-a",
+      "registered_agents": ["agent-a", "agent-b"],
+      "intent": {"required_decision_scopes": [
+        "direction:goal:release", "direction:goal:release"
+      ]},
+      "expected": {"status": "applied", "required_decision_scopes": [{
+        "schema_version": "decision_scope_v0", "kind": "direction",
+        "granularity": "goal", "scope_key": "release"
+      }]}
     }
   }
 }
