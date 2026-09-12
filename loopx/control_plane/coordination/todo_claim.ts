@@ -1,3 +1,4 @@
+import {leaseOwnerRejection as ownerRejection} from "../work_items/task_lease_eligibility.ts";
 import type { JsonObject } from "../effect_program.ts";
 import type { AuthorityStore, AuthorityStoreCommit, AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
@@ -23,7 +24,6 @@ import {
   normalizeIdempotencyKey,
   normalizeTtl,
   normalizeWriteScopes,
-  ownerRejection,
   TASK_LEASE_SCHEMA_VERSION,
   utcIsoformat,
   type LeaseRecord,
@@ -536,11 +536,6 @@ export async function executeCoordinationTodoClaim(
     if (handoffMode === "hard_lease" && leaseRequest !== null) {
       const todoFact = todoLeaseFact(todo);
       const currentActive = currentLease !== undefined && leaseIsActive(currentLease, input.now);
-      const currentEffective = currentLease !== undefined && currentActive && ownerRejection(
-        todoFact,
-        normalizeAgent(currentLease.owner),
-        input.registered_agents,
-      ) === null;
       const otherLeases = projection.lease_todo_ids.flatMap((todoId) => {
         if (todoId === input.todo_id) return [];
         const candidate = projection.leases.get(todoId)!;
@@ -565,7 +560,6 @@ export async function executeCoordinationTodoClaim(
         lease: currentLease === undefined ? null : {
           present: true,
           active: currentActive,
-          effective: currentEffective,
           status: typeof currentLease.status === "string" ? currentLease.status : null,
           owner: normalizeAgent(currentLease.owner),
           idempotency_key: typeof currentLease.idempotency_key === "string"

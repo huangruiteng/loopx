@@ -1,3 +1,4 @@
+import {evaluateTaskLeaseOwnerEligibility} from "./work_items/task_lease_eligibility.ts";
 import { evaluateSubagentContext, describeSubagentContext } from "./subagent_context.ts";
 import {
   effectIdsMatch,
@@ -450,6 +451,7 @@ export function createEffectRuntimeHandlers(
     ["quota.void.commit", evaluateQuotaVoidCommit],
     ["quota.settlement.read", readQuotaSettlement],
     ["quota.turn_envelope.evaluate", evaluateTurnEnvelope],
+    ["task_lease.owner_eligibility", evaluateTaskLeaseOwnerEligibility],
     ["task_lease.acquire.decide", evaluateTaskLeaseAcquireDecision],
     ["task_lease.acquire.native", executeTaskLeaseAcquire],
     ["task_lease.lifecycle.decide", evaluateTaskLeaseLifecycleDecision],

@@ -235,38 +235,6 @@ def _invalid_lease_snapshot(lease: LeaseSnapshot | None) -> bool:
     )
 
 
-def _lease_owner_rejection(
-    snapshot: CoordinationSnapshot,
-    owner: str | None,
-) -> str | None:
-    todo = snapshot.todo
-    if todo is None:
-        return "todo_not_found"
-    if todo.status != "open":
-        return "todo_not_open"
-    if not owner:
-        return "invalid_owner"
-    if owner not in snapshot.registered_agents:
-        return "owner_not_registered"
-    if owner in todo.excluded_agents:
-        return "owner_excluded_from_todo"
-    if todo.claimed_by and todo.claimed_by != owner:
-        return "owner_conflicts_with_claim"
-    return None
-
-
-def _lease_is_effective(
-    snapshot: CoordinationSnapshot,
-    lease: LeaseSnapshot | None,
-) -> bool:
-    return bool(
-        lease is not None
-        and lease.present
-        and lease.active
-        and _lease_owner_rejection(snapshot, lease.owner) is None
-    )
-
-
 def write_scopes_overlap(
     left: tuple[str, ...] | list[str],
     right: tuple[str, ...] | list[str],
@@ -502,9 +470,20 @@ def _decide_lease_owner_eligibility(
     snapshot: CoordinationSnapshot,
     command: LeaseOwnerEligibilityCommand,
 ) -> TransitionPlan:
-    rejection = _lease_owner_rejection(snapshot, command.owner)
-    if rejection is not None:
-        return _result(DecisionOutcome.REJECTED, rejection)
+    payload = effect_runtime_result(
+        "task_lease.owner_eligibility",
+        {
+            "todo": _todo_fact_payload(snapshot.todo) if snapshot.todo else None,
+            "owner": command.owner,
+            "registered_agents": list(snapshot.registered_agents),
+        },
+    )
+    if not isinstance(payload, dict) or payload.get("schema_version") != "task_lease_owner_eligibility_v0":
+        raise RuntimeError("TypeScript lease owner eligibility result shape mismatch")
+    if payload.get("outcome") == "rejected":
+        return _result(DecisionOutcome.REJECTED, str(payload["code"]))
+    if payload.get("outcome") != "apply" or payload.get("code") != "lease_owner_allowed":
+        raise RuntimeError("TypeScript lease owner eligibility verdict mismatch")
     return _result(
         DecisionOutcome.APPLY,
         "lease_owner_allowed",
@@ -537,7 +516,6 @@ def _decide_acquire(
                 {
                     "present": lease.present,
                     "active": lease.active,
-                    "effective": _lease_is_effective(snapshot, lease),
                     "status": lease.status,
                     "owner": lease.owner,
                     "idempotency_key": lease.idempotency_key,

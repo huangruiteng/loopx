@@ -1,3 +1,4 @@
+import {leaseOwnerRejection as ownerRejection} from "./task_lease_eligibility.ts";
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed } from "../coordination/shadow_management.ts";
 import { LegacyCoordinationWriteError, requireLegacyCoordinationPrimaryWriteAllowed } from "../coordination/legacy_writer_fence.ts";
 import { createHash, randomUUID } from "node:crypto";
@@ -1394,20 +1395,6 @@ function todoFactsMatch(left: TodoFact, right: TodoFact): boolean {
     matchesOptional("task_class", (left.task_class ?? null) === (right.task_class ?? null)) &&
     matchesOptional("bound_agent", left.bound_agent === right.bound_agent) &&
     matchesOptional("blocks_agent", left.blocks_agent === right.blocks_agent);
-}
-
-function ownerRejection(
-  todo: TodoFact | null,
-  owner: string | null,
-  registered: readonly string[],
-): string | null {
-  if (!todo) return "todo_not_found";
-  if (todo.status !== "open") return "todo_not_open";
-  if (!owner) return "invalid_owner";
-  if (!registered.includes(owner)) return "owner_not_registered";
-  if (todo.excluded_agents.includes(owner)) return "owner_excluded_from_todo";
-  if (todo.claimed_by && todo.claimed_by !== owner) return "owner_conflicts_with_claim";
-  return null;
 }
 
 function ownerError(
