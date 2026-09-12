@@ -16,7 +16,7 @@ import {
   COORDINATION_TODO_ARCHIVE_RECEIPT_SCHEMA,
   executeCoordinationTodoArchiveCompleted,
   type CoordinationTodoArchiveInput,
-} from "./todo_terminal_lifecycle.ts";
+} from "./todo_archive.ts";
 
 const ATTEMPT_SCHEMA = "loopx_local_todo_archive_attempt_v0";
 export const LOCAL_TODO_ARCHIVE_ACK_RESULT_SCHEMA =

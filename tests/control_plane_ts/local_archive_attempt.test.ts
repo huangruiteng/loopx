@@ -19,7 +19,7 @@ import {
   LOCAL_COORDINATION_TODO_ARCHIVE_REQUEST_SCHEMA,
 } from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 import { shadowManagementDirectory } from "../../loopx/control_plane/coordination/shadow_management.ts";
-import { executeCoordinationTodoArchiveCompleted } from "../../loopx/control_plane/coordination/todo_terminal_lifecycle.ts";
+import { executeCoordinationTodoArchiveCompleted } from "../../loopx/control_plane/coordination/todo_archive.ts";
 
 function todo(id: string): JsonObject {
   return {schema_version: "todo_item_v0", todo_id: id, role: "agent",

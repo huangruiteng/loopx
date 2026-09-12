@@ -1,3 +1,4 @@
+import {COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA} from "./todo_archive.ts";
 import {executeTodoContinuation} from "./todo_continuation.ts";
 import { withFileMutationLock } from "../effect_runtime_io.ts";
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed, shadowMaintenanceLockPath } from "./shadow_management.ts";
@@ -59,7 +60,6 @@ import {
   executeCoordinationTodoUpdate,
 } from "./todo_update.ts";
 import {
-  COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA,
   COORDINATION_TODO_TERMINAL_LIFECYCLE_RESULT_SCHEMA,
   executeCoordinationTodoTerminalLifecycle,
 } from "./todo_terminal_lifecycle.ts";

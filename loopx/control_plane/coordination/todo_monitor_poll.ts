@@ -1,8 +1,8 @@
 /** One canonical transaction for an observation and its independent successors.
  * Network polling, quota settlement and display delivery are separate effects. */
 import type {JsonObject} from "../effect_program.ts";
-import type {AuthorityStore, AuthorityStoreReceiptResult} from "./authority_store.ts";
-import {canonicalAuthorityObject, canonicalAuthoritySha256, requireAuthorityStoreId} from "./authority_store_codec.ts";
+import type {AuthorityStore} from "./authority_store.ts";
+import {AuthorityStoreProtocolError, canonicalAuthorityObject, canonicalAuthoritySha256, requireAuthorityStoreId} from "./authority_store_codec.ts";
 import {normalizeRegisteredTodoAgents, normalizeTodoAgent} from "./todo_agents.ts";
 import {indexCoordinationProjection, prepareCoordinationProjectionCommit, validateCoordinationTodoReadModel} from "./coordination_projection.ts";
 import {TODO_DOMAIN_ITEM_SCHEMA} from "./coordination_state_contract.ts";
@@ -11,7 +11,7 @@ import {planMonitorMetadata, TODO_MONITOR_METADATA_REQUEST_SCHEMA} from "../todo
 import {planMonitorSuccessor, selectMonitorTodo, MONITOR_SUCCESSOR_REQUEST_SCHEMA} from "../scheduler/monitor_successor.ts";
 import {optionalNonEmptyString, requireBoolean} from "../runtime_decode.ts";
 import {planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA} from "../todos/authoring_scope.ts";
-import {projectionDelivery} from "../todos/projection_delivery.ts";
+import {CoordinationCommandReceipt} from "./command_receipt.ts";
 
 export const COORDINATION_MONITOR_POLL_REQUEST_SCHEMA = "loopx_coordination_monitor_poll_request_v0";
 export const COORDINATION_MONITOR_POLL_RESULT_SCHEMA = "loopx_coordination_monitor_poll_result_v0";
@@ -27,23 +27,23 @@ export interface CoordinationMonitorPollInput {
   intent: JsonObject;
 }
 
-function failure(reason_code: string, reason: string): JsonObject {
+function failure(reason_code: string, reason: string): JsonObject & {schema_version: typeof COORDINATION_MONITOR_POLL_RESULT_SCHEMA} {
   return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status: "failed", changed: false, reason_code, reason};
 }
 
-function replay(receipt: AuthorityStoreReceiptResult, input: CoordinationMonitorPollInput,
-  hash: string, status: "applied" | "recovered" | "replayed"): JsonObject | null {
-  if (receipt.status === "missing") return null;
-  if (receipt.status !== "found") return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, ...receipt};
-  const original = receipt.receipts[0];
-  if (receipt.receipts.length !== 1 || original?.schema_version !== RECEIPT_SCHEMA ||
-    original.goal_id !== input.goal_id || original.operation_id !== input.operation_id || original.request_sha256 !== hash) {
-    return failure("coordination_operation_identity_mismatch", "operation id already names a different Monitor observation or successor intent");
-  }
-  return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, status,
-    changed: status !== "replayed", provider_revision: receipt.provider_revision, cursor: receipt.cursor,
-    writeback: {...canonicalAuthorityObject(original.writeback, "Monitor writeback"), provider_replayed: status === "replayed"},
-    projection_delivery: projectionDelivery(true), projection_source: "committed_authority_journal"};
+function monitorReceipt(input: CoordinationMonitorPollInput, hash: string) {
+  return new CoordinationCommandReceipt({result_schema: COORDINATION_MONITOR_POLL_RESULT_SCHEMA,
+    identity: {schema_version: RECEIPT_SCHEMA, goal_id: input.goal_id,
+      operation_id: input.operation_id, request_sha256: hash}, failure,
+    decode(original, phase) {
+      const writeback = canonicalAuthorityObject(original.writeback, "Monitor writeback");
+      if (writeback.schema_version !== "monitor_poll_todo_writeback_v0" ||
+          writeback.goal_id !== input.goal_id || writeback.monitor_effect_id !== input.operation_id ||
+          !Array.isArray(writeback.next_todos)) {
+        throw new AuthorityStoreProtocolError("Monitor receipt writeback identity or successors invalid");
+      }
+      return {fields: {writeback: {...writeback, provider_replayed: phase === "replayed"}}, changed: true};
+    }});
 }
 
 function normalize(raw: CoordinationMonitorPollInput): CoordinationMonitorPollInput {
@@ -156,7 +156,8 @@ export async function executeCoordinationMonitorPoll(store: AuthorityStore,
   // Original wire identity, before any normalization/default route inference.
   const hash = canonicalAuthoritySha256({goal_id: input.goal_id, observation: input.observation,
     intent: input.intent, actor_agent_id: input.actor_agent_id, dry_run: input.dry_run});
-  const previous = replay(await store.readReceipt(input.operation_id), input, hash, "replayed");
+  const receipt = monitorReceipt(input, hash);
+  const previous = await receipt.read(store);
   if (previous) return previous;
   const head = await store.loadAuthority();
   if (head.status !== "loaded") return {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, ...head};
@@ -169,10 +170,5 @@ export async function executeCoordinationMonitorPoll(store: AuthorityStore,
     expected_provider_revision: head.provider_revision, projection: head.head, mutations: plan.mutations});
   commit.receipts = [{schema_version: RECEIPT_SCHEMA, goal_id: input.goal_id, operation_id: input.operation_id,
     request_sha256: hash, writeback: plan.writeback}];
-  const committed = await store.commitAuthority(commit);
-  const result = replay(await store.readReceipt(input.operation_id), input, hash,
-    committed.status === "applied" ? "applied" : "recovered");
-  return result ?? (committed.status === "applied"
-    ? failure("coordination_commit_readback_mismatch", "applied Monitor transaction lacks its durable receipt")
-    : {schema_version: COORDINATION_MONITOR_POLL_RESULT_SCHEMA, ...committed, changed: false});
+  return receipt.commit(store, commit);
 }
