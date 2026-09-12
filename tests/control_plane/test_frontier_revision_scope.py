@@ -2,6 +2,10 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 
+import pytest
+
+from loopx.control_plane.todos import frontier_revision
+
 from loopx.control_plane.todos.frontier_revision import (
     advancement_frontier_revision_from_index,
     build_advancement_frontier_revision_index,
@@ -17,6 +21,14 @@ def rows():
          "text": "Independent work", "excluded_agents": ["worker-a"],
          "updated_at": "2026-09-01T00:00:00.000002Z"},
     ]
+
+
+@pytest.mark.parametrize("index", [None, [], "invalid", 1, True])
+def test_index_adapter_rejects_non_object_typed_response(monkeypatch, index):
+    monkeypatch.setattr(frontier_revision, "effect_runtime_result",
+                        lambda *_args: {"index": index})
+    with pytest.raises(TypeError, match="typed frontier revision response index must be an object"):
+        build_advancement_frontier_revision_index(rows())
 
 
 def test_excluded_unclaimed_work_does_not_rearm_this_agents_frontier():

@@ -99,7 +99,10 @@ def selectable_advancement_frontier_revision(
 def build_advancement_frontier_revision_index(
     source_items: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    return _request("index", rows=frontier_source_facts(source_items))["index"]
+    index = _request("index", rows=frontier_source_facts(source_items)).get("index")
+    if not isinstance(index, dict):
+        raise TypeError("typed frontier revision response index must be an object")
+    return index
 
 
 def attach_advancement_frontier_revision_index(
