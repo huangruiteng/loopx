@@ -377,17 +377,59 @@ repair-mode routing, but they are not hard execution gates.
 `quota should-run` compares the visible executable advancement queue with the
 current launcher capabilities. Basic local capabilities such as `shell`,
 `filesystem_read`, and `filesystem_write` are assumed by default; launchers can
-add temporary capabilities with `--available-capability`, for example:
+declare observed capabilities with `--available-capability`, for example:
 
 ```bash
 loopx --format json quota should-run \
-  --goal-id <goal-id> \
+  --goal-id <goal-id> --agent-id <registered-agent-id> \
   --available-capability benchmark_runner
 ```
 
-Use the same `--available-capability` flags for `quota spend-slot` after a
-validated turn, because spend preview recomputes the same should-run guard
-before writing quota accounting.
+A live `quota should-run` or executing `turn run-once` automatically remembers
+these five runtime observations for the registered Agent on this host:
+`network`, `benchmark_runner`, `external_evidence_poll`, `worker_bridge`, and
+`cli_bridge`. Later decisions, including `quota spend-slot` and `monitor-poll`
+rechecks, read that Agent's observations without repeating flags. Goal/project
+`available_capabilities` declarations are inherited dynamically; Agent observations
+never write back into Goal configuration or propagate to peer Agents.
+
+The scope is the resolved runtime root, registry path, Goal id and registered
+Agent id. Separate hosts/runtimes or registries do not inherit these observations.
+A reused Agent id in the same scope refers to the same runtime declaration;
+use distinct Agent identities for environments with different tools. Observations
+are caller declarations, not independently verified probe receipts. They persist
+until corrected or forgotten; omission of a flag does not revoke them.
+
+```bash
+# Read current Agent observations and inherited/effective declarations.
+loopx --format json agent-capabilities --goal-id <goal-id> --agent-id <agent-id>
+
+# After a real task-facing availability failure, override Goal inheritance locally.
+loopx agent-capabilities --goal-id <goal-id> --agent-id <agent-id> \
+  --unavailable-capability network --execute
+
+# After successful recovery, record availability again.
+loopx agent-capabilities --goal-id <goal-id> --agent-id <agent-id> \
+  --available-capability network --execute
+
+# Remove the local observation; Goal inheritance applies again.
+loopx agent-capabilities --goal-id <goal-id> --agent-id <agent-id> \
+  --forget-capability network --execute
+```
+
+Omit `--execute` on the management command to preview a correction without writing.
+`turn plan` and non-executing `turn run-once` also remain read-only. Unknown or
+permission/enablement capability names retain invocation-only semantics, including
+`credentials`, `production_access` and optional feature activation tokens. A local
+negative overrides an inherited runtime declaration; a fresh explicit positive
+observation replaces that negative. Removing a Goal declaration does not erase an
+Agent's independently recorded observation: clear or correct both scopes when needed.
+The readback exposes Goal, Agent, invocation, unavailable and effective sources.
+
+This intentionally changes the former session-only default for those five runtime
+capabilities. Generated follow-up commands still carry runtime declarations for
+compatibility. No credentials, production grant, optional capability enablement,
+shared-authority head, lease or provider selection is created by this memory.
 
 The resulting `capability_gate` is a read-only projection:
 
@@ -475,13 +517,15 @@ exact `blocked_todo_ids`. The interaction contract turns an owner-held binding
 into an idempotent scoped `user_gate` write linked by `unblocks_todo_id`, while
 an agent-repairable binding becomes an idempotent advancement todo with the
 capability in `target_capabilities`. The user gate does not block unrelated
-runnable todos. `quota should-run` remains read-only; the agent or host executes
-the projected todo write before normal writeback.
+runnable todos. Capability-gate projection does not write Todos; the agent or host
+executes the projected todo write before normal writeback. Live should-run may
+record the scoped runtime observations described above.
 
 Completing a repair or owner todo is not proof that the runtime capability is
-available. The current host must still verify the real callsite and pass the
-capability through `--available-capability` on both preflight and spend. This
-keeps capability truth session-scoped and prevents stale persistent grants.
+available. The current host must verify the real callsite before declaring the
+capability through `--available-capability`. Supported observations are remembered
+for that Agent; after a later real failure, mark the capability unavailable rather
+than repeating a stale positive flag. This memory never grants operation authority.
 
 Runtime capability absence is not permission authority. A missing `network`
 declaration therefore remains in the agent repair lane: the agent should

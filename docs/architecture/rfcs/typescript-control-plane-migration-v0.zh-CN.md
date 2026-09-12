@@ -489,12 +489,24 @@ promotion；压缩候选来源的上限和其余 T3 consumer 仍需分别闭合�
 运行时能力重入现在复用同一个 TS owner：验证目标选择、owner 权限排除、推荐与已绑定
 Turn 的区分，以及无持久授权的恢复合同由 `agents/capability_gate.ts` 负责。Python 删除
 旧目标查找与过滤规则，仅适配 host/scheduler 参数、调用一次 typed reducer 并渲染 shell
-argv；同一 interaction packet 复用结果，健康路径不增加 runtime 调用。修正行为是：显式
+argv；同一 interaction packet 复用结果，重入投影本身在健康路径不增加 runtime 调用。修正行为是：显式
 选择前，可执行的低优先级推荐不能隐藏受阻任务的真实能力验证；验证成功在原 Turn 重入，
-失败后仍可显式选择其他工作。已提交 receipt 的 Todo 不变。该观察属于 host-local read
-plan，遵循 shared-authority RFC 第 3 节边界；不增加 capability lease、共享 grant 或
-provider 写入。CLI/managed Turn 复用已有重入字段，生成的 `/loopx` skill 明确要求核对
-缺失声明；没有新增前端配置或第二份 UI 状态。
+失败后仍可显式选择其他工作。已提交 receipt 的 Todo 不变。
+
+`agents/capability_memory.ts` 现在持有本机 Agent 运行时能力声明、校验与幂等合并，
+复用现有文件锁及 durable JSON writer；`capability_gate.ts` 统一 Goal、Agent、本次
+调用的继承规则及不可用覆盖，删除 Python 的重复 union 规则。Live quota 与实际执行
+的 Turn 自动记忆五种显式类型化的运行时能力，规划仍只读。Quota preparation 即使
+使用缓存 status 也读取当前 Agent 记录，选择与结算重算共用这条路径。每个决策增加一次 availability reducer 调用，有注册
+身份的决策另增加一次记录读取；显式 live 声明增加一次
+observation 调用。Python 只适配 registry、宿主和 CLI，不增加第二套状态 reducer。
+
+记录按本机 runtime、registry、Goal、注册 Agent 隔离，不升级为 Goal 公共声明，
+不授予凭证、生产访问或可选功能启用，不进入 shared-authority head／grant／lease。
+通过 `agent-capabilities` 查看、更正、清除；生成的 `/loopx` skill 指导记录失败及恢复。
+现有前端 capability editor 管理可选功能配置，保持原配置 owner，不把本机工具观察
+混入功能开关。详见[操作语义](../../quota-allocation.md)。
+
 
 Advancement-frontier checkpoint 闭合：`todos/frontier_revision.ts` 现统一 Agent
 选择、完整度、实质内容哈希、长链阈值与精确 ACK/rearm 分类。Python 保留 v0 字段清单
