@@ -216,7 +216,7 @@ _PUBLIC_COMPAT_REEXPORTS = {
     "todo_item_next_due_at": "loopx.control_plane.todos.todo_summary",
     "todo_projection_sort_key": "loopx.control_plane.todos.todo_summary",
     "normalize_todo_task_class": "loopx.control_plane.todos.contract",
-    "todo_item_is_expired_monitor": "loopx.control_plane.todos.projection",
+    "todo_item_is_expired_monitor": "loopx.control_plane.todos.todo_semantics",
 }
 
 
