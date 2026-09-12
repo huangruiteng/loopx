@@ -93,7 +93,16 @@ export function normalizeTodoRequiredDecisionScopes(
   const result: TodoDecisionScope[] = [];
   const seen = new Set<string>();
   rawValues.forEach((raw, index) => {
-    const scope = normalizeTodoDecisionScope(raw, `${label}[${index}]`);
+    let scope: TodoDecisionScope | null;
+    try {
+      scope = normalizeTodoDecisionScope(raw, `${label}[${index}]`);
+    } catch (error) {
+      // Keep the legacy CLI's aggregate validation contract while retaining
+      // the offending index for native callers and diagnostics.
+      const detail = error instanceof Error ? ` (${error.message})` : "";
+      const aggregateLabel = label.replace(/\[\d+\]$/u, "");
+      fail(`${aggregateLabel} must contain kind:granularity:scope_key tokens; invalid item ${index}${detail}`);
+    }
     if (scope === null) fail(`${label}[${index}] must be a decision scope`);
     const key = identity(scope);
     if (!seen.has(key)) {
