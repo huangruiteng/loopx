@@ -19,20 +19,21 @@ links that snapshot into `~/.local/bin/loopx`. It also installs a
 gray-rollout goal controllers. This keeps default automations stable while
 allowing one canary goal to validate prompt/runtime changes before promotion.
 The installer adds the bin directory to the current shell profile when it is
-missing from `PATH`, and installs a snapshot of the `loopx-project` Codex
-skill into `~/.codex/skills` so future project agents use the same connection
-workflow. Use `loopx doctor` from any project folder to inspect the
+missing from `PATH`, and installs the generated core LoopX command skill into
+`~/.codex/skills/loopx`. Rich project workflows remain release-owned sources
+and are installed explicitly into a connected project. Use `loopx doctor` from
+any project folder to inspect the
 resolved command path, symlink target, release snapshot, canary wrapper,
 installed skill delivery-hint state, wrapper script, and Python import health.
 
 ## Global Skill Policy
 
-LoopX product behavior belongs in installed global Codex skills, not in
-one repository's `AGENTS.md`. Keep the global skills narrow and versioned:
-they should teach LoopX connection, quota/state/todo writeback,
-self-repair, and generic product contracts such as todo succession. Project
-state, benchmark-specific choices, private material, and one-off operator
-decisions stay in the registry, active state, run history, or project docs.
+Core LoopX product behavior belongs in the generated global Codex skill, not in
+one repository's `AGENTS.md`. Keep that global entry narrow and versioned: it
+teaches LoopX connection, quota/state/todo writeback, and generic contracts
+such as todo succession. Rich project workflows, benchmark-specific choices,
+private material, and one-off operator decisions stay in the release's
+project-skill sources, registry, active state, run history, or project docs.
 When a recurring behavior should improve every future worker, update the repo
 skill source and run `scripts/install-local.sh`; when it applies only to this
 repo's contribution hygiene, keep it in `AGENTS.md`.

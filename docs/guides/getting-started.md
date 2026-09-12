@@ -536,7 +536,9 @@ checkout to the default local release.
 
 - the CLI wrappers under `~/.local/bin`;
 - the local manual page under `~/.local/share/man`;
-- the LoopX Codex skills under `~/.codex/skills`.
+- the generated core LoopX Codex skill under `~/.codex/skills/loopx`; rich
+  project workflows remain release-owned sources until explicitly installed
+  into a connected project.
 
 Use the named update actions so read-only inspection and mutation are visible:
 
