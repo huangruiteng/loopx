@@ -533,12 +533,21 @@ but optimizing it must retain identity consumption, replay and conflict checks.
 
 Current local facades reuse their generated id within managed-runtime retries.
 Separate CLI invocations are not implicitly one attempt: claim exposes
-`--claim-operation-id`, while create and text/note update do not currently expose
-an equivalent cross-process recovery key. That is a caller-recovery limitation,
+`--claim-operation-id` and update exposes `--update-operation-id`; create does not
+currently expose an equivalent cross-process recovery key. That is a caller-recovery limitation,
 not proof of duplicate business effects or universal exactly-once execution.
 Any extension must define the retry boundary and distinguish retries from new
 intent before adding keys or durable attempt tracking. Test lost responses and
 intervening writes; a source-level ban on UUID construction proves neither.
+
+The canonical Todo commands now share one TS receipt recovery owner. Their
+local result contract retains unresolved post-commit readback as `ambiguous`
+and names the original operation for recovery; it does not infer no-write from
+an unavailable receipt or retry the CAS automatically. See the
+[command recovery checkpoint](typescript-control-plane-migration-v0.md#command-receipt-and-recovery-ownership)
+for intentional diagnostic changes and the complete fixture matrix. Historical
+receipt identity and one-way Markdown delivery remain intact. This is command
+recovery qualification, not storage retention, service availability or promotion.
 
 For every request, the authority performs this sequence:
 
