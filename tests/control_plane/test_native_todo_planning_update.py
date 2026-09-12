@@ -14,7 +14,7 @@ from loopx.control_plane.todos.contract import format_todo_metadata_line
 from loopx.todos import list_goal_todos, update_goal_todo
 
 
-def fixture(tmp_path: Path, promoted: bool) -> tuple[Path, Path]:
+def fixture(tmp_path: Path, promoted: bool, provider: str = "file") -> tuple[Path, Path]:
     project = tmp_path / "project"
     state = project / ".codex/goals/goal-a/ACTIVE_GOAL_STATE.md"
     state.parent.mkdir(parents=True)
@@ -39,7 +39,7 @@ def fixture(tmp_path: Path, promoted: bool) -> tuple[Path, Path]:
     if promoted:
         todos = list_goal_todos(registry_path=registry, goal_id="goal-a")["todos"]
         projection = build_todo_runtime_shadow_projection(goal_id="goal-a", todos=todos, handoff_mode="soft_claim")
-        initialize_canonical_authority(runtime, "goal-a", projection, state_path=state)
+        initialize_canonical_authority(runtime, "goal-a", projection, state_path=state, provider=provider)
         state.unlink()  # The update must neither require nor import a Markdown authority source.
     return registry, state
 
@@ -210,7 +210,7 @@ def test_public_cli_nonterminal_wait_update_and_clear(tmp_path: Path, promoted: 
 
 
 @pytest.mark.parametrize("args", [
-    ["--status", "done"], ["--status", "deferred"], ["--claimed-by", "agent-b"],
+    ["--status", "done"], ["--status", "deferred"], ["--claimed-by", "unknown-agent"],
     ["--task-class", "continuous_monitor"], ["--status", "blocked", "--agent-id", "agent-b"],
 ])
 def test_promoted_unsupported_or_unauthorized_update_never_falls_back(tmp_path: Path, args: list[str]) -> None:

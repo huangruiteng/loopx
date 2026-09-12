@@ -3,7 +3,8 @@
 import type { JsonObject } from "../effect_program.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
-import { planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA } from "./authoring_scope.ts";
+import { planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA,
+  normalizeTodoOwnershipIntent, TODO_OWNERSHIP_INTENT_FIELDS } from "./authoring_scope.ts";
 import { planTodoFieldUpdate, TODO_FIELD_UPDATE_REQUEST_SCHEMA } from "./field_update.ts";
 import { planTodoExternalWaitTransition, TODO_EXTERNAL_WAIT_REQUEST_SCHEMA_VERSION } from "./resume_condition.ts";
 import { normalizeTodoWorkRequirements, TODO_WORK_REQUIREMENT_FIELDS } from "./work_requirements.ts";
@@ -12,7 +13,7 @@ export const TODO_PUBLIC_UPDATE_REQUEST_SCHEMA = "todo_public_update_request_v0"
 
 const SCOPE_INTENT_FIELDS = ["task_class", "status", "claimed_by", "bound_agent", "goal_bound",
   "blocks_agent", "clear_blocks_agent", "global_gate", "clear_global_gate", "excluded_agents",
-  "task_repository", "task_domain", "resume_when", "clear_resume_when"] as const;
+  "task_repository", "task_domain", "resume_when", "clear_resume_when", "clear_claim"] as const;
 
 function externalWait(todo: JsonObject, intent: JsonObject, scope: JsonObject,
   context: JsonObject): JsonObject | null {
@@ -46,7 +47,9 @@ export function planPublicTodoUpdate(value: unknown): JsonObject {
   const rawIntent = requireJsonObject(request.intent, "public Todo update intent");
   const intent: JsonObject = {...rawIntent};
   for (const field of TODO_WORK_REQUIREMENT_FIELDS) delete intent[field];
+  for (const field of TODO_OWNERSHIP_INTENT_FIELDS) delete intent[field];
   Object.assign(intent, normalizeTodoWorkRequirements(rawIntent));
+  Object.assign(intent, normalizeTodoOwnershipIntent(rawIntent));
   const context = requireJsonObject(request.context, "public Todo update context");
   const scope = planTodoAuthoringScope({schema_version: TODO_AUTHORING_SCOPE_REQUEST_SCHEMA,
     command: "update", role: context.role, todo,

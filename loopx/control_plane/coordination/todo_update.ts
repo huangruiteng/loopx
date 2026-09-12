@@ -1,5 +1,6 @@
 import type { JsonObject } from "../effect_program.ts";
 import { TODO_WORK_REQUIREMENT_FIELDS } from "../todos/work_requirements.ts";
+import { TODO_OWNERSHIP_INTENT_FIELDS } from "../todos/authoring_scope.ts";
 import type { AuthorityStore, AuthorityStoreCommit, AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -20,7 +21,8 @@ import {
 } from "./coordination_projection.ts";
 import { normalizeRegisteredTodoAgents, normalizeTodoAgent } from "./todo_agents.ts";
 
-import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA }
+import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
+  registeredTodoMutationRejection }
   from "./todo_lifecycle_decision.ts";
 import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
@@ -187,21 +189,22 @@ function targetRejection(
     return failure("unsupported_todo_update_target",
       "native metadata update currently requires a non-completed agent Todo");
   }
-  if (Array.isArray(todo.excluded_agents) && todo.excluded_agents.includes(input.actor_agent_id)) {
-    return failure("actor_excluded", "Todo update actor is excluded from this Todo");
-  }
-  if (todo.bound_agent && todo.bound_agent !== input.actor_agent_id) {
-    return failure("bound_agent_mismatch", "Todo update requires the bound agent");
-  }
-  // Text/note correction is not a claim or an execution transition. Registered
-  // peers may edit unclaimed work, but must not edit another owner's work.
-  if (todo.claimed_by && todo.claimed_by !== input.actor_agent_id) {
-    return failure("update_owner_mismatch", "Todo update cannot edit another claim owner's work");
+  const actorRejection = registeredTodoMutationRejection(todo, input.actor_agent_id, input.registered_agents);
+  if (actorRejection !== null) {
+    return failure(actorRejection === "claim_owner_mismatch" ? "update_owner_mismatch" : actorRejection,
+      "Todo update requires a registered, non-excluded actor within the existing owner/binding scope");
   }
   const lease = leases.get(input.todo_id);
   const mode = head.handoff_mode === undefined ? "legacy" : head.handoff_mode;
   if (typeof mode !== "string" || !["legacy", "soft_claim", "hard_lease"].includes(mode)) {
     return failure("invalid_handoff_mode", "canonical handoff mode is invalid");
+  }
+  // A retained lease, even expired/released, has execution lineage. Ownership
+  // and exclusions must not change beneath it through a metadata operation.
+  if ((lease !== undefined || mode === "hard_lease") && TODO_OWNERSHIP_INTENT_FIELDS.some(field =>
+    Object.hasOwn(input.planning_intent ?? {}, field))) {
+    return failure("update_lease_ownership_transition_unsupported",
+      "Ownership/exclusion edits require a lease lifecycle transaction; metadata update cannot rewrite an execution grant");
   }
   if (lease !== undefined || mode === "hard_lease" ||
       input.lease_idempotency_key != null || input.lease_expected_version != null) {
@@ -259,7 +262,7 @@ function prepareUpdatedTodo(
   const rawCopyChanged = Object.entries(input.patch).some(([field, value]) =>
     !Object.hasOwn(todo, field) || !canonicalAuthorityBytes(todo[field]).equals(canonicalAuthorityBytes(value))) ||
     input.clear_fields.some(field => Object.hasOwn(todo, field));
-  if (rawCopyChanged) {
+  if (rawCopyChanged || TODO_OWNERSHIP_INTENT_FIELDS.some(field => Object.hasOwn(input.planning_intent ?? {}, field))) {
     next.last_actor_agent_id = input.actor_agent_id;
   }
   next.updated_at = input.now.toISOString().replace(/\.\d{3}Z$/u, "Z");
