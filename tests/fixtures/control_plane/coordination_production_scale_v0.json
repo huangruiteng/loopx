@@ -6,11 +6,13 @@
     "blocked": 32,
     "deferred": 16
   },
+  "agent_status_order": ["done", "open", "blocked", "deferred"],
   "user_status_counts": {
     "done": 192,
     "open": 8,
     "deferred": 8
   },
+  "user_status_order": ["done", "open", "deferred"],
   "current_lease_count": 64,
   "retired_lease_count": 160,
   "standing_user_decision_count": 4,
@@ -58,6 +60,29 @@
       "status": "active",
       "expires_at": "2024-01-01T00:00:00Z",
       "lease_epoch": 7
+    }
+  },
+  "presentation_cases": {
+    "legacy_display": {
+      "schema_version": "todo_item_v0",
+      "todo_id": "todo_fixture_display_legacy",
+      "role": "agent",
+      "status": "open",
+      "done": false,
+      "text": "Legacy display address",
+      "archive_state": "active",
+      "source_section": "Agent Todo",
+      "index": 7
+    },
+    "native_display": {
+      "schema_version": "todo_domain_record_v0",
+      "todo_id": "todo_fixture_display_native",
+      "role": "agent",
+      "status": "open",
+      "done": false,
+      "text": "Native display address",
+      "archive_state": "archive",
+      "updated_at": "2025-01-02T00:00:00Z"
     }
   }
 }

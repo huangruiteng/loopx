@@ -19,7 +19,10 @@ import {
   TODO_DOMAIN_RECORD_CONTRACT,
   TODO_ITEM_SCHEMA,
 } from "../../loopx/control_plane/coordination/coordination_state_contract.ts";
-import { prepareCoordinationProjectionCommit } from "../../loopx/control_plane/coordination/coordination_projection.ts";
+import {
+  coordinationTodoReadModel,
+  prepareCoordinationProjectionCommit,
+} from "../../loopx/control_plane/coordination/coordination_projection.ts";
 import { executeCoordinationTodoClaim } from "../../loopx/control_plane/coordination/todo_claim.ts";
 import { executeCoordinationTodoCreate } from "../../loopx/control_plane/coordination/todo_create.ts";
 import {executeCoordinationMonitorPoll} from "../../loopx/control_plane/coordination/todo_monitor_poll.ts";
@@ -39,6 +42,9 @@ import {
   PRODUCTION_SCALE_VALIDATION_DECLARATION,
   productionScaleCoordinationFixture,
 } from "./production_scale_coordination_fixture.ts";
+import {
+  authorityProjectionFixture,
+} from "./authority_projection_fixture.ts";
 
 export interface AuthorityStoreConformanceFixture {
   store: AuthorityStore;
@@ -72,21 +78,9 @@ function todoClaimProjection(goalId: string, native: boolean): Record<string, un
     todos[0]!.schema_version = TODO_DOMAIN_ITEM_SCHEMA;
     Reflect.deleteProperty(todos[0]!, "source_section");
   }
-  const recordsSha256 = createHash("sha256")
-    .update(canonicalAuthorityBytes(todos))
-    .digest("hex");
-  return {
-    goal_id: goalId,
+  return authorityProjectionFixture(goalId, todos, [], native ? "native" : "legacy", {
     handoff_mode: "soft_claim",
-    todos,
-    leases: [],
-    todo_read_model: {
-      schema_version: native ? TODO_DOMAIN_READ_RECORD_SCHEMA : TODO_CANONICAL_READ_RECORD_SCHEMA,
-      todo_count: todos.length,
-      records_sha256: recordsSha256,
-      contract_fields: native ? [...TODO_DOMAIN_RECORD_CONTRACT.fields] : [...TODO_CANONICAL_READ_RECORD_FIELDS],
-    },
-  };
+  });
 }
 
 function todoTerminalProjection(goalId: string): Record<string, unknown> {
@@ -155,11 +149,7 @@ function todoTerminalProjection(goalId: string): Record<string, unknown> {
       completed_at: "2026-08-31T00:00:00Z",
     },
   ].sort((left, right) => left.todo_id.localeCompare(right.todo_id));
-  return {
-    goal_id: goalId,
-    handoff_mode: "hard_lease",
-    todos,
-    leases: [{
+  const leases = [{
       schema_version: "task_lease_v0",
       goal_id: goalId,
       todo_id: "todo-terminal",
@@ -173,16 +163,10 @@ function todoTerminalProjection(goalId: string): Record<string, unknown> {
       updated_at: "2026-09-07T05:50:00Z",
       expires_at: "2026-09-07T06:10:00Z",
       status: "active",
-    }],
-    todo_read_model: {
-      schema_version: TODO_DOMAIN_READ_RECORD_SCHEMA,
-      todo_count: todos.length,
-      records_sha256: createHash("sha256")
-        .update(canonicalAuthorityBytes(todos))
-        .digest("hex"),
-      contract_fields: [...TODO_DOMAIN_RECORD_CONTRACT.fields],
-    },
-  };
+    }];
+  return authorityProjectionFixture(goalId, todos, leases, "native", {
+    handoff_mode: "hard_lease",
+  });
 }
 
 export function authorityStoreCommitFixture(
@@ -261,7 +245,7 @@ export function registerAuthorityStoreConformance(
   for (const native of [false, true]) test(`${providerName} conformance: atomic Monitor observation and successor (${native ? "native" : "legacy"})`, async (t) => {
     const {store, contender} = await factory(t);
     const goal = "goal-monitor";
-    const fixture = productionScaleCoordinationFixture(goal);
+    const fixture = productionScaleCoordinationFixture(goal, native ? "native" : "legacy");
     const projection = structuredClone(fixture.projection);
     const records = projection.todos as Record<string, unknown>[];
     const monitor = records.find(todo => todo.task_class === "continuous_monitor" && todo.status !== "done" &&
@@ -269,12 +253,12 @@ export function registerAuthorityStoreConformance(
     assert.ok(monitor, "complex fixture needs a lease-free Monitor");
     Object.assign(monitor, {target_key: "conformance-watch", cadence: "1h", material_change_generation: 4});
     for (const field of ["claimed_by", "bound_agent", "excluded_agents", "last_checked_at", "monitor_effect_id", "task_repository", "result_hash"]) delete monitor[field];
-    if (native) for (const record of records) {
-      record.schema_version = TODO_DOMAIN_ITEM_SCHEMA; delete record.source_section; delete record.index;
-    }
-    projection.todo_read_model = {schema_version: native ? TODO_DOMAIN_READ_RECORD_SCHEMA : TODO_CANONICAL_READ_RECORD_SCHEMA,
-      todo_count: records.length, records_sha256: canonicalAuthoritySha256(records),
-      contract_fields: [...(native ? TODO_DOMAIN_RECORD_CONTRACT.fields : TODO_CANONICAL_READ_RECORD_FIELDS)]};
+    // The fixture owns the compatibility conversion; this test only changes
+    // the monitor-specific observation fields.
+    projection.todo_read_model = coordinationTodoReadModel(
+      records,
+      (projection.todo_read_model as Record<string, unknown>).schema_version,
+    );
     assert.equal((await store.commitAuthority({operation_id: "monitor-seed", expected_provider_revision: null,
       events: [], receipts: [], next_projection: projection})).status, "applied");
     const request = {goal_id: goal, operation_id: "monitor-effect", actor_agent_id: "agent-a",
@@ -315,18 +299,9 @@ export function registerAuthorityStoreConformance(
   for (const native of [false, true]) test(`${providerName} conformance: governance reads one full Todo/lease snapshot (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
     const goal = "goal-governance";
-    const fixture = productionScaleCoordinationFixture(goal);
+    const fixture = productionScaleCoordinationFixture(goal, native ? "native" : "legacy");
     const projection = structuredClone(fixture.projection);
     const records = projection.todos as Record<string, unknown>[];
-    if (native) {
-      for (const record of records) {
-        record.schema_version = TODO_DOMAIN_ITEM_SCHEMA;
-        delete record.source_section; delete record.index;
-      }
-      projection.todo_read_model = {schema_version: TODO_DOMAIN_READ_RECORD_SCHEMA,
-        todo_count: records.length, records_sha256: canonicalAuthoritySha256(records),
-        contract_fields: [...TODO_DOMAIN_RECORD_CONTRACT.fields]};
-    }
     const seeded = await store.commitAuthority({operation_id: "governance-fixture",
       expected_provider_revision: null, events: [], receipts: [], next_projection: projection});
     assert.equal(seeded.status, "applied");
@@ -856,10 +831,10 @@ export function registerAuthorityStoreConformance(
     assert.deepEqual(archived.moved_todo_ids, ["todo-z-older"]);
   });
 
-  test(`${providerName} conformance: production-scale terminal lifecycle stays bounded`, async (t) => {
+  for (const schema of ["legacy", "native"] as const) test(`${providerName} conformance: production-scale terminal lifecycle stays bounded (${schema})`, async (t) => {
     const {store} = await factory(t);
     const goalId = "goal-production-scale";
-    const fixture = productionScaleCoordinationFixture(goalId);
+    const fixture = productionScaleCoordinationFixture(goalId, schema);
     assert.equal(fixture.projection.handoff_mode, "hard_lease");
     const initialized = await store.commitAuthority({
       expected_provider_revision: null,
