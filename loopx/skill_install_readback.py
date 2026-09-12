@@ -91,6 +91,21 @@ def summarize_skill_routes(
     }
 
 
+def external_skill_set_ready(
+    skills: Mapping[str, Mapping[str, Any]], required_ids: Sequence[str]
+) -> bool:
+    """Recognize a complete externally managed project-skill set."""
+
+    return bool(required_ids) and all(
+        isinstance(skill := skills.get(skill_id), Mapping)
+        and bool(skill.get("exists"))
+        and bool(skill.get("required_phrases"))
+        and bool(skill.get("managed_externally"))
+        and not bool(skill.get("route_conflict"))
+        for skill_id in required_ids
+    )
+
+
 def _user_home() -> Path:
     return Path.home().expanduser()
 

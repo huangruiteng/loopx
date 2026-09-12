@@ -16,6 +16,7 @@ Common environment variables:
   LOOPX_PROMOTE_DEFAULT=1          Promote this checkout as the default loopx.
   LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
   LOOPX_INSTALL_SKILL=0            Skip packaged workflow skills.
+  LOOPX_INSTALL_PROJECT_SKILLS=1   Include project-scoped skills in an isolated project profile.
   LOOPX_SKILLS_DIR=/path           Install workflow skills into this host-native root.
   LOOPX_SKILL_DEDUPE_OTHER_ROOT=1  Retire managed LoopX skill copies from the alternate well-known root.
   LOOPX_ENTRY_HOST_SURFACE=...     Bind generated $loopx to an exact host (ark-managed-agent).
@@ -67,6 +68,7 @@ fi
 man_root="${LOOPX_MAN_ROOT:-$HOME/.local/share/man}"
 man_dir="${LOOPX_MAN_DIR:-$man_root/man1}"
 install_skill="${LOOPX_INSTALL_SKILL:-1}"
+install_project_skills="${LOOPX_INSTALL_PROJECT_SKILLS:-0}"
 install_canary="${LOOPX_INSTALL_CANARY:-1}"
 promote_default_request="${LOOPX_PROMOTE_DEFAULT:-auto}"
 releases_dir="${LOOPX_RELEASES_DIR:-$HOME/.local/share/loopx/releases}"
@@ -352,7 +354,7 @@ install_workflow_skills() {
   while IFS= read -r skill_source; do
     skill_name="$(basename "$skill_source")"
     skill_scope_file="$skill_source/.loopx-skill-scope"
-    if [[ -f "$skill_scope_file" ]] && [[ "$(tr -d '[:space:]' <"$skill_scope_file")" == "project" ]]; then
+    if [[ "$install_project_skills" != "1" ]] && [[ -f "$skill_scope_file" ]] && [[ "$(tr -d '[:space:]' <"$skill_scope_file")" == "project" ]]; then
       skill_line="${skill_line}- project skill source: $skill_source (install explicitly per project)"$'\n'
       continue
     fi

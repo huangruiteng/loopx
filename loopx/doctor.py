@@ -27,6 +27,7 @@ from .release_manifest import load_release_manifest, release_version_tag
 from .skill_install_readback import (
     ARK_MANAGED_AGENT_REQUIRED_SKILL_IDS,
     configured_host_skills_dir,
+    external_skill_set_ready,
     inspect_skill_install_readback,
     skill_has_required_phrases,
     skill_install_doctor_checks,
@@ -468,19 +469,21 @@ def build_install_freshness(
     required_skills = [
         skill for skill in skills.values() if skill.get("required", True)
     ]
-    skills_ready = bool(required_skills) and all(
+    readiness_skills = required_skills or list(skills.values())
+    skills_ready = bool(readiness_skills) and all(
         skill.get("exists")
         and skill.get("required_phrases")
         and not skill.get("route_conflict")
-        for skill in required_skills
+        for skill in readiness_skills
     )
     distribution_install = (
         python_distribution
         if isinstance(python_distribution, dict) and python_distribution.get("available")
         else None
     )
+    managed_skill_values = required_skills or list(skills.values())
     externally_managed_skills = skills_ready and any(
-        skill.get("managed_externally") for skill in required_skills
+        skill.get("managed_externally") for skill in managed_skill_values
     )
     skill_problem = require_installed_skills and not skills_ready
     if command_path is None:
@@ -935,6 +938,8 @@ def collect_doctor(
         if skill_name in skills:
             skills[skill_name]["required"] = False
     core_skill = skills["loopx"]
+    if not core_skill.get("exists") and external_skill_set_ready(skills, project_scoped_skill_ids):
+        core_skill["required"] = False
     skill_path = Path(str(core_skill["path"]))
     globally_visible_project_skills = [
         skill_name
