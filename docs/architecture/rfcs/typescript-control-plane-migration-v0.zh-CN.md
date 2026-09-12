@@ -312,6 +312,12 @@ commit。#4121（SQLite 候选）和 #4101（投影 receipt 保留）是独立�
 
 **T1 — 闭合公开 Todo update 事务。**
 
+当前 ownership slice 已将 promoted 路径的 claim 转交、清除和执行排除编辑接入
+typed update planner。规范化参与请求身份，因此重放不能恢复已被后续操作取代的
+claim。带 lease 的 ownership 变化仍必须走 lifecycle，不是 metadata 授权；未
+promotion 的 Goal 继续使用旧 writer。这是有边界的 T1 闭合，不代表所有 Todo
+字段或 Goal promotion 已完成。
+
 已闭合的前置项：`todos/public_update.ts` 在同一锁内快照上组合 authoring scope、
 external-wait 拓扑和 Monitor/field 规划。公开 Python writer 不再逐个调用这些
 leaf RPC，也不推导 Monitor 等待基线。`update_source.py` 只输送完整、紧凑的

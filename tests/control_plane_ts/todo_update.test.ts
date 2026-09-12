@@ -56,10 +56,10 @@ test("native planning edit commits nonterminal state and clears its wait atomica
   assert.equal(next.resume_monitor_generation, undefined);
 });
 
-test("planning intent cannot smuggle terminal, ownership or observation writes", async () => {
+test("planning intent cannot smuggle terminal, decision or observation writes", async () => {
   const {store, request} = await seeded({task_class: "advancement_task"});
   for (const planning_intent of [
-    {status: "done"}, {claimed_by: "agent-b"}, {clear_claim: true},
+    {status: "done"}, {decision_outcome: "approve"},
     {global_gate: true}, {monitor_metadata: {material_change: "true"}},
     {completion_metadata_updates_override: {completion_continuation: "no_followup"}},
     {status: "deferred"}, {successor_todo_ids: "todo_other"},
@@ -70,6 +70,47 @@ test("planning intent cannot smuggle terminal, ownership or observation writes",
     assert.deepEqual(await store.loadAuthority(), before);
     assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
   }
+});
+
+test("owner can transfer and clear a claim; retry cannot restore an old owner", async () => {
+  const {store, request} = await seeded({task_class: "advancement_task"});
+  const transfer = {...request, patch: {}, clear_fields: [], planning_intent: {claimed_by: "Agent B"}};
+  const before = await store.loadAuthority();
+  assert.equal((await executeCoordinationTodoUpdate(store, {...transfer, dry_run: true})).status, "planned");
+  assert.deepEqual(await store.loadAuthority(), before);
+  assert.equal((await executeCoordinationTodoUpdate(store, transfer)).status, "applied");
+  const transferred = await store.loadAuthority();
+  assert.equal(transferred.status, "loaded");
+  if (transferred.status !== "loaded") return;
+  const row = (transferred.head.todos as Record<string, unknown>[])[0]!;
+  assert.equal(row.claimed_by, "agent-b");
+  assert.equal(row.last_actor_agent_id, "agent-a");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...request, operation_id: "old-owner-edit"})).reason_code,
+    "update_owner_mismatch");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...transfer, operation_id: "clear-owner",
+    actor_agent_id: "agent-b", planning_intent: {clear_claim: true}})).status, "applied");
+  const cleared = await store.loadAuthority();
+  assert.equal((await executeCoordinationTodoUpdate(store, {...transfer,
+    planning_intent: {claimed_by: "agent-b"}})).status, "replayed");
+  assert.deepEqual(await store.loadAuthority(), cleared);
+});
+
+test("exclusion edits are atomic, normalized, and cannot exempt their excluded author", async () => {
+  const {store, request} = await seeded({task_class: "advancement_task"});
+  const edit = {...request, patch: {}, clear_fields: [], planning_intent: {excluded_agents: ["Agent B", "agent-b"]}};
+  assert.equal((await executeCoordinationTodoUpdate(store, edit)).status, "applied");
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit, operation_id: "excluded-author",
+    actor_agent_id: "agent-b", planning_intent: {excluded_agents: []}})).reason_code, "actor_excluded");
+  const before = await store.loadAuthority();
+  for (const planning_intent of [{claimed_by: "unregistered"}, {excluded_agents: ["agent-b", "unregistered"]},
+    {claimed_by: "agent-b", clear_claim: true}, {excluded_agents: "agent-b"}]) {
+    const rejected = await executeCoordinationTodoUpdate(store, {...request, operation_id: "invalid-owner", planning_intent});
+    assert.equal(rejected.status, "failed");
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt("invalid-owner")).status, "missing");
+  }
+  assert.equal((await executeCoordinationTodoUpdate(store, {...edit, operation_id: "clear-exclusions",
+    planning_intent: {excluded_agents: []}})).status, "applied");
 });
 
 function todo(overrides: Record<string, unknown> = {}) {

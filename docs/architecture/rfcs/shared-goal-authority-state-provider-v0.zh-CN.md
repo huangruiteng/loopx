@@ -2148,6 +2148,10 @@ promotion 后不再读取本地旧 lease 文件；canonical 空租约集合保�
 当前 acquire/lifecycle 共用 TS owner，包含 claim 分歧和 exclusion；读取结果不是
 租约授权，也不是 commit receipt。该 reader 闭合和重复规则删除不代表 provider
 资格化，不改变 CAS/replay 或 D1–D3；永久 Markdown 展示与后续规划继续保留。
+ownership 编辑在 promotion 后现在与现有 update transaction 共用 typed authoring
+和 lifecycle 边界。claim/exclusion 门禁保留，带 lease 的 ownership 重写继续拒绝；
+promotion 前仍保留 Markdown writer 兼容路径。这删除了一条重复决策路径，但不代表
+provider 已资格化、不改变 promotion 默认值，也不放宽 D1–D3。
 
 命令清单、update/monitor 事务和 consumer 删除统一按
 [TS 执行卡](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡)

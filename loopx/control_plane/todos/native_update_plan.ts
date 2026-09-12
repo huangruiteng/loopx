@@ -7,10 +7,12 @@ import { compactPythonWhitespace } from "../coordination/todo_agents.ts";
 import { normalizeTodoId } from "../work_items/task_lease_acquire.ts";
 import { planPublicTodoUpdate, TODO_PUBLIC_UPDATE_REQUEST_SCHEMA } from "./public_update.ts";
 import { normalizeTodoWorkRequirements, TODO_WORK_REQUIREMENT_FIELDS } from "./work_requirements.ts";
+import {normalizeTodoOwnershipIntent, TODO_OWNERSHIP_INTENT_FIELDS} from "./authoring_scope.ts";
 
 const STRINGS = new Set(["status", "evidence", "reason", "resume_when", "unblocks_todo_id"]);
 const BOOLEANS = new Set(["clear_resume_when", "no_followup"]);
-const FIELDS = new Set([...STRINGS, ...BOOLEANS, "successor_todo_ids", ...TODO_WORK_REQUIREMENT_FIELDS]);
+const FIELDS = new Set([...STRINGS, ...BOOLEANS, "successor_todo_ids", ...TODO_WORK_REQUIREMENT_FIELDS,
+  ...TODO_OWNERSHIP_INTENT_FIELDS]);
 
 /** A separate intent namespace preserves the shipped text/note patch and its
  * historical receipt encoding. Raw field patches do not gain new authority. */
@@ -21,6 +23,7 @@ export function normalizeNativePlanningIntent(value: unknown): JsonObject {
   for (const [field, value] of Object.entries(raw)) {
     if (!FIELDS.has(field)) throw new AuthorityStoreProtocolError(`Todo planning update does not own ${field}`);
     if ((TODO_WORK_REQUIREMENT_FIELDS as readonly string[]).includes(field)) continue;
+    if ((TODO_OWNERSHIP_INTENT_FIELDS as readonly string[]).includes(field)) continue;
     if (value === null) continue;
     if (STRINGS.has(field)) {
       if (typeof value !== "string") throw new AuthorityStoreProtocolError(`${field} must be a string`);
@@ -34,7 +37,7 @@ export function normalizeNativePlanningIntent(value: unknown): JsonObject {
       intent[field] = [...new Set(value.map(item => normalizeTodoId(item, "successor_todo_id")))];
     }
   }
-  return {...intent, ...normalizeTodoWorkRequirements(raw)};
+  return {...intent, ...normalizeTodoWorkRequirements(raw), ...normalizeTodoOwnershipIntent(raw)};
 }
 
 export function planNativeTodoUpdate(todo: JsonObject, intent: JsonObject,

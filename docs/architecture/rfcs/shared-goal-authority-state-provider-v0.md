@@ -2708,6 +2708,11 @@ claim divergence and exclusion; a read result is not a lease grant or a commit
 receipt. An empty canonical lease set stays empty. This read closure and removal
 of duplicate eligibility rules do not qualify a provider, alter CAS/replay or
 relax D1–D3; permanent Markdown display and the remaining roadmap stay intact.
+The ownership-edit slice now uses the same typed authoring and lifecycle boundary
+after promotion as the existing update transaction. It preserves claim/exclusion
+fences and rejects leased ownership rewrites; legacy Markdown writing remains a
+compatibility path before promotion. This removes a duplicate decision route but
+does not qualify a provider, change promotion defaults, or relax D1–D3.
 
 Capability-gap consumers now share the TS requirement/resolution owner across
 legacy and canonical inputs, including quota's Monitor capability partition.

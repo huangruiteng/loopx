@@ -91,9 +91,9 @@ CASES = [
         '  const next: JsonObject = {...todo, ...input.patch};',
         '  const next: JsonObject = {...todo, ...input.patch};\n  if ("note" in input.patch) next.note = todo.note;')),),
          'tests/control_plane/test_shadow_observable_native_e2e.py::test_native_unclaimed_edit_and_explicit_note_clear[disabled]'),
-    Case('native_unclaimed_edit_rejected', ((COORDINATION + 'todo_update.ts', replacement(
-        '  if (todo.claimed_by && todo.claimed_by !== input.actor_agent_id) {',
-        '  if (!todo.claimed_by || todo.claimed_by !== input.actor_agent_id) {')),),
+    Case('native_unclaimed_edit_rejected', ((COORDINATION + 'todo_lifecycle_decision.ts', replacement(
+        '  if (todo.claimed_by !== null && todo.claimed_by !== actor) return "claim_owner_mismatch";',
+        '  if (todo.claimed_by === null || todo.claimed_by !== actor) return "claim_owner_mismatch";')),),
          'tests/control_plane/test_shadow_observable_native_e2e.py::test_native_unclaimed_edit_and_explicit_note_clear[disabled]'),
     Case('native_diagnostic_truncated', ((COORDINATION + 'todo_update.ts', replacement(
         'return failure("update_owner_mismatch", "Todo update cannot edit another claim owner\'s work");',

@@ -346,6 +346,20 @@ function result(
   };
 }
 
+/** Registered-actor restrictions, independent of single-agent compatibility or
+ * delegated authority. Native edits and multi-agent lifecycle admission share it. */
+export function registeredTodoMutationRejection(raw: JsonObject, actor: string | null,
+  registered: readonly string[]): string | null {
+  const todo = todoFact(raw, "todo");
+  if (actor === null) return "actor_required";
+  if (!registered.includes(actor)) return "actor_not_registered";
+  if (todo.excluded_agents.includes(actor)) return "actor_excluded";
+  const boundAgent = todo.bound_agent ?? (todo.role === "user" ? todo.blocks_agent : null);
+  if (boundAgent !== null && boundAgent !== actor) return "bound_agent_mismatch";
+  if (todo.claimed_by !== null && todo.claimed_by !== actor) return "claim_owner_mismatch";
+  return null;
+}
+
 function authority(request: LifecycleDecisionRequest):
   | { mode: string; ownershipGate: CoordinationTodoTerminalDecisionResult["ownership_gate"] }
   | CoordinationTodoTerminalDecisionResult {
@@ -359,14 +373,9 @@ function authority(request: LifecycleDecisionRequest):
   if (exactUserGateOverride(request)) {
     return { mode: "exact_user_gate_decision_scope_override", ownershipGate: "not_required" };
   }
-  if (actor === null) return result("rejected", "actor_required");
-  if (!registered.includes(actor)) return result("rejected", "actor_not_registered");
-  if (todo.excluded_agents.includes(actor)) return result("rejected", "actor_excluded");
-  const boundAgent = todo.bound_agent ?? (todo.role === "user" ? todo.blocks_agent : null);
-  if (boundAgent !== null && boundAgent !== actor) {
-    return result("rejected", "bound_agent_mismatch");
-  }
-  if (todo.claimed_by !== null && todo.claimed_by !== actor) {
+  const rejection = registeredTodoMutationRejection(todo, actor, registered);
+  if (rejection !== null && rejection !== "claim_owner_mismatch") return result("rejected", rejection);
+  if (rejection === "claim_owner_mismatch") {
     const grant = request.lifecycle_grants.find((candidate) => candidate.agent_id === actor);
     if (grant === undefined) return result("rejected", "claim_owner_mismatch");
     if (!grant.actions.includes(request.authority_action)) {
