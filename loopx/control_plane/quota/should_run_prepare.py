@@ -31,9 +31,7 @@ from ..goals.goal_frontier import (
     build_goal_frontier_projection_context_from_status,
 )
 from ..quota.error_codes import HeartbeatReceiptIdentityConflictError
-from ..quota.goal_boundary import (
-    effective_available_capabilities as _effective_available_capabilities,
-)
+from ..agents.capability_memory import resolve_agent_capabilities
 from ..quota.goal_boundary import (
     goal_boundary as _goal_boundary,
 )
@@ -461,11 +459,11 @@ def _prepare_quota_should_run_item(
         agent_id=requested_agent_id,
         public_safe_compact_text=_protocol_action_text,
     )
-    effective_available_capabilities = _effective_available_capabilities(
-        available_capabilities,
-        item=item,
-        project_asset=project_asset,
+    availability = resolve_agent_capabilities(
+        status_payload, goal_id=safe_goal_id, agent_identity=agent_identity,
+        item=item, project_asset=project_asset, available=available_capabilities,
     )
+    effective_available_capabilities = availability["effective"]
     user_todo_summary = select_quota_todo_summary(
         item.get("user_todos"),
         project_asset.get("user_todos") if project_asset else None,
@@ -622,7 +620,7 @@ def _prepare_quota_should_run_item(
             agent_todo_summary=agent_todo_summary,
             agent_todo_source_items=task_orchestration_agent_items,
             user_todo_source_items=task_orchestration_user_blockers,
-            available_capabilities=available_capabilities,
+            available_capabilities=availability["runtime_available"],
             monitor_debt_arbitration=monitor_debt_arbitration,
         )
     )
@@ -809,7 +807,7 @@ def _prepare_quota_should_run_item(
         project_asset=project_asset,
         agent_lane_recommendation=agent_lane_recommendation,
         effective_available_capabilities=effective_available_capabilities,
-        runtime_available_capabilities=available_capabilities,
+        runtime_available_capabilities=availability["runtime_available"],
         receipt_bound_todo_id=receipt_bound_todo_id,
         requested_action_todo_id=requested_action_todo_id,
         requested_action_candidate=requested_action_candidate,

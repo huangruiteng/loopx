@@ -111,7 +111,9 @@ def test_runtime_capability_gap_returns_verified_reentry_packet() -> None:
             "quota spend-slot",
             "quota monitor-poll",
         ],
-        "session_scoped": True,
+        "session_scoped": False,
+        "observation_scope": "host_registry_goal_agent",
+        "remembers": ["benchmark_runner", "network", "external_evidence_poll", "worker_bridge", "cli_bridge"],
         "durable_grant_written": False,
     }
     candidate = reentry["candidates"][0]
