@@ -99,6 +99,7 @@ def _scoped_gate_successor_replan_source(
         status="open",
         task_class="user_gate",
         action_kind="approve_product_first_screen",
+        decision_scope={"kind": "write_scope", "granularity": "action", "scope_key": "first-screen"},
         blocks_agent=agent_id,
         text="[P2] Review the unrelated product first screen.",
     )

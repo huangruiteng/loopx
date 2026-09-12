@@ -126,7 +126,8 @@ export function selectScopedGateFallback(request: JsonObject): JsonObject | null
   }
   if (!selected || (!blockingGate && !allowUnrelated)) return null;
   const surface = blockingGate ?? gates[0]!;
-  return {selected_index: selected.index, gate_index: surface.index, blocked: blocked.slice(0, 3), blocked_count: blocked.length,
+  return {schema_version: "scoped_gate_fallback_selection_v0",
+    selected_index: selected.index, gate_index: surface.index, blocked: blocked.slice(0, 3), blocked_count: blocked.length,
     has_blocking_gate: blockingGate !== undefined,
     selected_relation: fallbackGateRelation(surface.gate, selected.item),
     deferred_replan: selected.item.status === "deferred" && selected.item.resume_ready === true};

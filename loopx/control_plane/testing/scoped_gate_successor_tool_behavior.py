@@ -119,6 +119,7 @@ def _build_scoped_gate_fixture(root: Path) -> _SelectedTodoToolFixture:
         "  <!-- loopx:todo "
         f"todo_id={SCOPED_GATE_USER_TODO_ID} status=open "
         "task_class=user_gate action_kind=approve_product_first_screen "
+        "decision_scope=write_scope:action:first-screen "
         f"blocks_agent={SELECTED_TODO_TOOL_FIXTURE_AGENT_ID} priority=P2 -->\n\n"
         "## Agent Todo\n\n"
         f"- [-] [P1] {SCOPED_GATE_SUCCESSOR_ACTION_TEXT}\n"

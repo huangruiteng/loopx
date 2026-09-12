@@ -367,6 +367,11 @@ def select_scoped_gate_fallback(gates: list[dict[str, Any]], items: list[dict[st
                 "removed": todo_item_has_removed_continuation_policy(item),
                 "task_class": todo_item_task_class(item), "priority_rank": priority, "persisted_index": index}
 
-    return _evaluate("fallback", gates=[facts(gate) for gate in gates], candidates=[facts(item) for item in items],
-                     agent_id=normalize_todo_claimed_by(agent_id), allow_unrelated_gate=allow_unrelated_gate,
-                     monitor_debt_backoff_active=monitor_debt_backoff_active)
+    return _projection(
+        "fallback",
+        _evaluate("fallback", gates=[facts(gate) for gate in gates], candidates=[facts(item) for item in items],
+                  agent_id=normalize_todo_claimed_by(agent_id), allow_unrelated_gate=allow_unrelated_gate,
+                  monitor_debt_backoff_active=monitor_debt_backoff_active),
+        schema_versions=frozenset({"scoped_gate_fallback_selection_v0"}),
+        nullable=True,
+    )

@@ -138,3 +138,17 @@ def test_nullable_operations_still_accept_explicit_null(
     assert decision_scope.decision_scope_gate_relation(GATE, AGENT_ITEM) is None
     assert decision_scope.exact_todo_gate_relation(GATE, AGENT_ITEM) is None
     assert decision_scope.todo_gate_relation(GATE, AGENT_ITEM) is None
+    assert decision_scope.select_scoped_gate_fallback(
+        [GATE], [AGENT_ITEM], agent_id="agent-a", allow_unrelated_gate=True,
+        monitor_debt_backoff_active=False,
+    ) is None
+
+
+@pytest.mark.parametrize("value", [True, [], {}, {"schema_version": "todo_gate_relation_v0"}])
+def test_fallback_runtime_result_fails_closed(monkeypatch, value):
+    monkeypatch.setattr(decision_scope, "effect_runtime_result", lambda *_args, **_kwargs: _response(value))
+    with pytest.raises(TypeError, match="invalid typed decision scope fallback"):
+        decision_scope.select_scoped_gate_fallback(
+            [GATE], [AGENT_ITEM], agent_id="agent-a", allow_unrelated_gate=True,
+            monitor_debt_backoff_active=False,
+        )
