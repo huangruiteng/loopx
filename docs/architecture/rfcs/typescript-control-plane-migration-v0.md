@@ -520,6 +520,19 @@ It does not change lifecycle admission, claim/lease semantics or default provide
 The status source can still be incomplete: this closes one T3 interpretation
 boundary, not all graph source delivery or the remaining T1–T4 work.
 
+Lease inspection now consumes one canonical Todo/lease/handoff-mode revision
+after promotion; an absent canonical lease does not revive a local lease file,
+and provider failure cannot fall back to Markdown. The read reports its provider
+revision without repairing display or changing the lease. Unpromoted inspection
+retains its legacy source contract. The shared `task_lease_eligibility.ts` owner
+also replaces the Python authority-core and three TS owner-eligibility copies
+used by acquire, lifecycle and terminal fencing. Current-lease effectiveness is
+derived inside acquire from the supplied owner/claim/exclusion/registration facts,
+not from the old caller-provided `effective` hint. Other-Todo overlap facts still
+come from the existing complete execution snapshot; release retains its separate
+key/version cleanup fence. This closes one T3 reader and shared rule boundary,
+not the remaining Goal-channel lease display, T1/T2 transactions or promotion.
+
 Capability resolution now shares `agents/capability_gate.ts`: missing prerequisites,
 repair outputs, owner/agent resolution and blocked-Todo bindings have one typed
 owner. Quota planning v1 passes normalized requirements, not Python-computed

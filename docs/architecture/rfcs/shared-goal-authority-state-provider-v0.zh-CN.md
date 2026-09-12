@@ -2124,6 +2124,12 @@ Task graph 的 T3 topology consumer 现共用 inventory/horizon 关系目录，�
 必须只读：图不修复展示，也不改变 authority。本批删除 Python 重复关系与
 遍历知识，不改变以下 D1–D3 门禁。
 
+T3 lease inspect 已将 Todo、lease 与 handoff mode 绑定到同一 provider revision，
+promotion 后不再读取本地旧 lease 文件；canonical 空租约集合保持为空。资格策略与
+当前 acquire/lifecycle 共用 TS owner，包含 claim 分歧和 exclusion；读取结果不是
+租约授权，也不是 commit receipt。该 reader 闭合和重复规则删除不代表 provider
+资格化，不改变 CAS/replay 或 D1–D3；永久 Markdown 展示与后续规划继续保留。
+
 命令清单、update/monitor 事务和 consumer 删除统一按
 [TS 执行卡](typescript-control-plane-migration-v0.zh-CN.md#当前-stack-合入后的执行卡)
 推进，不在这里复制第二套实现路线，也不把 read-policy PR 合并视为存储就绪。
