@@ -58,6 +58,15 @@ def projection_delivery_requires_ack(value: object) -> bool:
     }
 
 
+def projection_delivery_for_mutation(changed: bool) -> ProjectionDeliveryStatus:
+    """Map a committed mutation to its display outbox state."""
+    return (
+        ProjectionDeliveryStatus.PENDING
+        if changed
+        else ProjectionDeliveryStatus.NOT_REQUIRED
+    )
+
+
 def _read_text_exact(path: Path) -> str:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return handle.read()
@@ -225,7 +234,7 @@ def settle_canonical_todo_projection(
     """Drain the committed provider head, preserving a successful mutation."""
 
     if payload.get("dry_run") is True or payload.get("status") == "planned":
-        payload["projection_delivery"] = ProjectionDeliveryStatus.NOT_REQUIRED.value
+        payload["projection_delivery"] = projection_delivery_for_mutation(False).value
         payload["projection_outbox"] = {
             "schema_version": TODO_PROJECTION_DELIVERY_SCHEMA,
             "status": ProjectionDeliveryStatus.NOT_REQUIRED.value,
@@ -279,6 +288,7 @@ __all__ = [
     "ProjectionDeliveryStatus",
     "parse_projection_delivery",
     "projection_delivery_requires_ack",
+    "projection_delivery_for_mutation",
     "project_current_canonical_todos",
     "settle_canonical_todo_projection",
 ]
