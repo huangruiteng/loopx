@@ -153,6 +153,51 @@ def find_heartbeat_receipt(
     )
 
 
+def prior_closeout_required_heartbeat_receipts(
+    runtime_root: Path,
+    *,
+    goal_id: str,
+    agent_id: str,
+    exclude_turn_instance_id: str | None = None,
+) -> list[dict[str, object]]:
+    """Return prior heartbeat guards that explicitly require host closeout.
+
+    The expectation is opt-in on the persisted guard so older receipts cannot
+    become false-positive recovery obligations after an upgrade. Results are
+    newest first and contain at most one effective receipt per Turn.
+    """
+
+    events = load_rollout_events(rollout_event_log_path(runtime_root, goal_id))
+    matching_by_turn: dict[str, list[dict[str, object]]] = {}
+    newest_turns: list[str] = []
+    excluded = str(exclude_turn_instance_id or "").strip()
+    for event in events:
+        if (
+            event.get("event_kind") != "quota_should_run"
+            or str(event.get("goal_id") or "") != goal_id
+            or str(event.get("agent_id") or "") != agent_id
+        ):
+            continue
+        turn_id = str(event.get("run_id") or "").strip()
+        if not turn_id or turn_id == excluded:
+            continue
+        matching_by_turn.setdefault(turn_id, []).append(event)
+        if turn_id in newest_turns:
+            newest_turns.remove(turn_id)
+        newest_turns.append(turn_id)
+
+    required: list[dict[str, object]] = []
+    for turn_id in reversed(newest_turns):
+        effective = _effective_heartbeat_receipt(matching_by_turn[turn_id])
+        if effective is None:
+            continue
+        details_value = effective.get("details")
+        details = details_value if isinstance(details_value, Mapping) else {}
+        if details.get("closeout_required") is True:
+            required.append(effective)
+    return required
+
+
 def ensure_turn_heartbeat_settlement_receipt(
     runtime_root: Path,
     identity: SettlementIdentity,
@@ -373,6 +418,8 @@ def heartbeat_receipt_view(
         "event_id": event.get("event_id"),
         "recorded_at": event.get("recorded_at"),
     }
+    if details.get("closeout_required") is True:
+        receipt["closeout_required"] = True
     todo_id = str(details.get("todo_id") or "").strip()
     replan_obligation_id = normalize_todo_replan_obligation_id(
         details.get("replan_obligation_id")

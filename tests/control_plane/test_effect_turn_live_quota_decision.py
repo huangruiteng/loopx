@@ -16,6 +16,7 @@ from loopx.control_plane.quota.live_decision import (
     build_live_quota_should_run_decision,
 )
 from loopx.control_plane.testing.quota_fixtures import quota_status_payload
+from loopx.rollout_event_log import build_rollout_event
 
 GOAL_ID = "effect-interpreter-fixture"
 
@@ -179,6 +180,85 @@ def test_live_quota_decision_maps_to_effect_turn(tmp_path: Path) -> None:
     assert turn.interpretation.interaction_mode == "bounded_delivery"
     assert turn.next_effect.cli_actions
     assert turn.next_effect.cli_actions[0].startswith("loopx --runtime-root ")
+
+
+def test_managed_turn_projects_prior_unsettled_heartbeat_recovery(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    agent_id = "codex-fixture"
+    todo_id = "todo_ordinary_work"
+    prior_turn_id = "managed-prior-turn"
+    event = build_rollout_event(
+        goal_id=GOAL_ID,
+        event_kind="quota_should_run",
+        agent_id=agent_id,
+        todo_id=todo_id,
+        run_id=prior_turn_id,
+        status="normal_run",
+        summary="managed heartbeat guard requires closeout",
+        details={
+            "todo_id": todo_id,
+            "settlement_effect_id": (
+                f"{GOAL_ID}:{agent_id}:{todo_id}:{prior_turn_id}"
+            ),
+            "closeout_required": True,
+        },
+    )
+    log_path = runtime_root / "goals" / GOAL_ID / "rollout-event-log.jsonl"
+    log_path.parent.mkdir(parents=True)
+    log_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    todo_text = "[P1] Keep advancing the selected task."
+    status = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        agent_todo_items=[
+            {
+                "todo_id": todo_id,
+                "index": 1,
+                "text": todo_text,
+                "role": "agent",
+                "status": "open",
+                "priority": "P1",
+                "task_class": "advancement_task",
+            }
+        ],
+        recommended_action=todo_text,
+        next_action=todo_text,
+        coordination={
+            "registered_agents": [agent_id],
+            "agent_model": "peer_v1",
+        },
+        claim_scope_agent_id=agent_id,
+    )
+    packet = build_live_quota_should_run_decision(
+        status,
+        goal_id=GOAL_ID,
+        agent_id=agent_id,
+        available_capabilities=["shell"],
+        include_scheduler_detail=False,
+        codex_app_current_rrule=None,
+        registry_path=tmp_path / "registry.json",
+        runtime_root=runtime_root,
+        route_source="loopx_turn_plan",
+        turn_instance_id="managed-current-turn",
+        scheduler_execution_context={
+            "host_surface": "generic_cli",
+            "scheduler_owner": "agent_cli_loop",
+            "execution_mode": "interactive",
+        },
+    )
+
+    assert packet["runtime_root"] == str(runtime_root)
+    assert packet["effective_action"] == "unsettled_host_turn_recovery"
+    assert packet["unsettled_host_turn_recovery"]["prior_turn_instance_id"] == (
+        prior_turn_id
+    )
+    contract = packet["interaction_contract"]
+    assert contract["mode"] == "unsettled_host_turn_recovery"
+    assert contract["agent_channel"]["delivery_allowed"] is False
+    assert contract["cli_channel"]["spend_after_validation"] is False
 
 
 def test_action_selection_route_binding_fails_closed_on_malformed_prefix(

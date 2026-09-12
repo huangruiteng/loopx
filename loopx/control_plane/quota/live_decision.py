@@ -22,6 +22,9 @@ from ..scheduler.execution_context import (
     SchedulerExecutionContextResolution,
     resolve_scheduler_execution_context,
 )
+from .unsettled_host_turn import (
+    apply_unsettled_host_turn_recovery_if_required,
+)
 
 
 HostObservationResolver = Callable[..., Mapping[str, Any]]
@@ -490,6 +493,15 @@ def build_live_quota_should_run_decision(
         interaction = payload.get("interaction_contract")
         if isinstance(interaction, dict):
             interaction.update(projections)
+    apply_unsettled_host_turn_recovery_if_required(
+        payload,
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        current_turn_instance_id=turn_instance_id,
+        available_capabilities=available_capabilities,
+        scheduler_execution_context=resolved_context,
+    )
     if hook_dispatch["failures"]:
         payload["capability_hook_dispatch"] = {
             key: value for key, value in hook_dispatch.items() if key != "projections"

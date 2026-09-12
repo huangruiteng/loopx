@@ -301,6 +301,24 @@ def quota_rollout_details(
         payload.get("replan_action_packet")
     )
     workspace_causality = build_delivery_workspace_causality(selected_todo)
+    interaction = (
+        payload.get("interaction_contract")
+        if isinstance(payload.get("interaction_contract"), Mapping)
+        else {}
+    )
+    agent_channel = (
+        interaction.get("agent_channel")
+        if isinstance(interaction.get("agent_channel"), Mapping)
+        else {}
+    )
+    closeout_required = bool(
+        todo_id
+        and payload.get("ok") is True
+        and payload.get("should_run") is True
+        and agent_channel.get("must_attempt") is True
+        and agent_channel.get("delivery_allowed") is True
+        and agent_channel.get("quiet_noop_allowed") is False
+    )
     details: dict[str, object] = {
         "command": "quota",
         "quota_command": args.quota_command,
@@ -324,6 +342,11 @@ def quota_rollout_details(
             if isinstance(payload.get("settlement_identity"), Mapping)
             else ""
         ),
+        "interaction_mode": interaction.get("mode") or "",
+        "must_attempt_work": bool(agent_channel.get("must_attempt")),
+        "delivery_allowed": bool(agent_channel.get("delivery_allowed")),
+        "quiet_noop_allowed": bool(agent_channel.get("quiet_noop_allowed")),
+        "closeout_required": closeout_required,
     }
     if workspace_causality:
         details.update(delivery_workspace_causality_event_fields(workspace_causality))

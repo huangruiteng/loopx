@@ -803,6 +803,27 @@ def test_in_flight_progress_preserves_todo_across_heartbeat_settlements(
         "in_flight_continuation"
     )
 
+    spend_rc, spend = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "spend-slot",
+        "--goal-id",
+        GOAL_ID,
+        "--slots",
+        "1",
+        "--source",
+        "heartbeat",
+        "--execute",
+        "--agent-id",
+        AGENT_ID,
+        "--todo-id",
+        TODO_ID,
+        "--turn-instance-id",
+        first_turn_id,
+    )
+    assert spend_rc == 0, spend
+
     second_guard_rc, second_guard = _run_cli(
         registry_path,
         runtime,
@@ -865,6 +886,122 @@ def test_in_flight_progress_preserves_todo_across_heartbeat_settlements(
         "triggers": [{"kind": "in_flight_continuation", "todo_id": TODO_ID}],
         "delivery_boundary": "in_flight_continuation",
     }
+
+
+def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_selectable_alternative(project)
+    _append_newly_due_monitor(project)
+    prior_turn_id = "turn-unsettled-prior"
+
+    prior_rc, prior = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        prior_turn_id,
+        "--todo-id",
+        TODO_ID,
+        "--scan-path",
+        str(project),
+    )
+    assert prior_rc == 0, prior
+    assert prior["heartbeat_receipt"]["closeout_required"] is True
+
+    recovery_rc, recovery = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--begin-turn",
+        "--scan-path",
+        str(project),
+    )
+    assert recovery_rc == 0, recovery
+    assert recovery["effective_action"] == "unsettled_host_turn_recovery"
+    packet = recovery["unsettled_host_turn_recovery"]
+    assert packet["prior_turn_instance_id"] == prior_turn_id
+    assert packet["binding_id"] == TODO_ID
+    assert packet["missing_receipts"] == [
+        "durable_writeback_receipt",
+        "quota_spend_receipt",
+    ]
+    assert "selected_todo" not in recovery
+    contract = recovery["interaction_contract"]
+    assert contract["mode"] == "unsettled_host_turn_recovery"
+    assert contract["agent_channel"]["must_attempt"] is True
+    assert contract["agent_channel"]["delivery_allowed"] is False
+    assert contract["agent_channel"]["quiet_noop_allowed"] is False
+    assert contract["agent_channel"]["primary_action"] == recovery[
+        "recommended_action"
+    ]
+    assert contract["agent_channel"]["recovery_ref"] == (
+        "$.unsettled_host_turn_recovery"
+    )
+    assert contract["cli_channel"]["spend_after_validation"] is False
+    assert "monitor_changed:<monitor-todo-id>" in contract["cli_channel"][
+        "next_cli_actions"
+    ][1]
+    assert "settlement_identity" not in recovery["heartbeat_receipt"]
+
+    wait_rc, wait = _run_cli(
+        registry_path,
+        runtime,
+        "todo",
+        "update",
+        "--goal-id",
+        GOAL_ID,
+        "--todo-id",
+        TODO_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--status",
+        "open",
+        "--resume-when",
+        f"monitor_changed:{DUE_MONITOR_TODO_ID}",
+        "--successor-todo-id",
+        ALTERNATIVE_TODO_ID,
+    )
+    assert wait_rc == 0, wait
+    assert wait["external_wait_transition"]["successor_todo_ids"] == [
+        ALTERNATIVE_TODO_ID
+    ]
+
+    current_turn_id = recovery["heartbeat_receipt"]["turn_instance_id"]
+    resumed_rc, resumed = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        current_turn_id,
+        "--todo-id",
+        ALTERNATIVE_TODO_ID,
+        "--scan-path",
+        str(project),
+    )
+    assert resumed_rc == 0, resumed
+    assert resumed["effective_action"] != "unsettled_host_turn_recovery"
+    assert resumed["selected_todo"]["todo_id"] == ALTERNATIVE_TODO_ID
+    assert resumed["heartbeat_receipt"]["status"] == "upgraded"
 
 
 def test_standard_codex_app_settlement_is_receipted_and_idempotent(
@@ -3439,7 +3576,9 @@ def test_same_turn_receipt_replay_defers_newly_due_higher_priority_monitor(
         *capability_args,
     )
     assert next_turn_rc == 0, next_turn
-    assert next_turn["selected_todo"]["todo_id"] == DUE_MONITOR_TODO_ID
+    assert next_turn["effective_action"] == "unsettled_host_turn_recovery"
+    assert next_turn["unsettled_host_turn_recovery"]["binding_id"] == TODO_ID
+    assert "selected_todo" not in next_turn
 
     binding = (
         "--agent-id",
@@ -3526,6 +3665,25 @@ def test_same_turn_receipt_replay_defers_newly_due_higher_priority_monitor(
     assert spend_replay["idempotent_replay"] is True
     assert spend_replay["appended"] is False
     assert _spend_run_count(runtime) == 1
+
+    resumed_turn_rc, resumed_turn = _run_cli(
+        registry_path,
+        runtime,
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        "turn-settlement-cli-2",
+        "--scan-path",
+        str(project),
+        *capability_args,
+    )
+    assert resumed_turn_rc == 0, resumed_turn
+    assert resumed_turn["selected_todo"]["todo_id"] == DUE_MONITOR_TODO_ID
 
 
 def test_read_only_settlement_omits_non_causal_delivery_workspace(

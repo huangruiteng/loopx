@@ -49,6 +49,7 @@ from .primary_action import (
     protocol_monitor_action as _protocol_monitor_action,
 )
 from .replan_settlement import project_replan_settlement_contract
+from .unsettled_host_turn_contract import recovery_cli_actions
 from .user_action_frontier import user_action_owns_empty_agent_lane
 
 INTERACTION_CONTRACT_SCHEMA_VERSION = "loopx_interaction_contract_v0"
@@ -454,6 +455,8 @@ def _interaction_mode(payload: dict[str, Any]) -> str:
     effective_action = str(payload.get("effective_action") or "")
     state = str(payload.get("state") or "")
     if effective_action == "governed_capability_intent":
+        return effective_action
+    if effective_action == "unsettled_host_turn_recovery":
         return effective_action
     if effective_action == "agent_monitor_only":
         return "agent_monitor_only"
@@ -915,6 +918,15 @@ def interaction_next_cli_actions(
             "create or switch to an independent git worktree/branch",
             typed_quota_guard,
         ]
+    if mode == "unsettled_host_turn_recovery":
+        return recovery_cli_actions(
+            payload,
+            command_prefix=command_prefix,
+            goal_id=goal_id,
+            lifecycle_actor_args=lifecycle_actor_args,
+            typed_quota_guard=typed_quota_guard,
+            turn_instance_id=turn_instance_id,
+        )
     if mode == "autonomous_replan":
         return build_autonomous_replan_cli_actions(
             payload,
@@ -984,6 +996,8 @@ def _interaction_spend_policy(
         return "no spend while the current agent has no in-scope runnable candidate"
     if mode == "agent_workspace_repair":
         return "no spend for moving agent work into an independent worktree"
+    if mode == "unsettled_host_turn_recovery":
+        return "no spend for repairing the prior Turn closeout"
     if mode == "automation_prompt_upgrade":
         return "no spend until the host update is acknowledged and quota reruns"
     if mode == "capability_bridge_repair":
@@ -1411,6 +1425,7 @@ def _interaction_fallback_policy_required(payload: dict[str, Any], *, mode: str)
         "outcome_floor_recovery",
         "external_evidence_observation",
         "scoped_user_gate_fallback",
+        "unsettled_host_turn_recovery",
     } or bool(payload.get("blocked_priority_fallback"))
 
 
