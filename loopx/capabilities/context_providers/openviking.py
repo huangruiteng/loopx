@@ -219,6 +219,21 @@ def _read_content(value: Any) -> str:
     return ""
 
 
+def _provider_error_code(text: str) -> str | None:
+    """Read only the typed provider error code from compact CLI output."""
+
+    try:
+        payload = _extract_json(text)
+    except ValueError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    error = payload.get("error")
+    if not isinstance(error, Mapping):
+        return None
+    return _compact(error.get("code"), limit=80) or None
+
+
 class OpenVikingContextProvider:
     """Bounded OpenViking CLI integration with compact, fail-open outputs."""
 
@@ -719,7 +734,7 @@ class OpenVikingContextProvider:
         if not execute:
             target_access_count = 0
             preflight_reason: str | None = None
-            for _source, target in bounded:
+            for index, (_source, target) in enumerate(bounded):
                 remaining = max(1.0, timeout_seconds - (time.monotonic() - started))
                 try:
                     existing = self._run(
@@ -742,6 +757,17 @@ class OpenVikingContextProvider:
                     preflight_reason = "provider_sync_target_preflight_timeout"
                     break
                 if parent_probe.returncode != 0:
+                    if (
+                        scopes[index].write_strategy == "content_write"
+                        and _provider_error_code(parent_probe.stdout) == "NOT_FOUND"
+                    ):
+                        # OpenViking v0.4.19 content-write create mode creates
+                        # missing parent directories. A typed NOT_FOUND proves
+                        # absence, not a permission failure; apply still has to
+                        # perform the canary write and exact readback before
+                        # enablement is committed.
+                        target_access_count += 1
+                        continue
                     preflight_reason = "provider_sync_target_parent_unavailable"
                     break
                 target_access_count += 1

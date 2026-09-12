@@ -182,6 +182,111 @@ def test_private_preview_checks_latest_cli_without_writing(tmp_path: Path):
     assert not any("write" in command for command in calls)
 
 
+def test_private_preview_accepts_typed_missing_parent_for_content_create(
+    tmp_path: Path,
+):
+    actor = "goal-one-pilot"
+    target = (
+        f"viking://user/default/peers/{actor}/memories/reward-memory/probe.json"
+    )
+    source = tmp_path / "probe.json"
+    source.write_text('{"probe":true}\n', encoding="utf-8")
+
+    def runner(command, **kwargs):
+        operation = command[3] if command[1] == "--actor-peer-id" else command[1]
+        if operation == "--version":
+            return subprocess.CompletedProcess(command, 0, "openviking 0.4.18")
+        if operation == "version":
+            return subprocess.CompletedProcess(
+                command, 0, "CLI: 0.4.18\nServer: 0.4.19"
+            )
+        if operation == "status":
+            return subprocess.CompletedProcess(command, 0, "{}")
+        assert operation in {"read", "ls"}
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "NOT_FOUND",
+                        "message": "Directory not found",
+                    },
+                }
+            ),
+        )
+
+    result = OpenVikingContextProvider(
+        actor_peer_id=actor,
+        runner=runner,
+    ).sync(
+        namespace="reward_memory",
+        resources=[(str(source), target)],
+        timeout_seconds=30,
+        observed_at="2026-01-01T00:00:00Z",
+        execute=False,
+    )
+
+    assert result.status == "preflight_ready"
+    assert result.target_access_preflight_verified is True
+    assert result.writability_verified is False
+    assert result.reason_code == "execute_required_for_verified_write"
+
+
+def test_private_preview_does_not_treat_permission_denied_as_missing_parent(
+    tmp_path: Path,
+):
+    actor = "goal-one-pilot"
+    target = (
+        f"viking://user/default/peers/{actor}/memories/reward-memory/probe.json"
+    )
+    source = tmp_path / "probe.json"
+    source.write_text('{"probe":true}\n', encoding="utf-8")
+
+    def runner(command, **kwargs):
+        operation = command[3] if command[1] == "--actor-peer-id" else command[1]
+        if operation == "--version":
+            return subprocess.CompletedProcess(command, 0, "openviking 0.4.18")
+        if operation == "version":
+            return subprocess.CompletedProcess(
+                command, 0, "CLI: 0.4.18\nServer: 0.4.19"
+            )
+        if operation == "status":
+            return subprocess.CompletedProcess(command, 0, "{}")
+        if operation == "read":
+            return subprocess.CompletedProcess(command, 1, "not found")
+        assert operation == "ls"
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "PERMISSION_DENIED",
+                        "message": "peer scope mismatch",
+                    },
+                }
+            ),
+        )
+
+    result = OpenVikingContextProvider(
+        actor_peer_id=actor,
+        runner=runner,
+    ).sync(
+        namespace="reward_memory",
+        resources=[(str(source), target)],
+        timeout_seconds=30,
+        observed_at="2026-01-01T00:00:00Z",
+        execute=False,
+    )
+
+    assert result.status == "preflight_incomplete"
+    assert result.target_access_preflight_verified is False
+    assert result.reason_code == "provider_sync_target_parent_unavailable"
+
+
 def test_private_execute_uses_content_write_and_exact_readback(tmp_path: Path):
     actor = "goal-one-pilot"
     target = f"viking://user/default/peers/{actor}/memories/reward-memory/probe.json"
