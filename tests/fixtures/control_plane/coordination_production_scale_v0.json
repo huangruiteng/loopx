@@ -17,5 +17,47 @@
   "scoped_without_outcome_count": 12,
   "linked_decision_count": 12,
   "completion_target_index": 160,
-  "supersede_target_index": 161
+  "supersede_target_index": 161,
+  "semantic_cases": {
+    "title_only_monitor": {
+      "todo_id": "todo_fixture_title_monitor",
+      "role": "agent",
+      "status": "open",
+      "done": false,
+      "title": "Observe dependency health",
+      "text": "",
+      "task_class": null,
+      "next_due_at": "2025-01-01T00:00:00Z",
+      "watch_only": false
+    },
+    "excluded_unclaimed_advancement": {
+      "todo_id": "todo_fixture_excluded_advancement",
+      "role": "agent",
+      "status": "open",
+      "done": false,
+      "text": "Implement the isolated fixture path",
+      "task_class": "advancement_task",
+      "excluded_agents": [
+        "agent-a"
+      ],
+      "claimed_by": null
+    },
+    "global_gate_without_goal_binding": {
+      "todo_id": "todo_fixture_global_gate",
+      "role": "user",
+      "status": "open",
+      "done": false,
+      "text": "Approve the shared direction",
+      "task_class": "user_gate",
+      "global_gate": true,
+      "goal_bound": false
+    },
+    "expired_lease": {
+      "todo_id": "todo_fixture_expired_lease",
+      "owner": "agent-a",
+      "status": "active",
+      "expires_at": "2024-01-01T00:00:00Z",
+      "lease_epoch": 7
+    }
+  }
 }

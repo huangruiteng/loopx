@@ -48,13 +48,14 @@ changes.
 
 ## Control-Plane Kernel, State, And Migration
 
-- [Human-confirmed domain operations v0](human-confirmed-domain-operations-v0.md)
-  ([中文版](human-confirmed-domain-operations-v0.zh-CN.md))
-  - **RFC status:** Draft.
-  - **Delivery on `main`:** Proposal only.
-  - **Current boundary:** Separates generic authenticated interaction, optional
-    financial execution and venue adapters. Defines shared frontend/Lark
-    confirmation and automatic outcomes; no runtime or trading permission added.
+- [Canonical Todo Semantic Kernel and Read-Model Convergence v0](canonical-todo-semantic-kernel-v0.md)
+  ([中文版](canonical-todo-semantic-kernel-v0.zh-CN.md))
+  - **RFC status:** Proposed implementation RFC.
+  - **Delivery on `main`:** Not yet shipped; this branch contains the first
+    compatibility-preserving extraction.
+  - **Current boundary:** Python Todo read semantics have one kernel and an
+    import-only projection facade; the TypeScript semantic packet and facade
+    retirement remain follow-up work.
 - [Agent Loop Effect Interpreter v0](agent-loop-effect-interpreter-v0.md)
   ([中文版](agent-loop-effect-interpreter-v0.zh-CN.md))
   - **RFC status:** Accepted.
