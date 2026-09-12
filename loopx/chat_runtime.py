@@ -434,10 +434,6 @@ class ChatRuntimeController:
         agent_goal_id: str | None = None,
     ) -> tuple[dict[str, Any], bool]:
         capability = next((item for item in self.capabilities() if item["agent_id"] == agent_id), None)
-        if capability is None:
-            raise ValueError(f"unknown Agent endpoint: {agent_id}")
-        if not capability["available"]:
-            raise ValueError(f"Agent endpoint is unavailable: {agent_id}")
         if mode not in {"resume_latest", "new"}:
             raise ValueError("mode must be resume_latest or new")
         selected_channel = channel_id or f"goal.{goal_id}"
@@ -452,15 +448,22 @@ class ChatRuntimeController:
         with self.lock:
             route_lock = self.session_open_locks.setdefault(route_key, threading.Lock())
         with route_lock:
+            latest = None
             if mode == "resume_latest":
                 latest = self.store.latest_session(
                     goal_id=None if is_manager_channel(selected_channel) else goal_id,
                     agent_id=agent_id,
                     channel_id=selected_channel,
                 )
-                if latest is not None:
-                    self._ensure_adapter(latest, work_dir=work_dir, objective=objective)
-                    return self.store.load_session(latest["session_id"]) or latest, True
+                if latest is not None and latest.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
+                    return latest, True
+            if capability is None:
+                raise ValueError(f"unknown Agent endpoint: {agent_id}")
+            if not capability["available"]:
+                raise ValueError(f"Agent endpoint is unavailable: {agent_id}")
+            if latest is not None:
+                self._ensure_adapter(latest, work_dir=work_dir, objective=objective)
+                return self.store.load_session(latest["session_id"]) or latest, True
             adapter = self._start_adapter(
                 agent_id=agent_id,
                 work_dir=work_dir,
@@ -1114,8 +1117,13 @@ class ChatRuntimeController:
             self._fail_turn(session_id, turn_id, exc.error_code, str(exc), status="failed", gate=exc.gate)
             if not adapter.healthcheck():
                 with self.lock:
-                    self.adapters.pop(session_id, None)
-                self.store.update_session(session_id, status="stale", last_error_code="transport_disconnected")
+                    if self.adapters.get(session_id) is adapter:
+                        self.adapters.pop(session_id, None)
+                        self.store.update_session(
+                            session_id,
+                            status="stale",
+                            last_error_code="transport_disconnected",
+                        )
         except Exception as exc:  # noqa: BLE001 - preserve compact runtime failure.
             event_buffer.close()
             if consume_interrupted():
@@ -1170,6 +1178,21 @@ class ChatRuntimeController:
             raise KeyError("chat turn was not found")
         if turn.get("status") in TERMINAL_TURN_STATES:
             return turn
+        session = self.store.load_session(session_id)
+        if (
+            session
+            and session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED
+            and session.get("active_turn_id") == turn_id
+        ):
+            raise CodexChatAgentError(
+                "The attached host does not expose interrupt control to LoopX Chat.",
+                error_code="attached_session_interrupt_unavailable",
+                gate={
+                    "kind": "host_tool_gate",
+                    "summary": "The active Turn is owned by the attached host.",
+                    "next_action": "Stop the Turn in the attached host, then retry.",
+                },
+            )
         interrupting = self.store.update_turn(
             session_id,
             turn_id,

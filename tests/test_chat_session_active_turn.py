@@ -6,6 +6,7 @@ import time
 import pytest
 
 import loopx.chat_store as chat_store
+from loopx.chat_agent import CodexChatAgentError
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_store import (
     SESSION_QUEUE_MAX_PENDING,
@@ -54,6 +55,19 @@ class _HealthyChatAdapter:
 
     def close_session(self) -> None:
         self.closed = True
+
+
+class _FailingChatAdapter(_HealthyChatAdapter):
+    def start_turn(self, message: str, event_sink) -> dict[str, object]:
+        del message, event_sink
+        raise CodexChatAgentError(
+            "transport disconnected",
+            error_code="transport_disconnected",
+            gate={"kind": "host_tool_gate"},
+        )
+
+    def healthcheck(self) -> bool:
+        return False
 
 
 def _slow_new_turn_writes(monkeypatch) -> set[str]:
@@ -1220,6 +1234,60 @@ def test_managed_close_rejects_pending_queue_without_stranding_it(
     assert current["status"] == "ready"
     assert current["active_turn_id"] is None
     assert store.load_turn(session_id, str(queued["turn_id"]))["status"] == "queued"  # type: ignore[index]
+
+
+def test_failed_old_turn_does_not_remove_replacement_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = store.create_session(
+        goal_id="goal-one",
+        agent_id="codex",
+        executor_endpoint_id="codex",
+        adapter_kind="codex_app_server",
+        upstream_thread_id="thread-one",
+        upstream_mode="chat",
+    )
+    session_id = str(session["session_id"])
+    first_turn, _created = store.create_turn(
+        session_id,
+        client_turn_id="failed-old-turn",
+        message="fail on the old adapter",
+    )
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    old_adapter = _FailingChatAdapter()
+    replacement_adapter = _HealthyChatAdapter()
+    runtime.adapters[session_id] = old_adapter
+    original_fail_turn = runtime._fail_turn
+    replacement_turn: dict[str, object] = {}
+
+    def fail_then_replace(*args: object, **kwargs: object) -> None:
+        original_fail_turn(*args, **kwargs)  # type: ignore[arg-type]
+        with runtime.lock:
+            runtime.adapters[session_id] = replacement_adapter  # type: ignore[assignment]
+        replacement_turn.update(
+            store.create_turn(
+                session_id,
+                client_turn_id="replacement-turn",
+                message="continue on the replacement adapter",
+            )[0]
+        )
+
+    monkeypatch.setattr(runtime, "_fail_turn", fail_then_replace)
+
+    runtime._run_turn(
+        session_id=session_id,
+        turn_id=str(first_turn["turn_id"]),
+        message="fail on the old adapter",
+        attachments=[],
+        adapter=old_adapter,
+    )
+
+    current = store.load_session(session_id)
+    assert runtime.adapters[session_id] is replacement_adapter
+    assert current is not None and current["status"] == "busy"
+    assert current["active_turn_id"] == replacement_turn["turn_id"]
 
 
 @pytest.mark.parametrize("terminal_status", sorted(TERMINAL_TURN_STATES))

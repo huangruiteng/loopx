@@ -833,7 +833,7 @@ class ChatRequestHandler(
             self._send_error("chat turn was not found", status=404)
             return
         except CodexChatAgentError as exc:
-            self._send_error(str(exc), status=424, gate=exc.gate)
+            self._send_error(str(exc), status=424, error_code=exc.error_code, gate=exc.gate)
             return
         self._send_json(
             {

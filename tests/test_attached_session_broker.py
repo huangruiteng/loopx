@@ -13,6 +13,7 @@ from loopx.attached_session import (
     claim_attached_agent_turn,
     complete_attached_agent_turn,
 )
+from loopx.chat_agent import CodexChatAgentError
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_server import ChatRequestHandler
 from loopx.chat_store import CHAT_SESSION_MODE_ATTACHED, ChatSessionStore
@@ -360,6 +361,118 @@ def test_web_and_lark_share_ordered_attached_session_without_spawning(
         "lark",
         "attached_host",
     ]
+
+
+def test_resume_latest_reuses_attached_session_without_local_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ChatSessionStore(tmp_path)
+    session = _bind(store)["session"]
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    monkeypatch.setattr(
+        runtime,
+        "_start_adapter",
+        lambda **_kwargs: pytest.fail("attached Session must not start a local adapter"),
+    )
+
+    resumed, reused = runtime.open_session(
+        goal_id=GOAL_ID,
+        agent_id=AGENT_ID,
+        work_dir=tmp_path,
+        objective="sample objective",
+        mode="resume_latest",
+    )
+
+    assert reused is True
+    assert resumed["session_id"] == session["session_id"]
+    assert runtime.adapters == {}
+
+
+def test_attached_claimed_turn_interrupt_fails_closed(tmp_path: Path) -> None:
+    store = ChatSessionStore(tmp_path)
+    session_id = str(_bind(store)["session"]["session_id"])
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    turn, _created = store.create_queued_turn(
+        session_id,
+        client_turn_id="claimed-interrupt",
+        message="keep host ownership",
+    )
+    claim_attached_agent_turn(
+        store=store,
+        session_id=session_id,
+        host_surface=HOST_SURFACE,
+        host_session_id=HOST_SESSION_ID,
+        claim_id="claimed-interrupt",
+    )
+
+    with pytest.raises(CodexChatAgentError) as raised:
+        runtime.interrupt_turn(session_id=session_id, turn_id=str(turn["turn_id"]))
+
+    assert raised.value.error_code == "attached_session_interrupt_unavailable"
+    current_turn = store.load_turn(session_id, str(turn["turn_id"]))
+    current_session = store.load_session(session_id)
+    assert current_turn is not None and current_turn["status"] == "running"
+    assert current_session is not None and current_session["status"] == "busy"
+    assert current_session["active_turn_id"] == turn["turn_id"]
+    assert (
+        claim_attached_agent_turn(
+            store=store,
+            session_id=session_id,
+            host_surface=HOST_SURFACE,
+            host_session_id=HOST_SESSION_ID,
+            claim_id="next-claim",
+        )["claimed"]
+        is False
+    )
+
+
+def test_attached_interrupt_endpoint_preserves_typed_failure(tmp_path: Path) -> None:
+    store = ChatSessionStore(tmp_path)
+    session_id = str(_bind(store)["session"]["session_id"])
+    runtime = ChatRuntimeController(store=store, codex_bin="missing-codex")
+    turn, _created = store.create_queued_turn(
+        session_id,
+        client_turn_id="endpoint-interrupt",
+        message="keep host ownership",
+    )
+    turn_id = str(turn["turn_id"])
+    claim_attached_agent_turn(
+        store=store,
+        session_id=session_id,
+        host_surface=HOST_SURFACE,
+        host_session_id=HOST_SESSION_ID,
+        claim_id="endpoint-interrupt",
+    )
+    responses: list[dict[str, object]] = []
+
+    class Handler:
+        server = SimpleNamespace(runtime_controller=runtime)
+
+        def _send_error(self, message: str, **kwargs: object) -> None:
+            responses.append({"error": message, **kwargs})
+
+        def _send_json(self, *_args: object, **_kwargs: object) -> None:
+            raise AssertionError("interrupt should fail closed")
+
+    ChatRequestHandler._interrupt_turn(Handler(), session_id, turn_id)  # type: ignore[arg-type]
+
+    assert responses == [
+        {
+            "error": "The attached host does not expose interrupt control to LoopX Chat.",
+            "status": 424,
+            "error_code": "attached_session_interrupt_unavailable",
+            "gate": {
+                "kind": "host_tool_gate",
+                "summary": "The active Turn is owned by the attached host.",
+                "next_action": "Stop the Turn in the attached host, then retry.",
+            },
+        }
+    ]
+    assert store.load_turn(session_id, turn_id)["status"] == "running"  # type: ignore[index]
+    session = store.load_session(session_id)
+    assert session is not None and session["status"] == "busy"
+    assert session["active_turn_id"] == turn_id
 
 
 def test_attached_completion_uses_canonical_response_and_terminal_events(
