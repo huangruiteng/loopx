@@ -12,9 +12,27 @@ BOOTSTRAP_INSTRUCTION = (
     "入口异常先做权限内恢复；契约仍不可用时不执行任务或记账，并报告阻塞。"
 )
 
+# Keep the managed heartbeat wrapper in one module.  The host bootstrap and
+# automation-prompt lifecycle both consume this renderer so a new wake-up
+# contract cannot be stranded behind only one entrypoint.
+HEARTBEAT_BOOTSTRAP = "LoopX managed heartbeat bootstrap v2"
+LEGACY_HOST_BOOTSTRAP = "LoopX managed host bootstrap v1"
+HEARTBEAT_BOOTSTRAP_ENTRY = "每次唤醒先执行："
+LEGACY_HOST_BOOTSTRAP_ENTRY = (
+    "每次进入或恢复本 Goal 时先加载当前规则；升级后重新加载，"
+    "不创建新 Goal、不接管宿主调度："
+)
+
 
 def render_bootstrap(command: list[str], *, title: str, entry: str) -> str:
     return f"{title}\n{entry}\n```sh\n{shlex.join(command)}\n```\n{BOOTSTRAP_INSTRUCTION}"
+
+
+def render_heartbeat_bootstrap(command: list[str]) -> str:
+    """Render the canonical v2 managed heartbeat loader."""
+    return render_bootstrap(
+        command, title=HEARTBEAT_BOOTSTRAP, entry=HEARTBEAT_BOOTSTRAP_ENTRY
+    )
 
 
 def goal_bootstrap(args, *, registry: Path) -> str:
@@ -30,7 +48,15 @@ def goal_bootstrap(args, *, registry: Path) -> str:
     command = [args.cli_bin, "--format", "json", "--registry", str(registry.resolve())]
     if args.runtime_root:
         command += ["--runtime-root", str(Path(args.runtime_root).expanduser().resolve())]
-    command += ["heartbeat-prompt", "--goal-id", args.goal_id]
+    command += ["heartbeat-prompt"]
+    mode = next((mode for mode in ("full", "compact", "brief", "thin") if getattr(args, mode)), "thin")
+    # The v2 contract puts the wake-up mode and host identity immediately
+    # after the subcommand.  This is also the exact command shape emitted by
+    # automation-prompts, so every host entrypoint reloads the same contract.
+    command.append("--" + mode)
+    if args.codex_app:
+        command.append("--codex-app")
+    command += ["--goal-id", args.goal_id]
     for field, flag in (
         ("agent_id", "--agent-id"), ("active_state", "--active-state"),
         ("material_rule", "--material-rule"), ("permission_rule", "--permission-rule"),
@@ -49,17 +75,12 @@ def goal_bootstrap(args, *, registry: Path) -> str:
             command += [flag, value]
     if args.cli_bin != "loopx":
         command += ["--cli-bin", args.cli_bin]
-    if args.codex_app:
-        command.append("--codex-app")
-    mode = next((mode for mode in ("full", "compact", "brief", "thin") if getattr(args, mode)), "thin")
-    command.append("--" + mode)
-    return render_bootstrap(command, title="LoopX managed host bootstrap v1",
-        entry="每次进入或恢复本 Goal 时先加载当前规则；升级后重新加载，不创建新 Goal、不接管宿主调度：")
+    return render_heartbeat_bootstrap(command)
 
 
 def host_bootstrap_binding(prompt: str) -> dict | None:
-    """Recognize only a complete, canonical loader, never a matching prefix."""
-    if not prompt.startswith("LoopX managed host bootstrap v1\n"):
+    """Recognize complete v2 loaders and the exact legacy host wrapper."""
+    if not prompt.startswith((HEARTBEAT_BOOTSTRAP + "\n", LEGACY_HOST_BOOTSTRAP + "\n")):
         return None
     try:
         command = shlex.split(prompt.split("```sh\n", 1)[1].split("\n```", 1)[0])
@@ -94,6 +115,12 @@ def host_bootstrap_binding(prompt: str) -> dict | None:
             index += 2
         registry = Path(values.pop("registry"))
         expected = goal_bootstrap(SimpleNamespace(**values), registry=registry)
+        if prompt.startswith(LEGACY_HOST_BOOTSTRAP + "\n"):
+            expected = render_bootstrap(
+                command,
+                title=LEGACY_HOST_BOOTSTRAP,
+                entry=LEGACY_HOST_BOOTSTRAP_ENTRY,
+            )
         return {**values, "registry": registry} if prompt == expected else None
     except (AttributeError, IndexError, KeyError, TypeError, ValueError):
         return None
