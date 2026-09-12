@@ -408,6 +408,13 @@ promotion 已完成。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+D1 的文档归属切片把读取、编辑与投影放到同一可见区域／Todo 行解码边界，修复
+fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、稀疏历史行号及归档
+优先级阻塞读回的问题。投影复用普通状态的耐久原子写入；相同字节的重试仍完成
+文件／目录同步，之后才报告 `current`。区域外正文和 canonical record 不被改写。
+这是永久 Python 展示／legacy 输入适配层的收敛：TS authority transaction、provider
+默认值、SQLite D2 与 D3 promotion 合同不变，不增加 RPC 或另一份业务状态机。
+
 Task graph topology 与 inventory/horizon 共用 `work_items/planning_relations.ts`。
 一轮纯 TS 请求拥有关系发现、稳定有界遍历、边去重与缺失/截断完整度；删除
 Python 的前驱索引、条件拆解和遍历。Python 保留 status 来源适配及节点、
