@@ -32,10 +32,11 @@ def normalize_configuration(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(enabled, bool):
         raise TypeError("periodic_report.enabled must be a boolean")
     timezone = str(value.get("timezone") or "UTC").strip()
-    try:
-        ZoneInfo(timezone)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError("periodic_report.timezone is unknown") from exc
+    if timezone != "UTC":
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("periodic_report.timezone is unknown") from exc
     profile_preset = str(value.get("profile_preset") or "").strip()
     route_ref = str(value.get("route_ref") or "").strip()
     if enabled and (not profile_preset or not route_ref):

@@ -959,11 +959,11 @@ def test_mismatched_signature_hashes_raise() -> None:
         decide_loop_disposition(turn_receipt=None, quota_decision=envelope)
 
 
-def test_over_budget_compaction_raises() -> None:
+def test_over_budget_compaction_preserves_disposition() -> None:
     envelope = _envelope(should_run=True)
     envelope["compaction"] = {"within_budget": False}
-    with pytest.raises(ValueError, match="envelope contract"):
-        decide_loop_disposition(turn_receipt=None, quota_decision=envelope)
+    result = decide_loop_disposition(turn_receipt=None, quota_decision=envelope)
+    _assert_markers(result, "run_now")
 
 
 def test_mismatched_signature_raises() -> None:

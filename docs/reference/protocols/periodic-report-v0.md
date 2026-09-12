@@ -112,6 +112,38 @@ Agent, with completed facts restricted to the frozen interval. Reports must
 disclose this partial coverage; no readable completion is not proof of no work,
 and a Goal calendar does not imply exhaustive history for all its Agents.
 
+### Report modes: weekly digest and automatic update
+
+The product has two report modes under one capability; they are not mutually
+exclusive switches and they do not create two delivery pipelines:
+
+- A **cadence digest** is retrospective. `cadence_due` is only the eligibility
+  signal. The run must cover the latest completed interval as a half-open
+  window, `[period_window.start_at, period_window.end_at)`, and the end of that
+  window must not be later than `generated_at`. Restarting or a late wake may
+  coalesce missed calendar boundaries, but it never turns an in-progress
+  interval into a report.
+- An **automatic update** is event-driven. Material blockers, recoveries,
+  decisions, validated outcomes, and bounded milestones map to
+  `exception_update` or `milestone_update` (and an explicit request maps to
+  `manual_update`). Its window is the bounded evidence context for that event,
+  not an implied week, and it may bypass the normal cooldown only where the
+  trigger policy allows it.
+
+Both modes use the same trigger decision, generation bundle, publication
+candidate, sink receipts, and publication cursor. If a due calendar boundary
+and a material event are observed together, the trigger decision coalesces them
+into one idempotent run and the higher-priority event selects the report kind;
+it does not emit a second weekly message. A profile may enable either mode or
+both by listing the corresponding trigger kinds in `enabled_kinds`. The
+recipient may still choose a single channel or audience, but that is a routing
+choice rather than a second source of report state.
+
+Late-arriving facts after a cadence window has been published belong to the
+next eligible event/update (or an explicitly labelled correction), and must not
+silently rewrite the already verified publication cursor. This keeps a weekly
+report useful as a stable look-back while automatic updates remain timely.
+
 ### Composition with Todo continuation
 
 The revision-guarded `loopx handoff prepare/inspect/adopt` flow transfers a

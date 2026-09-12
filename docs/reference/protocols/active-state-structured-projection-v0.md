@@ -190,6 +190,29 @@ canonical. After promotion, a provider outage or revision mismatch fails
 closed; operators may restore a reviewed provider snapshot and regenerate the
 Todo sections, but must not promote stale Markdown back to canonical truth.
 
+## Lease inspection / 租约检查
+
+`loopx task-lease inspect --goal-id <goal> --todo-id <todo>` follows the same
+promotion boundary as Todo reads. Before promotion it reads the existing local
+lease store. After promotion it reads Todo, lease and handoff mode from one
+canonical revision, reports `source_authority`, `provider_revision` and
+`legacy_fallback_used=false`, and returns `lease_path=null` because no local
+lease JSON is authoritative. Canonical absence returns `lease=null, active=false`;
+provider errors fail the read, never revive stale local files or repair display.
+
+`active` retains its existing meaning of an effective lease, not just an
+unexpired timestamp. The retained `lease.status` can remain `active` while
+`executor_constraint` explains a removed/excluded owner or divergent claim.
+The shared typed owner predicate does not grant execution, mutate claims or
+settle work. Release still requires its own key/version fence and remains usable
+for cleanup after eligibility is lost. Acquire derives current effectiveness
+from facts; old wire `effective` hints are accepted but cannot override them.
+
+中文：promotion 后检查租约必须读取同一 revision 的 Todo/lease/handoff mode，
+不能拼接本地旧文件。canonical 缺失表示无租约；来源故障明确失败。`active` 仍表示
+有效租约，未过期但持有人失去资格时返回原因，不自动续租、转移或清理。
+读取不提供写授权；release 的 key/version 门禁与幂等、CAS 规则保持不变。
+
 ## Migration Path
 
 The projector accepts complete legacy records and native `TodoDomainRecord`

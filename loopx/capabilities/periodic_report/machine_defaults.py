@@ -131,10 +131,11 @@ def normalize_periodic_report_machine_defaults(
         periodic.get("timezone", "UTC"),
         "periodic_report.timezone",
     )
-    try:
-        ZoneInfo(timezone)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError("periodic_report.timezone is unknown") from exc
+    if timezone != "UTC":
+        try:
+            ZoneInfo(timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("periodic_report.timezone is unknown") from exc
     normalized_periodic: dict[str, Any] = {
         "schema_version": PERIODIC_REPORT_MACHINE_DEFAULTS_SCHEMA,
         "enabled": enabled,
@@ -266,10 +267,11 @@ def _normalized_goal_subscription(
     timezone_name = _text(
         config.get("timezone", "UTC"), "goal periodic_report.timezone"
     )
-    try:
-        ZoneInfo(timezone_name)
-    except ZoneInfoNotFoundError as exc:
-        raise ValueError("goal periodic_report.timezone is unknown") from exc
+    if timezone_name != "UTC":
+        try:
+            ZoneInfo(timezone_name)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("goal periodic_report.timezone is unknown") from exc
     profile_preset = str(config.get("profile_preset") or "").strip() or None
     route_ref = str(config.get("route_ref") or "").strip() or None
     if enabled:
@@ -311,7 +313,8 @@ def _invalid_goal_subscription_fields(config: Mapping[str, Any]) -> tuple[str, .
         timezone_name = _text(
             config.get("timezone", "UTC"), "goal periodic_report.timezone"
         )
-        ZoneInfo(timezone_name)
+        if timezone_name != "UTC":
+            ZoneInfo(timezone_name)
     except (TypeError, ValueError, ZoneInfoNotFoundError):
         invalid.append("timezone")
     if enabled is True:

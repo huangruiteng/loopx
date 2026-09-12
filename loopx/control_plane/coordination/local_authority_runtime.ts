@@ -1162,6 +1162,7 @@ export async function listLocalCoordinationTodos(
       todo_read_model: todoReadModel,
       ...(leaseIndex === null ? {} : {
         leases: leaseIndex.lease_todo_ids.map((id) => leaseIndex.leases.get(id)!),
+        handoff_mode: head.head.handoff_mode ?? "legacy",
       }),
       provider_revision: head.provider_revision,
       cursor: head.cursor,

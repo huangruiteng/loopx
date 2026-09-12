@@ -3,6 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 
+def turn_envelope_budget_warning_lines(payload: dict[str, Any]) -> list[str]:
+    compaction = payload.get("compaction") or {}
+    warning = compaction.get("warning") or {}
+    if warning.get("code") != "turn_envelope_budget_exceeded":
+        return []
+    sections = warning.get("section_bytes") or {}
+    return [
+        "- WARNING: TurnEnvelope exceeds its performance target by "
+        f"{warning.get('excess_bytes')} UTF-8 bytes; Turn routing is unchanged.",
+        "- section_bytes: "
+        + ", ".join(f"{key}={value}" for key, value in sections.items()),
+        "- Review over-target sections: "
+        + ", ".join(warning.get("over_target_sections") or []),
+        "- Compress duplicate presentation or move detail to cold reads; "
+        "do not truncate authority or raise the target to hide growth.",
+    ]
+
+
 def render_turn_envelope_markdown(payload: dict[str, Any]) -> str:
     action_value = payload.get("action")
     user_value = payload.get("user")
@@ -29,5 +47,6 @@ def render_turn_envelope_markdown(payload: dict[str, Any]) -> str:
         f"- scheduler: `{scheduler.get('action')}`",
         f"- envelope_bytes: `{compaction.get('envelope_json_bytes')}`",
         f"- within_budget: `{compaction.get('within_budget')}`",
+        *turn_envelope_budget_warning_lines(payload),
     ]
     return "\n".join(lines)

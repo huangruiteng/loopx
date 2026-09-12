@@ -480,6 +480,36 @@ def test_trigger_receipt_participates_in_run_identity_and_cli(tmp_path, capsys) 
     assert cadence_run["trigger_receipt"]["report_kind"] == "cadence_digest"
     assert milestone_run["trigger_receipt"]["report_kind"] == "milestone_update"
 
+    unfinished_cadence = _run_request(cadence)
+    unfinished_cadence["generated_at"] = "2026-07-19T23:00:00Z"
+    with pytest.raises(ValueError, match="cadence_digest.*end_at"):
+        build_periodic_report_run(unfinished_cadence)
+
+    # A material event and a due calendar window share one publication decision;
+    # the urgent event wins the presentation kind without creating a duplicate
+    # weekly report.
+    coalesced = _trigger_request(
+        _candidate(
+            "cadence_due",
+            source_ref="scheduler:weekly-window/2026-w29",
+            evidence_digest="sha256:weekly-due",
+            facts={"due": True},
+        ),
+        _candidate(
+            "material_blocker",
+            source_ref="blocker:primary-path",
+            evidence_digest="sha256:blocker-opened",
+            facts={
+                "severity": "p0",
+                "transition": "opened",
+                "blocks_primary_path": True,
+            },
+        ),
+    )
+    coalesced_decision = build_periodic_report_trigger_decision(coalesced)
+    assert coalesced_decision["report_kind"] == "exception_update"
+    assert len(coalesced_decision["coalesced_trigger_ids"]) == 2
+
     mismatched = _run_request(cadence)
     mismatched["profile"] = {
         "profile_id": "another_project",

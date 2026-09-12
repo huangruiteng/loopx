@@ -1,3 +1,4 @@
+import {leaseOwnerRejection as ownerRejection} from "./task_lease_eligibility.ts";
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed } from "../coordination/shadow_management.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 import { LegacyCoordinationWriteError, requireLegacyCoordinationPrimaryWriteAllowed } from "../coordination/legacy_writer_fence.ts";
@@ -104,7 +105,6 @@ export interface LeaseRecord extends JsonObject {
 interface AcquireDecisionLease {
   present: boolean;
   active: boolean;
-  effective: boolean;
   status: string | null;
   owner: string | null;
   idempotency_key: string | null;
@@ -602,22 +602,6 @@ export function utcIsoformat(value: Date): string {
   return value.toISOString().replace(/\.\d{3}Z$/u, "Z");
 }
 
-export function ownerRejection(
-  todo: TodoFact | undefined,
-  owner: string | null,
-  registeredAgents: readonly string[],
-): string | null {
-  if (todo === undefined) return "todo_not_found";
-  if (todo.status !== "open") return "todo_not_open";
-  if (owner === null) return "invalid_owner";
-  if (!registeredAgents.includes(owner)) return "owner_not_registered";
-  if (todo.excluded_agents.includes(owner)) return "owner_excluded_from_todo";
-  if (todo.claimed_by && todo.claimed_by !== owner) {
-    return "owner_conflicts_with_claim";
-  }
-  return null;
-}
-
 function ownerFailure(
   code: string,
   request: AcquireRequest,
@@ -797,10 +781,11 @@ function decodeDecisionTodo(value: unknown): TodoFact | null {
 function decodeDecisionLease(value: unknown): AcquireDecisionLease | null {
   if (value === null || value === undefined) return null;
   const lease = requireJsonObject(value, "task lease acquire decision lease");
+  // Accept old callers without trusting their derived eligibility hint.
+  if (lease.effective !== undefined) decisionBoolean(lease.effective, "lease.effective");
   return {
     present: decisionBoolean(lease.present, "lease.present"),
     active: decisionBoolean(lease.active, "lease.active"),
-    effective: decisionBoolean(lease.effective, "lease.effective"),
     status: decisionNullableString(lease.status, "lease.status"),
     owner: decisionNullableString(lease.owner, "lease.owner"),
     idempotency_key: decisionNullableString(
@@ -910,7 +895,9 @@ export function evaluateTaskLeaseAcquireDecision(value: unknown): AcquireDecisio
   ) {
     return acquireDecisionResult("conflict", "version_mismatch");
   }
-  if (lease !== null && lease.present && lease.active && lease.effective) {
+  // The old wire effective hint is not authority over the supplied owner facts.
+  if (lease !== null && lease.present && lease.active &&
+      ownerRejection(input.todo, lease.owner, input.registered_agents) === null) {
     if (
       lease.owner === command.owner &&
       lease.idempotency_key === command.idempotency_key
@@ -1260,11 +1247,6 @@ async function commitAcquire(
   const version = leaseVersion(existing);
   const epoch = leaseEpoch(existing);
   const active = leaseIsActive(existing, at);
-  const existingEffective = existing !== null && active && ownerRejection(
-    todo ?? undefined,
-    normalizeAgent(existing.owner),
-    request.authority.registered_agents,
-  ) === null;
   const otherLeases = await otherLeaseFacts(request, at);
   const decision = evaluateTaskLeaseAcquireDecision({
     handoff_mode: request.authority.handoff_mode,
@@ -1275,7 +1257,6 @@ async function commitAcquire(
       : {
         present: true,
         active,
-        effective: existingEffective,
         status: typeof existing.status === "string" ? existing.status : null,
         owner: normalizeAgent(existing.owner),
         idempotency_key: typeof existing.idempotency_key === "string"

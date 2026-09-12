@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from ..presentation.renderers.turn_envelope_markdown import (
+    turn_envelope_budget_warning_lines,
+)
+
 
 def render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
     if not payload.get("ok"):
@@ -9,6 +13,7 @@ def render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
     route = payload.get("route") if isinstance(payload.get("route"), dict) else {}
     capability = payload.get("capability_action") if isinstance(payload.get("capability_action"), dict) else {}
     intent = capability.get("intent") if isinstance(capability.get("intent"), dict) else {}
+    envelope = payload.get("turn_envelope")
     return "\n".join(
         [
             "# LoopX Turn Plan",
@@ -19,6 +24,9 @@ def render_loopx_turn_plan_markdown(payload: dict[str, object]) -> str:
             "- side_effects: none",
             *(["- capability_action: required (not executed)",
                f"- next_command: {capability.get('command') or intent.get('command')}"] if capability else []),
+            *turn_envelope_budget_warning_lines(
+                envelope if isinstance(envelope, dict) else {}
+            ),
         ]
     )
 

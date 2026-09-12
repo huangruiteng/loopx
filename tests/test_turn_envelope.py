@@ -779,9 +779,7 @@ def test_turn_envelope_stays_actionable_during_scheduler_reset() -> None:
     assert envelope["action_signature"]["matches"] is True
     assert envelope["compaction"]["within_budget"] is True
     assert envelope["compaction"]["envelope_json_bytes"] <= TURN_ENVELOPE_BUDGET_BYTES
-    assert envelope["compaction"]["envelope_json_bytes"] >= (
-        TURN_ENVELOPE_BUDGET_BYTES - 1_024
-    )
+    # Compression may create additional headroom; there is no minimum size.
 
 
 def test_turn_envelope_keeps_concrete_user_gate() -> None:

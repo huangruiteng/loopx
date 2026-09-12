@@ -99,6 +99,25 @@ DOCS_CATALOG_NAV_ALLOWLIST = {
     "update-notes/README.md": "dated progress notes; catalog-only entry",
 }
 
+# These RFCs predate the bilingual RFC rule. New and modified RFCs must carry
+# a same-basename Chinese mirror; keep this legacy list explicit until each is
+# migrated rather than silently weakening the invariant.
+RFC_BILINGUAL_LEGACY_ALLOWLIST = {
+    "agent-im-openviking-collaboration-v0.md",
+    "benchmark-study-upload-dashboard-v0.md",
+    "goal-usage-token-cost-v0.md",
+    "provider-neutral-turn-start-inbox-hook-v0.md",
+    "single-owner-local-daemon-v0.md",
+    # Existing mirrors that predate reciprocal language links.
+    "cross-session-memory-substrate-v0.md",
+    "desktop-execution-frontends-v0.md",
+    "goal-channel-collaboration-v0.md",
+    "obelisk-session-evidence-provider-v0.md",
+    "post-outcome-memory-utility-attribution-v0.md",
+    "goal-direction-baseline-v0.md",
+    "harness-selection-dsh-pi-v0.md",
+}
+
 # Stable README advanced-docs entry links under docs/ that must stay reachable.
 STABLE_README_DOCS_ENTRY_LINKS = (
     "operations/README.md",
@@ -162,6 +181,25 @@ def iter_relative_md_targets(text: str) -> list[str]:
             continue
         targets.append(target)
     return targets
+
+
+def check_rfc_language_mirrors() -> None:
+    """Require bilingual mirrors for new RFCs and validate reciprocal links."""
+    rfc_dir = DOCS / "architecture" / "rfcs"
+    for english in sorted(rfc_dir.glob("*.md")):
+        if english.name in {"README.md", "TEMPLATE.md"} or english.name.endswith(".zh-CN.md"):
+            continue
+        if english.name in RFC_BILINGUAL_LEGACY_ALLOWLIST:
+            continue
+        chinese = english.with_name(f"{english.stem}.zh-CN.md")
+        if not chinese.exists():
+            raise AssertionError(f"RFC missing required Chinese mirror: {english.name}")
+        english_text = english.read_text(encoding="utf-8")
+        chinese_text = chinese.read_text(encoding="utf-8")
+        assert chinese.name in english_text, f"RFC missing English -> Chinese link: {english.name}"
+        assert english.name in chinese_text, f"RFC missing Chinese -> English link: {chinese.name}"
+        assert "semantic mirror" in english_text.lower(), english.name
+        assert "语义镜像" in chinese_text, chinese.name
 
 
 def mkdocs_nav_paths(mkdocs_text: str) -> set[str]:
@@ -814,6 +852,7 @@ def main() -> int:
     ]:
         assert required in compact_multi_agent_product_recipe, required
 
+    check_rfc_language_mirrors()
     print("docs-governance-smoke ok")
     return 0
 

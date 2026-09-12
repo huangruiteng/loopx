@@ -48,6 +48,13 @@ changes.
 
 ## Control-Plane Kernel, State, And Migration
 
+- [Human-confirmed domain operations v0](human-confirmed-domain-operations-v0.md)
+  ([中文版](human-confirmed-domain-operations-v0.zh-CN.md))
+  - **RFC status:** Draft.
+  - **Delivery on `main`:** Proposal only.
+  - **Current boundary:** Separates generic authenticated interaction, optional
+    financial execution and venue adapters. Defines shared frontend/Lark
+    confirmation and automatic outcomes; no runtime or trading permission added.
 - [Agent Loop Effect Interpreter v0](agent-loop-effect-interpreter-v0.md)
   ([中文版](agent-loop-effect-interpreter-v0.zh-CN.md))
   - **RFC status:** Accepted.

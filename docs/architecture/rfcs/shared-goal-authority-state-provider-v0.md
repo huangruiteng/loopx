@@ -2672,6 +2672,21 @@ The original direction remains; execution cards expand these stages rather than 
 
 #### Durability execution cards
 
+The task graph's T3 topology consumer now shares the inventory/horizon relation
+catalog and consumes one supplied status snapshot. Its missing/truncated metrics
+describe read completeness, not canonical validity or promotion qualification.
+File/SQLite reader replay with a missing Markdown display must remain read-only;
+the graph never repairs display or changes authority. This retires duplicate
+Python relationship/traversal knowledge without changing the D1–D3 gates below.
+
+The T3 lease-inspection reader now binds Todo, lease and handoff mode to one
+provider revision and never reads obsolete local lease files after promotion.
+Its eligibility policy is shared with current acquire/lifecycle rules, including
+claim divergence and exclusion; a read result is not a lease grant or a commit
+receipt. An empty canonical lease set stays empty. This read closure and removal
+of duplicate eligibility rules do not qualify a provider, alter CAS/replay or
+relax D1–D3; permanent Markdown display and the remaining roadmap stay intact.
+
 Capability-gap consumers now share the TS requirement/resolution owner across
 legacy and canonical inputs, including quota's Monitor capability partition.
 The old Python missing-set and owner/repair decision builders are removed;

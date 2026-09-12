@@ -390,6 +390,25 @@ promotion 已完成。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+Task graph topology 与 inventory/horizon 共用 `work_items/planning_relations.ts`。
+一轮纯 TS 请求拥有关系发现、稳定有界遍历、边去重与缺失/截断完整度；删除
+Python 的前驱索引、条件拆解和遍历。Python 保留 status 来源适配及节点、
+evidence/handoff 的脱敏展示。明确的语义修正：successor 谱系不再冒充完成
+依赖，unblocks 方向修正，补 Monitor generation 条件，上限处保留平行关系
+和菱形汇合边。详见[图协议](../../reference/protocols/task-graph-projection-v0.md#typed-todo-topology)。
+不改变生命周期准入、claim/lease 或默认 provider。来源仍可能不完整：本批
+闭合一个 T3 解释边界，不宣称所有图来源交付或 T1–T4 已完成。
+
+Lease inspect 在 promotion 后从同一 canonical revision 读取 Todo、lease 与
+handoff mode；canonical 无租约不复活本地旧文件，provider 失败不回退 Markdown。
+结果携带 provider revision，读取不修复展示、不修改租约；未 promotion 的来源契约保留。
+`task_lease_eligibility.ts` 同时替代 Python authority core 和三处 TS owner 资格判断，
+供 acquire、lifecycle 与终态 fence 复用。当前租约是否有效由 acquire 内部根据同一输入
+的 owner/claim/exclusion/注册事实推导，不再由旧 `effective` 派生提示覆盖。
+其他 Todo 的 scope 冲突仍消费现有完整执行快照；release 保留独立的 key/version
+清理门禁。这是一个 T3 reader 与共享规则边界的闭合，不代表 Goal-channel lease
+展示、T1/T2 全部事务或 promotion 已完成。
+
 Quota 的 scope/claim 消费者现通过每个 source 一次 `todo.quota_planning.project`，
 组合选择、有限展示与既有 resume planner。`quota_selection.ts` 替代 Python
 claim-visibility 模块及 Agent-scope 中独立的 User gate/action 过滤器。Python

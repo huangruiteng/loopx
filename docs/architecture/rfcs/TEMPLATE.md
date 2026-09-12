@@ -7,12 +7,15 @@
 - **Last normative revision:** YYYY-MM-DD
 - **Implementation baseline:** `<commit>` or not applicable
 - **Related contracts:** <links>
-- **Language mirror:** <link, if maintained>
+- **Language mirror:** [中文版](https://github.com/huangruiteng/loopx/blob/main/docs/architecture/rfcs/<same-basename>.zh-CN.md)
 
 ## Document map and maintenance contract
 
 State which sections are normative, which are current implementation facts,
-and which are historical evidence. Use this default:
+and which are historical evidence. Use this default. Every new RFC must ship an
+English document and a `<same-basename>.zh-CN.md` semantic mirror; a language
+link is required in both documents. Keep the two versions synchronized when
+normative sections change:
 
 - Sections 1-10 are the durable design and acceptance contract.
 - Section 11 is the normative delivery plan.

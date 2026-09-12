@@ -1,3 +1,4 @@
+import {evaluateTaskLeaseOwnerEligibility} from "./work_items/task_lease_eligibility.ts";
 import { evaluateSubagentContext, describeSubagentContext } from "./subagent_context.ts";
 import {
   effectIdsMatch,
@@ -101,6 +102,7 @@ import {
   qualifyActionSelection,
 } from "./work_items/action_portfolio.ts";
 import { projectQuotaPlanningHorizon } from "./work_items/planning_horizon.ts";
+import { projectTaskGraphTopology } from "./work_items/task_graph.ts";
 import { projectDeliveryHistory, projectDeliveryResponse } from "./work_items/delivery_history.ts";
 import { validateDeliveryClaim } from "./work_items/delivery_outcome.ts";
 import {
@@ -429,6 +431,7 @@ export function createEffectRuntimeHandlers(
     ["work_item.action_portfolio.project", projectQuotaActionPortfolio],
     ["work_item.action_selection.qualify", qualifyActionSelection],
     ["work_item.planning_horizon.project", projectQuotaPlanningHorizon],
+    ["work_item.task_graph.topology", projectTaskGraphTopology],
     ["work_item.planning_inventory.project", projectTodoPlanningInventory],
     ["work_item.planning_inventory.detail", projectTodoPlanningInventoryDetail],
     ["work_item.refresh_recommendation.resolve", resolveRefreshRecommendation],
@@ -448,6 +451,7 @@ export function createEffectRuntimeHandlers(
     ["quota.void.commit", evaluateQuotaVoidCommit],
     ["quota.settlement.read", readQuotaSettlement],
     ["quota.turn_envelope.evaluate", evaluateTurnEnvelope],
+    ["task_lease.owner_eligibility", evaluateTaskLeaseOwnerEligibility],
     ["task_lease.acquire.decide", evaluateTaskLeaseAcquireDecision],
     ["task_lease.acquire.native", executeTaskLeaseAcquire],
     ["task_lease.lifecycle.decide", evaluateTaskLeaseLifecycleDecision],

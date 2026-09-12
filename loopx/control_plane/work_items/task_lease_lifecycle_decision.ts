@@ -1,3 +1,4 @@
+import {leaseOwnerRejection as ownerRejection} from "./task_lease_eligibility.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import { type JsonObject } from "../effect_program.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
@@ -200,22 +201,6 @@ function result(
   };
 }
 
-function ownerRejection(
-  input: TaskLeaseLifecycleDecisionInput,
-  owner: string | null,
-): string | null {
-  const todo = input.todo;
-  if (todo === null) return "todo_not_found";
-  if (todo.status !== "open") return "todo_not_open";
-  if (!owner) return "invalid_owner";
-  if (!input.registered_agents.includes(owner)) return "owner_not_registered";
-  if (todo.excluded_agents.includes(owner)) return "owner_excluded_from_todo";
-  if (todo.claimed_by && todo.claimed_by !== owner) {
-    return "owner_conflicts_with_claim";
-  }
-  return null;
-}
-
 /**
  * Pure lifecycle decision shared by the local file transaction and every
  * provider-neutral coordination executor. Persistence, clocks, provider CAS,
@@ -242,8 +227,9 @@ export function decideTaskLeaseLifecycle(
       return result("rejected", "owner_not_registered");
     }
     const rejection = ownerRejection(
-      input,
+      input.todo,
       command.operation === "transfer" ? command.new_owner : command.owner,
+      input.registered_agents,
     );
     if (rejection !== null) return result("rejected", rejection);
   }

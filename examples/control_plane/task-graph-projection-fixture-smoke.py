@@ -482,10 +482,10 @@ def assert_diamond_dag_predecessor_edges() -> None:
     a_id = node_ids["todo_a"]
     b_id = node_ids["todo_b"]
     shared_id = node_ids["todo_shared"]
-    assert (root_id, a_id, "depends_on") in edge_pairs, edge_pairs
-    assert (root_id, b_id, "depends_on") in edge_pairs, edge_pairs
-    assert (a_id, shared_id, "depends_on") in edge_pairs, edge_pairs
-    assert (b_id, shared_id, "depends_on") in edge_pairs, edge_pairs
+    assert (root_id, a_id, "continues") in edge_pairs, edge_pairs
+    assert (root_id, b_id, "continues") in edge_pairs, edge_pairs
+    assert (a_id, shared_id, "continues") in edge_pairs, edge_pairs
+    assert (b_id, shared_id, "continues") in edge_pairs, edge_pairs
     assert projection["limits"]["predecessor_truncated"] is False
 
 
@@ -700,15 +700,15 @@ def assert_cycle_predecessor_safety() -> None:
     # Should not have exploded; should have exactly 3 deliverable nodes
     deliverable_nodes = [n for n in projection["nodes"] if n["kind"] == "deliverable"]
     assert len(deliverable_nodes) == 3, deliverable_nodes
-    # root->a and a->b edges should exist; b->a is correctly skipped due to cycle detection
+    # All lineage edges survive; visited nodes, not edges, bound cycle traversal.
     edge_pairs = {(e["from_node_id"], e["to_node_id"], e["relation"]) for e in projection["edges"]}
     node_ids = {n["refs"]["todo_ids"][0]: n["node_id"] for n in deliverable_nodes}
     root_id = node_ids["todo_cycle_root"]
     a_id = node_ids["todo_cycle_a"]
     b_id = node_ids["todo_cycle_b"]
-    assert (root_id, a_id, "depends_on") in edge_pairs
-    assert (a_id, b_id, "depends_on") in edge_pairs
-    assert (b_id, a_id, "depends_on") in edge_pairs
+    assert (root_id, a_id, "continues") in edge_pairs
+    assert (a_id, b_id, "continues") in edge_pairs
+    assert (b_id, a_id, "continues") in edge_pairs
 
 
 def main() -> int:

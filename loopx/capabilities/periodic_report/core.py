@@ -178,6 +178,29 @@ def _normalize_window(raw: object) -> dict[str, str]:
     return {"start_at": start_at, "end_at": end_at}
 
 
+def _validate_report_window_for_trigger(
+    *, generated_at: str, period_window: Mapping[str, str], trigger_receipt: Mapping[str, Any] | None
+) -> None:
+    """Keep cadence digests retrospective while leaving event updates incremental.
+
+    A calendar boundary is an eligibility signal, not permission to report an
+    unfinished interval.  Event-driven updates may still use the same bounded
+    run envelope, but their trigger receipt—not the calendar—defines why the
+    update is being published.
+    """
+
+    if not trigger_receipt or trigger_receipt.get("report_kind") != "cadence_digest":
+        return
+    generated = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+    end_at = datetime.fromisoformat(
+        str(period_window["end_at"]).replace("Z", "+00:00")
+    )
+    if end_at > generated:
+        raise ValueError(
+            "cadence_digest period_window.end_at must not be later than generated_at"
+        )
+
+
 def _normalize_profile(raw: object) -> dict[str, str]:
     profile = _object(raw, "profile")
     normalized = {
@@ -660,6 +683,11 @@ def build_periodic_report_run(request: Mapping[str, Any]) -> dict[str, Any]:
     trigger_receipt = _normalize_trigger_receipt(payload.get("trigger_receipt"))
     if trigger_receipt is not None and trigger_receipt["profile"] != profile:
         raise ValueError("trigger_receipt.profile must match the run profile")
+    _validate_report_window_for_trigger(
+        generated_at=generated_at,
+        period_window=period_window,
+        trigger_receipt=trigger_receipt,
+    )
     sources = _normalize_sources(payload.get("source_snapshots"))
     retry_policy = _normalize_retry_policy(payload.get("retry_policy", {}))
     artifact = _normalize_artifact(

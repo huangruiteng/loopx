@@ -915,17 +915,42 @@ def inspect_task_lease(
 ) -> dict[str, Any]:
     goal_id = normalize_goal_id(goal_id)
     todo_id = normalize_lease_todo_id(todo_id)
-    lease_path = task_lease_path(runtime_root=runtime_root, goal_id=goal_id, todo_id=todo_id)
-    lease = read_lease(lease_path)
+    from ..coordination.local_authority import read_canonical_todos_if_promoted
+    from ..todos.handoff_mode import normalize_handoff_mode
+
+    # A promoted read cannot combine canonical Todo facts with stale local
+    # lease files or display frontmatter. Absence is an authoritative result.
+    canonical = read_canonical_todos_if_promoted(
+        runtime_root=runtime_root, goal_id=goal_id, include_leases=True,
+    )
+    source_fields: dict[str, Any] = {}
+    if canonical is not None:
+        if "handoff_mode" not in canonical:
+            raise TaskLeaseError("canonical lease snapshot omitted handoff mode; update the runtime",
+                                 code="local_authority_snapshot_incomplete")
+        lease_path = None
+        lease = next((row for row in canonical["leases"] if row.get("todo_id") == todo_id), None)
+        todo = next((row for row in canonical["todos"] if row.get("todo_id") == todo_id), None)
+        handoff_mode = normalize_handoff_mode(canonical.get("handoff_mode"))
+        source_fields = {
+            "source_authority": canonical["source_authority"],
+            "provider_revision": canonical["provider_revision"],
+            "legacy_fallback_used": False,
+        }
+    else:
+        lease_path = task_lease_path(runtime_root=runtime_root, goal_id=goal_id, todo_id=todo_id)
+        lease = read_lease(lease_path)
+        handoff_mode = _optional_handoff_mode(registry_path, goal_id)
     active = lease_is_active(lease)
     executor_constraint: dict[str, Any] | None = None
     if active and lease:
         try:
-            todo = task_lease_todo_projection(
-                registry_path=registry_path,
-                goal_id=goal_id,
-                todo_id=todo_id,
-            )
+            if canonical is None:
+                todo = task_lease_todo_projection(
+                    registry_path=registry_path,
+                    goal_id=goal_id,
+                    todo_id=todo_id,
+                )
         except TaskLeaseError as exc:
             active = False
             executor_constraint = {
@@ -942,7 +967,6 @@ def inspect_task_lease(
                 active = False
             else:
                 executor_constraint = None
-    handoff_mode = _optional_handoff_mode(registry_path, goal_id)
     return {
         "ok": True,
         "schema_version": TASK_LEASE_SCHEMA_VERSION,
@@ -951,7 +975,8 @@ def inspect_task_lease(
         "todo_id": todo_id,
         "active": active,
         "lease": lease,
-        "lease_path": str(lease_path),
+        "lease_path": str(lease_path) if lease_path is not None else None,
+        **source_fields,
         **({"handoff_mode": handoff_mode} if handoff_mode else {}),
         **({"executor_constraint": executor_constraint} if executor_constraint else {}),
     }

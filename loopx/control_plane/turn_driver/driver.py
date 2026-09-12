@@ -81,9 +81,8 @@ def _typed_route(envelope: Mapping[str, Any]) -> LoopXTurnRoute:
         or source_hash != envelope_hash
     ):
         return LoopXTurnRoute.CONTRACT_ERROR
-    compaction = _mapping(envelope.get("compaction"))
-    if compaction.get("within_budget") is not True:
-        return LoopXTurnRoute.CONTRACT_ERROR
+    # Packet size is a performance warning, not execution authority. Keep the
+    # diagnostics in the envelope; schema/signature/lineage remain hard gates.
 
     action = _mapping(envelope.get("action"))
     user = _mapping(envelope.get("user"))
