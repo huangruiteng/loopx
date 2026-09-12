@@ -1,13 +1,15 @@
-import {createHash} from "node:crypto";
 import {readFileSync} from "node:fs";
 
-import {canonicalAuthorityBytes, canonicalAuthoritySha256} from
+import {authorityUnicodeCompare, canonicalAuthoritySha256} from
   "../../loopx/control_plane/coordination/authority_store_codec.ts";
 import {
-  TODO_CANONICAL_READ_RECORD_FIELDS,
-  TODO_CANONICAL_READ_RECORD_SCHEMA,
   TODO_ITEM_SCHEMA,
 } from "../../loopx/control_plane/coordination/coordination_state_contract.ts";
+import {
+  authorityProjectionFixture,
+  projectionFixtureAsSchema,
+  type AuthorityProjectionSchema,
+} from "./authority_projection_fixture.ts";
 
 const envelope = JSON.parse(readFileSync(new URL(
   "../fixtures/control_plane/coordination_production_scale_v0.json",
@@ -16,6 +18,8 @@ const envelope = JSON.parse(readFileSync(new URL(
   schema_version: string;
   agent_status_counts: Record<string, number>;
   user_status_counts: Record<string, number>;
+  agent_status_order: string[];
+  user_status_order: string[];
   current_lease_count: number;
   retired_lease_count: number;
   standing_user_decision_count: number;
@@ -24,6 +28,7 @@ const envelope = JSON.parse(readFileSync(new URL(
   completion_target_index: number;
   supersede_target_index: number;
   semantic_cases: Record<string, Record<string, unknown>>;
+  presentation_cases: Record<string, Record<string, unknown>>;
 };
 
 export const PRODUCTION_SCALE_FIXTURE_SCHEMA =
@@ -50,11 +55,26 @@ export interface ProductionScaleCoordinationFixture {
   readonly expected_user_archive_count: number;
   readonly expected_standing_user_decision_count: number;
   readonly semantic_cases: Readonly<Record<string, Record<string, unknown>>>;
+  readonly presentation_cases: Readonly<Record<string, Record<string, unknown>>>;
 }
 
-function statusSeries(counts: Record<string, number>): string[] {
-  return Object.entries(counts).flatMap(([status, count]) =>
-    Array.from({length: count}, () => status));
+function statusSeries(
+  counts: Record<string, number>,
+  order: readonly string[],
+  role: string,
+): string[] {
+  const keys = Object.keys(counts).sort();
+  const orderedKeys = [...order].sort();
+  if (keys.length !== orderedKeys.length || keys.some((key, index) => key !== orderedKeys[index])) {
+    throw new Error(`${role} production fixture status order does not cover its counts`);
+  }
+  return order.flatMap(status => {
+    const count = counts[status];
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new Error(`${role} production fixture count is not a non-negative safe integer`);
+    }
+    return Array.from({length: count}, () => status);
+  });
 }
 
 function todoId(role: "agent" | "user", index: number): string {
@@ -69,8 +89,9 @@ function todoRecords(
   goalId: string,
   role: "agent" | "user",
   counts: Record<string, number>,
+  order: readonly string[],
 ): Record<string, unknown>[] {
-  return statusSeries(counts).map((status, index) => {
+  return statusSeries(counts, order, role).map((status, index) => {
     const done = status === "done" || status === "deferred";
     const record: Record<string, unknown> = {
       schema_version: TODO_ITEM_SCHEMA,
@@ -138,12 +159,17 @@ function todoRecords(
 
 export function productionScaleCoordinationFixture(
   goalId: string,
+  schema: AuthorityProjectionSchema = "legacy",
 ): ProductionScaleCoordinationFixture {
   if (envelope.schema_version !== PRODUCTION_SCALE_FIXTURE_SCHEMA) {
     throw new Error("production-scale fixture envelope schema mismatch");
   }
-  const agents = todoRecords(goalId, "agent", envelope.agent_status_counts);
-  const users = todoRecords(goalId, "user", envelope.user_status_counts);
+  const agents = todoRecords(
+    goalId, "agent", envelope.agent_status_counts, envelope.agent_status_order,
+  );
+  const users = todoRecords(
+    goalId, "user", envelope.user_status_counts, envelope.user_status_order,
+  );
   const archiveDependent = [...agents].reverse().find(item => item.status === "open")!;
   archiveDependent.task_class = "advancement_task";
   archiveDependent.resume_when = `todo_done:${todoId("agent", 3)}`;
@@ -158,7 +184,7 @@ export function productionScaleCoordinationFixture(
   supersedeTodo.task_class = "advancement_task";
   supersedeTodo.claimed_by = "agent-b";
   const todos = [...agents, ...users]
-    .sort((left, right) => String(left.todo_id).localeCompare(String(right.todo_id)));
+    .sort((left, right) => authorityUnicodeCompare(String(left.todo_id), String(right.todo_id)));
   const leasedIds = [
     String(completionTodo.todo_id),
     String(supersedeTodo.todo_id),
@@ -179,26 +205,26 @@ export function productionScaleCoordinationFixture(
     updated_at: observedAt(index),
     expires_at: index < 2 ? "2027-01-01T00:00:00Z" : observedAt(index + 1),
     status: index < 2 ? "active" : "released",
-  })).sort((left, right) => left.todo_id.localeCompare(right.todo_id));
+  })).sort((left, right) => authorityUnicodeCompare(left.todo_id, right.todo_id));
   const completionLease = leases.find((lease) => lease.todo_id === completionTodo.todo_id)!;
   const supersedeLease = leases.find((lease) => lease.todo_id === supersedeTodo.todo_id)!;
-  const initialAgentDone = envelope.agent_status_counts.done ?? 0;
+  const legacyProjection = authorityProjectionFixture(
+    goalId,
+    todos as Record<string, unknown>[],
+    leases as Record<string, unknown>[],
+    "legacy",
+    {source_authority: "synthetic_production_scale_fixture", handoff_mode: "hard_lease"},
+  );
+  const expectedAgentDone = agents.filter(todo => todo.status === "done").length;
+  const expectedUserDone = users.filter(todo => todo.status === "done").length;
+  const expectedStanding = users.filter(todo =>
+    todo.task_class === "user_gate" && todo.decision_outcome === "approve" &&
+    todo.global_gate === true && todo.goal_bound === true,
+  ).length;
   return {
-    projection: {
-      goal_id: goalId,
-      source_authority: "synthetic_production_scale_fixture",
-      handoff_mode: "hard_lease",
-      todos,
-      leases,
-      todo_read_model: {
-        schema_version: TODO_CANONICAL_READ_RECORD_SCHEMA,
-        todo_count: todos.length,
-        records_sha256: createHash("sha256")
-          .update(canonicalAuthorityBytes(todos))
-          .digest("hex"),
-        contract_fields: [...TODO_CANONICAL_READ_RECORD_FIELDS],
-      },
-    },
+    projection: schema === "legacy"
+      ? legacyProjection
+      : projectionFixtureAsSchema(legacyProjection, schema),
     registered_agents: ["agent-a", "agent-b"],
     completion_todo_id: String(completionTodo.todo_id),
     supersede_todo_id: String(supersedeTodo.todo_id),
@@ -208,10 +234,11 @@ export function productionScaleCoordinationFixture(
     supersede_lease_expected_version: supersedeLease.version,
     expected_initial_todo_count: todos.length,
     expected_current_lease_count: leases.length,
-    expected_agent_archive_count_after_terminals: initialAgentDone + 2 - 5,
-    expected_user_archive_count: (envelope.user_status_counts.done ?? 0) - 5,
-    expected_standing_user_decision_count: envelope.standing_user_decision_count,
+    expected_agent_archive_count_after_terminals: expectedAgentDone + 2 - 5,
+    expected_user_archive_count: expectedUserDone - 5,
+    expected_standing_user_decision_count: expectedStanding,
     semantic_cases: envelope.semantic_cases,
+    presentation_cases: envelope.presentation_cases,
   };
 }
 
