@@ -29,8 +29,9 @@ loopx reward-memory ingest-event --input full-public-fixture.json --format json
 
 ## Experimental activation
 
-Reward Memory is a provider-neutral, default-off experimental goal capability.
-It is enabled for named registered agent lanes, not for a whole LoopX install:
+Reward Memory is a provider-neutral, default-off experimental capability. It is
+enabled for a named Agent inside one Goal, not for a whole Goal or LoopX
+install:
 
 ```bash
 # Preview first; add --execute only after checking the boundary change.
@@ -42,11 +43,55 @@ loopx reward-memory experiment-status \
   --goal-id <goal> --agent-id <registered-agent> --format json
 ```
 
-The registry retains only `enabled`, `experimental`, an ignored repo-relative
-config pointer, and the explicit agent allowlist. Provider-specific choices
-therefore stay local and private. OpenViking is the first provider used by the
-Issue Fix pilot, but it is not a global LoopX feature flag or mandatory
-dependency; another provider can satisfy the same binding contract.
+The registry retains `enabled`, `experimental`, an ignored repo-relative config
+pointer and digest, the explicit Agent allowlist, and a public-safe per-Agent
+enablement receipt. Provider-specific choices stay local and private. A
+verified receipt proves that the exact route accepted a fresh non-recallable
+canary write and returned the same bytes. A missing receipt or config digest
+drift makes automatic use unavailable without blocking ordinary Goal work.
+OpenViking is the first provider used by the Issue Fix pilot, but it is not a
+global LoopX feature flag or mandatory dependency; another provider can
+satisfy the same binding contract.
+
+### OpenViking v0.4.19 identity boundary
+
+LoopX currently assumes one Agent belongs to exactly one Goal, while a Goal may
+contain several Agents. Agent names are only Goal-local. The durable runtime
+identity is therefore `(goal_id, agent_id)`, and LoopX derives a deterministic,
+OpenViking-safe peer token from that pair. Reusing `explorer` in another Goal
+produces another peer token, even when both routes use the same authenticated
+OpenViking user.
+
+New private writes must use
+`viking://user/{user_id}/peers/{canonical_peer}/memories/...`; the request's
+`actor_peer_id` must equal the URI peer before any provider call. LoopX rejects
+`viking://agent/...` for writes because OpenViking v0.4.19 defines it as a
+shared, read-only legacy compatibility scope. It also rejects user-private
+paths without an actor-bound peer for an Agent-private corpus. Private peer
+reads/writes require CLI `>=0.4.18` and server `>=0.4.19`. See OpenViking's
+[multi-tenant model](https://github.com/volcengine/OpenViking/blob/main/docs/en/concepts/11-multi-tenant.md)
+and [URI migration](https://github.com/volcengine/OpenViking/blob/main/docs/en/migration/01-user-peer-model.md).
+
+Config v1 can bind one private Goal-scoped Agent only. Supplying several Agents
+with one private provider binding is rejected instead of silently sharing a
+peer. Account/public resources remain an explicit shared mode. A future
+same-Goal `goal_shared` memory must be a separate corpus with its own owner,
+reader allowlist, write/promotion policy, and receipt; runtime recall may then
+federate the Agent-private and Goal-shared corpora explicitly. Private memory is
+never promoted or made visible to a sibling Agent merely because both Agents
+belong to the same Goal.
+
+### Lifecycle completion boundary
+
+Provider readiness and lifecycle automation are separate status dimensions. A
+verified storage receipt does not by itself prove that automatic recall and
+writeback are connected to every host. Complete lifecycle enablement means the
+supported planning/decision entry points perform bounded recall, and real
+evidence-backed outcome reviews perform idempotent writeback without another
+hidden opt-in. No new evidence means no new memory. A missing identity never
+falls back to a shared corpus; provider degradation stays visible while base
+Goal work continues. Each host must report its actual coverage rather than
+generalizing from a direct CLI or helper test.
 
 Config v1 declares one `project_provider_binding`, its exact per-corpus scope
 references, the project corpus set, module-owned surfaces, and an automation
@@ -92,7 +137,12 @@ provider/corpus identity are still checked independently for every corpus.
 ```
 
 The abbreviated corpus and standing-policy objects above represent the full
-existing record contracts. `experiment-status` reports the v1 config schema,
+existing record contracts. `configure-goal` preview now calls the provider
+preflight and reports `preflight_ready`, `preflight_incomplete`, or
+`unavailable`; it never reports a provider write as merely `planned`. Preview
+does not prove writability. Apply must complete the fresh canary write and
+exact readback before it commits the registry binding. `experiment-status`
+reports the v1 config schema,
 corpus/surface counts, recall-profile ids, and the effective automatic policy
 without exposing scope refs. Agent-scoped `quota should-run` and `status
 --agent-id` resolve that policy through the same invoked registry and config

@@ -24,8 +24,8 @@ loopx reward-memory ingest-event --input full-public-fixture.json --format json
 
 ## 实验能力的开启方式
 
-Reward Memory 是 provider-neutral、默认关闭的 goal 级实验能力。它按已登记 agent lane
-显式开启，而不是对整套 LoopX 全局开启：
+Reward Memory 是 provider-neutral、默认关闭的实验能力。它按某个 Goal 内已登记的具体
+Agent 显式开启，而不是对整个 Goal 或整套 LoopX 开启：
 
 ```bash
 # 先 preview；确认边界变化后再追加 --execute。
@@ -37,10 +37,42 @@ loopx reward-memory experiment-status \
   --goal-id <goal> --agent-id <registered-agent> --format json
 ```
 
-Registry 只保存 `enabled`、`experimental`、一个指向 repo 内 ignored config 的相对路径，
-以及显式 agent allowlist，因此 provider 选择留在本地私有配置里。OpenViking 是 Issue Fix
-pilot 当前使用的首个 provider，但不是 LoopX 的全局 feature flag 或强制依赖；任何满足
-同一 binding contract 的 provider 都可以替换它。
+Registry 只保存 `enabled`、`experimental`、指向 repo 内 ignored config 的相对路径及其
+digest、显式 Agent allowlist，以及 public-safe 的逐 Agent 启用回执，因此 provider 选择仍
+留在本地私有配置里。verified 回执证明精确路由完成了一次新的、不可召回的 canary 写入，
+并精确读回相同字节。回执缺失或 config digest 漂移时，自动能力不可用，但不会阻塞 Goal
+的普通工作。OpenViking 是 Issue Fix pilot 当前使用的首个 provider，但不是 LoopX 的全局
+feature flag 或强制依赖；任何满足同一 binding contract 的 provider 都可以替换它。
+
+### OpenViking v0.4.19 身份边界
+
+LoopX 当前假设一个 Agent 只属于一个 Goal，而一个 Goal 可以包含多个 Agent。Agent 名字只在
+Goal 内唯一，因此持久运行时身份是 `(goal_id, agent_id)`；LoopX 会从这两个值生成确定性的、
+符合 OpenViking 规范的 peer token。另一个 Goal 即使也有名为 `explorer` 的 Agent，也会得到
+不同的 peer token，即使二者使用同一个经过认证的 OpenViking user。
+
+新的私有写入只能使用
+`viking://user/{user_id}/peers/{canonical_peer}/memories/...`；请求中的
+`actor_peer_id` 必须在任何 provider 调用前与 URI 中的 peer 完全相等。LoopX 禁止向
+`viking://agent/...` 写入，因为 OpenViking v0.4.19 已把它定义为全账户共享、只读的旧版兼容
+入口。Agent 私有 corpus 也不能使用缺少 actor-bound peer 的 user-private 路径。私有 peer
+读写要求当前代 CLI（`>=0.4.18`）和 server（`>=0.4.19`）。参见 OpenViking 的
+[多租户模型](https://github.com/volcengine/OpenViking/blob/main/docs/en/concepts/11-multi-tenant.md)
+和 [URI 迁移说明](https://github.com/volcengine/OpenViking/blob/main/docs/en/migration/01-user-peer-model.md)。
+
+Config v1 的一份私有配置只能绑定一个 Goal-scoped Agent；把多个 Agent 交给同一个私有
+provider binding 会被拒绝，不能静默共用 peer。Account/public resources 仍是显式共享模式。
+未来如果增加同 Goal 的 `goal_shared` memory，必须作为独立 corpus，拥有独立 owner、读取
+allowlist、写入/晋升策略和回执；运行时再显式合并 Agent 私有与 Goal 共享两个 corpus。
+不能因为两个 Agent 同属一个 Goal，就把某个 Agent 的私有 memory 自动晋升或暴露给兄弟 Agent。
+
+### 生命周期完成边界
+
+Provider 就绪和生命周期自动化是两个独立状态。存储启用回执已验证，并不代表每个宿主都已经
+接好自动召回和写回。完整生命周期开启意味着：适用的真实规划/决策入口执行有界召回；真实、
+有证据的结果复盘执行幂等写回，不再依赖另一个隐藏开关。没有新证据就不产生新 memory；缺少
+身份时绝不回退共享 corpus；provider 降级应清晰可见，同时不阻塞 Goal 的基础工作。每个宿主
+必须报告自身真实覆盖范围，不能把一次直接 CLI 或 helper 测试泛化成全宿主可用。
 
 Config v1 只登记一次 `project_provider_binding`，同时列出每个 corpus 的精确 provider
 scope、项目 corpus 集合、模块自有 surface 和 automation policy。每个 surface 显式列出
@@ -85,6 +117,9 @@ authority、privacy、freshness 和 lifecycle；每个 corpus 的 scope digest�
 ```
 
 上例省略的 corpus 和 standing policy 字段仍使用既有完整记录 contract。
+`configure-goal` 的 preview 现在会调用 provider preflight，并返回 `preflight_ready`、
+`preflight_incomplete` 或 `unavailable`，不会再把 provider 写入标成 `planned`。Preview
+本身不证明可写；apply 必须完成新的 canary 写入和精确读回后，才能提交 Registry binding。
 `experiment-status` 会报告 v1 config schema、corpus/surface 数量、recall profile id 和生效的
 automatic policy，但不会泄露 scope ref。Agent-scoped `quota should-run` 与
 `status --agent-id` 使用同一个 invoked registry 和 config reader 解析该 policy，不会把
