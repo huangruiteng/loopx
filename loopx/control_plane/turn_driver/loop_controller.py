@@ -103,8 +103,8 @@ def _envelope_route(decision: Mapping[str, Any]) -> LoopXTurnRoute:
     """Return the shared typed route for a fresh quota/scheduler decision.
 
     Reuses the Turn plan driver's ``_typed_route`` contract, which requires a
-    matching action signature with non-empty equal hashes and an in-budget
-    compaction. A projected user action outranks delivery, so it is resolved
+    matching action signature with non-empty equal hashes. Compaction budget
+    warnings are diagnostic only. A projected user action outranks delivery, so it is resolved
     before the typed delivery route. Raises ``ValueError`` when the envelope
     fails the shared contract instead of accepting a forged or truncated
     decision.
@@ -114,7 +114,7 @@ def _envelope_route(decision: Mapping[str, Any]) -> LoopXTurnRoute:
     if route is LoopXTurnRoute.CONTRACT_ERROR:
         raise ValueError(
             "quota decision failed the shared envelope contract "
-            "(schema, signature hashes, or compaction budget)"
+            "(schema or signature hashes)"
         )
     user = _mapping(decision.get("user"))
     if user.get("action_required") is True:

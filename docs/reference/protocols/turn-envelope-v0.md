@@ -110,8 +110,56 @@ the default quota output.
 
 Large todo summaries, frontier diagnostics, readiness history, compatibility
 fields, and warning collections stay on the referenced full-decision/status
-cold paths. The envelope has an 8 KiB JSON budget and reports its measured
-source/envelope byte counts.
+cold paths. The envelope has an **8 KiB compact UTF-8 JSON performance target**,
+not an execution-admission limit. `compaction.envelope_utf8_bytes` measures the
+final packet, including diagnostics. The historical `source_json_bytes` and
+`envelope_json_bytes` fields still count Unicode code points for v0 compatibility;
+do not use them as wire-byte measurements.
+
+### Budget warnings and allocation
+
+Oversize valid envelopes keep their normal Turn plan/controller route. They
+report `compaction.within_budget=false` and a structured
+`warning.code=turn_envelope_budget_exceeded`, with `excess_bytes`, additive
+`section_bytes` and `over_target_sections`. JSON carries this through the Turn
+plan and host request; Markdown plan/envelope output calls out the warning.
+Schema, signatures, identity, permissions, receipt validation and execution
+quota are still hard gates. This changes previous behavior for **all Turn hosts**:
+packet growth alone no longer produces `contract_error` or stops a Turn loop.
+
+The TypeScript owner keeps review allocations totaling 8,192 bytes. These are
+diagnostic targets, not permission to truncate fields or hard per-section caps:
+
+| Section | Target bytes | Included fields |
+| --- | ---: | --- |
+| action | 800 | action, user, required reads, replan packet, response plan |
+| boundary | 2,000 | boundary and execution policy |
+| writeback | 600 | validation/settlement commands and policy |
+| scheduler | 600 | scheduler action and acknowledgement |
+| contracts | 1,800 | contract capsule |
+| context | 1,400 | capability context and task orchestration |
+| transport | 992 | identity/metadata, signatures, cold-read commands, diagnostics |
+
+Counts include JSON property names, delimiters and UTF-8 text. Their sum equals
+the measured final packet; dividing each by `envelope_utf8_bytes` gives its
+share. Diagnostic detail is emitted only on overflow, not every normal Turn.
+Use the existing `quota should-run --turn-envelope` or `turn plan` JSON output
+to inspect the breakdown. Record a public-safe reproduction and compare each
+section with the same fixture on the baseline before changing its owner.
+First remove repeated presentation or move non-actionable detail to an existing
+cold read. Never trim write scope, executable arguments, signatures or required
+reads to silence a warning, and do not simply raise the target. The cold-read
+commands remain; their redundant human-readable `contains` inventory is retired.
+
+Repository size/parity canaries remain blocking **delivery-time regression
+checks**, independent of runtime warning semantics. Representative fixtures must
+still fit the target. A warning is a performance investigation signal, not an
+automatic Todo, new authority, or permission to spend an extra Turn.
+
+中文：TurnEnvelope 超出 8 KiB 后产生可分析的 warning，不再仅因大小中断合法
+Turn。按最终 UTF-8 字节数统计各部分占比，先压缩重复展示内容，再检查对应规则
+所属模块；不得截断权限、签名或执行指令，也不应单纯提高预算掩盖增长。
+身份、权限、签名和执行配额仍是硬门禁；仓库的体积与语义回归检查仍阻止交付。
 
 Hot-path fields may use explicit references when the inline value would only
 repeat another authoritative field. In particular,
@@ -136,9 +184,9 @@ blocked, and throttled decisions. Every case must preserve the canonical action
 signature, reconstruct `protocol_action_packet`, and remain within the 8 KiB
 budget.
 
-The current matrix produces envelopes from 4,866 to 5,602 bytes, with 66.44% to
-69.36% reduction from the full synthetic decision. This is sufficient to keep
-the projection available as an opt-in host view. It is not sufficient to change
+The matrix records exact measurements in validation rather than treating a
+dated size range as the contract. This keeps the projection available as an
+opt-in host view. It is not sufficient to change
 the default CLI response: default promotion still requires shadow parity from a
 real host integration, no consumer regression with the full decision available
 as a cold path, and explicit compatibility acceptance for the default-view

@@ -1064,14 +1064,17 @@ ids, or raw local evidence in public repo docs or examples.
 ## Capability Context And Child Models
 
 Read `interaction_contract.agent_context` at planning time (or
-`turn_envelope.agent_context` in LoopX Turn). Enabled capabilities contribute
-bounded guidance for the coordinator, including independent evidence questions,
-the work to retain locally, and parent validation obligations. Consider useful
-read-heavy delegation within a single Todo; do not manufacture persistent Todos
-or duplicate research to trigger parallelism. Respect the existing admission
-and authorization boundaries.
+`turn_envelope.agent_context` in LoopX Turn, resolving its detail reference when
+compacted). If the host supplies neither, use the read-only
+`loopx agent-context --goal-id <goal> --agent-id <agent> --phase before_plan`.
+If context is absent, disabled, or the read fails, preserve the existing single
+agent workflow: do not seek delegation splits or invoke child tools because of
+this capability. Tool availability and installed skills do not activate it.
+Only apply delegation guidance from a non-null, current-scope enabled context;
+the capability provider owns that policy. Context never grants spawn authority.
 
-When using native child tools outside LoopX Turn, read the same capability
+When enabled context and separate authorization allow native child tools
+outside LoopX Turn, read the same capability
 context at each boundary, using the current registry, Goal and Agent:
 
 ```bash

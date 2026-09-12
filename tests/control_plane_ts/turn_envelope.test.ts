@@ -10,6 +10,7 @@ import {
   turnEnvelopeActionSignatureDocument,
 } from "../../loopx/control_plane/quota/turn_envelope.ts";
 import { EffectRuntimeRequestError } from "../../loopx/control_plane/effect_runtime_errors.ts";
+import { TURN_ENVELOPE_SECTION_TARGETS } from "../../loopx/control_plane/quota/turn_envelope_budget.ts";
 
 function payload(): Record<string, unknown> {
   return {
@@ -193,6 +194,21 @@ test("v0 compaction metric preserves Unicode code-point compatibility", () => {
     (envelope.compaction as Record<string, unknown>).source_json_bytes,
     [...JSON.stringify(source)].length,
   );
+});
+
+test("warning accounting converges across decimal-width and ratio boundaries", () => {
+  assert.equal(Object.values(TURN_ENVELOPE_SECTION_TARGETS).reduce((a, b) => a + b, 0), 8192);
+  for (let size = 6_000; size < 6_300; size += 1) {
+    const source = payload();
+    source.goal_boundary = { execution_profile: { padding: "界".repeat(size) } };
+    const envelope = buildTurnEnvelope({ payload: source, protocol_action_fields: {}, scheduler_execution_args: "" });
+    const metric = envelope.compaction as Record<string, any>;
+    const bytes = Buffer.byteLength(JSON.stringify(envelope), "utf8");
+    assert.equal(metric.envelope_utf8_bytes, bytes);
+    assert.equal(metric.envelope_json_bytes, [...JSON.stringify(envelope)].length);
+    assert.equal(Object.values(metric.warning.section_bytes as Record<string, number>).reduce((a, b) => a + b, 0), bytes);
+    assert.equal(metric.warning.excess_bytes, bytes - 8192);
+  }
 });
 
 test("signature key ordering preserves Python Unicode code-point compatibility", () => {
