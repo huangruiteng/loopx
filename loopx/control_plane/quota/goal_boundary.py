@@ -466,21 +466,3 @@ def declared_available_capabilities(source: Any) -> list[str]:
     )
     append(project_asset.get("available_capabilities"))
     return capabilities
-
-
-def effective_available_capabilities(
-    runtime_available_capabilities: Any,
-    *,
-    item: dict[str, Any],
-    project_asset: dict[str, Any],
-) -> list[str]:
-    capabilities: list[str] = []
-    for raw in (
-        declared_available_capabilities(item),
-        declared_available_capabilities(project_asset),
-        runtime_available_capabilities,
-    ):
-        for capability in normalize_required_capabilities(raw):
-            if capability not in capabilities:
-                capabilities.append(capability)
-    return capabilities

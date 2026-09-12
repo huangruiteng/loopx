@@ -4,7 +4,7 @@ import {requireJsonObject, requireStringArray, requireInteger, requireNonEmptySt
 
 const DEFAULT_AVAILABLE = ["shell", "filesystem_read", "filesystem_write"];
 const OWNER_HELD = new Set(["credentials", "production_access"]);
-const REPAIR_OUTPUT = new Set(["benchmark_runner", "network", "external_evidence_poll", "worker_bridge", "cli_bridge"]);
+export const OBSERVABLE_RUNTIME_CAPABILITIES: ReadonlySet<string> = new Set(["benchmark_runner", "network", "external_evidence_poll", "worker_bridge", "cli_bridge"]);
 type CapabilityAction = "run" | "ask_owner" | "repair_bridge";
 type ResolutionOwner = "user" | "agent";
 interface Requirement {required: string[]; targets: string[]}
@@ -70,7 +70,7 @@ export function projectCapabilityGate(request: JsonObject): JsonObject | null {
     sawRequirement ||= !!(required.length || targets.length);
     const missing = missingRequiredCapabilities(required, targets, available);
     const missingTargets = missing.length ? [] : targets.filter(capability => !available.includes(capability));
-    const repair = missingTargets.some(capability => REPAIR_OUTPUT.has(capability));
+    const repair = missingTargets.some(capability => OBSERVABLE_RUNTIME_CAPABILITIES.has(capability));
     const payload = {...candidate.payload, required_capabilities: required,
       ...(targets.length ? {target_capabilities: targets} : {}), missing_capabilities: missing,
       capability_action: repair ? "repair_bridge" : action(missing),
@@ -172,14 +172,31 @@ export function projectRuntimeCapabilityReentry(request: JsonObject): JsonObject
       on_failure: "record_exact_blocker_without_capability_flag"},
     inheritance_contract: {source_invocation: "verified quota should-run reentry",
       propagates_to: ["interaction_contract.cli_channel.next_cli_actions", "quota spend-slot", "quota monitor-poll"],
-      session_scoped: true, durable_grant_written: false},
+      session_scoped: false, observation_scope: "host_registry_goal_agent",
+      remembers: [...OBSERVABLE_RUNTIME_CAPABILITIES], durable_grant_written: false},
     failure_policy: "Do not add the capability flag when the real callsite check fails; continue the capability repair or record the concrete blocker.",
   };
+}
+
+/** Agent negatives override inherited declarations; a fresh explicit observation wins. */
+export function projectCapabilityAvailability(request: JsonObject): JsonObject {
+  const goal = unique(requireStringArray(request.goal, "goal"));
+  const runtime = unique(requireStringArray(request.runtime, "runtime"));
+  const state = requireJsonObject(request.agent ?? {}, "agent");
+  const remembered = requireStringArray(state.available ?? [], "agent.available")
+    .filter(c => OBSERVABLE_RUNTIME_CAPABILITIES.has(c));
+  const unavailable = requireStringArray(state.unavailable ?? [], "agent.unavailable")
+    .filter(c => OBSERVABLE_RUNTIME_CAPABILITIES.has(c) && !runtime.includes(c));
+  const runtimeAvailable = unique([...remembered, ...runtime]).filter(c => !unavailable.includes(c));
+  return {goal, agent: remembered, unavailable, invocation: runtime,
+    runtime_available: runtimeAvailable,
+    effective: unique([...goal, ...runtimeAvailable]).filter(c => !unavailable.includes(c))};
 }
 
 export function evaluateCapabilityGate(value: unknown): JsonObject {
   const request = requireJsonObject(value, "capability gate request");
   if (request.schema_version !== "capability_gate_request_v0") throw new TypeError("capability gate request schema mismatch");
+  if (request.operation === "availability") return {schema_version: "capability_gate_result_v0", result: projectCapabilityAvailability(request)};
   if (request.operation === "project") return {schema_version: "capability_gate_result_v0", result: projectCapabilityGate(request)};
   if (request.operation === "reentry") return {schema_version: "capability_gate_result_v0", result: projectRuntimeCapabilityReentry(request)};
   if (request.operation === "missing") {

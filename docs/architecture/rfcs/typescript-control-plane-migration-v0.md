@@ -640,13 +640,28 @@ Runtime capability re-entry now uses that same TS owner for verification-target 
 owner-authority exclusion, advisory versus bound Turn handling, and the recovery contract
 without durable grants. Python removes the former target lookup/filter rules and only adapts
 host/scheduler facts, calls one typed reducer, and renders shell argv. One interaction packet
-reuses the result; a healthy path adds no runtime call. The intentional correction is that an
+reuses the result; re-entry projection itself adds no runtime call on a healthy path. The intentional correction is that an
 eligible fallback recommendation cannot hide a blocked task's real capability check before
 explicit selection. Success re-enters the same Turn; failure still allows explicit fallback
-selection. A committed receipt's Todo remains bound. This is a host-local read plan under
-section 3 of the shared-authority RFC, not a capability lease, shared grant, or provider write.
-CLI/managed Turn reuse the existing re-entry fields; the generated `/loopx` skill requires
-checking missing declarations. No frontend configuration or second UI state is introduced.
+selection. A committed receipt's Todo remains bound.
+
+`agents/capability_memory.ts` now owns host-local runtime declarations, validation,
+atomic merge and idempotent persistence through the existing mutation lock and durable
+JSON writer. `capability_gate.ts` owns Goal/Agent/invocation precedence and local
+unavailable overrides; the former Python union is removed. Live quota and executing
+Turn entry remember the five explicitly typed runtime capabilities. Planning remains
+read-only. Quota preparation reads fresh Agent state even when the status projection
+is cached; all selection and settlement recomputations share that boundary. Python
+retains registry/host adaptation and CLI rendering. This adds one availability reducer call per decision, one memory read per
+registered scoped decision, and one observation call for an explicit live declaration. No duplicate Python state reducer or new storage framework is added.
+
+The observation scope is host/runtime, registry, Goal and registered Agent; observations
+do not become a Goal-wide declaration, grant, capability lease, shared-authority head
+or provider write. Inspect/correct/forget through `agent-capabilities`; the generated
+`/loopx` skill explains negative observations and recovery. Existing frontend capability
+editors govern optional feature configuration, not host tool observations, so their
+configuration owner and fields are unchanged. See [operating semantics](../../quota-allocation.md).
+
 
 Advancement-frontier checkpoint closure: `todos/frontier_revision.ts` now owns
 agent selection, completeness, material hashing, long-chain thresholds and exact
