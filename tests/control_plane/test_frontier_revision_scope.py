@@ -83,3 +83,19 @@ def test_legacy_agent_spelling_in_index_remains_readable():
     index["by_agent"][0]["agent_id"] = " Worker\u0085A "
     assert advancement_frontier_revision_from_index(index, agent_id="worker-a") == (
         selectable_advancement_frontier_revision(source, agent_id="Worker A"))
+
+
+def test_large_frontier_transport_preserves_exact_v0_identity_and_tail_edits():
+    material = [{"todo_id": f"todo_{index:04}", "task_class": "advancement_task",
+                 "text": "Complete synthetic description " * 40} for index in range(2500)]
+    encoded = json.dumps(material, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    assert len(encoded.encode()) > 2 * 1024 * 1024
+    expected = "todo_frontier_revision_v0:" + sha256(encoded.encode()).hexdigest()[:24]
+    source = [{**item, "updated_at": "2026-09-01T00:00:00Z"} for item in material]
+    assert selectable_advancement_frontier_revision(source, agent_id=None) == (
+        expected, "2026-09-01T00:00:00Z", True)
+    assert advancement_frontier_revision_from_index(
+        build_advancement_frontier_revision_index(source), agent_id=None,
+    ) == (expected, "2026-09-01T00:00:00Z", True)
+    source[-1]["text"] += " Material edit at the tail."
+    assert selectable_advancement_frontier_revision(source, agent_id=None)[0] != expected

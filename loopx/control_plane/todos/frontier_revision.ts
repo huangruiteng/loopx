@@ -3,6 +3,7 @@
  * selection, completeness, hashing, thresholds and ACK authority live here.
  */
 import { createHash } from "node:crypto";
+import {inflateSync} from "node:zlib";
 import type { JsonObject } from "../effect_program.ts";
 import { requireJsonObject } from "../runtime_decode.ts";
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
@@ -48,6 +49,20 @@ const count = (value: unknown): number => {
 
 function decodeRows(value: unknown): Row[] | null {
   if (value == null) return null;
+  if (!Array.isArray(value)) {
+    const encoded = requireJsonObject(value, "frontier rows transport");
+    if (encoded.encoding !== "deflate-base64-json-v0" || typeof encoded.data !== "string" ||
+        encoded.data.length > 2 * 1024 * 1024 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded.data)) {
+      throw new EffectRuntimeRequestError("invalid frontier rows transport");
+    }
+    try {
+      value = JSON.parse(inflateSync(Buffer.from(encoded.data, "base64"), {
+        maxOutputLength: 64 * 1024 * 1024,
+      }).toString("utf8"));
+    } catch {
+      throw new EffectRuntimeRequestError("frontier rows must be valid compressed JSON within 64 MiB");
+    }
+  }
   if (!Array.isArray(value)) throw new EffectRuntimeRequestError("frontier source must be an array");
   return value.map(raw => {
     const row = requireJsonObject(raw, "frontier row");

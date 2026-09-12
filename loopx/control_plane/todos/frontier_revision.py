@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import zlib
 from typing import Any
 
 from ..effect_runtime import effect_runtime_result
@@ -49,11 +51,13 @@ FRONTIER_REVISION_FIELDS = (
 )
 
 
-def frontier_source_facts(source_items: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+def frontier_source_facts(
+    source_items: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | dict[str, str] | None:
     """Legacy codecs only; TS selects lanes and builds complete revision identity."""
     if not isinstance(source_items, list):
         return None
-    return [
+    rows = [
         {
             "id": str(item.get("todo_id") or "").strip(),
             "claim": normalize_todo_claimed_by(item.get("claimed_by")),
@@ -67,6 +71,13 @@ def frontier_source_facts(source_items: list[dict[str, Any]] | None) -> list[dic
         }
         for item in source_items if isinstance(item, dict)
     ]
+    # Lossless transport codec only: never truncate material identity or raise
+    # the shared Effect request limit for large history/frontier reads.
+    raw = json.dumps(rows, ensure_ascii=True, separators=(",", ":")).encode()
+    if len(raw) < 512 * 1024:
+        return rows
+    return {"encoding": "deflate-base64-json-v0",
+            "data": base64.b64encode(zlib.compress(raw)).decode("ascii")}
 
 
 def _request(operation: str, **facts: Any) -> dict[str, Any]:

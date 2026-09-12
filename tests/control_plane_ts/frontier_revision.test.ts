@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import {deflateSync} from "node:zlib";
 import {projectAdvancementFrontier, evaluateLongTodoChain} from "../../loopx/control_plane/todos/frontier_revision.ts";
 
 function row(id: string, claim: string | null = null, excluded: string[] = []) {
@@ -16,6 +17,27 @@ function observe(overrides: Record<string, unknown> = {}) {
     frontier_counts: {current_agent_claimed_advancement_count: 15, unclaimed_advancement_count: 0},
     rows: [row("todo_a", "worker-a")], ...overrides});
 }
+
+test("lossless compressed rows preserve index and ACK semantics and reject malformed transport", () => {
+  const rows = [row("todo_a", "worker-a"), row("todo_b", null, ["worker-a"])];
+  const compressed = {encoding: "deflate-base64-json-v0",
+    data: deflateSync(JSON.stringify(rows)).toString("base64")};
+  for (const operation of ["index", "select"]) {
+    const request = {schema_version: "todo_frontier_revision_request_v0", operation, agent_id: "worker-a"};
+    assert.deepEqual(projectAdvancementFrontier({...request, rows: compressed}),
+      projectAdvancementFrontier({...request, rows}));
+  }
+  assert.deepEqual(observe({rows: compressed}), observe({rows}));
+  for (const invalid of [
+    {...compressed, encoding: "unknown"}, {...compressed, data: "!"},
+    {...compressed, data: "AAAA"},
+    {...compressed, data: deflateSync("{}").toString("base64")},
+    {...compressed, data: deflateSync("x".repeat(64 * 1024 * 1024 + 1)).toString("base64")},
+  ]) {
+    assert.throws(() => projectAdvancementFrontier({schema_version: "todo_frontier_revision_request_v0",
+      operation: "index", rows: invalid}));
+  }
+});
 
 test("revision is order-independent and maintenance timestamps do not change material identity", () => {
   const rows = [row("todo_b"), row("todo_a")];
