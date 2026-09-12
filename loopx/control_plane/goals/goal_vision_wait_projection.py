@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..todos.projection import agent_scoped_selectable_advancement_todo_ids
+from ..todos.todo_semantics import agent_scoped_selectable_advancement_todo_ids
 from .goal_vision_read_model import (
     acceptance_gaps_from_agent_vision,
     latest_agent_vision_from_runs,

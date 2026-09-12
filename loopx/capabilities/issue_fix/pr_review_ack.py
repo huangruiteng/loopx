@@ -10,7 +10,7 @@ from ...control_plane.todos.contract import (
     TODO_TASK_CLASS_USER_ACTION,
     normalize_todo_bound_agent,
 )
-from ...control_plane.todos.projection import todo_item_task_class
+from ...control_plane.todos.todo_semantics import todo_item_task_class
 from ...history import load_registry
 from ...paths import resolve_runtime_root
 from ...rollout_event_log import (

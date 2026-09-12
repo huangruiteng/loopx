@@ -547,7 +547,7 @@ def compact_active_next_action_todo_item(item: dict[str, Any]) -> dict[str, Any]
 
 
 def todo_item_task_class(item: dict[str, Any]) -> str:
-    return projection_todo_item_task_class(item, task_text_keys=("text",))
+    return projection_todo_item_task_class(item)
 
 
 def count_advancement_todos(items: list[dict[str, Any]]) -> int:

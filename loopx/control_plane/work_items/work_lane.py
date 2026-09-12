@@ -4,7 +4,7 @@ from typing import Any
 
 from ..effect_program import ReceiptBoundMonitorPhase
 from ..todos.contract import TODO_TASK_CLASS_MONITOR, normalize_todo_id
-from ..todos.projection import todo_priority_label, todo_priority_rank
+from ..todos.todo_semantics import todo_priority_label, todo_priority_rank
 
 WORK_LANE_CONTRACT_SCHEMA_VERSION = "work_lane_contract_v1"
 WORK_LANE_RECEIPT_BOUND_MONITOR_SETTLEMENT_OBLIGATION = (

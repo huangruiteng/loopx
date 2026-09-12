@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from ..todos.contract import normalize_todo_claimed_by, normalize_todo_id
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_summary_claim_scope_agent_id,
     todo_summary_has_only_future_scoped_monitor_work,
     todo_summary_monitor_due_count,

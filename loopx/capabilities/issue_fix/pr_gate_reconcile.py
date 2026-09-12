@@ -8,7 +8,7 @@ from ...paths import resolve_runtime_root
 from ...control_plane.todos.contract import (
     normalize_todo_decision_scope,
 )
-from ...control_plane.todos.projection import todo_item_task_class
+from ...control_plane.todos.todo_semantics import todo_item_task_class
 from ...todos import complete_goal_todo, list_goal_todos
 from .pr_lifecycle import build_issue_fix_pr_lifecycle_monitor_packet
 from .pr_lifecycle_rollout import append_pr_merge_rollout_event

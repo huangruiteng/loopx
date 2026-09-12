@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from ..effect_runtime import effect_runtime_result
-from ..todos.projection import todo_item_excludes_agent
+from ..todos.todo_semantics import todo_item_excludes_agent
 from ..todos.contract import (
     TODO_TASK_CLASS_BLOCKER,
     normalize_todo_claimed_by,

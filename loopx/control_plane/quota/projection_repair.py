@@ -8,7 +8,7 @@ from ..todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
     normalize_required_write_scopes,
 )
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_item_is_actionable_open,
     todo_item_task_class,
 )

@@ -10,7 +10,7 @@ from ...todos.contract import (
     normalize_todo_replan_obligation_id,
     replan_successor_semantic_binding,
 )
-from ...todos.projection import todo_item_is_actionable_open, todo_item_task_class
+from ...todos.todo_semantics import todo_item_is_actionable_open, todo_item_task_class
 from ...work_items.progress_observation import (
     replan_obligation_trigger_checkpoints,
     replan_obligation_trigger_kinds,

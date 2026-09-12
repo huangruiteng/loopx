@@ -95,7 +95,7 @@ from ..scheduler.state import (
 from ..todos.contract import (
     normalize_todo_claimed_by,
 )
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
 )
 from ..todos.quota_summary import (

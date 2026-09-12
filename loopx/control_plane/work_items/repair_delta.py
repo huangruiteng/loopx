@@ -19,7 +19,7 @@ from ..todos.contract import (
     normalize_todo_resume_when,
     normalize_todo_status,
 )
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_item_claimed_by_agent_or_unclaimed,
     todo_item_expires_at,
     todo_item_is_actionable_open,

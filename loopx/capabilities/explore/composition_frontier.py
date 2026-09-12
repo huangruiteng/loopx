@@ -12,7 +12,7 @@ from ...control_plane.todos.contract import (
     normalize_explore_result_node_refs,
     normalize_todo_claimed_by,
 )
-from ...control_plane.todos.projection import (
+from ...control_plane.todos.todo_semantics import (
     todo_item_is_actionable_open,
     todo_item_task_class,
 )

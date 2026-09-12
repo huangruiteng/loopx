@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..todos.contract import TODO_TASK_CLASS_USER_ACTION
-from ..todos.projection import todo_item_task_class
+from ..todos.todo_semantics import todo_item_task_class
 
 
 def user_action_owns_empty_agent_lane(payload: dict[str, Any]) -> bool:

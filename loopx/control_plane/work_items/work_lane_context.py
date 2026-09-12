@@ -5,7 +5,7 @@ from typing import Any
 from ..agents.agent_scope import _agent_scope_monitor_blocked_resume_candidates
 from ..scheduler.external_evidence_observation import build_external_evidence_poll_signal
 from ..todos.contract import next_action_requires_advancement_text
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_summary_claim_scope_agent_id,
     todo_summary_first_executable_item,
     todo_summary_monitor_due_count,

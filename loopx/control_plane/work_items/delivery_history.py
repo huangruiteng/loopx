@@ -88,7 +88,7 @@ def project_delivery_response(
 ) -> dict[str, Any]:
     """Select a canonical source row; TS alone decides its supervision meaning."""
     from ..todos.summary_item import todo_planning_source_items
-    from ..todos.projection import todo_summary_claim_scope_agent_id
+    from ..todos.todo_semantics import todo_summary_claim_scope_agent_id
 
     source = next((item for item in todo_planning_source_items(summary, include_terminal=True)
                    if item.get("todo_id") == run.get("todo_id")), None) if summary else None

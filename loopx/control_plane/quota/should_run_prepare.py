@@ -79,19 +79,11 @@ from ..todos.contract import (
     normalize_todo_resume_when,
     normalize_todo_status,
 )
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
-)
-from ..todos.projection import (
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,
-)
-from ..todos.projection import (
     todo_item_is_expired_monitor as projection_todo_item_is_expired_monitor,
-)
-from ..todos.projection import (
     todo_item_next_due_at as projection_todo_item_next_due_at,
-)
-from ..todos.projection import (
     todo_item_task_class as projection_todo_item_task_class,
 )
 from ..todos.quota_summary import (

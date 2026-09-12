@@ -25,7 +25,7 @@ from ..todos.contract import (
 from ..todos.external_wait_contract import (
     build_monitor_advancement_authoring_contract,
 )
-from ..todos.projection import todo_item_task_class
+from ..todos.todo_semantics import todo_item_task_class
 from .decision_summary import compact_quota_decision, quota_decision_agent_id
 from .spend_sources import DEFAULT_SLOT_SPEND_SOURCE
 

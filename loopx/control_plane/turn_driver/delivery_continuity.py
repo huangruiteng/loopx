@@ -16,7 +16,7 @@ from ..todos.contract import (
     normalize_todo_id,
     normalize_todo_status,
 )
-from ..todos.projection import todo_item_task_class
+from ..todos.todo_semantics import todo_item_task_class
 
 DELIVERY_BOUNDARY_IN_FLIGHT = "in_flight_continuation"
 DELIVERY_BOUNDARY_SEMANTIC_CLOSEOUT = "semantic_closeout"

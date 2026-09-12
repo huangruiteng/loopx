@@ -7,7 +7,7 @@ from ...todos.contract import (
     normalize_todo_id,
 )
 from ...todos.resume_planning import project_todo_resume_planning
-from ...todos.projection import (
+from ...todos.todo_semantics import (
     agent_scoped_selectable_advancement_todo_ids,
 )
 from ..goal_vision_read_model import (

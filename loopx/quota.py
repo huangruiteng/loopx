@@ -98,7 +98,7 @@ from .control_plane.todos.contract import (
     normalize_todo_claimed_by,
     normalize_todo_id,
 )
-from .control_plane.todos.projection import (
+from .control_plane.todos.todo_semantics import (
     todo_index_rank as projection_todo_index_rank,
     todo_item_expires_at as projection_todo_item_expires_at,
     todo_item_is_due_monitor as projection_todo_item_is_due_monitor,

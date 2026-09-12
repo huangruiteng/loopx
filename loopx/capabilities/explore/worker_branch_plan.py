@@ -46,7 +46,7 @@ from .todo_branch_plan import (
     _shared_dependency_capabilities,
     _scopes_overlap,
 )
-from ...control_plane.todos.projection import todo_item_task_class, todo_projection_sort_key
+from ...control_plane.todos.todo_semantics import todo_item_task_class, todo_projection_sort_key
 
 
 WORKER_BRANCH_PLAN_SCHEMA_VERSION = "loopx_explore_worker_branch_plan_v0"

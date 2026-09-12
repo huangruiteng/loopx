@@ -13,7 +13,7 @@ from ...control_plane.todos.contract import (
     normalize_todo_id,
     normalize_todo_status,
 )
-from ...control_plane.todos.projection import (
+from ...control_plane.todos.todo_semantics import (
     todo_item_is_actionable_open,
     todo_item_task_class,
     todo_priority_rank,

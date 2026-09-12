@@ -14,7 +14,7 @@ from ..todos.contract import (
     normalize_todo_task_domain,
     normalize_todo_task_repository,
 )
-from ..todos.projection import todo_item_is_actionable_open
+from ..todos.todo_semantics import todo_item_is_actionable_open
 from ..work_items.primary_action import protocol_action_text
 from .projection_repair import write_scope_allowed
 

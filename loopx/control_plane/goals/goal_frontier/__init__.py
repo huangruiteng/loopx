@@ -12,7 +12,7 @@ from ...agents.profile import agent_profile_requires_vision
 from ...agents.runtime_model import peer_work_key, select_peer_for_work
 from ...runtime.time import parse_timestamp
 from ...todos.contract import normalize_todo_replan_obligation_id
-from ...todos.projection import (
+from ...todos.todo_semantics import (
     todo_advancement_frontier_counts,
     todo_item_is_watch_only_monitor,
 )

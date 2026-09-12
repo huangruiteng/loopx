@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ...control_plane.todos.active_state_todo_parser import parse_active_state_todos
-from ...control_plane.todos.projection import todo_item_is_actionable_open
+from ...control_plane.todos.todo_semantics import todo_item_is_actionable_open
 from ...registry import find_registry_goal, read_json, resolve_state_file
 from .incremental import select_incremental_project_progress
 

@@ -7,7 +7,7 @@ from ..agents.agent_scope_frontier import (
     agent_scope_frontier_action as _agent_scope_frontier_action,
 )
 from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT
-from ..todos.projection import todo_item_is_actionable_open, todo_item_task_class
+from ..todos.todo_semantics import todo_item_is_actionable_open, todo_item_task_class
 from .autonomous_replan_obligation import todo_lifecycle_settlement_obligation
 
 

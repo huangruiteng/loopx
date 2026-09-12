@@ -4,7 +4,7 @@ from typing import Any
 
 from ..agents.capability_gate import build_capability_gate
 from ..todos.contract import TODO_TASK_CLASS_ADVANCEMENT, TODO_TASK_CLASS_MONITOR
-from ..todos.projection import todo_item_task_class
+from ..todos.todo_semantics import todo_item_task_class
 from ..todos.summary_item import compact_todo_summary_item
 
 

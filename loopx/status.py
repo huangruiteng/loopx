@@ -196,7 +196,7 @@ from .control_plane.todos.contract import (
     normalize_todo_task_class as normalize_todo_task_class,
     todo_done_for_status,
 )
-from .control_plane.todos.projection import (
+from .control_plane.todos.todo_semantics import (
     todo_item_is_expired_monitor as todo_item_is_expired_monitor,
 )
 

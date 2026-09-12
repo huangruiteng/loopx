@@ -30,7 +30,7 @@ from ..todos.contract import (
     normalize_todo_id,
     normalize_todo_replan_obligation_id,
 )
-from ..todos.projection import todo_item_task_class
+from ..todos.todo_semantics import todo_item_task_class
 from ..todos.user_gate import open_todo_count
 from ..todos.write_hint import build_capability_resolution_writeback_actions
 from .autonomous_replan_obligation import (

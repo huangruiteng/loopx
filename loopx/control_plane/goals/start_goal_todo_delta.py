@@ -21,7 +21,7 @@ from ...control_plane.todos.active_state_todo_parser import parse_active_state_t
 from ...control_plane.todos.contract import (
     TODO_TASK_CLASS_ADVANCEMENT,
 )
-from ...control_plane.todos.projection import todo_item_is_actionable_open
+from ...control_plane.todos.todo_semantics import todo_item_is_actionable_open
 from ...project_prompt import render_cli_command_prefix, shell_arg
 from ...registry import registry_goals, resolve_state_file
 

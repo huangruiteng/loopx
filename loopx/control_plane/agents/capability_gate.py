@@ -9,7 +9,7 @@ from ..todos.contract import (
     normalize_target_capabilities,
     normalize_todo_claimed_by,
 )
-from ..todos.projection import (
+from ..todos.todo_semantics import (
     todo_index_rank,
     todo_item_is_actionable_open,
     todo_item_task_class,
