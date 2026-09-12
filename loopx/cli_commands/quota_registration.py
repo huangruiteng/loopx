@@ -57,8 +57,9 @@ def register_quota_command(
         help=(
             "For `quota should-run`, `quota monitor-poll`, `quota scheduler-ack`, "
             "`quota scheduler-ack-current`, and `quota spend-slot`, declare a "
-            "capability available in this current agent environment. Repeat the "
-            "same declarations for commands that recompute should-run; basic local "
+            "capability observed in this current agent environment. Live should-run "
+            "remembers supported runtime observations for this registered Agent on "
+            "this host; inspect or correct them with agent-capabilities. Basic local "
             "shell/filesystem capabilities are assumed."
         ),
     )

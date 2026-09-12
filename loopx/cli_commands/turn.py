@@ -151,6 +151,7 @@ def handle_turn_command(
                 registry_path=registry_path,
                 runtime_root=runtime_root,
                 route_source="loopx_turn_plan",
+                remember_runtime_capabilities=(args.turn_command == "run-once" and bool(args.execute)),
                 scheduler_execution_context=scheduler_context,
                 operator_inbox_urgency_projector=operator_inbox_urgency_projector,
                 bounded_research_frontier_projector=(
