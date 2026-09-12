@@ -22,12 +22,13 @@ import {
 import { normalizeRegisteredTodoAgents, normalizeTodoAgent } from "./todo_agents.ts";
 
 import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA,
-  registeredTodoMutationRejection }
+  evaluateCoordinationTodoMutationDecision,
+  COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA }
   from "./todo_lifecycle_decision.ts";
 import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 import { normalizeNativePlanningIntent, planNativeTodoUpdate } from "../todos/native_update_plan.ts";
-import {CoordinationCommandReceipt} from "./command_receipt.ts";
+import { CoordinationCommandReceipt } from "./command_receipt.ts";
 
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
@@ -171,24 +172,53 @@ function targetRejection(
   if (todo.archive_state !== "active") {
     return failure("todo_archived", "Todo update requires an active Todo");
   }
-  if (todo.role !== "agent" || todo.status === "done") {
+  if (todo.status === "done") {
     return failure("unsupported_todo_update_target",
-      "native metadata update currently requires a non-completed agent Todo");
-  }
-  const actorRejection = registeredTodoMutationRejection(todo, input.actor_agent_id, input.registered_agents);
-  if (actorRejection !== null) {
-    if (actorRejection === "claim_owner_mismatch") {
-      // Keep the public adapter's stable diagnostic while the typed predicate
-      // remains provider-neutral and reusable by lifecycle admission.
-      return failure("update_owner_mismatch", "Todo update cannot edit another claim owner's work");
-    }
-    return failure(actorRejection,
-      "Todo update requires a registered, non-excluded actor within the existing owner/binding scope");
+      "native metadata update cannot complete a Todo; use the terminal lifecycle command");
   }
   const lease = leases.get(input.todo_id);
   const mode = head.handoff_mode === undefined ? "legacy" : head.handoff_mode;
   if (typeof mode !== "string" || !["legacy", "soft_claim", "hard_lease"].includes(mode)) {
     return failure("invalid_handoff_mode", "canonical handoff mode is invalid");
+  }
+  const intent = input.planning_intent ?? {};
+  const ownershipMutation = ["claimed_by", "clear_claim", "excluded_agents", "bound_agent",
+    "goal_bound", "blocks_agent", "clear_blocks_agent", "global_gate", "clear_global_gate"]
+    .some(field => Object.hasOwn(intent, field));
+  const authorityDecision = evaluateCoordinationTodoMutationDecision({
+    schema_version: COORDINATION_TODO_MUTATION_DECISION_REQUEST_SCHEMA,
+    command: "update", handoff_mode: mode, registered_agents: input.registered_agents,
+    lifecycle_grants: [], authority_action: "update",
+    actor_agent_id: input.actor_agent_id,
+    requested_claimed_by: intent.claimed_by ?? null,
+    clear_claim: intent.clear_claim === true,
+    ownership_mutation: ownershipMutation,
+    todo: {
+      ...todo, role: todo.role, status: todo.status,
+      excluded_agents: todo.excluded_agents ?? [],
+      required_decision_scopes: todo.required_decision_scopes ?? [],
+    },
+  });
+  if (authorityDecision.outcome !== "apply") {
+    const decisionCode = String(authorityDecision.code ?? "mutation_rejected");
+    const code = decisionCode === "claim_owner_mismatch"
+      ? "update_owner_mismatch" : decisionCode;
+    // Keep the public owner-mismatch diagnostic stable while other shared
+    // admission failures use a provider-neutral explanation.
+    const reason = code === "update_owner_mismatch"
+      ? "Todo update cannot edit another claim owner's work"
+      : "Todo update is outside the actor's registered owner/binding scope";
+    return failure(code, reason);
+  }
+  // Preserve the single-agent compatibility path only for genuinely
+  // unowned work. An empty registry is not evidence that an arbitrary actor
+  // may rewrite an already-owned Todo.
+  if (input.registered_agents.length === 0 && input.actor_agent_id !== null) {
+    return failure("actor_not_registered", "Todo update requires a registered actor");
+  }
+  if (input.actor_agent_id === null && (todo.claimed_by !== undefined ||
+      todo.bound_agent !== undefined || todo.blocks_agent !== undefined)) {
+    return failure("actor_required", "owned or bound Todo updates require an actor");
   }
   // A retained lease, even expired/released, has execution lineage. Ownership
   // and exclusions must not change beneath it through a metadata operation.
@@ -263,7 +293,10 @@ function prepareUpdatedTodo(
       const updates = planNativeTodoUpdate(todo, input.planning_intent!, head,
         input.actor_agent_id, input.registered_agents, String(next.updated_at));
       for (const [field, value] of Object.entries(updates)) {
-        if (value === null) { delete next[field]; clearFields.add(field); }
+        // Markdown compatibility omits empty scalar metadata. Treat an
+        // explicit empty planning scalar as a clear in the canonical record as
+        // well; omission and clear are no longer conflated by the planner.
+        if (value === null || value === "") { delete next[field]; clearFields.add(field); }
         else next[field] = value;
       }
       next.done = next.status === "done" || next.status === "deferred";
@@ -305,7 +338,15 @@ export async function executeCoordinationTodoUpdate(
   const receipt = updateReceipt(input, requestSha);
   const replay = await receipt.read(store);
   if (replay !== null) return replay;
-  if (input.actor_agent_id === null || !input.registered_agents.includes(input.actor_agent_id)) {
+  // Legacy single-agent callers historically omitted actor_agent_id for an
+  // unowned Todo. Keep that narrow compatibility path, while retaining the
+  // registered-actor requirement for multi-agent or explicitly-owned work.
+  if (input.actor_agent_id === null) {
+    if (input.registered_agents.length > 1) {
+      return failure("actor_not_registered", "Todo update requires a registered actor");
+    }
+  } else if (input.registered_agents.length === 0 ||
+      !input.registered_agents.includes(input.actor_agent_id)) {
     return failure("actor_not_registered", "Todo update requires a registered actor");
   }
   const head = await store.loadAuthority();

@@ -285,9 +285,7 @@ def apply_todo_update_to_lines(
     if public_context is not None:
         public_context = {**public_context, "items": todo_update_snapshot(lines)
                           if resume_when or block.get("resume_when") else []}
-    plan = _field_update_plan(
-        {**block, "role": resolved_role},
-        {
+    raw_intent = {
             "status": status,
             "note": note,
             "evidence": evidence,
@@ -327,7 +325,19 @@ def apply_todo_update_to_lines(
             "monitor_metadata": monitor_metadata,
             "clear_claim": clear_claim,
             "claim_only": claim_only,
-        },
+    }
+    # Python's compatibility API uses None (and blank note text) for
+    # omission. Strip those sentinels before crossing the typed planner; an
+    # actual empty scalar such as reason="" remains an explicit clear.
+    intent = {
+        key: value for key, value in raw_intent.items()
+        if value is not None and not (
+            key == "note" and isinstance(value, str) and not value.strip()
+        )
+    }
+    plan = _field_update_plan(
+        {**block, "role": resolved_role},
+        intent,
         updated_at,
         monitor_context,
         public_context,
