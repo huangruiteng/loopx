@@ -82,3 +82,23 @@ capability still declares its own activation and mutation contract.
 `loopx-material` is the first consumer: the skill can be visible in a project
 while Material Lifecycle remains default-off for every goal that has not
 explicitly activated it.
+
+## Default Discovery And Explicit Project Copies
+
+The marker declares default discovery. `project` keeps the source in the
+versioned release and skips global installation. `global` keeps a reusable
+workflow globally discoverable and also permits an explicitly requested project
+copy. Missing or unknown markers are rejected by project delivery; an unmarked
+source is not implicitly eligible.
+
+The six packaged workflows (`loopx-project`, `loopx-self-repair`,
+`loopx-pr-review`, `loopx-pr-program`, `loopx-doc-registry`, and
+`loopx-benchmark`) declare `global`. Connection, repair, review, and shared
+workflow instructions must be available before a project installs a local
+copy. Their existing task, project, and permission checks still apply.
+`loopx-material` and `loopx-change-quality` remain `project` workflows.
+
+Prefer the global copy for ordinary use. Install a project copy for an isolated
+host profile or an intentional project override; this operation never removes
+or rewrites a global skill. Hosts may discover both copies, so do not install a
+second copy merely to make an already visible workflow available.

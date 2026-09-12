@@ -75,7 +75,7 @@ PROJECT_SKILL_DELIVERY_CATALOG_ENTRY: dict[str, Any] = {
     "smokes": ["python -m pytest tests/test_project_skill_cli.py -q"],
     "docs": ["loopx/capabilities/project_skill_delivery/README.md"],
     "boundaries": [
-        "Only skills marked project-scoped in the LoopX release can be delivered.",
+        "Only release skills explicitly marked global or project can be delivered; the marker declares default discovery, not authority.",
         "Project connection, preview-first mutation, digest readback, symlink containment, and rollback are mandatory.",
         "Skill discovery never creates a goal, todo, write scope, domain authority, credential, or external permission.",
         "Public delivery metadata contains no private project content, locators, provider payloads, or credentials.",

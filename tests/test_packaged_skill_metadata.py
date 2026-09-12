@@ -18,3 +18,15 @@ def test_packaged_loopx_skills_use_canonical_brand_display_names() -> None:
         display_name = match.group(1)
         assert display_name == "LoopX" or display_name.startswith("LoopX "), display_name
         assert not display_name.startswith("Loopx"), display_name
+
+
+def test_packaged_scope_markers_ship_with_workflow_sources():
+    import tomllib
+    from loopx.skill_install_readback import PACKAGED_HOST_SKILL_IDS
+
+    package = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    data_files = package["tool"]["setuptools"]["data-files"]
+    for skill_id in PACKAGED_HOST_SKILL_IDS:
+        assert f"skills/{skill_id}/.loopx-skill-scope" in data_files[
+            f"share/loopx/skills/{skill_id}"
+        ]

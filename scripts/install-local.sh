@@ -316,6 +316,7 @@ install_workflow_skills() {
   local source_root="$2"
   local entry_cli_bin="$3"
   local skill_source skill_name skill_scope_file skill_target skill_tmp entry_status
+  local installed_skill_ids_text=""
   local -a installed_skill_ids=()
   skill_line="- skill: skipped"
   if [[ "$install_skill" == "0" || ! -d "$skills_source" ]]; then
@@ -367,11 +368,17 @@ install_workflow_skills() {
     skill_line="${skill_line}- skill: $skill_target"$'\n'
   done < <(find "$skills_source" -mindepth 1 -maxdepth 1 -type d -print | sort)
 
+  # The generated `$loopx` entry is the core LoopX route and must be
+  # materialized independently of the rich workflow selection.
+  # Keep its installation/readback independent from the optional global
+  # workflow copies so project-scope filtering cannot hide the main entry.
   if [[ "${#installed_skill_ids[@]}" -gt 0 ]]; then
-    if ! entry_status="$(
+    installed_skill_ids_text="$(printf '%s\n' "${installed_skill_ids[@]}")"
+  fi
+  if ! entry_status="$(
       LOOPX_SKILL_INSTALL_DIR="$skills_dir" \
         LOOPX_SKILL_INSTALL_SOURCE_ROOT="$source_root" \
-        LOOPX_SKILL_INSTALL_IDS="$(printf '%s\n' "${installed_skill_ids[@]}")" \
+        LOOPX_SKILL_INSTALL_IDS="$installed_skill_ids_text" \
         LOOPX_SKILL_INSTALLED_AT="$installed_at" \
         LOOPX_SKILL_ENTRY_CLI_BIN="$entry_cli_bin" \
         LOOPX_SKILL_ENTRY_HOST_SURFACE="$entry_host_surface" \
@@ -417,12 +424,12 @@ write_skill_install_readback(
     source_root=Path(os.environ["LOOPX_SKILL_INSTALL_SOURCE_ROOT"]),
     installed_at=os.environ["LOOPX_SKILL_INSTALLED_AT"],
 )
-if os.environ.get("LOOPX_SKILL_DEDUPE_OTHER_ROOT") == "1":
+if os.environ.get("LOOPX_SKILL_DEDUPE_OTHER_ROOT") != "0":
     dedupe = retire_duplicate_managed_skills(
         skills_dir=Path(os.environ["LOOPX_SKILL_INSTALL_DIR"]),
         execute=True,
     )
-    print(f"skill dedupe: {dedupe['reason']}")
+    print(f"skill dedupe: {dedupe['reason']}", file=sys.stderr)
 print(status)
 PY
     )"; then
@@ -435,7 +442,6 @@ PY
       skill_line="${skill_line}- generated skill: not materialized ($entry_status)"$'\n'
     fi
     skill_line="${skill_line}- skill readback: $skills_dir/.loopx-skill-install.json"$'\n'
-  fi
   skill_line="${skill_line%$'\n'}"
   rm -rf "$skill_install_lock"
   skill_install_lock_owned=0

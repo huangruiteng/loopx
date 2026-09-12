@@ -66,7 +66,7 @@ def alternate_loopx_skills_root(skills_dir: Path) -> Path | None:
     them.
     """
 
-    codex_root = _user_home() / ".codex" / "skills"
+    codex_root = Path(os.environ.get("CODEX_HOME") or (_user_home() / ".codex")) / "skills"
     agents_root = _user_home() / ".agents" / "skills"
     try:
         target = skills_dir.expanduser().resolve()
@@ -92,6 +92,7 @@ def retire_duplicate_managed_skills(
     *,
     alternate_root: Path | None = None,
     execute: bool,
+    retire_legacy_aliases: bool = False,
 ) -> dict[str, Any]:
     """Retire LoopX-managed skill copies from the alternate well-known root.
 
@@ -112,7 +113,7 @@ def retire_duplicate_managed_skills(
     retired: list[str] = []
     would_retire: list[str] = []
     skipped: list[str] = []
-    if alternate is None or not alternate.is_dir():
+    if alternate is None or not alternate.is_dir() or alternate.resolve() == target:
         return {
             "ok": True,
             "schema_version": SKILL_INSTALL_READBACK_SCHEMA_VERSION,
@@ -131,11 +132,13 @@ def retire_duplicate_managed_skills(
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         manifest = None
-    if isinstance(manifest, dict):
+    if isinstance(manifest, dict) and manifest.get("owner") in SKILL_INSTALL_OWNERS:
         raw_ids = manifest.get("materialized_skill_ids")
         if isinstance(raw_ids, list):
             managed_ids.update(
-                str(item).strip() for item in raw_ids if str(item or "").strip()
+                item for item in raw_ids
+                if isinstance(item, str) and item not in {"", ".", ".."}
+                and Path(item).name == item and "\\" not in item
             )
         items = manifest.get("skills")
         if isinstance(items, dict) and isinstance(items.get("items"), dict):
@@ -150,24 +153,66 @@ def retire_duplicate_managed_skills(
         candidate_dirs.extend(
             path
             for path in sorted(
-                [*alternate.glob("loopx-*"), *alternate.glob("loop-global-*")]
+                [alternate / "loopx", *alternate.glob("loopx-*"), *alternate.glob("loop-global-*")]
             )
             if path.is_dir() and path not in candidate_dirs
         )
 
-    for candidate in candidate_dirs:
+    for candidate in sorted(candidate_dirs):
         if not candidate.is_dir() or not (candidate / "SKILL.md").is_file():
             continue
         skill_id = candidate.name
+        replacement_id = (
+            skill_id.replace("loop-global-", "loopx-global-", 1)
+            if retire_legacy_aliases and skill_id.startswith("loop-global-")
+            else skill_id
+        )
+        replacement = target / replacement_id
+        # Never remove a sole copy, follow a skill symlink, or replace a rich
+        # workflow with a command facade that merely refers back to that skill.
+        if (candidate.is_symlink() or not (replacement / "SKILL.md").is_file()
+                or (not _managed_command_facade(candidate)
+                    and _managed_command_facade(replacement))):
+            skipped.append(skill_id)
+            continue
+        if not _managed_command_facade(replacement):
+            try:
+                target_manifest = json.loads(
+                    (target / SKILL_INSTALL_READBACK_FILENAME).read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError):
+                target_manifest = {}
+            target_skills = target_manifest.get("skills") if isinstance(target_manifest, dict) else None
+            target_items = target_skills.get("items") if isinstance(target_skills, dict) else None
+            if (not isinstance(target_manifest, dict)
+                    or target_manifest.get("owner") not in SKILL_INSTALL_OWNERS
+                    or not isinstance(target_items, dict)
+                    or target_items.get(replacement_id) != hash_skill_tree(replacement)):
+                skipped.append(skill_id)
+                continue
         managed = skill_id in managed_ids
         marker_managed = _managed_command_facade(candidate)
         if not managed and not marker_managed:
             skipped.append(skill_id)
             continue
         recorded_hash = recorded_hashes.get(skill_id)
-        if managed and recorded_hash and not marker_managed:
+        if recorded_hash:
             tree = hash_skill_tree(candidate)
             if not tree.get("available") or tree.get("sha256") != recorded_hash:
+                skipped.append(skill_id)
+                continue
+        elif not marker_managed:
+            skipped.append(skill_id)
+            continue
+        else:
+            # A legacy marker owns generated files, not arbitrary attachments.
+            files = [p for p in candidate.rglob("*") if p.is_file() or p.is_symlink()]
+            if any(p.is_symlink() or p.relative_to(candidate).as_posix()
+                   not in {"SKILL.md", "agents/openai.yaml"} for p in files):
+                skipped.append(skill_id)
+                continue
+            metadata = candidate / "agents" / "openai.yaml"
+            if metadata.exists() and LOOPX_MANAGED_SLASH_COMMAND_MARKER not in metadata.read_text(encoding="utf-8"):
                 skipped.append(skill_id)
                 continue
         if execute:
@@ -175,6 +220,20 @@ def retire_duplicate_managed_skills(
             retired.append(skill_id)
         else:
             would_retire.append(skill_id)
+
+    if execute and retired and managed_ids:
+        remaining_ids = sorted(managed_ids - set(retired))
+        if not remaining_ids:
+            manifest_path.unlink(missing_ok=True)
+        else:
+            manifest["materialized_skill_ids"] = remaining_ids
+            manifest_skills = manifest.get("skills")
+            manifest_items = manifest_skills.get("items") if isinstance(manifest_skills, dict) else None
+            if isinstance(manifest_items, dict):
+                for skill_id in retired:
+                    manifest_items.pop(skill_id, None)
+                manifest_skills["digest"] = _skills_digest(manifest_items)
+            _write_json_atomic(manifest_path, manifest)
 
     return {
         "ok": True,

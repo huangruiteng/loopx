@@ -11,6 +11,7 @@ from typing import Any, Iterable
 
 from loopx import __version__
 
+GLOBAL_SKILL_SCOPE = "global"
 PROJECT_SKILL_SCOPE = "project"
 PROJECT_SKILL_SCOPE_FILE = ".loopx-skill-scope"
 PROJECT_SKILL_MANAGED_MARKER = ".loopx-managed-project-skill.json"
@@ -47,7 +48,14 @@ def _normalize_surfaces(surfaces: Iterable[str] | None) -> tuple[str, ...]:
 
 def canonical_project_skill_source(skill_id: str) -> Path:
     normalized = _normalize_skill_id(skill_id)
-    return Path(__file__).resolve().parents[3] / "skills" / normalized
+    # Share the active installation's resource owner with workflow-skills,
+    # including wheel --target and frozen bundles. Never borrow a host copy.
+    from loopx.workflow_skill_install import resolve_workflow_skill_source
+
+    source = resolve_workflow_skill_source()
+    if source.get("available"):
+        return Path(source["skills_root"]) / normalized
+    raise ValueError(str(source["reason"]))
 
 
 def project_skill_target(
@@ -108,9 +116,11 @@ def _read_scope(source_root: Path) -> str:
     if not scope_path.is_file():
         raise ValueError(f"project skill scope marker is missing: {scope_path}")
     scope = scope_path.read_text(encoding="utf-8").strip()
-    if scope != PROJECT_SKILL_SCOPE:
+    # Scope declares default discovery, not exclusive installation eligibility.
+    # Both release-declared scopes permit an explicit managed project copy.
+    if scope not in (GLOBAL_SKILL_SCOPE, PROJECT_SKILL_SCOPE):
         raise ValueError(
-            f"project skill scope must be {PROJECT_SKILL_SCOPE!r}, got {scope!r}"
+            f"skill scope must be 'global' or 'project', got {scope!r}"
         )
     return scope
 

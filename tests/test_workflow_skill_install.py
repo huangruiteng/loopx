@@ -9,6 +9,7 @@ from typing import Any, Iterator
 
 import pytest
 
+from loopx.capabilities.project_skill_delivery import canonical_project_skill_source
 from loopx import file_lock
 from loopx import skill_install_readback
 from loopx import workflow_skill_install as install_module
@@ -72,6 +73,7 @@ def test_pip_target_distribution_finds_filtered_data_file_rows(
     assert source["kind"] == "python_distribution"
     assert source["skills_root"] == skills_root
     assert source["source_root"] == distribution_root
+    assert canonical_project_skill_source("loopx-self-repair") == skills_root / "loopx-self-repair"
     assert source["distribution_version"] == "0.5.3"
 
 
@@ -364,6 +366,7 @@ def test_frozen_bundle_install_lifecycle(
     preview = workflow_skill_install(skills_dir=target)
     assert preview["ok"] is True
     assert preview["source"]["kind"] == "frozen_bundle"
+    assert canonical_project_skill_source("loopx-self-repair") == bundled_skills / "loopx-self-repair"
     assert not target.exists()
     installed = workflow_skill_install(skills_dir=target, execute=True)
     assert installed["ok"] is True
@@ -414,6 +417,8 @@ def test_frozen_missing_data_does_not_fall_back_to_checkout(
     result = workflow_skill_install(skills_dir=target, execute=True)
     assert result["ok"] is False
     assert result["source"]["kind"] == "missing"
+    with pytest.raises(ValueError, match="frozen LoopX bundle"):
+        canonical_project_skill_source("loopx-self-repair")
     assert "--add-data" in result["reason"]
     assert not target.exists()
 

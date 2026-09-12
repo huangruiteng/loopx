@@ -130,6 +130,68 @@ one. Host integration changes command discovery only. It does not grant LoopX
 permission to write a repository, contact external systems, or bypass a user
 gate.
 
+Codex installs expose only canonical `loopx-*` skills. Older managed
+`loop-global-*` skill aliases are retired; their catalog entries and native
+slash-host compatibility remain available. This changes the Codex picker,
+not goal execution or write authority.
+
+Both workflow and command installation reconcile managed duplicates between
+`CODEX_HOME/skills` (default `~/.codex/skills`) and `~/.agents/skills`.
+The selected installation root wins only when a replacement exists; a command
+facade cannot replace a rich workflow. Modified receipts, user-owned metadata,
+extra files, sole copies, and skill symlinks are preserved and reported under
+`skill_reconciliation` or `codex_skill_reconciliation`. A custom Codex profile
+does not authorize cleaning another profile. The fixed installer permits
+`LOOPX_SKILL_DEDUPE_OTHER_ROOT=0` for intentionally separate host roots.
+
+To inspect and repair command discovery for the current Codex profile:
+
+```bash
+loopx --format json slash-commands --surface codex --dry-run
+loopx --format json slash-commands --surface codex --install
+```
+
+Read the reconciliation result and resolve preserved conflicts explicitly.
+A running session may retain its original skill catalog; reload the host or
+open a new task before checking discovery again. Installation cannot rewrite
+instructions already loaded into a conversation.
+
+## Skill Discovery Scope
+
+Default workflow installation keeps `loopx-project`, `loopx-self-repair`,
+`loopx-pr-review`, `loopx-pr-program`, `loopx-doc-registry`, and `loopx-benchmark`
+globally visible in the selected host profile, alongside the generated
+`loopx` entry. These are reusable LoopX instructions: connection and repair
+must work before project setup, PR workflows can span repositories, and
+document/benchmark workflows retain their existing connected-project or
+LoopX-task triggers. Visibility does not activate a capability or authorize
+state changes, external publication, or benchmark jobs.
+
+The `loopx-global-summary`, `loopx-global-gates`, `loopx-global-todos`, and
+`loopx-global-risks` command skills also belong in the global host root. Install
+and inspect them through `loopx slash-commands --surface codex --install` and
+`loopx slash-commands --surface codex --dry-run`. They inspect the registry
+visible to the current user; discovery never expands account or project access.
+They remain optional command facades, separate from default workflow delivery.
+
+`loopx-material` and `loopx-change-quality` remain project-only by default.
+The release's `.loopx-skill-scope` marker declares `global` or `project`;
+both declared scopes support an explicit managed project copy:
+
+```bash
+loopx project-skill install --project . --skill loopx-self-repair --surface codex
+loopx project-skill install --project . --skill loopx-self-repair --surface codex --execute
+loopx project-skill status --project . --skill loopx-self-repair --surface codex
+loopx project-skill uninstall --project . --skill loopx-self-repair --surface codex --execute
+```
+
+Use a project copy only for an intentional override or isolated host. It leaves
+global copies untouched and retains project connection, ownership, digest,
+and containment checks. Missing or unknown source markers still fail closed.
+See [Project Skill Delivery](../../loopx/capabilities/project_skill_delivery/README.md)
+for lifecycle details. `loopx doctor` continues to require the complete default
+workflow set; a lone generated entry does not replace missing rich workflows.
+
 ## Upgrade And Repair
 
 `loopx update` is the channel-aware upgrade entry point. Its actions have the

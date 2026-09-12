@@ -304,3 +304,15 @@ def test_multi_surface_uninstall_readback_failure_restores_every_target(
         )
     for surface in surfaces:
         assert project_skill_target(project, "loopx-material", surface).exists()
+
+
+@pytest.mark.parametrize("scope", [None, "", "unknown", "global project"])
+def test_explicit_project_delivery_rejects_undeclared_scope(tmp_path, scope):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "SKILL.md").write_text("# Synthetic workflow\n")
+    if scope is not None:
+        (source / ".loopx-skill-scope").write_text(scope)
+    with pytest.raises(ValueError, match="scope"):
+        inspect_project_skill(tmp_path / "project", "example", source_root=source)
+    assert not (tmp_path / "project").exists()

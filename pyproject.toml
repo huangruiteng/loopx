@@ -73,12 +73,14 @@ include = ["loopx*"]
 [tool.setuptools.data-files]
 "share/loopx/skills/loopx-project" = [
   "skills/loopx-project/SKILL.md",
+  "skills/loopx-project/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-project/agents" = [
   "skills/loopx-project/agents/openai.yaml",
 ]
 "share/loopx/skills/loopx-pr-program" = [
   "skills/loopx-pr-program/SKILL.md",
+  "skills/loopx-pr-program/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-pr-program/agents" = [
   "skills/loopx-pr-program/agents/openai.yaml",
@@ -91,24 +93,28 @@ include = ["loopx*"]
 ]
 "share/loopx/skills/loopx-pr-review" = [
   "skills/loopx-pr-review/SKILL.md",
+  "skills/loopx-pr-review/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-pr-review/agents" = [
   "skills/loopx-pr-review/agents/openai.yaml",
 ]
 "share/loopx/skills/loopx-doc-registry" = [
   "skills/loopx-doc-registry/SKILL.md",
+  "skills/loopx-doc-registry/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-doc-registry/agents" = [
   "skills/loopx-doc-registry/agents/openai.yaml",
 ]
 "share/loopx/skills/loopx-benchmark" = [
   "skills/loopx-benchmark/SKILL.md",
+  "skills/loopx-benchmark/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-benchmark/agents" = [
   "skills/loopx-benchmark/agents/openai.yaml",
 ]
 "share/loopx/skills/loopx-self-repair" = [
   "skills/loopx-self-repair/SKILL.md",
+  "skills/loopx-self-repair/.loopx-skill-scope",
 ]
 "share/loopx/skills/loopx-self-repair/agents" = [
   "skills/loopx-self-repair/agents/openai.yaml",

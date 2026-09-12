@@ -323,6 +323,12 @@ def test_retire_duplicate_managed_skills_removes_only_loopx_managed_copies(
     agents_skills = tmp_path / ".agents" / "skills"
     _materialize_workflow_skills(codex_skills)
     _materialize_workflow_skills(agents_skills)
+    canonical_facade = codex_skills / "loopx-global-gates" / "SKILL.md"
+    canonical_facade.parent.mkdir(parents=True)
+    canonical_facade.write_text(
+        "<!-- loopx-managed-slash-command:v1 command=/loopx-global-gates -->\n",
+        encoding="utf-8",
+    )
     facade = agents_skills / "loopx-global-gates" / "SKILL.md"
     facade.parent.mkdir(parents=True)
     facade.write_text(
