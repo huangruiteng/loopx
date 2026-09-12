@@ -22,7 +22,7 @@ PRIMARY_NODE_VERSION = "24"
 MINIMUM_NODE_VERSION = "22.6"
 FORWARD_NODE_VERSION = "26"
 # SQLite conformance requires qualified statement finalization (22.14+), so the
-# two SQLite integration jobs pin an intermediate runtime above the minimum.
+# SQLite qualification lanes pin an intermediate runtime above the minimum.
 SQLITE_NODE_VERSION = "22.14"
 
 
@@ -72,10 +72,15 @@ def main() -> int:
     python_versions = declared_versions["python-tests.yml"]
     assert python_versions.count(MINIMUM_NODE_VERSION) == 1, python_versions
     assert python_versions.count(FORWARD_NODE_VERSION) == 1, python_versions
-    assert python_versions.count(SQLITE_NODE_VERSION) == 2, python_versions
     assert PRIMARY_NODE_VERSION in python_versions, python_versions
 
     python_workflow = workflows["python-tests.yml"]
+    jobs = dict(re.findall(
+        r"^  ([a-z][a-z0-9-]*):\n(.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
+        python_workflow, re.MULTILINE | re.DOTALL,
+    ))
+    for name in ("kernel-static-checks", "dashboard-acceptance", "windows-powershell"):
+        assert f'node-version: "{SQLITE_NODE_VERSION}"' in jobs[name], name
     assert "node-forward-compatibility:" in python_workflow
     assert "continue-on-error: true" in python_workflow
     assert "needs: [changes, checks, pytest, node-minimum-compatibility," in python_workflow
