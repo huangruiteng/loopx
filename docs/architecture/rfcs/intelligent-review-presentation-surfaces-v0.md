@@ -824,6 +824,22 @@ periodic digest, Lark rendering, or model assistance.
 
 ### Stage 2: attention and disclosure plan
 
+Current Dashboard slice: opening a Needs You item shows the reason, evidence,
+linked Todo/Agent, declared decision scope, and supersession relationship already
+present in the public Todo projection. Only explicit `user_gate` records are
+labeled as decisions; other records do not infer reading or authorization from
+prose. Selected details refresh from their current source. An item absent from
+the current projection, or retained while its source read is failing, is
+unavailable rather than completed and no longer offers decision actions. Loading
+and failures are scoped to the current source and affected Goal. Replacement
+navigation requires an explicit `superseded_by`
+target in the same source and Goal. Reading does not resolve a gate; ordinary
+items retain their existing governed preview.
+
+This is partial Stage 2 delivery. It does not implement a cross-channel disclosure
+compiler, read acknowledgments, authorization classification, or automatic
+deduplication. CLI and Lark contracts are unchanged.
+
 - compile material attention-queue deltas;
 - separate selection, delivery, interaction, and density;
 - reuse planning completeness/detail refs;

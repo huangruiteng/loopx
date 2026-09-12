@@ -102,6 +102,8 @@ def main() -> int:
         "examples/dev-book-welcome-wagon-smoke.py",
         "python3 examples/dev-book-welcome-wagon-smoke.py --site-dir output/frontstage-pages/site/docs/book",
         "npm run smoke:frontstage-share-bundle",
+        "examples/dev-book-browser-smoke.mjs",
+        "node examples/dev-book-browser-smoke.mjs",
         "node examples/export-frontstage-share-bundle.mjs --restore-case-pages --out-dir output/frontstage-pages",
         "npm run export:frontstage-share -- --base /loopx/ --out-dir ../../../output/frontstage-pages",
         "mkdocs build --strict --site-dir output/frontstage-pages/site/docs",
@@ -138,6 +140,7 @@ def main() -> int:
         "docs/book/mkdocs.en.yaml",
         "examples/dev-book-publication-smoke.py",
         "examples/dev-book-welcome-wagon-smoke.py",
+        "examples/dev-book-browser-smoke.mjs",
     ]:
         assert_pr_and_push_trigger(trigger_text, path)
 

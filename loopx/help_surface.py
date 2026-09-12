@@ -302,6 +302,7 @@ COMMAND_GROUPS: list[dict[str, object]] = [
 # command an intentional manual-visibility decision instead of a silent omission.
 MANPAGE_COMMAND_HELP_ONLY = frozenset(
     {
+        "agent-context",
         "archive-runtime",
         "automation-prompts",
         "authority-shadow",

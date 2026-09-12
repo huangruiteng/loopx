@@ -136,7 +136,7 @@ def main() -> int:
             "json",
         )
         assert heartbeat["ok"] is True, heartbeat
-        assert heartbeat["thin"] is True, heartbeat
+        assert heartbeat["schema_version"] == "heartbeat_agent_input_v1", heartbeat
         assert heartbeat["interface_budget"]["mode"] == "thin", heartbeat
 
         upgrade = cli_json(registry_path, "upgrade-plan", "--format", "json")

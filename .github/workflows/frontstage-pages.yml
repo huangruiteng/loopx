@@ -26,6 +26,7 @@ on:
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/dev-book-browser-smoke.mjs"
       - "examples/readme-star-history-smoke.py"
       - "examples/frontstage-stargazer-fetch-smoke.py"
       - "examples/dev-book-publication-smoke.py"
@@ -60,6 +61,7 @@ on:
       - "docs/assets/long-running-loop-ml-experiment-trajectory.png"
       - "examples/export-frontstage-share-bundle.mjs"
       - "examples/frontstage-share-bundle-smoke.mjs"
+      - "examples/dev-book-browser-smoke.mjs"
       - "examples/readme-star-history-smoke.py"
       - "examples/frontstage-stargazer-fetch-smoke.py"
       - "examples/dev-book-publication-smoke.py"
@@ -214,6 +216,9 @@ jobs:
 
       - name: Validate rendered Developer Book
         run: python3 examples/dev-book-publication-smoke.py --site-dir output/frontstage-pages/site/docs/book
+
+      - name: Validate Developer Book Mermaid rendering in browser
+        run: node examples/dev-book-browser-smoke.mjs
 
       - name: Validate Developer Book Welcome Wagon
         run: python3 examples/dev-book-welcome-wagon-smoke.py --site-dir output/frontstage-pages/site/docs/book

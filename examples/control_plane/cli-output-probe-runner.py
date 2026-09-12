@@ -54,6 +54,7 @@ def _receipt_row(
     measurement: dict,
     text: str,
     variant_id: str | None = None,
+    output_contract_version: str | None = None,
 ) -> dict:
     payload = measurement.get("payload")
     return {
@@ -63,6 +64,7 @@ def _receipt_row(
         "scenario": scenario,
         "format": output_format,
         "qualification_policy": qualification_policy,
+        "output_contract_version": output_contract_version,
         "chars": measurement["chars"],
         "utf8_bytes": measurement["utf8_bytes"],
         "lines": measurement["lines"],
@@ -157,6 +159,11 @@ def _default_rows(
                         markdown_anchor=surface.markdown_anchor,
                         measurement=measurement,
                         text=text,
+                        output_contract_version=(
+                            getattr(surface, "output_contract_version", None)
+                            if output_format == "json"
+                            else None
+                        ),
                     )
                 )
     return rows

@@ -25,7 +25,10 @@ from loopx.extensions.presentation import (  # noqa: E402
     publish_extension_projection,
 )
 from loopx.extensions.runtime import install_extension  # noqa: E402
-from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.heartbeat_prompt import (  # noqa: E402
+    build_heartbeat_prompt,
+    project_heartbeat_agent_input,
+)
 from loopx.interface_budget import build_interface_budget_cadence  # noqa: E402
 from loopx.quota import build_quota_should_run  # noqa: E402
 from loopx.review_packet import build_review_packet  # noqa: E402
@@ -45,7 +48,9 @@ SURFACE_BUDGETS = {
         "owner": "heartbeat automation",
         "consumer": "wake and route one bounded turn",
         "cold_path": "quota should-run, status, or review-packet --handoff-only",
-        "max_json_chars": 3_600,
+        # Includes generator metadata and scoped commands, not just task_body.
+        # The independent 2,500-character thin body cap remains unchanged.
+        "max_json_chars": 4_800,
         "max_nested_keys": 40,
         "max_top_level_keys": 30,
         "budget_field": "interface_budget",
@@ -388,11 +393,25 @@ def main() -> int:
         )
         review_packet = build_review_packet(status_payload, goal_id=GOAL_ID, action_kind="codex")
         handoff_payload = review_packet_handoff_only_payload(review_packet)
-        heartbeat_payload = build_heartbeat_prompt(
-            goal_id=GOAL_ID,
-            thin=True,
-            runtime_profile="codex_app_heartbeat",
+        heartbeat_payload = project_heartbeat_agent_input(
+            build_heartbeat_prompt(
+                goal_id=GOAL_ID,
+                thin=True,
+                runtime_profile="codex_app_heartbeat",
+            )
         )
+        # Real automations normally bind an agent; the unbound fixture alone
+        # misses repeated identity/scope arguments in the generator envelope.
+        for binding in (
+            {"agent_id": "worker-a"},
+            {"agent_id": "worker-a", "agent_scopes": ["implementation", "review"]},
+        ):
+            assert_surface("heartbeat_prompt_json", build_heartbeat_prompt(
+                goal_id=GOAL_ID,
+                thin=True,
+                runtime_profile="codex_app_heartbeat",
+                **binding,
+            ))
 
         assert quota_payload["should_run"] is True, quota_payload
         reset_policy = quota_payload["scheduler_hint"]["reset_policy"]

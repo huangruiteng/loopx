@@ -5,7 +5,7 @@ LoopX Kernel 源码，也不需要理解所有 CLI 子命令。
 
 ## 你会完成什么
 
-全书先用六章建立一套控制面心智模型，再进入两条实践主线：
+全书先用六个编号章节和一张状态机地图建立控制面心智模型，再进入两条实践主线：
 
 ```text
 控制面基础
@@ -22,6 +22,8 @@ LoopX Kernel 源码，也不需要理解所有 CLI 子命令。
 2. 普通会话、Host Goal 与 LoopX 分别拥有哪一层状态；
 3. canonical state、workbench、event 与 read-only projection；
 4. Todo 工作图、Gate、claim、lease、authority 与 Peer 协作；
+   读完后用[主要状态机与状态流转](./core-state-machines.md)把 source state、derived decision、
+   projection 与九组状态机连成一张图；
 5. 一轮受治理的 Turn 如何决定、执行、验证和写回；
 6. retry、replan、self-repair、terminal closure 与运行边界。
 
@@ -45,10 +47,12 @@ LoopX Kernel 源码，也不需要理解所有 CLI 子命令。
   [第 1 讲：Harness 是 effectful program](/loopx/docs/development/control-plane-course/01-agent-loop-effectful-program/)与
   [第 2 讲](/loopx/docs/development/control-plane-course/02-goal-control-plane-architecture/)，
   再用[第 3 讲](/loopx/docs/development/control-plane-course/03-first-real-loop/)走一遍真实 Loop。
-- **状态、工作图与权限分别由谁拥有？** 先读第 3、4 章，再下钻
+- **状态、工作图与权限分别由谁拥有？** 先读第 3、4 章和
+  [主要状态机与状态流转](./core-state-machines.md)，再下钻
   [第 4 讲](/loopx/docs/development/control-plane-course/04-state-substrate/)与
   [第 5 讲](/loopx/docs/development/control-plane-course/05-work-graph-and-peers/)。
-- **Gate、Monitor、Replan 同时出现时哪条规则优先？** 先读第 5 章，再下钻
+- **Gate、Monitor、Replan 同时出现时哪条规则优先？** 先读
+  [主要状态机与状态流转](./core-state-machines.md)和第 5 章，再下钻
   [第 6 讲](/loopx/docs/development/control-plane-course/06-quota-decision-kernel/)与
   [第 7 讲](/loopx/docs/development/control-plane-course/07-host-scheduler-and-heartbeat/)。
 - **长程任务怎样防止目标漂移与局部空转？** 先读第 6 章，再下钻

@@ -87,6 +87,12 @@ The plugin should not hand-copy project-specific policy into the automation.
 It should store only host-owned scheduling metadata, such as the current
 `reset_token`, last applied RRULE, and unchanged-poll state.
 
+With JSON output, this command returns the versioned
+`heartbeat_agent_input_v1` projection. Host adapters consume `goal_id`, the
+optional `agent_id`, and `task_body`; they must not depend on generator paths,
+duplicate lifecycle commands, or diagnostic metadata. Those details remain
+available through human-readable Markdown output and non-thin generator modes.
+
 Exit criteria:
 
 - Missing agent identity fails closed when the goal has registered agents.

@@ -487,6 +487,20 @@ delivery. This does not finish all T2 commands or authorize whole-Goal promotion
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Capability resolution now shares `agents/capability_gate.ts`: missing prerequisites,
+repair outputs, owner/agent resolution and blocked-Todo bindings have one typed
+owner. Quota planning v1 passes normalized requirements, not Python-computed
+missing lists; Monitor partitioning invokes the same rule in-process. The public
+gate uses one batch; exact-target recovery callers retain a bounded value-only
+cached bridge to that rule, not a second implementation. Python keeps legacy
+codecs, candidate source/eligibility and the shared profile/rank adapter.
+Disclosed corrections: a shared resolution binding names the highest-priority
+blocked Todo, display variants deduplicate by Todo identity, and an authoritative
+empty backlog never revives stale first-item diagnostics. Target capabilities
+remain repair outputs, not permission or installed capabilities. No new provider,
+source inventory, enablement or promotion is introduced; compact candidate-source
+limits and the remaining T3 consumers still require their own closure.
+
 Quota's scope/claim consumer now composes selection, bounded visibility and the
 existing resume planner in one `todo.quota_planning.project` call per source.
 `quota_selection.ts` replaces the Python claim-visibility module and the separate

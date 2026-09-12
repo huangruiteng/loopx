@@ -26,7 +26,10 @@ from heartbeat_prompt_fixtures import (  # noqa: E402
     assert_prompt_budget,
     normalized,
 )
-from loopx.heartbeat_prompt import build_heartbeat_prompt  # noqa: E402
+from loopx.heartbeat_prompt import (  # noqa: E402
+    HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION,
+    build_heartbeat_prompt,
+)
 
 
 def user_output_policy(task_body: str, *, mode: str) -> dict[str, str]:
@@ -1119,13 +1122,15 @@ def main() -> int:
     )
     cli_payload = json.loads(cli_json.stdout)
     assert cli_payload["task_body"] == default_payload["task_body"], cli_payload
-    assert cli_payload["compact"] is False, cli_payload
-    assert cli_payload["brief"] is False, cli_payload
-    assert cli_payload["thin"] is True, cli_payload
+    assert set(cli_payload) == {
+        "schema_version",
+        "ok",
+        "goal_id",
+        "task_body",
+        "interface_budget",
+    }, cli_payload
+    assert cli_payload["schema_version"] == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
     assert cli_payload["interface_budget"]["mode"] == "thin", cli_payload
-    assert "full" not in cli_payload, cli_payload
-    assert cli_payload["cli_bin"] == "loopx", cli_payload
-    assert cli_payload["active_state_source"] == "explicit", cli_payload
 
     cli_full_json = subprocess.run(
         [
@@ -1220,8 +1225,8 @@ def main() -> int:
     )
     cli_thin_payload = json.loads(cli_thin_json.stdout)
     assert cli_thin_payload["task_body"] == thin_payload["task_body"], cli_thin_payload
-    assert cli_thin_payload["thin"] is True, cli_thin_payload
-    assert cli_thin_payload["cli_bin"] == "loopx", cli_thin_payload
+    assert cli_thin_payload["schema_version"] == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
+    assert "thin_prompt_command" not in cli_thin_payload, cli_thin_payload
 
     cli_canary_json = subprocess.run(
         [
@@ -1410,12 +1415,10 @@ def main() -> int:
             text=True,
         )
         cli_registry_thin_payload = json.loads(cli_registry_thin_json.stdout)
-        assert cli_registry_thin_payload["thin"] is True, cli_registry_thin_payload
+        assert cli_registry_thin_payload["schema_version"] == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
         assert cli_registry_thin_payload["agent_id"] == "codex-main-control", cli_registry_thin_payload
-        assert cli_registry_thin_payload["active_state"] == "the registry-declared active state", (
-            cli_registry_thin_payload
-        )
-        assert cli_registry_thin_payload["resolved_active_state"] == str(state_file), cli_registry_thin_payload
+        assert "active_state" not in cli_registry_thin_payload, cli_registry_thin_payload
+        assert "resolved_active_state" not in cli_registry_thin_payload, cli_registry_thin_payload
         assert "Advance `public-heartbeat-goal` from the registry-declared active state." in (
             cli_registry_thin_payload["task_body"]
         ), cli_registry_thin_payload
@@ -1480,16 +1483,9 @@ def main() -> int:
         ).stdout
         cli_profile_scoped_payload = json.loads(cli_profile_scoped_json)
         assert cli_profile_scoped_payload["agent_id"] == "codex-side-bypass", cli_profile_scoped_payload
-        assert cli_profile_scoped_payload["agent_scopes"] == ["productization showcase docs lane"], (
-            cli_profile_scoped_payload
-        )
-        assert cli_profile_scoped_payload["agent_scope_source"] == "agent_profile_v1", cli_profile_scoped_payload
-        assert cli_profile_scoped_payload["thin_prompt_command"] == (
-            "loopx heartbeat-prompt --thin --goal-id public-heartbeat-goal --agent-id codex-side-bypass"
-        ), cli_profile_scoped_payload
-        assert "--agent-scope" not in cli_profile_scoped_payload["thin_prompt_command"], (
-            cli_profile_scoped_payload
-        )
+        assert "agent_scopes" not in cli_profile_scoped_payload, cli_profile_scoped_payload
+        assert "agent_scope_source" not in cli_profile_scoped_payload, cli_profile_scoped_payload
+        assert "thin_prompt_command" not in cli_profile_scoped_payload, cli_profile_scoped_payload
         assert "productization showcase docs lane" in normalized(cli_profile_scoped_payload["task_body"]), (
             cli_profile_scoped_payload
         )
@@ -1664,14 +1660,10 @@ def main() -> int:
             text=True,
         )
         cli_global_fallback_payload = json.loads(cli_global_fallback_json.stdout)
-        assert cli_global_fallback_payload["thin"] is True, cli_global_fallback_payload
+        assert cli_global_fallback_payload["schema_version"] == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
         assert cli_global_fallback_payload["agent_id"] == "codex-side-bypass", cli_global_fallback_payload
-        assert cli_global_fallback_payload["active_state_source"] == f"registry:{global_registry_path}", (
-            cli_global_fallback_payload
-        )
-        assert cli_global_fallback_payload["resolved_active_state"] == str(state_file), (
-            cli_global_fallback_payload
-        )
+        assert "active_state_source" not in cli_global_fallback_payload, cli_global_fallback_payload
+        assert "resolved_active_state" not in cli_global_fallback_payload, cli_global_fallback_payload
         cli_global_agent_json = subprocess.run(
             [
                 sys.executable,

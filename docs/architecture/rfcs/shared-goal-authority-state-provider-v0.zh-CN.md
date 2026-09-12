@@ -2139,6 +2139,12 @@ T3 decision-dependency 读取策略现由同一 TS owner 解释 scope coverage�
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
+能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，
+包括 quota 的 Monitor 能力分流。删除 Python missing-set 与 owner/repair 决策 builder，
+保留来源适配和只读候选排序。这是披露修复优先级、空来源和 identity 修正的 T3 读取
+规则收拢，不是能力启用、持久权限回执或 D1–D3 资格化。永久 Markdown 投影与 cutover
+门禁不变。
+
 T2 的无 lease 原生 Monitor 观察与独立后继现由同一 canonical CAS／receipt 提交；
 route planner 本身仍不授予权限。CLI 将已提交回执交给既有 journal/outbox renderer，
 展示失败标为 pending，不回滚提交、不重新生成后继；quota 继续消费同一 v0 业务回执

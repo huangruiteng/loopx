@@ -356,12 +356,15 @@ project-agnostic; if a behavior needs to be remembered across workers, write it
 to active state, run history, the registry, or a generated prompt contract
 rather than hand-editing the automation body.
 
-`loopx heartbeat-prompt --format json` emits an `interface_budget`
-object for the selected mode. It reports the rendered prompt's `char_count`,
-`line_count`, normalized `budget_char_count`, `max_chars`, and
-`within_budget`. `upgrade-plan --format json` carries the same budget summary
-inside each generated prompt, so local default-promotion checks can flag prompt
-bloat without parsing prose or relying on a chat thread.
+`loopx heartbeat-prompt --thin --format json` emits the versioned
+`heartbeat_agent_input_v1` Agent-input envelope. Its compact
+`interface_budget` reports `mode`, normalized `budget_char_count`, `max_chars`,
+and `within_budget`; generator diagnostics and duplicate commands stay out of
+the recurring Agent hot path. Human-readable Markdown and non-thin JSON modes
+retain the richer generator packet, including `char_count` and `line_count`.
+`upgrade-plan --format json` also carries that richer budget summary inside
+each generated prompt, so local default-promotion checks can flag prompt bloat
+without parsing prose or relying on a chat thread.
 
 `upgrade-plan --format json` also carries a compact `prompt_policy_audit` for
 installed prompts when their body is available through the local Codex App

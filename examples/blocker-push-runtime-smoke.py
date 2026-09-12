@@ -214,7 +214,9 @@ def main() -> int:
         assert "NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出" in compact_prompt, prompt
         assert "Due/peer非用户动作" in compact_prompt, prompt
         assert "NOTIFY缺动作→具体user todo未投影" in compact_prompt, prompt
-        assert "`LOOPX_TURN=<current_time_iso>`; reuse." in compact_prompt, prompt
+        # The bootstrap rule is shared from heartbeat.rules after #4201; assert the
+        # current compact sentence instead of the retired per-shell phrasing.
+        assert "reuse the value on retries" in compact_prompt, prompt
         assert "guard receipt; 2 stalls->replan" in compact_prompt, prompt
         assert "no-change=`surface_only`/no spend" in compact_prompt, prompt
         assert "unchanged->`--vision-unchanged-reason`" in compact_prompt, prompt
