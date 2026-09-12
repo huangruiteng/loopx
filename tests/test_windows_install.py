@@ -185,7 +185,7 @@ def test_windows_installer_promotes_release_and_runs_doctor(tmp_path: Path) -> N
         args=[*common, "quota", "should-run", "--goal-id", "windows-probe"],
         env=launch_env,
     )
-    assert quota.returncode == 0, quota.stderr
+    assert quota.returncode == 0, quota.stderr or quota.stdout
     quota_payload = json.loads(quota.stdout)
     assert quota_payload["should_run"] is True
 
