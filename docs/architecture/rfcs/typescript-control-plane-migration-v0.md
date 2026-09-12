@@ -24,6 +24,14 @@ end-to-end causal chain is covered by a shared composition fixture. This is a
 completed delivery stage, not a promotion of Markdown or a claim that the
 remaining lifecycle writers have migrated.
 
+The same stage also removes duplicated Python read policy around that boundary.
+Task-class resolution, title-aware actionability, dependency readiness, agent
+eligibility, priority ordering, and canonical Todo read records now have one
+Python semantic owner while TypeScript remains the transaction owner. The old
+projection module is an import-only compatibility facade. This keeps the
+replacement-first rule intact: compatibility remains available, but it cannot
+silently become a second semantic implementation.
+
 Native update now composes `todos/public_update.ts` for a bounded nonterminal
 planning intent (status, evidence/reason, resume/clear and successor links),
 against the same complete canonical head used for authority checks and CAS.

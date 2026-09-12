@@ -453,12 +453,6 @@ This is usually too broad:
 
 Right-sizing is not only reducing line count. Preserve one complete causal chain:
 
-When the request explicitly targets a complete RFC stage, that causal chain may
-span several modules, providers, fixtures, and validation paths. A larger PR is
-appropriate when those pieces are required to make the stage complete and are
-reviewed together. Split independent change reasons or unsafe review surfaces,
-not a coherent stage merely to reduce the file count.
-
 ```text
 source
   -> invariant

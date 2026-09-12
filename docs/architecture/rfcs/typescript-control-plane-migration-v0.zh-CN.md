@@ -21,6 +21,12 @@ Provider readback 在 acknowledgement 决策前进行校验，端到端因果链
 fixture 覆盖。这是一个已完成的交付阶段，不代表 Markdown 晋升，也不声称其余
 lifecycle writer 已全部迁移。
 
+同一阶段也删除了该边界周围重复的 Python read policy。task-class 解析、识别 title
+的 actionable 判断、依赖就绪、Agent eligibility、priority 排序和 canonical Todo
+read record 现在只有一个 Python 语义 owner，而 TypeScript 仍是事务 owner。旧
+projection 模块只保留 import-only 兼容 facade。这样继续遵守 replacement-first：
+兼容路径仍可用，但不能静默形成第二份语义实现。
+
 Native update 现通过 `todos/public_update.ts` 组合有界的非终态 planning intent
 （status、evidence/reason、resume/clear、successor links），使用权限检查与 CAS
 同一份完整 canonical head。独立 intent 命名空间不扩大原 text/note patch allowlist，

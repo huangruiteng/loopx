@@ -358,12 +358,6 @@ section, or abstraction, pass a scope-fit review:
   leaves behavior split across follow-up PRs. Separate characterization/parity
   fixtures, mechanical moves, behavior changes, and cleanup when that makes
   review and rollback clearer.
-- "Right-sized" is a semantic constraint, not a small-diff target. When the
-  user explicitly asks to advance a complete RFC stage, a larger PR may include
-  every causally coupled production boundary, fixture, migration note, and
-  real-path validation needed to make that stage complete. Do not split such a
-  request merely because it crosses several modules; split only independent
-  change reasons or unsafe review surfaces.
 - Keep public PRs concise and current-purpose focused. Future extension points
   are allowed when they reduce near-term churn, preserve compatibility, or
   define a real contract that is documented and tested. Do not bundle
