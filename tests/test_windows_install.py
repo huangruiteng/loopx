@@ -90,10 +90,6 @@ def test_windows_installer_promotes_release_and_runs_doctor(tmp_path: Path) -> N
         "loopx-global-gates",
         "loopx-global-todos",
         "loopx-global-risks",
-        "loop-global-summary",
-        "loop-global-gates",
-        "loop-global-todos",
-        "loop-global-risks",
     }
     assert expected_skills == {
         path.name for path in skills_dir.iterdir() if (path / "SKILL.md").is_file()

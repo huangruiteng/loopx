@@ -17,6 +17,7 @@ from loopx.doctor import (
     python_distribution_install,
     trusted_release_ref_for_root,
 )
+from loopx.skill_install_readback import external_skill_set_ready
 
 
 class _FakeDistributionFile:
@@ -307,6 +308,22 @@ def test_external_agents_skill_root_is_accepted_without_copying(tmp_path: Path) 
     expected_skip = "-SkipSkills" if os.name == "nt" else "LOOPX_INSTALL_SKILL=0"
     assert expected_skip in str(freshness["upgrade_command"])
     assert expected_skip in str(freshness["contributor_upgrade_command"])
+
+
+def test_external_skill_fallback_requires_every_project_skill() -> None:
+    skills = {
+        "loopx-project": {
+            "exists": True,
+            "required_phrases": True,
+            "managed_externally": True,
+            "route_conflict": False,
+        }
+    }
+
+    assert external_skill_set_ready(skills, ("loopx-project",)) is True
+    assert external_skill_set_ready(
+        skills, ("loopx-project", "loopx-pr-review")
+    ) is False
 
 
 def test_duplicate_skill_routes_fail_closed(tmp_path: Path) -> None:
