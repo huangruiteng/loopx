@@ -1,7 +1,7 @@
 import rawStatus from "../../../../../examples/status.example.json";
 import { z } from "zod";
 
-import { goalArtifactLifecycleSchema } from "./goal-artifact-lifecycle";
+import { goalAcceptanceObservationSchema } from "./goal-acceptance-observation";
 
 import { goalChannelProjectionSchema } from "./goal-channel-frontstage";
 
@@ -483,7 +483,7 @@ export const runRecordSchema = z.object({
 });
 
 export const runGoalSchema = z.object({
-  artifact_lifecycle: goalArtifactLifecycleSchema.optional().nullable().catch(null),
+  acceptance_observation: goalAcceptanceObservationSchema.optional().nullable().catch(null),
   id: z.string(),
   activation_state: z.enum(["active", "stopped"]).optional().default("active"),
   display_name: z.string().optional().nullable(),

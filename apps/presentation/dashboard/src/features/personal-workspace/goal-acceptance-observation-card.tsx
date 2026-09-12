@@ -1,7 +1,7 @@
 import type { WorkspaceGoal } from "./personal-workspace-model";
 import { useWorkspaceI18n } from "./i18n";
 
-export function GoalAcceptanceCard({ goal }: { goal: WorkspaceGoal }) {
+export function GoalAcceptanceObservationCard({ goal }: { goal: WorkspaceGoal }) {
   const { t } = useWorkspaceI18n();
   const labels = {
     connected: t("acceptance.connected"), mapped: t("acceptance.mapped"), refreshed: t("acceptance.refreshed"),
@@ -11,7 +11,7 @@ export function GoalAcceptanceCard({ goal }: { goal: WorkspaceGoal }) {
     todo_projection: t("acceptance.todoSource"), current_run: t("acceptance.runSource"),
   };
   const label = (key: string) => labels[key as keyof typeof labels] ?? t("acceptance.unknown");
-  const projection = goal.artifactLifecycle;
+  const projection = goal.acceptanceObservation;
   const unavailable = goal.loadState || !projection || projection.goal_id !== goal.goalId || projection.coverage === "unavailable";
   return <section className="personal-detail-card personal-goal-acceptance" aria-label={t("acceptance.title")}>
     <div className="personal-detail-card-title"><h3>{t("acceptance.title")}</h3><em>{t("common.readOnly")}</em></div>
@@ -34,9 +34,9 @@ export function GoalAcceptanceCard({ goal }: { goal: WorkspaceGoal }) {
           <div><dt>{t("acceptance.scope")}</dt><dd>{guard.decision_scope ?? t("acceptance.unknown")}</dd></div></dl>
       </div>) : <p>{t("acceptance.noGuards")}</p>}
       <h4>{t("acceptance.next")}</h4><p>{projection.next_action ?? t("acceptance.unknown")}</p>
-      <details><summary>{t("acceptance.milestones")} · {projection.milestones.length}</summary>
+      <details><summary>{t("acceptance.historical_progress")} · {projection.historical_progress.length}</summary>
         <p>{t("acceptance.historical")}</p>
-        {projection.milestones.map((milestone) => <p key={milestone.kind}><strong>{label(milestone.kind)}</strong> · {milestone.observed_at ?? t("acceptance.unknown")} {milestone.evidence_refs.join(", ")}</p>)}
+        {projection.historical_progress.map((observation) => <p key={observation.kind}><strong>{label(observation.kind)}</strong> · {observation.observed_at ?? t("acceptance.unknown")} {observation.evidence_refs.join(", ")}</p>)}
       </details>
       {projection.missing_sources.length ? <p>{t("acceptance.missing")} {projection.missing_sources.map(label).join(", ")}</p> : null}
       {projection.truncated ? <p>{t("acceptance.truncated")}</p> : null}

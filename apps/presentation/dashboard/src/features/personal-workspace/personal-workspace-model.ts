@@ -1,4 +1,4 @@
-import type { GoalArtifactLifecycle } from "../../data/goal-artifact-lifecycle";
+import type { GoalAcceptanceObservation } from "../../data/goal-acceptance-observation";
 import type { WorkspaceLoadError } from "../../data/workspace-progressive-status";
 export type WorkspaceGoalState =
   | "需修复"
@@ -66,7 +66,7 @@ export type WorkspaceGoalSubagentConfiguration = {
 };
 
 export type WorkspaceGoal = {
-  artifactLifecycle?: GoalArtifactLifecycle | null;
+  acceptanceObservation?: GoalAcceptanceObservation | null;
   loadState?: "loading" | "error";
   loadError?: WorkspaceLoadError;
   activationState: "active" | "stopped";

@@ -1,4 +1,4 @@
-import { GoalAcceptanceCard } from "./goal-acceptance-card";
+import { GoalAcceptanceObservationCard } from "./goal-acceptance-observation-card";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -611,7 +611,7 @@ export function ContextDrawer({ agents, callbacks, goalNotifications = [], goals
                 <div><dt>{t("drawer.duration")}</dt><dd>{formatUsageValue(selection.item.usage?.durationMs24h, t("drawer.usageNotMeasured"), formatDurationMs)} / {formatUsageValue(selection.item.usage?.durationMs7d, t("drawer.usageNotMeasured"), formatDurationMs)}</dd></div>
               </dl>
             </section>
-            <GoalAcceptanceCard goal={selection.item} />
+            <GoalAcceptanceObservationCard goal={selection.item} />
             {(() => {
               const notification = goalNotifications.find((row) => row.goalId === selection.item.goalId);
               const connection = larkConnections.find((row) => row.goal_id === selection.item.goalId);

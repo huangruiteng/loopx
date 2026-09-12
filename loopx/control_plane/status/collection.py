@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ..goals.artifact_lifecycle import attach_goal_artifact_lifecycles
+from ..goals.acceptance_observation import attach_goal_acceptance_observations
 from ..goals.contract_health import project_contract_health_for_goal
 from ..goals.activation import (
     GoalActivationState,
@@ -242,5 +242,5 @@ def collect_status(
         payload["goal_channel_notification_projection"] = (
             goal_channel_notification_projection
         )
-    attach_goal_artifact_lifecycles(payload, history=history)
+    attach_goal_acceptance_observations(payload, history=history)
     return payload

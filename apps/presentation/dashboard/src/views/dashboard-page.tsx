@@ -1,4 +1,4 @@
-import type { GoalArtifactLifecycle } from "../data/goal-artifact-lifecycle";
+import type { GoalAcceptanceObservation } from "../data/goal-acceptance-observation";
 import { directoryStatusPayload, fetchWorkspaceDirectory, loadWorkspaceGoalSnapshots, type WorkspaceProgress, type WorkspaceLoadError } from "../data/workspace-progressive-status";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, Moon, RefreshCw, Sun } from "lucide-react";
@@ -440,7 +440,7 @@ type PersonalRunEvidence = {
 };
 
 type PersonalGoalItem = {
-  artifactLifecycle?: GoalArtifactLifecycle | null;
+  acceptanceObservation?: GoalAcceptanceObservation | null;
   loadState?: "loading" | "error";
   loadError?: WorkspaceLoadError;
   activationState: "active" | "stopped";
@@ -1228,7 +1228,7 @@ function buildPersonalHomeModel(
       agentSentence: personalAgentSentence(payload, row, state, t),
       agentTodos: [...goalAgentTodos, ...agentTodoFacts.recentCompleted],
       doneTodoCount: agentTodoFacts.doneTodoCount,
-      artifactLifecycle: goal.artifact_lifecycle,
+      acceptanceObservation: goal.acceptance_observation,
       goalId: goal.id,
       latestActivity: row.latestRun?.generated_at ?? "",
       needsYou,

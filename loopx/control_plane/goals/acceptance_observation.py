@@ -12,10 +12,10 @@ from .goal_vision_read_model import (
     latest_agent_vision_from_runs,
 )
 
-SCHEMA_VERSION = "goal_artifact_lifecycle_projection_v0"
+GOAL_ACCEPTANCE_OBSERVATION_SCHEMA_VERSION = "goal_acceptance_observation_projection_v0"
 OBSERVATION_LIMIT = 12
 # These are historical observations, not acceptance milestones or permissions.
-MILESTONE_FLAGS = frozenset(
+OBSERVED_LIFECYCLE_FLAGS = frozenset(
     {
         "connected",
         "mapped",
@@ -60,7 +60,7 @@ def _text(value: Any) -> str | None:
     return public_safe_compact_text(value, limit=420)
 
 
-def build_goal_artifact_lifecycle(
+def build_goal_acceptance_observation(
     goal: dict[str, Any], item: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Reuse acceptance rules over already-read runs, keeping per-agent lineage.
@@ -73,14 +73,14 @@ def build_goal_artifact_lifecycle(
     runs = _rows(goal.get("latest_runs"))
     goal_id = _text(goal.get("id")) or "unknown"
     runs = [run for run in runs if run.get("goal_id") in (None, goal.get("id"))]
-    milestones: list[dict[str, Any]] = []
+    historical_progress: list[dict[str, Any]] = []
     seen_flags: set[str] = set()
     for source in runs:
         for flag in _strings(source.get("lifecycle_flags")):
-            if flag not in MILESTONE_FLAGS or flag in seen_flags:
+            if flag not in OBSERVED_LIFECYCLE_FLAGS or flag in seen_flags:
                 continue
             seen_flags.add(flag)
-            milestones.append(
+            historical_progress.append(
                 {
                     "kind": flag,
                     "observed_at": _text(source.get("generated_at")),
@@ -91,9 +91,9 @@ def build_goal_artifact_lifecycle(
                 }
             )
     for flag in _strings(goal.get("lifecycle_flags")):
-        if flag in MILESTONE_FLAGS and flag not in seen_flags:
+        if flag in OBSERVED_LIFECYCLE_FLAGS and flag not in seen_flags:
             seen_flags.add(flag)
-            milestones.append(
+            historical_progress.append(
                 {
                     "kind": flag,
                     "observed_at": None,
@@ -192,14 +192,14 @@ def build_goal_artifact_lifecycle(
     if item.get("stale_latest_run_warning"):
         sources_missing.append("current_run")
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": GOAL_ACCEPTANCE_OBSERVATION_SCHEMA_VERSION,
         "goal_id": goal_id,
         "read_only": True,
         "acceptance_assessed": False,
         "coverage": "partial" if item or runs else "unavailable",
         "missing_sources": sources_missing,
         "truncated": len(gaps) > OBSERVATION_LIMIT or len(guards) > OBSERVATION_LIMIT,
-        "milestones": milestones[:OBSERVATION_LIMIT],
+        "historical_progress": historical_progress[:OBSERVATION_LIMIT],
         "acceptance_gaps": gaps[:OBSERVATION_LIMIT],
         "guards": guards[:OBSERVATION_LIMIT],
         "next_action": _text(
@@ -209,7 +209,7 @@ def build_goal_artifact_lifecycle(
     }
 
 
-def attach_goal_artifact_lifecycles(
+def attach_goal_acceptance_observations(
     payload: dict[str, Any], *, history: dict[str, Any]
 ) -> None:
     items = _rows(_dict(payload.get("attention_queue")).get("items"))
@@ -218,7 +218,7 @@ def attach_goal_artifact_lifecycles(
         item = next(
             (row for row in items if row.get("goal_id") == goal.get("id")), None
         )
-        goal["artifact_lifecycle"] = build_goal_artifact_lifecycle(
+        goal["acceptance_observation"] = build_goal_acceptance_observation(
             {
                 **sources.get(goal.get("id"), goal),
                 "lifecycle_flags": goal.get("lifecycle_flags"),

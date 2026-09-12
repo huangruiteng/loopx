@@ -4,7 +4,9 @@ import copy
 import json
 from pathlib import Path
 
-from loopx.control_plane.goals.artifact_lifecycle import build_goal_artifact_lifecycle
+from loopx.control_plane.goals.acceptance_observation import (
+    build_goal_acceptance_observation,
+)
 from loopx.control_plane.runtime.public_safety import validate_public_safe_value
 from loopx.status import collect_status
 
@@ -59,7 +61,7 @@ def test_completed_tasks_and_historical_approval_do_not_certify_acceptance():
         },
     }
     before = copy.deepcopy((goal, item))
-    result = build_goal_artifact_lifecycle(goal, item)
+    result = build_goal_acceptance_observation(goal, item)
     assert result["acceptance_assessed"] is False
     assert (
         result["acceptance_gaps"][0]["evidence_required"]
@@ -68,7 +70,7 @@ def test_completed_tasks_and_historical_approval_do_not_certify_acceptance():
     assert result["guards"][0]["blocks_agent"] == "agent-a"
     assert result["guards"][0]["decision_scope"] == "public_claim:goal:acceptance-demo"
     assert result["guards"][0]["owner"] is None  # routing is not human authority
-    assert result["milestones"][0]["evidence_refs"] == ["run-evidence-1"]
+    assert result["historical_progress"][0]["evidence_refs"] == ["run-evidence-1"]
     assert (goal, item) == before
 
 
@@ -81,17 +83,17 @@ def test_latest_vision_is_per_agent_and_closed_lane_does_not_hide_other_lane():
             vision_run("agent-a"),
         ],
     }
-    result = build_goal_artifact_lifecycle(goal, {})
+    result = build_goal_acceptance_observation(goal, {})
     assert [gap["owner"] for gap in result["acceptance_gaps"]] == ["agent-b"]
 
 
 def test_missing_history_and_empty_observations_are_never_complete():
-    result = build_goal_artifact_lifecycle(
+    result = build_goal_acceptance_observation(
         {"id": "acceptance-demo", "lifecycle_flags": [{}, "connected"]}, None
     )
     assert result["coverage"] == "unavailable"
     assert result["acceptance_assessed"] is False
-    partial = build_goal_artifact_lifecycle(
+    partial = build_goal_acceptance_observation(
         {"id": "acceptance-demo", "latest_runs": [vision_run(state="closed")]},
         {"goal_id": "acceptance-demo"},
     )
@@ -111,7 +113,7 @@ def test_deferred_and_completed_gates_are_not_current_pending_gates():
         }
         for state in ["open", "blocked", "deferred", "done", "superseded"]
     ]
-    result = build_goal_artifact_lifecycle(
+    result = build_goal_acceptance_observation(
         {"id": "acceptance-demo"}, {"user_todos": {"items": gates}}
     )
     assert [gate["todo_id"] for gate in result["guards"]] == [
@@ -124,7 +126,7 @@ def test_redaction_precedes_truncation_and_bounded_output():
     run = vision_run(acceptance="x" * 500 + " /Users/private/evidence.json")
     run["raw_log"] = "private payload"
     run["agent_vision"]["vision_patch"].pop("replan_trigger_summary")
-    result = build_goal_artifact_lifecycle(
+    result = build_goal_acceptance_observation(
         {"id": "acceptance-demo", "latest_runs": [run]},
         {"recommended_action": "=".join(("token", "synthetic" * 4))},
     )
@@ -132,7 +134,7 @@ def test_redaction_precedes_truncation_and_bounded_output():
     assert result["next_action"] is None
     assert "raw_log" not in json.dumps(result)
     validate_public_safe_value(result)
-    many = build_goal_artifact_lifecycle(
+    many = build_goal_acceptance_observation(
         {
             "id": "acceptance-demo",
             "latest_runs": [vision_run(f"agent-{n}") for n in range(15)],
@@ -201,7 +203,9 @@ def test_real_collection_preserves_acceptance_before_display_run_trimming(tmp_pa
     result = collect_fixture(tmp_path)
     goal = result["run_history"]["goals"][0]
     assert goal["latest_runs"] == []
-    projection = goal["artifact_lifecycle"]
+    assert "artifact_lifecycle" not in goal
+    projection = goal["acceptance_observation"]
+    assert projection["schema_version"] == "goal_acceptance_observation_projection_v0"
     assert (
         projection["acceptance_gaps"][0]["evidence_required"]
         == "Independent verification report"
@@ -212,7 +216,7 @@ def test_real_collection_preserves_acceptance_before_display_run_trimming(tmp_pa
 
 
 def test_closed_stage_retains_canonical_successor_requirement():
-    result = build_goal_artifact_lifecycle(
+    result = build_goal_acceptance_observation(
         {
             "id": "acceptance-demo",
             "status": "active",
@@ -227,22 +231,42 @@ def test_closed_stage_retains_canonical_successor_requirement():
     assert "next bounded agent vision" in gap["evidence_required"]
 
 
-def test_other_goal_run_cannot_supply_acceptance_or_milestones():
-    result = build_goal_artifact_lifecycle(
+def test_other_goal_run_cannot_supply_acceptance_or_historical_progress():
+    result = build_goal_acceptance_observation(
         {"id": "other-goal", "latest_runs": [vision_run()]}, {}
     )
     assert result["acceptance_gaps"] == []
-    assert result["milestones"] == []
+    assert result["historical_progress"] == []
 
 
 def test_status_markdown_surfaces_gap_and_unknown_owner_without_completion_claim():
     from loopx.presentation.renderers.status_markdown import append_run_history_markdown
 
     goal = {"id": "acceptance-demo", "latest_runs": [vision_run("")]}
-    goal["artifact_lifecycle"] = build_goal_artifact_lifecycle(goal, {})
+    goal["acceptance_observation"] = build_goal_acceptance_observation(goal, {})
     lines = []
     append_run_history_markdown(lines, {"goals": [goal]})
     rendered = "\n".join(lines)
     assert "acceptance observations (partial; not completion proof)" in rendered
     assert "owner=unknown: Independent verification report" in rendered
     assert "gaps=1" in rendered
+
+
+def test_markdown_rejects_the_distinct_full_lifecycle_contract():
+    from loopx.presentation.renderers.goal_acceptance_observation_markdown import (
+        append_goal_acceptance_observation_markdown,
+    )
+
+    observation = build_goal_acceptance_observation(
+        {"id": "acceptance-demo", "latest_runs": [vision_run()]}, {}
+    )
+    broad = {**observation, "schema_version": "goal_artifact_lifecycle_projection_v0"}
+    for goal in ({"artifact_lifecycle": broad}, {"acceptance_observation": broad}):
+        lines = []
+        append_goal_acceptance_observation_markdown(lines, goal)
+        assert lines == []
+    lines = []
+    append_goal_acceptance_observation_markdown(
+        lines, {"acceptance_observation": observation}
+    )
+    assert "Independent verification report" in "\n".join(lines)

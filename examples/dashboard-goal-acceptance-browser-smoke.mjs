@@ -11,7 +11,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.LOOPX_GOAL_ACCEPTANCE_PORT ?? 5291);
 const packaged = process.env.LOOPX_GOAL_ACCEPTANCE_PACKAGED === "1";
 const python = process.env.LOOPX_PYTHON ?? "python3";
-const payload = JSON.parse(execFileSync(python, ["-c", "import runpy,tempfile,json; from pathlib import Path; m=runpy.run_path('tests/control_plane/test_goal_artifact_lifecycle.py'); t=tempfile.TemporaryDirectory(); print(json.dumps(m['collect_fixture'](Path(t.name))))"], { cwd: root, encoding: "utf8" }));
+const payload = JSON.parse(execFileSync(python, ["-c", "import runpy,tempfile,json; from pathlib import Path; m=runpy.run_path('tests/control_plane/test_goal_acceptance_observation.py'); t=tempfile.TemporaryDirectory(); print(json.dumps(m['collect_fixture'](Path(t.name))))"], { cwd: root, encoding: "utf8" }));
 const dashboardDir = resolve(root, "apps/presentation/dashboard");
 const server = packaged
   ? spawn(python, ["-m", "http.server", String(port), "--bind", "127.0.0.1", "--directory", resolve(root, "loopx/web")], { stdio: "ignore" })
@@ -44,15 +44,29 @@ try {
     assert.equal(await card.evaluate(el => el.scrollWidth > el.clientWidth + 2), false, "Acceptance content must wrap on mobile");
     await page.screenshot({path: resolve(output, `${packaged ? "packaged" : "development"}-${language}.png`)});
     if (language === "en") {
-      delete payload.run_history.goals[0].artifact_lifecycle;
-      await page.reload({waitUntil: "networkidle"});
-      const navigation = page.getByRole("button", {name: "Open Goal navigation"});
-      if (await navigation.isVisible()) await navigation.click();
-      await page.locator(".personal-goal-link").first().click();
-      await page.getByRole("button", {name: "Open Goal details or capability settings"}).click();
-      await page.getByRole("group", {name: "Goal settings"}).getByRole("button", {name: /Goal details/}).click();
-      await page.locator(".personal-goal-acceptance").getByText("Acceptance observations are unavailable. Goal completion is unknown.", {exact: true}).waitFor();
-      assert.equal(await page.locator(".personal-goal-acceptance .personal-acceptance-observation").count(), 0, "Unavailable source cannot retain prior gap rows");
+      const goal = payload.run_history.goals[0];
+      const current = goal.acceptance_observation;
+      for (const observation of [
+        {...current, schema_version: "goal_artifact_lifecycle_projection_v0"},
+        {...current, goal_id: "different-goal"},
+        undefined,
+        current,
+      ]) {
+        goal.acceptance_observation = observation;
+        await page.reload({waitUntil: "networkidle"});
+        const navigation = page.getByRole("button", {name: "Open Goal navigation"});
+        if (await navigation.isVisible()) await navigation.click();
+        await page.locator(".personal-goal-link").first().click();
+        await page.getByRole("button", {name: "Open Goal details or capability settings"}).click();
+        await page.getByRole("group", {name: "Goal settings"}).getByRole("button", {name: /Goal details/}).click();
+        const refreshedCard = page.locator(".personal-goal-acceptance");
+        if (observation === current) {
+          await refreshedCard.getByText("Independent verification report", {exact: true}).waitFor();
+        } else {
+          await refreshedCard.getByText("Acceptance observations are unavailable. Goal completion is unknown.", {exact: true}).waitFor();
+          assert.equal(await refreshedCard.locator(".personal-acceptance-observation").count(), 0, "Invalid source cannot retain prior gap rows");
+        }
+      }
     }
     await page.close();
   }
