@@ -17,14 +17,13 @@ import {
   AuthorityStoreProtocolError,
   isAuthorityJsonObject,
   hasExactAuthorityKeys,
-  canonicalAuthorityObjectList,
-  canonicalAuthorityObject,
   canonicalAuthorityBytes,
   normalizeAuthorityStoreCommit,
-  parseAuthorityCursor,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
-import { cloneAuthorityTransaction, decodeAuthorityTransaction, transactionForRevision } from "./authority_store_transactions.ts";
+import {appendRetainedAuthorityJournal, decodeRetainedAuthorityJournal,
+  type RetainedAuthorityJournal, transactionForRevision} from "./authority_store_transactions.ts";
+import {AuthorityJournalScan} from "./authority_journal_scan.ts";
 
 const NOKV_AUTHORITY_STORE_SCHEMA = "loopx_nokv_authority_store_v0";
 const DEFAULT_MAX_ENVELOPE_BYTES = 16 * 1024 * 1024;
@@ -77,16 +76,13 @@ export interface NoKVAuthorityStoreOptions {
   max_envelope_bytes?: number;
 }
 
-interface NoKVAuthorityStoreDocument extends JsonObject {
+interface NoKVAuthorityStoreDocument extends JsonObject, RetainedAuthorityJournal {
   schema_version: typeof NOKV_AUTHORITY_STORE_SCHEMA;
   tenant_id: string;
   goal_id: string;
   store_identity: string;
   storage_generation: number;
-  provider_revision: string;
-  cursor: string;
-  head: JsonObject;
-  committed: AuthorityStoreCommittedTransaction[];
+
 }
 
 type EnvelopeReadResult =
@@ -162,65 +158,13 @@ function decodeDocument(
       "NoKV authority store storage generation does not match read metadata",
     );
   }
-  const revision = requireAuthorityStoreId(value.provider_revision, "provider revision");
-  const cursor = requireAuthorityStoreId(value.cursor, "provider cursor");
-  const head = canonicalAuthorityObject(value.head, "NoKV authority store head");
-  if (!Array.isArray(value.committed)) {
-    throw new AuthorityStoreProtocolError("NoKV authority store history is invalid");
-  }
-  const committed = value.committed.map(decodeAuthorityTransaction);
-  if (
-    committed.length === 0 ||
-    storageGeneration !== committed.length ||
-    parseAuthorityCursor(cursor) !== BigInt(committed.length)
-  ) {
+  if (!Array.isArray(value.committed) || storageGeneration !== value.committed.length) {
     throw new AuthorityStoreProtocolError("NoKV authority store generation lineage is invalid");
   }
-  let previousRevision: string | null = null;
-  const operationIds = new Set<string>();
-  for (const [index, entry] of committed.entries()) {
-    const generation = index + 1;
-    if (parseAuthorityCursor(entry.cursor) !== BigInt(generation)) {
-      throw new AuthorityStoreProtocolError("NoKV authority store cursor lineage is invalid");
-    }
-    if (operationIds.has(entry.operation_id)) {
-      throw new AuthorityStoreProtocolError(
-        "NoKV authority store operation identity is duplicated",
-      );
-    }
-    operationIds.add(entry.operation_id);
-    const expectedRevision = providerRevision(
-      tenantId,
-      goalId,
-      storeIdentity,
-      generation,
-      previousRevision,
-      transactionForRevision(entry),
-    );
-    if (entry.provider_revision !== expectedRevision) {
-      throw new AuthorityStoreProtocolError("NoKV authority store revision lineage is invalid");
-    }
-    previousRevision = entry.provider_revision;
-  }
-  const last = committed.at(-1)!;
-  if (
-    last.cursor !== cursor ||
-    last.provider_revision !== revision ||
-    !canonicalAuthorityBytes(last.projection).equals(canonicalAuthorityBytes(head))
-  ) {
-    throw new AuthorityStoreProtocolError("NoKV authority store head lineage is invalid");
-  }
-  return {
-    schema_version: NOKV_AUTHORITY_STORE_SCHEMA,
-    tenant_id: tenantId,
-    goal_id: goalId,
-    store_identity: storeIdentity,
-    storage_generation: storageGeneration,
-    provider_revision: revision,
-    cursor,
-    head,
-    committed,
-  };
+  return {schema_version: NOKV_AUTHORITY_STORE_SCHEMA, tenant_id: tenantId, goal_id: goalId,
+    store_identity: storeIdentity, storage_generation: storageGeneration,
+    ...decodeRetainedAuthorityJournal(value, "NoKV authority store", (previous, transaction) =>
+      providerRevision(tenantId, goalId, storeIdentity, Number(transaction.cursor), previous, transaction))};
 }
 
 function readFailure(error: unknown): AuthorityStoreReadFailure {
@@ -437,38 +381,13 @@ export class NoKVAuthorityStore implements AuthorityStore {
         current_cursor: currentDocument.cursor,
       };
     }
-    const cursor = (parseAuthorityCursor(currentDocument?.cursor ?? null) + 1n).toString();
     const generation = (current.status === "loaded" ? current.generation : 0) + 1;
-    const base = {
-      cursor,
-      operation_id: normalized.operation_id,
-      events: normalized.events,
-      projection: normalized.next_projection,
-      receipts: normalized.receipts,
-    };
-    const revision = providerRevision(
-      this.tenantId,
-      this.goalId,
-      current.identity,
-      generation,
-      currentDocument?.provider_revision ?? null,
-      base,
-    );
-    const transaction: AuthorityStoreCommittedTransaction = {
-      ...base,
-      provider_revision: revision,
-    };
-    const document: NoKVAuthorityStoreDocument = {
-      schema_version: NOKV_AUTHORITY_STORE_SCHEMA,
-      tenant_id: this.tenantId,
-      goal_id: this.goalId,
-      store_identity: current.identity,
-      storage_generation: generation,
-      provider_revision: revision,
-      cursor,
-      head: normalized.next_projection,
-      committed: [...(currentDocument?.committed ?? []), transaction],
-    };
+    const journal = appendRetainedAuthorityJournal(currentDocument, normalized, (previous, transaction) =>
+      providerRevision(this.tenantId, this.goalId, current.identity, generation, previous, transaction));
+    const transaction = journal.committed.at(-1)!;
+    const document: NoKVAuthorityStoreDocument = {schema_version: NOKV_AUTHORITY_STORE_SCHEMA,
+      tenant_id: this.tenantId, goal_id: this.goalId, store_identity: current.identity,
+      storage_generation: generation, ...journal};
     const payload = canonicalAuthorityBytes(document);
     if (payload.byteLength > this.maxEnvelopeBytes) {
       return {
@@ -579,41 +498,16 @@ export class NoKVAuthorityStore implements AuthorityStore {
     afterCursor: string | null,
     limit: number,
   ): Promise<AuthorityStoreScanResult> {
-    let offset: bigint;
-    try {
-      offset = parseAuthorityCursor(afterCursor);
-      if (!Number.isSafeInteger(limit) || limit < 1) {
-        throw new AuthorityStoreProtocolError("scan limit must be a positive safe integer");
-      }
-    } catch (error) {
-      return {
-        status: "failed",
-        reason_code: "invalid_scan_request",
-        reason: error instanceof Error ? error.message : "invalid scan request",
-      };
-    }
+    const scan = AuthorityJournalScan.prepare(afterCursor, limit);
+    if (!(scan instanceof AuthorityJournalScan)) return scan;
     const result = await this.readEnvelope();
-    if (result.status === "missing") {
-      return { status: "page", transactions: [], next_cursor: afterCursor, has_more: false };
-    }
+    if (result.status === "missing") return scan.page([], null);
     if (result.status !== "loaded") return result;
-    const headCursor = parseAuthorityCursor(result.document.cursor);
-    if (offset > headCursor || offset > BigInt(Number.MAX_SAFE_INTEGER)) {
-      return {
-        status: "failed",
-        reason_code: "scan_cursor_out_of_range",
-        reason: "scan cursor is ahead of the provider head",
-      };
-    }
-    const start = Number(offset);
-    const transactions = result.document.committed
-      .slice(start, start + limit)
-      .map(cloneAuthorityTransaction);
-    return {
-      status: "page",
-      transactions,
-      next_cursor: transactions.at(-1)?.cursor ?? afterCursor,
-      has_more: start + transactions.length < result.document.committed.length,
-    };
+    try {
+      const range = scan.rangeFailure(result.document.cursor);
+      if (range) return range;
+      const start = Number(scan.offset);
+      return scan.page(result.document.committed.slice(start, start + limit + 1), result.document);
+    } catch (error) { return readFailure(error); }
   }
 }

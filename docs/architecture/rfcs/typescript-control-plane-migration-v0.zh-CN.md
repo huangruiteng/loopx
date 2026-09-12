@@ -526,6 +526,19 @@ user role。历史节点不会进入活动工作或 lease lane。无法识别的
 - 区分历史监督、canonical 义务与 settlement 权威；unknown 不能结清 Todo/replan。
   有意语义修正单独披露，不标成全量 parity。
 
+保留 journal 的读取边界现由同一个 TS owner 负责扫描参数、checkpoint 范围、
+分页连续性、lookahead 和末行/head 一致性。File 与 NoKV 同时共用历史校验及
+append 构造，版本哈希、物理锁/CAS 和后端头字段仍归各 provider。这删除了重复
+存储协议知识，没有新增 RPC、Python bridge、capability 或 provider；既有
+coordination 内部 owner 足够，File 内置及 NoKV/SQLite/PostgreSQL 可选部署边界不变。
+
+明确修正：空存储上的正数 checkpoint 返回 `scan_cursor_out_of_range`，非字符串
+游标返回 `invalid_scan_request`；历史缺行、乱序或末行/head 矛盾不能返回成功分页。
+PostgreSQL 读取使用同一个 repeatable-read snapshot，并发提交在下一次调用可见，
+不会将较新的行混入较旧 head。扫描只证明请求区间，不审计 checkpoint 之前的全部
+历史。合法结果 schema、File/NoKV 持久字节、请求身份及版本算法保持兼容。这支持
+T3/D1 reader，未完成全部 Todo writer、retention/compaction 或 promotion。
+
 **T4 — durable cutover 后兑现完整 writer 删除。**
 
 - 前提是 T1–T3 和 shared RFC 的 [D1–D3](shared-goal-authority-state-provider-v0.zh-CN.md#持久化执行卡)，包括 owner 批准及明确的 legacy 迁移窗口。

@@ -1,8 +1,8 @@
+import {AuthorityJournalScan} from "./authority_journal_scan.ts";
 import type { JsonObject } from "../effect_program.ts";
 import type {
   AuthorityStore,
   AuthorityStoreCommit,
-  AuthorityStoreCommittedTransaction,
   AuthorityStoreCommitResult,
   AuthorityStoreIdentityResult,
   AuthorityStoreLoadResult,
@@ -321,7 +321,7 @@ async function beginTenantTransaction(
   tenantId: string,
   options: { readOnly: boolean },
 ): Promise<void> {
-  await connection.query(options.readOnly ? "BEGIN READ ONLY" : "BEGIN");
+  await connection.query(options.readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN");
   try {
     const context = oneRow(await connection.query(
       "SELECT set_config('loopx.tenant_id', $1, TRUE) AS tenant_id",
@@ -713,19 +713,8 @@ export class PostgreSqlAuthorityStore implements AuthorityStore {
     afterCursor: string | null,
     limit: number,
   ): Promise<AuthorityStoreScanResult> {
-    let offset: bigint;
-    try {
-      offset = parseAuthorityCursor(afterCursor);
-      if (!Number.isSafeInteger(limit) || limit < 1) {
-        throw new AuthorityStoreProtocolError("scan limit must be a positive safe integer");
-      }
-    } catch (error) {
-      return {
-        status: "failed",
-        reason_code: "invalid_scan_request",
-        reason: error instanceof Error ? error.message : "invalid scan request",
-      };
-    }
+    const scan = AuthorityJournalScan.prepare(afterCursor, limit);
+    if (!(scan instanceof AuthorityJournalScan)) return scan;
     try {
       return await this.readInTenantTransaction(async (connection) => {
         const storeIdentity = await requireStoreIdentity(connection);
@@ -733,45 +722,22 @@ export class PostgreSqlAuthorityStore implements AuthorityStore {
           await connection.query(SELECT_HEAD_SQL, [this.tenantId, this.goalId]),
           "PostgreSQL authority head",
         );
-        if (current === null) {
-          return {
-            status: "page",
-            transactions: [],
-            next_cursor: afterCursor,
-            has_more: false,
-          } as const;
-        }
+        if (current === null) return scan.page([], null);
         const head = decodeHeadRow(current);
-        if (offset > BigInt(head.cursor)) {
-          return {
-            status: "failed",
-            reason_code: "scan_cursor_out_of_range",
-            reason: "scan cursor is ahead of the provider head",
-          } as const;
-        }
+        const snapshot = head.head === null ? null : {cursor: head.cursor,
+          provider_revision: providerRevisionToken(storeIdentity, head.provider_revision), head: head.head};
+        const range = scan.rangeFailure(snapshot?.cursor ?? null);
+        if (range) return range;
         const result = rows(await connection.query(
           `${SELECT_TRANSACTION_COLUMNS_SQL}
            WHERE commit.tenant_id = $1 AND commit.goal_id = $2 AND commit.cursor > $3::bigint
            ORDER BY commit.cursor
            LIMIT $4`,
-          [this.tenantId, this.goalId, offset.toString(), (BigInt(limit) + 1n).toString()],
+          [this.tenantId, this.goalId, scan.offset.toString(), (BigInt(limit) + 1n).toString()],
         )).map(decodeTransactionRow);
-        const hasMore = result.length > limit;
-        const page = result.slice(0, limit);
-        const transactions: AuthorityStoreCommittedTransaction[] = page.map((value) => ({
-          cursor: value.cursor,
-          provider_revision: providerRevisionToken(storeIdentity, value.provider_revision),
-          operation_id: value.operation_id,
-          events: structuredClone(value.events),
-          projection: structuredClone(value.projection),
-          receipts: structuredClone(value.receipts),
-        }));
-        return {
-          status: "page",
-          transactions,
-          next_cursor: transactions.at(-1)?.cursor ?? afterCursor,
-          has_more: hasMore,
-        } as const;
+        const transactions = result.map(value => ({...value,
+          provider_revision: providerRevisionToken(storeIdentity, value.provider_revision)}));
+        return scan.page(transactions, snapshot);
       });
     } catch (error) {
       return readFailure(error);

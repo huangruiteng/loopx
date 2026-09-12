@@ -110,7 +110,7 @@ export function canonicalAuthoritySha256(value: unknown): string {
 
 export function parseAuthorityCursor(value: string | null): bigint {
   if (value === null) return 0n;
-  if (!/^[1-9]\d*$/.test(value)) {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) {
     throw new AuthorityStoreProtocolError("provider cursor is invalid");
   }
   return BigInt(value);

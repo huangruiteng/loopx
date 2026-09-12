@@ -20,7 +20,6 @@ import {
   type NoKVStoreIdentityResult,
 } from "../../loopx/control_plane/coordination/nokv_authority_store.ts";
 import {
-  cloneAuthorityTransaction,
   decodeAuthorityTransaction,
   transactionForRevision,
 } from "../../loopx/control_plane/coordination/authority_store_transactions.ts";
@@ -287,10 +286,47 @@ test("file and NoKV scan results are isolated clones", async (t) => {
   }
 });
 
-test("transaction clone preserves the canonical logical projection", () => {
-  const decoded = decodeAuthorityTransaction(logicalFixtureTransaction());
-  const cloned = cloneAuthorityTransaction(decoded);
-  assert.deepEqual(transactionForRevision(cloned), expectedRevisionInput());
-  (cloned.projection as MutableRecord).changed = true;
-  assert.equal((decoded.projection as MutableRecord).changed, undefined);
+
+const journalMutations: readonly [string, (document: MutableRecord) => void][] = [
+  ["missing middle", d => (d.committed as MutableRecord[]).splice(1, 1)],
+  ["repeated operation", d => {const rows = d.committed as MutableRecord[]; rows[1]!.operation_id = rows[0]!.operation_id;}],
+  ["reordered history", d => (d.committed as MutableRecord[]).reverse()],
+  ["historical payload", d => {(d.committed as MutableRecord[])[0]!.receipts = [{forged: true}];}],
+  ["last revision", d => {(d.committed as MutableRecord[]).at(-1)!.provider_revision = "wrong";}],
+  ["head projection", d => {d.head = {forged: true};}],
+  ["head cursor", d => {d.cursor = "2";}],
+  ["head revision", d => {d.provider_revision = "wrong";}],
+  ["empty history", d => {d.committed = [];}],
+];
+
+test("retained journal lineage violations fail every consumer without rewriting history", async t => {
+  for (const [name, createProvider] of providerFactories) {
+    await t.test(name, async () => {
+      const provider = await createProvider();
+      try {
+        for (let index = 2; index <= 3; index++) {
+          const loaded = await provider.store.loadAuthority();
+          assert.equal(loaded.status, "loaded");
+          if (loaded.status !== "loaded") return;
+          assert.equal((await provider.store.commitAuthority({...seedCommit,
+            operation_id: `history-${index}`, expected_provider_revision: loaded.provider_revision})).status, "applied");
+        }
+        const original = await provider.readDocument();
+        for (const [label, mutate] of journalMutations) {
+          const broken = structuredClone(original);
+          mutate(broken);
+          await provider.writeDocument(broken);
+          for (const response of [await provider.store.loadAuthority(),
+            await provider.store.readReceipt(seedCommit.operation_id),
+            await provider.store.scanCommitted(null, 1),
+            await provider.store.commitAuthority({...seedCommit, operation_id: "after-corruption",
+              expected_provider_revision: original.provider_revision as string})]) {
+            assert.equal(response.status, "failed", label);
+            if (response.status === "failed") assert.equal(response.reason_code, "provider_protocol_violation", label);
+          }
+          assert.deepEqual(await provider.readDocument(), broken, label);
+        }
+      } finally { await provider.cleanup(); }
+    });
+  }
 });

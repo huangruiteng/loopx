@@ -689,6 +689,25 @@ import, provider qualification, soak, or D3 cutover requirements.
   authority separate. Unknown observations cannot settle Todo/replan work.
   Explicitly disclose any semantic correction; do not label it full parity.
 
+The retained-journal read boundary now shares one TS owner for scan admission,
+checkpoint range, contiguous page coverage, lookahead and final-head agreement.
+File and NoKV also share retained-history validation and append construction;
+provider revision hashes, physical locks/CAS and backend headers remain local.
+This retires duplicated storage-protocol knowledge without a new RPC, Python
+bridge, capability or provider. The existing coordination internal owner is
+sufficient; built-in File and optional NoKV/SQLite/PostgreSQL implementations
+retain their deployment boundaries.
+
+Intentional corrections: a positive checkpoint against an empty store is
+`scan_cursor_out_of_range`; non-string cursors are `invalid_scan_request`;
+a missing/reordered retained row or contradictory final head cannot produce a
+successful page. PostgreSQL read operations use one repeatable-read snapshot,
+so a concurrent commit appears on the next call instead of mixing newer rows
+with an older head. The scan proves its requested interval, not an audit of
+history before that checkpoint. Successful schemas, File/NoKV persisted bytes,
+request identity and revision algorithms remain compatible. This supports T3/D1
+readers but does not finish Todo writers, retention/compaction or promotion.
+
 **T4 — collect full-writer retirement after durability cutover.**
 
 - Depends on T1–T3 and the shared RFC's [D1–D3](shared-goal-authority-state-provider-v0.md#durability-execution-cards), including owner approval

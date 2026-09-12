@@ -757,6 +757,31 @@ separate schemas and roles, and relate them only through opaque identities or
 digests. Provider-specific payloads do not enter the provider-neutral LoopX
 schema.
 
+#### Retained-journal scan contract
+
+`scanCommitted(after_cursor, limit)` binds the head, rows and lookahead to one
+read snapshot. The current providers retain a contiguous journal from cursor 1;
+`null` is the sole start checkpoint, and every supplied cursor is a positive
+canonical decimal string. A positive checkpoint beyond the head, including an
+empty store, fails with `scan_cursor_out_of_range` rather than acknowledging
+successful exhaustion. Malformed runtime values fail before storage access.
+
+The shared TS scan owner checks the exact requested interval, including the
+lookahead row that proves `has_more`. Missing, repeated or reordered rows and a
+last transaction inconsistent with the snapshot head fail as protocol violations.
+PostgreSQL metadata/head/row reads use repeatable read; File/NoKV validate one
+retained envelope and SQLite keeps its existing read transaction. This does not
+introduce a snapshot token across pages: later calls may observe later commits.
+A page does not certify rows before its checkpoint, arbitrary payload integrity,
+or a future compacted/segmented history format.
+
+File and NoKV share journal decoding and append construction in the existing
+transaction module, while retaining their own revision digest inputs, identities,
+CAS and durability effects. Validation covers all four adapters with the shared
+complex fixture, real PostgreSQL concurrent commits and disposable corrupted
+rows, plus isolated real-source File/PostgreSQL pagination. No active Goal
+migration, default-provider change or D1–D3 qualification is implied.
+
 #### 6.2.2 Target store contract after the reference CAS slice
 
 The current Stage 2/3 reference implementation deliberately uses the smaller
