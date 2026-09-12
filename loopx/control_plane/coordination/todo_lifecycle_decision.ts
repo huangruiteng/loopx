@@ -25,13 +25,12 @@ export const COORDINATION_TERMINAL_FENCE_REQUEST_SCHEMA =
   "loopx_coordination_terminal_fence_request_v0";
 export const COORDINATION_TERMINAL_FENCE_RESULT_SCHEMA =
   "loopx_coordination_terminal_fence_result_v0";
-const HANDOFF_MODES = ["legacy", "soft_claim", "hard_lease"] as const;
+import {HANDOFF_MODES, type HandoffMode} from "./handoff_mode_policy.ts";
 const OUTCOMES = ["approve", "reject", "cancel"] as const;
 const AUTHORITY_ACTIONS = ["complete", "reassign", "supersede", "update"] as const;
 const EXECUTOR_RECLAIM_ACTION = "reclaim";
 
 type LifecycleCommand = typeof COMMANDS[number] | typeof MUTATION_COMMANDS[number];
-type HandoffMode = typeof HANDOFF_MODES[number];
 type DecisionOutcome = typeof OUTCOMES[number];
 
 interface DecisionScope extends JsonObject {

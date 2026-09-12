@@ -238,6 +238,11 @@ def test_fence_caller_parity(workspaces: Callable[[str], Workspace], row: dict) 
         assert {key: observed["envelope"].get(key) for key in row["expect"]} == row["expect"], observed
     else:
         assert observed["envelope"] == row["expect"], observed
+    if row["caller"] == "handoff_mode_set":
+        # This command now crosses the canonical boundary. Its dynamic revision,
+        # operation ID and lease expiry are not a literal legacy-writer envelope.
+        assert observed["envelope"].get("claimed_todos") or observed["envelope"].get("active_leases"), observed
+        assert observed["envelope"].get("provider_revision"), observed
     assert observed["effect"] == row["effect"], observed
     assert observed["outbox_added"] == row.get("outbox_added", []), observed
 

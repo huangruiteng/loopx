@@ -1,5 +1,6 @@
 import {registerAuthorityScanConformance} from "./authority_scan_conformance.ts";
 import {executeCoordinationTodoArchiveCompleted} from "../../loopx/control_plane/coordination/todo_archive.ts";
+import {registerHandoffModeConformance} from "./handoff_mode_conformance.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -209,6 +210,7 @@ export function registerAuthorityStoreConformance(
   registerAuthorityScanConformance(providerName, factory);
   registerNativePlanningUpdateConformance(providerName, factory);
   registerCoordinationReceiptConformance(providerName, factory);
+  registerHandoffModeConformance(providerName, factory);
   for (const native of [false, true]) test(`${providerName} conformance: standing revocation survives canonical ordering and archive (${native ? "native" : "legacy"})`, async (t) => {
     const {store} = await factory(t);
     const goal = "goal-standing";

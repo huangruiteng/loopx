@@ -784,20 +784,20 @@ def _decide_handoff_transition(
     snapshot: CoordinationSnapshot,
     command: HandoffModeTransitionCommand,
 ) -> TransitionPlan:
-    if snapshot.handoff_mode is command.requested_mode:
-        return _result(
-            DecisionOutcome.NO_CHANGE,
-            "handoff_mode_unchanged",
-            next_snapshot=snapshot,
-            idempotent=True,
-        )
-    if snapshot.active_claimed_todo_ids or snapshot.active_lease_todo_ids:
-        return _result(DecisionOutcome.REJECTED, "handoff_mode_not_quiescent")
-    return _result(
-        DecisionOutcome.APPLY,
-        "handoff_mode_transition",
-        next_snapshot=replace(snapshot, handoff_mode=command.requested_mode),
-    )
+    result = effect_runtime_result("coordination.handoff_mode.plan", {
+        "schema_version": "loopx_handoff_mode_plan_request_v0",
+        "previous_mode": snapshot.handoff_mode.value,
+        "requested_mode": command.requested_mode.value,
+        "active_claimed_todo_ids": list(snapshot.active_claimed_todo_ids),
+        "active_lease_todo_ids": list(snapshot.active_lease_todo_ids),
+    })
+    if not isinstance(result, dict) or result.get("schema_version") != "loopx_handoff_mode_plan_result_v0":
+        raise RuntimeError("TypeScript handoff mode plan shape mismatch")
+    outcome = DecisionOutcome(result["outcome"])
+    return _result(outcome, str(result["code"]),
+        next_snapshot=(None if outcome is DecisionOutcome.REJECTED else
+                       replace(snapshot, handoff_mode=command.requested_mode)),
+        idempotent=result["idempotent"])
 
 
 def decide(

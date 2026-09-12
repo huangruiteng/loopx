@@ -1,12 +1,13 @@
 """Per-goal handoff mode: which ownership authority governs todo handoffs.
 
-The goal's ACTIVE_GOAL_STATE.md YAML front-matter may declare ``handoff_mode``:
+Before promotion the active-state frontmatter declares ``handoff_mode``; afterward
+the selected canonical provider owns it. Public show/set route by that authority:
 
 * absent / ``legacy`` (default): today's dual soft-claim + hard-lease
   behavior, byte-for-byte. The known soft-claim/hard-lease split brain stays
   open in this mode by design; it is surfaced additively, never silently
   repaired.
-* ``soft_claim``: the markdown claim is the only ownership record. Task-lease
+* ``soft_claim``: the Todo claim is the only ownership record. Task-lease
   acquire/renew/transfer are typed-rejected; release and inspect stay allowed
   for cleanup and observability of legacy leftovers.
 * ``hard_lease``: ownership changes on an existing todo require the acting
@@ -17,13 +18,11 @@ The goal's ACTIVE_GOAL_STATE.md YAML front-matter may declare ``handoff_mode``:
   ``coordination.todo_lifecycle_authority`` override is the one audited door
   through the gate.
 
-The mode lives in the front-matter (not the registry) because the markdown
-file is the artifact that travels across endpoints; lease JSON and registry
-are host-local. Pre-NoKV the file syncs last-writer-wins, so two hosts can
-briefly disagree about the mode; that window is documented, not engineered
-around here.
+Canonical mode, complete Todo/lease quiescence, CAS and replay share one TypeScript
+transaction. Stale or missing Markdown and local lease files are not fallback
+sources. The legacy mode below remains a frontmatter compatibility contract.
 
-The v0 transition scan is materialized-state only: it reads open claims from
+The unpromoted v0 transition scan is materialized-state only: it reads open claims from
 the locked ``ACTIVE_GOAL_STATE.md`` text plus time-active local lease files. It
 does not merge the event projection, so a claim that exists only in the event
 log can be missed. A successful switch is therefore not a proof that every
@@ -119,13 +118,8 @@ def goal_handoff_mode_for_goal(
     project: Path | None = None,
     state_file: Path | None = None,
 ) -> str:
-    _project, resolved_state_file = _resolve_state(
-        registry_path=registry_path,
-        goal_id=goal_id,
-        project=project,
-        state_file=state_file,
-    )
-    return goal_handoff_mode(resolved_state_file.read_text(encoding="utf-8"))
+    return str(show_goal_handoff_mode(registry_path=registry_path, goal_id=goal_id,
+        project=project, state_file=state_file)["handoff_mode"])
 
 
 def enter_todo_ownership_handoff_gate(
@@ -255,7 +249,17 @@ def show_goal_handoff_mode(
     goal_id: str,
     project: Path | None = None,
     state_file: Path | None = None,
+    runtime_root_arg: str | None = None,
 ) -> dict[str, Any]:
+    from ..work_items.task_lease import runtime_root_from_registry
+    from .provider_handoff_mode import read_canonical_handoff_mode
+
+    canonical = read_canonical_handoff_mode(
+        runtime_root=runtime_root_from_registry(registry_path, runtime_root_arg), goal_id=goal_id)
+    if canonical is not None:
+        return {"ok": True, "schema_version": HANDOFF_MODE_SCHEMA_VERSION, "action": "show",
+                "goal_id": goal_id, **canonical,
+                "handoff_mode": normalize_handoff_mode(canonical["handoff_mode"]), "source": "canonical_provider"}
     _project, resolved_state_file = _resolve_state(
         registry_path=registry_path,
         goal_id=goal_id,
@@ -314,14 +318,16 @@ def _quiescence_offenders(
         runtime_root_from_registry,
         task_lease_dir,
     )
-    from .active_state_todo_parser import parse_active_state_todos
+    from .active_state_todo_parser import parse_todo_source
+    from .todo_summary import structured_todo_item, todo_projection_sort_key
 
+    # Quiescence needs normalized ownership facts, not status/resume/capability display.
+    # Retain the public offender order without evaluating unrelated projection rules.
     claimed: list[dict[str, Any]] = []
-    todos = parse_active_state_todos(state_text, item_limit=None)
-    for role in ("user_todos", "agent_todos"):
-        summary = todos.get(role)
-        items = summary.get("items") if isinstance(summary, dict) else []
-        for item in items or []:
+    todos, _, sections = parse_todo_source(state_text)
+    for role in ("user", "agent"):
+        items = [structured_todo_item(item, role=role, source_section=sections[role]) for item in todos[role]]
+        for item in sorted(items, key=todo_projection_sort_key):
             if not isinstance(item, dict) or item.get("done") is True:
                 continue
             owner = normalize_todo_claimed_by(item.get("claimed_by"))
@@ -401,8 +407,13 @@ def set_goal_handoff_mode(
     project: Path | None = None,
     state_file: Path | None = None,
     runtime_root_arg: str | None = None,
+    operation_id: str | None = None,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Set the goal handoff mode; requires a quiescent goal for transitions.
+    """Set the authoritative goal mode; changed modes require quiescence.
+
+    Promoted Goals use one provider transaction; the remaining text below
+    describes the unpromoted compatibility writer.
 
     In v0, quiescence means no open todo materialized in the locked active-state
     Markdown carries a claimed_by owner and no time-active lease file exists
@@ -434,18 +445,25 @@ def set_goal_handoff_mode(
             "handoff-mode set requires an explicit --mode value",
             code="invalid_handoff_mode",
         )
+    from .provider_handoff_mode import set_canonical_handoff_mode
+
+    runtime_root = runtime_root_from_registry(registry_path, runtime_root_arg)
+    canonical = set_canonical_handoff_mode(runtime_root=runtime_root, goal_id=goal_id,
+        mode=requested, operation_id=operation_id, dry_run=dry_run)
+    if canonical is not None:
+        return canonical
+    if operation_id is not None:
+        raise HandoffModeError("--operation-id requires canonical authority", code="handoff_mode_operation_id_unsupported")
     _project, resolved_state_file = _resolve_state(
         registry_path=registry_path,
         goal_id=goal_id,
         project=project,
         state_file=state_file,
     )
-    # One effective runtime root for the lease lock, the quiescence scan, and
-    # the post-commit observation of this call.
-    runtime_root = runtime_root_from_registry(registry_path, runtime_root_arg)
+    # The already resolved root also governs the legacy lock, scan and capture.
     with legacy_todo_write_transaction(
         registry_path, goal_id, resolved_state_file, None, "handoff_mode_set",
-        False, runtime_root=runtime_root,
+        dry_run, runtime_root=runtime_root,
     ):
         original = resolved_state_file.read_text(encoding="utf-8")
         previous, previous_mode_fields = _previous_handoff_mode_fields(
@@ -462,8 +480,10 @@ def set_goal_handoff_mode(
         }
         if previous == requested:
             payload["changed"] = False
+            if dry_run:
+                payload["dry_run"] = True
             return payload
-        capture = begin_todo_runtime_shadow_capture(
+        capture = None if dry_run else begin_todo_runtime_shadow_capture(
             registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
             state_path=resolved_state_file, write_class="handoff_mode_set",
             original_text=original,
@@ -529,6 +549,8 @@ def set_goal_handoff_mode(
                         "active_leases": leases,
                     },
                 )
+            if dry_run:
+                return {**payload, "dry_run": True, "changed": True}
             lines = original.splitlines()
             _write_handoff_mode_frontmatter(lines, requested)
             new_text = "\n".join(lines) + ("\n" if original.endswith("\n") else "")

@@ -1476,7 +1476,7 @@
       }
     },
     {
-      "id": "cli-handoff_mode_set-engaged",
+      "id": "cli-handoff_mode_set-canonical-quiescence",
       "surface": "cli",
       "workspace": "w1",
       "caller": "handoff_mode_set",
@@ -1487,15 +1487,13 @@
         "schema_version": "goal_handoff_mode_v0",
         "action": "set",
         "goal_id": "observable",
-        "error": "legacy coordination writer is fenced; use the promoted canonical authority (file_v0) for goal observable; fence caller-fixture; the primary record was not changed",
-        "error_code": "legacy_coordination_writer_fenced",
-        "write_check": {
-          "schema_version": "loopx_legacy_coordination_write_check_result_v0",
-          "status": "blocked",
-          "reason_code": "legacy_coordination_writer_fenced",
-          "authority_mode": "file_v0",
-          "fence_id": "caller-fixture"
-        }
+        "error_code": "handoff_mode_not_quiescent",
+        "status": "failed",
+        "changed": false,
+        "handoff_mode": "soft_claim",
+        "source_authority": "file_v0",
+        "decision_read_from_provider": true,
+        "legacy_fallback_used": false
       },
       "effect": {
         "added": [],
@@ -1515,7 +1513,8 @@
           "error_code": "legacy_coordination_writer_fenced",
           "schema_version": "loopx_legacy_coordination_write_check_result_v0"
         }
-      }
+      },
+      "match": "subset"
     },
     {
       "id": "cli-todo_archive_completed_preview-engaged",

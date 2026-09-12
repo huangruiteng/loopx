@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..control_plane.coordination.local_authority import LocalCoordinationAuthorityUnavailable
+
 from ..control_plane.coordination.legacy_writer_fence import LegacyCoordinationWriterFenced
 from ..control_plane.coordination.shadow_management import ShadowManagementError
 
@@ -69,7 +71,7 @@ def register_handoff_mode_command(
     parser = subparsers.add_parser(
         "handoff-mode",
         help=(
-            "Show or set the per-goal handoff_mode front-matter field that "
+            "Show or set the authoritative per-goal handoff_mode that "
             "selects which ownership authority governs todo handoffs."
         ),
     )
@@ -94,6 +96,8 @@ def register_handoff_mode_command(
             "for ownership changes and makes the completion fence mandatory."
         ),
     )
+    parser.add_argument("--operation-id", help="Stable canonical set intent id for recovery after a lost response.")
+    parser.add_argument("--dry-run", action="store_true", help="Validate set without committing the mode or a receipt.")
     parser.add_argument("--project", help="Project root. Defaults to the registry goal repo.")
     parser.add_argument("--state-file", help="Active goal state path. Defaults to the registry goal state_file.")
 
@@ -114,11 +118,12 @@ def handle_handoff_mode_command(
     }
     try:
         if args.handoff_mode_command == "show":
-            if args.mode:
-                raise ValueError("handoff-mode show does not accept --mode")
+            if args.mode or args.operation_id or args.dry_run:
+                raise ValueError("handoff-mode show does not accept set options")
             payload = show_goal_handoff_mode(
                 registry_path=registry_path,
                 goal_id=args.goal_id,
+                runtime_root_arg=runtime_root_arg,
                 **path_args,
             )
         else:
@@ -129,17 +134,18 @@ def handle_handoff_mode_command(
                 goal_id=args.goal_id,
                 mode=args.mode,
                 runtime_root_arg=runtime_root_arg,
+                operation_id=args.operation_id, dry_run=args.dry_run,
                 **path_args,
             )
-    except (HandoffModeError, LegacyCoordinationWriterFenced, ShadowManagementError) as exc:
+    except (HandoffModeError, LegacyCoordinationWriterFenced, ShadowManagementError, LocalCoordinationAuthorityUnavailable) as exc:
         payload = {
+            **exc.payload,
             "ok": False,
             "schema_version": "goal_handoff_mode_v0",
             "action": getattr(args, "handoff_mode_command", None),
             "goal_id": args.goal_id,
             "error": str(exc),
             "error_code": exc.code,
-            **exc.payload,
         }
     except LockAcquireTimeoutError as exc:
         payload = {
