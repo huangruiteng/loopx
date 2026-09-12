@@ -24,7 +24,7 @@ development and qualification surface, not a second implicit package channel.
 The archive snapshot remains a recovery path rather than a competing default.
 
 LoopX's Effect Program core runs in a managed, idle-exiting TypeScript runtime
-and requires Node.js 22.6 or later; Node.js 24 LTS is the recommended primary
+and requires Node.js 22.18.0 or later; Node.js 24 LTS is the recommended primary
 runtime. LoopX starts and reuses that local runtime automatically; users do not
 run a daemon manually. The runtime binds only to loopback, authenticates
 requests with a user-private token, rotates when the packaged Effect core
@@ -37,9 +37,15 @@ the App can render this projection without inventing a second health model.
 `stopped` is healthy and means the idle-exited runtime will restart on the next
 control-plane request. Validate Node before installing or upgrading LoopX:
 
+The CI and release lanes use Node.js 24 LTS. Node.js 26 remains a non-blocking
+forward-compatibility probe and is not a supported-version promise. After the
+Node.js 22 maintenance window ends, a separate policy change will raise the
+minimum to Node.js 24.12 or newer and remove no-longer-needed experimental
+flags.
+
 ```bash
 node --version
-# v22.6.0 or newer
+# v22.18.0 or newer
 ```
 
 Use `loopx doctor --deep` after installation to start the managed runtime and

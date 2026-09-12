@@ -80,7 +80,7 @@ versioned or optional functionality, not the default shape of every contribution
 - Site generator: MkDocs Material
 - Hosting: GitHub Pages
 - LoopX release anchor: `v1.0.3`
-- Runtime prerequisites: Python 3.11+ and Node.js 22.6+
+- Runtime prerequisites: Python 3.11+ and Node.js 22.18.0+
 
 The official public protocols remain authoritative for protocol facts. Commands that change across
 releases remain authoritative in the release you use, its current `--help`, and official documentation.

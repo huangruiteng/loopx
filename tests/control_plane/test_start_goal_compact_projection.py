@@ -221,7 +221,7 @@ def test_cli_reports_effect_runtime_startup_failure_without_traceback(
     assert payload["schema_version"] == "loopx_start_goal_guided_v0"
     assert payload["error"] == "LoopX TypeScript control-plane runtime is unavailable"
     assert payload["diagnostic_code"] == diagnostic_code
-    assert payload["runtime_requirement"]["minimum_node_version"] == "22.6.0"
+    assert payload["runtime_requirement"]["minimum_node_version"] == "22.18.0"
     assert "loopx doctor --deep" in payload["recommended_action"]
     assert expected_action_fragment in payload["recommended_action"]
     assert ("Node.js" in payload["recommended_action"]) is mentions_node_installation

@@ -1312,7 +1312,7 @@ cannot be silently relaxed.
 ## 7. Install, upgrade, and rollback
 
 The migration must not ask users to manage a service. The Python-transition
-release may require Node.js 22.6 or newer, but installer and `loopx doctor`
+release requires Node.js 22.18.0 or newer, but installer and `loopx doctor`
 must detect it before normal control-plane work and provide exact remediation.
 The wheel and sdist carry the TS source and versioned schemas.
 

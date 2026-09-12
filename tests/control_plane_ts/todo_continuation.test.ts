@@ -346,7 +346,7 @@ function nodeVersionAtLeast(major: number, minor: number): boolean {
   return maj > major || (maj === major && min >= minor);
 }
 
-test("cross-agent handoff works with SQLite authority", {skip: !nodeVersionAtLeast(22, 14) ? "requires Node 22.14+" : undefined}, async t => {
+test("cross-agent handoff works with SQLite authority", {skip: !nodeVersionAtLeast(22, 18) ? "requires Node 22.18+" : undefined}, async t => {
   const root = await mkdtemp(join(tmpdir(), "loopx-continuation-sqlite-"));
   t.after(() => rm(root, {recursive: true, force: true}));
   // Set up SQLite authority
