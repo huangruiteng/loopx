@@ -71,8 +71,9 @@ Append `--capability-route issue-fix` only when the caller supplied that exact
 explicit route switch.
 
 Include `--goal-id <STABLE_GOAL_ID>` when known. Codex App automatically reads
-the stable ambient `CODEX_THREAD_ID`; other hosts that expose a stable opaque
-thread id should pass it as `--thread-id <HOST_THREAD_ID>` on every `/loopx`
+the stable ambient `CODEX_THREAD_ID`, while Trae App reads
+`TRAECLI_THREAD_ID`; other hosts that expose a stable opaque thread id should
+pass it as `--thread-id <HOST_THREAD_ID>` on every `/loopx`
 invocation. If that thread is already bound, reuse the returned
 `--agent-id <REGISTERED_AGENT_ID>` on start, heartbeat, quota, refresh-state,
 and Todo commands. Include `--agent-id <REGISTERED_AGENT_ID>` only when the
@@ -598,22 +599,22 @@ the next wakeup cadence and external-loop unchanged-poll self-stop; this is
 scheduling policy, not delivery permission. Codex CLI TUI and Claude Code loops
 should run the final quota/replan check from `scheduler_hint` before applying
 their `after_limit`; if the guard changes or returns `run_now`, follow the new
-quota contract instead of stopping. Codex App heartbeat workers should
+quota contract instead of stopping. App-hosted heartbeat workers should
 search/use `automation_update` when available. If
 `scheduler_hint.action=stop_until_explicit_resume` and
-`scheduler_hint.codex_app.host_action=pause_or_delete_current_heartbeat`, call
+`scheduler_hint.app_automation.host_action=pause_or_delete_current_heartbeat`, call
 `automation_update` once to pause the current heartbeat (delete only when the
 host cannot pause), verify the host result, spend no quota, and end the turn.
 This terminal host action takes precedence over RRULE handling and requires no
 scheduler ACK. Otherwise use `automation_update` only when
-`scheduler_hint.codex_app.stateful_backoff.apply_needed=true` and
-`scheduler_hint.codex_app.recommended_rrule` is present. After a successful
+`scheduler_hint.app_automation.stateful_backoff.apply_needed=true` and
+`scheduler_hint.app_automation.recommended_rrule` is present. After a successful
 RRULE update, run `loopx` with
-`scheduler_hint.codex_app.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
+`scheduler_hint.app_automation.ack_hint.cli_args` (normally `quota scheduler-ack-current`,
 which re-reads the latest scheduler hint instead of hand-copying short-lived
 reset tokens). Attempt the host update at most once per hint and turn. If it
 fails or times out, do not retry or ACK; run
-`scheduler_hint.codex_app.failure_hint.cli_args` once. That no-spend writeback
+`scheduler_hint.app_automation.failure_hint.cli_args` once. That no-spend writeback
 records the failed target/observed-host pair so later heartbeats suppress the
 exact repeat until either value changes. Continue allowed delivery under the
 observed host cadence. If
@@ -623,7 +624,7 @@ ack hint directly. LoopX owns reset/progression state
 and omits `recommended_rrule` when the desired RRULE is already applied.
 Cadence changes, reset-to-initial updates, final checks, and self-stop changes
 do not spend quota.
-For a uniquely matched active Codex App heartbeat, `quota should-run`
+For a uniquely matched active App heartbeat, `quota should-run`
 automatically reconciles the installed RRULE with LoopX's ACK ledger. Treat
 `stateful_backoff.host_observation.status=drift_detected` as authoritative for
 cadence repair; a stale or premature ACK must not suppress `apply_needed`.

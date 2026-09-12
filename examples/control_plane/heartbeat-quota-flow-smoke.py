@@ -806,7 +806,7 @@ def main() -> int:
             "FREQ=MINUTELY;INTERVAL=15"
         ), first_guard
         reset = first_guard["scheduler_hint"]["reset_policy"]
-        assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
+        assert reset["app_automation_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
         assert "reset_condition_summary" not in reset, reset
         frontier = first_guard["goal_frontier_projection"]
         assert frontier["monitor_only_lanes"]["present"] is True, frontier

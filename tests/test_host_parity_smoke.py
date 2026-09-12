@@ -69,6 +69,7 @@ class TestAgentTypeCatalog:
         assert catalog["ok"]
         types = {t["agent_type"] for t in catalog["canonical_agent_types"]}
         assert "codex-app" in types
+        assert "trae_app" in types
         assert "codex-cli" in types
         assert "claude-code" in types
         assert "opencode" in types
@@ -88,6 +89,7 @@ class TestAgentTypeCatalog:
 
     @pytest.mark.parametrize("surface,expected", [
         ("chat-box", "codex-app"),
+        ("trae_app", "trae_app"),
         ("codex-cli-tui", "codex-cli"),
         ("claude-code", "claude-code"),
         ("opencode", "opencode"),
@@ -113,6 +115,7 @@ class TestAgentTypeCatalog:
         host = {
             "ark-managed-agent",
             "deepseek-harness-native",
+            "trae_app",
             "traex-cli",
             "other-agent",
         }
@@ -129,6 +132,7 @@ class TestSchedulerBindings:
         expected = {
             "ark-managed-agent": "ark_managed_agent_goal",
             "codex-app": "codex_app_heartbeat",
+            "trae_app": "trae_app",
             "codex-app-ssh": "codex_app_ssh_goal",
             "codex-cli": "codex_cli",
             "codex-ide-plugin": "codex_cli",

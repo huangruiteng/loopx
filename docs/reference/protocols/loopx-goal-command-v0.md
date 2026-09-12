@@ -23,6 +23,13 @@ When the user provides text after `/loopx`, the host should:
 6. Activate the host loop if it is missing, unknown, or stale:
    - `codex-app`: create or update the Codex App heartbeat automation from the
      generated `heartbeat-prompt` task body.
+   - `trae_app`: create or update the Trae App heartbeat automation from the
+     generated `heartbeat-prompt` task body. The `trae_app` runtime
+     profile preserves Trae host identity while consuming the provider-neutral
+     `scheduler_hint.app_automation` cadence, ACK, and terminal-stop contract.
+     Its packet carries `host_surface=trae_app` and never requires a Codex
+     automation-store fallback. A settled non-terminal turn keeps
+     the automation active so the next wake can select the successor.
    - `codex-app-ssh`: when Codex App is attached to a remote workspace over SSH
      and host automation tools are unavailable, set the current visible task to
      `/goal <task_body>` using the generated `codex_app_ssh_goal` profile. After
@@ -44,9 +51,9 @@ When the user provides text after `/loopx`, the host should:
      `generic_cli` runtime profile. TraeX `/goal` requires
      `[features] goals = true` in `~/.trae/traecli.toml`; if goal mode is off,
      show the pasteable `/goal <task_body>` gate. Do not route to `/loop`
-     unless a verified LoopX adapter is installed. LoopX ships no Codex App
-     automation and no slash-command installer for TraeX; it loads skills
-     from `~/.trae/skills`.
+     unless a verified LoopX adapter is installed. This CLI surface does not
+     create an App automation and has no slash-command installer; TraeX loads
+     skills from `~/.trae/skills`.
    - `pi`: call `loopx_goal_activate` from the installed LoopX Pi extension;
      the extension gates settled continuations and timer wakes through
      `quota should-run` and stops only on validated terminal no-follow-up.
@@ -66,6 +73,8 @@ loopx agent-onboard --list-agent-types
 Ambiguous values such as `codex` must fail closed because Codex App automation,
 Codex App over SSH, the IDE plugin, and Codex CLI use different host-loop
 activation paths.
+Likewise, callers must choose `trae_app` for Trae App heartbeat automation or
+`traex-cli` for the existing visible `/goal` loop.
 
 Codex App SSH, Codex CLI/IDE, and Ark Managed Agent form one native Goal host
 family. They share the stable `loopx_goal_prompt_v0` body, the 4,000-character

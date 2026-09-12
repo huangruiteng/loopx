@@ -19,6 +19,9 @@ from loopx.control_plane.scheduler.execution_context import (
     scheduler_execution_context_for_runtime_profile,
     scheduler_runtime_profile_for_execution_context,
 )
+from loopx.control_plane.scheduler.automation_liveness import (
+    build_automation_liveness,
+)
 from loopx.control_plane.scheduler.scheduler_hint import build_scheduler_hint
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
@@ -37,6 +40,7 @@ from loopx.quota import build_quota_should_run
 VALID_COMBINATIONS = {
     ("ark_managed_agent", "goal_runtime", "interactive"),
     ("codex_app", "host_automation", "hosted_automation"),
+    ("trae_app", "host_automation", "hosted_automation"),
     ("codex_app_ssh", "agent_cli_loop", "interactive"),
     ("local_scheduler", "host_automation", "hosted_automation"),
     *{
@@ -61,6 +65,11 @@ FIRST_CLASS_RUNTIME_PROFILES = (
         SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
         ("codex_app", "host_automation", "hosted_automation"),
         " --codex-app",
+    ),
+    (
+        SchedulerRuntimeProfile.TRAE_APP,
+        ("trae_app", "host_automation", "hosted_automation"),
+        " --trae_app",
     ),
     (
         SchedulerRuntimeProfile.CODEX_APP_SSH_VISIBLE,
@@ -191,21 +200,41 @@ def test_scheduler_execution_context_decision_table(
     )
 
     assert resolution.ok is (values in VALID_COMBINATIONS)
+    context_projection = resolution.projection()
+    if host_surface is HostSurface.TRAE_APP:
+        assert context_projection["app_automation_applicability"] == (
+            "applicable" if resolution.ok else "blocked_invalid_context"
+        )
+        assert "codex_app_applicability" not in context_projection
+    else:
+        assert "app_automation_applicability" not in context_projection
+        assert context_projection["codex_app_applicability"] == (
+            "applicable"
+            if resolution.ok and host_surface is HostSurface.CODEX_APP
+            else "not_applicable" if resolution.ok else "blocked_invalid_context"
+        )
     if values not in VALID_COMBINATIONS:
         assert hint["execution_phase"]["disposition"] == "contract_error"
         assert hint["execution_phase"]["completed"] is False
-        assert hint["codex_app"]["applicability"] == "blocked_invalid_context"
+        packet_key = (
+            "app_automation" if host_surface is HostSurface.TRAE_APP else "codex_app"
+        )
+        assert hint[packet_key]["applicability"] == "blocked_invalid_context"
+        assert ("app_automation" in hint) is (host_surface is HostSurface.TRAE_APP)
+        assert ("codex_app" in hint) is (host_surface is not HostSurface.TRAE_APP)
         return
 
-    app_expected = values == (
-        "codex_app",
-        "host_automation",
-        "hosted_automation",
-    )
-    assert hint["codex_app"]["applicability"] == (
+    app_expected = values in {
+        ("codex_app", "host_automation", "hosted_automation"),
+        ("trae_app", "host_automation", "hosted_automation"),
+    }
+    packet_key = "app_automation" if app_expected else "codex_app"
+    assert hint[packet_key]["applicability"] == (
         "applicable" if app_expected else "not_applicable"
     )
-    assert ("stateful_backoff" in hint["codex_app"]) is app_expected
+    assert ("stateful_backoff" in hint[packet_key]) is app_expected
+    assert ("app_automation" in hint) is app_expected
+    assert ("codex_app" in hint) is (host_surface is not HostSurface.TRAE_APP)
     if app_expected:
         assert "execution_context" not in hint
         assert "execution_phase" not in hint
@@ -254,8 +283,118 @@ def test_codex_app_runtime_profile_preserves_host_backoff() -> None:
         hint["cold_path_detail"]["execution_context"]["codex_app_applicability"]
         == "applicable"
     )
-    assert hint["codex_app"]["stateful_backoff"]["apply_needed"] is True
+    canonical = hint["app_automation"]
+    legacy = hint["codex_app"]
+    assert canonical is not legacy
+    assert legacy["applicability"] == "applicable"
+    assert canonical["stateful_backoff"]["schema_version"] == (
+        "app_automation_stateful_backoff_v0"
+    )
+    assert canonical["stateful_backoff"]["state_key"] == (
+        "scheduler_hint.app_automation.stateful_backoff"
+    )
+    assert canonical["ack_hint"]["schema_version"] == (
+        "app_automation_scheduler_ack_hint_v0"
+    )
+    assert legacy["stateful_backoff"]["schema_version"] == (
+        "codex_app_stateful_backoff_v0"
+    )
+    assert legacy["stateful_backoff"]["state_key"] == (
+        "scheduler_hint.codex_app.stateful_backoff"
+    )
+    assert legacy["ack_hint"]["schema_version"] == (
+        "codex_app_scheduler_ack_hint_v0"
+    )
+    assert legacy["rrule_source"] == "scheduler_hint.codex_app.recommended_rrule"
+    assert legacy["stateful_backoff"]["apply_needed"] is True
+    assert legacy["recommended_interval_minutes"] == 3
+    assert hint["reset_policy"]["reset_token"] == "3e649fb65bf246f9"
     assert hint["cold_path_detail"]["execution_phase"]["apply_needed"] is True
+
+
+def test_trae_app_runtime_profile_preserves_host_backoff_and_identity() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.TRAE_APP
+    )
+    hint = build_scheduler_hint(
+        _active_payload(),
+        include_detail=True,
+        scheduler_execution_context=context,
+    )
+
+    execution_context = hint["cold_path_detail"]["execution_context"]
+    assert execution_context["source"] == "runtime_profile:trae_app"
+    assert execution_context["host_surface"] == "trae_app"
+    assert "codex_app_applicability" not in execution_context
+    assert execution_context["app_automation_applicability"] == "applicable"
+    assert "codex_app" not in hint
+    app = hint["app_automation"]
+    assert app["host_surface"] == "trae_app"
+    assert app["stateful_backoff"]["apply_needed"] is True
+    assert app["stateful_backoff"]["state_key"] == (
+        "scheduler_hint.app_automation.stateful_backoff"
+    )
+    assert app["recommended_interval_minutes"] == 3
+    assert app["rrule_source"] == "scheduler_hint.app_automation.recommended_rrule"
+    assert "fallback_hint" not in app
+    assert "--trae_app" in app["ack_hint"]["cli_args"]
+    assert "--surface" in app["ack_hint"]["cli_args"]
+    assert hint["cold_path_detail"]["execution_phase"]["host_surface"] == (
+        "trae_app"
+    )
+
+
+def test_codex_app_monitor_reset_token_preserves_v0_profile_identity() -> None:
+    context = scheduler_execution_context_for_runtime_profile(
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+    )
+
+    hint = build_scheduler_hint(
+        _monitor_wait_payload(),
+        include_detail=True,
+        scheduler_execution_context=context,
+    )
+
+    assert hint["reset_policy"]["reset_token"] == "704ba9bb4bd17d43"
+    reset_detail = hint["cold_path_detail"]["reset_policy_detail"]
+    assert reset_detail["profile_signature"] == "d8601294ac8d"
+    assert reset_detail["reset_profile_signature"] == "d8601294ac8d"
+
+
+@pytest.mark.parametrize(
+    "profile",
+    (
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        SchedulerRuntimeProfile.TRAE_APP,
+    ),
+)
+def test_app_heartbeat_settlement_keeps_automation_active_until_terminal(
+    profile: SchedulerRuntimeProfile,
+) -> None:
+    context = scheduler_execution_context_for_runtime_profile(profile)
+    assert context.ok and context.context is not None
+    assert context.context.app_automation_applicable is True
+
+    settled = build_automation_liveness(
+        {
+            "effective_action": "heartbeat_settled_skip",
+            "heartbeat_recommendation": {},
+            "execution_obligation": {"must_attempt_work": False},
+        }
+    )
+    terminal = build_automation_liveness(
+        {
+            "effective_action": "terminal_no_followup",
+            "heartbeat_recommendation": {},
+            "execution_obligation": {"must_attempt_work": False},
+        }
+    )
+
+    assert settled["keep_active"] is True
+    assert settled["next_trigger"] == (
+        "next heartbeat turn with a fresh turn identity"
+    )
+    assert terminal["keep_active"] is False
 
 
 def test_goal_runtime_projects_typed_immediate_continuation() -> None:
@@ -1377,10 +1516,18 @@ def test_stale_unbound_guard_converges_after_profile_regeneration(
 
     assert stale_hint["action"] == "repair_scheduler_execution_context"
     assert regenerated_hint.get("action") != "repair_scheduler_execution_context"
-    assert regenerated_hint["codex_app"]["applicability"] in {
-        "applicable",
-        "not_applicable",
+    app_profile = profile in {
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        SchedulerRuntimeProfile.TRAE_APP,
     }
+    packet_key = "app_automation" if app_profile else "codex_app"
+    assert regenerated_hint[packet_key]["applicability"] == (
+        "applicable" if app_profile else "not_applicable"
+    )
+    assert ("app_automation" in regenerated_hint) is app_profile
+    assert ("codex_app" in regenerated_hint) is (
+        profile is not SchedulerRuntimeProfile.TRAE_APP
+    )
 
 
 def test_generic_outer_controller_rerun_actions_are_typed() -> None:

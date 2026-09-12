@@ -93,10 +93,12 @@ def resolve_exact_heartbeat_turn_identity(
     if profile not in {
         SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP,
         SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        SchedulerRuntimeProfile.TRAE_APP,
     }:
         raise ValueError(
             "--turn-instance-id requires runtime-profile generic_cli or "
-            "codex_app_heartbeat so quota guard creates a heartbeat receipt"
+            "codex_app_heartbeat, or trae_app so quota guard creates "
+            "a heartbeat receipt"
         )
     return normalized, f" --turn-instance-id {shlex.quote(normalized)}", {
         "schema_version": HEARTBEAT_PROMPT_SCHEMA_VERSION,

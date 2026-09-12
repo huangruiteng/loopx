@@ -51,6 +51,8 @@ def goal_bootstrap(args, *, registry: Path) -> str:
         command += ["--cli-bin", args.cli_bin]
     if args.codex_app:
         command.append("--codex-app")
+    if getattr(args, "trae_app", False):
+        command.append("--trae_app")
     mode = next((mode for mode in ("full", "compact", "brief", "thin") if getattr(args, mode)), "thin")
     command.append("--" + mode)
     return render_bootstrap(command, title="LoopX managed host bootstrap v1",
@@ -66,6 +68,7 @@ def host_bootstrap_binding(prompt: str) -> dict | None:
         if command[1:3] != ["--format", "json"]:
             return None
         values = dict(cli_bin=command[0], turn_instance_id=None, codex_app=False,
+                      trae_app=False,
                       full=False, compact=False, brief=False, thin=False,
                       visible_goal_host=None, available_capabilities=[], agent_scopes=[],
                       runtime_root=None)
@@ -74,7 +77,11 @@ def host_bootstrap_binding(prompt: str) -> dict | None:
             "material_rule", "permission_rule", "runtime_profile", "visible_goal_host",
             "host_surface", "scheduler_owner", "execution_mode", "cli_bin")}
         repeated = {"--agent-scope": "agent_scopes", "--available-capability": "available_capabilities"}
-        booleans = {"--" + name.replace("_", "-"): name for name in ("codex_app", "full", "compact", "brief", "thin")}
+        booleans = {
+            "--codex-app": "codex_app",
+            "--trae_app": "trae_app",
+            **{"--" + name.replace("_", "-"): name for name in ("full", "compact", "brief", "thin")},
+        }
         index = 3
         while index < len(command):
             token = command[index]

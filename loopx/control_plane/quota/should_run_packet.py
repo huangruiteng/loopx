@@ -88,9 +88,7 @@ from ..scheduler.external_evidence_observation import (
 )
 from ..scheduler.scheduler_hint import build_scheduler_hint
 from ..scheduler.state import (
-    CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
-    CODEX_APP_SURFACE,
-    load_scheduler_state,
+    load_app_automation_scheduler_state,
 )
 from ..todos.contract import (
     normalize_todo_claimed_by,
@@ -203,22 +201,22 @@ def _scheduler_hint(
     )
 
 
-def _load_codex_app_scheduler_state(
+def _load_app_automation_scheduler_state(
     status_payload: dict[str, Any],
     *,
     goal_id: str,
     agent_id: str | None,
+    surface: str,
 ) -> dict[str, Any] | None:
     raw_runtime_root = status_payload.get("runtime_root")
     safe_agent_id = normalize_todo_claimed_by(agent_id)
     if not raw_runtime_root or not safe_agent_id:
         return None
-    return load_scheduler_state(
+    return load_app_automation_scheduler_state(
         Path(str(raw_runtime_root)).expanduser(),
         goal_id=goal_id,
         agent_id=safe_agent_id,
-        surface=CODEX_APP_SURFACE,
-        state_key=CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+        surface=surface,
     )
 
 
@@ -1460,15 +1458,16 @@ def _build_quota_should_run_payload(
         include_detail=prepared.include_scheduler_detail,
         available_capabilities=prepared.runtime_available_capabilities,
         codex_app_scheduler_state=(
-            _load_codex_app_scheduler_state(
+            _load_app_automation_scheduler_state(
                 prepared.status_payload,
                 goal_id=prepared.safe_goal_id,
                 agent_id=quota_decision_agent_id(payload)
                 or prepared.requested_agent_id,
+                surface=prepared.resolved_scheduler_context.context.host_surface.value,
             )
             if prepared.resolved_scheduler_context.ok
             and prepared.resolved_scheduler_context.context is not None
-            and prepared.resolved_scheduler_context.context.codex_app_applicable
+            and prepared.resolved_scheduler_context.context.app_automation_applicable
             else None
         ),
         codex_app_current_rrule=prepared.codex_app_current_rrule,

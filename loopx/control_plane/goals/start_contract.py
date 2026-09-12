@@ -83,6 +83,7 @@ def build_goal_start_contract(
             "agent_type_discovery": "loopx agent-onboard --list-agent-types",
             "host_surfaces": {
                 "codex-app": "Codex App heartbeat automation",
+                "trae_app": "Trae App heartbeat automation",
                 "codex-cli": "visible Codex CLI `/goal <task_body>`",
                 "claude-code": "Claude Code native `/loop` after `/loopx <task>` arms LoopX",
                 "opencode": "OpenCode `loopx_goal_activate`",

@@ -172,6 +172,7 @@ def test_codex_ide_plugin_is_an_exact_host_type_with_visible_goal_activation() -
     (
         ("ark-managed-agent", "ark_managed_agent_goal"),
         ("codex-app", "codex_app_heartbeat"),
+        ("trae_app", "trae_app"),
         ("codex-app-ssh", "codex_app_ssh_goal"),
         ("codex-cli", "codex_cli"),
         ("codex-ide-plugin", "codex_cli"),
@@ -513,6 +514,46 @@ def test_codex_app_activation_uses_narrow_runtime_profile() -> None:
     assert "--host-surface" not in command
     assert "--scheduler-owner" not in command
     assert "--execution-mode" not in command
+
+
+def test_trae_app_activation_uses_host_automation_and_stays_distinct_from_cli() -> None:
+    assert normalize_agent_type("trae_app") == "trae_app"
+    assert agent_type_for_host_surface("trae_app") == "trae_app"
+    assert normalize_agent_type("traex") == "traex-cli"
+    with pytest.raises(AgentTypeError, match="unsupported agent_type"):
+        normalize_agent_type("Trae App")
+
+    packet = build_host_loop_activation_packet(
+        agent_type="trae_app",
+        goal_id="fixture-goal",
+        agent_id="trae_app-fixture",
+        registered_agents=["trae_app-fixture"],
+    )
+
+    command = packet["commands"]["heartbeat_prompt"]
+    assert packet["host_surface"] == "trae_app"
+    assert packet["activation_method"] == (
+        "create_or_update_trae_app_automation"
+    )
+    assert packet["host_mutation"]["preferred_tool"] == "automation_update"
+    assert "--trae_app" in command
+    assert "--codex-app" not in command
+    assert "--runtime-profile" not in command
+    assert any(
+        "settled non-terminal turn leaves the automation active" in criterion
+        for criterion in packet["success_criteria"]
+    )
+
+    prompt = build_heartbeat_prompt(
+        goal_id="trae_app-prompt-fixture",
+        thin=True,
+        runtime_profile="trae_app",
+    )
+    assert "--trae_app" in prompt["quota_guard_command"]
+    assert "--trae_app" in prompt["task_body"]
+    rendered = render_heartbeat_prompt_markdown(prompt)
+    assert "Trae App heartbeat automation" in rendered
+    assert "Codex App heartbeat automation" not in rendered
 
 
 def test_new_agent_onboarding_defaults_to_fresh_identity() -> None:

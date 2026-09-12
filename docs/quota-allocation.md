@@ -828,7 +828,7 @@ of an error string.
       "execution_required": false,
       "request": "loopx quota should-run --include-detail scheduler",
       "hot_path_runtime_fields": [
-        "codex_app",
+        "app_automation",
         "unchanged_poll",
         "reset_policy"
       ],
@@ -845,8 +845,8 @@ of an error string.
     "reset_policy": {
       "reset_token": "0123456789abcdef",
       "host_state_key": "scheduler_hint.reset_policy.reset_token",
-      "codex_app_initial_interval_minutes": 30,
-      "codex_app_initial_rrule": "FREQ=MINUTELY;INTERVAL=30",
+      "app_automation_initial_interval_minutes": 30,
+      "app_automation_initial_rrule": "FREQ=MINUTELY;INTERVAL=30",
       "identity_signature": "123456789abc"
     }
   },
@@ -1033,19 +1033,19 @@ agent-to-agent handoff cadence too quickly;
 `backoff_until_fresh_evidence` handles mapped or post-handoff no-op waits.
 For Codex App and local schedulers, `recommended_interval_minutes` is the next
 target interval. For Codex App heartbeats, `recommended_rrule` is emitted only
-when `codex_app.stateful_backoff.apply_needed=true`; if the desired RRULE is
+when `app_automation.stateful_backoff.apply_needed=true`; if the desired RRULE is
 already applied, it is omitted so the agent does not call a host tool again.
 If that match still needs a reset-token/identity binding,
 `stateful_backoff.ack_needed=true` and the bound ack runs without a host update.
 When an apply is required but `automation_update` is unavailable in the
-session, `codex_app.fallback_hint` carries the bounded `loopx-apply-rrule`
+session, `app_automation.fallback_hint` carries the bounded `loopx-apply-rrule`
 command for the resolved automation (backup `codex-dev.db`, sync TOML+SQLite,
 run the bound ACK). Direct SQLite edits bypass the app API, so the fallback is
 projected only for this gap and never as the routine path; an unresolved
 automation id projects `available=false` and requires the pasteable heartbeat
 gate instead of guessing.
 After a successful host RRULE update, the agent records that fact with
-`loopx` plus `codex_app.ack_hint.cli_args`; current payloads use
+`loopx` plus `app_automation.ack_hint.cli_args`; current payloads use
 `quota scheduler-ack-current` to re-read the latest scheduler hint before LoopX
 advances the per goal/agent scheduler state without spending quota. Human gates
 can move Codex App heartbeats through `[30, 60]` after the concrete user todo
@@ -1076,7 +1076,7 @@ Agent-scope waits use a more conservative adjustment curve such as
 agent-to-agent interaction cadence before cooling further.
 The compact hot path carries only the reset fields hosts need to act:
 `reset_policy.reset_token`, `host_state_key`,
-`codex_app_initial_interval_minutes`, `codex_app_initial_rrule`, and the short
+`app_automation_initial_interval_minutes`, `app_automation_initial_rrule`, and the short
 `identity_signature`. Hosts should cache and compare `reset_token` across
 unchanged polls and reset the unchanged streak whenever the token changes. The
 token is derived from scheduler action plus the current identity/profile inputs;
@@ -1085,13 +1085,13 @@ stateful-backoff policy live in `scheduler_hint.cold_path_detail` when callers
 request `loopx quota should-run --include-detail scheduler`. Hosts should also
 reset when an external event makes the goal actionable again, such as user
 feedback in the thread, a new or reassigned todo, a resolved gate, or material
-evidence transition. A reset applies `codex_app_initial_interval_minutes` (and
+evidence transition. A reset applies `app_automation_initial_interval_minutes` (and
 the matching local scheduler initial interval) before starting unchanged
 backoff again; it never spends quota.
 For Codex App heartbeats, hosts and agents should use `automation_update` only
-when `codex_app.stateful_backoff.apply_needed=true` and
-`codex_app.recommended_rrule` is present. After `automation_update` succeeds,
-the agent must run `codex_app.ack_hint.cli_args`. Current payloads use
+when `app_automation.stateful_backoff.apply_needed=true` and
+`app_automation.recommended_rrule` is present. After `automation_update` succeeds,
+the agent must run `app_automation.ack_hint.cli_args`. Current payloads use
 `quota scheduler-ack-current`, so LoopX then persists `reset_token`,
 `identity_signature`, `progression_index`, and
 `last_applied_rrule` under the runtime root. Repeated unchanged identity
@@ -1105,7 +1105,7 @@ quota state. If `apply_needed=false` and `ack_needed=true`, the same command
 records an exact matching host readback without calling `automation_update`.
 If `automation_update` fails or times out, the agent must not ACK. LoopX keeps
 the observed host RRULE authoritative. The agent runs
-`codex_app.failure_hint.cli_args` once to persist the failed target/observed-host
+`app_automation.failure_hint.cli_args` once to persist the failed target/observed-host
 pair without quota spend. LoopX retains up to four distinct pairs for 24 hours,
 so active-work and monitor-wait targets cannot overwrite one another while the
 host RRULE remains unchanged. Later heartbeats expose `apply_needed=false` and

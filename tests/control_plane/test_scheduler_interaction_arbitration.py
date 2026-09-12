@@ -372,7 +372,7 @@ def test_human_gate_respects_a_tighter_continuous_monitor_deadline(
     assert hint["codex_app"]["recommended_interval_minutes"] == 3
     assert hint["codex_app"]["example_progression_minutes"] == [3]
     assert hint["cold_path_detail"]["cadence_context"]["cap_minutes"] == 3
-    assert hint["reset_policy"]["codex_app_initial_interval_minutes"] == 3
+    assert hint["reset_policy"]["app_automation_initial_interval_minutes"] == 3
 
 
 def test_raw_should_run_cannot_override_blocking_gate() -> None:

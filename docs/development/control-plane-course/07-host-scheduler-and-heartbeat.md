@@ -174,7 +174,7 @@ loopx quota scheduler-ack-current \
   --goal-id <goal-id> \
   --agent-id <agent-id> \
   --surface codex_app \
-  --state-key scheduler_hint.codex_app.stateful_backoff \
+  --state-key scheduler_hint.app_automation.stateful_backoff \
   --reset-token <proposal-reset-token> \
   --identity-signature <proposal-identity-signature> \
   --applied-rrule 'FREQ=MINUTELY;INTERVAL=30' \

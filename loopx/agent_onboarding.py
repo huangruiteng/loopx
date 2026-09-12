@@ -282,6 +282,7 @@ def _bootstrap_pack_command(
 ) -> str:
     surface_by_type = {
         "codex-app": "codex-app",
+        "trae_app": "trae_app",
         "codex-app-ssh": "codex-app-ssh",
         "codex-ide-plugin": "codex-ide-plugin",
         "codex-cli": "codex-cli-tui",
@@ -322,6 +323,8 @@ def _bootstrap_pack_command(
 def _start_instruction(agent_type: str) -> str:
     if agent_type == "codex-app":
         return "Use `$loopx <task>` or select the LoopX skill from `/skills`; Codex App should then create/update the heartbeat automation."
+    if agent_type == "trae_app":
+        return "Use `$loopx <task>` or select the LoopX skill from `/skills`; Trae App should then create/update the heartbeat automation."
     if agent_type == "codex-app-ssh":
         return "Use `$loopx <task>` or select the LoopX skill from `/skills`; after todos are written, set `/goal <task_body>` in the visible Codex App task."
     if agent_type == "codex-ide-plugin":

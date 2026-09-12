@@ -18,7 +18,17 @@ SCHEDULER_STATE_OPERATION_RESULT_SCHEMA = (
 )
 SCHEDULER_STATE_STORE_REQUEST_SCHEMA = "loopx_scheduler_state_store_request_v0"
 SCHEDULER_STATE_STORE_RESULT_SCHEMA = "loopx_scheduler_state_store_result_v0"
-CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = "scheduler_hint.codex_app.stateful_backoff"
+APP_AUTOMATION_STATEFUL_BACKOFF_STATE_KEY = (
+    "scheduler_hint.app_automation.stateful_backoff"
+)
+LEGACY_CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = (
+    "scheduler_hint.codex_app.stateful_backoff"
+)
+# Historical Codex callers continue to default to their legacy key. Canonical
+# App packets pass APP_AUTOMATION_STATEFUL_BACKOFF_STATE_KEY explicitly.
+CODEX_APP_STATEFUL_BACKOFF_STATE_KEY = (
+    LEGACY_CODEX_APP_STATEFUL_BACKOFF_STATE_KEY
+)
 CODEX_APP_SURFACE = "codex_app"
 
 
@@ -291,6 +301,33 @@ def load_scheduler_state(
     if state is not None and not isinstance(state, dict):
         raise RuntimeError("TypeScript loaded scheduler state must be an object or null")
     return state
+
+
+def load_app_automation_scheduler_state(
+    runtime_root: Path,
+    *,
+    goal_id: str,
+    agent_id: str | None,
+    surface: str,
+) -> dict[str, Any] | None:
+    current = load_scheduler_state(
+        runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        surface=surface,
+        state_key=APP_AUTOMATION_STATEFUL_BACKOFF_STATE_KEY,
+    )
+    if current is not None or surface != CODEX_APP_SURFACE:
+        return current
+    # Codex alone reads its pre-app_automation key so the next successful ACK
+    # can rewrite the cadence state under the provider-neutral contract.
+    return load_scheduler_state(
+        runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        surface=surface,
+        state_key=LEGACY_CODEX_APP_STATEFUL_BACKOFF_STATE_KEY,
+    )
 
 
 def write_scheduler_state(

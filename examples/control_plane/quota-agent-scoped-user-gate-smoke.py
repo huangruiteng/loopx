@@ -1022,8 +1022,8 @@ def assert_agent_without_advancement_candidate_and_only_monitor_work_stays_quiet
     reset = scheduler["reset_policy"]
     assert isinstance(reset["reset_token"], str) and len(reset["reset_token"]) == 16, reset
     assert reset["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset
-    assert reset["codex_app_initial_interval_minutes"] == 15, reset
-    assert reset["codex_app_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
+    assert reset["app_automation_initial_interval_minutes"] == 15, reset
+    assert reset["app_automation_initial_rrule"] == "FREQ=MINUTELY;INTERVAL=15", reset
     assert scheduler["codex_app"]["max_interval_minutes"] == 60, scheduler
     assert len(reset["identity_signature"]) == 12, reset
     assert "identity_snapshot" not in reset, reset

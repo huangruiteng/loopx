@@ -19,7 +19,7 @@ const scope = {
   goal_id: "goal-followup",
   agent_id: "agent-followup",
   surface: "codex_app",
-  state_key: "scheduler_hint.codex_app.stateful_backoff",
+  state_key: "scheduler_hint.app_automation.stateful_backoff",
 };
 
 const before = {

@@ -115,6 +115,61 @@ test("Turn envelope transaction owns compaction and signature construction", () 
   );
 });
 
+test("Trae App Turn envelope preserves app automation without a Codex alias", () => {
+  const source = payload();
+  source.scheduler_hint = {
+    action: "run_now",
+    cadence_class: "active_work",
+    app_automation: {
+      host_surface: "trae_app",
+      apply: "update_automation_cadence_if_possible",
+      recommended_rrule: "FREQ=MINUTELY;INTERVAL=3",
+      stateful_backoff: {
+        state_key: "scheduler_hint.app_automation.stateful_backoff",
+        current_rrule: "FREQ=MINUTELY;INTERVAL=15",
+        apply_needed: true,
+        ack_needed: false,
+        state_status: "reset_required",
+      },
+      ack_hint: {
+        cli_args: [
+          "quota", "scheduler-ack-current", "--surface", "trae_app",
+          "--execute",
+        ],
+      },
+      failure_hint: {
+        cli_args: [
+          "quota", "scheduler-fail-current", "--surface", "trae_app",
+          "--execute",
+        ],
+      },
+    },
+  };
+
+  const envelope = buildTurnEnvelope({
+    payload: source,
+    protocol_action_fields: protocolActionFields,
+    scheduler_execution_args: " --scheduler-runtime-profile trae_app",
+  });
+  const scheduler = envelope.scheduler as Record<string, unknown>;
+  const app = scheduler.app_automation as Record<string, unknown>;
+
+  assert.equal(scheduler.codex_app, undefined);
+  assert.equal(app.host_surface, "trae_app");
+  assert.deepEqual(app.ack_cli_args, [
+    "quota", "scheduler-ack-current", "--surface", "trae_app",
+    "--execute",
+  ]);
+  assert.equal(
+    (app.stateful_backoff as Record<string, unknown>).state_key,
+    "scheduler_hint.app_automation.stateful_backoff",
+  );
+  assert.deepEqual(app.failure_cli_args_detail_ref, {
+    reason: "cold_path_until_host_update_failure",
+    request: "loopx quota should-run --include-detail scheduler",
+  });
+});
+
 test("monitor-only capsule preserves the non-runnable non-monitor count", () => {
   const source = payload();
   source.should_run = false;

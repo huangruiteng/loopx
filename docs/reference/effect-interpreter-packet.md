@@ -142,8 +142,8 @@ The observation points back into the loop:
 | `execution_mode` | Execution strategy (`serial` / `parallel` / `interleaved`) for an ordered effect program |
 | `scheduler_hint.action` | Scheduler around decision |
 | `scheduler_hint.cadence_class` | Cadence for the next host wake |
-| `scheduler_hint.codex_app.ack_hint.cli_args` | Host ACK effect |
-| `scheduler_hint.codex_app.failure_hint.cli_args` | Host failure effect |
+| `scheduler_hint.app_automation.ack_hint.cli_args` | Host ACK effect |
+| `scheduler_hint.app_automation.failure_hint.cli_args` | Host failure effect |
 
 `EffectTurn.next_effect` is the code lens for this slot. It keeps the
 data-encoded handler visible: the host invokes the CLI actions and settles

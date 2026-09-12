@@ -511,6 +511,8 @@ def handle_support_control_command(
         requested_runtime_profile = (
             SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value
             if args.codex_app
+            else SchedulerRuntimeProfile.TRAE_APP.value
+            if getattr(args, "trae_app", False)
             else args.runtime_profile
         )
         try:
@@ -556,11 +558,18 @@ def handle_support_control_command(
                 args.scheduler_owner,
                 args.execution_mode,
             )
-            if args.codex_app and (
+            app_alias_count = int(bool(args.codex_app)) + int(
+                bool(getattr(args, "trae_app", False))
+            )
+            if app_alias_count > 1:
+                raise ValueError(
+                    "--codex-app and --trae_app are mutually exclusive"
+                )
+            if app_alias_count and (
                 args.runtime_profile or any(explicit_scheduler_fields)
             ):
                 raise ValueError(
-                    "--codex-app cannot be combined with --runtime-profile, "
+                    "app runtime aliases cannot be combined with --runtime-profile, "
                     "--host-surface, --scheduler-owner, or --execution-mode"
                 )
             if args.runtime_profile and any(explicit_scheduler_fields):
@@ -650,6 +659,7 @@ def handle_support_control_command(
         recurring_runtime_profile = requested_runtime_profile in {
             None,
             SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT.value,
+            SchedulerRuntimeProfile.TRAE_APP.value,
             SchedulerRuntimeProfile.GENERIC_CLI_AGENT_LOOP.value,
         }
         recurring_thin_surface = bool(

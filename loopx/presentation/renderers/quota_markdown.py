@@ -873,7 +873,9 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             lines.append(f"- automation_pause_policy: {automation_liveness.get('pause_policy')}")
     scheduler_hint = as_dict(payload.get("scheduler_hint"))
     if scheduler_hint:
-        codex_app = as_dict(scheduler_hint.get("codex_app"))
+        app_automation = as_dict(
+            scheduler_hint.get("app_automation") or scheduler_hint.get("codex_app")
+        )
         unchanged_poll = as_dict(scheduler_hint.get("unchanged_poll"))
         limits = as_dict(unchanged_poll.get("limits"))
         codex_cli_tui = as_dict(scheduler_hint.get("codex_cli_tui"))
@@ -892,10 +894,10 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
             "- scheduler_hint: "
             f"action={scheduler_hint.get('action')} "
             f"cadence={scheduler_hint.get('cadence_class')} "
-            f"codex_app_minutes={codex_app.get('recommended_interval_minutes')} "
-            f"codex_app_rrule={codex_app.get('recommended_rrule')} "
-            f"codex_app_apply_needed={(codex_app.get('stateful_backoff') or {}).get('apply_needed') if isinstance(codex_app.get('stateful_backoff'), dict) else None} "
-            f"codex_app_progression={codex_app.get('example_progression_minutes')} "
+            f"app_automation_minutes={app_automation.get('recommended_interval_minutes')} "
+            f"app_automation_rrule={app_automation.get('recommended_rrule')} "
+            f"app_automation_apply_needed={(app_automation.get('stateful_backoff') or {}).get('apply_needed') if isinstance(app_automation.get('stateful_backoff'), dict) else None} "
+            f"app_automation_progression={app_automation.get('example_progression_minutes')} "
             f"cli_unchanged_limit={cli_unchanged_limit} "
             f"claude_unchanged_limit={claude_unchanged_limit}"
         )
@@ -904,8 +906,8 @@ def render_quota_should_run_markdown(payload: dict[str, Any]) -> str:
         if reset_policy := as_dict(scheduler_hint.get("reset_policy")):
             lines.append(
                 "- scheduler_reset: "
-                f"initial_interval={reset_policy.get('codex_app_initial_interval_minutes')} "
-                f"initial_rrule={reset_policy.get('codex_app_initial_rrule')} "
+                f"initial_interval={reset_policy.get('app_automation_initial_interval_minutes')} "
+                f"initial_rrule={reset_policy.get('app_automation_initial_rrule')} "
                 f"reset_generation={reset_policy.get('reset_token')} "
                 f"identity_signature={reset_policy.get('identity_signature')}"
             )

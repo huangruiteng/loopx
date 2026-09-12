@@ -167,7 +167,7 @@ def test_settled_cadence_omits_fallback_hint(tmp_path: Path) -> None:
 def test_fallback_hint_cli_route_binds_registry(tmp_path: Path) -> None:
     payload = {
         "scheduler_hint": {
-            "codex_app": {
+            "app_automation": {
                 "fallback_hint": {
                     "cli_args": [
                         "loopx-apply-rrule",
@@ -190,7 +190,7 @@ def test_fallback_hint_cli_route_binds_registry(tmp_path: Path) -> None:
         registry_path=registry_path,
         runtime_root=tmp_path / "runtime",
     )
-    fallback = payload["scheduler_hint"]["codex_app"]["fallback_hint"]
+    fallback = payload["scheduler_hint"]["app_automation"]["fallback_hint"]
     assert fallback["cli_args"][:3] == [
         "loopx-apply-rrule",
         "--registry",
@@ -206,7 +206,7 @@ def test_fallback_hint_cli_route_binds_registry(tmp_path: Path) -> None:
 def test_scheduler_followup_routes_preserve_turn_lineage(tmp_path: Path) -> None:
     payload = {
         "scheduler_hint": {
-            "codex_app": {
+            "app_automation": {
                 "ack_hint": {
                     "cli_args": [
                         "quota",
@@ -234,16 +234,16 @@ def test_scheduler_followup_routes_preserve_turn_lineage(tmp_path: Path) -> None
         turn_instance_id=turn_instance_id,
     )
 
-    codex_app = payload["scheduler_hint"]["codex_app"]
+    app_automation = payload["scheduler_hint"]["app_automation"]
     for hint_name in ("ack_hint", "failure_hint"):
-        hint = codex_app[hint_name]
+        hint = app_automation[hint_name]
         assert hint["cli_args"][-3:] == [
             "--turn-instance-id",
             turn_instance_id,
             "--execute",
         ]
         assert hint["route_binding"]["turn_instance_bound"] is True
-    assert codex_app["ack_hint"]["args"]["turn_instance_id"] == turn_instance_id
+    assert app_automation["ack_hint"]["args"]["turn_instance_id"] == turn_instance_id
 
 
 def test_heartbeat_scheduler_rules_name_the_fallback(tmp_path: Path) -> None:

@@ -110,7 +110,9 @@ def build_codex_cli_local_scheduler_tick(
         else {}
     )
     codex_app_hint = (
-        scheduler_hint.get("codex_app")
+        scheduler_hint.get("app_automation")
+        if isinstance(scheduler_hint.get("app_automation"), dict)
+        else scheduler_hint.get("codex_app")
         if isinstance(scheduler_hint.get("codex_app"), dict)
         else {}
     )

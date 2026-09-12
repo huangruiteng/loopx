@@ -254,67 +254,70 @@ def bind_scheduler_followup_cli_routes(
     scheduler_hint = payload.get("scheduler_hint")
     if not isinstance(scheduler_hint, dict):
         return
-    codex_app = scheduler_hint.get("codex_app")
-    if not isinstance(codex_app, dict):
-        return
-    for hint_name in ("ack_hint", "failure_hint", "fallback_hint"):
-        followup_hint = codex_app.get(hint_name)
-        if not isinstance(followup_hint, dict):
-            continue
-        cli_args = followup_hint.get("cli_args")
-        if not isinstance(cli_args, list) or not cli_args:
-            continue
-        if hint_name == "fallback_hint":
-            if cli_args[0] != "loopx-apply-rrule" or "--registry" in cli_args:
+    app_packets = [
+        packet
+        for packet_key in ("app_automation", "codex_app")
+        if isinstance((packet := scheduler_hint.get(packet_key)), dict)
+    ]
+    for app_packet in app_packets:
+        for hint_name in ("ack_hint", "failure_hint", "fallback_hint"):
+            followup_hint = app_packet.get(hint_name)
+            if not isinstance(followup_hint, dict):
                 continue
-            followup_hint["cli_args"] = [
-                cli_args[0],
-                "--registry",
-                str(registry_path.expanduser().resolve()),
-                *cli_args[1:],
-            ]
+            cli_args = followup_hint.get("cli_args")
+            if not isinstance(cli_args, list) or not cli_args:
+                continue
+            if hint_name == "fallback_hint":
+                if cli_args[0] != "loopx-apply-rrule" or "--registry" in cli_args:
+                    continue
+                followup_hint["cli_args"] = [
+                    cli_args[0],
+                    "--registry",
+                    str(registry_path.expanduser().resolve()),
+                    *cli_args[1:],
+                ]
+                followup_hint["route_binding"] = {
+                    "schema_version": "codex_app_scheduler_fallback_route_v0",
+                    "source": source,
+                    "registry_bound": True,
+                    "runtime_root_bound": False,
+                }
+                continue
+            bound_cli_args = list(cli_args)
+            if bound_cli_args[0] != "--registry":
+                bound_cli_args = [
+                    "--registry",
+                    str(registry_path.expanduser().resolve()),
+                    "--runtime-root",
+                    str(runtime_root.expanduser().resolve()),
+                    *bound_cli_args,
+                ]
+            safe_turn_instance_id = str(turn_instance_id or "").strip()
+            if safe_turn_instance_id and "--turn-instance-id" not in bound_cli_args:
+                execute_index = (
+                    bound_cli_args.index("--execute")
+                    if "--execute" in bound_cli_args
+                    else len(bound_cli_args)
+                )
+                bound_cli_args[execute_index:execute_index] = [
+                    "--turn-instance-id",
+                    safe_turn_instance_id,
+                ]
+                args_value = followup_hint.get("args")
+                if isinstance(args_value, dict):
+                    args_value["turn_instance_id"] = safe_turn_instance_id
+            followup_hint["cli_args"] = bound_cli_args
             followup_hint["route_binding"] = {
-                "schema_version": "codex_app_scheduler_fallback_route_v0",
+                "schema_version": (
+                    "scheduler_ack_cli_route_v0"
+                    if hint_name == "ack_hint"
+                    else "scheduler_failure_cli_route_v0"
+                ),
                 "source": source,
                 "registry_bound": True,
-                "runtime_root_bound": False,
+                "runtime_root_bound": True,
+                "turn_instance_bound": bool(safe_turn_instance_id),
             }
-            continue
-        bound_cli_args = list(cli_args)
-        if bound_cli_args[0] != "--registry":
-            bound_cli_args = [
-                "--registry",
-                str(registry_path.expanduser().resolve()),
-                "--runtime-root",
-                str(runtime_root.expanduser().resolve()),
-                *bound_cli_args,
-            ]
-        safe_turn_instance_id = str(turn_instance_id or "").strip()
-        if safe_turn_instance_id and "--turn-instance-id" not in bound_cli_args:
-            execute_index = (
-                bound_cli_args.index("--execute")
-                if "--execute" in bound_cli_args
-                else len(bound_cli_args)
-            )
-            bound_cli_args[execute_index:execute_index] = [
-                "--turn-instance-id",
-                safe_turn_instance_id,
-            ]
-            args_value = followup_hint.get("args")
-            if isinstance(args_value, dict):
-                args_value["turn_instance_id"] = safe_turn_instance_id
-        followup_hint["cli_args"] = bound_cli_args
-        followup_hint["route_binding"] = {
-            "schema_version": (
-                "scheduler_ack_cli_route_v0"
-                if hint_name == "ack_hint"
-                else "scheduler_failure_cli_route_v0"
-            ),
-            "source": source,
-            "registry_bound": True,
-            "runtime_root_bound": True,
-            "turn_instance_bound": bool(safe_turn_instance_id),
-        }
 
 
 def bind_action_selection_cli_routes(
@@ -392,15 +395,20 @@ def build_live_quota_should_run_decision(
     """Build one live CLI decision while keeping host observation injectable."""
 
     resolved_context = resolve_scheduler_execution_context(scheduler_execution_context)
-    codex_app_applicable = (
+    app_automation_applicable = (
         resolved_context.ok
         and resolved_context.context is not None
-        and resolved_context.context.codex_app_applicable
+        and resolved_context.context.app_automation_applicable
+    )
+    codex_app_host = bool(
+        app_automation_applicable
+        and resolved_context.context is not None
+        and resolved_context.context.host_surface.value == "codex_app"
     )
     observed_rrule = str(codex_app_current_rrule or "").strip()
     observed_automation_id = ""
     if (
-        codex_app_applicable
+        codex_app_host
         and not observed_rrule
         and host_observation_resolver is not None
     ):

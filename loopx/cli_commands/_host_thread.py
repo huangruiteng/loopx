@@ -15,6 +15,7 @@ HOST_THREAD_ID_ENV: dict[str, str] = {
     "codex-app-ssh": "CODEX_THREAD_ID",
     "codex-ide-plugin": "CODEX_THREAD_ID",
     "codex-cli-tui": "CODEX_THREAD_ID",
+    "trae_app": "TRAECLI_THREAD_ID",
     KIRO_CLI_AGENT_TYPE: KIRO_CLI_SESSION_ID_ENV,
 }
 

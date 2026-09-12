@@ -20,7 +20,9 @@ from ..control_plane.quota.scheduler_ack import (
     record_quota_scheduler_failure_for_decision,
 )
 from ..control_plane.scheduler.execution_context import (
+    HostSurface,
     SchedulerExecutionContextResolution,
+    resolve_scheduler_execution_context,
 )
 from ..quota import record_quota_scheduler_ack
 from ..upgrade import resolve_codex_app_automation_rrule
@@ -127,8 +129,22 @@ def build_scheduler_followup_payload(
             "delivery_outcome": "surface_only",
         }
 
-    observed_rrule = str(args.codex_app_current_rrule or "").strip()
-    if args.quota_command == "scheduler-fail-current" and not observed_rrule:
+    observed_rrule = str(
+        getattr(args, "app_automation_current_rrule", None)
+        or getattr(args, "codex_app_current_rrule", None)
+        or ""
+    ).strip()
+    resolved_context = resolve_scheduler_execution_context(scheduler_context)
+    codex_app_host = bool(
+        resolved_context.ok
+        and resolved_context.context is not None
+        and resolved_context.context.host_surface is HostSurface.CODEX_APP
+    )
+    if (
+        args.quota_command == "scheduler-fail-current"
+        and not observed_rrule
+        and codex_app_host
+    ):
         host_observation = resolve_codex_app_automation_rrule(
             goal_id=args.goal_id,
             agent_id=args.agent_id,

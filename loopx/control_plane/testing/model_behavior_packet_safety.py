@@ -125,19 +125,19 @@ def scheduler_transport_validation_view(packet: Mapping[str, Any], *, arm: str) 
         scheduler = view.get("scheduler")
     if not isinstance(scheduler, Mapping):
         return view
-    codex_app = scheduler.get("codex_app")
-    if not isinstance(codex_app, Mapping):
+    app_automation = scheduler.get("app_automation") or scheduler.get("codex_app")
+    if not isinstance(app_automation, Mapping):
         return view
     if arm == "full_packet":
         for kind, command in (("ack", "scheduler-ack-current"), ("failure", "scheduler-fail-current")):
-            hint = codex_app.get(kind + "_hint")
+            hint = app_automation.get(kind + "_hint")
             args = hint.get("cli_args") if isinstance(hint, Mapping) else None
             if isinstance(hint, Mapping) and isinstance(args, list):
                 _expose_chunks(args, command=command,
                     schema_valid=scheduler.get("schema_version") == "scheduler_hint_v0"
-                    and hint.get("schema_version") == f"codex_app_scheduler_{kind}_hint_v0")
+                    and hint.get("schema_version") == f"app_automation_scheduler_{kind}_hint_v0")
     else:
-        args = codex_app.get("ack_cli_args")
+        args = app_automation.get("ack_cli_args")
         if isinstance(args, list):
             _expose_chunks(args, command="scheduler-ack-current",
                 schema_valid=packet.get("schema_version") == "loopx_turn_envelope_v0")

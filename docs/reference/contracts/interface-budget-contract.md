@@ -10,7 +10,7 @@ and size/count budgets.
 | --- | --- | --- | --- | --- | --- | --- |
 | `heartbeat_prompt_json` | heartbeat automation | wake and route one bounded turn | `quota should-run`, `status`, or `review-packet --handoff-only` | `json_chars <= 4800` plus `interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 30` |
 | `review_packet_handoff_only_json` | project-agent handoff | forward the smallest sufficient task packet | full `review-packet` or run-history artifact | `json_chars <= 3000` plus `handoff_interface_budget.within_budget=true` | `nested_keys <= 40` | `top_level_keys <= 18` |
-| `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 13000` | `nested_keys <= 330` | `top_level_keys <= 52` |
+| `quota_should_run_json` | quota guard | decide whether the selected goal may spend compute | `status`, `history`, or active state | `json_chars <= 14000` | `nested_keys <= 350` | `top_level_keys <= 52` |
 | `dashboard_status_json` | operator dashboard | render first-screen operator state | `history`, run artifacts, or project-local adapter output | `json_chars <= 18500` | `nested_keys <= 260` | `top_level_keys <= 25` |
 
 These four budgets measure compact machine payloads. For
@@ -48,9 +48,12 @@ dynamic quota decisions into the static prompt. No prompt text, saved automation
 scheduler cadence, or spending policy changes with this qualification adjustment.
 
 The quota budget includes the typed action portfolio, one shared bound CLI
-route, pending-selection qualification, and hard-lane preemption evidence. The
-budget retains modest headroom for those enforceable semantics; repeated action
-details and command prefixes still belong in compact references or cold paths.
+route, pending-selection qualification, hard-lane preemption evidence, and the
+temporary lossless `codex_app` compatibility alias beside the canonical
+`app_automation` packet on Codex hosts. Trae hosts emit only `app_automation`.
+The budget retains modest headroom for those enforceable semantics; repeated
+action details and command prefixes still belong in compact references or cold
+paths.
 
 | Emitted Surface | Default Qualification | Scale / Limit Contract | Cold Path |
 | --- | --- | --- | --- |

@@ -594,7 +594,7 @@ def main() -> int:
         "具体user todo未投影",
         "Observed capabilities -> `--available-capability`; never user gates",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
-        "else RRULE/fallback_hint/ack/fail",
+        "else RRULE/projected-fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
         "guard receipt; 2 stalls->replan",
@@ -696,7 +696,7 @@ def main() -> int:
         "NOTIFY缺动作→",
         "具体user todo未投影",
         "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend)",
-        "else RRULE/fallback_hint/ack/fail",
+        "else RRULE/projected-fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
         "guard receipt; 2 stalls->replan",
@@ -1015,13 +1015,13 @@ def main() -> int:
     assert "Create a heartbeat automation starting at 3 minutes" in doc, doc
     assert "quota should-run.scheduler_hint" in doc, doc
     assert "automation_update" in doc, doc
-    assert "scheduler_hint.codex_app.stateful_backoff" in doc, doc
+    assert "scheduler_hint.app_automation.stateful_backoff" in doc, doc
     assert "scheduler_hint.action=stop_until_explicit_resume" in doc, doc
     assert "host_action=pause_or_delete_current_heartbeat" in doc, doc
     assert "apply_needed=true" in doc, doc
-    assert "codex_app.ack_hint.cli_args" in doc, doc
+    assert "app_automation.ack_hint.cli_args" in doc, doc
     assert "quota scheduler-ack-current" in doc, doc
-    assert "scheduler_hint.codex_app.failure_hint.cli_args" in doc, doc
+    assert "scheduler_hint.app_automation.failure_hint.cli_args" in doc, doc
     assert "recommended_rrule" in doc, doc
     normalized_doc = normalized(doc)
     assert "Attempt the host update at most once per hint and turn" in normalized_doc, doc
@@ -1083,13 +1083,13 @@ def main() -> int:
     assert "execution_obligation" in project_skill, project_skill
     assert "scheduler_hint" in project_skill, project_skill
     assert "automation_update" in project_skill, project_skill
-    assert "scheduler_hint.codex_app.stateful_backoff" in project_skill, project_skill
+    assert "scheduler_hint.app_automation.stateful_backoff" in project_skill, project_skill
     assert "scheduler_hint.action=stop_until_explicit_resume" in project_skill, project_skill
     assert "host_action=pause_or_delete_current_heartbeat" in project_skill, project_skill
     assert "apply_needed=true" in project_skill, project_skill
-    assert "codex_app.ack_hint.cli_args" in project_skill, project_skill
+    assert "app_automation.ack_hint.cli_args" in project_skill, project_skill
     assert "quota scheduler-ack-current" in project_skill, project_skill
-    assert "scheduler_hint.codex_app.failure_hint.cli_args" in project_skill, project_skill
+    assert "scheduler_hint.app_automation.failure_hint.cli_args" in project_skill, project_skill
     assert "recommended_rrule" in project_skill, project_skill
     normalized_project_skill = normalized(project_skill)
     assert "Attempt the host update at most once per hint and turn" in normalized_project_skill, project_skill

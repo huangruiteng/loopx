@@ -560,7 +560,16 @@ def test_codex_app_plan_rejects_ambiguous_settlement_binding(
         )
 
 
-def test_standard_codex_app_actions_use_typed_settlement_before_turn_driver() -> None:
+@pytest.mark.parametrize(
+    "profile",
+    (
+        SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT,
+        SchedulerRuntimeProfile.TRAE_APP,
+    ),
+)
+def test_standard_app_actions_use_typed_settlement_before_turn_driver(
+    profile: SchedulerRuntimeProfile,
+) -> None:
     todo_id = "todo_123456789abc"
     actions = interaction_next_cli_actions(
         {
@@ -570,7 +579,7 @@ def test_standard_codex_app_actions_use_typed_settlement_before_turn_driver() ->
         },
         mode="bounded_delivery",
         scheduler_execution_context=scheduler_execution_context_for_runtime_profile(
-            SchedulerRuntimeProfile.CODEX_APP_HEARTBEAT
+            profile
         ),
     )
 

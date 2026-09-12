@@ -96,7 +96,9 @@ def reduce_public_safe_decision(
     user_channel = _mapping(interaction.get("user_channel"))
     agent_channel = _mapping(interaction.get("agent_channel"))
     scheduler = _mapping(payload.get("scheduler_hint"))
-    codex_app = _mapping(scheduler.get("codex_app"))
+    codex_app = _mapping(
+        scheduler.get("app_automation") or scheduler.get("codex_app")
+    )
     selected_todo = _mapping(payload.get("selected_todo"))
     reduced = {
         "schema_version": PUBLIC_SAFE_DECISION_CASE_SCHEMA_VERSION,

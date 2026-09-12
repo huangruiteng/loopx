@@ -61,6 +61,7 @@ GOAL_CAPABILITY_ROUTE_SCHEMA_VERSION = "loopx_goal_capability_route_v0"
 START_GOAL_CAPABILITY_ROUTES = ("issue-fix",)
 START_GOAL_HOST_SURFACES = (
     "codex-app",
+    "trae_app",
     "codex-app-ssh",
     "codex-ide-plugin",
     "codex-cli-tui",
@@ -349,6 +350,7 @@ def build_start_goal_host_surface_selection_packet(
     normalized_goal_text = " ".join(goal_text.split())
     host_descriptions = {
         "codex-app": "Codex desktop app with heartbeat automation support",
+        "trae_app": "Trae desktop app with heartbeat automation support",
         "codex-app-ssh": "Codex desktop app over SSH with visible /goal support",
         "codex-ide-plugin": "Codex IDE plugin; activate its visible goal mode",
         "codex-cli-tui": "terminal Codex TUI with visible /goal support",
@@ -1480,11 +1482,11 @@ def build_start_goal_guided_packet(
             {
                 "id": "scheduler_ack_when_needed",
                 "kind": "scheduler_state",
-                "command_source": "quota.should-run.scheduler_hint.codex_app.ack_hint.cli_args",
-                "purpose": "ack an applied Codex App RRULE without spending quota",
+                "command_source": "quota.should-run.scheduler_hint.app_automation.ack_hint.cli_args",
+                "purpose": "ack an applied App automation RRULE without spending quota",
             }
         ]
-        if host_surface == "codex-app"
+        if host_surface in {"codex-app", "trae_app"}
         else []
     )
     bind_thread_steps = (

@@ -352,13 +352,20 @@ function scheduler(payload: JsonObject, turn: ReturnType<typeof interpretQuotaSh
   for (const field of ["reason_code", "spend_policy"]) {
     if (source[field] !== null && source[field] !== undefined) result[field] = source[field];
   }
-  const codexApp = object(source.codex_app);
-  if (Object.keys(codexApp).length === 0) return result;
+  const appAutomation = object(source.app_automation);
+  const legacyCodexApp = object(source.codex_app);
+  const sourceApp = Object.keys(appAutomation).length > 0
+    ? appAutomation
+    : legacyCodexApp;
+  if (Object.keys(sourceApp).length === 0) return result;
   const app: JsonObject = {};
-  for (const field of ["apply", "host_action", "recommended_rrule", "no_spend_for_cadence_change"]) {
-    if (codexApp[field] !== null && codexApp[field] !== undefined) app[field] = codexApp[field];
+  for (const field of [
+    "host_surface", "apply", "host_action", "recommended_rrule",
+    "no_spend_for_cadence_change",
+  ]) {
+    if (sourceApp[field] !== null && sourceApp[field] !== undefined) app[field] = sourceApp[field];
   }
-  const state = object(codexApp.stateful_backoff);
+  const state = object(sourceApp.stateful_backoff);
   if (Object.keys(state).length > 0) {
     const compactState: JsonObject = {};
     for (const field of ["state_key", "current_rrule", "apply_needed", "ack_needed", "state_status"]) {
@@ -374,7 +381,7 @@ function scheduler(payload: JsonObject, turn: ReturnType<typeof interpretQuotaSh
     }
     app.stateful_backoff = compactState;
   }
-  const ack = object(codexApp.ack_hint);
+  const ack = object(sourceApp.ack_hint);
   const cliArgs = executableCliArgs(ack.cli_args);
   if (cliArgs.length > 0) {
     app.ack_cli_args = cliArgs;
@@ -384,13 +391,19 @@ function scheduler(payload: JsonObject, turn: ReturnType<typeof interpretQuotaSh
       request: SCHEDULER_DETAIL_REQUEST,
     };
   }
-  if (object(codexApp.failure_hint).cli_args) {
+  if (object(sourceApp.failure_hint).cli_args) {
     app.failure_cli_args_detail_ref = {
       reason: "cold_path_until_host_update_failure",
       request: SCHEDULER_DETAIL_REQUEST,
     };
   }
-  if (Object.keys(app).length > 0) result.codex_app = app;
+  if (Object.keys(app).length > 0) {
+    if (Object.keys(appAutomation).length > 0) result.app_automation = app;
+    // Preserve the historical compact field only when the full source packet
+    // also supplied the Codex compatibility projection. A Trae packet never
+    // acquires a Codex identity while crossing the Turn boundary.
+    if (Object.keys(legacyCodexApp).length > 0) result.codex_app = app;
+  }
   return result;
 }
 

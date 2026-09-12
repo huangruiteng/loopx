@@ -65,6 +65,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     "--applied-rrule",
     "--failed-rrule",
     "--failure-kind",
+    "--app-automation-current-rrule",
     "--codex-app-current-rrule",
     "--turn-instance-id",
     "--reset-token",
@@ -76,6 +77,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const booleanOptions = new Set([
     "-A",
     "--codex-app",
+    "--trae_app",
     "--execute",
     "--dry-run",
     "--host-match-observed",
@@ -215,6 +217,26 @@ function requestFromArgs(argv: string[]): { request: Record<string, unknown>; fo
     );
   }
   const values = parsed.values;
+  const neutralObservedRrule = values["--app-automation-current-rrule"] ?? "";
+  const legacyCodexObservedRrule = values["--codex-app-current-rrule"] ?? "";
+  if (neutralObservedRrule && legacyCodexObservedRrule && neutralObservedRrule !== legacyCodexObservedRrule) {
+    throw new EffectRuntimeRequestError(
+      "App automation and Codex compatibility RRULE observations disagree",
+      "scheduler_host_facts_identity_mismatch",
+    );
+  }
+  if (parsed.booleans.has("--trae_app")) {
+    matchingText(facts, "surface", "trae_app", "--trae_app");
+    if (legacyCodexObservedRrule) {
+      throw new EffectRuntimeRequestError(
+        "Trae App cannot use the Codex RRULE compatibility alias",
+        "scheduler_host_facts_identity_mismatch",
+      );
+    }
+  }
+  if (parsed.booleans.has("-A") || parsed.booleans.has("--codex-app")) {
+    matchingText(facts, "surface", "codex_app", "--codex-app");
+  }
   if (values["--surface"]) matchingText(facts, "surface", values["--surface"], "--surface");
   if (values["--state-key"]) matchingText(facts, "state_key", values["--state-key"], "--state-key");
   if (values["--reset-token"]) matchingText(facts, "reset_token", values["--reset-token"], "--reset-token");
@@ -227,12 +249,14 @@ function requestFromArgs(argv: string[]): { request: Record<string, unknown>; fo
   if (expectedOperation === "host_failure" && values["--failed-rrule"]) {
     matchingText(facts, "expected_rrule", values["--failed-rrule"], "--failed-rrule");
   }
-  if (values["--codex-app-current-rrule"]) {
+  if (neutralObservedRrule || legacyCodexObservedRrule) {
     matchingText(
       facts,
       "observed_host_rrule",
-      values["--codex-app-current-rrule"],
-      "--codex-app-current-rrule",
+      neutralObservedRrule || legacyCodexObservedRrule,
+      neutralObservedRrule
+        ? "--app-automation-current-rrule"
+        : "--codex-app-current-rrule",
     );
   }
   if (values["--failure-kind"]) matchingText(facts, "failure_kind", values["--failure-kind"], "--failure-kind");

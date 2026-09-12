@@ -56,7 +56,7 @@ function hintPayload(): Record<string, unknown> {
       goal_id: goalId,
       agent_id: agentId,
       surface: "codex_app",
-      state_key: "scheduler_hint.codex_app.stateful_backoff",
+      state_key: "scheduler_hint.app_automation.stateful_backoff",
       reset_token: "reset-cli-followup",
       identity_signature: "identity-cli-followup",
       progression_index: 0,

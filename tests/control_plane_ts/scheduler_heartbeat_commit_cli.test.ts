@@ -18,7 +18,7 @@ const scope = {
   goal_id: "goal-heartbeat-cli",
   agent_id: "agent-heartbeat-cli",
   surface: "codex_app",
-  state_key: "scheduler_hint.codex_app.stateful_backoff",
+  state_key: "scheduler_hint.app_automation.stateful_backoff",
 };
 
 function facts(runtimeRoot: string, extra: Record<string, unknown> = {}) {

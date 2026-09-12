@@ -1543,9 +1543,9 @@ available from `scheduler_hint.cold_path_detail` when callers request
 App/local cadence back to the current profile's initial interval before
 unchanged backoff resumes, and does not spend quota.
 Codex App heartbeats should use `automation_update` only when
-`codex_app.stateful_backoff.apply_needed=true` and
-`codex_app.recommended_rrule` is present. If that update succeeds, the agent
-must run `codex_app.ack_hint.cli_args`;
+`app_automation.stateful_backoff.apply_needed=true` and
+`app_automation.recommended_rrule` is present. If that update succeeds, the agent
+must run `app_automation.ack_hint.cli_args`;
 current payloads use `quota scheduler-ack-current` so LoopX re-reads the latest
 hint, then persists `reset_token`, `identity_signature`, `progression_index`,
 and `last_applied_rrule` under the runtime root. When the same identity repeats,
@@ -1553,7 +1553,7 @@ LoopX advances the progression after the applied interval has elapsed, until
 the max interval. An immediate post-ACK readback remains on the acknowledged
 RRULE so repeated reconciliation converges rather than oscillates. When the reset token
 changes, the next projected RRULE returns to
-`reset_policy.codex_app_initial_rrule`. If the current desired RRULE is already
+`reset_policy.app_automation_initial_rrule`. If the current desired RRULE is already
 applied, `recommended_rrule` is omitted and the host update should be skipped.
 When that matching readback still needs a reset-token/identity binding,
 `ack_needed=true`; run the bound ack directly. Otherwise no scheduler action

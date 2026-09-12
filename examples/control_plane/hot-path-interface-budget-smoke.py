@@ -68,8 +68,10 @@ SURFACE_BUDGETS = {
         "owner": "quota guard",
         "consumer": "decide whether the selected goal may spend compute",
         "cold_path": "status, history, or active state",
-        "max_json_chars": 13_000,
-        "max_nested_keys": 330,
+        # Codex keeps a lossless codex_app compatibility alias while the
+        # provider-neutral app_automation packet becomes canonical.
+        "max_json_chars": 14_000,
+        "max_nested_keys": 350,
         "max_top_level_keys": 52,
     },
     "dashboard_status_json": {
@@ -416,7 +418,7 @@ def main() -> int:
         assert quota_payload["should_run"] is True, quota_payload
         reset_policy = quota_payload["scheduler_hint"]["reset_policy"]
         assert reset_policy["reset_token"], reset_policy
-        assert reset_policy["codex_app_initial_rrule"], reset_policy
+        assert reset_policy["app_automation_initial_rrule"], reset_policy
         assert reset_policy["host_state_key"] == "scheduler_hint.reset_policy.reset_token", reset_policy
         assert "identity_snapshot" not in reset_policy, reset_policy
         assert "profile_snapshot" not in reset_policy, reset_policy

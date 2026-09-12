@@ -647,7 +647,7 @@ Scheduler ACK 应保留的关键字段：
 goal_id     = <goal-id>
 agent_id    = <agent-id>
 surface     = codex_app
-state_key   = scheduler_hint.codex_app.stateful_backoff
+state_key   = scheduler_hint.app_automation.stateful_backoff
 RRULE       = FREQ=MINUTELY;INTERVAL=3
 ```
 

@@ -22,7 +22,7 @@ const scope = {
   goal_id: "goal-heartbeat",
   agent_id: "agent-heartbeat",
   surface: "codex_app",
-  state_key: "scheduler_hint.codex_app.stateful_backoff",
+  state_key: "scheduler_hint.app_automation.stateful_backoff",
 };
 
 function request(

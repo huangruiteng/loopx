@@ -142,7 +142,7 @@ If the result says `should_run=false`:
 - Otherwise, do not do implementation work, adapter work, file edits, research,
   or project exploration in this turn. Return a quiet heartbeat `DONT_NOTIFY`
   response with the skip reason.
-  {SCHEDULER_HINT_APPLICATION_RULE} Codex App cadence changes are host
+  {SCHEDULER_HINT_APPLICATION_RULE} App automation cadence changes are host
   scheduling updates only; they never consume quota or authorize delivery work.
 
 If the result says `should_run=true`:
@@ -171,7 +171,7 @@ If the result says `should_run=true`:
    `must_attempt_work=true` requires scope-bounded work even with
    `notify=DONT_NOTIFY`; quiet no-op needs `must_attempt_work=false` and
    `user_channel.notify=DONT_NOTIFY`. Use
-   `scheduler_hint` for wakeup and unchanged-loop limits. For Codex App:
+   `scheduler_hint` for wakeup and unchanged-loop limits. For App automation:
    `apply_needed=true` -> update `recommended_rrule` once; on success run
    `ack_hint.cli_args`; on failure/timeout do not retry or ack, run
    `failure_hint.cli_args` once. LoopX suppresses that target/host pair until
@@ -737,9 +737,11 @@ Paste this task body into the visible TraeX `/goal` task.
         style = "compact "
     else:
         style = ""
+    runtime_profile = str(payload.get("runtime_profile") or "")
+    host_label = "Trae App" if runtime_profile == "trae_app" else "Codex App"
     return f"""# Heartbeat Automation Prompt
 
-Copy this {style}task body into a Codex App heartbeat automation.
+Copy this {style}task body into a {host_label} heartbeat automation.
 
 ````text
 {payload.get("task_body", "")}

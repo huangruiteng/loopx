@@ -2,7 +2,7 @@
 
 
 DEFAULT_MATERIAL_QUEUE_RULE = "Do not consume the learning material queue unless the user explicitly asks."
-DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current Codex session is already trusted."
+DEFAULT_PERMISSION_RULE = "Do not ask for permissions when the current host session is already trusted."
 SCOPE_BOUNDED_WORK_RULE = (
     "授权/预算内推进可验证结果；按任务/证据/风险定规模，不按操作/文件数/心跳间隔。"
     "操作/写回不自动结束；遵守停止/重规划。"
@@ -28,18 +28,19 @@ HEARTBEAT_VISION_WRITEBACK_RULE_SHORT = (
 SCHEDULER_HINT_APPLICATION_RULE = (
     "`scheduler_hint` no-spend. host_action=pause_or_delete_current_heartbeat -> "
     "automation_update stop once, verify, end; else apply_needed -> RRULE via "
-    "automation_update; unavailable -> fallback_hint.cli_args (SQLite/app API "
+    "automation_update; unavailable -> use fallback_hint.cli_args only when projected "
+    "(SQLite/app API "
     "bypass - fallback only), then ack; further failure -> failure_hint; "
     "ack_needed -> ack."
 )
 SCHEDULER_HINT_COMPACT_RULE = (
     "host_action=pause_or_delete_current_heartbeat: automation_update stop; "
-    "else RRULE apply via automation_update, fallback_hint when unavailable, "
+    "else RRULE apply via automation_update, projected fallback_hint when unavailable, "
     "then ack/fail. No spend."
 )
 SCHEDULER_HINT_THIN_RULE = (
     "host_action=pause_or_delete_current_heartbeat->automation_update stop(no-spend); "
-    "else RRULE/fallback_hint/ack/fail."
+    "else RRULE/projected-fallback_hint/ack/fail."
 )
 RUNTIME_CAPABILITY_PROJECTION_THIN_RULE = (
     "Observed capabilities -> `--available-capability`; never user gates."

@@ -13,7 +13,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.diagnose import _first_agent_todo_text, render_diagnosis_markdown  # noqa: E402
+from loopx.diagnose import (  # noqa: E402
+    _compact_scheduler_hint,
+    _first_agent_todo_text,
+    _scheduler_hint_line,
+    render_diagnosis_markdown,
+)
 
 GOAL_ID = "diagnose-smoke-goal"
 SCOPED_GOAL_ID = "diagnose-smoke-agent-scoped"
@@ -63,6 +68,26 @@ def assert_selected_agent_todo_preferred() -> None:
         )
         == selected
     )
+
+
+def assert_diagnose_preserves_app_scheduler_identity() -> None:
+    legacy = {
+        "codex_app": {"apply": "none"},
+        "reset_policy": {"codex_app_initial_rrule": "FREQ=MINUTELY;INTERVAL=3"},
+    }
+    trae = {
+        "app_automation": {"apply": "none", "host_surface": "trae_app"},
+        "reset_policy": {
+            "app_automation_initial_rrule": "FREQ=MINUTELY;INTERVAL=3"
+        },
+    }
+
+    legacy_compact = _compact_scheduler_hint(legacy)
+    trae_compact = _compact_scheduler_hint(trae)
+    assert "codex_app" in legacy_compact and "app_automation" not in legacy_compact
+    assert "app_automation" in trae_compact and "codex_app" not in trae_compact
+    assert "codex_app_apply=none" in (_scheduler_hint_line(legacy) or "")
+    assert "app_automation_apply=none" in (_scheduler_hint_line(trae) or "")
 
 
 def assert_diagnose_markdown_separates_status_and_packet_goal_counts() -> None:
@@ -284,6 +309,7 @@ def write_capability_scoped_registry(root: Path, runtime: Path) -> Path:
 
 def main() -> int:
     assert_selected_agent_todo_preferred()
+    assert_diagnose_preserves_app_scheduler_identity()
     assert_diagnose_markdown_separates_status_and_packet_goal_counts()
     with tempfile.TemporaryDirectory(prefix="loopx-agent-diagnose-smoke-") as tmp:
         root = Path(tmp)

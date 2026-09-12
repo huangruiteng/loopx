@@ -32,7 +32,7 @@ const scope = {
   goalId: "goal-a",
   agentId: "agent-a",
   surface: "codex_app",
-  stateKey: "scheduler_hint.codex_app.stateful_backoff",
+  stateKey: "scheduler_hint.app_automation.stateful_backoff",
 };
 
 function state(lastAppliedRrule = "FREQ=MINUTELY;INTERVAL=3") {
@@ -186,7 +186,7 @@ test("state path is scoped, sanitized, and stable", () => {
       "scheduler-state",
       "agent-..-..-other-55571d8866830ec6",
       "codex_app-b32e6f37f5dad64e",
-      "d9ad89d416adc9b2.json",
+      "8a41f410c67e7c0e.json",
     ),
   );
 });
@@ -219,7 +219,7 @@ test("legacy scheduler state is migrated once into the collision-safe layout", a
     "scheduler-state",
     scope.agentId,
     scope.surface,
-    "d9ad89d416adc9b2.json",
+    "8a41f410c67e7c0e.json",
   );
   await writeSchedulerState(storeRequest(runtimeRoot, { state: state() }));
   const canonicalPath = schedulerStatePath(runtimeRoot, scope);

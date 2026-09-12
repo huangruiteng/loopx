@@ -75,8 +75,10 @@ def _first_executable_count(summary: dict[str, Any]) -> int:
 
 def _quota_scheduler_apply_needed(quota_payload: dict[str, Any]) -> bool | None:
     scheduler = _as_dict(quota_payload.get("scheduler_hint"))
-    codex_app = _as_dict(scheduler.get("codex_app"))
-    stateful = _as_dict(codex_app.get("stateful_backoff"))
+    app_automation = _as_dict(
+        scheduler.get("app_automation") or scheduler.get("codex_app")
+    )
+    stateful = _as_dict(app_automation.get("stateful_backoff"))
     value = stateful.get("apply_needed")
     return value if isinstance(value, bool) else None
 

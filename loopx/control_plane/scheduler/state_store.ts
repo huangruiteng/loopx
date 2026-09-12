@@ -29,8 +29,12 @@ export const SCHEDULER_STATE_STORE_REQUEST_SCHEMA =
 export const SCHEDULER_STATE_STORE_RESULT_SCHEMA =
   "loopx_scheduler_state_store_result_v0";
 
-export const CODEX_APP_STATEFUL_BACKOFF_STATE_KEY =
+export const APP_AUTOMATION_STATEFUL_BACKOFF_STATE_KEY =
+  "scheduler_hint.app_automation.stateful_backoff";
+export const LEGACY_CODEX_APP_STATEFUL_BACKOFF_STATE_KEY =
   "scheduler_hint.codex_app.stateful_backoff";
+export const CODEX_APP_STATEFUL_BACKOFF_STATE_KEY =
+  LEGACY_CODEX_APP_STATEFUL_BACKOFF_STATE_KEY;
 export const CODEX_APP_SURFACE = "codex_app";
 
 const HOST_UPDATE_FAILURE_CACHE_LIMIT = 4;

@@ -192,12 +192,12 @@ def _scheduler_transport_packet(
     packet = _full_packet()
     if arm == "full_packet":
         kind = "ack" if operation == "ack" else "failure"
-        packet["scheduler_hint"] = {"schema_version": "scheduler_hint_v0", "codex_app": {
-            f"{kind}_hint": {"schema_version": f"codex_app_scheduler_{kind}_hint_v0", "cli_args": args},
+        packet["scheduler_hint"] = {"schema_version": "scheduler_hint_v0", "app_automation": {
+            f"{kind}_hint": {"schema_version": f"app_automation_scheduler_{kind}_hint_v0", "cli_args": args},
         }}
     else:
         packet = build_turn_envelope(packet)
-        packet["scheduler"] = {"codex_app": {"ack_cli_args": args}}
+        packet["scheduler"] = {"app_automation": {"ack_cli_args": args}}
     return packet, args
 
 
@@ -292,7 +292,7 @@ def test_actor_rejects_malformed_or_unbounded_scheduler_wire(case: str, alphabet
 def test_actor_rejects_unrecognized_or_malformed_scheduler_arguments(case: str) -> None:
     packet, args = _scheduler_transport_packet("full_packet", "ack")
     if case == "hint_schema":
-        packet["scheduler_hint"]["codex_app"]["ack_hint"]["schema_version"] = "future_hint"
+        packet["scheduler_hint"]["app_automation"]["ack_hint"]["schema_version"] = "future_hint"
     elif case == "scheduler_schema":
         packet["scheduler_hint"]["schema_version"] = "future_scheduler"
     elif case == "command":

@@ -2112,8 +2112,8 @@ def test_begin_turn_rejects_a_non_receipt_runtime_profile(tmp_path: Path) -> Non
     # Kiro CLI, ZCode, agy, Gemini CLI, Cursor and custom runners all land on
     # generic_cli and mint their own identity instead.
     assert guard["reason"] == (
-        "--begin-turn requires runtime-profile codex_app_heartbeat "
-        "or codex_app_ssh_goal; every other host starts its turn by "
+        "--begin-turn requires runtime-profile codex_app_heartbeat, "
+        "trae_app, or codex_app_ssh_goal; every other host starts its turn by "
         "passing its own --turn-instance-id"
     )
 
