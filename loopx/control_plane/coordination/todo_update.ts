@@ -25,6 +25,7 @@ import { evaluateCoordinationTerminalFence, COORDINATION_TERMINAL_FENCE_REQUEST_
 import { leaseEpoch } from "../work_items/task_lease_acquire.ts";
 import { parseIsoTimestamp } from "../runtime_timestamp.ts";
 import { normalizeNativePlanningIntent, planNativeTodoUpdate } from "../todos/native_update_plan.ts";
+import { projectionDelivery } from "../todos/projection_delivery.ts";
 
 export const COORDINATION_TODO_UPDATE_REQUEST_SCHEMA =
   "loopx_local_coordination_todo_update_request_v0";
@@ -137,7 +138,7 @@ function replayUpdate(
     changed: status !== "replayed" && original.changed,
     todo_id: input.todo_id, provider_revision: receipt.provider_revision,
     cursor: receipt.cursor, original_receipt: original,
-    projection_delivery: original.changed ? "pending" : "not_required",
+    projection_delivery: projectionDelivery(original.changed),
     projection_source: "committed_authority_journal"};
 }
 
