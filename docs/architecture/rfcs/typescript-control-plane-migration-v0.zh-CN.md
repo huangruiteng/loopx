@@ -497,6 +497,7 @@ fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、�
 文件／目录同步，之后才报告 `current`。区域外正文和 canonical record 不被改写。
 这是永久 Python 展示／legacy 输入适配层的收敛：TS authority transaction、provider
 默认值、SQLite D2 与 D3 promotion 合同不变，不增加 RPC 或另一份业务状态机。
+Handoff mode 的 legacy adapter 与原生 CAS／receipt 事务现共用 TS 空闲判断；晋升后的 show/set 使用 canonical mode 和完整 Todo／lease 快照，删除 Python 切换决策。旧 state／lease 锁仍服务未晋升 writer，不能提前删除。操作与回放合同见 [handoff-mode](../../reference/handoff-mode.md)。
 
 Task graph topology 与 inventory/horizon 共用 `work_items/planning_relations.ts`。
 一轮纯 TS 请求拥有关系发现、稳定有界遍历、边去重与缺失/截断完整度；删除

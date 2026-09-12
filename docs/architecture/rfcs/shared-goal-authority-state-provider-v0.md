@@ -1544,10 +1544,10 @@ projects normalized snapshots, invokes those decisions, and reconstructs the
 provider-neutral `TransitionPlan`. The local lease-file transaction and the
 coordination executor therefore consume the same lease decisions; locking,
 source revalidation, file persistence, provider CAS, and receipt construction
-remain in their respective execution layers. Todo, terminal-fence, and
-handoff-mode decisions stay in the Python core until their own reviewed
-TypeScript cutovers; local holder/fence-close lock mechanics remain execution
-effects rather than provider contracts.
+remain in their respective execution layers. The initial extraction retained
+Todo, terminal-fence and handoff-mode decisions in Python; subsequent cutovers
+move them to their typed owners. Handoff quiescence now lives in
+`handoff_mode_policy.ts`. Local holder/fence-close locks remain execution effects.
 
 Keep three layers distinct as the provider work proceeds:
 
@@ -2894,6 +2894,7 @@ an equal-byte retry syncs file and directory before reporting `current`. Narrati
 canonical records stay intact. This converges the retained Python presentation/legacy
 input adapter; it adds no RPC or business state machine and does not change TS authority
 transactions, provider defaults, SQLite D2 or D3 promotion requirements.
+Canonical handoff-mode show/set no longer depend on Markdown frontmatter or local lease files. One TS transaction binds quiescence, mode and durable operation replay to the same revision, including sealed no-op intents. This adds a provider-neutral command boundary, not a provider default or whole-Goal cutover; frontmatter remains outside the Todo-section renderer. See [operation and recovery](../../reference/handoff-mode.md).
 
 T2 now commits a lease-free native Monitor observation and its independent
 successors in one canonical CAS/receipt; the route planner alone still grants

@@ -639,6 +639,7 @@ an equal-byte retry syncs file and directory before reporting `current`. Narrati
 canonical records stay intact. This converges the retained Python presentation/legacy
 input adapter; it adds no RPC or business state machine and does not change TS authority
 transactions, provider defaults, SQLite D2 or D3 promotion requirements.
+Handoff mode now shares a typed quiescence policy between the legacy adapter and one provider-neutral CAS/receipt transaction. Promoted show/set consume canonical mode and complete Todo/lease facts; the old Python transition decision is removed. Legacy state/lease locks remain until their last writer retires. See [handoff-mode operation and replay](../../reference/handoff-mode.md).
 
 Task-graph topology now shares `work_items/planning_relations.ts` with inventory
 and horizon. One pure TS request owns relationship discovery, deterministic

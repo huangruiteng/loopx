@@ -1231,9 +1231,9 @@ transfer、release 则由 `task_lease_lifecycle_decision.ts` 的纯 seam 持有�
 `authority_core` 只负责投影 normalized snapshot、调用这些 decision，再重建
 provider-neutral `TransitionPlan`。因此，本地 lease-file transaction 与 coordination
 executor 消费同一份 lease decision；加锁、source 重验、文件持久化、provider CAS 与
-receipt 构造仍分别属于各自 execution layer。Todo、terminal-fence 与 handoff-mode
-决策继续留在 Python core，直到各自经过 review 的 TypeScript cutover；本地 holder /
-fence-close 锁机制属于 execution effect，而不是 provider contract。
+receipt 构造仍分别属于各自 execution layer。初次抽取保留的 Todo、terminal-fence
+与 handoff-mode Python 决策由后续切片移入 typed owner；handoff 空闲判断现归属
+`handoff_mode_policy.ts`。本地 holder／fence-close 锁仍属于 execution effect。
 
 后续 provider 工作必须始终分开三层：
 
@@ -2288,6 +2288,7 @@ fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、�
 文件／目录同步，之后才报告 `current`。区域外正文和 canonical record 不被改写。
 这是永久 Python 展示／legacy 输入适配层的收敛：TS authority transaction、provider
 默认值、SQLite D2 与 D3 promotion 合同不变，不增加 RPC 或另一份业务状态机。
+Canonical handoff-mode show/set 不再依赖 Markdown frontmatter 或本地 lease；一笔 TS 事务把空闲检查、mode 与耐久操作回执绑定到同一 revision，包括未改值请求的回执。该命令边界不切换默认 provider、不晋升整 Goal；frontmatter 仍不属于 Todo-section renderer。操作与恢复见 [handoff-mode](../../reference/handoff-mode.md)。
 
 能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，
 包括 quota 的 Monitor 能力分流。删除 Python missing-set 与 owner/repair 决策 builder，
