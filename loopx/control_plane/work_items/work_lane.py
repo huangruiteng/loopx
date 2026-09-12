@@ -231,15 +231,22 @@ def preserve_heartbeat_receipt_bound_work_lane(
         "must_attempt_work": True,
         "selection_binding": "heartbeat_receipt",
         "selected_todo_id": todo_id,
+        "monitor_due_count": int(contract.get("monitor_due_count") or 0),
+        "monitor_due_items": list(contract.get("monitor_due_items") or []),
         "reason_codes": [
             "heartbeat_receipt_bound_replay",
             "same_turn_settlement_identity",
+            "due_monitor_context",
+            "auxiliary_monitor_observation_allowed",
         ],
-        "monitor_policy": "defer_new_priority_selection_until_next_turn",
+        "monitor_policy": (
+            "auxiliary_no_spend_observation_then_continue_bound_todo"
+        ),
         "deferred_work_lane": contract,
         "action": (
-            "continue the Todo already bound to this heartbeat turn; reconsider "
-            "newly due monitor priority on the next turn"
+            "the Todo already bound to this heartbeat turn remains the only quota "
+            "settlement target; a separately identified due monitor may record one "
+            "no-spend observation receipt before that Todo continues"
         ),
     }
 
