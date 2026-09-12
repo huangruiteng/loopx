@@ -190,8 +190,8 @@ def main() -> int:
             env=cli_env,
         )
         assert heartbeat["ok"] is True, heartbeat
-        assert "quota should-run" in heartbeat["quota_guard_command"], heartbeat
-        assert "--source heartbeat --execute" in heartbeat["quota_spend_command"], heartbeat
+        assert "quota should-run" in heartbeat["task_body"], heartbeat
+        assert "must_attempt_work" in heartbeat["task_body"], heartbeat
 
     print("fresh-clone-quickstart-smoke ok")
     return 0
