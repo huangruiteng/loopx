@@ -46,7 +46,7 @@ APP_ID = "cli_public_fixture"
 MESSAGE_ID = "om_periodic_report_fixture"
 
 
-def _generation_bundle() -> dict[str, Any]:
+def _generation_bundle(*, period_window: dict[str, str] | None = None) -> dict[str, Any]:
     source = build_periodic_report_source_result(
         source_id="project_progress",
         source_kind="project_progress",
@@ -57,7 +57,7 @@ def _generation_bundle() -> dict[str, Any]:
     document = build_periodic_report_document(
         title="阶段分析周报",
         generated_at="2026-08-30T09:00:00Z",
-        period_window={
+        period_window=period_window or {
             "start_at": "2026-08-29T11:24:00Z",
             "end_at": "2026-08-30T01:55:00Z",
         },
@@ -150,13 +150,13 @@ def _extension_activation() -> dict[str, Any]:
 
 
 def _write_publication_candidate(
-    runtime_root: Path, generation_bundle: dict[str, Any]
+    runtime_root: Path, generation_bundle: dict[str, Any], *, trigger_ids: list[str] | None = None
 ) -> None:
     candidate = build_periodic_report_publication_candidate(
         goal_id=GOAL_ID,
         agent_id="example-agent",
         generation_id=generation_bundle["generation_receipt"]["generation_id"],
-        trigger_receipt={"coalesced_trigger_ids": ["trigger_stage_1"]},
+        trigger_receipt={"coalesced_trigger_ids": trigger_ids or ["trigger_stage_1"]},
         facts=[
             {
                 "source_ref": "todo:stage_1",
@@ -1001,3 +1001,67 @@ def test_goal_channel_delivery_cli_forwards_registry_and_runtime(
     assert captured["runtime_root"] == runtime_root.resolve()
     assert captured["goal_id"] == GOAL_ID
     assert captured["execute"] is False
+
+
+def test_calendar_delivery_recovers_from_verified_provider_cursor_without_resend(tmp_path: Path) -> None:
+    from datetime import datetime
+    from loopx.capabilities.periodic_report.cadence_journal import (
+        admit_cadence_window, read_cadence_journal, cadence_intent,
+    )
+    from loopx.capabilities.periodic_report.post_writeback_hook import (
+        evaluate_periodic_report_trigger_evaluation_intent,
+    )
+
+    registry = tmp_path / ".loopx" / "registry.json"
+    runtime = tmp_path / "runtime"
+    goal = _goal()
+    goal["control_plane"]["periodic_report"].update({
+        "timezone": "UTC",
+        "schedule": {
+            "schema_version": "periodic_report_schedule_v0",
+            "schedule_id": "daily-report",
+            "rrule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+            "timezone": "UTC",
+        },
+    })
+    _write_registry(registry, goal=goal, runtime_root=runtime)
+    _write_binding(registry)
+    subscription = resolve_goal_periodic_report_subscription(goal, None)
+    admission_args = dict(runtime_root=runtime, goal_id=GOAL_ID,
+                          agent_id="example-agent", subscription=subscription,
+                          now=datetime.fromisoformat("2026-08-30T09:10:00+00:00"))
+    window = admit_cadence_window(**admission_args)["window"]
+    trigger = evaluate_periodic_report_trigger_evaluation_intent(cadence_intent(window))
+    trigger_id = trigger["selected_trigger_id"]
+    request = _request(delivery_authority=_authority(goal=goal))
+    request["generation_bundle"] = _generation_bundle(period_window={
+        "start_at": window["start_at"], "end_at": window["due_at"],
+    })
+    request["delivery_intent"]["idempotency_key"] = window["window_id"]
+    _write_publication_candidate(runtime, request["generation_bundle"],
+                                 trigger_ids=[trigger_id])
+    calls: list[list[str]] = []
+    runner = _runner(calls)
+    args = dict(registry_path=registry, runtime_root=runtime, goal_id=GOAL_ID,
+                extension_activation=_extension_activation(), runner=runner)
+    preview = deliver_periodic_report_to_goal_channel(request, **args)
+    assert preview["publication_cursor"] is None
+    assert not any("+messages-send" in call for call in calls)
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)["publication"] is None
+
+    delivered = deliver_periodic_report_to_goal_channel(request, execute=True, **args)
+    assert delivered["status"] == "satisfied"
+    cursor = delivered["publication_cursor"]
+    assert cursor["covered_trigger_ids"] == [trigger_id]
+    # Simulate restart after provider readback, before cadence acknowledgement.
+    assert read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)["publication"] is None
+    restarted = admit_cadence_window(**admission_args)
+    assert restarted["window"] == window
+    publication = read_cadence_journal(runtime_root=runtime, goal_id=GOAL_ID)["publication"]
+    assert publication["publication_id"] == cursor["publication_id"]
+    sent = sum("+messages-send" in call for call in calls)
+    assert sent > 0
+    replay = deliver_periodic_report_to_goal_channel(request, execute=True, **args)
+    assert replay["status"] == "satisfied"
+    assert sum("+messages-send" in call for call in calls) == sent
+    assert replay["publication_cursor"] == cursor

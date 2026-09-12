@@ -112,6 +112,37 @@ Agent, with completed facts restricted to the frozen interval. Reports must
 disclose this partial coverage; no readable completion is not proof of no work,
 and a Goal calendar does not imply exhaustive history for all its Agents.
 
+### Composition with Todo continuation
+
+The revision-guarded `loopx handoff prepare/inspect/adopt` flow transfers a
+canonical Todo between execution sessions or registered Agents. It does not
+transfer a report subscription, a prepared calendar window, a publication
+cursor, or a manager request's return audience. Successful Todo adoption is
+not evidence that a report was delivered.
+
+A manager forwarding new context should keep using the manager inbox and let
+the receiving Agent decide whether to revise its plan. It must not invoke
+Todo ownership transfer merely to deliver a message. When a real worker
+replacement is requested, reuse the existing continuation note (summary,
+attempts, next steps, decisions, source references) and revision-guarded
+transfer authority rather than introducing another task store.
+
+A same-Agent session replacement can resume the frozen calendar window and
+its delivery artifacts. A cross-Agent replacement cannot currently adopt a
+prepared calendar window: its original reporter remains part of the window
+identity. Such a replacement stays explicitly unavailable until the original
+reporter is restored; transferring its delivery Todo alone does not resolve
+this boundary. Supporting that case requires a separately reviewed migration
+that binds the old window, subscription revision, artifact identity and
+verified sink receipts. It must reconcile partial sends before changing the
+reporter and preserve the original manager request and return audience.
+
+Any future migration should appear through the existing frontend and Lark
+request tracking, with the same receipt and evidence references exposed by
+the CLI. Neither UI may turn a successful ownership claim into a completion
+badge. This paragraph describes the integration boundary, not a shipped
+cross-Agent report migration.
+
 ### Host handoff boundary
 
 `quota should-run` exposes the capability-owned pending intent before normal
