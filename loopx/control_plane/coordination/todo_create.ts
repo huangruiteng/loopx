@@ -1,4 +1,5 @@
 import type { JsonObject } from "../effect_program.ts";
+import {projectionDelivery} from "../todos/projection_delivery.ts";
 import type { AuthorityStore, AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
@@ -77,7 +78,7 @@ function replayCreate(
     provider_revision: receipt.provider_revision,
     cursor: receipt.cursor,
     original_receipt: original,
-    projection_delivery: "pending",
+    projection_delivery: projectionDelivery(true),
     projection_source: "committed_authority_journal",
   };
 }
