@@ -376,7 +376,6 @@ def build_live_quota_should_run_decision(
     runtime_root: Path,
     host_observation_resolver: HostObservationResolver | None = None,
     route_source: str = "quota_cli_invocation",
-    remember_runtime_capabilities: bool = True,
     scheduler_execution_context: Mapping[str, Any]
     | SchedulerExecutionContextResolution
     | None = None,
@@ -391,14 +390,6 @@ def build_live_quota_should_run_decision(
     turn_start_hook_dispatch: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one live CLI decision while keeping host observation injectable."""
-
-    if remember_runtime_capabilities and available_capabilities and agent_id and registry_path.is_file():
-        from ..agents.capability_memory import agent_capability_memory
-
-        agent_capability_memory(
-            registry_path=registry_path, runtime_root=runtime_root,
-            goal_id=goal_id, agent_id=agent_id, available=available_capabilities, execute=True,
-        )
     resolved_context = resolve_scheduler_execution_context(scheduler_execution_context)
     codex_app_applicable = (
         resolved_context.ok
@@ -475,9 +466,11 @@ def build_live_quota_should_run_decision(
         turn_instance_id=turn_instance_id,
         runtime_root=runtime_root,
     )
-    availability = (payload.get("agent_identity") or {}).get("capability_availability")
-    if isinstance(availability, dict):
-        available_capabilities = availability["runtime_available"]
+    remembered_runtime = (payload.get("agent_identity") or {}).get(
+        "runtime_available_capabilities"
+    )
+    if isinstance(remembered_runtime, list):
+        available_capabilities = remembered_runtime
     if route_source.startswith("loopx_turn_"):
         payload["runtime_root"] = str(runtime_root)
     _project_turn_start_required_reads(

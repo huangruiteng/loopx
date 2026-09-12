@@ -496,10 +496,11 @@ argv；同一 interaction packet 复用结果，重入投影本身在健康路�
 `agents/capability_memory.ts` 现在持有本机 Agent 运行时能力声明、校验与幂等合并，
 复用现有文件锁及 durable JSON writer；`capability_gate.ts` 统一 Goal、Agent、本次
 调用的继承规则及不可用覆盖，删除 Python 的重复 union 规则。Live quota 与实际执行
-的 Turn 自动记忆五种显式类型化的运行时能力，规划仍只读。Quota preparation 即使
+的 Turn 通过已准入的 turn-start capability hook 自动记忆五种显式类型化的运行时能力；
+quota core 保持只读，hook 失败独立隔离，规划也仍只读。Quota preparation 即使
 使用缓存 status 也读取当前 Agent 记录，选择与结算重算共用这条路径。每个决策增加一次 availability reducer 调用，有注册
 身份的决策另增加一次记录读取；显式 live 声明增加一次
-observation 调用。Python 只适配 registry、宿主和 CLI，不增加第二套状态 reducer。
+observation 调用。Python 只适配 registry、宿主、hook 组合和 CLI，不增加第二套状态 reducer。
 
 记录按本机 runtime、registry、Goal、注册 Agent 隔离，不升级为 Goal 公共声明，
 不授予凭证、生产访问或可选功能启用，不进入 shared-authority head／grant／lease。

@@ -1,6 +1,8 @@
 """Separate CLI processes must share only the registered agent's local observations."""
 import json
 
+from loopx.cli import main
+
 from tests.control_plane.test_quota_settlement_cli import (
     AGENT_ID, GOAL_ID, _run_cli, _write_fixture,
 )
@@ -12,6 +14,14 @@ def test_next_turn_reuses_declared_runtime_capability(tmp_path):
     args = ("quota", "should-run", "--goal-id", GOAL_ID, "--agent-id", AGENT_ID)
     rc, first = _run_cli(registry, runtime, *args, "--available-capability", "network")
     assert rc == 0, first
+    dispatch = first["turn_start_capability_hook_dispatch"]
+    memory_result = next(
+        item
+        for item in dispatch["results"]
+        if item["hook_id"] == "agent.capability_memory"
+    )
+    assert memory_result["local_private_state_mutated"] is True
+    assert memory_result["external_writes_performed"] is False
     rc, next_turn = _run_cli(registry, runtime, *args)
     assert rc == 0, next_turn
     assert next_turn["capability_gate"]["action"] == "run"
@@ -93,6 +103,74 @@ def test_turn_plan_stays_read_only_and_settlement_rechecks_memory(tmp_path):
     assert rc == 0, unavailable
     rc, fresh = _run_cli(registry, runtime, "quota", "should-run", *scope, "--use-projection-cache")
     assert rc == 0 and fresh["capability_gate"]["action"] == "repair_bridge", fresh
+
+
+def test_executing_managed_turn_remembers_through_turn_start_hook(
+    tmp_path, capsys, monkeypatch
+):
+    project, runtime, registry = _write_fixture(
+        tmp_path, required_capability="network"
+    )
+
+    def completed_turn(*args, **kwargs):
+        return {
+            "ok": True,
+            "schema_version": "loopx_turn_execution_v0",
+            "effects": {
+                "host_invoked": False,
+                "state_written": False,
+                "scheduler_acknowledged": False,
+                "quota_spent": False,
+            },
+        }
+
+    monkeypatch.setattr(
+        "loopx.cli_commands.turn.run_loopx_turn_once", completed_turn
+    )
+    code = main(
+        [
+            "--registry",
+            str(registry),
+            "--runtime-root",
+            str(runtime),
+            "--format",
+            "json",
+            "turn",
+            "run-once",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--scan-path",
+            str(project),
+            "--project",
+            str(project),
+            "--host",
+            "generic-cli",
+            "--execution-mode",
+            "isolated-headless",
+            "--host-adapter-command-json",
+            '["/usr/bin/true"]',
+            "--available-capability",
+            "network",
+            "--execute",
+        ]
+    )
+    assert code == 0, capsys.readouterr().out
+    capsys.readouterr()
+
+    rc, next_turn = _run_cli(
+        registry,
+        runtime,
+        "quota",
+        "should-run",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+    )
+    assert rc == 0, next_turn
+    assert next_turn["capability_gate"]["action"] == "run"
 
 
 def test_agent_alias_uses_existing_identity_normalization(tmp_path):

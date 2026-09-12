@@ -385,13 +385,16 @@ loopx --format json quota should-run \
   --available-capability benchmark_runner
 ```
 
-A live `quota should-run` or executing `turn run-once` automatically remembers
-these five runtime observations for the registered Agent on this host:
+A live `quota should-run` or executing `turn run-once` automatically remembers,
+through the admitted turn-start capability hook, these five runtime observations
+for the registered Agent on this host:
 `network`, `benchmark_runner`, `external_evidence_poll`, `worker_bridge`, and
 `cli_bridge`. Later decisions, including `quota spend-slot` and `monitor-poll`
 rechecks, read that Agent's observations without repeating flags. Goal/project
 `available_capabilities` declarations are inherited dynamically; Agent observations
 never write back into Goal configuration or propagate to peer Agents.
+The hook declares only its Agent-private write scope, returns no private payload,
+and fails in isolation; quota selection itself performs no provider or memory write.
 
 The scope is the resolved runtime root, registry path, Goal id and registered
 Agent id. Separate hosts/runtimes or registries do not inherit these observations.

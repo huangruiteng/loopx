@@ -464,11 +464,22 @@ def _dispatch_quota_turn_start_hooks(
         agent_id=args.agent_id,
     )
     if args.agent_id:
+        from ..control_plane.agents.capability_memory import (
+            extend_turn_start_dispatch as extend_capability_memory_dispatch,
+        )
         from ..capabilities.manager_context import turn_start_hook
         from ..control_plane.capability_hooks import dispatch_turn_start_hooks
         from ..history import load_registry
         from ..paths import resolve_runtime_root
         root = resolve_runtime_root(load_registry(registry_path), runtime_root_arg, registry_path=registry_path)
+        dispatch = extend_capability_memory_dispatch(
+            dispatch,
+            registry_path=registry_path,
+            runtime_root=root,
+            goal_id=args.goal_id,
+            agent_id=args.agent_id,
+            available=args.available_capabilities,
+        )
         context_dispatch = dispatch_turn_start_hooks((turn_start_hook(root, registry_path, args.goal_id, args.agent_id),))
         dispatch = dict(dispatch)
         for key in ("results", "required_reads", "failures"):

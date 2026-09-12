@@ -649,10 +649,11 @@ selection. A committed receipt's Todo remains bound.
 atomic merge and idempotent persistence through the existing mutation lock and durable
 JSON writer. `capability_gate.ts` owns Goal/Agent/invocation precedence and local
 unavailable overrides; the former Python union is removed. Live quota and executing
-Turn entry remember the five explicitly typed runtime capabilities. Planning remains
+Turn entry remember the five explicitly typed runtime capabilities through the admitted
+turn-start capability hook; quota core stays read-only and hook failure is isolated. Planning remains
 read-only. Quota preparation reads fresh Agent state even when the status projection
 is cached; all selection and settlement recomputations share that boundary. Python
-retains registry/host adaptation and CLI rendering. This adds one availability reducer call per decision, one memory read per
+retains registry/host adaptation, hook composition and CLI rendering. This adds one availability reducer call per decision, one memory read per
 registered scoped decision, and one observation call for an explicit live declaration. No duplicate Python state reducer or new storage framework is added.
 
 The observation scope is host/runtime, registry, Goal and registered Agent; observations

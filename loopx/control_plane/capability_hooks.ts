@@ -163,6 +163,7 @@ const POST_WRITEBACK_SIDECAR_RECEIPT_FIELDS = new Set([
   "recorded_at",
 ]);
 const TURN_START_WRITE_SCOPES = new Set([
+  "agent_private_capability_memory",
   "owner_private_inbox",
   "owner_private_cursor",
   "provider_message_reaction",
