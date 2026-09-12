@@ -25,6 +25,34 @@ def test_periodic_report_editor_is_shared_across_machine_and_goal_scopes() -> No
     ]
 
 
+def test_reward_memory_editor_writes_binding_without_returning_private_path() -> None:
+    editor = capability_configuration_editor("reward_memory")
+
+    assert editor["editable"] is True
+    assert editor["writable_scopes"] == ["goal"]
+    assert [field["key"] for field in editor["fields"]] == [
+        "config_path",
+        "enabled_agents",
+    ]
+    catalog = build_capability_configuration_catalog(
+        goal_features=[
+            {
+                "feature_id": "reward_memory",
+                "display_name": "Reward Memory",
+                "current": {
+                    "enabled": True,
+                    "config_pointer_registered": True,
+                    "binding_revision": "sha256:opaque",
+                    "enabled_agents": ["researcher"],
+                },
+            }
+        ]
+    )
+    current = catalog["capabilities"][0]["current"]
+    assert current["config_pointer_registered"] is True
+    assert "config_path" not in current
+
+
 def test_catalog_merges_machine_and_goal_descriptors_without_losing_scope() -> None:
     catalog = build_capability_configuration_catalog(
         machine_namespaces=[

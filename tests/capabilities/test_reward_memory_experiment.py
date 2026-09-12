@@ -399,6 +399,75 @@ def test_canonical_actor_namespaces_same_local_agent_by_goal() -> None:
     assert ":" not in first and "+" not in first and "/" not in first
 
 
+def test_v1_omitted_automation_defaults_new_enablement_to_automatic(
+    tmp_path: Path,
+) -> None:
+    raw = _v1_config()
+    raw.pop("automation")
+    path = tmp_path / "experiment.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    config = load_reward_memory_experiment_config(
+        project=tmp_path,
+        config_path="experiment.json",
+    )
+
+    assert config["automation"] == {
+        "automatic_recall": True,
+        "automatic_ingest": True,
+        "fail_open": True,
+    }
+    assert config["automation_intent"] == {
+        "automatic_recall": "default_enabled_new_config",
+        "automatic_ingest": "default_enabled_new_config",
+        "fail_open": "default",
+    }
+
+
+def test_v1_explicit_automation_disable_is_preserved(tmp_path: Path) -> None:
+    raw = _v1_config()
+    raw["automation"] = {
+        "automatic_recall": False,
+        "automatic_ingest": False,
+        "fail_open": True,
+    }
+    path = tmp_path / "experiment.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    config = load_reward_memory_experiment_config(
+        project=tmp_path,
+        config_path="experiment.json",
+    )
+
+    assert config["automation"]["automatic_recall"] is False
+    assert config["automation"]["automatic_ingest"] is False
+    assert config["automation_intent"] == {
+        "automatic_recall": "explicit",
+        "automatic_ingest": "explicit",
+        "fail_open": "explicit",
+    }
+
+
+def test_private_goal_agent_scope_rejects_session_partition(tmp_path: Path) -> None:
+    raw = _private_v1_config(goal_id="goal", agent_id="pilot")
+    for entry in raw["corpora"]:
+        entry["corpus"]["scope"]["session_ref"] = "session:temporary"
+        entry["standing_policy"]["scope"]["session_ref"] = "session:temporary"
+    path = tmp_path / "experiment.json"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+    config = load_reward_memory_experiment_config(
+        project=tmp_path,
+        config_path="experiment.json",
+    )
+
+    with pytest.raises(ValueError, match="cannot be session-scoped"):
+        validate_reward_memory_goal_agent_scope(
+            config,
+            goal_id="goal",
+            agent_id="pilot",
+        )
+
+
 def test_private_scope_binds_exact_goal_scoped_agent(tmp_path: Path) -> None:
     goal_id = "reward-memory-goal"
     agent_id = "pilot"
@@ -530,6 +599,11 @@ def test_configure_goal_requires_write_preflight_and_persists_receipt(
         "control_plane"
     ]["reward_memory"]
     assert policy["config_digest"].startswith("sha256:")
+    assert policy["automation"] == {
+        "automatic_recall": True,
+        "automatic_ingest": True,
+        "fail_open": True,
+    }
     receipt = policy["enablement_receipts"][agent_id]
     assert receipt["status"] == "verified"
     assert receipt["writability_verified"] is True
@@ -640,6 +714,18 @@ def test_split_runtime_quota_and_status_use_v1_config_readback(
     )
     assert projected["config_runtime_route"]["runtime_scope"] == "shared_runtime"
     assert projected["config_runtime_route"]["exact_readback_verified"] is True
+    host_coverage = {
+        item["host_id"]: item for item in projected["host_coverage"]
+    }
+    assert host_coverage["codex_cli_turn"] == {
+        "host_id": "codex_cli_turn",
+        "automatic_recall": "connected",
+        "automatic_ingest": "connected_post_settlement",
+    }
+    assert host_coverage["codex_app_quota"]["automatic_ingest"] == (
+        "connected_refresh_spend_post_settlement"
+    )
+    assert host_coverage["lark"]["automatic_ingest"] == "uncovered"
 
     attach_agent_lane_next_actions(status_payload, agent_id="pilot")
     status_projection = status_payload["attention_queue"]["items"][0][
@@ -663,6 +749,7 @@ def test_split_runtime_quota_and_status_use_v1_config_readback(
         "isolation=explicit_shared enablement=verified "
         "writability=True runtime_scope=shared_runtime exact_readback=True"
     ) in markdown
+    assert "lark:recall=status_projection_only,ingest=uncovered" in markdown
 
 
 def test_registry_cannot_enable_experiment_without_explicit_marker(

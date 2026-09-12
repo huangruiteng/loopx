@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
@@ -67,6 +68,7 @@ HOST_RESULT_MAX_BYTES = 12_000
 HOST_ARG_MAX_COUNT = 32
 HOST_ARG_MAX_CHARS = 1_024
 HOST_AGENT_VISION_JSON_MAX_CHARS = 3_200
+HOST_REWARD_MEMORY_REFLECTION_JSON_MAX_CHARS = 2_400
 HOST_PATH_DELTA_MODES = {"", "unchanged", "material_replan"}
 HOST_RESULT_TEXT_LIMITS = (
     ("classification", 120),
@@ -95,6 +97,7 @@ HOST_RESULT_FIELDS = {
     "path_delta_mode",
     "agent_vision_json",
     "summary",
+    "reward_memory_reflection_json",
 }
 
 
@@ -104,6 +107,10 @@ CompletionIntent = Callable[[dict[str, Any]], dict[str, Any]]
 TerminalCloseout = Callable[..., dict[str, Any]]
 Spend = Callable[..., dict[str, Any]]
 Scheduler = Callable[[dict[str, Any]], dict[str, Any]]
+PostSettlement = Callable[
+    [Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]],
+    Mapping[str, Any],
+]
 HostRunner = Callable[[Mapping[str, Any]], dict[str, Any]]
 TaskValidator = Callable[
     [Mapping[str, Any], Mapping[str, Any]],
@@ -133,6 +140,62 @@ def _normalize_task_validator_argv(value: Sequence[str]) -> list[str]:
     return _normalize_argv(value, label="task validator")
 
 
+def reward_memory_reflection_digest(value: object) -> str:
+    """Bind a validator attestation to the exact typed host reflection."""
+
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("reward memory reflection is required")
+    try:
+        reflection = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("reward memory reflection must be JSON") from exc
+    if not isinstance(reflection, Mapping):
+        raise ValueError("reward memory reflection must decode to an object")
+    canonical = json.dumps(
+        reflection,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _normalize_reward_memory_reflection_validation(
+    value: object,
+    *,
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("reward memory reflection validation must be an object")
+    allowed = {"schema_version", "status", "reflection_digest", "evidence_refs"}
+    if set(value) - allowed:
+        raise ValueError("reward memory reflection validation has unsupported fields")
+    if value.get("schema_version") != "reward_memory_reflection_validation_v0":
+        raise ValueError("reward memory reflection validation schema is unsupported")
+    if value.get("status") != "validated":
+        raise ValueError("reward memory reflection validation status must be validated")
+    reflection_json = result.get("reward_memory_reflection_json")
+    expected_digest = reward_memory_reflection_digest(reflection_json)
+    if value.get("reflection_digest") != expected_digest:
+        raise ValueError("reward memory reflection validation digest does not match")
+    reflection = json.loads(str(reflection_json))
+    expected_refs = reflection.get("evidence_refs")
+    refs = value.get("evidence_refs")
+    if (
+        not isinstance(refs, list)
+        or any(not isinstance(ref, str) for ref in refs)
+        or refs != expected_refs
+    ):
+        raise ValueError("reward memory reflection evidence refs were not validated")
+    return {
+        "schema_version": "reward_memory_reflection_validation_v0",
+        "status": "validated",
+        "reflection_digest": expected_digest,
+        "evidence_refs": list(refs),
+    }
+
+
 def build_loopx_turn_host_request(plan: Mapping[str, Any]) -> dict[str, Any]:
     transaction = (
         plan.get("transaction") if isinstance(plan.get("transaction"), dict) else {}
@@ -155,6 +218,9 @@ def build_loopx_turn_host_request(plan: Mapping[str, Any]) -> dict[str, Any]:
             "stdout": "one public-safe JSON object",
         },
     }
+    reward_memory_recall = plan.get("reward_memory_recall")
+    if isinstance(reward_memory_recall, Mapping):
+        request["reward_memory_recall"] = dict(reward_memory_recall)
     request.update(subagent.subagent_host_request_projection(plan))
     return request
 
@@ -314,6 +380,20 @@ def validate_loopx_turn_host_result(
         )
         if text:
             normalized[field] = text
+    reflection_json = _bounded_public_text(
+        result,
+        "reward_memory_reflection_json",
+        limit=HOST_REWARD_MEMORY_REFLECTION_JSON_MAX_CHARS,
+        required=False,
+        errors=errors,
+    )
+    if reflection_json:
+        if material:
+            normalized["reward_memory_reflection_json"] = reflection_json
+        else:
+            errors.append(
+                "non-material host results cannot declare a reward memory reflection"
+            )
     if material:
         try:
             normalized["delivery_batch_scale"] = require_delivery_batch_scale(
@@ -369,6 +449,7 @@ def _task_validation_receipt(
     summary: str,
     recovery_kind: str | None = None,
     exit_code: int | None = None,
+    reward_memory_reflection_validation: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     if status not in {
@@ -411,7 +492,7 @@ def _task_validation_receipt(
     effective_recovery_kind = recovery_kind
     if errors and effective_recovery_kind is None:
         effective_recovery_kind = LoopXTurnResultKind.REPAIR_REQUIRED.value
-    return {
+    receipt = {
         "ok": not errors and status in {"passed", "progress", "not_required"},
         "schema_version": LOOPX_TURN_TASK_VALIDATION_SCHEMA_VERSION,
         "status": effective_status,
@@ -421,6 +502,11 @@ def _task_validation_receipt(
         "exit_code": exit_code,
         "errors": errors,
     }
+    if reward_memory_reflection_validation is not None:
+        receipt["reward_memory_reflection_validation"] = dict(
+            reward_memory_reflection_validation
+        )
+    return receipt
 
 
 def _run_task_validator(
@@ -460,6 +546,7 @@ def _run_task_validator(
             "summary",
             "recovery_kind",
             "exit_code",
+            "reward_memory_reflection_validation",
         }
     )
     if unknown:
@@ -487,6 +574,20 @@ def _run_task_validator(
             summary="independent task validator returned an invalid exit code",
             recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
         )
+    reflection_validation = None
+    if value.get("reward_memory_reflection_validation") is not None:
+        try:
+            reflection_validation = _normalize_reward_memory_reflection_validation(
+                value["reward_memory_reflection_validation"],
+                result=result,
+            )
+        except ValueError:
+            return _task_validation_receipt(
+                status="inconclusive",
+                validator_kind="callback",
+                summary="independent reward memory reflection validation is invalid",
+                recovery_kind=LoopXTurnResultKind.REPAIR_REQUIRED.value,
+            )
     return _task_validation_receipt(
         status=status,
         validator_kind=str(value.get("validator_kind") or ""),
@@ -497,6 +598,7 @@ def _run_task_validator(
             else None
         ),
         exit_code=exit_code_value,
+        reward_memory_reflection_validation=reflection_validation,
     )
 
 
@@ -528,7 +630,7 @@ def build_loopx_turn_command_validator(
                 cwd=project,
                 input=json.dumps(result, ensure_ascii=False, separators=(",", ":")),
                 text=True,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 timeout=max(1.0, timeout_seconds),
                 check=False,
@@ -548,12 +650,27 @@ def build_loopx_turn_command_validator(
                 "recovery_kind": failure_recovery_kind,
                 "exit_code": completed.returncode,
             }
-        return {
+        receipt: dict[str, Any] = {
             "status": "passed",
             "validator_kind": "command",
             "summary": "independent task validation command passed",
             "exit_code": 0,
         }
+        stdout = completed.stdout.strip()
+        if stdout and len(stdout.encode("utf-8")) <= 4_096:
+            try:
+                reflection_validation = json.loads(stdout)
+            except json.JSONDecodeError:
+                reflection_validation = None
+            if (
+                isinstance(reflection_validation, Mapping)
+                and reflection_validation.get("schema_version")
+                == "reward_memory_reflection_validation_v0"
+            ):
+                receipt["reward_memory_reflection_validation"] = dict(
+                    reflection_validation
+                )
+        return receipt
 
     return validate
 
@@ -821,11 +938,60 @@ def _execution_payload(
             if isinstance(journal.get("settlement_result"), Mapping)
             else {}
         ),
+        **(
+            {"post_settlement": journal["post_settlement"]}
+            if isinstance(journal.get("post_settlement"), Mapping)
+            else {}
+        ),
         **({"todo_completion": todo_completion} if todo_completion else {}),
         **({"reason": journal.get("reason")} if journal.get("reason") else {}),
         **project_host_failure(journal),
         **({"recovery": dict(recovery)} if isinstance(recovery, Mapping) else {}),
     }
+
+
+def _run_post_settlement_callback(
+    *,
+    plan: Mapping[str, Any],
+    result: Mapping[str, Any],
+    post_settlement: PostSettlement | None,
+    journal: dict[str, Any],
+    journal_path: Path,
+) -> None:
+    if post_settlement is None:
+        return
+    existing = journal.get("post_settlement")
+    if isinstance(existing, Mapping) and existing.get("status") not in {
+        "provider_unavailable",
+        "committed_pending",
+        "readback_unverified",
+        "runtime_unavailable",
+    }:
+        return
+    try:
+        receipt = post_settlement(
+            plan,
+            result,
+            {
+                "schema_version": "turn_post_settlement_evidence_v0",
+                "task_validation": dict(journal.get("task_validation") or {}),
+                "writeback": dict(journal.get("writeback") or {}),
+                "quota_spend": dict(journal.get("quota_spend") or {}),
+            },
+        )
+        if not isinstance(receipt, Mapping):
+            raise TypeError("post-settlement callback must return an object")
+        journal["post_settlement"] = dict(receipt)
+    except Exception:  # noqa: BLE001 - optional learning never gates the Turn
+        journal["post_settlement"] = {
+            "ok": True,
+            "schema_version": "turn_post_settlement_observer_v0",
+            "status": "runtime_unavailable",
+            "reason_code": "post_settlement_observer_failed",
+            "fail_open": True,
+            "external_writes_performed": False,
+        }
+    _write_journal(journal_path, journal)
 
 
 def _host_result_stage(
@@ -1088,6 +1254,7 @@ def _typed_settlement_stage(
     spend: Spend,
     effect_resolvers: Mapping[SettlementStepKind, TurnEffectResolver],
     scheduler: Scheduler,
+    post_settlement: PostSettlement | None,
 ) -> dict[str, Any]:
     transaction_plan = (
         plan.get("transaction") if isinstance(plan.get("transaction"), Mapping) else {}
@@ -1246,6 +1413,13 @@ def _typed_settlement_stage(
 
     scheduler_payload = scheduler(spend_payload)
     journal["scheduler"] = scheduler_payload
+    _run_post_settlement_callback(
+        plan=plan,
+        result=result,
+        post_settlement=post_settlement,
+        journal=journal,
+        journal_path=journal_path,
+    )
     if scheduler_payload.get("completed") is not True:
         journal.update(
             status="scheduler_action_required",
@@ -1299,6 +1473,7 @@ def run_loopx_turn_once(
     spend_resolver: TurnEffectResolver | None = None,
     terminal_closeout_resolver: TurnEffectResolver | None = None,
     scheduler: Scheduler | None = None,
+    post_settlement: PostSettlement | None = None,
 ) -> dict[str, Any]:
     if host_runner is not None and host_argv is not None:
         raise ValueError("run-once accepts either host_argv or host_runner, not both")
@@ -1476,7 +1651,7 @@ def run_loopx_turn_once(
         if terminal is not None:
             return finish_recovery(terminal)
 
-        return finish_recovery(_typed_settlement_stage(
+        settled = _typed_settlement_stage(
             plan,
             result,
             completed_phases=completed_phases,
@@ -1494,4 +1669,6 @@ def run_loopx_turn_once(
                 terminal_closeout=terminal_closeout_resolver,
             ),
             scheduler=scheduler,
-        ))
+            post_settlement=post_settlement,
+        )
+        return finish_recovery(settled)

@@ -18,6 +18,8 @@ from .rules import (
     RUNTIME_CAPABILITY_PROJECTION_THIN_RULE,
     RUNTIME_EXECUTION_ROUTING_RULE,
     RUNTIME_REPAIR_ROUTING_RULE,
+    REWARD_MEMORY_OUTCOME_COMPACT_RULE,
+    REWARD_MEMORY_OUTCOME_RULE,
     SCHEDULER_HINT_APPLICATION_RULE,
     SCHEDULER_HINT_COMPACT_RULE,
     SCHEDULER_HINT_THIN_RULE,
@@ -178,7 +180,10 @@ If the result says `should_run=true`:
    either changes; continue under the observed host cadence. Else
    `ack_needed=true` -> run that bound ack directly; else skip.
    LoopX owns reset/progression state. It is scheduling only, not delivery
-   permission. Then use
+   permission.
+
+   {REWARD_MEMORY_OUTCOME_RULE}
+   Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
    run its `command` as a real read-only map, then
    validate/save the `read_only_project_map` result, refresh accountable
@@ -318,6 +323,7 @@ Fail:quiet.
 `review-packet --handoff-only`；遵守本轮 quota/contract 的权限、交付规模/结果、
 历史约束与 handoff；outcome-floor recovery 须恢复 ranker/cross-domain evidence 或写回 blocker。
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
+{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
 交付并验证后，按当前 `interaction_contract.cli_channel.settlement_plan.ordered_steps`
 的精确 identity/effect 顺序结算；无 plan 时按当前 `next_cli_actions`，不使用旧 refresh/spend 配方。
 Todo 验收不等于 Turn 结算或 Goal 完成；仅 terminal no-follow-up 才能收尾，保留 vision replan。
@@ -388,6 +394,8 @@ If `should_run=true`:
    `attention_queue.items` / `project_asset`, and guard `user_todo_summary`.
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
+
+{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
 2. Goal-owned blocker: stop its path. Under `NOTIFY`, send a concrete Chinese
    blocker-push; under `DONT_NOTIFY`, repair internally and stay quiet.
    Dependency/sibling todos: record; continue audit.
@@ -664,6 +672,8 @@ Done->todo/rationale; guard receipt; 2 stalls->replan.
 `agent_read_required`: drain/read/triage before work; settle/ACK.
 
 P0 blocked: safe P1/P2; monitor quiet/no-spend.
+
+{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
 
 {policy_tail}"""
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:

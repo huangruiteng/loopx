@@ -8,6 +8,9 @@ from pathlib import Path
 from ..capabilities.explore.activation import (
     sync_explore_graph_after_material_refresh,
 )
+from ..capabilities.reward_memory.codex_app_outcome import (
+    stage_codex_app_turn_outcome_candidate_fail_open,
+)
 from ..control_plane.agents.capability_gate import (
     runtime_capabilities_for_cli_projection,
 )
@@ -214,6 +217,16 @@ def register_project_lifecycle_commands(
         "--progress-coverage-complete",
         action="store_true",
         default=None,
+    )
+    refresh_state_parser.add_argument(
+        "--reward-memory-reflection-json",
+        help=(
+            "Optional compact turn_reward_memory_reflection_v0 JSON for a "
+            "Todo-bound accountable Codex App refresh. LoopX stages it privately, "
+            "requires the Todo's caller-declared validator to attest the exact "
+            "reflection and evidence, and performs no provider write until the "
+            "matching quota spend is read back."
+        ),
     )
     refresh_state_parser.add_argument(
         "--repair-delta-kind",
@@ -532,6 +545,18 @@ def handle_project_lifecycle_command(
                 agent_vision_packet = inline_vision_packet
                 merge_agent_vision_patch = True
             progress_observation = inline_progress_observation(args)
+            reward_memory_reflection_json = str(
+                getattr(args, "reward_memory_reflection_json", None) or ""
+            ).strip()
+            if reward_memory_reflection_json and not (
+                args.agent_id
+                and getattr(args, "todo_id", None)
+                and getattr(args, "turn_instance_id", None)
+            ):
+                raise ValueError(
+                    "--reward-memory-reflection-json requires --agent-id, "
+                    "--todo-id, and --turn-instance-id"
+                )
             usage_measurement: dict[str, object] | None = None
             if getattr(args, "usage_json", None):
                 loaded_usage = json.loads(
@@ -642,6 +667,37 @@ def handle_project_lifecycle_command(
             )
             and not payload.get("dry_run")
         )
+        if material_refresh_ready and reward_memory_reflection_json:
+            settlement_identity = (
+                payload.get("settlement_identity")
+                if isinstance(payload.get("settlement_identity"), Mapping)
+                else {}
+            )
+            state = payload.get("state") if isinstance(payload.get("state"), Mapping) else {}
+            validation_workspace_text = str(
+                getattr(args, "delivery_workspace_path", None)
+                or getattr(args, "project", None)
+                or payload.get("project")
+                or ""
+            ).strip()
+            payload["reward_memory_outcome_candidate"] = (
+                stage_codex_app_turn_outcome_candidate_fail_open(
+                    registry_path=registry_path,
+                    runtime_root=resolve_runtime_root(
+                        load_registry(registry_path),
+                        args.runtime_root,
+                    ),
+                    goal_id=args.goal_id,
+                    agent_id=str(args.agent_id),
+                    todo_id=str(args.todo_id),
+                    turn_instance_id=str(args.turn_instance_id),
+                    effect_id=str(settlement_identity.get("effect_id") or ""),
+                    state_file=Path(str(state.get("path") or "")),
+                    validation_workspace=Path(validation_workspace_text),
+                    reflection_json=reward_memory_reflection_json,
+                    observed_at=str(payload.get("generated_at") or ""),
+                )
+            )
         settlement_receipt_repair = bool(
             payload.get("ok")
             and payload.get("receipt_repair_required")
@@ -689,6 +745,39 @@ def handle_project_lifecycle_command(
                         args, "replan_obligation_id", None
                     )
                     or "",
+                    "reward_memory_candidate_id": str(
+                        (
+                            payload.get("reward_memory_outcome_candidate")
+                            if isinstance(
+                                payload.get("reward_memory_outcome_candidate"),
+                                Mapping,
+                            )
+                            else {}
+                        ).get("candidate_id")
+                        or ""
+                    ),
+                    "reward_memory_candidate_status": str(
+                        (
+                            payload.get("reward_memory_outcome_candidate")
+                            if isinstance(
+                                payload.get("reward_memory_outcome_candidate"),
+                                Mapping,
+                            )
+                            else {}
+                        ).get("status")
+                        or ""
+                    ),
+                    "reward_memory_reflection_digest": str(
+                        (
+                            payload.get("reward_memory_outcome_candidate")
+                            if isinstance(
+                                payload.get("reward_memory_outcome_candidate"),
+                                Mapping,
+                            )
+                            else {}
+                        ).get("reflection_digest")
+                        or ""
+                    ),
                 },
                 idempotency_fields=(
                     [

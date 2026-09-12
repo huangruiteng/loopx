@@ -34,6 +34,8 @@ identity for validation and deduplication.
 Repeated execution with the same recall id may reuse one ignored local receipt.
 The receipt stores only the compact private context needed to reproduce that
 turn's guidance; it never stores provider payloads, credentials, or query text.
+Its path includes collision-safe digests of both `goal_id` and `agent_id`, so
+the same Goal-local Agent name in another Goal cannot reuse the receipt.
 
 ## Usage
 
@@ -71,6 +73,13 @@ the packet from stdin when the host owns a safe pipeline.
 The result carries a private `context.guidance` list for agent reasoning. It is
 not action authority. The agent must still obey the current interaction
 contract, capability gates, write scopes, and user gates.
+
+The production `loopx turn run-once --execute` and executing quota admission
+call this hook before the host. The DSH adapter injects the same bounded context
+into the actual task body rather than merely reporting a hit count. At Turn
+start the hook first reconciles any ambiguous evidence-backed outcome write for
+this exact Goal+Agent; successful exact readback can therefore participate in
+the next recall without creating another queue or memory store.
 
 Retrieval relevance and action applicability remain separate. Recalled
 guidance is conditional private context; the agent must compare it with the

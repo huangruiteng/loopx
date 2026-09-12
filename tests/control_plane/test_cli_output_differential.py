@@ -103,6 +103,49 @@ def test_host_safety_restoration_budget_is_one_time_bounded_and_prompt_only(row_
                         {**current, "row_id": "surface/status/small/json"})["failures"]
 
 
+@pytest.mark.parametrize("row_kind", ["surface", "variant"])
+@pytest.mark.parametrize("mode", ["thin", "brief", "compact", "full"])
+def test_reward_memory_outcome_prompt_budget_is_one_time_bounded_and_prompt_only(
+    row_kind, mode
+):
+    from loopx.control_plane.heartbeat.rules import REWARD_MEMORY_OUTCOME_COMPACT_RULE
+    from loopx.control_plane.testing.cli_output_differential import _compare_row
+    from loopx.control_plane.testing.cli_output_semantics import (
+        reward_memory_outcome_prompt_revision,
+    )
+
+    full_contract = (
+        REWARD_MEMORY_OUTCOME_COMPACT_RULE
+        + " Todo validator exact digest evidence zero provider calls raw private"
+    )
+    assert (
+        reward_memory_outcome_prompt_revision(full_contract)
+        == "reward_memory_outcome_prompt_v1"
+    )
+    assert reward_memory_outcome_prompt_revision(
+        full_contract.replace("zero provider calls", "best effort")
+    ) is None
+    base = _row(row_id=f"{row_kind}/heartbeat_prompt_{mode}/small/json")
+    current = {
+        **base,
+        "chars": base["chars"] + 640,
+        "reward_memory_outcome_prompt_revision": (
+            "reward_memory_outcome_prompt_v1"
+        ),
+    }
+    assert not _compare_row(base, current)["failures"]
+    assert _compare_row(base, {**current, "chars": base["chars"] + 641})[
+        "failures"
+    ]
+    assert _compare_row(current, {**current, "chars": current["chars"] + 205})[
+        "failures"
+    ]
+    other = {**base, "row_id": "surface/status/small/json"}
+    assert _compare_row(other, {**current, "row_id": other["row_id"]})[
+        "failures"
+    ]
+
+
 def test_regular_integration_pr_keeps_requested_cli_output_base() -> None:
     ancestors = {
         ("origin/main", "HEAD"),
