@@ -55,8 +55,9 @@ def main() -> int:
         assert references, f"missing workflow reference for {action}"
         assert all(declared_major(reference) == major for reference in references), references
 
+    node_version_pattern = re.compile(r'^\s*node-version:\s*["\']([^"\']+)["\']\s*$', re.MULTILINE)
     declared_versions = {
-        name: re.findall(r'^\s*node-version:\s*["\']([^"\']+)["\']\s*$', text, re.MULTILINE)
+        name: node_version_pattern.findall(text)
         for name, text in workflows.items()
     }
     for name, versions in declared_versions.items():
@@ -80,7 +81,7 @@ def main() -> int:
         python_workflow, re.MULTILINE | re.DOTALL,
     ))
     for name in ("kernel-static-checks", "dashboard-acceptance", "windows-powershell"):
-        assert f'node-version: "{SQLITE_NODE_VERSION}"' in jobs[name], name
+        assert SQLITE_NODE_VERSION in node_version_pattern.findall(jobs[name]), name
     assert "node-forward-compatibility:" in python_workflow
     assert "continue-on-error: true" in python_workflow
     assert "needs: [changes, checks, pytest, node-minimum-compatibility," in python_workflow
