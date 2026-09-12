@@ -102,3 +102,20 @@ test("return phase projects reconciliation counts without copying raw child mate
   assert.deepEqual(facts.reconciliation_counts, { planned: 2, observed: 1, incomplete: 1 });
   assert.ok(!JSON.stringify(packet).includes("private original text"));
 });
+
+// Rich model identifiers and the complete participation guidance must survive
+// the actual provider budget, not disappear as an isolated provider failure.
+test("coordinator participation guidance survives all bounded lifecycle projections", () => {
+  for (const phase of AGENT_CONTEXT_PHASES) {
+    const packet = evaluateSubagentContext({ phase, scope, orchestration: {
+      ...policy, max_children: 4,
+      model_config: { model: "m".repeat(160), reasoning_effort: "max" },
+    } })!;
+    assert.deepEqual(packet.failures, []);
+    const [contribution] = packet.contributions as Record<string, any>[];
+    assert.equal(contribution.revision, "v2");
+    assert.equal(packet.authority, "guidance_only");
+    assert.ok(Buffer.byteLength(JSON.stringify(contribution)) <= 2048);
+    assert.ok(Buffer.byteLength(JSON.stringify(packet)) <= 3072);
+  }
+});

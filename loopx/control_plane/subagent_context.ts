@@ -4,22 +4,22 @@ import type { JsonObject } from "./effect_program.ts";
 import { jsonObject, requireJsonObject } from "./runtime_decode.ts";
 
 export const subagentContextProvider: AgentContextProvider = {
-  hookId: "multi_subagent.coordinator", capabilityId: "multi_subagent", revision: "v1",
+  hookId: "multi_subagent.coordinator", capabilityId: "multi_subagent", revision: "v2",
   phases: AGENT_CONTEXT_PHASES,
   produce(input, config) {
     const guidance = {
       before_plan: [
         "For read-heavy tasks, prefer parallel delegation of multiple fresh, independent evidence questions, including within one Todo, up to the configured child limit. Actively look for useful splits before keeping the research serial; avoid duplicate reads or concurrency for its own sake.",
         "For native child tools, read loopx agent-context with the current --goal-id and --agent-id at --phase before_delegate and --phase after_delegate_result. These read-only calls do not start turns or spend quota.",
-        "Keep useful work with the coordinator. Verify decisive sources, resolve disagreements and integrate results into the plan; child opinions are not independent evidence.",
+        "Reserve a distinct, decision-relevant evidence question for the coordinator to investigate while children work, when useful independent work exists. Integration and child review do not replace that investigation. Wait only when remaining useful work depends on child results; do not invent busywork.",
       ],
       before_delegate: [
-        "Give each child a bounded question, sources, read/write limits, expected evidence and stopping condition. Reuse prior findings; reserve integration for the coordinator.",
+        "Give each child a bounded question, sources, read/write limits, expected evidence and stopping condition. Identify the coordinator's concurrent question and dependencies; reuse prior findings and avoid duplicating the children's reads. If no independent work remains, explain the dependency rather than forcing a split.",
         "Explicitly pass the configured model and reasoning effort when the host supports them. Check host availability; never silently substitute. Preferences are not execution receipts.",
       ],
       after_delegate_result: [
         "Check returned sources, omissions and contradictions against the question. Missing or rejected receipts do not establish completed work.",
-        "Record accept/defer/reject with reasons and link accepted evidence to the plan and deliverable. Run the parent validation gate before writeback; do not merely concatenate child summaries.",
+        "Verify decisive sources and record accept/defer/reject with reasons; link accepted evidence to the plan and deliverable. Revisit uncovered questions using both coordinator and child findings. Waiting on one question need not block other useful research. Run parent validation before writeback; opinions are not independent evidence.",
       ],
     }[input.phase];
     const facts: JsonObject = {
