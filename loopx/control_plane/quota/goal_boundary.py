@@ -207,6 +207,19 @@ def _reward_memory_enablement_projection(
     return {field: status[field] for field in fields if field in status}
 
 
+def _reward_memory_automation_projection(
+    status: Mapping[str, Any],
+) -> dict[str, Any]:
+    automation_intent = status.get("automation_intent")
+    host_coverage = status.get("host_coverage")
+    return {
+        "automation_intent": (
+            dict(automation_intent) if isinstance(automation_intent, Mapping) else {}
+        ),
+        "host_coverage": list(host_coverage) if isinstance(host_coverage, list) else [],
+    }
+
+
 def goal_boundary(
     goal: dict[str, Any],
     item: dict[str, Any] | None = None,
@@ -355,11 +368,8 @@ def goal_boundary(
                     "automation_projection_source": (
                         "reward_memory_experiment_status_v1"
                     ),
-                    "automation_intent": dict(
-                        reward_memory_experiment_status.get("automation_intent") or {}
-                    ),
-                    "host_coverage": list(
-                        reward_memory_experiment_status.get("host_coverage") or []
+                    **_reward_memory_automation_projection(
+                        reward_memory_experiment_status
                     ),
                 }
             )
