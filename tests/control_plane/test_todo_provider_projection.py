@@ -181,3 +181,11 @@ def test_explicit_projection_fences_requested_revision(
         )
 
     assert state_file.read_text(encoding="utf-8") == SOURCE
+
+
+def test_projection_delivery_status_contract_is_strict():
+    assert provider_projection.parse_projection_delivery("delivered") is provider_projection.ProjectionDeliveryStatus.DELIVERED
+    assert provider_projection.projection_delivery_requires_ack("current") is True
+    assert provider_projection.projection_delivery_requires_ack("pending") is False
+    with pytest.raises(ValueError, match="unsupported projection_delivery"):
+        provider_projection.parse_projection_delivery("completed")
