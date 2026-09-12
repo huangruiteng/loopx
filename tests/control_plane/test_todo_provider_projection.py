@@ -202,3 +202,18 @@ def test_projection_delivery_composition_fixture_matches_provider_semantics():
         )
         assert status == case["expected"], case["name"]
         assert provider_projection.projection_delivery_requires_ack(status) is case["requires_ack"], case["name"]
+
+
+def test_projection_delivery_e2e_fixture_preserves_causal_states():
+    fixture_path = Path(__file__).parents[1] / "fixtures" / "control_plane" / "projection_delivery_e2e_v1.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    observed = []
+    for transition in fixture["transitions"]:
+        if "readback" in transition:
+            status = provider_projection.parse_projection_delivery(transition["readback"]).value
+        else:
+            status = provider_projection.projection_delivery_for_mutation(transition["changed"]).value
+        observed.append(status)
+        assert status == transition["delivery"], transition["step"]
+        assert provider_projection.projection_delivery_requires_ack(status) is transition["ack"], transition["step"]
+    assert observed == ["pending", "delivered", "current", "not_required", "pending"]

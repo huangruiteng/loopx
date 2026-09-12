@@ -1,0 +1,11 @@
+{
+  "schema_version": "todo_projection_delivery_e2e_v1",
+  "goal_id": "fixture-goal",
+  "transitions": [
+    {"step": "create", "changed": true, "delivery": "pending", "ack": false},
+    {"step": "display-retry", "readback": "delivered", "delivery": "delivered", "ack": true},
+    {"step": "idempotent-replay", "readback": "current", "delivery": "current", "ack": true},
+    {"step": "terminal-no-op", "changed": false, "delivery": "not_required", "ack": false},
+    {"step": "failed-display", "readback": "pending", "delivery": "pending", "ack": false}
+  ]
+}
