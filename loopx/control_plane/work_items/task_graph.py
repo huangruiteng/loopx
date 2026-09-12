@@ -5,6 +5,7 @@ import re
 from typing import Any, Callable
 
 from ..runtime.time import now_utc_iso
+from ..effect_runtime import effect_runtime_result
 from ..todos.summary_item import todo_planning_source_items
 
 TASK_GRAPH_PROJECTION_SCHEMA_VERSION = "task_graph_projection_v0"
@@ -394,52 +395,6 @@ class _TaskGraphProjectionBuilder:
         self.edges.append(edge)
 
 
-def _task_graph_build_predecessor_indexes(
-    all_todos_by_id: dict[str, dict[str, Any]],
-    *,
-    public_safe_compact_text: Callable[..., str | None],
-) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
-    predecessors_by_successor: dict[str, list[str]] = {}
-    predecessors_by_supersedes: dict[str, list[str]] = {}
-    for tid, todo_item in all_todos_by_id.items():
-        if not isinstance(todo_item, dict):
-            continue
-        successor_ids = todo_item.get("successor_todo_ids")
-        if isinstance(successor_ids, list):
-            for sid in successor_ids:
-                sid_str = public_safe_compact_text(sid, limit=120)
-                if sid_str:
-                    predecessors_by_successor.setdefault(sid_str, []).append(tid)
-        superseded_by = public_safe_compact_text(todo_item.get("superseded_by"), limit=120)
-        if superseded_by:
-            predecessors_by_supersedes.setdefault(superseded_by, []).append(tid)
-    return predecessors_by_successor, predecessors_by_supersedes
-
-
-def _task_graph_resolve_direct_predecessors(
-    current_tid: str,
-    current_todo: dict[str, Any],
-    *,
-    predecessors_by_successor: dict[str, list[str]],
-    predecessors_by_supersedes: dict[str, list[str]],
-    public_safe_compact_text: Callable[..., str | None],
-) -> list[tuple[str, str | None]]:
-    pred_ids: list[tuple[str, str | None]] = []
-    for pred_tid in predecessors_by_successor.get(current_tid, []):
-        if pred_tid != current_tid:
-            pred_ids.append((pred_tid, None))
-    for pred_tid in predecessors_by_supersedes.get(current_tid, []):
-        if pred_tid != current_tid and not any(p[0] == pred_tid for p in pred_ids):
-            pred_ids.append((pred_tid, "supersedes"))
-    unblocks_parent = public_safe_compact_text(current_todo.get("unblocks_todo_id"), limit=120)
-    if unblocks_parent and unblocks_parent != current_tid and not any(p[0] == unblocks_parent for p in pred_ids):
-        pred_ids.append((unblocks_parent, None))
-    resume_when = str(current_todo.get("resume_when") or "")
-    if resume_when.startswith("todo_done:"):
-        resume_tid = public_safe_compact_text(resume_when.split(":", 1)[1], limit=120)
-        if resume_tid and resume_tid != current_tid and not any(p[0] == resume_tid for p in pred_ids):
-            pred_ids.append((resume_tid, None))
-    return sorted(pred_ids, key=lambda item: (item[0], item[1] or ""))
 
 
 def _task_graph_attach_handoff(
@@ -578,7 +533,6 @@ def _task_graph_build_predecessor_chain(
     *,
     selected_todo_id: str,
     selected_node_id: str,
-    selected_todo: dict[str, Any],
     all_todos_by_id: dict[str, dict[str, Any]],
     builder: _TaskGraphProjectionBuilder,
     public_safe_compact_text: Callable[..., str | None],
@@ -588,128 +542,81 @@ def _task_graph_build_predecessor_chain(
     max_predecessor_nodes: int,
     source_truncated: bool,
 ) -> dict[str, Any]:
-    predecessors_by_successor, predecessors_by_supersedes = _task_graph_build_predecessor_indexes(
-        all_todos_by_id,
-        public_safe_compact_text=public_safe_compact_text,
-    )
-    visited: set[str] = set()
-    queue: list[tuple[str, str | None, str | None]] = [(selected_todo_id, None, None)]
-    emitted_count = 0
-    truncated = False
-
-    while queue:
-        current_tid, successor_nid, edge_rel_hint = queue.pop(0)
-        already_visited = current_tid in visited
-        current_todo = all_todos_by_id.get(current_tid)
-        if not isinstance(current_todo, dict):
+    # Python owns public-safe rendering; TypeScript owns relation discovery and
+    # bounded traversal. Never serialize evidence, notes, or private source text.
+    renderable_todos: dict[str, dict[str, Any]] = {}
+    rows = []
+    for tid, value in all_todos_by_id.items():
+        if not public_safe_compact_text(value.get("title") or value.get("text"), limit=160):
             continue
-        is_root = current_tid == selected_todo_id
-        is_done = bool(current_todo.get("done")) or todo_done_for_status(
-            str(normalize_todo_status(current_todo.get("status")) or todo_status_open)
+        renderable_todos[tid] = value
+        state = _task_graph_todo_state(
+            value,
+            normalize_todo_status=normalize_todo_status,
+            todo_done_for_status=todo_done_for_status,
+            todo_status_open=todo_status_open, waiting_default=tid != selected_todo_id,
         )
-
-        if not is_root and not already_visited and emitted_count >= max_predecessor_nodes:
-            truncated = True
-            break
-
-        current_nid: str | None
-        if is_root:
-            current_nid = selected_node_id
-        else:
-            current_nid = builder.add_node(
-                _task_graph_deliverable_node(
-                    todo=current_todo,
-                    public_safe_compact_text=public_safe_compact_text,
-                    normalize_todo_status=normalize_todo_status,
-                    todo_done_for_status=todo_done_for_status,
-                    todo_status_open=todo_status_open,
-                    waiting_default=True,
-                )
-            )
-            if current_nid and successor_nid:
-                if edge_rel_hint == "supersedes":
-                    edge_rel = "supersedes"
-                    edge_reason = f"Successor supersedes completed todo {current_tid}."
-                else:
-                    edge_rel = "depends_on"
-                    edge_reason = f"Work depends on predecessor todo {current_tid}."
-                builder.add_edge(
-                    edge_id=_task_graph_node_id(
-                        f"edge_{edge_rel}",
-                        f"{successor_nid}:{current_nid}",
-                        public_safe_compact_text=public_safe_compact_text,
-                    ),
-                    from_node_id=successor_nid,
-                    to_node_id=current_nid,
-                    relation=edge_rel,
-                    reason=edge_reason,
-                    refs=_task_graph_refs(
-                        "todo_ids",
-                        current_tid,
-                        public_safe_compact_text=public_safe_compact_text,
-                    ),
-                )
-
-        if not current_nid:
-            continue
-
-        if already_visited:
-            continue
-
-        visited.add(current_tid)
-
-        if not is_root:
-            emitted_count += 1
-
-        if is_done:
-            _task_graph_attach_evidence(
-                current_todo=current_todo,
-                current_tid=current_tid,
-                current_nid=current_nid,
-                builder=builder,
-                public_safe_compact_text=public_safe_compact_text,
-            )
-
-        if not is_root:
-            _task_graph_attach_handoff(
-                current_todo=current_todo,
-                current_tid=current_tid,
-                current_nid=current_nid,
-                successor_nid=successor_nid,
-                builder=builder,
-                public_safe_compact_text=public_safe_compact_text,
-            )
-
-        if not is_done:
-            if not is_root:
-                continue
-            pred_list = _task_graph_resolve_direct_predecessors(
-                current_tid,
-                current_todo,
-                predecessors_by_successor=predecessors_by_successor,
-                predecessors_by_supersedes=predecessors_by_supersedes,
-                public_safe_compact_text=public_safe_compact_text,
-            )
-            for pred_id, rel_hint in pred_list:
-                queue.append((pred_id, current_nid, rel_hint))
-            continue
-
-        pred_list = _task_graph_resolve_direct_predecessors(
-            current_tid,
-            current_todo,
-            predecessors_by_successor=predecessors_by_successor,
-            predecessors_by_supersedes=predecessors_by_supersedes,
-            public_safe_compact_text=public_safe_compact_text,
-        )
-        for pred_id, rel_hint in pred_list:
-            queue.append((pred_id, current_nid, rel_hint))
-
-    return {
-        "emitted_predecessor_count": emitted_count,
+        row = {"todo_id": tid, "done": state == "done",
+               "successor_todo_ids": []}
+        for field in ("unblocks_todo_id", "superseded_by", "resume_when"):
+            text = public_safe_compact_text(value.get(field), limit=240)
+            if text:
+                row[field] = text
+        successors = value.get("successor_todo_ids")
+        if isinstance(successors, list):
+            row["successor_todo_ids"] = [
+                text for raw in successors
+                if (text := public_safe_compact_text(raw, limit=120))
+            ]
+        rows.append(row)
+    result = effect_runtime_result("work_item.task_graph.topology", {
+        "schema_version": "task_graph_topology_request_v0",
+        "selected_todo_id": selected_todo_id, "items": rows,
         "predecessor_limit": max_predecessor_nodes,
-        "predecessor_truncated": truncated,
         "source_truncated": source_truncated,
-    }
+    })
+    if not isinstance(result, dict) or result.get("schema_version") != "task_graph_topology_result_v0":
+        raise RuntimeError("TypeScript task graph topology shape mismatch")
+    node_ids = {selected_todo_id: selected_node_id}
+    for tid in result["predecessor_todo_ids"]:
+        node_ids[tid] = builder.add_node(_task_graph_deliverable_node(
+            todo=renderable_todos[tid], public_safe_compact_text=public_safe_compact_text,
+            normalize_todo_status=normalize_todo_status,
+            todo_done_for_status=todo_done_for_status,
+            todo_status_open=todo_status_open, waiting_default=True,
+        ))
+    for edge in result["edges"]:
+        source, target = edge["from_todo_id"], edge["to_todo_id"]
+        builder.add_edge(
+            edge_id=_task_graph_node_id(
+                f"edge_{edge['source_relation']}",
+                f"{node_ids[source]}:{node_ids[target]}",
+                public_safe_compact_text=public_safe_compact_text,
+            ),
+            from_node_id=node_ids[source], to_node_id=node_ids[target],
+            relation=edge["relation"], reason=edge["reason"],
+            refs=_task_graph_refs("todo_ids", target,
+                                  public_safe_compact_text=public_safe_compact_text),
+        )
+    for tid in [selected_todo_id, *result["predecessor_todo_ids"]]:
+        value, nid = all_todos_by_id[tid], node_ids[tid]
+        if _task_graph_todo_state(value, normalize_todo_status=normalize_todo_status,
+                todo_done_for_status=todo_done_for_status, todo_status_open=todo_status_open) == "done":
+            _task_graph_attach_evidence(
+                current_todo=value, current_tid=tid, current_nid=nid, builder=builder,
+                public_safe_compact_text=public_safe_compact_text,
+            )
+        if tid != selected_todo_id:
+            # A shared ancestor may have several edges. Handoff presentation
+            # keeps its historical single attachment to the first discovered one.
+            successor = next(e["from_todo_id"] for e in result["edges"]
+                             if e["to_todo_id"] == tid)
+            _task_graph_attach_handoff(
+                current_todo=value, current_tid=tid, current_nid=nid,
+                successor_nid=node_ids[successor], builder=builder,
+                public_safe_compact_text=public_safe_compact_text,
+            )
+    return result["completeness"]
 
 
 def build_task_graph_projection(
@@ -811,10 +718,10 @@ def build_task_graph_projection(
     predecessor_metrics: dict[str, Any] = {}
     if selected_todo_id and selected_node_id and isinstance(selected_todo, dict):
         all_todos_by_id = {**agent_todos_by_id, **user_todos_by_id}
+        all_todos_by_id.setdefault(selected_todo_id, selected_todo)
         predecessor_metrics = _task_graph_build_predecessor_chain(
             selected_todo_id=selected_todo_id,
             selected_node_id=selected_node_id,
-            selected_todo=selected_todo,
             all_todos_by_id=all_todos_by_id,
             builder=builder,
             public_safe_compact_text=public_safe_compact_text,
@@ -1019,6 +926,8 @@ def build_task_graph_projection(
         limits["emitted_predecessor_count"] = predecessor_metrics["emitted_predecessor_count"]
         limits["predecessor_truncated"] = predecessor_metrics["predecessor_truncated"]
         limits["source_truncated"] = predecessor_metrics["source_truncated"]
+        limits["missing_predecessor_count"] = predecessor_metrics["missing_predecessor_count"]
+        limits["topology_complete"] = predecessor_metrics["topology_complete"]
     return {
         "schema_version": TASK_GRAPH_PROJECTION_SCHEMA_VERSION,
         "mode": "read_only",

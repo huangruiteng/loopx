@@ -272,6 +272,18 @@ test("planning horizon preserves claim requirements for unclaimed runnable conte
   assert.equal(unclaimedProjection?.claim_required_before_work, true);
 });
 
+test("opaque route refs cannot invent Todo proximity in the horizon", () => {
+  const selected = todo("todo_selected001", 1, "P1", {route_id: "todo_unrelated001"});
+  const unrelated = todo("todo_unrelated001", 2, "P0", {status: "deferred"});
+  const result = projectQuotaPlanningHorizon(request({
+    selected_todo: selected, candidates: [selected, unrelated], source_context_todo_count: 2,
+  }));
+  const item = (result?.work_items as Array<Record<string, unknown>>)
+    .find(value => value.todo_id === unrelated.todo_id);
+  assert.ok(item);
+  assert.equal((item.context_reasons as string[]).includes("related_to_selected"), false);
+});
+
 test("planning inventory detail reuses Todo rows without duplicating their payload", () => {
   const selected = todo("todo_selected001", 2, "P1", {
     required_capabilities: ["network"],

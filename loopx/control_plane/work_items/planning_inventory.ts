@@ -18,7 +18,6 @@ export const TODO_PLANNING_INVENTORY_DETAIL_SCHEMA_VERSION =
 
 const MAX_REQUEST_ITEMS_PER_LANE = 128;
 const MAX_INVENTORY_ITEMS = 64;
-const TODO_ID = /^todo_[A-Za-z0-9_-]{3,80}$/;
 
 export type PlanningState =
   | "selected"
@@ -30,24 +29,10 @@ export type PlanningState =
 
 export type ClaimState = "current_agent" | "unclaimed" | "other_agent";
 
-const ENFORCEMENT_BY_RELATION = {
-  successor: "lineage_only",
-  unblocks: "typed_lifecycle",
-  resumes_when: "typed_condition",
-  superseded_by: "lineage_only",
-  routes_via: "read_only_context",
-} as const;
-
-export type PlanningRelationKind = keyof typeof ENFORCEMENT_BY_RELATION;
-
-export type PlanningInventoryRelation = {
-  [Kind in PlanningRelationKind]: JsonObject & {
-    from_todo_id: string;
-    to_ref: string;
-    relation: Kind;
-    enforcement: (typeof ENFORCEMENT_BY_RELATION)[Kind];
-  };
-}[PlanningRelationKind];
+import {
+  projectRelations, relation, ENFORCEMENT_BY_RELATION, PLANNING_TODO_ID as TODO_ID,
+  type PlanningInventoryRelation, type PlanningRelationKind,
+} from "./planning_relations.ts";
 
 interface Candidate extends JsonObject {
   todo_id: string;
@@ -211,67 +196,6 @@ function planningState(
   return "context";
 }
 
-function relation<Kind extends PlanningRelationKind>(
-  fromTodoId: string,
-  toRef: string,
-  kind: Kind,
-): Extract<PlanningInventoryRelation, { relation: Kind }> {
-  return {
-    from_todo_id: fromTodoId,
-    to_ref: toRef,
-    relation: kind,
-    enforcement: ENFORCEMENT_BY_RELATION[kind],
-  } as Extract<PlanningInventoryRelation, { relation: Kind }>;
-}
-
-function candidateRelations(item: Candidate): PlanningInventoryRelation[] {
-  const projected: PlanningInventoryRelation[] = [];
-  for (const successor of new Set(item.successor_todo_ids)) {
-    if (successor !== item.todo_id) {
-      projected.push(relation(item.todo_id, successor, "successor"));
-    }
-  }
-  if (item.unblocks_todo_id && item.unblocks_todo_id !== item.todo_id) {
-    projected.push(relation(item.todo_id, item.unblocks_todo_id, "unblocks"));
-  }
-  if (item.resume_when) {
-    projected.push(relation(item.todo_id, item.resume_when, "resumes_when"));
-  }
-  if (item.superseded_by && item.superseded_by !== item.todo_id) {
-    projected.push(relation(item.todo_id, item.superseded_by, "superseded_by"));
-  }
-  const routeRef = item.route_id || item.route_key;
-  if (routeRef) {
-    projected.push(relation(item.todo_id, `route:${routeRef}`, "routes_via"));
-  }
-  return projected;
-}
-
-export function relationKey(value: PlanningInventoryRelation): string {
-  return `${value.from_todo_id}\u0000${value.relation}\u0000${value.to_ref}`;
-}
-
-function projectRelations(items: readonly Candidate[]): PlanningInventoryRelation[] {
-  const projected: PlanningInventoryRelation[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    for (const value of candidateRelations(item)) {
-      const key = relationKey(value);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      projected.push(value);
-    }
-  }
-  return projected;
-}
-
-export function todoRef(value: string): string | null {
-  if (TODO_ID.test(value)) return value;
-  const separator = value.indexOf(":");
-  if (separator < 0) return null;
-  const suffix = value.slice(separator + 1);
-  return TODO_ID.test(suffix) ? suffix : null;
-}
 
 function inventoryItem(
   item: Candidate,

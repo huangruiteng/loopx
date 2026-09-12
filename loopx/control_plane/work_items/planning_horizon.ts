@@ -6,12 +6,10 @@ import {
 } from "../runtime_decode.ts";
 import {
   decodeTodoPlanningInventory,
-  relationKey,
-  todoRef,
   type PlanningInventoryItem,
-  type PlanningInventoryRelation,
   type PlanningState,
 } from "./planning_inventory.ts";
+import { relationKey, todoRef, type PlanningInventoryRelation } from "./planning_relations.ts";
 
 import type { JsonObject } from "../effect_program.ts";
 
