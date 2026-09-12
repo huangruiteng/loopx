@@ -7,6 +7,7 @@ import {
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
 import {validateContinuationNote, computeContinuationTodoFacts} from "./continuation_note.ts";
+import {projectionDelivery} from "../todos/projection_delivery.ts";
 import {normalizeRegisteredTodoAgents, normalizeTodoAgent} from "./todo_agents.ts";
 import {
   prepareCoordinationProjectionCommit,
@@ -450,7 +451,7 @@ export async function executeCoordinationTodoClaim(
       provider_revision: receipt.provider_revision,
       cursor: receipt.cursor,
       original_receipt: original,
-      projection_delivery: result.changed === false ? "not_required" : "pending",
+      projection_delivery: projectionDelivery(result.changed !== false),
       projection_source: "committed_authority_journal",
     };
   };
