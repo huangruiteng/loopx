@@ -637,6 +637,26 @@ commit-marker protocol，并通过新的合同 review。
 LoopX 控制面记录与应用领域记录，只通过 opaque identity 或 digest 建立关联。
 provider-specific payload 不进入 provider-neutral 的 LoopX schema。
 
+#### 保留 journal 的扫描合同
+
+`scanCommitted(after_cursor, limit)` 将 head、记录和 lookahead 绑定到同一个读取
+snapshot。当前 provider 保留从 cursor 1 起的连续 journal；`null` 是唯一起点，
+其他游标必须是规范的正十进制字符串。超过 head 的正数 checkpoint（包括空存储）
+返回 `scan_cursor_out_of_range`，不能确认“已成功读完”；非法运行时类型在访问
+存储前拒绝。
+
+共享 TS scan owner 验证请求区间及用于证明 `has_more` 的 lookahead 行。
+缺行、重复、乱序及末条 transaction 与 snapshot head 不一致均为协议错误。
+PostgreSQL metadata/head/row 使用 repeatable read；File/NoKV 验证同一个保留
+历史的 envelope，SQLite 保留原读事务。此合同不增加跨页 snapshot token，后续
+调用可以看到后续提交；也不证明 checkpoint 之前全部历史、任意 payload 的完整性，
+或未来压缩/分段历史格式。
+
+File 与 NoKV 在既有 transaction 模块共用 journal 解码及 append 构造，各自
+保留版本摘要输入、identity、CAS 与持久化副作用。验证包含四个 adapter 的复杂
+fixture、真实 PostgreSQL 并发提交及一次性损坏行，以及真实来源隔离副本上的
+File/PostgreSQL 分页。不迁移活跃 Goal，不切换默认 provider，不宣布 D1–D3 合格。
+
 #### 6.2.2 参考 CAS 切片之后的目标 store contract
 
 当前 Stage 2/3 参考实现刻意使用上面的较小 `load` / `compare_and_put` document
