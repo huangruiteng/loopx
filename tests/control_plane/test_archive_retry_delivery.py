@@ -220,7 +220,7 @@ def test_pending_projection_and_preview_preserve_archive_retry(
         raise OSError("injected projection write failure")
 
     with monkeypatch.context() as patch:
-        patch.setattr(provider_projection, "_atomic_write_text", reject_projection)
+        patch.setattr(provider_projection, "atomic_write_state_text", reject_projection)
         committed = archive_completed_todos(
             registry_path=registry,
             goal_id="archive-goal",

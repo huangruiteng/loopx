@@ -10,10 +10,7 @@ current head idempotently.
 
 from __future__ import annotations
 
-import os
 import json
-import stat
-import tempfile
 from enum import StrEnum
 from collections.abc import Mapping
 from pathlib import Path
@@ -31,6 +28,7 @@ from .machine_section_projection import (
     render_canonical_todo_sections,
 )
 from .completion_validation_store import load_completion_validation_declarations
+from .active_state_editing import atomic_write_state_text, verify_state_text_durable
 
 
 TODO_PROJECTION_DELIVERY_SCHEMA = "loopx_todo_projection_delivery_v0"
@@ -70,41 +68,6 @@ def projection_delivery_for_mutation(changed: bool) -> ProjectionDeliveryStatus:
 def _read_text_exact(path: Path) -> str:
     with path.open("r", encoding="utf-8", newline="") as handle:
         return handle.read()
-
-
-def _fsync_parent_directory(path: Path) -> None:
-    if os.name != "posix":  # pragma: no cover - Windows has no directory fsync
-        return
-    descriptor = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
-def _atomic_write_text(path: Path, text: str, *, create_only: bool = False) -> None:
-    """Durably replace a compatibility projection without changing its mode."""
-
-    original_mode = 0o600 if create_only else stat.S_IMODE(path.stat().st_mode)
-    descriptor, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
-    )
-    temporary_path = Path(temporary)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as handle:
-            os.chmod(temporary_path, original_mode)
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        if create_only:
-            # Publish a complete file without clobbering a concurrently restored
-            # document, even if that writer does not participate in our lock.
-            os.link(temporary_path, path)
-        else:
-            os.replace(temporary_path, path)
-        _fsync_parent_directory(path)
-    finally:
-        temporary_path.unlink(missing_ok=True)
 
 
 def project_current_canonical_todos(
@@ -189,11 +152,13 @@ def project_current_canonical_todos(
                 state_file=state_path,
             )
             if recovered_missing:
-                _atomic_write_text(state_path, projection.markdown, create_only=True)
+                atomic_write_state_text(state_path, projection.markdown, create_only=True)
             else:
-                _atomic_write_text(state_path, projection.markdown)
+                atomic_write_state_text(state_path, projection.markdown)
             if _read_text_exact(state_path) != projection.markdown:
                 raise RuntimeError("Todo Markdown projection readback mismatch")
+        elif execute:
+            verify_state_text_durable(state_path, projection.markdown)
 
     return {
         "schema_version": TODO_PROJECTION_DELIVERY_SCHEMA,

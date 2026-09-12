@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 
 from .contract import TODO_TASK_PATTERN, parse_todo_metadata_line
+from ..goals.active_state_metadata import TODO_ARCHIVE_HEADER_MARKERS, todo_role_for_heading
 
 
 TODO_REGION_PREFIX = "<!-- loopx:todo-region-v0 "
@@ -43,14 +44,9 @@ def todo_region_marker(role: str, edge: str) -> str:
     return f"{TODO_REGION_PREFIX}role={role} {edge} -->"
 
 
-def find_todo_regions(lines: list[str]) -> list[TodoRegion]:
-    """Locate generated regions without consuming narrative or code examples.
-
-    Offsets are half-open line indexes. A marked region includes its heading
-    and both delimiters; body_end excludes the end marker for legacy editors.
-    The legacy import stops at the first non-generated line, not the next H2.
-    """
-    regions: list[TodoRegion] = []
+def visible_markdown_lines(lines: list[str]) -> frozenset[int]:
+    """Line ownership shared by Todo readers, editors and generated projections."""
+    visible: set[int] = set()
     fence: str | None = None
     in_comment = False
     index = 0
@@ -64,21 +60,28 @@ def find_todo_regions(lines: list[str]) -> list[TodoRegion]:
         if fence is not None:
             if re.fullmatch(r" {0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*", line):
                 fence = None
-            index += 1
-            continue
-        if in_comment:
+        elif in_comment:
             in_comment = "-->" not in line
-            index += 1
-            continue
-        opening = _FENCE.fullmatch(line)
-        if opening:
+        elif opening := _FENCE.fullmatch(line):
             fence = opening.group(1)
-            index += 1
-            continue
-        if line.lstrip().startswith("<!--") and "-->" not in line:
+        elif line.lstrip().startswith("<!--") and "-->" not in line:
             in_comment = True
+        else:
+            visible.add(index)
+        index += 1
+    return frozenset(visible)
+
+
+def find_todo_regions(lines: list[str], *, visible: frozenset[int] | None = None) -> list[TodoRegion]:
+    """Find replaceable generated regions; never adopt surrounding narrative."""
+    visible = visible_markdown_lines(lines) if visible is None else visible
+    regions: list[TodoRegion] = []
+    index = 0
+    while index < len(lines):
+        if index not in visible:
             index += 1
             continue
+        line = lines[index].rstrip("\r\n")
         if TODO_REGION_PREFIX in line:
             raise ValueError("orphan or malformed Todo region marker")
         heading = line[3:].strip() if line.startswith("## ") else ""
@@ -97,7 +100,7 @@ def find_todo_regions(lines: list[str]) -> list[TodoRegion]:
                 break
             if TODO_REGION_PREFIX in content:
                 raise ValueError("nested, mismatched, or malformed Todo region marker")
-            generated = (
+            generated = index in visible and (
                 not content.strip()
                 or TODO_TASK_PATTERN.match(content) is not None
                 or parse_todo_metadata_line(content) is not None
@@ -114,4 +117,26 @@ def find_todo_regions(lines: list[str]) -> list[TodoRegion]:
         if marked:
             index += 1
         regions.append(TodoRegion(role, start, index, body_end, heading, marked))
+    return regions
+
+
+def find_todo_source_regions(lines: list[str], *, visible: frozenset[int] | None = None) -> list[TodoRegion]:
+    """Read/edit marked regions strictly; retain unmarked legacy heading aliases and continuations.
+
+    Existing heading-substring aliases are a legacy input compatibility contract,
+    not a classifier for generated ownership. They can retire with that importer.
+    """
+    visible = visible_markdown_lines(lines) if visible is None else visible
+    generated = find_todo_regions(lines, visible=visible)
+    if any(region.marked for region in generated):
+        return generated
+    headings = [index for index in sorted(visible) if lines[index].startswith("## ")]
+    regions: list[TodoRegion] = []
+    for position, start in enumerate(headings):
+        heading = lines[start][3:].strip()
+        role = "archive" if any(marker in heading.lower() for marker in TODO_ARCHIVE_HEADER_MARKERS) else todo_role_for_heading(heading)
+        if role is None:
+            continue
+        end = headings[position + 1] if position + 1 < len(headings) else len(lines)
+        regions.append(TodoRegion(role, start, end, end, heading, False))
     return regions
