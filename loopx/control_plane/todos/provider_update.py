@@ -96,7 +96,7 @@ def update_canonical_todo_if_promoted(
         )
     return settle_canonical_todo_projection(
         {"ok": True, "goal_id": goal_id, "todo_id": todo_id,
-         "role": "agent", "dry_run": dry_run, **result},
+         "role": role, "dry_run": dry_run, **result},
         registry_path=registry_path, runtime_root=runtime_root, goal_id=goal_id,
         project=project, state_file=state_file,
     )
