@@ -62,6 +62,15 @@ test("public scope and fields agree without inventing a global gate", () => {
   assert.throws(() => plan({status: "done"}), /complete_goal_todo/);
 });
 
+test("omitted decision scope preserves a retained user-gate scope", () => {
+  const gate = {todo_id: "todo_gate_scope", role: "user", task_class: "user_gate", status: "open",
+    global_gate: true, goal_bound: true,
+    decision_scope: {schema_version: "decision_scope_v0", kind: "direction", granularity: "goal", scope_key: "release"}};
+  const updates = plan({note: "Clarified"}, gate).metadata_updates as JsonObject;
+  assert.equal(Object.hasOwn(updates, "decision_scope"), false);
+  assert.equal(updates.note, "Clarified");
+});
+
 test("monitor observations use the same effective task scope and cannot be raw-state overrides", () => {
   const observation = {generated_at: "2030-01-01T00:00:00Z", material_change: true,
     result_hash: "changed", monitor_effect_id: "effect-a"};

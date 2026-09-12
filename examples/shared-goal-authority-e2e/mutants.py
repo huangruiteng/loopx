@@ -47,6 +47,15 @@ class Case:
 
 
 CASES = [
+    Case("decision_scope_role_guard_removed", (("loopx/control_plane/todos/decision_metadata.ts", replacement(
+        '    if (intent.decision_scope !== null && (role !== "user" || taskClass !== "user_gate")) {',
+        '    if (false) {')),),
+         "tests/control_plane_ts/decision_metadata.test.ts",
+         "user gates own decision_scope and agent work owns required_decision_scopes"),
+    Case("decision_scope_dedup_removed", (("loopx/control_plane/todos/decision_metadata.ts", replacement(
+        "    if (!seen.has(key)) {", "    if (true) {")),),
+         "tests/control_plane_ts/decision_metadata.test.ts",
+         "decision metadata normalizes compact and object forms without duplicate scopes"),
     Case('todo_global_gate_inferred', (('loopx/control_plane/todos/authoring_scope.ts', replacement(
         '      : todo.global_gate as boolean | null ?? null;',
         '      : (todo.global_gate || intent.goal_bound) as boolean | null ?? null;')),),

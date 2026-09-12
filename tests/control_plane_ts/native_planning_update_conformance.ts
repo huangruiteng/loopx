@@ -114,7 +114,8 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       for (const planning_intent of [
         {required_capabilities: ["valid", "bad/token"]}, {required_write_scopes: ["src/**", "../escape"]},
         {task_repository: "https://user:password@example.com/project"},
-        {decision_outcome: "approve"}, {required_decision_scopes: []},
+        {decision_outcome: "approve"}, {required_decision_scopes: ["not-a-scope"]},
+        {decision_scope: {kind: "direction", granularity: "goal", scope_key: "release"}},
       ]) {
         const beforeInvalid = await head(store);
         const result = await executeCoordinationTodoUpdate(store, {...request,
@@ -195,6 +196,8 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       ...(item.task_class ? {task_class: item.task_class} : {}),
       ...(item.claimed_by ? {claimed_by: item.claimed_by} : {}),
       ...(item.reason ? {reason: item.reason} : {}),
+      ...(item.decision_scope ? {decision_scope: item.decision_scope} : {}),
+      ...(item.required_decision_scopes ? {required_decision_scopes: item.required_decision_scopes} : {}),
       ...(item.goal_bound ? {goal_bound: true} : {}),
       ...(item.global_gate ? {global_gate: true} : {}),
     } as JsonObject));
@@ -226,6 +229,13 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
         const current = await head(store);
         const row = (current.head.todos as JsonObject[]).find(todo => todo.todo_id === todoId)!;
         assert.equal(row.reason, expected.reason_value);
+      }
+      for (const field of ["decision_scope", "required_decision_scopes"] as const) {
+        if (expected[field] !== undefined) {
+          const current = await head(store);
+          const row = (current.head.todos as JsonObject[]).find(todo => todo.todo_id === todoId)!;
+          assert.deepEqual(row[field], expected[field]);
+        }
       }
       if (expected.blocks_agent !== undefined || expected.global_gate === null) {
         const current = await head(store);
