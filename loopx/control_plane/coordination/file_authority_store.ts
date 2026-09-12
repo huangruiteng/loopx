@@ -18,16 +18,17 @@ import type {
 } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
+  isAuthorityJsonObject,
+  hasExactAuthorityKeys,
+  canonicalAuthorityObjectList,
+  canonicalAuthorityObject,
   authorityUnicodeCompare,
   canonicalAuthorityBytes,
-  canonicalAuthorityObject,
-  canonicalAuthorityObjectList,
-  hasExactAuthorityKeys,
-  isAuthorityJsonObject,
   normalizeAuthorityStoreCommit,
   parseAuthorityCursor,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
+import { cloneAuthorityTransaction, decodeAuthorityTransaction, transactionForRevision } from "./authority_store_transactions.ts";
 
 const FILE_AUTHORITY_STORE_SCHEMA = "loopx_file_authority_store_v0";
 const STORE_IDENTITY_PATTERN = /^file:[0-9a-f]{32}$/;
@@ -77,37 +78,8 @@ export type FileAuthorityArchiveResult =
     reason: string;
   };
 
-function cloneTransaction(
-  value: AuthorityStoreCommittedTransaction,
-): AuthorityStoreCommittedTransaction {
-  return structuredClone(value);
-}
-
-function transactionWithoutRevision(value: AuthorityStoreCommittedTransaction) {
-  return {
-    cursor: value.cursor,
-    operation_id: value.operation_id,
-    events: value.events,
-    projection: value.projection,
-    receipts: value.receipts,
-  };
-}
-
-function providerRevision(
-  goalId: string,
-  storeIdentity: string,
-  previousRevision: string | null,
-  transaction: ReturnType<typeof transactionWithoutRevision>,
-): string {
-  const digest = createHash("sha256")
-    .update(canonicalAuthorityBytes({
-      goal_id: goalId,
-      store_identity: storeIdentity,
-      previous_provider_revision: previousRevision,
-      transaction,
-    }))
-    .digest("hex")
-    .slice(0, 24);
+function providerRevision(goalId: string, storeIdentity: string, previousRevision: string | null, transaction: ReturnType<typeof transactionForRevision>): string {
+  const digest = createHash("sha256").update(canonicalAuthorityBytes({ goal_id: goalId, store_identity: storeIdentity, previous_provider_revision: previousRevision, transaction })).digest("hex").slice(0, 24);
   return `file:${transaction.cursor}:${digest}`;
 }
 
@@ -140,23 +112,6 @@ async function durableReplace(path: string, payload: Uint8Array): Promise<void> 
   }
 }
 
-function decodeTransaction(value: unknown): AuthorityStoreCommittedTransaction {
-  if (!isAuthorityJsonObject(value) || !hasExactAuthorityKeys(value, [
-    "cursor", "provider_revision", "operation_id", "events", "projection", "receipts",
-  ])) throw new AuthorityStoreProtocolError("committed transaction is invalid");
-  return {
-    cursor: requireAuthorityStoreId(value.cursor, "transaction cursor"),
-    provider_revision: requireAuthorityStoreId(
-      value.provider_revision,
-      "transaction provider revision",
-    ),
-    operation_id: requireAuthorityStoreId(value.operation_id, "operation id"),
-    events: canonicalAuthorityObjectList(value.events, "transaction events"),
-    projection: canonicalAuthorityObject(value.projection, "transaction projection"),
-    receipts: canonicalAuthorityObjectList(value.receipts, "transaction receipts"),
-  };
-}
-
 function decodeDocument(
   value: unknown,
   goalId: string,
@@ -178,7 +133,7 @@ function decodeDocument(
   if (!Array.isArray(value.committed)) {
     throw new AuthorityStoreProtocolError("file authority store history is invalid");
   }
-  const committed = value.committed.map(decodeTransaction);
+  const committed = value.committed.map(decodeAuthorityTransaction);
   if (committed.length === 0 || parseAuthorityCursor(cursor) !== BigInt(committed.length)) {
     throw new AuthorityStoreProtocolError("file authority store lineage is invalid");
   }
@@ -196,7 +151,7 @@ function decodeDocument(
       goalId,
       storeIdentity,
       previousRevision,
-      transactionWithoutRevision(entry),
+      transactionForRevision(entry),
     );
     if (entry.provider_revision !== expectedRevision) {
       throw new AuthorityStoreProtocolError("file authority store revision lineage is invalid");
@@ -495,7 +450,7 @@ export class FileAuthorityStore implements AuthorityStore {
         };
       }
       const start = Number(offset);
-      const transactions = document.committed.slice(start, start + limit).map(cloneTransaction);
+      const transactions = document.committed.slice(start, start + limit).map(cloneAuthorityTransaction);
       return {
         status: "page",
         transactions,

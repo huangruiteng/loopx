@@ -1084,8 +1084,27 @@ Stage 3/4 qualification 必须保持以下 ownership 与 proof 边界：
 | Stage 2B PostgreSQL candidate | PostgreSQL store/RLS conformance，不代表 runtime promotion |
 | Stage 2C runtime shadow | parity、read-candidate、bootstrap、rollback、cutover kernel 与 writer fence |
 | Stage 2 slice | reference aggregate/provider 实现与初步 NoKV 证据 |
+| Stage 1 semantic transaction core (#4280) | 共享严格 transaction 解码、clone 隔离、revision 投影，以及 file/NoKV parity fixture |
 | Stage 3 slice | 可恢复 lifecycle、retention 结论与 live provider 限制 |
 | Stage-ladder evidence | 可执行 stage claim、环境 gate 与 pending row |
+
+#### Stage 1 semantic transaction core（#4280）：共享 transaction 语义核心
+
+file 与 NoKV adapter 现在共同使用
+`loopx/control_plane/coordination/authority_store_transactions.ts`。该模块负责
+committed transaction 的精确顶层 key 集合、严格 JSON/object-list 校验、canonicalization、
+显式 structured clone，以及逻辑 `transactionForRevision` 投影。provider envelope、
+storage generation、failure mapping 与 provider-specific revision salt 仍由各自 adapter
+负责。这样消除了重复的语义知识，但没有增加新的 authority writer，也没有改变默认的
+authority source。SQLite 与 PostgreSQL 的 row/envelope 迁移仍属于后续 provider stage。
+
+公开 fixture 位于
+`tests/control_plane_ts/authority_store_transactions.test.ts`，会把 native、reordered
+legacy-compatible、unknown-key、malformed-list、malformed-nested 与 non-string identity
+记录同时送入 shared decoder 以及当前两个 active provider 的 file/NoKV read path。它还
+验证 scan 结果是隔离 clone，并验证 provider metadata 不会进入 logical revision projection。
+这些是 Stage 1 parity 证据，不代表 provider promotion，也不代表后续 provider profile
+已经完成资格化。
 
 #### Stage 2C 观察基础：本地提交后 capture
 

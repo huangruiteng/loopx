@@ -15,15 +15,16 @@ import type {
 } from "./authority_store.ts";
 import {
   AuthorityStoreProtocolError,
-  canonicalAuthorityBytes,
-  canonicalAuthorityObject,
-  canonicalAuthorityObjectList,
-  hasExactAuthorityKeys,
   isAuthorityJsonObject,
+  hasExactAuthorityKeys,
+  canonicalAuthorityObjectList,
+  canonicalAuthorityObject,
+  canonicalAuthorityBytes,
   normalizeAuthorityStoreCommit,
   parseAuthorityCursor,
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
+import { cloneAuthorityTransaction, decodeAuthorityTransaction, transactionForRevision } from "./authority_store_transactions.ts";
 
 const NOKV_AUTHORITY_STORE_SCHEMA = "loopx_nokv_authority_store_v0";
 const DEFAULT_MAX_ENVELOPE_BYTES = 16 * 1024 * 1024;
@@ -98,42 +99,8 @@ type EnvelopeReadResult =
   | { status: "missing"; identity: string }
   | AuthorityStoreReadFailure;
 
-function cloneTransaction(
-  value: AuthorityStoreCommittedTransaction,
-): AuthorityStoreCommittedTransaction {
-  return structuredClone(value);
-}
-
-function transactionWithoutRevision(value: AuthorityStoreCommittedTransaction) {
-  return {
-    cursor: value.cursor,
-    operation_id: value.operation_id,
-    events: value.events,
-    projection: value.projection,
-    receipts: value.receipts,
-  };
-}
-
-function providerRevision(
-  tenantId: string,
-  goalId: string,
-  storeIdentity: string,
-  storageGeneration: number,
-  previousRevision: string | null,
-  transaction: ReturnType<typeof transactionWithoutRevision>,
-): string {
-  const digest = createHash("sha256")
-    .update(canonicalAuthorityBytes({
-      provider: "nokv",
-      tenant_id: tenantId,
-      goal_id: goalId,
-      store_identity: storeIdentity,
-      storage_generation: storageGeneration,
-      previous_provider_revision: previousRevision,
-      transaction,
-    }))
-    .digest("hex")
-    .slice(0, 24);
+function providerRevision(tenantId: string, goalId: string, storeIdentity: string, storageGeneration: number, previousRevision: string | null, transaction: ReturnType<typeof transactionForRevision>): string {
+  const digest = createHash("sha256").update(canonicalAuthorityBytes({ provider: "nokv", tenant_id: tenantId, goal_id: goalId, store_identity: storeIdentity, storage_generation: storageGeneration, previous_provider_revision: previousRevision, transaction })).digest("hex").slice(0, 24);
   return `nokv:${transaction.cursor}:${digest}`;
 }
 
@@ -162,25 +129,6 @@ function requireGeneration(value: unknown, name: string): number {
     throw new AuthorityStoreProtocolError(`${name} must be a positive safe integer`);
   }
   return value as number;
-}
-
-function decodeTransaction(value: unknown): AuthorityStoreCommittedTransaction {
-  if (!isAuthorityJsonObject(value) || !hasExactAuthorityKeys(value, [
-    "cursor", "provider_revision", "operation_id", "events", "projection", "receipts",
-  ])) {
-    throw new AuthorityStoreProtocolError("committed transaction is invalid");
-  }
-  return {
-    cursor: requireAuthorityStoreId(value.cursor, "transaction cursor"),
-    provider_revision: requireAuthorityStoreId(
-      value.provider_revision,
-      "transaction provider revision",
-    ),
-    operation_id: requireAuthorityStoreId(value.operation_id, "operation id"),
-    events: canonicalAuthorityObjectList(value.events, "transaction events"),
-    projection: canonicalAuthorityObject(value.projection, "transaction projection"),
-    receipts: canonicalAuthorityObjectList(value.receipts, "transaction receipts"),
-  };
 }
 
 function decodeDocument(
@@ -220,7 +168,7 @@ function decodeDocument(
   if (!Array.isArray(value.committed)) {
     throw new AuthorityStoreProtocolError("NoKV authority store history is invalid");
   }
-  const committed = value.committed.map(decodeTransaction);
+  const committed = value.committed.map(decodeAuthorityTransaction);
   if (
     committed.length === 0 ||
     storageGeneration !== committed.length ||
@@ -247,7 +195,7 @@ function decodeDocument(
       storeIdentity,
       generation,
       previousRevision,
-      transactionWithoutRevision(entry),
+      transactionForRevision(entry),
     );
     if (entry.provider_revision !== expectedRevision) {
       throw new AuthorityStoreProtocolError("NoKV authority store revision lineage is invalid");
@@ -660,7 +608,7 @@ export class NoKVAuthorityStore implements AuthorityStore {
     const start = Number(offset);
     const transactions = result.document.committed
       .slice(start, start + limit)
-      .map(cloneTransaction);
+      .map(cloneAuthorityTransaction);
     return {
       status: "page",
       transactions,

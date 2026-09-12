@@ -1362,8 +1362,30 @@ relevant contract, exact implementation boundary, and validation evidence.
 | Stage 2B PostgreSQL candidate | PostgreSQL store/RLS conformance, without runtime promotion |
 | Stage 2C runtime shadow | Parity, read-candidate, bootstrap, rollback, cutover kernel, and writer fence |
 | Stage 2 slice | Reference aggregate/provider implementation and initial NoKV evidence |
+| Stage 1 semantic transaction core (#4280) | Shared strict transaction decode, clone isolation, revision projection, and file/NoKV parity fixture |
 | Stage 3 slice | Recoverable lifecycle, retention findings, and live provider limits |
 | Stage-ladder evidence | Executable stage claims, environment gates, and pending rows |
+
+#### Stage 1 semantic transaction core (#4280)
+
+The file and NoKV adapters now consume one executable semantic core at
+`loopx/control_plane/coordination/authority_store_transactions.ts`. It owns the
+exact committed-transaction key set, strict JSON/object-list validation,
+canonicalization, explicit structured cloning, and the logical
+`transactionForRevision` projection. Provider envelopes, storage generations,
+failure mapping, and provider-specific revision salts remain in their owning
+adapters. This removes duplicated semantic knowledge without creating another
+authority writer or changing the default authority source. SQLite and
+PostgreSQL row/envelope migration remain later provider stages.
+
+The public fixture in
+`tests/control_plane_ts/authority_store_transactions.test.ts` runs native,
+reordered legacy-compatible, unknown-key, malformed-list, malformed-nested,
+and non-string-identity records through the shared decoder and both active file
+and NoKV read paths. It also proves that scan results are isolated clones and
+that provider metadata is absent from the logical revision projection. This is
+Stage 1 parity evidence, not provider promotion or a claim that all later
+provider profiles are qualified.
 
 #### Stage 2C observation foundation: local post-commit capture
 
