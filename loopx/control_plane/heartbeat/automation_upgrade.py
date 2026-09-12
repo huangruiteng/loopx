@@ -17,7 +17,12 @@ import tempfile
 import tomllib
 from typing import Any
 
-from .bootstrap_prompt import BOOTSTRAP_INSTRUCTION, host_bootstrap_binding, render_bootstrap
+from .bootstrap_prompt import (
+    HEARTBEAT_BOOTSTRAP,
+    BOOTSTRAP_INSTRUCTION,
+    host_bootstrap_binding,
+    render_heartbeat_bootstrap,
+)
 
 from loopx.upgrade import (
     codex_home, infer_agent_id_from_prompt, infer_goal_id_from_prompt,
@@ -25,7 +30,7 @@ from loopx.upgrade import (
 )
 
 SCHEMA = "loopx_automation_prompt_upgrade_v0"
-BOOTSTRAP = "LoopX managed heartbeat bootstrap v2"
+BOOTSTRAP = HEARTBEAT_BOOTSTRAP
 _LEGACY_BOOTSTRAP = "LoopX managed heartbeat bootstrap v1"
 _LEGACY_INSTRUCTION = (
     "读取完整结果；仅 ok=true 时按本次 task_body 执行，不复用旧指令；"
@@ -51,7 +56,7 @@ def bootstrap_prompt(*, registry: Path, goal_id: str, agent_id: str,
         args += ["--cli-bin", cli_bin]
     for capability in capabilities or []:
         args += ["--available-capability", capability]
-    return render_bootstrap(args, title=BOOTSTRAP, entry="每次唤醒先执行：")
+    return render_heartbeat_bootstrap(args)
 
 
 def _atomic(path: Path, text: str) -> None:
