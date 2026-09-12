@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
 from pathlib import Path
+import re
 from typing import Any
 
 from ...file_lock import exclusive_file_lock
@@ -25,6 +27,7 @@ GOAL_ACTIVATION_READBACK_SCHEMA_VERSION = "loopx_goal_activation_readback_v1"
 GOAL_ACTIVATION_AUTHORITY_ROUTE_SCHEMA_VERSION = (
     "loopx_goal_activation_authority_route_v1"
 )
+_SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
 class GoalActivationAuthorityRouteMode(str, Enum):
@@ -207,6 +210,7 @@ def set_goal_activation_state(
     state: GoalActivationState | str,
     reason: str | None = None,
     runtime_root_override: str | None = None,
+    expected_state_fingerprint: str | None = None,
     execute: bool = False,
 ) -> dict[str, Any]:
     """Preview or apply one reversible Goal activation transition."""
@@ -225,6 +229,12 @@ def set_goal_activation_state(
     target_registry = authority_route.target_registry
     sync_runtime_root = authority_route.sync_runtime_root
     source_goal = _goal(load_registry(source_registry), normalized_goal_id)
+    normalized_fingerprint = str(expected_state_fingerprint or "").strip() or None
+    if normalized_fingerprint is not None and not _SHA256.fullmatch(
+        normalized_fingerprint
+    ):
+        raise ValueError("expected state fingerprint must be a SHA-256 digest")
+    observed_fingerprint = hashlib.sha256(source_registry.read_bytes()).hexdigest()
     before_state = goal_activation_state(source_goal)
     changed = before_state is not target_state
     default_reason = (
@@ -252,6 +262,8 @@ def set_goal_activation_state(
         "source_registry": str(source_registry),
         "target_global_registry": str(target_registry),
         "authority_route": authority_route.public_summary(),
+        "expected_state_fingerprint": normalized_fingerprint,
+        "observed_state_fingerprint": observed_fingerprint,
         "activation": proposed_activation,
         "readback": {
             "schema_version": GOAL_ACTIVATION_READBACK_SCHEMA_VERSION,
@@ -259,6 +271,18 @@ def set_goal_activation_state(
             "verified": not changed,
         },
     }
+    if (
+        normalized_fingerprint is not None
+        and observed_fingerprint != normalized_fingerprint
+    ):
+        payload.update(
+            {
+                "ok": False,
+                "error_kind": "goal_action_stale",
+                "error": "Goal state changed after action projection; refresh actions and retry",
+            }
+        )
+        return payload
     if not execute:
         return payload
 
@@ -294,6 +318,22 @@ def set_goal_activation_state(
             operation="set_goal_activation_state",
         ):
             source_payload = load_registry(source_registry)
+            locked_fingerprint = hashlib.sha256(source_registry.read_bytes()).hexdigest()
+            if (
+                normalized_fingerprint is not None
+                and locked_fingerprint != normalized_fingerprint
+            ):
+                payload.update(
+                    {
+                        "ok": False,
+                        "error_kind": "goal_action_stale",
+                        "error": (
+                            "Goal state changed after action projection; refresh actions and retry"
+                        ),
+                        "observed_state_fingerprint": locked_fingerprint,
+                    }
+                )
+                return payload
             locked_goal = _goal(source_payload, normalized_goal_id)
             locked_state = goal_activation_state(locked_goal)
             if locked_state is not before_state:
