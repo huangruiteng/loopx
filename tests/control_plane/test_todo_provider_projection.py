@@ -189,3 +189,16 @@ def test_projection_delivery_status_contract_is_strict():
     assert provider_projection.projection_delivery_requires_ack("pending") is False
     with pytest.raises(ValueError, match="unsupported projection_delivery"):
         provider_projection.parse_projection_delivery("completed")
+
+
+def test_projection_delivery_composition_fixture_matches_provider_semantics():
+    fixture_path = Path(__file__).parents[1] / "fixtures" / "control_plane" / "projection_delivery_composition_v0.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    for case in fixture["cases"]:
+        status = (
+            provider_projection.parse_projection_delivery(case["readback"]).value
+            if "readback" in case
+            else provider_projection.projection_delivery_for_mutation(case.get("changed", False)).value
+        )
+        assert status == case["expected"], case["name"]
+        assert provider_projection.projection_delivery_requires_ack(status) is case["requires_ack"], case["name"]

@@ -54,6 +54,7 @@
     "loopx/control_plane/scheduler/heartbeat_followup_cli.ts",
     "loopx/control_plane/scheduler/state_transition_rules.ts",
     "loopx/control_plane/todos/completion_fence.ts",
+    "loopx/control_plane/todos/projection_delivery.ts",
     "loopx/control_plane/todos/completion_state.ts",
     "loopx/control_plane/todos/completion_validation_plan.ts",
     "loopx/control_plane/todos/next_action.ts",

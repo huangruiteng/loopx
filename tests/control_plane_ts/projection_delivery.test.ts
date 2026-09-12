@@ -23,5 +23,6 @@ test("composition fixture keeps mutation and provider states distinct", async ()
   for (const item of fixture.cases) {
     const actual = item.changed === undefined ? parseProjectionDelivery(item.readback) : projectionDelivery(item.changed);
     assert.equal(actual, item.expected, item.name);
+    assert.equal(item.requires_ack, actual === "delivered" || actual === "current", item.name);
   }
 });
