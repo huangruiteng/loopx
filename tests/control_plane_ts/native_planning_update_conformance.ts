@@ -175,4 +175,77 @@ export function registerNativePlanningUpdateConformance(provider: string, factor
       assert.equal((await store.readReceipt(operation_id)).status, "missing");
     }
   });
+
+  for (const native of [false, true]) test(`${provider}: update intent matrix preserves compatibility clears and user scope`, async t => {
+    const {store} = await factory(t);
+    const fixture = productionScaleCoordinationFixture("update-matrix");
+    // Authority projections require deterministic todo_id ordering. Keep the
+    // fixture declaration readable while making its synthesized head valid.
+    const cases = Object.values(fixture.update_cases)
+      .sort((left, right) => String(left.todo_id).localeCompare(String(right.todo_id)));
+    const todos = cases.map((item, index) => ({
+      schema_version: native ? TODO_DOMAIN_ITEM_SCHEMA : TODO_ITEM_SCHEMA,
+      todo_id: item.todo_id,
+      role: item.role,
+      status: item.status,
+      done: false,
+      text: "Synthetic update matrix Todo",
+      archive_state: "active",
+      ...(native ? {} : {source_section: item.role === "user" ? "User Todo" : "Agent Todo", index: index + 1}),
+      ...(item.task_class ? {task_class: item.task_class} : {}),
+      ...(item.claimed_by ? {claimed_by: item.claimed_by} : {}),
+      ...(item.reason ? {reason: item.reason} : {}),
+      ...(item.goal_bound ? {goal_bound: true} : {}),
+      ...(item.global_gate ? {global_gate: true} : {}),
+    } as JsonObject));
+    const projection = {
+      goal_id: "update-matrix", handoff_mode: "soft_claim", todos, leases: [],
+      todo_read_model: {
+        schema_version: native ? TODO_DOMAIN_READ_RECORD_SCHEMA : TODO_CANONICAL_READ_RECORD_SCHEMA,
+        todo_count: todos.length, records_sha256: canonicalAuthoritySha256(todos),
+        contract_fields: native ? [...TODO_DOMAIN_RECORD_CONTRACT.fields] : [...TODO_CANONICAL_READ_RECORD_FIELDS],
+      },
+    };
+    assert.equal((await store.commitAuthority({operation_id: "update-matrix-seed",
+      expected_provider_revision: null, next_projection: projection, events: [], receipts: []})).status, "applied");
+    const run = async (name: string, item: Record<string, unknown>) => {
+      const expected = item.expected as Record<string, unknown>;
+      const todoId = String(item.todo_id);
+      const expectedRole = item.role == null ? null : String(item.role);
+      const actor = item.actor_agent_id == null ? null : String(item.actor_agent_id);
+      const registered = Array.isArray(item.registered_agents)
+        ? item.registered_agents.map(value => String(value)) : [];
+      const result = await executeCoordinationTodoUpdate(store, {
+        goal_id: "update-matrix", todo_id: todoId, expected_role: expectedRole,
+        actor_agent_id: actor, registered_agents: registered, operation_id: `update-${name}`,
+        patch: {}, clear_fields: [], planning_intent: item.intent as JsonObject, dry_run: false,
+        now: new Date("2026-09-10T00:00:00Z"),
+      });
+      assert.equal(result.status, expected.status, JSON.stringify(result));
+      if (expected.reason_value !== undefined) {
+        const current = await head(store);
+        const row = (current.head.todos as JsonObject[]).find(todo => todo.todo_id === todoId)!;
+        assert.equal(row.reason, expected.reason_value);
+      }
+      if (expected.blocks_agent !== undefined || expected.global_gate === null) {
+        const current = await head(store);
+        const row = (current.head.todos as JsonObject[]).find(todo => todo.todo_id === todoId)!;
+        assert.equal(row.blocks_agent, expected.blocks_agent);
+        assert.equal(Object.hasOwn(row, "global_gate"), false);
+        // Agent-scoped gate repairs remove the old goal-wide marker rather
+        // than persisting a second false-valued gate state.
+        assert.notEqual(row.goal_bound, true);
+      }
+    };
+    for (const [name, item] of Object.entries(fixture.update_cases)) await run(name, item);
+    const before = await head(store);
+    const rejected = await executeCoordinationTodoUpdate(store, {
+      goal_id: "update-matrix", todo_id: String(cases[0]!.todo_id), expected_role: "agent",
+      actor_agent_id: "agent-a", registered_agents: ["agent-a"], operation_id: "update-owned-null",
+      patch: {}, clear_fields: [], planning_intent: {}, dry_run: false,
+      now: new Date("2026-09-10T00:01:00Z"),
+    });
+    assert.equal(rejected.status, "failed");
+    assert.deepEqual(await head(store), before);
+  });
 }

@@ -59,5 +59,41 @@
       "expires_at": "2024-01-01T00:00:00Z",
       "lease_epoch": 7
     }
+  },
+  "update_cases": {
+    "single_agent_unowned_copy": {
+      "todo_id": "todo_fixture_update_single_agent",
+      "role": "agent",
+      "status": "open",
+      "task_class": "advancement_task",
+      "claimed_by": null,
+      "actor_agent_id": null,
+      "registered_agents": ["agent-a"],
+      "intent": {"reason": "actorless single-agent correction"},
+      "expected": {"status": "applied", "reason": null, "reason_value": "actorless single-agent correction"}
+    },
+    "user_gate_scope_repair": {
+      "todo_id": "todo_fixture_update_user_gate",
+      "role": "user",
+      "status": "open",
+      "task_class": "user_gate",
+      "goal_bound": true,
+      "global_gate": true,
+      "actor_agent_id": "agent-a",
+      "registered_agents": ["agent-a", "agent-b"],
+      "intent": {"global_gate": false, "blocks_agent": "agent-a"},
+      "expected": {"status": "applied", "reason": null, "blocks_agent": "agent-a", "global_gate": null}
+    },
+    "explicit_scalar_clear": {
+      "todo_id": "todo_fixture_update_clear",
+      "role": "agent",
+      "status": "open",
+      "task_class": "advancement_task",
+      "reason": "stale reason",
+      "actor_agent_id": "agent-a",
+      "registered_agents": ["agent-a", "agent-b"],
+      "intent": {"reason": ""},
+      "expected": {"status": "applied", "reason": null}
+    }
   }
 }
