@@ -417,7 +417,7 @@ write_skill_install_readback(
     source_root=Path(os.environ["LOOPX_SKILL_INSTALL_SOURCE_ROOT"]),
     installed_at=os.environ["LOOPX_SKILL_INSTALLED_AT"],
 )
-if os.environ.get("LOOPX_SKILL_DEDUPE_OTHER_ROOT") == "1":
+if os.environ.get("LOOPX_SKILL_DEDUPE_OTHER_ROOT") != "0":
     dedupe = retire_duplicate_managed_skills(
         skills_dir=Path(os.environ["LOOPX_SKILL_INSTALL_DIR"]),
         execute=True,

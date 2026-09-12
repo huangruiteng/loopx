@@ -289,6 +289,9 @@ class TestInstallDedupe:
             write_skill_install_readback(
                 skills_dir=alt, skill_ids=[sid], source_root=REPO_ROOT)
 
+            write_skill_install_readback(
+                skills_dir=target, skill_ids=[sid], source_root=REPO_ROOT)
+
             # Dry-run
             dr = retire_duplicate_managed_skills(target, alternate_root=alt,
                                                   execute=False)
