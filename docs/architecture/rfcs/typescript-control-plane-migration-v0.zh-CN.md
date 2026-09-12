@@ -394,6 +394,15 @@ planning 事务更新 `action_kind`、`task_domain`、`task_repository`、
 不退役它们，也不宣称完整 T1。下一步结合 lifecycle admission 与 validation effect
 闭合 ownership／decision metadata，再推进 T2 剩余带 lease Monitor 事务。
 
+声明式决策元数据现已进入同一个 v1 planning 事务：`decision_scope` 只能写入
+`user_gate`，`required_decision_scopes` 只能写入 Agent Todo；两者统一归一化为公开的
+`decision_scope_v0` 形状，按首次出现顺序去重，格式错误或角色不匹配时整笔原子拒绝。
+显式空的 `required_decision_scopes` 会清除旧依赖。`decision_outcome` 与
+`decision_scope_outcomes` 仍属于 effect-owned terminal state，native planning 边界会
+拒绝它们。公开 planner 也保留 scope 字段的省略语义，不再把省略物化成 null，因而无关
+metadata 修正不会擦掉保留的 user-gate scope。这闭合的是 T1 的声明式 metadata 部分，
+不授予批准、lease、完成或 promotion 权限。
+
 - 复用现有 provider text/note 事务、lifecycle 准入、field-plan 和 completion
   规则。先枚举公开 metadata 编辑与显式 clear，不把 `UPDATE_FIELDS` 扩成所有存储
   字段，也不让 generic patch 获得 terminal transition 权限。

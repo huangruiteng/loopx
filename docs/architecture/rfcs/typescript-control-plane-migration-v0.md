@@ -507,6 +507,18 @@ writer still have real callers; this slice does not retire them or complete T1.
 Next close ownership/decision metadata with their lifecycle admission and
 validation effects, then the remaining leased Monitor transaction in T2.
 
+Declarative decision metadata is now part of the same v1 planning transaction.
+`decision_scope` is accepted only on `user_gate` records and
+`required_decision_scopes` only on Agent Todos; both are normalized to the
+public `decision_scope_v0` shape, deduplicated in first-seen order, and rejected
+atomically when malformed or attached to the wrong role. Explicit empty
+`required_decision_scopes` clears a stale dependency. `decision_outcome` and
+`decision_scope_outcomes` remain effect-owned terminal state and are rejected by
+the native planning boundary. The public planner also preserves omitted scope
+fields instead of materializing nulls, so an unrelated metadata correction no
+longer erases a retained user-gate scope. This closes the declarative metadata
+part of T1 without granting approval, lease, completion, or promotion authority.
+
 - Reuse the current provider text/note transaction, lifecycle admission,
   field-plan and completion rules. Enumerate actual public metadata edits and
   explicit-clear behavior before implementation; this is not permission to
