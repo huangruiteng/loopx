@@ -83,7 +83,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  checks:
+  kernel-static-checks:
     needs: changes
     if: needs.changes.outputs.core_tests == 'true'
     runs-on: ubuntu-latest
@@ -127,31 +127,12 @@ jobs:
           npm ci --ignore-scripts
           npm run typecheck:control-plane
           npm run test:control-plane:coverage
-          npm run test:dashboard:coverage
-
-      - name: Measure dashboard browser interactions
-        env:
-          LOOPX_DASHBOARD_COVERAGE: "1"
-          LOOPX_PLAYWRIGHT_PACKAGE: ${{ github.workspace }}/apps/presentation/dashboard/node_modules/playwright
-        run: |
-          npm ci --ignore-scripts --prefix apps/presentation/dashboard
-          cd apps/presentation/dashboard
-          npx playwright install --with-deps chromium --only-shell
-          node ../../../examples/personal-workspace-browser-smoke.mjs
 
       - name: Upload TypeScript control-plane coverage
         uses: actions/upload-artifact@v7
         with:
           name: typescript-control-plane-coverage
           path: coverage/control-plane/lcov.info
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Upload dashboard coverage
-        uses: actions/upload-artifact@v7
-        with:
-          name: dashboard-coverage
-          path: coverage/dashboard/*.info
           if-no-files-found: error
           retention-days: 3
 
@@ -171,6 +152,62 @@ jobs:
         env:
           LOOPX_CLI_OUTPUT_BASE_REF: origin/${{ github.event.pull_request.base.ref || 'main' }}
         run: python examples/control_plane/cli-output-budget-regression-smoke.py
+
+  dashboard-acceptance:
+    needs: changes
+    if: needs.changes.outputs.core_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up the qualified Node.js runtime
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.14"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/presentation/dashboard/package-lock.json
+
+      - name: Install Dashboard and coverage dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm ci --ignore-scripts --prefix apps/presentation/dashboard
+
+      - name: Measure Dashboard unit and browser interactions
+        env:
+          LOOPX_DASHBOARD_COVERAGE: "1"
+          LOOPX_PLAYWRIGHT_PACKAGE: ${{ github.workspace }}/apps/presentation/dashboard/node_modules/playwright
+        run: |
+          npm run test:dashboard:coverage
+          cd apps/presentation/dashboard
+          npx playwright install --with-deps chromium --only-shell
+          node ../../../examples/personal-workspace-browser-smoke.mjs
+
+      - name: Upload Dashboard coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: dashboard-coverage
+          path: coverage/dashboard/*.info
+          if-no-files-found: error
+          retention-days: 3
+
+  checks:
+    # Preserve the required check name while exposing independent failure lanes.
+    if: always() && needs.changes.outputs.core_tests == 'true'
+    needs: [changes, kernel-static-checks, dashboard-acceptance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require kernel and Dashboard qualification
+        env:
+          DASHBOARD_RESULT: ${{ needs.dashboard-acceptance.result }}
+          KERNEL_RESULT: ${{ needs.kernel-static-checks.result }}
+        run: |
+          test "$KERNEL_RESULT" = success
+          test "$DASHBOARD_RESULT" = success
 
   node-minimum-compatibility:
     needs: changes
