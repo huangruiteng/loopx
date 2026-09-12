@@ -26,12 +26,46 @@ MINIMUM_NODE_VERSION = (22, 6, 0)
 MINIMUM_NODE_VERSION_TEXT = ".".join(str(part) for part in MINIMUM_NODE_VERSION)
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
+DEFAULT_EFFECT_RUNTIME_IDLE_MS = 5 * 60 * 1_000
+MAX_EFFECT_RUNTIME_IDLE_MS = 2_147_483_647
 STARTUP_LOCK_TIMEOUT_SECONDS = 15.0
 STARTUP_READY_TIMEOUT_SECONDS = 15.0
 STARTUP_POLL_SECONDS = 0.025
 _NODE_VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$")
 _RUNTIME_SOURCE_SUFFIXES = frozenset({".json", ".ts"})
 _RuntimeSourceSnapshot = tuple[tuple[str, int, int, int], ...]
+
+
+def _validate_effect_runtime_idle_ms(environment: Mapping[str, str]) -> int:
+    raw = environment.get("LOOPX_EFFECT_RUNTIME_IDLE_MS")
+    if raw is None:
+        return DEFAULT_EFFECT_RUNTIME_IDLE_MS
+    normalized = raw.strip()
+    if not re.fullmatch(r"[0-9]+", normalized):
+        raise EffectRuntimeStartupError(
+            "LOOPX_EFFECT_RUNTIME_IDLE_MS must be a positive base-10 integer",
+            diagnostic_code="invalid_runtime_idle_ms",
+        )
+    parsed = int(normalized)
+    if not 1 <= parsed <= MAX_EFFECT_RUNTIME_IDLE_MS:
+        raise EffectRuntimeStartupError(
+            "LOOPX_EFFECT_RUNTIME_IDLE_MS must be between "
+            f"1 and {MAX_EFFECT_RUNTIME_IDLE_MS}",
+            diagnostic_code="invalid_runtime_idle_ms",
+        )
+    return parsed
+
+
+def _require_matching_runtime_idle_ms(
+    info: Mapping[str, Any],
+    *,
+    requested_idle_ms: int,
+) -> None:
+    if info.get("idle_ms") != requested_idle_ms:
+        raise EffectRuntimeStartupError(
+            "LOOPX_EFFECT_RUNTIME_IDLE_MS conflicts with the running managed runtime",
+            diagnostic_code="runtime_idle_ms_conflict",
+        )
 
 
 class EffectRuntimeRemoteError(RuntimeError):
@@ -305,6 +339,9 @@ def _read_info(path: Path, *, fingerprint: str) -> dict[str, Any] | None:
         or payload.get("host") != "127.0.0.1"
         or not isinstance(payload.get("port"), int)
         or not isinstance(payload.get("token"), str)
+        or isinstance(payload.get("idle_ms"), bool)
+        or not isinstance(payload.get("idle_ms"), int)
+        or not 1 <= payload["idle_ms"] <= MAX_EFFECT_RUNTIME_IDLE_MS
         or not _pid_is_alive(payload.get("pid"))
     ):
         return None
@@ -407,7 +444,14 @@ def _remote_runtime_error(value: object) -> EffectRuntimeRemoteError:
     )
 
 
-def _start_runtime(*, fingerprint: str, info_path: Path) -> dict[str, Any]:
+def _start_runtime(
+    *,
+    fingerprint: str,
+    info_path: Path,
+    requested_idle_ms: int | None = None,
+) -> dict[str, Any]:
+    if requested_idle_ms is None:
+        requested_idle_ms = _validate_effect_runtime_idle_ms(os.environ)
     runtime_dir = info_path.parent
     runtime_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -429,6 +473,10 @@ def _start_runtime(*, fingerprint: str, info_path: Path) -> dict[str, Any]:
         except FileExistsError:
             existing = _read_info(info_path, fingerprint=fingerprint)
             if existing is not None:
+                _require_matching_runtime_idle_ms(
+                    existing,
+                    requested_idle_ms=requested_idle_ms,
+                )
                 return existing
             holder_pid = _start_lock_holder_pid(lock)
             if holder_pid is not None and not _pid_is_alive(holder_pid):
@@ -446,6 +494,10 @@ def _start_runtime(*, fingerprint: str, info_path: Path) -> dict[str, Any]:
     if not acquired:
         existing = _read_info(info_path, fingerprint=fingerprint)
         if existing is not None:
+            _require_matching_runtime_idle_ms(
+                existing,
+                requested_idle_ms=requested_idle_ms,
+            )
             return existing
         raise EffectRuntimeStartupError(
             "TypeScript Effect runtime startup lock timed out",
@@ -454,6 +506,10 @@ def _start_runtime(*, fingerprint: str, info_path: Path) -> dict[str, Any]:
     try:
         existing = _read_info(info_path, fingerprint=fingerprint)
         if existing is not None:
+            _require_matching_runtime_idle_ms(
+                existing,
+                requested_idle_ms=requested_idle_ms,
+            )
             return existing
         token = secrets.token_urlsafe(32)
         environment = os.environ.copy()
@@ -486,6 +542,10 @@ def _start_runtime(*, fingerprint: str, info_path: Path) -> dict[str, Any]:
         while time.monotonic() < ready_deadline:
             info = _read_info(info_path, fingerprint=fingerprint)
             if info is not None:
+                _require_matching_runtime_idle_ms(
+                    info,
+                    requested_idle_ms=requested_idle_ms,
+                )
                 return info
             exit_code = process.poll()
             if exit_code is not None:
@@ -514,6 +574,7 @@ def effect_runtime_request(
 ) -> dict[str, Any]:
     """Call the managed TS runtime, retrying only idempotent typed effects."""
 
+    requested_idle_ms = _validate_effect_runtime_idle_ms(os.environ)
     fingerprint = _runtime_fingerprint()
     info_path = _runtime_info_path(fingerprint)
     request_id = str(uuid.uuid4())
@@ -522,7 +583,16 @@ def effect_runtime_request(
         try:
             info = _read_info(info_path, fingerprint=fingerprint)
             if info is None:
-                info = _start_runtime(fingerprint=fingerprint, info_path=info_path)
+                info = _start_runtime(
+                    fingerprint=fingerprint,
+                    info_path=info_path,
+                    requested_idle_ms=requested_idle_ms,
+                )
+            else:
+                _require_matching_runtime_idle_ms(
+                    info,
+                    requested_idle_ms=requested_idle_ms,
+                )
             return _request_with_info(
                 info,
                 request_id=request_id,
@@ -534,6 +604,8 @@ def effect_runtime_request(
             raise
         except EffectRuntimeStartupError as exc:
             last_error = exc
+            if exc.diagnostic_code == "runtime_idle_ms_conflict":
+                raise
             if attempt == 0 and retry_safe:
                 info_path.unlink(missing_ok=True)
                 continue
@@ -574,14 +646,20 @@ def collect_effect_runtime_readiness(*, deep: bool = False) -> dict[str, object]
     runtime_diagnostic_code: str | None = None
     if ready:
         try:
+            requested_idle_ms = _validate_effect_runtime_idle_ms(os.environ)
             fingerprint = _runtime_fingerprint()
+            info = _read_info(
+                _runtime_info_path(fingerprint),
+                fingerprint=fingerprint,
+            )
+            if info is not None:
+                _require_matching_runtime_idle_ms(
+                    info,
+                    requested_idle_ms=requested_idle_ms,
+                )
             runtime_state = (
                 "running"
-                if _read_info(
-                    _runtime_info_path(fingerprint),
-                    fingerprint=fingerprint,
-                )
-                is not None
+                if info is not None
                 else "stopped"
             )
         except (OSError, EffectRuntimeStartupError) as exc:

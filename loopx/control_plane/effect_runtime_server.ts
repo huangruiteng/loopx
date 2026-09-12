@@ -10,6 +10,7 @@ import {
   EffectRuntimeRequestError,
   effectRuntimeErrorPayload,
 } from "./effect_runtime_errors.ts";
+import { effectRuntimeIdleMs } from "./effect_runtime_config.ts";
 import { atomicWriteJson } from "./effect_runtime_io.ts";
 import {
   requireJsonObject as requiredObject,
@@ -20,7 +21,6 @@ const REQUEST_SCHEMA = "loopx_effect_runtime_request_v0";
 const RESPONSE_SCHEMA = "loopx_effect_runtime_response_v1";
 const INFO_SCHEMA = "loopx_effect_runtime_info_v0";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
-const DEFAULT_IDLE_MS = 5 * 60 * 1_000;
 let shutdownRequested = false;
 
 function asObject(value: unknown): JsonObject {
@@ -40,7 +40,7 @@ function parseArg(name: string): string {
 const infoPath = parseArg("--info");
 const fingerprint = parseArg("--fingerprint");
 const token = requiredString(process.env.LOOPX_EFFECT_RUNTIME_TOKEN, "runtime token");
-const idleMs = Number(process.env.LOOPX_EFFECT_RUNTIME_IDLE_MS ?? DEFAULT_IDLE_MS);
+const idleMs = effectRuntimeIdleMs(process.env.LOOPX_EFFECT_RUNTIME_IDLE_MS);
 let idleTimer: NodeJS.Timeout;
 const handlers = createEffectRuntimeHandlers({
   fingerprint,
@@ -144,6 +144,7 @@ server.listen(0, "127.0.0.1", async () => {
     host: "127.0.0.1",
     port: address.port,
     token,
+    idle_ms: idleMs,
   });
   await chmod(infoPath, 0o600);
   resetIdleTimer(server);
