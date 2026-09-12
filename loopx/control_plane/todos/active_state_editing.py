@@ -7,21 +7,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ..goals.active_state_metadata import todo_role_for_heading
 from .contract import (
     TODO_STATUS_DONE,
     TODO_STATUS_OPEN,
-    TODO_TASK_PATTERN,
     build_todo_id,
     normalize_todo_status,
     parse_todo_metadata_line,
     todo_done_for_status,
     todo_marker_for_status,
-    todo_status_from_marker,
 )
 from .text import normalize_new_todo
 from .todo_summary import normalize_todo_text
-from .machine_region import TODO_REGION_PREFIX, find_todo_regions
+from .machine_region import find_todo_source_regions, visible_markdown_lines
+from .todo_block_codec import decode_todo_blocks
 
 
 TODO_SECTION_HEADINGS = {
@@ -31,11 +29,11 @@ TODO_SECTION_HEADINGS = {
 COMPLETED_WORK_ARCHIVE_HEADING = "Completed Work Archive"
 
 
-def atomic_write_state_text(path: Path, text: str) -> None:
+def atomic_write_state_text(path: Path, text: str, *, create_only: bool = False) -> None:
     """Persist complete UTF-8 state while the caller holds its sibling lock."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+    mode = stat.S_IMODE(path.stat().st_mode) if not create_only and path.exists() else 0o600
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
     )
@@ -46,34 +44,40 @@ def atomic_write_state_text(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
-        if os.name == "posix":
-            parent = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(parent)
-            finally:
-                os.close(parent)
+        if create_only:
+            os.link(temporary_path, path)
+        else:
+            os.replace(temporary_path, path)
+        fsync_state_directory(path)
     finally:
         temporary_path.unlink(missing_ok=True)
 
 
+def fsync_state_directory(path: Path) -> None:
+    if os.name == "posix":
+        parent = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+
+
+def verify_state_text_durable(path: Path, text: str) -> None:
+    """Re-establish durability after a previous publish may have failed at fsync.
+
+    Equality of visible bytes alone does not prove the directory entry persisted.
+    The caller holds the same document lock as the state writer.
+    """
+    with path.open("r+" if os.name == "nt" else "r", encoding="utf-8", newline="") as handle:
+        if handle.read() != text:
+            raise RuntimeError("Todo Markdown projection readback mismatch")
+        os.fsync(handle.fileno())
+    fsync_state_directory(path)
+
+
 def section_bounds(lines: list[str], role: str) -> tuple[int, int, str] | None:
-    if any(TODO_REGION_PREFIX in line for line in lines):
-        region = next((r for r in find_todo_regions(lines) if r.role == role), None)
-        return (region.start, region.body_end, region.heading) if region else None
-    for index, line in enumerate(lines):
-        if not line.startswith("## "):
-            continue
-        heading = line.lstrip("#").strip()
-        if todo_role_for_heading(heading) != role:
-            continue
-        end = len(lines)
-        for next_index in range(index + 1, len(lines)):
-            if lines[next_index].startswith("## "):
-                end = next_index
-                break
-        return index, end, heading
-    return None
+    region = next((region for region in find_todo_source_regions(lines) if region.role == role), None)
+    return (region.start, region.body_end, region.heading) if region else None
 
 
 def find_todo_block(
@@ -163,8 +167,8 @@ def set_todo_text(
 
 def heading_index(lines: list[str], heading: str) -> int | None:
     needle = f"## {heading}"
-    for index, line in enumerate(lines):
-        if line.strip() == needle:
+    for index in sorted(visible_markdown_lines(lines)):
+        if lines[index].strip() == needle:
             return index
     return None
 
@@ -202,15 +206,8 @@ def insert_new_section(lines: list[str], role: str, todo_line: str) -> None:
 
 
 def archive_section_bounds(lines: list[str]) -> tuple[int, int] | None:
-    start = heading_index(lines, COMPLETED_WORK_ARCHIVE_HEADING)
-    if start is None:
-        return None
-    end = len(lines)
-    for next_index in range(start + 1, len(lines)):
-        if lines[next_index].startswith("## "):
-            end = next_index
-            break
-    return start, end
+    region = next((region for region in find_todo_source_regions(lines) if region.role == "archive"), None)
+    return (region.start, region.body_end) if region else None
 
 
 def ensure_archive_section(lines: list[str]) -> tuple[int, int]:
@@ -254,42 +251,9 @@ def todo_blocks(
     role: str | None = None,
     source_section: str | None = None,
 ) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
-    todo_index = 0
-    for index in range(start + 1, end):
-        match = TODO_TASK_PATTERN.match(lines[index])
-        if match:
-            if current is not None:
-                current["end"] = index
-                ensure_block_identity(current, role=role, source_section=source_section)
-                blocks.append(current)
-            marker, text = match.groups()
-            todo_index += 1
-            status = todo_status_from_marker(marker)
-            current = {
-                "start": index,
-                "end": end,
-                "index": todo_index,
-                "done": todo_done_for_status(status),
-                "status": status,
-                "text": normalize_todo_text(text),
-            }
-            continue
-        if current is not None and lines[index].startswith((" ", "\t")):
-            metadata = parse_todo_metadata_line(lines[index])
-            if metadata:
-                current.update(metadata)
-                continue
-            continuation = lines[index].strip()
-            if continuation:
-                current["text"] = normalize_todo_text(
-                    f"{current.get('text', '')} {continuation}"
-                )
-    if current is not None:
-        current["end"] = end
-        ensure_block_identity(current, role=role, source_section=source_section)
-        blocks.append(current)
+    blocks = decode_todo_blocks(lines, start, end, visible=visible_markdown_lines(lines))
+    for block in blocks:
+        ensure_block_identity(block, role=role, source_section=source_section)
     return blocks
 
 

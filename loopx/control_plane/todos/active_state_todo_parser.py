@@ -5,24 +5,17 @@ from typing import Any
 
 from ...materials import extract_review_materials
 from ...orchestration import compact_orchestration_policy
-from ..goals.active_state_metadata import (
-    TODO_ARCHIVE_HEADER_MARKERS,
-    todo_role_for_heading,
-)
 from .contract import (
-    TODO_TASK_PATTERN,
     normalize_todo_id,
-    parse_todo_metadata_line,
-    todo_done_for_status,
-    todo_status_from_marker,
+    TODO_TASK_PATTERN,
 )
 from .standing_decision import build_standing_decision_authority
-from .machine_region import TODO_REGION_PREFIX, find_todo_regions
+from .machine_region import find_todo_source_regions, visible_markdown_lines
+from .todo_block_codec import decode_todo_blocks
 from .todo_summary import (
     MAX_STATUS_TODOS_PER_ROLE,
     compact_todo_group,
     count_advancement_todos,
-    normalize_todo_text,
 )
 
 
@@ -33,75 +26,29 @@ def parse_todo_source(
     state_path: Path | None = None,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]], dict[str, str | None]]:
     """Decode active and archived source rows without inventing archive roles."""
-    role: str | None = None
     source_sections: dict[str, str | None] = {"user": None, "agent": None}
     items: dict[str, list[dict[str, Any]]] = {"user": [], "agent": []}
     archive_items: list[dict[str, Any]] = []
-    archive_mode = False
-    archive_source_section: str | None = None
-    current_todo: dict[str, Any] | None = None
-
     lines = state_text.splitlines()
-    regions = find_todo_regions(lines) if TODO_REGION_PREFIX in state_text else None
-    region_starts = {r.start for r in regions} if regions is not None else None
-    region_ends = {r.body_end for r in regions} if regions is not None else set()
-    for index, line in enumerate(lines):
-        if index in region_ends:
-            role = None
-            current_todo = None
-        if line.startswith("## "):
-            heading = line.lstrip("#").strip()
-            normalized_heading = heading.strip().lower()
-            archive_mode = any(
-                marker in normalized_heading for marker in TODO_ARCHIVE_HEADER_MARKERS
-            )
-            archive_source_section = heading if archive_mode else None
-            role = todo_role_for_heading(heading)
-            if role and region_starts is not None and index not in region_starts:
-                role = None
-            current_todo = None
-            if role and source_sections[role] is None:
-                source_sections[role] = heading
-            continue
-        if role is None and not archive_mode:
-            continue
-        match = TODO_TASK_PATTERN.match(line)
-        if match:
-            marker, text = match.groups()
-            status = todo_status_from_marker(marker)
-            target_items = archive_items if archive_mode else items[str(role)]
-            todo: dict[str, Any] = {
-                "index": len(target_items) + 1,
-                "done": todo_done_for_status(status),
-                "status": status,
-                "text": normalize_todo_text(text),
-            }
-            if archive_mode:
-                todo["archive_state"] = "archive"
-                todo["source_section"] = archive_source_section
-            else:
-                todo["archive_state"] = "active"
-                todo["source_section"] = source_sections[str(role)]
-                todo["role"] = role
+    visible = visible_markdown_lines(lines)
+    for region in find_todo_source_regions(lines, visible=visible):
+        archive = region.role == "archive"
+        target = archive_items if archive else items[region.role]
+        if not archive and source_sections[region.role] is None:
+            source_sections[region.role] = region.heading
+        for block in decode_todo_blocks(lines, region.start, region.body_end, visible=visible):
+            todo = {"archive_state": "archive" if archive else "active",
+                    "source_section": region.heading if archive else source_sections[region.role],
+                    **({} if archive else {"role": region.role}),
+                    **{key: value for key, value in block.items() if key not in {"start", "end"}},
+                    "index": len(target) + 1}
             if goal is not None:
-                materials = extract_review_materials(text, goal=goal, state_path=state_path)
+                match = TODO_TASK_PATTERN.match(lines[block["start"]])
+                assert match is not None  # The shared decoder only emits matched task lines.
+                materials = extract_review_materials(match.group(2), goal=goal, state_path=state_path)
                 if materials:
                     todo["review_materials"] = materials
-            target_items.append(todo)
-            current_todo = todo
-            continue
-        if current_todo is None or not line.startswith((" ", "\t")):
-            continue
-        metadata = parse_todo_metadata_line(line)
-        if metadata:
-            current_todo.update(metadata)
-            continue
-        continuation = line.strip()
-        if continuation:
-            current_todo["text"] = normalize_todo_text(
-                f"{current_todo.get('text', '')} {continuation}"
-            )
-
+            target.append(todo)
     return items, archive_items, source_sections
 
 

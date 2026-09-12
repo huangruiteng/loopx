@@ -2192,6 +2192,13 @@ Scoped fallback 的选择与门禁关系也已复用同一 TS decision owner，�
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
+D1 的文档归属切片把读取、编辑与投影放到同一可见区域／Todo 行解码边界，修复
+fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、稀疏历史行号及归档
+优先级阻塞读回的问题。投影复用普通状态的耐久原子写入；相同字节的重试仍完成
+文件／目录同步，之后才报告 `current`。区域外正文和 canonical record 不被改写。
+这是永久 Python 展示／legacy 输入适配层的收敛：TS authority transaction、provider
+默认值、SQLite D2 与 D3 promotion 合同不变，不增加 RPC 或另一份业务状态机。
+
 能力缺口 consumer 在 legacy/canonical 输入上共用 TS requirement/resolution owner，
 包括 quota 的 Monitor 能力分流。删除 Python missing-set 与 owner/repair 决策 builder，
 保留来源适配和只读候选排序。这是披露修复优先级、空来源和 identity 修正的 T3 读取

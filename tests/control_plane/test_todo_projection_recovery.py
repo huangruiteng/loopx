@@ -18,7 +18,7 @@ from loopx.control_plane.coordination.coordination_state_contract import (
     TODO_DOMAIN_READ_RECORD_SCHEMA_VERSION, TODO_DOMAIN_RECORD_FIELDS,
 )
 from loopx.control_plane.coordination.local_authority_shadow_projection import canonical_bytes
-from loopx.control_plane.todos import provider_projection
+from loopx.control_plane.todos import provider_projection, active_state_editing
 from loopx.control_plane.todos.completion_validation_store import (
     persist_completion_validation_declaration,
 )
@@ -177,7 +177,7 @@ def test_concurrent_document_restoration_is_not_overwritten(canonical_display, m
         Path(destination).write_text("Another writer concurrently restored the generated document.\n")
         return real_link(source, destination)
 
-    monkeypatch.setattr(provider_projection.os, "link", restore_before_publish)
+    monkeypatch.setattr(active_state_editing.os, "link", restore_before_publish)
     with pytest.raises(FileExistsError):
         provider_projection.project_current_canonical_todos(
             registry_path=registry, runtime_root=runtime, goal_id="goal-a",
@@ -199,9 +199,9 @@ def test_interrupted_rebuild_is_safe_and_retryable(canonical_display, monkeypatc
 
     with monkeypatch.context() as patch:
         if failure_point == "directory_fsync":
-            patch.setattr(provider_projection, "_fsync_parent_directory", fail)
+            patch.setattr(active_state_editing, "fsync_state_directory", fail)
         else:
-            patch.setattr(provider_projection.os, failure_point, fail)
+            patch.setattr(active_state_editing.os, failure_point, fail)
         with pytest.raises(OSError, match="injected publication failure"):
             provider_projection.project_current_canonical_todos(
                 registry_path=registry, runtime_root=runtime, goal_id="goal-a",
@@ -237,8 +237,13 @@ def test_unpromoted_missing_document_is_not_regenerated(canonical_display):
     assert not state.exists()
 
 
-def test_production_scale_rebuild_retains_order_and_requires_private_declaration(tmp_path):
+@pytest.mark.parametrize("provider", ["file", "sqlite"])
+def test_production_scale_rebuild_retains_order_and_requires_private_declaration(tmp_path, monkeypatch, provider):
     # Reuse the shared RFC envelope, not a second large fixture or live data.
+    from canonical_authority_fixture import isolate_sqlite_runtime
+    from loopx.control_plane.todos.active_state_todo_parser import parse_todo_source
+    if provider == "sqlite":
+        isolate_sqlite_runtime(tmp_path, monkeypatch)
     script = (
         "import {productionScaleCoordinationFixture, PRODUCTION_SCALE_VALIDATION_DECLARATION} "
         "from './tests/control_plane_ts/production_scale_coordination_fixture.ts';"
@@ -256,7 +261,7 @@ def test_production_scale_rebuild_retains_order_and_requires_private_declaration
     registry.write_text(json.dumps({"common_runtime_root": str(runtime), "goals": [
         {"id": "goal-a", "repo": str(tmp_path), "state_file": state.name},
     ]}))
-    initialize_canonical_authority(runtime, "goal-a", projection, state_path=state)
+    initialize_canonical_authority(runtime, "goal-a", projection, state_path=state, provider=provider)
     before = _read(runtime)
     state.unlink()
     code, rejected = _run(registry, before["provider_revision"], "--execute")
@@ -279,3 +284,44 @@ def test_production_scale_rebuild_retains_order_and_requires_private_declaration
     assert _read(runtime) == before
     code, replay = _run(registry, before["provider_revision"], "--execute")
     assert code == 0 and replay["changed"] is False
+
+    example = (
+        "```markdown\n## Completed Work Archive\n- [x] Documentation example only\n"
+        "  <!-- loopx:todo todo_id=todo_example_only role=user status=done -->\n```\n\n"
+    )
+    state.write_text(example + state.read_text())
+    code, replay = _run(registry, before["provider_revision"], "--execute")
+    assert code == 0 and replay["status"] == "current"
+    assert state.read_text().startswith(example)
+    active, archived, _ = parse_todo_source(state.read_text())
+    parsed_ids = [row["todo_id"] for rows in (*active.values(), archived) for row in rows]
+    assert "todo_example_only" not in parsed_ids
+    assert len(parsed_ids) == 464
+    assert _read(runtime) == before
+
+
+def test_equal_display_does_not_acknowledge_an_unfinished_durability_barrier(canonical_display, monkeypatch):
+    registry, runtime, state = canonical_display
+    before = _read(runtime)
+    provider_projection.project_current_canonical_todos(
+        registry_path=registry, runtime_root=runtime, goal_id="goal-a",
+    )
+    original = state.read_bytes()
+    calls = []
+    def interrupted(_path):
+        calls.append("directory")
+        raise OSError("directory durability unavailable")
+    with monkeypatch.context() as patch:
+        patch.setattr(active_state_editing, "fsync_state_directory", interrupted)
+        payload = provider_projection.settle_canonical_todo_projection(
+            {"ok": True, "status": "replayed", "provider_revision": before["provider_revision"]},
+            registry_path=registry, runtime_root=runtime, goal_id="goal-a",
+        )
+    assert calls == ["directory"]
+    assert payload["ok"] is True and payload["status"] == "replayed"
+    assert payload["projection_delivery"] == "pending"
+    assert payload["projection_outbox"]["retry_business_mutation"] is False
+    assert state.read_bytes() == original and _read(runtime) == before
+    assert provider_projection.project_current_canonical_todos(
+        registry_path=registry, runtime_root=runtime, goal_id="goal-a",
+    )["status"] == "current"

@@ -651,12 +651,12 @@ Continue.
     }
     initialize_canonical_authority(runtime_root, "goal-a", projection, state_path=state_file)
 
-    real_write = provider_projection._atomic_write_text
+    real_write = provider_projection.atomic_write_state_text
 
     def crash(*_args: object, **_kwargs: object) -> None:
         raise OSError("injected projection crash")
 
-    monkeypatch.setattr(provider_projection, "_atomic_write_text", crash)
+    monkeypatch.setattr(provider_projection, "atomic_write_state_text", crash)
     applied = add_goal_todo(
         registry_path=registry_path,
         goal_id="goal-a",
@@ -683,7 +683,7 @@ Continue.
     assert "validation_command_argv" not in canonical["todos"][0]
     assert state_file.read_text(encoding="utf-8") == source
 
-    monkeypatch.setattr(provider_projection, "_atomic_write_text", real_write)
+    monkeypatch.setattr(provider_projection, "atomic_write_state_text", real_write)
     replay = add_goal_todo(
         registry_path=registry_path,
         goal_id="goal-a",

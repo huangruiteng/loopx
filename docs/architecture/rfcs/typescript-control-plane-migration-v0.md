@@ -531,6 +531,15 @@ delivery. This does not finish all T2 commands or authorize whole-Goal promotion
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+The D1 document-ownership slice gives readers, editors and projection one visible-region
+and Todo-block boundary. It fixes fenced examples becoming real tasks, narrative after
+an archive end marker entering history, and sparse imported ordinals or archived
+priority labels blocking readback. Projection reuses durable atomic state publication;
+an equal-byte retry syncs file and directory before reporting `current`. Narrative and
+canonical records stay intact. This converges the retained Python presentation/legacy
+input adapter; it adds no RPC or business state machine and does not change TS authority
+transactions, provider defaults, SQLite D2 or D3 promotion requirements.
+
 Task-graph topology now shares `work_items/planning_relations.ts` with inventory
 and horizon. One pure TS request owns relationship discovery, deterministic
 bounded traversal, edge deduplication and missing/truncated completeness; the

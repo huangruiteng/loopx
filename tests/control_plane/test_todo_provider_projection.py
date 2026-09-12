@@ -118,10 +118,10 @@ def test_settlement_preserves_commit_and_replays_after_projection_failure(
         "read_canonical_todos_if_promoted",
         lambda **_kwargs: _authority_read(),
     )
-    real_write = provider_projection._atomic_write_text
+    real_write = provider_projection.atomic_write_state_text
     monkeypatch.setattr(
         provider_projection,
-        "_atomic_write_text",
+        "atomic_write_state_text",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("crash")),
     )
 
@@ -150,7 +150,7 @@ def test_settlement_preserves_commit_and_replays_after_projection_failure(
     }
     assert state_file.read_text(encoding="utf-8") == SOURCE
 
-    monkeypatch.setattr(provider_projection, "_atomic_write_text", real_write)
+    monkeypatch.setattr(provider_projection, "atomic_write_state_text", real_write)
     replay = provider_projection.settle_canonical_todo_projection(
         {"status": "replayed", "changed": False},
         registry_path=registry,

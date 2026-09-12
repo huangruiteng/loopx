@@ -128,8 +128,8 @@ canonical source can reconstruct it.
 
 The cutover is deliberately section-sized, not document-sized:
 
-- before promotion, Markdown remains the authority and existing writers are
-  unchanged;
+- before promotion, Markdown remains the authority and writes use its existing
+  transaction boundary;
 - after promotion, the versioned Todo records live in the canonical provider
   head and Markdown's Todo section is a compatibility/workbench projection;
 - other generated sections remain in Markdown until their canonical ownership
@@ -168,7 +168,29 @@ each Todo heading. The renderer, active Todo reader and section editor share
 that boundary contract. Future projections use those explicit bounds; orphan,
 nested, mismatched or missing markers, and non-generated content inside a marked
 region, fail closed. No ordinary Goal is rewritten or opted in by installation.
-Legacy unmarked readers and bootstrap output remain unchanged.
+Unmarked legacy readers and editors retain their heading aliases and multi-line
+Todo grammar, but now use the same visible-document boundary: fenced examples,
+leading frontmatter and multiline HTML comments cannot supply tasks or edit
+anchors. This intentionally changes legacy reads and writes that previously
+accepted example checkboxes. Marked archive regions end at their end marker;
+following narrative checkboxes are not historical decisions. Legacy heading
+substring aliases are input compatibility, not a new classification policy.
+
+Read/edit decoding now shares one Todo block codec. Projection assembly parses
+source and rendered document regions once each; marker diagnostics inspect only
+real Todo regions. A marker quoted in a code example is not delivery evidence.
+Imported `index` values still determine relative order, but the newly rendered
+section receives contiguous display ordinals. Canonical records and their
+section digests retain the imported values. Archive readback restores priority
+and title using the same existing text decoder as active records. Consequently,
+sparse historical ordinals and archived priority labels no longer strand
+projection recovery. These display corrections do not mutate provider state.
+
+中文：未晋升的旧格式也统一排除 fenced 示例、文首 frontmatter 和多行 HTML 注释中的
+假任务／编辑锚点；保留合法标题别名及多行任务文本。已标记归档区域在 end marker
+处结束，区域外的叙述清单不再进入历史。读取与编辑共用行解码，投影共用区域解析。
+历史行号只决定相对顺序，新展示使用连续行号；provider 中的旧行号、原始记录和
+摘要不变。归档读回复用既有优先级／标题解码，避免真实历史导致恢复永久 pending。
 
 Non-Todo byte preservation and canonical Todo parse/render parity are separate
 checks: the former compares untouched source slices, while the latter reads only
@@ -231,6 +253,17 @@ renderer/write failure leaves typed `pending` delivery
 evidence without reversing or hiding the canonical commit. A later successful
 mutation or `todo project-markdown --execute` replays the current head
 idempotently. This is projection recovery, not a second authority path.
+The ordinary state writer and projection writer share durable atomic publication.
+Missing-display recovery uses create-only publication and cannot overwrite a
+concurrently restored document. When bytes already match, execution still syncs
+the file and parent directory before reporting `current`: a previous failure
+may have occurred after rename but before directory durability. A failed barrier
+keeps delivery `pending` and does not acknowledge or repeat the business mutation.
+Preview remains read-only.
+
+中文：普通状态与投影共用原子落盘；缺失展示通过仅创建方式发布，避免覆盖并发恢复。
+字节相同的执行重试也重新完成文件和目录耐久化，之后才报告 `current`；失败继续
+保留“业务已提交、展示 pending”，不确认投影交付、不重执行业务。预览不写入。
 
 Supported non-Monitor Agent updates include action/domain/repository and required
 write scopes, required/target capabilities and Explore node references. These
