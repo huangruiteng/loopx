@@ -10,7 +10,7 @@
 
 ## Document map and maintenance contract
 
-Sections 1–3 and 5–12 are proposed normative design and acceptance requirements. Section 4 records source-audited baseline facts, not deployment claims. Appendices preserve rationale and evidence. English and Chinese are semantic mirrors. This RFC does not declare new tools, schemas, permissions or migrations implemented merely by naming them.
+Sections 1–3 and 5–12 are proposed normative design and acceptance requirements. Section 4 records source-audited baseline facts, not deployment claims. Appendices preserve rationale and evidence; Appendix C separates official Grok Bot documentation from implementation unknowns and LoopX design decisions. English and Chinese are semantic mirrors. This RFC does not declare new tools, schemas, permissions or migrations implemented merely by naming them.
 
 This is the proposed product-level successor to the staged **Manager evidence and continuity v0** design. Keep that protocol as the implementation/migration reference until individual milestones replace its restrictions. Absorb the pending same-Goal handoff design from [#4312](https://github.com/huangruiteng/loopx/pull/4312) as a migration input, not an architectural restriction. Refine the manager portions of Desktop Frontends and Goal Channel, preserving direct conversations with working Agents. Do not replace the effect interpreter, Goal Vision/Replan or shared-authority RFCs.
 
@@ -19,6 +19,8 @@ This is the proposed product-level successor to the staged **Manager evidence an
 Build the manager as a **capable, persistent agent on the user's host**, using the installed runtime's normal tools and skills under the owner's durable authority. It should investigate, decide, do appropriately scoped work, and coordinate workers. Reading a repository must not require inventing a repository-specific manager protocol when ordinary file/Git/API tools already solve the task.
 
 Build handoff as **continuation of work with semantic state**, not only forwarding a sentence or generating a Todo edit. Preserve purpose, context, decisions, constraints, evidence, current commitments and the expected return. Preserve LoopX's authoritative work semantics while refactoring their implementation into a coherent collaboration boundary. Existing module locations, file layouts and manager-only protocols are migration inputs, not constraints on the target design.
+
+The comparison target is the persistent **Grok Bot** product, not only `@grok` on X. **Always available is not the same as long-horizon.** The former keeps an agent reachable; the latter sustains a goal through execution, evidence, replanning, interruption and acceptance. LoopX's architectural advantage is making connected agents long-horizon through durable task and continuation semantics, rather than requiring each runtime to invent them. This RFC brings that strength to the manager and handoff. Grok Bot documents persistence and asynchronous collaboration; the reviewed sources do not establish equivalent goal-continuation guarantees. That evidence limit is not proof that Grok Bot cannot do long tasks. Appendix C grounds the comparison; Section 5.11 and acceptance tests make the LoopX claim concrete.
 
 The division of responsibility is:
 
@@ -77,7 +79,7 @@ The baseline already has substantial reusable machinery:
 
 A separate pending [#4312](https://github.com/huangruiteng/loopx/pull/4312) at `13085665a9377f160025ec6c01885e889f0df5c9` adds same-Goal agent handoff. Its proposed `agent_handoff.py` owns a Todo/from/to-derived dispatch identity and dispatched/read/claim receipts; this is outside the named `main` baseline. Treat its same-Goal, unclaimed-Todo and independent-review predicates as the semantics of that specific dispatch path, not universal rules for all work requests. Its `same-goal-agent-handoff-inbox-v0` RFC should be absorbed as a historical adapter/migration reference when this direction is accepted.
 
-The pending [PR #4306](https://github.com/huangruiteng/loopx/pull/4306) adds a special GitHub evidence reader with revision guards, pagination, typed failure handling and routing policy. Its latest reviewed shape is read-first, so it is not merely a forwarding workaround. Nevertheless, the manager should not need this additional per-resource tool surface for ordinary host investigation. Section 6 recommends closing it as the chosen product path, retaining useful regression requirements.
+The reviewed [PR #4306](https://github.com/huangruiteng/loopx/pull/4306), subsequently closed as recorded in Appendix B, proposed a special GitHub evidence reader with revision guards, pagination, typed failure handling and routing policy. Its latest reviewed shape was read-first, so it was not merely a forwarding workaround. Nevertheless, the manager should not need this additional per-resource tool surface for ordinary host investigation. Section 6 rejects it as the chosen product path, retaining useful regression requirements.
 
 ## 5. Proposed architecture
 
@@ -251,6 +253,20 @@ All participants can publish results and inspect their authorized requests; gene
 
 For shell/Git/API effects outside Core, use an effect-intent ID and the provider's idempotency/readback when available. Persist a completion observation only after evidence. A crashed command whose effect is unknown is reconciled before another effectful attempt; lacking an idempotent API is not permission to replay it. The manager's ordinary tools gain freedom, not a false exactly-once guarantee.
 
+### 5.11 Long-horizon continuation as a product contract
+
+A persistent conversation is useful, but work must also survive losing that conversation's executable session. At each supported continuation point, compose the current accepted work state with unresolved request obligations, relevant decisions and changed evidence. Distinguish a dated research conclusion from a current fact. When a correction contradicts an accepted constraint, preserve both revisions and record the receiver's resolution before the affected effect. Do not replay an earlier rejected approach merely because its rejection fell out of the prompt.
+
+Obligation coverage is derived from source requests and receiver assessments, not a second checklist database. The manager identifies the substantive questions; the receiver records which it accepted, deferred or rejected and why, linking current Todo/Vision/evidence where applicable. A result covers those obligations or explicitly leaves a bounded remainder with an owner and resume condition. An acknowledgement, elapsed timer, successful routine invocation or completed subtask cannot silently discharge the whole request. A later session reconstructs that relationship from accepted state and references, without importing runtime-private history.
+
+Artifact continuity is part of semantic continuity. Reuse the artifact owner to carry type, version/digest, resolvable location, access scope and any extraction/summary provenance for relevant images, documents and code. A receiver must obtain the required material or record why it could not. Text-only channels project a readable summary and an authorized artifact link; they do not silently remove evidence or copy a sender-local path as a remote locator. Do not add a mandatory artifact download for questions the brief already answers.
+
+Long-running work must remain legible in the existing conversation: what is being attempted, who owns the next step, what is actually blocking, and what conclusion is owed. Provide expandable tool/artifact activity and current semantic context in the frontend; Lark gets a concise equivalent and actionable results. Distinguish a queued worker, unavailable host, permission refusal, website login and undelivered answer. Do not expose raw protocol envelopes or claim fine-grained tool activity on adapters that cannot supply it.
+
+Reuse existing capability instructions, context hooks, memory and scheduling owners. Reusable methods may inform planning and handoff, with their source/version visible; remembered lessons do not replace accepted task state or current verification. Stable recurring work may use the existing schedule/event path after its task and replay behavior are understood. This RFC does not add a routine engine, compulsory method learning, a new hook family or business-specific automation.
+
+Parallel work does not imply isolated execution resources. Reuse runtime serialization/leases for shared browser screens or mutable workspaces, separately from Core work ownership. Separate screens, agent names or conversation tabs are not permission boundaries. If a runtime lacks the required coordination, serialize the affected operation and expose the wait; unrelated evidence work can continue. M1 reports actual resource behavior rather than assuming a shared cloud-computer design.
+
 ## 6. Alternatives and disposition of #4306
 
 - **Choose normal runtime tools + LoopX semantic state.** It preserves agent flexibility and reuses existing tooling. Its cost is real host-profile qualification and clear private/shared-scope isolation.
@@ -311,6 +327,8 @@ The following IDs are durable acceptance anchors for engineering Todos and PRs. 
 | A10 | Owner frontend and authorized Lark conversation | Consistent request facts; truthful queued/assessed/resolved/delivery states; different audiences remain isolated |
 | A11 | Registered SSH host unavailable or older receiver | Coverage and pending route are explicit; local mentions do not pretend to be remote evidence; recovery resumes correctly |
 | A12 | Model/session/tool-profile upgrade | Compatible session resumes; incompatible recovery preserves constraints and pending requests; effective configuration is visible |
+| A13 | Work spans two days; replace the executable session after an accepted plan, a rejected approach and a later correction | Receiver reconstructs current commitments and unresolved obligations from canonical state/context; refreshes time-sensitive evidence; explains its actual plan delta and returns the owed conclusion without silently reviving the rejected path or requiring the original transcript |
+| A14 | Handoff includes a relevant image/document and reaches a different configured host through a text-only channel | Authorized artifact resolves at the intended revision; unavailable or denied material is explicit; extraction preserves provenance and unresolved obligations; no false read receipt, private disclosure or sender-local-path assumption |
 
 Run deterministic transition/compatibility tests, real installed-runtime qualification, then real frontend/Lark roundtrips with synthetic safe tasks and an authorized private canary. Record runtime/source versions and emitted receipts. Include mobile Lark and packaged frontend render/readback; backend tests alone do not pass A10. Provider receipt ambiguity and offline failure cases are required, not optional happy-path add-ons.
 
@@ -329,9 +347,9 @@ Implement coherent end-to-end slices, not one PR per incidental field. The manag
 | Milestone | Shipped behavior and ownership | Entry / exit evidence | Rollback |
 | --- | --- | --- | --- |
 | M0 — reconcile direction | Manager capability owner inventories current restrictions, grants, sessions and pending exchanges; closes superseded #4306 path and maps surviving fixes | Existing fixtures + public decision link + no orphaned request; no runtime claim | Documentation/proposal only |
-| M1 — useful host agent | Manager capability + runtime adapter use ordinary tools/skills and persistent owner grant; frontend exposes effective profile/session and failures | A1–A3, A12 on real installed runtime; portfolio remains reusable; no per-resource wrapper required | Restore restricted profile, preserve requests |
-| M2 — semantic continuation | Core collaboration replaces manager-specific handoff transitions; requests work before a Todo and across Goals; semantic brief and discovery connect to receiver-owned planning; both consumers qualify the same contract | A4–A7 and A11; compare old/new records and preserve fields; TS owns shared transition rules | Disable new producer, retain compatible readers and pending results |
-| M3 — automatic complete exchange | Receiver conclusion + existing outbox + frontend/Lark visibility, safe rich output and restart recovery | A8–A10; failure injection and live readback; user receives conclusion without querying | Keep result store, switch transport/profile without replay |
+| M1 — useful host agent | Manager capability + runtime adapter use ordinary tools/skills and persistent owner grant; frontend exposes effective profile/session, supported tool activity and actionable failures | A1–A3, A12 on real installed runtime; qualify shared-resource coordination; portfolio remains reusable; no per-resource wrapper required | Restore restricted profile, preserve requests |
+| M2 — semantic continuation | Core collaboration replaces manager-specific handoff transitions; requests work before a Todo and across Goals; semantic brief and discovery connect to receiver-owned planning; both consumers qualify the same contract | A4–A7, A11, and A13–A14 continuation/artifact fixtures; compare old/new records and preserve fields; TS owns shared transition rules | Disable new producer, retain compatible readers and pending results |
+| M3 — automatic complete exchange | Receiver conclusion + existing outbox + frontend/Lark visibility, safe rich output and restart recovery | A8–A10 plus A13–A14 return-path qualification; failure injection and live readback; user receives conclusion without querying | Keep result store, switch transport/profile without replay |
 | M4 — promotion and retirement | Three heterogeneous active Goals, owner + shared-scope and configured SSH journeys pass; obsolete manager restrictions/compatibility seams removed | All acceptance rows, permission regression and measured SLO/cost; document remaining unqualified hosts | Scoped rollback with schema-aware drain/export |
 
 M1 need not wait for a generic handoff refactor. M3's independent format/delivery fixes may ship early using the existing inbox. M2 promotion needs the second consumer; it must not hold a useful manager-only improvement hostage. No milestone creates an extra user confirmation for routine research or normal delegation.
@@ -358,6 +376,68 @@ The external sources inform the design; they do not prove LoopX behavior. The na
 
 ## Appendix B: Decision and execution ledger
 
-2026-09-13: proposed a capable manager plus semantic continuation direction and a substantial collaboration-boundary refactor, with #4306 closure recommended as the superseded implementation path. Existing reply-recovery and responsibility-discovery fixes remain useful. No acceptance row, host-profile promotion or handoff schema migration is claimed delivered by this document.
+2026-09-13: proposed a capable manager plus semantic continuation direction and a substantial collaboration-boundary refactor. [#4306 was closed](https://github.com/huangruiteng/loopx/pull/4306#issuecomment-5652539392) as the superseded implementation path; its underlying issue remains an M1/M2 acceptance obligation. Existing reply-recovery and responsibility-discovery fixes remain useful. No acceptance row, host-profile promotion or handoff schema migration is claimed delivered by this document.
+
+2026-09-13: added the official Grok Bot study in Appendix C; refined positioning, Section 5.11, A13–A14 and M1–M3. This adds reviewable requirements, not a competitor runtime qualification or shipped LoopX behavior.
 
 Record future decisions as dated links to reviewed changes, naming the normative sections affected. Preserve previous source revisions and unresolved requests. Do not turn an append-only delivery log into an alternate task authority.
+
+## Appendix C: Grok Bot product and implementation study
+
+### C.1 Method and evidence boundary
+
+Reviewed official product, usage and deployment documentation on **2026-09-13**. This is a documentation study, not an authenticated product trial, performance benchmark or source audit of the Grok Bot runtime. The sources below identify what is advertised or documented; LoopX decisions are ours. A missing public guarantee is **unknown**, not proof of an absent implementation.
+
+Do not substitute Grok's model/API capabilities, the X reply bot, Grok Build source code or another coding agent's internals for Grok Bot evidence. The current Bot documentation references Cursor-hosted infrastructure and account services; those are documented deployment details, not grounds to infer a shared scheduler, model routing algorithm or transaction implementation.
+
+### C.2 What is documented, and what it establishes
+
+| Surface | Officially documented behavior / mechanism | Evidence limit |
+| --- | --- | --- |
+| Product promise | The [launch announcement](https://x.ai/news/introducing-grok-bot) presents background agents and a coordinating chief-of-staff role. The [overview](https://docs.x.ai/grok-bot/overview) describes persistent working context and work continuing while the client is closed. | Supports an always-available product model; neither a testimonial nor background execution proves goal acceptance across arbitrary interruptions. |
+| Role and memory | [Bots](https://docs.x.ai/grok-bot/bots) have named roles, separate conversations and learned context. Profiles hold stable responsibilities; memory includes preferences/facts/summaries. Changing facts should be checked at their source. Copying a profile does not copy its conversation or learned memory. | Profile, memory and durable task authority are different concepts. The memory algorithm and consistency guarantees are not disclosed here. |
+| Conversation and collaboration | [Chat and collaboration](https://docs.x.ai/grok-bot/chat-and-collaboration) documents groups, directed mentions, threads, reactions and asynchronous Bot messages that wake a recipient for a later reply. Bot-to-group handoffs are text-only. | A visible reply is useful UX; the page does not specify revision conflicts, accepted work ownership or a durable return-obligation protocol. |
+| Execution substrate | [Computer and apps](https://docs.x.ai/grok-bot/computer-and-apps) describes one persistent account computer, shared files/logins and separate Bot screens; one computer-use task per screen. Connectors are preferred where suitable, with browser interaction for other workflows. Local-computer execution is separately controlled. | Screens are not security isolation. The docs expose resource behavior, not the locking implementation or complete agent loop. |
+| Results | [Files and results](https://docs.x.ai/grok-bot/files-and-results) supports attachments and reviewable artifacts, with shared workspace access. It recommends distinguishing facts, inference, completed work, pending actions and open questions. | An artifact or screenshot is not by itself proof of a completed external action or a current source read. |
+| Reusable work | [Skills and routines](https://docs.x.ai/grok-bot/skills-routines-and-automations) describes reusable instructions, task demonstrations that draft skills, and a Bot-owned schedule/event routine with run history. Testing a routine can perform real work. | This explains workflow reuse and triggering; it does not specify LoopX-style goal convergence, semantic adoption or external-effect idempotency. |
+| Permission experience | [Approvals and privacy](https://docs.x.ai/grok-bot/approvals-security-and-privacy) describes operation-specific approval, matching persistent rules, and separate local-execution controls. A matching allow rule does not override a conflicting required review. | Useful permission UX; it is not a reason to add repeated confirmations to already-authorized LoopX work. |
+| Deployment boundaries | [Security](https://docs.x.ai/grok-bot/security) describes hosted computers, an action-review model, user-attributed access, backend-held connector tokens, and independent network/connector controls. Its logging and recording surfaces have distinct coverage. | These are public implementation boundaries, not a complete threat model or evidence of transaction semantics. No particular model or isolation strategy is imported into LoopX. |
+| Identity | [Identity and access](https://docs.x.ai/grok-bot/identity-and-access) distinguishes product sign-in, application browser sessions and connector authentication. | Authentication to one layer does not establish access at another. The runtime's real identity remains necessary when resolving a handoff. |
+| Recovery | [Troubleshooting](https://docs.x.ai/grok-bot/troubleshooting) separates client, computer, routine, permission and login failures. Recovery/update can preserve durable state; reset may lose unsynced work. | Persistent storage is not an exactly-once guarantee. Recovery outcomes must be qualified independently. |
+
+### C.3 Implementation reading: compose existing mechanisms, do not infer hidden ones
+
+The documented product can be understood through four observable boundaries: **role/conversation**, **computer/tools**, **collaboration/triggering**, and **results/recovery**. This is our decomposition, not a claim about Grok Bot source modules. It explains why a strong agent with a usable computer, existing tools and visible progress can outperform a planner confined to a small snapshot without requiring a custom reader for every resource.
+
+The [Grok Bot 101 guide](https://x.ai/bot/guides/grok-bot-101) illustrates gathering context and asking a Cursor cloud agent to implement software. That is a documented outer/inner workflow example, not evidence that the Bot runtime is implemented by that coding agent. For LoopX, the useful idea is to give the receiver a meaningful job with enough context; the accepted work and return contract should survive changing the executor.
+
+The reviewed sources do not establish Bot queue storage, acknowledgement transactions, crash-after-effect reconciliation, handoff schema, memory summarization algorithm or cancellation races. We must not claim these features absent, copy an imagined design, or report a source-level implementation comparison. A future authorized trial can test those behaviors, but is not a prerequisite for fixing our already-observed manager restrictions.
+
+### C.4 Always available versus long-horizon
+
+| Property | Always-available agent | LoopX long-horizon contract |
+| --- | --- | --- |
+| Availability | Can receive work later and retain an identity | Continues the accepted goal through the host's supported wake/resume path; offline and unsupported paths remain explicit |
+| State | May retain conversation, preferences and files | Preserves objective, acceptance, current plan, commitments, decisions, evidence and unresolved gaps as related work state |
+| Progress | Can execute a long task or repeat a routine | Selects useful next work, verifies outcomes and replans against the goal; a wake or successful invocation is not progress |
+| Collaboration | Can message another agent and obtain a reply | Carries decision-relevant context; receiver assesses impact on its own plan; remaining obligations and return are recoverable |
+| Replacement | A service or profile may restart | A supported replacement executor reconstructs accepted work without copying the old runtime's private session database |
+| Completion | Can answer or stop | Distinguishes task result, goal acceptance and delivered conclusion; leaves a traceable continuation when incomplete |
+
+The right-hand column is LoopX's design contract, grounded in its existing Goal/Vision/Todo/effect foundations and extended by this RFC. It does **not** assert that every adapter already passes these requirements. Making each connected agent long-horizon requires qualifying that adapter's observation, wake, context and writeback paths. Nor does the left-hand column cap Grok Bot's capabilities: the distinction is conceptual; its documented persistence alone is insufficient evidence for the right-hand guarantees.
+
+### C.5 Limited borrowing and deliberate differences
+
+Borrow three product patterns: a stable capable role with ordinary tools; visible asynchronous coordination with a clear next owner; and reviewable results plus actionable recovery. Apply them through the existing manager, runtime and frontend/Lark paths. Do not clone another chat product, force a shared logged-in cloud computer, add a competing routine scheduler or treat model memory as canonical work state.
+
+Preserve the LoopX-specific combination: strong executor freedom **and** dense, explicit work semantics. A semantic handoff is neither a huge transcript nor a fixed task queue item. It connects an intent and its corrections to current commitments, supporting evidence, rejected alternatives, acceptance and the owed return. That context lets an agent reconsider the plan intelligently without forgetting the goal or silently overriding another agent's commitments.
+
+| Research consequence | RFC / implementation consequence | Qualification |
+| --- | --- | --- |
+| A capable role needs actual tools and understandable feedback | M1, Sections 5.1/5.3/5.11: normal host profile, effective readback, visible tool activity and accurate block diagnosis | A1–A3/A12; existing packaged frontend and Lark feedback |
+| Asynchronous communication alone does not define accepted work | M2, Sections 5.4–5.6: one collaboration owner, semantic brief, receiver assessment, current state relations | A5–A7/A13; manager→worker and worker→worker |
+| Useful evidence may not fit a text message or survive a host change | M2/M3, Section 5.11: authorized resolvable artifacts, extraction provenance and explicit omissions | A14, including unavailable/denied artifact cases |
+| A background job still owes an understandable result | M3, Sections 5.6/5.7: committed conclusion, independent delivery and preserved remainder | A8–A10/A13; restart and malformed-output injection |
+| Long-horizon is an end-to-end property of agent plus control loop | M4: qualify goal continuation across runtime replacement and evidence change, alongside permission and cost checks | A1–A14; no promotion based solely on a live process, routine or merged PR |
+
+For A13, use an injected clock in deterministic tests and an installed-runtime continuation run covering an actual interruption. Record the elapsed interval and host versions; simulated days are not a multi-day production qualification. A14 uses a synthetic public-safe image/document so private source material never becomes a shared fixture. Competitive scoring or a Grok Bot login is not required to deliver these LoopX improvements.

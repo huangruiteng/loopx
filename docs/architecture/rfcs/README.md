@@ -153,7 +153,9 @@ changes.
   - **RFC status:** Draft, under maintainer review.
   - **Delivery on `main`:** Proposal; existing manager/inbox foundations are reused.
   - **Current boundary:** Proposes ordinary host-tool autonomy, persistent scoped
-    conversations, semantic continuation and automatic result delivery.
+    conversations, long-horizon semantic continuation and automatic result delivery.
+    Includes an official Grok Bot study distinguishing availability from goal
+    continuation; M0–M4 and A1–A14 define delivery and acceptance.
     Runtime-profile promotion and generic handoff migration have not shipped.
 
 - [Single-Owner Local Daemon v0](single-owner-local-daemon-v0.md)
