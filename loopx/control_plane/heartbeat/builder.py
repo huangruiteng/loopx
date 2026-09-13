@@ -109,6 +109,26 @@ def _select_task_body_renderer(
     return render_heartbeat_task_body
 
 
+def _reward_memory_rule_kwargs(
+    *,
+    full: bool,
+    reward_memory_enabled: bool,
+    native_goal_host: bool,
+    ark_managed_agent_goal: bool,
+) -> dict[str, str]:
+    if native_goal_host or ark_managed_agent_goal:
+        return {}
+    if not reward_memory_enabled:
+        return {"reward_memory_rule": ""}
+    return {
+        "reward_memory_rule": (
+            REWARD_MEMORY_OUTCOME_RULE
+            if full
+            else REWARD_MEMORY_OUTCOME_COMPACT_RULE
+        )
+    }
+
+
 def _heartbeat_regeneration_commands(
     *,
     cli_bin: str,
@@ -417,36 +437,33 @@ def build_heartbeat_prompt(
         brief=brief,
         compact=compact,
     )
-    task_body_kwargs: dict[str, Any] = {
-        "goal_id": goal_id,
-        "active_state": active_state_text,
-        "cli_preflight": cli_preflight,
-        "pr_review_pre_quota_command": (
+    reward_memory_rule_kwargs = _reward_memory_rule_kwargs(
+        full=full,
+        reward_memory_enabled=reward_memory_enabled,
+        native_goal_host=native_goal_host,
+        ark_managed_agent_goal=ark_managed_agent_goal,
+    )
+    task_body = task_body_renderer(
+        goal_id=goal_id,
+        active_state=active_state_text,
+        cli_preflight=cli_preflight,
+        pr_review_pre_quota_command=(
             "" if traex_visible_goal else commands["pr_review_pre_quota_command"] or ""
         ),
-        "quota_guard_command": str(commands["task_body_quota_guard_command"]),
-        "quota_spend_command": str(commands["task_body_quota_spend_command"]),
-        "refresh_state_command": str(commands["refresh_state_command"]),
-        "progress_refresh_state_command": str(commands["progress_refresh_state_command"]),
-        "material_queue_rule": resolved_material_rule,
-        "permission_rule": resolved_permission_rule,
-        "cli_bin": cli_bin,
-        "agent_scope_instruction": agent_scope_instruction,
-        "expanded_prompt_command": str(commands["expanded_prompt_command"]),
-        "compact_prompt_command": str(commands["compact_prompt_command"]),
-        "brief_prompt_command": str(commands["brief_prompt_command"]),
-        "thin_prompt_command": str(commands["thin_prompt_command"]),
-    }
-    if not native_goal_host and not ark_managed_agent_goal:
-        if reward_memory_enabled:
-            task_body_kwargs["reward_memory_rule"] = (
-                REWARD_MEMORY_OUTCOME_RULE
-                if full
-                else REWARD_MEMORY_OUTCOME_COMPACT_RULE
-            )
-        else:
-            task_body_kwargs["reward_memory_rule"] = ""
-    task_body = task_body_renderer(**task_body_kwargs)
+        quota_guard_command=str(commands["task_body_quota_guard_command"]),
+        quota_spend_command=str(commands["task_body_quota_spend_command"]),
+        refresh_state_command=str(commands["refresh_state_command"]),
+        progress_refresh_state_command=str(commands["progress_refresh_state_command"]),
+        material_queue_rule=resolved_material_rule,
+        permission_rule=resolved_permission_rule,
+        cli_bin=cli_bin,
+        agent_scope_instruction=agent_scope_instruction,
+        expanded_prompt_command=str(commands["expanded_prompt_command"]),
+        compact_prompt_command=str(commands["compact_prompt_command"]),
+        brief_prompt_command=str(commands["brief_prompt_command"]),
+        thin_prompt_command=str(commands["thin_prompt_command"]),
+        **reward_memory_rule_kwargs,
+    )
     task_body = bind_exact_turn_settlement_task_body(
         task_body,
         turn_instance_id=normalized_turn_instance_id,
