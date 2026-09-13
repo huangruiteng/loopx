@@ -13,6 +13,9 @@ from loopx.file_lock import exclusive_file_lock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Keep the crash-gap observation window aligned with the CLI subprocess timeout;
+# importing the Python CLI can exceed a short local polling budget on CI.
+CLI_TIMEOUT_SECONDS = 30
 
 
 def _workspace(tmp_path: Path, *, goal_id: str) -> tuple[Path, Path, Path]:
@@ -82,7 +85,7 @@ def _cli(registry: Path, runtime_root: Path, *args: str) -> dict[str, object]:
         check=True,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=CLI_TIMEOUT_SECONDS,
     )
     return json.loads(completed.stdout)
 
@@ -312,12 +315,22 @@ def test_product_cli_loses_capture_between_commit_and_observer_then_refreshes_sn
             stderr=subprocess.PIPE,
             text=True,
         )
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + CLI_TIMEOUT_SECONDS
         while first_text not in state.read_text(encoding="utf-8"):
+            returncode = process.poll()
+            if returncode is not None:
+                stdout, stderr = process.communicate(timeout=5)
+                raise AssertionError(
+                    "primary Todo CLI exited before its commit became visible "
+                    f"(returncode={returncode}, stdout={stdout!r}, stderr={stderr!r})"
+                )
             if time.monotonic() >= deadline:
                 process.kill()
-                process.communicate(timeout=5)
-                raise AssertionError("primary Todo commit did not become visible")
+                stdout, stderr = process.communicate(timeout=5)
+                raise AssertionError(
+                    "primary Todo commit did not become visible within "
+                    f"{CLI_TIMEOUT_SECONDS}s (stdout={stdout!r}, stderr={stderr!r})"
+                )
             time.sleep(0.01)
         assert process.poll() is None
         process.kill()
