@@ -193,6 +193,14 @@ def quota_rollout_settlement_binding(
     packet is only a diagnostic fallback when no concrete Todo is selected.
     """
 
+    if payload.get("effective_action") == "unsettled_host_turn_recovery":
+        # This Turn only repairs the preceding Turn's closeout.  A concurrently
+        # projected Todo or autonomous replan belongs to the post-recovery
+        # decision and must not become this receipt's settlement identity.
+        # Keeping the recovery receipt identity-less lets a verified same-Turn
+        # reentry bind the next independent action without rewriting history.
+        return None, None
+
     explicit_todo_id = normalize_todo_id(getattr(args, "todo_id", None))
     explicit_replan_obligation_id = normalize_todo_replan_obligation_id(
         getattr(args, "replan_obligation_id", None)
