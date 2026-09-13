@@ -55,8 +55,16 @@ def load_bootstrap(packet: dict, cli_bin: str, home: Path) -> dict:
     loader = shlex.split(packet["task_body"].split("```sh\n", 1)[1].split("\n```", 1)[0])
     assert "--bootstrap" not in loader
     loader[0] = cli_bin
-    return json.loads(subprocess.run(loader, env={**os.environ, "HOME": str(home)},
-        check=True, text=True, capture_output=True, timeout=120).stdout)
+    result = subprocess.run(
+        loader,
+        env={**os.environ, "HOME": str(home), "LOOPX_PYTHON": sys.executable},
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
 
 
 def main() -> int:

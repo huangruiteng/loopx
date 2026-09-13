@@ -29,6 +29,7 @@ from loopx.capabilities.agent_turn_recall import (  # noqa: E402
 from loopx.capabilities.context_providers.base import (  # noqa: E402
     ContextProviderItem,
     ContextProviderRetrieval,
+    ContextProviderSync,
 )
 from loopx.capabilities.reward_memory import (  # noqa: E402
     apply_reward_memory_recall,
@@ -102,8 +103,22 @@ class FakeProvider:
             requested_limit=int(kwargs["max_results"]),
         )
 
-    def sync(self, **_kwargs: Any) -> Any:
-        raise AssertionError("walkthrough must not call provider sync")
+    def sync(self, **kwargs: Any) -> ContextProviderSync:
+        assert kwargs["execute"] is False
+        self.calls += 1
+        return ContextProviderSync(
+            provider=self.provider_id,
+            namespace=str(kwargs["namespace"]),
+            status="preflight_ready",
+            observed_at=str(kwargs["observed_at"]),
+            requested_count=1,
+            completed_count=0,
+            reason_code="execute_required_for_verified_write",
+            retry_disposition="execute_required",
+            provider_preflight_performed=True,
+            target_access_preflight_verified=True,
+            writability_verified=False,
+        )
 
 
 def assert_public_safe(payload: object) -> None:
@@ -515,6 +530,7 @@ def main() -> int:
         scope_blocked[label] = blocked["status"]
 
     # 5) Scoped feedback: plan without provider write; wrong peer fails closed.
+    provider = FakeProvider()
     planned = ingest_scoped_feedback_reward_memory_event(
         feedback_event(),
         corpus=corpus(),
@@ -522,12 +538,14 @@ def main() -> int:
         provider_binding=binding(),
         observed_at=OBSERVED_AT,
         execute=False,
+        provider=provider,
     )
-    assert planned["status"] == "planned"
+    assert planned["status"] == "preflight_ready"
     assert planned["external_writes_performed"] is False
     assert planned["raw_provider_payload_captured"] is False
     assert planned["grants_new_action_authority"] is False
     assert planned["next_reward_memory_call"] == "explicit_function_boundary_recall"
+    assert provider.calls == 1
 
     blocked_peer = ingest_scoped_feedback_reward_memory_event(
         feedback_event(peer_ref="agent:other"),

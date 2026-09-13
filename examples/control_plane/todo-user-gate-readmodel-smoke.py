@@ -123,7 +123,7 @@ def assert_shared_gate_detection() -> None:
     assert [
         item["todo_id"]
         for item in summary["other_agent_bound_user_action_items"]
-    ] == ["todo_action_other", "todo_action_legacy_other"], summary
+    ] == ["todo_action_legacy_other", "todo_action_other"], summary
 
     with_duplicate = {
         "open_count": "2",

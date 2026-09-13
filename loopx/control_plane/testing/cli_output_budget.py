@@ -693,6 +693,18 @@ CLI_OUTPUT_COMMAND_CLASSIFICATIONS: tuple[CliOutputCommandClassification, ...] =
         rationale="bounded evidence read before replan or handoff",
     ),
     CliOutputCommandClassification(
+        command_id="agent-capabilities",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="explicit inspection or correction of one registered Agent's runtime observations",
+    ),
+    CliOutputCommandClassification(
+        command_id="handoff",
+        qualification="explicit_cold_path_exception",
+        surface_id=None,
+        rationale="explicit cross-agent Todo handoff preparation or adoption",
+    ),
+    CliOutputCommandClassification(
         command_id="todo",
         qualification="qualified_default",
         surface_id="todo_list",

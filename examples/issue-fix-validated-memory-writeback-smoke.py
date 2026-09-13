@@ -664,12 +664,22 @@ def main() -> int:
         fake_ov.write_text(
             "#!/usr/bin/env python3\n"
             "import json, sys\n"
+            "from pathlib import Path\n"
             "args = sys.argv[1:]\n"
+            "state_path = Path(__file__).with_suffix('.state')\n"
+            "try: state = json.loads(state_path.read_text())\n"
+            "except (FileNotFoundError, json.JSONDecodeError): state = {}\n"
             "if args == ['--version']: print('openviking 0.4.9.dev11')\n"
             "elif args and args[0] == 'status': print(json.dumps({'status':'healthy'}))\n"
-            "elif args and args[0] == 'tree': print(json.dumps({'resources':[]}))\n"
-            "elif args and args[0] in {'read','ls'}: sys.exit(1)\n"
-            "elif args and args[0] in {'mkdir','add-resource'}: print(json.dumps({'result':'ok'}))\n"
+            "elif args and args[0] == 'read':\n"
+            "    target = args[1]; content = state.get(target)\n"
+            "    print(json.dumps({'uri': target, 'content': content})) if content is not None else sys.exit(1)\n"
+            "elif args and args[0] in {'tree','ls'}:\n"
+            "    prefix = args[1].rstrip('/') if len(args) > 1 else ''\n"
+            "    print(json.dumps({'resources': [{'uri': key} for key in state if key == prefix or key.startswith(prefix + '/')] }))\n"
+            "elif args and args[0] == 'mkdir': print(json.dumps({'result':'ok'}))\n"
+            "elif args and args[0] == 'add-resource':\n"
+            "    target = args[args.index('--to') + 1]; state[target] = Path(args[1]).read_text(); state_path.write_text(json.dumps(state)); print(json.dumps({'result':'ok'}))\n"
             "else: sys.exit(2)\n",
             encoding="utf-8",
         )

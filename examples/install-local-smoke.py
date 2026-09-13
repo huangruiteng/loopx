@@ -69,11 +69,18 @@ def run_install(
     release_id: str,
     *,
     cwd: Path = REPO_ROOT,
+    revalidate_extensions: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(INSTALL_SCRIPT)],
         cwd=cwd,
-        env={**env, "LOOPX_RELEASE_ID": release_id},
+        env={
+            **env,
+            "LOOPX_RELEASE_ID": release_id,
+            "LOOPX_INSTALL_REVALIDATE_EXTENSIONS": (
+                "1" if revalidate_extensions else "0"
+            ),
+        },
         check=True,
         capture_output=True,
         text=True,
@@ -792,7 +799,7 @@ def main() -> int:
         )
         assert "```sh\nLOOPX_TURN=<current_time_iso>\n" in payload["task_body"], payload
         assert "not a command-prefix assignment" in payload["task_body"], payload
-        assert "guard receipt; 2 stalls->replan" in payload["task_body"], payload
+        assert "guard; 2 stalls->replan" in payload["task_body"], payload
         assert "no-change=`surface_only`/no spend" in payload["task_body"], payload
 
         canary_cli = subprocess.run(
@@ -830,13 +837,21 @@ def main() -> int:
         assert "```bash\n" in canary_task_body and "LOOPX_TURN=<current_time_iso>" in canary_task_body, canary_payload
         assert "not a command-prefix assignment" in canary_task_body, canary_payload
 
-        fresh_install = run_install(env, "install-smoke-fresh")
+        # The initial install exercises the default post-install extension
+        # revalidation. Repeated fixture installs do not add coverage for that
+        # same provider scan, so skip the optional pass to keep this smoke
+        # inside the public-suite timeout budget.
+        fresh_install = run_install(
+            env, "install-smoke-fresh", revalidate_extensions=False
+        )
         assert "loopx installed locally" in fresh_install.stdout, fresh_install.stdout
         assert "loopx install warning" not in fresh_install.stderr, fresh_install.stderr
 
         stale_generated_at = (datetime.now(timezone.utc) - timedelta(hours=25)).replace(microsecond=0).isoformat()
         write_promotion_readiness(runtime_run_dir, generated_at=stale_generated_at, label="stale")
-        stale_install = run_install(env, "install-smoke-stale")
+        stale_install = run_install(
+            env, "install-smoke-stale", revalidate_extensions=False
+        )
         assert "loopx installed locally" in stale_install.stdout, stale_install.stdout
         assert "promotion-readiness evidence is stale" in stale_install.stderr, stale_install.stderr
         assert "age_hours=" in stale_install.stderr, stale_install.stderr
@@ -855,6 +870,7 @@ def main() -> int:
                 "OPENCODE_CONFIG_DIR": str(blocked_opencode_root),
             },
             "install-smoke-opencode-blocked",
+            revalidate_extensions=False,
         )
         assert (
             "loopx OpenCode bridge: install attempted; run manually:"
@@ -868,6 +884,7 @@ def main() -> int:
         opencode_install = run_install(
             {**env, "LOOPX_INSTALL_OPENCODE": "1"},
             "install-smoke-opencode",
+            revalidate_extensions=False,
         )
         assert "loopx OpenCode bridge:" in opencode_install.stdout, opencode_install.stdout
         assert (opencode_root / "commands" / "loopx.md").is_file()

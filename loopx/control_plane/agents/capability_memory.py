@@ -130,10 +130,17 @@ def resolve_agent_capabilities(
 
     root, registry = status_payload.get("runtime_root"), status_payload.get("registry")
     if state is None and agent_identity and root and registry:
-        state = agent_capability_memory(
-            registry_path=Path(str(registry)), runtime_root=Path(str(root)),
-            goal_id=goal_id, agent_id=agent_identity["agent_id"],
-        )
+        try:
+            state = agent_capability_memory(
+                registry_path=Path(str(registry)), runtime_root=Path(str(root)),
+                goal_id=goal_id, agent_id=agent_identity["agent_id"],
+            )
+        except Exception:  # noqa: BLE001 - optional private projection must fail open
+            # Status/quota projection is still useful when a cached or fixture
+            # status packet cannot reach the host-local capability store.  Do
+            # not drop the entire agent lane; the invocation capabilities and
+            # typed goal declarations remain authoritative for this read.
+            state = {}
     availability = _evaluate(
         "availability",
         goal=[*declared_available_capabilities(item), *declared_available_capabilities(project_asset)],

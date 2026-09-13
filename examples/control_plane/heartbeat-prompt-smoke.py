@@ -490,7 +490,7 @@ def main() -> int:
         "Gate only the affected path; continue independent allowed work",
         "loopx todo add --goal-id public-heartbeat-goal --role user --task-class user_gate|user_action",
         "owner todos and `--role agent` for agent todos, not prose",
-        "Done->successor first; final->refresh->spend->no-follow-up",
+        "Done->successor; final->refresh/spend/no-follow-up",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "Account actual class/scale/outcome",
         "once unpiped; never retry",
@@ -597,7 +597,7 @@ def main() -> int:
         "else RRULE/fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
-        "guard receipt; 2 stalls->replan",
+        "guard; 2 stalls->replan",
         "`agent_read_required`",
         "drain/read/triage before work; settle/ACK",
         "P0 blocked: safe P1/P2; monitor quiet/no-spend",
@@ -646,26 +646,26 @@ def main() -> int:
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
         "Due/peer非用户动作",
-        "Todo 验收不等于 Turn 结算或 Goal 完成",
+        "Todo验收非结算",
         "NOTIFY缺动作→",
         "具体user todo未投影",
         "按 user channel",
         "monitor_quiet_skip",
-        "已记 receipt/stall",
-        "写失败同 id 重试",
+        "记 receipt/stall",
+        "同 id 重试",
         "只读一次",
         "outcome-floor recovery",
-        "恢复 ranker/cross-domain evidence",
+        "推进 evidence",
         "status --limit 3",
         "review-packet --handoff-only",
         "heartbeat_recommendation.agent_must_attempt",
-        "遵守本轮 quota/contract 的权限、交付规模/结果",
-        "授权/预算内推进可验证结果",
+        "遵守 quota 权限/结果/handoff",
+        "交付并验证",
         "execution_obligation.must_attempt_work",
         "interaction_contract.cli_channel.settlement_plan.ordered_steps",
         "精确 identity/effect 顺序结算",
         "不使用旧 refresh/spend 配方",
-        "仅 terminal no-follow-up 才能收尾，保留 vision replan",
+        "仅 terminal no-follow-up 收尾",
         "静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额",
         "No learning queue unless asked.",
         "No permission asks in a trusted session.",
@@ -699,7 +699,7 @@ def main() -> int:
         "else RRULE/fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
-        "guard receipt; 2 stalls->replan",
+        "guard; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
         "monitor quiet/no-spend",
         "No learning queue unless asked",
@@ -1051,17 +1051,16 @@ def main() -> int:
     assert "public commit, push, and PR creation as autonomous" in normalized(integration_doc), integration_doc
     assert "Two Prompt Layers" in doc, doc
     assert "Visible goal text" in doc, doc
-    assert "Heartbeat automation task body" in doc, doc
+    assert "heartbeat automation task body" in doc, doc
     assert "LoopX is not an autonomous production controller" in readme, readme
     assert "loopx heartbeat-prompt" in project_skill, project_skill
-    assert "--compact" in project_skill, project_skill
-    assert "--brief" in project_skill, project_skill
-    assert "--thin" in project_skill, project_skill
+    assert "--bootstrap --thin --codex-app" in project_skill, project_skill
+    assert "thin/compact/brief/full execution body" in project_skill, project_skill
     assert "goal_boundary" in project_skill, project_skill
     assert "smoke" in project_skill and "contract" in project_skill, project_skill
     assert "Set Up Recurring Heartbeats" in project_skill, project_skill
     assert "visible goal text short" in project_skill, project_skill
-    assert "--source heartbeat --execute" in project_skill, project_skill
+    assert "refresh-state" in project_skill and "spend" in project_skill, project_skill
     assert "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in project_skill, project_skill
     assert "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>" in project_skill, project_skill
     assert "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>" in project_skill, project_skill
@@ -1121,7 +1120,12 @@ def main() -> int:
         text=True,
     )
     cli_payload = json.loads(cli_json.stdout)
-    assert cli_payload["task_body"] == default_payload["task_body"], cli_payload
+    cli_expected_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        reward_memory_enabled=False,
+    )
+    assert cli_payload["task_body"] == cli_expected_payload["task_body"], cli_payload
     assert set(cli_payload) == {
         "schema_version",
         "ok",
@@ -1152,7 +1156,13 @@ def main() -> int:
         text=True,
     )
     cli_full_payload = json.loads(cli_full_json.stdout)
-    assert cli_full_payload["task_body"] == payload["task_body"], cli_full_payload
+    cli_full_expected_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        full=True,
+        reward_memory_enabled=False,
+    )
+    assert cli_full_payload["task_body"] == cli_full_expected_payload["task_body"], cli_full_payload
     assert cli_full_payload["thin"] is False, cli_full_payload
     assert cli_full_payload["interface_budget"]["mode"] == "full", cli_full_payload
     assert "full" not in cli_full_payload, cli_full_payload
@@ -1177,7 +1187,13 @@ def main() -> int:
         text=True,
     )
     cli_compact_payload = json.loads(cli_compact_json.stdout)
-    assert cli_compact_payload["task_body"] == compact_payload["task_body"], cli_compact_payload
+    cli_compact_expected_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        compact=True,
+        reward_memory_enabled=False,
+    )
+    assert cli_compact_payload["task_body"] == cli_compact_expected_payload["task_body"], cli_compact_payload
     assert cli_compact_payload["compact"] is True, cli_compact_payload
 
     cli_brief_json = subprocess.run(
@@ -1200,7 +1216,13 @@ def main() -> int:
         text=True,
     )
     cli_brief_payload = json.loads(cli_brief_json.stdout)
-    assert cli_brief_payload["task_body"] == brief_payload["task_body"], cli_brief_payload
+    cli_brief_expected_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        brief=True,
+        reward_memory_enabled=False,
+    )
+    assert cli_brief_payload["task_body"] == cli_brief_expected_payload["task_body"], cli_brief_payload
     assert cli_brief_payload["brief"] is True, cli_brief_payload
     assert cli_brief_payload["cli_bin"] == "loopx", cli_brief_payload
 
@@ -1224,7 +1246,13 @@ def main() -> int:
         text=True,
     )
     cli_thin_payload = json.loads(cli_thin_json.stdout)
-    assert cli_thin_payload["task_body"] == thin_payload["task_body"], cli_thin_payload
+    cli_thin_expected_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID,
+        active_state=ACTIVE_STATE,
+        thin=True,
+        reward_memory_enabled=False,
+    )
+    assert cli_thin_payload["task_body"] == cli_thin_expected_payload["task_body"], cli_thin_payload
     assert cli_thin_payload["schema_version"] == HEARTBEAT_AGENT_INPUT_SCHEMA_VERSION
     assert "thin_prompt_command" not in cli_thin_payload, cli_thin_payload
 

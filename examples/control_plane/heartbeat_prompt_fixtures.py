@@ -10,7 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from loopx.heartbeat_prompt import INTERFACE_BUDGET_CHARS  # noqa: E402
+from loopx.heartbeat_prompt import (  # noqa: E402
+    INTERFACE_BUDGET_CHARS,
+    REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS,
+)
 
 
 DOC = REPO_ROOT / "docs" / "heartbeat-automation-prompt.md"
@@ -44,10 +47,15 @@ def prompt_budget_text(text: str) -> str:
 
 def assert_prompt_budget(label: str, text: str) -> None:
     budget_text = prompt_budget_text(text)
-    assert len(budget_text) <= INTERFACE_BUDGET_CHARS[label], (
+    max_chars = INTERFACE_BUDGET_CHARS[label] + (
+        REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS
+        if "--reward-memory-reflection-json" in text
+        else 0
+    )
+    assert len(budget_text) <= max_chars, (
         label,
         len(budget_text),
-        INTERFACE_BUDGET_CHARS[label],
+        max_chars,
     )
 
 
@@ -59,7 +67,12 @@ def assert_interface_budget_payload(label: str, payload: dict) -> None:
     assert budget["char_count"] == len(task_body), budget
     assert budget["line_count"] == len(task_body.splitlines()), budget
     assert budget["budget_char_count"] == len(prompt_budget_text(task_body)), budget
-    assert budget["max_chars"] == INTERFACE_BUDGET_CHARS[label], budget
+    expected_max_chars = INTERFACE_BUDGET_CHARS[label] + (
+        REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS
+        if "--reward-memory-reflection-json" in task_body
+        else 0
+    )
+    assert budget["max_chars"] == expected_max_chars, budget
     assert budget["within_budget"] is True, budget
 
 

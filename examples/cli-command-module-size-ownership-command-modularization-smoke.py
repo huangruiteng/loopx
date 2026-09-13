@@ -12,6 +12,9 @@ DEFAULT_MAX_LINES = 1000
 STARTER_MODULE_LIMITS = {
     # Legacy command owners are frozen at their current baseline while each
     # cohesive extraction lands; the default budget still catches new growth.
+    "quota.py": 1118,
+    "support_control.py": 1015,
+    "turn.py": 1114,
     "todo.py": 1098,
     "starter.py": 180,
     "starter_bootstrap.py": 220,

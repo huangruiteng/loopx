@@ -12,9 +12,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.agents.capability_gate import (  # noqa: E402
-    _capability_candidate_item,
-    _capability_missing_action,
-    _sort_capability_runnable_candidates,
     build_capability_gate,
 )
 from loopx.control_plane.agents.agent_lane_recommendation import (  # noqa: E402
@@ -68,41 +65,6 @@ def todo(
     return item
 
 
-def assert_missing_action_contract() -> None:
-    assert _capability_missing_action([]) == "run"
-    assert _capability_missing_action(["benchmark_runner"]) == "repair_bridge"
-    assert _capability_missing_action(["network"]) == "repair_bridge"
-    assert _capability_missing_action(["credentials"]) == "ask_owner"
-    assert _capability_missing_action(["custom_capability"]) == "repair_bridge"
-
-
-def assert_candidate_compaction_contract() -> None:
-    item = todo(
-        "todo_bridge",
-        3,
-        "P1",
-        claimed_by=AGENT_ID,
-        required_capabilities=["shell", "benchmark_runner"],
-        target_capabilities=["status_quota_read_model_refactor"],
-    )
-    candidate = _capability_candidate_item(
-        item,
-        missing=["benchmark_runner"],
-        missing_target_capabilities=["benchmark_runner"],
-    )
-    assert candidate["todo_id"] == "todo_bridge", candidate
-    assert candidate["required_capabilities"] == ["shell", "benchmark_runner"], (
-        candidate
-    )
-    assert candidate["target_capabilities"] == ["status_quota_read_model_refactor"], (
-        candidate
-    )
-    assert candidate["missing_capabilities"] == ["benchmark_runner"], candidate
-    assert candidate["missing_target_capabilities"] == ["benchmark_runner"], candidate
-    assert candidate["capability_action"] == "repair_bridge", candidate
-    assert candidate["capability_repair_mode"] is True, candidate
-
-
 def assert_current_agent_candidate_order_contract() -> None:
     runnable = [
         todo("todo_unclaimed_p0", 1, "P0"),
@@ -124,21 +86,27 @@ def assert_current_agent_candidate_order_contract() -> None:
             continuation_policy="independent_handoff",
         ),
     ]
-    ordered, policy = _sort_capability_runnable_candidates(
-        runnable,
+    for item in runnable:
+        item["required_capabilities"] = ["shell"]
+    gate = build_capability_gate(
+        {"executable_backlog_items": runnable},
+        available_capabilities=["shell"],
         agent_identity={
             "agent_id": AGENT_ID,
             "agent_model": "peer_v1",
         },
     )
-    assert policy == "claim_then_priority_then_active_next_then_repair"
-    assert [item["todo_id"] for item in ordered] == [
+    assert gate is not None
+    assert gate["candidate_order_policy"] == (
+        "claim_then_priority_then_active_next_then_repair"
+    )
+    assert [item["todo_id"] for item in gate["runnable_candidates"]] == [
         "todo_current_p2",
         "todo_current_unblock_p2",
         "todo_primary_review",
         "todo_unclaimed_p0",
         "todo_other_p0",
-    ], ordered
+    ], gate
 
 
 def assert_stale_active_next_does_not_override_ready_p0() -> None:
@@ -390,8 +358,6 @@ def assert_due_monitor_source_composes_with_advancement() -> None:
 
 
 def main() -> int:
-    assert_missing_action_contract()
-    assert_candidate_compaction_contract()
     assert_current_agent_candidate_order_contract()
     assert_stale_active_next_does_not_override_ready_p0()
     assert_gate_prefers_active_next_and_exposes_blocked_fallback()

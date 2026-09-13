@@ -100,6 +100,14 @@ COMMAND_GROUPS: list[dict[str, object]] = [
                 "purpose": "Read the current agent's thin public-safe ledger before replan or handoff.",
             },
             {
+                "command": "loopx agent-capabilities --help",
+                "purpose": "Inspect or correct a registered Agent's observed runtime capabilities.",
+            },
+            {
+                "command": "loopx handoff --help",
+                "purpose": "Prepare, inspect, or adopt one explicit cross-agent Todo handoff.",
+            },
+            {
                 "command": "loopx machine-config --help",
                 "purpose": "Inspect typed machine policy, preview changes, and apply an exact plan revision.",
             },

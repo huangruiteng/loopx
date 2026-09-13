@@ -10,9 +10,59 @@ from ..capabilities.agent_turn_recall import (
     run_configured_agent_turn_recall_fail_open,
 )
 from ..capabilities.reward_memory.codex_app_outcome import (
+    stage_codex_app_turn_outcome_candidate_fail_open,
     run_staged_codex_app_turn_outcome_ingest_fail_open,
 )
 from ..control_plane.quota.settlement import read_heartbeat_settlement
+
+
+def stage_reward_memory_outcome_candidate(
+    payload: dict[str, Any],
+    *,
+    registry_path: Path,
+    runtime_root: Path,
+    goal_id: str,
+    agent_id: str,
+    todo_id: str,
+    turn_instance_id: str,
+    reflection_json: str,
+    validation_workspace: Path,
+) -> None:
+    """Attach a privately staged outcome candidate after a valid refresh."""
+
+    settlement_identity = payload.get("settlement_identity")
+    settlement_identity = (
+        settlement_identity if isinstance(settlement_identity, Mapping) else {}
+    )
+    state = payload.get("state")
+    state = state if isinstance(state, Mapping) else {}
+    payload["reward_memory_outcome_candidate"] = (
+        stage_codex_app_turn_outcome_candidate_fail_open(
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+            agent_id=agent_id,
+            todo_id=todo_id,
+            turn_instance_id=turn_instance_id,
+            effect_id=str(settlement_identity.get("effect_id") or ""),
+            state_file=Path(str(state.get("path") or "")),
+            validation_workspace=validation_workspace,
+            reflection_json=reflection_json,
+            observed_at=str(payload.get("generated_at") or ""),
+        )
+    )
+
+
+def reward_memory_candidate_details(payload: Mapping[str, Any]) -> dict[str, str]:
+    candidate = payload.get("reward_memory_outcome_candidate")
+    candidate = candidate if isinstance(candidate, Mapping) else {}
+    return {
+        "reward_memory_candidate_id": str(candidate.get("candidate_id") or ""),
+        "reward_memory_candidate_status": str(candidate.get("status") or ""),
+        "reward_memory_reflection_digest": str(
+            candidate.get("reflection_digest") or ""
+        ),
+    }
 
 
 def attach_reward_memory_ingest_after_spend(

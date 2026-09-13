@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import errno
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -1092,39 +1093,39 @@ def main() -> int:
                 "scope_ref": reward_binding["scope_ref"],
             }
         ]
-        write(
-            reward_config_path,
-            json.dumps(
+        reward_config = {
+            "schema_version": "reward_memory_experiment_config_v1",
+            "project_provider_binding": reward_project_binding,
+            "corpora": [
                 {
-                    "schema_version": "reward_memory_experiment_config_v1",
-                    "project_provider_binding": reward_project_binding,
-                    "corpora": [
-                        {
-                            "corpus": reward_fixture["corpus"],
-                            "standing_policy": reward_fixture["standing_policy"],
-                        }
-                    ],
-                    "surfaces": [
-                        {
-                            "surface_id": "reviewer_artifact.summary",
-                            "adapter": reward_fixture["adapter"],
-                            "corpus_ids": [reward_corpus_id],
-                            "ingest_corpus_id": reward_corpus_id,
-                            "recall_profile": {
-                                "profile_id": "reviewer_summary_fixture_v1",
-                                "mode": "function_boundary",
-                                "max_queries": 1,
-                                "limit": 5,
-                            },
-                        }
-                    ],
-                    "automation": {
-                        "automatic_recall": True,
-                        "automatic_ingest": False,
-                        "fail_open": True,
+                    "corpus": reward_fixture["corpus"],
+                    "standing_policy": reward_fixture["standing_policy"],
+                }
+            ],
+            "surfaces": [
+                {
+                    "surface_id": "reviewer_artifact.summary",
+                    "adapter": reward_fixture["adapter"],
+                    "corpus_ids": [reward_corpus_id],
+                    "ingest_corpus_id": reward_corpus_id,
+                    "recall_profile": {
+                        "profile_id": "reviewer_summary_fixture_v1",
+                        "mode": "function_boundary",
+                        "max_queries": 1,
+                        "limit": 5,
                     },
                 }
-            ),
+            ],
+            "automation": {
+                "automatic_recall": True,
+                "automatic_ingest": False,
+                "fail_open": True,
+            },
+        }
+        reward_config_text = json.dumps(reward_config)
+        write(reward_config_path, reward_config_text)
+        reward_config_digest = (
+            f"sha256:{hashlib.sha256(reward_config_path.read_bytes()).hexdigest()}"
         )
         registry = path / ".loopx/registry.json"
         write(
@@ -1162,6 +1163,21 @@ def main() -> int:
                                         ".loopx/config/reward-memory/experiment.json"
                                     ),
                                     "enabled_agents": ["fixture-review-agent"],
+                                    "config_digest": reward_config_digest,
+                                    "enablement_receipts": {
+                                        "fixture-review-agent": {
+                                            "schema_version": "reward_memory_enablement_receipt_v0",
+                                            "status": "verified",
+                                            "goal_id": reward_goal_id,
+                                            "agent_id": "fixture-review-agent",
+                                            "config_digest": reward_config_digest,
+                                            "provider_id": reward_project_binding["provider_id"],
+                                            "isolation_mode": "explicit_shared",
+                                            "actor_binding_verified": False,
+                                            "writability_verified": True,
+                                            "exact_readback_verified": True,
+                                        }
+                                    },
                                 }
                             },
                         },
@@ -1344,13 +1360,18 @@ def main() -> int:
         )
         assert disabled_handled is not None
         disabled_preview, _ = disabled_handled
-        disabled_application = disabled_preview[
-            "reviewer_artifact_reward_memory_preview"
-        ]
-        assert disabled_preview["reviewer_artifact_reward_memory_status"] == "blocked"
-        assert disabled_application["automatic_recall"] is False
-        assert disabled_application["recall"]["status"] == "disabled"
-        assert disabled_application["telemetry"]["provider_call_count"] == 0
+        if disabled_preview.get("reward_memory_experiment_status") == "enablement_stale":
+            # Editing the local config without refreshing its registry digest is
+            # an intentional fail-closed enablement boundary.
+            assert "reviewer_artifact_reward_memory_preview" not in disabled_preview
+        else:
+            disabled_application = disabled_preview[
+                "reviewer_artifact_reward_memory_preview"
+            ]
+            assert disabled_preview["reviewer_artifact_reward_memory_status"] == "blocked"
+            assert disabled_application["automatic_recall"] is False
+            assert disabled_application["recall"]["status"] == "disabled"
+            assert disabled_application["telemetry"]["provider_call_count"] == 0
 
         lifecycle_path = default_issue_fix_domain_state_ledger_path(
             project=path,

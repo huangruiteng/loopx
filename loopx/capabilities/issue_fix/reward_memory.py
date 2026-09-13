@@ -267,6 +267,7 @@ def run_issue_fix_patch_planning_reward_memory(
     read_authority_checkpoint: Mapping[str, Any],
     provider_binding: Mapping[str, Any],
     application_id: str,
+    peer_ref: str | None = None,
     artifact_ref: str | None = None,
     apply_memory: RewardMemoryApplier | None = None,
     provider: ContextProvider | None = None,
@@ -284,23 +285,27 @@ def run_issue_fix_patch_planning_reward_memory(
                 raise ValueError("Issue Fix reward-memory output must be a patch plan")
             return decision
 
+    request = {
+        "workspace_ref": workspace_ref,
+        "project_ref": repository_ref,
+        "surface_id": ISSUE_FIX_PATCH_PLANNING_SURFACE,
+        "revision_ref": revision_ref,
+        "mode": mode,
+        "query_kind": "business_recall",
+        "queries": queries,
+        "limit": limit,
+        "observed_at": observed_at,
+        "freshness_context": dict(freshness_context),
+        "conflict_state": conflict_state,
+        "raw_content_captured": False,
+    }
+    if peer_ref is not None:
+        request["peer_ref"] = peer_ref
+
     shared = run_semantic_preference_reward_memory(
         dict(base_plan),
         corpus=corpus,
-        request={
-            "workspace_ref": workspace_ref,
-            "project_ref": repository_ref,
-            "surface_id": ISSUE_FIX_PATCH_PLANNING_SURFACE,
-            "revision_ref": revision_ref,
-            "mode": mode,
-            "query_kind": "business_recall",
-            "queries": queries,
-            "limit": limit,
-            "observed_at": observed_at,
-            "freshness_context": dict(freshness_context),
-            "conflict_state": conflict_state,
-            "raw_content_captured": False,
-        },
+        request=request,
         read_authority_checkpoint=read_authority_checkpoint,
         provider_binding=provider_binding,
         application_id=application_id,
@@ -435,6 +440,7 @@ def run_issue_fix_reviewer_artifact_reward_memory(
     read_authority_checkpoint: Mapping[str, Any],
     provider_binding: Mapping[str, Any],
     application_id: str,
+    peer_ref: str | None = None,
     artifact_ref: str | None = None,
     provider: ContextProvider | None = None,
     limit: int = 3,
@@ -453,29 +459,33 @@ def run_issue_fix_reviewer_artifact_reward_memory(
         reasoning_summary=reasoning_summary,
     )
 
+    request = {
+        "workspace_ref": workspace_ref,
+        "project_ref": repository_ref,
+        "surface_id": ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
+        "revision_ref": revision_ref,
+        "mode": "function_boundary",
+        "queries": [
+            {
+                "query": (
+                    "Which reviewed policy governs this reviewer-facing PR summary?"
+                ),
+                "query_summary": "reviewer-facing PR summary policy",
+            }
+        ],
+        "limit": limit,
+        "observed_at": observed_at,
+        "freshness_context": dict(freshness_context),
+        "conflict_state": conflict_state,
+        "raw_content_captured": False,
+    }
+    if peer_ref is not None:
+        request["peer_ref"] = peer_ref
+
     shared = run_semantic_preference_reward_memory(
         base,
         corpus=corpus,
-        request={
-            "workspace_ref": workspace_ref,
-            "project_ref": repository_ref,
-            "surface_id": ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
-            "revision_ref": revision_ref,
-            "mode": "function_boundary",
-            "queries": [
-                {
-                    "query": (
-                        "Which reviewed policy governs this reviewer-facing PR summary?"
-                    ),
-                    "query_summary": "reviewer-facing PR summary policy",
-                }
-            ],
-            "limit": limit,
-            "observed_at": observed_at,
-            "freshness_context": dict(freshness_context),
-            "conflict_state": conflict_state,
-            "raw_content_captured": False,
-        },
+        request=request,
         read_authority_checkpoint=read_authority_checkpoint,
         provider_binding=provider_binding,
         application_id=application_id,
@@ -532,6 +542,7 @@ def run_issue_fix_reviewer_artifact_automatic_reward_memory(
             "corpus_id": item["corpus"]["corpus_id"],
             "workspace_ref": workspace_ref,
             "project_ref": repository_ref,
+            "peer_ref": item["corpus"]["scope"].get("peer_ref"),
             "surface_id": ISSUE_FIX_REVIEWER_ARTIFACT_SURFACE,
             "read_authority": item["corpus"]["read_authority"],
             "source_ref": item["standing_policy"]["authority_source_ref"],
@@ -545,6 +556,7 @@ def run_issue_fix_reviewer_artifact_automatic_reward_memory(
         workspace_ref=workspace_ref,
         project_ref=repository_ref,
         revision_ref=revision_ref,
+        peer_ref=str(scope.get("peer_ref") or "") or None,
         queries=[
             {
                 "query": (

@@ -44,7 +44,7 @@ OBSERVED_AT = "2026-07-14T10:00:00+00:00"
 WORKSPACE = "workspace:example"
 PROJECT = "repository:example"
 REVISION = "revision:abc123"
-SCOPE_REF = "viking://resources/reward-memory/example"
+SCOPE_REF = "viking://user/example/peers/project-example/memories"
 
 
 class FakeProvider:
@@ -94,8 +94,13 @@ class OpenVikingRewardMemoryRunner:
     ) -> subprocess.CompletedProcess[str]:
         self.calls.append(command)
         args = command[1:]
+        if args[:1] == ["--actor-peer-id"]:
+            assert args[1] == "project-example"
+            args = args[2:]
         if args == ["--version"]:
-            stdout = "openviking 0.4.9.dev11\n"
+            stdout = "openviking 0.4.19\n"
+        elif args == ["version"]:
+            stdout = "Client: openviking 0.4.19\nServer: 0.4.19\n"
         elif args[:2] == ["status", "-o"]:
             stdout = json.dumps({"status": "healthy"})
         elif args[0] == "search":
@@ -138,6 +143,7 @@ def corpus(
         "scope": {
             "workspace_ref": WORKSPACE,
             "project_ref": PROJECT,
+            "peer_ref": "agent:project-example",
             "surface_ids": [surface],
         },
         "freshness": {
@@ -181,6 +187,7 @@ def reviewed_candidate(
         "scope": {
             "workspace_ref": WORKSPACE,
             "project_ref": PROJECT,
+            "peer_ref": "agent:project-example",
             "surface_ids": [surface],
             "revision_ref": REVISION,
         },
@@ -251,6 +258,7 @@ def checkpoint(corpus_id: str, surface: str) -> dict[str, Any]:
         "corpus_id": corpus_id,
         "workspace_ref": WORKSPACE,
         "project_ref": PROJECT,
+        "peer_ref": "agent:project-example",
         "surface_id": surface,
         "read_authority": "module_scoped",
         "source_ref": "repository:authority-map",
@@ -278,6 +286,7 @@ def main() -> None:
             "project_ref": PROJECT,
             "surface_id": issue_surface,
             "revision_ref": REVISION,
+            "peer_ref": "agent:project-example",
             "mode": "function_boundary",
             "queries": [{"query": "policy", "query_summary": "policy"}],
             "limit": 1,
@@ -323,7 +332,7 @@ def main() -> None:
         activated_at=OBSERVED_AT,
     )
     assert active_issue["provider_write_performed"] is False
-    issue_resource_ref = "viking://resources/reward-memory/example/policy.json"
+    issue_resource_ref = f"{SCOPE_REF}/policy.json"
     issue_runner = OpenVikingRewardMemoryRunner(
         resource_ref=issue_resource_ref,
         content=json.dumps(active_issue, ensure_ascii=False),
@@ -331,6 +340,7 @@ def main() -> None:
     issue_provider = OpenVikingContextProvider(
         executable="ov-contract",
         runner=issue_runner,
+        actor_peer_id="project-example",
     )
 
     def apply_plan(base: Any, items: Any) -> dict[str, Any]:
@@ -354,6 +364,7 @@ def main() -> None:
         workspace_ref=WORKSPACE,
         repository_ref=PROJECT,
         revision_ref=REVISION,
+        peer_ref="agent:project-example",
         queries=[
             {
                 "query": "What reviewed policy constrains this memory-core patch?",
@@ -374,7 +385,7 @@ def main() -> None:
         apply_memory=apply_plan,
         provider=issue_provider,
     )
-    assert issue_result["patch_plan"]["evidence_policy"] == "relevance_gated"
+    assert issue_result["patch_plan"].get("evidence_policy") == "relevance_gated", issue_result
     assert issue_result["recall"]["provider_call_count"] == 1
     assert issue_result["recall"]["result_readback_verified"] is True
     assert issue_result["recall"]["results"][0]["content_exposed"] is False
@@ -398,12 +409,23 @@ def main() -> None:
     assert len(minimum["query_evidence"][0]["query_digest"]) == 16
     assert minimum["query_evidence"][0]["exact_query_exposed"] is False
     assert issue_result["automatic_recall"] is False
-    assert [command[1] for command in issue_runner.calls] == [
+    def command_operation(command: list[str]) -> str:
+        args = command[1:]
+        if args[:1] == ["--actor-peer-id"]:
+            args = args[2:]
+        return args[0]
+
+    assert [command_operation(command) for command in issue_runner.calls] == [
         "--version",
+        "version",
         "status",
         "search",
         "read",
     ]
+    assert all(
+        command[1:3] == ["--actor-peer-id", "project-example"]
+        for command in issue_runner.calls[3:]
+    )
     incomplete_receipt_evidence = _execution_evidence(
         {
             "query_kind": "business_recall",
@@ -446,7 +468,7 @@ def main() -> None:
         (
             item(
                 active_reviewer,
-                "viking://resources/reward-memory/example/reviewer-summary.json",
+                f"{SCOPE_REF}/reviewer-summary.json",
             ),
         )
     )
@@ -464,6 +486,7 @@ def main() -> None:
         workspace_ref=WORKSPACE,
         repository_ref=PROJECT,
         revision_ref=REVISION,
+        peer_ref="agent:project-example",
         observed_at=OBSERVED_AT,
         freshness_context={
             "source_truth_current": True,
@@ -556,6 +579,7 @@ def main() -> None:
         workspace_ref=WORKSPACE,
         repository_ref=PROJECT,
         revision_ref=REVISION,
+        peer_ref="agent:project-example",
         observed_at=OBSERVED_AT,
         freshness_context={
             "source_truth_current": True,
@@ -595,7 +619,7 @@ def main() -> None:
         (
             item(
                 active_preference,
-                "viking://resources/reward-memory/example/preference.json",
+                f"{SCOPE_REF}/preference.json",
             ),
         )
     )
@@ -605,6 +629,7 @@ def main() -> None:
         request={
             "workspace_ref": WORKSPACE,
             "project_ref": PROJECT,
+            "peer_ref": "agent:project-example",
             "surface_id": review_surface,
             "revision_ref": REVISION,
             "mode": "bounded_agentic_search",
@@ -676,6 +701,7 @@ def main() -> None:
         workspace_ref=WORKSPACE,
         repository_ref=PROJECT,
         revision_ref=REVISION,
+        peer_ref="agent:project-example",
         queries=[{"query": "policy", "query_summary": "policy"}],
         mode="function_boundary",
         observed_at=OBSERVED_AT,
@@ -714,6 +740,7 @@ def main() -> None:
                 {
                     "workspace_ref": WORKSPACE,
                     "project_ref": PROJECT,
+                    "peer_ref": "agent:project-example",
                     "surface_id": issue_surface,
                     "revision_ref": REVISION,
                     "mode": "function_boundary",

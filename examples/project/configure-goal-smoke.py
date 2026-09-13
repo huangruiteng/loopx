@@ -25,6 +25,83 @@ def write_registry(root: Path) -> Path:
         "# Active Goal State\n\n## Agent Todo\n\n- [ ] Keep this todo during scope migration.\n",
         encoding="utf-8",
     )
+    # Keep the optional Reward Memory pointer usable during configure-goal
+    # preview.  The command validates an exact repo-relative config before it
+    # mutates the registry, so the fixture must provide the same public-safe
+    # config a connected Goal would read.
+    reward_fixture = json.loads(
+        (REPO_ROOT / "examples/fixtures/reward-memory-ingest-event.public.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    reward_config_path = root / "project/.loopx/config/reward-memory/experiment.json"
+    fake_provider = root / "fake-openviking"
+    fake_provider.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "state_path = Path(__file__).with_suffix('.state')\n"
+        "try: state = json.loads(state_path.read_text())\n"
+        "except (FileNotFoundError, json.JSONDecodeError): state = {}\n"
+        "if args == ['--version']: print('openviking 0.4.9.dev11')\n"
+        "elif args and args[0] == 'status': print(json.dumps({'status': 'healthy'}))\n"
+        "elif args and args[0] == 'read':\n"
+        "    target = args[1]; content = state.get(target)\n"
+        "    print(json.dumps({'uri': target, 'content': content})) if content is not None else sys.exit(1)\n"
+        "elif args and args[0] in {'tree', 'ls'}:\n"
+        "    prefix = args[1].rstrip('/') if len(args) > 1 else ''\n"
+        "    print(json.dumps({'resources': [{'uri': key} for key in state if key == prefix or key.startswith(prefix + '/')] }))\n"
+        "elif args and args[0] == 'mkdir': print(json.dumps({'result': 'ok'}))\n"
+        "elif args and args[0] == 'add-resource':\n"
+        "    target = args[args.index('--to') + 1]; state[target] = Path(args[1]).read_text(); state_path.write_text(json.dumps(state)); print(json.dumps({'result': 'ok'}))\n"
+        "else: sys.exit(2)\n",
+        encoding="utf-8",
+    )
+    fake_provider.chmod(0o755)
+    reward_binding = dict(reward_fixture["provider_binding"])
+    reward_binding["provider_binary"] = str(fake_provider)
+    reward_corpus_id = reward_fixture["corpus"]["corpus_id"]
+    reward_config = {
+        "schema_version": "reward_memory_experiment_config_v1",
+        "project_provider_binding": {
+            key: value
+            for key, value in reward_binding.items()
+            if key not in {"corpus_id", "scope_ref"}
+        }
+        | {
+            "corpus_scopes": [
+                {"corpus_id": reward_corpus_id, "scope_ref": reward_binding["scope_ref"]}
+            ]
+        },
+        "corpora": [
+            {
+                "corpus": reward_fixture["corpus"],
+                "standing_policy": reward_fixture["standing_policy"],
+            }
+        ],
+        "surfaces": [
+            {
+                "surface_id": "issue_fix.patch_planning",
+                "adapter": reward_fixture["adapter"],
+                "corpus_ids": [reward_corpus_id],
+                "ingest_corpus_id": reward_corpus_id,
+                "recall_profile": {
+                    "profile_id": "configure_goal_fixture_v1",
+                    "mode": "function_boundary",
+                    "max_queries": 1,
+                    "limit": 3,
+                },
+            }
+        ],
+        "automation": {
+            "automatic_recall": False,
+            "automatic_ingest": False,
+            "fail_open": True,
+        },
+    }
+    reward_config_path.parent.mkdir(parents=True, exist_ok=True)
+    reward_config_path.write_text(json.dumps(reward_config), encoding="utf-8")
     registry_path = root / "registry.json"
     registry_path.write_text(
         json.dumps(
@@ -195,12 +272,15 @@ def main() -> int:
         assert dry["after"]["lark_kanban_heartbeat_sync"] == {
             "enabled": True,
         }, dry
-        assert dry["after"]["reward_memory"] == {
-            "enabled": True,
-            "experimental": True,
-            "config_pointer_registered": True,
-            "enabled_agents": ["codex-side-bypass"],
-        }, dry
+        # The projection now includes binding/automation metadata in addition
+        # to the stable enablement fields.  Keep this smoke focused on the
+        # public contract rather than freezing provider details.
+        assert dry["after"]["reward_memory"]["enabled"] is True, dry
+        assert dry["after"]["reward_memory"]["experimental"] is True, dry
+        assert dry["after"]["reward_memory"]["config_pointer_registered"] is True, dry
+        assert dry["after"]["reward_memory"]["enabled_agents"] == [
+            "codex-side-bypass"
+        ], dry
         assert dry["feature_summary"]["multi_subagent"] == "enabled", dry
         catalog = dry["configuration_catalog"]
         assert catalog["schema_version"] == "loopx_goal_configuration_catalog_v0", catalog
@@ -222,12 +302,16 @@ def main() -> int:
         }
         assert features["todo_replan_cadence"]["availability"] == "supported_opt_in"
         assert features["todo_replan_cadence"]["default"] == {"completed_todos": 5}
-        assert features["todo_replan_cadence"]["current"] == {"completed_todos": 5}
+        # Goal-scoped cadence is omitted when no explicit override is present;
+        # the machine default remains discoverable through the default field.
+        assert "current" not in features["todo_replan_cadence"], features[
+            "todo_replan_cadence"
+        ]
         replan_commands = features["todo_replan_cadence"]["commands"]
         assert "--execution-replan-after-todos 3" in replan_commands["preview_enable"]
         assert "--execute" not in replan_commands["preview_enable"]
         assert "--execute" in replan_commands["apply_enable"]
-        assert "--execution-replan-after-todos 5" in replan_commands["preview_disable"]
+        assert "--clear-execution-replan-after-todos" in replan_commands["preview_disable"]
         assert "--execute" not in replan_commands["preview_disable"]
         assert "--execute" in replan_commands["apply_disable"]
         assert features["local_authority_shadow"]["availability"] == "experimental_opt_in"
@@ -261,11 +345,9 @@ def main() -> int:
             "peer_task_coordination"
         ]["commands"]["preview_enable"]
         assert features["explore_graph"]["current"]["enabled"] is False
-        assert features["change_quality_qualification"]["current"] == {
-            "enabled": False,
-            "safe_fix": False,
-            "strict_receipt": False,
-        }
+        assert "current" not in features["change_quality_qualification"], features[
+            "change_quality_qualification"
+        ]
         assert "--change-quality-enabled" in features[
             "change_quality_qualification"
         ]["commands"]["preview_enable"]
@@ -383,12 +465,15 @@ def main() -> int:
         assert goal["control_plane"]["lark_kanban"] == {
             "heartbeat_sync_enabled": True,
         }, goal
-        assert goal["control_plane"]["reward_memory"] == {
-            "enabled": True,
-            "experimental": True,
-            "config_path": ".loopx/config/reward-memory/experiment.json",
-            "enabled_agents": ["codex-side-bypass"],
-        }, goal
+        reward_memory_control_plane = goal["control_plane"]["reward_memory"]
+        assert reward_memory_control_plane["enabled"] is True, goal
+        assert reward_memory_control_plane["experimental"] is True, goal
+        assert reward_memory_control_plane["config_path"] == (
+            ".loopx/config/reward-memory/experiment.json"
+        ), goal
+        assert reward_memory_control_plane["enabled_agents"] == [
+            "codex-side-bypass"
+        ], goal
         boundary = goal_boundary(goal, registry_path=registry_path)
         assert boundary["capabilities"]["issue_fix_reviewer_notification"] == {
             "enabled": True,

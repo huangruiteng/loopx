@@ -789,7 +789,7 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         )
         assert "- ok: `False`" in markdown, markdown
         assert "- mode: `monitor-poll`" in markdown, markdown
-        assert "- todo_id: ``" in markdown, markdown
+        assert "- todo_id: `todo_monitorpoll111`" in markdown, markdown
         assert f"- target_key: `{OTHER_TARGET_KEY}`" in markdown, markdown
         assert "- material_change: `True`" in markdown, markdown
         assert "- appended: `False`" in markdown, markdown
@@ -878,9 +878,10 @@ def assert_capability_gated_monitor_poll_requires_declaration_parity() -> None:
             GOAL_ID,
             "--agent-id",
             AGENT_ID,
-            *capability_args,
         )
-        assert should_run["work_lane_contract"]["obligation"] == "attempt_due_monitor", should_run
+        assert should_run["effective_action"] == "capability_bridge_repair", should_run
+        assert should_run["capability_gate"]["action"] == "repair_bridge", should_run
+        assert should_run["capability_gate"]["missing"] == list(capabilities), should_run
 
         failure = run_cli_expect_error(
             registry_path,
@@ -898,6 +899,7 @@ def assert_capability_gated_monitor_poll_requires_declaration_parity() -> None:
             "old",
             "--include-detail",
             "decisions",
+            "--execute",
         )
         assert "monitor-poll recomputes should-run" in failure["reason"], failure
         retry = failure["capability_retry"]

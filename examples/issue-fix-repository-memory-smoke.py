@@ -459,7 +459,7 @@ def main() -> int:
             observed_at="2026-07-11T03:30:00+08:00",
             execute=False,
         ).public_packet()
-        assert sync_plan["status"] == "planned", sync_plan
+        assert sync_plan["status"] == "preflight_ready", sync_plan
         assert sync_plan["ok"] is True, sync_plan
         assert sync_plan["external_writes_performed"] is False, sync_plan
         assert_boundary(sync_plan)
@@ -481,7 +481,7 @@ def main() -> int:
             execute=True,
         ).public_packet()
         assert uncertain["status"] == "committed_pending", uncertain
-        assert uncertain["ok"] is True, uncertain
+        assert uncertain["ok"] is False, uncertain
         assert uncertain["completed_count"] == 0, uncertain
         assert uncertain["pending_count"] == 1, uncertain
         assert uncertain["write_count"] == 1, uncertain
@@ -555,7 +555,7 @@ def main() -> int:
             reconciliation_performed=True,
             retry_disposition="wait_and_reconcile",
         ).public_packet()
-        assert generic_pending["ok"] is True, generic_pending
+        assert generic_pending["ok"] is False, generic_pending
         assert generic_pending["retry_disposition"] == "wait_and_reconcile"
         assert_boundary(generic_pending)
         provider_result = retrieve_issue_fix_repository_memory(

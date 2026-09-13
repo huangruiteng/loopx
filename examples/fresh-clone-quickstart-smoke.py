@@ -181,8 +181,14 @@ def main() -> int:
             env=cli_env,
         )
         assert heartbeat["ok"] is True, heartbeat
-        assert "quota should-run" in heartbeat["quota_guard_command"], heartbeat
-        assert "--source heartbeat --execute" in heartbeat["quota_spend_command"], heartbeat
+        # The default heartbeat JSON is the thin Agent-input projection: the
+        # current task body carries the guard, while settlement commands come
+        # from the successful interaction contract and are intentionally not
+        # duplicated as stale top-level fields.
+        assert heartbeat["schema_version"] == "heartbeat_agent_input_v1", heartbeat
+        assert "quota should-run" in heartbeat["task_body"], heartbeat
+        assert "quota_guard_command" not in heartbeat, heartbeat
+        assert "quota_spend_command" not in heartbeat, heartbeat
 
     print("fresh-clone-quickstart-smoke ok")
     return 0
