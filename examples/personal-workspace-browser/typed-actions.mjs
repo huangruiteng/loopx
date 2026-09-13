@@ -600,9 +600,16 @@ export const typedActionsScenario = {
         if (await card.getByText("待执行", { exact: true }).count()) throw new Error("Deferred task was labeled queued");
         await card.getByText(title, { exact: true }).click();
         const drawer = page.getByRole("dialog", { name: "Todo 详情" });
-        await drawer.getByText("等待恢复条件满足后重新评估", { exact: true }).waitFor();
+        await drawer.getByText(
+          conditionExpected ? "恢复条件已满足，等待生命周期重新规划" : "等待恢复条件满足后重新评估",
+          { exact: true },
+        ).waitFor();
         const condition = drawer.locator("dl > div", { has: page.getByText("恢复条件", { exact: true }) });
-        await condition.getByText(conditionExpected ? "todo_done:todo-progress-full" : "未设置", { exact: true }).waitFor();
+        await condition.getByText(conditionExpected ? "resume_at:2026-09-14T01:30:00Z" : "未设置", { exact: true }).waitFor();
+        if (conditionExpected) {
+          await drawer.getByText("可恢复", { exact: true }).waitFor();
+          await drawer.getByText("resume_at_browser_smoke_receipt", { exact: true }).waitFor();
+        }
         if (await drawer.getByText("待执行", { exact: true }).count()) throw new Error("Deferred drawer was labeled ready");
         await page.screenshot({ path: resolve(outputDir, `deferred-task-${conditionExpected ? "condition" : "missing"}.png`), fullPage: false, animations: "disabled" });
         await drawer.getByRole("button", { name: /关闭详情/ }).click();
