@@ -26,6 +26,9 @@ from .capabilities.pr_review_queue.github_source import (
     attach_pr_review_details as _attach_pr_review_details,
 )
 from .capabilities.pr_review_queue.github_source import run_gh_json as _run_gh_json
+from .capabilities.pr_review_queue.github_source import (
+    attach_pr_review_details_concurrently as _attach_pr_review_details_concurrently,
+)
 from .control_plane.runtime.time import now_utc_iso
 from .presentation.markdown import as_dict as _as_dict
 from .presentation.markdown import as_list as _as_list
@@ -282,7 +285,7 @@ def scan_github_pull_requests(
             )
             return
         included_before = len(detailed)
-        detail_read_failures = 0
+        candidates: list[dict[str, Any]] = []
         for row in rows:
             if not isinstance(row, dict):
                 continue
@@ -293,14 +296,16 @@ def scan_github_pull_requests(
                 continue
             if number:
                 seen_numbers.add(number)
-            if not _attach_pr_review_details(
-                row,
-                repository=api_repository,
-                cwd=cwd,
-                run_gh_json=_run_gh_json,
-            ):
-                detail_read_failures += 1
-            detailed.append(row)
+            candidates.append(row)
+        detail_results = _attach_pr_review_details_concurrently(
+            candidates,
+            repository=api_repository,
+            cwd=cwd,
+            attach=_attach_pr_review_details,
+            run_gh_json=_run_gh_json,
+        )
+        detail_read_failures = sum(not result for result in detail_results)
+        detailed.extend(candidates)
         state_scans.append(
             {
                 "state": state,

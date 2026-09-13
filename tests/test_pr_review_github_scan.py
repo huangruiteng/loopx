@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -121,7 +123,7 @@ def test_pr_list_keeps_nested_details_in_bounded_per_pr_reads(monkeypatch) -> No
         {"name": "build", "status": "IN_PROGRESS", "conclusion": ""},
     ]
     detail_calls = [args for args in calls if args[:2] == ["pr", "view"]]
-    assert [args[2] for args in detail_calls] == ["1", "2"]
+    assert sorted(args[2] for args in detail_calls) == ["1", "2"]
     assert all(
         args[args.index("--json") + 1]
         == "body,files,reviewDecision,mergeStateStatus,createdAt,commits,reviews,statusCheckRollup"
@@ -135,6 +137,60 @@ def test_pr_list_keeps_nested_details_in_bounded_per_pr_reads(monkeypatch) -> No
     assert rows[0]["mergeStateStatus"] == "CLEAN"
     assert rows[0]["commits"][0]["committedDate"] == "2026-08-12T00:00:00Z"
     assert rows[0]["reviews"] == []
+
+
+def test_pr_list_detail_reads_are_bounded_and_keep_queue_order(monkeypatch) -> None:
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def fake_list(args: list[str], *, cwd: Path | None = None):
+        if args[0:2] == ["pr", "list"]:
+            return [
+                {
+                    "number": number,
+                    "title": f"PR {number}",
+                    "state": "OPEN",
+                    "updatedAt": "2026-08-12T00:00:00Z",
+                }
+                for number in range(1, 13)
+            ]
+        raise AssertionError(f"unexpected gh invocation: {args}")
+
+    def fake_details(
+        row: dict[str, object],
+        *,
+        repository: str | None,
+        cwd: Path | None = None,
+    ) -> bool:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.01)
+        with lock:
+            active -= 1
+        row["createdAt"] = "2026-08-11T00:00:00Z"
+        row["commits"] = []
+        row["reviews"] = []
+        row["statusCheckRollup"] = []
+        return True
+
+    monkeypatch.setattr(pr_review_module, "_run_gh_json", fake_list)
+    monkeypatch.setattr(
+        pr_review_module, "_attach_pr_review_details", fake_details
+    )
+
+    scan = pr_review_module.scan_github_pull_requests(
+        repo="huangruiteng/loopx",
+        limit=20,
+        state_filter="open",
+    )
+
+    assert [row["number"] for row in scan["pull_requests"]] == list(range(1, 13))
+    assert peak > 1
+    assert peak <= pr_review_module.PR_REVIEW_DETAIL_MAX_WORKERS
+    assert scan["states"][0]["detail_read_failures"] == 0
 
 
 def test_pr_list_failed_check_lookup_leaves_rollup_absent(monkeypatch) -> None:

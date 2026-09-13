@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Callable
 
@@ -135,3 +137,32 @@ def attach_pr_review_details(
     for key in DETAIL_FIELDS:
         row[key] = details[key]
     return True
+
+
+PR_REVIEW_DETAIL_MAX_WORKERS = 8
+
+
+def attach_pr_review_details_concurrently(
+    rows: Sequence[dict[str, Any]],
+    *,
+    repository: str | None,
+    cwd: Path | None = None,
+    attach: Callable[..., bool] = attach_pr_review_details,
+    run_gh_json: GitHubJsonRunner = run_gh_json,
+) -> list[bool]:
+    """Read per-PR details concurrently while preserving queue order."""
+
+    if not rows:
+        return []
+    worker_count = min(PR_REVIEW_DETAIL_MAX_WORKERS, len(rows))
+
+    def read(row: dict[str, Any]) -> bool:
+        return attach(
+            row,
+            repository=repository,
+            cwd=cwd,
+            run_gh_json=run_gh_json,
+        )
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        return list(executor.map(read, rows))
