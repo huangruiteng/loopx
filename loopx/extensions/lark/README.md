@@ -362,6 +362,22 @@ mentions and addressed replies can reach the manager without an invented Topic
 root. Exact worker Topics retain their own routing, and ambiguous manager
 bindings fail closed.
 
+Before Lark delivery, a manager answer is stored in a private, event-bound
+outbox. A transport retry or service restart reuses that exact saved answer and
+provider idempotency identity instead of rerunning the model. Presentation-only
+defects may downgrade from Markdown to inert plain text: literal newline tokens
+become real newlines and unresolved visual `@` text cannot become a native
+mention. An incomplete review envelope is never delivered as visible protocol
+and never grants a gate, proposal, or protected action. The source event is ACKed
+only after reply readback and the durable delivery receipt are both verified.
+
+管家答复在发送到飞书前，会先按来源事件写入本地私有 outbox。传输重试或服务
+重启只续投同一份已保存答复并复用 provider 幂等标识，不会再次运行模型。仅影响
+展示的瑕疵可以从 Markdown 安全降级为不可执行的纯文本：字面换行转为真实换行，
+未解析的可视 `@` 文本不会变成原生 mention。不完整的 review envelope 不会作为
+正文泄漏，也不能恢复 gate、proposal 或受保护动作。只有回复回读和持久投递回执
+都验证通过后，来源事件才会 ACK。
+
 The frontend and Lark use the same manager conversation service and the existing
 typed control plane. Their transcripts are separated by audience: an external
 conversation can never resume the owner's private frontend session or another

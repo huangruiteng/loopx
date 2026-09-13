@@ -5,11 +5,25 @@ import pytest
 from loopx.extensions.lark.outbound import (
     lark_markdown_post_content, lark_markdown_preview_matches,
     lark_markdown_readback_matches, normalize_lark_outbound_text,
+    safe_lark_plain_text_fallback,
 )
 from loopx.extensions.lark.inbox_reply import reply_lark_event_inbox
 from test_lark_inbox_reactions import ReplyRunner, _fixture
 
 TEXT = "进展\n\n- **结果**\n  - 证据\n\n```python\nif ok:\n    done()\n```"
+
+
+def test_safe_plain_text_fallback_repairs_presentation_without_forging_mentions():
+    text = (
+        r"结论：通过\n下一步：@LoopX 管家查看"
+        "\n```text\nkeep \\n and @fixture\n```"
+    )
+
+    fallback = safe_lark_plain_text_fallback(text)
+
+    assert fallback.startswith("结论：通过\n下一步：＠LoopX 管家查看")
+    assert "keep \\n and @fixture" in fallback
+    assert normalize_lark_outbound_text(fallback, limit=None, preserve_format=True) == fallback
 
 
 def test_post_preview_preserves_structure_without_fetching_or_rewriting():

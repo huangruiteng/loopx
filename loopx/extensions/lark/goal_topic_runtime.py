@@ -33,7 +33,13 @@ from .goal_channel_contracts import LarkTopicEventDecisionReason, bindings_for_g
 from .goal_channel_targets import goal_channel_target_for_name
 from .goal_topic_connections import decide_lark_topic_event
 from .inbox_reply import CommandRunner, reply_lark_event_inbox
-from .outbound import LarkOutboundTextError
+from .manager_reply_delivery import (
+    load_delivery as _load_manager_delivery,
+    pending_delivery as _pending_manager_delivery,
+    text_digest as _manager_delivery_text_digest,
+    write_delivery as _write_manager_delivery,
+)
+from .outbound import LarkOutboundTextError, safe_lark_plain_text_fallback
 from .inbox_reactions import (
     _create_reaction, _delete_reaction, ensure_lark_event_inbox_received_reaction,
 )
@@ -44,7 +50,6 @@ ProfilePoller = Callable[[str, threading.Event], None]
 SimpleRunner = Callable[[list[str]], Mapping[str, Any]]
 ProcessFactory = Callable[[list[str]], Any]
 HealthSink = Callable[[Mapping[str, Any]], None]
-
 
 class LarkGoalTopicTurnFailed(RuntimeError):
     """A terminal runtime receipt, without copying arbitrary upstream details."""
@@ -1003,7 +1008,7 @@ def process_lark_goal_topic_event(
             route=route,
             target_payload=target_payload,
         )
-    canonical = {
+    canonical: dict[str, Any] = {
         "schema_version": "lark_event_inbox_event_v0",
         "event_id": str(event.get("event_id") or event.get("message_id") or ""),
         "message_id": str(event.get("message_id") or ""),
@@ -1051,8 +1056,9 @@ def process_lark_goal_topic_event(
     # private reaction ledger makes retries idempotent. Manager received ACKs
     # remain visible; final reply only clears transient processing indicators.
     # A cosmetic reaction failure must not suppress the actual answer.
+    manager = route.get("conversation_kind") == "manager"
     received_reaction = None
-    if route.get("conversation_kind") == "manager":
+    if manager:
         profile = str(route.get("app_ref") or "")
         try:
             received_reaction = ensure_lark_event_inbox_received_reaction(
@@ -1068,42 +1074,83 @@ def process_lark_goal_topic_event(
             logging.getLogger(__name__).warning("Lark manager received reaction was not verified")
     # Sender provenance comes from the provider event, never the model response.
     route = {**route, "source_sender_id": str(canonical.get("sender_id") or "")}
-    failure_code = None
-    try:
-        answer_result = answer(route, canonical["content"])
-    except LarkGoalTopicTurnFailed as exc:
-        if route.get("conversation_kind") != "manager":
-            raise
-        failure_code, failure_text = _manager_failure_reply(exc)
-        answer_result = {"response_text": failure_text, "effect_receipt": exc.effect_receipt}
-    except Exception as exc:
-        # A synchronous manager route must leave a user-visible, bounded
-        # receipt even when the worker raises an untyped exception.  The
-        # exception itself may contain private provider details, so only its
-        # type is logged and the public reply uses the generic failure label.
-        if route.get("conversation_kind") != "manager":
-            raise
-        logging.getLogger(__name__).warning(
-            "Lark manager answer failed with %s", type(exc).__name__
-        )
-        failure_code, failure_text = _manager_failure_reply(exc)
-        answer_result = {
-            "response_text": failure_text,
-            "effect_receipt": _session_turn_effect(route),
-        }
+    delivery_path: Path | None = None
+    delivery_state: dict[str, Any] | None = None
+    saved_response_reused = False
+    if manager:
+        try:
+            delivery_path, delivery_state = _load_manager_delivery(
+                project=root, config_path=config_path, event=canonical
+            )
+        except (OSError, ValueError):
+            return {
+                "ok": False,
+                "status": "reply_delivery_state_invalid",
+                "goal_id": route["goal_id"],
+                "inbox_config_ref": config_ref,
+                "source_acknowledged": False,
+            }
+        if delivery_state is not None and delivery_state["status"] == "acknowledged":
+            return {
+                "ok": False,
+                "status": "reply_delivery_state_invalid",
+                "goal_id": route["goal_id"],
+                "inbox_config_ref": config_ref,
+                "source_acknowledged": False,
+            }
+
+    failure_code: str | None = None
+    effect_receipt: Mapping[str, Any] | None = None
+    if delivery_state is not None:
+        saved_response_reused = True
+        reply_text = str(delivery_state["delivery_text"])
+        content_format = str(delivery_state["content_format"])
+        saved_effect = delivery_state.get("effect_receipt")
+        effect_receipt = saved_effect if isinstance(saved_effect, Mapping) else None
+        saved_failure = delivery_state.get("failure_code")
+        failure_code = str(saved_failure) if saved_failure else None
+    else:
+        try:
+            answer_result = answer(route, str(canonical["content"]))
+        except LarkGoalTopicTurnFailed as exc:
+            if not manager:
+                raise
+            failure_code, failure_text = _manager_failure_reply(exc)
+            answer_result = {
+                "response_text": failure_text,
+                "effect_receipt": exc.effect_receipt,
+            }
+        except Exception as exc:
+            # A synchronous manager route must leave a user-visible, bounded
+            # receipt even when the worker raises an untyped exception.  The
+            # exception itself may contain private provider details, so only its
+            # type is logged and the public reply uses the generic failure label.
+            if not manager:
+                raise
+            logging.getLogger(__name__).warning(
+                "Lark manager answer failed with %s", type(exc).__name__
+            )
+            failure_code, failure_text = _manager_failure_reply(exc)
+            answer_result = {
+                "response_text": failure_text,
+                "effect_receipt": _session_turn_effect(route),
+            }
+        if isinstance(answer_result, Mapping):
+            reply_text = str(answer_result.get("response_text") or "").strip()
+            candidate_receipt = answer_result.get("effect_receipt")
+            effect_receipt = (
+                candidate_receipt
+                if isinstance(candidate_receipt, Mapping)
+                else None
+            )
+        else:
+            reply_text = str(answer_result or "").strip()
+        content_format = "markdown" if manager else "text"
+
     connector = route.get("connector")
     connector = connector if isinstance(connector, Mapping) else None
-    effect_receipt: Mapping[str, Any] | None = None
-    if isinstance(answer_result, Mapping):
-        reply_text = str(answer_result.get("response_text") or "").strip()
-        candidate_receipt = answer_result.get("effect_receipt")
-        effect_receipt = (
-            candidate_receipt if isinstance(candidate_receipt, Mapping) else None
-        )
-    else:
-        reply_text = str(answer_result or "").strip()
     if not reply_text:
-        if route.get("conversation_kind") == "manager":
+        if manager:
             # Empty model output is a terminal, non-replayable failure for a
             # manager request.  Reply through the same inbox path so the
             # source is ACKed only after provider verification.
@@ -1120,6 +1167,25 @@ def process_lark_goal_topic_event(
                 "goal_id": route["goal_id"],
                 "inbox_config_ref": config_ref,
             }
+    if manager and delivery_state is None:
+        assert delivery_path is not None
+        delivery_state = _pending_manager_delivery(
+            event=canonical,
+            text=reply_text,
+            content_format=content_format,
+            effect_receipt=effect_receipt,
+            failure_code=failure_code,
+        )
+        try:
+            _write_manager_delivery(delivery_path, delivery_state)
+        except OSError:
+            return {
+                "ok": False,
+                "status": "reply_delivery_state_unavailable",
+                "goal_id": route["goal_id"],
+                "inbox_config_ref": config_ref,
+                "source_acknowledged": False,
+            }
     if connector is not None:
         effect_decision = decide_external_event_ack(
             event_id=canonical["event_id"],
@@ -1134,40 +1200,142 @@ def process_lark_goal_topic_event(
                 "inbox_config_ref": config_ref,
                 "ack_decision": effect_decision,
             }
-    try:
-        reply = reply_lark_event_inbox(
-            project=root,
-            config_path=config_path,
-            message_id=message_id,
-            text=reply_text,
-            content_format="markdown" if route.get("conversation_kind") == "manager" else "text",
-            execute=True,
-            runner=reply_runner,
-        )
-    except LarkOutboundTextError:
-        if route.get("conversation_kind") != "manager":
-            raise
-        # The persisted answer remains intact. A format failure is not a model
-        # failure, and must not strand the source or silently truncate its reply.
-        failure_code = "reply_format_invalid"
-        reply = reply_lark_event_inbox(
-            project=root,
-            config_path=config_path,
-            message_id=message_id,
-            text=("回答已生成并保存，但长度或格式不符合飞书发送要求，正文尚未送达。"
-                  "请在 LoopX 前端同一管家会话查看完整回答。"
-                  "管家不会自动重新运行这条请求。"),
-            execute=True,
-            runner=reply_runner,
-        )
+
+    if delivery_state is not None and delivery_state["status"] == "sent_verified":
+        reply = {
+            "ok": True,
+            "status": "sent_verified",
+            "idempotency_key": delivery_state.get("reply_idempotency_key"),
+            "external_write_performed": delivery_state.get(
+                "external_write_performed"
+            )
+            is True,
+            "verification_performed": True,
+            "reply_verified": True,
+        }
+    else:
+        if delivery_state is not None:
+            delivery_state["attempt_count"] = int(
+                delivery_state.get("attempt_count") or 0
+            ) + 1
+            delivery_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+            assert delivery_path is not None
+            _write_manager_delivery(delivery_path, delivery_state)
+        try:
+            reply = reply_lark_event_inbox(
+                project=root,
+                config_path=config_path,
+                message_id=message_id,
+                text=reply_text,
+                content_format=content_format,
+                execute=True,
+                runner=reply_runner,
+            )
+        except LarkOutboundTextError:
+            if not manager:
+                raise
+            try:
+                reply_text = safe_lark_plain_text_fallback(reply_text)
+                content_format = "text"
+                assert delivery_state is not None and delivery_path is not None
+                delivery_state.update(
+                    delivery_text=reply_text,
+                    delivery_digest=_manager_delivery_text_digest(reply_text),
+                    content_format=content_format,
+                    format_degraded=True,
+                    attempt_count=int(delivery_state.get("attempt_count") or 0) + 1,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+                _write_manager_delivery(delivery_path, delivery_state)
+                reply = reply_lark_event_inbox(
+                    project=root,
+                    config_path=config_path,
+                    message_id=message_id,
+                    text=reply_text,
+                    content_format=content_format,
+                    execute=True,
+                    runner=reply_runner,
+                )
+            except (LarkOutboundTextError, ValueError):
+                assert delivery_state is not None and delivery_path is not None
+                delivery_state.update(
+                    last_delivery_status="format_unrepresentable",
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+                _write_manager_delivery(delivery_path, delivery_state)
+                return {
+                    "ok": False,
+                    "status": "reply_delivery_pending",
+                    "reason": "reply_format_invalid",
+                    "format_degraded": bool(
+                        delivery_state.get("format_degraded")
+                    ),
+                    "goal_id": route["goal_id"],
+                    "inbox_config_ref": config_ref,
+                    "source_acknowledged": False,
+                }
+    if manager and reply.get("content_format") in {"markdown", "text"}:
+        content_format = str(reply["content_format"])
     if not reply.get("ok"):
+        if manager:
+            assert delivery_state is not None and delivery_path is not None
+            delivery_state.update(
+                last_delivery_status=str(reply.get("status") or "reply_failed"),
+                last_blocker=str(reply.get("blocker") or "reply_delivery_unverified"),
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+            _write_manager_delivery(delivery_path, delivery_state)
         return {
             "ok": False,
-            "status": str(reply.get("status") or "reply_failed"),
+            "status": (
+                "reply_delivery_pending"
+                if manager
+                else str(reply.get("status") or "reply_failed")
+            ),
+            **(
+                {
+                    "delivery_status": str(
+                        reply.get("status") or "reply_failed"
+                    ),
+                    "format_degraded": bool(
+                        delivery_state
+                        and delivery_state.get("format_degraded")
+                    ),
+                }
+                if manager
+                else {}
+            ),
             "goal_id": route["goal_id"],
             "blocker": reply.get("blocker"),
             "inbox_config_ref": config_ref,
+            **({"source_acknowledged": False} if manager else {}),
         }
+    if manager:
+        assert delivery_state is not None and delivery_path is not None
+        delivery_state.update(
+            status="sent_verified",
+            delivery_text=reply_text,
+            delivery_digest=_manager_delivery_text_digest(reply_text),
+            content_format=content_format,
+            reply_idempotency_key=reply.get("idempotency_key"),
+            external_write_performed=(
+                reply.get("external_write_performed") is True
+            ),
+            verification_performed=(reply.get("verification_performed") is True),
+            reply_verified=(reply.get("reply_verified") is True),
+            last_delivery_status=str(reply.get("status") or "sent_verified"),
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        try:
+            _write_manager_delivery(delivery_path, delivery_state)
+        except OSError:
+            return {
+                "ok": False,
+                "status": "reply_delivery_receipt_unavailable",
+                "goal_id": route["goal_id"],
+                "inbox_config_ref": config_ref,
+                "source_acknowledged": False,
+            }
     if connector is not None:
         ack_decision = decide_external_event_ack(
             event_id=canonical["event_id"],
@@ -1196,6 +1364,20 @@ def process_lark_goal_topic_event(
         message_ids=[message_id],
         execute=True,
     )
+    if manager:
+        assert delivery_state is not None and delivery_path is not None
+        delivery_state.update(
+            status="acknowledged",
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        delivery_state.pop("delivery_text", None)
+        delivery_state.pop("effect_receipt", None)
+        try:
+            _write_manager_delivery(delivery_path, delivery_state)
+        except OSError:
+            logging.getLogger(__name__).warning(
+                "Lark manager delivery receipt cleanup could not be persisted"
+            )
 
     return {
         "ok": failure_code is None,
@@ -1203,6 +1385,14 @@ def process_lark_goal_topic_event(
         **({"reason": failure_code, "failure_reply_verified": True,
             "source_acknowledged": True} if failure_code else {}),
         "received_reaction_status": (received_reaction or {}).get("status"),
+        **(
+            {
+                "saved_response_reused": saved_response_reused,
+                "format_degraded": bool(delivery_state.get("format_degraded")),
+            }
+            if manager and delivery_state is not None
+            else {}
+        ),
         "goal_id": route["goal_id"],
         "inbox_config_ref": config_ref,
     }

@@ -1573,7 +1573,7 @@ def test_manager_untyped_or_empty_answer_gets_bounded_failure_receipt(
     ids=["report", "long-ascii", "long-unicode", "oversize", "invalid-newlines"],
 )
 @pytest.mark.parametrize("reply_ok", [True, False])
-def test_manager_report_delivery_preserves_body_and_reports_format_failure(
+def test_manager_report_delivery_recovers_safe_format_and_keeps_pending_body(
     tmp_path, monkeypatch, body, reply_ok,
 ):
     from loopx.extensions.lark import goal_topic_runtime as runtime
@@ -1618,26 +1618,149 @@ def test_manager_report_delivery_preserves_body_and_reports_format_failure(
         runtime_root=tmp_path / "runtime", answer=answer, reply_runner=reply,
     )
     result = runtime.process_lark_goal_topic_event(**kwargs)
-    valid = len(body.encode("utf-8")) < 150_000 and body != r"private\nformat"
-    if valid:
-        assert state["reply_text"] == body  # No truncation, including the last character.
+    sendable = len(body.encode("utf-8")) < 150_000
+    expected = body.replace(r"\n", "\n")
+    if sendable:
+        assert state["reply_text"] == expected
         assert result["ok"] is reply_ok
+        assert result.get("format_degraded") is (body == r"private\nformat")
     else:
-        assert body not in state["reply_text"]
-        assert "正文尚未送达" in state["reply_text"]
+        assert "reply_text" not in state
         assert result["ok"] is False
-        if reply_ok:
-            assert result["reason"] == "reply_format_invalid"
-            assert result["failure_reply_verified"]
+        assert result["status"] == "reply_delivery_pending"
+        assert result["reason"] == "reply_format_invalid"
+        assert result["source_acknowledged"] is False
     pending = inspect_lark_event_inbox(project=kwargs["runtime_root"],
                                       config_path=Path(result["inbox_config_ref"]))
-    if reply_ok:
+    if sendable and reply_ok:
         assert pending["items"] == []
         assert runtime.process_lark_goal_topic_event(**kwargs)["status"] == "already_acknowledged"
         assert len(answered) == 1
     else:
         assert any(x["message_id"] == "om_incoming" for x in pending["items"])
+        retried = runtime.process_lark_goal_topic_event(**kwargs)
+        assert retried["status"] == "reply_delivery_pending"
+        assert len(answered) == 1
     # Root notifications retain their existing compact limit.
     with pytest.raises(LarkOutboundTextError):
         send_lark_inbox_message(project=kwargs["runtime_root"],
                                config_path=result["inbox_config_ref"], text="x" * 1201)
+
+
+def test_manager_delivery_reuses_saved_answer_after_transport_restart(
+    tmp_path, monkeypatch,
+):
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+
+    target_path, binding_path = tmp_path / "targets.json", tmp_path / "bindings.json"
+    _seed_legacy_topic(target_path, binding_path)
+    original_decide = runtime.decide_lark_topic_event
+    original_acknowledge = runtime.acknowledge_lark_event_inbox
+
+    def manager_decision(**kwargs):
+        result = original_decide(**kwargs)
+        result["route"].update(
+            conversation_kind="manager",
+            ingress_mode="session_queue",
+            event_id=kwargs["event"]["event_id"],
+            connector={"response_policy": "topic_reply"},
+        )
+        return result
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", manager_decision)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_lark_event_inbox_received_reaction",
+        lambda **_kwargs: {"ok": True, "status": "already_received"},
+    )
+    event = {
+        "event_id": "evt_incoming",
+        "message_id": "om_incoming",
+        "chat_id": "oc_public_fixture",
+        "root_id": "om_topic_alpha",
+        "create_time": "2026-08-14T21:00:00Z",
+        "content": "@linkmacbot report",
+        "mentioned": True,
+        "sender_type": "user",
+    }
+    answer_calls = []
+
+    def answer(route, text):
+        answer_calls.append(text)
+        return {
+            "response_text": r"完整答复\n@LoopX 管家仅为显示文本",
+            "effect_receipt": runtime._session_turn_effect(route),
+        }
+
+    first_state = {}
+    working_runner = _reply_runner(first_state)
+
+    def unavailable_runner(args):
+        if "+messages-reply" in args and "--dry-run" not in args:
+            return {"returncode": 1, "stdout": "", "stderr": "unavailable"}
+        return working_runner(args)
+
+    kwargs = {
+        "target_payload": read_goal_channel_targets(target_path),
+        "binding_payloads": {
+            "goal-alpha": read_goal_channel_binding(binding_path)
+        },
+        "event": event,
+        "runtime_root": tmp_path / "runtime",
+        "answer": answer,
+        "reply_runner": unavailable_runner,
+    }
+
+    first = runtime.process_lark_goal_topic_event(**kwargs)
+
+    assert first["status"] == "reply_delivery_pending"
+    assert first["source_acknowledged"] is False
+    assert len(answer_calls) == 1
+    delivery_files = list(
+        (tmp_path / "runtime" / ".loopx" / "inbox").glob(
+            "**/manager-delivery/om_incoming.json"
+        )
+    )
+    assert len(delivery_files) == 1
+    assert json.loads(delivery_files[0].read_text())["status"] == "pending"
+
+    second_state = {}
+    kwargs["reply_runner"] = _reply_runner(second_state)
+    kwargs["answer"] = lambda *_args: (_ for _ in ()).throw(
+        AssertionError("saved answer must be reused")
+    )
+    monkeypatch.setattr(
+        runtime,
+        "acknowledge_lark_event_inbox",
+        lambda **_kwargs: (_ for _ in ()).throw(OSError("ack unavailable")),
+    )
+    with pytest.raises(OSError, match="ack unavailable"):
+        runtime.process_lark_goal_topic_event(**kwargs)
+
+    assert second_state["reply_text"] == "完整答复\n＠LoopX 管家仅为显示文本"
+    assert json.loads(delivery_files[0].read_text())["status"] == "sent_verified"
+
+    monkeypatch.setattr(
+        runtime, "acknowledge_lark_event_inbox", original_acknowledge
+    )
+    third_state = {}
+    third_runner = _reply_runner(third_state)
+
+    def no_duplicate_send(args):
+        if "+messages-reply" in args:
+            raise AssertionError("verified reply must not be sent twice")
+        return third_runner(args)
+
+    kwargs["reply_runner"] = no_duplicate_send
+    second = runtime.process_lark_goal_topic_event(**kwargs)
+
+    assert second["ok"] is True
+    assert second["status"] == "replied_and_acknowledged"
+    assert second["saved_response_reused"] is True
+    assert second["format_degraded"] is True
+    receipt = json.loads(delivery_files[0].read_text())
+    assert receipt["status"] == "acknowledged"
+    assert "delivery_text" not in receipt
+    assert inspect_lark_event_inbox(
+        project=kwargs["runtime_root"], config_path=Path(second["inbox_config_ref"])
+    )["items"] == []

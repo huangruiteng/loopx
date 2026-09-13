@@ -187,6 +187,60 @@ def normalize_lark_outbound_text(
     return normalized
 
 
+def safe_lark_plain_text_fallback(value: Any) -> str:
+    """Downgrade presentation-only defects without granting mention authority.
+
+    The strict outbound validator remains the primary path.  This fallback is
+    intended for an already persisted manager answer: literal ``\\n`` tokens
+    outside fenced code become real newlines, unsupported ``<at>`` fragments
+    are made inert, and unresolved visual ``@`` mentions are rendered with a
+    full-width marker.  Valid structured mentions are preserved for the normal
+    membership verification performed by the reply transport.
+    """
+
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+
+    def degrade_outside_code(fragment: str) -> str:
+        degraded: list[str] = []
+        cursor = 0
+        for mention in AT_MENTION_PATTERN.finditer(fragment):
+            plain = fragment[cursor : mention.start()].replace(r"\n", "\n")
+            plain = re.sub(
+                r"</?at\b",
+                lambda match: match.group(0).replace("<", "‹"),
+                plain,
+                flags=re.IGNORECASE,
+            )
+            plain = LITERAL_MENTION_PATTERN.sub(
+                lambda match: "＠" + match.group(0)[1:], plain
+            )
+            degraded.extend((plain, mention.group(0)))
+            cursor = mention.end()
+        plain = fragment[cursor:].replace(r"\n", "\n")
+        plain = re.sub(
+            r"</?at\b",
+            lambda match: match.group(0).replace("<", "‹"),
+            plain,
+            flags=re.IGNORECASE,
+        )
+        plain = LITERAL_MENTION_PATTERN.sub(
+            lambda match: "＠" + match.group(0)[1:], plain
+        )
+        degraded.append(plain)
+        return "".join(degraded)
+
+    chunks: list[str] = []
+    cursor = 0
+    for fenced in FENCED_CODE_PATTERN.finditer(text):
+        chunks.append(degrade_outside_code(text[cursor : fenced.start()]))
+        chunks.append(fenced.group(0))
+        cursor = fenced.end()
+    chunks.append(degrade_outside_code(text[cursor:]))
+    return normalize_lark_outbound_text(
+        "".join(chunks), limit=None, preserve_format=True
+    )
+
+
 def validate_lark_text_request_size(body: Mapping[str, Any]) -> None:
     size = len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     if size > LARK_TEXT_REQUEST_MAX_BYTES:
