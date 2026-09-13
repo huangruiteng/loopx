@@ -212,6 +212,40 @@ test("unclaimed edits preserve actor exclusion and binding fences", async () => 
   }
 });
 
+test("single-agent compatibility preserves ownership, exclusion, and binding fences", async () => {
+  for (const [label, overrides, reason] of [
+    ["claimed", {claimed_by: "agent-b"}, "update_owner_mismatch"],
+    ["excluded", {claimed_by: null, excluded_agents: ["agent-a"]}, "actor_excluded"],
+    ["bound", {claimed_by: null, bound_agent: "agent-b"}, "bound_agent_mismatch"],
+  ] as const) {
+    const {store, request} = await seeded(overrides);
+    const before = await store.loadAuthority();
+    const result = await executeCoordinationTodoUpdate(store, {
+      ...request,
+      operation_id: `single-agent-${label}`,
+      registered_agents: ["agent-a"],
+      actor_agent_id: "agent-a",
+    });
+    assert.equal(result.reason_code, reason, JSON.stringify(result));
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt(`single-agent-${label}`)).status, "missing");
+  }
+});
+
+test("single-agent actorless compatibility rejects excluded work", async () => {
+  const {store, request} = await seeded({claimed_by: null, excluded_agents: ["agent-a"]});
+  const before = await store.loadAuthority();
+  const result = await executeCoordinationTodoUpdate(store, {
+    ...request,
+    operation_id: "single-agent-actorless-excluded",
+    registered_agents: ["agent-a"],
+    actor_agent_id: null,
+  });
+  assert.equal(result.reason_code, "actor_required", JSON.stringify(result));
+  assert.deepEqual(await store.loadAuthority(), before);
+  assert.equal((await store.readReceipt("single-agent-actorless-excluded")).status, "missing");
+});
+
 test("provider-first update rejects authority and lifecycle escalation", async () => {
   const {store, request} = await seeded();
   assert.equal((await executeCoordinationTodoUpdate(store, {...request,
