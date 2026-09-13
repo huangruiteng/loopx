@@ -20,6 +20,7 @@ from .control_plane.heartbeat.agent_input import (
 from .control_plane.heartbeat.budget import (
     INTERFACE_BUDGET_CHARS,
     NATIVE_GOAL_HOST_MAX_CHARS,
+    REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS,
     build_interface_budget,
     heartbeat_prompt_mode,
     prompt_budget_text,
@@ -59,6 +60,7 @@ __all__ = [
     "HEARTBEAT_VISION_WRITEBACK_RULE_SHORT",
     "INTERFACE_BUDGET_CHARS",
     "NATIVE_GOAL_HOST_MAX_CHARS",
+    "REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS",
     "RUNTIME_CAPABILITY_PROJECTION_THIN_RULE",
     "RUNTIME_EXECUTION_ROUTING_RULE",
     "SCHEDULER_HINT_APPLICATION_RULE",

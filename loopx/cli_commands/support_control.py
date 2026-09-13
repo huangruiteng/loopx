@@ -17,6 +17,7 @@ from ..chat_server import (
     serve_chat,
 )
 from ..control_plane.scheduler.execution_context import SchedulerRuntimeProfile
+from ..control_plane.reward_memory import reward_memory_goal_policy
 from ..dashboard_launcher import launch_dashboard, replace_existing_loopx_chat
 from ..execution_profile import execution_profile_turn_granularity
 from ..heartbeat_prequota import (
@@ -540,6 +541,13 @@ def handle_support_control_command(
                 if isinstance(registry_goal, dict)
                 else None
             )
+            reward_memory_policy = reward_memory_goal_policy(
+                registry_goal if isinstance(registry_goal, dict) else {}
+            )
+            reward_memory_enabled = bool(
+                reward_memory_policy["enabled"]
+                and reward_memory_policy["automation"].get("automatic_ingest") is True
+            )
             agent_profile = None
             if args.agent_id:
                 effective_agent_id = require_registered_agent_id(
@@ -600,6 +608,7 @@ def handle_support_control_command(
                 visible_goal_host=args.visible_goal_host,
                 turn_granularity=turn_granularity,
                 turn_instance_id=args.turn_instance_id,
+                reward_memory_enabled=reward_memory_enabled,
             )
             if args.bootstrap and payload.get("ok"):
                 from ..control_plane.heartbeat.bootstrap_prompt import goal_bootstrap

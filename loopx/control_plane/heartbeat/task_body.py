@@ -83,6 +83,7 @@ def render_heartbeat_task_body(
     compact_prompt_command: str,
     brief_prompt_command: str,
     thin_prompt_command: str,
+    reward_memory_rule: str = REWARD_MEMORY_OUTCOME_RULE,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
     pr_review_pre_quota_block = (
@@ -182,7 +183,7 @@ If the result says `should_run=true`:
    LoopX owns reset/progression state. It is scheduling only, not delivery
    permission.
 
-   {REWARD_MEMORY_OUTCOME_RULE}
+   {reward_memory_rule}
    Then use
    `heartbeat_recommendation`: `recommended_mode=run_first_read_only_map` means
    run its `command` as a real read-only map, then
@@ -283,6 +284,7 @@ def render_brief_heartbeat_task_body(
     compact_prompt_command: str,
     brief_prompt_command: str,
     thin_prompt_command: str,
+    reward_memory_rule: str = REWARD_MEMORY_OUTCOME_COMPACT_RULE,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
     pr_review_pre_quota_block = (
@@ -321,7 +323,7 @@ wait 只读一次，新证据才 writeback/spend，同 id 重试。
 `should_run=true`：读 compact、`status --limit 3`、`review-packet --handoff-only`；
 遵守 quota 权限/结果/handoff；outcome-floor recovery 推进 evidence 或写 blocker。
 {HOST_LOOP_QUOTA_DISPATCH_RULE}
-{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
+{reward_memory_rule}
 交付并验证后，按当前 `interaction_contract.cli_channel.settlement_plan.ordered_steps`
 的精确 identity/effect 顺序结算；无 plan 时按当前 `next_cli_actions`，不使用旧 refresh/spend 配方。
 Todo验收非结算；外部等待须 open+monitor_changed+successor→重跑/继续，且不扣额；
@@ -352,6 +354,7 @@ def render_compact_heartbeat_task_body(
     compact_prompt_command: str,
     brief_prompt_command: str,
     thin_prompt_command: str,
+    reward_memory_rule: str = REWARD_MEMORY_OUTCOME_COMPACT_RULE,
 ) -> str:
     scope_block = f"\n{agent_scope_instruction}\n" if agent_scope_instruction else ""
     pr_review_pre_quota_block = (
@@ -394,7 +397,7 @@ If `should_run=true`:
    Legacy/raw fallback is not owner/gate/stop authority. Treat
    `run_history.latest_runs` as drill-down only.
 
-{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
+{reward_memory_rule}
 2. Goal-owned blocker: stop its path. Under `NOTIFY`, send a concrete Chinese
    blocker-push; under `DONT_NOTIFY`, repair internally and stay quiet.
    Dependency/sibling todos: record; continue audit.
@@ -639,6 +642,7 @@ def render_thin_heartbeat_task_body(
     compact_prompt_command: str,
     brief_prompt_command: str,
     thin_prompt_command: str,
+    reward_memory_rule: str = REWARD_MEMORY_OUTCOME_COMPACT_RULE,
 ) -> str:
     policy_tail = _render_compact_policy_tail(
         material_queue_rule=material_queue_rule,
@@ -672,7 +676,7 @@ Done->todo/rationale; wait->monitor+successor/work; guard; 2 stalls->replan.
 
 P0 blocked: safe P1/P2; monitor quiet/no-spend.
 
-{REWARD_MEMORY_OUTCOME_COMPACT_RULE}
+{reward_memory_rule}
 
 {policy_tail}"""
 def render_heartbeat_generator_inputs_markdown(payload: dict[str, Any]) -> str:

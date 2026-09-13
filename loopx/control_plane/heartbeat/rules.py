@@ -34,8 +34,10 @@ REWARD_MEMORY_OUTCOME_RULE = (
     "raw/private material."
 )
 REWARD_MEMORY_OUTCOME_COMPACT_RULE = (
-    "`--reward-memory-reflection-json`: Todo validator exact digest/evidence; "
-    "else zero provider calls; no raw/private."
+    "Auto-ingest Todo: add `--reward-memory-reflection-json <reflection JSON>` "
+    "to refresh. Private stage; provider write needs Todo validator exact "
+    "digest/evidence attestation + refresh/spend readback. Else awaiting/zero "
+    "provider calls; no raw/private content."
 )
 SCHEDULER_HINT_APPLICATION_RULE = (
     "`scheduler_hint` no-spend. host_action=pause_or_delete_current_heartbeat -> "

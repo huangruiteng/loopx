@@ -14,6 +14,7 @@ from .agent_registry import (
 )
 from .execution_profile import execution_profile_turn_granularity
 from .heartbeat_prompt import build_heartbeat_prompt
+from .control_plane.reward_memory import reward_memory_goal_policy
 from .history import load_registry
 from .paths import DEFAULT_RUNTIME_ROOT, global_registry_path, resolve_runtime_root
 from .registry import registry_goals, resolve_state_file
@@ -716,6 +717,11 @@ def build_upgrade_plan(
             deferred.append(stage_deferred_goal_summary(goal, state_file))
             continue
         registered_agents = registered_agent_ids_for_goal(goal)
+        reward_memory_policy = reward_memory_goal_policy(goal)
+        reward_memory_enabled = bool(
+            reward_memory_policy["enabled"]
+            and reward_memory_policy["automation"].get("automatic_ingest") is True
+        )
         turn_granularity = execution_profile_turn_granularity(
             goal.get("execution_profile")
             if isinstance(goal.get("execution_profile"), dict)
@@ -752,6 +758,7 @@ def build_upgrade_plan(
                 available_capabilities=available_capabilities,
                 runtime_profile="codex_app_heartbeat",
                 turn_granularity=turn_granularity,
+                reward_memory_enabled=reward_memory_enabled,
             )
             summary = prompt_summary(prompt, mode)
             summary["agent_id"] = agent_id

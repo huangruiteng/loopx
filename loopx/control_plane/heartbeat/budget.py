@@ -14,6 +14,12 @@ INTERFACE_BUDGET_CHARS = {
 }
 NATIVE_GOAL_HOST_MAX_CHARS = INTERFACE_BUDGET_CHARS["visible_goal"]
 
+# Reward Memory's outcome contract is intentionally readable rather than
+# squeezed into the ordinary heartbeat allowance.  Keep this fixed and tied to
+# the generated contract marker so feature-off prompts retain the old budget.
+REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS = 640
+_REWARD_MEMORY_PROMPT_MARKER = "--reward-memory-reflection-json"
+
 
 def heartbeat_prompt_mode(
     *,
@@ -55,12 +61,18 @@ def build_interface_budget(
     )
     budget_text = prompt_budget_text(task_body, goal_id=goal_id, active_state=active_state)
     budget_chars = len(budget_text)
-    max_chars = INTERFACE_BUDGET_CHARS[mode]
+    reward_memory_headroom = (
+        REWARD_MEMORY_OUTCOME_PROMPT_HEADROOM_CHARS
+        if mode != "visible_goal" and _REWARD_MEMORY_PROMPT_MARKER in task_body
+        else 0
+    )
+    max_chars = INTERFACE_BUDGET_CHARS[mode] + reward_memory_headroom
     return {
         "mode": mode,
         "char_count": len(task_body),
         "line_count": len(task_body.splitlines()),
         "budget_char_count": budget_chars,
         "max_chars": max_chars,
+        "reward_memory_headroom_chars": reward_memory_headroom,
         "within_budget": budget_chars <= max_chars,
     }
