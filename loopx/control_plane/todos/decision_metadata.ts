@@ -1,8 +1,8 @@
-/** Typed decision metadata for ordinary Todo planning updates.
+/** Typed decision metadata for ordinary task planning updates.
  *
  * Decision outcomes remain terminal/effect-owned.  This module only validates
  * the two declarative fields that describe who may be waiting on what: a
- * user-gate decision_scope and an agent Todo's required_decision_scopes.
+ * user-gate decision_scope and an agent task's required_decision_scopes.
  */
 import type {JsonObject} from "../effect_program.ts";
 import {EffectRuntimeRequestError} from "../effect_runtime_errors.ts";
@@ -48,7 +48,10 @@ export function normalizeTodoDecisionScope(value: unknown, label = "decision_sco
   const raw = scopeObject(value, label);
   const unknown = Object.keys(raw).filter(key =>
     !["schema_version", "kind", "granularity", "scope_key", "decision_id"].includes(key));
-  if (unknown.length) fail(`${label} has unsupported fields: ${unknown.sort().join(", ")}`);
+  if (unknown.length) {
+    unknown.sort((left, right) => left.localeCompare(right));
+    fail(`${label} has unsupported fields: ${unknown.join(", ")}`);
+  }
   if (raw.schema_version !== undefined && raw.schema_version !== TODO_DECISION_SCOPE_SCHEMA_VERSION) {
     fail(`${label}.schema_version must be ${TODO_DECISION_SCOPE_SCHEMA_VERSION}`);
   }
