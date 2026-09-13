@@ -188,24 +188,25 @@ def main() -> int:
     assert request["command"] == "/loopx-pr-review", request
     assert (
         request["cli_command"]
-        == "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]"
+        == "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--review-priority other-developers-first|owner-first] [--since ISO]"
     ), request
     assert request["privacy_mode"] == "public_safe_github_metadata", request
     assert request["dry_run"] is True, request
     assert request["repository"] == "owner/repo", request
     assert request["state_filter"] == "all", request
+    assert request["review_priority"] == "other-developers-first", request
     assert "result_completeness" in request["include"], request
     assert "scheduling_policy" in request["include"], request
     assert payload["result_completeness"]["complete"] is True, payload
     scheduling_policy = payload["scheduling_policy"]
     assert (
         scheduling_policy["schema_version"]
-        == "pull_request_review_scheduling_policy_v0"
+        == "pull_request_review_scheduling_policy_v1"
     ), scheduling_policy
     assert [item["id"] for item in scheduling_policy["ordered_tiers"][:3]] == [
+        "other_developer_feedback_and_aged_backlog",
+        "other_developer_remaining",
         "authenticated_developer_owned",
-        "community_feedback_and_aged_backlog",
-        "composite_remaining",
     ], scheduling_policy
     assert "one-off author filters" in scheduling_policy["manual_override_rule"]
     assert payload["summary"]["total_pr_count"] == 4, payload["summary"]

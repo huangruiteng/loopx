@@ -7,9 +7,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from .scheduling import (
-    PullRequestSchedulingLane,
+    DEFAULT_REVIEW_PRIORITY,
+    PullRequestReviewPriority,
     build_scheduling_policy,
     classify_scheduling_lane,
+    normalize_review_priority,
     scheduling_sort_key,
     scheduling_tier,
 )
@@ -25,6 +27,20 @@ OBSERVATION_STATES = {
     "observed_unchanged",
     "material_transition",
 }
+
+
+def _selection_policy_text(priority: PullRequestReviewPriority) -> str:
+    if priority is PullRequestReviewPriority.OWNER_FIRST:
+        return (
+            "authenticated-developer-owned actionable heads first; then other "
+            "developer response heads and aged backlog; otherwise use the "
+            "capability-ranked unprojected queue; exact head required"
+        )
+    return (
+        "other-developer actionable heads first; then authenticated-developer-owned "
+        "heads; response and age tie-breakers remain within each lane; exact head "
+        "required"
+    )
 
 
 def _fingerprint(value: Any) -> str:
@@ -65,7 +81,11 @@ def _check_snapshot(value: Any) -> dict[str, Any]:
     }
 
 
-def _pr_snapshot(item: Mapping[str, Any]) -> dict[str, Any]:
+def _pr_snapshot(
+    item: Mapping[str, Any],
+    *,
+    review_priority: PullRequestReviewPriority,
+) -> dict[str, Any]:
     snapshot = {
         "number": item.get("number"),
         "state": _upper(item.get("state"), "OPEN"),
@@ -88,7 +108,10 @@ def _pr_snapshot(item: Mapping[str, Any]) -> dict[str, Any]:
     action = _candidate_action(item)
     snapshot["review_action_kind"] = action[0] if action is not None else None
     snapshot["scheduling_lane"] = classify_scheduling_lane(snapshot).value
-    snapshot["scheduling_tier"] = scheduling_tier(snapshot)
+    snapshot["scheduling_tier"] = scheduling_tier(
+        snapshot, review_priority=review_priority
+    )
+    snapshot["review_priority"] = review_priority.value
     fingerprint_snapshot = {
         key: value
         for key, value in snapshot.items()
@@ -309,10 +332,12 @@ def build_pull_request_review_queue_observation(
     handled_exact_heads: Sequence[str] = (),
     projected_exact_heads: Sequence[str] = (),
     authenticated_developer_login: str | None = None,
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
 ) -> dict[str, Any]:
     """Build one read-only observation and at most one exact-head candidate."""
 
     normalized_repository = str(repository or "").strip()
+    normalized_priority = normalize_review_priority(review_priority)
     previous = _previous_observation(previous_observation)
     previous_handled = _previous_handled_exact_heads(
         previous_observation, repository=normalized_repository
@@ -408,16 +433,10 @@ def build_pull_request_review_queue_observation(
             "projected_candidate_exact_heads": projected_sorted,
             "projected_candidate_count": len(projected_sorted),
             "candidate_projection_ack_semantics": PROJECTION_ACK_SEMANTICS,
-            "selection_policy": (
-                "authenticated-developer-owned actionable heads first; then one bounded "
-                "community fast-feedback slot and aged community backlog; otherwise use "
-                "the capability-ranked unprojected queue; exact head required"
-            ),
+            "selection_policy": _selection_policy_text(normalized_priority),
             "scheduling_policy": build_scheduling_policy(
                 authenticated_developer_login=authenticated_developer_login,
-                owner_first_active=any(
-                    item.get("author_owned") is True for item in pull_requests
-                ),
+                review_priority=normalized_priority,
             ),
             "write_authority_granted": False,
             "external_write_performed": False,
@@ -427,7 +446,7 @@ def build_pull_request_review_queue_observation(
     for item in pull_requests:
         if _upper(item.get("state"), "OPEN") != "OPEN":
             continue
-        snapshot = _pr_snapshot(item)
+        snapshot = _pr_snapshot(item, review_priority=normalized_priority)
         snapshot.update(
             {
                 "title": str(item.get("title") or "").strip(),
@@ -435,7 +454,11 @@ def build_pull_request_review_queue_observation(
             }
         )
         normalized_ranked_items.append(snapshot)
-    normalized_ranked_items.sort(key=scheduling_sort_key)
+    normalized_ranked_items.sort(
+        key=lambda item: scheduling_sort_key(
+            item, review_priority=normalized_priority
+        )
+    )
     ranked_items = [
         {**item, "rank": rank}
         for rank, item in enumerate(normalized_ranked_items, start=1)
@@ -481,7 +504,11 @@ def build_pull_request_review_queue_observation(
         for item in sorted(ranked_items, key=lambda row: str(row.get("number")))
     ]
     queue_fingerprint = _fingerprint(
-        {"repository": normalized_repository, "items": queue_items}
+        {
+            "repository": normalized_repository,
+            "review_priority": normalized_priority.value,
+            "items": queue_items,
+        }
     )
     previous_repository = str(previous.get("repository") or "").strip()
     prior_items = (
@@ -507,8 +534,11 @@ def build_pull_request_review_queue_observation(
     candidate_selection_reason = None
     for item in ranked_items:
         if (
-            item.get("scheduling_lane")
-            != PullRequestSchedulingLane.AUTHENTICATED_DEVELOPER_OWNED.value
+            normalized_priority is PullRequestReviewPriority.OWNER_FIRST
+            and item.get("author_owned") is not True
+        ) or (
+            normalized_priority is PullRequestReviewPriority.OTHER_DEVELOPERS_FIRST
+            and item.get("author_owned") is True
         ):
             continue
         exact_head_key = _exact_head_key(item.get("number"), item.get("head_oid"))
@@ -516,7 +546,11 @@ def build_pull_request_review_queue_observation(
             continue
         candidate = _candidate_packet(item, repository=normalized_repository)
         if candidate is not None:
-            candidate_selection_reason = "authenticated_developer_owned_first"
+            candidate_selection_reason = (
+                "authenticated_developer_owned_first"
+                if normalized_priority is PullRequestReviewPriority.OWNER_FIRST
+                else "other_developer_owned_first"
+            )
             break
     if observation_state == "material_transition":
         for item in changed if candidate is None else []:
@@ -607,16 +641,10 @@ def build_pull_request_review_queue_observation(
         "projected_candidate_exact_heads": projected_sorted,
         "projected_candidate_count": len(projected_sorted),
         "candidate_projection_ack_semantics": PROJECTION_ACK_SEMANTICS,
-        "selection_policy": (
-            "authenticated-developer-owned actionable heads first; then one bounded "
-            "community fast-feedback slot and aged community backlog; otherwise use "
-            "the capability-ranked unprojected queue; exact head required"
-        ),
+        "selection_policy": _selection_policy_text(normalized_priority),
         "scheduling_policy": build_scheduling_policy(
             authenticated_developer_login=authenticated_developer_login,
-            owner_first_active=any(
-                item.get("author_owned") is True for item in ranked_items
-            ),
+            review_priority=normalized_priority,
         ),
         "write_authority_granted": False,
         "external_write_performed": False,

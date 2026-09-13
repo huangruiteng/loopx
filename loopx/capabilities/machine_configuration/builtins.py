@@ -15,6 +15,9 @@ def build_builtin_machine_configuration_registry() -> MachineConfigurationRegist
     from ..periodic_report.machine_defaults import (
         periodic_report_machine_configuration_namespace,
     )
+    from ..pr_review_queue.machine_defaults import (
+        pull_request_review_machine_configuration_namespace,
+    )
     from ..todo_replan_cadence.machine_defaults import (
         todo_replan_cadence_machine_configuration_namespace,
     )
@@ -24,6 +27,7 @@ def build_builtin_machine_configuration_registry() -> MachineConfigurationRegist
         .register(periodic_report_machine_configuration_namespace())
         .register(todo_replan_cadence_machine_configuration_namespace())
         .register(change_quality_machine_configuration_namespace())
+        .register(pull_request_review_machine_configuration_namespace())
     )
 
 

@@ -25,6 +25,28 @@ def test_periodic_report_editor_is_shared_across_machine_and_goal_scopes() -> No
     ]
 
 
+def test_pull_request_review_editor_is_machine_configurable() -> None:
+    editor = capability_configuration_editor("pull_request_review")
+
+    assert editor["schema_version"] == "capability_configuration_editor_v0"
+    assert editor["editable"] is True
+    assert editor["supported_scopes"] == ["machine"]
+    assert editor["writable_scopes"] == ["machine"]
+    assert editor["fields"] == [
+        {
+            "key": "review_priority",
+            "label": "Review priority",
+            "description": (
+                "Default ranks actionable PRs whose author differs from the "
+                "authenticated reviewer before the reviewer's own PRs."
+            ),
+            "input_kind": "select",
+            "required": True,
+            "options": ["other-developers-first", "owner-first"],
+        }
+    ]
+
+
 def test_reward_memory_editor_writes_binding_without_returning_private_path() -> None:
     editor = capability_configuration_editor("reward_memory")
 

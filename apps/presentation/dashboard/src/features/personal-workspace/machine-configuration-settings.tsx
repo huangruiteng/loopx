@@ -326,6 +326,15 @@ export function MachineConfigurationSettings() {
             </section>
           ) : null}
 
+          {selected.capability_id === "pull_request_review" ? (
+            <section className="personal-capability-behavior-note">
+              <ShieldCheck aria-hidden size={18} />
+              <div><strong>{locale === "zh-CN" ? "只改变队列排序" : "Queue ordering only"}</strong><p>{locale === "zh-CN"
+                ? "默认先审阅其他开发者的 PR；选择 owner-first 才会优先当前已认证审阅者自己的 PR。此配置不会发布 review、写 Todo、push 或 merge。"
+                : "The default reviews other developers' PRs first; choose owner-first only when the authenticated reviewer's own PRs should lead. This setting never posts a review, writes Todos, pushes, or merges."}</p></div>
+            </section>
+          ) : null}
+
           {editorAvailable ? <>{editorMode === "json" || !selected.configuration_editor.fields.some((field) => field.key === "enabled" && field.input_kind === "boolean") ? <div className="personal-capability-editor-mode">
             <button onClick={() => changeMode(editorMode === "guided" ? "json" : "guided")} type="button">
               <Code2 aria-hidden size={14} />{t(editorMode === "guided" ? "machine.editJson" : "machine.backToForm")}

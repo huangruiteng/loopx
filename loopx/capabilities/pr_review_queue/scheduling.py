@@ -5,7 +5,7 @@ from enum import Enum
 from collections.abc import Sequence
 from typing import Any, Mapping
 
-SCHEDULING_POLICY_SCHEMA_VERSION = "pull_request_review_scheduling_policy_v0"
+SCHEDULING_POLICY_SCHEMA_VERSION = "pull_request_review_scheduling_policy_v1"
 COMMUNITY_BACKLOG_AGE_HOURS = 24.0
 
 
@@ -20,7 +20,15 @@ class PullRequestSchedulingLane(str, Enum):
     CLOSED = "closed"
 
 
-_LANE_TIERS = {
+class PullRequestReviewPriority(str, Enum):
+    OTHER_DEVELOPERS_FIRST = "other-developers-first"
+    OWNER_FIRST = "owner-first"
+
+
+DEFAULT_REVIEW_PRIORITY = PullRequestReviewPriority.OTHER_DEVELOPERS_FIRST
+
+
+_OWNER_FIRST_LANE_TIERS = {
     PullRequestSchedulingLane.AUTHENTICATED_DEVELOPER_OWNED: 0,
     PullRequestSchedulingLane.COMMUNITY_FEEDBACK: 1,
     PullRequestSchedulingLane.COMMUNITY_AGED_BACKLOG: 1,
@@ -30,6 +38,28 @@ _LANE_TIERS = {
     PullRequestSchedulingLane.DRAFT: 5,
     PullRequestSchedulingLane.CLOSED: 6,
 }
+
+_OTHER_DEVELOPERS_FIRST_LANE_TIERS = {
+    PullRequestSchedulingLane.COMMUNITY_FEEDBACK: 0,
+    PullRequestSchedulingLane.COMMUNITY_AGED_BACKLOG: 0,
+    PullRequestSchedulingLane.COMPOSITE_REMAINING: 1,
+    PullRequestSchedulingLane.AUTHENTICATED_DEVELOPER_OWNED: 2,
+    PullRequestSchedulingLane.CURRENT_HEAD_CONCLUDED: 3,
+    PullRequestSchedulingLane.MERGED: 4,
+    PullRequestSchedulingLane.DRAFT: 5,
+    PullRequestSchedulingLane.CLOSED: 6,
+}
+
+
+def normalize_review_priority(value: object) -> PullRequestReviewPriority:
+    if isinstance(value, PullRequestReviewPriority):
+        return value
+    text = str(value or DEFAULT_REVIEW_PRIORITY.value).strip()
+    try:
+        return PullRequestReviewPriority(text)
+    except ValueError:
+        allowed = ", ".join(item.value for item in PullRequestReviewPriority)
+        raise ValueError(f"review priority must be one of: {allowed}") from None
 
 
 def classify_scheduling_lane(
@@ -57,13 +87,23 @@ def classify_scheduling_lane(
     return PullRequestSchedulingLane.COMPOSITE_REMAINING
 
 
-def scheduling_tier(item: Mapping[str, Any]) -> int:
+def scheduling_tier(
+    item: Mapping[str, Any],
+    *,
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
+) -> int:
     lane_text = str(item.get("scheduling_lane") or "").strip()
     try:
         lane = PullRequestSchedulingLane(lane_text)
     except ValueError:
         lane = classify_scheduling_lane(item)
-    return _LANE_TIERS[lane]
+    priority = normalize_review_priority(review_priority)
+    tiers = (
+        _OWNER_FIRST_LANE_TIERS
+        if priority is PullRequestReviewPriority.OWNER_FIRST
+        else _OTHER_DEVELOPERS_FIRST_LANE_TIERS
+    )
+    return tiers[lane]
 
 
 def _timestamp(value: object) -> datetime | None:
@@ -119,9 +159,13 @@ def community_feedback_ready(
     )
 
 
-def scheduling_sort_key(item: Mapping[str, Any]) -> tuple[int, float, float, int]:
+def scheduling_sort_key(
+    item: Mapping[str, Any],
+    *,
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
+) -> tuple[int, float, float, int]:
     return (
-        scheduling_tier(item),
+        scheduling_tier(item, review_priority=review_priority),
         _timestamp_epoch(item.get("review_ready_at")),
         _timestamp_epoch(item.get("created_at")),
         int(item.get("number") or 0),
@@ -131,19 +175,12 @@ def scheduling_sort_key(item: Mapping[str, Any]) -> tuple[int, float, float, int
 def build_scheduling_policy(
     *,
     authenticated_developer_login: str | None,
-    owner_first_active: bool | None = None,
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
 ) -> dict[str, Any]:
     login = str(authenticated_developer_login or "").strip() or None
-    return {
-        "schema_version": SCHEDULING_POLICY_SCHEMA_VERSION,
-        "authority": "pull-request-review capability",
-        "identity_basis": "request.reviewer_login",
-        "authenticated_developer_login": login,
-        "owner_first_active": (
-            login is not None if owner_first_active is None else owner_first_active
-        ),
-        "community_backlog_age_hours": COMMUNITY_BACKLOG_AGE_HOURS,
-        "ordered_tiers": [
+    priority = normalize_review_priority(review_priority)
+    if priority is PullRequestReviewPriority.OWNER_FIRST:
+        ordered_actionable_tiers = [
             {
                 "tier": 0,
                 "id": "authenticated_developer_owned",
@@ -153,7 +190,7 @@ def build_scheduling_policy(
             },
             {
                 "tier": 1,
-                "id": "community_feedback_and_aged_backlog",
+                "id": "other_developer_feedback_and_aged_backlog",
                 "lanes": [
                     PullRequestSchedulingLane.COMMUNITY_FEEDBACK.value,
                     PullRequestSchedulingLane.COMMUNITY_AGED_BACKLOG.value,
@@ -163,10 +200,54 @@ def build_scheduling_policy(
             },
             {
                 "tier": 2,
-                "id": "composite_remaining",
+                "id": "other_developer_remaining",
                 "lanes": [PullRequestSchedulingLane.COMPOSITE_REMAINING.value],
                 "tie_breakers": ["review_ready_at", "created_at", "number"],
             },
+        ]
+    else:
+        ordered_actionable_tiers = [
+            {
+                "tier": 0,
+                "id": "other_developer_feedback_and_aged_backlog",
+                "lanes": [
+                    PullRequestSchedulingLane.COMMUNITY_FEEDBACK.value,
+                    PullRequestSchedulingLane.COMMUNITY_AGED_BACKLOG.value,
+                ],
+                "fast_feedback_slots_per_material_transition": 1,
+                "tie_breakers": ["review_ready_at", "created_at", "number"],
+            },
+            {
+                "tier": 1,
+                "id": "other_developer_remaining",
+                "lanes": [PullRequestSchedulingLane.COMPOSITE_REMAINING.value],
+                "tie_breakers": ["review_ready_at", "created_at", "number"],
+            },
+            {
+                "tier": 2,
+                "id": "authenticated_developer_owned",
+                "lanes": [
+                    PullRequestSchedulingLane.AUTHENTICATED_DEVELOPER_OWNED.value
+                ],
+            },
+        ]
+    return {
+        "schema_version": SCHEDULING_POLICY_SCHEMA_VERSION,
+        "authority": "pull-request-review capability",
+        "identity_basis": "request.reviewer_login",
+        "authenticated_developer_login": login,
+        "review_priority": priority.value,
+        "owner_first_active": priority is PullRequestReviewPriority.OWNER_FIRST,
+        "other_developers_first_active": (
+            priority is PullRequestReviewPriority.OTHER_DEVELOPERS_FIRST
+        ),
+        "other_developer_definition": (
+            "actionable PR whose author differs from request.reviewer_login; "
+            "the capability does not infer organization membership or trust"
+        ),
+        "community_backlog_age_hours": COMMUNITY_BACKLOG_AGE_HOURS,
+        "ordered_tiers": [
+            *ordered_actionable_tiers,
             {
                 "tier": 3,
                 "id": PullRequestSchedulingLane.CURRENT_HEAD_CONCLUDED.value,
@@ -197,11 +278,14 @@ def build_scheduling_policy(
 
 __all__ = [
     "COMMUNITY_BACKLOG_AGE_HOURS",
+    "DEFAULT_REVIEW_PRIORITY",
+    "PullRequestReviewPriority",
     "PullRequestSchedulingLane",
     "SCHEDULING_POLICY_SCHEMA_VERSION",
     "build_scheduling_policy",
     "classify_scheduling_lane",
     "community_feedback_ready",
+    "normalize_review_priority",
     "scheduling_sort_key",
     "scheduling_tier",
 ]

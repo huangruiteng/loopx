@@ -196,6 +196,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
     assert response["available_namespaces"] == [
         "change_quality_qualification",
         "periodic_report",
+        "pull_request_review",
         "todo_replan_cadence",
     ]
     namespace_catalog = {
@@ -218,6 +219,10 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "enabled": False,
         "safe_fix": False,
         "strict_receipt": False,
+    }
+    assert namespace_catalog["pull_request_review"]["configuration_template"] == {
+        "schema_version": "pull_request_review_machine_defaults_v0",
+        "review_priority": "other-developers-first",
     }
     capability_catalog = response["capability_catalog"]
     assert capability_catalog["schema_version"] == "capability_configuration_catalog_v0"
@@ -273,7 +278,18 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
         default_multi_subagent_max_children=2,
         explore_harness_profiles=(),
     )
-    assert set(machine) == {feature["feature_id"] for feature in goal["features"]}
+    assert set(machine) - {"pull_request_review"} == {
+        feature["feature_id"] for feature in goal["features"]
+    }
+    assert machine["pull_request_review"]["available_scopes"] == ["machine"]
+    assert machine["pull_request_review"]["machine_namespace"] == "pull_request_review"
+    assert machine["pull_request_review"]["configuration_editor"]["writable_scopes"] == [
+        "machine"
+    ]
+    assert [
+        field["key"]
+        for field in machine["pull_request_review"]["configuration_editor"]["fields"]
+    ] == ["review_priority"]
     assert "multi_subagent" in machine
     for capability_id, item in machine.items():
         assert "current" not in item
@@ -282,12 +298,13 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
             "periodic_report",
             "todo_replan_cadence",
             "change_quality_qualification",
+            "pull_request_review",
         }:
             assert item["available_scopes"] == ["goal"]
             assert "machine_namespace" not in item
             assert "machine" not in item["configuration_editor"]["writable_scopes"]
             assert item["effective_configuration"]["source"] == "not_configured"
-        else:
+        elif capability_id != "pull_request_review":
             assert item["available_scopes"] == ["machine", "goal"]
             assert item["machine_namespace"] == capability_id
             assert "machine" in item["configuration_editor"]["writable_scopes"]

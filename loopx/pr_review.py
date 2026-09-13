@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from .capabilities.pr_review_queue import (
+    DEFAULT_REVIEW_PRIORITY,
+    PullRequestReviewPriority,
     PullRequestSchedulingLane,
     build_agent_response_contract,
     build_scheduling_policy,
@@ -17,6 +19,7 @@ from .capabilities.pr_review_queue import (
     exact_head_key,
     materialize_review_execution,
     normalize_fresh_audit_exact_heads,
+    normalize_review_priority,
     scheduling_sort_key,
     scheduling_tier,
 )
@@ -967,6 +970,7 @@ def _normalize_pr(
     pr: dict[str, Any],
     *,
     reviewer_login: str | None,
+    review_priority: PullRequestReviewPriority = DEFAULT_REVIEW_PRIORITY,
     generated_at: datetime,
     fresh_audit_exact_heads: set[str],
 ) -> dict[str, Any]:
@@ -1050,7 +1054,9 @@ def _normalize_pr(
         and community_feedback_ready(pr, review_ready_at=ready_at)
     )
     item["scheduling_lane"] = classify_scheduling_lane(item).value
-    item["scheduling_tier"] = scheduling_tier(item)
+    item["scheduling_tier"] = scheduling_tier(
+        item, review_priority=review_priority
+    )
     return item
 
 
@@ -1065,8 +1071,10 @@ def build_pr_review_packet(
     source_scan: Mapping[str, Any] | None = None,
     reviewer_login: str | None = None,
     fresh_audit_exact_heads: Sequence[str] = (),
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
 ) -> dict[str, Any]:
     normalized_state_filter = normalize_pr_state_filter(state_filter)
+    normalized_priority = normalize_review_priority(review_priority)
     generated_at_text = _now_iso()
     generated_at = _parse_timestamp(generated_at_text) or datetime.now(timezone.utc)
     requested_fresh_audits = normalize_fresh_audit_exact_heads(fresh_audit_exact_heads)
@@ -1074,6 +1082,7 @@ def build_pr_review_packet(
         _normalize_pr(
             item,
             reviewer_login=reviewer_login,
+            review_priority=normalized_priority,
             generated_at=generated_at,
             fresh_audit_exact_heads=requested_fresh_audits,
         )
@@ -1085,7 +1094,11 @@ def build_pr_review_packet(
         if (normalized_state_filter == "all" or str(item.get("state") or "").lower() == normalized_state_filter)
         and _include_pr_in_window(item, since=since)
     ]
-    normalized_all.sort(key=scheduling_sort_key)
+    normalized_all.sort(
+        key=lambda item: scheduling_sort_key(
+            item, review_priority=normalized_priority
+        )
+    )
     packet_limit = max(1, limit)
     unmerged_all = [item for item in normalized_all if str(item.get("state") or "").upper() != "MERGED"]
     merged_all = [item for item in normalized_all if str(item.get("state") or "").upper() == "MERGED"]
@@ -1233,7 +1246,7 @@ def build_pr_review_packet(
         "request": {
             "schema_version": "loopx_pr_review_command_request_v0",
             "command": COMMAND,
-            "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+            "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--review-priority other-developers-first|owner-first] [--since ISO]",
             "repository": repository,
             "limit": max(1, limit),
             "state_filter": normalized_state_filter,
@@ -1244,6 +1257,7 @@ def build_pr_review_packet(
             },
             "source": source,
             "reviewer_login": reviewer_login,
+            "review_priority": normalized_priority.value,
             "fresh_audit_exact_heads": sorted(requested_fresh_audits),
             "include": [
                 "pull_request_list",
@@ -1279,7 +1293,8 @@ def build_pr_review_packet(
         },
         "result_completeness": result_completeness,
         "scheduling_policy": build_scheduling_policy(
-            authenticated_developer_login=reviewer_login
+            authenticated_developer_login=reviewer_login,
+            review_priority=normalized_priority,
         ),
         "review_sequence": review_sequence,
         "review_groups": review_groups,

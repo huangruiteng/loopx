@@ -3,6 +3,8 @@ from __future__ import annotations
 from copy import deepcopy
 
 from loopx.capabilities.pr_review_queue import (
+    DEFAULT_REVIEW_PRIORITY,
+    PullRequestReviewPriority,
     build_pull_request_review_queue_observation,
     build_scheduling_policy,
     scheduling_tier,
@@ -49,6 +51,7 @@ def _observe(
     previous: dict[str, object] | None = None,
     handled: list[str] | None = None,
     projected: list[str] | None = None,
+    review_priority: object = DEFAULT_REVIEW_PRIORITY,
 ) -> dict[str, object]:
     return build_pull_request_review_queue_observation(
         repository="owner/repo",
@@ -57,6 +60,7 @@ def _observe(
         previous_observation=previous,
         handled_exact_heads=handled or [],
         projected_exact_heads=projected or [],
+        review_priority=review_priority,
     )
 
 
@@ -111,8 +115,22 @@ def test_initial_complete_observation_selects_one_exact_head_candidate() -> None
     assert result["external_write_performed"] is False
 
 
-def test_authenticated_developer_owned_candidate_precedes_community() -> None:
+def test_other_developer_owned_candidate_precedes_owner_by_default() -> None:
     result = _observe([_pr(1), _pr(2, author_owned=True)])
+
+    assert result["candidate"]["number"] == 1
+    assert result["candidate_selection_reason"] == "other_developer_owned_first"
+    assert result["scheduling_policy"]["review_priority"] == (
+        PullRequestReviewPriority.OTHER_DEVELOPERS_FIRST.value
+    )
+    assert result["scheduling_policy"]["owner_first_active"] is False
+
+
+def test_authenticated_developer_owned_candidate_precedes_other_developer_in_owner_mode() -> None:
+    result = _observe(
+        [_pr(1), _pr(2, author_owned=True)],
+        review_priority=PullRequestReviewPriority.OWNER_FIRST,
+    )
 
     assert result["candidate"]["number"] == 2
     assert result["candidate_selection_reason"] == "authenticated_developer_owned_first"
@@ -120,15 +138,23 @@ def test_authenticated_developer_owned_candidate_precedes_community() -> None:
 
 
 def test_scheduling_policy_tiers_match_machine_lane_values() -> None:
-    policy = build_scheduling_policy(authenticated_developer_login="maintainer")
+    policy = build_scheduling_policy(
+        authenticated_developer_login="maintainer",
+        review_priority=PullRequestReviewPriority.OWNER_FIRST,
+    )
 
     for declared_tier in policy["ordered_tiers"]:
         for lane in declared_tier["lanes"]:
-            assert scheduling_tier({"scheduling_lane": lane}) == declared_tier["tier"]
+            assert scheduling_tier(
+                {"scheduling_lane": lane}, review_priority="owner-first"
+            ) == declared_tier["tier"]
 
 
 def test_community_fast_feedback_does_not_preempt_unprojected_owner() -> None:
-    first = _observe([_pr(1, decision="CHANGES_REQUESTED"), _pr(2, author_owned=True)])
+    first = _observe(
+        [_pr(1, decision="CHANGES_REQUESTED"), _pr(2, author_owned=True)],
+        review_priority="owner-first",
+    )
 
     changed = _observe(
         [
@@ -136,6 +162,7 @@ def test_community_fast_feedback_does_not_preempt_unprojected_owner() -> None:
             _pr(2, author_owned=True),
         ],
         previous=first,
+        review_priority="owner-first",
     )
 
     assert changed["changed_pr_numbers"] == [1]
@@ -204,9 +231,14 @@ def test_round_robin_accepts_handled_rotated_candidate() -> None:
 
 
 def test_handled_exact_head_advances_unchanged_backlog() -> None:
-    first = _observe([_pr(1), _pr(2)])
+    first = _observe([_pr(1), _pr(2)], review_priority="owner-first")
     handled = [f"1@{1:040d}"]
-    repeated = _observe([_pr(1), _pr(2)], previous=first, handled=handled)
+    repeated = _observe(
+        [_pr(1), _pr(2)],
+        previous=first,
+        handled=handled,
+        review_priority="owner-first",
+    )
 
     assert repeated["observation_state"] == "observed_unchanged"
     assert repeated["changed_pr_numbers"] == []
@@ -214,18 +246,21 @@ def test_handled_exact_head_advances_unchanged_backlog() -> None:
     assert repeated["candidate"]["number"] == 2
     assert repeated["candidate_selection_reason"] == "age_fair_backlog_progression"
 
-    still_pending = _observe([_pr(1), _pr(2)], previous=repeated)
+    still_pending = _observe(
+        [_pr(1), _pr(2)], previous=repeated, review_priority="owner-first"
+    )
     assert still_pending["observation_state"] == "observed_unchanged"
     assert still_pending["candidate"]["number"] == 2
     assert still_pending["pending_candidate_exact_head"] == f"2@{2:040d}"
 
 
 def test_handled_changed_pr_does_not_strand_unchanged_backlog() -> None:
-    first = _observe([_pr(1), _pr(2)])
+    first = _observe([_pr(1), _pr(2)], review_priority="owner-first")
     result = _observe(
         [_pr(1, decision="CHANGES_REQUESTED"), _pr(2)],
         previous=first,
         handled=[f"1@{1:040d}"],
+        review_priority="owner-first",
     )
 
     assert result["observation_state"] == "material_transition"
@@ -235,11 +270,12 @@ def test_handled_changed_pr_does_not_strand_unchanged_backlog() -> None:
 
 
 def test_new_head_reopens_a_previously_handled_pr() -> None:
-    first = _observe([_pr(1), _pr(2)])
+    first = _observe([_pr(1), _pr(2)], review_priority="owner-first")
     result = _observe(
         [_pr(1, head="f" * 40), _pr(2)],
         previous=first,
         handled=[f"1@{1:040d}"],
+        review_priority="owner-first",
     )
 
     assert result["candidate"]["number"] == 1
@@ -249,11 +285,12 @@ def test_new_head_reopens_a_previously_handled_pr() -> None:
 
 
 def test_closed_handled_pr_advances_and_prunes_cursor() -> None:
-    first = _observe([_pr(1), _pr(2)])
+    first = _observe([_pr(1), _pr(2)], review_priority="owner-first")
     result = _observe(
         [_pr(2)],
         previous=first,
         handled=[f"1@{1:040d}"],
+        review_priority="owner-first",
     )
 
     assert result["removed_pr_numbers"] == ["1"]
@@ -299,15 +336,18 @@ def test_exact_review_fingerprint_change_selects_changed_pr_only() -> None:
 
 
 def test_check_only_change_does_not_preempt_older_backlog() -> None:
-    first = _observe([_pr(1), _pr(2), _pr(3)])
+    first = _observe([_pr(1), _pr(2), _pr(3)], review_priority="owner-first")
     first_acknowledged = _observe(
         [_pr(1), _pr(2), _pr(3)],
         previous=first,
         projected=[f"1@{1:040d}"],
+        review_priority="owner-first",
     )
     changed = [_pr(1), _pr(2), _pr(3, failures=["pytest"])]
 
-    result = _observe(changed, previous=first_acknowledged)
+    result = _observe(
+        changed, previous=first_acknowledged, review_priority="owner-first"
+    )
 
     assert result["observation_state"] == "material_transition"
     assert result["changed_pr_numbers"] == [3]
@@ -316,11 +356,15 @@ def test_check_only_change_does_not_preempt_older_backlog() -> None:
 
 
 def test_new_head_after_changes_requested_gets_one_fast_feedback_slot() -> None:
-    first = _observe([_pr(1, decision="CHANGES_REQUESTED"), _pr(2)])
+    first = _observe(
+        [_pr(1, decision="CHANGES_REQUESTED"), _pr(2)],
+        review_priority="owner-first",
+    )
 
     result = _observe(
         [_pr(1, head="f" * 40, decision="CHANGES_REQUESTED"), _pr(2)],
         previous=first,
+        review_priority="owner-first",
     )
 
     assert result["candidate"]["number"] == 1

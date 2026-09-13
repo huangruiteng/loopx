@@ -8,6 +8,13 @@ import loopx.cli_commands.pr_review as pr_review_cli_module
 import loopx.pr_review as pr_review_module
 import loopx.pr_review_merge_readiness as merge_readiness_module
 import pytest
+from loopx.capabilities.machine_configuration.builtins import (
+    build_builtin_machine_configuration_registry,
+)
+from loopx.capabilities.machine_configuration.store import (
+    configure_machine_configuration,
+    plan_machine_configuration_update,
+)
 
 HEAD_1 = "a" * 40
 HEAD_2 = "b" * 40
@@ -375,6 +382,73 @@ def test_merge_readiness_cli_reads_live_pr_and_threads(
     assert out[0]["review_conclusion"]["reviewer"] == "maintainer"
 
 
+def test_pr_review_cli_uses_machine_capability_priority_when_flag_is_omitted(
+    tmp_path: Path,
+) -> None:
+    registry = build_builtin_machine_configuration_registry()
+    configuration = {
+        "schema_version": "loopx_machine_configuration_v0",
+        "namespaces": {
+            "pull_request_review": {
+                "schema_version": "pull_request_review_machine_defaults_v0",
+                "review_priority": "owner-first",
+            }
+        },
+    }
+    plan = plan_machine_configuration_update(
+        runtime_root=tmp_path,
+        configuration=configuration,
+        registry=registry,
+    )
+    receipt = configure_machine_configuration(
+        runtime_root=tmp_path,
+        configuration=configuration,
+        registry=registry,
+        execute=True,
+        expected_plan_revision=plan["plan_revision"],
+    )
+    assert receipt["readback_verified"] is True
+
+    fixture = tmp_path / "pull-requests.json"
+    fixture.write_text(
+        json.dumps({"repository": "owner/repo", "pull_requests": [_queue_pr(
+            1,
+            author="maintainer",
+            ready_at="2026-09-12T00:00:00Z",
+            updated_at="2026-09-12T00:00:00Z",
+        )]}),
+        encoding="utf-8",
+    )
+    args = SimpleNamespace(
+        command="pr-review",
+        check_result=None,
+        packet=None,
+        check_merge_readiness=None,
+        autonomous_observation=False,
+        observation_state_file=None,
+        previous_observation_json=None,
+        handled_exact_head=[],
+        projected_exact_head=[],
+        fixture=str(fixture),
+        repo=None,
+        limit=100,
+        state="open",
+        since=None,
+        fresh_audit_exact_head=[],
+        review_priority=None,
+    )
+    out: list[dict[str, object]] = []
+    result = pr_review_cli_module.handle_pr_review_command(
+        args,
+        runtime_root=tmp_path,
+        output_format=lambda _args: "json",
+        print_payload=_capture_payload(out),
+    )
+
+    assert result == 0
+    assert out[0]["request"]["review_priority"] == "owner-first"
+
+
 def test_review_thread_summary_paginates_and_counts_unresolved(monkeypatch) -> None:
     calls: list[list[str]] = []
     pages = iter(
@@ -552,7 +626,7 @@ def test_merge_readiness_accepts_titled_author_owned_approval_only_with_bypass()
     assert ready["admin_bypass_required"] is True, ready
 
 
-def test_queue_prioritizes_authenticated_developer_owned_heads(monkeypatch) -> None:
+def test_queue_prioritizes_authenticated_developer_owned_heads_in_owner_mode(monkeypatch) -> None:
     monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
     rows = [
         _queue_pr(
@@ -582,6 +656,7 @@ def test_queue_prioritizes_authenticated_developer_owned_heads(monkeypatch) -> N
         source="fixture",
         state_filter="open",
         reviewer_login="maintainer",
+        review_priority="owner-first",
     )
 
     assert [item["number"] for item in packet["pull_requests"]] == [12, 13, 11]
@@ -597,13 +672,14 @@ def test_queue_prioritizes_authenticated_developer_owned_heads(monkeypatch) -> N
     ]
     assert packet["pull_requests"][0]["review_ready_at"] == "2026-08-17T06:00:00Z"
     policy = packet["scheduling_policy"]
-    assert policy["schema_version"] == "pull_request_review_scheduling_policy_v0"
+    assert policy["schema_version"] == "pull_request_review_scheduling_policy_v1"
     assert policy["authenticated_developer_login"] == "maintainer"
+    assert policy["review_priority"] == "owner-first"
     assert policy["owner_first_active"] is True
     assert [item["id"] for item in policy["ordered_tiers"][:3]] == [
         "authenticated_developer_owned",
-        "community_feedback_and_aged_backlog",
-        "composite_remaining",
+        "other_developer_feedback_and_aged_backlog",
+        "other_developer_remaining",
     ]
     assert "one-off author filters" in policy["manual_override_rule"]
 
@@ -622,12 +698,44 @@ def test_queue_prioritizes_authenticated_developer_owned_heads(monkeypatch) -> N
         source="fixture",
         state_filter="open",
         reviewer_login="maintainer",
+        review_priority="owner-first",
     )
     assert overdue["pull_requests"][0]["number"] == 14
     assert (
         overdue["pull_requests"][0]["scheduling_lane"]
         == "authenticated_developer_owned"
     )
+
+
+def test_queue_prioritizes_other_developers_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(pr_review_module, "_now_iso", lambda: "2026-08-18T12:00:00Z")
+    rows = [
+        _queue_pr(
+            31,
+            author="maintainer",
+            ready_at="2026-08-17T06:00:00Z",
+            updated_at="2026-08-18T11:58:00Z",
+        ),
+        _queue_pr(
+            32,
+            author="developer-two",
+            ready_at="2026-08-18T10:00:00Z",
+            updated_at="2026-08-18T11:57:00Z",
+        ),
+    ]
+
+    packet = pr_review_module.build_pr_review_packet(
+        pull_requests=rows,
+        repository="owner/repo",
+        limit=10,
+        source="fixture",
+        state_filter="open",
+        reviewer_login="maintainer",
+    )
+
+    assert [item["number"] for item in packet["pull_requests"]] == [32, 31]
+    assert packet["request"]["review_priority"] == "other-developers-first"
+    assert packet["scheduling_policy"]["other_developers_first_active"] is True
 
 
 def test_community_feedback_and_aged_backlog_precede_remaining_queue(
@@ -670,6 +778,7 @@ def test_community_feedback_and_aged_backlog_precede_remaining_queue(
         source="fixture",
         state_filter="open",
         reviewer_login="maintainer",
+        review_priority="owner-first",
     )
 
     assert [item["number"] for item in packet["pull_requests"]] == [22, 21, 23]

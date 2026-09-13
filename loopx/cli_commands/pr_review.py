@@ -8,9 +8,16 @@ from contextlib import suppress
 from pathlib import Path
 
 from ..capabilities.pr_review_queue import (
+    DEFAULT_REVIEW_PRIORITY,
     build_pull_request_review_queue_observation,
     normalize_fresh_audit_exact_heads,
+    normalize_review_priority,
+    review_priority_machine_default,
 )
+from ..capabilities.machine_configuration.builtins import (
+    build_builtin_machine_configuration_registry,
+)
+from ..capabilities.machine_configuration.store import read_machine_configuration
 from ..capabilities.pr_review_queue.result_check import check_review_result
 from ..file_lock import exclusive_file_lock
 from ..pr_review import (
@@ -123,6 +130,16 @@ def register_pr_review_command(
         help="PR lifecycle state to include. Defaults to all so merged PRs remain reviewable.",
     )
     parser.add_argument(
+        "--review-priority",
+        choices=("other-developers-first", "owner-first"),
+        default=None,
+        help=(
+            "Scheduling preference for actionable PRs. Defaults to the configured "
+            "pull_request_review machine capability (other-developers-first when "
+            "unset); use owner-first to prioritize the authenticated reviewer's own PRs."
+        ),
+    )
+    parser.add_argument(
         "--since",
         help="Only include PRs active since this ISO timestamp or YYYY-MM-DD date.",
     )
@@ -183,10 +200,12 @@ def handle_pr_review_command(
     *,
     output_format: FormatSelector,
     print_payload: PrintPayload,
+    runtime_root: Path | None = None,
 ) -> int | None:
     if args.command != "pr-review":
         return None
     checkpoint_path: Path | None = None
+    resolved_review_priority = DEFAULT_REVIEW_PRIORITY
     try:
         if args.check_result or args.packet:
             if not (args.check_result and args.packet):
@@ -315,6 +334,18 @@ def handle_pr_review_command(
                 "--observation-state-file cannot be combined with "
                 "--previous-observation-json"
             )
+        explicit_review_priority = getattr(args, "review_priority", None)
+        if explicit_review_priority is not None:
+            resolved_review_priority = normalize_review_priority(explicit_review_priority)
+        elif runtime_root is not None:
+            machine_configuration = read_machine_configuration(
+                runtime_root,
+                registry=build_builtin_machine_configuration_registry(),
+            )
+            resolved_review_priority = (
+                review_priority_machine_default(machine_configuration)
+                or DEFAULT_REVIEW_PRIORITY
+            )
         previous_observation = None
         checkpoint_digest = None
         if args.observation_state_file:
@@ -371,6 +402,7 @@ def handle_pr_review_command(
             source_scan=source_scan,
             reviewer_login=reviewer_login,
             fresh_audit_exact_heads=args.fresh_audit_exact_head,
+            review_priority=resolved_review_priority,
         )
         if args.autonomous_observation:
             autonomous_review = build_pull_request_review_queue_observation(
@@ -381,6 +413,7 @@ def handle_pr_review_command(
                 handled_exact_heads=args.handled_exact_head,
                 projected_exact_heads=args.projected_exact_head,
                 authenticated_developer_login=reviewer_login,
+                review_priority=resolved_review_priority,
             )
             payload["autonomous_review"] = autonomous_review
             payload["request"]["autonomous_observation"] = True
@@ -420,11 +453,12 @@ def handle_pr_review_command(
             "request": {
                 "schema_version": "loopx_pr_review_command_request_v0",
                 "command": "/loopx-pr-review",
-                "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+                "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--review-priority other-developers-first|owner-first] [--since ISO]",
                 "repository": args.repo,
                 "limit": max(1, args.limit),
                 "state_filter": normalize_pr_state_filter(args.state),
                 "since": args.since,
+                "review_priority": resolved_review_priority.value,
                 "fresh_audit_exact_heads": list(args.fresh_audit_exact_head),
                 "source": "fixture" if args.fixture else "github_cli",
                 "privacy_mode": "public_safe_github_metadata",

@@ -404,6 +404,7 @@ def test_canonical_machine_config_cli_uses_the_same_store_and_projection(
     assert [item["namespace"] for item in catalog["namespaces"]] == [
         "change_quality_qualification",
         "periodic_report",
+        "pull_request_review",
         "todo_replan_cadence",
     ]
 

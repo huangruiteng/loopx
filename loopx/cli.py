@@ -795,6 +795,11 @@ def main(argv: list[str] | None = None) -> int:
         args,
         output_format=output_format,
         print_payload=print_payload,
+        runtime_root=(
+            effective_runtime_root(registry_path, args.runtime_root)
+            if registry_path.exists()
+            else None
+        ),
     )
     if pr_review_result is not None:
         return pr_review_result

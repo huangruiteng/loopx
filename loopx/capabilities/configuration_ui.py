@@ -184,6 +184,23 @@ def capability_configuration_editor(
                 _field("strict_receipt", "Require an exact-diff receipt", "boolean"),
             ],
         },
+        "pull_request_review": {
+            "supported_scopes": ["machine"],
+            "writable_scopes": ["machine"],
+            "fields": [
+                _field(
+                    "review_priority",
+                    "Review priority",
+                    "select",
+                    options=("other-developers-first", "owner-first"),
+                    required=True,
+                    description=(
+                        "Default ranks actionable PRs whose author differs from the "
+                        "authenticated reviewer before the reviewer's own PRs."
+                    ),
+                ),
+            ],
+        },
         "local_authority_shadow": {
             "supported_scopes": ["goal"],
             "writable_scopes": ["goal"],

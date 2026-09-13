@@ -370,6 +370,7 @@ assert.match(workspaceSettings, /role="radiogroup"/, "Settings expose theme and 
 assert.match(workspaceSettings, /setLocale\(option\.value\)/, "Settings updates the workspace locale");
 assert.match(machineSettings, /available_scopes\.includes\("machine"\)/, "Machine configuration only renders capabilities that grant machine-scope configuration");
 assert.match(machineSettings, /selected\.capability_id === "periodic_report"/, "Periodic reports expose their governed activation semantics");
+assert.match(machineSettings, /selected\.capability_id === "pull_request_review"/, "PR review exposes its queue-ordering-only semantics");
 assert.match(machineSettings, /previewMachineConfiguration\(/, "Machine settings require a preview before apply");
 assert.match(machineSettings, /applyMachineConfiguration\([\s\S]*preview\.plan_revision/, "Machine settings apply the exact reviewed revision");
 assert.match(machineSettings, /previewMachineConfigurationRollback\(/, "Machine settings preview rollback before execution");
@@ -404,12 +405,13 @@ for (const capabilityId of [
   "multi_subagent",
   "peer_task_coordination",
   "periodic_report",
+  "pull_request_review",
   "reward_memory",
 ]) {
   const matches = capabilityLocalization.match(new RegExp(`${capabilityId}:`, "g")) ?? [];
   assert.equal(matches.length, 2, `${capabilityId} has English and Simplified Chinese metadata`);
 }
-for (const fieldKey of ["allowed_domains", "coordinator_agent_id", "enabled", "max_children", "profile", "profile_preset", "route_ref", "safe_fix", "strict_receipt", "timezone"]) {
+for (const fieldKey of ["allowed_domains", "coordinator_agent_id", "enabled", "max_children", "profile", "profile_preset", "review_priority", "route_ref", "safe_fix", "strict_receipt", "timezone"]) {
   const matches = capabilityLocalization.match(new RegExp(`${fieldKey}:`, "g")) ?? [];
   assert.equal(matches.length, 2, `${fieldKey} has English and Simplified Chinese field copy`);
 }

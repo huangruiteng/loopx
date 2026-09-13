@@ -50,6 +50,10 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
       displayName: "Periodic reports",
       description: "Turns validated Goal stage progress into a frozen report and automatically delivers it through the configured Goal Channel with exact readback.",
     },
+    pull_request_review: {
+      displayName: "Pull-request review",
+      description: "Ranks the public GitHub PR review queue with a machine-level default; it never grants GitHub, Todo, push, or merge authority.",
+    },
     reward_memory: {
       displayName: "Reward Memory experiment",
       description: "Configures a reviewed local-private provider binding for Goal-scoped Agent recall and evidence-backed outcome learning.",
@@ -94,6 +98,10 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
       displayName: "周期报告",
       description: "把经过验证的 Goal 阶段进展整理为冻结报告，并通过配置的 Goal Channel 自动发送和精确回读。",
     },
+    pull_request_review: {
+      displayName: "Pull-request Review",
+      description: "配置公开 GitHub PR 审阅队列的本机默认排序；不会授予 GitHub、Todo、push 或 merge 权限。",
+    },
     reward_memory: {
       displayName: "Reward Memory 实验",
       description: "为 Goal 内 Agent 的召回与证据化结果学习配置经过审阅的本机私有 Provider 绑定。",
@@ -112,6 +120,7 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     max_children: { label: "Maximum children", description: "Hard upper bound for concurrently delegated child work." },
     profile: { label: "Planner profile", description: "Select one registered Explore Harness profile." },
     profile_preset: { label: "Report profile", description: "Capability-owned report profile, such as weekly-progress." },
+    review_priority: { label: "Review priority", description: "Choose whether other developers' PRs or the authenticated reviewer's own PRs are ranked first." },
     route_ref: { label: "Goal Channel route", description: "Public route alias only; credentials and provider identifiers stay outside this form." },
     safe_fix: { label: "Allow one bounded safe-fix pass" },
     strict_receipt: { label: "Require an exact-diff receipt" },
@@ -130,6 +139,7 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     max_children: { label: "最大子 Agent 数", description: "可同时委派的子任务硬上限。" },
     profile: { label: "规划 Profile", description: "选择一个已注册的 Explore Harness profile。" },
     profile_preset: { label: "报告 Profile", description: "由该能力管理的报告 profile，例如 weekly-progress。" },
+    review_priority: { label: "审阅优先级", description: "选择先排其他开发者的 PR，还是先排当前已认证审阅者自己的 PR。" },
     route_ref: { label: "Goal Channel 路由", description: "只填写公开 route alias；凭据与 Provider 标识不会进入此表单。" },
     safe_fix: { label: "允许一次有界安全修复" },
     strict_receipt: { label: "要求精确 diff 回执" },
