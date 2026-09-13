@@ -19,30 +19,28 @@ from .settlement import read_heartbeat_settlement
 UNSETTLED_HOST_TURN_RECOVERY_SCHEMA_VERSION = "unsettled_host_turn_recovery_v0"
 
 
-def _todo_item_by_id(
-    payload: Mapping[str, Any], todo_id: str
-) -> Mapping[str, Any] | None:
-    summary = payload.get("agent_todo_summary")
-    if not isinstance(summary, Mapping):
-        return None
-    for value in summary.values():
-        if not isinstance(value, list):
-            continue
-        for item in value:
-            if isinstance(item, Mapping) and item.get("todo_id") == todo_id:
-                return item
-    return None
-
-
 def _typed_lifecycle_closeout(
-    payload: Mapping[str, Any],
     *,
+    registry_path: Path,
+    runtime_root: Path,
+    goal_id: str,
     todo_id: str | None,
 ) -> str | None:
     if not todo_id:
         return None
-    item = _todo_item_by_id(payload, todo_id)
-    if item is None:
+    # Reuse the exact-ID read path: presentation lanes omit terminal and
+    # blocked rows and cannot prove the absence of a lifecycle transition.
+    from ...todos import list_goal_todos
+
+    readback = list_goal_todos(
+        registry_path=registry_path,
+        runtime_root_arg=str(runtime_root),
+        goal_id=goal_id,
+        role="agent",
+        todo_id=todo_id,
+    )
+    item = readback.get("todo")
+    if not isinstance(item, Mapping) or item.get("todo_id") != todo_id:
         return None
     status = str(item.get("status") or "")
     if (
@@ -58,8 +56,8 @@ def _typed_lifecycle_closeout(
 
 
 def _unsettled_host_turn_recovery(
-    payload: Mapping[str, Any],
     *,
+    registry_path: Path,
     runtime_root: Path,
     goal_id: str,
     agent_id: str | None,
@@ -90,7 +88,12 @@ def _unsettled_host_turn_recovery(
         )
         if readback is not None and readback.settlement.failure is None:
             return None
-        lifecycle_closeout = _typed_lifecycle_closeout(payload, todo_id=todo_id)
+        lifecycle_closeout = _typed_lifecycle_closeout(
+            registry_path=registry_path,
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+            todo_id=todo_id,
+        )
         if lifecycle_closeout is not None:
             return None
         details_value = receipt.get("details")
@@ -127,6 +130,7 @@ def _unsettled_host_turn_recovery(
 def apply_unsettled_host_turn_recovery_if_required(
     payload: dict[str, Any],
     *,
+    registry_path: Path,
     runtime_root: Path,
     goal_id: str,
     agent_id: str | None,
@@ -139,7 +143,7 @@ def apply_unsettled_host_turn_recovery_if_required(
     """Preempt ordinary selection when the preceding host Turn lacks closeout."""
 
     recovery = _unsettled_host_turn_recovery(
-        payload,
+        registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id=goal_id,
         agent_id=agent_id,

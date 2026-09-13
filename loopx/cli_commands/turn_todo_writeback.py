@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ..todos import complete_goal_todo, update_goal_todo
 
@@ -49,6 +49,8 @@ def write_turn_validated_completion(
     evidence: str,
     note: str,
     agent_id: str | None,
+    completion_delivery_workspace: Mapping[str, Any] | None = None,
+    completion_validation_workspace_path: Path | None = None,
 ) -> dict[str, Any]:
     """Complete one validated Todo under the effective runtime root."""
 
@@ -58,6 +60,9 @@ def write_turn_validated_completion(
         todo_id=todo_id,
         role="agent",
         completion_turn_key=completion_turn_key,
+        completion_identity_source="turn_settlement",
+        completion_delivery_workspace=completion_delivery_workspace,
+        completion_validation_workspace_path=completion_validation_workspace_path,
         evidence=evidence,
         note=note,
         agent_id=agent_id,

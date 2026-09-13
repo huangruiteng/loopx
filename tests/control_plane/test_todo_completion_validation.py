@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from loopx.control_plane.todos.completion_validation_projection import (
 from loopx.control_plane.todos.completion_validation import (
     resolve_private_completion_validation_declaration,
 )
+from loopx.control_plane.agents.workspace_guard import capture_delivery_workspace
 from loopx.control_plane.todos.completion_validation_store import (
     completion_validation_declaration_path,
     persist_completion_validation_declaration,
@@ -105,6 +107,7 @@ def _add_todo(
     validation_command_json: str | None = None,
     validation_label: str | None = None,
     validation_timeout_seconds: int | None = None,
+    task_repository: str | None = None,
 ) -> dict:
     return add_goal_todo(
         registry_path=registry,
@@ -117,7 +120,46 @@ def _add_todo(
         validation_command_json=validation_command_json,
         validation_label=validation_label,
         validation_timeout_seconds=validation_timeout_seconds,
+        task_repository=task_repository,
     )
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _cross_repository_worktree(
+    tmp_path: Path,
+    *,
+    name: str,
+) -> tuple[str, Path, dict[str, Any]]:
+    repository = tmp_path / f"{name}-repository"
+    repository.mkdir()
+    _git("init", "-b", "main", cwd=repository)
+    _git("config", "user.name", "LoopX Test", cwd=repository)
+    _git("config", "user.email", "loopx-test@example.invalid", cwd=repository)
+    remote = f"https://github.com/example/{name}.git"
+    _git("remote", "add", "origin", remote, cwd=repository)
+    (repository / f"{name}-only").write_text("ok\n", encoding="utf-8")
+    _git("add", f"{name}-only", cwd=repository)
+    _git("commit", "-m", "fixture", cwd=repository)
+    worktree = tmp_path / f"{name}-worktree"
+    _git("worktree", "add", "-b", f"test-{name}", str(worktree), cwd=repository)
+    snapshot = capture_delivery_workspace(
+        worktree,
+        peer_independent_worktree_required=True,
+        repository_source="test_settlement",
+    )
+    assert snapshot is not None
+    task_repository = str(snapshot["task_repository"])
+    return task_repository, worktree, snapshot
 
 
 def _record_completion_runtime_calls(
@@ -177,6 +219,209 @@ def test_validation_command_declared_and_passing_commits_completion(
     assert result["changed"] is True
     assert "validation_blocked_completion" not in result
     assert _agent_todo(state, str(todo["todo_id"]))["status"] == "done"
+
+
+def test_cross_repository_validation_runs_in_recorded_clean_worktree(
+    tmp_path: Path,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    task_repository, worktree, workspace_receipt = _cross_repository_worktree(
+        tmp_path,
+        name="repo-b",
+    )
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('repo-b-only').is_file()",
+            ]
+        ),
+        validation_label="repository B smoke",
+        task_repository=task_repository,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="validated in repository B",
+        completion_delivery_workspace=workspace_receipt,
+        completion_validation_workspace_path=worktree,
+    )
+
+    assert result["ok"] is True
+    assert result["changed"] is True
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "done"
+
+
+def test_cross_repository_validation_without_recorded_workspace_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    task_repository, worktree, _workspace_receipt = _cross_repository_worktree(
+        tmp_path,
+        name="repo-b",
+    )
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps([sys.executable, "-c", "pass"]),
+        task_repository=task_repository,
+    )
+    calls = {"count": 0}
+
+    def forbidden_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        raise AssertionError("validation command must not run")
+
+    monkeypatch.setattr(completion_validation_module, "run_caller_validation", forbidden_runner)
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="unverified claim",
+        completion_validation_workspace_path=worktree,
+    )
+
+    assert calls["count"] == 0
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_receipt_unavailable"
+    assert str(tmp_path) not in json.dumps(result["validation"])
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
+
+
+def test_cross_repository_validation_rejects_foreign_worktree_without_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    task_repository, _worktree, workspace_receipt = _cross_repository_worktree(
+        tmp_path,
+        name="repo-b",
+    )
+    _foreign_repository, foreign_worktree, _foreign_receipt = (
+        _cross_repository_worktree(tmp_path, name="repo-c")
+    )
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps([sys.executable, "-c", "pass"]),
+        task_repository=task_repository,
+    )
+    calls = {"count": 0}
+
+    def forbidden_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        raise AssertionError("validation command must not run")
+
+    monkeypatch.setattr(completion_validation_module, "run_caller_validation", forbidden_runner)
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="wrong repository claim",
+        completion_delivery_workspace=workspace_receipt,
+        completion_validation_workspace_path=foreign_worktree,
+    )
+
+    assert calls["count"] == 0
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_repository_mismatch"
+    assert str(tmp_path) not in json.dumps(result["validation"])
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
+
+
+def test_cross_repository_validation_rejects_dirty_worktree_without_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    task_repository, worktree, workspace_receipt = _cross_repository_worktree(
+        tmp_path,
+        name="repo-b",
+    )
+    (worktree / "uncommitted-artifact").write_text("dirty\n", encoding="utf-8")
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps([sys.executable, "-c", "pass"]),
+        task_repository=task_repository,
+    )
+    calls = {"count": 0}
+
+    def forbidden_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        raise AssertionError("validation command must not run")
+
+    monkeypatch.setattr(completion_validation_module, "run_caller_validation", forbidden_runner)
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="dirty worktree claim",
+        completion_delivery_workspace=workspace_receipt,
+        completion_validation_workspace_path=worktree,
+    )
+
+    assert calls["count"] == 0
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_dirty"
+    assert str(tmp_path) not in json.dumps(result["validation"])
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
+
+
+def test_malformed_delivery_workspace_receipt_returns_typed_failure_without_running_validator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = _add_todo(
+        registry,
+        validation_command=_PASS_COMMAND,
+        task_repository="git:github.com/example/delivery",
+    )
+    calls = {"count": 0}
+
+    def unexpected_validation(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        calls["count"] += 1
+        raise AssertionError("malformed workspace receipts must block before validation")
+
+    monkeypatch.setattr(
+        completion_validation_module,
+        "run_caller_validation",
+        unexpected_validation,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="malformed workspace receipt",
+        completion_delivery_workspace={
+            "schema_version": "delivery_workspace_v1",
+            "workspace_identity": "git:github.com/example/delivery",
+            "identity_kind": "unsupported_kind",
+            "task_repository": "git:github.com/example/delivery",
+            "repository_source": "turn.delivery_workspace",
+            "workspace_kind": "independent_git_worktree",
+            "peer_independent_worktree_required": True,
+        },
+    )
+
+    assert calls["count"] == 0
+    assert result["ok"] is False
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_receipt_invalid"
+    assert result["validation"]["local_path_captured"] is False
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
 
 
 def test_missing_validation_executable_returns_typed_receipt(

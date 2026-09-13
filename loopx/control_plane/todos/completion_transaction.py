@@ -31,6 +31,7 @@ _SOURCE_FIELDS = (
     "completion_continuation",
     "completion_turn_key",
     "successor_todo_ids",
+    "task_repository",
     "validation_command",
     "validation_command_argv",
     "validation_label",
@@ -383,6 +384,10 @@ def _valid_execute_validation_result(result: Mapping[str, Any]) -> bool:
                 and not isinstance(effect.get("validation_timeout_seconds"), bool)
                 and 1 <= int(effect["validation_timeout_seconds"]) <= 29
             )
+        )
+        and (
+            effect.get("task_repository") is None
+            or isinstance(effect.get("task_repository"), str)
         )
     )
 

@@ -126,7 +126,11 @@ function planScope(command: string, role: string, taskClass: string | null, todo
   }
   const creating = command === "create";
   let blocks = intent.clear_blocks_agent ? null : requestedBlocks || string(todo.blocks_agent, "blocks_agent");
-  const global = intent.clear_global_gate ? null : intent.global_gate ? true : todo.global_gate as boolean | null ?? null;
+  const global = intent.clear_global_gate
+    ? null
+    : Object.hasOwn(intent, "global_gate")
+      ? intent.global_gate === true
+      : todo.global_gate as boolean | null ?? null;
   let bound = requestedBound || (intent.goal_bound ? null : string(todo.bound_agent, "bound_agent"));
   let goal = intent.goal_bound ? true : requestedBound ? false : todo.goal_bound as boolean | null ?? null;
   // Gate scope can determine continuation scope, but never overwrite a

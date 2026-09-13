@@ -298,13 +298,31 @@ def authorize_todo_lifecycle_mutation(
         infer_status_from_done=True,
     )
     requested_owner = normalize_todo_claimed_by(requested_claimed_by)
+    # Legacy single-agent callers historically omitted ``agent_id`` while the
+    # Todo itself carried the sole registered owner/binding. Attribute those
+    # calls to that unambiguous owner before entering the shared decision
+    # function; genuinely unowned actorless records remain compatibility-safe.
+    if normalized_actor is None and len(registered_agents) == 1:
+        sole_agent = registered_agents[0]
+        bound_agent = core_todo.bound_agent or (
+            core_todo.blocks_agent if core_todo.role == "user" else None
+        )
+        if requested_owner == sole_agent or core_todo.claimed_by == sole_agent or bound_agent == sole_agent:
+            normalized_actor = sole_agent
+    # A pre-coordination goal has no declared registration list, but explicit
+    # legacy callers still supplied an actor. Preserve that behavior without
+    # weakening the shared ownership/exclusion checks: the supplied actor is
+    # the only admissible peer for this decision.
+    decision_registered_agents = registered_agents or (
+        [normalized_actor] if normalized_actor is not None else []
+    )
     effective_action = str(authority_action or command).strip().lower()
     if command == "claim":
         return _authorize_typescript_claim(
             goal_id=goal_id,
             todo=todo,
             core_todo=core_todo,
-            registered_agents=registered_agents,
+            registered_agents=decision_registered_agents,
             actor=normalized_actor,
             requested_owner=requested_owner,
         )
@@ -322,7 +340,7 @@ def authorize_todo_lifecycle_mutation(
         decision_outcome=normalized_decision_outcome,
     )
     core_snapshot = CoordinationSnapshot(
-        registered_agents=tuple(registered_agents),
+        registered_agents=tuple(decision_registered_agents),
         todo=core_todo,
         decision_target=core_target,
     )
@@ -334,7 +352,7 @@ def authorize_todo_lifecycle_mutation(
             coordination.get("todo_lifecycle_authority")
             if isinstance(coordination, Mapping)
             else None,
-            registered_agents=registered_agents,
+            registered_agents=decision_registered_agents,
         )
         plan = decide(
             CoordinationSnapshot(

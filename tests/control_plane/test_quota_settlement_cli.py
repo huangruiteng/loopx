@@ -1058,7 +1058,7 @@ def test_in_flight_progress_preserves_todo_across_heartbeat_settlements(
     }
 
 
-def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
+def test_recovery_does_not_bind_current_replan_and_reenters_same_turn(
     tmp_path: Path,
 ) -> None:
     project, runtime, registry_path = _write_fixture(tmp_path)
@@ -1086,6 +1086,21 @@ def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
     assert prior_rc == 0, prior
     assert prior["heartbeat_receipt"]["closeout_required"] is True
 
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_before_replan = state_path.read_text(encoding="utf-8")
+    replan_backlog = "\n".join(
+        f"- [ ] [P1] Review recovery breadth {index}.\n"
+        "  <!-- loopx:todo "
+        f"todo_id=todo_recovery_replan_{index:012d} status=open "
+        "task_class=advancement_task action_kind=validate "
+        f"claimed_by={AGENT_ID} -->"
+        for index in range(15)
+    )
+    state_path.write_text(
+        state_before_replan.rstrip() + "\n\n" + replan_backlog + "\n",
+        encoding="utf-8",
+    )
+
     recovery_rc, recovery = _run_cli(
         registry_path,
         runtime,
@@ -1102,6 +1117,7 @@ def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
     )
     assert recovery_rc == 0, recovery
     assert recovery["effective_action"] == "unsettled_host_turn_recovery"
+    replan_obligation_id = recovery["replan_action_packet"]["obligation_id"]
     packet = recovery["unsettled_host_turn_recovery"]
     assert packet["prior_turn_instance_id"] == prior_turn_id
     assert packet["binding_id"] == TODO_ID
@@ -1126,6 +1142,14 @@ def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
         "next_cli_actions"
     ][1]
     assert "settlement_identity" not in recovery["heartbeat_receipt"]
+    assert recovery["heartbeat_receipt"]["semantic_replan_obligation_id"] == (
+        replan_obligation_id
+    )
+
+    # Model the separately verified replan settlement without touching the
+    # append-only heartbeat receipt.  The same recovery Turn must then be able
+    # to bind an independent successor instead of preserving an obsolete replan.
+    state_path.write_text(state_before_replan, encoding="utf-8")
 
     wait_rc, wait = _run_cli(
         registry_path,
@@ -1170,8 +1194,120 @@ def test_next_heartbeat_forces_recovery_for_unsettled_must_attempt_turn(
     )
     assert resumed_rc == 0, resumed
     assert resumed["effective_action"] != "unsettled_host_turn_recovery"
+    assert resumed.get("autonomous_replan_obligation") is None
     assert resumed["selected_todo"]["todo_id"] == ALTERNATIVE_TODO_ID
     assert resumed["heartbeat_receipt"]["status"] == "upgraded"
+    assert resumed["heartbeat_receipt"]["settlement_identity"]["todo_id"] == (
+        ALTERNATIVE_TODO_ID
+    )
+
+
+@pytest.mark.parametrize("provider", ["legacy", "file", "sqlite"])
+@pytest.mark.parametrize("hidden_count", [0, 6])
+def test_prior_host_closeout_survives_hidden_todo_lifecycle(
+    tmp_path: Path,
+    hidden_count: int,
+    provider: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from canonical_authority_fixture import (
+        initialize_canonical_authority,
+        isolate_sqlite_runtime,
+    )
+    from loopx.control_plane.coordination.runtime_shadow import (
+        build_todo_runtime_shadow_projection,
+    )
+
+    if provider == "sqlite":
+        isolate_sqlite_runtime(tmp_path, monkeypatch)
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_selectable_alternative(project)
+    guard = (
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--scan-path",
+        str(project),
+    )
+    rc, prior = _run_cli(
+        registry_path,
+        runtime,
+        *guard,
+        "--turn-instance-id",
+        "turn-hidden-closeout-prior",
+        "--todo-id",
+        TODO_ID,
+    )
+    assert rc == 0, prior
+    assert prior["heartbeat_receipt"]["closeout_required"] is True
+    rc, recovery = _run_cli(registry_path, runtime, *guard, "--begin-turn")
+    assert rc == 0, recovery
+    assert recovery["effective_action"] == "unsettled_host_turn_recovery"
+    state = project / ".codex" / "goals" / GOAL_ID / "ACTIVE_GOAL_STATE.md"
+    with state.open("a") as stream:
+        for index in range(hidden_count):
+            stream.write(
+                f"\n- [ ] [P0] Wait for validation {index}.\n"
+                f"  <!-- loopx:todo todo_id=todo_hidden_{index} status=blocked "
+                "task_class=advancement_task -->\n"
+            )
+    if provider != "legacy":
+        rc, listed = _run_cli(
+            registry_path, runtime, "todo", "list", "--goal-id", GOAL_ID
+        )
+        assert rc == 0, listed
+        projection = build_todo_runtime_shadow_projection(
+            goal_id=GOAL_ID,
+            handoff_mode="soft_claim",
+            todos=listed["todos"],
+        )
+        initialize_canonical_authority(
+            runtime, GOAL_ID, projection, state_path=state, provider=provider
+        )
+    rc, update = _run_cli(
+        registry_path,
+        runtime,
+        "todo",
+        "update",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--todo-id",
+        TODO_ID,
+        "--status",
+        "blocked",
+        "--reason",
+        "Waiting on independent validation.",
+        "--successor-todo-id",
+        ALTERNATIVE_TODO_ID,
+    )
+    assert rc == 0, json.dumps(update, indent=2)
+    turn_id = recovery["heartbeat_receipt"]["turn_instance_id"]
+    rc, observed = _run_cli(
+        registry_path, runtime, *guard, "--turn-instance-id", turn_id
+    )
+    assert observed["effective_action"] != "unsettled_host_turn_recovery", observed.get(
+        "unsettled_host_turn_recovery"
+    )
+    assert rc == 0, observed
+    rc, resumed = _run_cli(
+        registry_path,
+        runtime,
+        *guard,
+        "--turn-instance-id",
+        turn_id,
+        "--todo-id",
+        ALTERNATIVE_TODO_ID,
+    )
+    assert rc == 0, resumed
+    assert resumed["selected_todo"]["todo_id"] == ALTERNATIVE_TODO_ID
+    assert resumed["heartbeat_receipt"]["status"] == "upgraded"
+    assert resumed["quota"]["spent_slots"] == prior["quota"]["spent_slots"]
 
 
 def test_standard_codex_app_settlement_is_receipted_and_idempotent(

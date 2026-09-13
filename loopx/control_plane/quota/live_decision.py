@@ -499,6 +499,7 @@ def build_live_quota_should_run_decision(
             interaction.update(projections)
     apply_unsettled_host_turn_recovery_if_required(
         payload,
+        registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id=goal_id,
         agent_id=agent_id,

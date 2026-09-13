@@ -60,6 +60,7 @@ test("planning intent cannot smuggle terminal, decision or observation writes", 
   const {store, request} = await seeded({task_class: "advancement_task"});
   for (const planning_intent of [
     {status: "done"}, {decision_outcome: "approve"},
+    {decision_scope: {kind: "direction", granularity: "goal", scope_key: "release"}},
     {global_gate: true}, {monitor_metadata: {material_change: "true"}},
     {completion_metadata_updates_override: {completion_continuation: "no_followup"}},
     {status: "deferred"}, {successor_todo_ids: "todo_other"},
@@ -210,6 +211,40 @@ test("unclaimed edits preserve actor exclusion and binding fences", async () => 
     assert.deepEqual(await store.loadAuthority(), before);
     assert.equal((await store.readReceipt(request.operation_id)).status, "missing");
   }
+});
+
+test("single-agent compatibility preserves ownership, exclusion, and binding fences", async () => {
+  for (const [label, overrides, reason] of [
+    ["claimed", {claimed_by: "agent-b"}, "update_owner_mismatch"],
+    ["excluded", {claimed_by: null, excluded_agents: ["agent-a"]}, "actor_excluded"],
+    ["bound", {claimed_by: null, bound_agent: "agent-b"}, "bound_agent_mismatch"],
+  ] as const) {
+    const {store, request} = await seeded(overrides);
+    const before = await store.loadAuthority();
+    const result = await executeCoordinationTodoUpdate(store, {
+      ...request,
+      operation_id: `single-agent-${label}`,
+      registered_agents: ["agent-a"],
+      actor_agent_id: "agent-a",
+    });
+    assert.equal(result.reason_code, reason, JSON.stringify(result));
+    assert.deepEqual(await store.loadAuthority(), before);
+    assert.equal((await store.readReceipt(`single-agent-${label}`)).status, "missing");
+  }
+});
+
+test("single-agent actorless compatibility rejects excluded work", async () => {
+  const {store, request} = await seeded({claimed_by: null, excluded_agents: ["agent-a"]});
+  const before = await store.loadAuthority();
+  const result = await executeCoordinationTodoUpdate(store, {
+    ...request,
+    operation_id: "single-agent-actorless-excluded",
+    registered_agents: ["agent-a"],
+    actor_agent_id: null,
+  });
+  assert.equal(result.reason_code, "actor_required", JSON.stringify(result));
+  assert.deepEqual(await store.loadAuthority(), before);
+  assert.equal((await store.readReceipt("single-agent-actorless-excluded")).status, "missing");
 });
 
 test("provider-first update rejects authority and lifecycle escalation", async () => {

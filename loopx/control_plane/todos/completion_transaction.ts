@@ -82,6 +82,7 @@ export interface TodoCompletionValidationEffect extends JsonObject {
   validation_argv: readonly string[] | null;
   validation_label: string | null;
   validation_timeout_seconds: number | null;
+  task_repository: string | null;
 }
 
 export interface TodoCompletionExecuteValidation
@@ -410,6 +411,10 @@ export function reduceTodoCompletionTransaction(
           validation_label: validationPlan.validation_label,
           validation_timeout_seconds:
             validationPlan.validation_timeout_seconds,
+          task_repository: optionalNonEmptyString(
+            request.todo.task_repository,
+            "todo.task_repository",
+          ),
         },
       };
     }

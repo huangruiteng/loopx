@@ -20,6 +20,7 @@ from ..capabilities.reward_memory import (
 from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
 from ..capabilities.periodic_report.pending_intent import periodic_report_pending_intent_interaction_hook
 from ..control_plane.quota.live_decision import build_live_quota_should_run_decision
+from ..control_plane.agents.workspace_guard import capture_delivery_workspace
 from ..control_plane.quota.heartbeat_receipt import (
     ensure_turn_heartbeat_settlement_receipt,
 )
@@ -473,6 +474,17 @@ def handle_turn_command(
                 )
                 else None
             )
+            completion_delivery_workspace = (
+                capture_delivery_workspace(
+                    delivery_workspace_path,
+                    peer_independent_worktree_required=bool(
+                        selected_todo.get("task_repository")
+                    ),
+                    repository_source="turn.delivery_workspace",
+                )
+                if delivery_workspace_path is not None
+                else None
+            )
 
             def writeback(
                 result: dict[str, object],
@@ -590,6 +602,8 @@ def handle_turn_command(
                     ),
                     note=str(result["next_action"]),
                     agent_id=args.agent_id,
+                    completion_delivery_workspace=completion_delivery_workspace,
+                    completion_validation_workspace_path=delivery_workspace_path,
                 )
                 # Project the continuation the Todo lifecycle durably recorded,
                 # never a host-normalized continuation. Contradictory or

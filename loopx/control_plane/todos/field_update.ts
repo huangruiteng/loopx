@@ -104,7 +104,11 @@ function bindingUpdates(block: JsonObject, intent: JsonObject, todoId: string): 
   else if (intent.clear_blocks_agent) updates.blocks_agent = null;
   if (present(intent.excluded_agents)) updates.excluded_agents = intent.excluded_agents;
   if (intent.clear_global_gate) updates.global_gate = null;
-  else if (present(intent.global_gate)) updates.global_gate = intent.global_gate;
+  else if (Object.hasOwn(intent, "global_gate")) {
+    // The public record is presence-based: false means the gate is cleared,
+    // never a second persisted state that can shadow a scoped gate.
+    updates.global_gate = intent.global_gate === true ? true : null;
+  }
   return updates;
 }
 
@@ -165,10 +169,6 @@ export function planTodoFieldUpdate(value: unknown): TodoFieldUpdatePlan {
   const updates: JsonObject = {todo_id: todoId, status: targetStatus};
   if (normalizedStatus === "done" && !block.completed_at) updates.completed_at = updatedAt;
   else if (normalizedStatus && normalizedStatus !== "done") updates.completed_at = null;
-  // The public editing contract distinguishes omitted/empty text metadata from
-  // present collections and booleans. Never turn [] or false into omission.
-  for (const field of STRING_FIELDS) if (intent[field]) updates[field] = intent[field];
-  for (const field of PRESENT_FIELDS) if (present(intent[field])) updates[field] = intent[field];
   Object.assign(updates, bindingUpdates(block, intent, todoId));
   if (intent.unblocks_todo_id) updates.unblocks_todo_id = intent.unblocks_todo_id;
   if (present(intent.successor_todo_ids)) updates.successor_todo_ids = intent.successor_todo_ids;
@@ -182,6 +182,22 @@ export function planTodoFieldUpdate(value: unknown): TodoFieldUpdatePlan {
   }
   if (present(intent.no_followup)) updates.no_followup = intent.no_followup;
   Object.assign(updates, completionUpdates(block, intent, targetStatus, normalizedStatus));
+  // Presence, rather than truthiness, is the mutation contract. An explicitly
+  // empty scalar clears the compatibility field; omitted values remain
+  // untouched. This fixes the old `if (intent[field])` conflation of omission
+  // and an intentional clear.
+  for (const field of STRING_FIELDS) {
+    if (Object.hasOwn(intent, field)) {
+      // `note` is a display annotation whose historical empty-input contract
+      // is omission/preservation. Other scalar metadata uses empty text as an
+      // explicit clear once it crosses this typed boundary.
+      if (field === "note" && typeof intent[field] === "string" && !intent[field].trim()) continue;
+      updates[field] = intent[field];
+    }
+  }
+  for (const field of PRESENT_FIELDS) {
+    if (Object.hasOwn(intent, field)) updates[field] = intent[field];
+  }
   // Public update carries the effective scope and raw observation once. The
   // field plan composes validation and generation without another RPC.
   const monitorPlan = request.monitor_context == null ? null : planMonitorMetadata({

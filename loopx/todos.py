@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import ExitStack
 from json import dumps as json_dumps
 from pathlib import Path
@@ -121,6 +122,10 @@ from .control_plane.coordination.local_authority import (
     read_canonical_todos_if_promoted,
 )
 from .control_plane.todos.provider_update import update_canonical_todo_if_promoted
+from .control_plane.todos.update_intent import (
+    build_canonical_update_intent,
+    canonical_update_is_supported,
+)
 from .control_plane.todos.provider_create import create_canonical_todo_if_promoted
 from .control_plane.todos.path_resolution import resolve_todo_state_path
 from .control_plane.todos.provider_terminal_lifecycle import provider_first_terminal_lifecycle
@@ -1112,29 +1117,35 @@ def update_goal_todo(
         )
         if canonical_claim is not None:
             return canonical_claim
-    # Transport explicit planning intent; TS owns its meaning at the canonical
-    # commit revision. Unsupported fields still encounter the promotion fence.
-    planning_intent = {key: value for key, value in {
-        "status": status, "evidence": evidence, "reason": reason,
-        "resume_when": resume_when, "clear_resume_when": clear_resume_when or None,
-        "unblocks_todo_id": unblocks_todo_id, "successor_todo_ids": successor_todo_ids,
-        "no_followup": no_followup,
-        "action_kind": action_kind, "task_domain": task_domain,
-        "task_repository": task_repository, "required_write_scopes": required_write_scopes,
-        "required_capabilities": required_capabilities, "target_capabilities": target_capabilities,
-        "explore_result_node_refs": explore_result_node_refs,
-        "claimed_by": claimed_by, "clear_claim": clear_claim or None,
-        "excluded_agents": [] if clear_excluded_agents else excluded_agents,
-    }.items() if value is not None}
-    if not claim_only and (text is not None or note is not None or planning_intent) and not any((
-        monitor_metadata,
-        goal_bound, clear_blocks_agent, global_gate,
-        clear_global_gate, authority_reason,
-    )) and all(value is None for value in (
-        task_class, continuation_policy,
-        decision_scope, required_decision_scopes, bound_agent,
-        blocks_agent, authority_reason,
-    )):
+    # Translate the compatibility-sized CLI signature exactly once.  The
+    # canonical transaction now owns ordinary role/binding/work-declaration
+    # edits as well as text/note corrections; monitor observations and terminal
+    # completion remain effect-owned and therefore stay off this route.
+    planning_intent = build_canonical_update_intent(
+        status=status, evidence=evidence, reason=reason, task_class=task_class,
+        action_kind=action_kind, task_domain=task_domain,
+        task_repository=task_repository, continuation_policy=continuation_policy,
+        required_write_scopes=required_write_scopes,
+        required_capabilities=required_capabilities,
+        target_capabilities=target_capabilities,
+        explore_result_node_refs=explore_result_node_refs,
+        decision_scope=decision_scope,
+        required_decision_scopes=required_decision_scopes,
+        claimed_by=claimed_by, bound_agent=bound_agent, goal_bound=goal_bound,
+        blocks_agent=blocks_agent, clear_blocks_agent=clear_blocks_agent,
+        excluded_agents=excluded_agents,
+        clear_excluded_agents=clear_excluded_agents,
+        global_gate=global_gate, clear_global_gate=clear_global_gate,
+        unblocks_todo_id=unblocks_todo_id,
+        successor_todo_ids=successor_todo_ids, resume_when=resume_when,
+        clear_resume_when=clear_resume_when, no_followup=no_followup,
+        clear_claim=clear_claim,
+    )
+    if not claim_only and canonical_update_is_supported(
+        text=text, note=note, intent=planning_intent,
+        monitor_metadata=monitor_metadata, authority_reason=authority_reason,
+        status=status,
+    ):
         canonical_edit = update_canonical_todo_if_promoted(
             registry_path=registry_path, runtime_root=shadow_runtime_root,
             goal_id=goal_id, todo_id=normalize_todo_id(todo_id) or todo_id,
@@ -1409,6 +1420,8 @@ def complete_goal_todo(
     evidence: str | None = None,
     completion_turn_key: str | None = None,
     completion_identity_source: str | None = None,
+    completion_delivery_workspace: Mapping[str, Any] | None = None,
+    completion_validation_workspace_path: Path | None = None,
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
     note: str | None = None,
@@ -1474,6 +1487,8 @@ def complete_goal_todo(
         ),
         completion_policy_facts=completion_policy_facts,
         requested_successor_todo_ids=normalized_successor_todo_ids,
+        completion_delivery_workspace=completion_delivery_workspace,
+        completion_validation_workspace_path=completion_validation_workspace_path,
     )
     validation_failure = validation_gate.get("failure")
     if validation_failure is not None:

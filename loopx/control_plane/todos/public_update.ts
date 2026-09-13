@@ -8,6 +8,11 @@ import { planTodoAuthoringScope, TODO_AUTHORING_SCOPE_REQUEST_SCHEMA,
 import { planTodoFieldUpdate, TODO_FIELD_UPDATE_REQUEST_SCHEMA } from "./field_update.ts";
 import { planTodoExternalWaitTransition, TODO_EXTERNAL_WAIT_REQUEST_SCHEMA_VERSION } from "./resume_condition.ts";
 import { normalizeTodoWorkRequirements, TODO_WORK_REQUIREMENT_FIELDS } from "./work_requirements.ts";
+import {
+  normalizeTodoDecisionScope,
+  normalizeTodoRequiredDecisionScopes,
+  validateTodoDecisionMetadata,
+} from "./decision_metadata.ts";
 
 export const TODO_PUBLIC_UPDATE_REQUEST_SCHEMA = "todo_public_update_request_v0";
 
@@ -50,18 +55,33 @@ export function planPublicTodoUpdate(value: unknown): JsonObject {
   for (const field of TODO_OWNERSHIP_INTENT_FIELDS) delete intent[field];
   Object.assign(intent, normalizeTodoWorkRequirements(rawIntent));
   Object.assign(intent, normalizeTodoOwnershipIntent(rawIntent));
+  if (Object.hasOwn(intent, "decision_scope")) {
+    intent.decision_scope = normalizeTodoDecisionScope(intent.decision_scope);
+  }
+  if (Object.hasOwn(intent, "required_decision_scopes")) {
+    intent.required_decision_scopes = normalizeTodoRequiredDecisionScopes(intent.required_decision_scopes);
+  }
+  validateTodoDecisionMetadata(todo, intent);
   const context = requireJsonObject(request.context, "public Todo update context");
+  // Preserve omission at the authoring-scope boundary. Filling every field
+  // with null made an unrelated metadata edit erase a retained gate scope.
+  const scopeIntent = Object.fromEntries(SCOPE_INTENT_FIELDS.flatMap(key =>
+    Object.hasOwn(intent, key) ? [[key, intent[key]]] : []));
+  if (context.actor_agent_id !== undefined) scopeIntent.actor_agent_id = context.actor_agent_id;
   const scope = planTodoAuthoringScope({schema_version: TODO_AUTHORING_SCOPE_REQUEST_SCHEMA,
     command: "update", role: context.role, todo,
-    intent: {...Object.fromEntries(SCOPE_INTENT_FIELDS.map(key => [key, intent[key] ?? null])),
-      actor_agent_id: context.actor_agent_id ?? null},
+    intent: scopeIntent,
     goal_id: context.goal_id, registered_agents: context.registered_agents});
   const transition = externalWait(todo, intent, scope, context);
   const metadata = transition ? requireJsonObject(transition.metadata_updates, "external wait updates") : null;
   const role = context.role;
   const effectiveIntent = {...intent,
     bound_agent: role === "user" ? scope.bound_agent : null,
-    goal_bound: role === "user" && scope.goal_bound ? true : null,
+    // Carry an explicit false when a gate changes from goal-wide to an
+    // agent-bound continuation; omission would leave stale goal_bound=true in
+    // the canonical record.
+    goal_bound: role === "user" && scope.goal_bound !== null
+      ? scope.goal_bound : null,
     clear_user_binding: scope.clear_user_binding,
     resume_when: scope.normalized_resume_when,
     resume_monitor_generation: metadata?.resume_monitor_generation ?? null};

@@ -189,6 +189,18 @@ def test_managed_turn_projects_prior_unsettled_heartbeat_recovery(
     agent_id = "codex-fixture"
     todo_id = "todo_ordinary_work"
     prior_turn_id = "managed-prior-turn"
+    state_path = tmp_path / "ACTIVE_GOAL_STATE.md"
+    state_path.write_text(
+        "# Goal\n\n## Agent Todo\n\n- [ ] Keep advancing the selected task.\n"
+        f"  <!-- loopx:todo todo_id={todo_id} status=open "
+        "task_class=advancement_task -->\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "registry.json").write_text(json.dumps({
+        "common_runtime_root": str(runtime_root),
+        "goals": [{"id": GOAL_ID, "repo": str(tmp_path),
+                   "state_file": str(state_path)}],
+    }), encoding="utf-8")
     event = build_rollout_event(
         goal_id=GOAL_ID,
         event_kind="quota_should_run",
@@ -259,6 +271,102 @@ def test_managed_turn_projects_prior_unsettled_heartbeat_recovery(
     assert contract["mode"] == "unsettled_host_turn_recovery"
     assert contract["agent_channel"]["delivery_allowed"] is False
     assert contract["cli_channel"]["spend_after_validation"] is False
+
+
+def test_recovery_reads_lifecycle_when_status_summary_omits_bound_todo(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+    registry_path = tmp_path / "registry.json"
+    state_path = tmp_path / "ACTIVE_GOAL_STATE.md"
+    agent_id = "codex-fixture"
+    todo_id = "todo_lifecycle_boundary"
+    prior_turn_id = "managed-prior-turn"
+    state_path.write_text(
+        "# Goal\n\n## Agent Todo\n\n"
+        "- [ ] [P1] Closed by an external lifecycle transition.\n"
+        f"  <!-- loopx:todo todo_id={todo_id} status=blocked "
+        "task_class=advancement_task -->\n"
+        "- [ ] [P1] Continue an unrelated visible item.\n"
+        "  <!-- loopx:todo todo_id=todo_visible status=open "
+        "task_class=advancement_task -->\n",
+        encoding="utf-8",
+    )
+    registry_path.write_text(
+        json.dumps(
+            {
+                "common_runtime_root": str(runtime_root),
+                "goals": [
+                    {
+                        "id": GOAL_ID,
+                        "repo": str(tmp_path),
+                        "state_file": str(state_path),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    event = build_rollout_event(
+        goal_id=GOAL_ID,
+        event_kind="quota_should_run",
+        agent_id=agent_id,
+        todo_id=todo_id,
+        run_id=prior_turn_id,
+        status="normal_run",
+        summary="managed heartbeat guard requires closeout",
+        details={
+            "todo_id": todo_id,
+            "settlement_effect_id": f"{GOAL_ID}:{agent_id}:{todo_id}:{prior_turn_id}",
+            "closeout_required": True,
+        },
+    )
+    log_path = runtime_root / "goals" / GOAL_ID / "rollout-event-log.jsonl"
+    log_path.parent.mkdir(parents=True)
+    log_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    # This is the compact status shape that caused the regression: the bound
+    # blocked Todo is absent from every visible lane, while an unrelated item
+    # remains available for ordinary selection.
+    status = quota_status_payload(
+        goal_id=GOAL_ID,
+        status="active",
+        agent_todo_items=[
+            {
+                "todo_id": "todo_visible",
+                "index": 2,
+                "text": "[P1] Continue an unrelated visible item.",
+                "role": "agent",
+                "status": "open",
+                "priority": "P1",
+                "task_class": "advancement_task",
+            }
+        ],
+        recommended_action="[P1] Continue an unrelated visible item.",
+        next_action="[P1] Continue an unrelated visible item.",
+        coordination={"registered_agents": [agent_id], "agent_model": "peer_v1"},
+        claim_scope_agent_id=agent_id,
+    )
+    packet = build_live_quota_should_run_decision(
+        status,
+        goal_id=GOAL_ID,
+        agent_id=agent_id,
+        available_capabilities=["shell"],
+        include_scheduler_detail=False,
+        codex_app_current_rrule=None,
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        route_source="loopx_turn_plan",
+        turn_instance_id="managed-current-turn",
+        scheduler_execution_context={
+            "host_surface": "generic_cli",
+            "scheduler_owner": "agent_cli_loop",
+            "execution_mode": "interactive",
+        },
+    )
+
+    assert packet["effective_action"] != "unsettled_host_turn_recovery"
+    assert packet["selected_todo"]["todo_id"] == "todo_visible"
 
 
 def test_action_selection_route_binding_fails_closed_on_malformed_prefix(
