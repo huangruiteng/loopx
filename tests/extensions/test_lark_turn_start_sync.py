@@ -16,6 +16,7 @@ from loopx.control_plane.work_items.work_lane import (
 from loopx.extensions.lark import goal_topic_connections as goal_topic_connections_module
 from loopx.extensions.lark import turn_start_sync as turn_start_sync_module
 from loopx.extensions.lark.event_collector import load_lark_event_collector_config
+from loopx.extensions.lark.event_inbox import project_lark_event_inbox_urgency
 from loopx.extensions.lark.inbox_reactions import lark_inbox_reaction_receipts
 from loopx.extensions.lark.routed_inbox import project_routed_lark_event_inbox_urgency
 from loopx.extensions.lark.turn_start_sync import sync_lark_turn_start_inbox
@@ -503,8 +504,18 @@ def test_turn_start_sync_can_capture_history_as_quiet_context_only(
 
     assert result["status"] == "observed"
     captured = json.loads((inbox / "om_old_addressed_message.json").read_text())
-    assert captured["addressed_to_bot"] is True
+    assert captured["addressed_to_bot"] is False
     assert captured["historical_context_only"] is True
+    assert captured["historical_was_addressed_to_bot"] is True
+    assert captured["historical_addressing_source"] == "provider_mention"
+    urgency = project_lark_event_inbox_urgency(
+        project=project,
+        config_path=config,
+        now=FIRST_NOW,
+    )
+    assert urgency["reply_due"] is False
+    assert urgency["attention_required_count"] == 0
+    assert urgency["material_review_count"] == 1
     assert all("reactions" not in call for call in runner.calls)
 
 

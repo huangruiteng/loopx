@@ -440,6 +440,7 @@ def test_manager_authorized_turn_quietly_recovers_history_as_context(
     assert result["status"] == "replied_and_acknowledged"
     assert result["context_sync_status"] == "observed"
     assert result["context_material_count"] == 1
+    assert result["context_settled_count"] == 1
     assert answer_calls[0]["context_materials"][0]["message_id"] == (
         "om_old_authorized"
     )
@@ -449,6 +450,11 @@ def test_manager_authorized_turn_quietly_recovers_history_as_context(
         (tmp_path / "runtime" / result["inbox_config_ref"]).read_text()
     )
     assert config["topic_root_message_id"] == "om_topic_alpha"
+    projection = inspect_lark_event_inbox(
+        project=tmp_path / "runtime",
+        config_path=Path(result["inbox_config_ref"]),
+    )
+    assert projection["pending_count"] == 0
 
 
 def _connect_agent_session_topic(

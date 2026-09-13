@@ -326,7 +326,8 @@ def _event_from_payload(
         or (bot_display_name is None and payload.get("addressed_to_bot") is True)
     )
     event["addressed_to_bot"] = addressed_to_bot
-    if payload.get("historical_context_only") is True:
+    historical_context_only = payload.get("historical_context_only") is True
+    if historical_context_only:
         # History catch-up is evidence recovery, never delayed Turn authority.
         # Preserve this provenance so a later authorized manager Turn may use
         # the item as context even when the old message contained a real Bot
@@ -392,7 +393,19 @@ def _event_from_payload(
         addressing_source = stored_addressing_source or "legacy_text"
     else:
         addressing_source = ""
-    if addressing_source:
+    if historical_context_only:
+        # Preserve what the provider observed without allowing a recovered
+        # historical mention/reply to re-enter the live attention or reply
+        # authority lanes.  Both the generic urgency projector and the Lark
+        # settlement adapter consume the normalized flags below.
+        event["historical_was_addressed_to_bot"] = addressed_to_bot
+        event["historical_was_reply_to_bot"] = event["reply_to_bot"]
+        if addressing_source:
+            event["historical_addressing_source"] = addressing_source
+        event["addressed_to_bot"] = False
+        event["reply_to_bot"] = False
+        event["reply_context_verified"] = False
+    elif addressing_source:
         event["addressing_source"] = addressing_source
     return event
 
@@ -449,6 +462,8 @@ def _event_attention_kind(
     bot_display_name: str,
     capture_scope: str,
 ) -> str | None:
+    if event.get("historical_context_only") is True:
+        return None
     normalized = dict(event)
     normalized["addressed_to_operator"] = bool(
         event.get("addressed_to_bot") is True

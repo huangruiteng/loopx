@@ -4,9 +4,16 @@
 
 A LoopX Manager connection separates **message visibility** from **Turn
 authority**. When exactly one enabled Manager binding owns a Lark App and group,
-LoopX may retain bounded non-self messages from that group as local-private
+LoopX may retain compact non-self messages from that group as local-private
 context. Retention does not start a model call, send a reply or reaction,
 acknowledge the provider event, or authorize any Goal/Todo mutation.
+
+This is an early Lark adapter slice for M3/A10 of the
+[capable-manager semantic-handoff RFC](../../architecture/rfcs/capable-manager-semantic-handoff-v0.md).
+A context-only item is an adapter-owned Observation/material, not a WorkRequest,
+Assessment, Todo, or delivery receipt. The Lark inbox and material-review ledger
+do not own generic collaboration lifecycle state and must later project the M2
+request/result contract rather than becoming a second request database.
 
 A Manager Turn is authorized only by a provider-native mention of the bound Bot,
 a provider-verified reply to that Bot, or another existing typed authority
@@ -23,6 +30,11 @@ recovery uses the same private cursor and inbox, performs no history-message
 reaction or reply, and degrades without blocking the current authorized Turn if
 the provider history read is unavailable.
 
+Provider addressing is preserved as historical provenance while normalized live
+attention/reply flags are cleared. The generic urgency projection and the Lark
+material-settlement path therefore agree that a recovered mention is material,
+not a delayed request.
+
 After a successful authorized Turn and verified reply, consumed context items
 are settled through the existing event-bound material-review ledger. Duplicate
 delivery and restart recovery remain idempotent. Self messages, another chat,
@@ -34,12 +46,23 @@ The connection health projection distinguishes `context_only_captured` from
 single runtime inbox and receipt model; adapters must not invent a second
 authority source.
 
+The eight-item / 4,000-character limits bound one Turn projection, not durable
+content retention. A separate adapter-owned retention/expiry/compaction change is
+still required before this slice can claim long-running M3/A10 acceptance; any
+discard must expose a reason and preserve duplicate/restart safety.
+
 ## 中文
 
 LoopX 管家连接将**消息可见性**与 **Turn 权限**分开处理。当且仅当一个启用的
 管家绑定唯一拥有某个 Lark App 与群聊时，LoopX 可以把该群中的非机器人消息以
-有界、本地私有的上下文材料保留下来。仅保留消息不会调用模型、发送回复或
+紧凑、本地私有的上下文材料保留下来。仅保留消息不会调用模型、发送回复或
 reaction、确认 provider event，也不会授权任何 Goal/Todo 修改。
+
+这是[强能力管家与语义工作交接 RFC](../../architecture/rfcs/capable-manager-semantic-handoff-v0.zh-CN.md)
+下 M3/A10 的早期 Lark adapter 切片。`context-only` 项是 adapter owner 管理的
+Observation/材料，不是 WorkRequest、Assessment、Todo 或送达回执。Lark inbox 与
+material-review ledger 不拥有通用协作生命周期；后续应投影 M2 的 request/result
+契约，不能变成第二套请求数据库。
 
 只有以下来源能够授权管家 Turn：provider 原生的目标机器人 mention、provider
 验证过的对机器人回复，或其他既有 typed authority 记录。下一次获得授权的 Turn
@@ -52,6 +75,10 @@ reaction、确认 provider event，也不会授权任何 Goal/Todo 修改。
 inbox，不给历史消息发送 reaction 或回复；provider 历史读取不可用时，会准确
 降级但不阻塞当前已授权 Turn。
 
+provider 的原始寻址信息作为历史 provenance 保留，但 live attention/reply 标志会被
+清除，因此通用 urgency 投影与 Lark material settlement 对“历史 mention 只是材料”
+得出同一个结论，不会把它恢复为延迟请求。
+
 获得授权的 Turn 成功完成且回复验证通过后，已使用的上下文材料通过现有的、
 绑定事件的 material-review ledger 结算。重复投递与重启恢复保持幂等。机器人
 自身消息、其他群聊、无效路由以及多重歧义的管家绑定继续安全关闭且不采集。
@@ -59,3 +86,7 @@ inbox，不给历史消息发送 reaction 或回复；provider 历史读取不�
 连接健康投影会区分 `context_only_captured` 与
 `replied_and_acknowledged`。CLI/managed Turn、frontend 与 Lark 必须复用同一份
 运行时 inbox 和 receipt 模型；适配器不得另造权限来源。
+
+八条/4,000 字符只约束单次 Turn 投影，不等于持久内容 retention 已有上限。要宣称
+长期运行的 M3/A10 验收，仍需 adapter owner 交付 retention/expiry/compaction；任何
+丢弃都必须显示原因，并保留重复投递与重启安全。
