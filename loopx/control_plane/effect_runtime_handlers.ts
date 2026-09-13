@@ -1,5 +1,7 @@
 import {planHandoffMode} from "./coordination/handoff_mode_policy.ts";
 import {setLocalHandoffMode} from "./coordination/handoff_mode_runtime.ts";
+import {projectOwnershipObservation} from "./coordination/ownership_observation.ts";
+import {observeLocalCoordinationOwnership} from "./coordination/local_authority_runtime.ts";
 import {evaluateTaskLeaseOwnerEligibility} from "./work_items/task_lease_eligibility.ts";
 import { evaluateSubagentContext, describeSubagentContext } from "./subagent_context.ts";
 import {
@@ -484,6 +486,8 @@ export function createEffectRuntimeHandlers(
     ["coordination.local_authority.todo_compatibility_edit", editLocalCoordinationTodo],
     ["coordination.local_authority.mutate", mutateLocalCoordinationAuthority],
     ["coordination.local_authority.todo_read", readLocalCoordinationTodo],
+    ["coordination.ownership_observation", projectOwnershipObservation],
+    ["coordination.local_authority.ownership_observation", observeLocalCoordinationOwnership],
     ["coordination.local_authority.todo_list", listLocalCoordinationTodos],
     [
       "coordination.local_authority.legacy_writer_fence.engage",

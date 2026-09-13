@@ -1,4 +1,5 @@
 import {COORDINATION_TODO_ARCHIVE_RESULT_SCHEMA} from "./todo_archive.ts";
+import {readCoordinationOwnership} from "./ownership_observation.ts";
 import {executeTodoContinuation} from "./todo_continuation.ts";
 import { withFileMutationLock } from "../effect_runtime_io.ts";
 import { ShadowManagementError, requireShadowPrimaryWriteAllowed, shadowMaintenanceLockPath } from "./shadow_management.ts";
@@ -1205,5 +1206,24 @@ export async function continueLocalTodo(value: unknown): Promise<JsonObject> {
       reason_code: error instanceof ShadowManagementError ? error.reason_code : "invalid_continuation_request",
       reason: error instanceof Error ? error.message : "Invalid continuation request", ...evidence,
       ...localAuthorityOpenFailure(error)};
+  }
+}
+
+/** Goal Channel observes a complete provider snapshot through one coarse read. */
+export async function observeLocalCoordinationOwnership(value: unknown): Promise<JsonObject> {
+  let sourceAuthority = "file_v0";
+  try {
+    const input = requireJsonObject(value, "local ownership observation");
+    if (input.schema_version !== "loopx_local_ownership_observation_request_v0") throw new Error("ownership observation schema mismatch");
+    const root = runtimeRoot(input.runtime_root);
+    const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
+    const store = await openLocalAuthorityStore(root, goalId);
+    sourceAuthority = sourceAuthorityFor(store);
+    return {...await readCoordinationOwnership(store, goalId, input.observed_at as string),
+      source_authority: sourceAuthority, decision_read_from_provider: true, legacy_fallback_used: false};
+  } catch (error) {
+    return {schema_version: "loopx_ownership_observation_result_v0", status: "failed",
+      reason_code: "coordination_observation_unavailable", source_authority: sourceAuthority,
+      decision_read_from_provider: true, legacy_fallback_used: false, ...localAuthorityOpenFailure(error)};
   }
 }

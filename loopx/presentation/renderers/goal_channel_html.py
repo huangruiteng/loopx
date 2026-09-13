@@ -114,6 +114,7 @@ def render_goal_channel_projection_html(projection: Mapping[str, Any]) -> str:
     open_gates = _as_mappings(projection.get("open_gates"))
     artifacts = _as_mappings(projection.get("artifacts"))
     active_leases = _as_mappings(projection.get("active_leases"))
+    ownership_unavailable = _as_mapping(projection.get("coordination_observation")).get("status") == "unavailable"
     recent_events = _as_mappings(projection.get("recent_events"))
     source_warnings = _as_mappings(projection.get("source_warnings"))
 
@@ -172,8 +173,8 @@ def render_goal_channel_projection_html(projection: Mapping[str, Any]) -> str:
                 "reason",
                 "claimed_by",
             ),
-            empty="No active claim or lease projected.",
-            tone="green",
+            empty="Task ownership is unavailable; see Source Warnings." if ownership_unavailable else "No active claim or lease projected.",
+            tone="red" if ownership_unavailable else "green",
         ),
         _html_item_panel(
             "artifacts",

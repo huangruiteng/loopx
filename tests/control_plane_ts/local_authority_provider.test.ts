@@ -98,6 +98,7 @@ function providerCalls(directory: string, revision: string, dryRun: boolean) {
     (value: unknown) => Promise<unknown> ? K : never}[keyof typeof runtime];
   // A new exported runtime action must deliberately enter this failure matrix.
   const requests = {
+    observeLocalCoordinationOwnership: [{...input, schema_version: "loopx_local_ownership_observation_request_v0"}],
     listLocalCoordinationTodos: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA}],
     readLocalCoordinationTodo: [{...input, schema_version: runtime.LOCAL_COORDINATION_TODO_READ_REQUEST_SCHEMA}],
     mutateLocalCoordinationAuthority: [{...input, schema_version: runtime.LOCAL_COORDINATION_MUTATION_REQUEST_SCHEMA,

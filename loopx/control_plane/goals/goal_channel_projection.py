@@ -255,137 +255,19 @@ def _open_gates(
     return gates
 
 
-def _hard_lease_entries(
-    *,
-    runtime_root: Any,
-    goal_id: str,
-    agent_todos: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Best-effort read of the on-disk hard task-lease store.
-
-    Missing or empty lease directories stay silent because most goals never
-    use task leases. A corrupt or unreadable lease file degrades to a typed
-    note instead of failing the status projection.
-    """
-
-    if runtime_root is None:
-        return []
-    from pathlib import Path
-
-    from ..work_items.task_lease import (
-        TaskLeaseError,
-        lease_epoch,
-        lease_is_active,
-        read_lease,
-        task_lease_dir,
-    )
-
-    try:
-        lease_dir = task_lease_dir(
-            runtime_root=Path(runtime_root),
-            goal_id=str(goal_id),
-        )
-        lease_paths = sorted(lease_dir.glob("todo_*.json"))
-    except (TaskLeaseError, OSError, TypeError, ValueError):
-        return []
-    if not lease_paths:
-        return []
-    claim_by_todo: dict[str, str] = {}
-    for item in agent_todos:
-        todo_id = str(item.get("todo_id") or "").strip()
-        claimed_by = str(item.get("claimed_by") or "").strip()
-        if todo_id and claimed_by:
-            claim_by_todo[todo_id] = claimed_by
-    entries: list[dict[str, Any]] = []
-    for path in lease_paths:
-        try:
-            lease = read_lease(path)
-        except FileNotFoundError:
-            # Lease released between directory listing and read: nothing left
-            # to surface, so skip instead of mislabeling it as corrupt.
-            continue
-        except (TaskLeaseError, OSError):
-            entries.append(
-                {
-                    "todo_id": path.stem,
-                    "status": "hard_lease_unreadable",
-                    "reason": "corrupt_lease",
-                }
-            )
-            continue
-        if lease is None or not lease_is_active(lease):
-            continue
-        todo_id = _text(lease.get("todo_id"), limit=120) or path.stem
-        entry: dict[str, Any] = {"todo_id": todo_id, "status": "hard_lease"}
-        owner = _text(lease.get("owner"), limit=120)
-        if owner:
-            entry["owner_agent"] = owner
-        version = lease.get("version")
-        if isinstance(version, int):
-            entry["lease_version"] = version
-        entry["lease_epoch"] = lease_epoch(lease)
-        expires_at = _text(lease.get("expires_at"), limit=80)
-        if expires_at:
-            entry["expires_at"] = expires_at
-        claimed_by = claim_by_todo.get(todo_id)
-        if owner and claimed_by and claimed_by != owner:
-            entry["reason"] = "owner_conflicts_with_claim"
-            entry["claimed_by"] = claimed_by
-        entries.append(entry)
-    return entries
-
-
-def _active_leases(
-    *,
-    active_leases: Sequence[Mapping[str, Any]] | None,
-    agent_todos: Sequence[Mapping[str, Any]],
-    runtime_root: Any = None,
-    goal_id: str = "",
-) -> list[dict[str, Any]]:
-    explicit = _as_mappings(active_leases)
-    if explicit:
-        source = explicit
-    else:
-        source = [
-            {
-                "todo_id": item.get("todo_id"),
-                "owner_agent": item.get("claimed_by"),
-                "status": "soft_claim",
-            }
-            for item in agent_todos
-            if item.get("claimed_by")
-        ]
-    compact: list[dict[str, Any]] = []
-    for item in source:
-        todo_id = _text(item.get("todo_id"), limit=120)
-        owner = _first_text(item.get("owner_agent"), item.get("claimed_by"), limit=120)
-        if not (todo_id or owner):
-            continue
-        lease: dict[str, Any] = {}
-        if todo_id:
-            lease["todo_id"] = todo_id
-        if owner:
-            lease["owner_agent"] = owner
-        for key in ("lease_until", "status"):
-            value = _text(item.get(key), limit=120)
-            if value:
-                lease[key] = value
-        write_scope = item.get("write_scope")
-        if isinstance(write_scope, list):
-            lease["write_scope"] = [
-                scope
-                for scope in (_text(value, limit=120) for value in write_scope)
-                if scope
-            ]
-        compact.append(lease)
-    compact.extend(
-        _hard_lease_entries(
-            runtime_root=runtime_root,
-            goal_id=goal_id,
-            agent_todos=agent_todos,
-        )
-    )
-    return compact
+def _compact_coordination_entry(item: Mapping[str, Any]) -> dict[str, Any]:
+    """The existing channel redaction boundary owns display text, not lease rules."""
+    row: dict[str, Any] = {}
+    for key in ("todo_id", "owner_agent", "claimed_by", "lease_until", "expires_at", "status", "reason"):
+        value = _text(item.get(key), limit=120)
+        if value:
+            row[key] = value
+    for key in ("lease_version", "lease_epoch"):
+        if isinstance(item.get(key), int) and not isinstance(item[key], bool):
+            row[key] = item[key]
+    if isinstance(item.get("write_scope"), list):
+        row["write_scope"] = [text for value in item["write_scope"] if (text := _text(value, limit=120))]
+    return row
 
 
 def _compact_artifacts(artifacts: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
@@ -468,6 +350,16 @@ def build_goal_channel_projection(
     project_asset = _project_asset(status_item_dict)
     user_todos = _compact_todos(project_asset, "user")
     agent_todos = _compact_todos(project_asset, "agent")
+    from .coordination_observation import observe_goal_coordination
+
+    explicit = None if active_leases is None else [
+        _compact_coordination_entry({**{key: item[key] for key in ("todo_id", "status", "lease_until", "write_scope") if key in item},
+                                     "owner_agent": _first_text(item.get("owner_agent"), item.get("claimed_by"), limit=120)})
+        for item in _as_mappings(active_leases)
+        if _text(item.get("todo_id"), limit=120) or _first_text(item.get("owner_agent"), item.get("claimed_by"), limit=120)
+    ]
+    observation = observe_goal_coordination(runtime_root=runtime_root, goal_id=str(goal_id),
+        agent_todos=agent_todos, explicit_entries=explicit)
     raw_keys = _raw_material_keys(
         status_item_dict,
         status_payload_dict,
@@ -541,12 +433,7 @@ def build_goal_channel_projection(
             user_todos=user_todos,
         ),
         "artifacts": _compact_artifacts(artifacts),
-        "active_leases": _active_leases(
-            active_leases=active_leases,
-            agent_todos=agent_todos,
-            runtime_root=runtime_root,
-            goal_id=str(goal_id),
-        ),
+        "active_leases": [_compact_coordination_entry(row) for row in observation["entries"]],
         "recent_events": _recent_events(run_history_goal_dict),
         "source_warnings": _source_warnings(raw_keys),
         "truth_contract": {
@@ -559,4 +446,14 @@ def build_goal_channel_projection(
             ),
         },
     }
+    if "source_authority" in observation:
+        projection["coordination_observation"] = {key: observation[key] for key in (
+            "status", "source_authority", "provider_revision", "observed_at", "legacy_fallback_used",
+            "total_count", "truncated", "display_limit", "todo_count", "lease_count") if key in observation}
+    if observation["status"] != "loaded":
+        projection["source_warnings"].append({"kind": "coordination_unavailable",
+            "message": "Task ownership could not be read; an empty list does not prove that no task is owned."})
+    elif observation.get("truncated") is True:
+        projection["source_warnings"].append({"kind": "coordination_truncated",
+            "message": "Ownership display is limited to 100 entries; diagnostics are shown first. Read the full task/lease state before acting."})
     return {key: value for key, value in projection.items() if value is not None}
