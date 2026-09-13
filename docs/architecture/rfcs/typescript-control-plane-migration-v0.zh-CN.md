@@ -491,6 +491,8 @@ promotion 已完成。
 
 **T3 — 闭合剩余 structured consumer，删除各自旧读路径。**
 
+Goal Channel 所有权观察现从完整 canonical Todo／lease revision 读取，并与 legacy adapter 共用 TS 批量规则；删除展示层的时间／代数／冲突判断和晋升后的本地文件读路径。空值、不可用与截断分别披露，见 [coordination observation](../../reference/coordination-observation.md)。这只闭合所有权观察 reader，不宣称其余面板或整 Goal 晋升完成。
+
 D1 的文档归属切片把读取、编辑与投影放到同一可见区域／Todo 行解码边界，修复
 fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、稀疏历史行号及归档
 优先级阻塞读回的问题。投影复用普通状态的耐久原子写入；相同字节的重试仍完成
@@ -515,8 +517,8 @@ handoff mode；canonical 无租约不复活本地旧文件，provider 失败不�
 供 acquire、lifecycle 与终态 fence 复用。当前租约是否有效由 acquire 内部根据同一输入
 的 owner/claim/exclusion/注册事实推导，不再由旧 `effective` 派生提示覆盖。
 其他 Todo 的 scope 冲突仍消费现有完整执行快照；release 保留独立的 key/version
-清理门禁。这是一个 T3 reader 与共享规则边界的闭合，不代表 Goal-channel lease
-展示、T1/T2 全部事务或 promotion 已完成。
+清理门禁。这是一个 T3 reader 与共享规则边界的闭合，不代表 T1/T2 全部事务或
+promotion 已完成；Goal Channel 所有权展示由独立的 observation 切片闭合。
 
 Quota 的 scope/claim 消费者现通过每个 source 一次 `todo.quota_planning.project`，
 组合选择、有限展示与既有 resume planner。`quota_selection.ts` 替代 Python

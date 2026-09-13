@@ -2286,6 +2286,8 @@ Scoped fallback 的选择与门禁关系也已复用同一 TS decision owner，�
 
 **D1 — 资格化永久投影交付，可与 T1/T2 重叠推进。**
 
+Goal Channel 所有权观察先读取完整 provider revision，再限制展示；不修复 Markdown、不复活旧本地 lease，明确披露失败与截断。这是共用 TS 解释规则的 T3 读链路闭合，不完成 D1/D2 或 D3 切换，见 [coordination observation](../../reference/coordination-observation.md)。
+
 D1 的文档归属切片把读取、编辑与投影放到同一可见区域／Todo 行解码边界，修复
 fenced 示例被当成真实任务、归档 end marker 后叙述进入历史、稀疏历史行号及归档
 优先级阻塞读回的问题。投影复用普通状态的耐久原子写入；相同字节的重试仍完成

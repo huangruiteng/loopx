@@ -631,6 +631,8 @@ delivery. This does not finish all T2 commands or authorize whole-Goal promotion
 
 **T3 — close remaining structured consumers, then remove their old reads.**
 
+Goal Channel ownership observation now reads a complete canonical Todo/lease revision and shares one TS batch policy with the legacy adapter. It retires display-layer lease time/generation/conflict decisions and local-file reads after promotion. Empty, unavailable and truncated observations remain distinct; see [coordination observation](../../reference/coordination-observation.md). This closes the Goal Channel ownership reader, not other channel panels or whole-Goal promotion.
+
 The D1 document-ownership slice gives readers, editors and projection one visible-region
 and Todo-block boundary. It fixes fenced examples becoming real tasks, narrative after
 an archive end marker entering history, and sparse imported ordinals or archived
@@ -664,7 +666,7 @@ derived inside acquire from the supplied owner/claim/exclusion/registration fact
 not from the old caller-provided `effective` hint. Other-Todo overlap facts still
 come from the existing complete execution snapshot; release retains its separate
 key/version cleanup fence. This closes one T3 reader and shared rule boundary,
-not the remaining Goal-channel lease display, T1/T2 transactions or promotion.
+not the remaining T1/T2 transactions or promotion. Goal Channel ownership display closes in the separate ownership-observation slice.
 
 Capability resolution now shares `agents/capability_gate.ts`: missing prerequisites,
 repair outputs, owner/agent resolution and blocked-Todo bindings have one typed

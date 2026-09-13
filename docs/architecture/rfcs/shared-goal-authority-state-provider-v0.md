@@ -2889,6 +2889,8 @@ source paths, authorize monitor writeback, or change provider/promotion holds.
 
 **D1 — qualify permanent projection delivery; may overlap T1/T2.**
 
+The Goal Channel ownership observation consumes one complete provider revision before bounding display. It never repairs Markdown or revives old local leases; provider failures and truncation stay visible. This is a T3 read closure with shared TS interpretation, not D1/D2 qualification or D3 cutover. See [coordination observation](../../reference/coordination-observation.md).
+
 The D1 document-ownership slice gives readers, editors and projection one visible-region
 and Todo-block boundary. It fixes fenced examples becoming real tasks, narrative after
 an archive end marker entering history, and sparse imported ordinals or archived
