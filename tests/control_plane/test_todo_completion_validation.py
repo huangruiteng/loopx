@@ -377,6 +377,53 @@ def test_cross_repository_validation_rejects_dirty_worktree_without_running(
     assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
 
 
+def test_malformed_delivery_workspace_receipt_returns_typed_failure_without_running_validator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, state = _write_fixture(tmp_path)
+    todo = _add_todo(
+        registry,
+        validation_command=_PASS_COMMAND,
+        task_repository="git:github.com/example/delivery",
+    )
+    calls = {"count": 0}
+
+    def unexpected_validation(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        calls["count"] += 1
+        raise AssertionError("malformed workspace receipts must block before validation")
+
+    monkeypatch.setattr(
+        completion_validation_module,
+        "run_caller_validation",
+        unexpected_validation,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="malformed workspace receipt",
+        completion_delivery_workspace={
+            "schema_version": "delivery_workspace_v1",
+            "workspace_identity": "git:github.com/example/delivery",
+            "identity_kind": "unsupported_kind",
+            "task_repository": "git:github.com/example/delivery",
+            "repository_source": "turn.delivery_workspace",
+            "workspace_kind": "independent_git_worktree",
+            "peer_independent_worktree_required": True,
+        },
+    )
+
+    assert calls["count"] == 0
+    assert result["ok"] is False
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_receipt_invalid"
+    assert result["validation"]["local_path_captured"] is False
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
+
+
 def test_missing_validation_executable_returns_typed_receipt(
     tmp_path: Path,
 ) -> None:

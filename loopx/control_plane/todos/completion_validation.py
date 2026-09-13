@@ -150,7 +150,20 @@ def _resolve_completion_validation_workspace(
     if delivery_workspace_repository(goal_snapshot) == expected_repository:
         return goal_workspace, None
 
-    recorded = normalize_delivery_workspace_snapshot(delivery_workspace)
+    try:
+        recorded = normalize_delivery_workspace_snapshot(delivery_workspace)
+    except (RuntimeError, TypeError, ValueError):
+        # Decoder rejection is an input/receipt failure, not an adapter crash.
+        # Keep it inside the path-free completion state model and never expose
+        # the TypeScript decoder's internal error text at the CLI/Turn boundary.
+        return None, _workspace_failure(
+            label,
+            status="workspace_receipt_invalid",
+            summary=(
+                "the recorded delivery workspace receipt is invalid and cannot "
+                "authorize cross-repository validation"
+            ),
+        )
     if recorded is None:
         return None, _workspace_failure(
             label,
