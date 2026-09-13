@@ -432,7 +432,15 @@ def set_goal_handoff_mode(
         runtime_root_from_registry,
         task_lease_lock_path,
     )
-    from ..coordination.legacy_writer_fence import legacy_todo_write_transaction
+    from ..coordination.legacy_writer_fence import (
+        LegacyCoordinationWriterFenced,
+        legacy_todo_write_transaction,
+        require_legacy_coordination_write_allowed,
+    )
+    from ..coordination.local_authority import (
+        LocalCoordinationAuthorityRejection,
+        LocalCoordinationAuthorityUnavailable,
+    )
     from ..coordination.runtime_shadow_writer_adapter import (
         write_captured_todo_state,
         begin_todo_runtime_shadow_capture,
@@ -448,8 +456,28 @@ def set_goal_handoff_mode(
     from .provider_handoff_mode import set_canonical_handoff_mode
 
     runtime_root = runtime_root_from_registry(registry_path, runtime_root_arg)
-    canonical = set_canonical_handoff_mode(runtime_root=runtime_root, goal_id=goal_id,
-        mode=requested, operation_id=operation_id, dry_run=dry_run)
+    try:
+        canonical = set_canonical_handoff_mode(
+            runtime_root=runtime_root,
+            goal_id=goal_id,
+            mode=requested,
+            operation_id=operation_id,
+            dry_run=dry_run,
+        )
+    except LocalCoordinationAuthorityRejection:
+        raise
+    except LocalCoordinationAuthorityUnavailable:
+        # A present legacy fence is the admission boundary for this caller.
+        # Re-check it when canonical dispatch is unavailable so an outage cannot
+        # turn a fenced legacy writer into an attempted Markdown mutation.
+        try:
+            require_legacy_coordination_write_allowed(
+                runtime_root=runtime_root,
+                goal_id=goal_id,
+            )
+        except LegacyCoordinationWriterFenced:
+            raise
+        raise
     if canonical is not None:
         return canonical
     if operation_id is not None:

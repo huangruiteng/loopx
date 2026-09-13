@@ -58,8 +58,9 @@ export function registerHandoffModeConformance(provider: string, factory: Author
       assert.equal(replay.changed, false);
       assert.deepEqual(await head(store), later);
     }
-    assert.equal((await executeHandoffModeSet(store, {...request, requested_mode: "hard_lease"})).reason_code,
-      "coordination_operation_identity_mismatch");
+    const mismatch = await executeHandoffModeSet(store, {...request, requested_mode: "hard_lease"});
+    assert.equal(mismatch.reason_code, "coordination_operation_identity_mismatch");
+    assert.equal(mismatch.failure_kind, "decision_rejection");
   });
 
   for (const kind of ["claim", "lease", "invalid_expiry", "unknown_lease_schema"] as const) {

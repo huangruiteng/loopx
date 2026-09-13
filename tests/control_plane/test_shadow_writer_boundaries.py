@@ -69,6 +69,39 @@ def test_omitted_writers_refuse_a_fence_before_primary(
     assert not (root / "authority-shadow").exists()
 
 
+def test_handoff_mode_rechecks_legacy_fence_when_canonical_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider outage must not bypass an already-present legacy fence."""
+
+    registry, state, root = fixture(tmp_path)
+    fence = legacy_coordination_writer_fence_path(runtime_root=root, goal_id=GOAL)
+    fence.parent.mkdir(parents=True)
+    fence.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "loopx.control_plane.todos.provider_handoff_mode.effect_runtime_result",
+        lambda *_args, **_kwargs: {
+            "status": "unavailable",
+            "reason_code": "canonical_provider_unavailable",
+            "reason": "canonical provider is unavailable",
+        },
+    )
+    monkeypatch.setattr(
+        "loopx.control_plane.coordination.legacy_writer_fence.effect_runtime_result",
+        lambda *_args, **_kwargs: {
+            "status": "blocked",
+            "reason_code": "legacy_coordination_writer_fenced",
+        },
+    )
+    before = state.read_bytes()
+    with pytest.raises(LegacyCoordinationWriterFenced) as error:
+        set_goal_handoff_mode(registry_path=registry, goal_id=GOAL, mode="soft_claim")
+    assert error.value.code == "legacy_coordination_writer_fenced"
+    assert error.value.payload["write_check"]["reason_code"] == "legacy_coordination_writer_fenced"
+    assert state.read_bytes() == before
+    assert not (root / "authority-shadow").exists()
+
+
 def test_corrupt_management_state_blocks_before_transaction_body(tmp_path: Path) -> None:
     registry, state, root = fixture(tmp_path)
     digest = hashlib.sha256(GOAL.encode()).hexdigest()[:16]

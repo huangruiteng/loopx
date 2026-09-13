@@ -19,8 +19,9 @@ export interface HandoffModeSetInput {
   dry_run: boolean;
 }
 
-function failure(reason_code: string, reason: string): JsonObject {
-  return {schema_version: RESULT_SCHEMA, status: "failed", changed: false, reason_code, reason};
+function failure(reason_code: string, reason: string, failureKind?: "decision_rejection"): JsonObject {
+  return {schema_version: RESULT_SCHEMA, status: "failed", changed: false, reason_code, reason,
+    ...(failureKind ? {failure_kind: failureKind} : {})};
 }
 
 function replay(receipt: AuthorityStoreReceiptResult, input: HandoffModeSetInput, hash: string,
@@ -30,7 +31,8 @@ function replay(receipt: AuthorityStoreReceiptResult, input: HandoffModeSetInput
   const record = receipt.receipts[0];
   if (receipt.receipts.length !== 1 || record?.schema_version !== RECEIPT_SCHEMA ||
     record.goal_id !== input.goal_id || record.operation_id !== input.operation_id || record.request_sha256 !== hash) {
-    return failure("coordination_operation_identity_mismatch", "operation id names another handoff mode intent");
+    return failure("coordination_operation_identity_mismatch", "operation id names another handoff mode intent",
+      "decision_rejection");
   }
   const decision = canonicalAuthorityObject(record.decision, "handoff mode decision receipt");
   return {schema_version: RESULT_SCHEMA, ...decision, status,
@@ -77,7 +79,8 @@ export async function executeHandoffModeSet(store: AuthorityStore, raw: HandoffM
     decision = {goal_id: input.goal_id, operation_id: input.operation_id, previous_mode: previous,
       previous_mode_valid: true, handoff_mode: input.requested_mode, changed: plan.outcome === "apply"};
     if (plan.outcome === "rejected") return {...failure(String(plan.code),
-      "handoff_mode can only change without unfinished claimed Todos or time-active leases"),
+      "handoff_mode can only change without unfinished claimed Todos or time-active leases",
+      "decision_rejection"),
       ...decision, claimed_todos: claimed, active_leases: leases, provider_revision: loaded.provider_revision};
   } catch (error) { return failure("invalid_handoff_mode_authority", String(error)); }
   if (input.dry_run) return {schema_version: RESULT_SCHEMA, ...decision, status: "planned",

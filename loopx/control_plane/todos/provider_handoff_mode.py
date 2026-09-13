@@ -4,7 +4,8 @@ from typing import Any
 from uuid import uuid4
 
 from ..coordination.local_authority import (
-    LOCAL_AUTHORITY_SOURCES, LocalCoordinationAuthorityUnavailable,
+    LOCAL_AUTHORITY_SOURCES, LocalCoordinationAuthorityRejection,
+    LocalCoordinationAuthorityUnavailable,
     local_authority_is_promoted, read_canonical_todos_if_promoted,
 )
 from ..effect_runtime import effect_runtime_result
@@ -33,6 +34,12 @@ def set_canonical_handoff_mode(*, runtime_root: Path, goal_id: str, mode: str,
         or result.get("source_authority") not in LOCAL_AUTHORITY_SOURCES
         or result.get("decision_read_from_provider") is not True or result.get("legacy_fallback_used") is not False):
         payload = result if isinstance(result, dict) else {}
+        if payload.get("status") == "failed" and payload.get("failure_kind") == "decision_rejection":
+            raise LocalCoordinationAuthorityRejection(
+                str(payload.get("reason") or "canonical handoff mode request was rejected"),
+                code=str(payload.get("reason_code") or "handoff_mode_rejected"),
+                payload=payload,
+            )
         raise LocalCoordinationAuthorityUnavailable(str(payload.get("reason") or "canonical mode unavailable"),
             code=str(payload.get("reason_code") or "handoff_mode_unavailable"), payload=payload)
     return {**result, "ok": True, "schema_version": "goal_handoff_mode_v0", "action": "set",
