@@ -356,11 +356,20 @@ export function qualifyActionSelection(value: unknown): JsonObject {
   const shouldRun = request.should_run === true;
   const normalDeliveryAllowed = request.normal_delivery_allowed === true;
   if (rawCandidate === null || rawCandidate === undefined) {
+    const requestedTaskClass = request.requested_task_class === null ||
+        request.requested_task_class === undefined
+      ? null
+      : requireNonEmptyString(
+        request.requested_task_class,
+        "action_selection_qualification_request.requested_task_class",
+      );
     return {
       schema_version: ACTION_SELECTION_QUALIFICATION_SCHEMA_VERSION,
       state: "rejected",
       requested_todo_id: requestedTodoId,
-      reason: "candidate_not_currently_eligible",
+      reason: requestedTaskClass === "continuous_monitor"
+        ? "auxiliary_monitor_not_selectable_in_advancement_lane"
+        : "candidate_not_currently_eligible",
     };
   }
   const candidate = actionCandidate(

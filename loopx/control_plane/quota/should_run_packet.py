@@ -94,6 +94,8 @@ from ..scheduler.state import (
 )
 from ..todos.contract import (
     normalize_todo_claimed_by,
+    normalize_todo_id,
+    normalize_todo_task_class,
 )
 from ..todos.todo_semantics import (
     todo_item_is_actionable_open as projection_todo_item_is_actionable_open,
@@ -553,9 +555,28 @@ def _resolve_agent_lane_delivery_route(
         return prepared.guarded_agent_lane_next_action
 
     if prepared.requested_action_todo_id is not None:
+        requested_item = next(
+            (
+                item
+                for item in prepared.agent_todo_planning_source_items
+                if normalize_todo_id(item.get("todo_id"))
+                == prepared.requested_action_todo_id
+            ),
+            None,
+        )
+        requested_task_class = (
+            normalize_todo_task_class(
+                requested_item.get("task_class"),
+                text=str(requested_item.get("text") or ""),
+                action_kind=requested_item.get("action_kind"),
+            )
+            if requested_item is not None
+            else None
+        )
         qualification = qualify_action_selection(
             requested_todo_id=prepared.requested_action_todo_id,
             candidate=prepared.requested_action_candidate,
+            requested_task_class=requested_task_class,
             should_run=should_run,
             normal_delivery_allowed=normal_delivery_allowed,
             delivery_preemptions=delivery_preemptions,
@@ -1281,6 +1302,7 @@ def _build_quota_should_run_payload(
     _attach_truthy_fields(
         payload,
         agent_lane_next_action=public_agent_lane_next_action,
+        action_selection_qualification=prepared.action_selection_qualification,
     )
     selected_todo_projection = (
         None

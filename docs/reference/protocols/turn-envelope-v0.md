@@ -71,6 +71,29 @@ only a qualified request upgrades the identity-less receipt. A newly due hard
 lane leaves the receipt unbound, and only the resulting receipt-bound envelope
 is a delivery contract.
 
+An unbound selection that no longer qualifies is a preflight outcome, not a
+settlement-identity conflict. The full quota response preserves the TypeScript
+`action_selection_qualification_v0` result and returns
+`quota_action_selection_deferred` or `quota_action_selection_rejected`, including
+the exact current preemption or eligibility reason. An existing identity-less
+receipt is replayed without mutation; a first-call rejection reports
+`heartbeat_receipt.status=not_committed` and writes no receipt event. The agent
+can therefore refresh the current portfolio with the same Turn id and re-enter
+deterministically. A receipt already bound to a different Todo or autonomous
+replan obligation remains a hard `heartbeat_receipt_identity_conflict`.
+When a due monitor is visible only as auxiliary context for an advancement lane,
+the typed reason is
+`auxiliary_monitor_not_selectable_in_advancement_lane`. The agent selects a
+current advancement Todo or retries after the monitor becomes the hard lane;
+this state is never reported as a receipt write failure.
+
+A selection may also qualify while repository delivery is temporarily blocked
+by the peer workspace guard. In that case the response and bound receipt keep
+the selected Todo, `effective_action=agent_workspace_repair`, and the typed
+worktree recovery instruction. Moving to an independent worktree and rerunning
+the guard with the same Turn id resumes the selected Todo; the wrapper must not
+rewrite this recoverable state as a settlement-identity conflict.
+
 Portfolio v2 preserves v1's selection policy, candidate ordering, and
 settlement rules, and adds an optional `continuation_hint` to each suggested
 action. The default quota producer and Turn controller now require v2. The

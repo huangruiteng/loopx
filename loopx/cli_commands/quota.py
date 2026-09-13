@@ -25,6 +25,7 @@ from ..control_plane.quota.error_codes import (
     quota_error_code,
 )
 from ..control_plane.quota.heartbeat_receipt import (
+    HEARTBEAT_RECEIPT_SCHEMA_VERSION,
     fail_heartbeat_receipt,
     find_heartbeat_receipt,
     heartbeat_receipt_settlement_replan_obligation_id,
@@ -379,17 +380,17 @@ def _heartbeat_quota_action_selection_bindings(
     return existing, todo_id, replan_obligation_id
 
 
-def _require_requested_quota_action_selection(
-    payload: Mapping[str, object],
+def _apply_requested_quota_action_selection_preflight(
+    payload: dict[str, object],
     *,
     requested_todo_id: str | None,
     receipt_bound_todo_id: str | None,
     receipt_bound_replan_obligation_id: str | None,
-) -> None:
+) -> bool:
     if not requested_todo_id or (
         receipt_bound_todo_id or receipt_bound_replan_obligation_id
     ):
-        return
+        return False
     selected_todo = payload.get("selected_todo")
     selected_todo_id = (
         normalize_todo_id(selected_todo.get("todo_id"))
@@ -415,9 +416,18 @@ def _require_requested_quota_action_selection(
     agent_channel: Mapping[str, object] = (
         agent_channel_value if isinstance(agent_channel_value, Mapping) else {}
     )
-    pending_selection_qualified = (
+    pending_selection_delivery_qualified = (
         selection_binding == "pending_action_selection"
         and payload.get("normal_delivery_allowed") is True
+    )
+    pending_selection_workspace_repair_qualified = (
+        selection_binding == "pending_action_selection"
+        and payload.get("workspace_repair_allowed") is True
+        and payload.get("effective_action") == "agent_workspace_repair"
+        and execution_obligation.get("kind") == "agent_workspace_repair"
+        and execution_obligation.get("must_attempt_work") is True
+        and agent_channel.get("must_attempt") is True
+        and agent_channel.get("delivery_allowed") is False
     )
     exact_current_obligation_qualified = (
         selection_binding != "pending_action_selection"
@@ -425,15 +435,90 @@ def _require_requested_quota_action_selection(
         and agent_channel.get("must_attempt") is True
     )
     if (
-        selected_todo_id != requested_todo_id
-        or payload.get("ok") is not True
-        or payload.get("should_run") is not True
-        or not (pending_selection_qualified or exact_current_obligation_qualified)
-    ):
-        raise HeartbeatReceiptIdentityConflictError(
-            "explicit action selection must name one currently projected "
-            "agent-scoped, capability-ready Todo"
+        selected_todo_id == requested_todo_id
+        and payload.get("ok") is True
+        and payload.get("should_run") is True
+        and (
+            pending_selection_delivery_qualified
+            or pending_selection_workspace_repair_qualified
+            or exact_current_obligation_qualified
         )
+    ):
+        return False
+
+    qualification_value = payload.get("action_selection_qualification")
+    if not isinstance(qualification_value, Mapping):
+        raise RuntimeError("requested action selection lacks typed qualification")
+    qualification = qualification_value
+    qualification_state = str(qualification.get("state") or "")
+    if qualification_state not in {"deferred", "rejected"}:
+        raise RuntimeError(
+            "requested action selection qualification conflicts with its projection"
+        )
+    qualification_reason = str(
+        qualification.get("reason") or "candidate_not_currently_eligible"
+    )
+    deferred = qualification_state == "deferred"
+    auxiliary_monitor = (
+        qualification_reason
+        == "auxiliary_monitor_not_selectable_in_advancement_lane"
+    )
+    error_code = (
+        "quota_action_selection_deferred"
+        if deferred
+        else "quota_action_selection_rejected"
+    )
+    payload.update(
+        {
+            "ok": False,
+            "decision": "skip",
+            "should_run": False,
+            "effective_action": error_code,
+            "state": error_code,
+            "waiting_on": "codex",
+            "status": error_code,
+            "error_code": error_code,
+            "reason": (
+                "explicit action selection was deferred by the current "
+                f"delivery frontier: {qualification_reason}"
+                if deferred
+                else "explicit action selection is not currently eligible: "
+                f"{qualification_reason}"
+            ),
+            "recommended_action": (
+                "handle the current delivery preemption, then rerun quota "
+                "should-run with the same --turn-instance-id; omit --todo-id "
+                "first when a refreshed action portfolio is needed"
+                if deferred
+                else "the due monitor is visible as auxiliary context, not an "
+                "independently selectable action in the current advancement lane; "
+                "choose a current advancement Todo, or rerun after the monitor "
+                "becomes the hard lane"
+                if auxiliary_monitor
+                else "rerun quota should-run with the same --turn-instance-id "
+                "without --todo-id, then choose a currently eligible Todo"
+            ),
+        }
+    )
+    return True
+
+
+def _attach_uncommitted_action_selection_receipt(
+    payload: dict[str, object],
+    *,
+    turn_instance_id: str,
+) -> None:
+    """Expose an accurate non-durable receipt for a rejected preflight."""
+
+    payload["heartbeat_receipt"] = {
+        "schema_version": HEARTBEAT_RECEIPT_SCHEMA_VERSION,
+        "turn_instance_id": turn_instance_id,
+        "status": "not_committed",
+        "stall_observation": "not_evaluated",
+        "reason_code": str(
+            payload.get("error_code") or "quota_action_selection_rejected"
+        ),
+    }
 
 
 def _commit_requested_action_selection(
@@ -544,6 +629,7 @@ def handle_quota_command(
     heartbeat_receipt_existing_status = "replayed"
     heartbeat_receipt_existing_appended = False
     heartbeat_receipt_ready = False
+    action_selection_preflight_failed = False
     heartbeat_stall_observation = "not_evaluated"
     detail_sections: frozenset[str] = frozenset()
     context: QuotaCommandContext | None = None
@@ -636,14 +722,20 @@ def handle_quota_command(
                 turn_start_hook_dispatch=turn_start_hook_dispatch,
             )
             _attach_turn_start_hook_dispatch(payload, turn_start_hook_dispatch)
-            _require_requested_quota_action_selection(
-                payload,
-                requested_todo_id=_requested_quota_action_todo_id(args),
-                receipt_bound_todo_id=receipt_bound_todo_id,
-                receipt_bound_replan_obligation_id=(receipt_bound_replan_obligation_id),
+            action_selection_preflight_failed = (
+                _apply_requested_quota_action_selection_preflight(
+                    payload,
+                    requested_todo_id=_requested_quota_action_todo_id(args),
+                    receipt_bound_todo_id=receipt_bound_todo_id,
+                    receipt_bound_replan_obligation_id=(
+                        receipt_bound_replan_obligation_id
+                    ),
+                )
             )
             if heartbeat_turn_id:
-                if heartbeat_receipt_existing:
+                if action_selection_preflight_failed:
+                    heartbeat_receipt_ready = True
+                elif heartbeat_receipt_existing:
                     (
                         heartbeat_receipt_existing,
                         heartbeat_receipt_existing_status,
@@ -826,7 +918,21 @@ def handle_quota_command(
             replan_obligation_id=rollout_replan_obligation_id,
         )
         if heartbeat_turn_id and args.quota_command == "should-run":
-            if not heartbeat_receipt_ready:
+            if action_selection_preflight_failed:
+                if heartbeat_receipt_existing:
+                    render_existing_heartbeat_receipt_payload(
+                        payload,
+                        receipt=heartbeat_receipt_existing,
+                        turn_instance_id=heartbeat_turn_id,
+                        status="replayed",
+                        appended=False,
+                    )
+                else:
+                    _attach_uncommitted_action_selection_receipt(
+                        payload,
+                        turn_instance_id=heartbeat_turn_id,
+                    )
+            elif not heartbeat_receipt_ready:
                 prior_reason = str(payload.get("reason") or "").strip()
                 fail_heartbeat_receipt(
                     payload,

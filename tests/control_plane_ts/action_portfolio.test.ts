@@ -372,3 +372,20 @@ test("pending selection rejects a Todo absent from the current eligible set", ()
     reason: "candidate_not_currently_eligible",
   });
 });
+
+test("pending selection explains an auxiliary monitor outside the advancement lane", () => {
+  assert.deepEqual(qualifyActionSelection({
+    schema_version: ACTION_SELECTION_QUALIFICATION_REQUEST_SCHEMA_VERSION,
+    requested_todo_id: "todo_monitor001",
+    candidate: null,
+    requested_task_class: "continuous_monitor",
+    should_run: true,
+    normal_delivery_allowed: true,
+    delivery_preemptions: [],
+  }), {
+    schema_version: "action_selection_qualification_v0",
+    state: "rejected",
+    requested_todo_id: "todo_monitor001",
+    reason: "auxiliary_monitor_not_selectable_in_advancement_lane",
+  });
+});
