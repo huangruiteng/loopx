@@ -1,5 +1,13 @@
 # 显式 Todo 接续：阶段 A
 
+## 交付状态与整合方向（2026-09-13）
+
+Stage A 已在 [#4094](https://github.com/huangruiteng/loopx/pull/4094) 以 `2ebd921ee989f7c696a7214ba1176d3bd5de6fb3` 合并。历史文件名不表示通用 memory substrate 已交付。[强能力管家与语义交接 RFC](capable-manager-semantic-handoff-v0.zh-CN.md#513-整合已交付的显式接续4094) 将本实现纳入 M2/M3 重构范围。后继方案仍是提案；替代路径验收前，本文继续作为已交付 CLI 兼容性及权威边界参考。
+
+复用 rich/legacy context、既有 note validator 与 claim transfer 边界。接收方接受建议不同于 `handoff adopt` 修改所有权。Stage A note 是可覆盖的当前 Todo 状态，不是私有不可变历史。后继方案将有权限的上下文映射为可恢复 brief，引用当前工作，补齐通用 assessment/result/自动回传关系，不新增 memory ledger 或复制 claim authority。迁移期间 CLI `prepare/inspect/adopt` 保持可用；前端/飞书及自动宿主续接单独验收。同机、注册 Agent、无 lease 限制继续适用于此 adapter，不约束所有通用请求。映射、迁移条件和保留负例见后继 §5.13。
+
+语言镜像：[English](cross-session-memory-substrate-v0.md)。
+
 本阶段替代原通用 memory substrate 方案，基于 canonical Todo authority
 交付跨注册 agent 的接续工作流。不冻结通用 memory v0。
 

@@ -1,5 +1,13 @@
 # Explicit Todo continuation: Stage A
 
+## Delivery status and integration direction (2026-09-13)
+
+Stage A shipped in [#4094](https://github.com/huangruiteng/loopx/pull/4094), merge `2ebd921ee989f7c696a7214ba1176d3bd5de6fb3`. The historical filename does not imply that a generic memory substrate shipped. The [capable manager and semantic handoff RFC](capable-manager-semantic-handoff-v0.md#513-integrate-shipped-explicit-continuation-4094) includes this implementation in its M2/M3 refactor scope. That successor remains proposed; this document remains the shipped CLI compatibility and authority reference until its replacement qualifies.
+
+Reuse rich/legacy context and the existing note validator/claim transfer boundary. Receiver acceptance of a suggestion is distinct from `handoff adopt` ownership mutation. Stage A's note is replaceable current Todo state, not a private immutable history. The successor maps authorized context to a recoverable brief, references current work, and supplies general assessment/result/automatic-return relations without adding a memory ledger or copying claim authority. CLI `prepare/inspect/adopt` remains usable during migration; frontend/Lark and automatic host continuation must be qualified separately. Same-host, registered-agent, lease-free restrictions continue to apply to this adapter, not every general request. See successor §5.13 for mappings, migration conditions and retained negative cases.
+
+Language mirror: [中文版](cross-session-memory-substrate-v0.zh-CN.md).
+
 Status: a bounded local CLI workflow. The former general memory-substrate
 proposal is replaced by a cross-agent continuation workflow over the
 canonical Todo authority. It does not freeze a public memory schema.

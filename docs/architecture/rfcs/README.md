@@ -160,6 +160,15 @@ changes.
     alignment, shared-authority and TS migration dependencies.
     Runtime-profile promotion and generic handoff migration have not shipped.
 
+- [Explicit Todo Continuation — Stage A](cross-session-memory-substrate-v0.md)
+  ([中文版](cross-session-memory-substrate-v0.zh-CN.md))
+  - **Delivery on `main`:** #4094 shipped the explicit local CLI and rich/legacy
+    continuation note with revision-guarded ownership adoption.
+  - **Current boundary:** Registered agents, same host/Goal, lease-free promoted
+    local authority. No generic memory store, automatic host launch, cross-host
+    artifacts or automatic result return. Manager/handoff §5.13 integrates this
+    adapter into M2/M3; the shipped CLI contract remains until replacement qualifies.
+
 - [Single-Owner Local Daemon v0](single-owner-local-daemon-v0.md)
   - **RFC status:** Draft.
   - **Delivery on `main`:** Proposal only; existing Desktop ownership repair is shipped.
