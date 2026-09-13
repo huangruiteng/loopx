@@ -26,6 +26,15 @@ not just a diagnostic label. Under `DONT_NOTIFY`, repair stays internal; it
 does not grant notification authority. Keep these semantics in brief and thin
 prompts as well as the expanded contract, within their existing size budgets.
 
+Reward Memory outcome guidance is a deliberate prompt increment, not a reason
+to remove the validator, digest/evidence, writeback/readback, zero-provider-call,
+or private-material boundaries. When automatic outcome ingestion is enabled, the
+generated heartbeat body receives a fixed `+640`-character headroom (and the
+corresponding bounded line/UTF-8 allowance) for this contract. The CLI output
+differential also grants that allowance once during the none-to-v1 migration;
+unrelated later growth still uses the ordinary gate. Keep the explanation
+readable, while visible Goal prompts and other surfaces retain their own limits.
+
 Do not paste the full lifecycle protocol into the visible goal text, and do not
 use a short goal text such as "advance TODO" as the recurring automation body.
 The short text names the goal; the generated task body enforces quota, gates,
