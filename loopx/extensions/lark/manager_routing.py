@@ -80,15 +80,14 @@ def decide_manager_event(
         str(identity.get("bot_app_id") or "__unset__"),
     }:
         return ignored("self_message")
-    if not is_event_addressed_to_bot(event, identity):
-        return ignored("not_addressed")
     connector = binding.get("connector")
     if not _valid_manager_binding(goal_id, binding, routing):
         return ignored("invalid_routing_state")
     profile = str(identity.get("sender_profile") or "default")
+    turn_authorized = is_event_addressed_to_bot(event, identity)
     return {
         "matched": True,
-        "reason": "matched",
+        "reason": "matched" if turn_authorized else "context_only",
         "route": {
             "goal_id": goal_id,
             "connection_id": binding["connection_id"],
@@ -104,7 +103,14 @@ def decide_manager_event(
             "message_id": message_id,
             "event_id": str(event.get("event_id") or message_id),
             "topic_root_message_id": topic_root,
-            "capture_scope": "addressed_only",
+            # Capture and authority are intentionally separate.  The unique
+            # configured manager chat may retain non-self messages as bounded
+            # context, but only a provider-native mention or verified reply
+            # may enqueue a manager Turn.
+            "capture_scope": "configured_chat_all",
+            "authority_mode": (
+                "turn_authorized" if turn_authorized else "context_only"
+            ),
             "ingress_mode": "session_queue",
             "reply_mode": "topic_reply",
             "connector": dict(connector),

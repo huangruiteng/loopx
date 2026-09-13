@@ -326,6 +326,12 @@ def _event_from_payload(
         or (bot_display_name is None and payload.get("addressed_to_bot") is True)
     )
     event["addressed_to_bot"] = addressed_to_bot
+    if payload.get("historical_context_only") is True:
+        # History catch-up is evidence recovery, never delayed Turn authority.
+        # Preserve this provenance so a later authorized manager Turn may use
+        # the item as context even when the old message contained a real Bot
+        # mention.  Live delivery still owns all execution authority.
+        event["historical_context_only"] = True
 
     mentions = payload.get("mentions")
     provider_mention_count = 0

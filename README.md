@@ -60,6 +60,10 @@ LoopX 1.0 brings these long-horizon control states into the Personal Workspace. 
 - review protected changes through typed preview, explicit confirmation, and
   receipts while LoopX state—not the browser—remains authoritative.
 
+For Manager group conversations, LoopX keeps message visibility separate from
+Turn authority; see the bilingual [Lark Manager context and authority
+contract](docs/reference/protocols/lark-manager-context-authority-v0.md).
+
 ```bash
 loopx dashboard
 ```

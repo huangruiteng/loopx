@@ -474,6 +474,8 @@ def _route_receipt(
     lark_cli_executable: str,
     runner: Runner,
     reaction_budget: _ReactionAttemptBudget,
+    historical_context_only: bool,
+    emit_received_reactions: bool,
 ) -> dict[str, Any]:
     route_key = str(route["route_key"])
     cursor_path = _cursor_path(
@@ -537,7 +539,18 @@ def _route_receipt(
             ingest = ingest_routed_lark_event_inbox(
                 project=config["project"],
                 config_path=config["config_path"],
-                events=[{**event, "route_key": route_key} for event in events],
+                events=[
+                    {
+                        **event,
+                        "route_key": route_key,
+                        **(
+                            {"historical_context_only": True}
+                            if historical_context_only
+                            else {}
+                        ),
+                    }
+                    for event in events
+                ],
                 execute=True,
             )
             try:
@@ -560,7 +573,7 @@ def _route_receipt(
                     )
                     for event in events
                 )
-                reaction_enabled = bool(
+                reaction_enabled = emit_received_reactions and bool(
                     route["inbox"]["reply"].get("received_reaction_emoji")
                 )
                 pending_reaction_message_ids = (
@@ -714,6 +727,8 @@ def _dispatch_route_receipts(
     observed_at: datetime,
     lark_cli_executable: str,
     runner: Runner,
+    historical_context_only: bool,
+    emit_received_reactions: bool,
 ) -> list[dict[str, Any]]:
     source_fingerprint = _dispatch_source_fingerprint(config)
     cursor_path = _dispatch_cursor_path(
@@ -756,6 +771,8 @@ def _dispatch_route_receipts(
                     lark_cli_executable=lark_cli_executable,
                     runner=runner,
                     reaction_budget=reaction_budget,
+                    historical_context_only=historical_context_only,
+                    emit_received_reactions=emit_received_reactions,
                 )
                 for route in routes
             ]
@@ -803,6 +820,8 @@ def sync_lark_turn_start_inbox(
     lark_cli_executable: str = "lark-cli",
     runner: Runner = subprocess.run,
     now: datetime | None = None,
+    historical_context_only: bool = False,
+    emit_received_reactions: bool = True,
 ) -> dict[str, Any]:
     """Sync one bounded page per configured route and return a content-free receipt."""
 
@@ -833,6 +852,8 @@ def sync_lark_turn_start_inbox(
         observed_at=observed_at,
         lark_cli_executable=lark_cli_executable,
         runner=runner,
+        historical_context_only=historical_context_only,
+        emit_received_reactions=emit_received_reactions,
     )
     failures = [receipt for receipt in receipts if receipt["ok"] is not True]
     # A realtime collector may have persisted a message before this hook sees

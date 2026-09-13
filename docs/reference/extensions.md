@@ -78,6 +78,11 @@ provider-specific routing data. This runtime contract is not itself a new
 capability registry entry; providers advertise stable caller outcomes through
 their existing extension and capability surfaces.
 
+Manager group bindings additionally apply the bilingual
+[context-capture and Turn-authority contract](protocols/lark-manager-context-authority-v0.md):
+an unaddressed message may be retained as bounded non-authoritative context,
+but only typed provider addressing may enqueue or steer a Turn.
+
 For asynchronous sources, the same module provides an owner-local incremental
 inbox runtime. A provider translates a bounded page into
 `agent_external_connector_event_v0` envelopes and calls the capture operation

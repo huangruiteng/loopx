@@ -91,6 +91,16 @@ function larkConnectionHealth(connection: LarkGoalConnection, t: WorkspaceTransl
       state: "ready",
     };
   }
+  if (
+    connection.last_event_status === "context_only_captured"
+    || connection.last_event_status === "context_only_already_captured"
+  ) {
+    return {
+      label: t("lark.health.contextCaptured"),
+      detail: t("lark.health.contextCapturedDetail"),
+      state: "ready",
+    };
+  }
   if (connection.last_event_status === "ignored" && connection.last_event_reason === "not_addressed") {
     return {
       label: t("lark.health.notAddressed"),

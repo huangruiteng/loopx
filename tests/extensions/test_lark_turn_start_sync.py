@@ -462,6 +462,52 @@ def test_turn_start_sync_configured_chat_all_explicitly_accepts_other_topic(
     assert (inbox / "om_chat_wide_message.json").is_file()
 
 
+def test_turn_start_sync_can_capture_history_as_quiet_context_only(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    subprocess.run(["git", "init", "--quiet"], cwd=project, check=True)
+    (project / ".gitignore").write_text(".loopx/\n", encoding="utf-8")
+    config, inbox = _write_direct_inbox(
+        project,
+        agent_id="agent-fixture",
+        app_ref="fixture-bot",
+        bot_display_name="Fixture Bot",
+        topic_root_message_id="om_goal_topic_root",
+        capture_scope="configured_chat_all",
+    )
+    runner = ReactionPageRunner(
+        [
+            _page(
+                {
+                    "message_id": "om_old_addressed_message",
+                    "root_id": "om_goal_topic_root",
+                    "create_time": "2026-08-26T09:59:00Z",
+                    "content": "@Fixture Bot an old request must not replay.",
+                    "mentions": [{"name": "Fixture Bot"}],
+                    "deleted": False,
+                }
+            )
+        ]
+    )
+
+    result = sync_lark_turn_start_inbox(
+        project=project,
+        config_path=config,
+        runner=runner,
+        now=FIRST_NOW,
+        historical_context_only=True,
+        emit_received_reactions=False,
+    )
+
+    assert result["status"] == "observed"
+    captured = json.loads((inbox / "om_old_addressed_message.json").read_text())
+    assert captured["addressed_to_bot"] is True
+    assert captured["historical_context_only"] is True
+    assert all("reactions" not in call for call in runner.calls)
+
+
 def test_turn_start_sync_isolates_two_agents_and_apps_in_the_same_chat(
     tmp_path: Path,
 ) -> None:

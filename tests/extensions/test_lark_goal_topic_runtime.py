@@ -4,6 +4,7 @@ import importlib
 import json
 import subprocess
 import threading
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -215,6 +216,239 @@ def test_mention_uses_existing_inbox_reply_and_ack_path(tmp_path: Path) -> None:
     )
     assert projection["pending_count"] == 0
     assert projection["processed_count"] == 1
+
+
+def test_manager_captures_unaddressed_context_without_granting_turn_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+
+    state: dict[str, Any] = {}
+    target_path = tmp_path / "goal-channel-targets.json"
+    binding_path = tmp_path / "goal-channel.json"
+    _seed_legacy_topic(target_path, binding_path)
+
+    def decision(**options: Any) -> dict[str, Any]:
+        event = options["event"]
+        context_only = event["message_id"] == "om_context_only"
+        return {
+            "matched": True,
+            "reason": "context_only" if context_only else "matched",
+            "route": {
+                "app_ref": "mew",
+                "goal_id": "goal-alpha",
+                "message_id": event["message_id"],
+                "target_ref": "fixture",
+                "topic_root_message_id": "om_topic_alpha",
+                "conversation_kind": "manager",
+                "capture_scope": "configured_chat_all",
+                "authority_mode": (
+                    "context_only" if context_only else "turn_authorized"
+                ),
+                "ingress_mode": "session_queue",
+                "reply_mode": "topic_reply",
+            },
+        }
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", decision)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_lark_event_inbox_received_reaction",
+        lambda **_options: {"ok": True, "status": "retained"},
+    )
+    answer_calls: list[tuple[dict[str, Any], str]] = []
+
+    def answer(route: Any, text: str) -> str:
+        answer_calls.append((dict(route), text))
+        return "收到，已结合上文处理。"
+
+    common = {
+        "target_payload": read_goal_channel_targets(target_path),
+        "binding_payloads": {
+            "goal-alpha": read_goal_channel_binding(binding_path)
+        },
+        "runtime_root": tmp_path / "runtime",
+        "answer": answer,
+    }
+    captured = runtime.process_lark_goal_topic_event(
+        **common,
+        event={
+            "event_id": "evt_context_only",
+            "message_id": "om_context_only",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_unrelated_thread",
+            "create_time": "2026-09-13T05:59:00Z",
+            "content": "先把这个背景放在这里",
+            "mentions": [],
+            "sender_type": "user",
+            "sender_id": "ou_owner_fixture",
+        },
+        reply_runner=lambda _args: (_ for _ in ()).throw(
+            AssertionError("context-only capture must not call Lark write APIs")
+        ),
+    )
+    assert captured["status"] == "context_only_captured"
+    assert captured["turn_authorized"] is False
+    assert captured["model_invoked"] is False
+    assert answer_calls == []
+    duplicate = runtime.process_lark_goal_topic_event(
+        **common,
+        event={
+            "event_id": "evt_context_only",
+            "message_id": "om_context_only",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_unrelated_thread",
+            "create_time": "2026-09-13T05:59:00Z",
+            "content": "先把这个背景放在这里",
+            "mentions": [],
+            "sender_type": "user",
+            "sender_id": "ou_owner_fixture",
+        },
+        reply_runner=lambda _args: (_ for _ in ()).throw(
+            AssertionError("duplicate context must not call Lark write APIs")
+        ),
+    )
+    assert duplicate["status"] == "context_only_already_captured"
+    assert answer_calls == []
+    pending = inspect_lark_event_inbox(
+        project=common["runtime_root"], config_path=captured["inbox_config_ref"]
+    )
+    assert pending["pending_count"] == 1
+
+    replied = runtime.process_lark_goal_topic_event(
+        **common,
+        event={
+            "event_id": "evt_authorized",
+            "message_id": "om_authorized",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_unrelated_thread",
+            "create_time": "2026-09-13T06:00:00Z",
+            "content": "@linkmacbot 结合上文给结论",
+            "mentions": [{"id": "cli_public_fixture"}],
+            "sender_type": "user",
+            "sender_id": "ou_owner_fixture",
+        },
+        reply_runner=_reply_runner(state),
+    )
+    assert replied["status"] == "replied_and_acknowledged"
+    assert replied["context_material_count"] == 1
+    assert replied["context_settled_count"] == 1
+    assert len(answer_calls) == 1
+    route, text = answer_calls[0]
+    assert text == "@linkmacbot 结合上文给结论"
+    assert route["context_materials"] == [
+        {
+            "message_id": "om_context_only",
+            "create_time": "2026-09-13T05:59:00Z",
+            "content": "先把这个背景放在这里",
+        }
+    ]
+    assert inspect_lark_event_inbox(
+        project=common["runtime_root"], config_path=replied["inbox_config_ref"]
+    )["pending_count"] == 0
+
+
+def test_manager_authorized_turn_quietly_recovers_history_as_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+
+    state: dict[str, Any] = {}
+    target_path = tmp_path / "goal-channel-targets.json"
+    binding_path = tmp_path / "goal-channel.json"
+    _seed_legacy_topic(target_path, binding_path)
+
+    def decision(**options: Any) -> dict[str, Any]:
+        event = options["event"]
+        return {
+            "matched": True,
+            "reason": "matched",
+            "route": {
+                "app_ref": "mew",
+                "goal_id": "goal-alpha",
+                "message_id": event["message_id"],
+                "target_ref": "fixture",
+                "topic_root_message_id": "om_topic_alpha",
+                "conversation_kind": "manager",
+                "capture_scope": "configured_chat_all",
+                "authority_mode": "turn_authorized",
+                "ingress_mode": "session_queue",
+                "reply_mode": "topic_reply",
+            },
+        }
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", decision)
+    monkeypatch.setattr(
+        runtime,
+        "ensure_lark_event_inbox_received_reaction",
+        lambda **_options: {"ok": True, "status": "retained"},
+    )
+    provider_calls: list[list[str]] = []
+
+    def provider_runner(
+        args: list[str], **_options: Any
+    ) -> subprocess.CompletedProcess[str]:
+        provider_calls.append(list(args))
+        payload = {
+            "ok": True,
+            "identity": "bot",
+            "data": {
+                "messages": [
+                    {
+                        "message_id": "om_old_authorized",
+                        "root_id": "om_topic_alpha",
+                        "create_time": "2026-09-13T05:59:00Z",
+                        "content": "@linkmacbot 历史请求只作背景",
+                        "mentions": [{"id": "cli_public_fixture"}],
+                        "sender_type": "user",
+                        "deleted": False,
+                    }
+                ],
+                "has_more": False,
+                "page_token": "",
+            },
+        }
+        return subprocess.CompletedProcess(args, 0, json.dumps(payload), "")
+
+    answer_calls: list[dict[str, Any]] = []
+
+    def answer(route: Mapping[str, Any], _text: str) -> str:
+        answer_calls.append(dict(route))
+        return "收到，历史内容仅作上下文。"
+
+    result = runtime.process_lark_goal_topic_event(
+        target_payload=read_goal_channel_targets(target_path),
+        binding_payloads={
+            "goal-alpha": read_goal_channel_binding(binding_path)
+        },
+        event={
+            "event_id": "evt_current_authorized",
+            "message_id": "om_current_authorized",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_topic_alpha",
+            "create_time": "2026-09-13T06:00:00Z",
+            "content": "@linkmacbot 结合刚才内容回答",
+            "mentions": [{"id": "cli_public_fixture"}],
+            "sender_type": "user",
+        },
+        runtime_root=tmp_path / "runtime",
+        answer=answer,
+        reply_runner=_reply_runner(state),
+        provider_runner=provider_runner,
+    )
+
+    assert result["status"] == "replied_and_acknowledged"
+    assert result["context_sync_status"] == "observed"
+    assert result["context_material_count"] == 1
+    assert answer_calls[0]["context_materials"][0]["message_id"] == (
+        "om_old_authorized"
+    )
+    assert provider_calls
+    assert all("reactions" not in call for call in provider_calls)
+    config = json.loads(
+        (tmp_path / "runtime" / result["inbox_config_ref"]).read_text()
+    )
+    assert config["topic_root_message_id"] == "om_topic_alpha"
 
 
 def _connect_agent_session_topic(
@@ -1009,6 +1243,7 @@ def test_profile_poll_routes_provider_event_through_existing_reply_path(
     assert "root_id:(.root_id // .message.root_id" in projection
     assert "parent_id:(.parent_id // .reply_to" in projection
     assert "thread_id" in projection
+    assert "sender_id:(.sender_id // .sender.id // .sender.sender_id" in projection
     assert state["reply_text"] == "当前运行的是 LoopX 开发版。"
 
 
