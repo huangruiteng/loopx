@@ -3,7 +3,7 @@
 - 状态：Draft，正在接受 maintainer review
 - 最初提案方：NoKV Lab
 - 扩展修订方：LoopX maintainer
-- 日期：2026-08-05；修订于 2026-09-12
+- 日期：2026-08-05；修订于 2026-09-13
 - 范围：一个 provider-neutral 的 LoopX 权威合同，支持内置 file、可选 NoKV
   与可选 PostgreSQL provider profile，用来补充
   [`host-integration-surface-v0`](../../reference/protocols/host-integration-surface-v0.md)
@@ -36,6 +36,18 @@ capture 与已持久化 head 不会被静默迁移。
 模式下 Markdown 仍是 canonical；未来显式晋升 shared authority 后，也只有 typed
 contract 覆盖的 section 才成为确定性的兼容投影，自由的人类叙事仍在 coordination
 head 之外。
+
+### 管家衔接检查点（2026-09-13）
+
+在 `7eb4b7bb1661bd5eff63a8725a33169792d5964b` 源码核验 `AuthorityStore`
+接缝及 #4280、#4283、#4287 的事务/展示/journal 收敛。这更新衔接基线，不改变
+上方历史 provider 基线或资格证据。SQLite/PostgreSQL 候选路径、各 provider 的
+保留条件和 D1–D3 计划仍在；不宣称默认来源切换或共享服务已交付。
+
+[强能力管家与语义交接 RFC](capable-manager-semantic-handoff-v0.zh-CN.md)
+消费此 authority；M1 主机工具与 M2 请求账本重构无需等待 provider 晋级。
+第 1.4 节明确边界；[TS 执行卡](typescript-control-plane-migration-v0.zh-CN.md)
+继续负责业务规则收敛及旧 caller 删除。
 
 ## 文档地图与维护约定
 
@@ -244,6 +256,32 @@ adapter 人为包装成许可证边界。
 因此，本 RFC 继续让 Stage 1-4 遵循仓库的 Apache-2.0 政策。Stage 5 只是形成新的
 决策点，不会自动触发许可证切换。源码不会仅仅因为实现 shared-authority contract
 或通过远端 provider canary 就变成 AGPL-3.0。
+
+### 1.4 管家请求与语义交接衔接
+
+[管家/handoff RFC](capable-manager-semantic-handoff-v0.zh-CN.md) 负责用户完整
+交互与通用请求/评估/结果关系；本文负责已审阅协调状态与提交证明。
+semantic brief、对话、发送尝试、调度游标不进入 v0 coordination head。
+相关证据由 artifact owner 发布，按确切版本和披露范围引用。共用物理 provider
+不合并这些逻辑状态家族，也不合并其访问/保留契约。
+
+每个 Goal 保持唯一所选 authority source。采纳确实修改 Todo/lease/Vision 状态时，
+handoff 才调用对应现有 owner、关联真实回执；无工作效果的咨询或评估不调用它。
+独立请求提交不能让工作修改跨 store 原子化：先持久化意图，
+恢复原工作回执，再对账 pending 关系。跨 Goal 请求同样保留各 Goal 基线与结果，
+不要求分布式 commit，也不为两者编造同一个 Goal-wide provider revision。
+传输 ack 不能替代当前 claim 或 fence。
+
+管家读取和接收方写入必须保留晋级后 canonical 空/失败语义，不回退旧 Markdown
+或 lease 文件；永久 Markdown 展示保留。handoff RFC 的 A15 fixture 用 legacy
+与显式配置的 canonical source 验证此衔接，不重复或替代本文 backend conformance、
+保留、恢复、soak 和切换资格。
+
+[共享目标对齐/修订 RFC](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md)
+负责意图改变是否合法，以及未来的受控提交；当前 proposal admission 不产生
+canonical amendment。管家与 provider 都不成为该 authority。M1–M3 管家工作可与
+T1–T3/D1/D2 并行；改变存储/profile/source 或退役完整 legacy Goal writer，仍遵守
+适用的 D3/T4 边界。新 handoff 不构成 provider 晋级请求。
 
 ## 2. 要做的，以及不要做的
 
@@ -918,7 +956,9 @@ fencing/export 演练与 maintainer review 都通过才可晋升。发布紧凑�
 | 新 Goal 默认决策（F） | 维护者接受合格 profile、canary 结果、运维诊断、backup/restore 流程、发布操作说明和关闭默认的路径；在独立且明确披露的发布改动中切默认。 | 仅适用于新建且符合条件的本地 Goal；已有显式 file 选择保持固定。不受支持的 runtime/filesystem 需显式选择支持方案，打开失败不能静默切 backend。 |
 | 已有 Goal 迁移与 file 退役 | 按已评审的 fenced workflow 逐批 opt-in 迁移，每批核对 receipt、历史、投影和回滚；删除路径前列清最后的 file-primary caller 与兼容窗口。 | 每个 Goal 需要明确迁移权限；证据满足后才退役常规 primary 角色。参考／导入／导出支持保留到其 caller 与保留责任分别结束。 |
 
-**当前证据位置。** #4121 对应第一个节点，仍待维护者接受，不代表 lane L 完成。
+**当前证据位置（2026-09-13 复核）。** #4121 已合并为
+`bde1632bb6f29aeb9a8b4ac23ead3e98ba2f2f55`，交付第一个候选节点；
+仍需 profile 资格化与晋级，不代表 lane L 完成。
 其 head pointer 有界，operation/cursor 查询有索引，但保留完整历史 projection，连续性
 校验还会统计覆盖索引，因此该成本随历史增长。它验证当前及访问到的 row digest，
 不是每次读取都审计全部历史 payload。已发布的固定 4 KiB 微基准尚缺上述 64 KiB 匹配

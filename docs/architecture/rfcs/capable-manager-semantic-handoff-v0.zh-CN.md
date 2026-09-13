@@ -6,7 +6,7 @@
 - **创建 / 最近规范修订：** 2026-09-13
 - **实现基线：** `7eb4b7bb1661bd5eff63a8725a33169792d5964b`
 - **语言镜像：** [English](capable-manager-semantic-handoff-v0.md)
-- **相关契约：** [Effect interpreter](agent-loop-effect-interpreter-v0.zh-CN.md)、[管家连续性](../../reference/protocols/manager-evidence-and-continuity-v0.md)、[Goal Vision/Replan](../../reference/protocols/goal-vision-replan-contract-v0.md)、[桌面入口](desktop-execution-frontends-v0.zh-CN.md)、[共享权威](shared-goal-authority-state-provider-v0.zh-CN.md)
+- **相关契约：** [Effect interpreter](agent-loop-effect-interpreter-v0.zh-CN.md)、[管家连续性](../../reference/protocols/manager-evidence-and-continuity-v0.md)、[Goal Vision/Replan](../../reference/protocols/goal-vision-replan-contract-v0.md)、[桌面入口](desktop-execution-frontends-v0.zh-CN.md)、[共享权威](shared-goal-authority-state-provider-v0.zh-CN.md)、[共享目标对齐/修订](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md)、[TS 迁移](typescript-control-plane-migration-v0.zh-CN.md)
 
 ## 文档地图与维护约定
 
@@ -73,6 +73,7 @@
 | 会话恢复 | `loopx/chat_runtime.py` | 兼容时恢复保存的 upstream 身份；上下文版本、受众变化可迫使新建线程。不能据此宣称每次线上请求都成功 resume |
 | 证据读取 | `manager_context/inspection.py`、`ssh_evidence.py`、global-manager CLI | 已有 Core portfolio/Todo/delivery、分页、主机来源；初始投影不是外部产物全文 |
 | 上下文转交 | `manager_context/__init__.py` | 已有原始 ingress 来源、精确接收方、请求摘要、inbox、接收 hook；当前记录为 `loopx_manager_context_entry_v1` |
+| 原生 Todo 续接 | `coordination/todo_continuation.ts`、`local_authority_runtime.ts` | 已有 promoted-local 路径，限当前无 lease Todo 与同机注册 Agent；不是通用 pre-Todo/cross-Goal/带 lease 交接 |
 | 回报 | `manager_context/tracking.py`、`roundtrip.py` | 已有 read、acknowledge、canonical Todo/evidence 链接、不可变回复与回传；替换实现时保留这些事实，不保留重复转移 owner |
 | 工作语义 | Goal Vision/Replan 协议与 typed control plane | Agent 方向、验收、path delta、Todo、证据、claim 已超出简单状态标签 |
 | UI | `apps/presentation/dashboard/src/data/chat.ts`、`chat-model.ts`、capability settings/workbench | 通过已有对话、配置投影展示更完整的运行态与交接 |
@@ -80,6 +81,28 @@
 另一项待合并的 [#4312](https://github.com/huangruiteng/loopx/pull/4312)，head 为 `13085665a9377f160025ec6c01885e889f0df5c9`，增加 same-Goal agent handoff。其拟议 `agent_handoff.py` 保存基于 Todo/from/to 的 dispatch 身份以及 dispatched/read/claim 回执；这些不在上述 main 基线中。同 Goal、未 claim Todo、独立 review 等条件仅代表该特定派发路径，不是所有工作请求的通用规则。新方向被接受后，应将其 `same-goal-agent-handoff-inbox-v0` RFC 吸收为历史 adapter/迁移参考。
 
 已审阅的 [PR #4306](https://github.com/huangruiteng/loopx/pull/4306) 提出了有版本约束、分页、typed 错误和路由规则的 GitHub 专用 reader，随后已关闭，见附录 B。其最新形态是先读再交接，不能把它误述成单纯转发 unknown 的补丁。但普通主机调查不应依赖再加一层按资源定制的管家工具。第 6 节不采纳这条产品实现路线，保留有价值的回归要求。
+
+### 4.1 跨 RFC 实现检查点
+
+2026-09-13 重新核对 `origin/main`，版本为上述实现基线。以下是源码/历史事实，不是新一轮部署验收。RFC 成熟度和已落地切片分开报告；旧目录或已合并重构标题不足以证明完成。
+
+| 契约 | 此基线已核验的基础 | 仍不属于本文的交付声明 |
+| --- | --- | --- |
+| **TS 迁移** | Accepted；Stage 1/2A 基础与进行中的 Stage 2B 事务切换。`todos/public_update.ts`、`coordination/todo_update.ts`、`todo_monitor_poll.ts` 和结构化消费者已拥有大量语义规则。 | T0–T4 是持续执行路线，不是全部完成。原生字段/lease/monitor 支持仍有边界。planner 搬到 TS 不等于 commit 也搬了。 |
+| **共享权威** | Draft，已有实现基础。`AuthorityStore` 定义条件式持久 state/events/receipt commit、读回和 scan。[#4280](https://github.com/huangruiteng/loopx/pull/4280)、[#4283](https://github.com/huangruiteng/loopx/pull/4283)、[#4287](https://github.com/huangruiteng/loopx/pull/4287) 收敛事务、展示和 retained-journal 语义；已有 File/NoKV 及 SQLite/PostgreSQL 候选路径。 | provider 实现不代表默认晋级或共享服务。D1 投影、D2 profile 资格/soak、D3 有写入隔离的切换，保留各自证据与批准条件。 |
+| **共享目标对齐/修订** | Draft，已有 Stage 1/2 基础：`goals/shared_goal_alignment.{py,ts}` 读取当前工作基线；`goal_amendment_proposal.{py,ts}` 校验/保留提案，没有 canonical effect。晋级后 source basis 包含 canonical Todo/lease revision。 | 完整 Goal-intent 版本、Stage 3 受控提交、verifier/lease 影响处理及验收，不由提案准入提供。事件序号或 Todo provider revision 不是完整 Goal revision。 |
+| **管家与交接（#4330）** | 现有 manager inbox/context/tracking/return 是迁移来源；第 4 节已列 owner。 | 强能力 profile 晋级、通用 collaboration 事务、A1–A16 仍为提案。本文消费其他 owner，不重新实现它们。 |
+
+补充核验至 `6b337bcbde8457bc3268ec7d2780367ace3c6147`：#4286 已于 `c0b572d2d508bb10c32701057dd71ff4f8eb663c` 合并，`coordination/command_receipt.ts` 成为 canonical Todo 命令共享 recovery owner，归档事务拆至 `todo_archive.ts`。其 File/SQLite/PostgreSQL/NoKV conformance matrix 是 M2 可复用基础，不重新设计。请求/工作提交对账复用原 operation 的 ambiguous recovery 语义。此项删除重复 TS 事务规则，不代表 Python writer、T1/T2 缺口或 D1–D3 晋级条件已完成。
+
+### 4.2 四个问题，四条归属边界
+
+- **#4330：** 用户如何把工作交给强能力管家，另一个 Agent 如何续接其意义，结论如何回来？
+- **对齐/修订：** 哪个共享目标和验收仍有效，Agent 何时可改自己的路线，哪些共享改变能被提交？
+- **共享权威：** 哪个状态变化确实提交了，谁持有当前 lease，如何恢复原回执和唯一可写来源？
+- **TS 迁移：** 这些语义决策与完整事务由哪里实现，哪些 adapter 保留，旧规则/writer 何时可删？
+
+四者互补。管家不是 Goal-amendment authority；collaboration 账本不是 Todo authority；数据库不是 Agent planner；换语言不等于 provider 晋级。下述衔接规则优先于“看到新模块名，就把四件事交给同一个 owner”的解释。
 
 ## 5. 设计
 
@@ -110,7 +133,7 @@ flowchart LR
 目标分成三个产品/技术 owner：
 
 1. **管家 Agent 应用：** 负责对话连续性、调查、判断、委托、综合和用户反馈。AGENTS/skill 教它使用 LoopX 状态发现与协作；普通工具来自 host runtime。不独占另一份 handoff 账本，也不替每句用户需求发明底层工作流步骤。
-2. **Core collaboration 有界上下文：** 负责通用工作请求身份、版本化语义背景、评估/结果关联、移交/取消效果和不可变回执。把通用转移从 `manager_context` 移到已有 TS 控制面，保持一个转移 owner 和 canonical store 接口。拟议 `control_plane/collaboration` 是设计位置，不是现有 CLI。Goal/Todo/Vision 仍各自掌握权威对象，collaboration 引用并调用它们。
+2. **Core collaboration 有界上下文：** 负责通用工作请求身份、版本化语义背景、评估/结果关联、移交/取消请求和不可变回执。把通用转移从 `manager_context` 移到已有 TS 控制面，保持一个请求转移 owner。拟议 `control_plane/collaboration` 是设计位置，不是现有 CLI，也不是替代 authority/store。Goal/Todo/Vision/lease owner 各自提交所属对象的变化；collaboration 调用并记录其回执。第 5.12 节定义事务和存储边界。
 3. **Runtime 与通道 adapter：** 负责发现/注册 Agent 地址、在支持的 loop 边界呈现请求、保存传输意图、把 provider 事件映射成回执。Codex、CLI、managed Turn、飞书、前端消费同一协作语义；传输记账不等于拥有工作完成状态。
 
 工作请求是一级对象，**可以先于 Todo 存在**。咨询可以用判断和证据完成；采纳的实施工作可以关联一个或多个新/旧 Todo。交接可以同 Goal、跨 Goal、到已注册主机。`同 Goal`、`Todo 未被 claim`、`source excluded`、安装某个垂域 capability，都不是通用准入条件；它们只用于实际需要该规则的效果，例如独立 review 的任务认领。
@@ -267,6 +290,22 @@ Observation {
 
 并行工作不意味着执行资源隔离。共享浏览器屏幕或可变工作区，复用 runtime 的串行化/lease；它与 Core 工作归属分开。不同屏幕、Agent 名称和会话页签不是权限边界。runtime 缺乏所需协调时，串行执行受影响操作并显示等待；无关取证仍可推进。M1 汇报真实资源行为，不预设共享云电脑架构。
 
+### 5.12 与目标对齐、共享权威、TS 内核衔接
+
+**先判断改变的性质，再选择 writer。** 咨询可无 Todo 返回证据。意图内的路线纠正，走接收方已有 Vision/Replan/Todo 路径。按对齐契约需要 amendment 的共享依赖/工作图变化，走其 proposal/admission 路径；改变共享目标、验收、非目标、权限、停止条件，不能因为管家发话就降格为本 Agent 的路线编辑。Stage 2 准入的 `canonical_effect` 是 `none`。相应受控 commit class 尚未实现并验收时，保留提案、报告准确执行缺口，继续无关的已授权工作。不自造管家 commit endpoint、同伴投票或额外常规人工确认。commit 可用后，复用已验收 Stage 3 `GoalAmendmentAuthority` commit owner 的预授权 policy/verifier、精确基线 CAS 和回执；各 Agent rebase 或收到规定的在途工作处置。
+
+当前 amendment admission 要求有因果关系的 replan obligation 与受影响 Todo ID。它不是咨询或 pre-Todo 工作的通用 inbox，不为准入普通请求编造这些记录。handoff 采纳另行关联真实 replan/work settlement。Effect Program、Turn、quota 回执保留现有身份和 owner，不能把 ID 换个名字就变成请求完成回执。
+
+**不同版本维度必须分开。** 沿已有 context/reference 模型传递请求/brief 版本及所引用工作基线。基线包含实际可用的 Goal intent revision/digest、source kind 与 Todo/lease snapshot revision、相关 policy revision、artifact revision。provider generation/cursor、语义 Goal revision、lease epoch、handoff revision 不是同一个计数器。Goal 基线未知/不完整就保留这个事实，不从事件序号或 provider head 编造 Goal revision。有受控效果前，由效果所属命令重新验证受影响前置条件。新的 brief 不能复活过期 lease，也不能代其他 Agent 确认新共享目标。
+
+**请求状态、协调状态、传输状态分开。** 从现有 manager 请求账本迁移到通用 collaboration 账本，拥有意图/评估/结果关系，不复制可编辑 Todo 真相。共享权威 v0 coordination head 仍只包含已审阅的 Todo/claim/lease/gate/receipt 语义。对话、semantic brief 正文、原始工件、发送尝试、调度游标留在既有 capability/artifact/adapter owner，通过有范围的引用连接。不能因为 store 接受 JSON，就把它们塞进通用 `next_projection`。物理存储可共用，但需独立 namespace、访问/保留契约和已审阅 schema 兼容。引入请求契约不要求先部署 provider。
+
+**真实权威边界内原子提交，跨边界对账。** 请求转移及其自身回执由所属事务原子发布。Todo/lease 修改保留既有锁或晋级 authority 的 state/event/receipt CAS。采纳请求还要改工作状态时，先持久化 effect intent，调用该 owner，再关联它的确切回执；两次提交间崩溃，留下可恢复的 pending 关系。不能虚构跨独立 store 的 request+Todo 原子提交。跨 Goal 交接同样保留各 Goal 基线和回执，明确部分结果，不引入分布式事务或合成共享版本。复用已有 effect interpreter、journal 和恢复路径，不新增工作流引擎。
+
+**遵循每个 Goal 已选的权威来源。** 晋级前仍由现有 legacy 命令写入；晋级后走所选 canonical authority，空结果保持为空，provider 失败不能回退到旧 Markdown 或 lease 文件。Markdown 是永久可读投影，不是要删的界面，也不是第二 writer。SSH 传输可达与 shared provider 采用独立。消息送达不授予新 claim，也不允许越过过期 fence 计算。provider 离线时，可继续已授权的独立读取；受控写入遵守 authority 契约。
+
+**一次迁移完整语义事务。** 每个变更的公共路径按 TS T0–T3：一个当前 source snapshot、typed 校验/决策、所属效果、持久结果，再由 adapter 投影。仅在契约确实适用时复用 `AuthorityStore` 与事务解码器，不拿 Todo aggregate 当万能容器。不按 handoff 字段新增 Python→TS 调用，不保留第二份 Python 策略校验，不恢复已退役 facade。实现 PR 提交 [TS §5](typescript-control-plane-migration-v0.zh-CN.md#5-兑现阶段-pr-合同) 定义的 **migration economics receipt**。这是实现 PR 作者负责、写入 PR 正文和验证评论、绑定 base/head 的审阅工件，不是持久化产品回执、新 schema 或运行时 writer。字段覆盖旧/新 owner、删掉的语义代码、新 bridge、成功/恢复路径往返数、产品净代码量、剩余 caller 与删除条件。完整旧 writer 退役等待适用的 T4/D3 条件；替换 manager request writer 不授权 Goal 全量切换。
+
 ## 6. 备选与 #4306 裁决
 
 - **选择普通 runtime 工具 + LoopX 语义状态。** 保留 Agent 的灵活性，复用成熟工具；代价是要真实验收主机 profile 和私人/共享受众隔离。
@@ -328,7 +367,9 @@ M0 盘点真实字段和 producer；以下是迁移验收底线，不代表已�
 | A11 | 注册 SSH 离线或旧 receiver | 覆盖和待送路径明确；本地提到 SSH 不冒充远端证据；恢复正确续接 |
 | A12 | 模型/session/工具 profile 升级 | 兼容时 resume，不兼容时保留约束和待办恢复，实际配置可见 |
 | A13 | 工作跨两天；已接受计划、否决路线、收到后续纠正后，更换执行 session | 接收方从 canonical 状态/上下文恢复当前承诺与未结义务；刷新时效证据；解释实际计划变化并自动回报，不悄悄重走否决路线、不要求原始 transcript |
-| A14 | 交接带相关图片/文档，经纯文本入口到另一已配置主机 | 已授权工件按目标版本可读；不可用/拒绝明确；提取保留来源和未结义务；不伪造读取回执、不泄露私人信息、不依赖发送方本地路径 |
+| A14 | 交接带相关图片/文档，经纯文本入口到另一已配置主机 | 接收方 observation 关联实际读取/提取、工件版本及对义务/计划的影响，或明确未读原因；不伪造读取回执、不泄露私人信息、不依赖发送方本地路径 |
+| A15 | 同一交接 fixture 对比未晋级与显式配置的已晋级 Goal source；provider 离线、请求/工作提交间崩溃 | 唯一所选工作状态 writer；canonical 空/失败不回退；恢复并关联原工作回执、不重复效果；请求 pending 关系与工作已提交分开 |
+| A16 | 接收方路线重规划与共享 amendment、过期基线、同伴持有工作 | 路线修改不越意图/权限；提案准入不改 Goal；未支持的 commit 明确；已支持 amendment 需要已验收 Stage 3 `GoalAmendmentAuthority` commit owner 精确回执及 peer rebase/lease 处置，不能只凭管家或 verifier 文本 |
 
 先跑确定性转移/兼容测试，再真实安装 runtime 验证，再用无副作用合成任务和已授权私人 canary 做前端/飞书回环。记录源码/runtime 版本和回执。包含移动端飞书、打包前端渲染/读回；后端单测不等于 A10。provider 送达不确定、离线失败必须验，不只有成功路径。
 
@@ -348,13 +389,35 @@ M0 盘点真实字段和 producer；以下是迁移验收底线，不代表已�
 | --- | --- | --- | --- |
 | M0：统一方向 | manager capability owner 盘点限制、授权、session、待结交互；关闭过时 #4306 路线并关联保留修复 | 基线 fixture、公开裁决链接、不丢请求；不宣称 runtime 变化 | 仅文档/提案 |
 | M1：真正能干活的本机 Agent | manager capability + runtime adapter 使用普通工具/skill、持续授权；前端显示有效 profile/session、受支持的工具活动和可处理失败 | 真实 runtime A1–A3、A12；核验共享资源协调；复用 portfolio，不新建逐资源包装 | 回受限 profile，保留请求 |
-| M2：语义续接 | Core collaboration 替换管家专用 handoff 转移；支持先于 Todo、跨 Goal 的请求；brief/职责发现连接接收方规划；两种消费者验证同一契约 | A4–A7、A11，以及 A13–A14 续接/工件 fixture；旧/新记录等价保字段；TS 掌握共享转移规则 | 关新 producer，保兼容 reader、pending 结果 |
+| M2：语义续接 | Core collaboration 替换管家专用请求转移；复用 alignment 与所选工作 authority；支持先于 Todo/跨 Goal 请求和接收方规划；两种消费者验证同一契约 | 受支持边界上的 A4–A7、A11、A13–A16；旧/新等价、崩溃对账、TS migration economics 审阅工件（§5.12） | 关新 producer，保兼容 reader、pending 结果；不切换 Goal authority |
 | M3：一次完整交互 | 接收方结论、已有 outbox、前端/飞书可见、富文本与重启恢复 | A8–A10 与 A13–A14 回传验收；故障注入和真实读回；不用再追问便收到结论 | 保结果存储，换传输/profile 不重放 |
 | M4：晋级并退役旧路径 | 三个异构活跃 Goal、主人/共享受众、配置 SSH 旅程通过；删旧限制和过渡兼容层 | 全验收、权限回归、实测 SLO/成本；列出未验证宿主 | 按 scope 回滚、schema-aware drain/export |
 
 M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已有 inbox 上线。M2 的通用晋级需要第二消费者，但不能因此拖住已经有用的管家局部改善。各里程碑不新增常规研究或普通委托的人工确认。
 
 每个实施 Todo 声明 target capability、仓库、写范围、验证命令、RFC 里程碑、验收 ID、依赖。优先更新已有 Todo，淘汰任务保留 supersede 关系。区分 Core 转移、manager capability/runtime、前端/飞书、垂域 adapter；业务方法不塞本通用 RFC。工程负责人先回报接受范围和下一里程碑，再自动回报成果与证据。
+
+### 11.1 依赖与并行计划
+
+| 切片 | 硬前置 | 可以不等 | 完成边界 |
+| --- | --- | --- | --- |
+| M1 本机 Agent 与早期 M3 正文恢复 | 当前 runtime、有效 authority/profile、既有 UI/传输契约 | 通用 collaboration 替换、shared provider 晋级、amendment Stage 3、TS 全量重写 | 普通工具与反馈旅程；不改变 Goal 真相或 provider 默认 |
+| M2 请求事务替换 | 实现 PR 内完成 TS T0 caller/source 盘点；现有请求/回执 characterization；唯一 writer 与无损迁移 | 新 daemon、PostgreSQL 服务、D3 切换、共享 Goal amendment | 请求身份/评估/结果归一个 typed domain；有界切换时退役旧请求 writer；外部工作 owner 不变 |
+| M2 接收方与 authority 衔接 | 已有 alignment/admission 和 Todo/Vision/lease 命令；请求 effect/recovery 接缝；受影响命令的可用事务契约 | 关闭无关 T1/T2/T3 消费者、晋级全部 provider | disposable legacy/canonical fixture 上 A15；A16 验证路线/准入边界；未支持工作效果明确 |
+| M3 完整交互 | 已提交结果和准确请求/工作回执关系；受支持 runtime 与飞书/前端 adapter | 独立格式/重试修复不等 M2 完成 | 通用 producer 集成在 M2 后；早期修复保留既有 owner，不能宣称新 schema 已交付 |
+| 受控共享 amendment 衔接 | 对齐 Stage 3 已验证 commit class、policy/verifier、lease 影响与精确基线回执 | 无关管家体验改进 | 与 alignment owner 共管的条件式后续，不另建 `GoalAmendmentAuthority` |
+| M4 管家晋级 | 已验证 M1–M3，以及所宣传 profile 的 A1–A16，含不支持 amendment 的负例 | 全 provider 迁移、不变既有 profile 的重新十日 soak、PostgreSQL 部署 | 仅晋级管家/handoff 行为；新存储/默认/shared-amendment 能力保留独立门槛 |
+
+若本计划改变 provider、保留规则或 authority-source profile，受影响的 D1/D2/D3 就成为硬前置；管家验收不能豁免十日 soak 或切换批准。A13 续接测试和 D2 存储 soak 衡量不同问题。不变地使用既有 profile，不因管家读取它就新加十日门槛。
+
+### 11.2 执行顺序与衔接回执
+
+1. **启动 M1，在该 PR 内完成基线对齐。** 记录精确 source head、真实 runtime/入口 caller；修主人私人 profile 和已有读回/反馈；验 A1–A3/A12。不单独交付盘点框架。
+2. **替换一个完整 M2 请求事务，再接接收方。** 从 `manager_context` request/tracking/return producer 和两种真实消费者开始，提交前后 owner 图、迁移映射、migration economics 审阅工件（§5.12）。工作状态继续走已有命令；扩大 producer 上线前验提交间崩溃和 legacy/promoted source。复用 alignment source-basis 读取，不复制分类器。
+3. **收口 M3 自动回传和用户可见性。** 独立正文恢复可与前两步并行；通用 producer 待回执契约稳定再接。沿真实入口/接收方/返回路径验 A8–A10、A13–A16；同一投影更新 packaged frontend、飞书、CLI。
+4. **晋级指定 M4 cohort，并删除被替换路径。** 明确 provider 默认、Goal-intent authority、capability 资格。共享 amendment commit 待上游就绪；此前 UI 只能说提案/准入或不支持提交，不能说“Goal 已修改”。provider source 迁移按 shared-authority 计划，不夹进本次发布。
+
+每次 PR 交接记录：base/head、本 RFC 里程碑/验收 ID、受影响的 TS T-card 与 authority D-card、消费的 alignment stage、确切 owner/command/receipt 与 source mode、删除 caller、测试/真实 runtime 证据、保留门槛、一个可执行下一步。链接已有 canonical 工程 Todo，不在本文复制动态任务清单。上游 owner 移动时，先解析新符号并同步双语，再实施；不为迁就计划恢复旧模块。
 
 ## 12. 待定决策
 
@@ -379,6 +442,8 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 2026-09-13：提出强能力管家、语义续接方向及协作边界大幅重构。[#4306 已关闭](https://github.com/huangruiteng/loopx/pull/4306#issuecomment-5652539392)，作为被替代实现路线；其原始 issue 仍是 M1/M2 的验收义务。已有正文恢复、职责发现修复继续保留。本文不宣称任何验收项、host profile 晋级或 handoff schema 迁移已经交付。
 
 2026-09-13：补入附录 C 的 Grok Bot 官方研究，细化定位、第 5.11 节、A13–A14 与 M1–M3。新增的是可审阅要求，不是竞品 runtime 验收或已交付的 LoopX 行为。
+
+2026-09-13：按固定基线核对 shared-authority、shared-alignment、TS 迁移进度，增加第 4.1–4.2、5.12、11.1–11.2 节及 A15–A16；同步配套 RFC 和目录，保留独立晋级/提交 owner，并明确 A13 真实时长、A14 实际使用证据。不豁免任何上游资格条件。
 
 后续按日期追加已审阅变更链接，明确受影响规范章节；保留旧版本和未结请求。追加交付记录不能变成另一套任务权威。
 
@@ -407,7 +472,7 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 
 ### C.3 实现理解：组合已有机制，不猜内部实现
 
-公开产品可以按四个可观察边界理解：**角色/会话、电脑/工具、协作/触发、结果/恢复**。这是本文的分解，不宣称对应 Grok Bot 源码模块。它解释了为什么强 Agent 加上可用电脑、已有工具和可见进度，就可能胜过被限制在小快照里的 planner，而不需要为每种资源定制 reader。
+公开产品可以按四个可观察边界理解：**角色/会话、电脑/工具、协作/触发、结果/恢复**。这是本文的分解，不宣称对应 Grok Bot 源码模块。尚未实测的设计假设是：可用电脑、已有工具和可见进度，有助于强 Agent 超出小快照调查，不为每种资源定制 reader；不宣称已有对比性能结果。
 
 [Grok Bot 101](https://x.ai/bot/guides/grok-bot-101) 展示收集上下文后，请 Cursor cloud agent 实现软件。这是公开的外环/内环工作流示例，不证明 Bot runtime 由那个 coding agent 实现。LoopX 值得借的是给接收方一件有意义、背景充分的工作；更换执行器后，已接受工作和回报契约仍应成立。
 
@@ -419,7 +484,7 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 | --- | --- | --- |
 | 可用性 | 稍后仍可接收工作、保留身份 | 通过宿主支持的唤醒/续接路径持续推进已接受目标；离线和不支持要明确 |
 | 状态 | 可以保留对话、偏好、文件 | 把目标、验收、当前计划、承诺、决策、证据、未解决缺口保留为关联工作状态 |
-| 进展 | 能执行长任务或重复 routine | 针对目标选择有效下一步、验证结果、重规划；唤醒或调用成功不算进展 |
+| 进展 | 可以执行后台步骤或重复 routine；仅常驻不能说明目标收敛 | 针对目标选择有效下一步、验证结果、重规划；唤醒或调用成功不算进展 |
 | 协作 | 能发消息给别的 Agent 并得到回复 | 携带影响决策的上下文，接收方结合自身计划评估，剩余义务与回报可恢复 |
 | 更换 | 服务或 profile 可以重启 | 受支持的新执行器恢复已接受工作，无需复制旧 runtime 私有 session 数据库 |
 | 完成 | 能回答或停止 | 区分任务结果、目标验收、结论送达；未完成则留下可追溯续接 |
@@ -438,6 +503,6 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 | 异步通信本身不定义已接受工作 | M2，第 5.4–5.6 节：一个 collaboration owner、brief、接收方评估、当前状态关系 | A5–A7/A13；manager→worker 与 worker→worker |
 | 必要证据可能不适合文本，也可能跨主机丢失 | M2/M3，第 5.11 节：已授权可解析工件、提取来源、明确遗漏 | A14，包括不可用/拒绝读取 |
 | 后台任务仍欠用户一份可理解结果 | M3，第 5.6/5.7 节：已提交结论、独立投递、保留剩余义务 | A8–A10/A13；重启与正文损坏注入 |
-| 长程是 Agent 加控制循环的整体属性 | M4：验证 runtime 替换、证据变化后的目标续接，以及权限与成本 | A1–A14；不因进程活着、routine 成功或 PR 合并就晋级 |
+| 长程是 Agent 加控制循环的整体属性 | M4：验证 runtime 替换、证据变化后的目标续接，以及权限与成本 | A1–A16；不因进程活着、routine 成功或 PR 合并就晋级 |
 
-A13 在确定性测试中注入时钟，再执行包含真实中断的已安装 runtime 续接验证。记录实际间隔与宿主版本；模拟跨天不是多日生产验收。A14 使用合成、可公开的图片/文档，不把私人来源变成共享 fixture。交付这些 LoopX 改进不需要竞品评分或登录 Grok Bot。
+A13 注入时钟验证确定性的时效续接。M4 宣称跨天时，还需已安装 runtime 的真实中断验证，两次记录检查点至少间隔 24 小时；分开报告实际时长与版本。同日运行只证明较窄的重启 fixture，不替代 shared-authority D2 十日存储 soak。A14 使用合成可公开图片/文档，包含已知、影响决策的事实，使接收方 observation 证明使用或合理遗漏，不发布私人材料。交付这些 LoopX 改进不需要竞品评分或登录 Grok Bot。

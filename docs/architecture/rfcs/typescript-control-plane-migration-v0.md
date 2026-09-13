@@ -3,7 +3,7 @@
 - Status: Accepted, transaction-payoff phase in progress
 - Proposed by: LoopX maintainers
 - Date: 2026-08-15
-- Last revised: 2026-09-12
+- Last revised: 2026-09-13
 - Scope: an incremental, replacement-first migration of the LoopX control-plane
   core from Python to TypeScript without maintaining two semantic
   implementations
@@ -52,7 +52,7 @@ receipt; the lease is never mutated. Explicit `--update-operation-id` supports
 CLI retries with unchanged proof and intent, including historical replay after
 expiry or transfer. Missing/stale proof and historical inactive leases fail
 closed. No-proof receipt fingerprints remain compatible. This is the bounded
-#4105 lease-fence slice, not full T1 metadata or T2 effect closure; legacy updates
+#4152 lease-fence slice, not full T1 metadata or T2 effect closure; legacy updates
 without these options remain unchanged. See the [Todo contract](../../project-agent-todo-contract.md#lease-fenced-canonical-textnote-updates).
 
 Monitor metadata authoring and poll transitions now share `todos/monitor_metadata.ts`.
@@ -867,6 +867,26 @@ respective explicit authority.
 Stacked schema-identifier cleanup is independent maintenance, not a prerequisite
 for this sequence. Absorb a downstream change only when the selected complete
 transaction actually needs it; rebase the remaining work after its base merges.
+
+### Manager collaboration integration checkpoint (2026-09-13)
+
+At `7eb4b7bb1661bd5eff63a8725a33169792d5964b`, #4152 is the merged
+lease-fenced text/note update slice; #4121's SQLite candidate is also merged,
+without provider promotion. These actual heads supersede the earlier execution
+card's pending-code implication, not its qualification holds.
+
+The [manager/handoff RFC](capable-manager-semantic-handoff-v0.md) follows this
+RFC's transaction-payoff rule. Its proposed collaboration owner replaces one
+complete request transaction and old semantic callers; it does not introduce
+a leaf RPC per field, a new TS daemon, or another Todo/Vision/lease authority.
+Existing `coordination/todo_continuation.ts` is a promoted-local, same-machine,
+registered-agent, lease-free Todo path, not a general pre-Todo/cross-Goal
+handoff. Retain its actual compatibility semantics while integrating it.
+M2 reports the migration economics receipt and cross-commit recovery evidence;
+M1 normal host tools need not wait for full TS or provider migration.
+Shared Goal amendments retain their own proposal/commit boundary, and
+shared-authority D1–D3/T4 conditions remain applicable to any affected storage
+or full-writer retirement. No new runtime behavior is delivered by this note.
 
 ## 0. Decision in one example
 

@@ -3,7 +3,7 @@
 - Status: Draft; under maintainer review
 - Tracking issue: [#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - Date: 2026-09-02
-- Last updated: 2026-09-09
+- Last updated: 2026-09-13
 - Scope: peer Agents collaborating around one shared Goal while preserving
   canonical intent, per-Agent execution frontiers, claim/lease ownership, and
   auditable replan/amendment decisions
@@ -87,6 +87,25 @@ bounded evidence       bounded evidence
                  |
        every frontier rebases or gates
 ```
+
+### 1.1 Verified delivery and manager integration checkpoint (2026-09-13)
+
+At `7eb4b7bb1661bd5eff63a8725a33169792d5964b`, the Stage 1 alignment reader
+and Stage 2 proposal admission/retention exist, including #3874 and the
+canonical Todo/lease source convergence in #4143. Their owners are
+`goals/shared_goal_alignment.{py,ts}` and `goal_amendment_proposal.{py,ts}`
+under `loopx/control_plane`. The latter explicitly returns
+`canonical_effect: none`; it has no approved status or commit path.
+These are implemented foundations, not full canonical intent versioning or
+Stage 3–5 acceptance. The RFC remains Draft.
+
+The [manager/handoff RFC](capable-manager-semantic-handoff-v0.md) should reuse
+the alignment reader for work-basis context; amendment admission applies only
+after classification when the request satisfies that admission contract. Its request, brief or
+delivery revision is not a Goal-intent revision. A manager's higher tool
+freedom does not confer shared-amendment authority, and handoff receipt does
+not acknowledge a new Goal on behalf of every peer. Section 9.1 and that RFC's
+M2/A16 define integration; they do not introduce a second amendment policy.
 
 ## 2. Problem and current boundary
 
@@ -421,6 +440,37 @@ provider-neutral aggregate requires a separate reviewed transaction boundary.
 
 `Next Action` remains compatibility prose and a read projection. It is never a
 claim, lease, Goal amendment, replan settlement, or authority decision.
+
+### 9.1 Semantic handoff and execution-route integration
+
+Use the existing alignment projection to supply a receiver's actual work
+basis. In-intent lane replanning stays in the receiver's Vision/Replan path;
+shared changes use this RFC's classification and admission. Stage 2 may
+retain a request-derived proposal, with source/context references and an
+explicit unresolved obligation, but cannot report that the shared Goal changed.
+Missing full intent authority is not repaired by synthesizing a revision from
+the Todo provider head or the event sequence.
+
+The next amendment implementation remains **one bounded Stage 3 work-graph
+commit class**, not broad acceptance/permission rewriting. It must first
+establish the actual canonical intent/policy basis and reviewed transaction
+mapping, then prove exact-basis admission, lease impact, CAS receipt recovery
+and peer frontier rebase. Reuse the [shared authority](shared-goal-authority-state-provider-v0.md)
+storage guarantees and [TS transaction migration](typescript-control-plane-migration-v0.md)
+owner; neither currently grants amendment semantics just by being available.
+
+Manager M1 and ordinary M2 handoff can ship before that commit class. Until
+then, expose proposal/admission and the unavailable-commit boundary while
+unrelated work continues. After qualification, the manager invokes the future
+Stage 3 `GoalAmendmentAuthority` commit owner under its existing policy; no permanent manager-superuser role, mandatory peer
+vote or repeated owner confirmation is added. The manager's result links the
+committed amendment receipt and peer/in-flight disposition. Cross-Goal handoff
+does not merge distinct Goals' intents or authorize either Goal's amendment.
+
+The manager RFC's A16 reuses the existing alignment/amendment fixtures for
+lane/proposal/stale-basis negatives and later qualifies the supported commit
+path. This RFC retains Stage 3–5 implementation and promotion ownership;
+manager readiness cannot silently mark those stages done.
 
 ## 10. Staged delivery
 

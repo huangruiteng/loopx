@@ -3,7 +3,7 @@
 - Status: Draft, under maintainer review
 - Initially proposed by: NoKV Lab
 - Widened by: LoopX maintainers
-- Date: 2026-08-05; revised 2026-09-12
+- Date: 2026-08-05; revised 2026-09-13
 - Scope: one provider-neutral LoopX authority contract with built-in file,
   optional NoKV, and optional PostgreSQL provider profiles, complementing
   [`host-integration-surface-v0`](../../reference/protocols/host-integration-surface-v0.md)
@@ -42,6 +42,21 @@ generated. Markdown remains canonical in default local mode. In a later,
 explicit shared-authority promotion, only sections covered by the typed
 contract become deterministic compatibility projections; free-form human
 narrative remains outside the coordination head.
+
+### Manager integration checkpoint (2026-09-13)
+
+Source audit at `7eb4b7bb1661bd5eff63a8725a33169792d5964b` confirms the
+`AuthorityStore` seam and the transaction/presentation/journal consolidations
+in #4280, #4283 and #4287. This updates the integration baseline, not the
+qualification evidence or historical provider baselines above. Candidate
+SQLite/PostgreSQL paths, provider-specific holds and the D1–D3 plan remain;
+neither a default source switch nor a shared service is declared shipped.
+
+The [capable manager and semantic handoff RFC](capable-manager-semantic-handoff-v0.md)
+consumes this authority. Its M1 host-tool work and M2 request-ledger refactor
+can proceed without provider promotion. Section 1.4 defines their boundary;
+the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
+still own business-rule consolidation and legacy-caller deletion.
 
 ## Document map and maintenance contract
 
@@ -301,6 +316,41 @@ The current RFC therefore keeps Stages 1-4 under the repository's Apache-2.0
 policy. Stage 5 creates a decision point, not an automatic license transition.
 No source path becomes AGPL-3.0 merely because it implements a shared-authority
 contract or passes a remote-provider canary.
+
+### 1.4 Manager requests and semantic handoff integration
+
+The [manager/handoff RFC](capable-manager-semantic-handoff-v0.md) owns the
+user-facing exchange and general request/assessment/result relations. This
+RFC owns the reviewed coordination state and its commit proof. A semantic
+brief, conversation, delivery attempt or scheduler cursor does not enter the
+v0 coordination head. Relevant evidence is published by its artifact owner
+and referenced at an exact revision and disclosure scope. Sharing a physical
+provider does not merge these logical state families or their access/retention
+contracts.
+
+Each Goal retains one selected authority source. When adoption changes
+Todo/lease/Vision state, handoff invokes that existing owner and links its real
+receipt; consultation or assessment without a work effect does not. A separate request commit
+cannot make that work mutation atomic across stores: persist intent, recover
+the original work receipt, then reconcile the pending relation. Cross-Goal
+requests likewise preserve per-Goal bases and outcomes; they do not require
+a distributed commit or invent one Goal-wide provider revision for both.
+Transport acknowledgement never substitutes for a current claim or fence.
+
+Manager reads and receiver writes must preserve canonical empty/failure
+semantics after promotion, without old-Markdown or lease-file fallback.
+Permanent Markdown presentation remains. The handoff RFC's A15 fixture checks
+these integration boundaries against legacy and explicitly configured canonical
+sources; it does not repeat or replace this RFC's backend conformance, retention,
+recovery, soak or cutover qualification.
+
+The [shared Goal alignment/amendment RFC](shared-goal-alignment-and-governed-amendment-v0.md)
+owns intent-change legality and its future governed commit. Its current
+proposal admission creates no canonical amendment. Neither the manager nor
+the provider becomes that authority. M1–M3 manager work may run in parallel
+with T1–T3/D1/D2; changing storage/profile/source or retiring a whole legacy
+Goal writer still requires the applicable D3/T4 boundary. A new handoff is
+not a provider promotion request.
 
 ## 2. What We Will Do, and What We Will Not
 
@@ -1165,8 +1215,10 @@ is gated by evidence below, not by calendar dates or this PR's merge status.
 | New-Goal default decision (F) | Maintainers accept the qualified profile and canary results, operational diagnostics, backup/restore procedure, release instructions and default-disable path. Ship the default change in a separate disclosed release change. | Apply only to newly created eligible local Goals. Existing explicit file selections remain pinned. Unsupported runtimes/filesystems require an explicit supported choice; no silent backend switch on open failure. |
 | Existing-Goal migration and file retirement | Migrate opt-in cohorts using the reviewed fenced workflow; reconcile receipts, history, projections and rollback after each cohort. Inventory the last file-primary callers and compatibility windows before removing any path. | Each Goal needs explicit migration authority. Retire file as the ordinary primary only after that evidence; retain reference/import/export support until its own callers and retention duties end. |
 
-**Current evidence position.** #4121 is the first milestone, pending maintainer
-acceptance; it is not completion of lane L. Its head pointer is bounded and
+**Current evidence position (rechecked 2026-09-13).** #4121 merged as
+`bde1632bb6f29aeb9a8b4ac23ead3e98ba2f2f55`, delivering the first candidate
+milestone. It remains subject to profile qualification and promotion; it is
+not completion of lane L. Its head pointer is bounded and
 operation/cursor lookups are indexed, but it retains full historical projections
 and counts a covering index for continuity. That count grows with history;
 current/accessed-row digests are checked, not every historical payload per read.

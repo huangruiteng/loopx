@@ -3,7 +3,7 @@
 - Status：Accepted，transaction-payoff 阶段进行中
 - Proposed by：LoopX maintainers
 - Date：2026-08-15
-- Last revised：2026-09-12
+- Last revised：2026-09-13
 - Scope：LoopX 控制面核心从 Python 到 TypeScript 的增量、replacement-first
   迁移；不长期维护两份语义实现
 - Tracking issue：[#3225](https://github.com/huangruiteng/loopx/issues/3225)
@@ -41,7 +41,7 @@ Provider-first text/note 更新现可携带当前执行 key 和租约版本，�
 禁用自动获取及委托覆盖。修改和回执受同一个 provider revision 保护，租约不变。
 显式 `--update-operation-id` 支持同凭证、同内容的 CLI 重试，过期或转交后仍可回放
 历史回执。缺失／陈旧凭证及历史非活跃租约拒绝；无凭证的旧回执指纹保持兼容。
-这是 #4105 的租约 fence 切片，不是完整 T1 metadata 或 T2 effect 闭合；不带新选项
+这是 #4152 的租约 fence 切片，不是完整 T1 metadata 或 T2 effect 闭合；不带新选项
 的 legacy 更新不变。用法见 [Todo 合同](../../project-agent-todo-contract.md#lease-fenced-canonical-textnote-updates)。
 
 Monitor metadata authoring 与 poll transition 现共用 `todos/monitor_metadata.ts`。
@@ -668,6 +668,22 @@ promotion、启动模型／任务、soak automation、发布或合并仍需各�
 
 stack 中的 schema identifier 清理是独立维护，不是上述路线的前置条件。只吸收所选
 完整事务确实依赖的下游改动；base 合并后，其余工作再 rebase。
+
+### 管家 collaboration 衔接检查点（2026-09-13）
+
+在 `7eb4b7bb1661bd5eff63a8725a33169792d5964b`，#4152 是已合并的
+lease-fenced text/note update 切片；#4121 SQLite 候选也已合并，但未晋级 provider。
+实际 head 更新早期执行卡暗示的代码待合并状态，不解除其资格保留条件。
+
+[管家/handoff RFC](capable-manager-semantic-handoff-v0.zh-CN.md) 遵循本文完整
+事务收益规则：拟议 collaboration owner 替换一个完整请求事务与旧语义 caller，
+不按字段增加 leaf RPC、不新增 TS daemon、不另造 Todo/Vision/lease authority。
+已有 `coordination/todo_continuation.ts` 仅支持 promoted-local、同机、已注册
+Agent、无 lease Todo，不是通用 pre-Todo/cross-Goal handoff；集成时保留其真实
+兼容语义。M2 提供迁移收益回执及跨提交恢复证据；M1 普通主机工具无需等待全部 TS
+或 provider 迁移。共享 Goal amendment 保留独立 proposal/commit 边界；受影响的
+存储或完整 writer 退役，继续遵守 shared-authority D1–D3/T4 条件。此说明不交付
+新的 runtime 行为。
 
 ## 0. 用一个例子说明决策
 

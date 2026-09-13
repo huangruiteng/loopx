@@ -3,7 +3,7 @@
 - 状态：草案；维护者评审中
 - 跟踪 Issue：[#3836](https://github.com/huangruiteng/loopx/issues/3836)
 - 日期：2026-09-02
-- 最后更新：2026-09-09
+- 最后更新：2026-09-13
 - 范围：多个对等 Agent 围绕同一个共享 Goal 协作，同时保留 canonical
   intent、每个 Agent 的执行 frontier、claim/lease 所有权，以及可审计的
   replan/amendment 决策
@@ -78,6 +78,23 @@ bounded evidence       bounded evidence
                  |
           每个 frontier rebase 或被 gate
 ```
+
+### 1.1 已核验交付与管家衔接检查点（2026-09-13）
+
+在 `7eb4b7bb1661bd5eff63a8725a33169792d5964b`，Stage 1 alignment reader
+与 Stage 2 proposal admission/retention 已存在，包括 #3874 和 #4143 的
+canonical Todo/lease 来源收敛。owner 是 `loopx/control_plane` 下的
+`goals/shared_goal_alignment.{py,ts}` 与 `goal_amendment_proposal.{py,ts}`。
+后者明确返回 `canonical_effect: none`，没有 approved 状态或 commit 路径。
+这些是已实现基础，不代表完整 canonical intent 版本化或 Stage 3–5 验收；RFC
+仍是 Draft。
+
+[管家/handoff RFC](capable-manager-semantic-handoff-v0.zh-CN.md) 在接收方评估时
+复用 alignment reader 获取工作基线；仅在分类后且请求符合准入契约时调用 amendment
+admission。它的请求、brief、投递版本不是 Goal-intent revision。
+管家更高的工具自由度不赋予共享 amendment authority；handoff 回执也不代所有
+peer 确认新 Goal。第 9.1 节及该 RFC 的 M2/A16 定义衔接，不新增第二 amendment
+policy。
 
 ## 2. 问题与当前边界
 
@@ -382,6 +399,30 @@ projection 与 proposal contract 交付；把 commit 映射进 provider-neutral 
 
 `Next Action` 继续是 compatibility prose 与 read projection。它永远不是 claim、
 lease、Goal amendment、replan settlement 或 authority decision。
+
+### 9.1 语义交接与执行路线衔接
+
+用既有 alignment 投影给接收方提供真实工作基线。意图内的路线重规划仍走接收方
+Vision/Replan；共享改变走本文分类与准入。Stage 2 可以保留来自请求的 proposal、
+来源/context 引用与明确未结义务，但不能报告共享 Goal 已改变。缺完整 intent
+authority，不能靠从 Todo provider head 或事件序号合成 revision 来补。
+
+下一步 amendment 实现仍是**一个有界 Stage 3 work-graph commit class**，
+不是广泛改验收/权限。先建立真实 canonical intent/policy 基线和经审阅事务映射，
+再证明精确基线准入、lease 影响、CAS 回执恢复、peer frontier rebase。复用
+[shared authority](shared-goal-authority-state-provider-v0.zh-CN.md) 的存储保证与
+[TS 事务迁移](typescript-control-plane-migration-v0.zh-CN.md) owner；两者存在不等于
+已经提供 amendment 语义。
+
+管家 M1 和普通 M2 handoff 可以先于此 commit class 交付。此前明确呈现
+proposal/admission 与提交不可用边界，无关工作继续。验收后，管家按已有 policy
+调用未来 Stage 3 `GoalAmendmentAuthority` commit owner，不添加永久管家超级用户、强制 peer 投票或重复主人确认。管家结果
+关联已提交 amendment 回执与 peer/在途处置。跨 Goal handoff 不合并不同 Goal
+意图，也不授权修改任一 Goal。
+
+管家 RFC 的 A16 复用既有 alignment/amendment fixture 验路线/提案/过期基线负例，
+随后验证已支持 commit 路径。本文保留 Stage 3–5 的实现与晋级责任；管家就绪不能
+悄悄把这些阶段标为完成。
 
 ## 10. 分阶段交付
 

@@ -87,12 +87,13 @@ changes.
 - [Shared Goal Alignment and Governed Amendment Protocol v0](shared-goal-alignment-and-governed-amendment-v0.md)
   ([中文版](shared-goal-alignment-and-governed-amendment-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
-  - **Delivery on `main`:** Proposal only.
-  - **Current boundary:** Existing peer lanes, unclaimed work, claims/leases,
-    Agent-scoped Goal Vision/Replan, and provider-neutral authority are inputs.
-    A read-only shared-alignment projection, automated amendment policy,
-    verifier boundary, and canonical Goal-amendment transaction have not
-    shipped.
+  - **Delivery on `main`:** Stage 1/2 read-only alignment and proposal-admission
+    foundations implemented; the RFC remains a draft.
+  - **Current boundary:** Current Todo/lease source-basis projection and retained
+    amendment admission have no canonical effect. Full Goal-intent versioning,
+    governed commit policy/verifier, lease-impact handling and Stage 3+
+    qualification remain unshipped. Manager handoff consumes these boundaries;
+    it does not provide another amendment writer.
 - [Goal Direction Baseline v0](goal-direction-baseline-v0.md)
   ([中文版](goal-direction-baseline-v0.zh-CN.md))
   - **RFC status:** Draft, under maintainer review.
@@ -155,7 +156,8 @@ changes.
   - **Current boundary:** Proposes ordinary host-tool autonomy, persistent scoped
     conversations, long-horizon semantic continuation and automatic result delivery.
     Includes an official Grok Bot study distinguishing availability from goal
-    continuation; M0–M4 and A1–A14 define delivery and acceptance.
+    continuation; M0–M4 and A1–A16 define delivery and acceptance, with explicit
+    alignment, shared-authority and TS migration dependencies.
     Runtime-profile promotion and generic handoff migration have not shipped.
 
 - [Single-Owner Local Daemon v0](single-owner-local-daemon-v0.md)
