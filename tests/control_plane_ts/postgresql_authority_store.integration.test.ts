@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { Pool, type PoolClient } from "pg";
 
@@ -11,6 +14,7 @@ import {
   type PostgreSqlAuthorityConnection,
   type PostgreSqlAuthorityDatabase,
 } from "../../loopx/control_plane/coordination/postgresql_authority_store.ts";
+import { openLocalAuthorityStoreHandle } from "../../loopx/control_plane/coordination/local_authority_provider.ts";
 import {
   authorityStoreCommitFixture as commit,
   registerAuthorityStoreConformance,
@@ -212,6 +216,38 @@ if (database && installed) {
     assert.deepEqual(results.map((result) => result.status), ["applied", "applied"]);
     assert.equal((await first.readReceipt("shared-operation")).status, "found");
     assert.equal((await second.readReceipt("shared-operation")).status, "found");
+  });
+
+  test("local provider selector switches to a real PostgreSQL tenant", async (t) => {
+    await installed;
+    const root = await mkdtemp(join(tmpdir(), "loopx-local-provider-pg-"));
+    const tenantId = `tenant-${randomUUID()}`;
+    const goalId = `goal-${randomUUID()}`;
+    t.after(async () => {
+      await cleanScope(tenantId, goalId);
+      await rm(root, {recursive: true, force: true});
+    });
+    await mkdir(join(root, "authority"), {recursive: true});
+    const marker = join(root, "authority", `provider-${createHash("sha256").update(goalId).digest("hex")}.json`);
+    await writeFile(marker, JSON.stringify({
+      schema_version: "loopx_local_authority_provider_v0",
+      provider: "postgresql",
+      goal_id: goalId,
+      tenant_id: tenantId,
+      store_identity: STORE_IDENTITY,
+    }));
+    const handle = await openLocalAuthorityStoreHandle(root, goalId, {
+      openPostgresqlStore: selection => new PostgreSqlAuthorityStore(database, {
+        tenant_id: selection.tenant_id,
+        goal_id: selection.goal_id,
+      }),
+    });
+    assert.equal(handle.provider, "postgresql");
+    assert.equal(handle.sourceAuthority, "postgresql_v0");
+    assert.equal(handle.store.providerKind, "postgresql");
+    const applied = await handle.store.commitAuthority(commit(null, "selector-operation", 1, 1));
+    assert.equal(applied.status, "applied");
+    assert.equal((await handle.store.readReceipt("selector-operation")).status, "found");
   });
 
   test("PostgreSQL provider rolls back head, events, and receipts together", async (t) => {

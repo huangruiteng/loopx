@@ -27,6 +27,12 @@ const envelope = JSON.parse(readFileSync(new URL(
   linked_decision_count: number;
   completion_target_index: number;
   supersede_target_index: number;
+  provider_matrix: {
+    default: "file";
+    local_profiles: string[];
+    service_profiles: string[];
+    service_requires_factory: true;
+  };
   semantic_cases: Record<string, Record<string, unknown>>;
   presentation_cases: Record<string, Record<string, unknown>>;
   update_cases: Record<string, Record<string, unknown>>;
@@ -58,6 +64,12 @@ export interface ProductionScaleCoordinationFixture {
   readonly semantic_cases: Readonly<Record<string, Record<string, unknown>>>;
   readonly presentation_cases: Readonly<Record<string, Record<string, unknown>>>;
   readonly update_cases: Readonly<Record<string, Record<string, unknown>>>;
+  readonly provider_matrix: Readonly<{
+    default: "file";
+    local_profiles: readonly string[];
+    service_profiles: readonly string[];
+    service_requires_factory: true;
+  }>;
 }
 
 function statusSeries(
@@ -242,6 +254,12 @@ export function productionScaleCoordinationFixture(
     semantic_cases: envelope.semantic_cases,
     presentation_cases: envelope.presentation_cases,
     update_cases: envelope.update_cases,
+    provider_matrix: {
+      default: envelope.provider_matrix.default,
+      local_profiles: [...envelope.provider_matrix.local_profiles],
+      service_profiles: [...envelope.provider_matrix.service_profiles],
+      service_requires_factory: envelope.provider_matrix.service_requires_factory,
+    },
   };
 }
 

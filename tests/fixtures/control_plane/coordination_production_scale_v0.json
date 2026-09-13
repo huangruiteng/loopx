@@ -20,6 +20,12 @@
   "linked_decision_count": 12,
   "completion_target_index": 160,
   "supersede_target_index": 161,
+  "provider_matrix": {
+    "default": "file",
+    "local_profiles": ["file", "sqlite"],
+    "service_profiles": ["postgresql"],
+    "service_requires_factory": true
+  },
   "semantic_cases": {
     "title_only_monitor": {
       "todo_id": "todo_fixture_title_monitor",

@@ -13,4 +13,10 @@ test("production-scale fixture carries cross-RFC semantic edge cases", () => {
   assert.equal(cases.global_gate_without_goal_binding.global_gate, true);
   assert.equal(cases.global_gate_without_goal_binding.goal_bound, false);
   assert.equal(cases.expired_lease.lease_epoch, 7);
+  assert.deepEqual(fixture.provider_matrix, {
+    default: "file",
+    local_profiles: ["file", "sqlite"],
+    service_profiles: ["postgresql"],
+    service_requires_factory: true,
+  });
 });
