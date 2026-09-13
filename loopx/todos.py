@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from contextlib import ExitStack
 from json import dumps as json_dumps
 from pathlib import Path
@@ -1419,6 +1420,8 @@ def complete_goal_todo(
     evidence: str | None = None,
     completion_turn_key: str | None = None,
     completion_identity_source: str | None = None,
+    completion_delivery_workspace: Mapping[str, Any] | None = None,
+    completion_validation_workspace_path: Path | None = None,
     task_lease_idempotency_key: str | None = None,
     task_lease_expected_version: int | None = None,
     note: str | None = None,
@@ -1484,6 +1487,8 @@ def complete_goal_todo(
         ),
         completion_policy_facts=completion_policy_facts,
         requested_successor_todo_ids=normalized_successor_todo_ids,
+        completion_delivery_workspace=completion_delivery_workspace,
+        completion_validation_workspace_path=completion_validation_workspace_path,
     )
     validation_failure = validation_gate.get("failure")
     if validation_failure is not None:

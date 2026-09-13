@@ -252,6 +252,28 @@ loopx todo update \
 workspace isolation, not write authority; claim/lease, capabilities, the goal
 boundary, and repository policy continue to apply.
 
+Completion validation follows the same routing. If `task_repository` differs
+from the Goal repository, LoopX binds the caller-approved command to a
+turn-bound delivery-workspace receipt (an existing writeback receipt or the
+exact Turn's host-verified pre-completion snapshot) and executes it only from a
+clean linked worktree whose canonical origin matches that identity. A missing receipt,
+canonical checkout, dirty or deleted worktree, and repository mismatch all
+fail closed before command execution with a path-free
+`validation_blocked_completion` receipt. When no separate repository is
+declared, validation keeps the Goal repository as its default workspace. The
+CLI and managed Turn use this shared completion effect; frontend and Lark
+consume the same receipt projection and do not own a second cwd setting.
+
+完成校验遵循同一套路由规则。若 `task_repository` 与 Goal 仓库不同，LoopX
+会把调用方预先声明的校验命令绑定到当前 Turn 的 delivery-workspace receipt（已有
+writeback receipt，或同一 Turn 中 host 在完成前验证的 snapshot），且只在
+canonical origin 匹配、状态干净的 linked worktree 中执行。receipt 缺失、使用
+canonical checkout、worktree 脏或已删除、仓库身份不匹配时，系统都会在命令执行
+前 fail closed，并返回不泄露本地路径的 `validation_blocked_completion` receipt。
+未声明独立仓库时，仍以 Goal 仓库作为默认校验 workspace。CLI 与 managed Turn
+共享同一个 completion effect；前端与 Lark 只消费同源 receipt 投影，不新增 cwd
+配置源。
+
 `quota should-run --agent-id <agent-id>` is the preflight for every peer. When
 the selected task writes repository state and the peer is in a non-git,
 unrelated, or non-isolated workspace, it returns `workspace_guard` and blocks

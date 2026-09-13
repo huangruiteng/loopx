@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ..control_plane.coordination.local_authority import read_canonical_todo_fields_if_promoted
+from ..control_plane.agents.workspace_guard import capture_delivery_workspace
 from ..control_plane.todos.contract import (
     replan_successor_semantic_binding,
 )
@@ -392,6 +393,7 @@ def handle_todo_command(
             completion_error = None
             completion_turn_key = None
             completion_identity_source = None
+            completion_delivery_workspace = None
             if getattr(args, "turn_instance_id", None):
                 runtime_root = resolve_runtime_root(
                     load_registry(registry_path),
@@ -458,6 +460,24 @@ def handle_todo_command(
                     }
                 completion_turn_key = identity.effect_id
                 completion_identity_source = "turn_settlement"
+                writeback_run = settlement_readback.writeback_run
+                if isinstance(writeback_run, dict) and isinstance(
+                    writeback_run.get("delivery_workspace"), dict
+                ):
+                    completion_delivery_workspace = dict(
+                        writeback_run["delivery_workspace"]
+                    )
+                elif todo.get("task_repository"):
+                    # Completion validation precedes accountable refresh, so
+                    # the exact Turn can legitimately have no writeback row
+                    # yet. Bind a freshly verified current-worktree snapshot
+                    # to this already-read settlement identity rather than
+                    # introducing an arbitrary cwd option or a circular gate.
+                    completion_delivery_workspace = capture_delivery_workspace(
+                        Path.cwd(),
+                        peer_independent_worktree_required=True,
+                        repository_source="todo.complete.turn_settlement",
+                    )
             elif getattr(args, "completion_identity_key", None):
                 completion_turn_key = str(args.completion_identity_key)
                 completion_identity_source = "lifecycle_reentry"
@@ -472,6 +492,8 @@ def handle_todo_command(
                     evidence=args.evidence,
                     completion_turn_key=completion_turn_key,
                     completion_identity_source=completion_identity_source,
+                    completion_delivery_workspace=completion_delivery_workspace,
+                    completion_validation_workspace_path=Path.cwd(),
                     task_lease_idempotency_key=args.task_lease_idempotency_key,
                     task_lease_expected_version=args.task_lease_expected_version,
                     note=args.note,

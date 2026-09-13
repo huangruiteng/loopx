@@ -84,6 +84,7 @@ test("declared validation is one external effect between two reductions", () => 
         validation_command_argv: ["python", "-c", "pass"],
         validation_label: "focused smoke",
         validation_timeout_seconds: "5",
+        task_repository: "git:github.com/example/repo-b",
       },
     }),
   );
@@ -100,6 +101,7 @@ test("declared validation is one external effect between two reductions", () => 
       validation_argv: ["python", "-c", "pass"],
       validation_label: "focused smoke",
       validation_timeout_seconds: 5,
+      task_repository: "git:github.com/example/repo-b",
     },
   });
 

@@ -119,6 +119,12 @@ def _route_terminal_call(command: str, call: Mapping[str, Any]) -> dict[str, Any
         completion_identity_source=(
             call.get("completion_identity_source") if complete else None
         ),
+        completion_delivery_workspace=(
+            call.get("completion_delivery_workspace") if complete else None
+        ),
+        completion_validation_workspace_path=(
+            call.get("completion_validation_workspace_path") if complete else None
+        ),
         task_lease_idempotency_key=call.get("task_lease_idempotency_key"),
         task_lease_expected_version=_non_negative_integer(
             call.get("task_lease_expected_version"),
@@ -280,6 +286,8 @@ def terminal_canonical_todo_if_promoted(
     reason: str | None,
     completion_turn_key: str | None,
     completion_identity_source: str | None,
+    completion_delivery_workspace: Mapping[str, Any] | None,
+    completion_validation_workspace_path: Path | None,
     task_lease_idempotency_key: str | None,
     task_lease_expected_version: int | None,
     no_followup: bool,
@@ -425,6 +433,8 @@ def terminal_canonical_todo_if_promoted(
             effect=effect,
             registry_path=registry_path,
             goal_id=goal_id,
+            delivery_workspace=completion_delivery_workspace,
+            validation_workspace_path=completion_validation_workspace_path,
         )
         result = effect_runtime_result(
             "coordination.local_authority.todo_terminal", request
