@@ -2937,6 +2937,121 @@ def test_pending_selection_preserves_workspace_repair_then_reenters_same_turn(
     assert _heartbeat_receipt_count(runtime, turn_instance_id) == 2
 
 
+def test_selection_added_after_pending_guard_reports_final_boundary(
+    tmp_path: Path,
+) -> None:
+    """A late Todo must re-enter the final scope guard without a false receipt."""
+
+    from canonical_authority_fixture import initialize_canonical_authority
+    from loopx.control_plane.coordination.runtime_shadow import (
+        build_todo_runtime_shadow_projection,
+    )
+    from loopx.todos import list_goal_todos
+
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_selectable_alternative(project)
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    items = list_goal_todos(
+        registry_path=registry_path,
+        goal_id=GOAL_ID,
+        role="agent",
+    )["todos"]
+    projection = build_todo_runtime_shadow_projection(
+        goal_id=GOAL_ID,
+        todos=items,
+        leases=[],
+        handoff_mode="soft_claim",
+    )
+    initialize_canonical_authority(
+        runtime,
+        GOAL_ID,
+        projection,
+        state_path=state_path,
+    )
+
+    turn_instance_id = "turn-selection-added-after-guard"
+    guard_args = (
+        "quota",
+        "should-run",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--codex-app",
+        "--turn-instance-id",
+        turn_instance_id,
+        "--scan-path",
+        str(project),
+    )
+    first_rc, first = _run_cli(registry_path, runtime, *guard_args)
+    assert first_rc == 0, first
+    assert first["interaction_contract"]["agent_channel"]["selection_required"] is True
+    assert "settlement_identity" not in first["heartbeat_receipt"]
+    first_receipt = next(
+        event
+        for event in _heartbeat_receipt_events(runtime, turn_instance_id)
+    )
+
+    added_rc, added = _run_cli(
+        registry_path,
+        runtime,
+        "todo",
+        "add",
+        "--goal-id",
+        GOAL_ID,
+        "--role",
+        "agent",
+        "--task-class",
+        "advancement_task",
+        "--action-kind",
+        "implement",
+        "--claimed-by",
+        AGENT_ID,
+        "--text",
+        "Validate the new canonical task",
+        "--task-repository",
+        "git:github.com/example/read-only-settlement-fixture",
+        "--required-write-scope",
+        "loopx/**",
+    )
+    assert added_rc == 0, added
+    selection_args = (*guard_args, "--todo-id", added["todo_id"])
+    rejected_rc, rejected = _run_cli(
+        registry_path,
+        runtime,
+        *selection_args,
+    )
+
+    assert rejected_rc == 1, rejected
+    assert rejected["error_code"] == "quota_action_selection_deferred"
+    assert rejected["action_selection_qualification"]["reason"] == "control_repair"
+    assert rejected["action_selection_qualification"]["requested_todo_id"] == (
+        added["todo_id"]
+    )
+    assert rejected["normal_delivery_allowed"] is False
+    assert rejected["heartbeat_receipt"]["status"] == "replayed"
+    assert _heartbeat_receipt_events(runtime, turn_instance_id) == [first_receipt]
+
+    repeated_rc, repeated = _run_cli(
+        registry_path,
+        runtime,
+        *selection_args,
+    )
+    assert repeated_rc == 1, repeated
+    assert repeated["action_selection_qualification"] == (
+        rejected["action_selection_qualification"]
+    )
+    assert "rerun quota should-run" in repeated["recommended_action"]
+    retry_rc, retry = _run_cli(
+        registry_path,
+        runtime,
+        *guard_args,
+    )
+    assert retry_rc == 0, retry
+    assert retry["normal_delivery_allowed"] is False
+    assert retry["workspace_repair_allowed"] or retry["self_repair_allowed"]
+
+
 def test_pending_action_selection_does_not_preempt_newly_due_monitor(
     tmp_path: Path,
 ) -> None:
