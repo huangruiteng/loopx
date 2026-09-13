@@ -10,6 +10,7 @@ from ..coordination.coordination_state_contract_generated import (
     ACTION_PORTFOLIO_SELECTION_REQUEST_SCHEMA,
     ACTION_PORTFOLIO_SELECTION_RESULT_SCHEMA,
 )
+from ..todos.contract import normalize_todo_id, normalize_todo_task_class
 from .planning_inventory import (
     build_quota_planning_inventory_request,
     compact_planning_candidate,
@@ -128,3 +129,41 @@ def qualify_action_selection(
     ):
         raise RuntimeError("TypeScript action-selection qualification shape mismatch")
     return dict(result)
+
+
+def qualify_action_selection_from_inventory(
+    *,
+    requested_todo_id: str,
+    candidate: Mapping[str, Any] | None,
+    source_items: list[dict[str, Any]],
+    should_run: bool,
+    normal_delivery_allowed: bool,
+    delivery_preemptions: list[str],
+) -> dict[str, Any]:
+    """Resolve the requested task class before invoking the typed reducer."""
+
+    requested_item = next(
+        (
+            item
+            for item in source_items
+            if normalize_todo_id(item.get("todo_id")) == requested_todo_id
+        ),
+        None,
+    )
+    requested_task_class = (
+        normalize_todo_task_class(
+            requested_item.get("task_class"),
+            text=str(requested_item.get("text") or ""),
+            action_kind=requested_item.get("action_kind"),
+        )
+        if requested_item is not None
+        else None
+    )
+    return qualify_action_selection(
+        requested_todo_id=requested_todo_id,
+        candidate=candidate,
+        requested_task_class=requested_task_class,
+        should_run=should_run,
+        normal_delivery_allowed=normal_delivery_allowed,
+        delivery_preemptions=delivery_preemptions,
+    )

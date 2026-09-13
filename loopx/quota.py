@@ -36,6 +36,7 @@ from .control_plane.quota.monitor_poll import (
     build_quota_monitor_poll_event as build_quota_monitor_poll_event,
     find_quota_monitor_poll_turn,
     record_quota_monitor_poll_for_decision,
+    resolve_due_monitor_candidate,
 )
 from .control_plane.quota.recent_runs import (
     goal_latest_run as _goal_latest_run,
@@ -1080,6 +1081,22 @@ def record_quota_monitor_poll(
     normalized_receipt_todo_id = (
         normalize_todo_id(receipt_bound_todo_id) if receipt_bound_todo_id else None
     )
+    raw_runtime_root = status_payload.get("runtime_root")
+    runtime_root = (
+        Path(str(raw_runtime_root)).expanduser() if raw_runtime_root else None
+    )
+    resolved_monitor = resolve_due_monitor_candidate(
+        registry_path=registry_path,
+        runtime_root=runtime_root,
+        goal_id=safe_goal_id,
+        todo_id=normalized_requested_todo_id,
+        target_key=target_key,
+    )
+    normalized_observation_todo_id = normalized_requested_todo_id or (
+        normalize_todo_id(resolved_monitor.get("todo_id"))
+        if resolved_monitor
+        else None
+    )
 
     def should_run(current_status: dict[str, Any]) -> dict[str, Any]:
         decision_status = current_status
@@ -1110,8 +1127,8 @@ def record_quota_monitor_poll(
     before = should_run(status_payload)
     if (
         normalized_receipt_todo_id
-        and normalized_requested_todo_id
-        and normalized_requested_todo_id != normalized_receipt_todo_id
+        and normalized_observation_todo_id
+        and normalized_observation_todo_id != normalized_receipt_todo_id
     ):
         selected = (
             before.get("selected_todo")
@@ -1136,19 +1153,24 @@ def record_quota_monitor_poll(
         auxiliary_due_monitor = any(
             isinstance(candidate, Mapping)
             and normalize_todo_id(candidate.get("todo_id"))
-            == normalized_requested_todo_id
+            == normalized_observation_todo_id
             and candidate.get("task_class") == TODO_TASK_CLASS_MONITOR
             and normalize_todo_claimed_by(candidate.get("claimed_by"))
             in {None, normalized_agent_id}
             for candidate in candidate_values
         )
-        raw_runtime_root = status_payload.get("runtime_root")
+        auxiliary_registry_due = bool(
+            resolved_monitor
+            and normalize_todo_claimed_by(resolved_monitor.get("claimed_by"))
+            in {None, normalized_agent_id}
+        )
         existing_observation = (
             find_quota_monitor_poll_turn(
                 Path(str(raw_runtime_root)).expanduser(),
                 goal_id=safe_goal_id,
                 agent_id=normalized_agent_id or "",
                 turn_instance_id=str(turn_instance_id or ""),
+                todo_id=normalized_observation_todo_id,
             )
             if raw_runtime_root and agent_id and turn_instance_id
             else None
@@ -1156,7 +1178,7 @@ def record_quota_monitor_poll(
         auxiliary_replay = bool(
             isinstance(existing_observation, Mapping)
             and normalize_todo_id(existing_observation.get("todo_id"))
-            == normalized_requested_todo_id
+            == normalized_observation_todo_id
             and normalize_todo_id(
                 existing_observation.get("settlement_todo_id")
             )
@@ -1167,16 +1189,22 @@ def record_quota_monitor_poll(
             == normalized_receipt_todo_id
             and selected.get("task_class") == TODO_TASK_CLASS_ADVANCEMENT
             and selected.get("selection_binding") == "heartbeat_receipt"
-            and (auxiliary_due_monitor or auxiliary_replay)
+            and (
+                auxiliary_due_monitor
+                or auxiliary_registry_due
+                or auxiliary_replay
+            )
         )
         if not auxiliary_observation_allowed:
             raise HeartbeatReceiptIdentityConflictError(
                 "turn-scoped monitor-poll Todo conflicts with the committed "
                 "heartbeat receipt: expected settlement Todo "
                 f"{normalized_receipt_todo_id}, requested observation Todo "
-                f"{normalized_requested_todo_id}"
+                f"{normalized_observation_todo_id}"
             )
-    effective_todo_id = normalized_requested_todo_id or normalized_receipt_todo_id
+    effective_todo_id = normalized_observation_todo_id or (
+        normalized_receipt_todo_id if not target_key else None
+    )
     return record_quota_monitor_poll_for_decision(
         before,
         status_payload,

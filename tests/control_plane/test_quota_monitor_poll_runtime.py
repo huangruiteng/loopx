@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from loopx.control_plane.effect_runtime import EffectRuntimeRejected
@@ -100,3 +101,49 @@ def test_capability_retry_uses_typed_admission_code_not_error_copy(
         render_markdown=lambda _record: "unused",
     )
     assert "capability_retry" not in prose_only
+
+
+def test_turn_monitor_effect_identity_replays_legacy_receipt_then_scopes_new_todo(
+    tmp_path,
+) -> None:
+    goal_id = "monitor-runtime-fixture"
+    agent_id = "codex-main-control"
+    turn_id = "turn-legacy-monitor-identity"
+    runs = tmp_path / "goals" / goal_id / "runs"
+    runs.mkdir(parents=True)
+    legacy_effect_id = f"quota-monitor-poll:{goal_id}:{agent_id}:{turn_id}"
+    (runs / "index.jsonl").write_text(
+        json.dumps(
+            {
+                "classification": monitor_poll.QUOTA_MONITOR_POLL_CLASSIFICATION,
+                "goal_id": goal_id,
+                "agent_id": agent_id,
+                "turn_instance_id": turn_id,
+                "todo_id": "todo_monitor_legacy",
+                "target_key": "legacy-target",
+                "quota_monitor_poll_commit": {"effect_id": legacy_effect_id},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert monitor_poll._monitor_poll_effect_id(
+        runtime_root=tmp_path,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        turn_instance_id=turn_id,
+        todo_id="todo_monitor_legacy",
+        target_key="legacy-target",
+    ) == legacy_effect_id
+    assert monitor_poll._monitor_poll_effect_id(
+        runtime_root=tmp_path,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        turn_instance_id=turn_id,
+        todo_id="todo_monitor_new",
+        target_key="new-target",
+    ) == (
+        f"quota-monitor-poll:{goal_id}:{agent_id}:{turn_id}:"
+        "todo:todo_monitor_new"
+    )

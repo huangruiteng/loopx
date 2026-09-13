@@ -321,6 +321,27 @@ def _append_newly_due_monitor(
     )
 
 
+def _append_due_monitors(
+    project: Path,
+    monitors: list[tuple[str, str]],
+) -> None:
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_text = state_path.read_text(encoding="utf-8")
+    rows = "".join(
+        "- [ ] [P2-monitor] Observe an independent due target.\n"
+        f"  <!-- loopx:todo todo_id={todo_id} status=open "
+        "task_class=continuous_monitor action_kind=observe "
+        f"claimed_by={AGENT_ID} target_key={target_key} "
+        "required_capabilities=network%2Cexternal_evidence_poll "
+        "cadence=1m next_due_at=2000-01-01T00%3A00%3A00Z -->\n"
+        for todo_id, target_key in monitors
+    )
+    state_path.write_text(
+        state_text.replace("## Agent Todo\n\n", f"## Agent Todo\n\n{rows}"),
+        encoding="utf-8",
+    )
+
+
 def _append_blocking_user_gate(project: Path) -> None:
     state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
     state_text = state_path.read_text(encoding="utf-8")
@@ -2970,6 +2991,135 @@ def test_pending_action_selection_can_bind_exact_newly_due_monitor(
     assert settled["execution_obligation"]["must_attempt_work"] is False
     assert settled["heartbeat_receipt"]["status"] == "replayed"
     assert _spend_run_count(runtime) == 0
+
+
+def test_receipt_bound_advancement_turn_records_multiple_due_monitors(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    monitors = [
+        ("todo_fixture_monitor_alpha", "monitor-alpha"),
+        ("todo_fixture_monitor_beta", "monitor-beta"),
+        ("todo_fixture_monitor_gamma", "monitor-gamma"),
+    ]
+    _append_due_monitors(project, monitors)
+    turn_instance_id = "turn-multiple-auxiliary-monitors"
+    guard_args = (
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        turn_instance_id,
+        "--scan-path",
+        str(project),
+        "--available-capability",
+        "network",
+        "--available-capability",
+        "external_evidence_poll",
+    )
+    first_rc, first = _run_cli(registry_path, runtime, *guard_args)
+
+    assert first_rc == 0, first
+    assert first["selected_todo"]["todo_id"] == TODO_ID
+    assert first["heartbeat_receipt"]["settlement_identity"]["todo_id"] == (
+        TODO_ID
+    )
+    projected_due = [
+        *(first["work_lane_contract"].get("monitor_due_items") or []),
+        *(first["agent_todo_summary"].get("monitor_due_items") or []),
+    ]
+    projected_due_ids = {
+        item["todo_id"] for item in projected_due if item.get("todo_id")
+    }
+    assert projected_due_ids < {todo_id for todo_id, _ in monitors}
+
+    poll_args: list[tuple[str, ...]] = []
+    for index, (todo_id, target_key) in enumerate(monitors):
+        args = (
+            "quota",
+            "monitor-poll",
+            "--codex-app",
+            "--goal-id",
+            GOAL_ID,
+            "--agent-id",
+            AGENT_ID,
+            "--turn-instance-id",
+            turn_instance_id,
+            "--todo-id",
+            todo_id,
+            *(() if index == 2 else ("--target-key", target_key)),
+            "--result-hash",
+            f"unchanged-{target_key}",
+            "--available-capability",
+            "network",
+            "--available-capability",
+            "external_evidence_poll",
+            "--execute",
+            "--scan-path",
+            str(project),
+        )
+        poll_args.append(args)
+        poll_rc, poll = _run_cli(registry_path, runtime, *args)
+        assert poll_rc == 0, poll
+        assert poll["settlement_todo_id"] == TODO_ID
+        assert poll["todo_id"] == todo_id
+        assert poll["target_key"] == target_key
+        assert poll["material_change"] is False
+        assert poll["replayed"] is False
+
+    for args in poll_args:
+        replay_rc, replay = _run_cli(registry_path, runtime, *args)
+        assert replay_rc == 0, replay
+        assert replay["settlement_todo_id"] == TODO_ID
+        assert replay["replayed"] is True
+        assert replay["appended"] is False
+
+    changed_args = list(poll_args[1])
+    changed_args[changed_args.index("unchanged-monitor-beta")] = (
+        "changed-monitor-beta"
+    )
+    conflict_rc, conflict = _run_cli(
+        registry_path,
+        runtime,
+        *changed_args,
+    )
+    assert conflict_rc == 1, conflict
+    assert conflict["error_code"] == "heartbeat_receipt_identity_conflict"
+    assert conflict["conflict_fields"] == ["result_hash"]
+
+    index_path = runtime / "goals" / GOAL_ID / "runs" / "index.jsonl"
+    observation_rows = [
+        json.loads(line)
+        for line in index_path.read_text(encoding="utf-8").splitlines()
+        if json.loads(line).get("classification") == "quota_monitor_poll"
+    ]
+    effect_ids = {
+        row["quota_monitor_poll_commit"]["effect_id"]
+        for row in observation_rows
+    }
+    assert len(observation_rows) == 3
+    assert effect_ids == {
+        f"quota-monitor-poll:{GOAL_ID}:{AGENT_ID}:{turn_instance_id}:todo:{todo_id}"
+        for todo_id, _ in monitors
+    }
+    assert {
+        row["todo_id"] for row in observation_rows
+    } == {todo_id for todo_id, _ in monitors}
+    assert all(
+        row["settlement_todo_id"] == TODO_ID for row in observation_rows
+    )
+    assert _spend_run_count(runtime) == 0
+
+    settled_rc, settled = _run_cli(registry_path, runtime, *guard_args)
+    assert settled_rc == 0, settled
+    assert settled["selected_todo"]["todo_id"] == TODO_ID
+    assert settled["heartbeat_receipt"]["settlement_identity"]["todo_id"] == (
+        TODO_ID
+    )
 
 
 def test_pending_action_selection_does_not_commit_after_new_user_gate(

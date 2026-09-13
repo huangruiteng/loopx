@@ -109,7 +109,7 @@ def _vision_wait_state(before: dict[str, Any]) -> dict[str, Any]:
     return _mapping(projection.get("vision_wait_state"))
 
 
-def _registry_due_monitor(
+def resolve_due_monitor_candidate(
     *,
     registry_path: Path | None,
     runtime_root: Path | None,
@@ -152,7 +152,7 @@ def _decision_packet(
 ) -> dict[str, Any]:
     lane = _mapping(before.get("work_lane_contract"))
     due_candidates = _due_monitor_candidates(before)
-    registry_due = _registry_due_monitor(
+    registry_due = resolve_due_monitor_candidate(
         registry_path=registry_path,
         runtime_root=runtime_root,
         goal_id=goal_id,
@@ -374,7 +374,11 @@ def _find_monitor_poll_turn(
     goal_id: str,
     agent_id: str,
     turn_instance_id: str,
+    todo_id: str | None = None,
+    target_key: str | None = None,
 ) -> dict[str, Any] | None:
+    normalized_todo_id = normalize_todo_id(todo_id) if todo_id else None
+    normalized_target_key = str(target_key or "").strip() or None
     try:
         lines = index_path.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -391,6 +395,15 @@ def _find_monitor_poll_turn(
             and str(row.get("goal_id") or "") == goal_id
             and str(row.get("agent_id") or "") == agent_id
             and str(row.get("turn_instance_id") or "") == turn_instance_id
+            and (
+                normalized_todo_id is None
+                or normalize_todo_id(row.get("todo_id")) == normalized_todo_id
+            )
+            and (
+                normalized_target_key is None
+                or str(row.get("target_key") or "").strip()
+                == normalized_target_key
+            )
         ):
             return row
     return None
@@ -402,8 +415,10 @@ def find_quota_monitor_poll_turn(
     goal_id: str,
     agent_id: str,
     turn_instance_id: str,
+    todo_id: str | None = None,
+    target_key: str | None = None,
 ) -> dict[str, Any] | None:
-    """Return the persisted monitor observation for one heartbeat turn."""
+    """Return the latest matching monitor observation for one heartbeat turn."""
 
     normalized_turn_id = normalize_turn_instance_id(turn_instance_id)
     if not normalized_turn_id:
@@ -413,7 +428,54 @@ def find_quota_monitor_poll_turn(
         goal_id=goal_id,
         agent_id=agent_id,
         turn_instance_id=normalized_turn_id,
+        todo_id=todo_id,
+        target_key=target_key,
     )
+
+
+def _persisted_monitor_effect_id(record: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(record, Mapping):
+        return None
+    metadata = record.get("quota_monitor_poll_commit")
+    if not isinstance(metadata, Mapping):
+        return None
+    return str(metadata.get("effect_id") or "").strip() or None
+
+
+def _monitor_poll_effect_id(
+    *,
+    runtime_root: Path,
+    goal_id: str,
+    agent_id: str,
+    turn_instance_id: str | None,
+    todo_id: str | None,
+    target_key: str | None,
+) -> str:
+    if not turn_instance_id:
+        return f"quota-monitor-poll:{goal_id}:{uuid.uuid4().hex}"
+
+    # Reuse a shipped turn-only receipt for an exact monitor identity. This
+    # preserves crash recovery across upgrades while allowing later monitors
+    # in the same settlement Turn to receive their own effect identity.
+    existing = find_quota_monitor_poll_turn(
+        runtime_root,
+        goal_id=goal_id,
+        agent_id=agent_id,
+        turn_instance_id=turn_instance_id,
+        todo_id=todo_id,
+        target_key=None if todo_id else target_key,
+    )
+    existing_effect_id = _persisted_monitor_effect_id(existing)
+    if existing_effect_id:
+        return existing_effect_id
+
+    base = f"quota-monitor-poll:{goal_id}:{agent_id}:{turn_instance_id}"
+    if todo_id:
+        return f"{base}:todo:{todo_id}"
+    if target_key:
+        target_digest = hashlib.sha256(target_key.encode("utf-8")).hexdigest()
+        return f"{base}:target:sha256:{target_digest}"
+    return base
 
 
 def _status_with_monitor_poll(
@@ -639,10 +701,13 @@ def record_quota_monitor_poll_for_decision(
     runtime_root = Path(str(raw_runtime_root)).expanduser()
     index_path = runtime_root / "goals" / goal_id / "runs" / "index.jsonl"
     decision_agent_id = quota_decision_agent_id(before)
-    effect_id = (
-        f"quota-monitor-poll:{goal_id}:{decision_agent_id}:{normalized_turn_id}"
-        if normalized_turn_id
-        else f"quota-monitor-poll:{goal_id}:{uuid.uuid4().hex}"
+    effect_id = _monitor_poll_effect_id(
+        runtime_root=runtime_root,
+        goal_id=goal_id,
+        agent_id=decision_agent_id,
+        turn_instance_id=normalized_turn_id,
+        todo_id=safe_todo_id,
+        target_key=safe_target_key,
     )
     if execute and (safe_todo_id or safe_target_key):
         from ..scheduler.provider_monitor_poll import (
