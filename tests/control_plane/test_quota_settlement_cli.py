@@ -2473,6 +2473,70 @@ def test_agent_can_select_eligible_todo_outside_bounded_suggestions(
     assert _heartbeat_receipt_count(runtime, turn_instance_id) == 2
 
 
+def test_same_turn_can_select_eligible_todo_created_after_unbound_receipt(
+    tmp_path: Path,
+) -> None:
+    project, runtime, registry_path = _write_fixture(tmp_path)
+    _configure_selectable_alternative(project)
+    turn_instance_id = "turn-agent-selection-after-todo-create"
+    late_todo_id = "todo_fixture_late_alternative"
+    guard_args = (
+        "quota",
+        "should-run",
+        "--codex-app",
+        "--goal-id",
+        GOAL_ID,
+        "--agent-id",
+        AGENT_ID,
+        "--turn-instance-id",
+        turn_instance_id,
+        "--scan-path",
+        str(project),
+    )
+    first_rc, first = _run_cli(registry_path, runtime, *guard_args)
+    assert first_rc == 0, first
+    assert "settlement_identity" not in first["heartbeat_receipt"]
+
+    state_path = project / f".codex/goals/{GOAL_ID}/ACTIVE_GOAL_STATE.md"
+    state_text = state_path.read_text(encoding="utf-8")
+    state_path.write_text(
+        state_text.replace(
+            "## Agent Todo\n\n",
+            "## Agent Todo\n\n"
+            "- [ ] [P1] Advance the newly created same-Turn alternative.\n"
+            f"  <!-- loopx:todo todo_id={late_todo_id} status=open "
+            "task_class=advancement_task action_kind=research "
+            f"claimed_by={AGENT_ID} -->\n",
+        ),
+        encoding="utf-8",
+    )
+    reentry_rc, reentry = _run_cli(registry_path, runtime, *guard_args)
+    assert reentry_rc == 0, reentry
+    assert late_todo_id in {
+        item["todo_id"]
+        for item in reentry["action_portfolio"]["suggested_actions"]
+    }
+
+    selected_rc, selected = _run_cli(
+        registry_path,
+        runtime,
+        *guard_args,
+        "--todo-id",
+        late_todo_id,
+    )
+    assert selected_rc == 0, selected
+    assert selected["action_selection_qualification"]["state"] == "qualified"
+    assert selected["selected_todo"]["todo_id"] == late_todo_id
+    assert selected["selected_todo"]["selection_binding"] == (
+        "heartbeat_receipt"
+    )
+    assert selected["heartbeat_receipt"]["status"] == "upgraded"
+    assert selected["heartbeat_receipt"]["settlement_identity"]["todo_id"] == (
+        late_todo_id
+    )
+    assert _heartbeat_receipt_count(runtime, turn_instance_id) == 2
+
+
 def test_agent_selection_rejects_unprojected_todo(tmp_path: Path) -> None:
     project, runtime, registry_path = _write_fixture(tmp_path)
     _configure_selectable_alternative(project)

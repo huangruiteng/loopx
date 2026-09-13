@@ -97,6 +97,7 @@ from ..todos.user_gate import (
 from ..work_items.capability_monitor_fallback import (
     build_capability_gate_with_monitor_fallback,
 )
+from ..work_items.planning_inventory import quota_runnable_action_candidates
 from ..work_items.primary_action import protocol_action_text as _protocol_action_text
 from ..work_items.work_lane import (
     lark_inbox_reply_due_work_lane_contract,
@@ -783,7 +784,11 @@ def _prepare_quota_should_run_item(
     requested_action_candidate = (
         build_explicit_advancement_next_action(
             agent_identity=agent_identity,
-            agent_todo_items=agent_todo_source_items,
+            agent_todo_items=quota_runnable_action_candidates(
+                agent_id=agent_frontier_id or "",
+                agent_todo_summary=agent_todo_summary,
+                capability_gate=capability_gate,
+            ),
             available_capabilities=effective_available_capabilities,
             todo_id=requested_action_todo_id,
             selection_binding="pending_action_selection",
