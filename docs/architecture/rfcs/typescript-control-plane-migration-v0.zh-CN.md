@@ -83,6 +83,20 @@ coordination 路径使用同一份语言中立的 `coordination_state_contract_v
 仅将 typed read result 适配为兼容 summary。这是 contract 检查点，不是已经完成的
 CLI lifecycle cutover。
 
+### Local provider opening 边界（2026-09-13）
+
+Provider-first runtime 现在只有一个 typed local opening seam。没有 selector 时
+明确解析为 File profile（`source_authority=file_v0`）；存在经过资格验证的 local
+selector 时，同一个 handle 报告 SQLite；只有通过 service-owned factory 才能报告
+PostgreSQL。runtime command 不再重复构造 provider，也不会因为某个
+`AuthorityStore` 实现而把 PostgreSQL 误报成 File。
+
+Selector 只携带 provider、goal、tenant 和 store-incarnation facts，不携带凭据或
+database client。已选择 provider 的失败保留其 provider source 并 fail closed，绝不
+静默回退到 File 或 Markdown。这是默认 provider 边界与 TypeScript ownership 的重构，
+不是 SQLite promotion、整 Goal cutover 或 PostgreSQL service 已交付的声明。现有
+promotion、soak、retention 与 writer-fence hold 均保持不变。
+
 Provider-first `todo update --text/--note` 保留不改变认领关系的文案修正：
 已注册、未被排除且符合 agent binding 的 actor，可以编辑未认领、active 且未完成的
 agent Todo，不得因此写入 `claimed_by`；其他 claim owner 的 Todo 仍拒绝修改。

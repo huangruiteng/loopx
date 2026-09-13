@@ -49,6 +49,20 @@ head 之外。
 第 1.4 节明确边界；[TS 执行卡](typescript-control-plane-migration-v0.zh-CN.md)
 继续负责业务规则收敛及旧 caller 删除。
 
+### Local provider opening 边界（2026-09-13）
+
+Local runtime 现在通过一个 typed provider handle 解析 File、SQLite 与中期
+PostgreSQL profile。没有 selector 时使用明确的 File 默认值；SQLite selector 仍是
+opt-in local profile；PostgreSQL selector 只有在 service-owned factory 提供
+provider-neutral `AuthorityStore` 时才接受。Selector 不包含凭据或 database client，
+并在任何 command 执行前绑定所选 store identity。
+
+这个边界删除了每个 command 各自构造 provider 的重复，并修正了注入 PostgreSQL
+store 时对外 source label 的错误标记。已选择 provider 的失败保留 source 并 fail
+closed，不能回退到 File 或 Markdown。本次重构为 File/SQLite 默认路径与可切换
+PostgreSQL deployment 做准备，不改变 promotion、D2 soak/retention 或 D3 整 Goal
+cutover hold。
+
 ## 文档地图与维护约定
 
 本文将稳定决策与交付证据分开维护：

@@ -58,6 +58,22 @@ can proceed without provider promotion. Section 1.4 defines their boundary;
 the [TS execution cards](typescript-control-plane-migration-v0.md#execution-cards-after-the-current-stack)
 still own business-rule consolidation and legacy-caller deletion.
 
+### Local provider opening boundary (2026-09-13)
+
+The local runtime now resolves File, SQLite, and the medium-term PostgreSQL
+profile through one typed provider handle. No selector means the explicit File
+default; a SQLite selector remains an opt-in local profile; a PostgreSQL
+selector is accepted only with a service-owned factory that supplies the
+provider-neutral `AuthorityStore`. The selector contains no credentials or
+database client and binds the selected store identity before any command runs.
+
+This boundary removes per-command provider construction and corrects the
+observable source label for injected PostgreSQL stores. A selected-provider
+failure preserves its source and fails closed; it cannot fall back to File or
+Markdown. The refactor prepares the File/SQLite default path and a switchable
+PostgreSQL deployment without changing promotion, D2 soak/retention, or D3
+whole-Goal cutover holds.
+
 ## Document map and maintenance contract
 
 This RFC separates durable decisions from delivery evidence:

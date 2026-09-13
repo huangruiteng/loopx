@@ -103,6 +103,23 @@ native creation, archival, receipt replay, and store reopen are tested without
 Markdown metadata. Python only adapts the typed read result to the compatibility
 summary. This is a contract checkpoint, not a completed CLI lifecycle cutover.
 
+### Local provider opening boundary (2026-09-13)
+
+The provider-first runtime now has one typed local opening seam. An absent
+selector resolves explicitly to the File profile (`source_authority=file_v0`);
+the same handle reports SQLite when the qualified local selector is present and
+can report PostgreSQL only through a service-owned factory. Runtime commands no
+longer repeat provider construction or infer a PostgreSQL store as File from an
+`AuthorityStore` implementation.
+
+The selector carries only provider, goal, tenant, and store-incarnation facts.
+It never carries credentials or a database client. Selected-provider failures
+retain their provider source and fail closed; they do not silently fall back to
+File or Markdown. This is the default provider boundary and TypeScript
+ownership refactor, not a SQLite promotion, a whole-Goal cutover, or a
+PostgreSQL service claim. Existing promotion, soak, retention, and writer-fence
+holds remain unchanged.
+
 Provider-first `todo update --text/--note` preserves claim-neutral correction:
 a registered, non-excluded actor may edit an unclaimed active, non-completed
 agent Todo, subject to its agent binding. It must not introduce `claimed_by`.
