@@ -18,11 +18,11 @@ const base = (role: "user" | "agent", task_class: string): JsonObject => ({
   ...(role === "user" && task_class === "user_gate" ? {global_gate: true, goal_bound: true} : {}),
 });
 
-function plan(todo: JsonObject, intent: JsonObject): JsonObject {
+function plan(todo: JsonObject, intent: JsonObject, registeredAgents = ["agent-a", "agent-b"]): JsonObject {
   return planPublicTodoUpdate({schema_version: TODO_PUBLIC_UPDATE_REQUEST_SCHEMA,
     todo, intent, updated_at: "2026-09-13T00:00:00Z",
     context: {goal_id: "goal-scope", role: todo.role, actor_agent_id: "agent-a",
-      registered_agents: ["agent-a", "agent-b"], items: [todo],
+      registered_agents: registeredAgents, items: [todo],
       enforce_monitor_boundedness: true}});
 }
 
@@ -87,6 +87,20 @@ test("role repair may clear an invalid retained decision_scope without granting 
   agent.decision_scope = {schema_version: "decision_scope_v0", ...scope};
   const result = plan(agent, {decision_scope: null});
   const updates = result.metadata_updates as JsonObject;
+  assert.equal(updates.decision_scope, null);
+});
+
+test("task-class transition requires clearing a retained user-gate scope explicitly", () => {
+  const gate = base("user", "user_gate");
+  // Keep this fixture a valid single-agent gate while isolating the
+  // decision-scope transition from gate-binding cleanup.
+  delete gate.global_gate;
+  delete gate.goal_bound;
+  gate.decision_scope = {schema_version: "decision_scope_v0", ...scope};
+  assert.throws(() => plan(gate, {task_class: "user_action"}, ["agent-a"]), /explicit decision_scope clear/);
+  const result = plan(gate, {task_class: "user_action", decision_scope: null}, ["agent-a"]);
+  const updates = result.metadata_updates as JsonObject;
+  assert.equal(updates.task_class, "user_action");
   assert.equal(updates.decision_scope, null);
 });
 

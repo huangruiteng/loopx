@@ -118,6 +118,17 @@ export function validateTodoDecisionMetadata(todo: JsonObject, intent: JsonObjec
   const role = todo.role;
   const taskClass = Object.hasOwn(intent, "task_class")
     ? intent.task_class : todo.task_class;
+  // Omitted fields preserve existing metadata, but changing a user gate into
+  // an ordinary user action would otherwise retain a scope that is no longer
+  // valid for the effective record. Require an explicit clear so callers do
+  // not silently erase or carry governance metadata across task-class roles.
+  const changingAwayFromUserGate = todo.task_class === "user_gate" &&
+    Object.hasOwn(intent, "task_class") && taskClass !== "user_gate" &&
+    todo.decision_scope !== undefined && todo.decision_scope !== null &&
+    !Object.hasOwn(intent, "decision_scope");
+  if (changingAwayFromUserGate) {
+    fail("task_class transition away from user_gate requires an explicit decision_scope clear");
+  }
   if (Object.hasOwn(intent, "decision_scope")) {
     if (intent.decision_scope !== null && (role !== "user" || taskClass !== "user_gate")) {
       fail("decision_scope is only valid for user_gate todos");
