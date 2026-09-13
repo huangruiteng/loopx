@@ -549,9 +549,6 @@ def _resolve_agent_lane_delivery_route(
 ) -> dict[str, Any] | None:
     """Project candidates once, then let TypeScript own their delivery route."""
 
-    if isinstance(prepared.guarded_agent_lane_next_action, dict):
-        return prepared.guarded_agent_lane_next_action
-
     if prepared.requested_action_todo_id is not None:
         qualification = qualify_action_selection_from_inventory(
             requested_todo_id=prepared.requested_action_todo_id,
@@ -562,6 +559,14 @@ def _resolve_agent_lane_delivery_route(
             delivery_preemptions=delivery_preemptions,
         )
         prepared.action_selection_qualification = qualification
+
+    if isinstance(prepared.guarded_agent_lane_next_action, dict):
+        # Workspace/scope guards can change admission after initial selection.
+        # Keep the selected identity frozen, but report the final qualification.
+        return prepared.guarded_agent_lane_next_action
+
+    if prepared.requested_action_todo_id is not None:
+        qualification = prepared.action_selection_qualification or {}
         if qualification.get("state") != "qualified":
             return None
         if not isinstance(prepared.requested_action_candidate, dict):
