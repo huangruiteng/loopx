@@ -1,0 +1,54 @@
+{
+  "schema_version": "content_ops_provider_experience_seed_v0",
+  "seed_id": "social_browser_x.composer_preflight",
+  "version": 1,
+  "observed_on": "2026-09-13",
+  "provider_id": "social_browser_x",
+  "target_class": "procedural_experience",
+  "authority": "advisory",
+  "title": "Preserve multiple X links while verifying the intended preview card",
+  "applicability": [
+    "Preparing or revising an X browser composer with multiple URLs",
+    "Handing an editable draft back for manual publication"
+  ],
+  "content_summary": "X composer previews can disagree with published cards. A long post bound its card to the first supporting URL despite a correct main-link preview. Preserve all links; try the intended URL first in the actual body, not merely last in input order. This mitigation is unproven without published readback. Native clear/insert and exact readback avoid rich-text duplication. Never publish to test without authorization.",
+  "observations": [
+    "A supporting PR or repository URL can replace the intended main-link card.",
+    "Entering the intended URL last restored a composer preview but did not preserve that selection after publication. This is a failed publication mitigation, not a success recipe.",
+    "In a published long post observed on 2026-09-10, card.rest_id matched the first supporting URL in note_tweet entities rather than the intended fourth URL; the card lacked renderable content.",
+    "Moving the main URL first later retained a supporting preview in the editor; no corresponding successful published readback was recorded. Body order and input order are distinct, and neither is a universal guarantee.",
+    "A rich-text fill operation can replace only part of an existing editor, leaving duplicated paragraphs."
+  ],
+  "procedure": [
+    "Read the current composer and preserve the owner's latest wording, links and account selection.",
+    "Record the intended card URL separately from supporting URLs; do not silently delete links.",
+    "Try placing the intended URL before all supporting URLs in the actual body, preferably near the opening. Record this as a mitigation pending published readback, not a proven fix. Merely typing it last is insufficient. Use scoped native editing and verify the editor is empty before inserting a replacement body.",
+    "Read back the complete final body. Wait for the card to resolve, then inspect its title, loaded image and target where exposed. Missing target evidence remains unknown; do not infer it from the body URL alone.",
+    "After any text or link edit, repeat card verification. If ambiguous, leave the draft unsent and report the gap.",
+    "Hand off at the requested manual-send boundary. After an authorized publication, inspect the actual post and card target. Where available, resolve card.rest_id through the long-post URL entities and check renderable card data; do not confuse note_tweet content with the truncated legacy body. A correct composer is preparation evidence only."
+  ],
+  "limits": [
+    "URL order is an observed mitigation, not a stable X API contract or machine-enforced policy.",
+    "Cached metadata, removed previews and platform changes can produce different results.",
+    "This seed is a public distilled observation, not a raw chat, screenshot, account record or permission grant."
+  ],
+  "memory_initialization": {
+    "mode": "caller_reviewed_opt_in",
+    "adapter": "scoped_feedback",
+    "source_kind": "reviewed_learning_card",
+    "recall_surface_id": "agent_workflow.turn_admission",
+    "identity_key": ["goal_id", "agent_id", "seed_id", "version", "content_digest"],
+    "query_hint": "X browser draft preparation: multi-link card selection, rich-text replacement and final readback",
+    "instructions": [
+      "Use the actor's explicitly configured corpus and provider; do not discover or reuse another Agent's private memory.",
+      "Review this seed against current artifacts and higher-priority instructions. Fill the existing scoped_feedback event with the configured scope, this content_summary and a seed/version/digest source reference.",
+      "Do not mark current_artifact_verified merely because the seed exists. Import as procedural_experience only after current verification through the existing candidate/review and ingest-event path.",
+      "Require the existing provider write and exact readback receipt before claiming initialization. Deduplicate the same scoped seed revision; review updates rather than overwriting newer local experience.",
+      "For automatic recall, configure the existing agent_workflow.turn_admission surface and include the actual X preparation work in the selected Todo. A configured provider alone does not connect a recall surface.",
+      "If memory is disabled or unavailable, read this bundled seed directly and report bundled guidance, not provider recall."
+    ],
+    "provider_calls_performed": false,
+    "automatic_import": false,
+    "grants_publish_authority": false
+  }
+}

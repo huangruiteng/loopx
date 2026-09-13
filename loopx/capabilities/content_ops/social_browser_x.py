@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
+from importlib.resources import files
 from typing import Any
 
 
@@ -12,6 +15,14 @@ SOCIAL_BROWSER_X_PROVIDER_MODULE = "loopx.capabilities.content_ops.social_browse
 
 
 def build_social_browser_x_provider_packet() -> dict[str, Any]:
+    # Public packaged guidance, not a second memory store or an import side effect.
+    seed_bytes = (
+        files("loopx.capabilities.content_ops")
+        .joinpath("experiences/x-composer-preflight-v1.json")
+        .read_bytes()
+    )
+    experience = json.loads(seed_bytes)
+    experience["content_digest"] = "sha256:" + hashlib.sha256(seed_bytes).hexdigest()
     return {
         "ok": True,
         "schema_version": CONTENT_OPS_SOCIAL_BROWSER_X_PROVIDER_SCHEMA_VERSION,
@@ -19,6 +30,7 @@ def build_social_browser_x_provider_packet() -> dict[str, Any]:
         "outcome_capability_id": "content-ops",
         "provider_module": SOCIAL_BROWSER_X_PROVIDER_MODULE,
         "source_profile": {
+            "operating_experience": experience,
             "connector_id": SOCIAL_BROWSER_X_CONNECTOR_ID,
             "status": "profile_ready_when_browser_available",
             "route_type": "browser-backed public/social channel",
@@ -50,6 +62,7 @@ def build_social_browser_x_provider_packet() -> dict[str, Any]:
             ],
         },
         "install_check": {
+            "operating_experience": experience,
             "connector_id": SOCIAL_BROWSER_X_CONNECTOR_ID,
             "status": "ready" if shutil.which("ego-browser") else "needs_ego_browser",
             "install": [

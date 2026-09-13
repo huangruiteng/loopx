@@ -94,6 +94,7 @@ def _source_profile(
     maturity_hint: str,
     write_gate: str | None = None,
     stop_conditions: list[str] | None = None,
+    operating_experience: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": VALUE_CONNECTOR_SOURCE_PROFILE_SCHEMA_VERSION,
@@ -121,6 +122,11 @@ def _source_profile(
             "requested action would perform an external write without an audit gate",
         ],
         **_outcome_provider_binding(connector_id),
+        **(
+            {"operating_experience": dict(operating_experience)}
+            if operating_experience is not None
+            else {}
+        ),
     }
 
 
@@ -426,6 +432,14 @@ def render_value_connector_source_map_markdown(payload: dict[str, Any]) -> str:
             )
         if profile.get("write_gate"):
             lines.append(f"- write_gate: {profile.get('write_gate')}")
+        experience = profile.get("operating_experience")
+        if isinstance(experience, Mapping):
+            lines.append(
+                f"- bundled experience `{experience.get('seed_id')}` v{experience.get('version')}: {experience.get('content_summary')}"
+            )
+            lines.append(
+                "- Read operating_experience in the JSON packet for applicability and opt-in memory initialization; bundled guidance is not provider recall or publish authority."
+            )
         lines.append("")
     action_gated = payload.get("action_gated_profiles")
     if isinstance(action_gated, list) and action_gated:

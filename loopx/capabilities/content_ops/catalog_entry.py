@@ -23,6 +23,11 @@ CONTENT_OPS_CATALOG_ENTRY: dict[str, Any] = {
     "entry_command": "loopx content-ops aggregate-packets --format json",
     "commands": [
         {
+            "command": "loopx value-connectors source-map --connector social_browser_x --format json",
+            "purpose": "Before X preparation, read the provider's bundled operating experience and optional memory initialization recipe.",
+            "write_boundary": "packaged seed read only; no browser or memory-provider calls",
+        },
+        {
             "command": "loopx content-ops exploration-plan --format json",
             "purpose": "Plan source lanes before reading connector material.",
             "write_boundary": "fixture-only; no source read",

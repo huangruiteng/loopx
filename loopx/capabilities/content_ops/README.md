@@ -91,3 +91,88 @@ compatibility facade and delegates those packets without changing their output.
 The provider does not open a browser, read a timeline, or publish. A real
 browser session remains owner-controlled, and every external write still needs
 the exact account, body, media/link plan, source references, and stop condition.
+
+### Bundled experience before X preparation / 发 X 前的经验种子
+
+Every new Agent can read the versioned, public-safe
+[`x-composer-preflight-v1.json`](experiences/x-composer-preflight-v1.json)
+from either existing provider entry point, without a memory account or network:
+
+```bash
+loopx value-connectors source-map --connector social_browser_x --format json
+loopx value-connectors install-check --connector social_browser_x --format json
+```
+
+The JSON `operating_experience` field contains the full seed, version, package
+content digest, applicability, observations, procedure and memory initialization
+recipe. Markdown output exposes the compact lesson and points to JSON. The
+seed ships in the wheel, not only in the source tree. Read it before editing a
+composer, and revalidate the final body/card after every subsequent edit.
+
+新的 Agent 不需要继承旧会话，也不需要先有 memory provider，就能从以上入口读到
+完整经验种子。它属于 `content-ops` 的内置 `social_browser_x` provider；不新增
+capability、扩展、内核规则或第二套记忆存储。
+
+The seed includes a negative publication result: entering the main URL last
+restored its composer preview, but a published long post bound `card.rest_id`
+to the first supporting URL in its `note_tweet` URL entities instead. Input
+order, body order and published-card selection are distinct. Retain every
+required link and try the intended URL first in the actual body; this remains
+a mitigation **without a verified successful published readback**, not an X
+contract. Unknown target binding stays unknown. A rich-text `fill` can leave old paragraphs behind;
+scoped native select-all/clear/insert plus exact readback is the recovery path.
+Composer readiness and published-post verification are separate evidence. Do
+not remove requested links or publish a test merely to obtain a card.
+
+这里保存的是包含失败反例的操作经验：最后输入主链接只能改变编辑器预览，曾经
+在发布后仍绑定到第一个合作者链接。保留多个链接，把目标链接放到正文第一个
+URL 位置，是待发布后验证的缓解方案，不是已证实的修复。输入先后、正文顺序和
+发布端选卡必须分开。不得为验证卡片擅自发帖，也不得用删链接代替解决问题。
+
+### Initialize an Agent's own memory / 初始化自己的记忆
+
+Bundled discovery is implemented; automatic seed import is intentionally **not**
+performed. A host can initialize its own provider through the existing
+Reward Memory `scoped_feedback` adapter, after corpus-owner authorization and
+current-artifact review. Repository publication is not permission to write a
+user's provider, and another Agent's private corpus is not a shared seed store.
+
+1. Read `operating_experience` and deduplicate by the configured Goal/Agent scope
+   plus seed id, version and `content_digest`. Review newer revisions rather
+   than overwriting local corrections or reviving retired memories.
+2. Resolve the Agent's existing
+   [Reward Memory configuration](../reward_memory/README.md). Keep provider
+   credentials and scope references in its owner-local configuration.
+3. Prepare one `scoped_feedback_reward_memory_event_v0` using the seed's
+   `content_summary`, `target_class=procedural_experience`, and source kind
+   `reviewed_learning_card`. Use the seed id/version/digest as a stable source
+   reference; fill workspace/project/user/peer and surface from the configured
+   corpus. Set `requested_action_scopes=[]` and `raw_content_captured=false`.
+   The configured standing policy still reviews the event. Set
+   `current_artifact_verified=true` only after actual verification; package
+   presence alone does not satisfy it. Never copy a ready-made verification flag.
+4. Use the existing scoped import and require its exact provider readback:
+
+   ```bash
+   # event.json contains adapter, event and observed_at; preview first.
+   loopx reward-memory ingest-event --goal-id <goal> --agent-id <agent> \
+     --input event.json --format json
+   # Only under the corpus owner's existing write authorization:
+   loopx reward-memory ingest-event --goal-id <goal> --agent-id <agent> \
+     --input event.json --execute --format json
+   ```
+
+5. For subsequent automatic retrieval, use the existing
+   [`agent_workflow.turn_admission`](../agent_turn_recall/README.md) surface,
+   configured to the compatible corpus with automatic recall enabled. Name
+   actual X preparation in the selected Todo so its bounded query can retrieve
+   the relevant experience. Memory availability is not proof of recall, and
+   recall is not proof that the Agent applied or verified the lesson.
+
+经验种子读取、写入个人 memory、下一轮召回、当前操作验证，是四个不同结果。
+未配置或不可用时，直接参考仓库种子并如实报告，不冒称“已入库/已召回”。后续
+平台行为变化应由新的验证经验修订或淘汰旧记录；不要提升为全局强制偏好。
+
+No frontend/Lark configuration changes are introduced: these commands only
+read packaged public guidance and retain existing memory settings and gates.
+There are no new background imports, browser operations or external writes.

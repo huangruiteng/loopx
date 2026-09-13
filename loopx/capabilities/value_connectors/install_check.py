@@ -134,6 +134,14 @@ def render_value_connector_install_check_markdown(payload: dict[str, Any]) -> st
         )
         if item.get("write_gate"):
             lines.append(f"- write_gate: {item.get('write_gate')}")
+        experience = item.get("operating_experience")
+        if isinstance(experience, Mapping):
+            lines.append(
+                f"- bundled experience `{experience.get('seed_id')}` v{experience.get('version')}: {experience.get('content_summary')}"
+            )
+            lines.append(
+                "- Read operating_experience in the JSON packet before browser preparation; memory initialization remains caller-reviewed and opt-in."
+            )
         lines.extend(["", "Install / use:"])
         for command in item.get("install") or []:
             lines.append(f"- `{command}`")
