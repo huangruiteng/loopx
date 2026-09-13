@@ -6,6 +6,8 @@ Stage A 已在 [#4094](https://github.com/huangruiteng/loopx/pull/4094) 以 `2eb
 
 复用 rich/legacy context、既有 note validator 与 claim transfer 边界。接收方接受建议不同于 `handoff adopt` 修改所有权。Stage A note 是可覆盖的当前 Todo 状态，不是私有不可变历史。后继方案将有权限的上下文映射为可恢复 brief，引用当前工作，补齐通用 assessment/result/自动回传关系，不新增 memory ledger 或复制 claim authority。迁移期间 CLI `prepare/inspect/adopt` 保持可用；前端/飞书及自动宿主续接单独验收。同机、注册 Agent、无 lease 限制继续适用于此 adapter，不约束所有通用请求。映射、迁移条件和保留负例见后继 §5.13。
 
+后继 [§5.7](capable-manager-semantic-handoff-v0.zh-CN.md#57-会话与产品连续性) 明确区分原会话恢复、同 Agent 换 session、跨 Agent 接管，只有后者可能需要本 adapter 的所有权变更。自动 brief 捕获、来源消失恢复、执行 session fencing、回原入口报结论是明确的后续集成工作；可选 Obelisk recall 只补缺失历史证据，不替代 transfer grant。
+
 语言镜像：[English](cross-session-memory-substrate-v0.md)。
 
 本阶段替代原通用 memory substrate 方案，基于 canonical Todo authority

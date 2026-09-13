@@ -120,6 +120,10 @@ Reward Memory. A later second caller, such as Decision Context or Explore, may
 reuse the provider-neutral historical-evidence contract only after a concrete
 need and independent admission policy exist.
 
+### 3.2 Cross-session continuation caller
+
+The [capable-manager/semantic-handoff RFC §5.7](capable-manager-semantic-handoff-v0.md#57-session-and-product-continuity) proposes an explicit restoration caller for `resume_or_handoff_gap`. It first restores current work and the available deliberate continuation brief, including [Stage A](cross-session-memory-substrate-v0.md) context where applicable, then requests only missing decision evidence. This is a proposed integration, not a shipped caller or a promotion of this provider. Same-Agent replacement can satisfy the initial scope; a different receiver cannot search the source Agent's archive by inheriting a handoff. Authorized source excerpts may travel in the brief without granting archive search. The provider stages, default-off behavior, scope, private result/public receipt boundary and qualification requirements below remain unchanged. Basic continuation must work without Obelisk.
+
 ## 4. Admission policy
 
 The provider is not called on every Turn. A typed policy admits retrieval only

@@ -156,8 +156,10 @@ changes.
   - **Current boundary:** Proposes ordinary host-tool autonomy, persistent scoped
     conversations, long-horizon semantic continuation and automatic result delivery.
     Includes an official Grok Bot study distinguishing availability from goal
-    continuation; M0–M4 and A1–A16 define delivery and acceptance, with explicit
+    continuation; M0–M4 and A1–A20 define delivery and acceptance, with explicit
     alignment, shared-authority and TS migration dependencies.
+    Cross-session restoration, execution takeover and automatic return are specified
+    separately, reusing #4094 with optional Obelisk gap recall under its own scope.
     Runtime-profile promotion and generic handoff migration have not shipped.
 
 - [Explicit Todo Continuation — Stage A](cross-session-memory-substrate-v0.md)

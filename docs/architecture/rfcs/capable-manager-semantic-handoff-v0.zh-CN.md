@@ -208,9 +208,61 @@ LoopX 不是只有任务队列。交接应让接收方结合权威状态和持�
 
 ### 5.7 会话与产品连续性
 
-一个管家身份拥有按受众/授权划分的逻辑对话；兼容时在同一 runtime home 恢复 upstream thread。每轮刷新当前 Core 与未解决请求，不能把会话记忆当当前事实。scope/tool 不兼容或 session 丢失时，从持久上下文恢复并记录原因，保留未完成工作。普通上下文更新不应总重建线程；不跨 home 搬 runtime 数据库行。
+**跨 session 续接是明确的产品旅程，不是转发聊天记录。** 用户只需说一次“换个会话/Agent 继续，结果还回这里”。在现有授权内，宿主准备上下文、选择可用续接路径、呈现给接收方并自动回报结论。接收方重新判断工作；用户不用导出 JSON、重复背景或批准常规恢复。管家和干活 Agent 都遵循此契约。
+
+#### 5.7.1 选择续接路径
+
+区分逻辑对话/请求、注册 Agent、runtime home、执行 session、turn/attempt 身份。逻辑对话仍按受众/授权隔离。换执行 session 不创建新的用户请求，也不清空未结义务。实际绑定由 runtime adapter 解析；正文中的 session ID 不等于发现结果或授权。
+
+| 情况 | 上下文恢复 | 执行边界 |
+| --- | --- | --- |
+| 同一 runtime home 内恢复兼容会话 | 用宿主正式 API resume，刷新当前工作和未结请求 | 保留现有执行绑定，仍检查当前授权/claim；不转移所有权 |
+| 同一 Agent 替换丢失、不兼容或耗尽的会话 | 用受支持宿主 adapter 启动，带入有范围的语义 brief 和当前工作引用 | 绑定新实例前对账旧实例；Agent 身份本身不能隔离仍运行的旧 session |
+| 另一个注册 Agent 接手 | 投递同一上下文契约，由接收方判断所需范围 | 咨询/委托不转移既有所有权。转移意图走当前工作 owner 已验收的 claim/lease 路径；Stage A 仅用于其支持边界（§5.13） |
+
+宿主支持兼容续接时，不因换模型就重建会话。普通上下文刷新、压缩复用已有路径。若不支持 resume/start，保留请求并说明准确 adapter 缺口，不能把 inbox 落盘说成会话已启动。跨主机另需有权限的工件解析与传输；不能跨 home 复制 runtime 数据库行或 rollout 文件来冒充可恢复会话。
+
+#### 5.7.2 准备稠密、有界的续接 brief
+
+用当前 canonical 工作和来源说明组合 §5.10 `SemanticContext`，不新增平行 checkpoint 数据库，不嵌入所有 Todo 的可编辑副本。brief 回答：
+
+- 欠谁什么结果，哪些问题还没解决？
+- 哪些约束、已接受决策和后续纠正约束下一步？
+- 试过什么、否决什么、哪里不确定，原因和证据是什么？
+- 哪些已完成、哪些效果可能仍在执行，准确回执在哪里？
+- 需要哪些工件/worktree 版本，接收方怎么读，哪些尚未核验？
+- 来源建议下一步做什么，哪些需要接收方重新判断？
+
+保留当前请求/brief digest、工作基线、工件引用和返回路径。source session/turn 是来源，不携带权限。历史观察与当前事实分开，建议与已接受承诺分开。必要时将未提交修改保存为有权限的版本化工件；单个 Git commit 或路径不能保住 dirty work、运行终端或浏览器执行状态，这些事实仍归既有资源 owner。
+
+在接受计划/结果变化、受支持的压缩前或显式交接边界，复用既有 completion/context hook。brief 持久化后才确认准备成功，关联已接受基线，不虚构与独立工作存储的原子提交。突然退出可能只剩上次持久 brief；恢复该版本并说明缺失区间，不能要求已不可用的源 Agent 必须先生成新 note 才允许一切恢复。大证据放在有权限引用后，显式展示遗漏，不整体放大 TurnEnvelope。
+
+#### 5.7.3 恢复、重新判断、安全接管
+
+adapter 在既有请求 observation 旁记录所选路径/原因和真实 session/turn 绑定。这是拟议的 adapter 投影，不是新工作状态 owner。接收 turn 完成一个连贯的续接步骤：
+
+1. 读取最新请求、所选当前工作 authority、有权限的 brief/工件。规划前对账纠正、取消和已提交结果，说明不可读或过期材料。
+2. 必要且准入时按 §5.7.4 补决策相关缺口。重新判断接受/延后/拒绝范围，保留未结义务，记录真实计划变化。读到包不等于完成判断。
+3. 受影响的执行前，对账未结效果并满足既有工作/资源所有权边界。同 Agent 替换复用真实 runtime 执行实例 guard 及适用 claim/lease；跨 Agent 转移取得实际 owner 的准确回执。新的 session-binding 版本或历史 note 都不能自行产生 fence。
+4. 执行有根据的下一步并关联证据，通过既有请求/outbox 关系提交应回报的结果。即使发起 session 消失，仍发往逻辑返回路径。
+
+若旧实例可能仍执行，先经受支持机制停止其相关执行或施加 fencing，读回核实后才启动冲突 writer。没有可强制执行 fencing 的 runtime，不能宣称无人值守的有副作用接管；它可以准备上下文、独立只读取证，同时明确冲突。不为掩盖此限制另建 lease 服务。lease 过期不取消已提交的外部动作，不确定效果必须对 provider 对账而非重放。旧会话若后来恢复，下一次受控效果前必须刷新 ownership/binding。恢复期间的新纠正要求重核基线，不能按旧 brief 重复执行。
+
+#### 5.7.4 经已有 recall 边界补历史缺口
+
+[Xiaods 的 #4094](https://github.com/huangruiteng/loopx/pull/4094) 提供主动导出工作上下文和 revision-guarded 所有权接续。[Obelisk RFC](obelisk-session-evidence-provider-v0.zh-CN.md) 处理另一种缺失：当前状态能定位工作，却没保存早期原因或失败尝试。其调研支持评估定向纵向召回，不能预设导入更多 transcript 会提升效果。两者复用，不复活已退役的通用 memory-substrate 存储。
+
+恢复先读 canonical 工作与引用的 brief。只有剩下会影响决策的缺口，才产生已有 `agent-turn-recall` 的 `resume_or_handoff_gap` situation，例如“该版本为什么否决这条路线”。从缺口生成有界检索词，不传整段对话。provider 与调用阶段都已验收并启用时，消费带来源、scope、revision/freshness、遗漏的 typed historical-evidence result。接收方结合当前事实核对适用性；检索本身不采纳计划、不结算工作、不晋级 Reward Memory。
+
+Obelisk 初始试点仍可选、默认关闭，限定**同 Agent、同项目/仓库**。该 Agent 的替换 session 可在范围内准入；另一个接收者不继承源 Agent 的 archive 读取权。跨 Agent 交接时，来源可以明确将有权限的证据摘录纳入 brief；接收者检索来源的 archive 则需要独立配置并验收更广 scope，不能冒充来源或从交接推导权限。原始命中留私有；渠道只收到受众允许的 brief/结果，以及 provider 契约允许的召回覆盖说明。
+
+provider 缺失、索引过期/不完整、超时、零命中，保留 typed gap 并用已有证据继续。这不证明从未做过，也不新增常规人工门禁。只暂停确实仍缺必要前提的动作，独立工作继续。没有历史 provider 时也必须通过基础续接。operator-only 试点在 Obelisk 后续 cold-path 阶段验收前仍只能显式调用；M2/M3 不悄悄开启自动索引、改变许可/打包或扩大检索。
+
+#### 5.7.5 展示续接并闭合原交互
 
 前端和飞书共享请求/结果身份与已授权事实；等价授权入口可展示同一对话，其他群不能收到私人历史。前端展示会话、worker、brief、当前工作/结果和投递状态。保存了但未送达飞书的答案，明确显示并可恢复，不重跑工作。飞书提供及时收到反馈、实质结论和必要下一步；长内容通过分段或可读附件保留，不要求用户追问每次交接去哪了。
+
+“正在恢复上下文”“接收方已判断”“已接管执行”“结论已送达”都必须对应真实 observation。前端显示实际续接方式、替换原因、相关上下文缺口和可展开证据；飞书自动报告有意义的接管、需处理的未结问题和最终结论，不逐个内部状态刷屏。CLI/managed Turn 消费同一投影。只读 inbox 不能显示接管成功，换 session 也不能让 pending 结果失去去向。
 
 协议效果与可见正文分离。宿主支持时，用工具/函数调用和 typed receipt 承载操作；兼容解码器隔离异常控制 envelope，只恢复独立有效的正文。绝不能从恢复文本推导或执行控制效果。格式失败属于传输故障，不是让模型重新工作的理由。
 
@@ -392,6 +444,10 @@ M0 盘点真实字段和 producer；以下是迁移验收底线，不代表已�
 | A14 | 交接带相关图片/文档，经纯文本入口到另一已配置主机 | 接收方 observation 关联实际读取/提取、工件版本及对义务/计划的影响，或明确未读原因；不伪造读取回执、不泄露私人信息、不依赖发送方本地路径 |
 | A15 | 同一交接 fixture 对比未晋级与显式配置的已晋级 Goal source；provider 离线、请求/工作提交间崩溃 | 唯一所选工作状态 writer；canonical 空/失败不回退；恢复并关联原工作回执、不重复效果；请求 pending 关系与工作已提交分开 |
 | A16 | 接收方路线重规划与共享 amendment、过期基线、同伴持有工作 | 路线修改不越意图/权限；提案准入不改 Goal；未支持的 commit 明确；已支持 amendment 需要已验收 Stage 3 `GoalAmendmentAuthority` commit owner 精确回执及 peer rebase/lease 处置，不能只凭管家或 verifier 文本 |
+| A17 | 新 brief 保存前突然退出；无 recall provider 下更换同 Agent session，存在结果不确定的外部动作 | 同 Agent/新 session fixture 保留工作 owner，不伪造跨 Agent transfer grant、不仅为恢复上下文修改 note；读回实际 claim/lease 处置。明确最后持久上下文和缺失区间；对账不确定效果，执行有根据的下一步，无旧 session 仍回原路径汇报 |
+| A18 | 旧 session 仍活跃或后来恢复；并发替换、取消和迟到纠正 | 替换后让旧执行者真实尝试冲突 Core 及外部效果：在所属可强制边界拒绝；若 fencing 失败/不支持，则不得启动替换者的冲突执行。对账已提交效果，覆盖迟到恢复/纠正/取消，读回 binding/claim；不重复效果、不误报取消 |
+| A19 | 同 Agent 替换与跨 Agent 的决策缺口召回；provider 关闭、索引旧、超时、零命中 | Stage 1 不自动调用；Stage 2 需已验收准入/读回；越 scope 返回行拒绝。另一 Agent 只收明确授权的来源撰写上下文，不收原始私有 provider 命中或 archive 权限。不冒充来源；零命中保留未知；无 provider 续接可用；采用历史事实前重核 |
+| A20 | 压缩和有界投影遗漏重要否决路线或未结问题 | 覆盖说明暴露遗漏；有权限下钻恢复必要上下文或记录真实缺口；不无限放大 TurnEnvelope、不丢义务、不误报交接完成；前端/飞书/CLI 展示同一真实恢复和结果 |
 
 先跑确定性转移/兼容测试，再真实安装 runtime 验证，再用无副作用合成任务和已授权私人 canary 做前端/飞书回环。记录源码/runtime 版本和回执。包含移动端飞书、打包前端渲染/读回；后端单测不等于 A10。provider 送达不确定、离线失败必须验，不只有成功路径。
 
@@ -411,8 +467,8 @@ M0 盘点真实字段和 producer；以下是迁移验收底线，不代表已�
 | --- | --- | --- | --- |
 | M0：统一方向 | manager capability owner 盘点限制、授权、session、待结交互；关闭过时 #4306 路线并关联保留修复 | 基线 fixture、公开裁决链接、不丢请求；不宣称 runtime 变化 | 仅文档/提案 |
 | M1：真正能干活的本机 Agent | manager capability + runtime adapter 使用普通工具/skill、持续授权；前端显示有效 profile/session、受支持的工具活动和可处理失败 | 真实 runtime A1–A3、A12；核验共享资源协调；复用 portfolio，不新建逐资源包装 | 回受限 profile，保留请求 |
-| M2：语义续接 | Core collaboration 替换管家专用请求转移；复用 alignment 与所选工作 authority；支持先于 Todo/跨 Goal 请求和接收方规划；两种消费者验证同一契约 | 受支持边界上的 A4–A7、A11、A13–A16；旧/新等价、崩溃对账、TS migration economics 审阅工件（§5.12） | 关新 producer，保兼容 reader、pending 结果；不切换 Goal authority |
-| M3：一次完整交互 | 接收方结论、已有 outbox、前端/飞书可见、富文本与重启恢复 | A8–A10 与 A13–A14 回传验收；故障注入和真实读回；不用再追问便收到结论 | 保结果存储，换传输/profile 不重放 |
+| M2：语义续接 | Core collaboration 替换管家专用请求转移；复用 alignment 与所选工作 authority；支持先于 Todo/跨 Goal 请求和接收方规划；两种消费者验证同一契约 | 受支持边界上的 A4–A7、A11、A13–A20；A19 要求如实处理关闭/未验收状态，不强制 Obelisk 晋级；旧/新等价、崩溃对账、TS migration economics 审阅工件（§5.12） | 关新 producer，保兼容 reader、pending 结果；不切换 Goal authority |
+| M3：一次完整交互 | 接收方结论、已有 outbox、前端/飞书可见、富文本与重启恢复 | A8–A10 与 A13–A14/A17/A20 回传验收；故障注入和真实读回；不用再追问便收到结论 | 保结果存储，换传输/profile 不重放 |
 | M4：晋级并退役旧路径 | 三个异构活跃 Goal、主人/共享受众、配置 SSH 旅程通过；删旧限制和过渡兼容层 | 全验收、权限回归、实测 SLO/成本；列出未验证宿主 | 按 scope 回滚、schema-aware drain/export |
 
 M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已有 inbox 上线。M2 的通用晋级需要第二消费者，但不能因此拖住已经有用的管家局部改善。各里程碑不新增常规研究或普通委托的人工确认。
@@ -427,8 +483,11 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 | M2 请求事务替换 | 实现 PR 内完成 TS T0 caller/source 盘点；现有请求/回执 characterization；唯一 writer 与无损迁移 | 新 daemon、PostgreSQL 服务、D3 切换、共享 Goal amendment | 请求身份/评估/结果归一个 typed domain；有界切换时退役旧请求 writer；外部工作 owner 不变 |
 | M2 接收方与 authority 衔接 | 已有 alignment/admission 和 Todo/Vision/lease 命令；请求 effect/recovery 接缝；受影响命令的可用事务契约 | 关闭无关 T1/T2/T3 消费者、晋级全部 provider | disposable legacy/canonical fixture 上 A15；A16 验证路线/准入边界；未支持工作效果明确 |
 | M3 完整交互 | 已提交结果和准确请求/工作回执关系；受支持 runtime 与飞书/前端 adapter | 独立格式/重试修复不等 M2 完成 | 通用 producer 集成在 M2 后；早期修复保留既有 owner，不能宣称新 schema 已交付 |
+| M2 session 恢复（§5.7） | 既有宿主 resume/start API、有范围 brief 引用、真实 runtime binding/resource guard 和适用工作 authority | 历史索引、安装 Obelisk、全 Goal 存储晋级 | 受支持同 Agent 替换上 A13/A17/A18/A20；含来源消失与旧执行者返回；不宣传未支持的接管 |
+| M2 worker 接管 + M3 回传（§5.13） | 共享请求/判断契约、必要时已验收 transfer owner、有权限工件解析、既有 outbox | 更广 archive 检索；咨询不需转 claim | 真实 CLI 与前端/飞书 adapter 上 A5/A6/A7/A14/A18/A20；接管执行与答案送达各有回执 |
+| 可选 recall 辅助恢复（§5.7.4） | Obelisk 自身打包/隐私/结构化结果验收，以及 `agent-turn-recall` 下已准入 caller 阶段 | M2/M3 基础续接；无 provider 路径独立交付 | A19 加配对续接任务，证明降低重建/重复失败且不退化正确性或 scope；cold-path 晋级前维持 operator-only |
 | 受控共享 amendment 衔接 | 对齐 Stage 3 已验证 commit class、policy/verifier、lease 影响与精确基线回执 | 无关管家体验改进 | 与 alignment owner 共管的条件式后续，不另建 `GoalAmendmentAuthority` |
-| M4 管家晋级 | 已验证 M1–M3，以及所宣传 profile 的 A1–A16，含不支持 amendment 的负例 | 全 provider 迁移、不变既有 profile 的重新十日 soak、PostgreSQL 部署 | 仅晋级管家/handoff 行为；新存储/默认/shared-amendment 能力保留独立门槛 |
+| M4 管家晋级 | 已验证 M1–M3，以及所宣传 profile 适用的 A1–A20，含关闭/未验收 recall 和不支持 amendment 的负例 | 全 provider 迁移、不变既有 profile 的重新十日 soak、PostgreSQL 部署 | 仅晋级管家/handoff 行为；新存储/默认/shared-amendment 能力保留独立门槛 |
 
 若本计划改变 provider、保留规则或 authority-source profile，受影响的 D1/D2/D3 就成为硬前置；管家验收不能豁免十日 soak 或切换批准。A13 续接测试和 D2 存储 soak 衡量不同问题。不变地使用既有 profile，不因管家读取它就新加十日门槛。
 
@@ -436,10 +495,12 @@ M1 不必等通用 handoff 重构。M3 独立的格式/投递修复可先用已�
 
 1. **启动 M1，在该 PR 内完成基线对齐。** 记录精确 source head、真实 runtime/入口 caller；修主人私人 profile 和已有读回/反馈；验 A1–A3/A12。不单独交付盘点框架。
 2. **替换一个完整 M2 请求事务，再接接收方。** 从 `manager_context` request/tracking/return producer 和两种真实消费者开始，提交前后 owner 图、迁移映射、migration economics 审阅工件（§5.12）。工作状态继续走已有命令；扩大 producer 上线前验提交间崩溃和 legacy/promoted source。复用 alignment source-basis 读取，不复制分类器。 显式纳入已交付 #4094 CLI 接续 adapter（§5.13）。
-3. **收口 M3 自动回传和用户可见性。** 独立正文恢复可与前两步并行；通用 producer 待回执契约稳定再接。沿真实入口/接收方/返回路径验 A8–A10、A13–A16；同一投影更新 packaged frontend、飞书、CLI。
+3. **收口 M3 自动回传和用户可见性。** 独立正文恢复可与前两步并行；通用 producer 待回执契约稳定再接。沿真实入口/接收方/返回路径验 A8–A10、A13–A16、A17/A20；在来源 session 已消失时，通过 packaged frontend、飞书、CLI 读回核实同一已提交结果/outbox 身份、重连恢复和受众隔离。
 4. **晋级指定 M4 cohort，并删除被替换路径。** 明确 provider 默认、Goal-intent authority、capability 资格。共享 amendment commit 待上游就绪；此前 UI 只能说提案/准入或不支持提交，不能说“Goal 已修改”。provider source 迁移按 shared-authority 计划，不夹进本次发布。
 
 每次 PR 交接记录：base/head、本 RFC 里程碑/验收 ID、受影响的 TS T-card 与 authority D-card、消费的 alignment stage、确切 owner/command/receipt 与 source mode、删除 caller、测试/真实 runtime 证据、保留门槛、一个可执行下一步。链接已有 canonical 工程 Todo，不在本文复制动态任务清单。上游 owner 移动时，先解析新符号并同步双语，再实施；不为迁就计划恢复旧模块。
+
+里程碑内明确跨 session 顺序：先在历史检索关闭时验收同 Agent 替换，再经既有 transfer adapter 验跨 Agent 续接，最后按独立 rollout 验收可选缺口召回。每个切片都包含受影响的 CLI/managed Turn、打包前端、飞书读回/反馈，不推迟到后续 backend-only 版本。衡量首次有效续接动作耗时、重要义务保留、避免的重复失败、重复效果和上下文成本。恢复更多 token 或 `resume` 返回成功，本身不是改进。
 
 ## 12. 待定决策
 

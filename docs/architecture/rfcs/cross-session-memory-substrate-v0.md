@@ -6,6 +6,8 @@ Stage A shipped in [#4094](https://github.com/huangruiteng/loopx/pull/4094), mer
 
 Reuse rich/legacy context and the existing note validator/claim transfer boundary. Receiver acceptance of a suggestion is distinct from `handoff adopt` ownership mutation. Stage A's note is replaceable current Todo state, not a private immutable history. The successor maps authorized context to a recoverable brief, references current work, and supplies general assessment/result/automatic-return relations without adding a memory ledger or copying claim authority. CLI `prepare/inspect/adopt` remains usable during migration; frontend/Lark and automatic host continuation must be qualified separately. Same-host, registered-agent, lease-free restrictions continue to apply to this adapter, not every general request. See successor §5.13 for mappings, migration conditions and retained negative cases.
 
+The successor [§5.7](capable-manager-semantic-handoff-v0.md#57-session-and-product-continuity) now distinguishes same-session resume, same-Agent session replacement and cross-Agent takeover. Only the last may require this adapter’s ownership mutation. Automatic brief capture, source-loss recovery, executable-session fencing and original-route result return are explicit future integration work; optional Obelisk recall supplies missing historical evidence, not a replacement transfer grant.
+
 Language mirror: [中文版](cross-session-memory-substrate-v0.zh-CN.md).
 
 Status: a bounded local CLI workflow. The former general memory-substrate
