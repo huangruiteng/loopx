@@ -62,6 +62,14 @@ templates enter the model context:
 loopx --format json pr-review --state all [--repo owner/repo] [--since ISO]
 ```
 
+The live source scan keeps the list query lightweight and enriches each PR's
+nested commits, reviews, and checks with a bounded pool of concurrent
+`gh pr view` reads (at most eight at a time). Results are reassembled in list
+order, and a failed detail read still remains visible as an incomplete source
+scan, so the latency improvement does not change queue ordering or freshness
+semantics. The scan does not use a stale cache: rerunning the command always
+re-reads the requested GitHub window.
+
 For an autonomous maintainer monitor, request the complete open queue while
 persisting its compact cursor in an ignored local checkpoint:
 
