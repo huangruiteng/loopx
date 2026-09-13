@@ -7,22 +7,20 @@ from pathlib import Path
 from ..capabilities.explore.composition_frontier import (
     project_live_explore_composition_frontier,
 )
-from ..capabilities.repository_change_window import (
-    repository_delivery_interaction_hook,
-)
 from ..capabilities.periodic_report.pending_intent import (
     periodic_report_pending_intent_interaction_hook,
 )
+from ..capabilities.repository_change_window import (
+    repository_delivery_interaction_hook,
+)
+from ..control_plane.effect_runtime import EffectRuntimeRejected
 from ..control_plane.quota.cli_projection import (
     compact_quota_monitor_poll_cli_payload,
     compact_quota_should_run_cli_payload,
 )
 from ..control_plane.quota.effect_program import SettlementIdentity
 from ..control_plane.quota.error_codes import (
-    HeartbeatReceiptIdentityConflictError,
     QuotaCommandValidationError,
-    QuotaIdentityPreconditionError,
-    quota_error_code,
 )
 from ..control_plane.quota.heartbeat_receipt import (
     HEARTBEAT_RECEIPT_SCHEMA_VERSION,
@@ -43,16 +41,10 @@ from ..control_plane.quota.settlement_cli import (
     render_existing_heartbeat_receipt_payload,
 )
 from ..control_plane.quota.turn_envelope import build_turn_envelope
-from ..control_plane.coordination.legacy_writer_fence import (
-    LegacyCoordinationWriterFenced,
-)
-from ..control_plane.coordination.local_authority import LocalCoordinationAuthorityUnavailable
-from ..control_plane.effect_runtime import EffectRuntimeRejected
 from ..control_plane.scheduler.execution_context import (
     GUIDED_START_TURN_RUNTIME_PROFILES,
 )
 from ..control_plane.todos.contract import normalize_todo_id
-from ..file_lock import lock_timeout_error_fields
 from ..presentation.renderers.quota_event_markdown import (
     render_quota_monitor_poll_markdown,
     render_quota_slot_preview_markdown,
@@ -83,14 +75,14 @@ from .quota_context import (
     prepare_quota_command_context,
     validate_quota_command_context_request,
 )
-from .quota_host_poll import attach_host_poll_receipt
-from .quota_monitor_poll import record_quota_monitor_poll_for_cli
 from .quota_failure_report import (
     QUOTA_EVENT_KINDS,
     quota_failure_payload,
     quota_validation_failure_payload,
     should_log_quota,
 )
+from .quota_host_poll import attach_host_poll_receipt
+from .quota_monitor_poll import record_quota_monitor_poll_for_cli
 from .quota_registration import (
     register_quota_command as register_quota_command,  # noqa: PLC0414
 )
@@ -363,10 +355,10 @@ def _dispatch_quota_turn_start_hooks(
         agent_id=args.agent_id,
     )
     if args.agent_id:
+        from ..capabilities.manager_context import turn_start_hook
         from ..control_plane.agents.capability_memory import (
             extend_turn_start_dispatch as extend_capability_memory_dispatch,
         )
-        from ..capabilities.manager_context import turn_start_hook
         from ..control_plane.capability_hooks import dispatch_turn_start_hooks
         from ..history import load_registry
         from ..paths import resolve_runtime_root
@@ -385,7 +377,9 @@ def _dispatch_quota_turn_start_hooks(
             dispatch[key] = list(dispatch.get(key) or []) + list(context_dispatch.get(key) or [])
         for key in ("registered_count", "invoked_count"):
             dispatch[key] = int(dispatch.get(key) or 0) + int(context_dispatch.get(key) or 0)
-        from ..capabilities.periodic_report.cadence_runtime import extend_cadence_turn_start_dispatch
+        from ..capabilities.periodic_report.cadence_runtime import (
+            extend_cadence_turn_start_dispatch,
+        )
         dispatch = extend_cadence_turn_start_dispatch(dispatch, registry_path=registry_path,
             runtime_root=root, goal_id=args.goal_id, agent_id=args.agent_id)
     local_private_state_mutated = any(

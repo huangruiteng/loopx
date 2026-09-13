@@ -11,11 +11,10 @@ import argparse
 from collections.abc import Callable
 
 from ..chat_server import DEFAULT_CHAT_HOST, DEFAULT_CHAT_PORT
-from ..dashboard_launcher import launch_dashboard, replace_existing_loopx_chat
 from ..kiro_cli_goal_mode import KIRO_CLI_BIN
 from ..paths import default_public_scan_root
-from .support_control_chat_endpoint import register_chat_endpoint_command
 from .support_control_agent_runtime import register_agent_runtime_arguments
+from .support_control_chat_endpoint import register_chat_endpoint_command
 
 
 def register_chat_and_dashboard_commands(

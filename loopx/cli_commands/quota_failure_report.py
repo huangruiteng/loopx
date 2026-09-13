@@ -15,7 +15,9 @@ from pathlib import Path
 from ..control_plane.coordination.legacy_writer_fence import (
     LegacyCoordinationWriterFenced,
 )
-from ..control_plane.coordination.local_authority import LocalCoordinationAuthorityUnavailable
+from ..control_plane.coordination.local_authority import (
+    LocalCoordinationAuthorityUnavailable,
+)
 from ..control_plane.quota.error_codes import (
     HeartbeatReceiptIdentityConflictError,
     QuotaCommandValidationError,
@@ -27,7 +29,6 @@ from ..control_plane.quota.heartbeat_receipt import (
     heartbeat_receipt_settlement_todo_id,
 )
 from ..file_lock import lock_timeout_error_fields
-
 
 QUOTA_EVENT_KINDS = {
     "should-run": "quota_should_run",

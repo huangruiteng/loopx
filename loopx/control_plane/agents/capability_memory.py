@@ -137,8 +137,8 @@ def resolve_agent_capabilities(
     state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Read current scoped observations even when the caller's status is cached."""
-    from .capability_gate import _evaluate
     from ..quota.goal_boundary import declared_available_capabilities
+    from .capability_gate import _evaluate
 
     root, registry = status_payload.get("runtime_root"), status_payload.get("registry")
     if state is None and agent_identity and root and registry:

@@ -38,7 +38,6 @@ from ..extensions.lark.goal_channel_lifecycle import (
     sync_human_gate_after_refresh,
 )
 from ..feedback import (
-    LESSON_KINDS,
     append_human_reward,
     compact_reward,
     render_reward_markdown,

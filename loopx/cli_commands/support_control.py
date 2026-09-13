@@ -16,8 +16,8 @@ from ..chat_server import (
     DEFAULT_CHAT_PORT,
     serve_chat,
 )
-from ..control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from ..control_plane.reward_memory import reward_memory_goal_policy
+from ..control_plane.scheduler.execution_context import SchedulerRuntimeProfile
 from ..dashboard_launcher import launch_dashboard, replace_existing_loopx_chat
 from ..execution_profile import execution_profile_turn_granularity
 from ..heartbeat_prequota import (
@@ -65,10 +65,8 @@ from .support_control_backup import (
     handle_backup_state_command,
     register_backup_state_command,
 )
-from .support_control_agent_runtime import register_agent_runtime_arguments
 from .support_control_chat_endpoint import (
     handle_chat_endpoint_command,
-    register_chat_endpoint_command,
 )
 from .support_control_heartbeat_registration import (
     register_heartbeat_control_commands,
@@ -334,7 +332,7 @@ def handle_support_control_command(
         return None
 
     if args.command == "automation-prompts":
-        from .automation_prompts import run, render
+        from .automation_prompts import render, run
         try:
             payload = run(args, registry_path)
         except Exception as error:
@@ -692,7 +690,9 @@ def handle_support_control_command(
                 if update_action is UpdateAction.APPLY and payload.get("plan", {}).get(
                     "apply_supported"
                 ):
-                    from ..control_plane.heartbeat.installed_prompt_update import update_with_prompts
+                    from ..control_plane.heartbeat.installed_prompt_update import (
+                        update_with_prompts,
+                    )
                     payload = update_with_prompts(
                         payload, registry=(registry_path if registry_was_supplied else explicit_global_registry(args.runtime_root)),
                         runtime_root=args.runtime_root,
