@@ -134,8 +134,17 @@ def effective_manager_runtime_profile(
     )
 
 
-def load_effective_manager_runtime_profile(runtime_root: Path) -> dict[str, Any]:
-    """Read the selected profile, failing safely without hiding config breakage."""
+def load_effective_manager_runtime_profile(
+    runtime_root: Path,
+    *,
+    channel_id: str = "manager",
+) -> dict[str, Any]:
+    """Read the selected profile for one audience-bound manager channel.
+
+    The machine choice is sufficient for the private owner conversation.  An
+    external audience is a different trust boundary and cannot inherit broad
+    host-tool access until an existing audience/resource grant can be checked.
+    """
 
     from ..machine_configuration.store import read_stored_machine_configuration
 
@@ -144,10 +153,24 @@ def load_effective_manager_runtime_profile(runtime_root: Path) -> dict[str, Any]
         # whole-document editing unavailable, but it must not silently rewrite
         # an otherwise valid manager grant.
         configuration = read_stored_machine_configuration(runtime_root)
-        return {
+        effective = {
             **effective_manager_runtime_profile(configuration),
             "status": "ready",
         }
+        if (
+            channel_id != "manager"
+            and effective["runtime_profile"] == TRUSTED_OWNER_PROFILE
+        ):
+            return {
+                **_projection(
+                    profile=RESTRICTED_PROFILE,
+                    source="external_audience_boundary",
+                    revision=str(effective["configuration_revision"]),
+                ),
+                "status": "external_audience_restricted",
+                "configured_runtime_profile": TRUSTED_OWNER_PROFILE,
+            }
+        return effective
     except (OSError, TypeError, ValueError):
         return {
             **_projection(

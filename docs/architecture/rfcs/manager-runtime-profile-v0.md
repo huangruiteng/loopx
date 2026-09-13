@@ -1,6 +1,6 @@
 # Manager runtime profile v0 / 管家运行模式 v0
 
-Status: implemented candidate / 实现候选
+Status: M1 implementation candidate under capable-manager-semantic-handoff-v0 / 强能力管家 RFC 下的 M1 实现候选
 
 ## 中文
 
@@ -26,6 +26,9 @@ LoopX 管家最初只有受限的规划会话：它可以读取 LoopX 提供的�
   外部 provider 权限、受众边界和 LoopX durable state owner 不被改写。
 - 当前只有 Codex endpoint 能执行 `trusted_owner`。选择其他 endpoint 时必须返回可恢复的
   typed error，不能把受限执行伪装成已开放。
+- `trusted_owner` 当前只对私有 Owner 管家会话生效。外部 audience（包括 Lark 群）是独立
+  信任边界；在既有的 audience/resource grant 能被核验前，同一机器配置在那里仍解析为
+  `restricted`，不能仅凭“同一管家”继承宿主资源权限。
 
 机器配置沿用现有 capability workbench 的 `preview -> apply -> readback` 流程，不建立第二份
 配置源。配置缺失时安全回退 `restricted`；配置损坏时也回退，并在能力投影中显示
@@ -40,7 +43,12 @@ LoopX 管家最初只有受限的规划会话：它可以读取 LoopX 提供的�
 
 Dashboard 同时显示机器配置和当前会话 readback。CLI/managed Turn、Dashboard 与 Lark
 继续调用同一个 manager runtime controller；Lark 是同源会话的入口和投影，不拥有独立
-profile 或权限状态。
+profile 或权限状态，但当前外部 audience 会明确降级为 `restricted`。后续若开放 Lark
+宿主工具，必须复用已有的 audience/resource authority，不在这里新增管家 ACL。
+
+本切片只实现 [capable-manager-semantic-handoff-v0](capable-manager-semantic-handoff-v0.zh-CN.md)
+的 M1 私有 Owner 旅程，目标验收为 A1–A3/A12。它不实现 M2 collaboration request、M3
+outbox，也不把管家 session 字段当成工作、请求或送达权威。
 
 ### 验收
 
@@ -53,6 +61,7 @@ profile 或权限状态。
 6. 非 Codex endpoint 对 `trusted_owner` fail closed，并给出切换 endpoint 或恢复
    `restricted` 的动作提示。
 7. 桌面和移动 Dashboard 显示有效 profile；配置损坏时显示回退状态。
+8. 外部 audience 在没有既有 scoped grant 时继续 `read-only`，并显示真实降级状态。
 
 ## English
 
@@ -82,6 +91,9 @@ read-only.
   not change.
 - Codex is currently the only endpoint that enforces `trusted_owner`. Other endpoints fail with
   an actionable typed error instead of pretending to provide the selected profile.
+- `trusted_owner` currently applies only to the private owner-manager conversation. An external
+  audience, including a Lark group, is a separate trust boundary and resolves the same machine
+  choice to `restricted` until an existing audience/resource grant can be verified.
 
 Configuration reuses the existing capability workbench and its
 `preview -> apply -> readback` transaction. There is no second configuration source. Missing
@@ -99,7 +111,14 @@ without an unnecessary restart.
 
 Dashboard shows both machine configuration and current Session readback. CLI/managed Turn,
 Dashboard, and Lark all use the same manager runtime controller. Lark remains an entry point and
-projection of that Session; it does not own a separate profile or permission state.
+projection of that Session; it does not own a separate profile or permission state, but an external
+audience currently degrades visibly to `restricted`. Future Lark host-tool access must reuse an
+existing audience/resource authority instead of adding a manager-specific ACL here.
+
+This slice implements only the private-owner M1 journey in
+[capable-manager-semantic-handoff-v0](capable-manager-semantic-handoff-v0.md), targeting A1–A3/A12.
+It does not implement the M2 collaboration request, the M3 outbox, or treat manager Session fields
+as work, request, or delivery authority.
 
 ### Acceptance
 
@@ -114,3 +133,5 @@ projection of that Session; it does not own a separate profile or permission sta
    restoring `restricted`.
 7. Desktop and mobile Dashboard show the effective profile; invalid configuration shows its
    fallback state.
+8. An external audience without an existing scoped grant remains `read-only` and exposes the
+   effective downgrade accurately.

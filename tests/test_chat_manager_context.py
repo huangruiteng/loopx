@@ -162,6 +162,51 @@ def test_trusted_manager_profile_drives_host_and_session_readback(
     ).joinpath("AGENTS.md").read_text(encoding="utf-8")
 
 
+def test_external_manager_channel_remains_restricted_without_scoped_host_grant(
+    monkeypatch, tmp_path
+):
+    import loopx.chat_runtime as runtime_module
+
+    runtime_root = tmp_path / "runtime"
+    _apply_manager_runtime_profile(runtime_root, "trusted_owner")
+    store = ChatSessionStore(runtime_root)
+    runtime = ChatRuntimeController(store=store, codex_bin="codex")
+    monkeypatch.setattr(
+        runtime,
+        "capabilities",
+        lambda: [
+            {
+                "agent_id": "codex",
+                "available": True,
+                "adapter_kind": "codex_app_server",
+            }
+        ],
+    )
+    starts = []
+
+    def start(**kwargs):
+        starts.append(kwargs)
+        return Adapter()
+
+    monkeypatch.setattr(runtime_module.CodexAppServerAdapter, "start", start)
+    session, _ = runtime.open_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        work_dir=tmp_path,
+        objective="manager",
+        mode="new",
+        channel_id="manager.external.fixture",
+    )
+
+    assert starts[0]["runtime_profile"] == "restricted"
+    assert starts[0]["sandbox"] == "read-only"
+    assert "Do not inspect arbitrary repositories" in starts[0]["objective"]
+    readback = store.public_session(session)["manager_runtime"]
+    assert readback["runtime_profile"] == "restricted"
+    assert readback["status"] == "external_audience_restricted"
+    assert readback["standing_grant"] == "none"
+
+
 def test_trusted_manager_profile_rejects_endpoint_that_cannot_enforce_it(
     tmp_path,
 ):

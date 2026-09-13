@@ -270,8 +270,13 @@ class ChatRuntimeController:
         self.session_queue_threads: dict[str, threading.Thread] = {}
         self.closed = threading.Event()
 
-    def manager_runtime_profile(self) -> dict[str, Any]:
-        return load_effective_manager_runtime_profile(self.store.root.parent)
+    def manager_runtime_profile(
+        self, channel_id: str = "manager"
+    ) -> dict[str, Any]:
+        return load_effective_manager_runtime_profile(
+            self.store.root.parent,
+            channel_id=channel_id,
+        )
 
     def capabilities(self) -> list[dict[str, Any]]:
         builtins = [
@@ -488,7 +493,7 @@ class ChatRuntimeController:
             raise ValueError("mode must be resume_latest or new")
         selected_channel = channel_id or f"goal.{goal_id}"
         manager_runtime = (
-            self.manager_runtime_profile()
+            self.manager_runtime_profile(selected_channel)
             if is_manager_channel(selected_channel)
             else None
         )
@@ -600,7 +605,7 @@ class ChatRuntimeController:
             raise KeyError("chat session was not found")
         session = current_session
         manager_runtime = (
-            self.manager_runtime_profile()
+            self.manager_runtime_profile(str(session.get("channel_id") or "manager"))
             if is_manager_channel(session.get("channel_id"))
             else None
         )
@@ -1118,7 +1123,9 @@ class ChatRuntimeController:
                         with self.lock:
                             if self.adapters.get(session_id) is adapter:
                                 self.adapters.pop(session_id, None)
-                        manager_runtime = self.manager_runtime_profile()
+                        manager_runtime = self.manager_runtime_profile(
+                            str(session.get("channel_id") or "manager")
+                        )
                         adapter = self._start_adapter(
                             agent_id=str(session["agent_id"]),
                             work_dir=manager_workspace(

@@ -84,6 +84,22 @@ def test_trusted_owner_profile_roundtrips_through_machine_configuration(
     assert str(effective["configuration_revision"]).startswith("sha256:")
 
 
+def test_external_audience_does_not_inherit_owner_host_tools(tmp_path: Path) -> None:
+    _apply(tmp_path, "trusted_owner")
+
+    effective = load_effective_manager_runtime_profile(
+        tmp_path,
+        channel_id="manager.external.audience",
+    )
+
+    assert effective["status"] == "external_audience_restricted"
+    assert effective["configured_runtime_profile"] == "trusted_owner"
+    assert effective["runtime_profile"] == "restricted"
+    assert effective["sandbox"] == "read-only"
+    assert effective["standing_grant"] == "none"
+    assert effective["source"] == "external_audience_boundary"
+
+
 def test_unrelated_machine_configuration_does_not_change_manager_revision() -> None:
     before = effective_manager_runtime_profile(
         {
