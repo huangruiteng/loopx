@@ -1029,9 +1029,14 @@ export const typedActionsScenario = {
         throw new Error("Initial machine selection must follow the visible catalog order, not the API source order");
       }
       if (await page.locator(".personal-capability-editor-status").count()) throw new Error("Editable machine settings must not show internal editor-contract notices");
-      if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length) {
-        throw new Error("Machine settings hid Goal-only capabilities from the shared catalog");
+      if (await machineCatalog.getByRole("button").count() !== goalCapabilityCatalog().length + 1) {
+        throw new Error("Machine settings did not combine machine-only and Goal capabilities in the shared catalog");
       }
+      await machineCatalog.getByRole("button", { name: /^管家 Runtime/ }).click();
+      await page.getByLabel(/^运行模式/u).waitFor({ state: "visible" });
+      await page.locator(".personal-capability-help > summary").click();
+      await page.getByText(/受保护操作仍单独校验/u).waitFor({ state: "visible" });
+      await page.screenshot({ path: resolve(outputDir, "manager-runtime-machine-profile.png"), fullPage: false, animations: "disabled" });
       const requestsBeforeReadOnly = api.machineConfigurationRequests.length;
       await machineCatalog.getByRole("button", { name: /^自适应子 Agent 容量/ }).click();
       await page.getByText(/此能力目前仅支持 Goal 级配置/u).waitFor({ state: "visible" });

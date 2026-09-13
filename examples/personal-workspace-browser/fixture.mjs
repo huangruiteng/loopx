@@ -757,15 +757,20 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       safe_fix: false,
       strict_receipt: true,
     };
+    const managerRuntimeConfiguration = {
+      schema_version: "manager_runtime_profile_v0",
+      runtime_profile: "restricted",
+    };
     const machineNamespaces = {
       change_quality_qualification: changeQualityConfiguration,
+      manager_runtime: managerRuntimeConfiguration,
       periodic_report: periodicConfiguration,
       todo_replan_cadence: cadenceConfiguration,
     };
     const goalCapabilities = goalCapabilityCatalog();
     const machineConfigurationBase = {
       ok: true,
-      available_namespaces: ["change_quality_qualification", "periodic_report", "todo_replan_cadence"],
+      available_namespaces: ["change_quality_qualification", "manager_runtime", "periodic_report", "todo_replan_cadence"],
       namespace_catalog: {
         schema_version: "machine_configuration_catalog_v0",
         namespaces: [
@@ -775,6 +780,14 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
             description: "Live exact-diff qualification policy without added authority.",
             schema_versions: ["change_quality_machine_defaults_v0"],
             configuration_template: changeQualityConfiguration,
+            template_status: "ready",
+          },
+          {
+            namespace: "manager_runtime",
+            title: "Manager runtime",
+            description: "Persistent host-tool profile for owner manager conversations.",
+            schema_versions: ["manager_runtime_profile_v0"],
+            configuration_template: managerRuntimeConfiguration,
             template_status: "ready",
           },
           {
@@ -797,7 +810,38 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       },
       capability_catalog: {
         schema_version: "capability_configuration_catalog_v0",
-        capabilities: goalCapabilities.map((capability) => {
+        capabilities: [{
+          capability_id: "manager_runtime",
+          display_name: "Manager runtime",
+          description: "Persistent host-tool profile for owner manager conversations.",
+          available_scopes: ["machine"],
+          machine_namespace: "manager_runtime",
+          configuration_editor: {
+            schema_version: "capability_configuration_editor_v0",
+            editable: true,
+            supported_scopes: ["machine"],
+            writable_scopes: ["machine"],
+            fields: [{
+              key: "runtime_profile",
+              label: "Runtime profile",
+              description: "Restricted uses scoped reads. Trusted owner enables normal host tools while protected operations retain separate checks.",
+              input_kind: "select",
+              required: true,
+              options: ["restricted", "trusted_owner"],
+            }],
+          },
+          default: managerRuntimeConfiguration,
+          effective_configuration: {
+            schema_version: "capability_configuration_resolution_v0",
+            capability_id: "manager_runtime",
+            source: "machine_default",
+            configuration: managerRuntimeConfiguration,
+            inherited: false,
+            goal_override_present: false,
+            machine_default_present: true,
+            effective_revision: "sha256:manager-runtime-effective",
+          },
+        }, ...goalCapabilities.map((capability) => {
           if (capability.capability_id === "periodic_report") {
             return periodicReportCapability({ machineCurrent: periodicConfiguration });
           }
@@ -814,7 +858,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
             });
           }
           return capability;
-        }),
+        })],
       },
       changed_namespaces: [],
       machine_configuration: {
@@ -1112,6 +1156,22 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       await route.fulfill({ contentType: "application/json", json: {
         ok: true, schema_version: "loopx_chat_capabilities_v1", agent_backend: "multi_adapter",
         sandbox: "read-only", approval_policy: "never", todo_write: "preview_locked",
+        manager: {
+          scope: "owner_global",
+          model: "gpt-6-astra",
+          reasoning_effort: "high",
+          runtime: {
+            schema_version: "manager_runtime_effective_profile_v0",
+            runtime_profile: "restricted",
+            source: "capability_default",
+            configuration_revision: "absent",
+            standing_grant: "none",
+            sandbox: "read-only",
+            approval_policy: "never",
+            tool_classes: ["loopx_core"],
+            status: "ready",
+          },
+        },
         ...(state.goalSubagentConfigurationEnabled ? { goal_subagent_configuration: "preview_locked" } : {}),
         goal_id: null, streaming: true, resume: true, interrupt: true, typed_actions: true,
         action_kinds: ["goal.create", "goal.lifecycle", "agent.bind", "heartbeat.bind", "monitor.create", "run.correct"],
@@ -1141,10 +1201,10 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       const resolvedGoalId = body.context_kind === "manager" ? "loopx-manager" : body.goal_id;
       const session_id = `session-${body.context_kind}-${resolvedGoalId}-${body.agent_id}`;
       const existing = body.mode === "resume_latest" ? sessions.get(session_id) : null;
-      const session = existing ?? { session_id, goal_id: resolvedGoalId, agent_id: body.agent_id, adapter_kind: body.agent_id, channel_id: body.context_kind === "manager" ? "manager" : `goal.${body.goal_id}`, status: "ready", active_turn_id: null, last_error_code: null, created_at: "2026-08-13T01:00:00Z", updated_at: "2026-08-13T01:00:00Z", last_activity_at: "2026-08-13T01:00:00Z", resumable: true };
+      const session = existing ?? { session_id, goal_id: resolvedGoalId, agent_id: body.agent_id, adapter_kind: body.agent_id, channel_id: body.context_kind === "manager" ? "manager" : `goal.${body.goal_id}`, status: "ready", active_turn_id: null, last_error_code: null, created_at: "2026-08-13T01:00:00Z", updated_at: "2026-08-13T01:00:00Z", last_activity_at: "2026-08-13T01:00:00Z", resumable: true, ...(body.context_kind === "manager" ? { manager_runtime: { schema_version: "manager_runtime_session_readback_v0", runtime_profile: "restricted", configuration_revision: "absent", status: "ready", sandbox: "read-only", standing_grant: "none", tool_classes: ["loopx_core"] } } : {}) };
       sessions.set(session_id, session);
       messages.set(session_id, messages.get(session_id) ?? []);
-      await route.fulfill({ contentType: "application/json", json: { ok: true, agent_id: body.agent_id, goal_id: body.goal_id, resumed: body.mode === "resume_latest", session_id }, status: 201 });
+      await route.fulfill({ contentType: "application/json", json: { ok: true, agent_id: body.agent_id, goal_id: body.goal_id, resumed: body.mode === "resume_latest", session_id, session }, status: 201 });
       return;
     }
     const snapshot = url.pathname.match(/^\/api\/chat\/sessions\/([^/]+)$/);

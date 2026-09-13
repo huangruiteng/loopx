@@ -9,11 +9,15 @@ from pathlib import Path
 import shutil
 import threading
 import time
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from .chat_manager import (
     MANAGER_AGENT_GOAL_ID, MANAGER_AGENT_OBJECTIVE, MANAGER_CONTEXT_VERSION,
-    is_manager_channel, manager_model_config, manager_workspace, manager_skill_text,
+    is_manager_channel, manager_agent_objective, manager_model_config,
+    manager_workspace, manager_skill_text,
+)
+from .capabilities.manager_runtime import (
+    load_effective_manager_runtime_profile, manager_runtime_session_fields,
 )
 from .chat_acp import ACPStdioAdapter
 from .chat_agent import CodexChatAgentError, CodexChatAgentSession, CodexChatTimeoutError
@@ -67,6 +71,8 @@ class CodexAppServerAdapter:
         idle_timeout_sec: float = 180.0,
         hard_timeout_sec: float = 900.0,
         execution_mode: bool = False,
+        runtime_profile: str = "restricted",
+        sandbox: str | None = None,
         codex_home: Path | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
@@ -82,6 +88,8 @@ class CodexAppServerAdapter:
                 idle_timeout_sec=idle_timeout_sec,
                 hard_timeout_sec=hard_timeout_sec,
                 execution_mode=execution_mode,
+                runtime_profile=runtime_profile,
+                sandbox=sandbox,
                 resume_thread_id=resume_thread_id,
                 codex_home=codex_home,
                 model=model,
@@ -262,6 +270,9 @@ class ChatRuntimeController:
         self.session_queue_threads: dict[str, threading.Thread] = {}
         self.closed = threading.Event()
 
+    def manager_runtime_profile(self) -> dict[str, Any]:
+        return load_effective_manager_runtime_profile(self.store.root.parent)
+
     def capabilities(self) -> list[dict[str, Any]]:
         builtins = [
             {
@@ -355,9 +366,38 @@ class ChatRuntimeController:
         resume_thread_id: str | None = None,
         history: list[dict[str, Any]] | None = None,
         execution_mode: bool = False,
+        manager_runtime: Mapping[str, Any] | None = None,
     ) -> ChatRuntimeAdapter:
+        if (
+            manager_runtime is not None
+            and manager_runtime.get("runtime_profile") == "trusted_owner"
+            and agent_id != "codex"
+        ):
+            raise CodexChatAgentError(
+                "The trusted owner manager profile requires the Codex endpoint.",
+                error_code="manager_runtime_endpoint_unsupported",
+                gate={
+                    "kind": "host_tool_gate",
+                    "summary": (
+                        "The selected manager Agent cannot enforce the trusted owner "
+                        "runtime profile."
+                    ),
+                    "next_action": (
+                        "Select the Codex Agent or change Manager runtime to restricted."
+                    ),
+                },
+            )
         if agent_id == "codex":
             from .capabilities.manager_context.inspection import READ_TOOL
+            manager_profile = (
+                dict(manager_runtime or self.manager_runtime_profile())
+                if goal_id == MANAGER_AGENT_GOAL_ID
+                else None
+            )
+            if manager_profile is not None:
+                objective = manager_agent_objective(
+                    str(manager_profile["runtime_profile"])
+                )
             history_context = ""
             if history:
                 history_lines = [
@@ -380,6 +420,16 @@ class ChatRuntimeController:
                 idle_timeout_sec=self.idle_timeout_sec,
                 hard_timeout_sec=self.hard_timeout_sec,
                 execution_mode=execution_mode,
+                runtime_profile=(
+                    str(manager_profile["runtime_profile"])
+                    if manager_profile is not None
+                    else "restricted"
+                ),
+                sandbox=(
+                    str(manager_profile["sandbox"])
+                    if manager_profile is not None
+                    else None
+                ),
                 **(manager_model_config() if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode else {}),
                 **({"dynamic_tools": [READ_TOOL]} if goal_id == MANAGER_AGENT_GOAL_ID and not execution_mode else {}),
             )
@@ -437,9 +487,21 @@ class ChatRuntimeController:
         if mode not in {"resume_latest", "new"}:
             raise ValueError("mode must be resume_latest or new")
         selected_channel = channel_id or f"goal.{goal_id}"
+        manager_runtime = (
+            self.manager_runtime_profile()
+            if is_manager_channel(selected_channel)
+            else None
+        )
         if is_manager_channel(selected_channel):
-            work_dir = manager_workspace(self.store.root, selected_channel)
-            objective = MANAGER_AGENT_OBJECTIVE
+            assert manager_runtime is not None
+            work_dir = manager_workspace(
+                self.store.root,
+                selected_channel,
+                runtime_profile=str(manager_runtime["runtime_profile"]),
+            )
+            objective = manager_agent_objective(
+                str(manager_runtime["runtime_profile"])
+            )
             agent_goal_id = MANAGER_AGENT_GOAL_ID
             if selected_channel == "manager":
                 goal_id = MANAGER_AGENT_GOAL_ID
@@ -470,6 +532,7 @@ class ChatRuntimeController:
                 goal_id=agent_goal_id or goal_id,
                 objective=objective,
                 execution_mode=selected_channel.startswith("task."),
+                manager_runtime=manager_runtime,
             )
             persisted = self.store.create_session(
                 goal_id=goal_id,
@@ -482,7 +545,12 @@ class ChatRuntimeController:
                 codex_home=str(self.codex_home) if agent_id == "codex" else None,
             )
             if is_manager_channel(selected_channel):
-                persisted = self.store.update_session(persisted["session_id"], manager_context_version=MANAGER_CONTEXT_VERSION)
+                assert manager_runtime is not None
+                persisted = self.store.update_session(
+                    persisted["session_id"],
+                    manager_context_version=MANAGER_CONTEXT_VERSION,
+                    **manager_runtime_session_fields(manager_runtime),
+                )
             with self.lock:
                 self.adapters[persisted["session_id"]] = adapter
             return persisted, False
@@ -531,22 +599,60 @@ class ChatRuntimeController:
         if current_session is None or current_session.get("status") == "closed":
             raise KeyError("chat session was not found")
         session = current_session
+        manager_runtime = (
+            self.manager_runtime_profile()
+            if is_manager_channel(session.get("channel_id"))
+            else None
+        )
         if is_manager_channel(session.get("channel_id")):
-            work_dir = manager_workspace(self.store.root, str(session["channel_id"]))
-            objective = MANAGER_AGENT_OBJECTIVE
+            assert manager_runtime is not None
+            work_dir = manager_workspace(
+                self.store.root,
+                str(session["channel_id"]),
+                runtime_profile=str(manager_runtime["runtime_profile"]),
+            )
+            objective = manager_agent_objective(
+                str(manager_runtime["runtime_profile"])
+            )
         self._check_codex_home(session)
         if session.get("session_mode") == CHAT_SESSION_MODE_ATTACHED:
             raise CodexChatAgentError(
                 "The attached host Session must be served by its existing host bridge.",
                 error_code="attached_session_requires_host_bridge",
             )
+        reusable: ChatRuntimeAdapter | None = None
         with self.lock:
             current = self.adapters.get(session_id)
-            if current is not None and current.healthcheck():
-                return current
-            if current is not None:
+            manager_profile_changed = bool(
+                manager_runtime is not None
+                and (
+                    session.get("manager_runtime_profile") is not None
+                    or manager_runtime.get("runtime_profile") != "restricted"
+                )
+                and any(
+                    session.get(key) != value
+                    for key, value in manager_runtime_session_fields(manager_runtime).items()
+                )
+            )
+            if (
+                current is not None
+                and current.healthcheck()
+                and not manager_profile_changed
+            ):
+                reusable = current
+            elif current is not None:
                 current.close_session()
                 self.adapters.pop(session_id, None)
+        if reusable is not None:
+            if (
+                manager_runtime is not None
+                and session.get("manager_runtime_profile") is None
+            ):
+                self.store.update_session(
+                    session_id,
+                    **manager_runtime_session_fields(manager_runtime),
+                )
+            return reusable
         self.store.update_session(session_id, status="resuming", last_error_code=None)
         active_turn_id = interrupted_turn_id or session.get("active_turn_id")
         if active_turn_id:
@@ -580,7 +686,10 @@ class ChatRuntimeController:
             ]
             legacy_manager_context = (
                 is_manager_channel(session.get("channel_id"))
-                and session.get("manager_context_version") != MANAGER_CONTEXT_VERSION
+                and (
+                    session.get("manager_context_version") != MANAGER_CONTEXT_VERSION
+                    or manager_profile_changed
+                )
             )
             legacy_codex_goal_thread = (
                 session.get("agent_id") == "codex"
@@ -614,6 +723,7 @@ class ChatRuntimeController:
                     else None
                 ),
                 execution_mode=str(session.get("channel_id") or "").startswith("task."),
+                manager_runtime=manager_runtime,
             )
         except Exception as exc:
             self.store.update_session(
@@ -636,7 +746,11 @@ class ChatRuntimeController:
                 # not when a service happens to start in a new environment.
                 self.store.update_session(session_id, codex_home=str(self.codex_home))
             if is_manager_channel(session.get("channel_id")):
-                changes = {"manager_context_version": MANAGER_CONTEXT_VERSION}
+                assert manager_runtime is not None
+                changes = {
+                    "manager_context_version": MANAGER_CONTEXT_VERSION,
+                    **manager_runtime_session_fields(manager_runtime),
+                }
                 if session["channel_id"] == "manager":
                     changes["goal_id"] = MANAGER_AGENT_GOAL_ID
                 self.store.update_session(session_id, **changes)
@@ -1004,21 +1118,28 @@ class ChatRuntimeController:
                         with self.lock:
                             if self.adapters.get(session_id) is adapter:
                                 self.adapters.pop(session_id, None)
+                        manager_runtime = self.manager_runtime_profile()
                         adapter = self._start_adapter(
                             agent_id=str(session["agent_id"]),
                             work_dir=manager_workspace(
-                                self.store.root, str(session["channel_id"])
+                                self.store.root,
+                                str(session["channel_id"]),
+                                runtime_profile=str(
+                                    manager_runtime["runtime_profile"]
+                                ),
                             ),
                             goal_id=MANAGER_AGENT_GOAL_ID,
                             objective=MANAGER_AGENT_OBJECTIVE,
                             resume_thread_id=None,
                             history=None,
                             execution_mode=False,
+                            manager_runtime=manager_runtime,
                         )
                         self.store.update_session(
                             session_id,
                             upstream_thread_id=adapter.upstream_thread_id,
                             manager_authorization_scope_id=scope_id,
+                            **manager_runtime_session_fields(manager_runtime),
                         )
                         with self.lock:
                             self.adapters[session_id] = adapter

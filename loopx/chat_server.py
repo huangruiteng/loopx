@@ -36,6 +36,7 @@ from .chat_manager import (
 )
 from .chat_ssh_source_api import SshSourceRequestMixin
 from .chat_store import ChatSessionStore
+from .capabilities.manager_runtime import manager_runtime_capability_projection
 from .control_plane.status.ssh_host_catalog import (
     SSH_HOST_CATALOG_PATH,
     ssh_host_catalog_payload,
@@ -1267,7 +1268,9 @@ class ChatRequestHandler(
             capabilities = {
                 "ok": True,
                 "schema_version": "loopx_chat_capabilities_v1",
-                "manager": {"scope": "owner_global", **manager_model_config()},
+                "manager": manager_runtime_capability_projection(
+                    self.server.runtime_controller, manager_model_config()
+                ),
                 "runtime_identity": release_runtime_identity(),
                 "agent_backend": "multi_adapter",
                 "sandbox": "read-only",

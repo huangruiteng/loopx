@@ -217,6 +217,7 @@ def _turn_prompt(
     *,
     context_summary: str = "",
     execution_mode: bool = False,
+    runtime_profile: str = "restricted",
 ) -> str:
     envelope = {
         "schema_version": CHAT_AGENT_RESPONSE_SCHEMA_VERSION,
@@ -242,11 +243,17 @@ def _turn_prompt(
         else
         "You are the planning agent inside LoopX Chat. Work only from the project root. "
     )
+    trusted_manager_limits = (
+        "The effective runtime profile is trusted_owner. Use normal permitted host tools and skills when they materially help answer or complete the request. "
+        "Ordinary reversible work may proceed within the current request and standing grants. Durable LoopX state changes still use typed owners, and protected operations still use protected_action. "
+        if not execution_mode and runtime_profile == "trusted_owner"
+        else ""
+    )
     planning_limits = (
         "Use read-only repository commands only when the operator explicitly asks for repository facts or when evidence is required to answer accurately. "
         "Do not use tools for ordinary conversation, exact-wording requests, or status questions that can be answered from the supplied LoopX context. "
         "Do not edit files, mutate LoopX state, create commits, send messages, or request elevated access. "
-        if not execution_mode
+        if not execution_mode and runtime_profile != "trusted_owner"
         else ""
     )
     protected_action_contract = (
@@ -263,6 +270,7 @@ def _turn_prompt(
         + "The operator message below is the current task. Answer it directly and do not replace it "
         + "with an autonomous project task. "
         + planning_limits
+        + trusted_manager_limits
         + "Outside manager intent delegation, when the operator requests a durable Goal, Todo, Agent binding, heartbeat, monitor, gate, or correction change, "
         "describe the bounded proposal clearly so LoopX can route it through typed preview and explicit apply. "
         + protected_action_contract
@@ -294,6 +302,8 @@ class CodexChatAgentSession:
     work_dir: Path
     context_summary: str = ""
     execution_mode: bool = False
+    runtime_profile: str = "restricted"
+    sandbox: str = "read-only"
     model: str | None = None
     reasoning_effort: str | None = None
     response_timeout_sec: float = 30.0
@@ -326,6 +336,8 @@ class CodexChatAgentSession:
         hard_timeout_sec: float = 900.0,
         resume_thread_id: str | None = None,
         execution_mode: bool = False,
+        runtime_profile: str = "restricted",
+        sandbox: str | None = None,
         codex_home: Path | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
@@ -342,6 +354,17 @@ class CodexChatAgentSession:
                 ),
             )
         root = work_dir.resolve()
+        selected_sandbox = sandbox or (
+            "workspace-write" if execution_mode else "read-only"
+        )
+        if selected_sandbox not in {
+            "read-only",
+            "workspace-write",
+            "danger-full-access",
+        }:
+            raise ValueError("unsupported Codex Chat sandbox")
+        if runtime_profile not in {"restricted", "trusted_owner"}:
+            raise ValueError("unsupported Codex Chat runtime profile")
         # Pin the host store explicitly, including compatibility retries. Never
         # redirect an existing thread by inheriting a different launch context.
         runtime_home = (codex_home or Path(os.environ.get("CODEX_HOME") or "~/.codex")).expanduser().resolve()
@@ -391,6 +414,8 @@ class CodexChatAgentSession:
             idle_timeout_sec=idle_timeout_sec,
             hard_timeout_sec=hard_timeout_sec,
             execution_mode=execution_mode,
+            runtime_profile=runtime_profile,
+            sandbox=selected_sandbox,
             model=model,
             reasoning_effort=reasoning_effort,
             model_catalog_compatibility_applied=_compatibility_catalog_path is not None,
@@ -416,7 +441,7 @@ class CodexChatAgentSession:
                     "cwd": str(root),
                     **({"model": model} if model else {}),
                     **({"config": {"model_reasoning_effort": reasoning_effort}} if reasoning_effort else {}),
-                    "sandbox": "workspace-write" if execution_mode else "read-only",
+                    "sandbox": selected_sandbox,
                     "approvalPolicy": "never",
                     **({"dynamicTools": dynamic_tools} if dynamic_tools and not resume_thread_id else {}),
                 },
@@ -452,6 +477,8 @@ class CodexChatAgentSession:
                     hard_timeout_sec=hard_timeout_sec,
                     resume_thread_id=resume_thread_id,
                     execution_mode=execution_mode,
+                    runtime_profile=runtime_profile,
+                    sandbox=selected_sandbox,
                     codex_home=runtime_home,
                     model=model,
                     reasoning_effort=reasoning_effort,
@@ -634,6 +661,7 @@ class CodexChatAgentSession:
                             text,
                             context_summary=self.context_summary,
                             execution_mode=self.execution_mode,
+                            runtime_profile=self.runtime_profile,
                         ),
                     }
                 ],
@@ -679,6 +707,7 @@ class CodexChatAgentSession:
                     text,
                     context_summary=self.context_summary,
                     execution_mode=self.execution_mode,
+                    runtime_profile=self.runtime_profile,
                 ),
             }
         ]

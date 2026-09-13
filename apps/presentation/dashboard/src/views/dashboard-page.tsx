@@ -56,6 +56,7 @@ import {
   type ChatSessionSnapshot,
   type ChatSessionSummary,
   type ChatImageAttachment,
+  type ManagerRuntimeSessionReadback,
   type ProtectedActionProposal,
   type TodoProposal,
 } from "../data/chat";
@@ -1395,6 +1396,7 @@ function PersonalGoalHome({
     trust_scope?: string;
   }>>([]);
   const [goalSubagentConfigurationEnabled, setGoalSubagentConfigurationEnabled] = useState(false);
+  const [managerRuntime, setManagerRuntime] = useState<ManagerRuntimeSessionReadback | null>(null);
   const model = useMemo(() => {
     const base = buildPersonalHomeModel(payload, rows, t, goalSubagentConfigurationEnabled);
     if (!progress) return base;
@@ -1618,6 +1620,7 @@ function PersonalGoalHome({
     if (readOnly) {
       setRuntimeAgents([]);
       setGoalSubagentConfigurationEnabled(false);
+      setManagerRuntime(null);
       return;
     }
     let cancelled = false;
@@ -1625,6 +1628,16 @@ function PersonalGoalHome({
       .then((capabilities) => {
         if (!cancelled) {
           setRuntimeAgents(capabilities.adapters ?? []);
+          const runtime = capabilities.manager?.runtime;
+          setManagerRuntime(runtime ? {
+            schema_version: "manager_runtime_session_readback_v0",
+            runtime_profile: runtime.runtime_profile,
+            configuration_revision: runtime.configuration_revision,
+            status: runtime.status,
+            sandbox: runtime.sandbox,
+            standing_grant: runtime.standing_grant,
+            tool_classes: runtime.tool_classes,
+          } : null);
           setGoalSubagentConfigurationEnabled(
             capabilities.goal_subagent_configuration === "preview_locked",
           );
@@ -1707,6 +1720,9 @@ function PersonalGoalHome({
           contextKind,
         );
         if (cancelled) return;
+        if (contextKind === "manager" && created.session.manager_runtime) {
+          setManagerRuntime(created.session.manager_runtime);
+        }
         sessionIds.current.set(sessionKey, created.session_id);
         const activeSnapshot = history.snapshots.find(
           (snapshot) => snapshot.session.session_id === created.session_id,
@@ -2079,6 +2095,9 @@ function PersonalGoalHome({
           mode,
           targetContextId === "manager" ? "manager" : "goal",
         );
+        if (targetContextId === "manager" && session.session.manager_runtime) {
+          setManagerRuntime(session.session.manager_runtime);
+        }
         sessionId = session.session_id;
         sessionIds.current.set(sessionKey, sessionId);
         recordRuntimeBinding(targetContextId, {
@@ -2795,6 +2814,7 @@ function PersonalGoalHome({
           onStartNewRunSession: startNewManagerSession,
         }}
         goalArchiveLoadState={goalArchiveLoadState}
+        managerRuntime={managerRuntime}
         model={workspaceModel}
         readOnly={readOnly}
         selectedAgentId={selectedAgent.agentId}

@@ -17,6 +17,7 @@ import {
   transitionTypedAction,
   type GoalRepositoryContext,
   type LarkGoalConnection,
+  type ManagerRuntimeSessionReadback,
   type TypedActionProposal,
 } from "../../data/chat";
 
@@ -750,6 +751,7 @@ export function PersonalWorkspacePage({
   agents = [{ agentId: "codex", available: true, capability: "代码与项目执行", label: "Codex" }],
   callbacks = {},
   goalArchiveLoadState = { error: null, phase: "ready" },
+  managerRuntime,
   model,
   readOnly = false,
   selectedAgentId: controlledAgentId,
@@ -759,6 +761,7 @@ export function PersonalWorkspacePage({
   agents?: WorkspaceAgentOption[];
   callbacks?: PersonalWorkspaceCallbacks;
   goalArchiveLoadState?: WorkspaceGoalArchiveLoadState;
+  managerRuntime?: ManagerRuntimeSessionReadback | null;
   model: WorkspaceModel;
   ownerLabel?: string;
   readOnly?: boolean;
@@ -1825,6 +1828,7 @@ export function PersonalWorkspacePage({
           <ChannelHeader
             agents={agents}
             managerChatOpen={managerChatOpen}
+            managerRuntime={managerRuntime}
             mobileNavigationOpen={mobileSidebarOpen}
             onOpenGoalCapabilities={selectedGoal ? () => setSelection({ goalId: selectedGoal.goalId, kind: "settings", tab: "capabilities" }) : undefined}
             onOpenGoalDetail={selectedGoal && !selectedGoal.loadState ? () => setSelection({ item: selectedGoal, kind: "goal" }) : undefined}

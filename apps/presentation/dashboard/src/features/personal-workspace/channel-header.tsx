@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, Eye, Info, Menu, RefreshCw, SlidersHorizontal } from "lucide-react";
 
 import { localizedGoalState, useWorkspaceI18n } from "./i18n";
+import type { ManagerRuntimeSessionReadback } from "../../data/chat";
 import type { WorkspaceAgentOption, WorkspaceGoal, WorkspaceGoalTab } from "./personal-workspace-model";
 import { goalUsageLabel } from "./personal-workspace-model";
 import { WorkspaceSelect } from "./workspace-select";
@@ -9,6 +10,7 @@ import { WorkspaceSelect } from "./workspace-select";
 export function ChannelHeader({
   agents,
   managerChatOpen,
+  managerRuntime,
   mobileNavigationOpen,
   onOpenGoalCapabilities,
   onOpenGoalDetail,
@@ -26,6 +28,7 @@ export function ChannelHeader({
 }: {
   agents: WorkspaceAgentOption[];
   managerChatOpen?: boolean;
+  managerRuntime?: ManagerRuntimeSessionReadback | null;
   mobileNavigationOpen?: boolean;
   onOpenGoalCapabilities?: () => void;
   onOpenGoalDetail?: () => void;
@@ -87,6 +90,17 @@ export function ChannelHeader({
       <button aria-expanded={mobileNavigationOpen ?? false} aria-label={t("header.openGoalNavigation")} className="personal-icon-button personal-mobile-menu" onClick={onOpenNavigation} type="button"><Menu size={18} /></button>
       <div className="personal-channel-title">
         <h1>{selectedGoal?.title ?? t("header.manager")}</h1>
+        {!selectedGoal && managerRuntime ? (
+          <p>{managerRuntime.status === "ready"
+            ? t("header.managerRuntime", {
+              profile: managerRuntime.runtime_profile,
+              sandbox: managerRuntime.sandbox,
+            })
+            : t("header.managerRuntimeFallback", {
+              profile: managerRuntime.runtime_profile,
+              sandbox: managerRuntime.sandbox,
+            })}</p>
+        ) : null}
         {selectedGoal ? <p>{selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : `${selectedGoal.agentLaneCount && selectedGoal.agentLaneCount > 1
             ? t("header.workAgentCount", { count: selectedGoal.agentLaneCount })
             : selectedGoal.agentLabel ?? selectedGoal.agentId} · ${(selectedGoal.loadState ? t(selectedGoal.loadState === "error" ? "startup.goalError" : "startup.goalLoading") : localizedGoalState(selectedGoal.state, locale))}${selectedGoalUsageLabel ? ` · ${selectedGoalUsageLabel}` : ""} · ${selectedGoal.nextSentence}`}</p> : null}

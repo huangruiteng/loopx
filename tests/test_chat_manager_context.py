@@ -4,12 +4,46 @@ import pytest
 
 import loopx.chat_manager_context as context
 from loopx.chat_manager import (
+    MANAGER_AGENT_GOAL_ID,
     MANAGER_CONTEXT_VERSION,
     manager_model_config,
     manager_workspace,
 )
+from loopx.chat_agent import CodexChatAgentError
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_store import ChatSessionStore
+from loopx.capabilities.machine_configuration.builtins import (
+    build_builtin_machine_configuration_registry,
+)
+from loopx.capabilities.machine_configuration.store import (
+    configure_machine_configuration,
+)
+
+
+def _apply_manager_runtime_profile(runtime_root, profile):
+    configuration = {
+        "schema_version": "loopx_machine_configuration_v0",
+        "namespaces": {
+            "manager_runtime": {
+                "schema_version": "manager_runtime_profile_v0",
+                "runtime_profile": profile,
+            }
+        },
+    }
+    registry = build_builtin_machine_configuration_registry()
+    preview = configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=False,
+    )
+    configure_machine_configuration(
+        runtime_root=runtime_root,
+        configuration=configuration,
+        registry=registry,
+        execute=True,
+        expected_plan_revision=preview["plan_revision"],
+    )
 
 
 def test_manager_defaults_are_independent_of_worker_configuration(monkeypatch):
@@ -73,6 +107,139 @@ class Adapter:
 
     def close_session(self):
         self.closed = True
+
+
+def test_trusted_manager_profile_drives_host_and_session_readback(
+    monkeypatch, tmp_path
+):
+    import loopx.chat_runtime as runtime_module
+
+    runtime_root = tmp_path / "runtime"
+    _apply_manager_runtime_profile(runtime_root, "trusted_owner")
+    store = ChatSessionStore(runtime_root)
+    runtime = ChatRuntimeController(store=store, codex_bin="codex")
+    monkeypatch.setattr(
+        runtime,
+        "capabilities",
+        lambda: [
+            {
+                "agent_id": "codex",
+                "available": True,
+                "adapter_kind": "codex_app_server",
+            }
+        ],
+    )
+    starts = []
+    adapter = Adapter()
+
+    def start(**kwargs):
+        starts.append(kwargs)
+        return adapter
+
+    monkeypatch.setattr(runtime_module.CodexAppServerAdapter, "start", start)
+    session, resumed = runtime.open_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        work_dir=tmp_path,
+        objective="manager",
+        mode="new",
+        channel_id="manager",
+    )
+
+    assert resumed is False
+    assert starts[0]["runtime_profile"] == "trusted_owner"
+    assert starts[0]["sandbox"] == "danger-full-access"
+    assert "normal tools and skills" in starts[0]["objective"]
+    assert "Do not inspect arbitrary repositories" not in starts[0]["objective"]
+    readback = store.public_session(session)["manager_runtime"]
+    assert readback["runtime_profile"] == "trusted_owner"
+    assert readback["sandbox"] == "danger-full-access"
+    assert readback["standing_grant"] == "machine_configuration"
+    assert "shell" in readback["tool_classes"]
+    assert "normal tools and skills" in manager_workspace(
+        store.root,
+        runtime_profile="trusted_owner",
+    ).joinpath("AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_trusted_manager_profile_rejects_endpoint_that_cannot_enforce_it(
+    tmp_path,
+):
+    runtime = ChatRuntimeController(
+        store=ChatSessionStore(tmp_path / "runtime"),
+        codex_bin="codex",
+    )
+    profile = {
+        **runtime.manager_runtime_profile(),
+        "runtime_profile": "trusted_owner",
+        "sandbox": "danger-full-access",
+    }
+
+    with pytest.raises(
+        CodexChatAgentError,
+        match="requires the Codex endpoint",
+    ) as caught:
+        runtime._start_adapter(
+            agent_id="claude-code",
+            work_dir=tmp_path,
+            goal_id=MANAGER_AGENT_GOAL_ID,
+            objective="manager",
+            manager_runtime=profile,
+        )
+
+    assert caught.value.error_code == "manager_runtime_endpoint_unsupported"
+    assert "Select the Codex Agent" in caught.value.gate["next_action"]
+
+
+def test_manager_profile_change_rotates_healthy_upstream_without_losing_session(
+    monkeypatch, tmp_path
+):
+    store = ChatSessionStore(tmp_path / "runtime")
+    runtime = ChatRuntimeController(store=store, codex_bin="codex")
+    monkeypatch.setattr(
+        runtime,
+        "capabilities",
+        lambda: [
+            {
+                "agent_id": "codex",
+                "available": True,
+                "adapter_kind": "codex_app_server",
+            }
+        ],
+    )
+    starts = []
+
+    def start(**kwargs):
+        adapter = Adapter()
+        adapter.upstream_thread_id = f"upstream-{len(starts)}"
+        starts.append((kwargs, adapter))
+        return adapter
+
+    monkeypatch.setattr(runtime, "_start_adapter", start)
+    session, _ = runtime.open_session(
+        goal_id="loopx-manager",
+        agent_id="codex",
+        work_dir=tmp_path,
+        objective="manager",
+        mode="new",
+        channel_id="manager",
+    )
+    assert starts[0][0]["manager_runtime"]["runtime_profile"] == "restricted"
+
+    _apply_manager_runtime_profile(tmp_path / "runtime", "trusted_owner")
+    restored = runtime._ensure_adapter(
+        session,
+        work_dir=tmp_path,
+        objective="manager",
+    )
+
+    assert starts[0][1].closed is True
+    assert restored is starts[1][1]
+    assert starts[1][0]["resume_thread_id"] is None
+    assert starts[1][0]["manager_runtime"]["runtime_profile"] == "trusted_owner"
+    updated = store.load_session(session["session_id"])
+    assert updated["manager_runtime_profile"] == "trusted_owner"
+    assert updated["upstream_thread_id"] == "upstream-1"
 
 
 def test_legacy_manager_migrates_without_project_and_refreshes_each_turn(

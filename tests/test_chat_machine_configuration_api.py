@@ -195,6 +195,7 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
     assert response["status"] == "absent"
     assert response["available_namespaces"] == [
         "change_quality_qualification",
+        "manager_runtime",
         "periodic_report",
         "pull_request_review",
         "todo_replan_cadence",
@@ -224,6 +225,13 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "schema_version": "pull_request_review_machine_defaults_v0",
         "review_priority": "other-developers-first",
     }
+    assert namespace_catalog["manager_runtime"]["configuration_template"] == {
+        "schema_version": "manager_runtime_profile_v0",
+        "runtime_profile": "restricted",
+    }
+    assert namespace_catalog["manager_runtime"]["documentation"]["path"] == (
+        "docs/architecture/rfcs/manager-runtime-profile-v0.md"
+    )
     capability_catalog = response["capability_catalog"]
     assert capability_catalog["schema_version"] == "capability_configuration_catalog_v0"
     capabilities = {
@@ -248,6 +256,9 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "timezone",
         "schedule",
     ]
+    assert capabilities["manager_runtime"]["documentation"] == (
+        namespace_catalog["manager_runtime"]["documentation"]
+    )
     effective = capability["effective_configuration"]
     assert effective["source"] == "capability_default"
     assert effective["configuration"] == capability["default"]
@@ -278,7 +289,7 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
         default_multi_subagent_max_children=2,
         explore_harness_profiles=(),
     )
-    assert set(machine) - {"pull_request_review"} == {
+    assert set(machine) - {"manager_runtime", "pull_request_review"} == {
         feature["feature_id"] for feature in goal["features"]
     }
     assert machine["pull_request_review"]["available_scopes"] == ["machine"]
@@ -294,7 +305,11 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
     for capability_id, item in machine.items():
         assert "current" not in item
         assert "commands" not in item
-        if capability_id not in {
+        if capability_id == "manager_runtime":
+            assert item["available_scopes"] == ["machine"]
+            assert item["machine_namespace"] == capability_id
+            assert item["configuration_editor"]["writable_scopes"] == ["machine"]
+        elif capability_id not in {
             "periodic_report",
             "todo_replan_cadence",
             "change_quality_qualification",
@@ -381,6 +396,62 @@ def test_preview_apply_inspect_and_rollback_are_revision_locked(tmp_path: Path) 
     final_handler = _Handler(tmp_path)
     final_handler._machine_configuration_inspect()
     assert final_handler.responses[0]["status"] == "absent"
+
+
+def test_invalid_manager_namespace_can_be_repaired_through_its_public_update(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "machine" / "configuration.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_machine_configuration_v0",
+                "namespaces": {
+                    "manager_runtime": {
+                        "schema_version": "manager_runtime_profile_v0",
+                        "runtime_profile": "invalid-fixture",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    preview_handler = _Handler(
+        tmp_path,
+        {
+            "namespace": "manager_runtime",
+            "namespace_configuration": {
+                "schema_version": "manager_runtime_profile_v0",
+                "runtime_profile": "restricted",
+            },
+        },
+    )
+
+    preview_handler._machine_configuration_update(execute=False)
+
+    preview = preview_handler.responses[0]
+    assert preview["status"] == "preview"
+    assert preview["action"] == "update"
+    assert preview["changed_namespaces"] == ["manager_runtime"]
+    apply_handler = _Handler(
+        tmp_path,
+        {
+            "namespace": "manager_runtime",
+            "namespace_configuration": {
+                "schema_version": "manager_runtime_profile_v0",
+                "runtime_profile": "restricted",
+            },
+            "expected_plan_revision": preview["plan_revision"],
+        },
+    )
+
+    apply_handler._machine_configuration_update(execute=True)
+
+    assert apply_handler.responses[0]["status"] == "applied"
+    inspection = _Handler(tmp_path)
+    inspection._machine_configuration_inspect()
+    assert inspection.responses[0]["status"] == "configured"
 
 
 def test_apply_rejects_a_stale_preview_without_writing(tmp_path: Path) -> None:

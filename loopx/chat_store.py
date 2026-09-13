@@ -289,6 +289,12 @@ class ChatSessionStore:
                     "codex_home",
                     "manager_context_version",
                     "manager_authorization_scope_id",
+                    "manager_runtime_profile",
+                    "manager_runtime_configuration_revision",
+                    "manager_runtime_status",
+                    "manager_runtime_sandbox",
+                    "manager_runtime_standing_grant",
+                    "manager_runtime_tool_classes",
                     "goal_id",
                 }
                 unknown = set(changes) - allowed
@@ -307,6 +313,33 @@ class ChatSessionStore:
                         changes["manager_authorization_scope_id"],
                         field="manager_authorization_scope_id",
                     )
+                for field in (
+                    "manager_runtime_profile",
+                    "manager_runtime_status",
+                    "manager_runtime_sandbox",
+                    "manager_runtime_standing_grant",
+                ):
+                    if field in changes:
+                        changes[field] = _opaque_id(changes[field], field=field)
+                if "manager_runtime_configuration_revision" in changes:
+                    revision = str(
+                        changes["manager_runtime_configuration_revision"] or ""
+                    ).strip()
+                    if not revision or len(revision) > 160 or any(
+                        ord(character) < 32 for character in revision
+                    ):
+                        raise ValueError(
+                            "manager_runtime_configuration_revision is invalid"
+                        )
+                    changes["manager_runtime_configuration_revision"] = revision
+                if "manager_runtime_tool_classes" in changes:
+                    tool_classes = changes["manager_runtime_tool_classes"]
+                    if not isinstance(tool_classes, list):
+                        raise TypeError("manager_runtime_tool_classes must be a list")
+                    changes["manager_runtime_tool_classes"] = [
+                        _opaque_id(item, field="manager_runtime_tool_class")
+                        for item in tool_classes
+                    ]
                 if "codex_home" in changes:
                     home = changes["codex_home"]
                     if (not isinstance(home, str) or not Path(home).is_absolute()
@@ -1427,6 +1460,26 @@ class ChatSessionStore:
                 else {}
             ),
             "channel_id": _session_channel(payload),
+            "manager_runtime": (
+                {
+                    "schema_version": "manager_runtime_session_readback_v0",
+                    "runtime_profile": payload.get("manager_runtime_profile"),
+                    "configuration_revision": payload.get(
+                        "manager_runtime_configuration_revision"
+                    ),
+                    "status": payload.get("manager_runtime_status"),
+                    "sandbox": payload.get("manager_runtime_sandbox"),
+                    "standing_grant": payload.get(
+                        "manager_runtime_standing_grant"
+                    ),
+                    "tool_classes": list(
+                        payload.get("manager_runtime_tool_classes") or []
+                    ),
+                }
+                if _session_channel(payload).startswith("manager")
+                and payload.get("manager_runtime_profile")
+                else None
+            ),
             "resumable": bool(payload.get("upstream_thread_id"))
             and payload.get("status") in RESUMABLE_SESSION_STATES,
         }

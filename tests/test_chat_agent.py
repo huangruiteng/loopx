@@ -122,6 +122,51 @@ def test_codex_chat_pins_explicit_home_in_child_environment(monkeypatch, tmp_pat
         session.close()
 
 
+def test_trusted_manager_profile_reaches_app_server_and_turn_prompt(
+    monkeypatch,
+    tmp_path,
+):
+    process = _FakeAppServerProcess()
+    monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(chat_agent.subprocess, "Popen", lambda *a, **k: process)
+    session = chat_agent.CodexChatAgentSession.start(
+        codex_bin="codex",
+        work_dir=tmp_path,
+        goal_id="loopx-manager",
+        objective="global",
+        runtime_profile="trusted_owner",
+        sandbox="danger-full-access",
+    )
+    try:
+        requests = [
+            json.loads(line) for line in process.stdin.getvalue().splitlines()
+        ]
+        start = next(row for row in requests if row["method"] == "thread/start")
+        assert start["params"]["sandbox"] == "danger-full-access"
+
+        turns = []
+
+        def request(method, params, **kwargs):
+            turns.append((method, params))
+            return {"turn": {"id": "fixture-turn"}}
+
+        monkeypatch.setattr(session, "_request", request)
+        monkeypatch.setattr(
+            session,
+            "_next_event",
+            lambda **kwargs: {
+                "method": "turn/completed",
+                "params": {"turn": {"status": "completed"}},
+            },
+        )
+        session.send("Inspect and repair the project.")
+        prompt = turns[0][1]["input"][0]["text"]
+        assert "effective runtime profile is trusted_owner" in prompt
+        assert "Do not edit files" not in prompt
+    finally:
+        session.close()
+
+
 @pytest.mark.parametrize('resume_thread_id', [None, 'thread-loopx-chat'])
 def test_explicit_manager_model_and_effort_reach_start_resume_and_turn(monkeypatch, tmp_path, resume_thread_id):
     process = _FakeAppServerProcess()

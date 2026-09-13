@@ -31,6 +31,7 @@ class MachineConfigurationNamespace:
     apply_public_update: PublicUpdater
     title: str | None = None
     description: str | None = None
+    documentation: Mapping[str, str] | None = None
     default_configuration: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -45,6 +46,13 @@ class MachineConfigurationNamespace:
         if self.description is not None and not self.description.strip():
             raise ValueError(
                 "machine-configuration namespace description must not be empty"
+            )
+        if self.documentation is not None and any(
+            not str(key).strip() or not str(value).strip()
+            for key, value in self.documentation.items()
+        ):
+            raise ValueError(
+                "machine-configuration namespace documentation must not be empty"
             )
 
     def public_descriptor(self) -> dict[str, Any]:
@@ -68,6 +76,11 @@ class MachineConfigurationNamespace:
             "schema_versions": sorted(self.schema_versions),
             "configuration_template": public_template,
             "template_status": template_status,
+            **(
+                {"documentation": dict(self.documentation)}
+                if self.documentation is not None
+                else {}
+            ),
         }
 
 

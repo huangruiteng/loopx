@@ -46,6 +46,23 @@ export type ChatCapabilities = {
   approval_policy: string;
   todo_write: string;
   goal_id: string | null;
+  manager?: {
+    scope: "owner_global";
+    model: string;
+    reasoning_effort: string;
+    runtime: {
+      schema_version: "manager_runtime_effective_profile_v0";
+      runtime_profile: "restricted" | "trusted_owner";
+      source: string;
+      configuration_revision: string;
+      standing_grant: string;
+      sandbox: string;
+      approval_policy: string;
+      tool_classes: string[];
+      status: string;
+      repair?: string;
+    };
+  };
   streaming?: boolean;
   resume?: boolean;
   interrupt?: boolean;

@@ -105,6 +105,23 @@ export const chatCapabilitiesSchema = z.object({
   todo_write: z.string(),
   goal_subagent_configuration: z.string().optional(),
   goal_id: z.string().nullable(),
+  manager: z.object({
+    scope: z.literal("owner_global"),
+    model: z.string(),
+    reasoning_effort: z.string(),
+    runtime: z.object({
+      schema_version: z.literal("manager_runtime_effective_profile_v0"),
+      runtime_profile: z.enum(["restricted", "trusted_owner"]),
+      source: z.string(),
+      configuration_revision: z.string(),
+      standing_grant: z.string(),
+      sandbox: z.string(),
+      approval_policy: z.string(),
+      tool_classes: z.array(z.string()),
+      status: z.string(),
+      repair: z.string().optional(),
+    }),
+  }).optional(),
   streaming: z.boolean().optional(),
   resume: z.boolean().optional(),
   interrupt: z.boolean().optional(),
@@ -518,6 +535,7 @@ export async function createChatSession(
     ok: true;
     resumed: boolean;
     session_id: string;
+    session: ChatSessionSummary;
   }>("/api/chat/sessions", {
     method: "POST",
     body: JSON.stringify({ goal_id: goalId, agent_id: agentId, mode, context_kind: contextKind }),
@@ -545,6 +563,17 @@ export type ChatSessionSummary = {
   updated_at: string;
   last_activity_at: string;
   resumable: boolean;
+  manager_runtime?: ManagerRuntimeSessionReadback | null;
+};
+
+export type ManagerRuntimeSessionReadback = {
+  schema_version: "manager_runtime_session_readback_v0";
+  runtime_profile: "restricted" | "trusted_owner";
+  configuration_revision: string;
+  status: string;
+  sandbox: string;
+  standing_grant: string;
+  tool_classes: string[];
 };
 
 export type ChatVisibleMessage = {

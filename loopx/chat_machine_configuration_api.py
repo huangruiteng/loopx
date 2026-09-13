@@ -16,7 +16,7 @@ from .capabilities.machine_configuration.contract import (
 from .capabilities.machine_configuration.store import (
     configure_machine_configuration,
     inspect_machine_configuration,
-    read_machine_configuration,
+    read_stored_machine_configuration,
     rollback_machine_configuration,
 )
 
@@ -102,10 +102,10 @@ class MachineConfigurationRequestMixin:
     ) -> dict[str, Any] | None:
         namespace = str(body.get("namespace") or "").strip()
         registry.resolve(namespace)
-        current = read_machine_configuration(
-            self.server.runtime_root,
-            registry=registry,
-        )
+        # The selected namespace update is also its repair path. Keep the old
+        # document opaque until that owner replaces its invalid value; final
+        # whole-document normalization still rejects any invalid sibling.
+        current = read_stored_machine_configuration(self.server.runtime_root)
         operation = str(body.get("operation") or "upsert").strip()
         if operation == "remove":
             if "namespace_configuration" in body:

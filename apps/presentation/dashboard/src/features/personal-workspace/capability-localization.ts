@@ -12,6 +12,10 @@ type FieldCopy = Record<string, Readonly<{ description?: string; label: string }
 
 const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
   en: {
+    manager_runtime: {
+      displayName: "Manager runtime",
+      description: "Selects the persistent host-tool profile used by owner manager conversations.",
+    },
     todo_replan_cadence: { displayName: "Goal review cadence", description: "Configures the Goal review cadence." },
     change_quality_qualification: {
       displayName: "Change quality qualification",
@@ -60,6 +64,10 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
     },
   },
   "zh-CN": {
+    manager_runtime: {
+      displayName: "管家 Runtime",
+      description: "选择管家会话持续生效的宿主工具模式。",
+    },
     todo_replan_cadence: { displayName: "Goal 复核周期", description: "配置 Goal 的复核周期。" },
     change_quality_qualification: {
       displayName: "变更质量验证",
@@ -111,6 +119,7 @@ const capabilityCopy: Record<WorkspaceLocale, Record<string, LocalizedCopy>> = {
 
 const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
   en: {
+    runtime_profile: { label: "Runtime profile", description: "Restricted keeps scoped LoopX reads only. Trusted owner enables normal host tools while protected operations retain separate checks." },
     completed_todos: { label: "Completed Todos between Goal reviews", description: "Machine default or explicit Goal override, from 1 to 5." },
     allowed_domains: { label: "Allowed responsibility domains", description: "Enter one bounded, public-safe domain per line." },
     coordinator_agent_id: { label: "Coordinator Agent", description: "Use an already registered Agent id; leave blank to disable coordination." },
@@ -130,6 +139,7 @@ const fieldCopy: Record<WorkspaceLocale, FieldCopy> = {
     enabled_agents: { label: "Enabled Goal Agents", description: "Enter one registered Goal-local Agent id per line. A private binding currently accepts exactly one Agent." },
   },
   "zh-CN": {
+    runtime_profile: { label: "运行模式", description: "restricted 仅使用受限 LoopX 读取；trusted_owner 开放常规宿主工具，但受保护操作仍单独校验。" },
     completed_todos: { label: "两次 Goal 复核间的已完成 Todo 数", description: "可设置 1–5；机器默认值可被 Goal 显式覆盖。" },
     allowed_domains: { label: "允许的职责域", description: "每行填写一个有边界、可公开的职责域。" },
     coordinator_agent_id: { label: "协调 Agent", description: "填写一个已经注册的 Agent ID；留空表示关闭协调。" },
