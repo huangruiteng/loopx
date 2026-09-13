@@ -24,8 +24,8 @@ Translate only explicit filters:
 - `--since ISO`
 - `--state open|merged|all`
 - `--limit N`
-
-Words such as `today`, `open`, or `merged` are filters, not permission to
+- `--review-priority other-developers-first|owner-first` (default `other-developers-first`; use `owner-first` to opt into owner priority)
+When omitted, the CLI resolves `pull_request_review` from the standard machine capability editor; an absent namespace keeps the default `other-developers-first`. Words such as `today`, `open`, or `merged` are filters, not permission to
 return a table only. Stats-only output requires an explicit opt-out such as
 `只统计`, `只列出`, `stats only`, or `不要 review`.
 

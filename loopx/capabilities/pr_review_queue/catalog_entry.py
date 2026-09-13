@@ -28,6 +28,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
     ),
     "entry_command": (
         "loopx pr-review --repo <owner/repo> --state open "
+        "--review-priority other-developers-first "
         "--autonomous-observation --format json"
     ),
     "commands": [
@@ -44,6 +45,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         {
             "command": (
                 "loopx pr-review --repo <owner/repo> --state open "
+                "--review-priority other-developers-first "
                 "--autonomous-observation --format json"
             ),
             "purpose": "Observe one complete public PR queue and emit at most one exact-head candidate.",
@@ -52,6 +54,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         {
             "command": (
                 "loopx pr-review --repo <owner/repo> --state open "
+                "--review-priority other-developers-first "
                 "--autonomous-observation --previous-observation-json "
                 "<previous.json> [--projected-exact-head NUMBER@HEAD_OID] "
                 "[--handled-exact-head NUMBER@HEAD_OID] "
@@ -63,6 +66,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         {
             "command": (
                 "loopx pr-review --repo <owner/repo> --state open "
+                "--review-priority other-developers-first "
                 "--autonomous-observation --observation-state-file "
                 "<ignored-local-checkpoint.json> "
                 "[--projected-exact-head NUMBER@HEAD_OID] "
@@ -104,8 +108,13 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
             "doc": "loopx/capabilities/pr_review_queue/README.md",
         },
         {
-            "schema_version": "pull_request_review_scheduling_policy_v0",
+            "schema_version": "pull_request_review_scheduling_policy_v1",
             "module": "loopx.capabilities.pr_review_queue.scheduling",
+            "doc": "loopx/capabilities/pr_review_queue/README.md",
+        },
+        {
+            "schema_version": "pull_request_review_machine_defaults_v0",
+            "module": "loopx.capabilities.pr_review_queue.machine_defaults",
             "doc": "loopx/capabilities/pr_review_queue/README.md",
         },
         {
@@ -138,7 +147,7 @@ PR_REVIEW_CATALOG_ENTRY: dict[str, Any] = {
         "The shared execution contract owns review depth, evidence completeness, repository-reuse comparison, exact-head freshness, symbol-map, walkthrough, validation, failure, code-volume, change-proportionality, default-off isolation, and authority-semantics requirements; host skills only route and publish it.",
         "A queue is observed only when result_completeness.complete=true; partial or failed reads are not_observed and never count as unchanged.",
         "Fingerprints cover exact head, formal conclusion, next action, check state, draft state, and mergeability for every open PR.",
-        "Actionable authenticated-developer-owned heads rank first; community response heads and 24-hour backlog share the next tier; remaining work keeps current-head review_ready_at ordering, and one new head after REQUEST_CHANGES may use a bounded fast-feedback slot.",
+        "The default other-developers-first mode ranks actionable heads whose author differs from request.reviewer_login before the authenticated developer's own heads; --review-priority owner-first restores the owner-first order. Community response, 24-hour backlog, and remaining work retain their relative age/order within each selected mode, and one new head after REQUEST_CHANGES may use a bounded fast-feedback slot.",
         "Only rows with a non-null review_action_kind enter review_sequence and carry review plans, templates, or evidence commands; valid exact-head conclusions remain artifact-free inventory-only rows, and only --fresh-audit-exact-head NUMBER@HEAD_OID can explicitly reopen one.",
         "Todo prose, monitor notes, and one-off author filters are not scheduling authority.",
         "A complete exact-head conclusion requires the five Chinese sections, a state-aligned English verdict, and formal state or the verdict-specific titled author-owned fallback.",

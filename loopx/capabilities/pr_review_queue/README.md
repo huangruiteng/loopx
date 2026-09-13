@@ -20,6 +20,16 @@ observation to this same command. It reuses the existing GitHub scan and
 normalized review queue; it does not introduce a second crawler or a new write
 authority.
 
+The capability is also registered with the standard machine configuration
+surface. Open Dashboard → machine settings (or use `loopx machine-config
+describe`) and edit the `Pull-request review` capability. The select field is
+stored under the typed `pull_request_review` namespace and is read by
+`loopx pr-review` whenever `--review-priority` is omitted. Preview/apply is
+revision-locked and readback-verified like every other machine capability;
+removing the namespace returns to the default `other-developers-first` mode.
+This setting changes queue order only and never grants review, comment, Todo,
+push, or merge authority.
+
 The capability also owns the review-depth contract. The shared
 `agent_response_contract.review_execution_contract` defines required evidence,
 completion, freshness, finding, and verdict rules. Each actionable PR carries a
@@ -36,7 +46,7 @@ workflow or the merge-focused `loopx-pr-merge` skill.
 
 | Command | CLI reference | Intent |
 | --- | --- | --- |
-| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--since ISO] [--fresh-audit-exact-head NUMBER@HEAD_OID]` | List open and merged PRs for the current project or explicit repository, provide concrete main-regression analysis for each actionable PR, and include a blank five-block template that agentloop fills after reading the selected PR body/diff. A typed exact-head option is required to re-audit an unchanged concluded head. |
+| `/loopx-pr-review` | `loopx pr-review [--repo owner/repo] [--state open\|merged\|all] [--review-priority other-developers-first\|owner-first] [--since ISO] [--fresh-audit-exact-head NUMBER@HEAD_OID]` | List open and merged PRs for the current project or explicit repository, provide concrete main-regression analysis for each actionable PR, and include a blank five-block template that agentloop fills after reading the selected PR body/diff. The default prioritizes non-owner developer PRs; `owner-first` opts into owner priority. A typed exact-head option is required to re-audit an unchanged concluded head. |
 | pre-merge readback | `loopx pr-review --repo owner/repo --check-merge-readiness NUMBER@HEAD_OID` | Immediately before merge, fail closed unless the remote PR is still open at the reviewed head, its standalone conclusion approves that head, all checks are successful or skipped, review-thread pagination is complete with no unresolved thread, and merge state is compatible. This read grants no merge authority. |
 
 The slash command must run the CLI first. Agentloop must not reconstruct the
@@ -153,11 +163,27 @@ states:
 The repository-scoped fingerprint contains only compact public PR metadata.
 Persisted `items` carry the PR number, fingerprint, exact head, decision, and
 next action; they never carry review bodies.
-`pull_request_review_scheduling_policy_v0` owns the stable queue order:
+`pull_request_review_scheduling_policy_v1` owns the stable queue order. The
+`--review-priority` switch selects the actionable ordering:
 
-1. actionable PRs authored by the authenticated developer (`reviewer_login`);
-2. community response heads pushed after an independent `REQUEST_CHANGES`
-   review and community exact heads waiting at least 24 hours;
+- `other-developers-first` (the default) reviews actionable PRs whose author
+  differs from `request.reviewer_login` before the authenticated developer's
+  own PRs;
+- `owner-first` restores the authenticated developer's own PRs before other
+  developers' PRs.
+
+The capability does not infer organization membership or trust from GitHub
+metadata; “other developer” is strictly an author-identity comparison. The
+selected mode is carried in `request.review_priority`,
+`scheduling_policy.review_priority`, and autonomous observations, so changing
+the switch is an explicit queue transition rather than hidden local state.
+
+Within either mode, the queue order is:
+
+1. the mode-selected actionable author group;
+2. the other actionable author group, with community response heads pushed
+   after an independent `REQUEST_CHANGES` review and community exact heads
+   waiting at least 24 hours;
 3. remaining actionable work in current-head `review_ready_at`, creation-time,
    and PR-number order;
 4. current heads that already have a conclusion, followed by merged, draft,
@@ -165,7 +191,7 @@ next action; they never carry review bodies.
 
 Community feedback and aged backlog share one age-fair tier. On a material
 transition, at most one newly pushed community response head may take a bounded
-fast-feedback slot after all unprojected owner-authored work. `updatedAt` does
+fast-feedback slot after the mode-selected actionable group. `updatedAt` does
 not define readiness because comments and checks must not make old code look
 new. Only an explicit PR selection in the current user request may override the
 next item's ordering for that request; it does not override the selected row's
@@ -374,11 +400,12 @@ absolute paths, private source bodies, or hidden CI artifacts.
   "request": {
     "schema_version": "loopx_pr_review_command_request_v0",
     "command": "/loopx-pr-review",
-    "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--since ISO]",
+    "cli_command": "loopx pr-review [--repo owner/repo] [--state open|merged|all] [--review-priority other-developers-first|owner-first] [--since ISO]",
     "repository": "owner/repo",
     "limit": 100,
     "state_filter": "all",
     "since": "2026-06-28T00:00:00Z",
+    "review_priority": "other-developers-first",
     "window": {"state_filter": "all", "since": "2026-06-28T00:00:00Z"},
     "source": "github_cli",
     "privacy_mode": "public_safe_github_metadata",
@@ -394,14 +421,16 @@ absolute paths, private source bodies, or hidden CI artifacts.
     "rerun_cli_args": []
   },
   "scheduling_policy": {
-    "schema_version": "pull_request_review_scheduling_policy_v0",
+    "schema_version": "pull_request_review_scheduling_policy_v1",
     "identity_basis": "request.reviewer_login",
-    "owner_first_active": true,
+    "review_priority": "other-developers-first",
+    "owner_first_active": false,
+    "other_developers_first_active": true,
     "community_backlog_age_hours": 24.0,
     "ordered_tiers": [
-      {"tier": 0, "id": "authenticated_developer_owned"},
-      {"tier": 1, "id": "community_feedback_and_aged_backlog"},
-      {"tier": 2, "id": "composite_remaining"}
+      {"tier": 0, "id": "other_developer_feedback_and_aged_backlog"},
+      {"tier": 1, "id": "other_developer_remaining"},
+      {"tier": 2, "id": "authenticated_developer_owned"}
     ]
   },
   "summary": {
@@ -722,10 +751,12 @@ A first implementation is acceptable when:
   long answer;
 - live packets expose and recheck `headRefOid` so a review verdict is bound to
   the remote revision actually inspected;
-- autonomous packets rank authenticated-developer-owned actionable work first,
-  then community response and 24-hour backlog, then remaining work by
-  current-head `review_ready_at`; response preemption is bound to one slot and
-  check-only activity does not change readiness priority;
+- autonomous packets honor `request.review_priority`: the default ranks
+  non-owner developer actionable work first, while `owner-first` restores
+  authenticated-developer-owned priority. Community response and 24-hour
+  backlog retain their age ordering within the selected mode; response
+  preemption is bound to one slot and check-only activity does not change
+  readiness priority;
 - `scheduling_policy` is preserved as packet authority; Todo/monitor prose and
   one-off author filters cannot replace it;
 - `--observation-state-file` atomically carries observation and handled cursors
