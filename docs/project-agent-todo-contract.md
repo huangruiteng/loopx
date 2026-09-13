@@ -343,6 +343,19 @@ Deferred todos may carry a machine-readable resume condition with
   material-change generation. The transition binds the monitor's current
   generation as a baseline, so unchanged polls, note edits, and replay of the
   same material result do not wake the todo.
+- `resume_when=resume_at:<timezone-aware-rfc3339-timestamp>`: the todo becomes
+  ready at or after one exact instant. A timezone is mandatory; authoring
+  normalizes equivalent offsets to UTC. Before that instant the todo remains a
+  typed wait. At and after it, the projection exposes generation `1` and the
+  same content-addressed `todo_resume_receipt_v0` across repeated reads and
+  process restarts.
+
+`resume_at` is a one-shot Todo condition, not a recurring scheduler. Natural
+language such as `tomorrow morning` is rejected instead of being interpreted
+relative to a host locale. CLI, heartbeat quota reads, and managed Turn consume
+the same Todo projection and runtime-clock snapshot. A due receipt makes the
+lifecycle replan observable, but it does not reopen the Todo or grant execution
+authority by itself.
 
 The monitor and the delivery it discovers are separate work items. A
 `continuous_monitor` is observe-only; it never becomes the runnable delivery.

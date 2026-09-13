@@ -36,6 +36,9 @@ equal(deferMissingCondition.missingFields.join(","), "resume_when", "todo defer 
 const deferUntilPr = routeWorkspaceInput("把 todo-1 暂缓到pr_merged:huangruiteng/loopx#3399", goalContext);
 equal(deferUntilPr.route, "typed_action", "todo defer with condition routes to typed action");
 equal(deferUntilPr.normalizedParameters.resume_when, "pr_merged:huangruiteng/loopx#3399", "todo defer preserves supported condition");
+const deferUntilDate = routeWorkspaceInput("把 todo-1 暂缓到 resume_at:2026-09-14T09:00:00+08:00", goalContext);
+equal(deferUntilDate.route, "typed_action", "todo defer accepts a timezone-aware resume_at condition");
+equal(deferUntilDate.normalizedParameters.resume_when, "resume_at:2026-09-14t09:00:00+08:00", "todo defer preserves an explicit timezone");
 equal(routeWorkspaceInput("帮我修复 MR 冲突，跑测试，然后 push", goalContext).actionKind, "todo.create", "execution task");
 equal(routeWorkspaceInput("创建任务并设置 Heartbeat", goalContext).route, "clarify", "compound intent");
 equal(routeWorkspaceInput("创建任务并设置 Heartbeat", goalContext).missingFields.join(","), "single_intent", "compound missing field");

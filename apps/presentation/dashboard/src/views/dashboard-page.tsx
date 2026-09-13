@@ -205,6 +205,8 @@ type TodoExplorerItem = {
 
 type PersonalAgentTodoItem = {
   resumeWhen?: string | null;
+  resumeReady?: boolean | null;
+  resumeReceiptId?: string | null;
   claimedBy?: string | null;
   done: boolean;
   evidence?: string | null;
@@ -704,9 +706,18 @@ function personalTodoText(todo: TodoItem) {
   return compactShareText(todo.title ?? todo.text, 112);
 }
 
+function personalTodoResumeReceiptId(todo: TodoItem) {
+  const receipt = todo.resume_condition?.resume_receipt;
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) return null;
+  const receiptId = (receipt as Record<string, unknown>).receipt_id;
+  return typeof receiptId === "string" && receiptId.trim() ? receiptId.trim() : null;
+}
+
 function personalAgentTodoFromItem(todo: TodoItem, row: GoalDirectoryRow): PersonalAgentTodoItem {
   return {
     resumeWhen: todo.resume_when ?? null,
+    resumeReady: todo.resume_ready ?? null,
+    resumeReceiptId: personalTodoResumeReceiptId(todo),
     claimedBy: todo.claimed_by ?? null,
     // Legacy summaries mark deferred entries checked; they are not completed work.
     done: todo.status === "deferred" ? false : todo.done,

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any
 
 from ..effect_runtime import EffectRuntimeRejected, effect_runtime_result
+from ..runtime.time import now_utc_iso
 from ..coordination.coordination_state_contract_generated import (
     TODO_RESUME_EVALUATION_REQUEST_SCHEMA,
     TODO_RESUME_EVALUATION_RESULT_SCHEMA,
@@ -25,11 +27,13 @@ TODO_RESUME_KIND_TODO_DONE = "todo_done"
 TODO_RESUME_KIND_PR_MERGED = "pr_merged"
 TODO_RESUME_KIND_CAPACITY_AVAILABLE = "capacity_available"
 TODO_RESUME_KIND_MONITOR_CHANGED = "monitor_changed"
+TODO_RESUME_KIND_RESUME_AT = "resume_at"
 TODO_RESUME_KIND_VALUES = {
     TODO_RESUME_KIND_TODO_DONE,
     TODO_RESUME_KIND_PR_MERGED,
     TODO_RESUME_KIND_CAPACITY_AVAILABLE,
     TODO_RESUME_KIND_MONITOR_CHANGED,
+    TODO_RESUME_KIND_RESUME_AT,
 }
 
 _TODO_ID_PATTERN = re.compile(r"^todo_[a-z0-9_-]{3,64}$")
@@ -39,6 +43,11 @@ _RESUME_WHEN_PATTERN = re.compile(
 )
 _RESUME_PR_MERGED_PATTERN = re.compile(
     r"^pr_merged:(?:[a-z\d_.-]{1,80}/[a-z\d_.-]{1,100})?#[1-9]\d{0,8}$"
+)
+_RESUME_AT_PATTERN = re.compile(
+    r"^resume_at:(?P<timestamp>[1-9]\d{3}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"
+    r"(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))$",
+    re.IGNORECASE,
 )
 _PR_REF_NUMBER_PATTERN = re.compile(
     r"(?:/pull/|#|pr[-_\s]*)([1-9]\d{0,8})(?:\b|/|#|\?|$)",
@@ -89,7 +98,40 @@ def normalize_todo_generation(value: Any) -> int | None:
 def normalize_todo_resume_when(value: Any) -> str | None:
     """Read a persisted public-safe resume token without starting the runtime."""
 
-    candidate = " ".join(str(value or "").strip().split()).lower()
+    candidate = " ".join(str(value or "").strip().split())
+    resume_at = _RESUME_AT_PATTERN.match(candidate)
+    if resume_at:
+        timestamp = resume_at.group("timestamp")
+        if timestamp[-1].lower() != "z":
+            offset_hour = int(timestamp[-5:-3])
+            offset_minute = int(timestamp[-2:])
+            if (
+                offset_hour > 14
+                or offset_minute > 59
+                or (offset_hour == 14 and offset_minute != 0)
+            ):
+                return None
+        try:
+            parsed = datetime.fromisoformat(
+                timestamp.replace("Z", "+00:00").replace("z", "+00:00")
+            )
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        offset = parsed.utcoffset()
+        if offset is None or abs(offset.total_seconds()) > 14 * 60 * 60:
+            return None
+        utc = parsed.astimezone(timezone.utc)
+        canonical = (
+            utc.isoformat(timespec="milliseconds")
+            if utc.microsecond
+            else utc.replace(microsecond=0).isoformat()
+        ).replace("+00:00", "Z")
+        return f"{TODO_RESUME_KIND_RESUME_AT}:{canonical}"
+    candidate = candidate.lower()
+    if candidate.startswith(f"{TODO_RESUME_KIND_RESUME_AT}:"):
+        return None
     if candidate and _RESUME_PR_MERGED_PATTERN.match(candidate):
         return candidate
     if candidate and _RESUME_WHEN_PATTERN.match(candidate):
@@ -110,6 +152,8 @@ def normalize_supported_todo_resume_when(value: Any) -> str | None:
         return candidate if _RESUME_PR_MERGED_PATTERN.match(candidate) else None
     if kind == TODO_RESUME_KIND_CAPACITY_AVAILABLE:
         return candidate if separator and _CAPABILITY_PATTERN.match(target) else None
+    if kind == TODO_RESUME_KIND_RESUME_AT:
+        return candidate if _RESUME_AT_PATTERN.match(candidate) else None
     return None
 
 
@@ -124,7 +168,8 @@ def require_supported_todo_resume_when(value: Any) -> str | None:
     raise ValueError(
         "resume_when must use a supported condition: todo_done:<todo_id>, "
         "monitor_changed:<monitor_todo_id>, pr_merged:[owner/repo]#<number>, "
-        "or capacity_available:<capability>"
+        "capacity_available:<capability>, or "
+        "resume_at:<timezone-aware-rfc3339-timestamp>"
     )
 
 
@@ -304,6 +349,7 @@ def evaluate_todo_resume_conditions(
     rollout_events: list[dict[str, Any]] | None = None,
     available_capabilities: Any = None,
     kinds: list[str] | None = None,
+    evaluated_at: str | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Return TS-owned resume conditions keyed by the waiting Todo id."""
 
@@ -317,6 +363,7 @@ def evaluate_todo_resume_conditions(
         # Sending complete rollout rows made long-lived Goals exceed the
         # Effect-runtime transport budget even without a PR-waiting Todo.
         "rollout_events": _compact_resume_rollout_events(items, rollout_events),
+        "evaluated_at": evaluated_at or now_utc_iso(),
     }
     if available_capabilities is not None:
         request["available_capabilities"] = sorted(

@@ -593,6 +593,14 @@ higher-priority typed wait visible as `availability_reason=resume_condition_pend
 while making the runnable fallback and its bounded continuation context the
 default model-facing action.
 
+For `resume_at:<timezone-aware-rfc3339-timestamp>`, the active-state read takes
+one runtime-clock snapshot and passes it through the shared Todo reducer. A
+future timestamp therefore produces the same `agent_scope_wait` or fallback
+selection in CLI and heartbeat paths. Once due, quota selects the deferred Todo
+through `successor_replan_required`; the managed Turn sees the same stable
+resume receipt and must perform the normal explicit lifecycle update. Repeated
+ticks do not create additional material-change generations or receipts.
+
 If an active per-agent vision has no other selectable advancement and its
 existing current-agent or unclaimed successor is blocked by an exact supported
 `resume_when`, quota projects `vision_wait_state.state=waiting` and

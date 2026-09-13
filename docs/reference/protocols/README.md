@@ -22,6 +22,8 @@ scanning a chronological list.
 - [`quota_planning_horizon_v0`](quota-planning-horizon-v0.md): Bounded agent planning horizon v0
 - [`rollback_packet_v0`](rollback-packet-v0.md): Rollback packet v0
 - [`task_graph_projection_v0`](task-graph-projection-v0.md): Task graph projection v0
+- [`typed_date_resume_trigger_v0`](typed-date-resume-trigger-v0.md): timezone-aware one-shot Todo resume and stable due receipt v0
+- [`typed_date_resume_trigger_v0`](typed-date-resume-trigger-v0.zh-CN.md): timezone-aware one-shot Todo resume and stable due receipt v0 (中文)
 - [`todo_detail_cold_path_v0`](todo-detail-cold-path-v0.md): Todo detail cold path v0
 - [`todo_suggestion_prompt_v0`](todo-suggestion-prompt-v0.md): Todo suggestion prompt v0
 - [`turn_envelope_v0`](turn-envelope-v0.md): Turn envelope v0

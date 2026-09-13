@@ -103,6 +103,8 @@ def project_delivery_response(
             "kind", "target", "target_todo_id", "target_status", "target_task_class", "target_archive_state",
             "baseline_generation", "material_change_generation", "provider_required", "provider", "capability",
             "pr_repo", "pr_number", "repository_binding_state", "repository_binding_source",
+            "scheduled_for", "evaluated_at", "clock_provider", "generation_fence", "material_change",
+            "resume_receipt",
         ) if key in condition}
     result = effect_runtime_result("work_item.delivery_response.project", {
         "run": _run_facts(run), "todo": todo,

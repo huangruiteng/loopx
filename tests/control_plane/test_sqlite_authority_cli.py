@@ -62,12 +62,14 @@ def test_sqlite_cli_reopens_updates_and_recovers_missing_markdown(tmp_path, monk
     # Native planning updates must preserve the selected provider through the
     # Python adapter, including dry-run, receipt replay and reopening a wait.
     planning = ("update", "--role", "agent", "--todo-id", "todo_sqlite", "--agent-id", "agent-a",
-        "--status", "deferred", "--resume-when", "pr_merged:#123", "--reason", "Await upstream",
+        "--status", "deferred", "--resume-when", "resume_at:2026-09-14T09:30:00+08:00",
+        "--reason", "Await the exact scheduled instant",
         "--update-operation-id", "sqlite-planning")
     assert cli(*planning, "--dry-run")["status"] == "planned"
     assert not state.exists()
     assert cli(*planning)["source_authority"] == "sqlite_v0"
     assert cli(*planning)["status"] == "replayed"
+    assert "resume_at:2026-09-14T01:30:00Z" in json.dumps(cli("list"))
     resumed = cli("update", "--role", "agent", "--todo-id", "todo_sqlite", "--agent-id", "agent-a",
         "--status", "open", "--clear-resume-when")
     assert resumed["source_authority"] == "sqlite_v0"

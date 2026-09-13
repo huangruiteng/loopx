@@ -443,6 +443,28 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     }
     if (!fixture.attention_queue.items.some((item) => item.goal_id === "progress-projection")) {
       const idlessLongTitle = `Idless long Todo ${"projection identity ".repeat(16)}keeps one card`;
+      const scheduledDeferredTodo = {
+        done: true,
+        index: 8,
+        role: "agent",
+        status: "deferred",
+        resume_when: "resume_at:2026-09-14T01:30:00Z",
+        resume_ready: true,
+        resume_condition: {
+          schema_version: "todo_resume_condition_v0",
+          kind: "resume_at",
+          satisfied: true,
+          resume_when: "resume_at:2026-09-14T01:30:00Z",
+          resume_receipt: {
+            schema_version: "todo_resume_receipt_v0",
+            receipt_id: "resume_at_browser_smoke_receipt",
+          },
+        },
+        task_class: "advancement_task",
+        text: "Deferred queue task",
+        title: "Deferred queue task",
+        todo_id: "todo-progress-deferred",
+      };
       const currentTodo = {
         done: false,
         index: 4,
@@ -462,14 +484,14 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
             currentTodo,
             { done: false, index: 5, role: "agent", status: "open", task_class: "advancement_task", text: idlessLongTitle, title: idlessLongTitle },
             { done: false, index: 7, role: "agent", status: "open", task_class: "advancement_task", text: "Full queue follow-up", title: "Full queue follow-up", todo_id: "todo-progress-full" },
-            { done: true, index: 8, role: "agent", status: "deferred", resume_when: "todo_done:todo-progress-full", task_class: "advancement_task", text: "Deferred queue task", title: "Deferred queue task", todo_id: "todo-progress-deferred" },
+            scheduledDeferredTodo,
             { done: true, index: 1, role: "agent", status: "done", task_class: "advancement_task", text: "Completed A", title: "Completed A", todo_id: "todo-progress-a" },
             { done: true, index: 2, role: "agent", status: "done", task_class: "advancement_task", text: "Completed B", title: "Completed B", todo_id: "todo-progress-b" },
             { done: true, index: 3, role: "agent", status: "done", task_class: "advancement_task", text: "Completed C", title: "Completed C", todo_id: "todo-progress-c" },
             { done: true, index: 6, role: "agent", status: "done", task_class: "continuous_monitor", text: "Completed Monitor", title: "Completed Monitor", todo_id: "todo-progress-monitor" },
           ],
           deferred_items: [
-            { done: true, index: 8, role: "agent", status: "deferred", resume_when: "todo_done:todo-progress-full", task_class: "advancement_task", text: "Deferred queue task", title: "Deferred queue task", todo_id: "todo-progress-deferred" },
+            scheduledDeferredTodo,
             { done: true, index: 9, role: "agent", status: "deferred", task_class: "advancement_task", text: "Deferred follow-up outside preview", title: "Deferred follow-up outside preview", todo_id: "todo-progress-deferred-extra" },
           ],
           open_count: 3,

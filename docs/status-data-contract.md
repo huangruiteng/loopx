@@ -1037,6 +1037,12 @@ Item fields:
   latter to be strictly greater. This lets agents see not-yet-unlocked
   successors without accidentally selecting them as current work or waking on
   an unchanged/replayed monitor result.
+  A `resume_at:<timezone-aware-rfc3339-timestamp>` condition carries
+  `scheduled_for`, `evaluated_at`, `clock_provider=runtime_clock`, a one-shot
+  material-change generation, and—once due—a stable `resume_receipt`. The
+  receipt remains identical across later reads and restarts. Presentation
+  clients may show its id for diagnosis, but must not treat it as execution
+  authority or maintain a separate local countdown state.
   Optional future fields such as `created_at`, lease TTLs, dependencies, or
   evidence links should extend this item shape rather than inventing another
   todo surface.

@@ -89,12 +89,16 @@ def test_status_compaction_preserves_binding_and_all_consumers_defer_to_current_
     ("monitor_changed:todo_dependency", {"baseline_generation": 1}),
     ("capacity_available:network", {"capability": "other"}),
     ("pr_merged:#1", {"pr_number": 2}),
+    ("resume_at:2026-09-15T00:00:00Z", {"clock_provider": "other"}),
 ])
 def test_real_resume_projection_identity_survives_python_transport(resume, patch):
     todo = {**waiting_todo(), "resume_when": resume, "resume_monitor_generation": 0,
             "task_repository": "git:github.com/example/project"}
     dependency = {**dependency_todo(), "task_class": "continuous_monitor", "material_change_generation": 0}
-    condition = evaluate_todo_resume_conditions([todo], source_items=[dependency], available_capabilities=[])[todo["todo_id"]]
+    condition = evaluate_todo_resume_conditions(
+        [todo], source_items=[dependency], available_capabilities=[],
+        evaluated_at="2026-09-14T00:00:00Z",
+    )[todo["todo_id"]]
     summary = quota_todo_summary([todo, dependency], claim_scope_agent_id="agent-a")
     for key in TODO_PLANNING_SOURCE_KEYS:
         for row in summary.get(key, []):

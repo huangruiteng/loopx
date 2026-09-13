@@ -21,6 +21,8 @@ export type WorkspaceHomeLane =
 
 export type WorkspaceAgentTodo = {
   resumeWhen?: string | null;
+  resumeReady?: boolean | null;
+  resumeReceiptId?: string | null;
   claimedBy?: string | null;
   dependencies?: string[];
   done: boolean;

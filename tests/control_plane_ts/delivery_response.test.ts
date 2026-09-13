@@ -16,7 +16,7 @@ const waiting = { todo_id: "todo_delivery", role: "agent", status: "deferred",
     target_todo_id: "todo_dependency", target_status: "open", target_task_class: "advancement_task", target_archive_state: "active" } };
 const input = { run, todo: waiting, run_agent_id: "agent-a", agent_id: "agent-a" };
 
-test("wait proof consumes the real resume evaluator for all four condition kinds", () => {
+test("wait proof consumes the real resume evaluator for all five condition kinds", () => {
   const dependency = { todo_id: "todo_dependency", role: "agent", status: "open", task_class: "advancement_task" };
   for (const [resume, source, capabilities, valid] of [
     ["todo_done:todo_dependency", [dependency], [], true],
@@ -27,10 +27,12 @@ test("wait proof consumes the real resume evaluator for all four condition kinds
     ["capacity_available:network", [], null, false],
     ["pr_merged:example/project#1", [], [], true],
     ["pr_merged:#1", [], [], false],
+    ["resume_at:2026-09-15T00:00:00Z", [], [], true],
   ] as const) {
     const todo = { ...waiting, resume_when: resume, resume_monitor_generation: 0 };
     const evaluated = evaluateTodoResumeConditions({ schema_version: TODO_RESUME_EVALUATION_REQUEST_SCHEMA_VERSION,
-      items: [todo], source_items: source, rollout_events: [], available_capabilities: capabilities });
+      items: [todo], source_items: source, rollout_events: [], available_capabilities: capabilities,
+      evaluated_at: "2026-09-14T00:00:00Z" });
     const condition = (evaluated.conditions as JsonObject[])[0].condition;
     assert.equal(projectDeliveryResponse({ ...input, todo: { ...todo, resume_condition: condition } }).outcome_floor_applicable,
       !valid, resume + JSON.stringify(source));
@@ -44,6 +46,9 @@ test("wait proof consumes the real resume evaluator for all four condition kinds
         { baseline_generation: 1 }, { material_change_generation: -1 }, { material_change_generation: 0.5 });
       if (proof.kind === "capacity_available") mutations.push({ capability: "other" }, { provider_required: true });
       if (proof.kind === "pr_merged") mutations.push({ pr_number: 2 }, { pr_repo: "example/other" });
+      if (proof.kind === "resume_at") mutations.push(
+        { scheduled_for: "2026-09-16T00:00:00Z" }, { clock_provider: "other" },
+        { material_change_generation: 1 }, { resume_receipt: {} });
       for (const patch of mutations) assert.equal(projectDeliveryResponse({ ...input,
         todo: { ...todo, resume_condition: { ...proof, ...patch } } }).reason,
       "history_supervision", resume + JSON.stringify(patch));

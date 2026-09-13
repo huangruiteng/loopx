@@ -17,6 +17,7 @@ from .todo_summary import (
     compact_todo_group,
     count_advancement_todos,
 )
+from ..runtime.time import now_utc_iso
 
 
 def parse_todo_source(
@@ -61,7 +62,9 @@ def parse_active_state_todos(
     rollout_events: list[dict[str, Any]] | None = None,
     available_capabilities: Any = None,
     item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
+    evaluated_at: str | None = None,
 ) -> dict[str, Any]:
+    resume_evaluated_at = evaluated_at or now_utc_iso()
     orchestration = compact_orchestration_policy(
         goal.get("spawn_policy") if isinstance(goal, dict) else None
     )
@@ -87,6 +90,7 @@ def parse_active_state_todos(
         available_capabilities=available_capabilities,
         item_limit=item_limit,
         include_task_orchestration_authority=include_task_orchestration_authority,
+        evaluated_at=resume_evaluated_at,
     )
     agent = compact_todo_group(
         items["agent"],
@@ -100,6 +104,7 @@ def parse_active_state_todos(
         item_limit=item_limit,
         include_task_orchestration_authority=include_task_orchestration_authority,
         vision_runs=(goal or {}).get("latest_runs"),
+        evaluated_at=resume_evaluated_at,
     )
     archived_advancement_done_count = count_advancement_todos(
         [item for item in archive_items if item.get("done") is True]

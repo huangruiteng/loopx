@@ -122,6 +122,25 @@ export const navigationSortingScenario = {
       await page.screenshot({ path: resolve(outputDir, "desktop-first-screen.png"), fullPage: false, animations: "disabled" });
       pass(4, "First viewport exposes needs-you, running, observing, and scheduled Goal lanes with collapsed history.");
       pass(15, "Desktop viewport matches the approved single-sidebar/channel/drawer composition.");
+      await page.locator(".personal-goal-link").filter({ hasText: "Progress Projection" }).click();
+      await page.getByRole("button", { name: "Tasks", current: "page" }).waitFor({ state: "visible" });
+      await page.locator(".personal-task-card", { hasText: "Deferred queue task" }).locator("button").first().click();
+      const dateResumeDrawer = page.getByRole("dialog", { name: "Todo 详情" });
+      await dateResumeDrawer.waitFor({ state: "visible" });
+      const dateResumeText = await dateResumeDrawer.innerText();
+      for (const expected of [
+        "resume_at:2026-09-14T01:30:00Z",
+        "可恢复",
+        "resume_at_browser_smoke_receipt",
+        "恢复条件已满足，等待生命周期重新规划",
+      ]) {
+        if (!dateResumeText.includes(expected)) {
+          throw new Error(`Typed date resume detail is missing ${expected}: ${dateResumeText}`);
+        }
+      }
+      await page.screenshot({ path: resolve(outputDir, "typed-date-resume-detail.png"), fullPage: false, animations: "disabled" });
+      await page.getByRole("button", { name: /关闭详情/ }).click();
+      pass(22, "Todo detail renders the shared typed date condition, ready state, and stable receipt id.");
       const remote = await browser.newPage({ viewport: { width: 1512, height: 982 } });
       await installApi(remote);
       await remote.goto(url, { waitUntil: "networkidle" });

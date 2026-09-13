@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { EffectRuntimeRequestError } from "../effect_runtime_errors.ts";
 import {
   optionalNonEmptyString,
@@ -32,12 +34,14 @@ export const TODO_RESUME_KINDS = [
   "pr_merged",
   "capacity_available",
   "monitor_changed",
+  "resume_at",
 ] as const;
 
 export const UNSUPPORTED_TODO_RESUME_CONDITION_MESSAGE =
   "unsupported Todo resume condition; supported conditions are: " +
   "todo_done:<todo_id>, monitor_changed:<monitor_todo_id>, " +
-  "pr_merged:[owner/repo]#<number>, or capacity_available:<capability>";
+  "pr_merged:[owner/repo]#<number>, capacity_available:<capability>, " +
+  "or resume_at:<timezone-aware-rfc3339-timestamp>";
 
 type TodoResumeKind = typeof TODO_RESUME_KINDS[number];
 
@@ -46,6 +50,8 @@ const CAPABILITY_PATTERN = /^[a-z][a-z\d_:-]{0,63}$/;
 const RESUME_PATTERN = /^[a-z][a-z\d_-]{0,31}(?::[a-z\d_.:@#/-]{1,181})?$/;
 const PR_RESUME_PATTERN =
   /^pr_merged:(?:[a-z\d_.-]{1,80}\/[a-z\d_.-]{1,100})?#[1-9]\d{0,8}$/;
+const RESUME_AT_PATTERN =
+  /^resume_at:(?<timestamp>[1-9]\d{3}-(?<month>\d{2})-(?<day>\d{2})[tT](?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2})(?:\.(?<fraction>\d{1,3}))?(?<timezone>[zZ]|(?<sign>[+-])(?<offsetHour>\d{2}):(?<offsetMinute>\d{2})))$/;
 const GITHUB_PULL_URL_PATTERN =
   /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)(?:\b|\/|#|\?)/i;
 const PR_REF_PATTERN =
@@ -61,6 +67,46 @@ interface ResumeSpec {
   kind: TodoResumeKind;
   target: string;
   normalized: string;
+}
+
+interface ResumeTimestamp {
+  iso: string;
+  milliseconds: number;
+}
+
+function normalizedTimestamp(milliseconds: number): string {
+  return new Date(milliseconds).toISOString().replace(".000Z", "Z");
+}
+
+/** Strict RFC3339 date-time parsing for user-authored wakeups. A timezone is
+ * mandatory; treating a missing offset as local or UTC would make two hosts
+ * disagree about the same Todo. */
+function resumeTimestamp(value: unknown): ResumeTimestamp | null {
+  if (typeof value !== "string") return null;
+  const match = RESUME_AT_PATTERN.exec(`resume_at:${value.trim()}`);
+  if (!match?.groups) return null;
+  const [year, month, day, hour, minute, second] = value.trim()
+    .slice(0, 19)
+    .split(/[-tT:]/)
+    .map((part) => Number.parseInt(part, 10));
+  const fraction = Number.parseInt((match.groups.fraction ?? "").padEnd(3, "0") || "0", 10);
+  const local = new Date(0);
+  local.setUTCFullYear(year, month - 1, day);
+  local.setUTCHours(hour, minute, second, fraction);
+  if (local.getUTCFullYear() !== year || local.getUTCMonth() !== month - 1 ||
+      local.getUTCDate() !== day || local.getUTCHours() !== hour ||
+      local.getUTCMinutes() !== minute || local.getUTCSeconds() !== second) return null;
+  const offsetHour = Number.parseInt(match.groups.offsetHour ?? "0", 10);
+  const offsetMinute = Number.parseInt(match.groups.offsetMinute ?? "0", 10);
+  if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return null;
+  const milliseconds = Date.parse(value.trim());
+  if (Number.isNaN(milliseconds)) return null;
+  return { iso: normalizedTimestamp(milliseconds), milliseconds };
+}
+
+function parsedResumeAt(value: string): ResumeTimestamp | null {
+  if (!value.toLowerCase().startsWith("resume_at:")) return null;
+  return resumeTimestamp(value.slice("resume_at:".length));
 }
 
 interface TodoItem extends JsonObject {
@@ -114,7 +160,10 @@ function todoItem(value: unknown, label: string): TodoItem {
     if (normalized !== undefined) item[field] = normalized;
   }
   const resumeWhen = optionalString(raw.resume_when, `${label}.resume_when`);
-  if (resumeWhen !== undefined) item.resume_when = resumeWhen.toLowerCase();
+  // Preserve the RFC3339 `T`/offset spelling until the typed parser has
+  // normalized it. Lower-casing the entire token makes offset timestamps
+  // fail strict parsing on the read path.
+  if (resumeWhen !== undefined) item.resume_when = resumeWhen;
   if (typeof raw.resume_ready === "boolean") item.resume_ready = raw.resume_ready;
   const resumeGeneration = nonNegativeInteger(
     raw.resume_monitor_generation,
@@ -133,7 +182,17 @@ function todoItem(value: unknown, label: string): TodoItem {
 
 function parseResumeWhen(value: unknown): ResumeSpec | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
+  const candidate = value.trim();
+  const resumeAt = parsedResumeAt(candidate);
+  if (resumeAt) {
+    return {
+      kind: "resume_at",
+      target: resumeAt.iso,
+      normalized: `resume_at:${resumeAt.iso}`,
+    };
+  }
+  const normalized = candidate.toLowerCase();
+  if (normalized.startsWith("resume_at:")) return null;
   if (!normalized || !RESUME_PATTERN.test(normalized)) return null;
   const separator = normalized.indexOf(":");
   if (separator < 1) return null;
@@ -155,7 +214,8 @@ function requireResumeWhen(value: unknown, label: string): ResumeSpec {
   if (!parsed) {
     throw new EffectRuntimeRequestError(
       `${label} must use todo_done:<todo_id>, monitor_changed:<monitor_todo_id>, ` +
-        "pr_merged:[owner/repo]#<number>, or capacity_available:<capability>",
+        "pr_merged:[owner/repo]#<number>, capacity_available:<capability>, " +
+        "or resume_at:<timezone-aware-rfc3339-timestamp>",
     );
   }
   return parsed;
@@ -344,6 +404,7 @@ function conditionFor(
   byId: Map<string, TodoItem>,
   rolloutEvents: unknown[],
   availableCapabilities: Set<string> | null,
+  evaluatedAt: ResumeTimestamp | null,
 ): JsonObject {
   const condition: JsonObject = {
     schema_version: "todo_resume_condition_v0",
@@ -374,6 +435,37 @@ function conditionFor(
     condition.capability = spec.target;
     condition.satisfied = availableCapabilities?.has(spec.target) === true;
     return condition;
+  }
+  if (spec.kind === "resume_at") {
+    const scheduled = resumeTimestamp(spec.target);
+    if (!scheduled || !evaluatedAt) {
+      return { ...condition, invalid_state: "runtime_clock_unavailable" };
+    }
+    const satisfied = evaluatedAt.milliseconds >= scheduled.milliseconds;
+    const receiptId = `resume_at_${createHash("sha256")
+      .update(`${item.todo_id}\n${spec.normalized}`, "utf8")
+      .digest("hex")
+      .slice(0, 24)}`;
+    return {
+      ...condition,
+      satisfied,
+      scheduled_for: scheduled.iso,
+      evaluated_at: evaluatedAt.iso,
+      clock_provider: "runtime_clock",
+      generation_fence: "once_at_or_after_scheduled_for",
+      material_change: satisfied,
+      material_change_generation: satisfied ? 1 : 0,
+      resume_receipt: satisfied ? {
+        schema_version: "todo_resume_receipt_v0",
+        receipt_id: receiptId,
+        idempotency_key: receiptId,
+        todo_id: item.todo_id,
+        resume_when: spec.normalized,
+        condition_kind: spec.kind,
+        triggered_at: scheduled.iso,
+        material_change_generation: 1,
+      } : null,
+    };
   }
   const monitor = byId.get(spec.target);
   const baseline = item.resume_monitor_generation;
@@ -466,6 +558,17 @@ export function resumeConditionHasKnownPendingTarget(condition: JsonObject, wait
         && condition.pr_number === ref.number && condition.repository_binding_state !== "ambiguous"
         && condition.repository_binding_source === (ref.repo ? "qualified_resume_when" : "task_repository");
     }
+    case "resume_at": {
+      const scheduled = resumeTimestamp(spec.target);
+      const evaluated = resumeTimestamp(String(condition.evaluated_at ?? ""));
+      return scheduled !== null && evaluated !== null
+        && condition.clock_provider === "runtime_clock"
+        && condition.scheduled_for === scheduled.iso
+        && condition.material_change === false
+        && condition.material_change_generation === 0
+        && condition.resume_receipt === null
+        && evaluated.milliseconds < scheduled.milliseconds;
+    }
     default: return false;
   }
 }
@@ -497,6 +600,16 @@ export function evaluateTodoResumeConditions(value: unknown): JsonObject {
   const requestedKinds = request.kinds === undefined || request.kinds === null
     ? null
     : new Set(requireStringArray(request.kinds, "todo_resume_evaluation_request.kinds"));
+  const needsRuntimeClock = items.some((item) => {
+    const spec = parseResumeWhen(item.resume_when);
+    return spec?.kind === "resume_at" && (!requestedKinds || requestedKinds.has(spec.kind));
+  });
+  const evaluatedAt = needsRuntimeClock ? resumeTimestamp(request.evaluated_at) : null;
+  if (needsRuntimeClock && !evaluatedAt) {
+    throw new EffectRuntimeRequestError(
+      "todo_resume_evaluation_request.evaluated_at must be a timezone-aware RFC3339 timestamp",
+    );
+  }
   const byId = new Map<string, TodoItem>();
   for (const item of [...sourceItems, ...items]) byId.set(item.todo_id, item);
   const conditions: JsonObject[] = [];
@@ -509,6 +622,7 @@ export function evaluateTodoResumeConditions(value: unknown): JsonObject {
       byId,
       rolloutEvents,
       availableCapabilities,
+      evaluatedAt,
     );
     conditions.push({
       todo_id: item.todo_id,
@@ -669,7 +783,7 @@ function externalWaitMetadata(
     return { updates, baselineGeneration: null };
   }
   const sameCondition = waitingTodo.resume_when === spec.normalized;
-  const currentCondition = conditionFor(waitingTodo, spec, byId, [], null);
+  const currentCondition = conditionFor(waitingTodo, spec, byId, [], null, null);
   if (sameCondition && currentCondition.satisfied === true) {
     throw new EffectRuntimeRequestError(
       "clear the satisfied resume_when before re-arming the same monitor wait",

@@ -68,6 +68,7 @@ from .succession_warning import (
     TODO_SUCCESSION_WARNING_SCHEMA_VERSION,
 )
 from .resume_condition import evaluate_todo_resume_conditions
+from ..runtime.time import now_utc_iso
 from ..work_items.project_asset import build_project_asset_todo_summary
 from .user_gate import open_user_gate_todo_items
 from ..coordination.coordination_state_contract import (
@@ -765,6 +766,7 @@ def apply_resume_conditions(
     resume_source_items: list[dict[str, Any]] | None = None,
     rollout_events: list[dict[str, Any]] | None = None,
     available_capabilities: Any = None,
+    evaluated_at: str | None = None,
 ) -> None:
     resume_items = [
         item
@@ -779,6 +781,7 @@ def apply_resume_conditions(
         source_items=source_items,
         rollout_events=rollout_events,
         available_capabilities=available_capabilities,
+        evaluated_at=evaluated_at or now_utc_iso(),
     )
     for item in items:
         resume_when = normalize_todo_resume_when(item.get("resume_when"))
@@ -1071,6 +1074,7 @@ def compact_todo_group(
     item_limit: int | None = MAX_STATUS_TODOS_PER_ROLE,
     include_task_orchestration_authority: bool = False,
     vision_runs: list[dict[str, Any]] | None = None,
+    evaluated_at: str | None = None,
 ) -> dict[str, Any] | None:
     if not items and not include_empty_source:
         return None
@@ -1087,6 +1091,7 @@ def compact_todo_group(
         ),
         rollout_events=rollout_events,
         available_capabilities=available_capabilities,
+        evaluated_at=evaluated_at,
     )
     return compact_evaluated_todo_group(
         items, source_section=source_section, role=role,
