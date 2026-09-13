@@ -54,6 +54,7 @@ function readFailure(error: unknown): AuthorityStoreReadFailure {
 
 /** One local database per goal. No network filesystem or cross-host authority. */
 export class SqliteAuthorityStore implements AuthorityStore {
+  readonly providerKind = "sqlite" as const;
   readonly path: string;
   readonly goalId: string;
   readonly existingOnly: boolean;

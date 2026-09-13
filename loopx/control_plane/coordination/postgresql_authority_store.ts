@@ -412,6 +412,7 @@ export async function installPostgreSqlAuthorityStoreSchema(
 
 /** PostgreSQL Stage 2B store; domain decisions remain in LoopX authority. */
 export class PostgreSqlAuthorityStore implements AuthorityStore {
+  readonly providerKind = "postgresql" as const;
   readonly database: PostgreSqlAuthorityDatabase;
   readonly tenantId: string;
   readonly goalId: string;

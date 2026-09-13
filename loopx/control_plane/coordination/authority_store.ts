@@ -19,6 +19,7 @@ export type AuthorityStoreRequiredGuarantee =
   (typeof AUTHORITY_STORE_REQUIRED_GUARANTEES)[number];
 
 export type AuthorityStoreProviderKind = "file" | "nokv" | "postgresql" | "sqlite";
+export type AuthorityStoreSourceAuthority = `${AuthorityStoreProviderKind}_v0`;
 export type AuthorityStoreProviderStage =
   | "stage1_implemented"
   | "stage2a_candidate"
@@ -166,9 +167,21 @@ export type AuthorityStoreScanResult =
 
 /** Storage-only seam. Legal transitions and receipt meaning stay in LoopX. */
 export interface AuthorityStore {
+  /**
+   * Provider identity is observability metadata, not a semantic authority.
+   * Optional keeps third-party/test stores source-compatible while built-in
+   * providers expose an unambiguous runtime label.
+   */
+  readonly providerKind?: AuthorityStoreProviderKind;
   storeIdentity(): Promise<AuthorityStoreIdentityResult>;
   loadAuthority(): Promise<AuthorityStoreLoadResult>;
   commitAuthority(commit: AuthorityStoreCommit): Promise<AuthorityStoreCommitResult>;
   readReceipt(operationId: string): Promise<AuthorityStoreReceiptResult>;
   scanCommitted(afterCursor: string | null, limit: number): Promise<AuthorityStoreScanResult>;
+}
+
+/** Map a storage implementation to the public source label used by adapters. */
+export function authorityStoreSourceAuthority(store: AuthorityStore): AuthorityStoreSourceAuthority {
+  const kind = store.providerKind ?? "file";
+  return `${kind}_v0`;
 }

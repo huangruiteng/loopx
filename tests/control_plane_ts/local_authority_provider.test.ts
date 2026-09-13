@@ -3,10 +3,15 @@ import { mkdir, mkdtemp, readdir, readFile, rm, rename, writeFile } from "node:f
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { openLocalAuthorityStore, selectLocalSqliteAuthority } from "../../loopx/control_plane/coordination/local_authority_provider.ts";
+import {
+  openLocalAuthorityStore,
+  openLocalAuthorityStoreHandle,
+  selectLocalSqliteAuthority,
+} from "../../loopx/control_plane/coordination/local_authority_provider.ts";
 import { SqliteAuthorityStore } from "../../loopx/control_plane/coordination/sqlite_authority_store.ts";
 import { FileAuthorityStore } from "../../loopx/control_plane/coordination/file_authority_store.ts";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { authorityStoreCommitFixture } from "./authority_store_conformance.ts";
 import * as runtime from "../../loopx/control_plane/coordination/local_authority_runtime.ts";
 import { qualifiedShadow, promotionRequest, engageFence } from "./local_promotion_fixture.ts";
@@ -142,6 +147,94 @@ test("SQLite opt-in is persistent and default-off with a read-only preview", asy
   assert.deepEqual(await readFile(store.path), bytes);
   assert.equal((await selectLocalSqliteAuthority(directory, "goal", true)).changed, false);
   assert.ok(await openLocalAuthorityStore(directory, "another-goal") instanceof FileAuthorityStore);
+});
+
+test("the default local handle is explicit and carries provider metadata", async t => {
+  const directory = await root(t);
+  const handle = await openLocalAuthorityStoreHandle(directory, "goal");
+  assert.equal(handle.provider, "file");
+  assert.equal(handle.sourceAuthority, "file_v0");
+  assert.ok(handle.store instanceof FileAuthorityStore);
+});
+
+test("a PostgreSQL selector is a service-owned, identity-fenced switch", async t => {
+  const directory = await root(t);
+  const storeIdentity = `postgresql:${"a".repeat(32)}`;
+  const marker = join(directory, "authority", `provider-${createHash("sha256").update("goal").digest("hex")}.json`);
+  await mkdir(join(directory, "authority"), {recursive: true});
+  await writeFile(marker, JSON.stringify({
+    schema_version: "loopx_local_authority_provider_v0",
+    provider: "postgresql",
+    goal_id: "goal",
+    tenant_id: "tenant-a",
+    store_identity: storeIdentity,
+  }));
+  const store = {
+    providerKind: "postgresql" as const,
+    storeIdentity: async () => ({status: "available" as const, store_identity: storeIdentity}),
+    loadAuthority: async () => ({status: "missing" as const}),
+    commitAuthority: async () => ({status: "failed" as const, reason_code: "unused", reason: "unused"}),
+    readReceipt: async () => ({status: "missing" as const}),
+    scanCommitted: async () => ({status: "page" as const, transactions: [], next_cursor: null, has_more: false}),
+  };
+  const handle = await openLocalAuthorityStoreHandle(directory, "goal", {
+    openPostgresqlStore: selection => {
+      assert.equal(selection.tenant_id, "tenant-a");
+      assert.equal(selection.store_identity, storeIdentity);
+      return store;
+    },
+  });
+  assert.equal(handle.provider, "postgresql");
+  assert.equal(handle.sourceAuthority, "postgresql_v0");
+  assert.equal(handle.store, store);
+  const listed = await runtime.listLocalCoordinationTodos({
+    schema_version: runtime.LOCAL_COORDINATION_TODO_LIST_REQUEST_SCHEMA,
+    runtime_root: directory,
+    goal_id: "goal",
+  }, {openPostgresqlStore: () => store});
+  assert.equal(listed.status, "missing");
+  assert.equal(listed.source_authority, "postgresql_v0");
+  assert.equal(listed.decision_read_from_provider, true);
+  await assert.rejects(
+    openLocalAuthorityStore(directory, "goal"),
+    {reasonCode: "local_authority_provider_unavailable", sourceAuthority: "postgresql_v0"},
+  );
+});
+
+test("a PostgreSQL selector cannot accept a factory for another provider", async t => {
+  const directory = await root(t);
+  const marker = join(directory, "authority", `provider-${createHash("sha256").update("goal").digest("hex")}.json`);
+  await mkdir(join(directory, "authority"), {recursive: true});
+  await writeFile(marker, JSON.stringify({
+    schema_version: "loopx_local_authority_provider_v0",
+    provider: "postgresql",
+    goal_id: "goal",
+    tenant_id: "tenant-a",
+    store_identity: `postgresql:${"a".repeat(32)}`,
+  }));
+  const fileStore = new FileAuthorityStore(join(directory, "wrong"), "goal");
+  await assert.rejects(
+    openLocalAuthorityStoreHandle(directory, "goal", {openPostgresqlStore: () => fileStore}),
+    {reasonCode: "local_authority_provider_identity_mismatch", sourceAuthority: "postgresql_v0"},
+  );
+});
+
+test("provider selectors reject undeclared credential-shaped fields", async t => {
+  const directory = await root(t);
+  const marker = join(directory, "authority", `provider-${createHash("sha256").update("goal").digest("hex")}.json`);
+  await mkdir(join(directory, "authority"), {recursive: true});
+  await writeFile(marker, JSON.stringify({
+    schema_version: "loopx_local_authority_provider_v0",
+    provider: "postgresql",
+    goal_id: "goal",
+    tenant_id: "tenant-a",
+    store_identity: `postgresql:${"a".repeat(32)}`,
+    connection_string: "must-not-be-persisted",
+  }));
+  await assert.rejects(openLocalAuthorityStoreHandle(directory, "goal"), {
+    reasonCode: "local_authority_selector_invalid",
+    sourceAuthority: null,
+  });
 });
 
 test("SQLite selection cannot replace existing canonical authority", async t => {

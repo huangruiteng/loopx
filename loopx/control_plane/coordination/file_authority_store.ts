@@ -139,6 +139,7 @@ function readFailure(error: unknown): AuthorityStoreReadFailure {
 
 /** File-backed Stage 1 conformance provider; LoopX owns all domain decisions. */
 export class FileAuthorityStore implements AuthorityStore {
+  readonly providerKind = "file" as const;
   readonly goalId: string;
   readonly directory: string;
   readonly path: string;

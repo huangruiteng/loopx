@@ -27,7 +27,7 @@ import {
   validateCoordinationTodoReadModel,
   type CoordinationProjectionMutation,
 } from "./coordination_projection.ts";
-import type { AuthorityStore, AuthorityStoreReceiptResult } from "./authority_store.ts";
+import { authorityStoreSourceAuthority, type AuthorityStore, type AuthorityStoreReceiptResult } from "./authority_store.ts";
 import {
   canonicalAuthorityBytes,
   canonicalAuthorityObject,
@@ -35,8 +35,11 @@ import {
   requireAuthorityStoreId,
 } from "./authority_store_codec.ts";
 import { FileAuthorityStore } from "./file_authority_store.ts";
-import { SqliteAuthorityStore } from "./sqlite_authority_store.ts";
-import { openLocalAuthorityStore, localAuthorityOpenFailure } from "./local_authority_provider.ts";
+import {
+  openLocalAuthorityStore,
+  localAuthorityOpenFailure,
+  type LocalAuthorityProviderDependencies,
+} from "./local_authority_provider.ts";
 import {
   decodeLegacyCoordinationWriterFence,
   LEGACY_COORDINATION_WRITER_FENCE_SCHEMA,
@@ -99,8 +102,8 @@ export {
 } from "./coordination_state_contract.generated.ts";
 export { LEGACY_COORDINATION_WRITER_FENCE_SCHEMA } from "./legacy_writer_fence.ts";
 
-export function sourceAuthorityFor(store: AuthorityStore): "sqlite_v0" | "file_v0" {
-  return store instanceof SqliteAuthorityStore ? "sqlite_v0" : "file_v0";
+function sourceAuthorityFor(store: AuthorityStore) {
+  return authorityStoreSourceAuthority(store);
 }
 
 export async function withCanonicalWriter<T>(root: string, goalId: string, dryRun: boolean, write: () => Promise<T>): Promise<T> {
@@ -123,8 +126,7 @@ export async function pollLocalCoordinationMonitor(value: unknown,
     if (!Array.isArray(input.registered_agents)) throw new TypeError("registered_agents must be an array");
     const registered = input.registered_agents.map(agent => claimAgentValue(agent, "registered agent"));
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       evidence.source_authority = sourceAuthorityFor(store);
       return {...await executeCoordinationMonitorPoll(store, {
         goal_id: goalId, operation_id: requireAuthorityStoreId(input.operation_id, "operation id"),
@@ -142,10 +144,22 @@ export async function pollLocalCoordinationMonitor(value: unknown,
   }
 }
 
-interface LocalAuthorityRuntimeDependencies {
+interface LocalAuthorityRuntimeDependencies extends LocalAuthorityProviderDependencies {
   createStore?: (directory: string, goalId: string) => AuthorityStore;
   createShadowStore?: (directory: string, goalId: string) => AuthorityStore;
   createCanonicalStore?: (directory: string, goalId: string) => AuthorityStore;
+}
+
+/** One runtime seam owns provider construction for every local command. */
+async function openRuntimeStore(
+  root: string,
+  goalId: string,
+  dependencies: LocalAuthorityRuntimeDependencies,
+): Promise<AuthorityStore> {
+  if (dependencies.createStore !== undefined) {
+    return dependencies.createStore(authorityDirectory(root), goalId);
+  }
+  return await openLocalAuthorityStore(root, goalId, dependencies);
 }
 
 export function runtimeRoot(value: unknown): string {
@@ -400,10 +414,7 @@ export async function promoteLocalCoordinationAuthority(
     const canonical = dependencies.createCanonicalStore?.(
       authorityDirectory(request.runtime_root),
       request.goal_id,
-    ) ?? dependencies.createStore?.(
-      authorityDirectory(request.runtime_root),
-      request.goal_id,
-    ) ?? await openLocalAuthorityStore(request.runtime_root, request.goal_id);
+    ) ?? await openRuntimeStore(request.runtime_root, request.goal_id, dependencies);
     const canonicalAuthority = sourceAuthorityFor(canonical);
     const persistedFence = await loadLegacyCoordinationWriterFence(
       request.runtime_root,
@@ -617,8 +628,7 @@ export async function mutateLocalCoordinationAuthority(
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, false, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       const result = await commitCoordinationProjectionMutation(store, {
         goal_id: goalId,
@@ -668,8 +678,7 @@ export async function claimLocalCoordinationTodo(
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       if (!Array.isArray(input.registered_agents)) {
         throw new Error("registered_agents must be a JSON array");
@@ -754,8 +763,7 @@ export async function createLocalCoordinationTodo(
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       providerEvidence.source_authority = sourceAuthority;
       if (!Array.isArray(input.registered_agents)) {
@@ -817,8 +825,7 @@ export async function updateLocalCoordinationTodo(
       if (!Array.isArray(input.registered_agents) || !Array.isArray(input.clear_fields)) {
         throw new TypeError("registered_agents and clear_fields must be JSON arrays");
       }
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       providerEvidence.source_authority = sourceAuthority;
       return {...await executeCoordinationTodoUpdate(store, {
@@ -886,8 +893,7 @@ export async function terminalLifecycleLocalCoordinationTodo(
     const successorIntents = input.successor_intents.map((intent, index) =>
       requireJsonObject(intent, `successor_intents[${index}]`));
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       providerEvidence.source_authority = sourceAuthority;
       return {...await executeCoordinationTodoTerminalLifecycle(store, {
@@ -982,8 +988,7 @@ export async function archiveLocalCoordinationTodos(
     if (typeof input.dry_run !== "boolean") throw new TypeError("dry_run must be a boolean");
     const now = claimObservedAt(input.observed_at);
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       providerEvidence.source_authority = sourceAuthority;
       return {...await executeLocalArchiveAttempt(store, root, {
@@ -1023,8 +1028,7 @@ export async function acknowledgeLocalCoordinationTodoArchive(
     const role = archiveRole(input.role);
     const operationId = requireAuthorityStoreId(input.operation_id, "operation id");
     return await withCanonicalWriter(root, goalId, false, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       return acknowledgeLocalArchiveAttempt(store, root, goalId, role, operationId);
     });
   } catch (error) {
@@ -1051,8 +1055,7 @@ export async function editLocalCoordinationTodo(
     const root = runtimeRoot(runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, input.dry_run === true, async () => {
-      const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-        await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       sourceAuthority = sourceAuthorityFor(store);
       return {...await editCoordinationTodo(store, request),
         source_authority: sourceAuthority, decision_read_from_provider: true, legacy_fallback_used: false};
@@ -1080,8 +1083,7 @@ export async function readLocalCoordinationTodo(
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     const todoId = requireAuthorityStoreId(input.todo_id, "todo id");
-    const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-      await openLocalAuthorityStore(root, goalId);
+    const store = await openRuntimeStore(root, goalId, dependencies);
     sourceAuthority = sourceAuthorityFor(store);
     const head = await store.loadAuthority();
     if (head.status !== "loaded") {
@@ -1138,8 +1140,7 @@ export async function listLocalCoordinationTodos(
     }
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
-    const store = dependencies.createStore?.(authorityDirectory(root), goalId) ??
-      await openLocalAuthorityStore(root, goalId);
+    const store = await openRuntimeStore(root, goalId, dependencies);
     sourceAuthority = sourceAuthorityFor(store);
     const head = await store.loadAuthority();
     if (head.status !== "loaded") {
@@ -1186,14 +1187,17 @@ export async function listLocalCoordinationTodos(
 }
 
 /** The explicit local CLI continuation uses the existing promoted writer fence. */
-export async function continueLocalTodo(value: unknown): Promise<JsonObject> {
+export async function continueLocalTodo(
+  value: unknown,
+  dependencies: LocalAuthorityRuntimeDependencies = {},
+): Promise<JsonObject> {
   const evidence = {source_authority: "file_v0", decision_read_from_provider: true, legacy_fallback_used: false};
   try {
     const input = requireJsonObject(value, "Todo continuation request");
     const root = runtimeRoot(input.runtime_root);
     const goalId = requireAuthorityStoreId(input.goal_id, "goal id");
     return await withCanonicalWriter(root, goalId, false, async () => {
-      const store = await openLocalAuthorityStore(root, goalId);
+      const store = await openRuntimeStore(root, goalId, dependencies);
       evidence.source_authority = sourceAuthorityFor(store);
       const fence = await loadLegacyCoordinationWriterFence(root, goalId);
       if (fence.status !== "loaded") return {ok: false, status: "rejected",

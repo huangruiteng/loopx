@@ -193,6 +193,7 @@ function validStoreIdentity(value: string, workbench: string): boolean {
 
 /** Stage 2A candidate. No runtime constructs this provider by default. */
 export class NoKVAuthorityStore implements AuthorityStore {
+  readonly providerKind = "nokv" as const;
   readonly transport: NoKVBlobTransport;
   readonly tenantId: string;
   readonly goalId: string;
