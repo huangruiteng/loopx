@@ -27,6 +27,14 @@ export const QUOTA_SPEND_COMMIT_RESULT_SCHEMA =
 export const QUOTA_SPEND_COMMIT_RECEIPT_SCHEMA =
   "quota_spend_commit_receipt_v0";
 export const QUOTA_SLOT_SPENT_CLASSIFICATION = "quota_slot_spent";
+export const QUOTA_SLOT_ACCOUNTING_PROJECTION_SCHEMA =
+  "quota_slot_accounting_projection_v0";
+
+const ROLLING_WINDOW_NOTE =
+  "before -> after is a same-status-payload projection. Later quota status " +
+  "recomputes spent_slots from quota_slot_spent events still inside window_hours, " +
+  "so the visible total can stay flat or decrease as older spends expire; that " +
+  "does not replay or undo the appended settlement event.";
 
 export const QUOTA_SPEND_SOURCES = [
   "heartbeat",
@@ -426,6 +434,16 @@ function healthCheck(
   }
 }
 
+function accountingProjection(request: QuotaSpendCommitRequest): JsonObject {
+  return {
+    schema_version: QUOTA_SLOT_ACCOUNTING_PROJECTION_SCHEMA,
+    settlement_event_semantics: "append_only",
+    spent_slots_semantics: "rolling_window_aggregate",
+    before_after_semantics: "same_status_payload_projection",
+    window_hours: request.before.window_hours,
+  };
+}
+
 function buildSpendRecord(
   request: QuotaSpendCommitRequest,
   fingerprint: string,
@@ -457,6 +475,8 @@ function buildSpendRecord(
     delivery_workspace: request.preview.delivery_workspace ?? null,
     delivery_workspace_causality: request.preview.delivery_workspace_causality ?? null,
     delivery_workspace_validated: request.preview.delivery_workspace_validated === true,
+    accounting_projection: accountingProjection(request),
+    rolling_window_note: ROLLING_WINDOW_NOTE,
     before: request.before,
     after: request.after,
   };
@@ -667,6 +687,8 @@ function payloadFor(
   const event = requiredObject(record.quota_event, "record.quota_event");
   const payload: JsonObject = {
     ...request.preview,
+    accounting_projection: accountingProjection(request),
+    rolling_window_note: ROLLING_WINDOW_NOTE,
     dry_run: !request.execute,
     appended: options.appended,
     registry_mutated: false,

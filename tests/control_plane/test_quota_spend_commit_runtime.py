@@ -84,12 +84,31 @@ def test_python_facade_uses_typed_event_and_durable_transaction(
     assert record["quota_spend_commit"]["schema_version"] == (
         "quota_spend_commit_receipt_v0"
     )
+    assert record["quota_event"]["accounting_projection"] == {
+        "schema_version": "quota_slot_accounting_projection_v0",
+        "settlement_event_semantics": "append_only",
+        "spent_slots_semantics": "rolling_window_aggregate",
+        "before_after_semantics": "same_status_payload_projection",
+        "window_hours": 24,
+    }
+    assert "does not replay or undo" in record["quota_event"]["rolling_window_note"]
 
     written = _commit(tmp_path, preview)
     assert written["appended"] is True
     assert written["idempotent_replay"] is False
     persisted = json.loads(Path(written["json_path"]).read_text(encoding="utf-8"))
     assert persisted["quota_spend_commit"]["effect_id"] == written["effect_id"]
+    assert (
+        persisted["quota_event"]["accounting_projection"]
+        == written["accounting_projection"]
+    )
+    assert (
+        persisted["quota_event"]["rolling_window_note"]
+        == written["rolling_window_note"]
+    )
+    assert "settlement_event=append_only" in Path(written["markdown_path"]).read_text(
+        encoding="utf-8"
+    )
     assert Path(written["markdown_path"]).read_text(encoding="utf-8") == (
         render_quota_slot_preview_markdown(written) + "\n"
     )

@@ -286,6 +286,14 @@ def test_material_monitor_poll_builds_attributed_spend_event(tmp_path: Path) -> 
 
     assert preview["ok"] is True
     assert preview["delivery_completion_spend"] is True
+    assert preview["accounting_projection"] == {
+        "schema_version": "quota_slot_accounting_projection_v0",
+        "settlement_event_semantics": "append_only",
+        "spent_slots_semantics": "rolling_window_aggregate",
+        "before_after_semantics": "same_status_payload_projection",
+        "window_hours": 24,
+    }
+    assert "does not replay or undo" in preview["rolling_window_note"]
     assert preview["delivery_run_classification"] == "quota_monitor_poll"
     assert preview["delivery_run_generated_at"] == material_poll["generated_at"]
     assert preview["delivery_run_agent_id"] == AGENT_A

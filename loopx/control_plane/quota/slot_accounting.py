@@ -833,10 +833,18 @@ def build_quota_slot_preview_for_decision(
                 f"{safe_goal_id} from {before.get('state')} to {after.get('state')}"
             )
         ),
+        "accounting_projection": {
+            "schema_version": "quota_slot_accounting_projection_v0",
+            "settlement_event_semantics": "append_only",
+            "spent_slots_semantics": "rolling_window_aggregate",
+            "before_after_semantics": "same_status_payload_projection",
+            "window_hours": _int_number(before_quota.get("window_hours"), default=0),
+        },
         "rolling_window_note": (
             "before -> after is a same-status-payload projection. Later quota status "
             "recomputes spent_slots from quota_slot_spent events still inside window_hours, "
-            "so the visible total can stay flat if an older spend expires."
+            "so the visible total can stay flat or decrease as older spends expire; that "
+            "does not replay or undo the appended settlement event."
         ),
         "todo_id": normalized_todo_id,
         "replan_obligation_id": normalized_replan_obligation_id,

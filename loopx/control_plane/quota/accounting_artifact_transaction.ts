@@ -308,6 +308,16 @@ export function renderQuotaSlotMarkdown(
       );
     }
   }
+  const accountingProjection = jsonObject(payload.accounting_projection);
+  if (accountingProjection) {
+    lines.push(
+      "- accounting_projection: " +
+        `settlement_event=${pyValue(accountingProjection.settlement_event_semantics)} ` +
+        `spent_slots=${pyValue(accountingProjection.spent_slots_semantics)} ` +
+        `before_after=${pyValue(accountingProjection.before_after_semantics)} ` +
+        `window_hours=${pyValue(accountingProjection.window_hours)}`,
+    );
+  }
   if (payload.rolling_window_note) {
     lines.push(`- rolling_window_note: ${pyValue(payload.rolling_window_note)}`);
   }

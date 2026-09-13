@@ -110,6 +110,15 @@ def render_quota_slot_preview_markdown(payload: dict[str, Any]) -> str:
             lines.append(
                 f"- after_plan_next_automatic_turn: {summary.get('next_automatic_turn') or 'none'}"
             )
+    accounting_projection = as_dict(payload.get("accounting_projection"))
+    if accounting_projection:
+        lines.append(
+            "- accounting_projection: "
+            f"settlement_event={accounting_projection.get('settlement_event_semantics')} "
+            f"spent_slots={accounting_projection.get('spent_slots_semantics')} "
+            f"before_after={accounting_projection.get('before_after_semantics')} "
+            f"window_hours={accounting_projection.get('window_hours')}"
+        )
     if payload.get("rolling_window_note"):
         lines.append(f"- rolling_window_note: {payload.get('rolling_window_note')}")
     append_operator_action_markdown(lines, payload)
