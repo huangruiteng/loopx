@@ -289,6 +289,31 @@ def parse_agent_response(
                     "gate": None,
                 }
         raw_text = raw_text[:start]
+    elif start >= 0:
+        # The review envelope is an authority boundary, not display text.  A
+        # provider can finish after emitting a complete JSON object but before
+        # emitting the closing tag.  In that case retain only a human-readable
+        # answer and fail closed for proposals, gates, and protected actions.
+        # Never leak the raw protocol fragment into downstream transports.
+        visible = raw_text[:start].strip()
+        body = raw_text[start + len(CHAT_REVIEW_OPEN_TAG) :].strip()
+        salvaged_message = ""
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            salvaged_message = str(payload.get("message") or "").strip()
+        else:
+            key = re.search(r'"message"\s*:\s*', body)
+            if key:
+                try:
+                    salvaged, _ = json.JSONDecoder().raw_decode(body[key.end() :])
+                except json.JSONDecodeError:
+                    salvaged = None
+                if isinstance(salvaged, str):
+                    salvaged_message = salvaged.strip()
+        raw_text = visible or salvaged_message
     return {
         "schema_version": CHAT_AGENT_RESPONSE_SCHEMA_VERSION,
         "message": redact_local_paths(raw_text, protected_paths=protected).strip(),
