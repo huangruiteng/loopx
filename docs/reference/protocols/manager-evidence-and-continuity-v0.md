@@ -1,5 +1,11 @@
 # Manager evidence and continuity v0
 
+Design evolution: [Capable Agent Manager and Semantic Work Handoff RFC](../../architecture/rfcs/capable-manager-semantic-handoff-v0.md)
+([中文版](../../architecture/rfcs/capable-manager-semantic-handoff-v0.zh-CN.md))
+proposes the next product direction. This document retains the implemented
+baseline and compatibility contract until the RFC milestones are qualified;
+its restricted manager defaults are not silently changed by the proposal.
+
 Status: staged implementation. The synchronous manager transport and read-only
 `goal-portfolio` provider are implemented. Managed conversational turns now read
 fresh scoped Core evidence. The shared cross-entry request ledger, optional

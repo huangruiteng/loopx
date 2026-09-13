@@ -148,6 +148,14 @@ changes.
 
 ## Runtime, Capability, And Collaboration Integration
 
+- [Capable Agent Manager and Semantic Work Handoff v0](capable-manager-semantic-handoff-v0.md)
+  ([中文版](capable-manager-semantic-handoff-v0.zh-CN.md))
+  - **RFC status:** Draft, under maintainer review.
+  - **Delivery on `main`:** Proposal; existing manager/inbox foundations are reused.
+  - **Current boundary:** Proposes ordinary host-tool autonomy, persistent scoped
+    conversations, semantic continuation and automatic result delivery.
+    Runtime-profile promotion and generic handoff migration have not shipped.
+
 - [Single-Owner Local Daemon v0](single-owner-local-daemon-v0.md)
   - **RFC status:** Draft.
   - **Delivery on `main`:** Proposal only; existing Desktop ownership repair is shipped.
