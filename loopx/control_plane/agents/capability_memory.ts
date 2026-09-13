@@ -9,7 +9,10 @@ import {OBSERVABLE_RUNTIME_CAPABILITIES} from "./capability_gate.ts";
 
 const SCHEMA = "agent_runtime_capabilities_v0";
 const observable = (value: string) => OBSERVABLE_RUNTIME_CAPABILITIES.has(value);
-const unique = (values: string[]) => [...new Set(values)].sort();
+const lexical = (left: string, right: string) => left.localeCompare(right);
+const unique = (values: string[]) => [...new Set(values)].sort(lexical);
+const sortedEntries = (value: JsonObject) =>
+  Object.entries(value).sort(([left], [right]) => lexical(left, right));
 
 export async function agentCapabilityMemory(request: JsonObject): Promise<JsonObject> {
   if (request.schema_version !== "agent_runtime_capability_request_v0") {
@@ -61,11 +64,11 @@ export async function agentCapabilityMemory(request: JsonObject): Promise<JsonOb
     for (const c of available) next[c] = "available";
     for (const c of unavailable) next[c] = "unavailable";
     for (const c of forget) delete next[c];
-    const changed = JSON.stringify(Object.entries(previous).sort()) !== JSON.stringify(Object.entries(next).sort());
+    const changed = JSON.stringify(sortedEntries(previous)) !== JSON.stringify(sortedEntries(next));
     if (execute && changed) await durableWriteJson(path, {schema_version: SCHEMA, ...scope, observations: next});
     const project = (observations: JsonObject) => ({
-      available: Object.keys(observations).filter(c => observations[c] === "available").sort(),
-      unavailable: Object.keys(observations).filter(c => observations[c] === "unavailable").sort(),
+      available: Object.keys(observations).filter(c => observations[c] === "available").sort(lexical),
+      unavailable: Object.keys(observations).filter(c => observations[c] === "unavailable").sort(lexical),
     });
     return {
       schema_version: SCHEMA, goal_id: scope.goal_id, agent_id: scope.agent_id,
