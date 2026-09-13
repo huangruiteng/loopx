@@ -10,19 +10,31 @@ from ..todos.contract import normalize_required_capabilities, normalize_todo_cla
 def agent_capability_memory(
     *, registry_path: Path, runtime_root: Path, goal_id: str, agent_id: str,
     available: Any = None, unavailable: Any = None, forget: Any = None,
-    execute: bool = False,
+    execute: bool = False, registered_agents: Any = None,
 ) -> dict[str, Any]:
     goal_id = str(goal_id).strip()
     normalized_agent = normalize_todo_claimed_by(agent_id)
     if not normalized_agent:
         raise ValueError("agent_id must be a public-safe registered agent id")
-    goal = load_goal_from_registry(registry_path, goal_id)
+    # A caller that already resolved the goal (quota, status) holds the
+    # authoritative roster; re-reading the registry file here would let a
+    # relative or unreadable path silently empty the roster and turn a
+    # read-only capability observation into a hard failure. Agent ids are not
+    # capability tokens, so they keep their own normalization.
+    roster = [
+        normalized
+        for value in (registered_agents or [])
+        if (normalized := normalize_todo_claimed_by(value))
+    ]
+    if not roster:
+        goal = load_goal_from_registry(registry_path, goal_id)
+        roster = registered_agent_ids_for_goal(goal)
     result = effect_runtime_result("agent.capability_memory", {
         "schema_version": "agent_runtime_capability_request_v0",
         "runtime_root": str(runtime_root.expanduser().resolve()),
         "registry": str(registry_path.expanduser().resolve()),
         "goal_id": goal_id, "agent_id": normalized_agent,
-        "registered_agents": registered_agent_ids_for_goal(goal),
+        "registered_agents": roster,
         "available": normalize_required_capabilities(available),
         "unavailable": normalize_required_capabilities(unavailable),
         "forget": normalize_required_capabilities(forget),
@@ -133,6 +145,8 @@ def resolve_agent_capabilities(
         state = agent_capability_memory(
             registry_path=Path(str(registry)), runtime_root=Path(str(root)),
             goal_id=goal_id, agent_id=agent_identity["agent_id"],
+            # The resolved identity already carries the authoritative roster.
+            registered_agents=agent_identity.get("registered_agents"),
         )
     availability = _evaluate(
         "availability",
