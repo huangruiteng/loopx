@@ -181,8 +181,14 @@ def main() -> int:
             env=cli_env,
         )
         assert heartbeat["ok"] is True, heartbeat
-        assert "quota should-run" in heartbeat["quota_guard_command"], heartbeat
-        assert "--source heartbeat --execute" in heartbeat["quota_spend_command"], heartbeat
+        # The thin agent input carries the commands inside the task body rather
+        # than duplicating them as sibling fields, so the contract is read there.
+        assert heartbeat["interface_budget"]["mode"] == "thin", heartbeat
+        assert "quota should-run" in heartbeat["task_body"], heartbeat
+        # The thin contract embeds the guard command only; the spend command
+        # arrives in the quota response's next_cli_actions so the receipt
+        # identity stays bound to the turn that this guard opened.
+        assert "selection_command" in heartbeat["task_body"], heartbeat
 
     print("fresh-clone-quickstart-smoke ok")
     return 0
