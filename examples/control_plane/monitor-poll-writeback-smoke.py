@@ -789,7 +789,10 @@ def assert_target_key_cannot_hijack_selected_due_monitor() -> None:
         )
         assert "- ok: `False`" in markdown, markdown
         assert "- mode: `monitor-poll`" in markdown, markdown
-        assert "- todo_id: ``" in markdown, markdown
+        # The rejection names the monitor the caller actually selected and the
+        # material-change flag it declared, rather than reporting an empty
+        # identity for a request that was understood and refused.
+        assert "- todo_id: `todo_monitorpoll111`" in markdown, markdown
         assert f"- target_key: `{OTHER_TARGET_KEY}`" in markdown, markdown
         assert "- material_change: `True`" in markdown, markdown
         assert "- appended: `False`" in markdown, markdown

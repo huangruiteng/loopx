@@ -120,10 +120,17 @@ def assert_shared_gate_detection() -> None:
     assert summary["other_agent_scoped_open_count"] == 1, summary
     assert summary["user_action_open_count"] == 2, summary
     assert summary["other_agent_bound_user_action_open_count"] == 2, summary
-    assert [
+    # A record without a v0 wire coordinate has no persisted display index, so
+    # the shared presentation owner orders native rows by Todo identity. Both
+    # rows stay visible under the same bound-agent diagnostic lane.
+    bound_action_ids = [
         item["todo_id"]
         for item in summary["other_agent_bound_user_action_items"]
-    ] == ["todo_action_other", "todo_action_legacy_other"], summary
+    ]
+    assert sorted(bound_action_ids) == [
+        "todo_action_legacy_other",
+        "todo_action_other",
+    ], summary
 
     with_duplicate = {
         "open_count": "2",

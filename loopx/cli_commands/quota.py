@@ -85,6 +85,12 @@ from .quota_context import (
 )
 from .quota_host_poll import attach_host_poll_receipt
 from .quota_monitor_poll import record_quota_monitor_poll_for_cli
+from .quota_failure_report import (
+    QUOTA_EVENT_KINDS,
+    quota_failure_payload,
+    quota_validation_failure_payload,
+    should_log_quota,
+)
 from .quota_registration import (
     register_quota_command as register_quota_command,  # noqa: PLC0414
 )
@@ -99,17 +105,6 @@ PrintPayload = Callable[
     None,
 ]
 RolloutEventAppender = Callable[..., dict[str, object]]
-QUOTA_EVENT_KINDS = {
-    "should-run": "quota_should_run",
-    "monitor-poll": "quota_monitor_poll",
-    "scheduler-ack": "quota_scheduler_ack",
-    "scheduler-ack-current": "quota_scheduler_ack",
-    "scheduler-fail-current": "quota_scheduler_failure",
-    "spend-slot": "quota_spend",
-    "void-slot": "quota_void",
-}
-
-
 def _heartbeat_receipt_settlement_bindings(
     event: Mapping[str, object],
 ) -> tuple[str | None, str | None]:
@@ -144,191 +139,6 @@ def _effective_spend_turn_instance_id(
     if not payload_turn_id or payload_turn_id != identity_turn_id or not effect_id:
         return None
     return payload_turn_id
-
-
-def _should_log_quota(command: str, payload: Mapping[str, object]) -> bool:
-    return command in QUOTA_EVENT_KINDS and (
-        command == "should-run"
-        or (
-            bool(payload.get("ok"))
-            and (
-                bool(payload.get("appended"))
-                or bool(payload.get("receipt_repair_required"))
-            )
-        )
-    )
-
-
-def _verbose_debug_fields(error: Exception, *, verbose: bool) -> dict[str, object]:
-    if not verbose:
-        return {}
-    return {
-        "verbose_debug": {
-            "error_type": type(error).__name__,
-            "error": str(error),
-        }
-    }
-
-
-def _quota_failure_payload(
-    args: argparse.Namespace,
-    *,
-    registry_path: Path,
-    runtime_root_arg: str | None,
-    error: Exception,
-) -> dict[str, object]:
-    command = args.quota_command
-    lock_timeout_fields = lock_timeout_error_fields(error)
-    verbose_debug = _verbose_debug_fields(
-        error, verbose=bool(getattr(args, "verbose", False))
-    )
-    if command not in QUOTA_EVENT_KINDS:
-        return {
-            "ok": False,
-            "mode": command,
-            "registry": str(registry_path),
-            "runtime_root": runtime_root_arg,
-            "error_code": quota_error_code(error),
-            "error": "quota collection failed",
-            "summary": {
-                "registered_goals": 0,
-                "health_blockers": 1,
-                "next_automatic_turn": None,
-                "states": {},
-            },
-            "groups": {},
-            "health_items": [
-                {
-                    "goal_id": "loopx-quota",
-                    "status": "quota_collection_failed",
-                    "waiting_on": "codex",
-                    "severity": "high",
-                    "recommended_action": (
-                        "fix quota/status collection before spending automatic compute"
-                    ),
-                    "source": "quota",
-                }
-            ],
-            **verbose_debug,
-            **lock_timeout_fields,
-        }
-
-    public_reason = (
-        str(error)
-        if isinstance(error, HeartbeatReceiptIdentityConflictError)
-        else "quota collection failed"
-    )
-    payload: dict[str, object] = {
-        "ok": False,
-        "mode": command,
-        "goal_id": args.goal_id,
-        "decision": "skip",
-        "should_run": False,
-        "error_code": quota_error_code(error),
-        "reason": public_reason,
-        "state": "blocked_health",
-        "waiting_on": "codex",
-        "status": "quota_collection_failed",
-        "source": "quota",
-        "recommended_action": (
-            "fix quota/status collection before spending automatic compute"
-        ),
-        **verbose_debug,
-        **lock_timeout_fields,
-    }
-    if isinstance(error, QuotaIdentityPreconditionError):
-        payload.update(
-            {
-                "reason": str(error),
-                "status": "quota_identity_precondition_failed",
-                "identity_precondition": error.precondition.value,
-                "recommended_action": error.recommended_action,
-            }
-        )
-        if error.agent_id is not None:
-            payload["agent_id"] = error.agent_id
-    elif isinstance(error, (LegacyCoordinationWriterFenced, LocalCoordinationAuthorityUnavailable)):
-        payload.update(
-            {
-                "error_code": error.code,
-                "reason": str(error),
-                **error.payload,
-            }
-        )
-    if lock_timeout_fields:
-        payload["recommended_action"] = "inspect the lock holder before retrying"
-    if command == "monitor-poll":
-        payload.update(
-            {
-                "source": args.source,
-                "agent_id": args.agent_id,
-                "todo_id": args.todo_id,
-                "target_key": args.target_key,
-                "result_hash": args.result_hash,
-                "material_change": bool(args.material_change),
-            }
-        )
-    elif command in {"scheduler-ack", "scheduler-ack-current"}:
-        payload.update(
-            {
-                "agent_id": args.agent_id,
-                "surface": args.surface,
-                "state_key": args.state_key,
-                "applied_rrule": args.applied_rrule,
-            }
-        )
-    elif command == "scheduler-fail-current":
-        payload.update(
-            {
-                "agent_id": args.agent_id,
-                "surface": args.surface,
-                "state_key": args.state_key,
-                "failed_rrule": args.failed_rrule,
-                "failure_kind": args.failure_kind,
-            }
-        )
-    return payload
-
-
-def _quota_validation_failure_payload(
-    args: argparse.Namespace,
-    exc: QuotaCommandValidationError,
-    *,
-    registry_path: Path,
-    runtime_root_arg: str | None,
-) -> dict[str, object]:
-    command = args.quota_command
-    if command not in QUOTA_EVENT_KINDS:
-        return {
-            "ok": False,
-            "mode": command,
-            "registry": str(registry_path),
-            "runtime_root": runtime_root_arg,
-            "error_code": "QUOTA_VALIDATION_FAILED",
-            "error": str(exc),
-            "summary": {
-                "registered_goals": 0,
-                "health_blockers": 0,
-                "next_automatic_turn": None,
-                "states": {},
-            },
-            "groups": {},
-            "health_items": [],
-        }
-    return {
-        "ok": False,
-        "mode": command,
-        "goal_id": args.goal_id,
-        "decision": "skip",
-        "should_run": False,
-        "error_code": "QUOTA_VALIDATION_FAILED",
-        "reason": str(exc),
-        "state": "blocked_validation",
-        "waiting_on": "codex",
-        "status": "quota_validation_failed",
-        "source": "quota",
-        "recommended_action": "fix the command arguments before retrying",
-    }
 
 
 def _quota_renderer(
@@ -891,20 +701,20 @@ def handle_quota_command(
             payload["status_projection_cache"] = cache_metadata
     except QuotaCommandValidationError as exc:
         # Only typed CLI validation diagnostics are public-safe by contract.
-        payload = _quota_validation_failure_payload(
+        payload = quota_validation_failure_payload(
             args,
             exc,
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
         )
     except Exception as exc:  # noqa: BLE001 - CLI fail-safe boundary; error_code is typed below.
-        payload = _quota_failure_payload(
+        payload = quota_failure_payload(
             args,
             registry_path=registry_path,
             runtime_root_arg=runtime_root_arg,
             error=exc,
         )
-    if _should_log_quota(args.quota_command, payload):
+    if should_log_quota(args.quota_command, payload):
         spend_turn_instance_id = _effective_spend_turn_instance_id(
             payload,
             heartbeat_turn_id=heartbeat_turn_id,
