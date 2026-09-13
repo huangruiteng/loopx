@@ -101,6 +101,8 @@ function resumeTimestamp(value: unknown): ResumeTimestamp | null {
   if (offsetHour > 14 || offsetMinute > 59 || (offsetHour === 14 && offsetMinute !== 0)) return null;
   const milliseconds = Date.parse(value.trim());
   if (Number.isNaN(milliseconds)) return null;
+  const utcYear = new Date(milliseconds).getUTCFullYear();
+  if (utcYear < 1000 || utcYear > 9999) return null;
   return { iso: normalizedTimestamp(milliseconds), milliseconds };
 }
 

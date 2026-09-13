@@ -45,6 +45,8 @@ test("resume syntax is normalized by the typed Todo boundary", () => {
     "resume_at:2026-02-30T09:30:00+08:00",
     "resume_at:2026-09-14T09:30:00+08:60",
     "resume_at:2026-09-14T09:30:00+15:00",
+    "resume_at:1000-01-01T00:00:00+14:00",
+    "resume_at:9999-12-31T23:59:59-14:00",
   ]) assert.equal(normalizeTodoResumeWhen({
     schema_version: TODO_RESUME_NORMALIZE_REQUEST_SCHEMA_VERSION,
     resume_when,

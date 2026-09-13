@@ -115,14 +115,16 @@ def normalize_todo_resume_when(value: Any) -> str | None:
             parsed = datetime.fromisoformat(
                 timestamp.replace("Z", "+00:00").replace("z", "+00:00")
             )
-        except ValueError:
+            utc = parsed.astimezone(timezone.utc)
+        except (OverflowError, ValueError):
             return None
         if parsed.tzinfo is None:
             return None
         offset = parsed.utcoffset()
         if offset is None or abs(offset.total_seconds()) > 14 * 60 * 60:
             return None
-        utc = parsed.astimezone(timezone.utc)
+        if not 1000 <= utc.year <= 9999:
+            return None
         canonical = (
             utc.isoformat(timespec="milliseconds")
             if utc.microsecond

@@ -176,6 +176,8 @@ def test_resume_at_rejects_missing_timezone_and_invalid_calendar_date() -> None:
         "resume_at:2026-02-30T09:30:00+08:00",
         "resume_at:2026-09-14T09:30:00+08:60",
         "resume_at:2026-09-14T09:30:00+15:00",
+        "resume_at:1000-01-01T00:00:00+14:00",
+        "resume_at:9999-12-31T23:59:59-14:00",
     ):
         try:
             resume_condition.require_supported_todo_resume_when(value)
