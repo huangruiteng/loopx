@@ -71,7 +71,7 @@
 | 会话恢复 | `loopx/chat_runtime.py` | 兼容时恢复保存的 upstream 身份；上下文版本、受众变化可迫使新建线程。不能据此宣称每次线上请求都成功 resume |
 | 证据读取 | `manager_context/inspection.py`、`ssh_evidence.py`、global-manager CLI | 已有 Core portfolio/Todo/delivery、分页、主机来源；初始投影不是外部产物全文 |
 | 上下文转交 | `manager_context/__init__.py` | 已有原始 ingress 来源、精确接收方、请求摘要、inbox、接收 hook；当前记录为 `loopx_manager_context_entry_v1` |
-| 回报 | `manager_context/tracking.py`、`roundtrip.py` | 已有 read、acknowledge、canonical Todo/evidence 链接、不可变回复与回传；应扩展这些 owner |
+| 回报 | `manager_context/tracking.py`、`roundtrip.py` | 已有 read、acknowledge、canonical Todo/evidence 链接、不可变回复与回传；替换实现时保留这些事实，不保留重复转移 owner |
 | 工作语义 | Goal Vision/Replan 协议与 typed control plane | Agent 方向、验收、path delta、Todo、证据、claim 已超出简单状态标签 |
 | UI | `apps/presentation/dashboard/src/data/chat.ts`、`chat-model.ts`、capability settings/workbench | 通过已有对话、配置投影展示更完整的运行态与交接 |
 
@@ -210,6 +210,47 @@ LoopX 不是只有任务队列。交接应让接收方结合权威状态和持�
 
 本轮不迁移 LoopX 的所有子系统。切片是管家角色、collaboration 请求/判断/结果及其真实 adapter；可以删除大量旧代码，但不把 quota、金融方法和整个 runtime 吞进新 orchestrator。保留经刻画的合理行为，同时有意改变本文点明的旧限制；parity 测试不能把旧限制冻结成目标行为。
 
+### 5.10 最小契约与合法 observation
+
+以下是**拟议契约**，不是已实现 schema 或命令。M2 最终确定命名和序列化，但要保留这些语义：
+
+```text
+WorkRequest {
+  request_id, revision, origin_ref, sender_ref, intent,
+  target_ref?, authority_ref, context_ref, return_ref,
+  work_refs[], supersedes_ref?
+}
+SemanticContext {
+  revision, digest, brief, source_refs[], work_revision_refs[],
+  access_scope_ref, omissions[]
+}
+Observation {
+  event_id, request_id, request_revision, actor_ref, event_kind,
+  evidence_refs[], result_ref?, recorded_at
+}
+```
+
+`request_id` 标识本次交互，`revision` 单调增长且提交后不可变，`origin_ref` 解析到经过认证的来源。`intent` 区分咨询、委托工作、责任移交；`target_ref` 只允许在尚未分配时缺省。authority 引用关联发起主体的当前授权范围，独立于 brief 解析。`return_ref` 是主体/受众限定的结果入口或父请求，**不一定是管家 session**。工作引用可以为空，接受请求不要求已有 Todo。`context_ref` 能解析到版本/摘要及最小 brief：期待结果、当前约束、已知未知。来源和工作引用说明权限范围、已知版本，版本未知明确标注；不把凭据或隐藏推理变成字段。
+
+呈现上下文前验证引用的读取权限。摘要可由模型编写，但保留来源、作者和版本；身份与权限头由宿主验证。过大上下文保存成受控工件并明确投影覆盖；若不能保存或读取，给可恢复的 context 错误，不宣称完整交接。现有摘要无需整体扩预算。
+
+通过被接受的 observation 投影几个独立维度：
+
+| 维度 | 合法变化与不变量 |
+| --- | --- |
+| 分配/投递 | 未分配→已分配→inbox 已存→已呈现；换接收者产生 attempt 身份；呈现需要真实 host Turn，不能只凭 CLI fetch |
+| 判断/工作 | pending→accepted / partially-accepted / deferred / rejected；已接受工作可以执行和解决；deferred 带条件保持开放；接受不等于完成 |
+| 控制请求 | 纠正/取消/过期记录为请求或条件；取消在被确认的安全边界才生效，过期阻止新 dispatch，不撤销在途外部效果 |
+| 结果送达 | 尚无→已提交结果→待发送→已核验送达；失败/不确定保留结果，不确定先对账 |
+
+每条 observation 按 event 身份只追加一次，对 request revision 做 compare-and-set。相同事件重试返回旧回执，同身份改载荷冲突。Core 效果经已有 effect-interpreter 返回 accepted/rejected/conflict/already-applied observation。改接收方不能抹去活跃执行 claim；旧 worker 不可达时保留未知与 claim，直到既有 lease/transfer 规则允许换执行者。
+
+持久待处理请求通过已有宿主调度 owner 携带下一唤醒/检查条件。忙碌、离线、不支持投递、等待依赖、缺输入是明确 observation，不靠重复模型轮询。延期工作可运行时，经支持的 adapter 唤醒或呈现一次。结果可为终局失败/拒绝，但不能为清空 inbox 把未完成改成成功。
+
+所有参与者都能提交结果、读取各自授权请求；通用 collaboration/outbox 不依赖管家进程。worker→worker 的结果入口可以是发起 worker 及其父交互。管家提供可选综合与呈现，不是每次协作的生命周期协调者。
+
+非 Core 的 shell/Git/API 效果，使用 effect-intent ID，并在 provider 支持时复用幂等/读回。只有证据才能提交完成 observation。崩溃命令效果未知时，先对账再发起新的有副作用尝试；API 没幂等不代表可以重放。普通工具得到自由度，不得到虚假的 exactly-once 保证。
+
 ## 6. 备选与 #4306 裁决
 
 - **选择普通 runtime 工具 + LoopX 语义状态。** 保留 Agent 的灵活性，复用成熟工具；代价是要真实验收主机 profile 和私人/共享受众隔离。
@@ -237,6 +278,21 @@ semantic brief 与引用 manifest 有版本。保留已有字段和历史未知�
 5. 切单一 writer 前只静默受影响 dispatch lane；激活前对账已提交请求/结果。保留 source ID、pending 状态和旧 reader 快照。
 6. runtime profile 可独立回滚，不能伤及交接回传。回旧 schema reader 前禁新写入，不兼容记录先 drain/export，不静默丢字段或重放工作；不支持降级则明确说明。
 
+### 必需的旧记录映射
+
+M0 盘点真实字段和 producer；以下是迁移验收底线，不代表已有 migrator：
+
+| 旧记录族 | 新语义 / 保留规则 |
+| --- | --- |
+| Ingress 与 manager entry | 保留来源/请求 ID、原文、摘要、发送/接收方和精确回报范围；加确定性迁移别名，不重新 dispatch |
+| Read/decision | 保留时间及 `adopt/defer/reject/no_change`；没有 host Turn 回执的 read 只算提供上下文；`no_change` 是决策，不算工作失败 |
+| Todo/evidence 链接 | 保留全部链接/来源版本；可无 Todo；链接不证明工件已核验 |
+| 结论与回传回执 | 保留不可变受众文本、phase、身份、发送尝试及不确定/待发结果；已核验送达不重发 |
+| #4312 式未完成 peer 记录 | 原 tuple 派生 dispatch 身份保留为 legacy alias，保留 claim 回执；新一轮用新请求 ID，不再重复旧 tuple |
+| 未识别存储字段 | 保留受控 legacy payload 及摘要；删除任何字段前必须明确映射；历史未知不补造 |
+
+为每个生命周期状态构造合成记录比较旧/新读模型，包括 no-change、部分/旧未知、效果后崩溃、撤销权限。切换时每请求只一个 writer；旧 reader 是兼容投影，不是并行权威。恢复旧实现前先对账 outbox/claim、保留较新记录。回滚不撤销外部效果。
+
 ## 9. 验证与验收
 
 以下是工程 Todo/PR 的稳定验收锚点，定义未来测试，**本 RFC 不把它们标成已通过**。
@@ -249,7 +305,7 @@ semantic brief 与引用 manifest 有版本。保留已有字段和历史未知�
 | A4 | 活跃 worker 不在便捷 profile 内 | 发现当前注册职责，选对已授权接收方，默认不选停止目标 |
 | A5 | 三条关联消息，包括纠正和已排除方案 | 接收方能说明变化、保留约束及真实 Todo/Vision 影响，不让用户重讲背景 |
 | A6 | 管家→worker、worker→worker 同一 fixture | 同样的身份、版本、判断、状态关联和回传，含无初始 Todo 的跨 Goal 咨询、同 Todo 第二轮 review；没有第二套任务库 |
-| A7 | 重复 ingress、执行中纠正、并发 claim | 不重复已接受效果；对账版本冲突，不悄悄改优先级/归属 |
+| A7 | 重复 ingress、执行中纠正/取消、并发 claim、同 Todo 重复 review、非 Core 效果后崩溃 | 不重复已接受效果；对账版本冲突，不悄悄改优先级/归属 |
 | A8 | worker 完成时管家/传输重启 | 结果不丢，原受众自动收到；不确定发送先对账再重试 |
 | A9 | 长回复、协议尾部截断 | 完整有效答案可恢复，不泄漏协议、不丢义务、不重放操作 |
 | A10 | 主人前端与授权飞书 | 请求事实一致；排队/判断/结果/送达真实；不同受众隔离 |

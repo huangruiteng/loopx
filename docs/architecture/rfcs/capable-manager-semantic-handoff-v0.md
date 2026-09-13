@@ -71,7 +71,7 @@ The baseline already has substantial reusable machinery:
 | Session restoration | `loopx/chat_runtime.py` | Saved upstream identity is resumed when compatible; context-version and audience changes can force a new thread. This is not evidence that every deployed request resumes successfully |
 | Evidence reads | `manager_context/inspection.py`, `ssh_evidence.py`, global-manager CLI | Core portfolio/Todo/delivery reads, pagination and host provenance exist; the initial projection is not full external artifact evidence |
 | Context transfer | `manager_context/__init__.py` | Original ingress provenance, exact recipient, request digest, inbox and receiver hook exist; the current wire is `loopx_manager_context_entry_v1` |
-| Return path | `manager_context/tracking.py`, `roundtrip.py` | Read, acknowledge, canonical Todo/evidence links, immutable reply and return transport exist; these should be extended, not duplicated |
+| Return path | `manager_context/tracking.py`, `roundtrip.py` | Read, acknowledge, canonical Todo/evidence links, immutable reply and return transport exist; preserve these facts during replacement, without keeping duplicate transition owners |
 | Semantic work state | Goal Vision/Replan protocol and typed control plane | Agent-scoped direction, acceptance, path delta, current Todos, evidence and claims already describe work beyond status labels |
 | UI | `apps/presentation/dashboard/src/data/chat.ts`, `chat-model.ts`, capability settings/workbench | Existing conversation and configuration projections should expose the richer runtime and exchange |
 
@@ -210,6 +210,47 @@ The same contract works when a research worker asks another worker to counterche
 
 Do not migrate every LoopX subsystem in this program. The refactor slice is manager role, collaboration request/assessment/result and their real adapters. It may remove substantial old code, but does not absorb quota, finance methods or the entire runtime into a new orchestrator. Preserve characterized legitimate behavior while intentionally changing the old restrictions described here; parity tests must not freeze those restrictions as desired behavior.
 
+### 5.10 Minimum contract and legal observations
+
+The following is a **proposed contract**, not an implemented schema or command. M2 finalizes names and serialization, but must preserve these semantics:
+
+```text
+WorkRequest {
+  request_id, revision, origin_ref, sender_ref, intent,
+  target_ref?, authority_ref, context_ref, return_ref,
+  work_refs[], supersedes_ref?
+}
+SemanticContext {
+  revision, digest, brief, source_refs[], work_revision_refs[],
+  access_scope_ref, omissions[]
+}
+Observation {
+  event_id, request_id, request_revision, actor_ref, event_kind,
+  evidence_refs[], result_ref?, recorded_at
+}
+```
+
+`request_id` identifies the exchange, `revision` is monotonic and immutable once committed, and `origin_ref` resolves to authenticated source provenance. `intent` distinguishes consultation, delegated work and ownership transfer. `target_ref` may be absent only before assignment. The authority reference binds the originating principal's current grant scope; it is resolved independently of the brief. `return_ref` names a principal/audience-scoped result sink or parent request, **not necessarily a manager session**. An empty work-reference list is legal: request acceptance must not require a Todo. `context_ref` resolves to a revision/digest plus the minimal brief: desired outcome, active constraints and known unknowns. Source and work references identify their access scope and known revision; unknown versions are explicit. No raw credential or hidden reasoning is a field.
+
+Validate reference access before presenting context. A summary may be model-authored but retains its sources, authorship and revision; a host validates envelope identity and authority. Oversized context is retained as an access-controlled artifact and a disclosed projection; if it cannot be stored/read, reject with a recoverable context error rather than claim a complete handoff. Existing summaries need no global budget increase.
+
+State is projected from accepted observations along independent axes:
+
+| Axis | Legal evolution and invariant |
+| --- | --- |
+| Assignment/delivery | unassigned → assigned → inbox-persisted → presented; reassignments create attempt identities; presentation names an actual host turn, not a CLI fetch alone |
+| Assessment/work | pending → accepted / partially-accepted / deferred / rejected; accepted work may run and resolve; deferred remains open with a condition; accepted is not completed |
+| Control requests | correction / cancellation / expiry are recorded requests or conditions; cancellation becomes effective only at an acknowledged safe boundary, expiry prevents new dispatch but does not undo an in-flight external effect |
+| Result delivery | absent → result-committed → pending-send → sent-verified; failed or uncertain sends retain the result; uncertainty requires reconciliation |
+
+Every observation is appended once by event identity with compare-and-set on the request revision. Repeated identical events return the prior receipt; changed payload under that identity conflicts. Core effects return accepted/rejected/conflict/already-applied observations through the existing effect-interpreter seam. Reassignment cannot erase an active execution claim. If the old worker is unreachable, record the uncertainty and preserve the claim until its existing lease/transfer rules permit another executor.
+
+A durable pending request carries a next wake/recheck condition through the existing host scheduling owner. Busy, offline, unsupported delivery, dependency wait and missing input are explicit observations, not repeated model polls. When deferred work becomes eligible, wake or present it once through the supported adapter. A result can be terminal failure/rejection, but incomplete work is not converted into success merely to empty the inbox.
+
+All participants can publish results and inspect their authorized requests; generic collaboration and the outbox do not depend on the manager process. For worker→worker, the return sink can be the originating worker and its parent exchange. The manager is optional synthesis and presentation, not the lifecycle coordinator of every collaboration.
+
+For shell/Git/API effects outside Core, use an effect-intent ID and the provider's idempotency/readback when available. Persist a completion observation only after evidence. A crashed command whose effect is unknown is reconciled before another effectful attempt; lacking an idempotent API is not permission to replay it. The manager's ordinary tools gain freedom, not a false exactly-once guarantee.
+
 ## 6. Alternatives and disposition of #4306
 
 - **Choose normal runtime tools + LoopX semantic state.** It preserves agent flexibility and reuses existing tooling. Its cost is real host-profile qualification and clear private/shared-scope isolation.
@@ -237,6 +278,21 @@ Feature-off/restricted-mode behavior stays testable. Existing grants are migrate
 5. Quiesce only the affected dispatch lane before switching its single writer. Reconcile committed requests/results before activation. Preserve source IDs, pending state and old-reader snapshots.
 6. Roll back the runtime profile independently from handoff delivery. Disable new writes before returning to an older schema reader; drain/export incompatible records rather than silently losing fields or replaying work. Report unsupported downgrade explicitly.
 
+### Required legacy mapping
+
+M0 inventories actual fields and producers; the following mapping is the migration acceptance floor, not evidence that a migrator exists:
+
+| Legacy record family | New meaning / preservation rule |
+| --- | --- |
+| Ingress and manager entries | Preserve source/request IDs, original text, digests, sender, target and exact return scope; introduce a deterministic migration alias, never redispatch |
+| Read/decision records | Preserve original times and `adopt/defer/reject/no_change`; map reads to context-provided unless a host-turn receipt exists; preserve `no_change` as a decision, not failed work |
+| Todo/evidence links | Preserve all links and source revisions; absent Todo remains legal; a link alone does not verify an artifact |
+| Conclusions and return receipts | Preserve immutable audience-ready text, phase, identity, send attempts and ambiguous/pending outcomes; do not re-emit verified sends |
+| Pending #4312-style peer records | Preserve the original tuple-derived dispatch identity as a legacy alias and its claim receipts; new rounds use new request IDs, not that old tuple |
+| Unrecognized stored fields | Preserve access-controlled legacy payload plus its digest; explicitly map before dropping any field; unknown history is never fabricated |
+
+Run old/new read-model comparison over synthetic records in every lifecycle state, including no-change, partial/legacy unknown, crash-after-effect and scope revocation. During cutover one writer owns each request; old readers are compatibility projections, not parallel authorities. A restore must reconcile outbox/claims and preserve newer records before switching back. Rollback cannot undo external effects.
+
 ## 9. Validation and acceptance
 
 The following IDs are durable acceptance anchors for engineering Todos and PRs. They define future tests; this RFC does not mark them passed.
@@ -249,7 +305,7 @@ The following IDs are durable acceptance anchors for engineering Todos and PRs. 
 | A4 | Active worker absent from convenience routing profile | Current registered responsibility is discovered; correct authorized receiver selected; stopped targets remain excluded |
 | A5 | Three linked user messages including a correction and prior rejected approach | Receiver explains the intended change, preserved constraints and actual Todo/Vision consequence without asking the user to retype context |
 | A6 | Manager→worker and worker→worker run the same handoff fixture | Same identity, revision, assessment, state links and return semantics, including cross-Goal consultation without an initial Todo and a second review round of one Todo; no second task database |
-| A7 | Duplicate ingress, correction during execution, concurrent claim | No duplicate accepted effect; revision conflict is reconciled; no silent priority/ownership override |
+| A7 | Duplicate ingress, correction/cancellation during execution, concurrent claim, repeated same-Todo review and crash after a non-Core effect | No duplicate accepted effect; revision conflict is reconciled; no silent priority/ownership override |
 | A8 | Worker finishes while manager/transport restarts | Result survives; original audience receives it automatically; ambiguous send is reconciled, not blindly repeated |
 | A9 | Long response and truncated protocol trailer | Full valid answer is preserved and recoverable; no leaked protocol, lost obligation or replayed action |
 | A10 | Owner frontend and authorized Lark conversation | Consistent request facts; truthful queued/assessed/resolved/delivery states; different audiences remain isolated |
