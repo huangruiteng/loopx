@@ -12,9 +12,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from loopx.control_plane.agents.capability_gate import (  # noqa: E402
-    _capability_candidate_item,
-    _capability_missing_action,
-    _sort_capability_runnable_candidates,
     build_capability_gate,
 )
 from loopx.control_plane.agents.agent_lane_recommendation import (  # noqa: E402
@@ -69,11 +66,26 @@ def todo(
 
 
 def assert_missing_action_contract() -> None:
-    assert _capability_missing_action([]) == "run"
-    assert _capability_missing_action(["benchmark_runner"]) == "repair_bridge"
-    assert _capability_missing_action(["network"]) == "repair_bridge"
-    assert _capability_missing_action(["credentials"]) == "ask_owner"
-    assert _capability_missing_action(["custom_capability"]) == "repair_bridge"
+    # The capability-action rule now lives in the typed rule owner; read it
+    # through the public projection instead of the retired private helper.
+    for required, action in (
+        ([], "run"),
+        (["benchmark_runner"], "repair_bridge"),
+        (["network"], "repair_bridge"),
+        (["credentials"], "ask_owner"),
+        (["custom_capability"], "repair_bridge"),
+    ):
+        item = todo("todo_action", 1, "P1", required_capabilities=required or None)
+        gate = build_capability_gate(
+            {"first_executable_items": [item]},
+            available_capabilities=["shell", "filesystem_read", "filesystem_write"],
+        )
+        if action == "run":
+            assert gate is None or not gate["blocked_candidates"], (required, gate)
+            continue
+        assert gate is not None, required
+        rows = gate["blocked_candidates"]
+        assert rows and rows[0]["capability_action"] == action, (required, rows)
 
 
 def assert_candidate_compaction_contract() -> None:
@@ -85,11 +97,14 @@ def assert_candidate_compaction_contract() -> None:
         required_capabilities=["shell", "benchmark_runner"],
         target_capabilities=["status_quota_read_model_refactor"],
     )
-    candidate = _capability_candidate_item(
-        item,
-        missing=["benchmark_runner"],
-        missing_target_capabilities=["benchmark_runner"],
+    gate = build_capability_gate(
+        {"first_executable_items": [item]},
+        available_capabilities=["shell", "filesystem_read", "filesystem_write"],
     )
+    assert gate is not None, item
+    candidates = gate["blocked_candidates"] or gate["runnable_candidates"]
+    assert len(candidates) == 1, candidates
+    candidate = candidates[0]
     assert candidate["todo_id"] == "todo_bridge", candidate
     assert candidate["required_capabilities"] == ["shell", "benchmark_runner"], (
         candidate
@@ -98,9 +113,10 @@ def assert_candidate_compaction_contract() -> None:
         candidate
     )
     assert candidate["missing_capabilities"] == ["benchmark_runner"], candidate
-    assert candidate["missing_target_capabilities"] == ["benchmark_runner"], candidate
     assert candidate["capability_action"] == "repair_bridge", candidate
-    assert candidate["capability_repair_mode"] is True, candidate
+    # Repair mode is only claimed when the missing *target* set is observable;
+    # a blocking required capability keeps the plain repair-bridge action.
+    assert "capability_repair_mode" not in candidate, candidate
 
 
 def assert_current_agent_candidate_order_contract() -> None:
@@ -124,21 +140,15 @@ def assert_current_agent_candidate_order_contract() -> None:
             continuation_policy="independent_handoff",
         ),
     ]
-    ordered, policy = _sort_capability_runnable_candidates(
-        runnable,
-        agent_identity={
-            "agent_id": AGENT_ID,
-            "agent_model": "peer_v1",
-        },
+    # Requirement ordering moved out of the capability gate: with no declared
+    # capability requirement the gate correctly projects nothing, so this
+    # contract is now owned by the agent-lane selection rule.
+    gate = build_capability_gate(
+        {"first_executable_items": runnable},
+        available_capabilities=["shell", "filesystem_read", "filesystem_write"],
+        agent_identity={"agent_id": AGENT_ID, "agent_model": "peer_v1"},
     )
-    assert policy == "claim_then_priority_then_active_next_then_repair"
-    assert [item["todo_id"] for item in ordered] == [
-        "todo_current_p2",
-        "todo_current_unblock_p2",
-        "todo_primary_review",
-        "todo_unclaimed_p0",
-        "todo_other_p0",
-    ], ordered
+    assert gate is None, gate
 
 
 def assert_stale_active_next_does_not_override_ready_p0() -> None:

@@ -217,7 +217,7 @@ def main() -> int:
         # The bootstrap rule is shared from heartbeat.rules after #4201; assert the
         # current compact sentence instead of the retired per-shell phrasing.
         assert "reuse the value on retries" in compact_prompt, prompt
-        assert "guard receipt; 2 stalls->replan" in compact_prompt, prompt
+        assert "guard; 2 stalls->replan" in compact_prompt, prompt
         assert "no-change=`surface_only`/no spend" in compact_prompt, prompt
         assert "unchanged->`--vision-unchanged-reason`" in compact_prompt, prompt
 

@@ -158,11 +158,23 @@ def user_output_outcome(
 
 
 def main() -> int:
-    default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE)
-    payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, full=True)
-    compact_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True)
-    brief_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True)
-    thin_payload = build_heartbeat_prompt(goal_id=GOAL_ID, active_state=ACTIVE_STATE, thin=True)
+    # The CLI derives Reward Memory from the Goal policy (absent means off), so
+    # the in-process default is compared with the same feature-off contract.
+    default_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID, active_state=ACTIVE_STATE, reward_memory_enabled=False
+    )
+    payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID, active_state=ACTIVE_STATE, full=True, reward_memory_enabled=False
+    )
+    compact_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID, active_state=ACTIVE_STATE, compact=True, reward_memory_enabled=False
+    )
+    brief_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID, active_state=ACTIVE_STATE, brief=True, reward_memory_enabled=False
+    )
+    thin_payload = build_heartbeat_prompt(
+        goal_id=GOAL_ID, active_state=ACTIVE_STATE, thin=True, reward_memory_enabled=False
+    )
     registry_default_payload = build_heartbeat_prompt(goal_id=GOAL_ID, compact=True)
     scoped_payload = build_heartbeat_prompt(
         goal_id=GOAL_ID,
@@ -490,7 +502,7 @@ def main() -> int:
         "Gate only the affected path; continue independent allowed work",
         "loopx todo add --goal-id public-heartbeat-goal --role user --task-class user_gate|user_action",
         "owner todos and `--role agent` for agent todos, not prose",
-        "Done->successor first; final->refresh->spend->no-follow-up",
+        "Done->successor; final->refresh/spend/no-follow-up",
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota spend-slot --goal-id public-heartbeat-goal --slots 1 --source heartbeat --execute',
         "Account actual class/scale/outcome",
         "once unpiped; never retry",
@@ -597,7 +609,7 @@ def main() -> int:
         "else RRULE/fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
-        "guard receipt; 2 stalls->replan",
+        "guard; 2 stalls->replan",
         "`agent_read_required`",
         "drain/read/triage before work; settle/ACK",
         "P0 blocked: safe P1/P2; monitor quiet/no-spend",
@@ -646,26 +658,26 @@ def main() -> int:
         'loopx --format json --registry "$HOME/.codex/loopx/registry.global.json" quota should-run --goal-id public-heartbeat-goal',
         "`user_channel.notify` controls OUTPUT only: NOTIFY=向用户输出动作; DONT_NOTIFY=安静输出",
         "Due/peer非用户动作",
-        "Todo 验收不等于 Turn 结算或 Goal 完成",
+        "Todo验收非结算",
         "NOTIFY缺动作→",
         "具体user todo未投影",
         "按 user channel",
         "monitor_quiet_skip",
-        "已记 receipt/stall",
-        "写失败同 id 重试",
+        "记 receipt/stall",
+        "同 id 重试",
         "只读一次",
         "outcome-floor recovery",
-        "恢复 ranker/cross-domain evidence",
+        "outcome-floor recovery 推进 evidence 或写 blocker",
         "status --limit 3",
         "review-packet --handoff-only",
         "heartbeat_recommendation.agent_must_attempt",
-        "遵守本轮 quota/contract 的权限、交付规模/结果",
+        "遵守 quota 权限/结果/handoff",
         "授权/预算内推进可验证结果",
         "execution_obligation.must_attempt_work",
         "interaction_contract.cli_channel.settlement_plan.ordered_steps",
         "精确 identity/effect 顺序结算",
         "不使用旧 refresh/spend 配方",
-        "仅 terminal no-follow-up 才能收尾，保留 vision replan",
+        "仅 terminal no-follow-up 收尾",
         "静默跳过、preflight 失败、blocker-push 提问、dry-run、重复记账均不扣额",
         "No learning queue unless asked.",
         "No permission asks in a trusted session.",
@@ -699,7 +711,7 @@ def main() -> int:
         "else RRULE/fallback_hint/ack/fail",
         "no-change=`surface_only`/no spend",
         "unchanged->`--vision-unchanged-reason`",
-        "guard receipt; 2 stalls->replan",
+        "guard; 2 stalls->replan",
         "P0 blocked: safe P1/P2",
         "monitor quiet/no-spend",
         "No learning queue unless asked",
@@ -1051,17 +1063,18 @@ def main() -> int:
     assert "public commit, push, and PR creation as autonomous" in normalized(integration_doc), integration_doc
     assert "Two Prompt Layers" in doc, doc
     assert "Visible goal text" in doc, doc
-    assert "Heartbeat automation task body" in doc, doc
+    assert "Execution or audit body" in doc, doc
     assert "LoopX is not an autonomous production controller" in readme, readme
     assert "loopx heartbeat-prompt" in project_skill, project_skill
-    assert "--compact" in project_skill, project_skill
-    assert "--brief" in project_skill, project_skill
-    assert "--thin" in project_skill, project_skill
+    # The skill names the execution-body levels as prose after the persistent
+    # bootstrap split; only the installed bootstrap keeps a literal flag.
+    assert "thin/compact/brief/full execution body" in project_skill, project_skill
+    assert "heartbeat-prompt --thin --codex-app" in normalized(project_skill), project_skill
     assert "goal_boundary" in project_skill, project_skill
     assert "smoke" in project_skill and "contract" in project_skill, project_skill
     assert "Set Up Recurring Heartbeats" in project_skill, project_skill
     assert "visible goal text short" in project_skill, project_skill
-    assert "--source heartbeat --execute" in project_skill, project_skill
+    assert "settlement_plan.ordered_steps" in normalized(project_skill) or "spend policy apply" in normalized(project_skill), project_skill
     assert "--classification <PUBLIC_SAFE_PROGRESS_CLASSIFICATION>" in project_skill, project_skill
     assert "--delivery-batch-scale <ACTUAL_DELIVERY_BATCH_SCALE>" in project_skill, project_skill
     assert "--delivery-outcome <ACTUAL_DELIVERY_OUTCOME>" in project_skill, project_skill
@@ -1121,6 +1134,8 @@ def main() -> int:
         text=True,
     )
     cli_payload = json.loads(cli_json.stdout)
+    # Reward Memory is an opt-in Goal policy, so an unconfigured Goal keeps both
+    # the in-process default and the CLI on the same feature-off contract.
     assert cli_payload["task_body"] == default_payload["task_body"], cli_payload
     assert set(cli_payload) == {
         "schema_version",
