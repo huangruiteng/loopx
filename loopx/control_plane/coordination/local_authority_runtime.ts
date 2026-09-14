@@ -102,7 +102,7 @@ export {
 } from "./coordination_state_contract.generated.ts";
 export { LEGACY_COORDINATION_WRITER_FENCE_SCHEMA } from "./legacy_writer_fence.ts";
 
-function sourceAuthorityFor(store: AuthorityStore) {
+export function sourceAuthorityFor(store: AuthorityStore) {
   return authorityStoreSourceAuthority(store);
 }
 
