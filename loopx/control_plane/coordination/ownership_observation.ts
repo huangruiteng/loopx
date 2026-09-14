@@ -24,6 +24,18 @@ function note(todoId: string): JsonObject {
   return {todo_id: todoId, status, reason: "corrupt_lease"};
 }
 
+function displayEntry(item: JsonObject): JsonObject {
+  const entry: JsonObject = {};
+  for (const key of ["todo_id", "owner_agent", "claimed_by", "lease_until", "expires_at", "status", "reason"]) {
+    const value = text(item[key]);
+    if (value) entry[key] = value;
+  }
+  for (const key of ["lease_version", "lease_epoch"]) {
+    if (typeof item[key] === "number" && Number.isSafeInteger(item[key])) entry[key] = item[key];
+  }
+  return entry;
+}
+
 /** Both source adapters share time/generation/conflict rules; explicit [] is authoritative. */
 export function projectOwnershipObservation(value: unknown): JsonObject {
   const input = requireJsonObject(value, "ownership observation");
@@ -33,9 +45,9 @@ export function projectOwnershipObservation(value: unknown): JsonObject {
   const todos = objects(input.todos, "todos");
   const claims = new Map(todos.map(todo => [text(todo.todo_id), text(todo.claimed_by)]));
   const explicit = input.explicit_entries == null ? null : objects(input.explicit_entries, "explicit_entries");
-  const entries: JsonObject[] = explicit ?? todos.filter(todo => text(todo.claimed_by)).map(todo => ({
+  const entries: JsonObject[] = explicit === null ? todos.filter(todo => text(todo.claimed_by)).map(todo => ({
     todo_id: todo.todo_id ?? null, owner_agent: todo.claimed_by!, status: "soft_claim" satisfies ObservationStatus,
-  }));
+  })) : explicit.map(displayEntry).filter(entry => text(entry.todo_id) || text(entry.owner_agent) || text(entry.claimed_by));
   for (const row of objects(input.lease_rows, "lease_rows")) {
     const todoId = text(row.todo_id);
     if (!todoId) throw new Error("lease observation requires a Todo identity");

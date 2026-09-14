@@ -13,6 +13,13 @@ test("explicit empty differs from absent observation; source inputs are not muta
   assert.deepEqual(projectOwnershipObservation(input).entries, []);
   assert.deepEqual(input.explicit_entries, []);
 });
+test("explicit entries keep only the public ownership display fields", () => {
+  const result = projectOwnershipObservation({...request, explicit_entries: [{
+    todo_id: "todo-a", owner_agent: "agent-a", status: "hard_lease", lease_epoch: 2,
+    write_scopes: ["private/**"], idempotency_key: "PRIVATE_OPERATION_KEY", private_backend: "PRIVATE_BACKEND",
+  }]});
+  assert.deepEqual(result.entries, [{todo_id: "todo-a", owner_agent: "agent-a", status: "hard_lease", lease_epoch: 2}]);
+});
 for (const patch of [{expires_at: "invalid"}, {schema_version: "unknown"}, {lease_epoch: true}, {todo_id: "wrong-id"}]) {
   test(`invalid lease observation is visible and never crashes the channel: ${JSON.stringify(patch)}`, () => {
     const result = projectOwnershipObservation({...request, lease_rows: [{todo_id: "todo-a", lease: {...lease, ...patch}}]});

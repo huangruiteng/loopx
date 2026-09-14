@@ -1211,7 +1211,7 @@ export async function continueLocalTodo(value: unknown): Promise<JsonObject> {
 
 /** Goal Channel observes a complete provider snapshot through one coarse read. */
 export async function observeLocalCoordinationOwnership(value: unknown): Promise<JsonObject> {
-  let sourceAuthority = "file_v0";
+  let sourceAuthority = "canonical_unavailable";
   try {
     const input = requireJsonObject(value, "local ownership observation");
     if (input.schema_version !== "loopx_local_ownership_observation_request_v0") throw new Error("ownership observation schema mismatch");

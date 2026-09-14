@@ -13,8 +13,10 @@ def observe_goal_coordination(*, runtime_root: Any, goal_id: str,
     canonical = False
     try:
         root = Path(runtime_root) if runtime_root is not None else None
-        canonical = root is not None and local_authority_is_promoted(runtime_root=root, goal_id=goal_id)
+        if root is not None:
+            canonical = local_authority_is_promoted(runtime_root=root, goal_id=goal_id)
         if canonical:
+            assert root is not None
             result = effect_runtime_result('coordination.local_authority.ownership_observation', {
                 'schema_version': 'loopx_local_ownership_observation_request_v0',
                 'runtime_root': str(root.expanduser().resolve()), 'goal_id': goal_id,
@@ -25,12 +27,14 @@ def observe_goal_coordination(*, runtime_root: Any, goal_id: str,
                 or not isinstance(result.get('provider_revision'), str)):
                 raise RuntimeError('canonical ownership observation unavailable')
         else:
-            from ..work_items.task_lease import TaskLeaseError, read_lease, task_lease_dir
+            from ..work_items.local_lease_record import TaskLeaseError
+            from ..work_items import task_lease as task_lease_module
             rows = []
             if root is not None:
-                for path in sorted(task_lease_dir(runtime_root=root, goal_id=goal_id).glob('todo_*.json')):
+                for path in sorted(task_lease_module.task_lease_dir(runtime_root=root, goal_id=goal_id).glob('todo_*.json')):
                     try:
-                        lease = read_lease(path)
+                        # task_lease re-exports this seam and existing callers/tests patch it there.
+                        lease = task_lease_module.read_lease(path)  # type: ignore[attr-defined]
                     except FileNotFoundError:
                         continue
                     except (TaskLeaseError, OSError):
