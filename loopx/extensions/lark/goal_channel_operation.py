@@ -163,7 +163,6 @@ def build_goal_channel_operation_card(
                             "width": "weighted",
                             "weight": 1,
                             "background_style": "orange-50",
-                            "corner_radius": "8px",
                             "padding": "12px",
                             "vertical_spacing": "2px",
                             "elements": [
@@ -187,7 +186,6 @@ def build_goal_channel_operation_card(
                             "width": "weighted",
                             "weight": 1,
                             "background_style": "grey-50",
-                            "corner_radius": "8px",
                             "padding": "12px",
                             "vertical_spacing": "4px",
                             "elements": [
@@ -208,7 +206,6 @@ def build_goal_channel_operation_card(
                             "width": "weighted",
                             "weight": 1,
                             "background_style": "red-50",
-                            "corner_radius": "8px",
                             "padding": "12px",
                             "elements": [
                                 {
@@ -342,7 +339,6 @@ def build_goal_channel_operation_result_card(
                             "width": "weighted",
                             "weight": 1,
                             "background_style": f"{template}-50",
-                            "corner_radius": "8px",
                             "padding": "12px",
                             "elements": [
                                 {
@@ -362,7 +358,6 @@ def build_goal_channel_operation_result_card(
                             "width": "weighted",
                             "weight": 1,
                             "background_style": "grey-50",
-                            "corner_radius": "8px",
                             "padding": "12px",
                             "elements": [
                                 {

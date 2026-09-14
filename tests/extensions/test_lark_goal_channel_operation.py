@@ -357,6 +357,17 @@ def test_lark_cards_consume_one_shared_ts_frame_each(
     )
     assert confirmation["header"]["title"]["content"] == "Simulated trade request"
     assert result["header"]["text_tag_list"][0]["text"]["content"] == "模拟完成"
+    # Lark Card 2.0 rejects `corner_radius` on a column with error 200621,
+    # even though some client-side references still list that property.
+    for card in (confirmation, result):
+        columns = [
+            column
+            for element in card["body"]["elements"]
+            if element.get("tag") == "column_set"
+            for column in element["columns"]
+        ]
+        assert columns
+        assert all("corner_radius" not in column for column in columns)
 
 
 def test_cli_preparation_previews_without_write_then_persists_canonical_proposal(
