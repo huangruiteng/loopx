@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -63,6 +63,15 @@ def load_delivery(
         not in {"pending", "sent_verified", "acknowledged"}
     ):
         raise ValueError("manager delivery state is invalid")
+    context_material_ids = payload.get("context_material_ids")
+    if context_material_ids is not None:
+        if not isinstance(context_material_ids, list):
+            raise ValueError("manager delivery context material ids are invalid")
+        normalized_ids = [str(value) for value in context_material_ids]
+        if len(set(normalized_ids)) != len(normalized_ids) or any(
+            not MESSAGE_ID_PATTERN.fullmatch(value) for value in normalized_ids
+        ):
+            raise ValueError("manager delivery context material ids are invalid")
     if payload.get("status") != "acknowledged":
         delivery_text = payload.get("delivery_text")
         if (
@@ -96,7 +105,13 @@ def pending_delivery(
     content_format: str,
     effect_receipt: Mapping[str, Any] | None,
     failure_code: str | None,
+    context_material_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
+    normalized_context_ids = [str(value) for value in (context_material_ids or [])]
+    if len(set(normalized_context_ids)) != len(normalized_context_ids) or any(
+        not MESSAGE_ID_PATTERN.fullmatch(value) for value in normalized_context_ids
+    ):
+        raise ValueError("manager delivery context material ids are invalid")
     now = datetime.now(timezone.utc).isoformat()
     return {
         "schema_version": SCHEMA_VERSION,
@@ -109,6 +124,9 @@ def pending_delivery(
         "effect_receipt": (
             dict(effect_receipt) if effect_receipt is not None else None
         ),
+        # Persist the exact context set used to produce this answer so a
+        # transport retry cannot silently switch to newer arrivals.
+        "context_material_ids": normalized_context_ids,
         "failure_code": failure_code,
         "format_degraded": False,
         "attempt_count": 0,

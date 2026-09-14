@@ -348,6 +348,60 @@ def test_manager_captures_unaddressed_context_without_granting_turn_authority(
     )["pending_count"] == 0
 
 
+@pytest.mark.parametrize("authority_mode", [None, "future_mode"])
+def test_manager_route_rejects_missing_or_unknown_authority_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, authority_mode: str | None
+) -> None:
+    from loopx.extensions.lark import goal_topic_runtime as runtime
+
+    target_path = tmp_path / "goal-channel-targets.json"
+    binding_path = tmp_path / "goal-channel.json"
+    _seed_legacy_topic(target_path, binding_path)
+
+    def decision(**options: Any) -> dict[str, Any]:
+        event = options["event"]
+        route = {
+            "app_ref": "mew",
+            "goal_id": "goal-alpha",
+            "message_id": event["message_id"],
+            "target_ref": "fixture",
+            "topic_root_message_id": "om_topic_alpha",
+            "conversation_kind": "manager",
+            "capture_scope": "configured_chat_all",
+            "ingress_mode": "session_queue",
+            "reply_mode": "topic_reply",
+        }
+        if authority_mode is not None:
+            route["authority_mode"] = authority_mode
+        return {"matched": True, "reason": "matched", "route": route}
+
+    monkeypatch.setattr(runtime, "decide_lark_topic_event", decision)
+    answer_calls: list[str] = []
+    result = runtime.process_lark_goal_topic_event(
+        target_payload=read_goal_channel_targets(target_path),
+        binding_payloads={"goal-alpha": read_goal_channel_binding(binding_path)},
+        event={
+            "event_id": "evt_invalid_authority",
+            "message_id": "om_invalid_authority",
+            "chat_id": "oc_public_fixture",
+            "root_id": "om_topic_alpha",
+            "create_time": "2026-09-13T06:00:00Z",
+            "content": "continue",
+            "mentions": [],
+            "sender_type": "user",
+            "sender_id": "ou_owner_fixture",
+        },
+        runtime_root=tmp_path / "runtime",
+        answer=lambda _route, _text: answer_calls.append("called"),
+        reply_runner=lambda _args: (_ for _ in ()).throw(
+            AssertionError("invalid authority must not send a reply")
+        ),
+    )
+    assert result["status"] == "invalid_manager_authority_mode"
+    assert result["source_acknowledged"] is False
+    assert answer_calls == []
+
+
 def test_manager_authorized_turn_quietly_recovers_history_as_context(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1629,7 +1683,12 @@ def test_manager_receives_reaction_before_answer_and_preserves_sender(tmp_path, 
     original_decide = runtime.decide_lark_topic_event
     def manager_decision(**kw):
         result = original_decide(**kw)
-        result["route"] = {**result["route"], "conversation_kind": "manager", "ingress_mode": "session_queue"}
+        result["route"] = {
+            **result["route"],
+            "conversation_kind": "manager",
+            "authority_mode": "turn_authorized",
+            "ingress_mode": "session_queue",
+        }
         return result
     monkeypatch.setattr(runtime, "decide_lark_topic_event", manager_decision)
     state = {}
@@ -1695,6 +1754,7 @@ def test_manager_terminal_failure_replies_once_before_ack(
         result = original_decide(**kw)
         result["route"].update(
             conversation_kind="manager", ingress_mode="session_queue",
+            authority_mode="turn_authorized",
             event_id=kw["event"]["event_id"],
             connector={"response_policy": "topic_reply"},
         )
@@ -1753,6 +1813,7 @@ def test_manager_untyped_or_empty_answer_gets_bounded_failure_receipt(
         result = original_decide(**kw)
         result["route"].update(
             conversation_kind="manager", ingress_mode="session_queue",
+            authority_mode="turn_authorized",
             event_id=kw["event"]["event_id"],
             connector={"response_policy": "topic_reply"},
         )
@@ -1829,6 +1890,7 @@ def test_manager_report_delivery_recovers_safe_format_and_keeps_pending_body(
         result = original_decide(**kw)
         result["route"].update(
             conversation_kind="manager", ingress_mode="session_queue",
+            authority_mode="turn_authorized",
             event_id=kw["event"]["event_id"],
             connector={"response_policy": "topic_reply"},
         )
@@ -1903,6 +1965,7 @@ def test_manager_delivery_reuses_saved_answer_after_transport_restart(
         result["route"].update(
             conversation_kind="manager",
             ingress_mode="session_queue",
+            authority_mode="turn_authorized",
             event_id=kwargs["event"]["event_id"],
             connector={"response_policy": "topic_reply"},
         )

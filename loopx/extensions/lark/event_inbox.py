@@ -636,7 +636,14 @@ def inspect_lark_event_inbox(
     inbox = config["inbox_path"]
     processed = _load_processed(inbox / "processed.json")
     pending, captured_count, invalid_count = _pending_events(config)
-    bounded = pending[: max(1, min(int(limit), 100))]
+    requested_limit = int(limit)
+    # Internal retention/retry callers use zero to read the complete pending
+    # projection. Public callers retain the historical 1..100 bound.
+    bounded = (
+        pending
+        if requested_limit <= 0
+        else pending[: max(1, min(requested_limit, 100))]
+    )
     return {
         "ok": True,
         "schema_version": "lark_event_inbox_projection_v0",

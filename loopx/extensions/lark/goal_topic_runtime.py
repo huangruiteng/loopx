@@ -15,10 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from ...chat_manager import MANAGER_AGENT_OBJECTIVE
-from .manager_routing import has_manager_binding
+from .manager_routing import (
+    has_manager_binding,
+    invalid_manager_authority_result,
+    parse_manager_authority_mode,
+    unavailable_manager_context_result,
+    ManagerAuthorityMode,
+)
 from ..external_connector_runtime import (
-    EFFECT_RECEIPT_SCHEMA_VERSION,
-    ExternalEffectKind,
     ExternalResponsePolicy,
     build_external_event_response_receipt,
     decide_external_event_ack,
@@ -42,7 +46,12 @@ from .manager_reply_delivery import (
 from .manager_context import (
     MANAGER_CONTEXT_ITEM_LIMIT,
     manager_context_materials,
+    manager_context_projection,
+    manager_failure_reply as _manager_failure_reply,
     manager_message,
+    opaque_digest as _opaque_digest,
+    restore_manager_context_route,
+    session_turn_effect as _session_turn_effect,
     settle_manager_context,
     sync_manager_context,
 )
@@ -70,28 +79,6 @@ class LarkGoalTopicTurnFailed(RuntimeError):
         self.effect_receipt = effect_receipt
 
 
-def _manager_failure_reply(error: Exception) -> tuple[str, str]:
-    labels = {
-        "cyber_policy": "上游安全策略拦截",
-        "misalignment_policy_violation": "上游策略拦截",
-        "usage_limit_exceeded": "上游用量限制",
-        "rate_limit_exceeded": "上游请求频率限制",
-        "context_window_exceeded": "上下文超限",
-        "unauthorized": "上游身份验证失败",
-        "idle_timeout": "等待上游响应超时",
-        "hard_timeout": "处理超过时间限制",
-        "interrupted": "处理已中断",
-        "manager_authorization_unavailable": "当前连接的授权范围不可用",
-    }
-    raw_code = error.error_code if isinstance(error, LarkGoalTopicTurnFailed) else ""
-    code = raw_code if raw_code in labels else "processing_failed"
-    label = labels.get(code, "管家处理失败")
-    return (
-        code,
-        f"已收到你的消息，但本次未能完成：{label}。没有生成完整答复，本次请求不会自动重放。",
-    )
-
-
 _EVENT_PROJECTION = (
     '{schema_version:"lark_event_inbox_event_v0",'
     "event_id:(.event_id // .message_id // .id),"
@@ -111,28 +98,6 @@ _EVENT_PROJECTION = (
 _EVENT_READY_PREFIX = "[event] ready "
 _EVENT_DIAGNOSTIC_PREFIX = "[event] "
 _EVENT_EXIT_REASON = re.compile(r"\(reason: (limit|timeout|signal)\)$")
-
-
-def _opaque_digest(*values: Any) -> str:
-    joined = "\0".join(str(value or "") for value in values)
-    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:32]
-
-
-def _session_turn_effect(route: Mapping[str, Any]) -> dict[str, Any]:
-    # Committed means the runtime has persisted a terminal receipt, not that
-    # the model succeeded. Response verification remains a separate ACK gate.
-    return {
-        "schema_version": EFFECT_RECEIPT_SCHEMA_VERSION,
-        "event_id": str(route.get("event_id") or route.get("message_id") or ""),
-        "effect_id": "session-turn-"
-        + _opaque_digest(
-            route.get("session_id"),
-            route.get("message_id"),
-            route.get("topic_root_message_id"),
-        ),
-        "effect_kind": ExternalEffectKind.WORKING_SESSION_TURN.value,
-        "status": "committed",
-    }
 
 
 def _active_profile_configs(snapshot: Mapping[str, Any]) -> dict[str, dict[str, str]]:
@@ -1070,7 +1035,20 @@ def process_lark_goal_topic_event(
         events=[canonical],
         execute=True,
     )
-    if route.get("authority_mode") == "context_only":
+    manager = route.get("conversation_kind") == "manager"
+    authority_mode = (
+        parse_manager_authority_mode(route.get("authority_mode")) if manager else None
+    )
+    if manager and authority_mode is None:
+        return invalid_manager_authority_result(route, inbox_config_ref=config_ref)
+    retention = {"discarded_count": 0, "expired_count": 0, "overflow_count": 0}
+    if manager:
+        _, retention = manager_context_projection(
+            project=root,
+            config_path=config_path,
+            current_message_id=str(canonical.get("message_id") or ""),
+        )
+    if authority_mode is ManagerAuthorityMode.CONTEXT_ONLY:
         return {
             "ok": True,
             "status": (
@@ -1084,6 +1062,7 @@ def process_lark_goal_topic_event(
             "turn_authorized": False,
             "model_invoked": False,
             "external_write_performed": False,
+            "context_retention_discarded_count": retention["discarded_count"],
         }
     context_sync: Mapping[str, Any] | None = None
     if route.get("conversation_kind") == "manager" and provider_runner is not None:
@@ -1095,7 +1074,15 @@ def process_lark_goal_topic_event(
             provider_runner=provider_runner,
         )
     message_id = str(route["message_id"])
-    projection = inspect_lark_event_inbox(project=root, config_path=config_path)
+    projection = inspect_lark_event_inbox(
+        project=root, config_path=config_path, limit=0
+    )
+    if manager:
+        projection, retention = manager_context_projection(
+            project=root,
+            config_path=config_path,
+            current_message_id=message_id,
+        )
     pending_ids = {
         str(item.get("message_id") or "")
         for item in projection.get("items", [])
@@ -1120,7 +1107,6 @@ def process_lark_goal_topic_event(
     # private reaction ledger makes retries idempotent. Manager received ACKs
     # remain visible; final reply only clears transient processing indicators.
     # A cosmetic reaction failure must not suppress the actual answer.
-    manager = route.get("conversation_kind") == "manager"
     received_reaction = None
     if manager:
         profile = str(route.get("app_ref") or "")
@@ -1185,6 +1171,19 @@ def process_lark_goal_topic_event(
                 "inbox_config_ref": config_ref,
                 "source_acknowledged": False,
             }
+        try:
+            route = restore_manager_context_route(
+                route,
+                projection,
+                current_message_id=message_id,
+                delivery_state=delivery_state,
+            )
+        except ValueError:
+            return unavailable_manager_context_result(
+                route, inbox_config_ref=config_ref
+            )
+        if "context_materials" in route:
+            context_materials = route["context_materials"]
 
     failure_code: str | None = None
     effect_receipt: Mapping[str, Any] | None = None
@@ -1264,6 +1263,9 @@ def process_lark_goal_topic_event(
             content_format=content_format,
             effect_receipt=effect_receipt,
             failure_code=failure_code,
+            context_material_ids=[
+                item["message_id"] for item in context_materials
+            ],
         )
         try:
             _write_manager_delivery(delivery_path, delivery_state)
@@ -1487,6 +1489,7 @@ def process_lark_goal_topic_event(
         ),
         "context_material_count": len(context_materials),
         "context_settled_count": context_settled_count,
+        "context_retention_discarded_count": retention["discarded_count"],
         "context_sync_status": (
             str(context_sync.get("status") or "unknown")
             if context_sync is not None

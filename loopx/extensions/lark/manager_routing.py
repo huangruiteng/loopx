@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from enum import Enum
 from typing import Any
 from pathlib import Path
 
@@ -12,6 +13,51 @@ from .goal_channel_contracts import bindings_for_goal
 from .goal_channel_targets import goal_channel_target_for_name
 from .goal_channel_transport import CHAT_ID_PATTERN, MESSAGE_ID_PATTERN
 from .goal_topic_routing import is_event_addressed_to_bot
+
+
+class ManagerAuthorityMode(str, Enum):
+    """The only authority states a manager route may enter."""
+
+    CONTEXT_ONLY = "context_only"
+    TURN_AUTHORIZED = "turn_authorized"
+
+
+def parse_manager_authority_mode(value: object) -> ManagerAuthorityMode | None:
+    """Parse a persisted route mode without coercing unknown values."""
+
+    if not isinstance(value, str):
+        return None
+    try:
+        return ManagerAuthorityMode(value)
+    except ValueError:
+        return None
+
+
+def invalid_manager_authority_result(
+    route: Mapping[str, Any], *, inbox_config_ref: str
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "invalid_manager_authority_mode",
+        "goal_id": route["goal_id"],
+        "inbox_config_ref": inbox_config_ref,
+        "turn_authorized": False,
+        "model_invoked": False,
+        "external_write_performed": False,
+        "source_acknowledged": False,
+    }
+
+
+def unavailable_manager_context_result(
+    route: Mapping[str, Any], *, inbox_config_ref: str
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "status": "context_materials_unavailable",
+        "goal_id": route["goal_id"],
+        "inbox_config_ref": inbox_config_ref,
+        "source_acknowledged": False,
+    }
 
 
 def has_manager_binding(payloads: Mapping[str, Any], target_ref: str) -> bool:
@@ -109,7 +155,9 @@ def decide_manager_event(
             # may enqueue a manager Turn.
             "capture_scope": "configured_chat_all",
             "authority_mode": (
-                "turn_authorized" if turn_authorized else "context_only"
+                ManagerAuthorityMode.TURN_AUTHORIZED.value
+                if turn_authorized
+                else ManagerAuthorityMode.CONTEXT_ONLY.value
             ),
             "ingress_mode": "session_queue",
             "reply_mode": "topic_reply",
