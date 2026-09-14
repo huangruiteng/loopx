@@ -387,6 +387,11 @@ assert.match(machineSettings, /applyMachineConfiguration\([\s\S]*preview\.plan_r
 assert.match(machineSettings, /previewMachineConfigurationRollback\(/, "Machine settings preview rollback before execution");
 assert.match(machineSettings, /liveDefaultDescription/, "Live defaults and Goal overrides are explained together");
 assert.match(machineSettings, /inspection\?\.capability_catalog\.capabilities/, "Machine settings discover capabilities from the shared registry catalog");
+assert.match(machineSettings, /inspection\?\.invalid_namespaces\[0\]/, "Invalid machine state identifies the affected namespace without reading its stored values");
+assert.match(machineSettings, /machine-invalid-repair[\s\S]*role="alert"/, "Invalid machine state exposes a visible guided repair path");
+assert.match(machineSettings, /capability\.machine_namespace === invalidNamespace/, "Invalid machine state opens the affected capability editor first");
+assert.match(chatData, /status: z\.enum\(\["configured", "absent", "invalid"\]\)/, "Machine inspection accepts the safe invalid repair projection");
+assert.match(chatData, /invalid_namespaces: z\.array\(z\.string\(\)\)/, "Machine inspection parses value-free invalid namespace IDs");
 assert.match(machineSettings, /personal-capability-json-editor/, "Every machine-configurable capability keeps an advanced JSON fallback");
 assert.match(machineSettings, /selected\.machine_namespace, desiredConfiguration/, "Preview targets the selected capability namespace");
 assert.match(machineSettings, /previewMachineConfigurationRemoval\(selected\.machine_namespace\)/, "Configured capabilities expose a typed removal preview");

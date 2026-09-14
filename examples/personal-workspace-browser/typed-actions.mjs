@@ -1135,6 +1135,44 @@ export const typedActionsScenario = {
       await page.waitForTimeout(200);
       await page.getByRole("button", { name: /Lark/ }).click();
 
+      api.machineInspectionStatus = "invalid";
+      api.invalidMachineNamespaces = ["manager_runtime"];
+      await page.getByRole("button", { name: /机器配置/ }).click();
+      const invalidRepair = page.getByTestId("machine-invalid-repair");
+      await invalidRepair.waitFor({ state: "visible" });
+      await page.getByRole("heading", { level: 2, name: "管家 Runtime", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "预览变更", exact: true }).click();
+      const managerRepairPreview = api.machineConfigurationRequests.findLast(
+        (item) => item.phase === "preview" && item.namespace === "manager_runtime",
+      );
+      if (managerRepairPreview?.namespace_configuration?.runtime_profile !== "restricted") {
+        throw new Error(`Invalid Manager runtime did not use its safe catalog replacement: ${JSON.stringify(managerRepairPreview)}`);
+      }
+      await page.getByRole("button", { name: "应用已审阅预览", exact: true }).click();
+      await invalidRepair.waitFor({ state: "detached" });
+      const managerRepairApply = api.machineConfigurationRequests.findLast(
+        (item) => item.phase === "apply" && item.namespace === "manager_runtime",
+      );
+      if (managerRepairApply?.expected_plan_revision !== "sha256:machine-plan") {
+        throw new Error("Invalid Manager runtime repair lost its reviewed plan revision");
+      }
+
+      await page.getByRole("button", { name: /Lark/ }).click();
+      api.machineInspectionStatus = "invalid";
+      api.invalidMachineNamespaces = ["periodic_report"];
+      await page.getByRole("button", { name: /机器配置/ }).click();
+      await invalidRepair.waitFor({ state: "visible" });
+      await page.getByRole("heading", { level: 2, name: "周期报告", exact: true }).waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "预览变更", exact: true }).click();
+      const periodicRepairPreview = api.machineConfigurationRequests.findLast(
+        (item) => item.phase === "preview" && item.namespace === "periodic_report",
+      );
+      if (!periodicRepairPreview) throw new Error("Invalid sibling namespace did not open the Periodic reports repair path");
+      await page.getByRole("button", { name: "应用已审阅预览", exact: true }).click();
+      await invalidRepair.waitFor({ state: "detached" });
+      await page.screenshot({ path: resolve(outputDir, "machine-invalid-namespace-repaired.png"), fullPage: false, animations: "disabled" });
+      await page.getByRole("button", { name: /Lark/ }).click();
+
       await page.getByRole("button", { name: /连接 Lark App/ }).click();
       const connectDialog = page.getByRole("dialog", { name: "连接 Lark App" });
       await connectDialog.waitFor({ state: "visible" });

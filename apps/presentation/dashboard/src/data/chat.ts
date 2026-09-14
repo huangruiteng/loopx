@@ -1270,12 +1270,13 @@ const machineConfigurationBaseSchema = z.object({
   }),
   capability_catalog: capabilityConfigurationCatalogSchema,
   changed_namespaces: z.array(z.string()).optional().default([]),
+  invalid_namespaces: z.array(z.string()).optional().default([]),
   machine_configuration: machineConfigurationSchema.nullable().optional(),
 });
 
 export const machineConfigurationInspectionSchema = machineConfigurationBaseSchema.extend({
   schema_version: z.literal("machine_configuration_inspection_v0"),
-  status: z.enum(["configured", "absent"]),
+  status: z.enum(["configured", "absent", "invalid"]),
   revision: z.string(),
 });
 

@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from loopx.capabilities.machine_configuration.contract import (
     MachineConfigurationNamespace,
     MachineConfigurationRegistry,
@@ -184,6 +186,126 @@ def test_real_chat_http_catalog_and_machine_write_boundary(tmp_path: Path) -> No
         server.server_close()
 
 
+@pytest.mark.parametrize(
+    ("namespace", "invalid_configuration", "replacement", "private_marker"),
+    [
+        (
+            "manager_runtime",
+            {
+                "schema_version": "manager_runtime_profile_v0",
+                "runtime_profile": "private-invalid-profile",
+            },
+            {
+                "schema_version": "manager_runtime_profile_v0",
+                "runtime_profile": "restricted",
+            },
+            "private-invalid-profile",
+        ),
+        (
+            "periodic_report",
+            {
+                "schema_version": "periodic_report_machine_defaults_v0",
+                "enabled": False,
+                "inheritance": "live_machine_default",
+                "timezone": "Private/Invalid-Timezone",
+            },
+            _namespace(enabled=False),
+            "Private/Invalid-Timezone",
+        ),
+    ],
+)
+def test_real_chat_http_invalid_namespace_has_safe_repair_path(
+    tmp_path: Path,
+    namespace: str,
+    invalid_configuration: dict[str, Any],
+    replacement: dict[str, Any],
+    private_marker: str,
+) -> None:
+    from loopx.chat_server import ChatHTTPServer, ChatRequestHandler
+
+    path = tmp_path / "machine" / "configuration.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "loopx_machine_configuration_v0",
+                "namespaces": {namespace: invalid_configuration},
+            }
+        ),
+        encoding="utf-8",
+    )
+    server = ChatHTTPServer(("127.0.0.1", 0), ChatRequestHandler)
+    server.runtime_root = tmp_path
+    server.verbose = False
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+    try:
+        connection.request("GET", CHAT_MACHINE_CONFIGURATION_PATH)
+        response = connection.getresponse()
+        assert response.status == 200
+        inspection = json.loads(response.read())
+        assert inspection["status"] == "invalid"
+        assert inspection["invalid_namespaces"] == [namespace]
+        assert inspection["machine_configuration"] is None
+        assert namespace in inspection["available_namespaces"]
+        capability_ids = {
+            item["capability_id"]
+            for item in inspection["capability_catalog"]["capabilities"]
+        }
+        assert namespace in capability_ids
+        encoded = json.dumps(inspection)
+        assert str(tmp_path) not in encoded
+        assert private_marker not in encoded
+
+        connection.request(
+            "POST",
+            CHAT_MACHINE_CONFIGURATION_PREVIEW_PATH,
+            body=json.dumps(
+                {
+                    "namespace": namespace,
+                    "namespace_configuration": replacement,
+                }
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        preview_response = connection.getresponse()
+        assert preview_response.status == 201
+        preview = json.loads(preview_response.read())
+        assert preview["status"] == "preview"
+        assert preview["changed_namespaces"] == [namespace]
+
+        connection.request(
+            "POST",
+            CHAT_MACHINE_CONFIGURATION_APPLY_PATH,
+            body=json.dumps(
+                {
+                    "namespace": namespace,
+                    "namespace_configuration": replacement,
+                    "expected_plan_revision": preview["plan_revision"],
+                }
+            ),
+            headers={"Content-Type": "application/json"},
+        )
+        apply_response = connection.getresponse()
+        assert apply_response.status == 200
+        receipt = json.loads(apply_response.read())
+        assert receipt["status"] == "applied"
+        assert receipt["readback_verified"] is True
+
+        connection.request("GET", CHAT_MACHINE_CONFIGURATION_PATH)
+        readback_response = connection.getresponse()
+        assert readback_response.status == 200
+        readback = json.loads(readback_response.read())
+        assert readback["status"] == "configured"
+        assert readback["machine_configuration"]["namespaces"][namespace]
+    finally:
+        connection.close()
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def test_inspection_lists_registered_namespaces_without_local_refs(
     tmp_path: Path,
 ) -> None:
@@ -256,8 +378,9 @@ def test_inspection_lists_registered_namespaces_without_local_refs(
         "timezone",
         "schedule",
     ]
-    assert capabilities["manager_runtime"]["documentation"] == (
-        namespace_catalog["manager_runtime"]["documentation"]
+    assert (
+        capabilities["manager_runtime"]["documentation"]
+        == (namespace_catalog["manager_runtime"]["documentation"])
     )
     effective = capability["effective_configuration"]
     assert effective["source"] == "capability_default"
@@ -294,9 +417,9 @@ def test_machine_catalog_discovers_goal_features_without_granting_machine_writes
     }
     assert machine["pull_request_review"]["available_scopes"] == ["machine"]
     assert machine["pull_request_review"]["machine_namespace"] == "pull_request_review"
-    assert machine["pull_request_review"]["configuration_editor"]["writable_scopes"] == [
-        "machine"
-    ]
+    assert machine["pull_request_review"]["configuration_editor"][
+        "writable_scopes"
+    ] == ["machine"]
     assert [
         field["key"]
         for field in machine["pull_request_review"]["configuration_editor"]["fields"]

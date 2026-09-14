@@ -6,6 +6,7 @@ import queue
 from pathlib import Path
 
 import loopx.chat_agent as chat_agent
+import loopx.chat_runtime as chat_runtime
 import pytest
 
 
@@ -73,25 +74,39 @@ def test_codex_chat_app_server_stdio_uses_utf8(
     ],
 )
 def test_turn_activity_does_not_invent_goal_reads_or_successful_checks(
-    monkeypatch, tmp_path, item, expected_activity,
+    monkeypatch,
+    tmp_path,
+    item,
+    expected_activity,
 ):
     session = chat_agent.CodexChatAgentSession(
-        process=_FakeAppServerProcess(), messages=queue.Queue(),
-        thread_id="thread-fixture", work_dir=tmp_path,
+        process=_FakeAppServerProcess(),
+        messages=queue.Queue(),
+        thread_id="thread-fixture",
+        work_dir=tmp_path,
     )
-    upstream = iter([
-        {"method": "turn/started", "params": {"turn": {"id": "turn-fixture"}}},
-        {"method": "item/started", "params": {"item": item}},
-        # Completion can mean a failed command or receipt of a user message;
-        # neither is evidence that a Goal check passed.
-        {"method": "item/completed", "params": {"item": {**item, "status": "failed"}}},
-        {"method": "item/agentMessage/delta", "params": {"delta": "Ready."}},
-        {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
-    ])
-    monkeypatch.setattr(session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}})
+    upstream = iter(
+        [
+            {"method": "turn/started", "params": {"turn": {"id": "turn-fixture"}}},
+            {"method": "item/started", "params": {"item": item}},
+            # Completion can mean a failed command or receipt of a user message;
+            # neither is evidence that a Goal check passed.
+            {
+                "method": "item/completed",
+                "params": {"item": {**item, "status": "failed"}},
+            },
+            {"method": "item/agentMessage/delta", "params": {"delta": "Ready."}},
+            {"method": "turn/completed", "params": {"turn": {"status": "completed"}}},
+        ]
+    )
+    monkeypatch.setattr(
+        session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}}
+    )
     monkeypatch.setattr(session, "_next_event", lambda **kw: next(upstream))
     events = []
-    session.send("Reply briefly.", on_event=lambda kind, payload: events.append((kind, payload)))
+    session.send(
+        "Reply briefly.", on_event=lambda kind, payload: events.append((kind, payload))
+    )
     phases = [p for kind, p in events if kind == "agent.phase"]
     assert phases[1]["label"] == expected_activity
     assert phases[0]["label"] == "Agent 已开始处理"
@@ -112,7 +127,10 @@ def test_codex_chat_pins_explicit_home_in_child_environment(monkeypatch, tmp_pat
     monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
     monkeypatch.setattr(chat_agent.subprocess, "Popen", popen)
     session = chat_agent.CodexChatAgentSession.start(
-        codex_bin="codex", work_dir=tmp_path, goal_id="fixture", objective="fixture",
+        codex_bin="codex",
+        work_dir=tmp_path,
+        goal_id="fixture",
+        objective="fixture",
         codex_home=tmp_path / "bound",
     )
     try:
@@ -135,12 +153,9 @@ def test_trusted_manager_profile_reaches_app_server_and_turn_prompt(
         goal_id="loopx-manager",
         objective="global",
         runtime_profile="trusted_owner",
-        sandbox="danger-full-access",
     )
     try:
-        requests = [
-            json.loads(line) for line in process.stdin.getvalue().splitlines()
-        ]
+        requests = [json.loads(line) for line in process.stdin.getvalue().splitlines()]
         start = next(row for row in requests if row["method"] == "thread/start")
         assert start["params"]["sandbox"] == "danger-full-access"
 
@@ -167,65 +182,167 @@ def test_trusted_manager_profile_reaches_app_server_and_turn_prompt(
         session.close()
 
 
-@pytest.mark.parametrize('resume_thread_id', [None, 'thread-loopx-chat'])
-def test_explicit_manager_model_and_effort_reach_start_resume_and_turn(monkeypatch, tmp_path, resume_thread_id):
+@pytest.mark.parametrize(
+    ("runtime_profile", "sandbox"),
+    [
+        ("restricted", "workspace-write"),
+        ("restricted", "danger-full-access"),
+        ("trusted_owner", "read-only"),
+        ("trusted_owner", "workspace-write"),
+    ],
+)
+def test_manager_profile_rejects_mismatched_sandbox_before_app_server_start(
+    monkeypatch,
+    tmp_path,
+    runtime_profile,
+    sandbox,
+):
+    started = False
+
+    def popen(*args, **kwargs):
+        nonlocal started
+        started = True
+        return _FakeAppServerProcess()
+
+    monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(chat_agent.subprocess, "Popen", popen)
+
+    with pytest.raises(ValueError, match="does not match"):
+        chat_agent.CodexChatAgentSession.start(
+            codex_bin="codex",
+            work_dir=tmp_path,
+            goal_id="loopx-manager",
+            objective="global",
+            runtime_profile=runtime_profile,
+            sandbox=sandbox,
+        )
+
+    assert started is False
+
+
+def test_app_server_adapter_cannot_bypass_manager_profile_sandbox_binding(
+    monkeypatch,
+    tmp_path,
+):
+    started = False
+
+    def popen(*args, **kwargs):
+        nonlocal started
+        started = True
+        return _FakeAppServerProcess()
+
+    monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(chat_agent.subprocess, "Popen", popen)
+
+    with pytest.raises(ValueError, match="does not match"):
+        chat_runtime.CodexAppServerAdapter.start(
+            codex_bin="codex",
+            work_dir=tmp_path,
+            goal_id="loopx-manager",
+            objective="global",
+            runtime_profile="restricted",
+            sandbox="danger-full-access",
+        )
+
+    assert started is False
+
+
+@pytest.mark.parametrize("resume_thread_id", [None, "thread-loopx-chat"])
+def test_explicit_manager_model_and_effort_reach_start_resume_and_turn(
+    monkeypatch, tmp_path, resume_thread_id
+):
     process = _FakeAppServerProcess()
-    monkeypatch.setattr(chat_agent.shutil, 'which', lambda _: 'codex')
-    monkeypatch.setattr(chat_agent.subprocess, 'Popen', lambda *a, **k: process)
+    monkeypatch.setattr(chat_agent.shutil, "which", lambda _: "codex")
+    monkeypatch.setattr(chat_agent.subprocess, "Popen", lambda *a, **k: process)
     session = chat_agent.CodexChatAgentSession.start(
-        codex_bin='codex', work_dir=tmp_path, goal_id='loopx-manager', objective='global',
-        model='gpt-6-astra', reasoning_effort='medium', resume_thread_id=resume_thread_id,
+        codex_bin="codex",
+        work_dir=tmp_path,
+        goal_id="loopx-manager",
+        objective="global",
+        model="gpt-6-astra",
+        reasoning_effort="medium",
+        resume_thread_id=resume_thread_id,
     )
     try:
         requests = [json.loads(line) for line in process.stdin.getvalue().splitlines()]
-        start = next(r for r in requests if r['method'] in {'thread/start','thread/resume'})
-        assert start['params']['model'] == 'gpt-6-astra'
-        assert start['params']['config']['model_reasoning_effort'] == 'medium'
+        start = next(
+            r for r in requests if r["method"] in {"thread/start", "thread/resume"}
+        )
+        assert start["params"]["model"] == "gpt-6-astra"
+        assert start["params"]["config"]["model_reasoning_effort"] == "medium"
         turns = []
+
         def request(method, params, **kwargs):
             turns.append((method, params))
-            return {'turn': {'id': 'fixture-turn'}}
-        monkeypatch.setattr(session, '_request', request)
-        monkeypatch.setattr(session, '_next_event', lambda **kwargs: {'method':'turn/completed','params':{'turn':{'status':'completed'}}})
-        session.send('Which Goals?')
-        assert turns[0][0] == 'turn/start'
-        assert turns[0][1]['model'] == 'gpt-6-astra'
-        assert turns[0][1]['effort'] == 'medium'
+            return {"turn": {"id": "fixture-turn"}}
+
+        monkeypatch.setattr(session, "_request", request)
+        monkeypatch.setattr(
+            session,
+            "_next_event",
+            lambda **kwargs: {
+                "method": "turn/completed",
+                "params": {"turn": {"status": "completed"}},
+            },
+        )
+        session.send("Which Goals?")
+        assert turns[0][0] == "turn/start"
+        assert turns[0][1]["model"] == "gpt-6-astra"
+        assert turns[0][1]["effort"] == "medium"
     finally:
         session.close()
 
 
 @pytest.mark.parametrize("terminal_method", ["error", "turn/completed"])
-@pytest.mark.parametrize("info,expected", [
-    ("cyberPolicy", "cyber_policy"),
-    ("misalignmentPolicyViolation", "misalignment_policy_violation"),
-    ("usageLimitExceeded", "usage_limit_exceeded"),
-    ("rateLimitExceeded", "rate_limit_exceeded"),
-    ("contextWindowExceeded", "context_window_exceeded"),
-    ("unauthorized", "unauthorized"),
-    ("futureVariant", "host_gate"),
-    ({"unknown": "cyberPolicy"}, "host_gate"),
-    (None, "host_gate"),
-])
+@pytest.mark.parametrize(
+    "info,expected",
+    [
+        ("cyberPolicy", "cyber_policy"),
+        ("misalignmentPolicyViolation", "misalignment_policy_violation"),
+        ("usageLimitExceeded", "usage_limit_exceeded"),
+        ("rateLimitExceeded", "rate_limit_exceeded"),
+        ("contextWindowExceeded", "context_window_exceeded"),
+        ("unauthorized", "unauthorized"),
+        ("futureVariant", "host_gate"),
+        ({"unknown": "cyberPolicy"}, "host_gate"),
+        (None, "host_gate"),
+    ],
+)
 def test_typed_terminal_errors_preserve_category_without_promoting_partial_answer(
-    monkeypatch, tmp_path, terminal_method, info, expected,
+    monkeypatch,
+    tmp_path,
+    terminal_method,
+    info,
+    expected,
 ):
     session = chat_agent.CodexChatAgentSession(
-        process=_FakeAppServerProcess(), messages=queue.Queue(),
-        thread_id="thread-fixture", work_dir=tmp_path,
+        process=_FakeAppServerProcess(),
+        messages=queue.Queue(),
+        thread_id="thread-fixture",
+        work_dir=tmp_path,
     )
-    error = {"codexErrorInfo": info, "message": "private-fixture cyberPolicy",
-             "additionalDetails": "private-fixture"}
+    error = {
+        "codexErrorInfo": info,
+        "message": "private-fixture cyberPolicy",
+        "additionalDetails": "private-fixture",
+    }
     params = {"threadId": "thread-fixture", "turnId": "turn-fixture"}
     if terminal_method == "error":
         params.update(error=error, willRetry=False)
     else:
         params["turn"] = {"id": "turn-fixture", "status": "failed", "error": error}
-    upstream = iter([
-        {"method": "item/agentMessage/delta", "params": {"delta": "Partial answer."}},
-        {"method": terminal_method, "params": params},
-    ])
-    monkeypatch.setattr(session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}})
+    upstream = iter(
+        [
+            {
+                "method": "item/agentMessage/delta",
+                "params": {"delta": "Partial answer."},
+            },
+            {"method": terminal_method, "params": params},
+        ]
+    )
+    monkeypatch.setattr(
+        session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}}
+    )
     monkeypatch.setattr(session, "_next_event", lambda **kw: next(upstream))
     events = []
     with pytest.raises(chat_agent.CodexChatAgentError) as caught:
@@ -238,22 +355,59 @@ def test_typed_terminal_errors_preserve_category_without_promoting_partial_answe
         assert "不会自动重放" in caught.value.gate["next_action"]
 
 
-def test_retry_and_unrelated_policy_events_do_not_terminate_current_turn(monkeypatch, tmp_path):
+def test_retry_and_unrelated_policy_events_do_not_terminate_current_turn(
+    monkeypatch, tmp_path
+):
     session = chat_agent.CodexChatAgentSession(
-        process=_FakeAppServerProcess(), messages=queue.Queue(),
-        thread_id="thread-fixture", work_dir=tmp_path,
+        process=_FakeAppServerProcess(),
+        messages=queue.Queue(),
+        thread_id="thread-fixture",
+        work_dir=tmp_path,
     )
-    upstream = iter([
-        {"method": "error", "params": {"threadId": "other-thread", "turnId": "turn-fixture", "error": {"codexErrorInfo": "cyberPolicy"}, "willRetry": False}},
-        {"method": "error", "params": {"threadId": "thread-fixture", "turnId": "other-turn", "error": {"codexErrorInfo": "cyberPolicy"}, "willRetry": False}},
-        {"method": "error", "params": {"threadId": "thread-fixture", "turnId": "turn-fixture", "error": {"codexErrorInfo": "rateLimitExceeded"}, "willRetry": True}},
-        {"method": "item/agentMessage/delta", "params": {"delta": "Recovered."}},
-        {"method": "turn/completed", "params": {"turn": {"id": "turn-fixture", "status": "completed"}}},
-    ])
-    monkeypatch.setattr(session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}})
+    upstream = iter(
+        [
+            {
+                "method": "error",
+                "params": {
+                    "threadId": "other-thread",
+                    "turnId": "turn-fixture",
+                    "error": {"codexErrorInfo": "cyberPolicy"},
+                    "willRetry": False,
+                },
+            },
+            {
+                "method": "error",
+                "params": {
+                    "threadId": "thread-fixture",
+                    "turnId": "other-turn",
+                    "error": {"codexErrorInfo": "cyberPolicy"},
+                    "willRetry": False,
+                },
+            },
+            {
+                "method": "error",
+                "params": {
+                    "threadId": "thread-fixture",
+                    "turnId": "turn-fixture",
+                    "error": {"codexErrorInfo": "rateLimitExceeded"},
+                    "willRetry": True,
+                },
+            },
+            {"method": "item/agentMessage/delta", "params": {"delta": "Recovered."}},
+            {
+                "method": "turn/completed",
+                "params": {"turn": {"id": "turn-fixture", "status": "completed"}},
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        session, "_request", lambda *a, **kw: {"turn": {"id": "turn-fixture"}}
+    )
     monkeypatch.setattr(session, "_next_event", lambda **kw: next(upstream))
     events = []
-    result = session.send("Report progress.", on_event=lambda k, p: events.append((k, p)))
+    result = session.send(
+        "Report progress.", on_event=lambda k, p: events.append((k, p))
+    )
     assert result["message"] == "Recovered."
     assert any(k == "agent.phase" and p["label"] == "Codex 正在重试" for k, p in events)
     assert sum(k == "answer.final" for k, p in events) == 1

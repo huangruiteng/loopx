@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -9,8 +10,11 @@ from .capabilities.machine_configuration.builtins import (
     build_builtin_machine_configuration_registry,
 )
 from .capabilities.machine_configuration.contract import (
+    MACHINE_CONFIGURATION_SCHEMA,
     MachineConfigurationRegistry,
+    machine_configuration_revision,
     merge_machine_configuration_namespace,
+    normalize_machine_configuration,
     remove_machine_configuration_namespace,
 )
 from .capabilities.machine_configuration.store import (
@@ -57,6 +61,7 @@ def _public_payload(
         "readback_verified",
         "writes_required",
         "changed_namespaces",
+        "invalid_namespaces",
         "machine_configuration",
     }
     projected = {key: value for key, value in payload.items() if key in allowed}
@@ -68,6 +73,45 @@ def _public_payload(
         goal_features=build_configuration_capability_descriptors(),
     )
     return projected
+
+
+def _invalid_machine_configuration_inspection(
+    configuration: Mapping[str, Any],
+    *,
+    registry: MachineConfigurationRegistry,
+) -> dict[str, Any]:
+    """Return a value-free repair projection for an invalid stored document."""
+
+    namespaces = configuration.get("namespaces")
+    invalid_namespaces: list[str] = []
+    if configuration.get(
+        "schema_version"
+    ) == MACHINE_CONFIGURATION_SCHEMA and isinstance(namespaces, Mapping):
+        for namespace in registry.namespace_ids:
+            if namespace not in namespaces:
+                continue
+            try:
+                normalize_machine_configuration(
+                    {
+                        "schema_version": MACHINE_CONFIGURATION_SCHEMA,
+                        "namespaces": {namespace: namespaces[namespace]},
+                    },
+                    registry=registry,
+                )
+            except (TypeError, ValueError):
+                invalid_namespaces.append(namespace)
+    return {
+        "ok": True,
+        "schema_version": "machine_configuration_inspection_v0",
+        "status": "invalid",
+        "reason": "machine_configuration_invalid",
+        "revision": machine_configuration_revision(configuration),
+        "changed_namespaces": [],
+        "invalid_namespaces": invalid_namespaces,
+        # Invalid values can contain private provider data. The Dashboard gets
+        # the safe catalog and affected namespace IDs, never the stored values.
+        "machine_configuration": None,
+    }
 
 
 class MachineConfigurationRequestMixin:
@@ -137,11 +181,24 @@ class MachineConfigurationRequestMixin:
                 registry=registry,
             )
         except (TypeError, ValueError):
-            self._send_error(
-                "Machine configuration is invalid and could not be inspected.",
-                status=409,
-                error_code="machine_configuration_invalid",
-            )
+            try:
+                stored = read_stored_machine_configuration(self.server.runtime_root)
+                if stored is None:
+                    raise ValueError(
+                        "machine configuration disappeared during inspection"
+                    )
+                result = _invalid_machine_configuration_inspection(
+                    stored,
+                    registry=registry,
+                )
+            except Exception:  # noqa: BLE001 - sanitize invalid stored values.
+                self._send_error(
+                    "Machine configuration could not be inspected.",
+                    status=500,
+                    error_code="machine_configuration_inspection_failed",
+                )
+                return
+            self._send_json(_public_payload(result, registry=registry))
             return
         except Exception:  # noqa: BLE001 - sanitize the browser-facing error boundary.
             self._send_error(

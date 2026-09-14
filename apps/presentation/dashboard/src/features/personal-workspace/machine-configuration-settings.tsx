@@ -99,9 +99,12 @@ export function MachineConfigurationSettings() {
   const capabilities = useMemo(() => orderCapabilitiesForPresentation(
     inspection?.capability_catalog.capabilities ?? [], locale,
   ), [inspection, locale]);
+  const invalidNamespace = inspection?.invalid_namespaces[0];
   const selectedRaw = capabilities.find(
     (capability) => capability.capability_id === selectedCapabilityId,
-  ) ?? capabilities.find((capability) => canEditCapability(capability, "machine")) ?? capabilities[0];
+  ) ?? (invalidNamespace ? capabilities.find(
+    (capability) => capability.machine_namespace === invalidNamespace,
+  ) : undefined) ?? capabilities.find((capability) => canEditCapability(capability, "machine")) ?? capabilities[0];
   const selected = selectedRaw ? localizeCapability(selectedRaw, locale) : undefined;
   const selectedCurrent = currentConfiguration(inspection, selected);
   const configured = Boolean(selected?.machine_namespace && selectedCurrent);
@@ -289,6 +292,13 @@ export function MachineConfigurationSettings() {
         <summary><ShieldCheck aria-hidden size={17} />{t("machine.liveDefault")}</summary>
         <p>{t("machine.liveDefaultDescription")}</p>
       </details>
+
+      {inspection?.status === "invalid" ? (
+        <section className="personal-machine-error" data-testid="machine-invalid-repair" role="alert">
+          <strong>{t("machine.invalidStoredConfiguration")}</strong>
+          <p>{t("machine.invalidStoredConfigurationDescription")}</p>
+        </section>
+      ) : null}
 
       <div className="personal-capability-layout">
         <CapabilityCatalogNavigation capabilities={capabilities} locale={locale} onSelect={setSelectedCapabilityId} scope="machine" selectedCapabilityId={selected.capability_id} t={t} />

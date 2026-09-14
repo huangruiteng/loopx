@@ -344,6 +344,8 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     interrupts: [],
     goalConfigurationRequests: [],
     machineConfigurationRequests: [],
+    machineInspectionStatus: "configured",
+    invalidMachineNamespaces: [],
     larkWrites: [],
     actionTransitions: [],
     allowNextHeartbeatApply: false,
@@ -861,6 +863,7 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
         })],
       },
       changed_namespaces: [],
+      invalid_namespaces: [],
       machine_configuration: {
         schema_version: "loopx_machine_configuration_v0",
         namespaces: machineNamespaces,
@@ -870,8 +873,12 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
       await route.fulfill({ contentType: "application/json", json: {
         ...machineConfigurationBase,
         schema_version: "machine_configuration_inspection_v0",
-        status: "configured",
+        status: state.machineInspectionStatus,
         revision: "sha256:machine-current",
+        invalid_namespaces: state.invalidMachineNamespaces,
+        machine_configuration: state.machineInspectionStatus === "invalid"
+          ? null
+          : machineConfigurationBase.machine_configuration,
       }, status: 200 });
       return;
     }
@@ -898,6 +905,8 @@ export async function installApi(page, { goalSubagentConfigurationEnabled = true
     if (url.pathname === "/api/chat/machine-configuration/apply" && request.method() === "POST") {
       const body = request.postDataJSON();
       state.machineConfigurationRequests.push({ phase: "apply", ...body });
+      state.machineInspectionStatus = "configured";
+      state.invalidMachineNamespaces = [];
       await route.fulfill({ contentType: "application/json", json: {
         ...machineConfigurationBase,
         schema_version: "machine_configuration_transaction_v0",
