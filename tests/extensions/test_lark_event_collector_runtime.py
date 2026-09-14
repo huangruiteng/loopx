@@ -7,8 +7,11 @@ import time
 
 import pytest
 
-from loopx.extensions.lark import event_collector_runtime
-from loopx.extensions.lark.event_collector import plan_lark_event_collector
+from loopx.extensions.lark import event_collector, event_collector_runtime
+from loopx.extensions.lark.event_collector import (
+    inspect_lark_event_collector,
+    plan_lark_event_collector,
+)
 from loopx.extensions.lark.event_collector_runtime import (
     _run_json_with_status,
     enrich_lark_event_reply_context,
@@ -179,6 +182,65 @@ def test_operation_callback_plan_requires_pinned_runtime(tmp_path: Path) -> None
     assert plan["operation_callback_console_configuration_preflighted"] is False
 
 
+def test_operation_callback_status_separates_readiness_from_qualification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, collector = _operation_callback_project(tmp_path)
+    service = tmp_path / "loopx-operation-fixture.service"
+    service.write_text("installed", encoding="utf-8")
+    monkeypatch.setattr(event_collector, "_service_file", lambda _config: service)
+    monkeypatch.setattr(event_collector.shutil, "which", lambda _name: "/usr/bin/true")
+    callback_status = (
+        project / ".loopx/runtime/lark-collector/operation-callback-status.json"
+    )
+    callback_status.parent.mkdir(parents=True)
+    callback_status.write_text(
+        json.dumps(
+            {
+                "schema_version": "lark_operation_callback_listener_status_v1",
+                "listener_active": True,
+                "listener_ready": True,
+                "callback_delivery_verified": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["systemctl"], returncode=0, stdout="active\n", stderr=""
+        )
+
+    status = inspect_lark_event_collector(
+        project=project,
+        config_path=collector,
+        runtime_root=tmp_path / "runtime",
+        runner=runner,
+    )
+
+    assert status["healthy"] is True
+    assert status["operation_callback_listener_active"] is True
+    assert status["operation_callback_listener_ready"] is True
+    assert (
+        status["operation_callback_qualification_state"]
+        == "listener_ready_unqualified"
+    )
+
+    payload = json.loads(callback_status.read_text(encoding="utf-8"))
+    payload["callback_delivery_verified"] = True
+    callback_status.write_text(json.dumps(payload), encoding="utf-8")
+
+    qualified = inspect_lark_event_collector(
+        project=project,
+        config_path=collector,
+        runtime_root=tmp_path / "runtime",
+        runner=runner,
+    )
+
+    assert qualified["operation_callback_qualification_state"] == "callback_qualified"
+
+
 def test_collector_runs_independent_operation_callback_consumer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -193,6 +255,8 @@ def test_collector_runs_independent_operation_callback_consumer(
         "import time\n"
         "event_key = sys.argv[sys.argv.index('consume') + 1]\n"
         "if event_key == 'card.action.trigger':\n"
+        "    assert '--quiet' not in sys.argv\n"
+        "    print('[event] ready event_key=card.action.trigger', flush=True)\n"
         "    print(json.dumps({'type': event_key, 'chat_id': 'oc_operation_fixture'}), flush=True)\n"
         "    print(json.dumps({'type': event_key, 'chat_id': 'oc_operation_fixture'}), flush=True)\n"
         "else:\n"
@@ -236,6 +300,7 @@ def test_collector_runs_independent_operation_callback_consumer(
     while not captured and time.monotonic() < deadline:
         time.sleep(0.01)
     assert result["operation_callback_listener_started"] is True
+    assert result["operation_callback_listener_ready"] is True
     assert result["operation_callback_received_count"] == 2
     assert result["operation_callback_verified_count"] == 1
     assert captured[0]["runtime_root"] == runtime_root.resolve()
@@ -246,5 +311,6 @@ def test_collector_runs_independent_operation_callback_consumer(
         ).read_text(encoding="utf-8")
     )
     assert status["callback_delivery_verified"] is True
+    assert status["listener_ready"] is False
     assert status["failed_callback_count"] == 1
     assert status["listener_active"] is False

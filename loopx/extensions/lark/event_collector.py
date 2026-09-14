@@ -671,6 +671,28 @@ def inspect_lark_event_collector(
     except (OSError, json.JSONDecodeError):
         pass
     callbacks_enabled = config["operation_callbacks"]["enabled"] is True
+    callback_listener_active = bool(
+        callbacks_enabled
+        and active
+        and callback_status.get("listener_active") is True
+    )
+    callback_listener_ready = bool(
+        callback_listener_active
+        and callback_status.get("listener_ready") is True
+    )
+    callback_delivery_verified = bool(
+        callbacks_enabled
+        and callback_status.get("callback_delivery_verified") is True
+    )
+    callback_qualification_state = (
+        "disabled"
+        if not callbacks_enabled
+        else "callback_qualified"
+        if callback_delivery_verified
+        else "listener_ready_unqualified"
+        if callback_listener_ready
+        else "listener_unready"
+    )
     healthy = bool(
         config["enabled"]
         and plan["lark_cli_available"]
@@ -703,15 +725,10 @@ def inspect_lark_event_collector(
             routes_with_event_evidence == len(config["routes"])
         ),
         "operation_callbacks_enabled": callbacks_enabled,
-        "operation_callback_listener_active": bool(
-            callbacks_enabled
-            and active
-            and callback_status.get("listener_active") is True
-        ),
-        "operation_callback_delivery_verified": bool(
-            callbacks_enabled
-            and callback_status.get("callback_delivery_verified") is True
-        ),
+        "operation_callback_listener_active": callback_listener_active,
+        "operation_callback_listener_ready": callback_listener_ready,
+        "operation_callback_delivery_verified": callback_delivery_verified,
+        "operation_callback_qualification_state": callback_qualification_state,
         "operation_callback_verified_count": int(
             callback_status.get("verified_callback_count") or 0
         ),

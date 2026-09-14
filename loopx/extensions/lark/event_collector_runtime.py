@@ -29,6 +29,8 @@ from .goal_channel_operation import (
 from .private_json import write_private_json_atomic
 
 APP_ID_PATTERN = re.compile(r"cli_[A-Za-z0-9_-]+")
+EVENT_READY_PREFIX = "[event] ready "
+EVENT_DIAGNOSTIC_PREFIX = "[event] "
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
 Sleeper = Callable[[float], None]
 
@@ -360,7 +362,6 @@ def _operation_callback_consume_argv(
         str(config["consume_timeout"]),
         "--jq",
         f"select({chat_filter})",
-        "--quiet",
     ]
 
 
@@ -388,6 +389,7 @@ def _write_operation_callback_status(
     project: str | Path,
     *,
     listener_active: bool,
+    listener_ready: bool | None = None,
     callback_delivery_verified: bool | None = None,
     failure_kind: str | None = None,
     consumer_returncode: int | None = None,
@@ -411,8 +413,13 @@ def _write_operation_callback_status(
     if failure_kind:
         failure_count += 1
     payload = {
-        "schema_version": "lark_operation_callback_listener_status_v0",
+        "schema_version": "lark_operation_callback_listener_status_v1",
         "listener_active": listener_active,
+        "listener_ready": (
+            bool(listener_ready)
+            if listener_ready is not None
+            else bool(prior.get("listener_ready") is True)
+        ),
         "callback_delivery_verified": bool(
             prior.get("callback_delivery_verified") is True
             or callback_delivery_verified is True
@@ -619,6 +626,7 @@ def run_lark_event_collector(
     result_recovery_thread: threading.Thread | None = None
     result_recovery_stop = threading.Event()
     callback_stats = {
+        "ready": 0,
         "received": 0,
         "verified": 0,
         "failed": 0,
@@ -636,58 +644,94 @@ def run_lark_event_collector(
         profile_identity_checked = True
         callback_process = subprocess.Popen(
             _operation_callback_consume_argv(config, command_prefix),
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
         )
         _write_operation_callback_status(
             config["project"],
             listener_active=True,
+            listener_ready=False,
         )
 
         def consume_operation_callbacks() -> None:
             assert callback_process is not None
             assert callback_process.stdout is not None
             transport_runner = _operation_transport_runner(runner)
-            for line in callback_process.stdout:
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(payload, Mapping):
-                    continue
-                callback_stats["received"] += 1
-                try:
-                    if profile_app_id is None:
-                        raise ValueError(
-                            "collector Bot application identity is unverified"
+            try:
+                for line in callback_process.stdout:
+                    stripped = line.strip()
+                    if stripped.startswith(EVENT_READY_PREFIX):
+                        callback_stats["ready"] = 1
+                        _write_operation_callback_status(
+                            config["project"],
+                            listener_active=True,
+                            listener_ready=True,
                         )
-                    receipt = handle_goal_channel_operation_callback(
-                        payload,
-                        runtime_root=resolved_runtime_root,
-                        action_store_root=resolved_runtime_root / "chat" / "actions",
-                        profile_app_id=profile_app_id,
-                        cli_bin=lark_cli_executable,
-                        profile=str(config["profile"]),
-                        runner=transport_runner,
-                    )
-                    if receipt.get("ok") is not True:
-                        raise RuntimeError(
-                            "operation callback result delivery was not verified"
+                        continue
+                    if stripped.startswith(EVENT_DIAGNOSTIC_PREFIX):
+                        continue
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(payload, Mapping):
+                        continue
+                    if not callback_stats.get("ready"):
+                        # A real typed event is stronger readiness evidence than
+                        # the provider diagnostic marker.
+                        callback_stats["ready"] = 1
+                        _write_operation_callback_status(
+                            config["project"],
+                            listener_active=True,
+                            listener_ready=True,
                         )
-                except Exception as exc:  # noqa: BLE001
-                    callback_stats["failed"] += 1
+                    callback_stats["received"] += 1
+                    try:
+                        if profile_app_id is None:
+                            raise ValueError(
+                                "collector Bot application identity is unverified"
+                            )
+                        receipt = handle_goal_channel_operation_callback(
+                            payload,
+                            runtime_root=resolved_runtime_root,
+                            action_store_root=resolved_runtime_root
+                            / "chat"
+                            / "actions",
+                            profile_app_id=profile_app_id,
+                            cli_bin=lark_cli_executable,
+                            profile=str(config["profile"]),
+                            runner=transport_runner,
+                        )
+                        if receipt.get("ok") is not True:
+                            raise RuntimeError(
+                                "operation callback result delivery was not verified"
+                            )
+                    except Exception as exc:  # noqa: BLE001
+                        callback_stats["failed"] += 1
+                        _write_operation_callback_status(
+                            config["project"],
+                            listener_active=True,
+                            listener_ready=True,
+                            failure_kind=type(exc).__name__,
+                        )
+                        continue
+                    callback_stats["verified"] += 1
                     _write_operation_callback_status(
                         config["project"],
                         listener_active=True,
-                        failure_kind=type(exc).__name__,
+                        listener_ready=True,
+                        callback_delivery_verified=True,
                     )
-                    continue
-                callback_stats["verified"] += 1
+            finally:
+                callback_returncode = callback_process.wait()
                 _write_operation_callback_status(
                     config["project"],
-                    listener_active=True,
-                    callback_delivery_verified=True,
+                    listener_active=False,
+                    listener_ready=False,
+                    consumer_returncode=callback_returncode,
                 )
 
         callback_thread = threading.Thread(
@@ -875,6 +919,7 @@ def run_lark_event_collector(
             _write_operation_callback_status(
                 config["project"],
                 listener_active=False,
+                listener_ready=False,
                 consumer_returncode=(
                     callback_process.returncode
                     if callback_process is not None
@@ -922,6 +967,9 @@ def run_lark_event_collector(
         result.update(
             {
                 "operation_callback_listener_started": True,
+                "operation_callback_listener_ready": bool(
+                    callback_stats.get("ready")
+                ),
                 "operation_callback_received_count": callback_stats["received"],
                 "operation_callback_verified_count": callback_stats["verified"],
                 "operation_callback_failure_count": callback_stats["failed"],

@@ -233,7 +233,7 @@ def build_goal_channel_operation_card(
                                         "tag": "plain_text",
                                         "content": "确认模拟执行"
                                         if simulated
-                                        else "确认执行",
+                                        else "继续并二次确认",
                                     },
                                     "type": "primary_filled",
                                     "width": "fill",
@@ -246,16 +246,25 @@ def build_goal_channel_operation_card(
                                             },
                                         }
                                     ],
-                                    "confirm": {
-                                        "title": {
-                                            "tag": "plain_text",
-                                            "content": "确认这个精确请求？",
-                                        },
-                                        "text": {
-                                            "tag": "plain_text",
-                                            "content": "修改任何条款都需要创建新请求。",
-                                        },
-                                    },
+                                    **(
+                                        {}
+                                        if simulated
+                                        else {
+                                            "confirm": {
+                                                "title": {
+                                                    "tag": "plain_text",
+                                                    "content": "确认这个精确请求？",
+                                                },
+                                                "text": {
+                                                    "tag": "plain_text",
+                                                    "content": (
+                                                        "这是第二步确认；提交后修改任何条款"
+                                                        "都需要创建新请求。"
+                                                    ),
+                                                },
+                                            }
+                                        }
+                                    ),
                                 }
                             ],
                         },

@@ -294,7 +294,10 @@ def test_card_is_one_bounded_non_forwardable_confirmation_projection(
     assert len(card["body"]["elements"]) == 4
     assert card["header"]["icon"]["token"] == "approval_colorful"
     buttons = card["body"]["elements"][3]["columns"]
-    assert buttons[0]["elements"][0]["type"] == "primary_filled"
+    confirm_button = buttons[0]["elements"][0]
+    assert confirm_button["type"] == "primary_filled"
+    assert confirm_button["text"]["content"] == "确认模拟执行"
+    assert "confirm" not in confirm_button
     assert buttons[1]["elements"][0]["type"] == "danger"
     assert {
         button["elements"][0]["behaviors"][0]["value"]["decision"] for button in buttons
@@ -356,6 +359,9 @@ def test_lark_cards_consume_one_shared_ts_frame_each(
         for method, params in calls
     )
     assert confirmation["header"]["title"]["content"] == "Simulated trade request"
+    assert "confirm" not in (
+        confirmation["body"]["elements"][3]["columns"][0]["elements"][0]
+    )
     assert result["header"]["text_tag_list"][0]["text"]["content"] == "模拟完成"
     # Lark Card 2.0 rejects `corner_radius` on a column with error 200621,
     # even though some client-side references still list that property.
@@ -368,6 +374,38 @@ def test_lark_cards_consume_one_shared_ts_frame_each(
         ]
         assert columns
         assert all("corner_radius" not in column for column in columns)
+
+
+def test_effectful_card_makes_secondary_confirmation_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        goal_channel_operation,
+        "effect_runtime_result",
+        lambda _method, _params: {
+            "operationFrame": {
+                "schemaVersion": "operation_review_frame_v0",
+                "operationId": "operation-live-1",
+                "confirmationDigest": "confirmation-live-1",
+                "kind": "confirmation",
+                "simulated": False,
+                "content": {
+                    "title": "Protected operation request",
+                    "subtitle": "Exact authorized request",
+                    "focus": "One protected effect",
+                    "fields": [{"label": "Scope", "value": "Exact request"}],
+                    "warning": "Submitting starts the protected operation.",
+                },
+            }
+        },
+    )
+
+    card = build_goal_channel_operation_card({"proposal_id": "operation-live-1"})
+    button = card["body"]["elements"][3]["columns"][0]["elements"][0]
+
+    assert button["text"]["content"] == "继续并二次确认"
+    assert button["confirm"]["title"]["content"] == "确认这个精确请求？"
+    assert "第二步确认" in button["confirm"]["text"]["content"]
 
 
 def test_cli_preparation_previews_without_write_then_persists_canonical_proposal(

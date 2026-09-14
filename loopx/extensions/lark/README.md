@@ -117,6 +117,20 @@ separate `card.action.trigger` consumer beside message capture because each
 listener health separately from real callback evidence; a healthy process does
 not prove the application console is configured to deliver callbacks.
 
+The callback listener becomes ready only after the provider emits its event-bus
+ready marker or the listener receives a typed callback. Status remains
+`listener_ready_unqualified` until one authenticated callback is handled and its
+canonical result-card readback succeeds; only then does it become
+`callback_qualified`. Simulation-only cards use one explicit confirmation click.
+Effectful protected operations retain the provider's second confirmation dialog
+and label the first button as a continuation rather than a completed decision.
+
+回调进程只有在 provider 发出事件总线 ready 标记，或收到一条真实 typed callback
+后，才会被视为 ready。在一条已认证 callback 被处理且结果卡完成规范读回之前，
+状态保持 `listener_ready_unqualified`；完成后才进入 `callback_qualified`。
+纯模拟卡使用一次明确确认；有外部效果的受保护操作仍保留平台二次确认，并把第一步
+按钮明确标为继续操作，而不是已经完成决策。
+
 On click, LoopX verifies the original App, chat, message, immutable card digest,
 operator allowlist, tenant membership, expiry, and globally unique event id.
 Confirmation atomically claims the operation before dispatch. Exact event
