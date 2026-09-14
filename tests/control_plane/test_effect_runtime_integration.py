@@ -26,6 +26,32 @@ from loopx.control_plane.coordination.runtime_shadow import (
 
 _TURN_KEY = "sha256:" + "a" * 64
 _TODO_ID = "todo_fixture0001"
+_IDLE_TIMEOUT_FIXTURE = json.loads(
+    (Path(__file__).parents[1] / "fixtures" / "effect_runtime_idle_ms.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def test_idle_timeout_parser_matches_shared_fixture() -> None:
+    assert (
+        effect_runtime.DEFAULT_EFFECT_RUNTIME_IDLE_MS
+        == _IDLE_TIMEOUT_FIXTURE["default_ms"]
+    )
+    assert (
+        effect_runtime.MAX_EFFECT_RUNTIME_IDLE_MS
+        == _IDLE_TIMEOUT_FIXTURE["maximum_ms"]
+    )
+    for case in _IDLE_TIMEOUT_FIXTURE["valid"]:
+        environment = (
+            {}
+            if case["raw"] is None
+            else {"LOOPX_EFFECT_RUNTIME_IDLE_MS": case["raw"]}
+        )
+        assert (
+            effect_runtime._validate_effect_runtime_idle_ms(environment)
+            == case["value"]
+        )
 
 
 def _effect_id(label: str) -> str:
@@ -593,6 +619,7 @@ def test_runtime_ready_budget_starts_after_start_lock_acquisition(
         "host": "127.0.0.1",
         "port": 1,
         "token": "fixture-token",
+        "idle_ms": effect_runtime.DEFAULT_EFFECT_RUNTIME_IDLE_MS,
     }
 
     def sleep(seconds: float) -> None:
@@ -675,6 +702,59 @@ def test_early_runtime_exit_surfaces_stable_startup_diagnostic(
 
 
 @pytest.mark.parametrize(
+    "idle_ms",
+    _IDLE_TIMEOUT_FIXTURE["invalid"],
+)
+def test_invalid_idle_timeout_fails_before_runtime_launch(
+    tmp_path: Path,
+    monkeypatch,
+    idle_ms: str,
+) -> None:
+    info_path = tmp_path / "runtime" / "effect-runtime-test.json"
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", idle_ms)
+
+    def unexpected_popen(*_args, **_kwargs):
+        raise AssertionError("invalid idle timeout must fail before process launch")
+
+    monkeypatch.setattr(effect_runtime.subprocess, "Popen", unexpected_popen)
+
+    with pytest.raises(effect_runtime.EffectRuntimeStartupError) as exc_info:
+        effect_runtime._start_runtime(fingerprint="test-fingerprint", info_path=info_path)
+
+    assert exc_info.value.diagnostic_code == "invalid_runtime_idle_ms"
+    assert "LOOPX_EFFECT_RUNTIME_IDLE_MS" in str(exc_info.value)
+    assert not info_path.exists()
+
+
+def test_warm_runtime_rejects_invalid_and_conflicting_idle_configuration(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setattr(effect_runtime, "_runtime_dir", lambda: runtime_dir)
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", "1000")
+
+    original = effect_runtime.effect_runtime_result("runtime.ping", {})
+
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", "not-a-number")
+    with pytest.raises(effect_runtime.EffectRuntimeStartupError) as invalid:
+        effect_runtime.effect_runtime_result("runtime.ping", {})
+    assert invalid.value.diagnostic_code == "invalid_runtime_idle_ms"
+
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", "150")
+    with pytest.raises(effect_runtime.EffectRuntimeStartupError) as conflict:
+        effect_runtime.effect_runtime_result("runtime.ping", {})
+    assert conflict.value.diagnostic_code == "runtime_idle_ms_conflict"
+
+    monkeypatch.setenv("LOOPX_EFFECT_RUNTIME_IDLE_MS", "1000")
+    assert (
+        effect_runtime.effect_runtime_result("runtime.ping", {})["pid"]
+        == original["pid"]
+    )
+    effect_runtime.effect_runtime_result("runtime.shutdown", {}, retry_safe=False)
+
+
+@pytest.mark.parametrize(
     ("retry_safe", "successful_attempt", "expected_attempts"),
     [
         (False, None, 1),
@@ -699,12 +779,19 @@ def test_request_startup_retry_boundary(
         "host": "127.0.0.1",
         "port": 1,
         "token": "fixture-token",
+        "idle_ms": effect_runtime.DEFAULT_EFFECT_RUNTIME_IDLE_MS,
     }
 
-    def start_runtime(*, fingerprint: str, info_path: Path):
+    def start_runtime(
+        *,
+        fingerprint: str,
+        info_path: Path,
+        requested_idle_ms: int,
+    ):
         attempts["count"] += 1
         assert fingerprint == ready_info["fingerprint"]
         assert info_path.parent == runtime_dir
+        assert requested_idle_ms == effect_runtime.DEFAULT_EFFECT_RUNTIME_IDLE_MS
         if attempts["count"] == successful_attempt:
             return ready_info
         raise effect_runtime.EffectRuntimeStartupError(
