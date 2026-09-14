@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ from loopx.extensions.lark.goal_channel_contracts import (
 )
 from loopx.extensions.lark.goal_channel_operation import (
     build_goal_channel_operation_card,
+    build_goal_channel_operation_result_card,
     deliver_goal_channel_operation_card,
     handle_goal_channel_operation_callback,
     recover_goal_channel_operation_results,
@@ -297,6 +299,64 @@ def test_card_is_one_bounded_non_forwardable_confirmation_projection(
     assert {
         button["elements"][0]["behaviors"][0]["value"]["decision"] for button in buttons
     } == {"confirm", "reject"}
+
+
+def test_lark_cards_consume_one_shared_ts_frame_each(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, Mapping[str, Any]]] = []
+    frames = iter(
+        [
+            {
+                "schemaVersion": "operation_review_frame_v0",
+                "operationId": "operation-1",
+                "confirmationDigest": "confirmation-1",
+                "kind": "confirmation",
+                "simulated": True,
+                "content": {
+                    "title": "Simulated trade request",
+                    "subtitle": "Shared presentation frame",
+                    "focus": "BUY 1 SYNTH @ 10 TEST",
+                    "fields": [{"label": "Order", "value": "Limit · GTC"}],
+                    "warning": "Simulation only.",
+                },
+            },
+            {
+                "schemaVersion": "operation_review_frame_v0",
+                "operationId": "operation-1",
+                "confirmationDigest": "confirmation-1",
+                "kind": "result",
+                "resultKind": "simulation_completed",
+                "summary": "Simulation completed.",
+                "content": {
+                    "title": "Simulated trade request",
+                    "subtitle": "Shared presentation frame",
+                    "focus": "BUY 1 SYNTH @ 10 TEST",
+                    "fields": [{"label": "Order", "value": "Limit · GTC"}],
+                    "warning": "Simulation only.",
+                },
+            },
+        ]
+    )
+
+    def compile_frame(method: str, params: Mapping[str, Any]) -> dict[str, Any]:
+        calls.append((method, params))
+        return {"operationFrame": next(frames)}
+
+    monkeypatch.setattr(goal_channel_operation, "effect_runtime_result", compile_frame)
+    proposal = {"proposal_id": "operation-1"}
+
+    confirmation = build_goal_channel_operation_card(proposal)
+    result = build_goal_channel_operation_result_card(proposal)
+
+    assert len(calls) == 2
+    assert all(
+        method == "presentation.action_review_plan.compile"
+        and params == {"proposal": proposal}
+        for method, params in calls
+    )
+    assert confirmation["header"]["title"]["content"] == "Simulated trade request"
+    assert result["header"]["text_tag_list"][0]["text"]["content"] == "模拟完成"
 
 
 def test_cli_preparation_previews_without_write_then_persists_canonical_proposal(

@@ -1,4 +1,7 @@
-import { compileActionReviewPlan, isStaleActionFailure } from "../src/features/personal-workspace/action-review-plan.js";
+import {
+  compileActionReviewPlan,
+  isStaleActionFailure,
+} from "../../../../loopx/control_plane/presentation/action_review_plan.js";
 import { typedActionProposalSchema, type TypedActionProposal } from "../src/data/chat.js";
 
 const proposal: TypedActionProposal = {
@@ -62,3 +65,41 @@ check(isStaleActionFailure({ error_code: "action_stale" }), "Typed stale errors 
 check(isStaleActionFailure({ error_code: "action_conflict" }), "Typed conflicts offer refresh");
 check(isStaleActionFailure({ proposal: { status: "stale" } }), "Typed stale proposal survives error wrapping");
 check(!isStaleActionFailure({ error_code: "canonical_action_failed", error: "conflict with unrelated external service" }), "Error wording cannot classify source state");
+
+const operationProposal = typedActionProposalSchema.parse({
+  ...proposal,
+  proposal_id: "operation-1",
+  action_kind: "operation.execute",
+  permission_classification: "protected",
+  status: "gated",
+  normalized_parameters: {
+    projection: {
+      schema_version: "loopx_operation_projection_v0",
+      title: "Review simulated order",
+      subtitle: "Bound Goal Channel request",
+      focus: "BUY 1 SYNTH @ 10 TEST",
+      fields: [{ label: "Order", value: "Limit · GTC" }],
+      warning: "Simulation only.",
+      simulated: true,
+    },
+  },
+  operation: {
+    schema_version: "loopx_operation_envelope_v0",
+    lifecycle_state: "awaiting_confirmation",
+    operation_id: "operation-1",
+    confirmation_digest: "confirmation-1",
+    payload_digest: "payload-1",
+    projection_digest: "projection-1",
+    expires_at: "2026-01-02T00:00:00Z",
+    delivery: null,
+    confirmation: null,
+    claim: null,
+    outcome: null,
+    result_delivery: null,
+  },
+});
+const operationPlan = compileActionReviewPlan(operationProposal);
+check(operationPlan.interaction === "gated", "Operation execution keeps its authenticated human gate");
+check(operationPlan.operationFrame?.kind === "confirmation", "Dashboard consumes the shared confirmation frame");
+check(operationPlan.operationFrame?.interactionMode === "confirm_reject", "The shared frame preserves confirm/reject interaction");
+check(operationPlan.operationFrame?.content.fields[0]?.value === "Limit · GTC", "The shared frame preserves bounded projection fields");

@@ -172,6 +172,7 @@ import {
   validateTurnStartHookRegistration,
 } from "./capability_hooks.ts";
 import { evaluatePostWritebackHookTransaction } from "./post_writeback_hook_transaction.ts";
+import { compileActionReviewPlan } from "./presentation/action_review_plan.ts";
 
 type EffectRuntimeHandler = (params: JsonObject) => unknown | Promise<unknown>;
 
@@ -494,6 +495,8 @@ export function createEffectRuntimeHandlers(
     ],
     ["task_lease.write_scopes.overlap", evaluateTaskLeaseWriteScopesOverlap],
     ["quota.monitor_poll.commit", evaluateQuotaMonitorPollCommit],
+    ["presentation.action_review_plan.compile", (params) =>
+      compileActionReviewPlan(params.proposal)],
     ["scheduler.monitor_successor.plan", planMonitorSuccessor],
     ["scheduler.monitor_target.select", selectMonitorTodoRequest],
     ["coordination.local_authority_shadow.record", recordLocalAuthorityShadow],

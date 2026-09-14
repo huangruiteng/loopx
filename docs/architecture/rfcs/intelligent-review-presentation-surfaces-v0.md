@@ -822,19 +822,30 @@ periodic digest, Lark rendering, or model assistance.
 - retain current backends and renderers;
 - publish the protocol and focused tests.
 
-The bounded implementation lives in Dashboard's
-`features/personal-workspace/action-review-plan.ts`. `compileActionReviewPlan`
-compiles proposals already validated by the Chat transport schema into an internal
-`action_review_plan_v0` union; this is not a new public wire contract or legal-action
-catalog. The Goal directory consumes `direct` for stop and the existing proposal
-drawer consumes the explanation and apply state. Resume and delete remain reviewed;
-incomplete, unknown-permission or stale lifecycle proposals offer recheck rather
-than direct execution. The shared Chat transport schema requires every validation
-evidence item to be non-blank text, preserving the original string. Malformed or
-mixed arrays fail parsing and show an execution error without calling apply. The
-compiler reuses the same schema for direct invocations; only lifecycle completeness
-requires a nonempty array, preserving generic actions with empty evidence arrays.
-Backend preview/apply, fingerprint and reducers are unchanged.
+The bounded implementation lives in
+`loopx/control_plane/presentation/action_review_plan.ts`.
+`compileActionReviewPlan` compiles proposals already validated by the Chat
+transport schema into an internal `action_review_plan_v0` union; this is not a
+new public wire contract or legal-action catalog. The Goal directory consumes
+`direct` for stop and the existing proposal drawer consumes the explanation and
+apply state. Resume and delete remain reviewed; incomplete, unknown-permission
+or stale lifecycle proposals offer recheck rather than direct execution. The
+shared Chat transport schema requires every validation evidence item to be
+non-blank text, preserving the original string. Malformed or mixed arrays fail
+parsing and show an execution error without calling apply. The compiler reuses
+the same schema for direct invocations; only lifecycle completeness requires a
+nonempty array, preserving generic actions with empty evidence arrays. Backend
+preview/apply, fingerprint and reducers are unchanged.
+
+After the human-confirmed Goal Channel operation flow shipped, its Dashboard
+and Lark presentations became the second real consumer of this seam. The same
+compiler now emits an internal `operation_review_frame_v0` for confirmation,
+pending, and result states. Dashboard imports the pure reducer directly; each
+Lark card render requests the frame once through the managed TypeScript runtime
+and then performs only provider-specific Card 2.0 rendering and transport.
+Canonical lifecycle, authorization, claim, outcome, and delivery receipt state
+remain in the Python Chat action store. This does not add a new Lark entry point
+or move effect authority into presentation code.
 
 This slice also corrects failed-readback presentation: an `applied` proposal without
 `projection_verified: true` cannot display completion. Failed direct actions open

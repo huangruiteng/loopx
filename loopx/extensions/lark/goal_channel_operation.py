@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ...chat_action_store import ActionConflictError, ChatActionStore
+from ...control_plane.effect_runtime import effect_runtime_result
 from ...file_lock import exclusive_file_lock
 from ...extensions.runtime import (
     default_extension_state_file,
@@ -82,13 +83,32 @@ def _field_markdown(fields: list[Mapping[str, Any]]) -> str:
     )
 
 
+def _operation_review_frame(proposal: Mapping[str, Any]) -> dict[str, Any]:
+    """Read provider-neutral operation presentation semantics from TypeScript."""
+
+    plan = effect_runtime_result(
+        "presentation.action_review_plan.compile",
+        {"proposal": proposal},
+    )
+    if not isinstance(plan, Mapping):
+        raise ValueError("operation review plan is unavailable")
+    frame = plan.get("operationFrame")
+    if (
+        not isinstance(frame, Mapping)
+        or frame.get("schemaVersion") != "operation_review_frame_v0"
+        or frame.get("operationId") != proposal.get("proposal_id")
+    ):
+        raise ValueError("operation review frame is unavailable")
+    return dict(frame)
+
+
 def build_goal_channel_operation_card(
     proposal: Mapping[str, Any],
 ) -> dict[str, Any]:
-    parameters, operation = _proposal_operation(proposal)
-    if operation.get("lifecycle_state") != "awaiting_confirmation":
+    frame = _operation_review_frame(proposal)
+    if frame.get("kind") != "confirmation":
         raise ActionConflictError("operation is not awaiting confirmation")
-    projection = parameters.get("projection")
+    projection = frame.get("content")
     if not isinstance(projection, Mapping):
         raise ValueError("operation projection is unavailable")
     fields = projection.get("fields")
@@ -98,10 +118,10 @@ def build_goal_channel_operation_card(
         raise ValueError("operation projection fields are unavailable")
     action_base = {
         "schema_version": OPERATION_CARD_ACTION_SCHEMA_VERSION,
-        "operation_id": operation["operation_id"],
-        "confirmation_digest": operation["confirmation_digest"],
+        "operation_id": frame["operationId"],
+        "confirmation_digest": frame["confirmationDigest"],
     }
-    simulated = projection.get("simulated") is True
+    simulated = frame.get("simulated") is True
     return {
         "schema": "2.0",
         "config": {
@@ -272,18 +292,18 @@ def build_goal_channel_operation_card(
 def build_goal_channel_operation_result_card(
     proposal: Mapping[str, Any],
 ) -> dict[str, Any]:
-    parameters, operation = _proposal_operation(proposal)
-    if operation.get("lifecycle_state") != "outcome_observed":
+    frame = _operation_review_frame(proposal)
+    if frame.get("kind") != "result":
         raise ActionConflictError("operation outcome is not available")
-    outcome = operation.get("outcome")
-    projection = parameters.get("projection")
-    if not isinstance(outcome, Mapping) or not isinstance(projection, Mapping):
+    projection = frame.get("content")
+    if not isinstance(projection, Mapping):
         raise ValueError("operation result projection is unavailable")
-    rejected = outcome.get("outcome") == "rejected_by_operator"
-    simulated = outcome.get("simulation") is True or projection.get("simulated") is True
+    result_kind = frame.get("resultKind")
+    rejected = result_kind == "rejected"
+    simulated = result_kind == "simulation_completed"
     template = "red" if rejected else "green"
     result_label = "已拒绝" if rejected else "模拟完成" if simulated else "已完成"
-    summary = str(outcome.get("summary") or result_label)
+    summary = str(frame.get("summary") or result_label)
     return {
         "schema": "2.0",
         "config": {
@@ -348,8 +368,8 @@ def build_goal_channel_operation_result_card(
                                 {
                                     "tag": "markdown",
                                     "content": (
-                                        f"**Operation**\n{operation['operation_id']}\n"
-                                        f"**Digest**\n{operation['confirmation_digest'][:16]}…"
+                                        f"**Operation**\n{frame['operationId']}\n"
+                                        f"**Digest**\n{frame['confirmationDigest'][:16]}…"
                                     ),
                                     "text_size": "notation",
                                 }

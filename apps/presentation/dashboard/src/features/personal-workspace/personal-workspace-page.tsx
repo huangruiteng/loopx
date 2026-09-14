@@ -1,4 +1,7 @@
-import { compileActionReviewPlan, isStaleActionFailure } from "./action-review-plan";
+import {
+  compileActionReviewPlan,
+  isStaleActionFailure,
+} from "../../../../../../loopx/control_plane/presentation/action_review_plan.js";
 import { refreshAttention } from "./attention-details";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import { AlertCircle, Bot, CalendarClock, FileText, ListPlus, MessageCircleQuestion, Paperclip, Plus, RefreshCw, Send, X } from "lucide-react";
@@ -485,42 +488,40 @@ function proposalFields(parameters: Record<string, unknown>, t: WorkspaceTransla
     }));
 }
 
-function operationProposalFields(proposal: TypedActionProposal, t: WorkspaceTranslate) {
-  const projection = proposal.normalized_parameters.projection;
-  const safeProjection = projection && typeof projection === "object"
-    ? projection as Record<string, unknown>
-    : {};
-  const projectedFields = Array.isArray(safeProjection.fields)
-    ? safeProjection.fields.flatMap((field, index) => {
-      if (!field || typeof field !== "object") return [];
-      const item = field as Record<string, unknown>;
-      if (typeof item.label !== "string" || typeof item.value !== "string") return [];
-      return [{ key: `projection:${index}`, label: item.label, value: item.value }];
-    }).slice(0, 8)
-    : [];
+function operationProposalFields(
+  proposal: TypedActionProposal,
+  reviewPlan: ReturnType<typeof compileActionReviewPlan>,
+  t: WorkspaceTranslate,
+) {
+  const frame = reviewPlan.operationFrame;
+  const projectedFields = frame?.content.fields.map((field, index) => ({
+    key: `projection:${index}`,
+    label: field.label,
+    value: field.value,
+  })).slice(0, 8) ?? [];
   return [
     {
       key: "operation_state",
       label: t("proposal.field.operationState"),
-      value: proposal.operation?.lifecycle_state ?? proposal.status,
+      value: frame?.lifecycleState ?? proposal.status,
     },
-    ...(proposal.operation?.lifecycle_state === "outcome_observed" ? [{
+    ...(frame?.kind === "result" ? [{
       key: "result_delivery",
       label: t("proposal.field.resultDelivery"),
-      value: proposal.operation.result_delivery
+      value: frame.resultDeliveryVerified
         ? t("proposal.resultDelivery.verified")
         : t("proposal.resultDelivery.pending"),
     }] : []),
     ...projectedFields,
-    ...(typeof safeProjection.warning === "string" ? [{
+    ...(frame ? [{
       key: "warning",
       label: t("proposal.field.confirmationBoundary"),
-      value: safeProjection.warning,
+      value: frame.content.warning,
     }] : []),
-    ...(proposal.operation?.expires_at ? [{
+    ...(frame ? [{
       key: "expires_at",
       label: t("proposal.field.expiresAt"),
-      value: proposal.operation.expires_at,
+      value: frame.expiresAt,
     }] : []),
   ].slice(0, 10);
 }
@@ -553,11 +554,8 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
   const target = typeof proposal.normalized_parameters.target === "string"
     ? proposal.normalized_parameters.target
     : "";
-  const operationProjection = proposal.normalized_parameters.projection;
-  const operationTitle = operationProjection && typeof operationProjection === "object"
-    && typeof (operationProjection as Record<string, unknown>).title === "string"
-    ? String((operationProjection as Record<string, unknown>).title)
-    : proposal.summary;
+  const operationFrame = reviewPlan.operationFrame;
+  const operationTitle = operationFrame?.content.title ?? proposal.summary;
   const localizedSummary = proposal.action_kind === "operation.execute"
     ? operationTitle
     : proposal.action_kind === "goal.create"
@@ -577,7 +575,7 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
     actionKind: proposal.action_kind,
     reviewPlan,
     fields: proposal.action_kind === "operation.execute"
-      ? operationProposalFields(proposal, t)
+      ? operationProposalFields(proposal, reviewPlan, t)
       : proposalFields(proposal.normalized_parameters, t),
     goalId: typeof proposal.normalized_parameters.goal_id === "string" ? proposal.normalized_parameters.goal_id : undefined,
     impact: proposal.action_kind === "operation.execute"
@@ -601,8 +599,8 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
       summary: String(proposal.gate.summary ?? t("proposal.gate.default")),
     } : undefined,
     primaryLabel: proposal.action_kind === "operation.execute"
-      ? proposal.operation?.lifecycle_state === "outcome_observed"
-        ? proposal.operation.result_delivery
+      ? operationFrame?.kind === "result"
+        ? operationFrame.resultDeliveryVerified
           ? t("proposal.primary.operationResultVerified")
           : t("proposal.primary.operationResultPending")
         : t("proposal.primary.operationGroup")

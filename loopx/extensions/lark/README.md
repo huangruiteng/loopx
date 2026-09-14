@@ -80,6 +80,11 @@ remain in the Core Chat action store; Lark owns only authenticated transport,
 callback provenance checks, and result-card readback. It does not create a
 second User Todo or approval ledger.
 
+Confirmation and result cards consume the same internal TypeScript
+`operation_review_frame_v0` used by Dashboard. Lark requests that frame once per
+card render, then owns only provider-specific Card 2.0 markup and delivery; the
+frame neither grants authority nor replaces the canonical operation receipt.
+
 ```bash
 loopx goal-channel prepare-operation \
   --goal-id <goal-id> \

@@ -49,7 +49,7 @@ include = ["loopx*"]
 
 [tool.setuptools.package-data]
 "loopx" = ["web/chat/*.html", "web/chat/assets/*", "web/chat/manifest.webmanifest", "web/chat/pwa/*"]
-"loopx.control_plane" = ["*.json", "*.ts"]
+"loopx.control_plane" = ["*.json", "*.ts", "presentation/*.ts"]
 "loopx.control_plane.agents" = ["*.ts"]
 "loopx.control_plane.coordination" = ["*.ts", "*.json"]
 "loopx.control_plane.goals" = ["*.ts"]

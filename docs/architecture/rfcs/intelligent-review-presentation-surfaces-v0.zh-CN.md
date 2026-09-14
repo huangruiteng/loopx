@@ -657,7 +657,8 @@ Durable report 与 living document 还必须携带 artifact identity、source li
 - 保持当前 backend 与 renderer；
 - 发布 protocol 与聚焦测试。
 
-当前有界实现位于 Dashboard 的 `features/personal-workspace/action-review-plan.ts`。
+当前有界实现位于
+`loopx/control_plane/presentation/action_review_plan.ts`。
 `compileActionReviewPlan` 从已通过 Chat transport schema 的 proposal 编译内部
 `action_review_plan_v0` union；它不是新的公开 wire contract 或合法动作目录。
 Goal 列表的暂停入口消费 `direct`，现有动作抽屉消费解释与可执行状态。
@@ -667,6 +668,15 @@ Goal 列表的暂停入口消费 `direct`，现有动作抽屉消费解释与可
 不会触发 apply。编译器复用同一 schema 校验直接调用的输入；仅生命周期直接
 执行额外要求数组非空，其他动作原有的空数组审阅路径保持兼容。
 后端 preview/apply、fingerprint 与 reducer 不变。
+
+Human-confirmed Goal Channel operation 链路交付后，它的 Dashboard 与 Lark
+展示成为这条 seam 的第二个真实消费者。同一个 compiler 现在为 confirmation、
+pending 与 result 状态生成内部 `operation_review_frame_v0`。Dashboard 直接导入
+pure reducer；每次 Lark 卡片渲染只通过 managed TypeScript runtime 请求一次
+frame，随后仅负责 Card 2.0 的 provider-specific 渲染与 transport。Canonical
+lifecycle、authorization、claim、outcome 与 delivery receipt 仍由 Python Chat
+action store 持有。这不会新增 Lark 入口，也不会把 effect authority 移入
+presentation code。
 
 本切片同时修正失败读回的展示：`applied` 但无 `projection_verified: true`
 不能显示已完成，直接操作也会打开异常详情并回滚乐观显示。其他动作保留原有
