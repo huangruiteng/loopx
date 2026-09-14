@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -113,9 +114,10 @@ def capture_delivery_workspace(
 ) -> dict[str, Any] | None:
     """Capture a compact, credential-free delivery workspace identity.
 
-    Git deliveries bind to their canonical repository identity. A single-agent
+    Git deliveries bind to their canonical repository identity and, when HEAD
+    exists, an opaque digest of its content-addressed revision. A single-agent
     non-Git goal may instead bind to its stable LoopX goal identity. The
-    snapshot intentionally excludes local paths and branch names.
+    snapshot intentionally excludes local paths, branch names and raw commits.
     """
 
     path = current_path or Path.cwd()
@@ -146,12 +148,18 @@ def capture_delivery_workspace(
     current_common = _git_common_dir(path)
     current_git_dir = _git_dir(path)
     task_repository = _git_repository_identity(path)
+    workspace_revision = _git_command_output(path, "rev-parse", "HEAD")
     if (
         not task_repository
         or current_common is None
         or current_git_dir is None
     ):
         return None
+    workspace_revision_digest = (
+        sha256(f"{task_repository}\0{workspace_revision}".encode()).hexdigest()
+        if workspace_revision is not None
+        else None
+    )
     workspace_kind = (
         "independent_git_worktree"
         if current_git_dir != current_common
@@ -163,6 +171,7 @@ def capture_delivery_workspace(
         repository_source=repository_source or "current_git_origin",
         workspace_kind=workspace_kind,
         peer_independent_worktree_required=peer_independent_worktree_required,
+        workspace_revision_digest=workspace_revision_digest,
     )
 
 

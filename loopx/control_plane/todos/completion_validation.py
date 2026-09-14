@@ -124,12 +124,13 @@ def _resolve_completion_validation_workspace(
     """Resolve the authority-bound workspace for one validation effect.
 
     The Goal repository remains the default when a Todo does not select a
-    separate repository.  A cross-repository Todo must instead present the
-    path-free, turn-bound delivery-workspace snapshot and run from a clean
-    independent worktree with the same canonical repository identity. The
-    snapshot may come from prior writeback or from the host's exact-Turn
-    pre-completion check because completion itself precedes refresh. The
-    candidate path is host execution context, never a public CLI cwd override.
+    repository.  When the host supplies a path-free, turn-bound delivery
+    workspace snapshot, validation must honor that exact clean independent
+    worktree even when it has the same canonical repository identity as the
+    Goal checkout. The snapshot may come from prior writeback or from the
+    host's exact-Turn pre-completion check because completion itself precedes
+    refresh. The candidate path is host execution context, never a public CLI
+    cwd override.
     """
 
     goal_workspace = _resolve_goal_repo_workspace(registry_path, goal_id)
@@ -146,31 +147,33 @@ def _resolve_completion_validation_workspace(
     if not expected_repository:
         return goal_workspace, None
 
-    goal_snapshot = capture_delivery_workspace(goal_workspace)
-    if delivery_workspace_repository(goal_snapshot) == expected_repository:
-        return goal_workspace, None
+    recorded = None
+    if delivery_workspace is not None:
+        try:
+            recorded = normalize_delivery_workspace_snapshot(delivery_workspace)
+        except (RuntimeError, TypeError, ValueError):
+            # Decoder rejection is an input/receipt failure, not an adapter crash.
+            # Keep it inside the path-free completion state model and never expose
+            # the TypeScript decoder's internal error text at the CLI/Turn boundary.
+            return None, _workspace_failure(
+                label,
+                status="workspace_receipt_invalid",
+                summary=(
+                    "the recorded delivery workspace receipt is invalid and cannot "
+                    "authorize completion validation"
+                ),
+            )
 
-    try:
-        recorded = normalize_delivery_workspace_snapshot(delivery_workspace)
-    except (RuntimeError, TypeError, ValueError):
-        # Decoder rejection is an input/receipt failure, not an adapter crash.
-        # Keep it inside the path-free completion state model and never expose
-        # the TypeScript decoder's internal error text at the CLI/Turn boundary.
-        return None, _workspace_failure(
-            label,
-            status="workspace_receipt_invalid",
-            summary=(
-                "the recorded delivery workspace receipt is invalid and cannot "
-                "authorize cross-repository validation"
-            ),
-        )
     if recorded is None:
+        goal_snapshot = capture_delivery_workspace(goal_workspace)
+        if delivery_workspace_repository(goal_snapshot) == expected_repository:
+            return goal_workspace, None
         return None, _workspace_failure(
             label,
             status="workspace_receipt_unavailable",
             summary=(
-                "cross-repository validation requires a verified delivery "
-                "workspace receipt for the selected Todo"
+                "validation outside the Goal repository requires a verified "
+                "delivery workspace receipt for the selected Todo"
             ),
         )
     if (
@@ -196,21 +199,25 @@ def _resolve_completion_validation_workspace(
             label,
             status="workspace_unverified",
             summary=(
-                "cross-repository validation requires a verifiable independent "
-                "Git worktree"
+                "recorded delivery-workspace validation requires a verifiable "
+                "independent Git worktree"
             ),
         )
     if (
         delivery_workspace_repository(current) != expected_repository
         or current.get("workspace_kind") != "independent_git_worktree"
-        or current.get("workspace_identity") != recorded.get("workspace_identity")
+        or (
+            recorded.get("workspace_revision_digest") is not None
+            and current.get("workspace_revision_digest")
+            != recorded.get("workspace_revision_digest")
+        )
     ):
         return None, _workspace_failure(
             label,
             status="workspace_repository_mismatch",
             summary=(
                 "the current validation worktree does not match the recorded "
-                "delivery repository"
+                "delivery workspace"
             ),
         )
     clean = _git_workspace_is_clean(candidate)
@@ -219,8 +226,8 @@ def _resolve_completion_validation_workspace(
             label,
             status=("workspace_dirty" if clean is False else "workspace_unverified"),
             summary=(
-                "cross-repository validation requires a clean, verifiable "
-                "delivery worktree"
+                "recorded delivery-workspace validation requires a clean, "
+                "verifiable delivery worktree"
             ),
         )
     return candidate, None
@@ -320,14 +327,17 @@ def _run_declared_completion_validation(
             "stderr_captured": False,
             "local_path_captured": False,
         }
-    except (FileNotFoundError, PermissionError) as exc:
+    except (FileNotFoundError, PermissionError):
         return {
             "schema_version": CALLER_VALIDATION_RECEIPT_SCHEMA_VERSION,
             "command_label": label,
             "exit_code": None,
             "passed": False,
             "status": "command_not_run",
-            "summary": f"validation command could not be launched: {exc}",
+            "summary": (
+                "validation command could not be launched because its executable "
+                "is unavailable"
+            ),
             "stdout_captured": False,
             "stderr_captured": False,
             "local_path_captured": False,

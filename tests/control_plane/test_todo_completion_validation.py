@@ -162,6 +162,71 @@ def _cross_repository_worktree(
     return task_repository, worktree, snapshot
 
 
+def _same_repository_worktrees(
+    tmp_path: Path,
+) -> tuple[Path, str, Path, dict[str, Any], Path]:
+    registry, state = _write_fixture(tmp_path)
+    repository = state.parent
+    _git("init", "-b", "main", cwd=repository)
+    _git("config", "user.name", "LoopX Test", cwd=repository)
+    _git("config", "user.email", "loopx-test@example.invalid", cwd=repository)
+    _git(
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/shared.git",
+        cwd=repository,
+    )
+    _git("add", state.name, cwd=repository)
+    _git("commit", "-m", "fixture", cwd=repository)
+    delivery_worktree = tmp_path / "shared-delivery-worktree"
+    _git(
+        "worktree",
+        "add",
+        "-b",
+        "test-shared-delivery",
+        str(delivery_worktree),
+        cwd=repository,
+    )
+    (delivery_worktree / "delivery-only").write_text("ok\n", encoding="utf-8")
+    _git("add", "delivery-only", cwd=delivery_worktree)
+    _git("commit", "-m", "delivery fixture", cwd=delivery_worktree)
+    receipt = capture_delivery_workspace(
+        delivery_worktree,
+        peer_independent_worktree_required=True,
+        repository_source="test_settlement",
+    )
+    assert receipt is not None
+    assert re.fullmatch(
+        r"[0-9a-f]{64}",
+        str(receipt["workspace_revision_digest"]),
+    )
+    raw_revision = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=delivery_worktree,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert raw_revision not in json.dumps(receipt)
+    other_worktree = tmp_path / "shared-other-worktree"
+    _git(
+        "worktree",
+        "add",
+        "-b",
+        "test-shared-other",
+        str(other_worktree),
+        cwd=repository,
+    )
+    return (
+        registry,
+        str(receipt["task_repository"]),
+        delivery_worktree,
+        receipt,
+        other_worktree,
+    )
+
+
 def _record_completion_runtime_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[str]:
@@ -255,6 +320,82 @@ def test_cross_repository_validation_runs_in_recorded_clean_worktree(
     assert result["ok"] is True
     assert result["changed"] is True
     assert _agent_todo(state, str(todo["todo_id"]))["status"] == "done"
+
+
+def test_same_repository_validation_prefers_recorded_exact_worktree(
+    tmp_path: Path,
+) -> None:
+    registry, task_repository, worktree, workspace_receipt, _other = (
+        _same_repository_worktrees(tmp_path)
+    )
+    state = registry.parent / "repo" / "ACTIVE_GOAL_STATE.md"
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; assert Path('delivery-only').is_file()",
+            ]
+        ),
+        task_repository=task_repository,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="validated in the exact same-repository worktree",
+        completion_delivery_workspace=workspace_receipt,
+        completion_validation_workspace_path=worktree,
+    )
+
+    assert result["ok"] is True
+    assert result["changed"] is True
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "done"
+
+
+def test_same_repository_validation_rejects_different_revision_without_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry, task_repository, _worktree, workspace_receipt, other_worktree = (
+        _same_repository_worktrees(tmp_path)
+    )
+    state = registry.parent / "repo" / "ACTIVE_GOAL_STATE.md"
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps([sys.executable, "-c", "pass"]),
+        task_repository=task_repository,
+    )
+    calls = {"count": 0}
+
+    def forbidden_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["count"] += 1
+        raise AssertionError("validation command must not run")
+
+    monkeypatch.setattr(
+        completion_validation_module,
+        "run_caller_validation",
+        forbidden_runner,
+    )
+
+    result = complete_goal_todo(
+        registry_path=registry,
+        goal_id=GOAL_ID,
+        todo_id=str(todo["todo_id"]),
+        agent_id=AGENT,
+        evidence="wrong same-repository revision claim",
+        completion_delivery_workspace=workspace_receipt,
+        completion_validation_workspace_path=other_worktree,
+    )
+
+    assert calls["count"] == 0
+    assert result["validation_blocked_completion"] is True
+    assert result["validation"]["status"] == "workspace_repository_mismatch"
+    assert str(tmp_path) not in json.dumps(result["validation"])
+    assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
 
 
 def test_cross_repository_validation_without_recorded_workspace_fails_closed(
@@ -428,7 +569,11 @@ def test_missing_validation_executable_returns_typed_receipt(
     tmp_path: Path,
 ) -> None:
     registry, state = _write_fixture(tmp_path)
-    todo = _add_todo(registry, validation_command="nonexistent-binary-xyz-12345")
+    missing_executable = tmp_path / "private" / "nonexistent-binary"
+    todo = _add_todo(
+        registry,
+        validation_command_json=json.dumps([str(missing_executable)]),
+    )
     result = complete_goal_todo(
         registry_path=registry,
         goal_id=GOAL_ID,
@@ -441,6 +586,8 @@ def test_missing_validation_executable_returns_typed_receipt(
     receipt = result["validation"]
     assert receipt["passed"] is False
     assert receipt["status"] == "command_not_run"
+    assert str(missing_executable) not in json.dumps(receipt)
+    assert receipt["local_path_captured"] is False
     assert _agent_todo(state, str(todo["todo_id"]))["status"] == "open"
 
 

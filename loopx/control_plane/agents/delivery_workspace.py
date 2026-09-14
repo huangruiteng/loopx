@@ -56,7 +56,11 @@ def _workspace_result(result: Mapping[str, Any]) -> dict[str, Any] | None:
         "workspace_kind",
         "peer_independent_worktree_required",
     }
-    if set(value) != expected_keys:
+    actual_keys = set(value)
+    if actual_keys not in (
+        expected_keys,
+        expected_keys | {"workspace_revision_digest"},
+    ):
         raise RuntimeError("TypeScript delivery workspace result shape mismatch")
     if (
         value.get("schema_version") != DELIVERY_WORKSPACE_SCHEMA_VERSION
@@ -65,6 +69,10 @@ def _workspace_result(result: Mapping[str, Any]) -> dict[str, Any] | None:
         or not isinstance(value.get("repository_source"), str)
         or value.get("workspace_kind") not in DELIVERY_WORKSPACE_KINDS
         or not isinstance(value.get("peer_independent_worktree_required"), bool)
+        or (
+            value.get("workspace_revision_digest") is not None
+            and not isinstance(value.get("workspace_revision_digest"), str)
+        )
         or (
             value.get("task_repository") is not None
             and not isinstance(value.get("task_repository"), str)
@@ -81,6 +89,7 @@ def build_delivery_workspace_snapshot(
     repository_source: str,
     workspace_kind: str,
     peer_independent_worktree_required: bool,
+    workspace_revision_digest: str | None = None,
 ) -> dict[str, Any] | None:
     return _workspace_result(
         _runtime_result(
@@ -88,6 +97,7 @@ def build_delivery_workspace_snapshot(
             observation={
                 "workspace_identity": workspace_identity,
                 "identity_kind": identity_kind,
+                "workspace_revision_digest": workspace_revision_digest,
                 "repository_source": repository_source,
                 "workspace_kind": workspace_kind,
                 "peer_independent_worktree_required": bool(
@@ -106,6 +116,7 @@ def normalize_delivery_workspace_snapshot(value: Any) -> dict[str, Any] | None:
         "workspace_identity": value.get("workspace_identity"),
         "identity_kind": value.get("identity_kind"),
         "task_repository": value.get("task_repository"),
+        "workspace_revision_digest": value.get("workspace_revision_digest"),
         "repository_source": value.get("repository_source"),
         "workspace_kind": value.get("workspace_kind"),
         "peer_independent_worktree_required": value.get(

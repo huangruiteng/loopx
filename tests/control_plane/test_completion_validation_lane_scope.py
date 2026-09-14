@@ -18,6 +18,9 @@ from loopx.control_plane.todos.completion_validation_accountability import (
 from loopx.control_plane.todos.completion_validation_projection import (
     pending_completion_validation_todo,
 )
+from loopx.control_plane.turn_driver.delivery_continuity import (
+    DELIVERY_BOUNDARY_IN_FLIGHT,
+)
 
 LANE_AGENT = "kiro-cli"
 OTHER_AGENT = "codex-main-control"
@@ -134,3 +137,40 @@ def test_accountable_refresh_is_not_fenced_by_unclaimed_gated_todo() -> None:
         todo_id=None,
         agent_id=LANE_AGENT,
     )
+
+
+def test_in_flight_progress_is_not_fenced_by_open_validation_todo() -> None:
+    """Intermediate evidence may settle without claiming Todo completion."""
+
+    require_accountable_completion_validation(
+        "",
+        todo_id="todo_named",
+        agent_id=LANE_AGENT,
+        todo_fields={
+            "agent_todos": _summary(
+                _gated("todo_named", claimed_by=LANE_AGENT),
+            )
+        },
+        delivery_boundary=DELIVERY_BOUNDARY_IN_FLIGHT,
+        delivery_outcome="outcome_progress",
+    )
+
+
+def test_primary_outcome_still_requires_terminal_completion_validation() -> None:
+    try:
+        require_accountable_completion_validation(
+            "",
+            todo_id="todo_named",
+            agent_id=LANE_AGENT,
+            todo_fields={
+                "agent_todos": _summary(
+                    _gated("todo_named", claimed_by=LANE_AGENT),
+                )
+            },
+            delivery_boundary=DELIVERY_BOUNDARY_IN_FLIGHT,
+            delivery_outcome="primary_goal_outcome",
+        )
+    except ValueError as exc:
+        assert "completion validation" in str(exc)
+    else:
+        raise AssertionError("primary outcome must not bypass terminal validation")

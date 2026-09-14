@@ -100,6 +100,9 @@ from .control_plane.todos.contract import (
 from .control_plane.todos.completion_validation_accountability import (
     require_accountable_completion_validation,
 )
+from .control_plane.turn_driver.delivery_continuity import (
+    normalize_delivery_boundary,
+)
 
 DEFAULT_REFRESH_CLASSIFICATION = "state_refreshed"
 GOAL_PROGRESS_SCOPE = "goal"
@@ -822,6 +825,7 @@ def refresh_state_run(
     normalized_delivery_outcome = (
         require_delivery_outcome(delivery_outcome).value if delivery_outcome else None
     )
+    normalized_delivery_boundary = normalize_delivery_boundary(delivery_boundary)
     normalized_repair_delta_kinds = normalize_repair_delta_kinds(repair_delta_kinds)
     normalized_progress_observation = (
         normalize_progress_observation(
@@ -893,7 +897,7 @@ def refresh_state_run(
                     },
                     "delivery_outcome": normalized_delivery_outcome,
                     "delivery_batch_scale": normalized_delivery_batch_scale,
-                    "delivery_boundary": delivery_boundary,
+                    "delivery_boundary": normalized_delivery_boundary,
                     "progress_observation": normalized_progress_observation,
                 },
             )
@@ -953,6 +957,8 @@ def refresh_state_run(
                 todo_fields=todo_fields,
                 todo_id=(settlement_identity.todo_id if settlement_identity else None),
                 agent_id=normalized_agent_id or None,
+                delivery_boundary=normalized_delivery_boundary,
+                delivery_outcome=normalized_delivery_outcome,
             )
         normalized_next_action = normalize_next_action_text(next_action) if next_action else None
         registered_agents = registered_agents_for_goal(registry_goal)
@@ -1117,7 +1123,7 @@ def refresh_state_run(
             vision_unchanged_reason=vision_unchanged_reason,
             delivery_outcome=normalized_delivery_outcome,
             active_state_next_action_update=active_state_next_action_update,
-            delivery_boundary=delivery_boundary,
+            delivery_boundary=normalized_delivery_boundary,
             todo_id=(settlement_identity.todo_id if settlement_identity else None),
             completion_todo_id=completion_todo_id,
             autonomous_replan_recorded=effective_autonomous_replan_recorded,

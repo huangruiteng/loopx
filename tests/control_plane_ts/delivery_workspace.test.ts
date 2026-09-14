@@ -14,6 +14,8 @@ test("builds typed git and local-goal workspace snapshots", () => {
     observation: {
       workspace_identity: "git:GitHub.com/example/loopx.git",
       identity_kind: "git_repository",
+      workspace_revision_digest:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       repository_source: "current_git_origin",
       workspace_kind: "independent_git_worktree",
       peer_independent_worktree_required: true,
@@ -25,6 +27,8 @@ test("builds typed git and local-goal workspace snapshots", () => {
       workspace_identity: "git:github.com/example/loopx",
       identity_kind: "git_repository",
       task_repository: "git:github.com/example/loopx",
+      workspace_revision_digest:
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       repository_source: "current_git_origin",
       workspace_kind: "independent_git_worktree",
       peer_independent_worktree_required: true,

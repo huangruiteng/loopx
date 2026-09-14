@@ -32,6 +32,16 @@ DELIVERY_REPOSITORY = "git:example.invalid/loopx/delivery"
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
 
 
+def without_revision_digest(workspace: dict[str, object]) -> dict[str, object]:
+    workspace_contract = dict(workspace)
+    revision_digest = workspace_contract.pop("workspace_revision_digest")
+    assert isinstance(revision_digest, str)
+    assert len(revision_digest) == 64 and all(
+        character in "0123456789abcdef" for character in revision_digest
+    ), revision_digest
+    return workspace_contract
+
+
 def run_git(cwd: Path, *args: str) -> None:
     subprocess.run(
         ["git", "-C", str(cwd), *args],
@@ -207,7 +217,8 @@ def main() -> None:
                 sync_global=False,
             )
         workspace = refresh["delivery_workspace"]
-        assert workspace == {
+        workspace_contract = without_revision_digest(workspace)
+        assert workspace_contract == {
             "schema_version": "delivery_workspace_v1",
             "workspace_identity": DELIVERY_REPOSITORY,
             "identity_kind": "git_repository",
@@ -394,7 +405,7 @@ def main() -> None:
                 canonical_runtime,
                 quota_decision(workspace_repair=True),
             )
-        assert canonical_refresh["delivery_workspace"] == {
+        assert without_revision_digest(canonical_refresh["delivery_workspace"]) == {
             "schema_version": "delivery_workspace_v1",
             "workspace_identity": "git:example.invalid/loopx/canonical-delivery",
             "identity_kind": "git_repository",

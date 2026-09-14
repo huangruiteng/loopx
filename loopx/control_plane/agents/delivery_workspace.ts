@@ -43,6 +43,7 @@ export interface DeliveryWorkspaceSnapshot extends JsonObject {
   workspace_identity: string;
   identity_kind: DeliveryWorkspaceIdentityKind;
   task_repository: string | null;
+  workspace_revision_digest?: string;
   repository_source: string;
   workspace_kind: DeliveryWorkspaceKind;
   peer_independent_worktree_required: boolean;
@@ -54,6 +55,7 @@ const GIT_IDENTITY_PATTERN =
   /^git:[a-z0-9.-]+(?::[0-9]{1,5})?\/[A-Za-z0-9._~+/-]+$/i;
 const LOCAL_GOAL_IDENTITY_PATTERN =
   /^loopx:[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+const GIT_REVISION_DIGEST_PATTERN = /^[0-9a-f]{64}$/i;
 
 function operation(value: unknown): DeliveryWorkspaceOperation {
   return requireStringLiteral(
@@ -95,6 +97,7 @@ function localGoalIdentity(value: unknown, label: string): string | null {
 function snapshot(
   workspaceIdentity: string,
   identityKind: DeliveryWorkspaceIdentityKind,
+  workspaceRevisionDigest: string | null,
   repositorySource: string,
   workspaceKind: DeliveryWorkspaceKind,
   peerIndependentWorktreeRequired: boolean,
@@ -106,6 +109,8 @@ function snapshot(
     );
     if (
       !taskRepository ||
+      (workspaceRevisionDigest !== null &&
+        !GIT_REVISION_DIGEST_PATTERN.test(workspaceRevisionDigest)) ||
       (workspaceKind !== "canonical_checkout" &&
         workspaceKind !== "independent_git_worktree")
     ) return null;
@@ -114,6 +119,9 @@ function snapshot(
       workspace_identity: taskRepository,
       identity_kind: identityKind,
       task_repository: taskRepository,
+      ...(workspaceRevisionDigest === null
+        ? {}
+        : { workspace_revision_digest: workspaceRevisionDigest.toLowerCase() }),
       repository_source: repositorySource,
       workspace_kind: workspaceKind,
       peer_independent_worktree_required: peerIndependentWorktreeRequired,
@@ -122,7 +130,8 @@ function snapshot(
 
   const localIdentity = localGoalIdentity(workspaceIdentity, "workspace_identity");
   if (
-    !localIdentity || workspaceKind !== "local_goal_workspace" ||
+    !localIdentity || workspaceRevisionDigest !== null ||
+    workspaceKind !== "local_goal_workspace" ||
     peerIndependentWorktreeRequired
   ) return null;
   return {
@@ -153,6 +162,10 @@ export function buildDeliveryWorkspaceSnapshot(
   return snapshot(
     requireNonEmptyString(candidate.workspace_identity, "workspace_identity"),
     identityKind,
+    optionalNonEmptyString(
+      candidate.workspace_revision_digest,
+      "workspace_revision_digest",
+    ),
     requireNonEmptyString(candidate.repository_source, "repository_source"),
     workspaceKind,
     requireBoolean(
@@ -185,6 +198,7 @@ export function normalizeDeliveryWorkspaceSnapshot(
     return snapshot(
       taskRepository,
       "git_repository",
+      null,
       requireNonEmptyString(candidate.repository_source, "repository_source"),
       workspaceKind,
       requireBoolean(
@@ -208,6 +222,10 @@ export function normalizeDeliveryWorkspaceSnapshot(
   const normalized = snapshot(
     requireNonEmptyString(candidate.workspace_identity, "workspace_identity"),
     identityKind,
+    optionalNonEmptyString(
+      candidate.workspace_revision_digest,
+      "workspace_revision_digest",
+    ),
     requireNonEmptyString(candidate.repository_source, "repository_source"),
     workspaceKind,
     requireBoolean(
