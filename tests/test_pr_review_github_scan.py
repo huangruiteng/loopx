@@ -162,6 +162,7 @@ def test_pr_list_detail_reads_are_bounded_and_keep_queue_order(monkeypatch) -> N
         *,
         repository: str | None,
         cwd: Path | None = None,
+        run_gh_json=None,
     ) -> bool:
         nonlocal active, peak
         with lock:
@@ -189,7 +190,7 @@ def test_pr_list_detail_reads_are_bounded_and_keep_queue_order(monkeypatch) -> N
 
     assert [row["number"] for row in scan["pull_requests"]] == list(range(1, 13))
     assert peak > 1
-    assert peak <= pr_review_module.PR_REVIEW_DETAIL_MAX_WORKERS
+    assert peak <= github_source_module.PR_REVIEW_DETAIL_MAX_WORKERS
     assert scan["states"][0]["detail_read_failures"] == 0
 
 
