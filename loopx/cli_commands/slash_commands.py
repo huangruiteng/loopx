@@ -123,6 +123,12 @@ def register_slash_commands_command(
         help="Project directory for the Pi goal extension install. Defaults to the current directory.",
     )
     parser.add_argument(
+        "--pi-scope",
+        choices=("project", "user"),
+        default="project",
+        help="Install Pi extension code for one project or the current user. Defaults to project.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what slash-command files would be installed without writing them.",
@@ -152,6 +158,7 @@ def handle_slash_commands_command(
             cursor_home=args.cursor_home,
             zcode_home=getattr(args, "zcode_home", None),
             pi_project=args.pi_project,
+            pi_scope=args.pi_scope,
         )
         print_payload(payload, output_format(args), render_slash_command_install_markdown)
         return 0 if payload.get("ok") is True else 1

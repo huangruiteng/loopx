@@ -94,13 +94,13 @@ can discover user-installed skills:
   which drives the session over the OpenCode 2 HTTP API and owns the loop
   timers, so long runs survive TUI close. OpenCode 1 plugins do not run under
   OpenCode 2; see `loopx/opencode2_goal_mode/README.md`.
-- Pi: the self-contained goal extension under `.pi/extensions/loopx-goal.ts`
-  (with its loop core in `.pi/extensions/pi-goal-loop-runtime.mjs`) exposes
-  `/loopx` after restart and runs the quota-gated goal loop through
-  `loopx_goal_activate`. It is installed explicitly with
-  `loopx slash-commands --install --surface pi` (pass `--pi-project <path>`
-  to target another project from a different directory); private binding state
-  stays under each project's `.loopx/pi/` (already gitignored via `.loopx/`).
+- Pi: the self-contained goal extension exposes `/loopx` after `/reload` or a
+  restart and runs the quota-gated goal loop through `loopx_goal_activate`.
+  `loopx slash-commands --install --surface pi` installs it for the current
+  project; add `--pi-project <path>` for another project, or `--pi-scope user`
+  to install it under `~/.pi/agent/extensions/loopx/` for all projects. Only
+  extension code is global: private bindings remain under each project's
+  `.loopx/pi/` (already gitignored via `.loopx/`).
 
 The command family is the same across surfaces, even when the host-specific
 entry point is different:
