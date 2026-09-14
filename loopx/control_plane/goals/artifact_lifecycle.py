@@ -21,8 +21,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...presentation.public_safety import redact_public_text
 from ...public_safe_text import find_private_text_match
+from ..work_items.delivery_outcome import (
+    MATERIAL_DELIVERY_OUTCOMES,
+    normalize_delivery_outcome,
+)
 
 GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
     "goal_artifact_lifecycle_projection_v0"
@@ -48,8 +51,27 @@ _TOKEN_SHAPES = re.compile(
     r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16})\b"
 )
 
-# A material run outcome that a Goal's own acceptance can rest on.
-_MATERIAL_OUTCOMES = {"primary_goal_outcome", "outcome_progress", "multi_surface"}
+# Local path shapes this projection rewrites before publishing a label. The
+# control plane may not import the presentation layer's sanitizer, and the
+# lifecycle projection must not mint a second copy of the shared private-text
+# contract: it reuses `find_private_text_match` for classification and keeps
+# only this bounded, inward-safe rewrite.
+_PATH_SHAPES = (
+    re.compile(r"/(?:Users|home|private|tmp|var)/[^\s`|,)]+"),
+    re.compile(r"[A-Za-z]:\\\\Users\\\\[^\s`|,)]+"),
+)
+
+_TRUNCATION_MARKER = "..."
+
+
+def _bounded_redacted_text(value: Any, *, limit: int) -> str:
+    text = str(value or "").strip()
+    for pattern in _PATH_SHAPES:
+        text = pattern.sub("<local-path-redacted>", text)
+    text = re.sub(r"\s+", " ", text)
+    if len(text) > limit:
+        return text[: max(0, limit - 1)].rstrip() + _TRUNCATION_MARKER
+    return text
 
 
 def _compact_text(value: Any, *, limit: int = 240) -> str | None:
@@ -57,10 +79,10 @@ def _compact_text(value: Any, *, limit: int = 240) -> str | None:
 
     if not isinstance(value, str):
         return None
-    collapsed = redact_public_text(value, limit=limit)
+    collapsed = _bounded_redacted_text(value, limit=limit)
     if not collapsed:
         return None
-    # The shared sanitizer covers local paths; this projection additionally
+    # The shared private-text contract classifies; this projection additionally
     # refuses a value that still matches a private-text or credential shape
     # rather than publishing a partly-redacted fragment.
     if find_private_text_match(collapsed) or _TOKEN_SHAPES.search(collapsed):
@@ -125,13 +147,14 @@ def _evidence_milestones(run_history: dict[str, Any]) -> list[dict[str, Any]]:
         record = _mapping(run)
         if not record:
             continue
-        outcome = str(record.get("delivery_outcome") or "").strip()
-        scale = str(record.get("delivery_batch_scale") or "").strip()
-        classification = str(record.get("classification") or "").strip()
-        if outcome not in _MATERIAL_OUTCOMES and scale != "multi_surface":
+        outcome = normalize_delivery_outcome(record.get("delivery_outcome"))
+        # Only a canonical material delivery outcome is Goal evidence. The batch
+        # scale describes how wide a delivery was, never whether it advanced the
+        # Goal, so it cannot promote `surface_only` into a reached milestone.
+        if outcome is None or outcome not in MATERIAL_DELIVERY_OUTCOMES:
             continue
-        milestone_id = outcome or scale or classification
-        if not milestone_id or milestone_id in seen:
+        milestone_id = outcome.value
+        if milestone_id in seen:
             continue
         seen.add(milestone_id)
         reference = _compact_text(record.get("evidence_ref") or record.get("run_id"), limit=120)
@@ -343,6 +366,49 @@ def build_goal_artifact_lifecycle_projection(
     }
 
 
+def attach_goal_artifact_lifecycle_projections(
+    payload: dict[str, Any], *, history: dict[str, Any]
+) -> None:
+    """Attach one bounded lifecycle projection to every projected Goal.
+
+    Reads only payloads status collection already gathered, so the operator
+    readout costs no extra IO and grants no authority. A Goal the projection
+    cannot derive from is left without the key rather than given a placeholder.
+    """
+
+    sources = {str(goal.get("id")): goal for goal in _list(history.get("goals")) if _mapping(goal)}
+    run_history = _mapping(payload.get("run_history"))
+    items = _list(_mapping(payload.get("attention_queue")).get("items"))
+    for goal in _list(run_history.get("goals")):
+        record = _mapping(goal)
+        goal_id = str(record.get("id") or "").strip()
+        if not goal_id:
+            continue
+        source = {**sources.get(goal_id, {}), **record}
+        item = next(
+            (row for row in items if _mapping(row).get("goal_id") == goal_id), None
+        )
+        attention = _mapping(item)
+        projection = build_goal_artifact_lifecycle_projection(
+            goal_id=goal_id,
+            goal=source,
+            user_todo_summary=_mapping(
+                attention.get("user_todo_summary") or source.get("user_todo_summary")
+            ),
+            agent_todo_summary=_mapping(
+                attention.get("agent_todo_summary") or source.get("agent_todo_summary")
+            ),
+            run_history=run_history,
+            work_lane_contract=_mapping(
+                source.get("work_lane_contract") or attention.get("work_lane_contract")
+            ),
+            acceptance_gaps=_list(
+                source.get("acceptance_gaps") or attention.get("acceptance_gaps")
+            ),
+        )
+        record["artifact_lifecycle"] = projection
+
+
 __all__ = [
     "GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION",
     "GUARD_KIND_EVIDENCE",
@@ -352,5 +418,6 @@ __all__ = [
     "PHASE_QUALIFYING",
     "PHASE_STARTING",
     "PHASE_WAITING_OWNER",
+    "attach_goal_artifact_lifecycle_projections",
     "build_goal_artifact_lifecycle_projection",
 ]

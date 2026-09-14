@@ -302,6 +302,123 @@ def assert_private_values_are_redacted_or_dropped() -> None:
     )
 
 
+def assert_batch_scale_never_promotes_an_outcome() -> None:
+    """The batch scale describes delivery width; it is not Goal evidence.
+
+    Regression for the counterexample the review raised: a `surface_only` run
+    also carrying `delivery_batch_scale=multi_surface` must not become a reached
+    milestone, because the canonical typed rule
+    (`MATERIAL_DELIVERY_OUTCOMES`) excludes `surface_only`.
+    """
+
+    for scale in ("single_surface", "multi_surface"):
+        for outcome in ("surface_only", "", "bogus", "multi_surface"):
+            projection = build_goal_artifact_lifecycle_projection(
+                goal_id=GOAL_ID,
+                goal={"id": GOAL_ID, "status": "active"},
+                run_history={
+                    "latest_runs": [
+                        {
+                            "delivery_outcome": outcome,
+                            "delivery_batch_scale": scale,
+                            "run_id": "run-1",
+                        }
+                    ]
+                },
+            )
+            assert projection["milestones"] == [], (outcome, scale, projection["milestones"])
+    # Every canonical material outcome still counts, at any scale.
+    for scale in ("single_surface", "multi_surface"):
+        for outcome in ("outcome_gap", "outcome_progress", "primary_goal_outcome"):
+            projection = build_goal_artifact_lifecycle_projection(
+                goal_id=GOAL_ID,
+                goal={"id": GOAL_ID, "status": "active"},
+                run_history={
+                    "latest_runs": [
+                        {
+                            "delivery_outcome": outcome,
+                            "delivery_batch_scale": scale,
+                            "run_id": "run-1",
+                        }
+                    ]
+                },
+            )
+            reached = [item for item in projection["milestones"] if item["reached"]]
+            assert [item["id"] for item in reached] == [outcome], (outcome, scale, reached)
+
+
+def assert_status_collection_attaches_a_readable_readout() -> None:
+    """The RFC's smallest slice includes one readout in status markdown.
+
+    Drives the same seam `loopx status` uses: collection attaches the
+    projection, the presentation renderer prints it. The projection is derived
+    from already-collected payloads, so this asserts no extra IO is required.
+    """
+
+    from loopx.control_plane.goals.artifact_lifecycle import (
+        attach_goal_artifact_lifecycle_projections,
+    )
+    from loopx.presentation.renderers.status_markdown import render_status_markdown
+
+    payload = {
+        "run_history": {
+            "goals": [
+                {
+                    "id": GOAL_ID,
+                    "status": "active",
+                    "acceptance": {"milestones": ["baseline_pass"]},
+                }
+            ]
+        },
+        "attention_queue": {
+            "items": [
+                {
+                    "goal_id": GOAL_ID,
+                    "user_todo_summary": {
+                        "gate_open_items": [
+                            {
+                                "todo_id": "todo_gate",
+                                "text": "approve the release",
+                                "status": "open",
+                                "action_kind": "publish",
+                            }
+                        ]
+                    },
+                    "agent_todo_summary": {"open_count": 0},
+                }
+            ]
+        },
+    }
+    attach_goal_artifact_lifecycle_projections(payload, history={"goals": []})
+    goal = payload["run_history"]["goals"][0]
+    projection = goal["artifact_lifecycle"]
+    assert projection["schema_version"] == GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION
+    assert projection["lifecycle_phase"] == PHASE_WAITING_OWNER, projection
+    assert [guard["id"] for guard in projection["guards"]] == ["todo_gate"]
+    markdown = render_status_markdown(payload)
+    assert "artifact lifecycle: phase=waiting_owner" in markdown, markdown
+    assert "blocked by owner_decision (user): todo_gate" in markdown, markdown
+    assert_no_public_leak(projection)
+
+
+def assert_control_plane_imports_no_presentation_module() -> None:
+    """The projection may not depend outward on the presentation layer."""
+
+    import ast
+
+    source = (
+        REPO_ROOT / "loopx" / "control_plane" / "goals" / "artifact_lifecycle.py"
+    ).read_text(encoding="utf-8")
+    imported: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
+        elif isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+    offenders = [name for name in imported if "presentation" in name]
+    assert offenders == [], offenders
+
+
 def main() -> int:
     assert_starting_phase_without_work()
     assert_declared_milestone_stays_unreached_while_gapped()
@@ -313,6 +430,9 @@ def main() -> int:
     assert_unreached_milestone_blocks_closeout()
     assert_reached_milestones_still_allow_closeout()
     assert_private_values_are_redacted_or_dropped()
+    assert_batch_scale_never_promotes_an_outcome()
+    assert_status_collection_attaches_a_readable_readout()
+    assert_control_plane_imports_no_presentation_module()
     print("goal-artifact-lifecycle-projection-smoke ok")
     return 0
 
