@@ -24,6 +24,7 @@ from loopx.control_plane.goals.artifact_lifecycle import (
     PHASE_QUALIFYING,
     PHASE_STARTING,
     PHASE_WAITING_OWNER,
+    _compact_text,
     build_goal_artifact_lifecycle_projection,
 )
 
@@ -214,6 +215,93 @@ def assert_projection_is_pure_and_reads_no_state() -> None:
     assert first["lifecycle_phase"] == PHASE_QUALIFYING, first
 
 
+def assert_unreached_milestone_blocks_closeout() -> None:
+    """An unclaimed-acceptance Goal must not be told to close."""
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID,
+        goal={
+            "id": GOAL_ID,
+            "status": "active",
+            "acceptance": {"milestones": ["baseline_pass"]},
+        },
+        user_todo_summary={"gate_open_items": []},
+        agent_todo_summary={"open_count": 0},
+        run_history={"latest_runs": []},
+    )
+    assert projection["lifecycle_phase"] == PHASE_QUALIFYING, projection
+    transitions = projection["next_transitions"]
+    assert transitions, projection
+    assert transitions[0]["target_phase"] != PHASE_CLOSED, projection
+    assert transitions[0]["reason_codes"] == ["milestone_unreached"], projection
+
+
+def assert_reached_milestones_still_allow_closeout() -> None:
+    """The same inputs with evidence present do reach the closing phase."""
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID,
+        goal={
+            "id": GOAL_ID,
+            "status": "active",
+            "acceptance": {"milestones": ["primary_goal_outcome"]},
+        },
+        user_todo_summary={"gate_open_items": []},
+        agent_todo_summary={"open_count": 0},
+        run_history={
+            "latest_runs": [
+                {
+                    "delivery_outcome": "primary_goal_outcome",
+                    "delivery_batch_scale": "multi_surface",
+                }
+            ]
+        },
+    )
+    assert projection["lifecycle_phase"] == PHASE_CLOSING, projection
+    assert projection["next_transitions"][0]["target_phase"] == PHASE_CLOSED, projection
+
+
+def assert_private_values_are_redacted_or_dropped() -> None:
+    """A run-history reference is free text; private values must not survive."""
+
+    projection = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID,
+        goal={"id": GOAL_ID, "status": "active"},
+        agent_todo_summary={"open_count": 1},
+        run_history={
+            "latest_runs": [
+                {
+                    "delivery_outcome": "primary_goal_outcome",
+                    "delivery_batch_scale": "multi_surface",
+                    "evidence_ref": "/Users/private-owner/.ssh/id_rsa",
+                    "recommended_action": (
+                        "publish ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345 and "
+                        "see /private/var/folders/secret/notes.md"
+                    ),
+                }
+            ]
+        },
+    )
+    rendered = json.dumps(projection, ensure_ascii=False)
+    for leaked in (
+        "/Users/private-owner",
+        "/private/var/folders",
+        "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
+    ):
+        assert leaked not in rendered, (leaked, rendered)
+
+    # Pin the redaction rule itself: a benign local path must be replaced, not
+    # merely dropped, so the boundary still holds when a caller later renders a
+    # label this projection chose to keep.
+    assert _compact_text("/Users/private-owner/notes.md") == (
+        "<local-path-redacted>"
+    ), _compact_text("/Users/private-owner/notes.md")
+    assert _compact_text("token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ012345") is None
+    assert _compact_text("/private/var/folders/x/secret.md") == (
+        "<local-path-redacted>"
+    )
+
+
 def main() -> int:
     assert_starting_phase_without_work()
     assert_declared_milestone_stays_unreached_while_gapped()
@@ -222,6 +310,9 @@ def main() -> int:
     assert_evidence_guard_is_required_and_owned_by_the_agent()
     assert_closing_then_closed_phase()
     assert_projection_is_pure_and_reads_no_state()
+    assert_unreached_milestone_blocks_closeout()
+    assert_reached_milestones_still_allow_closeout()
+    assert_private_values_are_redacted_or_dropped()
     print("goal-artifact-lifecycle-projection-smoke ok")
     return 0
 

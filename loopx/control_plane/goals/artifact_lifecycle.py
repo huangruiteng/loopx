@@ -18,7 +18,11 @@ frontier/lane derivation instead of a second state machine.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+from ...presentation.public_safety import redact_public_text
+from ...public_safe_text import find_private_text_match
 
 GOAL_ARTIFACT_LIFECYCLE_PROJECTION_SCHEMA_VERSION = (
     "goal_artifact_lifecycle_projection_v0"
@@ -37,19 +41,31 @@ GUARD_KIND_EVIDENCE = "evidence_precondition"
 
 _TERMINAL_GOAL_STATUSES = {"closed", "retired", "archived", "done", "complete"}
 
+# Provider token shapes the shared private-text rules do not cover. A run
+# history reference is free text, so a leaked token there must never reach a
+# public projection just because the shared corpus did not list its prefix.
+_TOKEN_SHAPES = re.compile(
+    r"\b(?:gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16})\b"
+)
+
 # A material run outcome that a Goal's own acceptance can rest on.
 _MATERIAL_OUTCOMES = {"primary_goal_outcome", "outcome_progress", "multi_surface"}
 
 
 def _compact_text(value: Any, *, limit: int = 240) -> str | None:
-    """Bound one public-safe label; never carry a raw body or path."""
+    """Bound and redact one label; never carry a raw body, path or credential."""
 
     if not isinstance(value, str):
         return None
-    collapsed = " ".join(value.split())
+    collapsed = redact_public_text(value, limit=limit)
     if not collapsed:
         return None
-    return collapsed[:limit]
+    # The shared sanitizer covers local paths; this projection additionally
+    # refuses a value that still matches a private-text or credential shape
+    # rather than publishing a partly-redacted fragment.
+    if find_private_text_match(collapsed) or _TOKEN_SHAPES.search(collapsed):
+        return None
+    return collapsed
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -207,7 +223,10 @@ def _lifecycle_phase(
     total_open = open_count if isinstance(open_count, int) and not isinstance(open_count, bool) else 0
     if not milestones and total_open == 0:
         return PHASE_STARTING
-    if total_open == 0:
+    # An unclaimed-acceptance Goal is never closing: running out of open agent
+    # work is not the same as having reached the declared acceptance markers.
+    unreached = any(milestone["reached"] is not True for milestone in milestones)
+    if total_open == 0 and not unreached:
         return PHASE_CLOSING
     return PHASE_QUALIFYING
 
@@ -217,6 +236,7 @@ def _next_transitions(
     *,
     phase: str,
     guards: list[dict[str, Any]],
+    milestones: list[dict[str, Any]],
     work_lane: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Reuse the existing lane/frontier derivation instead of a second machine."""
@@ -236,6 +256,27 @@ def _next_transitions(
                     else "produce the required evidence"
                 ),
                 "reason_codes": ["guard_open"],
+            }
+        ]
+    # An existing work-lane constraint outranks this projection's own reading
+    # of open work: the lane owner decides what runs next.
+    if lane and phase != PHASE_CLOSING:
+        return [
+            {
+                "target_phase": PHASE_QUALIFYING,
+                "precondition": obligation or "advance the selected lane",
+                "reason_codes": ["work_lane_selected"],
+            }
+        ]
+    unreached = [
+        milestone["id"] for milestone in milestones if milestone["reached"] is not True
+    ]
+    if unreached:
+        return [
+            {
+                "target_phase": PHASE_QUALIFYING,
+                "precondition": "reach the declared acceptance milestones with evidence",
+                "reason_codes": ["milestone_unreached"],
             }
         ]
     if phase == PHASE_CLOSING:
@@ -293,7 +334,11 @@ def build_goal_artifact_lifecycle_projection(
         "milestones": milestones,
         "guards": guards,
         "next_transitions": _next_transitions(
-            goal_record, phase=phase, guards=guards, work_lane=lane
+            goal_record,
+            phase=phase,
+            guards=guards,
+            milestones=milestones,
+            work_lane=lane,
         ),
     }
 
