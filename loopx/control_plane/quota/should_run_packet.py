@@ -744,6 +744,9 @@ def _planning_projections(
         route.workspace_repair_allowed
         and prepared.workspace_guard
         and prepared.normal_delivery_allowed
+    ) or bool(
+        route.effective_action == "boundary_projection_repair"
+        and prepared.boundary_projection_repair
     )
     projection_enabled = bool(
         route.should_run

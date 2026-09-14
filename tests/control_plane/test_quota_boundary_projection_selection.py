@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from loopx.control_plane.quota.should_run import build_quota_should_run
+from loopx.control_plane.quota.turn_envelope import build_turn_envelope
 from loopx.control_plane.testing.quota_fixtures import (
     quota_status_payload,
     quota_todo_item,
@@ -215,6 +216,15 @@ def test_boundary_projection_preserves_a_guarded_continuation_selection() -> Non
     assert packet["effective_action"] == "boundary_projection_repair"
     assert packet["normal_delivery_allowed"] is False
     assert packet["self_repair_allowed"] is True
+    assert packet["action_portfolio"]["selection_policy"][
+        "requires_explicit_turn_binding"
+    ] is True
+    assert packet["interaction_contract"]["agent_channel"][
+        "selection_required"
+    ] is True
+    envelope = build_turn_envelope(packet)
+    assert envelope["action"]["action_portfolio"] == packet["action_portfolio"]
+    assert envelope["writeback"]["selection_required"] is True
     assert (
         packet["boundary_projection_gap"]["selected_todo"]["todo_id"]
         == (in_flight["todo_id"])
