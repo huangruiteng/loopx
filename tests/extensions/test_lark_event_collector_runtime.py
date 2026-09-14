@@ -314,3 +314,53 @@ def test_collector_runs_independent_operation_callback_consumer(
     assert status["listener_ready"] is False
     assert status["failed_callback_count"] == 1
     assert status["listener_active"] is False
+
+
+def test_operation_callback_json_diagnostic_does_not_mark_listener_ready(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, collector = _operation_callback_project(tmp_path)
+    runtime_root = tmp_path / "runtime"
+    cli = tmp_path / "lark-cli-fixture"
+    cli.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json\n"
+        "import sys\n"
+        "import time\n"
+        "event_key = sys.argv[sys.argv.index('consume') + 1]\n"
+        "if event_key == 'card.action.trigger':\n"
+        "    print(json.dumps({'error': {'code': 'startup_warning'}}), flush=True)\n"
+        "else:\n"
+        "    time.sleep(0.2)\n",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        event_collector_runtime,
+        "handle_goal_channel_operation_callback",
+        lambda payload, **kwargs: captured.append({"payload": payload, **kwargs}),
+    )
+
+    def runner(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert "whoami" in argv
+        return subprocess.CompletedProcess(
+            args=argv,
+            returncode=0,
+            stdout=json.dumps({"appId": "cli_operation_fixture"}),
+            stderr="",
+        )
+
+    result = run_lark_event_collector(
+        project=project,
+        config_path=collector,
+        lark_cli_executable=str(cli),
+        runtime_root=runtime_root,
+        runner=runner,
+    )
+
+    assert result["operation_callback_listener_ready"] is False
+    assert result["operation_callback_received_count"] == 0
+    assert result["operation_callback_failure_count"] == 0
+    assert captured == []

@@ -679,6 +679,12 @@ def run_lark_event_collector(
                         continue
                     if not isinstance(payload, Mapping):
                         continue
+                    if payload.get("type") != "card.action.trigger":
+                        # stderr is intentionally merged so provider startup
+                        # diagnostics remain observable.  Some diagnostics are
+                        # JSON objects, but they do not prove that the typed
+                        # callback route is receiving events.
+                        continue
                     if not callback_stats.get("ready"):
                         # A real typed event is stronger readiness evidence than
                         # the provider diagnostic marker.
