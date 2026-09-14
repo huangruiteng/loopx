@@ -401,6 +401,49 @@ def assert_status_collection_attaches_a_readable_readout() -> None:
     assert_no_public_leak(projection)
 
 
+def assert_the_two_goal_projections_stay_distinct() -> None:
+    """The lifecycle contract and the narrow acceptance observation must not mix.
+
+    `#4248` shipped `goal_acceptance_observation_projection_v0` as bounded
+    historical evidence and guarded that it is not the full lifecycle contract.
+    Both now ship, so each renderer must refuse the other's schema rather than
+    print a half-understood payload under its own heading.
+    """
+
+    from loopx.presentation.renderers.goal_acceptance_observation_markdown import (
+        append_goal_acceptance_observation_markdown,
+    )
+    from loopx.presentation.renderers.goal_artifact_lifecycle_markdown import (
+        append_goal_artifact_lifecycle_markdown,
+    )
+
+    lifecycle = build_goal_artifact_lifecycle_projection(
+        goal_id=GOAL_ID, goal={"id": GOAL_ID, "status": "active"}
+    )
+    narrow = {
+        "schema_version": "goal_acceptance_observation_projection_v0",
+        "guards": [],
+        "acceptance_gaps": [],
+        "historical_progress": [],
+    }
+    # Each renderer prints only its own contract, whichever key carries it.
+    for goal in ({"artifact_lifecycle": narrow}, {"artifact_lifecycle": {}}):
+        lines: list[str] = []
+        append_goal_artifact_lifecycle_markdown(lines, goal)
+        assert lines == [], (goal, lines)
+    for goal in ({"acceptance_observation": lifecycle}, {"acceptance_observation": {}}):
+        lines = []
+        append_goal_acceptance_observation_markdown(lines, goal)
+        assert lines == [], (goal, lines)
+    # And the lifecycle renderer does print its own contract.
+    lines = []
+    append_goal_artifact_lifecycle_markdown(lines, {"artifact_lifecycle": lifecycle})
+    assert any("artifact lifecycle" in line for line in lines), lines
+    # The phase/milestone/transition vocabulary belongs to the lifecycle alone.
+    assert {"lifecycle_phase", "milestones", "next_transitions"} <= set(lifecycle)
+    assert {"lifecycle_phase", "milestones", "next_transitions"}.isdisjoint(narrow)
+
+
 def assert_control_plane_imports_no_presentation_module() -> None:
     """The projection may not depend outward on the presentation layer."""
 
@@ -433,6 +476,7 @@ def main() -> int:
     assert_batch_scale_never_promotes_an_outcome()
     assert_status_collection_attaches_a_readable_readout()
     assert_control_plane_imports_no_presentation_module()
+    assert_the_two_goal_projections_stay_distinct()
     print("goal-artifact-lifecycle-projection-smoke ok")
     return 0
 

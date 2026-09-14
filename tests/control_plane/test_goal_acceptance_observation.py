@@ -222,9 +222,17 @@ def test_real_collection_preserves_acceptance_before_display_run_trimming(tmp_pa
     result = collect_fixture(tmp_path)
     goal = result["run_history"]["goals"][0]
     assert goal["latest_runs"] == []
-    assert "artifact_lifecycle" not in goal
     projection = goal["acceptance_observation"]
     assert projection["schema_version"] == "goal_acceptance_observation_projection_v0"
+    # The full lifecycle contract now ships beside this one. They stay distinct
+    # projections under distinct keys and schema versions: this observation is
+    # bounded historical evidence, never the lifecycle's phase/milestone answer.
+    lifecycle = goal["artifact_lifecycle"]
+    assert lifecycle["schema_version"] == "goal_artifact_lifecycle_projection_v0"
+    assert lifecycle["schema_version"] != projection["schema_version"]
+    # Only the lifecycle projection answers phase, milestones and transitions.
+    assert {"lifecycle_phase", "milestones", "next_transitions"} <= set(lifecycle)
+    assert {"lifecycle_phase", "milestones", "next_transitions"}.isdisjoint(projection)
     assert (
         projection["acceptance_gaps"][0]["evidence_required"]
         == "Independent verification report"
