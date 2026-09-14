@@ -163,6 +163,57 @@ export const typedActionsScenario = {
       await operationUi.close();
     }
 
+    const storedWorkspaceGate = {
+      schema_version: "loopx_chat_action_proposal_v1",
+      proposal_id: "stored-goal-create-workspace-gate",
+      action_kind: "goal.create",
+      summary: "Create stored workspace Goal",
+      normalized_parameters: { goal_id: "product-release", title: "Stored workspace Goal", workspace_ref: "current" },
+      context: { kind: "goal_directory", goal_id: "product-release" },
+      expected_state_fingerprint: "fixture-workspace-gate-r1",
+      permission_classification: "durable_write",
+      validation_evidence: ["workspace selection required"],
+      available_transitions: ["regenerate", "reject", "defer"],
+      status: "gated",
+      receipt: null,
+      stale: null,
+      gate: {
+        kind: "workspace_selection_required",
+        summary: "Select one server-configured workspace before creating this Goal.",
+        next_action: "Select a workspace to regenerate the confirmation preview.",
+        candidates: [{ workspace_ref: "workspace-fixture", label: "Workspace 1" }],
+      },
+      created_at: "2026-09-14T01:00:00Z",
+      updated_at: "2026-09-14T01:00:01Z",
+    };
+    const workspaceGateUi = await openWorkspacePage(browser, url, {
+      apiOptions: { initialActionProposals: [storedWorkspaceGate] },
+    });
+    try {
+      const { api, page } = workspaceGateUi;
+      await page.locator(".personal-goal-link", { hasText: "Product Release" }).click();
+      await page.locator(".personal-goal-tabs button", { hasText: "Chat" }).click();
+      await page.locator(".personal-gated-summary summary").click();
+      const proposalRow = page.locator(".personal-proposal-row", { hasText: "Stored workspace Goal" });
+      try {
+        await proposalRow.waitFor({ state: "visible", timeout: 10_000 });
+      } catch (error) {
+        throw new Error(`${error.message}; proposals=${await page.locator(".personal-proposal-row").allInnerTexts()}; errors=${workspaceGateUi.errors.join(" | ")}; body=${(await page.locator("body").innerText()).slice(0, 2000)}`);
+      }
+      await proposalRow.click();
+      const drawer = page.locator('.personal-context-drawer[data-context-kind="proposal"]');
+      await drawer.getByRole("button", { name: /Workspace 1/ }).click();
+      const regenerated = api.actionPreviews.at(-1);
+      if (regenerated?.normalized_parameters.workspace_ref !== "workspace-fixture") {
+        throw new Error(`Stored workspace selection did not regenerate the Goal preview: ${JSON.stringify(regenerated)}`);
+      }
+      if ((await drawer.innerText()).includes("Host confirmation required")) {
+        throw new Error("Workspace selection gate was mislabeled as host-only confirmation");
+      }
+    } finally {
+      await workspaceGateUi.close();
+    }
+
     // Real Goal button -> typed preview -> compiler -> drawer/apply, with only
     // the service boundary controlled. No test computes the plan under review.
     for (const width of [1512, 390]) {

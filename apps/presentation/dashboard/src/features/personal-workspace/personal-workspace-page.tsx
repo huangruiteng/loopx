@@ -541,6 +541,17 @@ function lifecycleOperationFor(proposal: TypedActionProposal): GoalLifecycleOper
     : undefined;
 }
 
+function workspaceCandidatesFromGate(gate: Record<string, unknown> | null | undefined) {
+  const candidates = Array.isArray(gate?.candidates) ? gate.candidates : [];
+  return candidates.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const item = candidate as Record<string, unknown>;
+    return typeof item.workspace_ref === "string" && typeof item.label === "string"
+      ? [{ label: item.label, workspaceRef: item.workspace_ref }]
+      : [];
+  });
+}
+
 function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate): WorkspaceActionPreview {
   const lifecycleOperation = lifecycleOperationFor(proposal);
   const reviewPlan = compileActionReviewPlan(proposal);
@@ -549,6 +560,7 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
     : typeof proposal.normalized_parameters.goal_id === "string"
       ? proposal.normalized_parameters.goal_id
       : "";
+  const workspaceCandidates = workspaceCandidatesFromGate(proposal.gate);
   const target = typeof proposal.normalized_parameters.target === "string"
     ? proposal.normalized_parameters.target
     : "";
@@ -599,6 +611,14 @@ function workspaceProposal(proposal: TypedActionProposal, t: WorkspaceTranslate)
       nextAction: typeof proposal.gate.next_action === "string" ? proposal.gate.next_action : undefined,
       summary: String(proposal.gate.summary ?? t("proposal.gate.default")),
     } : undefined,
+    sourceRequest: proposal.status === "gated" && proposal.action_kind === "goal.create" ? {
+      actionKind: proposal.action_kind,
+      context: proposal.context,
+      idempotencyKey: `${proposal.proposal_id}-workspace`,
+      normalizedParameters: proposal.normalized_parameters,
+      summary: proposal.summary,
+    } : undefined,
+    workspaceCandidates,
     primaryLabel: proposal.action_kind === "operation.execute"
       ? proposal.operation?.lifecycle_state === "outcome_observed"
         ? proposal.operation.result_delivery
@@ -1087,14 +1107,7 @@ export function PersonalWorkspacePage({
       const rawGate = error.payload.gate && typeof error.payload.gate === "object"
         ? error.payload.gate as Record<string, unknown>
         : {};
-      const rawCandidates = Array.isArray(rawGate.candidates) ? rawGate.candidates : [];
-      const workspaceCandidates = rawCandidates.flatMap((candidate) => {
-        if (!candidate || typeof candidate !== "object") return [];
-        const item = candidate as Record<string, unknown>;
-        return typeof item.workspace_ref === "string" && typeof item.label === "string"
-          ? [{ label: item.label, workspaceRef: item.workspace_ref }]
-          : [];
-      });
+      const workspaceCandidates = workspaceCandidatesFromGate(rawGate);
       const gateKind = String(rawGate.kind ?? "workspace_selection_required");
       const requiresAgentBinding = gateKind === "agent_binding_required"
         || gateKind === "agent_identity_selection_required";
