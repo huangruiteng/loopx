@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from .doctor import collect_doctor
 from .install_contract import NO_CLONE_INSTALL_URL
+from .runtime_activation import restart_services_for_runtime_activation
 from .self_update_download import run_archive_installer
 
 
@@ -857,41 +858,6 @@ def build_update_plan(
     }
 
 
-def restart_managed_loopx_services() -> list[str]:
-    """Best-effort restart of user LaunchAgent-managed LoopX services on macOS.
-
-    After ``loopx update`` replaces the installed release, running status/chat
-    services still belong to the previous release. Restarting the managed
-    LaunchAgents makes them run the new ``loopx`` immediately, so the dashboard
-    and desktop shell keep working without a release-identity mismatch.
-    """
-    if sys.platform != "darwin":
-        return []
-    agents_dir = Path.home() / "Library" / "LaunchAgents"
-    if not agents_dir.is_dir():
-        return []
-    labels: list[str] = []
-    for plist in sorted(agents_dir.glob("*.plist")):
-        stem = plist.stem.lower()
-        if "loopx" not in stem and "goal-harness" not in stem:
-            continue
-        if not (stem.endswith(".status") or stem.endswith(".chat")):
-            continue
-        labels.append(plist.stem)
-    restarted: list[str] = []
-    uid = os.getuid() if hasattr(os, "getuid") else 0
-    for label in labels:
-        result = subprocess.run(
-            ["launchctl", "kickstart", "-k", f"gui/{uid}/{label}"],
-            capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-            timeout=30,
-        )
-        if result.returncode == 0:
-            restarted.append(label)
-    return restarted
-
-
 def _execute_python_distribution_update(
     payload: dict[str, Any],
     *,
@@ -991,28 +957,48 @@ def _execute_python_distribution_update(
         execution[f"{step}_stdout_tail"] = result.stdout[-2000:]
         execution[f"{step}_stderr_tail"] = result.stderr[-2000:]
 
-    required_steps = (
+    runtime_steps = (
         "install",
         "workflow_skills",
         "slash_commands",
         "doctor",
-        "extension_doctor",
     )
-    ok = all(
-        step in results and results[step].returncode == 0 for step in required_steps
+    runtime_ready = all(
+        step in results and results[step].returncode == 0 for step in runtime_steps
+    )
+    extension_ready = (
+        "extension_doctor" in results and results["extension_doctor"].returncode == 0
     )
     updated = dict(payload)
     updated["execution"] = execution
-    updated["ok"] = ok
+    updated["ok"] = runtime_ready and extension_ready
     updated["changes_applied"] = results["install"].returncode == 0
-    if ok:
-        execution["restarted_services"] = restart_managed_loopx_services()
+    execution.update(
+        restart_services_for_runtime_activation(
+            changes_applied=updated["changes_applied"],
+            runtime_ready=runtime_ready,
+        )
+    )
+    if updated["ok"]:
         updated["recommended_action"] = (
             "PyPI update and host-material readback passed; use the new LoopX process"
         )
         updated["next_action"] = {
             "kind": "use_updated_runtime",
             "command": "loopx doctor",
+            "mutating": False,
+            "requires_explicit_approval": False,
+            "reason": updated["recommended_action"],
+        }
+    elif runtime_ready:
+        updated["recommended_action"] = (
+            "the updated runtime is installed and serving; repair the blocked "
+            "enabled extension providers, then rerun "
+            "`loopx extension doctor --all-enabled --execute`"
+        )
+        updated["next_action"] = {
+            "kind": "repair_blocked_extensions",
+            "command": "loopx extension doctor --all-enabled --execute",
             "mutating": False,
             "requires_explicit_approval": False,
             "reason": updated["recommended_action"],
@@ -1140,15 +1126,35 @@ def execute_update_plan(
         )
     else:
         execution["extension_doctor_status"] = "skipped_release_update_failed"
+    runtime_ready = install_result.returncode == 0 and doctor_result.returncode == 0
     updated = dict(payload)
     updated["execution"] = execution
     updated["ok"] = (
-        install_result.returncode == 0
-        and doctor_result.returncode == 0
+        runtime_ready
         and extension_doctor_result is not None
         and extension_doctor_result.returncode == 0
     )
     updated["changes_applied"] = install_result.returncode == 0
+    execution.update(
+        restart_services_for_runtime_activation(
+            changes_applied=updated["changes_applied"],
+            runtime_ready=runtime_ready,
+        )
+    )
+    if not updated["ok"] and runtime_ready:
+        updated["recommended_action"] = (
+            "the updated runtime is installed and serving; repair the blocked "
+            "enabled extension providers, then rerun "
+            "`loopx extension doctor --all-enabled --execute`"
+        )
+        updated["next_action"] = {
+            "kind": "repair_blocked_extensions",
+            "command": "loopx extension doctor --all-enabled --execute",
+            "mutating": False,
+            "requires_explicit_approval": False,
+            "reason": updated["recommended_action"],
+        }
+        return updated
     if not updated["ok"]:
         updated["recommended_action"] = (
             "inspect update execution tails and restore from rollback plan if needed"
@@ -1162,7 +1168,6 @@ def execute_update_plan(
             "reason": updated["recommended_action"],
         }
         return updated
-    execution["restarted_services"] = restart_managed_loopx_services()
     updated["recommended_action"] = (
         "archive update and readback passed; use the new LoopX process"
     )

@@ -142,6 +142,10 @@ archive 的默认来源是公开 `stable` ref。`--ref main` 是 maintainer/dev 
 archive 继续管理 release snapshot，live checkout 仍需显式更新。成功退出不代表每个 Host
 automation、Goal migration 或 Extension Provider 都已更新。
 
+当 runtime 安装与核心 `doctor` 读回都通过后，`update apply` 会同时重启 LaunchAgent 托管的
+`status` 与 `chat` 服务，让新安装的行为真正开始服务；此时即使有 enabled Extension Provider
+被阻塞，也只会被报告为待修复，而不会阻止这次激活——否则旧服务会继续按上一个 release 运行。
+
 升级后按使用面继续验证：
 
 - `loopx doctor`：wrapper、release manifest、Python import、skill delivery 与 Host integration；

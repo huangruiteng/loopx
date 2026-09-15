@@ -146,6 +146,11 @@ owner: pip and pipx keep the PyPI environment, archive installs keep the release
 checkouts remain explicit. A successful exit does not prove that every Host automation, Goal migration,
 or Extension Provider is updated.
 
+Once the runtime install and its core `doctor` readback pass, `update apply` also restarts the
+LaunchAgent-managed `status` and `chat` services so the installed behavior actually serves. A blocked
+enabled Extension Provider is reported for repair instead of preventing that activation, because a
+stale service would otherwise keep serving the previous release.
+
 Validate the surfaces you use:
 
 - `loopx doctor`: wrapper, release manifest, Python import, skill delivery, and Host integration;
