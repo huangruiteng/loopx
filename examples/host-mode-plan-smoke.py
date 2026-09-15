@@ -348,6 +348,23 @@ def test_hybrid_requires_two_ready_modes_and_names_handoffs() -> None:
         assert transition["preserves_agent_id"] is True, transition
         assert transition["spends_quota"] is False, transition
         assert "--agent-id codex-main-control" in transition["guard_command"], transition
+    # The transition policy is the same rule as the mode preview: a target that
+    # resolves its host must not pin the compatibility adapter path, while a
+    # target that needs a visible identity still pins it.
+    by_id = {item["transition"]: item for item in two_ready["transitions"]}
+    for transition_id in (
+        "visible_bootstrap_to_isolated_headless_turn",
+        "im_gateway_to_isolated_headless_turn",
+    ):
+        command = by_id[transition_id]["target_turn_plan_command"]
+        assert "--host" not in command, (transition_id, command)
+    for transition_id in (
+        "isolated_headless_turn_to_visible_tui_escalation",
+        "shell_service_to_visible_tui_escalation",
+    ):
+        command = by_id[transition_id]["target_turn_plan_command"]
+        assert "--host codex-cli" in command, (transition_id, command)
+        assert "--execution-mode interactive-visible" in command, (transition_id, command)
 
 
 def test_identity_gate_and_no_spend_boundary() -> None:

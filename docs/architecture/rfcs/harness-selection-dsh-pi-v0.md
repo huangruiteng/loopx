@@ -118,16 +118,21 @@ Open gaps before this binding is a promoted production default:
   (`@deepseek-ai/dsh-tool-fs`, `@deepseek-ai/dsh-tool-bash`). Without them a live
   model can answer but cannot act, and the Turn ends in a validation failure
   rather than in work.
-- the host-mode plan still maps the unattended intent to the compatibility path:
-  `isolated_headless_turn` carries `turn_host: generic-cli`
-  (`loopx/host_mode_planner.py`), so the `loopx turn plan` command it prints
-  names `--host generic-cli` instead of the selected `dsh` default recorded above,
-  which is correct as a labelled rollback path but is not labelled as one. The
-  plan's `--host-identity` list deliberately covers visible
-  hosts only, because a headless-only host such as `dsh` cannot own a visible
-  session; the unattended mapping itself still needs a decision between naming
-  the resolved default, offering a `dsh` variant, or labelling the emitted
-  command as the rollback path.
+- the host-mode plan used to map the unattended intent to the compatibility
+  path: `isolated_headless_turn` carried `turn_host: generic-cli`
+  (`loopx/host_mode_planner.py`), so the `loopx turn plan` command it printed
+  named `--host generic-cli` instead of the selected `dsh` default recorded
+  above, which is correct as a labelled rollback path but was not labelled as
+  one. **Decided and shipped:** the plan takes the "write out the resolved
+  default" option. The preview command pins no host, the pinned compatibility
+  variant is reported as `plan_command_rollback`, and the typed
+  `turn_mapping.host_selection` states which of the two a command is; targets
+  that genuinely need a visible identity (transitions into `visible_tui`) still
+  pin their host. `docs/reference/protocols/host-mode-plan-v0.md` defines
+  `turn_mapping.host` as the mode's declared host and scheduler context rather
+  than as an already-resolved concrete host. The plan's `--host-identity` list
+  still covers visible hosts only, because a headless-only host such as `dsh`
+  cannot own a visible session.
 
 ## Evidence Baseline
 

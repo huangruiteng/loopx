@@ -142,6 +142,23 @@ Each `mode_options[]` entry includes the connector id, readiness, required
 host capabilities, Turn mapping when one exists, scheduler execution context,
 quota guard command, and required proofs.
 
+`selected_turn_mapping` fields mean:
+
+- `host` is the mode's **declared** host: the scheduler context the readiness
+  statement and capability requirements are written against. It is not a claim
+  that this concrete host has already been resolved for the run; the runtime
+  resolves the concrete host (including a credential- or configuration-resolved
+  default) when `plan_command` runs.
+- `host_selection` is `resolved_default` when the command deliberately leaves
+  host resolution to `loopx turn plan`/`run-once`, and `pinned` when the command
+  carries an explicit `--host`.
+- `plan_command` is the command to run for this mapping. When `host_selection`
+  is `resolved_default` it pins no host, so it cannot freeze the compatibility
+  adapter path as the product default.
+- `plan_command_rollback` is the pinned compatibility variant for an operator
+  who deliberately wants that path instead of the resolved default. It is
+  present only when the mapping resolves its host.
+
 ## Functional Points
 
 The selector provides four concrete functions:
@@ -150,7 +167,8 @@ The selector provides four concrete functions:
    users and agents to infer visible/headless/gateway/timer behavior manually.
 2. **Turn mapping:** for unattended execution, print the exact `loopx turn plan`
    preview that preserves host, execution mode, scheduler owner, agent id, and
-   available capabilities.
+   available capabilities, while leaving the concrete host to the runtime's
+   resolved default and reporting the pinned variant as the rollback command.
 3. **Readiness surface:** report which advertised capabilities are missing
    before a mode can be trusted.
 4. **Safe handoff plan:** name transitions such as visible bootstrap to

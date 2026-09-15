@@ -97,13 +97,17 @@ CLI 的情况下把管家悄悄换成 operator 模型。
 - LoopX 的 DSH Turn 组合必须显式列出托管动作所需的工具行
   （`@deepseek-ai/dsh-tool-fs`、`@deepseek-ai/dsh-tool-bash`）。缺少它们时，真实模型
   只能作答而无法动手，Turn 会以验证失败而不是产出工作结束。
-- 宿主模式计划仍把无人值守意图映射到兼容路径：`isolated_headless_turn` 的
+- 宿主模式计划此前把无人值守意图映射到兼容路径：`isolated_headless_turn` 的
   `turn_host` 取 `generic-cli`（`loopx/host_mode_planner.py`），因此它打印的
   `loopx turn plan` 命令写的是 `--host generic-cli`，而不是上文记录的已选 `dsh`
-  默认值；作为回滚路径本身没错，但没有被标注为回滚路径。该计划的
-  `--host-identity` 列表只覆盖可见宿主是有意为之——像
-  `dsh` 这种仅 headless 的宿主无法拥有可见会话；但无人值守映射本身仍需在"写出解析
-  后的默认值 / 提供 `dsh` 变体 / 把该命令标注为回滚路径"之间做出决定。
+  默认值；作为回滚路径本身没错，但没有被标注为回滚路径。**已决并已落地：**计划采用
+  "写出解析后的默认值"这一支——预览命令不再 pin 任何 host，pin 死的兼容变体报为
+  `plan_command_rollback`，类型化的 `turn_mapping.host_selection` 说明该命令属于
+  哪一种；真正需要可见身份的路径（转入 `visible_tui` 的 transition）仍然 pin 具体
+  宿主。`docs/reference/protocols/host-mode-plan-v0.md` 已把 `turn_mapping.host`
+  定义为该模式的声明宿主与调度上下文，而不是"具体宿主已经解析完成"。该计划的
+  `--host-identity` 列表仍只覆盖可见宿主，因为像 `dsh` 这种仅 headless 的宿主无法
+  拥有可见会话。
 
 ## 证据基线
 
