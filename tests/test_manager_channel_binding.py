@@ -26,6 +26,7 @@ from loopx.chat_manager import (
 )
 from loopx.chat_runtime import ChatRuntimeController
 from loopx.chat_store import ChatSessionStore
+from loopx.control_plane.turn_driver import host_binding
 
 
 def test_without_the_operator_credential_the_channel_stays_on_the_cli_endpoint():
@@ -193,13 +194,19 @@ def test_open_manager_session_resolves_the_endpoint_only_when_unset(tmp_path):
     assert calls[-1]["agent_id"] == "claude-code"
 
 
-def test_a_managed_host_that_cannot_launch_raises_a_typed_gate(
-    tmp_path, monkeypatch
-):
-    # No operator credential and no injected runner: the managed endpoint is a
-    # listed capability that cannot serve this machine, which must be a typed
-    # refusal with a next step rather than an unknown-endpoint error.
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+def _managed_endpoint_failure(tmp_path, monkeypatch, *, runtime_installed):
+    """Open the managed endpoint with its availability probe pinned.
+
+    Which typed reason appears must follow the fact under test, not whether the
+    machine running the suite happens to have the dsh runtime installed, so the
+    probe is pinned here instead of being read from the environment.
+    """
+
+    monkeypatch.setattr(
+        host_binding,
+        "dsh_runtime_importable",
+        lambda *args, **kwargs: runtime_installed,
+    )
     runtime = ChatRuntimeController(
         store=ChatSessionStore(tmp_path / "store"), codex_bin="fixture-codex"
     )
@@ -214,10 +221,36 @@ def test_a_managed_host_that_cannot_launch_raises_a_typed_gate(
             )
     finally:
         runtime.close()
+    return raised.value
 
-    assert raised.value.error_code == "agent_endpoint_unavailable"
-    assert raised.value.gate["kind"] == "host_tool_gate"
-    assert "DEEPSEEK_API_KEY" in raised.value.gate["next_action"]
+
+def test_a_managed_host_without_a_credential_raises_the_credential_gate(
+    tmp_path, monkeypatch
+):
+    # The runtime is present and no operator credential is: the fact that blocks
+    # this launch is the credential, so the typed gate must name it.
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    error = _managed_endpoint_failure(tmp_path, monkeypatch, runtime_installed=True)
+
+    assert error.error_code == "agent_endpoint_unavailable"
+    assert error.gate["kind"] == "host_tool_gate"
+    assert "DEEPSEEK_API_KEY" in error.gate["next_action"]
+
+
+def test_a_managed_host_without_its_runtime_names_the_install_step(
+    tmp_path, monkeypatch
+):
+    # The credential is configured and the runtime is missing, so the launch is
+    # blocked by the runtime instead; the gate must name that repair, not the
+    # credential the operator already set.
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fixture")
+
+    error = _managed_endpoint_failure(tmp_path, monkeypatch, runtime_installed=False)
+
+    assert error.error_code == "agent_endpoint_unavailable"
+    assert error.gate["kind"] == "host_tool_gate"
+    assert "pip install" in error.gate["next_action"]
 
 
 def test_unknown_endpoint_keeps_the_untyped_lookup_error(tmp_path):

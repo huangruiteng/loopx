@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ from loopx.chat_manager import (  # noqa: E402
 )
 from loopx.chat_runtime import ChatRuntimeController  # noqa: E402
 from loopx.chat_store import ChatSessionStore  # noqa: E402
+from loopx.control_plane.turn_driver import host_binding  # noqa: E402
 
 
 CREDENTIAL_ENV = "DEEPSEEK_API_KEY"
@@ -100,7 +102,22 @@ def _assert_credential_decides_the_disclosed_default() -> dict[str, object]:
 
 
 def _assert_explicit_selection_and_managed_host_verdict() -> dict[str, object]:
-    """Explicit selection wins; the managed host quotes the Turn verdict."""
+    """Explicit selection wins; the managed host quotes the Turn verdict.
+
+    The dsh runtime is an installable dependency, so whether the machine running
+    this smoke happens to have it decides which typed reason a launch reports.
+    Pin the availability probe: the fact under test here is the missing
+    credential, and the runtime-absent reason has its own pinned test.
+    """
+
+    with mock.patch.object(
+        host_binding, "dsh_runtime_importable", lambda *args, **kwargs: True
+    ):
+        return _assert_managed_host_verdict()
+
+
+def _assert_managed_host_verdict() -> dict[str, object]:
+    """The managed host is listed, and an unauthenticated launch is a typed gate."""
 
     selected = manager_channel_binding({MANAGER_ENDPOINT_ENV_VAR: "dsh"})
     _assert(
