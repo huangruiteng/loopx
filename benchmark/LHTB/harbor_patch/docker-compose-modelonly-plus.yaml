@@ -1,0 +1,9 @@
+services:
+  main:
+    networks:
+      - default
+      - lhtb-modelonly
+
+networks:
+  lhtb-modelonly:
+    external: true
