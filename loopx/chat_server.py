@@ -132,11 +132,17 @@ def _active_state_section(state_text: str, heading: str) -> str:
     content_start = start + len(marker)
     end = state_text.find("\n## ", content_start)
     section = state_text[content_start : end if end >= 0 else None]
-    lines = [
-        line.strip().removeprefix("- ").strip()
-        for line in section.splitlines()
-        if line.strip() and not line.lstrip().startswith("<!--")
-    ]
+    lines = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.lstrip().startswith("<!--"):
+            continue
+        if stripped.startswith(">"):
+            # Quote-isolated objective lines round-trip verbatim.
+            stripped = stripped[1:].strip()
+        else:
+            stripped = stripped.removeprefix("- ").strip()
+        lines.append(stripped)
     return _compact_text(" ".join(lines))
 
 
