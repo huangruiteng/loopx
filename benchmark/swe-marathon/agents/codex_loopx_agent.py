@@ -201,7 +201,12 @@ class CodexLoopxAgent(CodexGoalAgent):
         # 默认以任务用户跑，这样 LoopX 写出的 registry / runtime / 状态文件归属
         # 正确，降权运行的 codex 后续才改得动。只有需要写 /opt 的目录创建和
         # 权限移交走 as_root=True。
-        if not as_root and getattr(self, "_task_user", None):
+        if as_root:
+            # 必须显式 -u root:若任务 Dockerfile 设了非 root USER(nobody/agent),
+            # docker exec 默认继承它,不加 -u root 时 as_root 段其实仍以非 root 跑,
+            # mkdir /opt/lxprofile 照样 Permission denied。守护进程允许 exec -u root。
+            cmd += ["-u", "root"]
+        elif getattr(self, "_task_user", None):
             cmd += ["-u", str(self._task_user)]
         for k, v in (env or {}).items():
             cmd += ["-e", f"{k}={v}"]
@@ -231,8 +236,18 @@ class CodexLoopxAgent(CodexGoalAgent):
         # attribute '_environment'，三个 LoopX 臂全挂。
         self._env_ref = environment
         self._task_user = getattr(environment, "default_user", None)
+        cid = self._container_id(environment)
+        if not self._task_user:
+            # environment.default_user 只认 task.toml/compose 的 `user:`,不认
+            # Dockerfile 的 `USER` 指令。risk-scorer-replay(USER nobody)、
+            # rs-archive-clone(USER agent)就栽在这:default_user=None → 下面 root
+            # 移交被跳过 → 父类以非 root mkdir /opt/lxprofile → Permission denied。
+            # 此刻 _task_user 仍 None,_sh 不加 -u,whoami 跑的就是 Dockerfile USER。
+            probe = self._sh(cid, "whoami", timeout=30)
+            who = (probe.stdout or "").strip()
+            if probe.returncode == 0 and who and who != "root":
+                self._task_user = who
         if self._task_user:
-            cid = self._container_id(environment)
             r = self._sh(
                 cid,
                 f"mkdir -p {_ROOT} {_SRC} {_PY} {_NODE} && "

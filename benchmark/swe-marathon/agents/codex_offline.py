@@ -23,6 +23,7 @@ codex / rg 两个二进制的目录（默认见下）。
 """
 
 import os
+import tempfile
 from pathlib import Path
 
 from harbor.agents.installed.base import CliFlag
@@ -35,7 +36,7 @@ _DEFAULT_OFFLINE_DIR = str(Path(__file__).resolve().parent.parent / "codex")
 
 # 先落到 /tmp 再 install 到 /usr/local/bin：upload_file 以 root 落盘且不保留
 # 执行位，直接传到 /usr/local/bin 会得到一个不可执行的文件。
-_STAGE_DIR = "/tmp/codex-offline"
+_STAGE_DIR = os.path.join(tempfile.gettempdir(), "codex-offline")
 
 # 上游限流会把 agent 打死：2026-08-21 第一次跑 46 全量时，5 个跑完的 trial 里
 # 有 3 个死于

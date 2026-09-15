@@ -37,7 +37,6 @@ import os
 import time
 import shlex
 import subprocess
-import sys
 from pathlib import Path
 
 from harbor.agents.installed.codex import EnvironmentPaths
@@ -45,9 +44,9 @@ from harbor.environments.base import BaseEnvironment
 
 from codex_offline import CodexOffline
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from native_codex_goal import (  # noqa: E402
+# 宿主侧直接用已安装的官方 toolkit，不再 vendored 复制一份（容器侧另从官方包路径
+# 拷同一文件进容器，见 goal_codex.py，两处都对着官方 owner，避免协议漂移与重复代码）。
+from loopx.capabilities.benchmark_toolkit.native_codex_goal import (
     NativeGoalConfig,
     NativeGoalProtocolError,
     StdioNativeGoalTransport,
@@ -327,18 +326,12 @@ class CodexGoalAgent(CodexOffline):
         )
         try:
             turn = await asyncio.to_thread(self._drive, transport, config)
-        # 【踩过的坑】这里**不能**写 `except NativeGoalProtocolError`。
-        # 同名异常类存在两份，来自两个不同模块：
-        #   agents/native_codex_goal.py  ← 符号链接到 wen/loopx 源码树（本文件用）
-        #   loopx.capabilities.benchmark_toolkit.native_codex_goal ← 装在 .venv
-        #     （codex_loopx_agent / codex_plain_appserver 用）
-        # 两者互不为子类。按类捕获的后果是**只对 goal 臂生效**：
-        # goal 臂的超时被吞掉、照常交给 verifier 打分；LoopX 三臂的超时逃到
-        # harbor，被当成基础设施故障 → 重试烧掉 1.5–3 小时 → 最终记成 errored，
-        # 已完成的部分工作全部丢弃、不进评分。
-        # 这是第四次"只打一边"的偏差，方向是压低 treatment 臂。
-        # 超时是长程任务的**正常预算耗尽**，五臂必须一视同仁按部分进度评分。
-        # 改按消息判定：两个类都继承 RuntimeError，消息不匹配的照样重抛。
+        # 五臂的原生 Goal 状态机现在都对着同一个 owner
+        # （loopx.capabilities.benchmark_toolkit.native_codex_goal），不再有 vendored 副本，
+        # 因此同名异常类只有一份。仍按消息判定而非按类捕获：超时是长程任务的**正常预算耗尽**，
+        # 五臂必须一视同仁按部分进度评分——goal 臂的超时应被吞掉照常交 verifier，
+        # 而不能像早期"同名异常类双来源"时那样只对 goal 臂生效、把 LoopX 臂的超时误当基础设施故障。
+        # NativeGoalProtocolError 继承 RuntimeError，消息不匹配的照样重抛。
         except RuntimeError as exc:
             if str(exc) != "goal_timeout_before_terminal":
                 raise
