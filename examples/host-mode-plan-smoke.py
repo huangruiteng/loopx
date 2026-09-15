@@ -13,6 +13,7 @@ parallel runner:
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -113,8 +114,8 @@ def test_headless_maps_to_loopx_turn_plan_not_parallel_runner() -> None:
     assert selected["scheduler_owner"] == "outer_controller", selected
     command = selected["plan_command"]
     assert "loopx turn plan" in command, command
-    # The preview keeps the shipped host resolution, so a lane without an
-    # operator credential does not land on the compatibility adapter path.
+    # The preview keeps the shipped host resolution, so it does not freeze the
+    # compatibility adapter path as the product default.
     assert "--host" not in command, command
     assert "--execution-mode isolated-headless" in command, command
     assert "--scheduler-owner outer_controller" in command, command
@@ -125,6 +126,28 @@ def test_headless_maps_to_loopx_turn_plan_not_parallel_runner() -> None:
     assert plan["turn_contract"]["schema_version"] == "loopx_turn_v0", plan
     assert plan["turn_contract"]["independent_validation_required"] is True, plan
     assert plan["turn_contract"]["writeback_before_quota_spend"] is True, plan
+
+
+def test_headless_preview_ignores_operator_credential() -> None:
+    credential_env = "DEEPSEEK_API_KEY"
+    previous = os.environ.pop(credential_env, None)
+    try:
+        without_credential = build_full_plan("continue_without_ui")["selected_turn_mapping"]
+        os.environ[credential_env] = "host-mode-plan-smoke-not-a-credential"
+        with_credential = build_full_plan("continue_without_ui")["selected_turn_mapping"]
+    finally:
+        if previous is None:
+            os.environ.pop(credential_env, None)
+        else:
+            os.environ[credential_env] = previous
+    # `loopx turn plan`/`run-once` ship one explicit product default that
+    # `LOOPX_TURN_HOST` or an explicit `--host` re-points, and an operator
+    # credential only authenticates the host that was already selected. A
+    # preview whose shape changed when the credential appeared would re-introduce
+    # a credential-selected Turn host, so the shape is pinned here instead.
+    assert with_credential == without_credential, (without_credential, with_credential)
+    assert without_credential["host_selection"] == "resolved_default", without_credential
+    assert "--host" not in without_credential["plan_command"], without_credential
 
 
 def test_visible_mode_stays_visible_and_scoped() -> None:
@@ -469,6 +492,7 @@ def test_markdown_and_docs_are_wired() -> None:
 def main() -> int:
     test_intent_selects_distinct_host_modes()
     test_headless_maps_to_loopx_turn_plan_not_parallel_runner()
+    test_headless_preview_ignores_operator_credential()
     test_visible_mode_stays_visible_and_scoped()
     test_visible_mode_preserves_distinct_host_identities()
     test_visible_mode_fails_closed_without_host_identity()

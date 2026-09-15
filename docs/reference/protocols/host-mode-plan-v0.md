@@ -147,8 +147,10 @@ quota guard command, and required proofs.
 - `host` is the mode's **declared** host: the scheduler context the readiness
   statement and capability requirements are written against. It is not a claim
   that this concrete host has already been resolved for the run; the runtime
-  resolves the concrete host (including a credential- or configuration-resolved
-  default) when `plan_command` runs.
+  resolves the concrete host from its own explicit product default
+  (`loopx/control_plane/turn_driver/host_binding.py`) when `plan_command` runs,
+  and `LOOPX_TURN_HOST` or an explicit `--host` re-points that default. An
+  operator credential authenticates the selected host; it does not select one.
 - `host_selection` is `resolved_default` when the command deliberately leaves
   host resolution to `loopx turn plan`/`run-once`, and `pinned` when the command
   carries an explicit `--host`.

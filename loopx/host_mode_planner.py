@@ -121,11 +121,14 @@ SUPPORTED_HOST_CAPABILITIES = [
 _INTENT_PRIMARY_MODE = {meta["intent"]: mode for mode, meta in _MODE_METADATA.items()}
 
 # The headless Turn modes preview the *shipped* host resolution instead of
-# pinning one host. `loopx turn plan`/`run-once` resolve their default from the
-# operator credential, so a preview that pinned `generic-cli` would quietly ask
-# every operator for the compatibility adapter path. The declared host stays in
-# the mapping and in the rollback command, because the mode's scheduler context
-# and capability requirements are still stated for it.
+# pinning one host. `loopx turn plan`/`run-once` ship one explicit product
+# default, owned by `control_plane.turn_driver.host_binding.selected_turn_host`,
+# which `LOOPX_TURN_HOST` or an explicit `--host` re-points; an operator
+# credential authenticates that host and never selects it, so a preview that
+# pinned `generic-cli` would quietly ask every operator for the compatibility
+# adapter path. The declared host stays in the mapping and in the rollback
+# command, because the mode's scheduler context and capability requirements are
+# still stated for it.
 RESOLVED_DEFAULT_TURN_HOST_MODES = frozenset(
     {MODE_ISOLATED_HEADLESS_TURN, MODE_SHELL_SERVICE}
 )
