@@ -222,6 +222,22 @@ broader actor lifecycle or authority model than the implementation provides.
 
 ## Engineering Quality And Right-Sized Scope
 
+### Source-Checkout Python Entry Points
+
+Run source development and validation from the intended worktree root with
+`uv run --extra test python ...` or `uv run --extra test loopx ...`. Use
+`uv sync --extra test` to prepare the project environment. An explicitly
+activated compatible environment with the checkout installed remains valid.
+Check `sys.executable` and `loopx.__file__` when interpreter or source provenance
+is uncertain; a global `loopx` may point to another release snapshot.
+
+Keep Python subprocesses on the selected interpreter (`sys.executable`), and
+keep bootstrap interpreter discovery, supported-version declarations, CI
+version coverage, and version-specific fixtures intact. Do not replace those
+with a nested `uv run`, rewrite historical execution receipts, or commit a
+generated `uv.lock` as part of an unrelated change. See the testing and quality
+guide for the validation layers and the source-checkout environment boundary.
+
 ### Refactor Real-Path Validation
 
 Before delivering a refactor, validate the affected production entrypoint and

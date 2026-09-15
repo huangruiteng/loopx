@@ -12,7 +12,7 @@ Options:
   -h, --help  Show this help and exit.
 
 Common environment variables:
-  LOOPX_PYTHON=/path/to/python3.11  Use this supported Python for the release.
+  LOOPX_PYTHON=/path/to/python    Use a Python 3.11+ executable for the release.
   LOOPX_PROMOTE_DEFAULT=1          Promote this checkout as the default loopx.
   LOOPX_INSTALL_CANARY=0           Skip the loopx-canary executable.
   LOOPX_INSTALL_SKILL=0            Skip packaged workflow skills.

@@ -147,12 +147,18 @@ LoopX services are already running separately. Vite proxies the default
 The full-stack launcher needs a Python 3.11+ interpreter for the status and
 Chat services. It honors `LOOPX_PYTHON` first, then the Python recorded by the
 LoopX installer in `.loopx-python`, then the repository `.venv`,
-`python3.13`/`python3.12`/`python3.11` on `PATH`, and common Homebrew locations.
-If your default `python3` is older, point it at an existing interpreter:
+compatible versioned interpreters on `PATH`, and common Homebrew locations.
+Prepare the project environment and launch from the repository root:
 
 ```bash
-LOOPX_PYTHON=/path/to/python3.12 npm run dev
+uv sync --extra test
+uv run --extra test bash scripts/dashboard-dev.sh
 ```
+
+An explicit `LOOPX_PYTHON` or a valid installer-recorded interpreter still takes
+precedence. To select the project environment explicitly after `uv sync`, set
+`LOOPX_PYTHON` to the absolute path of `.venv/bin/python`. The launcher continues
+to support existing compatible Python installations without requiring uv.
 
 Both the root dashboard and the packaged `/chat/` route expose the same
 installable PWA manifest and icons. The default `loopx dashboard` command opens

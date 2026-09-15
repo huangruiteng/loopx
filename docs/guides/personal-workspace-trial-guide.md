@@ -60,9 +60,10 @@ bash scripts/dashboard-dev.sh
 ```
 
 ```bash
-python3.13 -m loopx.cli chat-endpoint add --config kimi.json   # 添加
-python3.13 -m loopx.cli chat-endpoint list                     # 查看
-python3.13 -m loopx.cli chat-endpoint remove --agent-id kimi   # 移除
+# 在仓库根目录运行，使用当前源码的项目环境
+uv run loopx chat-endpoint add --config kimi.json   # 添加
+uv run loopx chat-endpoint list                    # 查看
+uv run loopx chat-endpoint remove --agent-id kimi   # 移除
 ```
 
 自定义 Agent 信任范围是 read_only，写入同样走预览确认。
