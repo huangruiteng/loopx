@@ -31,6 +31,9 @@ from loopx.control_plane.turn_driver.host_binding import (  # noqa: E402
     EXECUTOR_KIND_INDIVIDUAL,
     EXECUTOR_KIND_MANAGED,
     OPERATOR_CREDENTIAL_UNCONFIGURED,
+    REMEDY_CONFIGURE_DSH_RUNTIME,
+    REMEDY_CONFIGURE_OPERATOR_CREDENTIAL,
+    REMEDY_SELECT_INDIVIDUAL_HOST,
 )
 
 
@@ -314,6 +317,13 @@ def main() -> int:
         assert refusal["ok"] is False, refusal
         assert refusal["status"] == "unavailable", refusal
         assert refusal["reason"] == OPERATOR_CREDENTIAL_UNCONFIGURED, refusal
+        # The refusal is actionable: the exits travel with the typed reason.
+        assert refusal["remediation"] == [
+            REMEDY_CONFIGURE_OPERATOR_CREDENTIAL,
+            REMEDY_SELECT_INDIVIDUAL_HOST,
+        ], refusal
+        assert refusal["remediation_host"] == "codex-cli", refusal
+        assert refusal["remediation_env_vars"] == [CREDENTIAL_ENV], refusal
         _expect_no_effects(refusal)
         _expect_no_journal(refusal, runtime)
 
@@ -335,6 +345,10 @@ def main() -> int:
         assert refusal["ok"] is False, refusal
         assert refusal["status"] == "unavailable", refusal
         assert refusal["reason"] == DSH_RUNTIME_UNAVAILABLE, refusal
+        assert refusal["remediation"] == [
+            REMEDY_CONFIGURE_DSH_RUNTIME,
+            REMEDY_SELECT_INDIVIDUAL_HOST,
+        ], refusal
         _expect_no_effects(refusal)
         _expect_no_journal(refusal, runtime)
 

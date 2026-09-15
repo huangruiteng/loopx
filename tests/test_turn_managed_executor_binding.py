@@ -12,6 +12,11 @@ from loopx.control_plane.turn_driver.host_binding import (
     MANAGED_EXECUTOR_BINDING_SCHEMA_VERSION,
     MANAGED_TURN_HOST,
     OPERATOR_CREDENTIAL_UNCONFIGURED,
+    REMEDY_CONFIGURE_DSH_RUNTIME,
+    REMEDY_CONFIGURE_OPERATOR_CREDENTIAL,
+    REMEDY_CORRECT_EXECUTION_PROFILE,
+    REMEDY_SELECT_INDIVIDUAL_HOST,
+    managed_executor_unavailable_payload,
     managed_executor_binding,
     resolve_default_turn_host,
 )
@@ -52,6 +57,7 @@ def test_managed_executor_reports_the_operator_credential_and_endpoint():
         "operator_credential_bound": True,
         "available": True,
         "unavailable_reason": None,
+        "unavailable_remediation": [],
     }
 
 
@@ -64,6 +70,61 @@ def test_managed_executor_fails_closed_when_the_runtime_is_missing():
 
     assert binding["available"] is False
     assert binding["unavailable_reason"] == DSH_RUNTIME_UNAVAILABLE
+    assert binding["unavailable_remediation"] == [
+        REMEDY_CONFIGURE_DSH_RUNTIME,
+        REMEDY_SELECT_INDIVIDUAL_HOST,
+    ]
+
+
+def test_the_refusal_names_the_operator_reachable_exits():
+    """A typed reason alone leaves the operator to guess the way out."""
+
+    binding = managed_executor_binding("dsh", environ={}, module_probe=_RUNTIME)
+    refusal = managed_executor_unavailable_payload(
+        {"managed_executor": binding},
+        execute=True,
+        host_projection={"host": "dsh"},
+    )
+
+    assert binding["unavailable_remediation"] == [
+        REMEDY_CONFIGURE_OPERATOR_CREDENTIAL,
+        REMEDY_SELECT_INDIVIDUAL_HOST,
+    ]
+    assert refusal is not None
+    assert refusal["reason"] == OPERATOR_CREDENTIAL_UNCONFIGURED
+    # The exits travel as data: the credential variable to set and the host to
+    # select instead, so no caller has to re-derive them from the reason.
+    assert refusal["remediation"] == binding["unavailable_remediation"]
+    assert refusal["remediation_host"] == "codex-cli"
+    assert refusal["remediation_env_vars"] == ["DEEPSEEK_API_KEY"]
+
+
+def test_a_refused_execution_profile_names_its_own_remedy():
+    binding = managed_executor_binding(
+        "dsh",
+        environ={
+            "DEEPSEEK_API_KEY": "sk-operator",
+            "LOOPX_TURN_REASONING_EFFORT": "turbo",
+        },
+        module_probe=_RUNTIME,
+    )
+
+    assert binding["unavailable_reason"] == INVALID_REASONING_EFFORT
+    assert binding["unavailable_remediation"] == [
+        REMEDY_CORRECT_EXECUTION_PROFILE,
+        REMEDY_SELECT_INDIVIDUAL_HOST,
+    ]
+
+
+def test_a_launchable_executor_offers_no_remedy():
+    binding = managed_executor_binding(
+        "dsh",
+        environ={"DEEPSEEK_API_KEY": "sk-operator"},
+        module_probe=_RUNTIME,
+    )
+
+    assert binding["available"] is True
+    assert binding["unavailable_remediation"] == []
 
 
 def test_configured_runner_hook_makes_the_managed_host_launchable():

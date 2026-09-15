@@ -28,6 +28,7 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from ..operator_credential import (
+    OPERATOR_CREDENTIAL_ENV_VARS,
     OPERATOR_ENDPOINT_ENV_VAR,
     configured_operator_credential,
     env_text,
@@ -68,6 +69,14 @@ DSH_RUNTIME_UNAVAILABLE = "dsh_runtime_unavailable"
 # endpoint, so it refuses instead of letting the managed default consume
 # whatever personal login happens to exist on the machine.
 OPERATOR_CREDENTIAL_UNCONFIGURED = "operator_credential_unconfigured"
+# Operator-reachable exits from a fail-closed managed executor. A refusal that
+# names only the missing fact leaves the operator to guess the way out, so the
+# same typed readback names the exits as codes. These describe what the operator
+# can change here; they never select a host, endpoint, or model themselves.
+REMEDY_CONFIGURE_OPERATOR_CREDENTIAL = "configure_operator_credential"
+REMEDY_CONFIGURE_DSH_RUNTIME = "configure_dsh_runtime"
+REMEDY_CORRECT_EXECUTION_PROFILE = "correct_execution_profile"
+REMEDY_SELECT_INDIVIDUAL_HOST = "select_individual_host"
 
 
 def selected_turn_host(
@@ -107,6 +116,27 @@ def dsh_runtime_importable(
         return importlib.util.find_spec(DSH_RUNTIME_MODULE) is not None
     except (ImportError, ValueError):
         return False
+
+
+def _managed_unavailable_remediation(reason: str | None) -> list[str]:
+    """Name the operator-reachable exits from one managed refusal.
+
+    The list is empty whenever the managed executor can launch, so a caller
+    reads the same field in both states instead of branching on its presence.
+    Selecting an individual host is always one exit, because it is the
+    documented alternative to a managed host nothing here can authenticate.
+    """
+
+    if reason is None:
+        return []
+    remedy_by_reason = {
+        DSH_RUNTIME_UNAVAILABLE: REMEDY_CONFIGURE_DSH_RUNTIME,
+        OPERATOR_CREDENTIAL_UNCONFIGURED: REMEDY_CONFIGURE_OPERATOR_CREDENTIAL,
+    }
+    return [
+        remedy_by_reason.get(reason, REMEDY_CORRECT_EXECUTION_PROFILE),
+        REMEDY_SELECT_INDIVIDUAL_HOST,
+    ]
 
 
 def managed_executor_binding(
@@ -164,6 +194,9 @@ def managed_executor_binding(
             "operator_credential_bound": operator_credential_bound,
             "available": unavailable_reason is None,
             "unavailable_reason": unavailable_reason,
+            "unavailable_remediation": _managed_unavailable_remediation(
+                unavailable_reason
+            ),
         }
     return {
         "schema_version": MANAGED_EXECUTOR_BINDING_SCHEMA_VERSION,
@@ -179,6 +212,7 @@ def managed_executor_binding(
         "operator_credential_bound": False,
         "available": None,
         "unavailable_reason": None,
+        "unavailable_remediation": [],
     }
 
 
@@ -213,8 +247,44 @@ def managed_executor_unavailable_payload(
     binding = plan.get("managed_executor")
     if not isinstance(binding, Mapping) or binding.get("available") is not False:
         return None
+    remediation = binding.get("unavailable_remediation")
     return {
         "status": "unavailable",
         "host": dict(host_projection),
         "reason": str(binding.get("unavailable_reason") or ""),
+        # The operator-facing refusal carries the exits as data, so a caller
+        # does not have to re-derive them from the reason string.
+        "remediation": [
+            str(code)
+            for code in (remediation if isinstance(remediation, list) else [])
+            if str(code)
+        ],
+        "remediation_host": INDIVIDUAL_TURN_HOST,
+        "remediation_env_vars": list(OPERATOR_CREDENTIAL_ENV_VARS),
     }
+
+
+def managed_executor_remediation_projection(
+    journal: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the refusal's remediation entry for a public payload, else ``{}``.
+
+    Only a refusal that named at least one exit projects anything, so a payload
+    that can launch stays byte-identical to the one before this field existed.
+    """
+
+    remediation = journal.get("remediation")
+    if not isinstance(remediation, list) or not remediation:
+        return {}
+    projection: dict[str, Any] = {
+        "remediation": [str(code) for code in remediation if str(code)]
+    }
+    host = journal.get("remediation_host")
+    if isinstance(host, str) and host:
+        projection["remediation_host"] = host
+    env_vars = journal.get("remediation_env_vars")
+    if isinstance(env_vars, list):
+        projection["remediation_env_vars"] = [
+            str(name) for name in env_vars if str(name)
+        ]
+    return projection

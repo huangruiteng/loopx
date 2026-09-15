@@ -152,7 +152,7 @@ ambient environment.
 (`managed_executor_binding_v0`): the executor and its kind (`managed`,
 `individual`, `generic`), the credential env var *name* (never its value), the
 endpoint env var name, whether the executor is operator-credential-bound, and
-whether it can launch here. When it cannot, `available` is `false` and
+whether it can launch here. When it cannot, `available` is `false`,
 `unavailable_reason` names the missing fact:
 
 | `unavailable_reason` | meaning | remediation |
@@ -160,6 +160,22 @@ whether it can launch here. When it cannot, `available` is `false` and
 | `dsh_runtime_unavailable` | the DeepSeek Harness runtime is not importable and no explicit runner hook was supplied | install the released runtime, pass its runner hook, or select `--host codex-cli` |
 | `operator_credential_unconfigured` | the managed host is selected but no operator credential or runner hook would authenticate it | set `DEEPSEEK_API_KEY`, or select `--host codex-cli` explicitly |
 | `invalid_reasoning_effort` | the resolved execution profile names a reasoning effort the host adapter does not support | pass a supported `--dsh-reasoning-effort`, or clear the overriding environment variable |
+
+The same readback also carries `unavailable_remediation`, which names those
+exits as typed codes so a caller does not have to parse the reason string:
+
+| `unavailable_remediation` | exit it names |
+| --- | --- |
+| `configure_operator_credential` | set the credential env var this readback reports as `credential_env` |
+| `configure_dsh_runtime` | install the released runtime, or pass its runner hook |
+| `correct_execution_profile` | pass a supported `--dsh-reasoning-effort`, or clear the overriding environment variable |
+| `select_individual_host` | select the individual host instead of the managed one |
+
+The list is empty for every launchable or non-managed executor, and naming an
+exit selects nothing: acting on it is still an explicit credential, profile, or
+`--host` change. The refusal `run-once --execute` returns on that verdict
+repeats the exits as `remediation` and adds the concrete `remediation_host` and
+`remediation_env_vars`.
 
 `run-once --execute` fails closed on that verdict: status `unavailable`, no host
 invocation, no Journal write, and no quota slot spend. An explicitly selected
